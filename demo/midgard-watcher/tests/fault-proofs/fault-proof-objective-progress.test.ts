@@ -1,4 +1,4 @@
-import { readFile, rename } from "node:fs/promises";
+import { rename } from "node:fs/promises";
 import { join } from "node:path";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
@@ -33,10 +33,10 @@ import {
   watcherFaultProofDeadline,
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
-import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
-import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.exact-record.js";
+import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
 import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
@@ -598,7 +598,7 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
   });
 
-  it("reconciles once for a quiet admitted native block while retaining identical queue evidence", async () => {
+  it("reconciles once when the queue observation advances to a quiet native block", async () => {
     const test = await setup();
     vi.mocked(test.fixture.adapter.reconcile).mockResolvedValueOnce({
       kind: "pending",
@@ -621,33 +621,24 @@ describe("proof objective progress with durable funding and journals", () => {
     await supervisor.requestProgress(request);
     await test.idle(supervisor);
     expect(test.fixture.adapter.reconcile).toHaveBeenCalledTimes(1);
-    const metadata = {
-      blockHash:
-        "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
-      blockNo: "12069665",
-      blockType: "7",
-      prevHash:
-        "ff51732269af51a2efaa2a7ad4a2ff5647af5629013a446511249e837be617a0",
-      slot: "159835207",
-    };
-    const nativeProgress = admitWatcherNativeRollForwardBlock({
-      ...metadata,
-      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
-      kind: "roll_forward",
-      rawBlockCbor: (
-        await readFile(
-          new URL("../support/conway-block.hex", import.meta.url),
-          "utf8",
-        )
-      ).trim(),
-      tip: {
-        kind: "point",
-        blockHash: metadata.blockHash,
-        blockNo: metadata.blockNo,
-        slot: metadata.slot,
+    const { observationDigest: _digest, ...prior } = observation;
+    const advanced = {
+      ...prior,
+      nativePoint: {
+        ...prior.nativePoint,
+        blockNo: (BigInt(prior.nativePoint.blockNo) + 1n).toString(),
+        slot: (BigInt(prior.nativePoint.slot) + 20n).toString(),
+        blockHash:
+          "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
       },
-    });
-    const quietRequest = { ...request, nativeProgress };
+    };
+    const quietRequest = {
+      ...request,
+      observation: unsafeAdmitWatcherStateQueueObservationForReplayTest({
+        ...advanced,
+        observationDigest: watcherSha256CanonicalJson(advanced),
+      }),
+    };
     await supervisor.requestProgress(quietRequest);
     await test.idle(supervisor);
     expect(test.fixture.adapter.reconcile).toHaveBeenCalledTimes(2);

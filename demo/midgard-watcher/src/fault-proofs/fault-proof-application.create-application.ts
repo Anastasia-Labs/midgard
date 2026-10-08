@@ -694,8 +694,8 @@ export function createApplication({
       // Readiness binds the deployment and resolves the family's whole roster,
       // then stops: it binds no config, constructs no workflow and reads no
       // secret, so it can neither act nor need the optional infrastructure an
-      // acting invocation must hold. The prover wallet is proven present by
-      // the trusted-head startup phase, not here.
+      // acting invocation must hold. Runtime startup resolves the prover
+      // wallet's secret before the operations server binds, not here.
       const watcherConfig = await readAdmittedWatcherRuntimeConfig({
         runtimeConfigPath: invocation.runtimeConfigPath,
         deploymentFingerprint: invocation.deploymentFingerprint,

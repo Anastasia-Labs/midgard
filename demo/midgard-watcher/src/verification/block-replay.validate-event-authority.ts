@@ -308,7 +308,7 @@ export const validateEventAuthority = async (
 export type EvaluateWatcherBlockReplayCandidatesInput = {
   /** Canonical Phase A candidates, in canonical block order. */
   readonly candidates: readonly PhaseAValidatedTx[];
-  /** Prior-state ledger entries, from the W21 records. */
+  /** Prior-state ledger entries: the parent block's canonical reconstruction UTxOs. */
   readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
   /** The L1-committed `prevUtxosRoot` the prior state must reproduce. */
   readonly expectedPriorStateRoot: string;

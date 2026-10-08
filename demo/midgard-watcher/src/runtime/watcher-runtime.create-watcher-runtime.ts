@@ -55,10 +55,7 @@ import {
   watcherDaBondPoolReporter,
 } from "./operations-observability.js";
 import { refusePermanently } from "./permanent-refusal.js";
-import {
-  loadWatcherSecretText,
-  type WatcherProcessConfig,
-} from "./process-config.js";
+import { type WatcherProcessConfig } from "./process-config.js";
 import {
   createWatcherStartupProgress,
   type WatcherStartupProgress,
@@ -78,9 +75,10 @@ import { createWatcherL1Readiness } from "./watcher-runtime.l1-readiness.js";
 import { type WatcherRuntime } from "./watcher-runtime.launch-checks.js";
 import {
   prepareWatcherRuntimeAuthority,
-  resolveWatcherRuntimeWalletAddress,
+  resolveWatcherRuntimeWalletAddresses,
 } from "./watcher-runtime.prepare-authority.js";
 import { prepareWatcherRuntimeWorkflows } from "./watcher-runtime.prepare-services.js";
+import { watcherRetirementReady } from "./watcher-runtime.retirement-ready.js";
 
 /**
  * The persisted sourceId of the watcher's state-queue observations, kept
@@ -193,14 +191,10 @@ export const createWatcherRuntime = async (input: {
     );
     // Address derivation only; the runtime never holds a live signer. The
     // executing runner re-resolves the same secret source itself.
-    const proverWalletAddress = resolveWatcherRuntimeWalletAddress(
-      input,
-      await loadWatcherSecretText(watcherConfig.proverWallet.keySource),
-    );
-    const availabilityWalletAddress = resolveWatcherRuntimeWalletAddress(
-      input,
-      await loadWatcherSecretText(input.config.availability.keySource),
-    );
+    const {
+      prover: proverWalletAddress,
+      availability: availabilityWalletAddress,
+    } = await resolveWatcherRuntimeWalletAddresses(input);
     const activeFollower = openWatcherDeploymentFollower({
       authority,
       storePath: `${watcherConfig.storage.path}.l1-follower.sqlite`,
@@ -215,6 +209,7 @@ export const createWatcherRuntime = async (input: {
         binaryPath: input.config.l1NodeTransportBinaryPath,
         socketPath: localL1Source.chainSync.socketPath,
         networkMagic,
+        requestTimeoutMs: watcherConfig.l1.requestTimeoutMs,
       },
       walletAddresses: [proverWalletAddress, availabilityWalletAddress],
       eventProjection: userEventScripts.eventProjection,
@@ -380,17 +375,6 @@ export const createWatcherRuntime = async (input: {
     });
 
     const sourceIdentityDigest = localL1Source.chainSync.genesisIdentitySha256;
-    const retirementReady = () => {
-      const status = activeSupervisor.status();
-      return (
-        status.recovered &&
-        status.phase === "accepting" &&
-        status.unfinishedObjectiveCount === 0 &&
-        status.queuedJobCount === 0 &&
-        status.activeJob === null &&
-        status.blockedJob === null
-      );
-    };
     const activeDriver = createWatcherDecisionDriver(
       {
         store,
@@ -404,7 +388,7 @@ export const createWatcherRuntime = async (input: {
         bridge: activeBridge,
         availability: activeAvailability,
         retirement: {
-          ready: retirementReady,
+          ready: () => watcherRetirementReady(activeSupervisor.status()),
           retire: (observation) =>
             sqlite.replayTranscripts.retireExpired({
               observation,

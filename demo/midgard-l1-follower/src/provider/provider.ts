@@ -352,7 +352,10 @@ export class L1FollowerProvider implements Provider {
   async submitTx(tx: Transaction): Promise<TxHash> {
     const bytes = Buffer.from(tx, "hex");
     const txHash = transactionId(bytes);
-    const result = await this.#node(() => this.#transport.submit(bytes));
+    const result = await this.#node(
+      () => this.#transport.submit(bytes),
+      "submit",
+    );
     if (!result.accepted)
       throw new L1SubmitRejectedError(txHash, result.rejection);
     return txHash;
@@ -425,11 +428,14 @@ export class L1FollowerProvider implements Provider {
     }
   }
 
-  async #node<T>(run: () => Promise<T>): Promise<T> {
+  async #node<T>(
+    run: () => Promise<T>,
+    operation: "query" | "submit" = "query",
+  ): Promise<T> {
     try {
       return await run();
     } catch (error) {
-      throw fromTransportError(error);
+      throw fromTransportError(error, operation);
     }
   }
 }

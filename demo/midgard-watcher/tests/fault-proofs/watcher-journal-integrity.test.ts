@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import {
   closeWatcherJournalDatabase,
+  openWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
@@ -190,6 +191,23 @@ describe("watcher journal integrity (W2-E2)", () => {
 });
 
 describe("watcher journal open failures (R6)", () => {
+  it("holds the watcher unready by name on a migration that changed after it was applied", async () => {
+    const journalRoot = await journalDirectory("midgard-journal-migration");
+    openWatcherJournalDatabase({
+      journalRoot,
+      authenticationKey: TEST_JOURNAL_KEY,
+    });
+    closeWatcherJournalDatabase(journalRoot);
+    const database = new DatabaseSync(
+      join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE),
+    );
+    database.exec(
+      "UPDATE watcher_journal_migrations SET checksum = 'stale' WHERE rowid = (SELECT MIN(rowid) FROM watcher_journal_migrations)",
+    );
+    database.close();
+    await expectHeldUnready(journalRoot, "changed after it was applied");
+  });
+
   it("reports journal_unavailable while the journals cannot be opened and recovers without a restart", async () => {
     const journalRoot = await journalDirectory("midgard-journal-unavailable");
     // A directory where the database file belongs: SQLite cannot open it.

@@ -8,12 +8,8 @@ import {
   WatcherRetainedHeaderAttestationPendingError,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission.js";
 import { watcherSameCanonicalJson } from "../storage/durable-store.js";
-import {
-  classificationMissRecorder,
-  deferredRetryBackoff,
-} from "./fault-decision-bridge.classification-miss.js";
+import { classificationMissRecorder } from "./fault-decision-bridge.classification-miss.js";
 import {
   assertDurableDecisionEvidence,
   durableFaultDecisions,
@@ -65,7 +61,6 @@ export const createBridge = (input: {
   let actuationController: WorkflowActuationPermitController | null = null;
   let preparedResult: WatcherFaultDecisionBridgeResult | null = null;
   let serial: Promise<void> = Promise.resolve();
-  let classificationDeferred = false;
   type ClassificationBinding = Readonly<{
     contextIdentity: string;
     predecessor: WatcherStateQueueHeaderObservation | undefined;
@@ -76,7 +71,6 @@ export const createBridge = (input: {
   let targetClassification: ClassificationBinding | null = null;
   const mergedRecorder = unverifiedMergedRecorder(input.dependencies);
   const misses = classificationMissRecorder(input.dependencies);
-  const retryBackoff = deferredRetryBackoff(input.dependencies);
 
   const invalidate = (reason: string): void => {
     input.dependencies.retainDecisionAuthorities(null);
@@ -91,8 +85,6 @@ export const createBridge = (input: {
     targetDeadline = null;
     preparedResult = null;
     targetClassification = null;
-    classificationDeferred = false;
-    retryBackoff.reset();
     mergedRecorder.reset();
   };
 
@@ -495,14 +487,6 @@ export const createBridge = (input: {
       pendingAvailability.size === 0 && selected !== null
         ? (classifiedBindings.get(selected.headerHash) ?? null)
         : null;
-    classificationDeferred =
-      pendingAvailability.size > 0 ||
-      deferredFromIndex < candidate.finalizedHeaders.length;
-    // A pending availability header is rechecked on every wake, as before.
-    retryBackoff.settle(
-      pendingAvailability.size === 0 &&
-        deferredFromIndex < candidate.finalizedHeaders.length,
-    );
     preparedResult = Object.freeze({
       observationDigest: candidate.observationDigest,
       decisionDigests: Object.freeze(
@@ -544,14 +528,11 @@ export const createBridge = (input: {
     return result;
   };
 
-  const dispatchPrepared = (
-    nativeProgress?: WatcherNativeBlockAdmission,
-  ): Promise<void> | null => {
+  const dispatchPrepared = (): Promise<void> | null => {
     if (observation === null) return null;
     input.dependencies.assertObservation(observation);
     return input.dependencies.requestProgress({
       observation,
-      ...(nativeProgress === undefined ? {} : { nativeProgress }),
       rollbackGeneration: rollbackGeneration.toString(),
       ...(targetDecision?.decision === "fault_detected" &&
       actuationController !== null &&
@@ -571,8 +552,8 @@ export const createBridge = (input: {
     schemaVersion: WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION,
     prepareForRecovery: async (candidate) =>
       await serializedPrepare(candidate, false),
-    recoverExisting: async (progress) => {
-      const request = dispatchPrepared(progress?.nativeProgress);
+    recoverExisting: async () => {
+      const request = dispatchPrepared();
       if (request === null)
         throw new Error(
           "fault-proof recovery requires a fresh authenticated queue reconciliation",
@@ -582,11 +563,6 @@ export const createBridge = (input: {
     },
     reconcileAndDispatch: async (candidate) => {
       return await serializedPrepare(candidate, true);
-    },
-    retryDeferredClassification: async (candidate) => {
-      await serial;
-      if (classificationDeferred && retryBackoff.due())
-        await serializedPrepare(candidate, true);
     },
     dispatchPrepared,
     invalidateForRollback: () => invalidate("native_chain_rollback"),

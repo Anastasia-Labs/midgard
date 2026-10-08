@@ -436,7 +436,7 @@ describe("production fault decision bridge", () => {
     },
   );
 
-  it("defers a changing raw checkpoint and its suffix until a quiet canonical wake succeeds", async () => {
+  it("defers a changing raw checkpoint and its suffix until a later pass succeeds", async () => {
     const current = observation([
       headerFixture("21"),
       headerFixture("22"),
@@ -468,17 +468,20 @@ describe("production fault decision bridge", () => {
     expect(h.appended).toEqual([]);
     expect(h.enqueued).toEqual([]);
     expect(h.application.classifyHeader).toHaveBeenCalledTimes(3);
-    await h.bridge.retryDeferredClassification(current);
+    await h.bridge.reconcileAndDispatch(current);
     expect(h.application.classifyHeader).toHaveBeenCalledTimes(6);
     expect(h.enqueued).toEqual([]);
     changed = false;
-    await h.bridge.retryDeferredClassification(current);
+    await h.bridge.reconcileAndDispatch(current);
     expect(h.enqueued.map((entry) => entry.headerHash)).toEqual([
       pending!.headerHash,
     ]);
     expect(h.application.classifyHeader).toHaveBeenCalledTimes(9);
-    await h.bridge.retryDeferredClassification(current);
-    expect(h.application.classifyHeader).toHaveBeenCalledTimes(9);
+    // A later pass reuses the target and re-reads only the other headers.
+    await h.bridge.reconcileAndDispatch(current);
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(11);
+    expect(h.enqueuedGenerations).toHaveLength(2);
+    expect(new Set(h.enqueuedGenerations).size).toBe(1);
   });
 
   it("keeps an earlier fault permit and deadline unchanged while later checkpoint drift waits for canonical wakes", async () => {
@@ -504,7 +507,7 @@ describe("production fault decision bridge", () => {
     changed = true;
     await h.bridge.reconcileAndDispatch(current);
     for (let wake = 0; wake < 3; wake++)
-      await h.bridge.retryDeferredClassification(current);
+      await h.bridge.reconcileAndDispatch(current);
     expect(
       h.application.classifyHeader.mock.calls.filter(
         ([request]) => request.observation.headerHash === pending!.headerHash,
@@ -547,7 +550,7 @@ describe("production fault decision bridge", () => {
     },
   );
 
-  it("retries deferred public DA on a quiet-block signal and stops retrying after classification", async () => {
+  it("rechecks deferred public DA on every pass and keeps one target after classification", async () => {
     const original = observation([headerFixture("01")]);
     const first = original.finalizedHeaders[0]!;
     const current: WatcherAuthenticatedStateQueueObservation = {
@@ -571,18 +574,19 @@ describe("production fault decision bridge", () => {
     expect(currentHarness.application.classifyHeader).not.toHaveBeenCalled();
     expect(currentHarness.appended).toEqual([]);
     expect(currentHarness.enqueued).toEqual([]);
-    await currentHarness.bridge.retryDeferredClassification(current);
+    await currentHarness.bridge.reconcileAndDispatch(current);
     expect(currentHarness.application.classifyHeader).not.toHaveBeenCalled();
     pending = new Set();
-    await currentHarness.bridge.retryDeferredClassification(current);
+    await currentHarness.bridge.reconcileAndDispatch(current);
     expect(currentHarness.bridge.status().target?.headerHash).toBe(
       first.headerHash,
     );
     expect(currentHarness.application.classifyHeader).toHaveBeenCalledOnce();
     expect(currentHarness.enqueued).toHaveLength(1);
-    await currentHarness.bridge.retryDeferredClassification(current);
+    await currentHarness.bridge.reconcileAndDispatch(current);
     expect(currentHarness.application.classifyHeader).toHaveBeenCalledOnce();
-    expect(currentHarness.enqueued).toHaveLength(1);
+    expect(currentHarness.enqueuedGenerations).toHaveLength(2);
+    expect(new Set(currentHarness.enqueuedGenerations).size).toBe(1);
   });
 
   it("preserves the admitted target and replay authority through repeated availability rechecks", async () => {

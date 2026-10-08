@@ -174,7 +174,7 @@ const reconstructedStateBytes = (
 
 /**
  * Builds the W03-reserved `WatcherReconstructedState` record for an accepted
- * reconstruction. `inputIds` must be the exact W21 canonical-store input ids
+ * reconstruction. `inputIds` must be the exact canonical evidence input ids
  * whose bytes were reconstructed; nothing else is accepted as a source.
  */
 export const makeWatcherHeaderRootReconstructedState = (input: {

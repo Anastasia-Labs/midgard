@@ -26,6 +26,7 @@ import {
   type WatcherUserEventKind,
   type WatcherUserEventNetwork,
 } from "../verification/user-event.js";
+import { eventRowStateIn } from "./proof-retention.events.js";
 import type { WatcherProofRetention } from "./proof-retention.js";
 import type { FollowerRawReads } from "./raw-reads.types.js";
 import { rawPointOf } from "./raw-reads.types.js";
@@ -139,10 +140,10 @@ export const createWatcherFollowerUserEvents = (
   input: Readonly<{
     store: Pick<
       FactStore,
-      "onGeneration" | "txByHash" | "transaction" | "dialect"
+      "onGeneration" | "txByHash" | "pointStatus" | "transaction" | "dialect"
     >;
     rawReads: Pick<FollowerRawReads, "unitHistoryAtPoint">;
-    proofRetention: Pick<WatcherProofRetention, "holdUnits">;
+    proofRetention: Pick<WatcherProofRetention, "holdUnits" | "holdEvents">;
     identity: WatcherUserEventIdentity;
     scripts: WatcherUserEventScripts;
   }>,
@@ -168,7 +169,12 @@ export const createWatcherFollowerUserEvents = (
     );
   };
 
-  /** The header's cutoff: its commit transaction's block and index in it. */
+  /**
+   * The header's cutoff: its commit transaction's block and index in it.
+   * The stored commit's slot and the observed block (slot and hash) must
+   * both be on the stored chain, which holds one block per slot: then the
+   * commit is in the observed block.
+   */
   const cutoffAt = async (
     header: WatcherStateQueueHeaderObservation,
   ): Promise<EventCutoff> => {
@@ -179,20 +185,31 @@ export const createWatcherFollowerUserEvents = (
       return unavailable(
         `header ${header.headerHash}'s commit transaction is not stored at slot ${header.observedSlot}`,
       );
-    return {
-      point: {
-        slot: commit.blockSlot,
-        hash: Buffer.from(header.observedBlockHash, "hex"),
-      },
-      txIndex: commit.blockTxIndex,
+    const point = {
+      slot: commit.blockSlot,
+      hash: Buffer.from(header.observedBlockHash, "hex"),
     };
+    const block = await store.pointStatus(point);
+    if (block.kind !== "canonical")
+      return unavailable(
+        `header ${header.headerHash}'s commit block ${header.observedBlockHash} is not the stored block at slot ${header.observedSlot}: ${block.kind}`,
+      );
+    return { point, txIndex: commit.blockTxIndex };
   };
 
   const listEvent = async (
     kind: "deposit" | "withdrawal",
     eventId: string,
+    header: WatcherStateQueueHeaderObservation,
     cutoff: EventCutoff,
   ): Promise<WatcherUserEvent> => {
+    const key = eventKeyOfId(Buffer.from(eventId, "hex"));
+    // Held past k while the header's open objective reads it.
+    const hold = await proofRetention.holdEvents(header.headerHash, [
+      { kind, key: key.toString("hex") },
+    ]);
+    if (hold.kind === "already_pruned")
+      return unavailable(`${kind} ${eventId}'s rows were pruned`);
     const read = await eventAdmittedThrough(
       store as FactStore,
       kind,
@@ -205,9 +222,11 @@ export const createWatcherFollowerUserEvents = (
       );
     const row = read.value;
     if (row === null)
-      return unavailable(
-        `${kind} ${eventId} is not admitted by the cutoff, or its rows were pruned`,
-      );
+      return (await store.transaction("read", (tx) =>
+        eventRowStateIn(tx, kind, key),
+      )) === "pruned"
+        ? unavailable(`${kind} ${eventId}'s rows were pruned`)
+        : unavailable(`${kind} ${eventId} is not admitted by the cutoff`);
     const eventCborHex = aikenSerialisedPlutusDataCborPreservingMapOrder(
       plutusConstrFieldCbor(row.payloadCbor, [0]),
     );
@@ -349,7 +368,12 @@ export const createWatcherFollowerUserEvents = (
     const event =
       request.kind === "forced_order"
         ? await forcedOrder(request.eventId, request.throughHeader, cutoff)
-        : await listEvent(request.kind, request.eventId, cutoff);
+        : await listEvent(
+            request.kind,
+            request.eventId,
+            request.throughHeader,
+            cutoff,
+          );
     return Object.freeze({
       deploymentManifestId: identity.deploymentManifestId,
       blueprintHash: identity.blueprintHash,

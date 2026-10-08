@@ -1,4 +1,9 @@
-import { CborMap, encodeCbor } from "@al-ft/l1-node-transport";
+import {
+  CborMap,
+  encodeCbor,
+  SidecarExitedError,
+  TransportRequestError,
+} from "@al-ft/l1-node-transport";
 import {
   CML,
   credentialToAddress,
@@ -15,6 +20,9 @@ import {
   decodeEraHistory,
   decodeProtocolParameters,
   decodeSystemStart,
+  fromTransportError,
+  L1ProviderRequestError,
+  L1ProviderTransientError,
   LedgerAnswerError,
   slotConfigFrom,
   toLucidUtxo,
@@ -235,5 +243,59 @@ describe("slot configuration from the era history", () => {
     expect(
       slotConfigFrom(decodeSystemStart(systemStart), decodeEraHistory(history)),
     ).toEqual(SLOT_CONFIG_NETWORK.Preprod);
+  });
+});
+
+describe("transport error mapping", () => {
+  const refusal = (code: string) => new TransportRequestError(code, "refused");
+
+  it("retries the refusals that clear on their own, a query's node timeout and a sidecar exit", () => {
+    for (const code of [
+      "busy",
+      "node_unavailable",
+      "acquire_failed",
+      "monitor_unavailable",
+      "era_mismatch",
+      "node_timeout",
+    ])
+      expect(fromTransportError(refusal(code))).toMatchObject({
+        constructor: L1ProviderTransientError,
+        reason: code,
+      });
+    const exited = new SidecarExitedError({
+      code: 1,
+      signal: null,
+      fatal: null,
+      diagnostics: "",
+    });
+    expect(fromTransportError(exited)).toMatchObject({
+      constructor: L1ProviderTransientError,
+      reason: "sidecar_exited",
+    });
+  });
+
+  it("keeps a submission's node timeout a request error: its outcome is unknown", () => {
+    expect(fromTransportError(refusal("node_timeout"), "submit")).toMatchObject(
+      {
+        constructor: L1ProviderRequestError,
+        code: "node_timeout",
+      },
+    );
+    expect(fromTransportError(refusal("busy"), "submit")).toMatchObject({
+      constructor: L1ProviderTransientError,
+    });
+  });
+
+  it("keeps any other refusal a request error", () => {
+    for (const code of [
+      "invalid_request",
+      "unknown_query",
+      "acquire_point_too_old",
+      "tx_undecodable",
+    ])
+      expect(fromTransportError(refusal(code))).toMatchObject({
+        constructor: L1ProviderRequestError,
+        code,
+      });
   });
 });

@@ -12,6 +12,8 @@ export const WATCHER_UNIT_HISTORY_TABLE = "watcher_unit_history";
 export const WATCHER_PROOF_PINS_TABLE = "watcher_proof_pins";
 /** Owner-managed (class B): the followed units a held objective's proof reads. */
 export const WATCHER_PROOF_PIN_UNITS_TABLE = "watcher_proof_pin_units";
+/** Owner-managed (class B): the deposit and withdrawal events a held objective's proof reads. */
+export const WATCHER_PROOF_PIN_EVENTS_TABLE = "watcher_proof_pin_events";
 /** Class C: the resolved inputs of every tx a unit history records. */
 export const WATCHER_TX_INPUTS_TABLE = "watcher_tx_inputs";
 /** Class B: the followed units a prune step deleted closed history rows of. */

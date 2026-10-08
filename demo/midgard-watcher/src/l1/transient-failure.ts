@@ -1,12 +1,11 @@
 import {
-  TransportTimeoutError,
-  TransportUnavailableError,
-} from "@al-ft/l1-node-transport";
-import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs";
-import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
+import {
+  fromTransportError,
+  L1ProviderTransientError,
+} from "@al-ft/midgard-l1-follower/provider";
 
 import { NativeChainSyncStartupFailure } from "./native-chain-sync.exact-record.js";
 
@@ -25,7 +24,9 @@ const NETWORK_FAILURE_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Startup failures that say only that the node did not answer: the node
+ * Native chain-sync startup failures (produced by node-tools' devnet stack,
+ * which retries them with this test explicitly) that say only that the node
+ * did not answer: the node
  * transport was not ready (its sidecar was starting or restarting, or the
  * node's socket did not accept, did not complete the handshake or dropped the
  * connection), an auxiliary node connection could not be opened, or the read
@@ -78,7 +79,10 @@ const transientCode = (error: Error): boolean => {
  * did not answer, or that
  * the chain moved while a snapshot was read: nothing about the chain or the
  * deployment. Such a read can be repeated as is. Every other error, including
- * one that merely carries a transient error's name, is not one.
+ * one that merely carries a transient error's name, is not one. A raw node
+ * transport failure is classified as the follower's provider classifies a
+ * query's (`fromTransportError`): an outage, a timeout, a sidecar exit and
+ * the refusals that clear on their own are transient.
  */
 export const isWatcherL1TransientFailure = (error: unknown): error is Error => {
   let current: unknown = error;
@@ -87,11 +91,9 @@ export const isWatcherL1TransientFailure = (error: unknown): error is Error => {
     if (
       current instanceof FraudProofL1UnavailableError ||
       current instanceof FraudProofL1CheckpointChangedError ||
-      current instanceof TransportUnavailableError ||
-      current instanceof TransportTimeoutError ||
       current instanceof L1ProviderTransientError ||
+      fromTransportError(current) instanceof L1ProviderTransientError ||
       retryableProviderError(current) ||
-      isWatcherNativeNodeUnavailable(current) ||
       transientCode(current)
     )
       return true;

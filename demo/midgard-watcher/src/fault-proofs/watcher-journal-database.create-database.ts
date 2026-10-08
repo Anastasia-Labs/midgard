@@ -176,17 +176,15 @@ export const createWatcherJournalDatabase = (
     ).all(...params) as StoredRow[];
   };
 
-  // The head's authenticated live count is O(1); a state needs its index.
+  // The head's authenticated live count is O(1). A state's count reads and
+  // admits each of its rows, so a forged or re-stated row refuses the
+  // journal instead of moving a capacity check.
   const countRows = (journal: WatcherJournalName, state?: string): number =>
     state === undefined
       ? readHead(journal).liveRows
-      : Number(
-          (
-            prepare(
-              `SELECT count(*) AS n FROM ${table(journal)} WHERE state = ?`,
-            ).get(state) as { n: number }
-          ).n,
-        );
+      : selectRows(journal, { state }).filter(
+          (stored) => admitRow(journal, stored).state === state,
+        ).length;
 
   /** Applies one journal's staged writes as one revision. */
   const applyStaged = (journal: WatcherJournalName, staged: Staged): void => {
@@ -323,9 +321,11 @@ export const createWatcherJournalDatabase = (
         let count = countRows(journal, state);
         for (const [key, pending] of staged.get(journal) ?? []) {
           const stored = storedRow(journal, key);
+          const prior =
+            stored === undefined ? undefined : admitRow(journal, stored);
           if (
-            stored !== undefined &&
-            (state === undefined || stored.state === state)
+            prior !== undefined &&
+            (state === undefined || prior.state === state)
           )
             count -= 1;
           if (

@@ -34,30 +34,41 @@ const secretCandidateIds = (value: string): ReadonlySet<string> => {
   return ids;
 };
 
+/** Refuses any two secrets that share a value, as text or as 32-byte hex. */
+const assertDistinctSecretCandidates = (texts: readonly string[]): void => {
+  const seen = new Set<string>();
+  for (const text of texts) {
+    const ids = secretCandidateIds(text);
+    if ([...ids].some((id) => seen.has(id)))
+      throw new Error(
+        "the rollback authentication key and the prover and availability wallet secrets must be pairwise distinct",
+      );
+    for (const id of ids) seen.add(id);
+  }
+};
+
 /**
  * Loads the rollback authentication key (the HMAC key of the watcher's
- * journals, queues and stores) from `storage.rollbackAuthorityKeySource`, and
- * refuses it when it equals either wallet's secret.
+ * journals, queues and stores) from `storage.rollbackAuthorityKeySource`.
+ * The key and both wallets' secrets must be pairwise distinct; a shared
+ * value is a configuration refusal no restart clears, made before the
+ * operations server binds.
  */
-const loadWatcherRollbackAuthenticationKey = async (
+export const loadWatcherRollbackAuthenticationKey = async (
   config: WatcherProcessConfig,
 ): Promise<Uint8Array> => {
-  const [rollbackText, ...walletTexts] = await Promise.all(
+  const texts = await Promise.all(
     [
       config.watcherConfig.storage.rollbackAuthorityKeySource,
       config.watcherConfig.proverWallet.keySource,
       config.availability.keySource,
     ].map(async (source) => await loadWatcherSecretText(source)),
   );
-  const key = decodeWatcherAuthenticationKey32(rollbackText!);
-  const rollbackIds = secretCandidateIds(rollbackText!);
-  for (const text of walletTexts) {
-    if ([...secretCandidateIds(text)].some((id) => rollbackIds.has(id)))
-      throw new Error(
-        "the rollback authentication key must differ from the wallet secrets",
-      );
-  }
-  return Uint8Array.from(key);
+  return await refusePermanently("secret_distinctness", () => {
+    const key = decodeWatcherAuthenticationKey32(texts[0]!);
+    assertDistinctSecretCandidates(texts);
+    return Uint8Array.from(key);
+  });
 };
 
 export const prepareWatcherRuntimeAuthority = async (
@@ -149,3 +160,31 @@ export const resolveWatcherRuntimeWalletAddress = (
         },
     Object.freeze({}),
   ).address;
+
+/**
+ * The prover and availability wallets' addresses, refused permanently when
+ * both secrets resolve to one wallet (two encodings of one key): the two
+ * actors would spend each other's UTxOs.
+ */
+export const resolveWatcherRuntimeWalletAddresses = async (
+  input: Readonly<{ config: WatcherProcessConfig }>,
+): Promise<Readonly<{ prover: string; availability: string }>> => {
+  const prover = resolveWatcherRuntimeWalletAddress(
+    input,
+    await loadWatcherSecretText(
+      input.config.watcherConfig.proverWallet.keySource,
+    ),
+  );
+  const availability = resolveWatcherRuntimeWalletAddress(
+    input,
+    await loadWatcherSecretText(input.config.availability.keySource),
+  );
+  if (prover === availability)
+    throw new WatcherPermanentRefusalError(
+      "wallet_distinctness",
+      new Error(
+        "the prover and availability wallet secrets resolve to the same wallet",
+      ),
+    );
+  return { prover, availability };
+};

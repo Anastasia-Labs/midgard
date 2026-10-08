@@ -9,6 +9,8 @@ export const storelessProofRetention: WatcherProofRetention = Object.freeze({
   pin: async () => ({ kind: "pinned" }) as const,
   release: async () => undefined,
   holdUnits: async () => ({ kind: "held" }) as const,
+  holdEvents: async () => ({ kind: "held" }) as const,
   pinned: async () => [],
   degradations: () => [],
+  readiness: () => [],
 });

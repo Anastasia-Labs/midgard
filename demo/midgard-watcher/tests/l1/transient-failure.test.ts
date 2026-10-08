@@ -1,12 +1,23 @@
 import {
+  SidecarExitedError,
+  TransportRequestError,
+  TransportTimeoutError,
+  TransportUnavailableError,
+} from "@al-ft/l1-node-transport";
+import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs";
 import { KupmiosError } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { NativeChainSyncStartupFailure } from "../../src/l1/native-chain-sync.exact-record.js";
 import { isWatcherL1TransientFailure } from "../../src/l1/transient-failure.js";
+
+const refusal = (code: string) =>
+  new TransportRequestError(code, "the sidecar refused the request");
+
+const sidecarExited = (fatal: { code: string; message: string } | null) =>
+  new SidecarExitedError({ code: 1, signal: null, fatal, diagnostics: "" });
 
 const fetchFailed = (code: string) =>
   Object.assign(new TypeError("fetch failed"), {
@@ -32,16 +43,28 @@ describe("watcher L1 transient failure", () => {
       new KupmiosError({ protocol: "kupo", operation: "x", status: 503 }),
     ],
     [
-      "a native node that did not answer",
-      new NativeChainSyncStartupFailure("node_handshake_failed"),
-    ],
-    [
       "a node transport whose sidecar is restarting",
-      new NativeChainSyncStartupFailure("sidecar_restarting"),
+      new TransportUnavailableError("sidecar_restarting", "x"),
     ],
     [
-      "a node that dropped its connection",
-      new NativeChainSyncStartupFailure("node_connection_lost"),
+      "a node transport request that missed its bound",
+      new TransportTimeoutError("x"),
+    ],
+    ["a sidecar that exited", sidecarExited(null)],
+    [
+      "a sidecar that exited on a lost node connection",
+      sidecarExited({ code: "node_connection_lost", message: "x" }),
+    ],
+    ["a busy sidecar session", refusal("busy")],
+    ["a node that is not connected", refusal("node_unavailable")],
+    ["a ledger state the node could not acquire", refusal("acquire_failed")],
+    ["a query the node did not answer in time", refusal("node_timeout")],
+    ["a query across an era boundary", refusal("era_mismatch")],
+    [
+      "a transport refusal wrapped in a read error",
+      new Error("protocol parameters read failed", {
+        cause: refusal("node_timeout"),
+      }),
     ],
     [
       "a transient wrapped in a workflow error",
@@ -76,13 +99,16 @@ describe("watcher L1 transient failure", () => {
       }),
     ],
     ["an HTTP refusal", fetchFailed("EACCES")],
+    ["a malformed request", refusal("invalid_request")],
+    ["a query the sidecar does not know", refusal("unknown_query")],
+    ["a point the ledger no longer holds", refusal("acquire_point_too_old")],
+    ["an answer too large to carry", refusal("result_too_large")],
     [
-      "a native intersection the node refused",
-      new NativeChainSyncStartupFailure("intersection_failed"),
-    ],
-    [
-      "a transport that was closed",
-      new NativeChainSyncStartupFailure("stopped"),
+      "an error that only carries a transport refusal's name",
+      Object.assign(new Error("forged"), {
+        name: "TransportRequestError",
+        code: "busy",
+      }),
     ],
     ["a non-error", "ECONNREFUSED"],
     [

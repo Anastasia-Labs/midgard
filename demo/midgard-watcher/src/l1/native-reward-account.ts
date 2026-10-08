@@ -1,12 +1,8 @@
 import {
   type NativeLedgerAuthority,
   NativeLedgerKupmios,
-  queryNativeRewardAccount,
 } from "@al-ft/midgard-core/native-reward-account";
-import {
-  type KupmiosOptions,
-  type RewardAccountState,
-} from "@lucid-evolution/lucid";
+import { type KupmiosOptions } from "@lucid-evolution/lucid";
 
 import {
   deriveWatcherNativeGenesisIdentity,
@@ -18,16 +14,6 @@ export type WatcherNativeRewardAccountQuery = Readonly<{
   binaryPath: string;
   timeoutMs: number;
 }>;
-
-/** Query registration, rewards and pool delegation at one acquired node snapshot. */
-export const queryWatcherNativeRewardAccount = async (
-  input: WatcherNativeRewardAccountQuery,
-  rewardAddress: string,
-): Promise<RewardAccountState> =>
-  await queryNativeRewardAccount(
-    await watcherNativeLedgerAuthority(input),
-    rewardAddress,
-  );
 
 const watcherNativeLedgerAuthority = async (
   input: WatcherNativeRewardAccountQuery,

@@ -1,3 +1,7 @@
+import {
+  SidecarExitedError,
+  TransportRequestError,
+} from "@al-ft/l1-node-transport";
 import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -239,5 +243,39 @@ it("fails a stage's retried L1 read at once on a genuine refusal", async () => {
   expect(report.mock.calls.map(([event]) => event.outcome)).toEqual([
     "started",
     "failed",
+  ]);
+});
+
+it("waits out a sidecar exit and a node timeout on the protocol parameters read, and completes without failing startup", async () => {
+  const report = vi.fn();
+  const read = vi
+    .fn<() => Promise<string>>()
+    .mockRejectedValueOnce(
+      new SidecarExitedError({
+        code: 1,
+        signal: null,
+        fatal: null,
+        diagnostics: "",
+      }),
+    )
+    .mockRejectedValueOnce(
+      new TransportRequestError(
+        "node_timeout",
+        "the node did not answer the query in time",
+      ),
+    )
+    .mockResolvedValueOnce("parameters");
+  await expect(
+    createWatcherStartupProgress(report, () => 1)(
+      "protocol_parameters",
+      async ({ retryL1Read }) => await retryL1Read(read),
+    ),
+  ).resolves.toBe("parameters");
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(report.mock.calls.map(([event]) => event.outcome)).toEqual([
+    "started",
+    "pending",
+    "pending",
+    "completed",
   ]);
 });

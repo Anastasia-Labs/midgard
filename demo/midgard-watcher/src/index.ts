@@ -168,7 +168,6 @@ export {
 } from "./l1/native-chain-sync.exact-record.js";
 export * as watcherNativeChainSyncRecord from "./l1/native-chain-sync.exact-record.js";
 export {
-  queryWatcherNativeRewardAccount,
   WatcherLocalKupmios,
   type WatcherNativeRewardAccountQuery,
 } from "./l1/native-reward-account.js";
@@ -308,15 +307,8 @@ export {
   type WatcherReconstructedState,
 } from "./storage/durable-store.js";
 export {
-  WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION,
-  type WatcherPublicDaAttempt,
-  type WatcherPublicDaAttemptStatus,
-  type WatcherPublicDaEventToStep,
   type WatcherPublicDaLibp2pTransportV1,
-  type WatcherPublicDaPayload,
-  type WatcherPublicDaProofBundle,
   type WatcherPublicDaRequest,
-  type WatcherPublicDaTraceStep,
 } from "./storage/public-da-client.js";
 export {
   createWatcherPublicDaLibp2pTransport,

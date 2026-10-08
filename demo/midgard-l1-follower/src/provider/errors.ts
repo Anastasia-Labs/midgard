@@ -127,7 +127,11 @@ export class L1LocalEvaluationOnlyError extends L1ProviderError {
   }
 }
 
-/** Sidecar refusals that clear on their own: retried like an outage. */
+/**
+ * Sidecar refusals that clear on their own: retried like an outage. An
+ * `era_mismatch` is one: the sidecar re-reads the node's era for every
+ * query, so it clears once the era boundary has passed.
+ */
 const TRANSIENT_REQUEST_CODES = new Set([
   "busy",
   "node_unavailable",
@@ -137,12 +141,24 @@ const TRANSIENT_REQUEST_CODES = new Set([
 ]);
 
 /**
+ * The node did not answer within the sidecar's bound. A query repeats
+ * safely; a submission's outcome is unknown (the node may have taken it),
+ * so a submit timeout stays a request error its caller decides on.
+ */
+const QUERY_TRANSIENT_REQUEST_CODES = new Set(["node_timeout"]);
+
+/**
  * Maps a transport failure to the provider's typed errors: an outage, a
  * restart, a timeout or a transient refusal becomes
  * {@link L1ProviderTransientError}; any other refusal
  * {@link L1ProviderRequestError}. Anything else is returned unchanged.
+ * `operation` is the request that failed: a node timeout is transient for a
+ * query only.
  */
-export const fromTransportError = (error: unknown): unknown => {
+export const fromTransportError = (
+  error: unknown,
+  operation: "query" | "submit" = "query",
+): unknown => {
   if (error instanceof TransportUnavailableError)
     return new L1ProviderTransientError("transport", error.reason, {
       cause: error,
@@ -158,7 +174,8 @@ export const fromTransportError = (error: unknown): unknown => {
       { cause: error },
     );
   if (error instanceof TransportRequestError)
-    return TRANSIENT_REQUEST_CODES.has(error.code)
+    return TRANSIENT_REQUEST_CODES.has(error.code) ||
+      (operation === "query" && QUERY_TRANSIENT_REQUEST_CODES.has(error.code))
       ? new L1ProviderTransientError("transport", error.code, { cause: error })
       : new L1ProviderRequestError(error.code, error.message, {
           cause: error,

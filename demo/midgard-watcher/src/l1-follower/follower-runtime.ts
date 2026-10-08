@@ -14,10 +14,12 @@ import {
 import {
   eventProjection,
   type EventProjectionConfig,
+  EVENTS_TABLE,
 } from "@al-ft/midgard-l1-follower/events";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
+import { eventRefusalDegradationsIn } from "./event-refusals.js";
 import {
   watcherProjection,
   type WatcherProjectionDeployment,
@@ -33,6 +35,7 @@ import {
   ledgerOutputsQueryFromTransport,
 } from "./raw-reads.ledger.js";
 import type { FollowerRawReads } from "./raw-reads.types.js";
+import { WATCHER_PROOF_PIN_EVENTS_TABLE } from "./tables.js";
 import {
   createTxInputsResolver,
   type WatcherL1Degradation,
@@ -90,6 +93,8 @@ export type WatcherFollowerRuntimeInput = Readonly<{
     binaryPath: string;
     socketPath: string;
     networkMagic: number;
+    /** The watcher's `l1.requestTimeoutMs`: each node request's bound. */
+    requestTimeoutMs: number;
   }>;
   /** The watcher's own wallets (bech32): tracked and seeded. */
   walletAddresses: readonly string[];
@@ -124,6 +129,37 @@ export const watcherSecurityParameter = (
 ): number => automaticRecoveryMaxDepth + 2;
 
 /**
+ * The shared event projection, with its events held past k while an open
+ * proof objective reads them: a row of `WATCHER_PROOF_PIN_EVENTS_TABLE`
+ * (written by `WatcherProofRetention.holdEvents`) pins the event's row. The
+ * pin matches the key alone, so an event of the other kind with the same
+ * key is held too: harmless over-retention.
+ */
+export const watcherEventProjection = (
+  events: EventProjectionConfig,
+): FollowerProjection => {
+  const projection = eventProjection(events);
+  return {
+    ...projection,
+    temporalTables: (projection.temporalTables ?? []).map((table) =>
+      table.name === EVENTS_TABLE
+        ? {
+            ...table,
+            pinnedBy: [
+              ...(table.pinnedBy ?? []),
+              {
+                column: "event_key",
+                table: WATCHER_PROOF_PIN_EVENTS_TABLE,
+                tableColumn: "event_key",
+              },
+            ],
+          }
+        : table,
+    ),
+  };
+};
+
+/**
  * The projections the watcher's store runs: the state queue, and the
  * deposit and withdrawal event lists when the deployment names them.
  */
@@ -133,7 +169,7 @@ export const watcherFollowerProjections = (
 ): FollowerProjection[] =>
   events === undefined
     ? [watcherProjection(deployment)]
-    : [watcherProjection(deployment), eventProjection(events)];
+    : [watcherProjection(deployment), watcherEventProjection(events)];
 
 export const openWatcherFollowerRuntime = (
   input: WatcherFollowerRuntimeInput,
@@ -148,6 +184,7 @@ export const openWatcherFollowerRuntime = (
       binaryPath: input.node.binaryPath,
       socketPath: input.node.socketPath,
       networkMagic: input.node.networkMagic,
+      requestTimeoutMs: input.node.requestTimeoutMs,
       onDiagnostic: (line) => log(`L1 node transport: ${line}`),
     });
   const store = openSqliteFactStore({
@@ -306,6 +343,8 @@ export const openWatcherFollowerRuntime = (
         reason: WALLET_SEED_PENDING,
         detail: `${seed.reason}: ${seed.detail}`,
       });
+    // A user event an open proof reads, pruned before a hold held it.
+    reasons.push(...proofRetention.readiness());
     try {
       reasons.push(...(await txInputs.assess()).readiness);
       const cursor = await store.cursor();
@@ -335,12 +374,19 @@ export const openWatcherFollowerRuntime = (
     status: () => latest,
     readiness,
     degradations: async () => {
-      const proofs = proofRetention.degradations();
-      try {
-        return [...(await txInputs.assess()).degradations, ...proofs];
-      } catch {
-        return proofs;
-      }
+      const inputs = await txInputs.assess().then(
+        ({ degradations }) => degradations,
+        () => [],
+      );
+      // The refusals table exists only with the event projection; a failed
+      // read of it never hides the other degradations.
+      const refusals =
+        input.eventProjection === undefined
+          ? []
+          : await store
+              .transaction("read", eventRefusalDegradationsIn)
+              .catch(() => []);
+      return [...inputs, ...proofRetention.degradations(), ...refusals];
     },
     onChange: (listener: (status: FollowStatus) => void) => {
       listeners.add(listener);

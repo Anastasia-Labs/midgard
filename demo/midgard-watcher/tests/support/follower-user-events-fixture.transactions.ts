@@ -357,6 +357,27 @@ export const forcedOrderBurnTransaction = (
     mint: [[deployment.scripts.forcedOrder.policyId, event.key, -1n]],
   });
 
+/**
+ * Spends a list event's Order and burns its token: the follower's event
+ * projection retires the event (with no observer redeemer, so no reason).
+ */
+export const listOrderRetirementTransaction = (
+  deployment: FollowerUserEventsDeployment,
+  kind: "deposit" | "withdrawal",
+  event: UserEventId,
+  orderTransactionCbor: string,
+): string => {
+  const list = deployment.scripts.eventProjection.lists.find(
+    (entry) => entry.kind === kind,
+  );
+  if (list === undefined) throw new Error(`the deployment has no ${kind} list`);
+  return syntheticTransaction({
+    inputs: [`${transactionHash(orderTransactionCbor)}#0`],
+    outputs: [{ addressHex: ELSEWHERE_ADDRESS_HEX, lovelace: 6_000_000n }],
+    mint: [[list.policyId, event.key, -1n]],
+  });
+};
+
 export const transactionHash = (transactionCbor: string): string =>
   CML.hash_transaction(
     CML.Transaction.from_cbor_hex(transactionCbor).body(),

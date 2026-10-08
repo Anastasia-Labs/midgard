@@ -1,18 +1,24 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sync"
 
 	gcbor "github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger"
+	lcommon "github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/protocol/chainsync"
 	pcommon "github.com/blinklabs-io/gouroboros/protocol/common"
 )
 
 const (
 	maxIntersectPoints = 256
+	// maxBlockBytes bounds one raw block: far above any block the ledger's
+	// maximum block body size admits, far below the frame bound, and the
+	// same bound the watcher's native block reader applies.
+	maxBlockBytes = 4 * 1024 * 1024
 	// maxIdleAux bounds the idle auxiliary connections kept for reuse.
 	maxIdleAux = 4
 )
@@ -185,8 +191,14 @@ func tipOf(tip chainsync.Tip) wireTip {
 	return wireTip{point: pointFromCommon(tip.Point), blockNo: tip.BlockNumber}
 }
 
-// blockIdentity decodes only the header of a raw block: its point, number
-// and parent hash. The block body is neither decoded nor validated.
+// errBlockBodyMismatch marks a block whose body does not hash to the body
+// hash its header commits to.
+var errBlockBodyMismatch = errors.New("block body differs from its header's body hash")
+
+// blockIdentity decodes the header of a raw block (its point, number and
+// parent hash) and checks that the body hashes to the header's body hash,
+// so a delivered block's transactions are the ones its hash names. The
+// body is not otherwise decoded or validated.
 func blockIdentity(blockType uint, raw []byte) (wirePoint, uint64, []byte, error) {
 	var parts []gcbor.RawMessage
 	if _, err := gcbor.Decode(raw, &parts); err != nil || len(parts) == 0 {
@@ -196,6 +208,9 @@ func blockIdentity(blockType uint, raw []byte) (wirePoint, uint64, []byte, error
 	if err != nil {
 		return wirePoint{}, 0, nil, fmt.Errorf("decode block header: %w", err)
 	}
+	if err := validateBlockBody(blockType, raw, parts, header.BlockBodyHash()); err != nil {
+		return wirePoint{}, 0, nil, fmt.Errorf("%w: %v", errBlockBodyMismatch, err)
+	}
 	hash := header.Hash()
 	prev := header.PrevHash()
 	var prevHash []byte
@@ -203,6 +218,31 @@ func blockIdentity(blockType uint, raw []byte) (wirePoint, uint64, []byte, error
 		prevHash = append([]byte(nil), prev.Bytes()...)
 	}
 	return wirePoint{slot: header.SlotNumber(), hash: append([]byte(nil), hash.Bytes()...)}, header.BlockNumber(), prevHash, nil
+}
+
+// validateBlockBody checks a block's body against its header's body hash,
+// per era: Shelley to Mary hash three body segments, Alonzo to Conway four,
+// and a Dijkstra block hashes its one block_body element. A Byron block
+// proves its body another way and is left unchecked: the follower's origin
+// is past Byron.
+func validateBlockBody(blockType uint, raw []byte, parts []gcbor.RawMessage, expected lcommon.Blake2b256) error {
+	switch blockType {
+	case ledger.BlockTypeByronEbb, ledger.BlockTypeByronMain:
+		return nil
+	case ledger.BlockTypeShelley, ledger.BlockTypeAllegra, ledger.BlockTypeMary:
+		return lcommon.ValidateBlockBodyHash(raw, expected, "shelley", 4)
+	case ledger.BlockTypeDijkstra:
+		if len(parts) != 2 {
+			return fmt.Errorf("dijkstra block has %d elements, not 2", len(parts))
+		}
+		actual := lcommon.Blake2b256Hash(parts[1])
+		if !bytes.Equal(actual.Bytes(), expected.Bytes()) {
+			return errors.New("dijkstra block body hash mismatch")
+		}
+		return nil
+	default:
+		return lcommon.ValidateBlockBodyHash(raw, expected, "alonzo", 5)
+	}
 }
 
 type streamFailure struct {
@@ -384,13 +424,17 @@ func (st *csStream) run(open csOpenHeader) {
 					return
 				}
 				raw := reply.BlockCbor()
-				if len(raw) == 0 || len(raw) > maxPayloadBytes {
-					failure(streamFailure{code: "block_bounds", cause: errors.New("block size is outside the frame bound")})
+				if len(raw) == 0 || len(raw) > maxBlockBytes {
+					failure(streamFailure{code: "block_bounds", cause: fmt.Errorf("block size %d is outside 1..%d bytes", len(raw), maxBlockBytes)})
 					return
 				}
 				point, blockNo, prevHash, err := blockIdentity(reply.BlockType(), raw)
 				if err != nil {
-					failure(streamFailure{code: "block_header_undecodable", cause: err})
+					code := "block_header_undecodable"
+					if errors.Is(err, errBlockBodyMismatch) {
+						code = "block_body_mismatch"
+					}
+					failure(streamFailure{code: code, cause: err})
 					return
 				}
 				seq := st.nextSeq()

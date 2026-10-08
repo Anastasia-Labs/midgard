@@ -57,7 +57,8 @@ import { assertWatcherUserEventAuthorityCurrent } from "./user-event.js";
 
 /**
  * The W25 entry point: an accepted W22 reconstruction, an accepted W24 Phase A
- * record, the exact W21 block bytes, the W21 prior-state material, and the W23
+ * record, the exact block bytes and the parent's prior-state material from the
+ * header decision's canonical evidence, and the W23
  * rule bundle produce a frozen, digest-bound record of the canonical Phase B
  * replay of the block - prior state, dependencies, spends, references, scripts,
  * value, events, every intermediate root, and the exact post state.

@@ -6,9 +6,11 @@ import type {
 } from "@al-ft/midgard-l1-follower";
 
 import { recordsUnitHistory, stateQueueNodeUnitPattern } from "./projection.js";
+import { eventRowStateIn } from "./proof-retention.events.js";
 import { headerPrunedIn, unitPrunedIn } from "./pruned-keys.js";
 import {
   WATCHER_DEPARTED_HEADERS_TABLE,
+  WATCHER_PROOF_PIN_EVENTS_TABLE,
   WATCHER_PROOF_PIN_UNITS_TABLE,
   WATCHER_PROOF_PINS_TABLE,
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
@@ -45,7 +47,16 @@ import type { WatcherL1Degradation } from "./tx-inputs.js";
  * is the named degradation `l1_proof_history_pruned` (status and metrics)
  * until it is released (a unit's, until a later hold of that unit finds its
  * history whole); its captures refuse to read the history rather than read
- * a partial one. A capture whose header holds no pin reads for no open
+ * a partial one.
+ *
+ * The deposit and withdrawal events a capture reads (the shared event
+ * projection's `node_l1_events`, whose retired rows prune once retired k
+ * deep) are held the same way by event rows, written when a capture names
+ * them and only while the header holds a pin. An event whose row is gone
+ * while its key stays in the follower's never-reuse key set was pruned
+ * first: nothing holds it, and the objective is the named readiness reason
+ * `l1_proof_event_pruned` until it is released (or a later hold finds the
+ * row again). A capture whose header holds no pin reads for no open
  * objective (header classification reads every finalized header before any
  * objective exists; an open objective's header holds a pin or is named
  * pruned), so it writes no hold and reads as before: within k the rows are
@@ -54,6 +65,8 @@ import type { WatcherL1Degradation } from "./tx-inputs.js";
 
 /** An open objective whose history pruning removed before a pin held it. */
 export const L1_PROOF_HISTORY_PRUNED = "l1_proof_history_pruned";
+/** An open objective whose user event pruning removed before a hold held it. */
+export const L1_PROOF_EVENT_PRUNED = "l1_proof_event_pruned";
 
 export type WatcherProofRetentionTarget = Readonly<{
   category: string;
@@ -87,6 +100,25 @@ export type WatcherProofUnitHoldResult =
   | Readonly<{ kind: "not_pinned" }>
   | Readonly<{ kind: "already_pruned"; units: readonly string[] }>;
 
+/** A deposit or withdrawal event, by its list kind and key (hex). */
+export type WatcherProofEventRef = Readonly<{
+  kind: "deposit" | "withdrawal";
+  key: string;
+}>;
+
+/**
+ * `held`: every named event's row is held from now on (or already was), or
+ * it has none and was never admitted (the read decides).
+ * `not_pinned`: the header holds no pin (a read for no open objective), so
+ * no event hold was written.
+ * `already_pruned`: pruning had removed the rows of `events` (as
+ * `kind:key`) when the hold came; the other events are held.
+ */
+export type WatcherProofEventHoldResult =
+  | Readonly<{ kind: "held" }>
+  | Readonly<{ kind: "not_pinned" }>
+  | Readonly<{ kind: "already_pruned"; events: readonly string[] }>;
+
 export type WatcherProofRetention = Readonly<{
   /**
    * The k the follower store rewinds and prunes with, in blocks: a proof
@@ -106,10 +138,17 @@ export type WatcherProofRetention = Readonly<{
     headerHash: string,
     units: readonly string[],
   ): Promise<WatcherProofUnitHoldResult>;
+  /** Holds the user events a capture for `headerHash` reads, while the header is pinned. */
+  holdEvents(
+    headerHash: string,
+    events: readonly WatcherProofEventRef[],
+  ): Promise<WatcherProofEventHoldResult>;
   /** Every held target, header order. */
   pinned(): Promise<readonly WatcherProofRetentionTarget[]>;
   /** The pins and holds pruning beat, as one status-only degradation. */
   degradations(): readonly WatcherL1Degradation[];
+  /** The event holds pruning beat, as one readiness reason (`L1_PROOF_EVENT_PRUNED`). */
+  readiness(): readonly Readonly<{ reason: string; detail: string }>[];
 }>;
 
 const HEADER = /^[0-9a-f]{56}$/u;
@@ -206,6 +245,8 @@ export const createWatcherProofRetention = (
     [...pruned.keys()].some((key) => key.endsWith(`:${headerHash}`));
   const unitKey = (headerHash: string, unit: string): string =>
     `${headerHash}#${unit}`;
+  /** `header@kind:key` to the event pruning removed first. */
+  const prunedEvents = new Map<string, string>();
   const headerPinnedIn = async (
     tx: SqlTx,
     header: Buffer,
@@ -261,10 +302,14 @@ export const createWatcherProofRetention = (
           `DELETE FROM ${WATCHER_PROOF_PINS_TABLE} WHERE header_hash = ? AND category = ?`,
           [header, category],
         );
-        await tx.query(
-          `DELETE FROM ${WATCHER_PROOF_PIN_UNITS_TABLE} WHERE header_hash = ? AND NOT EXISTS (SELECT 1 FROM ${WATCHER_PROOF_PINS_TABLE} p WHERE p.header_hash = ?)`,
-          [header, header],
-        );
+        for (const table of [
+          WATCHER_PROOF_PIN_UNITS_TABLE,
+          WATCHER_PROOF_PIN_EVENTS_TABLE,
+        ])
+          await tx.query(
+            `DELETE FROM ${table} WHERE header_hash = ? AND NOT EXISTS (SELECT 1 FROM ${WATCHER_PROOF_PINS_TABLE} p WHERE p.header_hash = ?)`,
+            [header, header],
+          );
         return (
           (
             await tx.query(
@@ -275,9 +320,12 @@ export const createWatcherProofRetention = (
         );
       });
       pruned.delete(`${category}:${headerHash}`);
-      if (last)
+      if (last) {
         for (const key of [...pruned.keys()])
           if (key.startsWith(`${headerHash}#`)) pruned.delete(key);
+        for (const key of [...prunedEvents.keys()])
+          if (key.startsWith(`${headerHash}@`)) prunedEvents.delete(key);
+      }
     },
     holdUnits: async (headerHash, units) => {
       const header = headerBytes(headerHash);
@@ -358,6 +406,49 @@ export const createWatcherProofRetention = (
           ? { kind: "not_pinned" }
           : { kind: "held" };
     },
+    holdEvents: async (headerHash, events) => {
+      const header = headerBytes(headerHash);
+      const named = events.map(({ kind, key }) => `${kind}:${key}`);
+      const gone: string[] = [];
+      for (const [index, { kind, key }] of events.entries()) {
+        const keyBytes = Buffer.from(key, "hex");
+        let headerPinned = true;
+        let present = false;
+        const result = await store.pinRetained({
+          retained: async (tx, cursor) => {
+            // Locked against a concurrent release, as for a unit hold.
+            headerPinned = await headerPinnedIn(tx, header, "update");
+            if (!headerPinned || cursor === null) return false;
+            const state = await eventRowStateIn(tx, kind, keyBytes);
+            present = state === "present";
+            // No row and never admitted: held all the same; the read decides.
+            return state !== "pruned";
+          },
+          insert: async (tx) => {
+            await tx.query(
+              `INSERT INTO ${WATCHER_PROOF_PIN_EVENTS_TABLE} (header_hash, kind, event_key) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`,
+              [header, kind, keyBytes],
+            );
+          },
+        });
+        if (!headerPinned)
+          // A header whose own pin pruning beat holds none of its events.
+          return prunedHeader(headerHash)
+            ? { kind: "already_pruned", events: named }
+            : { kind: "not_pinned" };
+        const name = `${headerHash}@${named[index]!}`;
+        if (result.kind === "already_pruned") {
+          gone.push(named[index]!);
+          prunedEvents.set(
+            name,
+            `the ${kind} event ${key} for header ${headerHash}`,
+          );
+        } else if (present) prunedEvents.delete(name);
+      }
+      return gone.length > 0
+        ? { kind: "already_pruned", events: gone }
+        : { kind: "held" };
+    },
     pinned: async () =>
       (
         await store.transaction("read", (tx) =>
@@ -378,6 +469,17 @@ export const createWatcherProofRetention = (
               reason: L1_PROOF_HISTORY_PRUNED,
               count: removed.length,
               detail: `${removed.length.toString()} open proof(s) lost history to pruning before a pin held it; first: ${removed[0]!} (its captures refuse; clears when the objective is released)`,
+            },
+          ];
+    },
+    readiness: () => {
+      const removed = [...prunedEvents.values()];
+      return removed.length === 0
+        ? []
+        : [
+            {
+              reason: L1_PROOF_EVENT_PRUNED,
+              detail: `${removed.length.toString()} user event(s) an open proof reads were pruned before a hold held them; first: ${removed[0]!} (its captures refuse; clears when the objective is released)`,
             },
           ];
     },
