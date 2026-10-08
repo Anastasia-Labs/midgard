@@ -15,7 +15,10 @@ import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import type { NodeConfigDep } from "./config.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
-import { executeHistoryDependentRecovery } from "./history-dependent-recovery.js";
+import {
+  executeHistoryDependentRecovery,
+  rootNotRetained,
+} from "./history-dependent-recovery.js";
 import {
   clearLivenessIncident,
   CORRECTION_REWIND_JOURNAL_UNBOUND,
@@ -23,7 +26,6 @@ import {
   HISTORY_CORRECTION_REWIND_SOURCE,
   raiseLivenessIncident,
 } from "./liveness-halt.js";
-import { NativeMpfRootNotRetained } from "./mpf-native-owner/protocol.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
 import { reincludeStateQueueCorrectedBlocks } from "./state-queue-correction-recovery.js";
 import {
@@ -77,23 +79,6 @@ const held = (reason: string, journalUnbound = false) =>
  * rewind's target root in full. */
 const heldOnNativeState = (reason: string, incident?: HeldIncident) =>
   Effect.fail(new Held(reason, true, incident));
-
-/** The `NativeMpfRootNotRetained` refusal on `cause`'s chain, if any: the
- * native owner refused the restore before changing its marker. */
-const rootNotRetained = (
-  cause: unknown,
-): NativeMpfRootNotRetained | undefined => {
-  let current = cause;
-  for (let depth = 0; depth < 8 && current instanceof Object; depth += 1) {
-    if (
-      current instanceof NativeMpfRootNotRetained ||
-      (current as { _tag?: unknown })._tag === "NativeMpfRootNotRetained"
-    )
-      return current as NativeMpfRootNotRetained;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return undefined;
-};
 
 /** What a preparation that held on the native owner's state returns. The
  * removed local suffix stays this rewind's to resolve, so no later recovery

@@ -2,6 +2,7 @@ import { Cause, Effect, Ref } from "effect";
 
 import { findSignedIntentReplacementIntegrityError } from "./canonical-journal-recovery.js";
 import { Globals } from "./globals.js";
+import { rootNotRetained } from "./history-dependent-recovery.js";
 import {
   NativeRecoveryRootRefused,
   RetainedReplacementPlanChanged,
@@ -12,6 +13,7 @@ import {
   raiseLivenessIncident,
   SIGNED_INTENT_JOURNAL_UNBOUND,
   SIGNED_INTENT_REPLACEMENT_INTEGRITY,
+  SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
 } from "./liveness-halt.js";
 
 /** Clears `reason` under `source` only if it is the reason raised there, so
@@ -61,8 +63,12 @@ const heldFailure = (cause: Cause.Cause<unknown>) =>
  * integrity failure clears it, as does its runtime once no release or
  * revival is in question. A `SignedIntentJournalUnbound` holds the same way
  * under `signed_intent_journal_unbound`, raised before anything is read from
- * L1 or written, and clears the same way. Any other failure propagates
- * unchanged.
+ * L1 or written, and clears the same way. A native restore refused with
+ * `NativeMpfRootNotRetained` (on the failure's cause chain) holds the same
+ * way under `signed_intent_target_root_not_retained`: the native owner
+ * refuses before it changes its marker and before the SQL transaction
+ * opens, so the plan stays retained and every evaluation retries the
+ * restore; it clears the same way. Any other failure propagates unchanged.
  */
 export const heldOnIntegrityFailure =
   (source: string) =>
@@ -82,11 +88,31 @@ export const heldOnIntegrityFailure =
                 SIGNED_INTENT_JOURNAL_UNBOUND,
               ),
             ),
+            Effect.zipRight(
+              clearLivenessReasonIf(
+                globals,
+                source,
+                SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
+              ),
+            ),
           ),
         ),
         Effect.catchAllCause((cause) => {
           const integrity = heldFailure(cause);
-          if (integrity === undefined) return Effect.failCause(cause);
+          if (integrity === undefined) {
+            const refused = [...Cause.failures(cause)]
+              .map(rootNotRetained)
+              .find((value) => value !== undefined);
+            return refused === undefined
+              ? Effect.failCause(cause)
+              : raiseLivenessIncident(
+                  globals,
+                  source,
+                  SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
+                  `${refused.message}. The recovery holds with its plan retained and native MPF, the SQL root and the journals unchanged, and the history gate stays closed, which holds block production; every evaluation retries the restore. Operator action is needed: stop the node, install at LEDGER_MPF_DB_PATH a native MPF store that retains this root in full (such as a backup of the store taken while it did), and restart it; the next evaluation completes the recovery.`,
+                  { escalateAfterMs: 0 },
+                );
+          }
           return integrity instanceof SignedIntentJournalUnbound
             ? raiseLivenessIncident(
                 globals,

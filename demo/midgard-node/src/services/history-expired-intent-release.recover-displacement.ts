@@ -36,6 +36,23 @@ export const displacementIdentity = (
     }),
   );
 
+/** The UTxO payload aggregate the SQL ledger marker takes with `targetRoot`
+ * when it moves to `winner`'s base: that of the journal `winner`'s base tail
+ * header hash names, only when that journal's expected root is `targetRoot`;
+ * otherwise none. */
+export const baseJournalAggregate = (
+  winner: Pending.Record,
+  targetRoot: string,
+) =>
+  Effect.map(
+    Pending.retrieveByHeaderHash(winner[C.BASE_TAIL_HEADER_HASH]),
+    (parent) =>
+      Option.isSome(parent) &&
+      parent.value[C.EXPECTED_UTXOS_ROOT] === targetRoot
+        ? parent.value.utxoPayloadAggregate
+        : undefined,
+  );
+
 /** A displaced root-moving chain's retained CAS and SQL repair. The caller
  * proves again, under recovery authority, that the canonical winner occupies
  * the base slot and all displaced journals are absent from canonical L1. No
@@ -143,14 +160,7 @@ export const recoverDisplacement = <E, R>(input: {
       owner,
       repair: Effect.gen(function* () {
         yield* input.verify;
-        const parent = yield* Pending.retrieveByHeaderHash(
-          winner[C.BASE_TAIL_HEADER_HASH],
-        );
-        const aggregate =
-          Option.isSome(parent) &&
-          parent.value[C.EXPECTED_UTXOS_ROOT] === targetRoot
-            ? parent.value.utxoPayloadAggregate
-            : undefined;
+        const aggregate = yield* baseJournalAggregate(winner, targetRoot);
         const sql = yield* SqlClient.SqlClient;
         const rows =
           yield* sql`UPDATE mpf_engine_state SET root_hex = ${targetRoot},
