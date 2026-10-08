@@ -5,7 +5,7 @@ import { join } from "node:path";
 import {
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncEvent,
-} from "midgard-watcher/native-chain-sync";
+} from "midgard-watcher";
 import { afterEach, expect, it } from "vitest";
 
 import {

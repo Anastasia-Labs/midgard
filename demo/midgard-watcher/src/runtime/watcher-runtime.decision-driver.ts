@@ -14,7 +14,7 @@ import {
   WatcherFaultDecisionRetired,
 } from "../fault-proofs/fault-decision-bridge.js";
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
-import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
+import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.exact-record.js";
 import {
   readHandledFollowerGeneration,
   writeHandledFollowerGeneration,
@@ -24,10 +24,6 @@ import {
   type WatcherObservationAuthority,
   type WatcherObservationRead,
 } from "../l1-follower/observation.js";
-import {
-  WatcherUserEventOperationRetired,
-  type WatcherUserEventRuntime,
-} from "./user-event-runtime.js";
 
 /**
  * The watcher's decision driver (ticket W1, with W3's rollback handling):
@@ -87,10 +83,14 @@ export type WatcherDecisionReadiness = Readonly<{
   detail: string;
 }>;
 
-type DriverHistory = Pick<
-  WatcherUserEventRuntime,
-  "read" | "advanceThrough" | "handleRollback"
->;
+type DriverHistory = Readonly<{
+  read(): Readonly<{
+    status: string;
+    currentPoint: Readonly<{ slot: string; blockNo: string }>;
+  }>;
+  advanceThrough(point: FraudProofRawL1Point): Promise<unknown>;
+  handleRollback(point: WatcherNativeChainSyncPoint): Promise<unknown>;
+}>;
 
 export type WatcherDecisionDriverInput = Readonly<{
   store: Pick<
@@ -185,8 +185,7 @@ const nativePoint = (point: Point): WatcherNativeChainSyncPoint => ({
 
 /** A failure that only says a rewind or a newer pass retired the work. */
 const retired = (error: unknown): boolean =>
-  error instanceof WatcherFaultDecisionRetired ||
-  error instanceof WatcherUserEventOperationRetired;
+  error instanceof WatcherFaultDecisionRetired;
 
 export const createWatcherDecisionDriver = (
   input: WatcherDecisionDriverInput,

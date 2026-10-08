@@ -106,7 +106,6 @@ export async function stackFixture(
     runDirectory: join(directory, "run"),
   });
   Object.assign(sample.watcher, {
-    bearerFile: join(directory, "bearer"),
     composeEnvFile: join(directory, "watcher.env"),
     configDirectory: join(directory, "run/watcher"),
   });

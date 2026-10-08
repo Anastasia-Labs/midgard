@@ -345,10 +345,6 @@ export const runtime = (
           requestTimeoutMs: 10_000,
           source: {
             sourceMode: "local_node",
-            queryServices: [
-              { kind: "kupo", endpoint: "http://kupo" },
-              { kind: "ogmios", endpoint: "http://ogmios" },
-            ],
           },
         },
       },

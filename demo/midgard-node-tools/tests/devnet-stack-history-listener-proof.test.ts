@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncEvent,
-} from "midgard-watcher/native-chain-sync";
+} from "midgard-watcher";
 import { build } from "tsup";
 import { afterEach, beforeAll, expect, it } from "vitest";
 
@@ -42,7 +42,6 @@ beforeAll(async () => {
     entry: ["tests/helpers/history-listener-child.ts"],
     outDir: ".probe-dist/history-listener-probe",
     clean: true,
-    noExternal: ["midgard-watcher/tests/l1/native-chain-sync.config"],
   });
 }, 30000);
 const setup = async () => {

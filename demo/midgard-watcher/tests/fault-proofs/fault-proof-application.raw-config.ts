@@ -97,28 +97,11 @@ export const rawConfig = () => ({
         genesisConfigPath: "/etc/cardano/shelley-genesis.json",
         genesisIdentitySha256: "33".repeat(32),
       },
-      queryServices: [
-        {
-          kind: "ogmios",
-          identity: "local-ogmios",
-          endpoint: "ws://127.0.0.1:1337",
-        },
-        {
-          kind: "kupo",
-          identity: "local-kupo",
-          endpoint: "http://127.0.0.1:1442",
-        },
-      ],
     },
     requestTimeoutMs: 10_000,
     maxConcurrency: 8,
     finality: {
       depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-      rollback: {
-        beforeFinality: "rewind",
-        afterFinality: "quarantine",
-        maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-      },
     },
   },
   da: {

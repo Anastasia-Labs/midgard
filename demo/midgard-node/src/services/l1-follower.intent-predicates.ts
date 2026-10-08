@@ -27,9 +27,9 @@ import {
   type SqlTx,
   type View,
 } from "@al-ft/midgard-l1-follower";
+import { eventKeyOfId } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { eventKeyOfId } from "../l1-events/by-id.js";
 import {
   createOperatorSetMirror,
   type OperatorSet,

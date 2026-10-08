@@ -159,7 +159,7 @@ export type WatcherL1SourceDiagnostic = Sequenced &
   Readonly<{
     kind: "l1_source";
     sourceIdentityDigest: string;
-    sourceMode: "local_node" | "external_provider";
+    sourceMode: "local_node";
     status: "consistent" | "stale" | "disagreement";
     blockHash: string;
     blockNo: string;

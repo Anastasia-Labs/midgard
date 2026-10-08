@@ -19,6 +19,7 @@ import {
 import {
   includedPayout,
   payoutConclusion,
+  payoutOutRef,
   type SettlementAttempt,
 } from "../src/full-stack/payout-body.js";
 import { runStackWorkflow } from "../src/full-stack/workflow.js";
@@ -113,7 +114,7 @@ describe("withdrawal payout decision", () => {
       conclusion,
     );
   });
-  it("verifies the payout only once Cardano includes it", () => {
+  describe("payout inclusion", () => {
     const address = walletFromSeed(
       "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
       { network: "Preprod" },
@@ -125,16 +126,55 @@ describe("withdrawal payout decision", () => {
         CML.Value.from_coin(10_000_000n),
       ),
     );
-    const signedCbor = CML.Transaction.new(
+    const transaction = CML.Transaction.new(
       CML.TransactionBody.new(CML.TransactionInputList.new(), outputs, 1n),
       CML.TransactionWitnessSet.new(),
       true,
-    ).to_cbor_hex();
-    const attempt = { ...conclusion, signedCbor };
+    );
+    const txHash = CML.hash_transaction(transaction.body()).to_hex();
+    const attempt = {
+      ...conclusion,
+      txHash,
+      signedCbor: transaction.to_cbor_hex(),
+    };
     const assets = { lovelace: "10000000" };
-    expect(includedPayout(attempt, "pending", address, assets)).toBeUndefined();
-    expect(includedPayout(attempt, "included", address, assets)).toEqual({
-      outputIndex: 0,
+    const frame = (result: unknown[]) =>
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "queryLedgerState/utxo",
+        result,
+      });
+    const row = (id = txHash, index = 0) => ({
+      transaction: { id },
+      index,
+      address,
+      value: { ada: { lovelace: 10_000_000 } },
+    });
+    it("binds the payout output to the recorded transaction id", () => {
+      expect(payoutOutRef(attempt, address, assets)).toEqual({
+        txHash,
+        outputIndex: 0,
+      });
+      expect(() =>
+        payoutOutRef({ ...attempt, txHash: "b".repeat(64) }, address, assets),
+      ).toThrow("does not hash to its recorded id");
+    });
+    it("waits until the node's ledger holds the payout output", () => {
+      const outRef = payoutOutRef(attempt, address, assets);
+      expect(includedPayout(outRef, address, frame([]))).toBeUndefined();
+      expect(includedPayout(outRef, address, frame([row()]))).toEqual({
+        outputIndex: 0,
+      });
+    });
+    it("refuses an answer for another output", () => {
+      const outRef = payoutOutRef(attempt, address, assets);
+      for (const other of [row("c".repeat(64)), row(txHash, 1)])
+        expect(() => includedPayout(outRef, address, frame([other]))).toThrow(
+          "another output",
+        );
+      expect(() => includedPayout(outRef, address, "{}")).toThrow(
+        "no UTxO result",
+      );
     });
   });
 });

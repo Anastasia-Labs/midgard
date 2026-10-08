@@ -271,13 +271,13 @@ const openStage = async () => {
     async () => current,
   );
   const onStage = vi.fn();
+  // "unreadable" is a hard reader failure, never permission to rebuild.
   let recoveryStatus:
     | "expired"
     | "invalidated"
     | "included"
-    | "conflict"
     | "pending"
-    | "unknown" = "expired";
+    | "unreadable" = "expired";
   const recoveryReads = vi.fn();
   const stageInput = (
     onHealthyPredecessor?: JourneyFixtureStage["onHealthyPredecessor"],
@@ -290,23 +290,12 @@ const openStage = async () => {
     historicalNativeScriptProviders: [],
     readSignedCommitRecovery: async (attempt) => {
       recoveryReads(attempt);
+      if (recoveryStatus === "unreadable")
+        throw new Error("Recorded transaction bytes are unreadable");
       return {
         transactionHash: attempt.txHash,
         signedTransactionCborHex: attempt.signedCbor,
         status: recoveryStatus,
-        canonicalPoint: {
-          pointId: "aa".repeat(32),
-          blockHash: "aa".repeat(32),
-          blockNo: "100",
-          slot: "100",
-        },
-        releaseFinalPoint: {
-          pointId: "bb".repeat(32),
-          blockHash: "bb".repeat(32),
-          blockNo: "70",
-          slot: "70",
-        },
-        inputs: [],
         reason:
           recoveryStatus === "expired"
             ? "its inputs are unspent past validity slot " +
@@ -524,9 +513,9 @@ it.each([true, false])(
         commitTxHash: signedCommit.txHash,
       });
     } else {
-      fixture.setRecoveryStatus("conflict");
+      fixture.setRecoveryStatus("unreadable");
       await expect(fixture.stage()).rejects.toThrow(
-        "Header transaction recovery conflict: authenticated conflict",
+        "Recorded transaction bytes are unreadable",
       );
       expect(await readJourneyArtifact(fixture.checkpointPath)).toEqual({
         ...unsigned,
@@ -710,7 +699,7 @@ it("keeps an ambiguous initial attempt through pending observations without rebu
   await writeJourneyArtifact(fixture.checkpointPath, draft);
   const attempt = signedAttempt();
   fixture.recoveryReads
-    .mockImplementationOnce(() => fixture.setRecoveryStatus("unknown"))
+    .mockImplementationOnce(() => fixture.setRecoveryStatus("pending"))
     .mockImplementationOnce(() => fixture.setRecoveryStatus("pending"))
     .mockImplementationOnce(() => {
       fixture.setRecoveryStatus("included");
@@ -734,14 +723,14 @@ it("keeps an ambiguous initial attempt through pending observations without rebu
   });
 });
 
-it.each(["construction", "identity", "conflict"] as const)(
+it.each(["construction", "identity", "unreadable"] as const)(
   "does not convert %s failure into permission to rebuild",
   async (failure) => {
     const fixture = await openStage();
     const { commitTxHash: _, ...draft } = fixture.checkpoint;
     await writeJourneyArtifact(fixture.checkpointPath, draft);
     const attempt = signedAttempt();
-    fixture.setRecoveryStatus("conflict");
+    fixture.setRecoveryStatus("unreadable");
     fixture.actor.commit.mockImplementationOnce(
       async (_block, _anchor, _head, onSigned) => {
         if (failure === "construction") throw new Error("cannot construct");
@@ -761,11 +750,11 @@ it.each(["construction", "identity", "conflict"] as const)(
         ? "cannot construct"
         : failure === "identity"
           ? "differs"
-          : "recovery conflict",
+          : "unreadable",
     );
     expect(fixture.actor.commit).toHaveBeenCalledOnce();
     expect(fixture.recoveryReads).toHaveBeenCalledTimes(
-      failure === "conflict" ? 1 : 0,
+      failure === "unreadable" ? 1 : 0,
     );
     if (failure !== "construction")
       expect(await readJourneyArtifact(fixture.checkpointPath)).toMatchObject({
@@ -835,7 +824,7 @@ it("does not replace a locally timed-out commit while canonical recovery still s
   const attempt = signedAttempt();
   const commit = fixture.actor.commit.getMockImplementation()!;
   fixture.recoveryReads
-    .mockImplementationOnce(() => fixture.setRecoveryStatus("unknown"))
+    .mockImplementationOnce(() => fixture.setRecoveryStatus("pending"))
     .mockImplementationOnce(() => fixture.setRecoveryStatus("pending"))
     .mockImplementationOnce(() => fixture.setRecoveryStatus("expired"));
   fixture.actor.commit

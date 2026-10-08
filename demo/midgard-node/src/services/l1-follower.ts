@@ -54,6 +54,7 @@ import {
   storeTxContentSource,
   transportLedgerOutputs,
 } from "@al-ft/midgard-l1-follower";
+import { eventProjection } from "@al-ft/midgard-l1-follower/events";
 import { Data, Effect, Option, Ref, Runtime } from "effect";
 
 import { reconcileFollowerEvents } from "../database/follower-events.js";
@@ -69,7 +70,6 @@ import {
   type FollowerEventSink,
   type IngestionPlan,
 } from "../l1-events/driver.js";
-import { eventProjection } from "../l1-events/projection.js";
 import {
   operatorSetProjection,
   stateQueueTailOf,

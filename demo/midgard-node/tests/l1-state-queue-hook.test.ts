@@ -9,6 +9,10 @@
  * recomputes a healthy queue.
  */
 import type { FactStore, OutRef, TrackedSet } from "@al-ft/midgard-l1-follower";
+import {
+  eventProjection,
+  eventTrackedSet,
+} from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
@@ -18,7 +22,6 @@ import {
   type FollowerChange,
   type SinkResult,
 } from "../src/l1-events/driver.js";
-import { eventProjection, eventTrackedSet } from "../src/l1-events/index.js";
 import {
   landedElements,
   landedStateQueueHook,

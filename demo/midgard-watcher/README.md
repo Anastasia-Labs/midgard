@@ -18,7 +18,6 @@ build the node transport sidecar with
 
 ```sh
 export MALLOC_MMAP_THRESHOLD_=131072
-node dist/cli.js authority --config /absolute/path/authority.json
 node dist/cli.js start --config /absolute/path/watcher-process.json
 node dist/cli.js replay --config /absolute/path/watcher-process.json
 ```
@@ -33,8 +32,7 @@ slower. This setting is ignored by allocators that do not implement it. See the
 [GNU allocator documentation](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html)
 and [Node.js memory guidance](https://nodejs.org/api/process.html#processmemoryusage).
 
-`authority` runs the trusted-head authority until shutdown. `start` constructs
-the watcher runtime and runs until SIGINT/SIGTERM. `replay` constructs the same
+`start` constructs the watcher runtime and runs until SIGINT/SIGTERM. `replay` constructs the same
 runtime, waits for durable catch-up, and closes it; it is not an offline or
 transport-free command. Both may drive proof and availability workflows.
 
@@ -47,8 +45,7 @@ Use `GET /readyz` for readiness: HTTP 200 carries `ready: true`; HTTP 503
 carries `ready: false` and current `reasons`. `GET /v1/status` remains the
 detailed runtime status and can return 200 while the watcher is held. The
 operations endpoint is loopback and currently has no application bearer gate;
-keep it internal. An alive process or authority identity endpoint does not
-establish watcher readiness. A held runtime must remain visible for diagnosis
+keep it internal. An alive process does not establish watcher readiness. A held runtime must remain visible for diagnosis
 without admitting proof or availability work. Readiness must come from a live
 runtime snapshot, never a persisted supervisor status file.
 
@@ -158,8 +155,7 @@ for consumers and retention rules.
 
 ## Configuration and trust boundaries
 
-CLI configuration uses `midgard-watcher-production-process-config-v1`; the
-separate authority uses `midgard-watcher-trusted-head-authority-process-config-v1`.
+CLI configuration uses `midgard-watcher-production-process-config-v1`.
 The nested watcher configuration uses `midgard-watcher-config-v1`. A nested
 configuration by itself is not a complete CLI process configuration.
 
@@ -167,7 +163,7 @@ The exact schemas and validation rules live in
 [src/runtime/process-config.ts](src/runtime/process-config.ts) and
 [src/runtime/config.ts](src/runtime/config.ts). Unknown/missing fields fail
 closed. Process configuration binds deployment identity, durable storage,
-trusted-head authority, transports, proof funding, and operational endpoints.
+transports, proof funding, and operational endpoints.
 Keep secrets in the supported environment/file references.
 
 ### Local credential file
@@ -322,17 +318,18 @@ holds back a challenge action. `daBondPool` keeps the last good readout, whose
 good read sets it back to `null`. Funding, top-up and the owner-quorum withdrawal are operator commands; see
 [DA bond pool commands](../midgard-node/docs/da-bond-commands.md).
 
-The nested wire parser accepts both `local_node` and `external_providers`.
-External-provider mode requires independent provider identities. The installed
-CLI process parser is narrower: it requires `mode: "acceptance"`,
-`targetNetwork` of `"Preprod"` or `"Custom"`, and `local_node` authority, with
-confirmation depth and prefinality rollback depth equal to the compiled
+`$.l1.source` names one source, `local_node`: the Cardano node the L1
+follower reads over its socket. `$.l1.finality` holds only `depth`. The
+installed CLI process parser requires `mode: "acceptance"`, `targetNetwork` of
+`"Preprod"` or `"Custom"`, and a finality depth equal to the compiled
 deployment profile's `l1_finality.confirmation_depth` (10 for the live testing
 profiles, 3 for `preprod-emulator-testing`, 30 for `mainnet` and
-`preprod-public`), and postfinality recovery
-bound 2160. `Custom` admits an explicitly bound isolated devnet, the network the
-automatic watcher journeys run against; it is not a relaxation of finality or
-rollback policy. The authority process enforces the same policy.
+`preprod-public`). Rollback handling is the follower's: it rewinds and
+recomputes every projection, and a rollback deeper than the security parameter
+k leaves the watcher up and unready with the `/readyz` reason
+`rollback_beyond_k`. `Custom` admits an explicitly bound isolated devnet, the
+network the automatic watcher journeys run against; it is not a relaxation of
+finality.
 
 `$.l1.origin` is an optional operator override of the deployment's L1 origin,
 `{"slot": <n>, "blockHash": "<64 lowercase hex>"}`: the point immediately
@@ -359,8 +356,7 @@ ordered chain evidence. The process runs one sidecar on one node connection for
 its chain-sync streams and exact-point queries; a sidecar crash, hang or
 protocol violation fails every open stream and in-flight query, and the
 transport restarts it.
-Configured query services are subordinate to that authority. Authenticated
-rollback recovery and the independent trusted head protect durable replay.
+Authenticated rollback recovery protects durable replay.
 DA retrieval authenticates the configured peer and payload commitments.
 Acceptance of a generic nested configuration does not establish support by the
 installed process launcher.
@@ -393,78 +389,33 @@ lands.
 
 ## Running with compose
 
-[compose.yaml](compose.yaml) runs the two processes as two services from one
-image: `watcher-authority` (`authority --config /etc/midgard/authority.json`)
-and `watcher` (the image's default `start`). The split is a key-custody
-boundary: the authority holds the record key that chains trusted-head records,
-`start` holds the signing keys, and neither holds the other's. Both services
-use `network_mode: host` because the authority endpoint, the operations
-endpoint and every L1 query service must be loopback.
+[compose.yaml](compose.yaml) runs the watcher as one service, `watcher` (the
+image's default `start`). It uses `network_mode: host` because the operations
+endpoint and every L1 endpoint the watcher dials must be loopback.
 
 Prerequisites on the host:
 
-- A Cardano L1 stack publishing Ogmios on `127.0.0.1:1337` and Kupo on
-  `127.0.0.1:1442`, with its node socket directory (default
+- A Cardano node with its socket directory (default
   `../midgard-node/cardano/ipc`, override with `MIDGARD_L1_IPC_DIR`) and a
   directory holding the node config and Shelley genesis
-  (`MIDGARD_L1_CONFIG_DIR`), mounted at `/ipc` and `/cardano-config`.
+  (`MIDGARD_L1_CONFIG_DIR`), mounted at `/ipc` and `/cardano-config`. The
+  watcher reads L1 only through its follower over the node socket; it dials
+  no Ogmios or Kupo.
 - `config/watcher-process.json` from
-  [watcher-process.example.json](watcher-process.example.json);
+  [watcher-process.example.json](watcher-process.example.json) and
   `config/watcher-runtime.json` holding exactly its `watcherConfig` object
-  (startup refuses any difference); `config/authority.json` from
-  [authority.example.json](authority.example.json). The authority's `policy`
-  must be the finality policy `start` derives from the same `watcherConfig`
-  and the verified deployment identity; the template's policy is built from
-  the start template with placeholder deployment hashes, and a unit test keeps
-  the two templates consistent.
+  (startup refuses any difference).
 - `bundles/` holding the six release artifacts the process config names:
   deployment authority, rule bundle, funding profiles, deployment manifest,
   blueprint and contract deployment info.
-- Two disjoint secret sets, as regular files (the loader refuses a symlinked
-  secret, so compose `secrets:` are not used), without a trailing newline and
-  pairwise distinct. The authority gets the record key and the bearer; `start`
-  gets the rollback key, prover key, availability key and the same bearer
-  value. Copy [.env.example](.env.example) to `.env` and point each variable at
-  its file.
+- The rollback key, prover key and availability key as regular files (the
+  loader refuses a symlinked secret, so compose `secrets:` are not used),
+  without a trailing newline and pairwise distinct. Copy
+  [.env.example](.env.example) to `.env` and point each variable at its file.
 
-Before starting the sidecar, explicitly provision its independently owned authority
-volume with `initializeSelectedAuthorityStore` from `midgard-watcher`, supplying
-the verified policy, authority record key, a persisted `generation-<UUID>` attempt
-identity, and the chosen `liveRecordLimit`. For an existing legacy authority,
-stop every old writer and prevent restart, then use `importLegacyAuthorityStore`
-with a separate legacy archive directory. Both operations are offline ownership
-contracts; their source recheck does not fence an old writer. Preserve the legacy
-bytes and the initialization attempt identity. A torn, unparseable final legacy
-record can be removed only with the explicit offline
-`repairLegacyWatcherTrustedHeadAuthorityFinalRecord` helper: supply the exact
-expected prior head, final filename/raw digest, stable repair UUID and reason,
-and retain its separate evidence directory. It verifies the complete prior chain,
-keeps original torn bytes plus authenticated intent/completion receipts, and resumes
-only that exact repair after interruption. Parseable invalid records and interior
-corruption remain held. Every old writer must stay quiescent with restart excluded;
-this helper does not provide a live fleet fence. Ordinary `authority` startup only
-opens the authenticated selected backend. Missing or corrupt state fails closed;
-it never initializes, repairs, or falls back to the archive.
-
-`liveRecordLimit` is mandatory, counts authority revisions, and must match the
-initialized store. The example's explicit value `1` illustrates the smallest
-supported geometry; it is not a production default or a block rollback horizon.
-Choose a deployed value from measurements of the intended storage and workload.
-The live SQLite store retains the exact current head, one authenticated boundary
-checkpoint, and the latest `min(liveRecordLimit, revision + 1)` records. Current
-reads verify that entire live suffix. Retired archive edits are detected by
-`auditLegacyWatcherTrustedHeadAuthority`, not current reads. Keep the selected
-authority volume, selector, SQLite DB/WAL/SHM, and record key outside watcher write
-ownership. Whole-volume replay remains outside this independent freshness trust
-assumption. Filesystem deletion or replacement concurrent with SQLite access is
-outside the supported storage contract.
-
-Then `docker compose up -d`. `watcher` starts only once `watcher-authority`
-answers `/v1/identity`. Both restart `unless-stopped`: if the authority dies,
-`start` fails closed with exit 70, compose restarts it, and it keeps exiting
-70 at `/v1/identity` until the authority is healthy again, then re-reads the
-trusted head and resumes. Exit 70 is the intended failure signal, so do not
-cap restarts. The healthchecks treat a 401 as alive; they carry no bearer.
+Then `docker compose up -d`. The service restarts `unless-stopped`: restarting
+is the supervision, so do not cap restarts. The healthcheck treats a 401 as
+alive; it carries no bearer.
 
 Known gap (belongs to the shared L1 stack work): on public networks the
 Mithril-bootstrapped node image keeps its node config and genesis inside the

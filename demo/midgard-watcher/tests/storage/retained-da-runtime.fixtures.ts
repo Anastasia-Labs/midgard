@@ -15,30 +15,19 @@ export const rawConfig = (
     targetNetwork: "Preprod",
     l1: {
       source: {
-        sourceMode: "external_providers",
-        providers: [
-          {
-            identity: "provider-a",
-            operatorIdentitySha256: "11".repeat(32),
-            endpoint: "https://cardano-a.example",
-          },
-          {
-            identity: "provider-b",
-            operatorIdentitySha256: "22".repeat(32),
-            endpoint: "https://cardano-b.example",
-          },
-        ],
+        sourceMode: "local_node",
+        authorityNodeId: "watcher-node",
+        chainSync: {
+          kind: "cardano_node_socket",
+          socketPath: "/run/cardano/node.socket",
+          nodeConfigPath: "/etc/cardano/node-config.json",
+          genesisConfigPath: "/etc/cardano/shelley-genesis.json",
+          genesisIdentitySha256: "33".repeat(32),
+        },
       },
       requestTimeoutMs: 10_000,
       maxConcurrency: 8,
-      finality: {
-        depth: 30,
-        rollback: {
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: 30,
-        },
-      },
+      finality: { depth: 30 },
     },
     da: {
       peers: [{ identity: "da-peer-a", multiaddr }],

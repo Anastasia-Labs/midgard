@@ -96,7 +96,6 @@ const resumeUp = async (
   layout: Layout,
   readyTimeoutMs: number,
   code: LoadedCode,
-  initializeWatcherAuthority = false,
 ) => {
   const run = await ensureChainGenerated(layout);
   holdRunForResume(layout, code);
@@ -129,7 +128,7 @@ const resumeUp = async (
   await provisionReserveFloat(layout, run, journal);
   await ensureCommitteeDatabases(layout, run);
   await ensureDaManifests(context, oneShot);
-  await ensureWatcherRelease(context, oneShot, initializeWatcherAuthority);
+  await ensureWatcherRelease(context, oneShot);
   console.log(`watcher: release ready under ${layout.watcher}`);
   const specs = serviceSpecs(context, oneShot);
   const supervisor = await ensureSupervisor({
@@ -336,12 +335,7 @@ registerUp(program, (options) => {
   const layout = layoutFor(options.runDir);
   return {
     deps: upDeps(layout, (code) =>
-      resumeUp(
-        layout,
-        options.readyTimeoutMs,
-        code,
-        options.initializeWatcherAuthority === true,
-      ),
+      resumeUp(layout, options.readyTimeoutMs, code),
     ),
     launch: {
       execPath: process.execPath,

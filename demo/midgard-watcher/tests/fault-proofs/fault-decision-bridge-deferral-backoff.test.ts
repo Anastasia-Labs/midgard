@@ -1,5 +1,5 @@
 import {
-  LocalKupmiosTransportUnavailableError,
+  FraudProofL1UnavailableError,
   RetainedDaPayloadUnavailableError,
 } from "@al-ft/midgard-fault-proofs";
 import { KupmiosError } from "@lucid-evolution/lucid";
@@ -29,7 +29,7 @@ const outcomes = (observability: ReturnType<typeof operations>) =>
   records(observability).map(({ outcome }) => outcome);
 
 const nodeLost = () =>
-  new LocalKupmiosTransportUnavailableError(
+  new FraudProofL1UnavailableError(
     "Ogmios session closed: Connection with the node lost",
   );
 
@@ -135,7 +135,7 @@ describe("fault decision bridge deferral on a transient", () => {
     const current = observation([headerFixture("01")]);
     const [header] = current.finalizedHeaders;
     const forged = Object.assign(new Error("forged transport label"), {
-      name: "LocalKupmiosTransportUnavailableError",
+      name: "FraudProofL1UnavailableError",
     });
     const h = harness({
       current,

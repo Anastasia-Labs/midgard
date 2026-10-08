@@ -32,6 +32,13 @@
  * are absent, as for a node that ingested them before).
  */
 import { encodeOutRef } from "@al-ft/midgard-l1-follower";
+import {
+  EVENT_KINDS,
+  type EventListConfig,
+  eventProjectionConfigFromContracts,
+  openOrder,
+  type ProjectedEvent,
+} from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import {
@@ -45,13 +52,6 @@ import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
 import { MempoolLedgerDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
 import type { IngestionPlan, SinkResult } from "../../src/l1-events/driver.js";
-import {
-  EVENT_KINDS,
-  type EventListConfig,
-  eventProjectionConfigFromContracts,
-  openOrder,
-  type ProjectedEvent,
-} from "../../src/l1-events/index.js";
 import {
   UnownedHistoryFixture,
   withHistoryIngestion,

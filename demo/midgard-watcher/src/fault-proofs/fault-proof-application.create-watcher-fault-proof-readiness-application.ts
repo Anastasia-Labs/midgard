@@ -18,7 +18,7 @@ export const createWatcherFaultProofApplication = (
       deploymentIdentity: options.deploymentAuthority.deploymentIdentity,
       deploymentAuthority: options.deploymentAuthority,
       replayTranscriptStore: options.replayTranscriptStore,
-      userEventRuntime: options.userEventRuntime,
+      userEvents: options.userEvents,
       infrastructure: options.infrastructure,
       historicalNativeScriptCheckpointStore:
         options.historicalNativeScriptCheckpointStore,

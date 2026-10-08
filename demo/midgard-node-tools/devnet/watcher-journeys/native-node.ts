@@ -44,7 +44,6 @@ export const journeyNativeNodeQuery = async (
               .update(bytes)
               .digest("hex"),
           },
-          queryServices: [],
         },
       },
     },

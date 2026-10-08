@@ -362,27 +362,39 @@ export const createSupervisor = (input: {
         objective: job,
         selectedWorkflowId: selectedExecutions.get(key),
       });
+      const completed = execution?.entries.find(
+        ({ event }) => event.kind === "completed",
+      );
+      // A completion marked beyond rollback recovery is final: a job queued
+      // before the mark, at a later generation, neither holds its released
+      // L1 history again nor verifies it again.
+      const marker =
+        completed !== undefined && execution !== undefined
+          ? progressAuthority.completionMarker(job, execution)
+          : null;
       if (execution !== undefined) {
         selectedExecutions.set(key, execution.workflowId);
-        if (!input.exposeUnsafeRunnerForTest)
+        if (!input.exposeUnsafeRunnerForTest && marker === null)
           await progressAuthority.updateExecution({
             objective: job,
             execution,
           });
       }
-      const completed = execution?.entries.find(
-        ({ event }) => event.kind === "completed",
-      );
       if (completed !== undefined && execution !== undefined) {
         const validationKey = `${job.rollbackGeneration}:${watcherSha256CanonicalJson(execution.entries)}`;
         const verification =
-          completedValidations.get(key) === validationKey
-            ? ({ kind: "applicable", confirmationDepth: 0 } as const)
-            : await input.dependencies.verifyCompleted({
-                job,
-                execution,
-                actuationPermit,
-              });
+          marker !== null
+            ? ({
+                kind: "applicable",
+                confirmationDepth: marker.confirmationDepth,
+              } as const)
+            : completedValidations.get(key) === validationKey
+              ? ({ kind: "applicable", confirmationDepth: 0 } as const)
+              : await input.dependencies.verifyCompleted({
+                  job,
+                  execution,
+                  actuationPermit,
+                });
         if (actuationPermit !== null)
           assertWorkflowActuationPermitIdentity({
             permit: actuationPermit,

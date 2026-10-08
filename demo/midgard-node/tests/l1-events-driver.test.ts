@@ -6,6 +6,10 @@
  * `follower-events-ingestion.test.ts`.
  */
 import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
+import {
+  eventProjection,
+  eventTrackedSet,
+} from "@al-ft/midgard-l1-follower/events";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -20,7 +24,6 @@ import {
   type IngestionPlan,
   type SinkResult,
 } from "../src/l1-events/driver.js";
-import { eventProjection, eventTrackedSet } from "../src/l1-events/index.js";
 import {
   admissionTx,
   eventOrder,

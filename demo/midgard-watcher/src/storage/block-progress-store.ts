@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
-import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
+import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.exact-record.js";
 import type { WatcherBlockRelevance } from "../runtime/block-relevance.js";
 import { watcherCanonicalJson } from "./durable-store.js";
 

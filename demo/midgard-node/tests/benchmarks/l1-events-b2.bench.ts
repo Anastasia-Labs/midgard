@@ -23,6 +23,10 @@ import {
   type OutRef,
 } from "@al-ft/midgard-l1-follower";
 import {
+  eventProjection,
+  EVENTS_TABLE,
+} from "@al-ft/midgard-l1-follower/events";
+import {
   encodeBlock,
   Rng,
   SIM_ORIGIN,
@@ -30,7 +34,6 @@ import {
 } from "@al-ft/midgard-l1-follower/testing";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { eventProjection, EVENTS_TABLE } from "../../src/l1-events/index.js";
 import {
   admissionTx,
   eventOrder,

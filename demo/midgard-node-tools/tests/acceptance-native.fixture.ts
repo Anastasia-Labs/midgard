@@ -14,14 +14,14 @@ import { fileURLToPath } from "node:url";
 
 import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import * as watcher from "midgard-watcher";
-import * as native from "midgard-watcher/native-chain-sync";
-import {
-  config,
-  readIdentityFixture,
-} from "midgard-watcher/tests/l1/native-chain-sync.config";
 import { afterAll } from "vitest";
 
 import type { AcceptanceNativeReadConfig } from "../src/devnet-stack/acceptance-native-config.js";
+import * as native from "../src/devnet-stack/native-chain-sync.js";
+import {
+  config,
+  readIdentityFixture,
+} from "./helpers/native-chain-sync.config.js";
 
 export const POINT = { blockHash: "bb".repeat(32), blockNo: "11", slot: "102" };
 
@@ -289,24 +289,11 @@ export const readConfig = (
   transport: Readonly<{ binaryPath: string }>,
   assertUnchanged = async () => {},
 ): AcceptanceNativeReadConfig => {
-  const base = config();
-  const source = base.l1.source;
-  if (source.sourceMode !== "local_node") throw new Error("fixture source");
   return {
     native,
     watcher,
-    watcherConfig: {
-      ...base,
-      l1: {
-        ...base.l1,
-        source: {
-          ...source,
-          queryServices: [
-            { kind: "ogmios", identity: "test-ogmios", endpoint },
-          ],
-        },
-      },
-    },
+    watcherConfig: config(),
+    ogmiosEndpoint: endpoint,
     binaryPath: transport.binaryPath,
     assertUnchanged,
     binding: {

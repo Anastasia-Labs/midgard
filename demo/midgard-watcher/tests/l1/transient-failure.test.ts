@@ -1,6 +1,6 @@
 import {
-  LocalKupmiosCheckpointChangedError,
-  LocalKupmiosTransportUnavailableError,
+  FraudProofL1CheckpointChangedError,
+  FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs";
 import { KupmiosError } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -15,8 +15,11 @@ const fetchFailed = (code: string) =>
 
 describe("watcher L1 transient failure", () => {
   it.each([
-    ["an Ogmios session lost", new LocalKupmiosTransportUnavailableError("x")],
-    ["a Kupo checkpoint advance", new LocalKupmiosCheckpointChangedError("x")],
+    ["an L1 source that did not answer", new FraudProofL1UnavailableError("x")],
+    [
+      "a chain that moved under a snapshot",
+      new FraudProofL1CheckpointChangedError("x"),
+    ],
     ["a refused connection", fetchFailed("ECONNREFUSED")],
     ["a reset connection", fetchFailed("ECONNRESET")],
     ["a connect timeout", fetchFailed("UND_ERR_CONNECT_TIMEOUT")],
@@ -44,7 +47,7 @@ describe("watcher L1 transient failure", () => {
       "a transient wrapped in a workflow error",
       new Error("workflow readiness failed", {
         cause: new Error("read failed", {
-          cause: new LocalKupmiosTransportUnavailableError("x"),
+          cause: new FraudProofL1UnavailableError("x"),
         }),
       }),
     ],
@@ -57,7 +60,7 @@ describe("watcher L1 transient failure", () => {
     [
       "an error that only carries a transient name",
       Object.assign(new Error("forged"), {
-        name: "LocalKupmiosTransportUnavailableError",
+        name: "FraudProofL1UnavailableError",
       }),
     ],
     [
@@ -86,7 +89,7 @@ describe("watcher L1 transient failure", () => {
       "a transient buried past the cause depth bound",
       Array.from({ length: 8 }).reduce<Error>(
         (cause) => new Error("wrapped", { cause }),
-        new LocalKupmiosTransportUnavailableError("x"),
+        new FraudProofL1UnavailableError("x"),
       ),
     ],
   ])("keeps %s hard", (_label, error) => {

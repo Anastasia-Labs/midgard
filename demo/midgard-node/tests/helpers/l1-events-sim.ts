@@ -18,6 +18,16 @@ import {
   type TxSummary,
 } from "@al-ft/midgard-l1-follower";
 import {
+  dueByCutoff,
+  EVENT_KINDS,
+  type EventKind,
+  eventProjection,
+  eventsAt,
+  type SlotTime,
+  slotToPosixMs,
+  spendableAt,
+} from "@al-ft/midgard-l1-follower/events";
+import {
   outRefHex,
   type ScenarioTraffic,
   SIM_ORIGIN,
@@ -29,16 +39,6 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  dueByCutoff,
-  EVENT_KINDS,
-  type EventKind,
-  eventProjection,
-  eventsAt,
-  type SlotTime,
-  slotToPosixMs,
-  spendableAt,
-} from "../../src/l1-events/index.js";
 import {
   admissionTx,
   eventOrder,

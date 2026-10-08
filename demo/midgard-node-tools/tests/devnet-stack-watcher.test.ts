@@ -275,7 +275,7 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
   "devnet watcher release (needs the local-devnet-testing profile compiled)",
   () => {
     it("generates a release and configurations the watcher's own loaders accept", async () => {
-      await ensureWatcherRelease(context, oneShot, true);
+      await ensureWatcherRelease(context, oneShot);
       const watcher = await loadWatcherModule(layout);
       const paths = releasePaths(layout);
 
@@ -289,9 +289,6 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       const processConfig = watcher.parseWatcherProcessConfig(
         JSON.parse(readFileSync(layout.watcherProcessConfig, "utf8")),
       );
-      watcher.parseWatcherTrustedHeadAuthorityProcessConfig(
-        JSON.parse(readFileSync(layout.watcherAuthorityConfig, "utf8")),
-      );
       const runtime = JSON.parse(
         readFileSync(layout.watcherRuntimeConfig, "utf8"),
       );
@@ -303,13 +300,13 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
         processConfig.watcherConfig,
       );
 
-      const l1 = runtime.l1 as {
-        finality: { depth: number; rollback: { maxDepth: number } };
-      };
-      expect(l1.finality.depth).toBe(manifest.l1Finality.confirmationDepth);
-      expect(l1.finality.rollback.maxDepth).toBe(
-        manifest.l1Finality.confirmationDepth,
-      );
+      const l1 = runtime.l1 as { finality: unknown; source: object };
+      expect(l1.finality).toEqual({
+        depth: manifest.l1Finality.confirmationDepth,
+      });
+      expect(l1.source).not.toHaveProperty("queryServices");
+      expect(processConfig).not.toHaveProperty("trustedHeadAuthorityEndpoint");
+      expect(processConfig).not.toHaveProperty("httpBearerSecretSource");
       expect(runtime.customNetwork).toEqual({
         networkMagic: 424242,
         slotConfig: {
@@ -322,18 +319,17 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       const secrets = readdirSync(dirname(layout.watcherSecret("x"))).map(
         (name) => layout.watcherSecret(name),
       );
-      expect(secrets).toHaveLength(5);
+      expect(secrets).toHaveLength(3);
       const values = secrets.map((path) => {
         expect(statSync(path).mode & 0o777).toBe(0o600);
         const text = readFileSync(path, "utf8");
         expect(text.endsWith("\n")).toBe(false);
         return text;
       });
-      expect(new Set(values).size).toBe(5);
-      for (const name of ["trusted-head-record.key", "rollback-authority.key"])
-        expect(readFileSync(layout.watcherSecret(name), "utf8")).toMatch(
-          /^[0-9a-f]{64}$/u,
-        );
+      expect(new Set(values).size).toBe(3);
+      expect(
+        readFileSync(layout.watcherSecret("rollback-authority.key"), "utf8"),
+      ).toMatch(/^[0-9a-f]{64}$/u);
       expect(readFileSync(layout.watcherSecret("prover.seed"), "utf8")).toBe(
         context.identities.seeds.watcherProver,
       );
@@ -379,23 +375,30 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       expect(snapshot(layout.watcher)).toEqual(before);
     }, 300_000);
 
+    it("never regenerates an established watcher's missing secret", async () => {
+      const path = layout.watcherSecret("rollback-authority.key");
+      const original = readFileSync(path);
+      rmSync(path);
+      try {
+        await expect(ensureWatcherRelease(context, oneShot)).rejects.toThrow(
+          "established watcher secret is missing; it is never regenerated",
+        );
+        expect(existsSync(path)).toBe(false);
+      } finally {
+        writeFileSync(path, original, { mode: 0o600 });
+      }
+    }, 300_000);
+
     it("orders and wires the watcher's services", () => {
       const specs = watcherServiceSpecs(context, oneShot);
       expect(specs.map((spec) => spec.name)).toEqual([
-        "watcher-authority",
         "watcher-history-a",
         "watcher-history-b",
         "watcher-history-tunnel",
         "watcher-history-recorder",
         "watcher",
       ]);
-      const [authority, , , tunnel, , watcher] = specs;
-      expect(authority!.args.slice(-3)).toEqual([
-        "authority",
-        "--config",
-        layout.watcherAuthorityConfig,
-      ]);
-      expect(authority!.healthUrl).toBeUndefined();
+      const [, , tunnel, , watcher] = specs;
       expect(tunnel!.healthUrl).toBe(
         `http://127.0.0.1:${servicePorts(context.run).historyTunnel}/healthz`,
       );
@@ -414,7 +417,7 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       expect(watcher!.env).toMatchObject(
         historyTransportEnvironment(layout, context.run),
       );
-      expect(watcher!.prestart).toBeTypeOf("function");
+      expect(watcher!.prestart).toBeUndefined();
     });
 
     it("serves each provider over TLS through the tunnel under its roster name", async () => {

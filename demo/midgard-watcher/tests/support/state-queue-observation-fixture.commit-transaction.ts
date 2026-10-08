@@ -12,11 +12,10 @@ import {
 import { watcherDeploymentProtocolScriptAuthority } from "../../src/runtime/deployment-identity.js";
 import { h28, h32 } from "./deployment-authority-fixture.js";
 
-// Transport-bound unit fixture only. Init/Commit shapes are copied from the
-// ordinary SQ observation tests; no Plutus evaluation, wallet signature, Cardano
-// consensus validity, emulator validity or public-chain inclusion is claimed.
-// Native subprocess framing, TCP identity, Kupo/Ogmios byte agreement, creating
-// transaction resolution and the SQ source's private admission all remain real.
+// Unit fixture only. Init/Commit shapes are copied from the ordinary SQ
+// observation tests; no Plutus evaluation, wallet signature, Cardano consensus
+// validity, emulator validity or public-chain inclusion is claimed. The follower
+// store's projection and observation read over them remain real.
 type ProtocolAuthority = ReturnType<
   typeof watcherDeploymentProtocolScriptAuthority
 >;

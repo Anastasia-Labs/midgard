@@ -9,13 +9,13 @@ import {
   type View,
   viewValidQuery,
 } from "@al-ft/midgard-l1-follower";
+import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 
 import { numbered } from "../database/follower-schema.js";
 import { MutationJobsDB } from "../database/index.js";
 import type { ForcedOrderConfig } from "../forced-orders/index.js";
-import type { EventProjectionConfig } from "../l1-events/config.js";
 import type { StateQueueProjectionConfig } from "../l1-state-queue/index.js";
 import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
 import { NodeConfig } from "../services/config.js";

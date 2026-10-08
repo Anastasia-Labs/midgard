@@ -5,8 +5,6 @@ import {
 import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
-  LocalKupmiosCheckpointChangedError,
-  LocalKupmiosTransportUnavailableError,
 } from "@al-ft/midgard-fault-proofs";
 import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
 
@@ -76,8 +74,8 @@ const transientCode = (error: Error): boolean => {
 };
 
 /**
- * Whether a failed L1 read says only that the follower, its node transport
- * (or, for the user-event history, Kupo or Ogmios) did not answer, or that
+ * Whether a failed L1 read says only that the follower or its node transport
+ * did not answer, or that
  * the chain moved while a snapshot was read: nothing about the chain or the
  * deployment. Such a read can be repeated as is. Every other error, including
  * one that merely carries a transient error's name, is not one.
@@ -92,8 +90,6 @@ export const isWatcherL1TransientFailure = (error: unknown): error is Error => {
       current instanceof TransportUnavailableError ||
       current instanceof TransportTimeoutError ||
       current instanceof L1ProviderTransientError ||
-      current instanceof LocalKupmiosTransportUnavailableError ||
-      current instanceof LocalKupmiosCheckpointChangedError ||
       retryableProviderError(current) ||
       isWatcherNativeNodeUnavailable(current) ||
       transientCode(current)

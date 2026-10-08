@@ -8,9 +8,9 @@ import {
   type WatcherFaultProofL1,
   type WatcherFaultProofStartupReadiness,
 } from "../fault-proofs/fault-proof-application.js";
+import { type WatcherUserEvents } from "../l1-follower/user-events.js";
 import { type WatcherProcessConfig } from "./process-config.js";
 import { createWatcherStartupProgress } from "./startup-progress.js";
-import { type WatcherUserEventRuntime } from "./user-event-runtime.js";
 import {
   assertWatcherFaultProofLaunchScope,
   prepareJournalDirectory,
@@ -28,7 +28,7 @@ export const prepareWatcherRuntimeWorkflows = async (
   > &
     Readonly<{
       startup: ReturnType<typeof createWatcherStartupProgress>;
-      eventHistory: WatcherUserEventRuntime;
+      userEvents: WatcherUserEvents;
       l1: WatcherFaultProofL1;
       onAllocated: (application: WatcherFaultProofApplication) => void;
     }>,
@@ -40,7 +40,7 @@ export const prepareWatcherRuntimeWorkflows = async (
     historicalNativeScriptCheckpointStore,
     fundingProfileOverlay,
     startup,
-    eventHistory,
+    userEvents,
     l1,
     onAllocated,
   } = options;
@@ -49,7 +49,7 @@ export const prepareWatcherRuntimeWorkflows = async (
       l1,
       deploymentAuthority,
       replayTranscriptStore: sqlite.replayTranscripts,
-      userEventRuntime: eventHistory,
+      userEvents,
       infrastructure: input.config.faultProofInfrastructure,
       historicalNativeScriptCheckpointStore,
       fundingProfileOverlay,

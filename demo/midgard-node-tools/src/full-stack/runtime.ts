@@ -2,8 +2,6 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { parse } from "dotenv";
-
 import { assertNodeFollowerEnvironment } from "../l1-origin.js";
 import {
   generateDaServices,
@@ -13,12 +11,7 @@ import {
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { containerNativeLedger } from "./native-ledger.js";
-import {
-  bearerHeaders,
-  getJson,
-  poll,
-  type StackProcesses,
-} from "./process.js";
+import { getJson, poll, type StackProcesses } from "./process.js";
 import { committeeIsReady, stackIsReady } from "./readiness.js";
 import { storageIdentityStep } from "./storage.js";
 import { generateWatcherServices } from "./watcher-services.js";
@@ -28,7 +21,6 @@ type RuntimeConfiguration = {
   inputDigest: string;
   compose: string;
   operationsEndpoint: string;
-  authorityEndpoint: string;
   committeeServices: string[];
 };
 export const runtimeConfigurationPath = (processes: StackProcesses) =>
@@ -60,7 +52,6 @@ export async function runtimeInputDigest(processes: StackProcesses) {
     config.envFile,
     config.watcher.composeEnvFile,
     config.watcher.processTemplate,
-    config.watcher.authorityTemplate,
     ...(config.watcher.releaseInput ? [config.watcher.releaseInput] : []),
   ]) {
     const bytes = await readFile(path).catch((error: NodeJS.ErrnoException) => {
@@ -130,18 +121,6 @@ function nodeEnvironment(processes: StackProcesses, ownerSha256: string) {
 async function runtimeReadinessReader(processes: StackProcesses) {
   const runtime = await readRuntimeConfiguration(processes);
   const committee = await committeeExpectation(processes);
-  const headers = await bearerHeaders(processes.config.watcher.bearerFile);
-  const watcherEnv = parse(
-    await readFile(processes.config.watcher.composeEnvFile),
-  );
-  const keyHex = (
-    await readFile(watcherEnv.WATCHER_RECORD_KEY_FILE!, "utf8")
-  ).trim();
-  if (!/^[0-9a-f]{64}$/i.test(keyHex))
-    throw new Error("Watcher record key must be 32-byte hex");
-  const recordKeyId = createHash("sha256")
-    .update(Buffer.from(keyHex, "hex"))
-    .digest("hex");
   const { manifestId } = (await readJsonIfPresent(
     stackPaths(processes).manifest,
   )) as { manifestId: string };
@@ -155,7 +134,6 @@ async function runtimeReadinessReader(processes: StackProcesses) {
       | undefined;
     const watcher = (await getJson(
       `${runtime.operationsEndpoint}/v1/status`,
-      headers,
     )) as
       | {
           liveness?: string;
@@ -163,10 +141,6 @@ async function runtimeReadinessReader(processes: StackProcesses) {
           readinessReasons?: unknown[];
         }
       | undefined;
-    const authority = await getJson(
-      `${runtime.authorityEndpoint}/v1/identity`,
-      headers,
-    );
     const committees = await Promise.all(
       processes.config.da.members.map((_, index) =>
         getJson(
@@ -178,15 +152,13 @@ async function runtimeReadinessReader(processes: StackProcesses) {
       !stackIsReady({
         node,
         watcher,
-        authority,
         committees,
         manifestId,
-        recordKeyId,
         committeePeerIds: committee.peerIds,
       })
     )
       return undefined;
-    return { node, watcher, authority, committees };
+    return { node, watcher, committees };
   };
 }
 export async function confirmRuntimeReadiness(processes: StackProcesses) {
@@ -264,7 +236,6 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           inputDigest,
           compose,
           operationsEndpoint: watcher.operationsEndpoint,
-          authorityEndpoint: watcher.authorityEndpoint,
           committeeServices: processes.config.da.members.map(
             (_, index) => `da-committee-${index}`,
           ),
@@ -316,7 +287,6 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
             "midgard-node-migrate",
             "da-committee-0",
             "watcher",
-            "watcher-authority",
           ],
           runtime.compose,
         );
@@ -449,7 +419,7 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
         );
         await processes.compose(
           "runtime-start",
-          ["up", "-d", "midgard-node", "watcher-authority", "watcher"],
+          ["up", "-d", "midgard-node", "watcher"],
           runtime.compose,
         );
         return {

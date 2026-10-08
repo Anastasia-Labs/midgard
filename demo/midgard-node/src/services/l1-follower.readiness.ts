@@ -28,13 +28,13 @@
  * the frontier still needs are kept; the store grows until it moves).
  */
 import type { FactStore, FollowStatus } from "@al-ft/midgard-l1-follower";
+import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 
 import {
   type DriverHold,
   type IngestionPlan,
   planIngestion,
 } from "../l1-events/driver.js";
-import type { EventProjectionConfig } from "../l1-events/index.js";
 
 /** The node has no follower: its configuration is missing a piece (named in the detail). */
 export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";

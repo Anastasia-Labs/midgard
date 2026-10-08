@@ -13,14 +13,9 @@ export const runAutonomousWatcherJourney = async (
   options: {
     waitForAnchors?: boolean;
     session?: JourneySession;
-    initializeAuthority?: boolean;
   } = {},
 ) => {
-  const session =
-    options.session ??
-    (await openJourneySession(runDirectory, {
-      initializeAuthority: options.initializeAuthority,
-    }));
+  const session = options.session ?? (await openJourneySession(runDirectory));
   try {
     await runJourney(
       runDirectory,
@@ -40,10 +35,7 @@ export const runAutonomousWatcherJourney = async (
 };
 
 /** Start the real maturity clock after the verified trace baseline has completed. */
-export const prepareAutonomousWatcherHistory = async (
-  runDirectory: string,
-  options: { initializeAuthority?: boolean } = {},
-) => {
+export const prepareAutonomousWatcherHistory = async (runDirectory: string) => {
   const context = await loadJourneyContext(runDirectory);
   await verifyJourneyResultEvidence(
     context.runDirectory,
@@ -51,7 +43,7 @@ export const prepareAutonomousWatcherHistory = async (
     "transitionTrace",
     context.deployment,
   );
-  const session = await openJourneySession(runDirectory, options);
+  const session = await openJourneySession(runDirectory);
   try {
     await runJourney(
       runDirectory,

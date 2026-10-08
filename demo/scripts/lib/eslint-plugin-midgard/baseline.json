@@ -250,10 +250,6 @@
         "a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,"
       ]
     },
-    "midgard-node-tools/devnet/watcher-journeys/transaction-recovery-live.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": ["left.txHash.localeCompare(right.txHash) ||"]
-    },
     "midgard-node-tools/src/commands/stress-corpus/wallet-set-identity.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.walletId.localeCompare(right.walletId),"]
@@ -367,19 +363,6 @@
     "midgard-validation/tests/ordered-collection-reference-inputs-boundary.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right));"]
-    },
-    "midgard-watcher/src/indexers/user-event-indexer/snapshot.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort((left, right) => left.outRef.localeCompare(right.outRef));",
-        "`${left.terminalPointDigest}:${left.outRef}`.localeCompare(",
-        "left.outRef.localeCompare(right.outRef),",
-        "left.outRef.localeCompare(right.outRef),"
-      ]
-    },
-    "midgard-watcher/src/l1/local-kupmios-native-observation.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": ["left.providerId.localeCompare(right.providerId),"]
     },
     "da-committee-node/src/availability/factory.availability-responder-operations.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -520,20 +503,6 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         ".sort(([left], [right]) => left.localeCompare(right))",
-        ".sort(([left], [right]) => left.localeCompare(right))"
-      ]
-    },
-    "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.assert-match-output.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort(([left], [right]) => left.localeCompare(right));",
-        ".sort(([left], [right]) => left.localeCompare(right));"
-      ]
-    },
-    "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.create-local-kupmios-http-ogmios-raw-source.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "([left], [right]) => left.localeCompare(right),",
         ".sort(([left], [right]) => left.localeCompare(right))"
       ]
     },
@@ -831,33 +800,6 @@
         ".sort(([left], [right]) => left.localeCompare(right))"
       ]
     },
-    "midgard-watcher/src/indexers/user-event-indexer/local-history.local-stable-snapshot.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "watcherCanonicalJson(a).localeCompare(watcherCanonicalJson(b)),"
-      ]
-    },
-    "midgard-watcher/src/indexers/user-event-reference-authority.create-body-reference-authority.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
-    },
-    "midgard-watcher/src/l1/finality-engine.clone-external-providers.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": ["left.providerId.localeCompare(right.providerId),"]
-    },
-    "midgard-watcher/src/l1/multi-provider-consistency.parse-configured-source.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "left.providerId.localeCompare(right.providerId),",
-        "left.providerId.localeCompare(right.providerId),"
-      ]
-    },
-    "midgard-watcher/src/l1/rollback-engine/state.plan-rewind.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "].sort((left, right) => left.outRef.localeCompare(right.outRef)),"
-      ]
-    },
     "midgard-watcher/src/runtime/deployment-identity.verify-watcher-deployment-identity.ts": {
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
@@ -867,19 +809,6 @@
       "sites": [
         "left.code.localeCompare(right.code) ||",
         "left.subjectDigest.localeCompare(right.subjectDigest),"
-      ]
-    },
-    "midgard-watcher/src/storage/durable-store.assert-references.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "const namespaceOrder = left.namespace.localeCompare(right.namespace);",
-        "? left.key.localeCompare(right.key)"
-      ]
-    },
-    "midgard-watcher/src/storage/durable-store.journal-watcher-protocol-utxo-transition.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "[...records].sort((left, right) => keyOf(left).localeCompare(keyOf(right)));"
       ]
     },
     "midgard-watcher/src/verification/authenticated-replay-transcript.assert-raw-cbor-value.ts": {
@@ -909,12 +838,6 @@
     "midgard-watcher/tests/funding/sqlite-prover-funding-reservation-store.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": ["left.outRef.localeCompare(right.outRef),"]
-    },
-    "midgard-watcher/tests/l1/local-historical-capture.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        ".sort((left, right) => left.txHash.localeCompare(right.txHash));"
-      ]
     },
     "midgard-node-tools/src/commands/stress-wallets/terminal-drain.terminal-snapshot-hash.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -1183,24 +1106,6 @@
         "const prune = depth > recoveryDepth && !live;"
       ]
     },
-    "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.create-local-kupmios-http-ogmios-raw-source.ts": {
-      "reason": "Fault-proof Kupmios source counts its own depth against cd and k; W1 deletes the `fp` Kupmios sources (the watcher reads the follower).",
-      "sites": [
-        "blockDistance + 1n < BigInt(minimumObservationDepth) ||",
-        "blockDistance >",
-        "depth < minimumObservationDepth ||",
-        "depth > config.releaseFinality.policy.automaticRecoveryMaxDepth",
-        "if (depth >= minimum) {",
-        "if (candidateDepth >= minimum) {",
-        "if (tip.blockNo - Number(selected.blockNo) + 1 > maximum) break;"
-      ]
-    },
-    "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.read-admitted-local-kupmios-utxos-by-out-ref-at-point.ts": {
-      "reason": "Fault-proof Kupmios source page bound against k; W1 deletes the `fp` Kupmios sources.",
-      "sites": [
-        "if (page.transactions.length > details.automaticRecoveryMaxDepth) {"
-      ]
-    },
     "midgard-fault-proofs/src/workflow/signed-transaction-reconciliation.ts": {
       "reason": "Watcher signed-tx reconciliation counts blocks after a boundary against the release depth; watcher intent families move to the intent journal in I4 (deferred).",
       "sites": [
@@ -1277,45 +1182,6 @@
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
       "sites": ["BigInt(record.finalityDepth) < BigInt(RELEASE_FINALITY_DEPTH)"]
     },
-    "midgard-watcher/src/indexers/user-event-reference-authority.create-watcher-local-user-event-reference-authority.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": [
-        "BigInt(point.depth) < BigInt(resolved.minimumConfirmationDepth) ||"
-      ]
-    },
-    "midgard-watcher/src/l1/finality-engine.admit-watcher-local-backfill-finality.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": [
-        "BigInt(capture.depthAtObservedTip) < BigInt(policy.confirmationDepth)"
-      ]
-    },
-    "midgard-watcher/src/l1/finality-engine.evaluate-watcher-finality.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": [
-        "if (BigInt(agreement.minimumDepth) >= BigInt(policy.confirmationDepth)) {"
-      ]
-    },
-    "midgard-watcher/src/l1/finality-engine.parse-watcher-finality-policy.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": ["BigInt(policy.maximumPreFinalityRollbackDepth) >"]
-    },
-    "midgard-watcher/src/l1/finality-engine.parse-watcher-finality-state.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": [
-        "currentDepth < BigInt(policy.confirmationDepth) &&",
-        "currentDepth >= BigInt(policy.confirmationDepth) &&"
-      ]
-    },
-    "midgard-watcher/src/l1/resolved-block-observation.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": ["BigInt(point.depth) < BigInt(minimumConfirmationDepth)"]
-    },
-    "midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": [
-        "BigInt(monitorTip.blockNo) - BigInt(point.blockNo) >= confirmationDepth"
-      ]
-    },
     "midgard-watcher/src/verification/authenticated-replay-transcript.assert-raw-cbor-value.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
       "sites": ["depth < BigInt(input.minimumConfirmationDepth) ||"]
@@ -1323,10 +1189,6 @@
     "midgard-watcher/src/verification/replay-transcript-records.read-watcher-replay-transcript-records.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
       "sites": ["BigInt(text(inclusion.finalityDepth, \"inclusion depth\")) >="]
-    },
-    "midgard-watcher/tests/indexers/state-queue-catchup-finality.test.ts": {
-      "reason": "Test driver loop sized from cd; not a decision.",
-      "sites": ["for (let index = 0; index < 42 - RELEASE_DEPTH; index++) {"]
     }
   }
 }

@@ -32,10 +32,8 @@ export type StackConfig = {
   };
   watcher: {
     processTemplate: string;
-    authorityTemplate: string;
     releaseDirectory: string;
     releaseInput: string | null;
-    bearerFile: string;
     configDirectory: string;
     composeEnvFile: string;
   };
@@ -208,10 +206,8 @@ export function parseStackConfig(value: unknown): StackConfig {
     input.watcher,
     [
       "processTemplate",
-      "authorityTemplate",
       "releaseDirectory",
       "releaseInput",
-      "bearerFile",
       "configDirectory",
       "composeEnvFile",
     ],
@@ -333,11 +329,9 @@ export async function loadStackConfig(path: string) {
     throw new Error("User funding budget must cover all deposits and fees");
   const watcherSecrets = parse(await readFile(config.watcher.composeEnvFile));
   for (const key of [
-    "WATCHER_RECORD_KEY_FILE",
     "WATCHER_ROLLBACK_KEY_FILE",
     "WATCHER_PROVER_KEY_FILE",
     "WATCHER_AVAILABILITY_KEY_FILE",
-    "WATCHER_BEARER_FILE",
   ]) {
     const path = watcherSecrets[key];
     if (!path || !isAbsolute(path))
