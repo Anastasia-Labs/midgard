@@ -8,6 +8,7 @@ import foreignNativeAdoptionSql from "./sql/0006_foreign_native_adoption.sql";
 import dropForeignTipReconciliationsSql from "./sql/0007_drop_foreign_tip_reconciliations.sql";
 import followerAdmissionIdentitySql from "./sql/0008_follower_admission_identity.sql";
 import landedBlocksSql from "./sql/0009_landed_blocks.sql";
+import receiptSettlementsSql from "./sql/0010_receipt_settlements.sql";
 
 export type Migration = {
   readonly version: number;
@@ -79,6 +80,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "landed_blocks",
     checksumSha256: sha256Hex(landedBlocksSql),
     sql: landedBlocksSql,
+    transactional: true,
+  },
+  {
+    version: 10,
+    name: "receipt_settlements",
+    checksumSha256: sha256Hex(receiptSettlementsSql),
+    sql: receiptSettlementsSql,
     transactional: true,
   },
 ] as const;
@@ -162,10 +170,10 @@ export const APPLICATION_TABLE_NAMES = [
   "event_history_live_outputs",
   "event_history_incarnations",
   "event_history_l2_ledger_receipts",
+  "event_history_l2_ledger_receipt_settlements",
   "event_history_recovery_plans",
   "follower_event_ingestion",
   "node_landed_blocks",
-  "node_working_ledger_basis",
   "node_confirmed_ledger_frontier",
 ] as const;
 
@@ -223,6 +231,7 @@ export const APPLICATION_INDEX_NAMES = [
   "event_history_l2_ledger_receipts_unreversed",
   "event_history_recovery_plans_prepared",
   "uniq_node_landed_blocks_processed_parent",
+  "idx_receipt_settlements_settled_by",
 ] as const;
 
 export const migrationByVersion = new Map(

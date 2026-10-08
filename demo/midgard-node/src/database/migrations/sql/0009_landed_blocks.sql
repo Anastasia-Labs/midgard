@@ -35,16 +35,6 @@ CREATE TABLE node_landed_blocks (
 CREATE UNIQUE INDEX uniq_node_landed_blocks_processed_parent
   ON node_landed_blocks (parent_header_hash) WHERE state = 'processed';
 
--- class: D-x; retention: one row, replaced by every working-ledger rebase
--- The processed landed block (and its root) the working ledger
--- (`mempool_ledger`) and the native MPF were last rebuilt on.
-CREATE TABLE node_working_ledger_basis (
-  id boolean PRIMARY KEY DEFAULT true CHECK (id),
-  header_hash bytea NOT NULL CHECK (octet_length(header_hash) = 28),
-  utxos_root text NOT NULL CHECK (utxos_root ~ '^[0-9a-f]{64}$'),
-  updated_at timestamptz NOT NULL DEFAULT NOW()
-);
-
 -- class: D-x; retention: one row, advanced by every merge folded into confirmed_ledger
 -- The landed header whose post-state `confirmed_ledger` holds: the merged
 -- queue root, once every block up to it is folded in.

@@ -22,11 +22,18 @@ import {
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
 import { Database, NodeConfig } from "../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
-import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.select-authenticated-foreign-base-candidate.js";
 import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,
 } from "./utils/commit-block-header.js";
+
+/** The ledger a block commit builds on, and where it came from. */
+export type ResolvedCommitBaseLedgerEntries = {
+  readonly source: string;
+  readonly entries?: readonly Ledger.MinimalEntry[];
+  readonly root: string;
+  readonly utxoPayloadAggregate: SDK.DaPayloadEntrySizeAggregate;
+};
 
 /** Why a commit waits on a foreign tail landed-block processing has not
  * applied to the working ledger yet. */
