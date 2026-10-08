@@ -23,21 +23,39 @@ import {
  */
 
 describe("follower raw reads after pruning: beyond_retention, never missing", () => {
-  it("point reads below the window are point_beyond_retention", async () => {
+  it("point reads at a pruned block are point_beyond_retention", async () => {
     const fx = await fixture();
     await pruneFixture(fx);
     const reads = fx.reads();
-    for (const point of [fx.points.p1, fx.points.p3]) {
-      expect(reasonOf(await reads.addressUtxosAtPoint(bech32(T), point))).toBe(
-        "point_beyond_retention",
-      );
-      expect(reasonOf(await reads.utxosByOutRefAtPoint([], point))).toBe(
-        "point_beyond_retention",
-      );
-      expect(reasonOf(await reads.predecessorPoint(point))).toBe(
-        "point_beyond_retention",
-      );
-    }
+    // b1's block row is pruned: every point read there is refused.
+    const p1 = fx.points.p1;
+    expect(reasonOf(await reads.addressUtxosAtPoint(bech32(T), p1))).toBe(
+      "point_beyond_retention",
+    );
+    expect(reasonOf(await reads.utxosByOutRefAtPoint([], p1))).toBe(
+      "point_beyond_retention",
+    );
+    expect(reasonOf(await reads.predecessorPoint(p1))).toBe(
+      "point_beyond_retention",
+    );
+  });
+
+  it("a block kept below the window is canonical; only its live set is refused", async () => {
+    const fx = await fixture();
+    await pruneFixture(fx);
+    const reads = fx.reads();
+    // b3 stays (V's output is live), so the point is canonical, but the
+    // live set around it is pruned and cannot be answered whole.
+    const p3 = fx.points.p3;
+    expect(reasonOf(await reads.addressUtxosAtPoint(bech32(T), p3))).toBe(
+      "point_beyond_retention",
+    );
+    // Each outref is classed on its own row: A#0's spend was pruned.
+    const { a } = fx.hashes;
+    const read = okValue(await reads.utxosByOutRefAtPoint([`${a}#0`], p3));
+    expect(read.beyondRetention).toEqual([`${a}#0`]);
+    expect([read.outputs, read.spends, read.unknown]).toEqual([[], [], []]);
+    expect(okValue(await reads.predecessorPoint(p3))).toEqual(fx.points.p2);
   });
 
   it("utxosByOutRefAtPoint tells pruned rows from provably unknown outrefs", async () => {
