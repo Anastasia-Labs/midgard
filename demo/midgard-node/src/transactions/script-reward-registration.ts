@@ -288,6 +288,12 @@ export const ensureScriptRewardAccountRegisteredProgram = (
     const built = yield* SDK.buildScriptRewardRegistrationTxProgram(
       lucid,
       script,
+      {
+        walletInputs: yield* readSelectedWalletViewInputs(
+          lucid,
+          "the script reward-account registration",
+        ).pipe(Effect.mapError(fundingFailure)),
+      },
     );
     const txHash = yield* handleSignSubmit(
       lucid,

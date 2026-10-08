@@ -24,6 +24,7 @@ import {
 import {
   collateralForExactFee,
   formatAda,
+  operatorWalletInputsProgram,
   requireOperatorFundingProgram,
 } from "./funding-preflight.js";
 
@@ -147,6 +148,7 @@ export const retireOperatorProgram = (
       schedulerSync: witnesses.schedulerSync,
       validFrom,
       validTo,
+      walletInputs: yield* operatorWalletInputsProgram(lucid, label),
     });
     const txHash = yield* handleSignSubmit(
       lucid,
@@ -269,6 +271,7 @@ export const recoverOperatorBondProgram = (
       retiredNodeUnit: witnesses.retiredNodeUnit,
       validFrom: lowerBound,
       validTo,
+      walletInputs: yield* operatorWalletInputsProgram(lucid, label),
     });
     const txHash = yield* handleSignSubmit(
       lucid,

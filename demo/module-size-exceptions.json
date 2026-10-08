@@ -1386,8 +1386,8 @@
   },
   {
     "file": "midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
-    "max": 560,
-    "reason": "buildHistoryRetirementProgram is the dominant indivisible declaration (480 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 562,
+    "reason": "buildHistoryRetirementProgram is the dominant indivisible declaration (482 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Passes the node's explicit wallet-view inputs to fee-input selection and completion."
   },
   {
     "file": "midgard-sdk/tests/availability-challenge.q58-canonical-da-availability-commitment-v1.ts",

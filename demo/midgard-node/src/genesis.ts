@@ -21,13 +21,14 @@ import {
 } from "./services/intent-journal.js";
 import {
   buildUnsignedDepositTxWithMetadataProgram,
-  type SubmitDepositError,
+  SubmitDepositError,
 } from "./transactions/submit-deposit.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
 } from "./transactions/utils.js";
+import { readSelectedWalletViewInputs } from "./transactions/utils.wallet-view.js";
 
 /**
  * Seeds the local mempool ledger with configured genesis UTxOs on non-mainnet
@@ -114,6 +115,20 @@ export const submitGenesisDeposits: Effect.Effect<
   const plan = yield* openPlan;
   yield* lucid.switchToOperatorsMainWallet;
 
+  // The deposit's nonce and funding come from the operator wallet's view
+  // (§8.5), never from the provider.
+  const walletInputs = yield* readSelectedWalletViewInputs(
+    lucid.api,
+    "the genesis deposit",
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SubmitDepositError({
+          message: `Failed to read the wallet view to fund the genesis deposit: ${cause.message}`,
+          cause,
+        }),
+    ),
+  );
   // Hard-coded 10 ADA deposit.
   const { tx, metadata } = yield* buildUnsignedDepositTxWithMetadataProgram(
     lucid.api,
@@ -123,6 +138,7 @@ export const submitGenesisDeposits: Effect.Effect<
       l2Datum: null,
       lovelace: 10_000_000n,
       additionalAssets: {},
+      walletInputs,
     },
   );
   yield* handleSignSubmit(

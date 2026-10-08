@@ -24,6 +24,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
+import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
 
 export type PhasMembershipRewardRegistrationResult = {
   readonly rewardAddress: string;
@@ -76,7 +77,8 @@ export type PhasMembershipRegistrationOptions = {
     config: { readonly script: Script },
   ) => Effect.Effect<
     SDK.BuiltPhasMembershipRewardRegistrationTx,
-    SDK.LucidError | SDK.UnspecifiedNetworkError
+    SDK.LucidError | SDK.UnspecifiedNetworkError,
+    IntentJournal
   >;
   readonly submitRegistrationTx?: (
     lucid: LucidEvolution,
@@ -336,13 +338,33 @@ export const queryPhasMembershipRewardAccountRegisteredProgram = (
           }),
   });
 
+/** Builds the registration from the selected wallet's view (§8.5). */
 const defaultBuildRegistrationTx = (
   lucid: LucidEvolution,
   config: { readonly script: Script },
 ): Effect.Effect<
   SDK.BuiltPhasMembershipRewardRegistrationTx,
-  SDK.LucidError | SDK.UnspecifiedNetworkError
-> => SDK.buildPhasMembershipRewardRegistrationTxProgram(lucid, config);
+  SDK.LucidError | SDK.UnspecifiedNetworkError,
+  IntentJournal
+> =>
+  readSelectedWalletViewInputs(
+    lucid,
+    "the PHAS membership reward-account registration",
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SDK.LucidError({
+          message: `Failed to read the wallet view to fund the PHAS membership reward-account registration: ${cause.message}`,
+          cause,
+        }),
+    ),
+    Effect.flatMap((walletInputs) =>
+      SDK.buildPhasMembershipRewardRegistrationTxProgram(lucid, {
+        ...config,
+        walletInputs,
+      }),
+    ),
+  );
 
 const defaultSubmitRegistrationTx = (
   lucid: LucidEvolution,
