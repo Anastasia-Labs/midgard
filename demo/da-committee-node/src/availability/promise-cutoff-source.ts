@@ -15,7 +15,10 @@ export type PromiseCapacityLiability = Readonly<{
   hasActiveChallenge?: boolean;
   /** Supplied only after exact authenticated k-safe terminal history validation. */ terminalPoint?: PromiseCapacityPoint;
 }>;
-/** Null is exact absence with a same-response selected tip matching the boundary. */
+/**
+ * The point on the follower's chain, read under the boundary, with the
+ * boundary's tip; null when the point is not on that chain.
+ */
 export type PromiseCanonicalPointReader = (
   point: PromiseCapacityPoint,
 ) => Promise<Readonly<{
@@ -65,7 +68,7 @@ export const retiredPromiseCutoffs = async (
       proof.tip.blockNo < point.blockNo
     )
       throw new Error(
-        "Capacity ancestry proof changed its point, height or selected tip",
+        "Capacity ancestry proof changed its point, height or read boundary",
       );
     return proof;
   };

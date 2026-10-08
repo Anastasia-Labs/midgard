@@ -220,6 +220,48 @@ describe("retained availability responses", () => {
       retained({ ...record, deploymentFingerprint: "55".repeat(32) }),
     ).rejects.toThrow(/this deployment/);
   });
+
+  it("refuses a commitment naming another deployment identity before reading the store", async () => {
+    const getDaPayload = vi.fn(async () => record);
+    await expect(
+      retainedAvailabilityPayload({
+        store: { getDaPayload },
+        deploymentFingerprint,
+        deploymentIdentity,
+        commitment: { ...commitment, deployment_identity: "ee".repeat(28) },
+      }),
+    ).rejects.toThrow("availability commitment belongs to another deployment");
+    expect(getDaPayload).not.toHaveBeenCalled();
+  });
+
+  it.each<[string, Partial<DaPayloadRecord>]>([
+    ["stored under another header", { headerHash: "ee".repeat(28) }],
+    ...(
+      ["fetched", "malformed_da", "root_mismatch", "conflicted"] as const
+    ).map((validationStatus): [string, Partial<DaPayloadRecord>] => [
+      `${validationStatus}, not verified`,
+      { validationStatus },
+    ]),
+  ])("refuses a record %s", async (_name, change) => {
+    await expect(retained({ ...record, ...change })).rejects.toThrow(
+      "availability response requires a verified retained payload from this deployment",
+    );
+  });
+
+  it("leaves a missing_da record unavailable", async () => {
+    await expect(
+      retained({ ...record, validationStatus: "missing_da" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each(["", "0", "AB", "zz", `${record.payloadCborHex}0`])(
+    "refuses payload hex %j that is not canonical lowercase hex",
+    async (payloadCborHex) => {
+      await expect(retained({ ...record, payloadCborHex })).rejects.toThrow(
+        "retained availability payload is not canonical hexadecimal",
+      );
+    },
+  );
 });
 
 describe("availability responder awaiting the committee's next L1 scan", () => {

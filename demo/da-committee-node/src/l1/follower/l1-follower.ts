@@ -10,7 +10,6 @@ import {
   FOLLOWER_NODE_UNAVAILABLE,
   FOLLOWER_TRACKED_SET_CHANGED,
   FOLLOWER_WAITING,
-  type FollowReadiness,
   type FollowStatus,
   openPostgresFactStore,
   type PointStatus,
@@ -47,6 +46,15 @@ import {
 
 /** The committee's follower is not configured; the detail names what is missing. */
 export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
+
+/**
+ * The L1 node refused the node-to-client handshake: a wrong
+ * `CARDANO_NETWORK_MAGIC`, or no node-to-client version both sides speak.
+ * The transport keeps redialing, so a node that answers again clears it, but
+ * a wrong configuration does not clear by waiting: an intervention, never
+ * the transient `l1_node_unavailable`.
+ */
+export const L1_NODE_HANDSHAKE_FAILED = "l1_node_handshake_failed";
 
 /** A reason the committee's L1 source holds it unready. */
 export type CommitteeL1Readiness = Readonly<{ reason: string; detail: string }>;
@@ -142,7 +150,7 @@ export const committeeL1Source = (
 ): CommitteeL1Source => {
   /** The last seed attempt's pending reason, while a seed is owed. */
   let seedDetail = "own wallets not seeded yet";
-  const followerReadiness = (): readonly FollowReadiness[] => {
+  const followerReadiness = (): readonly CommitteeL1Readiness[] => {
     const status = parts.status();
     return status === null
       ? [
@@ -151,7 +159,15 @@ export const committeeL1Source = (
             detail: "the follower has not started",
           },
         ]
-      : status.readiness;
+      : status.readiness.map((entry) =>
+          entry.reason === FOLLOWER_NODE_UNAVAILABLE &&
+          status.node?.reason === "node_handshake_failed"
+            ? {
+                reason: L1_NODE_HANDSHAKE_FAILED,
+                detail: `the L1 node refused the handshake; check CARDANO_NETWORK_MAGIC and the node's network: ${entry.detail}`,
+              }
+            : entry,
+        );
   };
   const seedPending = (): CommitteeL1Readiness[] =>
     parts.seeder === undefined || parts.seeder.ready()

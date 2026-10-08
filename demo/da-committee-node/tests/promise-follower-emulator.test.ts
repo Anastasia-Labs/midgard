@@ -135,7 +135,7 @@ const fixture = async () => {
 };
 
 const REFUSED =
-  "Capacity ancestry proof changed its point, height or selected tip";
+  "Capacity ancestry proof changed its point, height or read boundary";
 
 describe("promise capacity released at a terminal Close on the follower's facts, with no chain index configured", () => {
   it("releases the capacity once the Close's block is on the follower's chain", async () => {

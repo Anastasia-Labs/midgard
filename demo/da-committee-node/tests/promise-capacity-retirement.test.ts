@@ -199,7 +199,7 @@ describe("durable recovery-safe capacity release", () => {
       point,
       tip: { ...f.getBoundary(), blockHash: "9a".repeat(32) },
     }));
-    await expect(f.run()).rejects.toThrow("selected tip");
+    await expect(f.run()).rejects.toThrow("read boundary");
     f.readCanonicalPoint.mockImplementationOnce(async (point) => ({
       point: { ...point, blockNo: 0 },
       tip: f.getBoundary(),

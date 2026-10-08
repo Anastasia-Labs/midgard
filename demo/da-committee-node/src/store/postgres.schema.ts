@@ -418,8 +418,8 @@ export const committeeStoreMigrations: MigrationSet = {
  * records are upgraded after it (`upgradeCommitteeL1Records`), then the
  * stored retirement floor is re-bound and the stored points are checked
  * against the L1 origin (`checks`), each write fenced on the instance lock.
- * A refusal is a named readiness reason; only a point before the L1 origin
- * is a startup error the node exits on.
+ * A refusal is a named readiness reason the startup retry reports, the
+ * process up.
  */
 export const initializeCommitteeSchema = async (
   pool: Pool,
@@ -434,7 +434,7 @@ export const initializeCommitteeSchema = async (
       COMMITTEE_STORE_DERIVED_SQL,
     ].join("\n"),
   );
-  await upgradeCommitteeL1Records(pool, lock, write);
+  await upgradeCommitteeL1Records(pool, lock, write, checks.securityParameter);
   await fencedOpenTransaction(pool, lock, async (client) => {
     if (checks.l1Origin !== undefined)
       await assertNoPointBeforeL1Origin(client, checks.l1Origin);

@@ -2,6 +2,7 @@ import type { AddressInfo } from "node:net";
 import { connect, createServer, type Server, type Socket } from "node:net";
 
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { Client } from "pg";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { retryStartup } from "../src/startup.js";
@@ -282,7 +283,7 @@ describe("committee node startup against a Postgres store that is not ready yet"
     ]);
   });
 
-  it("still refuses a store holding another deployment's state", async () => {
+  it("holds unready, retrying, on a store holding another deployment's state, and starts once the store is reset", async () => {
     const database = await databases.create();
     const store = await PostgresCommitteeStore.open(database.url);
     cleanups.push(() => store.close());
@@ -294,17 +295,32 @@ describe("committee node startup against a Postgres store that is not ready yet"
     });
     await store.initDeployment(marker("cc".repeat(32)));
     let attempts = 0;
-    await expect(
-      retryStartup({
-        attempt: async () => {
-          attempts += 1;
-          await store.initDeployment(marker("dd".repeat(32)));
-        },
-        onFailure: () => undefined,
-        write: () => undefined,
-        sleep: async () => undefined,
-      }),
-    ).rejects.toThrow(/stale_deployment_state_requires_fresh_redeploy/u);
-    expect(attempts).toBe(1);
+    const reasons: string[] = [];
+    await retryStartup({
+      attempt: async () => {
+        attempts += 1;
+        await store.initDeployment(marker("dd".repeat(32)));
+      },
+      onFailure: (reason) => reasons.push(reason),
+      write: () => undefined,
+      sleep: async () => {
+        // The operator's explicit reset, after the third refusal.
+        if (reasons.length === 3) {
+          const client = new Client({ connectionString: database.url });
+          await client.connect();
+          try {
+            await client.query("DELETE FROM committee_deployment");
+          } finally {
+            await client.end();
+          }
+        }
+      },
+    });
+    expect(attempts).toBe(4);
+    expect(reasons).toHaveLength(3);
+    for (const reason of reasons)
+      expect(reason).toMatch(
+        /^starting:stale_deployment_state_requires_fresh_redeploy: /u,
+      );
   });
 });
