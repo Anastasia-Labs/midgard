@@ -13,6 +13,9 @@ vi.mock("../src/devnet-stack/watcher.js", () => ({
 vi.mock("../src/devnet-stack/history-pin.js", () => ({
   recordedHistoryGenesisPin: () => ({}),
 }));
+vi.mock("../src/devnet-stack/deployment-origin.js", () => ({
+  recordedL1Origin: () => ({}),
+}));
 vi.mock("../src/devnet-stack/reserve-float-chain.js", () => ({
   enduranceReasons: vi.fn(),
   runEnduranceMaintainer: vi.fn(),

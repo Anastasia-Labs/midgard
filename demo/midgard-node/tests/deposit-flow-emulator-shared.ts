@@ -1715,7 +1715,6 @@ export {
   submitWithdrawalWithDiagnostics,
 } from "./deposit-flow-emulator-shared.commit-worker-program.js";
 export {
-  countDaPayloadRows,
   type DepositFlowReferenceScripts,
   describeProviderOutRefStates,
   EMULATOR_DEPLOYMENT_IDENTITY,

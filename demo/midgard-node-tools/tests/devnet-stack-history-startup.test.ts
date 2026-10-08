@@ -51,7 +51,9 @@ beforeAll(async () => {
     outDir: ".probe-dist/history-startup-fixture",
     clean: true,
     target: "node22",
+    // midgard-node is consumed from source, as tsup.config.ts inlines it.
     noExternal: [
+      /^midgard-node(\/|$)/,
       "midgard-watcher/tests/support/deployment-authority-fixture",
       "midgard-watcher/tests/runtime/process-config.watcher-config-value",
     ],

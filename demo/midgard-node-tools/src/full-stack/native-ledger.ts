@@ -1,6 +1,7 @@
 import { chmod, mkdir, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import type { L1NodeConnection } from "../l1-origin.js";
 import type { StackProcesses } from "./process.js";
 
 export function nativeLedgerPaths(processes: StackProcesses) {
@@ -38,12 +39,24 @@ export async function shareWithContainers(path: string, executable = false) {
     if (!entry.isSymbolicLink())
       await shareWithContainers(join(path, entry.name));
 }
+/** The stack's Cardano network: Preprod. */
+const PREPROD_NETWORK_MAGIC = 1;
+/** The stack's local node as host tools reach it. */
+export function hostL1Node(processes: StackProcesses): L1NodeConnection {
+  const paths = nativeLedgerPaths(processes);
+  return {
+    socketPath: join(paths.socketDirectory, "node.socket"),
+    binaryPath: paths.binary,
+    networkMagic: PREPROD_NETWORK_MAGIC,
+  };
+}
 export function configureHostNativeLedger(processes: StackProcesses) {
   const paths = nativeLedgerPaths(processes);
+  const node = hostL1Node(processes);
   const env = {
-    L1_NODE_SOCKET_PATH: join(paths.socketDirectory, "node.socket"),
+    L1_NODE_SOCKET_PATH: node.socketPath,
     L1_NODE_CONFIG_PATH: join(paths.directory, "config.json"),
-    L1_NATIVE_CHAIN_SYNC_BINARY_PATH: paths.binary,
+    L1_NATIVE_CHAIN_SYNC_BINARY_PATH: node.binaryPath,
   };
   Object.assign(processes.env, env);
   return env;

@@ -409,9 +409,9 @@ describe("nodeEnvironment", () => {
       publicReaderPassword: "r",
     } as Identities;
     const artifacts = {
-      nativeOwnerBinary: "o",
+      nativeOwnerBinary: "/bin/o",
       nativeOwnerSha256: "h",
-      transportBinary: "c",
+      transportBinary: "/bin/c",
     };
     for (const role of ["command", "listen"] as const)
       expect(
@@ -420,6 +420,8 @@ describe("nodeEnvironment", () => {
           run,
           identities,
           artifacts,
+          oneShot: { txHash: "00".repeat(32), outputIndex: 0 },
+          l1Origin: { slot: 1, blockHash: "11".repeat(32) },
           historyGenesisPin: "ab".repeat(32),
           role,
         }).MIDGARD_RUN_STATE_PATH,

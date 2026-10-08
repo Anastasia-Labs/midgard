@@ -445,7 +445,6 @@
     "tests/wallet-hygiene.test.ts": 2.8,
     "tests/withdrawal-classification-selected-state.test.ts": 2.4,
     "tests/withdrawal-classification-semantics.test.ts": 2.9,
-    "tests/withdrawal-classification.test.ts": 2.5,
     "tests/withdrawal-cli-utils.test.ts": 2.5,
     "tests/write-behind.test.ts": 2.3
   }

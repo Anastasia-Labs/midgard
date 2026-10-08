@@ -10,12 +10,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { assertComposeVersion } from "../src/full-stack/prerequisites.js";
 import { committeeIsReady } from "../src/full-stack/readiness.js";
 import { runtimeInputDigest, runtimeSteps } from "../src/full-stack/runtime.js";
+import { NodeFollowerUnconfiguredError } from "../src/l1-origin.js";
 import {
   RecordingProcesses,
   removeStackFixtures,
   stackEnvironment,
   stackFixture,
 } from "./full-stack-fixtures.js";
+import { nodeFollowerPlan } from "./node-follower-plan.js";
 
 const manifestId = "a".repeat(64);
 const recordKey = "0f".repeat(32);
@@ -69,6 +71,12 @@ afterEach(async () => {
   await removeStackFixtures();
 });
 
+const DEPLOYED_FOLLOWER_INPUTS = {
+  HUB_ORACLE_ONE_SHOT_TX_HASH: "ab".repeat(32),
+  HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0",
+  L1_ORIGIN: `7.${"cd".repeat(32)}`,
+};
+
 /** A generated run with one committee member and live HTTP services on loopback. */
 async function stack() {
   const state = { nodeStarted: false };
@@ -107,6 +115,8 @@ async function stack() {
   config.da.ports.committeeApiBase = committeePort;
   const env = stackEnvironment(config);
   const processes = new RecordingProcesses(config, env);
+  // What the deployment steps restore before the services step runs.
+  Object.assign(processes.env, DEPLOYED_FOLLOWER_INPUTS);
   processes.responses["runtime-start"] = () => {
     state.nodeStarted = true;
   };
@@ -225,6 +235,34 @@ describe("runtime services step", () => {
     );
     expect(pin).toBeGreaterThan(-1);
     expect(database).toBeGreaterThan(pin);
+  });
+  it("writes a node.env whose L1 follower runs from the deployment's origin", async () => {
+    const { directory, services } = await stack();
+    await services.execute(undefined);
+    const nodeEnv = parse(
+      await readFile(join(directory, "run/services/node.env")),
+    );
+    const plan = nodeFollowerPlan(nodeEnv);
+    expect(plan).toMatchObject({
+      kind: "run",
+      socketPath: "/ipc/node.socket",
+      origin: { hubOracleOneShot: { index: 0 } },
+    });
+    if (plan.kind !== "run") throw new Error(plan.detail);
+    expect(plan.origin.origin.slot).toBe(7);
+  });
+  it("refuses to write node.env without the deployment's origin", async () => {
+    const { directory, processes, services } = await stack();
+    delete processes.env.L1_ORIGIN;
+    await expect(services.execute(undefined)).rejects.toThrow(
+      NodeFollowerUnconfiguredError,
+    );
+    await expect(
+      readFile(join(directory, "run/services/node.env")),
+    ).rejects.toThrow(/ENOENT/);
+    expect(processes.calls.map((call) => call.id)).not.toContain(
+      "runtime-start",
+    );
   });
   it("confirms a completed run without rebuilding or restarting it", async () => {
     const { processes, services, state } = await stack();

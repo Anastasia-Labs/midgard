@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { entropyToMnemonic } from "bip39";
 
 import {
@@ -9,6 +10,7 @@ import {
   type StackConfig,
 } from "../src/full-stack/config.js";
 import { StackProcesses } from "../src/full-stack/process.js";
+import type { DerivedL1Origin } from "../src/l1-origin.js";
 
 export type RecordedCall = {
   id: string;
@@ -35,6 +37,36 @@ export class RecordingProcesses extends StackProcesses {
     return typeof response === "function"
       ? await response(call)
       : (response ?? null);
+  }
+  override async l1NodeTip() {
+    this.calls.push({
+      id: "l1-node-tip",
+      args: [],
+      overrides: {},
+      env: { ...this.env },
+      scope: "host",
+    });
+    return this.responses["l1-node-tip"] as L1Origin | undefined;
+  }
+  override async deriveL1Origin(
+    nonceTxHash: string,
+    from: L1Origin | undefined,
+  ) {
+    const call = {
+      id: "l1-origin-derive",
+      args: [
+        nonceTxHash,
+        from === undefined ? "genesis" : formatL1Origin(from),
+      ],
+      overrides: {},
+      env: { ...this.env },
+      scope: "host" as const,
+    };
+    this.calls.push(call);
+    const response = this.responses["l1-origin-derive"];
+    return (
+      typeof response === "function" ? await response(call) : response
+    ) as DerivedL1Origin;
   }
   override async hostDatabaseIdentity() {
     this.calls.push({

@@ -1151,7 +1151,7 @@
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-shared.ts",
-    "max": 1840,
+    "max": 1839,
     "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API."
   },
   {

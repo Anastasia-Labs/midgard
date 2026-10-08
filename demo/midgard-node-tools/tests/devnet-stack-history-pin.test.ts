@@ -131,10 +131,12 @@ describe("nodeEnvironment history genesis pin", () => {
     publicReaderPassword: "r",
   } as Identities;
   const artifacts = {
-    nativeOwnerBinary: "o",
+    nativeOwnerBinary: "/bin/o",
     nativeOwnerSha256: "h",
-    transportBinary: "c",
+    transportBinary: "/bin/c",
   };
+  const oneShot = { txHash: "00".repeat(32), outputIndex: 0 };
+  const l1Origin = { slot: 1, blockHash: "11".repeat(32) };
 
   it("carries the pin to listen and to commands", () => {
     for (const role of ["command", "listen"] as const)
@@ -144,6 +146,8 @@ describe("nodeEnvironment history genesis pin", () => {
           run,
           identities,
           artifacts,
+          oneShot,
+          l1Origin,
           historyGenesisPin: PIN_A,
           role,
         }).L1_HISTORY_GENESIS_LOSSLESS_SHA256,
@@ -167,6 +171,8 @@ describe("nodeEnvironment history genesis pin", () => {
         run,
         identities,
         artifacts,
+        oneShot,
+        l1Origin,
         historyGenesisPin: null,
         role: "listen",
       }),

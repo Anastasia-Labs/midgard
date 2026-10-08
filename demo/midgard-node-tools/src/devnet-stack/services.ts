@@ -9,6 +9,7 @@ import {
   publicRetainedDaEnvironment,
 } from "./da.js";
 import type { DeployContext } from "./deploy.js";
+import { recordedL1Origin } from "./deployment-origin.js";
 import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
 import { recordedHistoryGenesisPin } from "./history-pin.js";
 import { walletInfos } from "./identities.js";
@@ -113,6 +114,7 @@ export const serviceSpecs = (
       env: nodeEnvironment({
         ...context,
         oneShot,
+        l1Origin: recordedL1Origin(layout, oneShot),
         historyGenesisPin: recordedHistoryGenesisPin(layout),
         role: "listen",
       }),

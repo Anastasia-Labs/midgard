@@ -693,9 +693,19 @@ follower starts. To pin it in operator config, run
 --network-magic <n>` (see the
 [follower README](../midgard-l1-follower/README.md#origin)) and set the
 printed `l1Origin` as `L1_ORIGIN=<slot>.<block hash>`. `L1_ORIGIN` is
-optional and strict (a decimal slot without leading zeros, a dot, then the
-64-character lowercase hex block hash); it is not part of the profile or
-manifest.
+strict (a decimal slot without leading zeros, a dot, then the 64-character
+lowercase hex block hash); it is not part of the profile or manifest.
+
+The node's L1 follower runs only with `L1_ORIGIN`, the hub-oracle one-shot and
+the local node (`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`,
+`L1_NATIVE_CHAIN_SYNC_BINARY_PATH`). Without any of them the node reports
+`l1_follower_unconfigured` and ingests no deposits or withdrawals. The devnet
+and full-stack builders in `midgard-node-tools` derive `L1_ORIGIN` from the
+deployment's nonce tx on their own local node, record it with the run, and
+refuse to write a node environment that leaves the follower unconfigured. For
+the full stack on preprod, an `L1_ORIGIN` in the stack env file must equal the
+derived origin; a run whose nonce was signed before it recorded a scan start
+needs one there.
 
 ```sh
 node dist/index.js deploy-reference-script-node-runtime
