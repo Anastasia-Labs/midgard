@@ -74,7 +74,11 @@ export const openNodeFollowerStore = async (
 export const ingestionHook = (
   store: FactStore,
   config: ForcedOrderConfig,
-  options: { ledger?: LedgerOutputs; sources?: TxContentSource[] } = {},
+  options: {
+    ledger?: LedgerOutputs;
+    sources?: TxContentSource[];
+    caughtUp?: () => boolean;
+  } = {},
 ) => {
   const logs: string[] = [];
   const hook = forcedOrderIngestionHook({

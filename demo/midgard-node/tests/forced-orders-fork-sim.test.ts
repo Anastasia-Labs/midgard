@@ -4,8 +4,9 @@
  * runner's check), and its rows equal an independent model of the canonical
  * chain: same-block carriage resolves, earlier carriage is pending, tampered
  * carriage is malformed, failed order txs open nothing, spends close rows,
- * rollbacks delete them and pruning drops spent ones k deep. Each suite also
- * proves its corpus exercised every case it claims.
+ * rollbacks delete them and their keys, and pruning drops spent ones k deep
+ * (their keys stay while canonical). Each suite also proves its corpus
+ * exercised every case it claims.
  */
 import {
   type FactStore,

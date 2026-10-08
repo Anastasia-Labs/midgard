@@ -16,10 +16,22 @@
  * follower view. An order whose carriage no source has yet keeps the node
  * unready with `forced_order_carriage_pending` and is retried on the
  * driver's backoff; it never exits the process and never writes a
- * verdict. An order that cannot be rebuilt holds
- * `forced_order_ingestion_failed`.
+ * verdict. An order one of the three ruled admission stops refuses (the
+ * auxiliary-data hash, the script program envelope, the output value size)
+ * holds `forced_order_admission_stopped`, naming the stop; any other order
+ * that cannot be rebuilt holds `forced_order_ingestion_failed`.
+ *
+ * A rollback that removes an order removes its follower key and its order
+ * row (N10b). In the same transaction, while the follower is caught up, the
+ * hook deletes each node row without a header whose order is gone and that
+ * no unfinished block journal holds. A row such a journal holds is an
+ * orphan for the event-history recovery (`countOrphanedAdmissions`) and
+ * keeps the node unready with `l1_events_orphan_recovery` until that
+ * journal is disposed of; a row with a header is its header's. An order
+ * that lands again is ingested again from its own bytes, to the same row.
  */
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
+import type { MidgardForcedTxAdmissionStopped } from "@al-ft/midgard-core/consensus-validation";
 import {
   type FactStore,
   type LedgerOutputs,
@@ -32,11 +44,19 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import type { UTxO } from "@lucid-evolution/lucid";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { numbered } from "../database/follower-schema.js";
 import { ForcedTransactionsDB } from "../database/index.js";
-import type { DriverHold, DriverHook } from "../l1-events/driver.js";
+import {
+  abandonedForcedAdmission,
+  orphanedForcedAdmission,
+} from "../database/l1-admission-identity.js";
+import {
+  type DriverHold,
+  type DriverHook,
+  EVENTS_ORPHAN_RECOVERY,
+} from "../l1-events/driver.js";
 import type { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
 import {
@@ -54,6 +74,19 @@ import { type ForcedOrderRow, forcedOrdersAt } from "./reads.js";
 export const FORCED_ORDER_CARRIAGE_PENDING = "forced_order_carriage_pending";
 /** An order could not be rebuilt (malformed, or its bytes do not open). */
 export const FORCED_ORDER_INGESTION_FAILED = "forced_order_ingestion_failed";
+/**
+ * One of the three ruled admission stops refused an order's transaction:
+ * its auxiliary-data hash, a script program envelope, or an output value's
+ * size. The detail names the stop. It holds the horizon as a failure does.
+ */
+export const FORCED_ORDER_ADMISSION_STOPPED = "forced_order_admission_stopped";
+
+/** The ruled stops `forced_order_admission_stopped` names. */
+const RULED_STOPS: ReadonlySet<string> = new Set([
+  "E_AUX_DATA_FORBIDDEN",
+  "E_SCRIPT_PROGRAM_ENCODING",
+  "E_VALUE_SIZE",
+]);
 
 /** Runs a node database effect (the node's runtime, or a test's). */
 export type RunDatabase = <A, E>(
@@ -69,6 +102,12 @@ export type ForcedOrderIngestionOptions = Readonly<{
   /** §12.3 step 4, in order. */
   sources?: readonly TxContentSource[];
   run: RunDatabase;
+  /**
+   * Whether the follower is caught up; rows whose order is gone are deleted
+   * only then (a follower replaying from behind has not yet re-derived every
+   * order). Absent: always.
+   */
+  caughtUp?: () => boolean;
   log?: (line: string) => void;
 }>;
 
@@ -100,10 +139,38 @@ const ingestedOrders = (orders: readonly ForcedOrderRow[]) =>
     );
   });
 
-/** Inserts `entries` if the follower is still at `view`. */
-const insertAtView = (
+type OrderOutRef = Readonly<{
+  tx_order_l1_tx_hash: Buffer;
+  tx_order_l1_output_index: number;
+}>;
+
+const rowLabel = (row: OrderOutRef): string =>
+  outRefLabel({
+    txHash: Buffer.from(row.tx_order_l1_tx_hash),
+    index: Number(row.tx_order_l1_output_index),
+  });
+
+/** What one write at a view did. */
+type ViewWrite =
+  | Readonly<{ kind: "stale" }>
+  | Readonly<{
+      kind: "written";
+      /** Rows deleted because their order is gone. */
+      deleted: readonly string[];
+      /** Rows whose order is gone that an unfinished block journal holds. */
+      orphaned: readonly string[];
+    }>;
+
+/**
+ * If the follower is still at `view`: deletes the rows whose order is gone
+ * (when `sweep`), inserts `entries`, and names the orphans left for the
+ * recovery. The table lock orders this against a block journal's due-set
+ * check, which holds it in SHARE mode until the journal commits.
+ */
+const writeAtView = (
   view: View,
   entries: readonly ForcedTransactionsDB.Entry[],
+  sweep: boolean,
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -114,9 +181,25 @@ const insertAtView = (
           numbered(check.sql),
           check.params as never,
         );
-        if (valid[0]?.valid !== true) return "stale" as const;
-        yield* ForcedTransactionsDB.insertEntries(entries);
-        return "inserted" as const;
+        if (valid[0]?.valid !== true) return { kind: "stale" } as ViewWrite;
+        yield* sql`LOCK TABLE ${sql(ForcedTransactionsDB.tableName)} IN SHARE ROW EXCLUSIVE MODE`;
+        const deleted = sweep
+          ? yield* sql<OrderOutRef>`DELETE FROM ${sql(ForcedTransactionsDB.tableName)} t
+              WHERE ${abandonedForcedAdmission(sql, "t")}
+              RETURNING t.tx_order_l1_tx_hash, t.tx_order_l1_output_index`
+          : [];
+        if (entries.length > 0)
+          yield* ForcedTransactionsDB.insertEntries(entries);
+        const orphaned = yield* sql<OrderOutRef>`SELECT
+            t.tx_order_l1_tx_hash, t.tx_order_l1_output_index
+          FROM ${sql(ForcedTransactionsDB.tableName)} t
+          WHERE ${orphanedForcedAdmission(sql, "t")}
+          ORDER BY t.tx_order_l1_tx_hash, t.tx_order_l1_output_index`;
+        return {
+          kind: "written",
+          deleted: deleted.map(rowLabel),
+          orphaned: orphaned.map(rowLabel),
+        } as ViewWrite;
       }),
     );
   });
@@ -214,6 +297,7 @@ const entryOf = async (
 ): Promise<
   | Readonly<{ kind: "entry"; entry: ForcedTransactionsDB.Entry }>
   | Exclude<OrderPreimages, { kind: "ok" }>
+  | Readonly<{ kind: "stopped"; detail: string }>
 > => {
   if (outcome.kind !== "ok") return outcome;
   const exit = await options.run(
@@ -224,12 +308,29 @@ const entryOf = async (
       programMaterial,
     }),
   );
-  return Exit.isSuccess(exit)
-    ? { kind: "entry", entry: exit.value }
+  const label = `${outcome.order.utxo.txHash}#${outcome.order.utxo.outputIndex.toString()}`;
+  if (Exit.isSuccess(exit)) return { kind: "entry", entry: exit.value };
+  const stop = ruledStop(exit.cause);
+  return stop === undefined
+    ? { kind: "failed", detail: `${label}: ${failureText(exit)}` }
     : {
-        kind: "failed",
-        detail: `${outcome.order.utxo.txHash}#${outcome.order.utxo.outputIndex.toString()}: ${failureText(exit)}`,
+        kind: "stopped",
+        detail: `${label}: ${stop.code} ${stop.violation.featureId} (${stop.violation.detail})`,
       };
+};
+
+/** The ruled admission stop a failed entry stopped at, if it was one. */
+const ruledStop = <E>(
+  cause: Cause.Cause<E>,
+): MidgardForcedTxAdmissionStopped | undefined => {
+  const failure = Cause.failureOption(cause);
+  if (Option.isNone(failure)) return undefined;
+  const error = failure.value as Partial<MidgardForcedTxAdmissionStopped>;
+  return error?._tag === "MidgardForcedTxAdmissionStopped" &&
+    error.code !== undefined &&
+    RULED_STOPS.has(error.code)
+    ? (error as MidgardForcedTxAdmissionStopped)
+    : undefined;
 };
 
 /** The driver hook that ingests the follower's forced orders. */
@@ -249,8 +350,10 @@ export const forcedOrderIngestionHook =
         reason: FORCED_ORDER_INGESTION_FAILED,
         detail: `forced orders at ${view.point.slot.toString()}: ${read.kind} (${read.detail})`,
       };
-    if (read.orders.length === 0) return undefined;
-    const done = await options.run(ingestedOrders(read.orders));
+    const done =
+      read.orders.length === 0
+        ? Exit.succeed(new Set<string>())
+        : await options.run(ingestedOrders(read.orders));
     if (Exit.isFailure(done))
       return {
         reason: FORCED_ORDER_INGESTION_FAILED,
@@ -259,6 +362,7 @@ export const forcedOrderIngestionHook =
     const programMaterial = (): readonly UTxO[] => read.programMaterial;
     const entries: ForcedTransactionsDB.Entry[] = [];
     const pending: string[] = [];
+    const stopped: string[] = [];
     const failed: string[] = [];
     for (const row of read.orders) {
       if (done.value.has(outRefLabel(row.outRef))) continue;
@@ -269,27 +373,45 @@ export const forcedOrderIngestionHook =
       );
       if (outcome.kind === "entry") entries.push(outcome.entry);
       else if (outcome.kind === "pending") pending.push(outcome.detail);
+      else if (outcome.kind === "stopped") stopped.push(outcome.detail);
       else failed.push(outcome.detail);
     }
-    if (entries.length > 0) {
-      const written = await options.run(insertAtView(view, entries));
-      if (Exit.isFailure(written))
-        failed.push(`insert: ${failureText(written)}`);
-      else if (written.value === "inserted")
+    const sweep = options.caughtUp?.() ?? true;
+    const written = await options.run(writeAtView(view, entries, sweep));
+    const orphaned: string[] = [];
+    if (Exit.isFailure(written)) failed.push(`write: ${failureText(written)}`);
+    else if (written.value.kind === "written") {
+      const { deleted } = written.value;
+      orphaned.push(...written.value.orphaned);
+      if (entries.length > 0)
         options.log?.(
           `ingested ${entries.length.toString()} forced order(s) at ${view.point.slot.toString()}`,
+        );
+      if (deleted.length > 0)
+        options.log?.(
+          `deleted ${deleted.length.toString()} forced row(s) whose order left the chain: ${deleted.join(", ")}`,
         );
     }
     const hold = (reason: string, details: readonly string[]): DriverHold => ({
       reason,
       detail: details.join(" | ").slice(0, DETAIL_LIMIT),
     });
+    const more = (count: number, what: string): string[] =>
+      count === 0 ? [] : [`${count.toString()} more ${what}`];
     if (failed.length > 0)
       return hold(FORCED_ORDER_INGESTION_FAILED, [
         ...failed,
-        ...(pending.length === 0
-          ? []
-          : [`${pending.length.toString()} more await carriage`]),
+        ...more(stopped.length, "stopped at a ruled admission stop"),
+        ...more(pending.length, "await carriage"),
+      ]);
+    if (stopped.length > 0)
+      return hold(FORCED_ORDER_ADMISSION_STOPPED, [
+        ...stopped,
+        ...more(pending.length, "await carriage"),
+      ]);
+    if (orphaned.length > 0)
+      return hold(EVENTS_ORPHAN_RECOVERY, [
+        `forced row(s) whose order left the chain wait for their block journal's recovery: ${orphaned.join(", ")}`,
       ]);
     if (pending.length > 0) return hold(FORCED_ORDER_CARRIAGE_PENDING, pending);
     return undefined;

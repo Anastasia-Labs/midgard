@@ -7,7 +7,9 @@
  * canonical chain: an order's row exists while its block is canonical, its
  * status follows from where its carriage was created, and it closes in the
  * block that spends it. Once the store pruned, the model drops orders spent
- * at or before the pruned slot (`closed_k_deep`).
+ * at or before the pruned slot (`closed_k_deep`). The follower's key set
+ * holds a `forced` key for every order whose block is canonical, spent and
+ * pruned or not (N10b): a rollback that removes an order removes its key.
  */
 import {
   type BlockSummary,
@@ -166,6 +168,26 @@ const projectedRows = async (store: FactStore) =>
       carriesPreimage: preimages,
     };
   });
+
+/** The outrefs of the follower's `forced` keys, each its own origin. */
+const forcedKeys = async (store: FactStore): Promise<string[]> =>
+  (
+    await store.transaction("read", (tx) =>
+      tx.query(
+        "SELECT key, origin_outref FROM l1_event_keys WHERE kind = 'forced'",
+      ),
+    )
+  )
+    .map((row) => {
+      const key = Buffer.from(row.key as Uint8Array);
+      if (!key.equals(Buffer.from(row.origin_outref as Uint8Array)))
+        return `mismatch:${key.toString("hex")}`;
+      return outRefHex({
+        txHash: key.subarray(0, 32),
+        index: key.readUInt16BE(32),
+      });
+    })
+    .sort();
 
 const byKey = <T extends { outRef: string }>(rows: T[]): T[] =>
   [...rows].sort((a, b) => (a.outRef < b.outRef ? -1 : 1));
@@ -339,6 +361,13 @@ export const forcedOrderSimProjection = (
         .sort(),
     );
     if (live !== null) return live;
+    // The key set: every order of the canonical chain, spent or pruned too.
+    const keys = difference(
+      "forced keys",
+      await forcedKeys(store),
+      [...full.keys()].sort(),
+    );
+    if (keys !== null) return keys;
     // Case counters (the model agreed, so these describe the projection).
     for (const [outRef, o] of full) {
       if (!seen.has(outRef)) {

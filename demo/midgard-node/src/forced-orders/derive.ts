@@ -10,8 +10,13 @@
  *   field preimages. Some created before the block: `carriage_pending`,
  *   for the driver hook to resolve by outref. Unopenable: `malformed`.
  *
+ * Each opened order's outref also enters the follower's key set
+ * (`l1_event_keys`, kind `forced`): the node's forced row is backed while it
+ * is there, and a rollback that removes the order removes its key.
+ *
  * A pure function of the block and the config: no clock, no network. The
- * rewind of everything written here is the registry's.
+ * rewind of the D-t row is the registry's; the key's is the follower's own
+ * (§5.4).
  */
 import {
   createdOutputs,
@@ -26,6 +31,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { FORCED_ADMISSION_KIND } from "../database/l1-admission-identity.js";
 import {
   carriageFieldPreimages,
   carriageOutRefs,
@@ -157,6 +163,8 @@ export const forcedOrderDerivation = (
   config: ForcedOrderConfig,
 ): DerivationHook => ({
   name: "node_l1_forced_orders",
+  // It also inserts into the follower's class A `l1_event_keys`, whose
+  // rewind is the follower's own (§5.4); only D-t tables are listed here.
   writes: [FORCED_ORDERS_TABLE],
   apply: async (context) => {
     const { block, previous } = context;
@@ -198,6 +206,11 @@ export const forcedOrderDerivation = (
             row.fieldPreimages,
             row.detail,
           ],
+        );
+        const key = encodeOutRef(entry.outRef);
+        await context.tx.query(
+          "INSERT INTO l1_event_keys (kind, key, origin_outref, first_canonical_slot) VALUES (?, ?, ?, ?)",
+          [FORCED_ADMISSION_KIND, key, key, block.point.slot],
         );
       }
     }

@@ -10,6 +10,7 @@ import {
 import {
   type AdmissionKind,
   orphanedAdmission,
+  orphanedForcedAdmission,
   sameAdmission,
 } from "./l1-admission-identity.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
@@ -128,7 +129,11 @@ export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
       OR EXISTS (SELECT 1 FROM pending_block_finalization_deposits m WHERE ${sameAdmission(sql, "m", "o")})
       OR EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals m WHERE ${sameAdmission(sql, "m", "o")})
       LIMIT 1`;
-    return assigned.length === 0
+    // A forced orphan is counted only while an unfinished block journal
+    // holds it, so it is always assigned: the journal's disposition clears it.
+    const forced = yield* sql`SELECT 1 FROM forced_transaction_utxos f
+      WHERE ${orphanedForcedAdmission(sql, "f")} LIMIT 1`;
+    return assigned.length === 0 && forced.length === 0
       ? undefined
       : {
           status: "pending" as const,
