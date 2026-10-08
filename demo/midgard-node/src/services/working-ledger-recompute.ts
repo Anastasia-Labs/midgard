@@ -16,6 +16,7 @@ export {
 } from "./working-ledger-recompute.rebuild.js";
 export {
   closeRejections,
+  findUndecidedBatchMember,
   producedByRejections,
   recordRejections,
   type Rejection,
@@ -24,4 +25,5 @@ export {
   type Rejections,
   txIdHex,
   UndecidedBatchMember,
+  undecidedBatchMemberIn,
 } from "./working-ledger-recompute.reject-closure.js";

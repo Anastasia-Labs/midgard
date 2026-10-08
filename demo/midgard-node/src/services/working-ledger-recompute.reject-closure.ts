@@ -1,6 +1,6 @@
 import { SqlClient, type Statement } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 import * as CekProgramMaterialDB from "../database/cekProgramMaterial.js";
 import {
@@ -20,6 +20,11 @@ import {
   type PendingTx,
   table,
 } from "./working-ledger-recompute.pending-txs.js";
+import {
+  concluded,
+  settledByBlock,
+  settleRecordedRejections,
+} from "./working-ledger-recompute.receipt-members.js";
 
 /** Why a pending transaction left the working ledger: its own input became
  * unavailable, it spends a rejected transaction's output, or it was accepted
@@ -45,16 +50,39 @@ export const txIdHex = (tx: PendingTx) => hex(tx.entry[Tx.Columns.TX_ID]);
 
 /**
  * A rejection reaches an unreversed receipt with a member that is neither
- * pending, settled, nor recorded rejected on it: the closure cannot decide
- * that member, so the batch's acceptance cannot be reversed.
+ * pending, settled, recorded rejected on it, nor concluded: the closure
+ * cannot decide that member, so the batch's acceptance cannot be reversed.
  */
 export class UndecidedBatchMember extends DatabaseError {}
+
+/** The `UndecidedBatchMember` in `failure`'s cause chain, if any. */
+export const undecidedBatchMemberIn = (failure: unknown) => {
+  let current = failure;
+  for (let depth = 0; depth < 8 && current !== undefined; depth += 1) {
+    if (current instanceof UndecidedBatchMember) return current;
+    current =
+      typeof current === "object" && current !== null
+        ? (current as { readonly cause?: unknown }).cause
+        : undefined;
+  }
+  return undefined;
+};
+
+/** The `UndecidedBatchMember` a failure or defect of `cause` carries. */
+export const findUndecidedBatchMember = (cause: Cause.Cause<unknown>) => {
+  for (const failure of [...Cause.failures(cause), ...Cause.defects(cause)]) {
+    const undecided = undecidedBatchMemberIn(failure);
+    if (undecided !== undefined) return undecided;
+  }
+  return undefined;
+};
 
 type ReceiptMember = {
   sequence: string;
   tx_id: Buffer;
   settled: boolean;
   rejected_earlier: boolean;
+  concluded: boolean;
 };
 
 /** The members of the unreversed receipts `which` selects, receipt by receipt. */
@@ -62,16 +90,17 @@ const receiptMembers = (
   sql: SqlClient.SqlClient,
   which: Statement.Fragment,
 ) => sql<ReceiptMember>`
-  SELECT r.sequence::text AS sequence, ids.tx_id,
-    EXISTS (SELECT 1 FROM event_history_l2_ledger_receipt_settlements s
-      WHERE s.receipt_sequence = r.sequence AND s.tx_id = ids.tx_id)
-      AS settled,
+  SELECT r.sequence::text AS sequence, member.tx_id,
+    (EXISTS (SELECT 1 FROM event_history_l2_ledger_receipt_settlements s
+      WHERE s.receipt_sequence = r.sequence AND s.tx_id = member.tx_id)
+      OR ${settledByBlock(sql)}) AS settled,
     EXISTS (SELECT 1 FROM event_history_l2_ledger_receipt_rejections x
-      WHERE x.receipt_sequence = r.sequence AND x.tx_id = ids.tx_id)
-      AS rejected_earlier
-  FROM event_history_l2_ledger_receipts r, unnest(r.tx_ids) AS ids(tx_id)
+      WHERE x.receipt_sequence = r.sequence AND x.tx_id = member.tx_id)
+      AS rejected_earlier,
+    ${concluded(sql)} AS concluded
+  FROM event_history_l2_ledger_receipts r, unnest(r.tx_ids) AS member(tx_id)
   WHERE r.reversed_at_revision IS NULL AND ${which}
-  ORDER BY r.sequence, ids.tx_id`;
+  ORDER BY r.sequence, member.tx_id`;
 
 /**
  * The transitive rejection closure over the pending transactions.
@@ -82,13 +111,15 @@ const receiptMembers = (
  * Then every co-member of an unreversed acceptance receipt that holds a
  * rejected transaction is rejected as "batch" (a receipt is the inverse of
  * one accepted batch and cannot be split), and spreading resumes, until
- * nothing widens. A co-member in `settled` (one a base block includes), or
- * one a landed block settled in an earlier rebuild (a row of
- * `event_history_l2_ledger_receipt_settlements`), is settled by that block,
- * not rejected. A co-member that is not pending and is recorded rejected on
- * the receipt (`event_history_l2_ledger_receipt_rejections`, migration 0014)
- * left the batch earlier. Any other co-member that is no longer pending is
- * undecided: the closure fails with `UndecidedBatchMember`.
+ * nothing widens. A co-member in `settled` (one a base block includes), one
+ * a landed block settled in an earlier rebuild (a row of
+ * `event_history_l2_ledger_receipt_settlements`), or one this node's block
+ * records place in a landed or folded block (`settledByBlock`) is settled by
+ * that block, not rejected. A co-member that is not pending and is recorded
+ * rejected on the receipt (`event_history_l2_ledger_receipt_rejections`,
+ * migration 0014), or concluded (`concluded`: out of the pending tables for
+ * good), left the batch earlier. Any other co-member that is no longer
+ * pending is undecided: the closure fails with `UndecidedBatchMember`.
  *
  * With `repairRecordedRejections`, after the first spreading the closure
  * rejects as "batch" the pending members of every unreversed receipt that
@@ -121,15 +152,17 @@ export const closeRejections = (input: {
       input.onReject?.(tx);
     };
     // A member is decided when it is rejected, settled, or recorded
-    // rejected on the receipt and no longer pending; a pending one is the
-    // batch member to reject.
+    // rejected on the receipt or concluded and no longer pending; a pending
+    // one is the batch member to reject.
     const decide = (member: ReceiptMember) => {
       const id = hex(member.tx_id);
       if (rejected.has(id) || member.settled || input.settled?.has(id) === true)
         return "decided" as const;
       const tx = pendingById.get(id);
       if (tx !== undefined) return tx;
-      return member.rejected_earlier ? ("decided" as const) : undefined;
+      return member.rejected_earlier || member.concluded
+        ? ("decided" as const)
+        : undefined;
     };
     while (input.spread(reject, rejected));
     if (input.repairRecordedRejections === true) {
@@ -194,12 +227,15 @@ export const producedByRejections = (rejected: Rejections) =>
  * transaction), no address history, and
  * every acceptance receipt they belong to reversed. A receipt whose other
  * members are all in `settled` (transactions a base block includes),
- * recorded as settled on it, or recorded rejected on it is reversed with
- * them: those members are settled by the base, or left the batch earlier.
- * Every unreversed receipt that records a rejected member and whose members
- * are all decided that way is reversed too, rejections or not, and its
- * recorded rows go with it. Ledger rows are the caller's: run this after
- * any read of the receipts' before-images.
+ * recorded as settled on it, settled by this node's block records, recorded
+ * rejected on it, or concluded is reversed with them: those members are
+ * settled by the base, or left the batch earlier. Every unreversed receipt
+ * that records a rejected member and whose members are all decided that way
+ * is reversed too, rejections or not, and its recorded rows go with it. A
+ * recorded member out of the pending tables gets the admission and address
+ * history of a rejected transaction (`settleRecordedRejections`). Ledger
+ * rows are the caller's: run this after any read of the receipts'
+ * before-images.
  */
 export const recordRejections = (
   rejected: Rejections,
@@ -229,7 +265,9 @@ export const recordRejections = (
               AND NOT EXISTS (
                 SELECT 1 FROM event_history_l2_ledger_receipt_rejections x
                 WHERE x.receipt_sequence = r.sequence
-                  AND x.tx_id = member.tx_id))`;
+                  AND x.tx_id = member.tx_id)
+              AND NOT ${settledByBlock(sql)}
+              AND NOT ${concluded(sql)})`;
     if (rejected.size > 0) {
       const mempoolIds = rejectedTxs
         .filter(({ source }) => source === "mempool")
@@ -266,6 +304,7 @@ export const recordRejections = (
       sql`r.sequence IN (SELECT receipt_sequence
         FROM event_history_l2_ledger_receipt_rejections)`,
     );
+    yield* settleRecordedRejections;
     yield* sql`DELETE FROM event_history_l2_ledger_receipt_rejections x
       USING event_history_l2_ledger_receipts r
       WHERE r.sequence = x.receipt_sequence

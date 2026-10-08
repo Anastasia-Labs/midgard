@@ -15,4 +15,8 @@ export {
   REWIND_REJECT_CODE_REOPENED_DEPOSIT_INPUT,
   type WithdrawalLedgerRestore,
 } from "./state-queue-correction-ledger-restore.load-pending-txs.js";
-export { restoreSpeculativeLedgerAfterCorrection } from "./state-queue-correction-ledger-restore.restore-speculative-ledger-after-correction.js";
+export {
+  CORRECTION_RESTORE_BATCH_SOURCE,
+  CORRECTION_RESTORE_BATCH_UNDECIDED,
+  restoreSpeculativeLedgerAfterCorrection,
+} from "./state-queue-correction-ledger-restore.restore-speculative-ledger-after-correction.js";

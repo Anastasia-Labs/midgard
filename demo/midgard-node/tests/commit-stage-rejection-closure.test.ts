@@ -8,14 +8,24 @@
  * - a later rebuild then meets no unreversed receipt holding the rejected
  *   member;
  * - a block member the closure reaches leaves the block: Phase B runs again
- *   without it, and it is recorded rejected with the rest.
+ *   without it, and it is recorded rejected with the rest;
+ * - a co-member out of the pending tables that only an unlanded own block
+ *   holds is undecided: the worker's failure names
+ *   `commit_stage_batch_undecided` under its own source, and the rejection
+ *   persists once that block lands, which clears the reason.
  */
 
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import * as TxRejectionsDB from "../src/database/txRejections.js";
+import {
+  applyCommitWorkerReadiness,
+  clearCommitWorkerFailure,
+  COMMIT_STAGE_BATCH_UNDECIDED,
+  COMMIT_WORKER_FAILED,
+} from "../src/fibers/block-commitment.worker-readiness.js";
 import {
   COMMIT_REJECT_CODE_BATCH_MEMBER,
   COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
@@ -25,19 +35,34 @@ import {
   persistCommitStageRejectedTransactions,
   settleCommitStageRejections,
 } from "../src/mpf/commit-rejection.persist-commit-stage-rejected-transactions.js";
+import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
+import * as RejectClosure from "../src/services/working-ledger-recompute.reject-closure.js";
+import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import { admitPending } from "./helpers/landed-blocks-sim.mempool.js";
 import {
+  insertOwnJournal,
+  JournalStatus,
+  setJournalStatus,
+} from "./helpers/landed-blocks-sim.own.js";
+import {
+  acceptedAdmission,
+  leavePending,
+} from "./helpers/receipt-member-rows.js";
+import {
   attempt,
+  BLOCK,
   E0,
   expectRebased,
   freshNative,
   hex,
   pendingTx,
   processOf,
+  R1,
   receipt,
   rejections,
   run,
   seed,
+  sqlRun,
   unreversedReceipts,
 } from "./landed-blocks-rebase.fixture.js";
 
@@ -89,6 +114,105 @@ const batchOfTwo = async () => {
   await receipt(globals, [a.id, b.id]);
   return { globals, a, b, c };
 };
+
+const OWN_BLOCK = "d3".repeat(28);
+
+/**
+ * `batchOfTwo` with `a` (admission accepted) out of the pending tables and
+ * held by the journal of an own block that has not landed.
+ */
+const batchWithUnlandedMember = async () => {
+  const batch = await batchOfTwo();
+  await sqlRun(batch.globals, () =>
+    Effect.zipRight(acceptedAdmission(batch.a.id), leavePending(batch.a.id)),
+  );
+  await run(
+    batch.globals,
+    insertOwnJournal({
+      headerHash: OWN_BLOCK,
+      baseHeaderHash: BLOCK,
+      baseUtxosRoot: R1,
+      expectedUtxosRoot: R1,
+      spent: [],
+      produced: [],
+      txIds: [batch.a.id],
+      at: new Date(Date.parse("2026-10-01T00:01:00.000Z")),
+    }),
+  );
+  return batch;
+};
+
+const rejectB = (b: Buffer) =>
+  persistCommitStageRejectedTransactions({
+    rejectionEntries: [directRejection(b)],
+    resolveInputPostState: () => undefined,
+  });
+
+/** The worker's output for the rejection of `b`, and the readiness it raises. */
+const workerReadiness = async (globals: Globals, b: Buffer) => {
+  const output = await run(
+    globals,
+    captureCommitWorkerFailure(
+      rejectB(b).pipe(Effect.as({ type: "NothingToCommitOutput" } as const)),
+    ),
+  );
+  await Effect.runPromise(applyCommitWorkerReadiness(globals, output));
+  return {
+    output,
+    reasons: await Effect.runPromise(currentLivenessReasons(globals)),
+  };
+};
+
+describe(
+  "a commit-stage rejection that meets an undecided co-member",
+  { concurrent: false },
+  () => {
+    it("names commit_stage_batch_undecided, and persists once the member's block lands", async () => {
+      const { globals, a, b, c } = await batchWithUnlandedMember();
+      const failed = await workerReadiness(globals, b.id);
+      expect(failed.output).toMatchObject({
+        type: "FailureOutput",
+        reason: COMMIT_STAGE_BATCH_UNDECIDED,
+      });
+      expect(failed.reasons).toContain(COMMIT_STAGE_BATCH_UNDECIDED);
+      expect(failed.reasons).not.toContain(COMMIT_WORKER_FAILED);
+      expect(await rejections(globals)).toEqual([]);
+      expect(await unreversedReceipts(globals)).toBe(1);
+
+      await run(
+        globals,
+        setJournalStatus(OWN_BLOCK, JournalStatus.ObservedWaitingStability),
+      );
+      expect(await run(globals, rejectB(b.id))).toMatchObject({
+        _tag: "Persisted",
+      });
+      expect(await rejections(globals)).toEqual(
+        sorted([
+          [b.id, COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT],
+          [c.id, COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT],
+        ]),
+      );
+      expect(await unreversedReceipts(globals)).toBe(0);
+      expect(await pendingIds(globals)).not.toContain(hex(a.id));
+      await Effect.runPromise(clearCommitWorkerFailure(globals));
+      expect(
+        await Effect.runPromise(currentLivenessReasons(globals)),
+      ).not.toContain(COMMIT_STAGE_BATCH_UNDECIDED);
+    });
+
+    it("mutant: a failure boundary that does not find the undecided member raises commit_worker_failed", async () => {
+      const { globals, b } = await batchWithUnlandedMember();
+      const spy = vi
+        .spyOn(RejectClosure, "findUndecidedBatchMember")
+        .mockReturnValue(undefined);
+      const failed = await workerReadiness(globals, b.id);
+      spy.mockRestore();
+      expect(failed.output).not.toHaveProperty("reason");
+      expect(failed.reasons).toContain(COMMIT_WORKER_FAILED);
+      expect(failed.reasons).not.toContain(COMMIT_STAGE_BATCH_UNDECIDED);
+    });
+  },
+);
 
 describe(
   "a commit-stage rejection closes over the batch",

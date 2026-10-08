@@ -15,6 +15,7 @@ import {
   NodeConfig,
 } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
+import { findUndecidedBatchMember } from "../services/working-ledger-recompute.js";
 import {
   type NotifyCommitWorkerParent,
   shouldPreserveCommitMpfRoots,
@@ -26,7 +27,11 @@ import {
   defaultCommitLucidFactory,
   provideCommitBlockWorkerServices,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
-import { WorkerInput, WorkerOutput } from "./utils/commit-block-header.js";
+import {
+  COMMIT_STAGE_BATCH_UNDECIDED,
+  WorkerInput,
+  WorkerOutput,
+} from "./utils/commit-block-header.js";
 
 // Export the production commit worker core so emulator tests can exercise the
 // exact same effect graph without going through a worker-thread bootstrap.
@@ -162,7 +167,9 @@ export const runCommitBlockHeaderWorkerProgram = (
       : Effect.provideService(HistoryProducer, workerInput.history),
   );
 
-/** The worker's outgoing failure boundary, shared with in-process acceptance. */
+/** The worker's outgoing failure boundary, shared with in-process
+ * acceptance. A failure that carries an `UndecidedBatchMember` names
+ * `commit_stage_batch_undecided`. */
 export const captureCommitWorkerFailure = <E, R>(
   program: Effect.Effect<WorkerOutput, E, R>,
 ) =>
@@ -171,6 +178,9 @@ export const captureCommitWorkerFailure = <E, R>(
       Effect.succeed({
         type: "FailureOutput",
         error: `Block commitment worker failure: ${Cause.pretty(cause)}`,
+        ...(findUndecidedBatchMember(cause) === undefined
+          ? {}
+          : { reason: COMMIT_STAGE_BATCH_UNDECIDED }),
       } satisfies WorkerOutput),
     ),
   );
