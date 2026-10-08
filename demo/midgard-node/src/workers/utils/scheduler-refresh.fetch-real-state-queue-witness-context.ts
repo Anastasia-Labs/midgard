@@ -9,7 +9,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { type OperatorWalletView } from "../../operator-wallet-view.js";
 import type { IntentJournal } from "../../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
@@ -19,6 +18,7 @@ import {
   type TxSignError,
   type TxSubmitError,
 } from "../../transactions/utils.js";
+import { readSelectedWalletView } from "../../transactions/utils.wallet-view.js";
 import { ensureSchedulerAlignedForCommit } from "./scheduler-refresh.ensure-scheduler-aligned-for-commit.js";
 import {
   fetchActiveOperatorUtxos,
@@ -35,7 +35,6 @@ export const fetchRealStateQueueWitnessContext = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   alignedEndTime: number,
-  operatorWalletView?: OperatorWalletView,
   referenceScriptsAddress?: string,
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
   allowSchedulerRefresh: boolean = true,
@@ -145,7 +144,6 @@ export const fetchRealStateQueueWitnessContext = (
       registeredOperatorUtxos,
       alignedEndTime,
       schedulerWitnessUnit,
-      operatorWalletView,
       schedulerSpendingScriptRef,
       submitSlotSnapshot,
       allowSchedulerRefresh,
@@ -207,11 +205,22 @@ export const fetchRealStateQueueWitnessContext = (
       ),
     );
 
+    // Read after scheduler alignment: a refresh submitted above is a live
+    // own intent (or landed) by now, and the view follows it.
+    const operatorWalletView = yield* readSelectedWalletView(lucid).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: `Failed to read the operator wallet view for the state_queue commit: ${cause.message}`,
+            cause,
+          }),
+      ),
+    );
     const activeOperatorInput = yield* fetchFreshActiveOperatorInputForCommit(
       lucid,
       contracts,
       operatorKeyHash,
-      schedulerRefInput.operatorWalletView,
+      operatorWalletView.held,
     );
 
     return {
@@ -225,6 +234,6 @@ export const fetchRealStateQueueWitnessContext = (
       stateQueueSpendingScriptRef,
       stateQueueMintingScriptRef,
       stateQueueCommitYieldScriptRef,
-      operatorWalletView: schedulerRefInput.operatorWalletView,
+      operatorWalletInputs: operatorWalletView.utxos,
     };
   });

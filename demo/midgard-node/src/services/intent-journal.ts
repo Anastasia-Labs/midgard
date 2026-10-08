@@ -31,6 +31,7 @@ import {
   recordIntentIn,
 } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Context, Effect, Layer, Option } from "effect";
 
 import { followerSqlTx } from "../database/follower-schema.js";
@@ -53,6 +54,12 @@ import {
   unavailable,
 } from "./intent-journal.refusals.js";
 import { nodeOwnWallets } from "./intent-journal.tracked-set.js";
+import {
+  type NodeWalletView,
+  readFollowerWalletView,
+  readProviderWalletView,
+  type WalletViewUnavailable,
+} from "./intent-journal.wallet-view.js";
 
 /** The node's L1 families (§8.4, Node rows). */
 export const NODE_INTENT_FAMILIES = [
@@ -219,6 +226,15 @@ export type IntentJournalService = Readonly<{
    * failed read keeps the last one.
    */
   refresh: () => Effect.Effect<void>;
+  /**
+   * The wallet view (§8.5) of one own address, read now
+   * (`intent-journal.wallet-view.ts`): the facts and live intents under a
+   * follower, the provider's UTxOs where none runs.
+   */
+  walletView: (
+    lucid: LucidEvolution,
+    address: string,
+  ) => Effect.Effect<NodeWalletView, WalletViewUnavailable>;
 }>;
 
 export class IntentJournal extends Context.Tag("midgard/IntentJournal")<
@@ -441,6 +457,10 @@ export const intentJournalOver = (
     handOff: held.handOff,
     adopt: held.adopt,
     refresh: held.refresh,
+    walletView: (_lucid, address) =>
+      readFollowerWalletView(address).pipe(
+        Effect.provideService(SqlClient.SqlClient, sql),
+      ),
   };
 };
 
@@ -476,4 +496,5 @@ export const IntentJournalWithoutFollower = Layer.succeed(IntentJournal, {
   // No worker journals in a phase without a follower.
   adopt: () => undefined,
   refresh: () => Effect.void,
+  walletView: readProviderWalletView,
 });

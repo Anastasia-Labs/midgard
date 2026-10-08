@@ -16,7 +16,7 @@ import {
   submitSignedTxWithRecovery,
   TxSubmitError,
 } from "../src/transactions/utils.js";
-import { submitErrorReferencesOutRef } from "../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js";
+import { submitErrorReferencesOutRef } from "../src/workers/commit-block-header/submission.commit-event-sources.js";
 import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 

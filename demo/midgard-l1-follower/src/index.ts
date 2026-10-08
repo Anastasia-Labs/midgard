@@ -146,6 +146,16 @@ export {
   isDeadStatus,
 } from "./intents/status.js";
 export {
+  isLiveStatus,
+  LIVE_INTENT_STATUSES,
+  readWalletViewIn,
+  type WalletView,
+  walletView,
+  type WalletViewIntent,
+  type WalletViewOutput,
+  type WalletViewRead,
+} from "./intents/wallet-view.js";
+export {
   type LinkedQueueEntry,
   type LinkedQueueUnhealthyReason,
   type LinkedQueueWalk,

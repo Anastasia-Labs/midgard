@@ -224,7 +224,8 @@ export const buildAtomicProtocolInitTxProgram = (
   | SDK.LucidError
   | SDK.Bech32DeserializationError
   | SDK.UnspecifiedNetworkError
-  | SDK.HashingError
+  | SDK.HashingError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const validityRange = resolveDeploymentValidityBounds(lucid, validTo);

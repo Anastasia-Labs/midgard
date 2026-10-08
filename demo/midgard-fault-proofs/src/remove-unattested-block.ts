@@ -45,6 +45,7 @@ export {
   resolveTimeoutCorrectionValidityRange,
   type SubmitUnattestedTimeoutCorrectionParams,
   TimeoutCorrectionAttemptInFlightError,
+  type TimeoutCorrectionWallet,
 } from "./remove-unattested-block.recover-timeout-correction-attempt.js";
 export { submitUnattestedTimeoutCorrection } from "./remove-unattested-block.submit-unattested-timeout-correction.js";
 export {

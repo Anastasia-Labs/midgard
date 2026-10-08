@@ -3,7 +3,13 @@ import {
   type SlotClock,
   type StateQueueUTxO,
 } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type Network } from "@lucid-evolution/lucid";
+import {
+  type LucidEvolution,
+  type Network,
+  type TxSignBuilder,
+  type TxSigned,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import {
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
@@ -148,6 +154,29 @@ export const isSpentInputSubmitRejection = (error: unknown): boolean => {
   return search(error);
 };
 
+/**
+ * The wallet a timeout correction is funded and signed from: the inputs its
+ * coin selection may spend (`presetWalletInputs`, read just before the
+ * build) and its signing.
+ */
+export type TimeoutCorrectionWallet = {
+  readonly utxos: () => Promise<UTxO[]>;
+  readonly sign: (unsigned: TxSignBuilder) => Promise<TxSigned>;
+};
+
+/**
+ * `wallet`, or where none is given (a CLI run) the provider's UTxOs at the
+ * selected wallet's address and the selected wallet's own signature.
+ */
+export const timeoutCorrectionWallet = (
+  lucid: LucidEvolution,
+  wallet: TimeoutCorrectionWallet | undefined,
+): TimeoutCorrectionWallet =>
+  wallet ?? {
+    utxos: async () => lucid.utxosAt(await lucid.wallet().address()),
+    sign: (unsigned) => unsigned.sign.withWallet().complete(),
+  };
+
 export type SubmitUnattestedTimeoutCorrectionParams = {
   readonly lucid: LucidEvolution;
   readonly deploymentInfo: unknown;
@@ -169,6 +198,12 @@ export type SubmitUnattestedTimeoutCorrectionParams = {
   readonly recovery?: TimeoutCorrectionRecovery;
   /** Bounds re-reads of abandoned attempts; process-wide by default. */
   readonly attemptReadSchedule?: SupersededAttemptReadSchedule;
+  /**
+   * The node's wallet view (§8.5) and its signing over it. Without one (a
+   * CLI run), the provider's UTxOs at the selected wallet's address, and the
+   * selected wallet's own signature. Nothing is pinned on `lucid` either way.
+   */
+  readonly wallet?: TimeoutCorrectionWallet;
 };
 
 /**

@@ -6,7 +6,7 @@ import * as BlocksDB from "../database/blocks.js";
 import { ImmutableDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { Database } from "../services/index.js";
-import { type BlockTxPayload } from "./utils.reconcile-wallet-utxos-from-signed-tx.js";
+import { type BlockTxPayload } from "./utils.submit-recovery-options.js";
 
 /**
  * Fetch transactions of the first block by querying BlocksDB and ImmutableDB.

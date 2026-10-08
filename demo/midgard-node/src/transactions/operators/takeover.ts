@@ -19,6 +19,7 @@ import {
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
 import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";
+import { readSelectedWalletViewInputs } from "../utils.wallet-view.js";
 import {
   OPERATOR_TX_VALIDITY_WINDOW_MS,
   type OperatorExitError,
@@ -119,8 +120,8 @@ export type StrikeSubmission = {
 };
 
 /**
- * Builds, signs with the selected wallet, and submits the strike a ready plan
- * describes. The wallet only pays the fee.
+ * Builds, signs over the selected wallet's view, and submits the strike a
+ * ready plan describes. The wallet only pays the fee, from its view.
  */
 export const submitInactivityStrikeProgram = (
   lucid: LucidEvolution,
@@ -163,6 +164,7 @@ export const submitInactivityStrikeProgram = (
       validTo: plan.validity.validTo,
       schedulerSpendingScriptRef: scriptRefs.spending.scheduler,
       activeOperatorsSpendingScriptRef: scriptRefs.spending["active-operators"],
+      presetWalletInputs: yield* readSelectedWalletViewInputs(lucid, label),
     });
     yield* Effect.logInfo(
       `${label}: striking ${plan.currentOperator} (tier=${plan.tier}, strikes→${result.struckInactivityStrikes.toString()}, new_operator=${plan.newOperatorKey}, valid=[${plan.validity.validFrom.toString()},${plan.validity.validTo.toString()}))`,

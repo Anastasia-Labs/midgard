@@ -39,7 +39,7 @@ import {
   resolvePreSubmitSlotSnapshot,
   type SubmitRecoveryOptions,
   submitRecoverySleep,
-} from "./utils.reconcile-wallet-utxos-from-signed-tx.js";
+} from "./utils.submit-recovery-options.js";
 
 /**
  * Submits signed bytes with recovery for provider races and early-validity

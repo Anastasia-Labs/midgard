@@ -1074,12 +1074,6 @@
       "reason": "The DA submitter's readiness refresh pins the verified plain-ADA spendable set on purpose and re-runs before each submission; the persistent pin is the design, and releasing it would drop that filtering.",
       "sites": ["lucid.overrideUTxOs([...summary.spendableUtxos]);"]
     },
-    "midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts": {
-      "reason": "Re-pins a fresh provider snapshot (utxosAt) immediately before this build, which is the documented cure for a stale pin; the pin then stays on the caller's instance, which the rule cannot see is re-pinned before each use.",
-      "sites": [
-        "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));"
-      ]
-    },
     "midgard-fault-proofs/tests/support/emulator/retired-family-proof.prepare.ts": {
       "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
       "sites": ["lucid.overrideUTxOs(await lucid.utxosAt(signer.address));"]
@@ -1096,16 +1090,6 @@
       "sites": [
         "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));"
       ]
-    },
-    "midgard-node/src/transactions/reference-scripts.refresh-wallet-utxos-from-own-address.ts": {
-      "reason": "Pins a merged provider-plus-cache wallet view that later builds on this instance rely on to keep script-reference UTxOs visible; the persistent pin is intended.",
-      "sites": [
-        "yield* Effect.sync(() => lucid.overrideUTxOs([...mergedWalletUtxos]));"
-      ]
-    },
-    "midgard-node/src/transactions/utils.reconcile-wallet-utxos-from-signed-tx.ts": {
-      "reason": "reconcileWalletUtxosFromSignedTx pins the predicted post-submit wallet view for every later build on the instance, the known origin of the stale-pin trap; builders that follow it clear it first (funding-preflight.ts). Scoping it is an open owner question.",
-      "sites": ["wallet.overrideUTxOs(Array.from(reconciled.values()));"]
     },
     "midgard-node/tests/helpers/correction-rewind-scenario.commit-locally-finalized-block.ts": {
       "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",

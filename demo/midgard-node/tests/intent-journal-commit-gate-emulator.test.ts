@@ -44,6 +44,7 @@ import {
   BeforeSignedTransactionSubmission,
   handleSignSubmitNoConfirmation,
 } from "../src/transactions/utils.js";
+import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
 import { submitWithDurableIntent } from "../src/workers/commit-block-header/submission.submit-with-durable-intent.js";
 import {
   type IntentEmulator,
@@ -454,9 +455,10 @@ describe("the commit gate under a Ready history producer", () => {
     opened.push(env);
     expect(await env.stage.run()).toEqual([]);
     const permit = await readyProducer(env);
-    // The payee's wallet is not a tracked one: its inputs are not facts.
+    // The payee's wallet is not a tracked one: its inputs are not facts,
+    // so its view offers nothing and the journal refuses them at the gate.
     const lucid = await env.wallet();
-    lucid.selectWallet.fromSeed(env.payee.seedPhrase);
+    selectNodeWallet(lucid, env.payee.seedPhrase);
     const unsigned = await lucid
       .newTx()
       .pay.ToAddress(env.own.address, { lovelace: 2_000_000n })

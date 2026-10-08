@@ -34,6 +34,10 @@ import {
   HaltSource,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
+import {
+  readSelectedWalletViewInputs,
+  signOverWalletView,
+} from "../transactions/utils.wallet-view.js";
 import { intentJournalTimeoutCorrectionRecovery } from "./attestation-timeout-correction.intent-journal-recovery.js";
 import {
   observeAndRecordAttestationTimeoutQueue,
@@ -69,7 +73,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       "attestation-timeout correction",
     );
     const queue = yield* readQueue;
-    const runtime = yield* Effect.runtime<Database>();
+    const runtime = yield* Effect.runtime<Database | IntentJournal>();
     // The timeout is an L1 deadline, judged at the L1 `slotNow`; an unknown
     // slot fails the tick and the fiber retries.
     const l1NowMs = yield* l1NowUnixTimeMs(lucid.api);
@@ -264,6 +268,25 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
                   (effect) => Runtime.runPromise(runtime)(effect),
                   recoveryDepths,
                 ),
+                // Funded from the operator wallet's view (§8.5) and signed
+                // over it, like every other node transaction.
+                wallet: {
+                  utxos: () =>
+                    Runtime.runPromise(runtime)(
+                      readSelectedWalletViewInputs(
+                        lucid.api,
+                        "an attestation-timeout correction",
+                      ),
+                    ),
+                  sign: (unsigned) =>
+                    Runtime.runPromise(runtime)(
+                      signOverWalletView(lucid.api, unsigned).pipe(
+                        Effect.flatMap((signing) =>
+                          Effect.tryPromise(() => signing.complete()),
+                        ),
+                      ),
+                    ),
+                },
               }),
             catch: (cause) => cause,
           });

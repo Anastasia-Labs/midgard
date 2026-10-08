@@ -1,6 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   Data,
   type Script,
@@ -78,11 +77,6 @@ export const commitHeaderMatchesValidityUpperBound = ({
 }): boolean =>
   Number.isSafeInteger(validTo) && headerEndTime === BigInt(validTo - 1);
 
-export type OperatorWalletViewLike = {
-  readonly knownUtxos: readonly UTxO[];
-  readonly consumedOutRefs: readonly string[];
-};
-
 export type StateQueueCommitWitnessContext = {
   readonly operatorKeyHash: string;
   readonly schedulerRefInput: UTxO;
@@ -99,7 +93,8 @@ export type StateQueueCommitWitnessContext = {
   readonly stateQueueSpendingScriptRef?: UTxO;
   readonly stateQueueMintingScriptRef?: UTxO;
   readonly stateQueueCommitYieldScriptRef: UTxO;
-  readonly operatorWalletView: OperatorWalletViewLike;
+  /** The operator wallet's spendable UTxOs (its wallet view), funding the commit. */
+  readonly operatorWalletInputs: readonly UTxO[];
 };
 
 export type StateQueueCommitLayout = {
@@ -155,15 +150,6 @@ export const requireOperatorWalletInputs = (
     }
     return walletUtxos;
   });
-
-export const availableOperatorWalletUtxos = (
-  view: OperatorWalletViewLike,
-): readonly UTxO[] => {
-  const consumedOutRefs = new Set(view.consumedOutRefs);
-  return view.knownUtxos.filter(
-    (utxo) => !consumedOutRefs.has(outRefLabel(utxo)),
-  );
-};
 
 export const decodeActiveOperatorDatum = (data: unknown): ActiveOperatorDatum =>
   Data.castFrom(

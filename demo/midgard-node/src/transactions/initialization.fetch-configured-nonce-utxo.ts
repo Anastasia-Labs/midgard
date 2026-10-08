@@ -25,6 +25,10 @@ import {
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
+import {
+  readSelectedWalletView,
+  readSelectedWalletViewInputs,
+} from "./utils.wallet-view.js";
 
 /**
  * Returns whether the canonical DA params UTxO is already present on-chain.
@@ -95,7 +99,8 @@ export const isDaBondPoolInitialized = (
 
 /**
  * Resolves the configured one-shot hub-oracle nonce UTxO from the operator
- * wallet.
+ * wallet's view: absent while a live own intent (an initialization already
+ * sent) holds it.
  */
 export const fetchConfiguredNonceUtxo = (
   lucid: LucidEvolution,
@@ -107,16 +112,19 @@ export const fetchConfiguredNonceUtxo = (
     DA_COMMITTEE_HEX?: string;
     DA_THRESHOLD?: bigint | null;
   },
-): Effect.Effect<UTxO, SDK.LucidError> =>
+): Effect.Effect<UTxO, SDK.LucidError, IntentJournal> =>
   Effect.gen(function* () {
-    const walletUtxos = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: "Failed to fetch operator wallet UTxOs for initialization",
-          cause,
-        }),
-    });
+    const view = yield* readSelectedWalletView(lucid).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.LucidError({
+            message:
+              "Failed to read the operator wallet view for initialization",
+            cause,
+          }),
+      ),
+    );
+    const walletUtxos = view.utxos;
     const configuredNonceUtxoLabel = `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX}`;
     const nonceUtxo = walletUtxos.find(
       (utxo) =>
@@ -155,8 +163,21 @@ export const completeAndSubmit = (
   IntentJournal
 > =>
   Effect.gen(function* () {
+    const presetWalletInputs = yield* readSelectedWalletViewInputs(
+      lucid,
+      "protocol initialization",
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.LucidError({
+            message: `${failureMessage}: ${cause.message}`,
+            cause,
+          }),
+      ),
+    );
     const unsignedTx = yield* Effect.tryPromise({
-      try: () => txBuilder.complete({ localUPLCEval: true }),
+      try: () =>
+        txBuilder.complete({ localUPLCEval: true, presetWalletInputs }),
       catch: (cause) =>
         new SDK.LucidError({
           message: `${failureMessage}: ${String(cause)}`,

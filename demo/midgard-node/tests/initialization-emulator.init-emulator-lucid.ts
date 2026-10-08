@@ -7,6 +7,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
@@ -102,7 +103,7 @@ export const buildAtomicInitializationTx = async (
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
       referenceScripts,
-    ),
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
 };
 

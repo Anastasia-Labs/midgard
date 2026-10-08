@@ -8,7 +8,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { type OperatorWalletView } from "../../operator-wallet-view.js";
 import { compareOutRefs, outRefLabel } from "../../tx-context.js";
 import { type CurrentOperatorSchedulerWindow } from "./commit-block-planner.js";
 import {
@@ -73,11 +72,9 @@ const selectActiveOperatorInput = (
 
 export const filterLocallyConsumedUtxos = (
   utxos: readonly UTxO[],
-  consumedOutRefs: readonly string[],
-): readonly UTxO[] => {
-  const consumed = new Set(consumedOutRefs);
-  return utxos.filter((utxo) => !consumed.has(outRefLabel(utxo)));
-};
+  consumedOutRefs: ReadonlySet<string>,
+): readonly UTxO[] =>
+  utxos.filter((utxo) => !consumedOutRefs.has(outRefLabel(utxo)));
 
 export const fetchActiveOperatorUtxos = (
   lucid: LucidEvolution,
@@ -119,10 +116,10 @@ export const fetchFreshActiveOperatorInputForCommit = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   operatorKeyHash: string,
-  operatorWalletView: OperatorWalletView,
+  /** Out-refs live own intents spend (`NodeWalletView.held`). */
+  heldOutRefs: ReadonlySet<string>,
 ): Effect.Effect<UTxO & { datum: string }, SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const consumedOutRefs = new Set(operatorWalletView.consumedOutRefs);
     let lastCandidateLabels: readonly string[] = [];
 
     for (
@@ -138,7 +135,7 @@ export const fetchFreshActiveOperatorInputForCommit = (
       lastCandidateLabels = activeOperatorUtxos.map(outRefLabel);
       const freshActiveOperatorUtxos = filterLocallyConsumedUtxos(
         activeOperatorUtxos,
-        operatorWalletView.consumedOutRefs,
+        heldOutRefs,
       );
       const activeOperatorInput = yield* Effect.either(
         selectActiveOperatorInput(freshActiveOperatorUtxos, operatorKeyHash),
@@ -150,7 +147,7 @@ export const fetchFreshActiveOperatorInputForCommit = (
       }
 
       const staleCandidateLabels = activeOperatorUtxos
-        .filter((utxo) => consumedOutRefs.has(outRefLabel(utxo)))
+        .filter((utxo) => heldOutRefs.has(outRefLabel(utxo)))
         .map(outRefLabel);
       if (staleCandidateLabels.length === 0) {
         return yield* Effect.fail(activeOperatorInput.left);
@@ -169,9 +166,9 @@ export const fetchFreshActiveOperatorInputForCommit = (
       new SDK.StateQueueError({
         message:
           "Timed out waiting for refreshed active-operators UTxO after scheduler refresh",
-        cause: `operator=${operatorKeyHash},consumed_outrefs=${operatorWalletView.consumedOutRefs.join(
-          ",",
-        )},last_candidates=${lastCandidateLabels.join(",")}`,
+        cause: `operator=${operatorKeyHash},held_outrefs=${[
+          ...heldOutRefs,
+        ].join(",")},last_candidates=${lastCandidateLabels.join(",")}`,
       }),
     );
   });

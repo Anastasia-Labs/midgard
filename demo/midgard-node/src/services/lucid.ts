@@ -14,6 +14,7 @@ import {
 import { providerRouteSummary } from "../provider-diagnostics.js";
 import { configureReferencePublication } from "../transactions/reference-publication.js";
 import { synchronizePublicationIndexer } from "../transactions/reference-publication-provider.js";
+import { selectNodeWallet } from "../transactions/utils.wallet-view.js";
 import { ConfigError, NodeConfig } from "./config.js";
 import { makeNodeKupmios } from "./native-ledger.js";
 
@@ -155,7 +156,8 @@ const makeLucid: Effect.Effect<
       }),
   });
   const switchToReferenceScriptWallet = Effect.sync(() =>
-    referenceScriptsApi.selectWallet.fromSeed(
+    selectNodeWallet(
+      referenceScriptsApi,
       nodeConfig.L1_REFERENCE_SCRIPT_SEED_PHRASE,
     ),
   );
@@ -247,12 +249,10 @@ const makeLucid: Effect.Effect<
     readSubmitSlotSnapshotOnce,
     ogmiosTipMaxAgeMs,
     switchToOperatorsMainWallet: Effect.sync(() =>
-      lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE),
+      selectNodeWallet(lucid, nodeConfig.L1_OPERATOR_SEED_PHRASE),
     ),
     switchToOperatorsMergingWallet: Effect.sync(() =>
-      lucid.selectWallet.fromSeed(
-        nodeConfig.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX,
-      ),
+      selectNodeWallet(lucid, nodeConfig.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX),
     ),
     switchToReferenceScriptWallet,
   };

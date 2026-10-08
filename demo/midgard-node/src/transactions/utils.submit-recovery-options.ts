@@ -1,10 +1,5 @@
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
-import {
-  CML,
-  coreToTxOutput,
-  LucidEvolution,
-  UTxO,
-} from "@lucid-evolution/lucid";
+import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -14,76 +9,11 @@ import {
 import {
   NoInlineSubmitDefer,
   type NoInlineSubmitDeferKind,
-  outRefToKey,
-  type SignSubmitContext,
 } from "./utils.await-required-output-visibility.js";
 import {
   SLOT_LENGTH_MS,
   slotNumber,
 } from "./utils.parse-structured-outside-validity-interval-details.js";
-
-/**
- * Reconciles Lucid's local wallet view after a confirmed transaction.
- *
- * This is mainly relevant for local wallets/providers that expose
- * `overrideUTxOs`, allowing later transactions to reuse the updated wallet view
- * without waiting for an external provider refresh.
- */
-export const reconcileWalletUtxosFromSignedTx = (
-  lucid: LucidEvolution,
-  submission: SignSubmitContext,
-): Effect.Effect<void, never> =>
-  Effect.gen(function* () {
-    const wallet = lucid.wallet() as {
-      getUtxos: () => Promise<UTxO[]>;
-      overrideUTxOs?: (utxos: UTxO[]) => void;
-    };
-    if (typeof wallet.overrideUTxOs !== "function") {
-      return;
-    }
-    const tx = CML.Transaction.from_cbor_hex(submission.signedTxCbor);
-    const txInputs = tx.body().inputs();
-    const spentOutRefs = new Set<string>();
-    for (let index = 0; index < txInputs.len(); index += 1) {
-      const input = txInputs.get(index);
-      spentOutRefs.add(
-        outRefToKey(input.transaction_id().to_hex(), Number(input.index())),
-      );
-    }
-
-    const walletUtxos = yield* Effect.tryPromise({
-      try: () => wallet.getUtxos(),
-      catch: () => [] as UTxO[],
-    });
-    const filteredWalletUtxos = walletUtxos.filter(
-      (utxo) => !spentOutRefs.has(outRefToKey(utxo.txHash, utxo.outputIndex)),
-    );
-    const txOutputs = tx.body().outputs();
-    const localWalletOutputs: UTxO[] = [];
-    for (let outputIndex = 0; outputIndex < txOutputs.len(); outputIndex += 1) {
-      const output = coreToTxOutput(txOutputs.get(outputIndex));
-      if (output.address !== submission.walletAddress) {
-        continue;
-      }
-      localWalletOutputs.push({
-        txHash: submission.txHash,
-        outputIndex,
-        address: output.address,
-        assets: output.assets,
-        datumHash: output.datumHash ?? undefined,
-        datum: output.datum ?? undefined,
-        scriptRef: output.scriptRef ?? undefined,
-      });
-    }
-    const reconciled = new Map<string, UTxO>();
-    for (const utxo of filteredWalletUtxos) {
-      reconciled.set(outRefToKey(utxo.txHash, utxo.outputIndex), utxo);
-    }
-    for (const utxo of localWalletOutputs) {
-      reconciled.set(outRefToKey(utxo.txHash, utxo.outputIndex), utxo);
-    }
-    wallet.overrideUTxOs(Array.from(reconciled.values()));
-  }).pipe(Effect.catchAll(() => Effect.void));
 
 export type BlockTxPayload = {
   readonly txId: Buffer;
