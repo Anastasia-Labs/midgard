@@ -185,6 +185,17 @@ describe("retirement atomic authority", () => {
       )?.signature.signatureWitness,
     ).toBe(next.signature.signatureWitness);
   });
+  it("deletes no signed decision under a retirement floor: retirement is the only deleter", async () => {
+    const f = await setup(),
+      next = await f.seed(2),
+      hash = next.header.headerHash;
+    expect(await f.store.pruneSignedDecisions([hash])).toEqual([]);
+    expect(
+      (await f.store.listSignedDecisions()).map(({ headerHash }) => headerHash),
+    ).toContain(hash);
+    expect(await f.store.listDaSignatures(hash)).toHaveLength(1);
+    expect(await f.store.getStateQueueHeader(hash)).toBeDefined();
+  });
   it("reserves bounded singleton growth separately from exact physical backend accounting", async () => {
     const f = await setup(),
       before = await f.store.promiseStoreResourceUsage(),

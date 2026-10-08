@@ -36,6 +36,10 @@ import {
   type RetainedPayloadPruneRequest,
 } from "../store.js";
 import {
+  prunePostgresSignedDecisionsUnlessRetiring as pruneSignedDecisions,
+  releasePostgresHeaderRows,
+} from "./decision-pruning-postgres.js";
+import {
   assertConflictEvidenceRowIdentity,
   assertDecisionOutboxRowIdentity,
   assertPayloadRowIdentity,
@@ -633,9 +637,20 @@ export class PostgresCommitteeStore implements CommitteeStore {
             [request.headerHash],
           )
         ).rowCount ?? 0) > 0;
+      if (deleted && request.releaseHeader === true)
+        await releasePostgresHeaderRows(
+          client,
+          request.headerHash,
+          this.inFlightDecisions,
+        );
       return deleted;
     });
   }
+
+  pruneSignedDecisions = (headerHashes: readonly string[]) =>
+    this.withClient((client) =>
+      pruneSignedDecisions(client, headerHashes, this.inFlightDecisions),
+    );
 
   getPromiseCapacityEvidence = capacity.reader(() => this.pool);
   savePromiseCapacityEvidence = capacity.writer(

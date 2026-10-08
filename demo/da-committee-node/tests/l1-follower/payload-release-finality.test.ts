@@ -21,7 +21,10 @@ import {
   retentionReadinessFromDeadlines,
 } from "../../src/committee-service.js";
 import { committeeL1Source } from "../../src/l1/follower/l1-follower.js";
-import type { SlotTime } from "../../src/l1/follower/obligations.js";
+import {
+  type SlotTime,
+  slotTimeMs,
+} from "../../src/l1/follower/obligations.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
 import {
   retentionCycleOptions,
@@ -75,7 +78,10 @@ const openPostgres = async (): Promise<FactStore> => {
   });
 };
 
-const harness = async (factStore: FactStore) => {
+const harness = async (
+  factStore: FactStore,
+  slotTime: SlotTime = SLOT_TIME,
+) => {
   expect(await factStore.start()).toMatchObject({ kind: "ready" });
   expect(
     await factStore.initialize({
@@ -83,7 +89,7 @@ const harness = async (factStore: FactStore) => {
       height: SIM_ORIGIN.height,
     }),
   ).toMatchObject({ kind: "initialized" });
-  const queue = new QueueChain(SLOT_TIME);
+  const queue = new QueueChain(slotTime);
   const apply = async (
     event: Parameters<typeof applyChainSyncEvent>[1],
   ): Promise<void> => {
@@ -116,7 +122,7 @@ const harness = async (factStore: FactStore) => {
             generation: 0,
           },
         }) as unknown as FollowStatus,
-      slotTime: async () => SLOT_TIME,
+      slotTime: async () => slotTime,
     }),
     payloadSource: {
       fetchPayloadCandidates: async () => ({
@@ -220,9 +226,85 @@ describe.each([
         }
         expect(released).toHaveLength(1);
         expect(await store.getDaPayload(headerHash)).toBeUndefined();
-        expect(await store.getStateQueueHeader(headerHash)).toMatchObject({
-          status: "merged",
-        });
+        // Without promise adoption, the header row goes with its payload: no
+        // signed decision of this member keeps it.
+        expect(await store.getStateQueueHeader(headerHash)).toBeUndefined();
+      } finally {
+        await factStore.close();
+      }
+    },
+  );
+});
+
+/** Eight slots span a challengeability horizon: the clock, not an exemption, decides. */
+const SHORT_SLOT_TIME: SlotTime = {
+  ...SIM_SLOT_TIME,
+  slotLength: HORIZON_MS / 8,
+};
+
+describe.each([
+  ["SQLite", openSqlite],
+  ["Postgres", openPostgres],
+] as const)("the payload release clock (%s)", (_, open) => {
+  it(
+    "is the latest final block's time, not the tip block's",
+    { timeout: 120_000 },
+    async () => {
+      const factStore = await open();
+      try {
+        const { queue, apply, config, store, service, cycle } = await harness(
+          factStore,
+          SHORT_SLOT_TIME,
+        );
+        await apply(queue.init());
+        for (let i = 0; i < 3; i += 1) await apply(queue.empty());
+        await apply(queue.append());
+        const appendedAt = queue.chain.tip.height;
+        const header = queue.nodes[0]!;
+        const headerHash = header.hash;
+        const horizonEndMs = Number(header.header.endTime) + HORIZON_MS;
+        await store.saveDaPayload(
+          payloadRecord(headerHash, config.deploymentFingerprint),
+        );
+        await apply(queue.attest());
+        await apply(queue.append());
+        // The committee reads the header while it is queued, once safe.
+        while (!isSafe(depth(queue.chain.tip.height, appendedAt), SIM_DEPTHS))
+          await apply(queue.empty());
+        expect(await cycle()).toEqual([]);
+        expect(await store.getStateQueueHeader(headerHash)).toBeDefined();
+        await apply(queue.merge());
+        await apply(queue.attest());
+        await apply(queue.merge());
+        // Ticks at which the merge is final and the tip block is past the
+        // horizon, but the latest final block is not: the payload stays.
+        let heldByClock = 0;
+        let releasedAtMs: number | null = null;
+        for (let i = 0; i < 64 && releasedAtMs === null; i += 1) {
+          await apply(queue.empty());
+          const pruned = await cycle();
+          const clockMs = service.latestL1View()!.finalBlockTimeMs;
+          if (pruned.includes(headerHash)) {
+            releasedAtMs = clockMs;
+            continue;
+          }
+          expect(await store.getDaPayload(headerHash)).toBeDefined();
+          if (
+            isFinal(
+              depth(queue.chain.tip.height, queue.merged[0]!.mergedAt),
+              SIM_DEPTHS,
+            ) &&
+            slotTimeMs(queue.chain.tip.point.slot, SHORT_SLOT_TIME) >
+              horizonEndMs
+          ) {
+            expect(clockMs).not.toBeNull();
+            expect(clockMs!).toBeLessThanOrEqual(horizonEndMs);
+            heldByClock += 1;
+          }
+        }
+        expect(heldByClock).toBeGreaterThan(0);
+        expect(releasedAtMs).toBeGreaterThan(horizonEndMs);
+        expect(await store.getDaPayload(headerHash)).toBeUndefined();
       } finally {
         await factStore.close();
       }

@@ -1,8 +1,8 @@
 [
   {
     "file": "da-committee-node/src/committee-service.committee-service.ts",
-    "max": 1425,
-    "reason": "CommitteeService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. T161 (+9): payload verification first resolves the block's pre-state from the parent payload, before the verdict, so an unavailable parent withholds attestation without marking the payload rejected; a split of this module is a separate proven pure move. C3 (+1): the accepted L1 view carries the latest final block's time, the release clock retention prunes by."
+    "max": 1431,
+    "reason": "CommitteeService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. T161 (+9): payload verification first resolves the block's pre-state from the parent payload, before the verdict, so an unavailable parent withholds attestation without marking the payload rejected; a split of this module is a separate proven pure move. C3 (+1): the accepted L1 view carries the latest final block's time, the release clock retention prunes by. C3-fix (+6): without promise adoption the tick prunes the signed decisions obligations() reads as deletable once the header has exited (plan §11, class B), and the l1_reconcile outbox status is projected from the tick's facts."
   },
   {
     "file": "da-committee-node/src/da/libp2p/payload-protocols.da-libp2p-payload-protocol-handlers.ts",
@@ -11,8 +11,8 @@
   },
   {
     "file": "da-committee-node/src/store/postgres.postgres-committee-store.ts",
-    "max": 985,
-    "reason": "PostgresCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. C2 (+46): Postgres is the only committee store; it reads readiness from maintained counters, records signed decisions on signature rows, and turns a lost instance lock into a passive reacquire loop instead of an exit. C3 (-15): payload deletion reuses retention's shared prune decision instead of re-deriving it."
+    "max": 1000,
+    "reason": "PostgresCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. C2 (+46): Postgres is the only committee store; it reads readiness from maintained counters, records signed decisions on signature rows, and turns a lost instance lock into a passive reacquire loop instead of an exit. C3 (-15): payload deletion reuses retention's shared prune decision instead of re-deriving it. C3-fix (+15): the store deletes a signed decision's rows (plan §11, class B), refused under a retirement floor, and a released payload's header row when no own signature keeps it; the SQL lives in decision-pruning-postgres.ts."
   },
   {
     "file": "da-committee-node/tests/committee-service.test/lifecycle.ts",

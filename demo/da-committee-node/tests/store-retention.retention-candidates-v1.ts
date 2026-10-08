@@ -115,6 +115,23 @@ describe("retentionCandidatesV1", () => {
     ]);
   });
 
+  it("releases nothing while no block is final, whatever the wall clock reads", async () => {
+    const store = await openStore();
+    await seed(store, [
+      { headerHash: hashOf(9), withoutHeader: true, fetchedAtMs: PAST_HORIZON },
+    ]);
+    const candidates = await retentionCandidates(store, {
+      ...retentionOptions(),
+      finalBlockTimeMs: null,
+    });
+    expect(candidates).toMatchObject([
+      {
+        headerStatus: "unobserved",
+        decision: { decision: "retain", reasonCode: "still_challengeable" },
+      },
+    ]);
+  });
+
   it("prunes an unexempt payload whose receipt time cannot be parsed", async () => {
     const store = await openStore();
     for (const headerHash of [hashOf(8), LIVE_A]) {

@@ -164,6 +164,28 @@ describe("retentionDeadlineReportV1", () => {
     expect(report.alerting).toBe(0);
   });
 
+  it("does not alert on a record past its horizon on the wall clock but not on the release clock", async () => {
+    const store = await openStore();
+    await seed(store, [
+      {
+        headerHash: hashOf(45),
+        endTimeMs: NOW - REQUIRED_RETENTION_MS,
+        status: "attested",
+      },
+    ]);
+    const report = await retentionDeadlineReport(store, {
+      ...retentionOptions(NOW + 1),
+      finalBlockTimeMs: NOW,
+      alertThresholdMs: THRESHOLD_MS,
+    });
+    expect(report.entries[0]).toMatchObject({
+      reasonCode: "still_challengeable",
+      remainingMs: -1,
+      alerting: false,
+    });
+    expect(report.alerting).toBe(0);
+  });
+
   it("computes a deadline for a payload with no header row from its receipt time", async () => {
     const store = await openStore();
     await seed(store, [{ headerHash: hashOf(42), withoutHeader: true }]);

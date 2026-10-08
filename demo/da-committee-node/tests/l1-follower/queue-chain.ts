@@ -40,6 +40,13 @@ type QueueRoot = {
   link: string | null;
 };
 
+/**
+ * How many blocks `rollBack` can drop. The queue below older blocks is not
+ * kept: a long history (the B5 bench's) would hold a copy of the whole
+ * queue per block.
+ */
+export const QUEUE_CHAIN_ROLLBACK_BOUND = 64;
+
 type QueueState = {
   root: QueueRoot | null;
   nodes: QueueChainNode[];
@@ -64,7 +71,10 @@ export class QueueChain {
   /** Headers merged into the root, oldest first, with the merge's height. */
   readonly merged: (QueueChainNode & { mergedAt: number })[] = [];
   private attested = 0;
-  /** The queue below each block above the origin, oldest first. */
+  /**
+   * The queue below each of the last `QUEUE_CHAIN_ROLLBACK_BOUND` blocks,
+   * oldest first.
+   */
   private readonly below: QueueState[] = [];
 
   /** `slotTime` dates each appended header's end time (default the sim's). */
@@ -86,6 +96,7 @@ export class QueueChain {
   /** Records the queue below the block the caller is about to add. */
   private beginBlock(): void {
     this.below.push(this.snapshot());
+    if (this.below.length > QUEUE_CHAIN_ROLLBACK_BOUND) this.below.shift();
   }
 
   private forward(tx: SimTx) {
@@ -101,6 +112,10 @@ export class QueueChain {
 
   /** Drops the top `depth` blocks; the queue is as it stood below them. */
   rollBack(depth: number) {
+    if (depth > this.below.length)
+      throw new RangeError(
+        `cannot roll back ${depth.toString()} blocks: the queue below only the last ${this.below.length.toString()} is kept`,
+      );
     const event = this.chain.backward(depth);
     const restored = this.below.splice(this.below.length - depth)[0];
     if (restored !== undefined) {

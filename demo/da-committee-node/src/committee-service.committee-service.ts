@@ -8,6 +8,7 @@ import {
   coordinatorPostFailedMessage,
   shouldRepublishSignatureForHeader,
 } from "./committee-service.coordinator-post-failed-message.js";
+import { decisionsToPrune } from "./committee-service.decision-pruning.js";
 import {
   type CommitteeL1SubmitterPreflightSnapshot,
   type CommitteeL1View,
@@ -29,6 +30,7 @@ import {
   L1_DA_PARAMS_UNAVAILABLE,
   L1_FOLLOWER_NOT_INITIALIZED,
   L1_STATE_QUEUE_UNHEALTHY,
+  reconcileStandingOf,
   retirementFloorHold,
   statusIdentityMismatch,
   STORE_INTEGRITY,
@@ -754,6 +756,25 @@ export class CommitteeService {
       [...records, ...terminal],
       new Set(signed.map(({ headerHash }) => headerHash)),
     );
+    // Under promise adoption retirement is the only deleter of these rows.
+    if (
+      decisionsAllowed &&
+      this.deps.config.availabilityPromiseAdoption === undefined
+    ) {
+      const settled = new Set(terminal.map(({ headerHash }) => headerHash));
+      const prune = decisionsToPrune({
+        obligations: view.obligations,
+        signed,
+        held: new Set([...live, ...view.finalQueueHeaderHashes]),
+        unsettled: new Set(
+          stored
+            .map(({ headerHash }) => headerHash)
+            .filter((headerHash) => !settled.has(headerHash)),
+        ),
+        finalBlockTimeMs: view.finalBlockTimeMs,
+      });
+      await this.deps.store.pruneSignedDecisions(prune);
+    }
     return {
       scannedHeaders: records.length,
       signedHeaders,
@@ -1154,12 +1175,13 @@ export class CommitteeService {
     errors: string[],
   ): Promise<boolean> {
     const reconciler = this.deps.submitterReconciler;
-    if (reconciler === undefined || !record.finalized) {
+    if (reconciler === undefined) {
       return false;
     }
-    const existing = await this.decisionOutboxFor(record, "l1_reconcile");
-    if (existing?.status === "reconciled") {
-      return true;
+    // The tick's facts decide; the stored l1_reconcile record never does.
+    const standing = reconcileStandingOf(record, this.deps.l1.parameters);
+    if (standing !== "owed") {
+      return standing !== "waiting";
     }
     const effect = await this.beginDecisionEffectUnlessInFlight(
       record,
@@ -1275,22 +1297,6 @@ export class CommitteeService {
       },
     });
     return published;
-  }
-
-  private async decisionOutboxFor(
-    record: StateQueueHeaderRecord,
-    effectKind: DecisionOutboxRecord["effectKind"],
-    signerIndex?: number,
-  ): Promise<DecisionOutboxRecord | undefined> {
-    return this.deps.store.getDecisionOutbox(
-      decisionEffectId({
-        deploymentFingerprint: this.deps.config.deploymentFingerprint,
-        headerHash: record.headerHash,
-        stateQueueOutRef: record.stateQueueOutRef,
-        effectKind,
-        ...(signerIndex === undefined ? {} : { signerIndex }),
-      }),
-    );
   }
 
   /**

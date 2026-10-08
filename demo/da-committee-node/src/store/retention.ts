@@ -69,6 +69,8 @@ export type RetainedPayloadReleaseOptions = RetentionL1View & {
 export type RetentionScanOptions = RetainedPayloadReleaseOptions & {
   /** Wall-clock time of the scan: reporting and the deadline alert only. */
   readonly nowMs: number;
+  /** A released payload takes its header row; never under promise adoption. */
+  readonly releaseHeader?: boolean;
 };
 
 /**
@@ -112,10 +114,13 @@ export const retentionQueueReference = (
 /**
  * Headers whose payloads stay retained although L1 at its tip no longer lists
  * them: every header a not-yet-final checkpoint moved or took out of the
- * queue, and the newest header whose merge is final. A reader at release
+ * queue, and the headers of the newest merge recorded `finalized`, which is
+ * safe (depth >= cd, `headerRecordOf`), not final. A reader at release
  * finality still sees each as queued, or as the confirmed head its queue
- * extends. Each is released once a later merge is final at the deployment's
- * finality depth, the only depth either source is judged at.
+ * extends. The pin moves to each newer safe merge; finality itself is
+ * enforced by the cohort gate, which retires a header only once its points
+ * are final (deeper than k) at the boundary (`final(q)` in `planRetirement`,
+ * `retirement-transition.ts`).
  */
 export const finalityHeldHeaderHashes = (
   deferredHeaderHashes: readonly string[],
@@ -306,6 +311,7 @@ const pruneRetentionCandidates = async (
       liveQueueHeaderHashes: options.liveQueueHeaderHashes,
       automaticRecoveryMaxDepth: options.automaticRecoveryMaxDepth,
       deploymentFingerprint: options.deploymentFingerprint,
+      ...(options.releaseHeader === true ? { releaseHeader: true } : {}),
     });
     if (deleted) {
       prunedHeaderHashes.push(candidate.headerHash);
@@ -375,6 +381,7 @@ export const retentionCycleOptions = (
     | "retentionAlertThresholdMs"
     | "deploymentFingerprint"
     | "automaticRecoveryMaxDepth"
+    | "availabilityPromiseAdoption"
   > & {
     readonly daTransport: Pick<CommitteeConfig["daTransport"], "retentionDays">;
   },
@@ -382,6 +389,7 @@ export const retentionCycleOptions = (
   nowMs: number,
 ): RetentionDeadlineOptions => ({
   nowMs,
+  releaseHeader: config.availabilityPromiseAdoption === undefined,
   alertThresholdMs: config.retentionAlertThresholdMs,
   retentionDays: config.daTransport.retentionDays,
   deploymentFingerprint: config.deploymentFingerprint,

@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS committee_retirement_metadata (
   record jsonb NOT NULL
 );
 
--- class: A; retention: one row per observed state-queue header, pruned with its payload once retention allows
+-- class: A; retention: one row per observed state-queue header, pruned with the member's signed decision for it (plan §11), or with its payload, whichever goes last
 CREATE TABLE IF NOT EXISTS committee_state_queue_headers (
   header_hash text PRIMARY KEY,
   record jsonb NOT NULL,
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS committee_l1_source_state (
   updated_at timestamptz NOT NULL DEFAULT NOW()
 );
 
--- class: B; retention: one row per decision effect, kept until retirement
+-- class: B; retention: one row per decision effect, pruned with its header's signed decision (plan §11), or by retirement under promise adoption
 CREATE TABLE IF NOT EXISTS committee_decision_outbox (
   effect_id text PRIMARY KEY,
   header_hash text NOT NULL,
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS committee_promise_capacity_evidence (
   record jsonb NOT NULL
 );
 
--- class: B; retention: one row per availability signature, the member's or a peer's, pruned with its payload; a row of the member's own (end_time_ms set) is its signed decision
+-- class: B; retention: one row per availability signature, the member's or a peer's, pruned with the member's signed decision for its header (plan §11), or with its payload when it has none; a row of the member's own (end_time_ms set) is its signed decision
 CREATE TABLE IF NOT EXISTS committee_da_signatures (
   header_hash text NOT NULL,
   commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
@@ -229,8 +229,10 @@ UPDATE committee_decision_outbox
  * Indexes and triggers. The open-header index serves the readiness probe's
  * per-header reads, which therefore cost O(headers not yet final), not
  * O(store); the unsettled-header index serves the tick's header read the
- * same way. The triggers keep `committee_store_counts`, so the probe reads
- * its totals without listing rows.
+ * same way. The outbox and peer-broadcast header indexes serve
+ * signed-decision pruning, which deletes by header hash. The triggers keep
+ * `committee_store_counts`, so the probe reads its totals without listing
+ * rows.
  */
 const COMMITTEE_STORE_DERIVED_SQL = `
 CREATE INDEX IF NOT EXISTS committee_state_queue_headers_open
@@ -248,6 +250,12 @@ CREATE INDEX IF NOT EXISTS committee_decision_outbox_pending
 CREATE INDEX IF NOT EXISTS committee_da_signatures_signed_decisions
   ON committee_da_signatures (header_hash)
   WHERE end_time_ms IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS committee_decision_outbox_header
+  ON committee_decision_outbox (header_hash);
+
+CREATE INDEX IF NOT EXISTS committee_peer_broadcasts_header
+  ON committee_peer_broadcasts (header_hash);
 
 -- The counters move once per statement, by the rows it changed (its
 -- transition tables), never once per row: a statement that deletes a
