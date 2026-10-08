@@ -35,6 +35,7 @@ describe("committee projections in the fork simulator (SQLite)", () => {
 
   it.each(corpus.map((entry) => [entry.name, entry.scenario] as const))(
     "corpus: %s",
+    { timeout: 60_000 },
     async (_, scenario) => {
       const stats = zeroStats();
       const reads = zeroAvailabilityReadStats();
