@@ -133,7 +133,7 @@ describe("receivePurposeLanguage V1", () => {
       "headerHash",
       "lucid",
       "signer",
-      "source",
+      "l1Source",
       "decisionDigest",
       "stateQueueMutationLeaseCoordinator",
       "referenceScripts",

@@ -63,6 +63,7 @@ import {
   TxUtils,
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
+import { insertForcedEntriesWithOrders } from "./helpers/emulator-l1-follower.js";
 
 describe("deposit flow emulator", { concurrent: false }, () => {
   // 900s leaves headroom for the full real-contract workflow. Protocol
@@ -320,42 +321,41 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         "hex",
       );
       const forcedSidecar = EMPTY_PROGRAM_MATERIAL_SIDECAR;
+      const forcedEntry: ForcedTransactionsDB.Entry = {
+        [ForcedTransactionsDB.Columns.TX_ORDER_ID]: forcedEventId,
+        [ForcedTransactionsDB.Columns.TX_ORDER_L1_TX_HASH]: Buffer.alloc(
+          32,
+          0x42,
+        ),
+        [ForcedTransactionsDB.Columns.TX_ORDER_L1_OUTPUT_INDEX]: 0,
+        [ForcedTransactionsDB.Columns.ASSET_NAME]: Buffer.alloc(32, 0x43),
+        [ForcedTransactionsDB.Columns.RAW_DATUM]: Buffer.from("01", "hex"),
+        [ForcedTransactionsDB.Columns.TX_ID]: forcedEncoding.txId,
+        [ForcedTransactionsDB.Columns.TX_COMPACT]: forcedEncoding.txCompact,
+        [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]:
+          forcedEncoding.value,
+        [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
+          MIDGARD_CONSENSUS_PROFILE.profileId,
+        [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]:
+          encodeMidgardForcedTxCanonical(
+            decodeMidgardNativeTxFullFromCanonicalCbor(forcedTransfer.txCbor),
+          ),
+        [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
+          forcedEncoding.transactionCommitment,
+        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
+          forcedSidecar,
+        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
+          createHash("sha256").update(forcedSidecar).digest(),
+        [ForcedTransactionsDB.Columns.INCLUSION_TIME]: eventTime,
+        [ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH]: null,
+        [ForcedTransactionsDB.Columns.STATUS]:
+          ForcedTransactionsDB.Status.Awaiting,
+      };
       await runNodeDatabaseEffect(
-        ForcedTransactionsDB.insertEntries([
-          {
-            [ForcedTransactionsDB.Columns.TX_ORDER_ID]: forcedEventId,
-            [ForcedTransactionsDB.Columns.TX_ORDER_L1_TX_HASH]: Buffer.alloc(
-              32,
-              0x42,
-            ),
-            [ForcedTransactionsDB.Columns.TX_ORDER_L1_OUTPUT_INDEX]: 0,
-            [ForcedTransactionsDB.Columns.ASSET_NAME]: Buffer.alloc(32, 0x43),
-            [ForcedTransactionsDB.Columns.RAW_DATUM]: Buffer.from("01", "hex"),
-            [ForcedTransactionsDB.Columns.TX_ID]: forcedEncoding.txId,
-            [ForcedTransactionsDB.Columns.TX_COMPACT]: forcedEncoding.txCompact,
-            [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]:
-              forcedEncoding.value,
-
-            [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
-              MIDGARD_CONSENSUS_PROFILE.profileId,
-            [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]:
-              encodeMidgardForcedTxCanonical(
-                decodeMidgardNativeTxFullFromCanonicalCbor(
-                  forcedTransfer.txCbor,
-                ),
-              ),
-            [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
-              forcedEncoding.transactionCommitment,
-            [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
-              forcedSidecar,
-            [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
-              createHash("sha256").update(forcedSidecar).digest(),
-            [ForcedTransactionsDB.Columns.INCLUSION_TIME]: eventTime,
-            [ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH]: null,
-            [ForcedTransactionsDB.Columns.STATUS]:
-              ForcedTransactionsDB.Status.Awaiting,
-          },
-        ]),
+        insertForcedEntriesWithOrders(
+          [forcedEntry],
+          fixture.operatorLucid.currentSlot(),
+        ),
       );
 
       // Both events sit inside the worker's retrieval window and its

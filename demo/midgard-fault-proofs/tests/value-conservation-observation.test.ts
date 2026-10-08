@@ -158,7 +158,7 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
     headerHash,
     lucid: {},
     signer: { paymentKeyHash: owner },
-    source: {},
+    l1Source: {},
     stateQueueMutationLeaseCoordinator: {},
     referenceScripts: {
       steps: Array.from({ length: 4 }, () => reference),

@@ -140,7 +140,10 @@ type Node struct {
 	acquired []string
 	hasTxEra []uint64
 	conns    map[*ouroboros.Connection]struct{}
-	closed   bool
+	// drops counts DropConnections calls, so a connection still in its
+	// handshake when the drop came is closed as soon as it registers.
+	drops  uint64
+	closed bool
 
 	// RequestNexts counts RequestNext messages handled, over all connections.
 	RequestNexts atomic.Int64
@@ -187,6 +190,7 @@ func (n *Node) DropConnections() {
 	n.mu.Lock()
 	conns := n.conns
 	n.conns = map[*ouroboros.Connection]struct{}{}
+	n.drops++
 	n.mu.Unlock()
 	for conn := range conns {
 		_ = conn.Close()
@@ -416,6 +420,9 @@ func (f *follower) step(server *chainsync.Server) (bool, error) {
 }
 
 func (n *Node) serve(socket net.Conn) {
+	n.mu.Lock()
+	drops := n.drops
+	n.mu.Unlock()
 	f := &follower{node: n, requests: make(chan struct{}, chainsync.MaxPipelineLimit+1)}
 	done := make(chan struct{})
 	errorChan := make(chan error, 8)
@@ -506,7 +513,7 @@ func (n *Node) serve(socket net.Conn) {
 		return
 	}
 	n.mu.Lock()
-	if n.closed {
+	if n.closed || n.drops != drops {
 		n.mu.Unlock()
 		_ = conn.Close()
 		return
