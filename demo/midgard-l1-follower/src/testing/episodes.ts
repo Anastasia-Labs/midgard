@@ -64,7 +64,7 @@ export type ForkCheck =
       what: string;
       hash: Buffer;
       isValid: boolean;
-      invalidAfter: number | null;
+      invalidAfter: bigint | null;
     }>
   | Readonly<{ kind: "tx_absent"; what: string; hash: Buffer }>
   | Readonly<{
@@ -370,7 +370,8 @@ export class EpisodeBuilder {
       what,
       hash: simTxHash(tx),
       isValid: tx.isValid !== false,
-      invalidAfter: tx.invalidAfter ?? null,
+      invalidAfter:
+        tx.invalidAfter === undefined ? null : BigInt(tx.invalidAfter),
     });
     const absent = (what: string, tx: SimTx): ForkCheck => ({
       kind: "tx_absent",
@@ -411,7 +412,7 @@ export class EpisodeBuilder {
         const tx = old as SimTx;
         const changed: SimTx = {
           ...tx,
-          invalidAfter: (tx.invalidAfter ?? 0) + 1 + episode.variant,
+          invalidAfter: Number(tx.invalidAfter ?? 0) + 1 + episode.variant,
         };
         return {
           landing: changed,

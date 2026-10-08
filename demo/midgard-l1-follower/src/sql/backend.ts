@@ -117,6 +117,9 @@ export const asBigInt = (value: unknown): bigint => {
   throw new Error(`expected a numeric column, got ${typeof value}`);
 };
 
+export const asNullableBigInt = (value: unknown): bigint | null =>
+  value === null || value === undefined ? null : asBigInt(value);
+
 export const asString = (value: unknown): string => {
   if (typeof value === "string") return value;
   throw new Error(`expected a text column, got ${typeof value}`);

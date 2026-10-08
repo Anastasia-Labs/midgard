@@ -36,8 +36,9 @@ export type SimTx = Readonly<{
   mint?: ReadonlyMap<string, ReadonlyMap<string, bigint>>;
   /** Reward withdrawals (body key 5), encoded in this order. */
   withdrawals?: readonly Readonly<{ rewardAccount: Buffer; amount: bigint }>[];
-  invalidBefore?: number;
-  invalidAfter?: number;
+  /** Ledger Word64 slots, so a test can carry the full range. */
+  invalidBefore?: number | bigint;
+  invalidAfter?: number | bigint;
   /** False: the transaction failed phase 2 (listed in the block's invalid set). */
   isValid?: boolean;
   /**

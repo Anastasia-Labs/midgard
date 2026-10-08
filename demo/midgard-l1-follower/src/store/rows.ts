@@ -8,6 +8,7 @@ import {
 } from "../codec.js";
 import {
   asBuffer,
+  asNullableBigInt,
   asNullableBuffer,
   asNullableNumber,
   asNumber,
@@ -268,8 +269,8 @@ export const storedTxFromRow = (dialect: Dialect, row: SqlRow): StoredTx => ({
   mint: assetsFromJson(row.mint),
   withdrawals: withdrawalsFromJson(row.withdrawals),
   redeemers: redeemersFromJson(row.redeemers),
-  invalidBefore: asNullableNumber(row.invalid_before),
-  invalidAfter: asNullableNumber(row.invalid_after),
+  invalidBefore: asNullableBigInt(row.invalid_before),
+  invalidAfter: asNullableBigInt(row.invalid_after),
   bodyCbor: asBuffer(row.body_cbor),
   witnessCbor: asBuffer(row.witness_cbor),
   auxCbor: asNullableBuffer(row.aux_cbor),
