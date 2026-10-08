@@ -1,3 +1,4 @@
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
   plutusConstrFieldCbor,
@@ -13,7 +14,7 @@ import { captureStagedHistoryEvent } from "./history-events.js";
 import { verifyDuplicateEventSource } from "./history-settlement.js";
 
 it.each([false, true])(
-  "binds settlement source content and original funds to its captured deposit and unchanged seven-day maturity (raw=%s)",
+  "binds settlement source content and original funds to its captured deposit and the unchanged maturity of the compiled profile (raw=%s)",
   async (raw) => {
     const policyId = "ab".repeat(28);
     const address = credentialToAddress("Custom", {
@@ -114,8 +115,11 @@ it.each([false, true])(
     const captured = JSON.parse(
       JSON.stringify(captureStagedHistoryEvent({ order: order!, policyId })),
     );
+    // Maturity is the compiled deployment profile's, the value the state queue
+    // validator enforces through env.block_maturity_duration_v1.
     expect(await verifyDuplicateEventSource(source, captured)).toBe(
-      block.header.endTime + 604_800_000n,
+      block.header.endTime +
+        BigInt(SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms),
     );
     if (raw) {
       expect(captured.openingCbor).toContain(rawDatum);

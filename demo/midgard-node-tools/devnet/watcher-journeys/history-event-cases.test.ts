@@ -719,14 +719,6 @@ it.each(["Deposit", "Withdrawal"] as const)(
             category: "fabricatedWithdrawal",
             withdrawals: [fresh],
           });
-    await select({
-      category:
-        kind === "Deposit" ? "fabricatedDeposit" : "fabricatedWithdrawal",
-      block: honest,
-      predecessor: source,
-      history,
-      honest: true,
-    });
     const honestWitness = await historyWitness(honest, fresh);
     const honestPlan =
       kind === "Deposit"
@@ -827,6 +819,14 @@ it.each(["Deposit", "Withdrawal"] as const)(
     await stage.deployment.chain.awaitLedgerTime(
       Number(honest.header.endTime) + 2_000,
     );
+    await select({
+      category:
+        kind === "Deposit" ? "fabricatedDeposit" : "fabricatedWithdrawal",
+      block: honest,
+      predecessor: source,
+      history,
+      honest: true,
+    });
     const honestRefusal = await checkFreshEligibleFamilyRefusal({
       ...proofBase,
       headerHash: honest.headerHash,
@@ -874,14 +874,6 @@ it.each(["Deposit", "Withdrawal"] as const)(
     expect(malicious.header.startTime).toBeGreaterThanOrEqual(
       retired.inclusionTime,
     );
-    await select({
-      category:
-        kind === "Deposit" ? "fabricatedDeposit" : "fabricatedWithdrawal",
-      block: malicious,
-      predecessor: honest,
-      history: [...history, source],
-      honest: false,
-    });
     // The fresh admission and proof capture may have moved the list anchor.
     const currentHistory = SDK.eventHistoryDeploymentFromContracts(
       SDK.requireEventHistoryContracts(stage.deployment.contracts)[
@@ -927,6 +919,14 @@ it.each(["Deposit", "Withdrawal"] as const)(
     await stage.deployment.chain.awaitLedgerTime(
       Number(malicious.header.endTime) + 2_000,
     );
+    await select({
+      category:
+        kind === "Deposit" ? "fabricatedDeposit" : "fabricatedWithdrawal",
+      block: malicious,
+      predecessor: honest,
+      history: [...history, source],
+      honest: false,
+    });
     const confirmedBeforeProof = await stage.confirmedState();
     const honestUnit =
       stage.deployment.contracts.stateQueue.policyId +
