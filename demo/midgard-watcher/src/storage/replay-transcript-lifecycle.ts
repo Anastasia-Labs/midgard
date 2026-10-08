@@ -18,7 +18,7 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import { WATCHER_ROLLBACK_BOUNDS } from "../l1/rollback-engine/types.js";
+import { WATCHER_CARDANO_SECURITY_PARAMETER_K } from "../runtime/config.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
@@ -354,7 +354,7 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
               (node) => node.headerHash === fields[1],
             ) ||
             BigInt(observation.nativePoint.blockNo) - BigInt(fields[4]!) <=
-              WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth
+              BigInt(WATCHER_CARDANO_SECURITY_PARAMETER_K)
           ) {
             absence.clear(key);
             continue;

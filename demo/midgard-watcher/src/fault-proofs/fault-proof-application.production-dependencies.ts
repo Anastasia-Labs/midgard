@@ -40,10 +40,10 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
+import type { WatcherUserEvents } from "../l1-follower/user-events.js";
 import type { WatcherConfig } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentAuthority } from "../runtime/deployment-authority.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import { type WatcherUserEventRuntime } from "../runtime/user-event-runtime.js";
 import type { WatcherReplayTranscriptStore } from "../storage/replay-transcript-store.js";
 import {
   type WatcherRetainedDaRuntimeOptions,
@@ -149,7 +149,7 @@ export type WatcherFaultProofApplicationOptions = Readonly<{
   l1: WatcherFaultProofL1;
   deploymentAuthority: VerifiedWatcherDeploymentAuthority;
   replayTranscriptStore: WatcherReplayTranscriptStore;
-  userEventRuntime: WatcherUserEventRuntime;
+  userEvents: WatcherUserEvents;
   infrastructure: WatcherFaultProofInfrastructureAuthority;
   historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
@@ -161,13 +161,13 @@ export type WatcherFaultProofApplicationConstructionOptions = Omit<
   | "historicalNativeScriptCheckpointStore"
   | "deploymentAuthority"
   | "replayTranscriptStore"
-  | "userEventRuntime"
+  | "userEvents"
 > &
   Readonly<{
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     deploymentAuthority?: VerifiedWatcherDeploymentAuthority;
     replayTranscriptStore?: WatcherReplayTranscriptStore;
-    userEventRuntime?: WatcherUserEventRuntime;
+    userEvents?: WatcherUserEvents;
     historicalNativeScriptCheckpointStore?: HistoricalNativeScriptCheckpointStore;
     fundingProfileOverlay?: WatcherWorkflowFundingProfileOverlay;
     unsafeTransportOptionsForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportOptionsForTest"];

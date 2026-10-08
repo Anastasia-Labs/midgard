@@ -110,9 +110,6 @@ it
       );
       const raw = config.watcherConfig;
       raw.l1.finality.depth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
-      raw.l1.finality.rollback.maxDepth =
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
-      delete raw.l1.finality.rollback.postFinalityRecoveryMaxDepth;
       raw.targetNetwork = "Custom";
       raw.customNetwork = {
         networkMagic: 42,

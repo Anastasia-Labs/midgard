@@ -189,11 +189,6 @@ const exerciseRoles = async (
         finality: {
           ...parsed.l1.finality,
           depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-          rollback: {
-            beforeFinality: parsed.l1.finality.rollback.beforeFinality,
-            afterFinality: parsed.l1.finality.rollback.afterFinality,
-            maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-          },
         },
       },
     };

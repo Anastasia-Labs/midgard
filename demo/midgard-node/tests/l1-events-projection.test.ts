@@ -3,16 +3,6 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
-import { createSlotClock } from "@al-ft/midgard-l1-follower/heads";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-
-import {
-  depositDataToEntry,
-  withdrawalDataToEntry,
-} from "../src/l1-event-history-entries.js";
 import {
   dueByCutoff,
   dueByCutoffNow,
@@ -24,8 +14,18 @@ import {
   type SlotTime,
   slotToPosixMs,
   spendableAt,
-  userEventEntry,
-} from "../src/l1-events/index.js";
+} from "@al-ft/midgard-l1-follower/events";
+import { createSlotClock } from "@al-ft/midgard-l1-follower/heads";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  depositDataToEntry,
+  withdrawalDataToEntry,
+} from "../src/l1-event-history-entries.js";
+import { userEventEntry } from "../src/l1-events/entries.js";
 import {
   admissionTx,
   ELSEWHERE,

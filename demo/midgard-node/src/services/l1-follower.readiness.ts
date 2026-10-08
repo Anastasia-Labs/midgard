@@ -35,13 +35,13 @@
  * the slot of its merge and that merge's level (`landed`, `safe`, `final`).
  */
 import type { FactStore, FollowStatus } from "@al-ft/midgard-l1-follower";
+import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 
 import {
   type DriverHold,
   type IngestionPlan,
   planIngestion,
 } from "../l1-events/driver.js";
-import type { EventProjectionConfig } from "../l1-events/index.js";
 import type { ConfirmedLedgerPosition } from "../landed-blocks/position.js";
 
 /** The node has no follower: its configuration is missing a piece (named in the detail). */

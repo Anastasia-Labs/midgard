@@ -6,16 +6,15 @@
  * projection opens them exactly as it opens the chain's.
  */
 import type { OutRef } from "@al-ft/midgard-l1-follower";
-import type { SimOutput, SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-
 import type {
   EventKind,
   EventListConfig,
   EventProjectionConfig,
-} from "../../src/l1-events/index.js";
+} from "@al-ft/midgard-l1-follower/events";
+import type { SimOutput, SimTx } from "@al-ft/midgard-l1-follower/testing";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 const repeat = (byte: string, bytes: number): string => byte.repeat(bytes);
 

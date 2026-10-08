@@ -59,28 +59,11 @@ export const writeWatcherRuntimeProcessConfig = async (
             genesisConfigPath: "/etc/cardano/shelley-genesis.json",
             genesisIdentitySha256: h32(0x66),
           },
-          queryServices: [
-            {
-              kind: "ogmios",
-              identity: "local-ogmios",
-              endpoint: "ws://127.0.0.1:1337",
-            },
-            {
-              kind: "kupo",
-              identity: "local-kupo",
-              endpoint: "http://127.0.0.1:1442",
-            },
-          ],
         },
         requestTimeoutMs: 10_000,
         maxConcurrency: 4,
         finality: {
           depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-          rollback: {
-            beforeFinality: "rewind",
-            afterFinality: "quarantine",
-            maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-          },
         },
       },
       da: {
@@ -114,9 +97,7 @@ export const writeWatcherRuntimeProcessConfig = async (
     ruleBundlePath: join(directory, "rule-bundle.json"),
     fundingProfileBundlePath: join(directory, "funding-profiles.json"),
     l1NodeTransportBinaryPath: "/usr/local/bin/midgard-l1-node-transport",
-    trustedHeadAuthorityEndpoint: "http://127.0.0.1:43123",
     operationsEndpoint: "http://127.0.0.1:43124",
-    httpBearerSecretSource: environment("MIDGARD_WATCHER_TRUSTED_HEAD_BEARER"),
     workflowJournalDirectory: join(directory, "workflows"),
     availability: {
       keySource: environment("WATCHER_AVAILABILITY_KEY"),

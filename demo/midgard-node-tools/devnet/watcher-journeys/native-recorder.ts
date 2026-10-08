@@ -4,13 +4,14 @@ import { setTimeout as pause } from "node:timers/promises";
 
 import {
   admitWatcherNativeRollForwardBlock,
-  startWatcherNativeChainSync,
   type WatcherConfig,
   type WatcherNativeBlockAdmission,
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
 } from "midgard-watcher";
 import { NativeTransactionNotIncludedError } from "midgard-watcher/tests/support/published-da-target-consumption";
+
+import { startWatcherNativeChainSync } from "../../src/devnet-stack/native-chain-sync.js";
 
 export const startJourneyNativeRecorder = async (input: {
   directory: string;
@@ -36,6 +37,7 @@ export const startJourneyNativeRecorder = async (input: {
   let rollbackGeneration = 0;
   let latestTip: WatcherNativeChainSyncEvent["tip"] | undefined;
   let latestBlockNo: bigint | undefined;
+  let latestSlot: bigint | undefined;
   const native = await startWatcherNativeChainSync({
     watcherConfig: input.watcherConfig,
     binaryPath: input.binaryPath,
@@ -46,6 +48,7 @@ export const startJourneyNativeRecorder = async (input: {
       // The next admitted forward block establishes a canonical height again.
       if (event.kind === "roll_backward") {
         latestBlockNo = undefined;
+        latestSlot = undefined;
         rollbackGeneration += 1;
         for (const [id, { point }] of transactions) {
           if (
@@ -74,6 +77,7 @@ export const startJourneyNativeRecorder = async (input: {
         transactions.set(id, { cbor: block.transactionCbors[index]!, point }),
       );
       latestBlockNo = BigInt(block.blockNo);
+      latestSlot = BigInt(block.slot);
     },
   });
   void native.done.catch((cause) => {
@@ -87,6 +91,17 @@ export const startJourneyNativeRecorder = async (input: {
     nativeEvidencePath,
     assertHealthy,
     observedBlockNo: () => latestBlockNo,
+    /**
+     * Whether the canonical chain through `slot` includes the transaction;
+     * undefined while the recorder has not yet admitted a block at or past
+     * `slot`.
+     */
+    includedThrough: (txHash: string, slot: number): boolean | undefined => {
+      assertHealthy();
+      if (latestSlot === undefined || latestSlot < BigInt(slot))
+        return undefined;
+      return transactions.has(txHash);
+    },
     tip: () => {
       assertHealthy();
       const authority = watcherNativeChainSyncAuthorityDetails(

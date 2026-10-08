@@ -20,6 +20,7 @@
  * Decoding (`userEventEntry`) runs only for events the node has no row for.
  */
 import { postgresDialect, viewValidQuery } from "@al-ft/midgard-l1-follower";
+import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
 import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
 import { SqlClient, type Statement } from "@effect/sql";
 import type { Network } from "@lucid-evolution/lucid";
@@ -27,7 +28,6 @@ import { Effect } from "effect";
 
 import type { IngestionPlan } from "../l1-events/driver.js";
 import { userEventEntry } from "../l1-events/entries.js";
-import type { ProjectedEvent } from "../l1-events/reads.js";
 import * as Deposits from "./deposits.js";
 import { numbered } from "./follower-schema.js";
 import {

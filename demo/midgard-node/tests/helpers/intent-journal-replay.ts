@@ -36,6 +36,8 @@ import {
   type OutRef,
   projectionStoreOptions,
 } from "@al-ft/midgard-l1-follower";
+import { eventProjectionConfigFromContracts } from "@al-ft/midgard-l1-follower/events";
+import { eventProjection } from "@al-ft/midgard-l1-follower/events";
 import { encodeUtxoAnswer } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -46,8 +48,6 @@ import { Effect, Either, ManagedRuntime, Redacted } from "effect";
 import * as MigrationRunner from "../../src/database/migrations/runner.js";
 import { forcedOrderConfigFromContracts } from "../../src/forced-orders/config.js";
 import { forcedOrderProjection } from "../../src/forced-orders/index.js";
-import { eventProjectionConfigFromContracts } from "../../src/l1-events/index.js";
-import { eventProjection } from "../../src/l1-events/projection.js";
 import { operatorSetConfig } from "../../src/l1-operator-set/config.js";
 import { operatorSetProjection } from "../../src/l1-operator-set/index.js";
 import {

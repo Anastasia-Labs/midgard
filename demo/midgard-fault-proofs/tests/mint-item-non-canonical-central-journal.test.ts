@@ -11,9 +11,11 @@ import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
-import { readAdmittedLocalKupmiosSignedTransactionRecovery } from "../src/workflow/local-kupmios-http-ogmios-source.js";
 import { inspectSignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
-import { signedRecoveryFixture } from "./workflow-kupmios-source.signed-recovery-fixture.js";
+import {
+  signedRecoveryObservation,
+  signedWorkflowTransactionFixture,
+} from "./support/signed-workflow-transaction.js";
 
 const familyDirectoryStore = (
   directory: string,
@@ -64,10 +66,11 @@ const bridge = (
 
 describe("mintItemNonCanonical durable journal", () => {
   it("keeps a depth-zero mempool intent reserved and reopens its same receipt after a canonical rollback", async () => {
-    const fixture = await signedRecoveryFixture({
-      ttl: null,
-      mempoolPresent: true,
-    });
+    const fixture = await signedWorkflowTransactionFixture({ ttl: null });
+    // Present in the mempool at depth zero: canonical recovery reports pending.
+    const observe = vi.fn(async (signed: typeof fixture.input) =>
+      signedRecoveryObservation(signed, "pending", { depth: 0 }),
+    );
     const memory = memoryStore();
     const txHash = fixture.input.transactionHash;
     const inspected = inspectSignedWorkflowTransaction(fixture.input);
@@ -96,11 +99,7 @@ describe("mintItemNonCanonical durable journal", () => {
         headerHash: "2".repeat(56),
         decisionDigest: "3".repeat(64),
         transactionConfirmed: async () => confirmed,
-        observeSignedTransaction: (signed) =>
-          readAdmittedLocalKupmiosSignedTransactionRecovery({
-            ...signed,
-            source: fixture.source,
-          }),
+        observeSignedTransaction: observe,
       });
     try {
       const first = restart();
@@ -139,7 +138,9 @@ describe("mintItemNonCanonical durable journal", () => {
         actionId: "mintItemNonCanonical:submitStep01",
         txHash,
       });
-      expect(fixture.submissions).toEqual([]);
+      expect(observe).toHaveBeenCalled();
+      for (const [signed] of observe.mock.calls)
+        expect(signed).toEqual(fixture.input);
     } finally {
       read.mockRestore();
     }

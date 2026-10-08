@@ -105,9 +105,6 @@ export const deriveWatcherNativeGenesisIdentity = async (input: {
   readonly watcherConfig: WatcherNativeNodeConfig;
   readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
 }): Promise<{ genesisIdentitySha256: string; networkMagic: number }> => {
-  if (input.watcherConfig.l1.source.sourceMode !== "local_node") {
-    throw new Error("native genesis identity requires local-node source");
-  }
   const source = input.watcherConfig.l1.source;
   const read = input.unsafeReadIdentityFileForTest ?? readIdentityFile;
   const [nodeConfigBytes, genesisBytes] = await Promise.all([

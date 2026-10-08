@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 import {
   admitWatcherNativeRollForwardBlock,
-  startWatcherNativeChainSync,
   WATCHER_CONFIG_SCHEMA_VERSION,
   type WatcherConfig,
   watcherNativeChainSyncAuthorityDetails,
@@ -11,6 +10,7 @@ import {
 } from "midgard-watcher";
 import { expect, it } from "vitest";
 
+import { startWatcherNativeChainSync } from "../../src/devnet-stack/native-chain-sync.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
@@ -42,15 +42,7 @@ it.skipIf(runDirectory === undefined)(
         ...nativeQuery.watcherConfig.l1,
         requestTimeoutMs: 30_000,
         maxConcurrency: 1,
-        finality: {
-          depth: 30,
-          rollback: {
-            beforeFinality: "rewind",
-            afterFinality: "quarantine",
-            maxDepth: 30,
-            postFinalityRecoveryMaxDepth: 2160,
-          },
-        },
+        finality: { depth: 30 },
       },
       da: { peers: [], requestTimeoutMs: 30_000, maxConcurrency: 1 },
       storage: {

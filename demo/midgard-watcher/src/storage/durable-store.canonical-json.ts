@@ -1,56 +1,15 @@
 import { createHash } from "node:crypto";
 import { isProxy } from "node:util/types";
 
-export const WATCHER_DURABLE_STORE_SCHEMA_VERSION =
-  "midgard-watcher-durable-store-v1" as const;
-
-export const WATCHER_DURABLE_CACHE_SCHEMA_VERSION =
-  "midgard-watcher-durable-cache-v1" as const;
-
-export const WATCHER_DURABLE_MIGRATION_VERSION = 1 as const;
-
-const MIGRATION_NAME =
-  "fresh_install_canonical_v1_spent_protocol_utxo_journal" as const;
-
-export const HEX_32 = /^[0-9a-f]{64}$/u;
-
-export const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
-
-export const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-
-export const CANONICAL_POSITIVE = /^[1-9][0-9]*$/u;
-
-export const STABLE_NAME = /^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$/u;
-
-export const PROVIDER_ID = /^[a-z][a-z0-9-]{0,62}$/u;
-
 const LOWER_HEX_BYTES = /^(?:[0-9a-f]{2})+$/u;
 
-export const sha256Utf8 = (value: string): string =>
+const sha256Utf8 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
-export const sha256Bytes = (value: Uint8Array): string =>
+const sha256Bytes = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
 
-export const WATCHER_DURABLE_MIGRATION_MANIFEST_SHA256 = sha256Utf8(
-  `${WATCHER_DURABLE_MIGRATION_VERSION}:${MIGRATION_NAME}:${WATCHER_DURABLE_STORE_SCHEMA_VERSION}`,
-);
-
-export type WatcherDurableStoreErrorCode =
-  | "broken_reference"
-  | "cache_mismatch"
-  | "deployment_marker_mismatch"
-  | "duplicate_key"
-  | "integrity_mismatch"
-  | "invalid_encoding"
-  | "invalid_field"
-  | "migration_conflict"
-  | "missing_field"
-  | "noncanonical_encoding"
-  | "persistence_failure"
-  | "unknown_field"
-  | "unsupported_schema"
-  | "unsorted_records";
+export type WatcherDurableStoreErrorCode = "invalid_field";
 
 export class WatcherDurableStoreError extends Error {
   readonly code: WatcherDurableStoreErrorCode;
@@ -64,22 +23,11 @@ export class WatcherDurableStoreError extends Error {
   }
 }
 
-export const fail = (
-  code: WatcherDurableStoreErrorCode,
-  path: string,
-): never => {
+const fail = (code: WatcherDurableStoreErrorCode, path: string): never => {
   throw new WatcherDurableStoreError(code, path);
 };
 
-export type JsonRecord = Record<string, unknown>;
-
-export type CanonicalJson =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly CanonicalJson[]
-  | { readonly [key: string]: CanonicalJson };
+type JsonRecord = Record<string, unknown>;
 
 const plainRecord = (value: unknown, path: string): JsonRecord => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -96,58 +44,12 @@ const plainRecord = (value: unknown, path: string): JsonRecord => {
   return value as JsonRecord;
 };
 
-export const exactRecord = (
-  value: unknown,
-  path: string,
-  requiredKeys: readonly string[],
-): JsonRecord => {
-  const record = plainRecord(value, path);
-  const required = new Set(requiredKeys);
-  for (const key of Object.keys(record)) {
-    if (!required.has(key)) {
-      fail("unknown_field", `${path}.${key}`);
-    }
-  }
-  for (const key of requiredKeys) {
-    if (!Object.prototype.hasOwnProperty.call(record, key)) {
-      fail("missing_field", `${path}.${key}`);
-    }
-  }
-  return record;
-};
-
-export const exactString = (
-  value: unknown,
-  path: string,
-  pattern: RegExp,
-): string => {
-  if (typeof value !== "string") {
-    fail("invalid_field", path);
-  }
-  const stringValue = value as string;
-  if (!pattern.test(stringValue)) {
-    fail("invalid_field", path);
-  }
-  return stringValue;
-};
-
-export const exactLiteral = <T extends string>(
-  value: unknown,
-  path: string,
-  allowed: readonly T[],
-): T => {
-  if (typeof value !== "string" || !allowed.includes(value as T)) {
-    fail("invalid_field", path);
-  }
-  return value as T;
-};
-
 // Reuse only encodings whose entire reachable JSON tree has been validated
 // and is frozen. A frozen container with a mutable child is never cacheable.
 // Weak keys let discarded snapshot revisions and their encodings be collected.
-export const immutableCanonicalJson = new WeakMap<object, string>();
+const immutableCanonicalJson = new WeakMap<object, string>();
 
-export const canonicalJson = (
+const canonicalJson = (
   value: unknown,
   path = "$",
   ancestors = new WeakSet<object>(),
@@ -251,7 +153,7 @@ export const canonicalJson = (
 export const watcherCanonicalJson = (value: unknown): string =>
   canonicalJson(value);
 
-export const immutableCanonicalDigests = new WeakMap<object, string>();
+const immutableCanonicalDigests = new WeakMap<object, string>();
 
 export const watcherSha256CanonicalJson = (value: unknown): string => {
   const encoded = watcherCanonicalJson(value);
@@ -285,23 +187,6 @@ export type WatcherDurablePayload = Readonly<{
   sha256: string;
 }>;
 
-export const parsePayload = (
-  value: unknown,
-  path: string,
-): WatcherDurablePayload => {
-  const payload = exactRecord(value, path, ["cborHex", "sha256"]);
-  const cborHex = exactString(
-    payload.cborHex,
-    `${path}.cborHex`,
-    LOWER_HEX_BYTES,
-  );
-  const digest = exactString(payload.sha256, `${path}.sha256`, HEX_32);
-  if (sha256Bytes(Buffer.from(cborHex, "hex")) !== digest) {
-    fail("integrity_mismatch", `${path}.sha256`);
-  }
-  return { cborHex, sha256: digest };
-};
-
 export const makeWatcherDurablePayload = (
   cborHex: string,
 ): WatcherDurablePayload => {
@@ -313,3 +198,18 @@ export const makeWatcherDurablePayload = (
     sha256: sha256Bytes(Buffer.from(cborHex, "hex")),
   };
 };
+
+export type WatcherDaProofInput = Readonly<{
+  inputId: string;
+  kind: "da_payload" | "proof_input";
+  payload: WatcherDurablePayload;
+}>;
+
+export type WatcherReconstructedState = Readonly<{
+  blockHash: string;
+  chainPointId: string;
+  priorStateRoot: string;
+  postStateRoot: string;
+  inputIds: readonly string[];
+  state: WatcherDurablePayload;
+}>;

@@ -12,23 +12,6 @@ export type WatcherStartupProgress = Readonly<{
 }>;
 
 /**
- * Stages that read only L1 and leave nothing allocated when they fail, so an
- * L1 transient (the node, its transport, or the user-event history's query
- * services did not answer) runs them again in place instead of failing
- * startup. Every other stage, and every other error, still fails startup: the
- * deployment identity, configuration and node-identity stages compare durable
- * bytes, which no wait changes. A stage that allocates resources it keeps
- * (`workflow_readiness`) is not repeated whole; it repeats only its L1 reads,
- * through the `retryL1Read` it is handed. `workflow_recovery` waits for the
- * decision driver's first completed pass, which retries inside the driver
- * and reports its reason on readiness. `user_event_catchup` and
- * `header_classification` wait inside their own components.
- */
-export const WATCHER_STARTUP_L1_RETRIED_STAGES: ReadonlySet<string> = new Set([
-  "user_event_runtime",
-]);
-
-/**
  * A stage that cannot complete until the chain or a peer moves, with nothing
  * wrong in its inputs. Thrown only by code that knows waiting is the answer;
  * any stage that throws it is run again after a capped backoff.
@@ -43,9 +26,6 @@ export class WatcherStartupStageHeld extends Error {
 const held = (error: unknown): error is WatcherStartupStageHeld =>
   error instanceof WatcherStartupStageHeld;
 
-const heldOrL1Transient = (error: unknown): error is Error =>
-  held(error) || isWatcherL1TransientFailure(error);
-
 /** What a stage's action is handed. */
 export type WatcherStartupStage = Readonly<{
   /**
@@ -56,7 +36,12 @@ export type WatcherStartupStage = Readonly<{
   retryL1Read: <U>(read: () => Promise<U>) => Promise<U>;
 }>;
 
-/** Startup diagnostics remain available before the operations server binds. */
+/**
+ * Startup diagnostics remain available before the operations server binds. A
+ * stage is run again whole only when it throws {@link WatcherStartupStageHeld};
+ * an L1 transient repeats just the read passed to `retryL1Read`, and every
+ * other error fails startup.
+ */
 export const createWatcherStartupProgress =
   (
     report: ((progress: WatcherStartupProgress) => void) | undefined,
@@ -100,14 +85,7 @@ export const createWatcherStartupProgress =
         retryWatcherL1Transient(read, retrying(isWatcherL1TransientFailure)),
     });
     const run = () =>
-      retryWatcherL1Transient(
-        () => action(context),
-        retrying(
-          WATCHER_STARTUP_L1_RETRIED_STAGES.has(stage)
-            ? heldOrL1Transient
-            : held,
-        ),
-      );
+      retryWatcherL1Transient(() => action(context), retrying(held));
     if (report === undefined) return await run();
     emit("started");
     const timer = setInterval(() => emit("pending"), 30_000);

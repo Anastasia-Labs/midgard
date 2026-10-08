@@ -14,18 +14,11 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import {
-  assertWatcherLocalUserEventAuthorityCurrent,
-  readWatcherLocalUserEventAuthority,
-} from "../indexers/user-event-indexer.js";
+import type { WatcherUserEvents } from "../l1-follower/user-events.js";
 import {
   assertWatcherVerifiedDeploymentAuthority,
   type VerifiedWatcherDeploymentAuthority,
 } from "../runtime/deployment-authority.js";
-import {
-  assertWatcherUserEventRuntime,
-  type WatcherUserEventRuntime,
-} from "../runtime/user-event-runtime.js";
 import {
   createWatcherAuthenticatedReplayTranscript,
   replayWatcherAuthenticatedReplayTranscript,
@@ -33,45 +26,29 @@ import {
 } from "../verification/authenticated-replay-transcript.js";
 import { type WatcherBlockReplayEventAuthority } from "../verification/block-replay.js";
 import type { WatcherCommittedEventClaim } from "../verification/event-claims.js";
-import { deriveWatcherLocalEventReplayAuthority } from "../verification/local-event-replay-authority.js";
+import {
+  assertWatcherUserEventAuthorityCurrent,
+  readWatcherUserEventAuthority,
+} from "../verification/user-event.js";
+import { deriveWatcherUserEventReplayAuthority } from "../verification/user-event-replay-authority.js";
 
 const captureAuthorities = new WeakMap<
   object,
-  Readonly<{
-    userEventRuntime: WatcherUserEventRuntime;
-    generation: number;
-    authorities: readonly WatcherBlockReplayEventAuthority[];
-  }>
+  readonly WatcherBlockReplayEventAuthority[]
 >();
-
-const assertRuntimeGeneration = (
-  runtime: WatcherUserEventRuntime,
-  generation: number,
-): void => {
-  assertWatcherUserEventRuntime(runtime);
-  if (runtime.read().generation !== generation) {
-    throw new Error("Validation replay capture's event history was retired");
-  }
-};
 
 const assertAuthoritiesCurrent = (
   authorities: readonly WatcherBlockReplayEventAuthority[],
 ): void => {
-  for (const authority of authorities) {
-    if (authority.localUserEvent !== undefined) {
-      assertWatcherLocalUserEventAuthorityCurrent(authority.localUserEvent);
-    }
-  }
+  for (const authority of authorities)
+    assertWatcherUserEventAuthorityCurrent(authority.userEvent);
 };
 
 const refreshAuthorities = async (
   authorities: readonly WatcherBlockReplayEventAuthority[],
 ): Promise<void> => {
-  for (const authority of authorities) {
-    if (authority.localUserEvent !== undefined) {
-      await readWatcherLocalUserEventAuthority(authority.localUserEvent);
-    }
-  }
+  for (const authority of authorities)
+    await readWatcherUserEventAuthority(authority.userEvent);
   assertAuthoritiesCurrent(authorities);
 };
 
@@ -79,25 +56,22 @@ const refreshAuthorities = async (
 export const refreshWatcherValidationReplayCapture = async (
   capture: object,
 ): Promise<void> => {
-  const owner = captureAuthorities.get(capture);
-  if (owner === undefined) {
+  const authorities = captureAuthorities.get(capture);
+  if (authorities === undefined) {
     throw new Error("Validation replay capture is not privately admitted");
   }
-  assertRuntimeGeneration(owner.userEventRuntime, owner.generation);
-  await refreshAuthorities(owner.authorities);
-  assertRuntimeGeneration(owner.userEventRuntime, owner.generation);
+  await refreshAuthorities(authorities);
 };
 
 /** Call synchronously after the last await, immediately before using a capture. */
 export const assertWatcherValidationReplayCaptureCurrent = (
   capture: object,
 ): void => {
-  const owner = captureAuthorities.get(capture);
-  if (owner === undefined) {
+  const authorities = captureAuthorities.get(capture);
+  if (authorities === undefined) {
     throw new Error("Validation replay capture is not privately admitted");
   }
-  assertRuntimeGeneration(owner.userEventRuntime, owner.generation);
-  assertAuthoritiesCurrent(owner.authorities);
+  assertAuthoritiesCurrent(authorities);
 };
 
 /**
@@ -110,25 +84,23 @@ export const captureWatcherValidationReplayTranscript = async ({
   stateQueueObservation,
   header,
   decision,
-  userEventRuntime,
+  userEvents,
   persistedTranscriptCborHex,
 }: {
   readonly deploymentAuthority: VerifiedWatcherDeploymentAuthority;
   readonly stateQueueObservation: WatcherAuthenticatedStateQueueObservation;
   readonly header: WatcherStateQueueHeaderObservation;
   readonly decision: HeaderDecision;
-  readonly userEventRuntime: WatcherUserEventRuntime;
+  readonly userEvents: WatcherUserEvents;
   readonly persistedTranscriptCborHex?: string;
 }) => {
-  assertWatcherUserEventRuntime(userEventRuntime);
-  const generation = userEventRuntime.read().generation;
   assertWatcherVerifiedDeploymentAuthority(deploymentAuthority);
   assertWatcherStateQueueObservation(stateQueueObservation);
   assertWatcherStateQueueHeaderObservation(header);
   const { deploymentIdentity, ruleBundle } = deploymentAuthority;
   if (
-    userEventRuntime.deploymentFingerprint !== deploymentIdentity.manifestId ||
-    userEventRuntime.blueprintHash !== deploymentIdentity.blueprintHash ||
+    userEvents.deploymentManifestId !== deploymentIdentity.manifestId ||
+    userEvents.blueprintHash !== deploymentIdentity.blueprintHash ||
     decision.decision !== "fault_detected" ||
     decision.category !== "validationTraceDispute" ||
     decision.deploymentFingerprint !== deploymentIdentity.manifestId ||
@@ -170,7 +142,7 @@ export const captureWatcherValidationReplayTranscript = async ({
   ];
   const authorities: WatcherBlockReplayEventAuthority[] = [];
   for (const claim of claims) {
-    const localUserEvent = await userEventRuntime.eventAuthority({
+    const userEvent = await userEvents.eventAuthority({
       kind:
         claim.phase === "Deposit"
           ? "deposit"
@@ -180,10 +152,9 @@ export const captureWatcherValidationReplayTranscript = async ({
       eventId: claim.eventIdCborHex,
       throughHeader: header,
     });
-    const local = await readWatcherLocalUserEventAuthority(localUserEvent);
-    const cutoff = local.throughHeader;
+    const { throughHeader: cutoff } =
+      await readWatcherUserEventAuthority(userEvent);
     if (
-      cutoff === null ||
       cutoff.headerHash !== header.headerHash ||
       cutoff.headerCborHex !== header.headerCborHex ||
       cutoff.queueOutRef !== header.queueOutRef ||
@@ -193,12 +164,12 @@ export const captureWatcherValidationReplayTranscript = async ({
       cutoff.observedBlockNo !== header.observedBlockNo
     ) {
       throw new Error(
-        "Local event authority is not scoped to the selected header",
+        "User-event authority is not scoped to the selected header",
       );
     }
     authorities.push(
-      await deriveWatcherLocalEventReplayAuthority({
-        localUserEvent,
+      await deriveWatcherUserEventReplayAuthority({
+        userEvent,
         committedClaim: claim,
         programMaterial:
           evidence.reconstruction.payload.block_body.cek_program_material,
@@ -280,14 +251,6 @@ export const captureWatcherValidationReplayTranscript = async ({
     transcript,
     challenge,
   });
-  assertRuntimeGeneration(userEventRuntime, generation);
-  captureAuthorities.set(
-    capture,
-    Object.freeze({
-      userEventRuntime,
-      generation,
-      authorities: Object.freeze(authorities),
-    }),
-  );
+  captureAuthorities.set(capture, Object.freeze(authorities));
   return capture;
 };

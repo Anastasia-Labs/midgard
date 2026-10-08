@@ -1,5 +1,4 @@
 import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk";
-import { waitFor } from "midgard-watcher/tests/l1/native-chain-sync.config";
 import { expect, it } from "vitest";
 
 import { captureAcceptanceNativeRead } from "../src/devnet-stack/acceptance-native-boundary.js";
@@ -9,6 +8,7 @@ import {
   POINT,
   readConfig,
 } from "./acceptance-native.fixture.js";
+import { waitFor } from "./helpers/native-chain-sync.config.js";
 
 const refs = [{ txHash: "ee".repeat(32), outputIndex: 2 }];
 const scope = (signal?: AbortSignal, timeoutMs = 2000) =>

@@ -15,9 +15,11 @@
  * exits and never needs a CLI.
  */
 import type { FactStore, View } from "@al-ft/midgard-l1-follower";
-
-import type { EventProjectionConfig } from "./config.js";
-import { eventsAt, type ProjectedEvent } from "./reads.js";
+import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
+import {
+  eventsAt,
+  type ProjectedEvent,
+} from "@al-ft/midgard-l1-follower/events";
 
 /** The follower view the driver last applied, and the one it is applying. */
 export type FollowerChange =

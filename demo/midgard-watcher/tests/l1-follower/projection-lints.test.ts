@@ -62,31 +62,6 @@ const LINTED = lintDeterminismModules({
       reason:
         "the ingest resolver's retry timer; the raw reads call only resolveStoredInputIn",
     },
-    // Pre-existing default-locale sorts of the durable store's records.
-    // Choosing their locale is a per-site owner call (the eslint baseline's
-    // locale-compare-explicit-locale entries), not a lint cleanup.
-    ...(
-      [
-        [
-          "src/storage/durable-store.assert-references.ts",
-          "left.namespace.localeCompare(right.namespace)",
-        ],
-        [
-          "src/storage/durable-store.assert-references.ts",
-          "left.key.localeCompare(right.key)",
-        ],
-        [
-          "src/storage/durable-store.journal-watcher-protocol-utxo-transition.ts",
-          "keyOf(left).localeCompare(keyOf(right))",
-        ],
-      ] as const
-    ).map(([path, text]) => ({
-      path,
-      rule: "implicit_locale" as const,
-      text,
-      reason:
-        "the durable store's record order; its locale is an owner call, untriaged",
-    })),
   ],
 });
 

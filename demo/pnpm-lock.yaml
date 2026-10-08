@@ -359,6 +359,9 @@ importers:
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
+      '@al-ft/midgard-sdk':
+        specifier: workspace:*
+        version: link:../midgard-sdk
       '@lucid-evolution/lucid':
         specifier: 0.6.7
         version: 0.6.7(patch_hash=ss43hy5fbgisdl7ia5cukng5a4)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)(fast-check@4.7.0)

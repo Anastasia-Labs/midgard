@@ -2,7 +2,7 @@ import type { WatcherAvailabilityStatusTransition } from "../availability/runtim
 
 export const WATCHER_PACKAGE_NAME = "midgard-watcher";
 export const WATCHER_COMMAND_FAILURE_EXIT_CODE = 70;
-export type WatcherCommand = "authority" | "replay" | "start";
+export type WatcherCommand = "replay" | "start";
 
 export type WatcherCommandIo = Readonly<{
   writeOutput: (text: string) => void;
@@ -10,9 +10,6 @@ export type WatcherCommandIo = Readonly<{
 }>;
 
 type WatcherCommandDependencies = Readonly<{
-  runAuthority(
-    configPath: string,
-  ): Promise<Readonly<{ close(): Promise<void> }>>;
   runWatcher(
     configPath: string,
     onStartupProgress: (progress: WatcherStartupProgress) => void,
@@ -55,19 +52,6 @@ const waitForShutdown = async (): Promise<"SIGINT" | "SIGTERM"> =>
   });
 
 const productionDependencies: WatcherCommandDependencies = Object.freeze({
-  runAuthority: async (configPath) => {
-    const [
-      { loadWatcherTrustedHeadAuthorityProcessConfigFile },
-      { startWatcherTrustedHeadAuthorityProcess },
-    ] = await Promise.all([
-      import("./process-config.js"),
-      import("./trusted-head-runtime.js"),
-    ]);
-    return await startWatcherTrustedHeadAuthorityProcess({
-      config:
-        await loadWatcherTrustedHeadAuthorityProcessConfigFile(configPath),
-    });
-  },
   runWatcher: async (
     configPath,
     onStartupProgress,
@@ -96,16 +80,6 @@ const execute = async (
   io: WatcherCommandIo,
   dependencies: WatcherCommandDependencies,
 ): Promise<number> => {
-  if (command === "authority") {
-    const authority = await dependencies.runAuthority(configPath);
-    io.writeOutput(commandStatus({ command, state: "ready" }));
-    try {
-      await dependencies.waitForShutdown();
-    } finally {
-      await authority.close();
-    }
-    return 0;
-  }
   const runtime = await dependencies.runWatcher(
     configPath,
     (progress) =>

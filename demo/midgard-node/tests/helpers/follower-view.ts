@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto";
 
 import { encodeOutRef, type View } from "@al-ft/midgard-l1-follower";
+import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
 import { SqlClient } from "@effect/sql";
 import type { Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -23,7 +24,6 @@ import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
 import type { HistoryIncarnation } from "../../src/l1-event-history-provenance.js";
 import type { IngestionPlan } from "../../src/l1-events/driver.js";
-import type { ProjectedEvent } from "../../src/l1-events/index.js";
 import type { HistoryOwnerChange } from "../../src/services/event-history-owner.js";
 import {
   UnownedHistoryFixture,

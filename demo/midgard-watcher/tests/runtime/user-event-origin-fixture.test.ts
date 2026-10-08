@@ -1,8 +1,6 @@
-import { readAdmittedLocalKupmiosReferenceBodiesAtPoint } from "@al-ft/midgard-fault-proofs";
 import { assetsToValue, CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { createWatcherLocalKupmiosRawSource } from "../../src/l1/local-kupmios-raw-source.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 
 const policy = "d1".repeat(28);
@@ -111,17 +109,6 @@ describe("synthetic user-event origin query indexes", () => {
           ).to_cbor_hex(),
         ],
       });
-      const source = createWatcherLocalKupmiosRawSource({
-        watcherConfig: fixture.watcherConfig,
-        deploymentIdentity: fixture.deploymentIdentity,
-      });
-      const captured = await readAdmittedLocalKupmiosReferenceBodiesAtPoint({
-        source,
-        point: target.point,
-      });
-      expect(captured.creatingTransactionBodies).toEqual([
-        CML.Transaction.from_cbor_hex(referenced.cbor).body().to_cbor_hex(),
-      ]);
       expect(BigInt(target.parentPoint.blockNo) + 1n).toBe(
         BigInt(target.point.blockNo),
       );

@@ -21,7 +21,6 @@ const native: WatcherNativeRewardAccountQuery = {
           genesisConfigPath: "/unused/genesis.json",
           genesisIdentitySha256: "ab".repeat(32),
         },
-        queryServices: [],
       },
     },
   },

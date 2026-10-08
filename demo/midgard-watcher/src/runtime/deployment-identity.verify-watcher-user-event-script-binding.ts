@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
+  type EventProjectionConfig,
+  eventProjectionConfigFromContracts,
+} from "@al-ft/midgard-l1-follower/events";
+import {
   type AuthenticatedValidator,
   buildEventHistoryDeployments,
   buildHubOracleMintingValidator,
@@ -55,6 +59,8 @@ type WatcherUserEventScriptBindingDescription = Readonly<{
   withdrawal: UserEventScriptIdentity;
   forcedOrder: UserEventScriptIdentity;
   certificatePolicyId: string;
+  /** The deposit and withdrawal event lists the follower's event projection reads. */
+  eventProjection: EventProjectionConfig;
 }>;
 
 const userEventScriptBindings = new WeakMap<
@@ -272,6 +278,13 @@ export const verifyWatcherUserEventScriptBinding = (input: {
     withdrawal: eventIdentity(derived.withdrawal),
     forcedOrder: eventIdentity(derived.txOrder),
     certificatePolicyId: derived.fieldPreimageCertificate.policyId,
+    eventProjection: eventProjectionConfigFromContracts(
+      {
+        deposit: derived.depositHistory,
+        withdrawal: derived.withdrawalHistory,
+      },
+      deploymentIdentity.network === "Mainnet" ? 1 : 0,
+    ),
   });
   const binding = Object.freeze({}) as WatcherUserEventScriptBinding;
   userEventScriptBindings.set(

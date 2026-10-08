@@ -3,7 +3,7 @@ import { createServer as httpServer } from "node:http";
 import { createServer as httpsServer } from "node:https";
 import { connect, type Socket } from "node:net";
 
-import type { WatcherNativeChainSyncEvent } from "midgard-watcher/native-chain-sync";
+import type { WatcherNativeChainSyncEvent } from "midgard-watcher";
 
 import {
   answerChildStatus,

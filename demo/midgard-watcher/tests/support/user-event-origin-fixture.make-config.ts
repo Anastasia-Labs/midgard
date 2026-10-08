@@ -35,7 +35,6 @@ const GENESIS = createHash("sha256").update(GENESIS_BYTES).digest("hex");
 export const makeConfig = (
   NODE_CONFIG_PATH: string,
   GENESIS_CONFIG_PATH: string,
-  queryEndpoints?: Readonly<{ ogmios: string; kupo: string }>,
 ) =>
   Object.freeze({
     schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -52,28 +51,11 @@ export const makeConfig = (
           genesisConfigPath: GENESIS_CONFIG_PATH,
           genesisIdentitySha256: GENESIS,
         }),
-        queryServices: Object.freeze([
-          Object.freeze({
-            kind: "ogmios",
-            identity: "local-ogmios",
-            endpoint: queryEndpoints?.ogmios ?? "ws://127.0.0.1:1337",
-          }),
-          Object.freeze({
-            kind: "kupo",
-            identity: "local-kupo",
-            endpoint: queryEndpoints?.kupo ?? "http://127.0.0.1:1442",
-          }),
-        ]),
       }),
       requestTimeoutMs: 10_000,
       maxConcurrency: 4,
       finality: Object.freeze({
         depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-        rollback: Object.freeze({
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-        }),
       }),
     }),
     da: Object.freeze({

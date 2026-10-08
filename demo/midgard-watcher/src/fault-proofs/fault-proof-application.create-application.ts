@@ -55,7 +55,6 @@ import {
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
-import { assertWatcherUserEventRuntime } from "../runtime/user-event-runtime.js";
 import {
   verifyCompletedWatcherReplayTranscriptWorkflow,
   watcherReplayTranscriptClassification,
@@ -124,25 +123,23 @@ export function createApplication({
   const l1 = options.l1;
   const deploymentAuthority = options.deploymentAuthority;
   const replayTranscriptStore = options.replayTranscriptStore;
-  const userEventRuntime = options.userEventRuntime;
+  const userEvents = options.userEvents;
   if (allowExecution) {
     if (
       deploymentAuthority === undefined ||
       replayTranscriptStore === undefined ||
-      userEventRuntime === undefined
+      userEvents === undefined
     ) {
       throw new Error(
         "watcher execution requires deployment/rule authority and durable replay transcripts",
       );
     }
     assertWatcherVerifiedDeploymentAuthority(deploymentAuthority);
-    assertWatcherUserEventRuntime(userEventRuntime);
     if (
-      userEventRuntime.deploymentFingerprint !==
-        deploymentIdentity.manifestId ||
-      userEventRuntime.blueprintHash !== deploymentIdentity.blueprintHash
+      userEvents.deploymentManifestId !== deploymentIdentity.manifestId ||
+      userEvents.blueprintHash !== deploymentIdentity.blueprintHash
     ) {
-      throw new Error("watcher event runtime deployment authority differs");
+      throw new Error("watcher user-event reads' deployment authority differs");
     }
     if (deploymentAuthority.deploymentIdentity !== deploymentIdentity) {
       throw new Error("watcher application deployment authorities differ");
@@ -600,7 +597,7 @@ export function createApplication({
           if (
             deploymentAuthority === undefined ||
             replayTranscriptStore === undefined ||
-            userEventRuntime === undefined
+            userEvents === undefined
           ) {
             throw new Error(
               "validation classification requires live deployment authority and transcript storage",
@@ -612,7 +609,7 @@ export function createApplication({
             stateQueueObservation: input.stateQueueObservation,
             header: input.header,
             decision,
-            userEventRuntime,
+            userEvents,
           });
         }
         completedDecision = decision;
@@ -711,10 +708,6 @@ export function createApplication({
           ),
         );
       const config = parseWatcherConfig(JSON.parse(runtimeJson!));
-      if (config.l1.source.sourceMode !== "local_node")
-        throw new Error(
-          "completed workflow verification requires local-node authority",
-        );
       const binding = await bindFraudProofTerminalDeployment({
         manifest: JSON.parse(manifestJson!),
         blueprintJson: blueprintJson!,

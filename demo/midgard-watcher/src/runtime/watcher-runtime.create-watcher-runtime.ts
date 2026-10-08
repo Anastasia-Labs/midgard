@@ -28,12 +28,19 @@ import {
 import { WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX } from "../l1-follower/fault-proof-l1-source.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { createWatcherQueueHeaderSource } from "../l1-follower/observation.js";
-import { createWatcherDurableRuntime } from "../storage/durable-runtime.js";
+import {
+  createWatcherFollowerUserEvents,
+  type WatcherUserEvents,
+} from "../l1-follower/user-events.js";
 import {
   bindWatcherRetainedDaOperations,
   type WatcherRetainedDaOperationsBinding,
 } from "../storage/retained-da-runtime.js";
-import { watcherDeploymentProtocolScriptAuthority } from "./deployment-identity.js";
+import {
+  readWatcherUserEventScriptBinding,
+  verifyWatcherUserEventScriptBinding,
+  watcherDeploymentProtocolScriptAuthority,
+} from "./deployment-identity.js";
 import {
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentReleaseFinalityPolicy,
@@ -56,10 +63,6 @@ import {
   createWatcherStartupProgress,
   type WatcherStartupProgress,
 } from "./startup-progress.js";
-import {
-  createWatcherUserEventRuntime,
-  type WatcherUserEventRuntime,
-} from "./user-event-runtime.js";
 import {
   openWatcherProverFundingRuntime,
   recheckFundingDecisionHolds,
@@ -121,9 +124,8 @@ export const createWatcherRuntime = async (input: {
   const {
     deploymentAuthority,
     deploymentIdentity,
-    policy,
     localL1Source,
-    trusted,
+    rollbackAuthenticationKey,
     historicalNativeScriptCheckpointStore,
     fundingProfileOverlay,
     sqlite,
@@ -132,7 +134,7 @@ export const createWatcherRuntime = async (input: {
 
   let follower: WatcherFollowerRuntime | undefined;
   let decisionDriver: WatcherDecisionDriver | undefined;
-  let userEventRuntime: WatcherUserEventRuntime | undefined;
+  let userEvents: WatcherUserEvents | undefined;
   let allocatedFaultProofApplication: WatcherFaultProofApplication | undefined;
   let faultProofSupervisor: WatcherFaultProofSupervisor | undefined;
   let faultDecisionBridge: WatcherFaultDecisionBridge | undefined;
@@ -161,7 +163,7 @@ export const createWatcherRuntime = async (input: {
       faultProofSupervisor: () => faultProofSupervisor,
       allocatedFaultProofApplication: () => allocatedFaultProofApplication,
       proverFundingStore: () => proverFundingStore,
-      userEventRuntime: () => userEventRuntime,
+      userEvents: () => userEvents,
       sqlite: () => sqlite,
     });
   };
@@ -172,33 +174,19 @@ export const createWatcherRuntime = async (input: {
     const releaseDepth = releaseFinality.confirmationDepth;
     const authority =
       watcherDeploymentProtocolScriptAuthority(deploymentIdentity);
-    const durable = await createWatcherDurableRuntime({
-      backend: sqlite.backend,
-      userEventArchive: sqlite.userEventArchive,
-      policy,
-      authenticationKey: trusted.rollbackAuthenticationKey,
-      client: trusted.client,
-    });
     const blueprintBytes = await readFile(
       input.config.faultProofInfrastructure.blueprintPath,
     );
-    const eventHistory = await startup("user_event_runtime", async () =>
-      createWatcherUserEventRuntime({
-        watcherConfig,
-        deploymentAuthority,
-        blueprintBytes,
-        l1NodeTransportBinaryPath: input.config.l1NodeTransportBinaryPath,
-        runtime: durable,
-        archive: sqlite.userEventArchive,
-        coverage: sqlite.openUserEventCoverage(
-          trusted.rollbackAuthenticationKey,
-        ),
+    // A blueprint that misderives the user-event scripts exits before /readyz.
+    const userEventScripts = await refusePermanently("user_event_scripts", () =>
+      readWatcherUserEventScriptBinding({
+        binding: verifyWatcherUserEventScriptBinding({
+          deploymentIdentity,
+          blueprintBytes,
+        }),
+        deploymentIdentity,
       }),
     );
-    userEventRuntime = eventHistory;
-    const retireEventHistory = () =>
-      faultDecisionBridge?.invalidateForHistoryChange();
-    void eventHistory.done.then(retireEventHistory, retireEventHistory);
 
     const { networkMagic } = await startup("l1_node_identity", () =>
       deriveWatcherNativeGenesisIdentity({ watcherConfig }),
@@ -229,10 +217,28 @@ export const createWatcherRuntime = async (input: {
         networkMagic,
       },
       walletAddresses: [proverWalletAddress, availabilityWalletAddress],
+      eventProjection: userEventScripts.eventProjection,
       log: (line) => process.stderr.write(`${line}\n`),
     });
     follower = activeFollower;
     const { store, rawReads, transport, provider } = activeFollower;
+    const activeUserEvents = createWatcherFollowerUserEvents({
+      store,
+      rawReads,
+      proofRetention: activeFollower.proofRetention,
+      identity: {
+        deploymentManifestId: deploymentIdentity.manifestId,
+        blueprintHash: deploymentIdentity.blueprintHash,
+        network: deploymentIdentity.network,
+      },
+      scripts: {
+        depositPolicyId: userEventScripts.deposit.policyId,
+        withdrawalPolicyId: userEventScripts.withdrawal.policyId,
+        forcedOrderPolicyId: userEventScripts.forcedOrder.policyId,
+        forcedOrderAddressHex: userEventScripts.forcedOrder.addressHex,
+      },
+    });
+    userEvents = activeUserEvents;
 
     const { faultProofApplication, faultProofReadiness } =
       await prepareWatcherRuntimeWorkflows(input, {
@@ -242,7 +248,7 @@ export const createWatcherRuntime = async (input: {
         historicalNativeScriptCheckpointStore,
         fundingProfileOverlay,
         startup,
-        eventHistory,
+        userEvents: activeUserEvents,
         l1: activeFollower.faultProofL1,
         onAllocated: (application) => {
           allocatedFaultProofApplication = application;
@@ -255,12 +261,12 @@ export const createWatcherRuntime = async (input: {
         directory: input.config.workflowJournalDirectory,
         deploymentFingerprint: deploymentIdentity.manifestId,
         launchScope: faultProofApplication.installedCategories,
-        authenticationKey: trusted.rollbackAuthenticationKey,
+        authenticationKey: rollbackAuthenticationKey,
       }),
     );
     const fundingRuntime = await openWatcherProverFundingRuntime({
       path: watcherConfig.storage.path,
-      authenticationKey: trusted.rollbackAuthenticationKey,
+      authenticationKey: rollbackAuthenticationKey,
       deploymentIdentity,
       createProtocolParameters: () =>
         startup("protocol_parameters", ({ retryL1Read }) =>
@@ -286,7 +292,7 @@ export const createWatcherRuntime = async (input: {
         watcherConfig.deadlines.proofConstructMs,
         watcherConfig.deadlines.proofSubmitMs,
       ),
-      queueAuthenticationKey: trusted.rollbackAuthenticationKey,
+      queueAuthenticationKey: rollbackAuthenticationKey,
       execution: createWatcherFaultProofExecution({
         application: faultProofApplication,
         fundingFactory: fundingRuntime.factory,
@@ -361,7 +367,7 @@ export const createWatcherRuntime = async (input: {
       supervisor: activeSupervisor,
       stateQueueSource: headerSource,
       journalDirectory: input.config.workflowJournalDirectory,
-      authenticationKey: trusted.rollbackAuthenticationKey,
+      authenticationKey: rollbackAuthenticationKey,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       maximumClassificationConcurrency: 16,
       operationsSink: operations.sink,
@@ -397,7 +403,6 @@ export const createWatcherRuntime = async (input: {
         releaseDepth,
         bridge: activeBridge,
         availability: activeAvailability,
-        history: eventHistory,
         retirement: {
           ready: retirementReady,
           retire: (observation) =>

@@ -1,4 +1,4 @@
-import { LocalKupmiosTransportUnavailableError } from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
 import { DaAvailabilityReadScopeExpiredError } from "@al-ft/midgard-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -98,10 +98,6 @@ const fixture = (
           requestTimeoutMs: 10_000,
           source: {
             sourceMode: "local_node",
-            queryServices: [
-              { kind: "kupo", endpoint: "http://kupo" },
-              { kind: "ogmios", endpoint: "http://ogmios" },
-            ],
           },
         },
       },
@@ -283,7 +279,7 @@ describe("availability reconciliation status transitions", () => {
 
 describe("availability reconciliation retry on a quiet queue", () => {
   const transient = () =>
-    new LocalKupmiosTransportUnavailableError("ogmios is unavailable");
+    new FraudProofL1UnavailableError("ogmios is unavailable");
 
   it.each(["source", "scope"])(
     "waits out a %s transient on its own timer and reconciles again exactly once",

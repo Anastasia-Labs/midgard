@@ -1,10 +1,9 @@
-import { parseWatcherConfig } from "midgard-watcher";
 import {
+  parseWatcherConfig,
   readWatcherNativeChainSyncEventReceipt,
-  startWatcherNativeChainSyncWithRetry,
   type WatcherNativeChainSyncEvent,
   watcherNativeChainSyncEventReceipt,
-} from "midgard-watcher/native-chain-sync";
+} from "midgard-watcher";
 
 import { type HistoryChildActor } from "./history-child-evidence.js";
 import { HistoryConfigurationRefusal } from "./history-configuration-refusal.js";
@@ -17,6 +16,7 @@ import {
   historyProofRemaining,
 } from "./history-proof-deadline.js";
 import { rowAt, rowFromEvent } from "./history-window-canonical.js";
+import { startWatcherNativeChainSyncWithRetry } from "./native-chain-sync.js";
 import { DEFAULT_POLICY } from "./supervisor.js";
 import type { createHistoryChainFollower } from "./watcher-history-chain.js";
 

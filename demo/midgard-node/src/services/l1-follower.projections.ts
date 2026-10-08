@@ -7,10 +7,10 @@ import {
   type FollowerProjection,
   intentJournalProjection,
 } from "@al-ft/midgard-l1-follower";
+import { eventProjection } from "@al-ft/midgard-l1-follower/events";
 import type { Effect } from "effect";
 
 import { forcedOrderProjection } from "../forced-orders/index.js";
-import { eventProjection } from "../l1-events/projection.js";
 import {
   type OperatorActivityRecord,
   operatorSetProjection,

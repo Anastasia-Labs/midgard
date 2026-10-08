@@ -6,12 +6,12 @@
 import { createHash } from "node:crypto";
 
 import { currentViewIn } from "@al-ft/midgard-l1-follower";
+import { eventKeyOfId } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { eventKeyOfId } from "../../src/l1-events/by-id.js";
 import { db } from "./forced-orders-node-store.js";
 import type { PredicateScenario } from "./intent-predicates-scenario.js";
 

@@ -7,12 +7,14 @@ import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalEvent,
 } from "../src/workflow/journal.js";
-import { readAdmittedLocalKupmiosSignedTransactionRecovery } from "../src/workflow/local-kupmios-http-ogmios-source.js";
 import { reconcileSignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
-import { signedRecoveryFixture } from "./workflow-kupmios-source.signed-recovery-fixture.js";
+import {
+  signedRecoveryObservation,
+  signedWorkflowTransactionFixture,
+} from "./support/signed-workflow-transaction.js";
 
 it("never holds on a superseded legacy attempt, then certifies the exact old bytes without replacing a later same-action cursor", async () => {
-  const fixture = await signedRecoveryFixture({ ttl: 100 });
+  const fixture = await signedWorkflowTransactionFixture({ ttl: 100 });
   const txHash = fixture.input.transactionHash;
   const identity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -107,11 +109,7 @@ it("never holds on a superseded legacy attempt, then certifies the exact old byt
   expect(append).not.toHaveBeenCalled();
   const proof = await reconcileSignedWorkflowTransaction({
     ...fixture.input,
-    observe: (input) =>
-      readAdmittedLocalKupmiosSignedTransactionRecovery({
-        source: fixture.source,
-        ...input,
-      }),
+    observe: async (input) => signedRecoveryObservation(input, "expired"),
   });
   if (proof.kind === "unknown") throw new Error(proof.reason);
   expect(proof).toMatchObject({
@@ -169,7 +167,7 @@ it("never holds on a superseded legacy attempt, then certifies the exact old byt
 });
 
 it("returns a superseded attempt that landed within k for adoption, and nothing for one still unresolved", async () => {
-  const fixture = await signedRecoveryFixture({ ttl: 100 });
+  const fixture = await signedWorkflowTransactionFixture({ ttl: 100 });
   const txHash = fixture.input.transactionHash;
   const identity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,

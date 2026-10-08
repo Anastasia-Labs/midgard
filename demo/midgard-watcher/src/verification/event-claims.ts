@@ -21,8 +21,8 @@ import { Data } from "@lucid-evolution/lucid";
 
 import {
   watcherForcedOperatorVerdict,
-  type WatcherIndexedUserEvent,
-} from "../indexers/user-event-indexer.js";
+  type WatcherUserEvent,
+} from "./user-event.js";
 
 /** Raw canonical entries copied from a freshly authenticated DA reconstruction.
  * This structural value does not grant authority by itself.
@@ -39,7 +39,7 @@ export type WatcherCommittedEventClaim = Readonly<{
  * never facts inferred from subsequent L1 settlement.
  */
 export const bindWatcherOriginEventClaim = (
-  event: WatcherIndexedUserEvent,
+  event: Pick<WatcherUserEvent, "kind" | "eventId" | "eventCborHex">,
   claim: WatcherCommittedEventClaim,
 ) => {
   if (claim.eventIdCborHex !== event.eventId) {

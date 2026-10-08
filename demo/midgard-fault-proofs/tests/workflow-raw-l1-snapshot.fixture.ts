@@ -27,7 +27,7 @@ export const UNIT = `${"dd".repeat(28)}00`;
 
 export const OTHER_UNIT = `${"ee".repeat(28)}01`;
 
-export const SOURCE = "local-kupmios-release-v1";
+const SOURCE = "local-kupmios-release-v1";
 
 const policy = {
   confirmationDepth: 30,

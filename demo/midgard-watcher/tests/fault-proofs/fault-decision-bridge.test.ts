@@ -11,7 +11,7 @@ import "../../src/runtime/operations-observability.js";
 import "./fault-decision-bridge.observation.js";
 import "./fault-decision-bridge.harness.js";
 
-import { LocalKupmiosCheckpointChangedError } from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1CheckpointChangedError } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
@@ -201,7 +201,7 @@ describe("production fault decision bridge", () => {
     },
   );
 
-  it.each(["configuration", "permit", "history"])(
+  it.each(["configuration", "permit"])(
     "rejects reuse when %s changes while a healthy sibling is classifying",
     async (change) => {
       const current = observation([headerFixture("01"), headerFixture("02")]);
@@ -238,14 +238,11 @@ describe("production fault decision bridge", () => {
         expect(h.application.classifyHeader).toHaveBeenCalledTimes(3),
       );
       changed = true;
-      if (change === "history") h.bridge.invalidateForHistoryChange();
       release();
       await expect(pending).rejects.toThrow(
         change === "configuration"
           ? "configuration changed"
-          : change === "permit"
-            ? "cannot replace or revive"
-            : "authority changed",
+          : "cannot replace or revive",
       );
       expect(h.controllerGenerations).toEqual(["1"]);
       expect(
@@ -309,7 +306,7 @@ describe("production fault decision bridge", () => {
     expect(h.application.classifyHeader).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["rollback", "history", "shutdown"])(
+  it.each(["rollback", "shutdown"])(
     "discards classification reuse on %s authority loss",
     async (reason) => {
       const current = observation([headerFixture("01")]);
@@ -322,7 +319,6 @@ describe("production fault decision bridge", () => {
       });
       await h.bridge.prepareForRecovery(current);
       if (reason === "rollback") h.bridge.invalidateForRollback();
-      else if (reason === "history") h.bridge.invalidateForHistoryChange();
       else h.bridge.invalidateForShutdown();
       await h.bridge.prepareForRecovery(current);
       expect(h.application.classifyHeader).toHaveBeenCalledTimes(2);
@@ -458,7 +454,7 @@ describe("production fault decision bridge", () => {
       },
       classifyOverride: async (fresh) => {
         if (fresh.headerHash === pending!.headerHash && changed)
-          throw new LocalKupmiosCheckpointChangedError(
+          throw new FraudProofL1CheckpointChangedError(
             "event capture checkpoint changed",
           );
         return fresh.headerHash === healthy!.headerHash
@@ -498,7 +494,7 @@ describe("production fault decision bridge", () => {
       },
       classifyOverride: async (fresh) => {
         if (fresh.headerHash === pending!.headerHash && changed)
-          throw new LocalKupmiosCheckpointChangedError(
+          throw new FraudProofL1CheckpointChangedError(
             "event capture checkpoint changed",
           );
         return fresh;
@@ -529,7 +525,7 @@ describe("production fault decision bridge", () => {
   it.each([
     new Error("Transition replay event NFT coverage changed or is ambiguous"),
     Object.assign(new Error("forged checkpoint label"), {
-      name: "LocalKupmiosCheckpointChangedError",
+      name: "FraudProofL1CheckpointChangedError",
     }),
   ])(
     "keeps malformed event/authentication failures hard: %s",
@@ -1062,11 +1058,7 @@ describe("production fault decision bridge", () => {
     expect(currentHarness.retainedDecisionAuthorities).toEqual([null, null]);
   });
 
-  it.each([
-    "invalidateForRollback",
-    "invalidateForHistoryChange",
-    "beforeHistoryAdvance",
-  ] as const)(
+  it.each(["invalidateForRollback", "beforeHistoryAdvance"] as const)(
     "%s retires authority during an awaited classification",
     async (invalidate) => {
       const current = observation([headerFixture("06")]);
@@ -1136,10 +1128,6 @@ describe("production fault decision bridge", () => {
 
   it.each([
     { invalidate: "invalidateForRollback", reason: "native_chain_rollback" },
-    {
-      invalidate: "invalidateForHistoryChange",
-      reason: "local_event_history_change",
-    },
   ] as const)(
     "preserves an exact target across unrelated observations, then revokes for $reason",
     async ({ invalidate, reason }) => {

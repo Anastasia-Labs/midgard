@@ -17,11 +17,11 @@ import {
   type SqlTx,
   type SqlValue,
 } from "@al-ft/midgard-l1-follower";
+import { eventMigrations } from "@al-ft/midgard-l1-follower/events";
 import { SqlClient } from "@effect/sql";
 import { Effect, Runtime } from "effect";
 
 import { forcedOrderMigrations } from "../forced-orders/schema.js";
-import { eventMigrations } from "../l1-events/schema.js";
 import { splitSqlStatements } from "./migrations/runner.split-sql-statements.js";
 
 /**

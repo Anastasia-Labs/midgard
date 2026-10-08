@@ -2,13 +2,14 @@ import { strict as assert } from "node:assert";
 import { randomUUID } from "node:crypto";
 
 import {
-  startWatcherNativeChainSync,
+  readWatcherNativeChainSyncEventReceipt,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncRuntime,
-} from "midgard-watcher/native-chain-sync";
+} from "midgard-watcher";
 
 import { createHistoryWindowSealer } from "../../src/devnet-stack/history-native-window-proof.js";
 import { makeLayout } from "../../src/devnet-stack/layout.js";
+import { startWatcherNativeChainSync } from "../../src/devnet-stack/native-chain-sync.js";
 import { loadWatcherModule } from "../../src/devnet-stack/watcher-release.js";
 import { windowFixture } from "./history-native-window-fixture.js";
 
@@ -23,7 +24,7 @@ const run = async () => {
     });
     const target = f.points[0];
     if (target === undefined) throw Error("synthetic compiled point absent");
-    native = await watcher.startWatcherNativeChainSync({
+    native = await startWatcherNativeChainSync({
       binaryPath: f.binaryPath,
       watcherConfig: watcher.parseWatcherConfig(f.watcherConfig),
       intersection: {
@@ -57,9 +58,9 @@ const run = async () => {
       "compiled helper accepts actual dynamically loaded watcher callback receipt",
     );
     assert.equal(
-      startWatcherNativeChainSync,
-      watcher.startWatcherNativeChainSync,
-      "compiled static public native and actual recorder dynamic loader share native module identity",
+      readWatcherNativeChainSyncEventReceipt,
+      watcher.readWatcherNativeChainSyncEventReceipt,
+      "compiled static native receipt reader and actual recorder dynamic loader share native module identity",
     );
     console.log(
       "PASS compiled actual callback receipt + shared native module identity",

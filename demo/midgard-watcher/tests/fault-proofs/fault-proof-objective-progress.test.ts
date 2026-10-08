@@ -13,10 +13,10 @@ import {
   DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  FraudProofL1UnavailableError,
   fraudProofRawL1SnapshotRequestForFamily,
   type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-  LocalKupmiosTransportUnavailableError,
   verifyCompletedFraudProofWorkflow,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
@@ -34,7 +34,8 @@ import {
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
-import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.js";
+import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.exact-record.js";
+import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
 import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -242,10 +243,10 @@ const setup = async (
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink: () => ({ recordProofStep: vi.fn(), setAlert: vi.fn() }),
     });
-  const createSupervisor = () => {
+  const createSupervisor = (proofRetention = storelessProofRetention) => {
     const supervisor = createWatcherFaultProofSupervisor({
       reservationDecisionHolds: () => [],
-      proofRetention: storelessProofRetention,
+      proofRetention,
       journalRoot: fixture.journalRoot,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
@@ -381,6 +382,54 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(await test.fixture.records()).toHaveLength(1);
     expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["marked beyond k is final", 2_160, 1],
+    ["not yet k deep is verified again", 1_000_000_000, 2],
+  ])(
+    "a completion %s for a job queued at a later generation",
+    async (_name, securityParameter, verifications) => {
+      const test = await setup();
+      const entered = deferred(),
+        release = deferred();
+      test.setBeforeRun(async () => {
+        entered.resolve();
+        await release.promise;
+      });
+      test.setAfterRun(async () => {
+        await test.writeTerminal();
+        return { kind: "completed" };
+      });
+      // Past the completion the follower prunes the released history.
+      const holds: string[] = [];
+      let captures = 0;
+      test.setBeforeCapture(async () => {
+        if (++captures > 1 && verifications === 1)
+          throw new WatcherFaultProofL1RefusedError(
+            "beyond_retention",
+            "pruned",
+          );
+      });
+      const supervisor = test.createSupervisor({
+        ...storelessProofRetention,
+        securityParameter,
+        pin: async () => (holds.push("pin"), { kind: "pinned" }),
+        release: async () => void holds.push("release"),
+      });
+      await test.request(supervisor, 1, test.fixture.old).accepted;
+      await Promise.race([entered.promise, supervisor.done]);
+      await test.request(supervisor, 2).accepted;
+      release.resolve();
+      await Promise.race([test.completionVerified, supervisor.done]);
+      await test.idle(supervisor);
+      expect(supervisor.status().phase).not.toBe("blocked");
+      expect(supervisor.status().unfinishedObjectiveCount).toBe(0);
+      expect(test.verifyCompleted).toHaveBeenCalledTimes(verifications);
+      expect(test.runOrResume).toHaveBeenCalledTimes(1);
+      if (verifications === 1) expect(holds.at(-1)).toBe("release");
+      else expect(holds).not.toContain("release");
+    },
+  );
 
   it("retains completed authority for decisions published by another handle after supervisor startup", async () => {
     const test = await setup();
@@ -675,9 +724,7 @@ describe("proof objective progress with durable funding and journals", () => {
     let captures = 0;
     test.setBeforeCapture(async () => {
       if (++captures === 1)
-        throw new LocalKupmiosTransportUnavailableError(
-          "canonical provider HTTP 503",
-        );
+        throw new FraudProofL1UnavailableError("canonical provider HTTP 503");
     });
     const supervisor = test.createSupervisor();
     await test.request(supervisor, 2).accepted;

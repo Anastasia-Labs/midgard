@@ -38,49 +38,6 @@ const ready = (
 });
 
 describe("production watcher command arguments", () => {
-  it("parses only explicit authority initialization with its retained generation", () => {
-    const generation = "generation-00000000-0000-0000-0000-000000000001";
-    expect(
-      parseWatcherArguments([
-        "authority-init",
-        "--config",
-        "/etc/authority.json",
-        "--generation",
-        generation,
-      ]),
-    ).toEqual({
-      kind: "initialize",
-      command: "authority-init",
-      configPath: "/etc/authority.json",
-      generation,
-    });
-  });
-
-  it.each([
-    ["authority-init", "--config", "/etc/authority.json"],
-    ["authority-init", "--config", "/etc/authority.json", "--generation", ""],
-    [
-      "authority-init",
-      "--config",
-      "/etc/authority.json",
-      "--attempt",
-      "generation-00000000-0000-0000-0000-000000000001",
-    ],
-    [
-      "authority-init",
-      "--config",
-      "/etc/authority.json",
-      "--generation",
-      "generation-00000000-0000-0000-0000-000000000001",
-      "--force",
-    ],
-  ])(
-    "refuses incomplete or additional authority initialization args %s",
-    (...argv) => {
-      expect(parseWatcherArguments(argv)).toMatchObject({ kind: "invalid" });
-    },
-  );
-
   it.each([
     {
       name: "start",
@@ -91,11 +48,6 @@ describe("production watcher command arguments", () => {
       name: "replay",
       argv: ["replay", "--config", "/etc/watcher.json"],
       command: "replay",
-    },
-    {
-      name: "authority",
-      argv: ["authority", "--config", "/etc/authority.json"],
-      command: "authority",
     },
   ])("parses $name with its explicit config path", ({ argv, command }) => {
     expect(parseWatcherArguments(argv)).toEqual({
@@ -121,6 +73,14 @@ describe("production watcher command arguments", () => {
     {
       name: "a trailing extra argument",
       argv: ["start", "--config", "/etc/watcher.json", "--force"],
+    },
+    {
+      name: "the removed authority command",
+      argv: ["authority", "--config", "/etc/authority.json"],
+    },
+    {
+      name: "the removed authority-init command",
+      argv: ["authority-init", "--config", "/etc/authority.json"],
     },
     {
       name: "the config flag before the command",
@@ -154,7 +114,6 @@ describe("production watcher commands", () => {
     } = { writeOutput: () => undefined, writeError: () => undefined },
   ) =>
     await unsafeRunWatcherCommandForTest(command, "/etc/watcher.json", io, {
-      runAuthority: async () => ({ close: async () => undefined }),
       runWatcher: async () => runtime,
       waitForShutdown: async () => "SIGTERM" as const,
     });
@@ -283,7 +242,6 @@ describe("production watcher commands", () => {
         "/etc/watcher.json",
         { writeOutput: () => undefined, writeError: () => undefined },
         {
-          runAuthority: async () => ({ close: async () => undefined }),
           runWatcher: async () =>
             ready({
               done: Promise.resolve(),
@@ -314,40 +272,6 @@ describe("production watcher commands", () => {
     expect(closed).toBe(true);
   });
 
-  it("keeps the trusted-head authority process separate and closes it on signal", async () => {
-    const events: string[] = [];
-    await expect(
-      unsafeRunWatcherCommandForTest(
-        "authority",
-        "/etc/authority.json",
-        {
-          writeOutput: (text) => events.push(text),
-          writeError: (text) => events.push(text),
-        },
-        {
-          runAuthority: async () => ({
-            close: async () => {
-              events.push("authority-closed");
-            },
-          }),
-          runWatcher: async () => {
-            throw new Error("watcher process must not be constructed");
-          },
-          waitForShutdown: async () => "SIGINT",
-        },
-      ),
-    ).resolves.toBe(0);
-    // The authority command advertises its own readiness record — never the
-    // watcher's proof-supervision record — and closes only after shutdown.
-    expect(events).toHaveLength(2);
-    expect(JSON.parse(events[0]!)).toEqual({
-      packageName: "midgard-watcher",
-      command: "authority",
-      state: "ready",
-    });
-    expect(events[1]).toBe("authority-closed");
-  });
-
   it("retains availability failure timing when startup subsequently fails", async () => {
     const errors: string[] = [];
     const output: string[] = [];
@@ -360,7 +284,6 @@ describe("production watcher commands", () => {
           writeError: (text) => errors.push(text),
         },
         {
-          runAuthority: async () => ({ close: async () => undefined }),
           runWatcher: async (_config, _startup, onAvailability) => {
             onAvailability({
               status: {
