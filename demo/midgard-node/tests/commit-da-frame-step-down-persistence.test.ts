@@ -262,11 +262,11 @@ const seed = (w: WithdrawalsDB.Entry) =>
     const sql = yield* SqlClient.SqlClient;
     yield* resetApplicationTables;
     yield* MempoolLedgerDB.insert(BASE);
-    yield* DepositsDB.insertEntries([D0, D1, D2]);
+    yield* insertDeposits([D0, D1, D2]);
     const d0Row = yield* DepositsDB.toMempoolLedgerEntry(D0);
     yield* MempoolLedgerDB.reconcileDepositEntries([d0Row]);
     yield* DepositsDB.markAwaitingAsProjected([D0[DepositsDB.Columns.ID]]);
-    yield* WithdrawalsDB.insertEntries([w]);
+    yield* insertWithdrawals([w]);
     yield* ForcedTransactionsDB.insertEntries([
       yield* forcedProjectionEntry(2, at(2)),
       yield* forcedProjectionEntry(6, at(6)),
@@ -360,6 +360,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
   );
 
 import { syntheticStepDownStateWriteMeasurement } from "./helpers/commit-da-frame-fixtures.js";
+import { insertDeposits, insertWithdrawals } from "./helpers/event-rows.js";
 
 // Synthetic accounting selects two; production DB helpers persist projections.
 const NEXT_TX_COUNT = 2;

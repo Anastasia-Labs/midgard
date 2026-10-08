@@ -48,7 +48,7 @@ import fc from "fast-check";
 import { Level } from "level";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { DepositsDB, MempoolLedgerDB } from "../src/database/index.js";
+import { MempoolLedgerDB } from "../src/database/index.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import type { Database } from "../src/services/database.js";
@@ -57,6 +57,7 @@ import {
   ProductionNativeMpfOwnerService,
 } from "../src/services/mpf-native-owner/index.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
+import { insertDeposits } from "./helpers/event-rows.js";
 import {
   DROP_ALL_TIMEOUT_MS,
   testDatabases,
@@ -176,7 +177,7 @@ const runScenario = (
 ) =>
   Effect.gen(function* () {
     yield* resetApplicationTables;
-    yield* DepositsDB.insertEntries(universe.deposits.map(({ row }) => row));
+    yield* insertDeposits(universe.deposits.map(({ row }) => row));
     yield* insertSimCursor;
     // Node startup seeds the working ledger with the genesis outputs.
     yield* MempoolLedgerDB.insert([

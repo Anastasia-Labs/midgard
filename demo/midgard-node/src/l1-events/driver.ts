@@ -12,7 +12,9 @@
  * It holds no loop of its own: the shared follow loop (`followChain`) calls
  * it through the node follower service. Every condition it cannot clear by
  * itself is returned as a named hold for `/readyz`; it never throws, never
- * exits and never needs a CLI.
+ * exits and never needs a CLI. An event the sink refuses is left out and
+ * the rest of the change applies: an identity conflict is a hold, an
+ * undecodable event a refusal `/readyz` names while the node stays ready.
  */
 import type { FactStore, View } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
@@ -58,6 +60,28 @@ export const EVENTS_INGESTION_FAILED = "l1_events_ingestion_failed";
 export const EVENTS_INGESTION_WAITING = "l1_events_ingestion_waiting";
 /** A ticket hook failed; the detail names the hook. */
 export const EVENTS_HOOK_FAILED = "l1_events_hook_failed";
+/**
+ * A projected event that does not decode into the node's row: left out of
+ * ingestion and named on `/readyz` as a degradation; the node stays ready.
+ */
+export const EVENT_UNDECODABLE = "l1_event_undecodable";
+/**
+ * A projected event whose public id has a local row under another live
+ * admission or none: left out of ingestion, and a hold until it clears.
+ */
+export const EVENT_IDENTITY_CONFLICT = "l1_event_identity_conflict";
+
+/** A projected event the sink refused and left out; the rest applied. */
+export type EventRefusal = Readonly<{
+  kind: ProjectedEvent["kind"];
+  key: string;
+  idCbor: string;
+  reason: typeof EVENT_UNDECODABLE | typeof EVENT_IDENTITY_CONFLICT;
+  detail: string;
+}>;
+
+const refusalDetail = (refusal: EventRefusal): string =>
+  `${refusal.kind} ${refusal.key} (id ${refusal.idCbor}): ${refusal.detail}`;
 
 /**
  * One hook per ticket that recomputes from a follower change, named by what
@@ -105,7 +129,13 @@ export type IngestionPlan = Readonly<{
  * reject their dependents in this write returns `held`.
  */
 export type SinkResult =
-  | Readonly<{ kind: "applied"; inserted: number; orphans: number }>
+  | Readonly<{
+      kind: "applied";
+      inserted: number;
+      orphans: number;
+      /** Events left out by name. */
+      refused: readonly EventRefusal[];
+    }>
   | Readonly<{ kind: "stale"; detail: string }>
   | Readonly<{ kind: "held"; hold: DriverHold }>;
 
@@ -153,6 +183,8 @@ export type FollowerDriver = Readonly<{
   run: () => Promise<DriverRun>;
   /** The holds of the last run (empty when the node may be ready). */
   holds: () => readonly DriverHold[];
+  /** The undecodable events the last applied view left out. */
+  refused: () => readonly EventRefusal[];
   /** The view the sink last applied. */
   applied: () => View | null;
 }>;
@@ -176,6 +208,10 @@ export const createFollowerDriver = (options: {
   const hooks = options.hooks ?? {};
   let applied: View | null = null;
   let holds: readonly DriverHold[] = [];
+  let refused: readonly EventRefusal[] = [];
+  let conflicts: readonly DriverHold[] = [];
+  /** The refusals already logged, so each is logged once while it stands. */
+  let logged = new Set<string>();
   let tail: Promise<unknown> = Promise.resolve();
 
   const once = async (): Promise<DriverRun> => {
@@ -196,7 +232,7 @@ export const createFollowerDriver = (options: {
       return {
         kind: "ran",
         change,
-        result: { kind: "applied", inserted: 0, orphans: 0 },
+        result: { kind: "applied", inserted: 0, orphans: 0, refused },
         holds,
       };
     const next: DriverHold[] = [];
@@ -213,12 +249,31 @@ export const createFollowerDriver = (options: {
         hold: { reason: EVENTS_INGESTION_FAILED, detail: message(error) },
       };
     }
-    if (result.kind === "applied") applied = view;
-    else if (result.kind === "held") next.push(result.hold);
+    if (result.kind === "applied") {
+      applied = view;
+      const all = result.refused;
+      const current = new Set<string>();
+      for (const refusal of all) {
+        const id = `${refusal.reason}:${refusal.kind}:${refusal.key}`;
+        current.add(id);
+        if (!logged.has(id))
+          log(`event refused (${refusal.reason}): ${refusalDetail(refusal)}`);
+      }
+      logged = current;
+      refused = all.filter((refusal) => refusal.reason === EVENT_UNDECODABLE);
+      conflicts = all
+        .filter((refusal) => refusal.reason === EVENT_IDENTITY_CONFLICT)
+        .map((refusal) => ({
+          reason: refusal.reason,
+          detail: refusalDetail(refusal),
+        }));
+    } else if (result.kind === "held") next.push(result.hold);
     else if (result.kind === "unreadable")
       // The follower moved on (or broke) between its view and the read: the
       // next run reads the new view; a broken projection stays named.
       log(`event ingestion deferred: ${result.detail}`);
+    // The last applied view's conflicts stand until a run applies without them.
+    next.push(...conflicts);
     for (const name of DRIVER_HOOK_ORDER) {
       const hook = hooks[name];
       if (hook === undefined) continue;
@@ -243,6 +298,7 @@ export const createFollowerDriver = (options: {
       return run;
     },
     holds: () => holds,
+    refused: () => refused,
     applied: () => applied,
   };
 };

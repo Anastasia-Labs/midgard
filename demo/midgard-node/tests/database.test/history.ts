@@ -28,6 +28,7 @@ import { Lucid } from "../../src/services/lucid.js";
 import { MidgardContracts } from "../../src/services/midgard-contracts.js";
 import { reconcileDepositSubmissionAttemptProgram } from "../../src/transactions/submit-deposit.js";
 import { loadRealMidgardContractsForTest } from ".././helpers/real-midgard-contracts.js";
+import { insertDeposits, insertWithdrawals } from "../helpers/event-rows.js";
 import {
   databaseFixtureBytes,
   databaseOutputReferenceId,
@@ -286,12 +287,12 @@ export const registerHistoryTests = () => {
             ).toEqual(
               attempt[DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS],
             );
-            yield* DepositsDB.insertEntries([deposit]);
+            yield* insertDeposits([deposit]);
             // A list insertion moves the Order to another output; the row
             // keeps its admission tx (ruling 2) and refuses another one.
             const movedHash = databaseTxHash("status-pointer-continuation");
             const moved = yield* Effect.either(
-              DepositsDB.insertEntries([
+              insertDeposits([
                 {
                   ...deposit,
                   [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: movedHash,
@@ -328,7 +329,7 @@ export const registerHistoryTests = () => {
                 status === DepositsDB.Status.Awaiting
                   ? null
                   : databaseFixtureBytes("history-pointer-header", 28);
-              yield* DepositsDB.insertEntries([
+              yield* insertDeposits([
                 {
                   ...entry,
                   [DepositsDB.Columns.STATUS]: status,
@@ -340,9 +341,9 @@ export const registerHistoryTests = () => {
               );
               // The same event again keeps its projection; another admission
               // tx for it is refused (ruling 2).
-              yield* DepositsDB.insertEntries([entry]);
+              yield* insertDeposits([entry]);
               const replaced = yield* Effect.either(
-                DepositsDB.insertEntries([
+                insertDeposits([
                   {
                     ...entry,
                     [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: replacementHash,
@@ -393,11 +394,11 @@ export const registerHistoryTests = () => {
                       [WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]:
                         databaseFixtureBytes("history-pointer-header", 28),
                     };
-              yield* WithdrawalsDB.insertEntries([classified]);
+              yield* insertWithdrawals([classified]);
               const replacementHash = databaseTxHash(
                 "history-pointer-withdrawal-replacement",
               );
-              yield* WithdrawalsDB.insertEntries([
+              yield* insertWithdrawals([
                 {
                   ...entry,
                   [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]:
@@ -470,7 +471,7 @@ export const registerHistoryTests = () => {
               WithdrawalsDB.Status.Projected,
               WithdrawalsDB.Validity.WithdrawalIsValid,
             );
-            yield* WithdrawalsDB.insertEntries([
+            yield* insertWithdrawals([
               unclassified,
               projectedValid,
               withdrawal(
@@ -513,13 +514,13 @@ export const registerHistoryTests = () => {
           Effect.gen(function* () {
             const first = makeDepositEntry();
             const second = makeDepositEntry();
-            yield* DepositsDB.insertEntries([first, second]);
+            yield* insertDeposits([first, second]);
             for (const field of [
               DepositsDB.Columns.INFO,
               DepositsDB.Columns.LEDGER_OUTPUT,
             ]) {
               const outcome = yield* Effect.either(
-                DepositsDB.insertEntries([
+                insertDeposits([
                   {
                     ...first,
                     [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: databaseTxHash(
@@ -536,7 +537,7 @@ export const registerHistoryTests = () => {
               ]);
             }
             const outcome = yield* Effect.either(
-              DepositsDB.insertEntries([
+              insertDeposits([
                 {
                   ...first,
                   [DepositsDB.Columns.INCLUSION_TIME]: new Date(
@@ -563,7 +564,7 @@ export const registerHistoryTests = () => {
               ),
               [WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX]: 1,
             };
-            yield* WithdrawalsDB.insertEntries([first, second]);
+            yield* insertWithdrawals([first, second]);
             const before = yield* WithdrawalsDB.retrieveAllEntries();
             for (const field of [
               WithdrawalsDB.Columns.RAW_EVENT_INFO,
@@ -571,7 +572,7 @@ export const registerHistoryTests = () => {
               WithdrawalsDB.Columns.REFUND_DATUM,
             ]) {
               const outcome = yield* Effect.either(
-                WithdrawalsDB.insertEntries([
+                insertWithdrawals([
                   {
                     ...first,
                     [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]:
@@ -584,7 +585,7 @@ export const registerHistoryTests = () => {
               expect(yield* WithdrawalsDB.retrieveAllEntries()).toEqual(before);
             }
             const outcome = yield* Effect.either(
-              WithdrawalsDB.insertEntries([
+              insertWithdrawals([
                 {
                   ...first,
                   [WithdrawalsDB.Columns.INCLUSION_TIME]: new Date(
@@ -607,7 +608,7 @@ export const registerHistoryTests = () => {
             const withdrawal = makeHistoryWithdrawalEntry();
             expect(
               (yield* Effect.either(
-                DepositsDB.insertEntries([
+                insertDeposits([
                   deposit,
                   {
                     ...deposit,
@@ -619,7 +620,7 @@ export const registerHistoryTests = () => {
             ).toBe("Left");
             expect(
               (yield* Effect.either(
-                WithdrawalsDB.insertEntries([
+                insertWithdrawals([
                   withdrawal,
                   {
                     ...withdrawal,
@@ -654,10 +655,8 @@ export const registerHistoryTests = () => {
             ),
           });
 
-          yield* DepositsDB.insertEntries([first]);
-          const result = yield* Effect.either(
-            DepositsDB.insertEntries([conflicting]),
-          );
+          yield* insertDeposits([first]);
+          const result = yield* Effect.either(insertDeposits([conflicting]));
 
           expect(result._tag).toEqual("Left");
         }),
@@ -668,7 +667,7 @@ export const registerHistoryTests = () => {
       isolatedDb(
         Effect.gen(function* () {
           const deposit = makeDepositEntry();
-          yield* DepositsDB.insertEntries([deposit]);
+          yield* insertDeposits([deposit]);
 
           const retrieved = yield* DepositsDB.retrieveByEventId(
             deposit[DepositsDB.Columns.ID],
@@ -720,7 +719,7 @@ export const registerHistoryTests = () => {
                 1,
               ),
             });
-            yield* DepositsDB.insertEntries([second, first]);
+            yield* insertDeposits([second, first]);
 
             const retrieved =
               yield* DepositsDB.retrieveByCardanoTxHash(sharedCardanoTxHash);
@@ -748,7 +747,7 @@ export const registerHistoryTests = () => {
             const sharedCardanoTxHash = databaseTxHash(
               "deposits.shared-cardano-tx.ambiguous-status",
             );
-            yield* DepositsDB.insertEntries([
+            yield* insertDeposits([
               makeDepositEntry({
                 [DepositsDB.Columns.ID]: databaseOutputReferenceId(
                   "deposits.ambiguous.first",
@@ -806,7 +805,7 @@ export const registerHistoryTests = () => {
               ),
               [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
             });
-            yield* DepositsDB.insertEntries([first, second]);
+            yield* insertDeposits([first, second]);
 
             const resolved = yield* resolveDepositStatusProgram({
               eventId: second[DepositsDB.Columns.ID],
@@ -828,7 +827,7 @@ export const registerHistoryTests = () => {
         isolatedDb(
           Effect.gen(function* () {
             const deposit = makeDepositEntry();
-            yield* DepositsDB.insertEntries([deposit]);
+            yield* insertDeposits([deposit]);
             const mempoolEntry =
               yield* DepositsDB.toMempoolLedgerEntry(deposit);
 
@@ -865,7 +864,7 @@ export const registerHistoryTests = () => {
         isolatedDb(
           Effect.gen(function* () {
             const deposit = makeDepositEntry();
-            yield* DepositsDB.insertEntries([deposit]);
+            yield* insertDeposits([deposit]);
             const mempoolEntry =
               yield* DepositsDB.toMempoolLedgerEntry(deposit);
             yield* MempoolLedgerDB.insertDepositEntriesStrict([mempoolEntry]);
@@ -896,7 +895,7 @@ export const registerHistoryTests = () => {
               "deposits.projected-header",
               28,
             );
-            yield* DepositsDB.insertEntries([deposit]);
+            yield* insertDeposits([deposit]);
             yield* DepositsDB.markAwaitingAsProjected([
               deposit[DepositsDB.Columns.ID],
             ]);
@@ -931,7 +930,7 @@ export const registerHistoryTests = () => {
         isolatedDb(
           Effect.gen(function* () {
             const deposit = makeDepositEntry();
-            yield* DepositsDB.insertEntries([deposit]);
+            yield* insertDeposits([deposit]);
             yield* DepositsDB.markAwaitingAsProjected([
               deposit[DepositsDB.Columns.ID],
             ]);
@@ -963,7 +962,7 @@ export const registerHistoryTests = () => {
               ),
               [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
             });
-            yield* DepositsDB.insertEntries([overdueProjectedDeposit]);
+            yield* insertDeposits([overdueProjectedDeposit]);
 
             const included = yield* resolveIncludedDepositEntriesForWindow({
               currentBlockStartTime,
@@ -996,7 +995,7 @@ export const registerHistoryTests = () => {
                 currentBlockStartTime.getTime() - 1_000,
               ),
             });
-            yield* DepositsDB.insertEntries([overdueAwaitingDeposit]);
+            yield* insertDeposits([overdueAwaitingDeposit]);
 
             const result = yield* Effect.either(
               resolveIncludedDepositEntriesForWindow({

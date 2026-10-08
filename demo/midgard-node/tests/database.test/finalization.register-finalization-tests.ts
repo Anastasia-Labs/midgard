@@ -21,6 +21,7 @@ import { reincludeStateQueueCorrectedBlocks } from "../../src/services/state-que
 import { makeCardanoSignedMapOutputTxBytes } from ".././helpers/cardano-native-fixtures.js";
 import { externalTimeoutTransition } from ".././helpers/state-queue-correction-transition.js";
 import { provideDatabaseLayers } from ".././utils.js";
+import { insertDeposits, insertWithdrawals } from "../helpers/event-rows.js";
 import { databaseTestDirectory } from "./finalization.database-test-directory.js";
 import {
   bundleChildProcessHelper,
@@ -154,7 +155,7 @@ export const registerFinalizationTests = () => {
               validity: WithdrawalsDB.Validity.WithdrawalIsValid,
               validityDetail: { z: 1, a: { z: 2, a: 3 } },
             };
-            yield* WithdrawalsDB.insertEntries([initial]);
+            yield* insertWithdrawals([initial]);
             yield* WithdrawalsDB.setSettlementInfoForEventIds([assignment]);
             yield* WithdrawalsDB.markAwaitingAsProjected([assignment]);
             const classified = Option.getOrThrow(
@@ -243,11 +244,7 @@ export const registerFinalizationTests = () => {
               validity: WithdrawalsDB.Validity.WithdrawalIsValid,
               validityDetail: {},
             });
-            yield* WithdrawalsDB.insertEntries([
-              selected,
-              elsewhere,
-              unselected,
-            ]);
+            yield* insertWithdrawals([selected, elsewhere, unselected]);
             const classified = [selected, elsewhere].map(classify);
             yield* WithdrawalsDB.setSettlementInfoForEventIds(classified);
             yield* WithdrawalsDB.markAwaitingAsProjected(classified);
@@ -733,7 +730,7 @@ export const registerFinalizationTests = () => {
 
             // Crash before prepare: neither the projection nor a journal exists.
             const beforeDeposit = makeDepositEntry();
-            yield* DepositsDB.insertEntries([beforeDeposit]);
+            yield* insertDeposits([beforeDeposit]);
             const beforeRows = yield* DepositsDB.retrieveAllEntries();
             const beforeAfter = beforeRows.find((entry) =>
               entry[DepositsDB.Columns.ID].equals(
@@ -754,7 +751,7 @@ export const registerFinalizationTests = () => {
             // Crash/failure during prepare: a deferred projection write and the
             // journal insert share one SQL transaction, so both roll back.
             const duringDeposit = makeDepositEntry();
-            yield* DepositsDB.insertEntries([duringDeposit]);
+            yield* insertDeposits([duringDeposit]);
             const duringInput = makeInput(
               "atomic-during-header",
               duringDeposit,
@@ -800,7 +797,7 @@ export const registerFinalizationTests = () => {
             // Crash immediately after prepare: the projection and its complete
             // pending journal are both durable, never only one of the pair.
             const afterDeposit = makeDepositEntry();
-            yield* DepositsDB.insertEntries([afterDeposit]);
+            yield* insertDeposits([afterDeposit]);
             const afterInput = makeInput("atomic-after-header", afterDeposit);
             yield* PendingBlockFinalizationsDB.preparePendingSubmission(
               afterInput,
@@ -841,7 +838,7 @@ export const registerFinalizationTests = () => {
           makeDepositEntry(),
           makeDepositEntry(),
         ];
-        await Effect.runPromise(isolatedDb(DepositsDB.insertEntries(deposits)));
+        await Effect.runPromise(isolatedDb(insertDeposits(deposits)));
         const helper = bundleChildProcessHelper(
           "helpers/pending-journal-crash-process.ts",
         );

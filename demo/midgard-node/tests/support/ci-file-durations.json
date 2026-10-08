@@ -394,6 +394,9 @@
     "tests/withdrawal-classification-selected-state.test.ts": 2.4,
     "tests/withdrawal-classification-semantics.test.ts": 2.9,
     "tests/withdrawal-cli-utils.test.ts": 2.5,
-    "tests/write-behind.test.ts": 2.3
+    "tests/write-behind.test.ts": 2.3,
+    "tests/follower-events-refusals.test.ts": 5.2,
+    "tests/l1-events-order-shape.test.ts": 5,
+    "tests/l1-follower-readiness-refusals.test.ts": 4.8
   }
 }

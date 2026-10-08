@@ -260,8 +260,10 @@ const refuse = async (
   reason: "retired_key" | "malformed",
   detail: string,
 ): Promise<void> => {
+  // One refusal per output: an output holding several list tokens is
+  // refused under the first, never failing the block on the second.
   await context.tx.query(
-    `INSERT INTO ${REFUSALS_TABLE} (slot, tx_hash, output_index, kind, event_key, reason, detail) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ${REFUSALS_TABLE} (slot, tx_hash, output_index, kind, event_key, reason, detail) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (tx_hash, output_index) DO NOTHING`,
     [
       context.block.point.slot,
       at.outRef.txHash,

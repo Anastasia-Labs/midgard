@@ -81,6 +81,7 @@ export const ingestionHook = (
     ledger?: LedgerOutputs;
     sources?: TxContentSource[];
     caughtUp?: () => boolean;
+    contentSourcesConfigured?: boolean;
   } = {},
 ) => {
   const logs: string[] = [];
@@ -88,6 +89,7 @@ export const ingestionHook = (
     store,
     config,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    contentSourcesConfigured: true,
     ...options,
     run: runDatabase,
     log: (line) => logs.push(line),

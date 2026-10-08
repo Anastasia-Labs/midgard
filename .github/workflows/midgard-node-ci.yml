@@ -1104,14 +1104,50 @@ jobs:
           pnpm --dir demo/midgard-node-tools run build
           node demo/midgard-node-tools/dist/index.js --help >/dev/null
           pnpm --dir demo/midgard-node-tools test
-      # The pooled DA bond journey's tests need no devnet; its live test
-      # skips without MIDGARD_WATCHER_JOURNEY_RUN_DIR and stays manual. The
-      # prefix filter keeps a new journey test from being left out.
-      - name: Test the pooled DA bond journey without a devnet
+      # The watcher-journey files that need no devnet. A file is listed when
+      # it has tests that run without MIDGARD_WATCHER_JOURNEY_RUN_DIR (or a
+      # staged run file or opt-in variable); a file all of whose tests need
+      # one stays manual and is left out. Files listed here may still hold
+      # live tests, which skip. The da-bond-pool- prefix keeps a new pooled DA
+      # bond journey test from being left out; its live test skips.
+      - name: Test the watcher journeys that need no devnet
         run: |
           pnpm --dir demo/midgard-node-tools exec vitest run \
             --config vitest.watcher-journeys.config.ts \
-            devnet/watcher-journeys/da-bond-pool-
+            devnet/watcher-journeys/da-bond-pool- \
+            watcher-journeys/artifacts.test.ts \
+            watcher-journeys/catalogue.test.ts \
+            watcher-journeys/correction-recovery.test.ts \
+            watcher-journeys/correction.test.ts \
+            watcher-journeys/error-chain.test.ts \
+            watcher-journeys/forced-order-recovery.test.ts \
+            watcher-journeys/forced-order.test.ts \
+            watcher-journeys/forced-submission.test.ts \
+            watcher-journeys/history-archive-transport.test.ts \
+            watcher-journeys/history-event-cases.test.ts \
+            watcher-journeys/history-events.test.ts \
+            watcher-journeys/history-settlement.test.ts \
+            watcher-journeys/journey-session.test.ts \
+            watcher-journeys/journey-timing.test.ts \
+            watcher-journeys/kupo-consumption.test.ts \
+            watcher-journeys/ledger-tip.test.ts \
+            watcher-journeys/live-chain.test.ts \
+            watcher-journeys/native-recorder.test.ts \
+            watcher-journeys/native-script-publication.test.ts \
+            watcher-journeys/operations.test.ts \
+            watcher-journeys/process.test.ts \
+            watcher-journeys/prover-address-isolation.test.ts \
+            watcher-journeys/public-da-preflight.test.ts \
+            watcher-journeys/readiness-evidence.test.ts \
+            watcher-journeys/readiness.test.ts \
+            watcher-journeys/signed-commit-reconciliation.test.ts \
+            watcher-journeys/signed-transaction-recovery.test.ts \
+            watcher-journeys/stage-timing.test.ts \
+            watcher-journeys/staged-checkpoint.test.ts \
+            watcher-journeys/staging-recovery.test.ts \
+            watcher-journeys/verified-headers.test.ts
+          node --test \
+            demo/midgard-node-tools/devnet/watcher-journeys/history-archive-server.test.mjs
 
   da-e2e:
     name: Canonical V1 retained multi-peer DA paths

@@ -36,6 +36,7 @@ import {
   makeMidgardTxOutput,
   makeOutRefCbor,
 } from ".././midgard-output-helpers.js";
+import { insertDeposits } from "../helpers/event-rows.js";
 import { address1, isolatedDb, makeDepositEntry } from "./fixtures.js";
 
 export const registerMpfTests = () => {
@@ -463,7 +464,7 @@ export const registerMpfTests = () => {
                 ),
               );
             yield* BlocksDB.insert(mergeHeaderHash, [successTxHash]);
-            yield* DepositsDB.insertEntries([successDeposit]);
+            yield* insertDeposits([successDeposit]);
             expect(
               yield* finalizeConfirmedMergeTransaction({
                 headerHash: mergeHeaderHash,
@@ -486,7 +487,7 @@ export const registerMpfTests = () => {
               [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
             });
             yield* BlocksDB.insert(mergeHeaderHash, [successTxHash]);
-            yield* DepositsDB.insertEntries([deferredDeposit]);
+            yield* insertDeposits([deferredDeposit]);
             expect(
               yield* finalizeConfirmedMergeTransaction({
                 headerHash: mergeHeaderHash,

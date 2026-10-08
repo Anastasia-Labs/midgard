@@ -26,7 +26,10 @@ import {
   type FollowerIngestionOutcome,
   reconcileFollowerEvents,
 } from "../src/database/follower-events.js";
-import type { IngestionPlan } from "../src/l1-events/driver.js";
+import {
+  EVENT_IDENTITY_CONFLICT,
+  type IngestionPlan,
+} from "../src/l1-events/driver.js";
 import type { HistoryOwnerChange } from "../src/services/event-history-owner.js";
 import {
   UnownedHistoryFixture,
@@ -289,10 +292,13 @@ describe("follower event ingestion (Postgres)", () => {
         applied(
           yield* ingest(yield* writeFollowerView(VIEW_SLOT, [early, late])),
         );
-        // A live row of another admission of the same public id is refused.
-        const adopted = yield* ingest(
-          yield* writeFollowerView(VIEW_SLOT, [readmitted(early)]),
-        ).pipe(Effect.flip);
+        // A live row of another admission of the same public id is refused
+        // by name; the run applies without it.
+        const adopted = applied(
+          yield* ingest(
+            yield* writeFollowerView(VIEW_SLOT, [readmitted(early), late]),
+          ),
+        );
         // The follower rewinds past the admission and admits the id afresh.
         yield* rewindFollowerKey(early, encodeOutRef(early.admission.outRef));
         yield* admitFollowerKeys([readmitted(early)]);
@@ -310,9 +316,16 @@ describe("follower event ingestion (Postgres)", () => {
         };
       }),
     );
-    expect(causes(result.adopted)).toContain(
-      "Refusing to adopt a local event row by public ID without its exact history incarnation",
-    );
+    expect(result.adopted).toMatchObject({ inserted: 0, orphans: 0 });
+    expect(result.adopted.refused).toEqual([
+      {
+        kind: "deposit",
+        key: early.key,
+        idCbor: early.idCbor,
+        reason: EVENT_IDENTITY_CONFLICT,
+        detail: "a local row of its public id holds another live admission",
+      },
+    ]);
     expect(result.orphaned).toMatchObject({ inserted: 0, orphans: 1 });
     expect(result.counted).toBe(1);
     // The orphan keeps its old identity until recovery removes it, and is

@@ -75,7 +75,12 @@ const union = (a: TrackedSet, b: TrackedSet): TrackedSet => ({
   policies: new Set([...a.policies, ...b.policies]),
 });
 
-const APPLIED: SinkResult = { kind: "applied", inserted: 0, orphans: 0 };
+const APPLIED: SinkResult = {
+  kind: "applied",
+  inserted: 0,
+  orphans: 0,
+  refused: [],
+};
 
 type Published = {
   change: FollowerChange["kind"];

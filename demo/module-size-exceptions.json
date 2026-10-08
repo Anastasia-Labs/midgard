@@ -1031,7 +1031,7 @@
   },
   {
     "file": "midgard-node/tests/benchmarks/validation-stage-b.bench.ts",
-    "max": 1500,
+    "max": 1501,
     "reason": "Retained test registration “Phase 2 sustained real-Postgres Stage B operator benchmark” (522 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1071,7 +1071,7 @@
   },
   {
     "file": "midgard-node/tests/database.test/admissions.register-admissions-tests.ts",
-    "max": 3450,
+    "max": 3451,
     "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated DA correctness branches; exact final source line count."
   },
   {
@@ -1081,12 +1081,12 @@
   },
   {
     "file": "midgard-node/tests/database.test/finalization.register-finalization-tests.ts",
-    "max": 910,
+    "max": 907,
     "reason": "registerFinalizationTests is the dominant indivisible declaration (874 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node/tests/database.test/history.ts",
-    "max": 1015,
+    "max": 1014,
     "reason": "registerHistoryTests is the dominant indivisible declaration (975 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1096,7 +1096,7 @@
   },
   {
     "file": "midgard-node/tests/database.test/mpf.ts",
-    "max": 672,
+    "max": 673,
     "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts. N5b (-2): the merge finalization no longer clears the block rows, so the refusal case needs no rows of its own."
   },
   {
@@ -1116,7 +1116,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-journal.test.ts",
-    "max": 2121,
+    "max": 2120,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {

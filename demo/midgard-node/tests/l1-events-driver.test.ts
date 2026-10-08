@@ -17,6 +17,9 @@ import {
   DRIVER_HOOK_ORDER,
   type DriverHold,
   type DriverHooks,
+  EVENT_IDENTITY_CONFLICT,
+  EVENT_UNDECODABLE,
+  type EventRefusal,
   EVENTS_HOOK_FAILED,
   EVENTS_INGESTION_FAILED,
   EVENTS_ORPHAN_RECOVERY,
@@ -53,7 +56,12 @@ const nonceRef = (): OutRef => {
   return { txHash, index: 0 };
 };
 
-const APPLIED: SinkResult = { kind: "applied", inserted: 0, orphans: 0 };
+const APPLIED: SinkResult = {
+  kind: "applied",
+  inserted: 0,
+  orphans: 0,
+  refused: [],
+};
 
 /**
  * A sink that records each change and plan it is handed and answers from
@@ -249,6 +257,75 @@ describe.each(["sqlite", "postgres"] as const)(
           view: second,
         })),
       );
+    });
+
+    it("applies a change past the events the sink refused, holds on a conflict until it clears and logs each refusal once", async () => {
+      const { store, chain } = await followed();
+      const bad = eventOrder("deposit", nonceRef());
+      const conflicted = eventOrder("withdrawal", nonceRef());
+      await chain.forward([admissionTx(bad, 1), admissionTx(conflicted, 2)]);
+      const undecodable: EventRefusal = {
+        kind: "deposit",
+        key: bad.key,
+        idCbor: "d8",
+        reason: EVENT_UNDECODABLE,
+        detail: "unsupported committed deposit L2 network id",
+      };
+      const conflict: EventRefusal = {
+        kind: "withdrawal",
+        key: conflicted.key,
+        idCbor: "d9",
+        reason: EVENT_IDENTITY_CONFLICT,
+        detail: "a local row of its public id holds another live admission",
+      };
+      const refusing: SinkResult = {
+        ...APPLIED,
+        inserted: 1,
+        refused: [undecodable, conflict],
+      };
+      const { sink } = recordingSink([
+        refusing,
+        { kind: "held", hold: { reason: "x", detail: "y" } },
+        { ...APPLIED, refused: [undecodable] },
+      ]);
+      const lines: string[] = [];
+      const driver = createFollowerDriver({
+        store,
+        config: EVENTS_CONFIG,
+        sink,
+        log: (line) => lines.push(line),
+      });
+      const conflictHold: DriverHold = {
+        reason: EVENT_IDENTITY_CONFLICT,
+        detail: `withdrawal ${conflicted.key} (id d9): a local row of its public id holds another live admission`,
+      };
+
+      // The view applies; the conflict holds, the undecodable event only refuses.
+      await driver.run();
+      const first = driver.applied();
+      expect(first).not.toBeNull();
+      expect(driver.holds()).toEqual([conflictHold]);
+      expect(driver.refused()).toEqual([undecodable]);
+
+      // A run that does not apply keeps the last applied view's refusals.
+      await chain.forward([]);
+      await driver.run();
+      expect(driver.applied()).toBe(first);
+      expect(driver.holds()).toEqual([
+        { reason: "x", detail: "y" },
+        conflictHold,
+      ]);
+      expect(driver.refused()).toEqual([undecodable]);
+
+      // The conflict clears; the undecodable event stays refused, logged once.
+      await driver.run();
+      expect(driver.applied()).not.toBe(first);
+      expect(driver.holds()).toEqual([]);
+      expect(driver.refused()).toEqual([undecodable]);
+      expect(lines.filter((line) => line.startsWith("event refused"))).toEqual([
+        `event refused (${EVENT_UNDECODABLE}): deposit ${bad.key} (id d8): unsupported committed deposit L2 network id`,
+        `event refused (${EVENT_IDENTITY_CONFLICT}): ${conflictHold.detail}`,
+      ]);
     });
 
     it("names an unreadable follower store and applies nothing", async () => {
