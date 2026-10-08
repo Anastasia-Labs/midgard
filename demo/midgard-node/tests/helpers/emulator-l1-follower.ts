@@ -5,8 +5,11 @@
  * tip's block, the event key set) and builds the event projection's plan
  * from the live list outputs, each opened by the follower's own derivation
  * (`openOrder`). The plan then goes through the production write paths: the
- * driver's sink (`readyProducerSink`) under a Ready history owner, or
- * `reconcileFollowerEvents` under the unowned-history fixture gate.
+ * follower-change driver (`makeEmulatorDriver` in
+ * `emulator-l1-follower.driver.ts`: its sink, recompute and
+ * landed-block hook), or `reconcileFollowerEvents` under the test-only
+ * fixture capability (`ingestEmulatorEventsUnowned`), before any driver has
+ * applied a view.
  *
  * A rollback (a restored emulator snapshot or a fork) is the follower's
  * rewind and replay, net (`rewindToEmulatorChain`): the keys whose admitting
@@ -48,25 +51,16 @@ import { Effect, Ref } from "effect";
 import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
 import { MempoolLedgerDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
-import type {
-  DriverHold,
-  IngestionPlan,
-  SinkResult,
-} from "../../src/l1-events/driver.js";
+import type { IngestionPlan } from "../../src/l1-events/driver.js";
 import {
-  LANDED_BLOCK_REBASE_PENDING,
-  LANDED_BLOCKS_WAITING,
-} from "../../src/landed-blocks/holds.js";
+  FollowerWriteFixture,
+  withFollowerWrite,
+} from "../../src/services/follower-write-gate.js";
 import {
-  UnownedHistoryFixture,
-  withHistoryIngestion,
-} from "../../src/services/event-history-producer.js";
-import {
-  type Globals,
+  Globals,
   NodeConfig,
   publishMempoolLedgerDelta,
 } from "../../src/services/index.js";
-import { readyProducerSink } from "../../src/services/l1-follower.js";
 import { runningFollower } from "../readiness-l1-follower.fixture.js";
 import {
   listContracts,
@@ -279,8 +273,7 @@ export type EmulatorFollowerFixture = {
 /**
  * Brings the follower tables to the emulator's tip (the event keys and the
  * state queue's outputs, P1's facts) and returns the plan there. With `globals`, the node's follower state becomes a caught-up
- * follower whose current plan is this one, so a history owner's recovery
- * ingests it (`ingestAtFollowerView`).
+ * follower whose current plan is this one.
  */
 export const syncEmulatorFollower = (
   fixture: EmulatorFollowerFixture,
@@ -313,8 +306,8 @@ export const syncEmulatorFollower = (
   });
 
 /**
- * The driver's ingestion without a history owner, under the unowned-history
- * fixture gate. Deposits due by `projectThroughMs` move into the mempool
+ * The driver's ingestion without a driver, under the test-only fixture
+ * capability (refused once a driver has applied a view). Deposits due by `projectThroughMs` move into the mempool
  * ledger (hidden) and, with `globals`, the cache delta is published; the
  * default projects nothing, as the old commit barrier did.
  */
@@ -327,13 +320,13 @@ export const ingestEmulatorEventsUnowned = (
     const lucid = fixture.operatorLucid;
     const network = lucid.config().network;
     if (network === undefined) return yield* failed("Emulator has no network");
-    const outcome = yield* withHistoryIngestion(
+    const outcome = yield* withFollowerWrite(
       reconcileFollowerEvents(plan, {
         network,
         slotToUnixTime: (slot) => lucid.slotToUnixTime(slot),
         cutoffMs: options.projectThroughMs ?? 0,
       }),
-    ).pipe(Effect.provideService(UnownedHistoryFixture, true));
+    ).pipe(Effect.provideService(FollowerWriteFixture, true));
     if (outcome.kind === "stale")
       return yield* failed("The emulator follower view moved");
     const globals = options.globals;
@@ -355,93 +348,6 @@ export const ingestEmulatorEventsUnowned = (
       );
     return outcome.ingestion;
   });
-
-/**
- * The landed-block hook (`landedBlockHook`) a driver run runs after its sink,
- * at the run's view, as the production driver runs it; its hold is what the
- * node would report.
- */
-export type EmulatorLandedBlocks = (
-  view: IngestionPlan["view"],
-) => Promise<DriverHold | undefined>;
-
-/** Holds a later driver run of the same view clears without help: the
- * rebase the hook asked the history owner for, or a view that moved. */
-const RERUN_HOLDS: ReadonlySet<string> = new Set([
-  LANDED_BLOCK_REBASE_PENDING,
-  LANDED_BLOCKS_WAITING,
-]);
-
-const driveOnce = (fixture: EmulatorFollowerFixture, globals: Globals) =>
-  Effect.gen(function* () {
-    const plan = yield* syncEmulatorFollower(fixture, globals);
-    const sink = yield* readyProducerSink;
-    const result = yield* Effect.promise(
-      (): Promise<SinkResult> =>
-        sink.apply({ kind: "unchanged", view: plan.view }, plan),
-    );
-    return { result, view: plan.view };
-  });
-
-/**
- * One driver run under a Ready history owner: the production sink applies
- * the emulator's plan. A held result carries the hold (`/readyz` reason)
- * the node would report.
- */
-export const driveEmulatorFollower = (
-  fixture: EmulatorFollowerFixture,
-  globals: Globals,
-) => Effect.map(driveOnce(fixture, globals), ({ result }) => result);
-
-/**
- * `awaitReady` (the history owner ready at the tip), then driver runs until
- * one applies; returns the owner's coverage. A run held for recovery
- * (orphans, a cache reload) has asked the owner to reconcile, and the
- * recovery ingests at the same view, so the run after it must apply.
- *
- * With `landedBlocks`, each run then runs the landed-block hook at its view;
- * a run whose hook asked the owner for the rebase (or saw the view move) is
- * followed, once the owner is ready again, by another, up to
- * `LANDED_RERUNS` more. `onLandedHold` receives the last run's hook hold.
- */
-export const readyWithEmulatorFollower = <C, E, R>(
-  awaitReady: Effect.Effect<C, E, R>,
-  fixture: EmulatorFollowerFixture,
-  globals: Globals,
-  landed?: Readonly<{
-    hook: EmulatorLandedBlocks;
-    onLandedHold: (hold: DriverHold | undefined) => void;
-  }>,
-) =>
-  Effect.gen(function* () {
-    let coverage = yield* awaitReady;
-    let reruns = 0;
-    let heldLast = false;
-    for (;;) {
-      const { result, view } = yield* driveOnce(fixture, globals);
-      const hold =
-        landed === undefined
-          ? undefined
-          : yield* Effect.promise(() => landed.hook(view));
-      landed?.onLandedHold(hold);
-      const rerun =
-        hold !== undefined &&
-        RERUN_HOLDS.has(hold.reason) &&
-        reruns++ < LANDED_RERUNS;
-      if (result.kind === "applied" && !rerun) return coverage;
-      if (result.kind !== "applied" && (result.kind !== "held" || heldLast))
-        return yield* Effect.die(
-          new Error(
-            `The emulator driver run did not apply: ${JSON.stringify(result)}`,
-          ),
-        );
-      heldLast = result.kind === "held";
-      coverage = yield* awaitReady;
-    }
-  });
-
-/** Driver runs after the first that a landed-block hook may ask for. */
-const LANDED_RERUNS = 3;
 
 /**
  * `utxo`, an Order of the list minting under `policyId`, as the follower

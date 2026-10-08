@@ -8,21 +8,13 @@
  * 3. every pending transaction, in admission order, re-simulated on what
  *    came before it. A transaction whose input is gone is rejected
  *    ("direct"), with every transaction that spends a rejected one's output
- *    ("dependent") and every co-member of a batch it was accepted in
- *    ("batch"), transitively; the rejections commit with the rebuild or not
- *    at all.
- *
- * The closure also repairs every unreversed receipt that records a
- * rejected member (migration 0016) and has no undecided member: its pending
- * members are rejected as "batch" and the receipt is reversed. A repair
- * whose batch rejections reach an undecided member is not applied.
+ *    ("dependent"), transitively; the rejections commit with the rebuild or
+ *    not at all.
  *
  * Pending means unmarked: a row a processed base block includes is marked
  * by it (`mempoolInclusions.ts`) and stays in its table until the block
  * folds, so it is not replayed; the live own block's members are excluded
- * by id. Either is settled by the base: a batch it was accepted in with a
- * rejected transaction rejects the batch's other pending members ("batch")
- * and is not refused for it. A projected deposit whose output a surviving
+ * by id. A projected deposit whose output a surviving
  * transaction spends is `consumed`, any other `projected`.
  *
  * Runs inside the caller's transaction.
@@ -50,7 +42,6 @@ import {
   type RejectionCodes,
   type Rejections,
   txIdHex,
-  UndecidedBatchMember,
 } from "./working-ledger-recompute.reject-closure.js";
 
 const Columns = MempoolLedgerDB.Columns;
@@ -187,27 +178,10 @@ export const rebuildWorkingLedger = (input: {
       });
       outside.push(entry.source_event_id);
     }
-    // A batch co-member a base block includes is settled by that block.
-    const settled = new Set([
-      ...input.includedByForeign,
-      ...input.includedByOwn,
-    ]);
-    // The closure first repairs the receipts that record a rejected member
-    // (`closeRejections`); a repair that reaches an undecided member is not
-    // applied, and the closure runs without it.
-    const close = (repairRecordedRejections: boolean) =>
-      closeRejections({
-        pending,
-        spread: (reject, done) => simulate(base, pending, done, reject).changed,
-        settled,
-        repairRecordedRejections,
-      });
-    const rejected = yield* close(true).pipe(
-      Effect.catchIf(
-        (error) => error instanceof UndecidedBatchMember,
-        () => close(false),
-      ),
-    );
+    const rejected = yield* closeRejections({
+      pending,
+      spread: (reject, done) => simulate(base, pending, done, reject).changed,
+    });
     const { ledger } = simulate(base, pending, rejected);
     const { known, dropped } = yield* provenance(ledger);
     for (const tx of pending)
@@ -232,11 +206,7 @@ export const rebuildWorkingLedger = (input: {
         ON CONFLICT (outref) DO UPDATE SET tx_id = EXCLUDED.tx_id,
           output = EXCLUDED.output, address = EXCLUDED.address,
           source_event_id = EXCLUDED.source_event_id`;
-    const rejectedTxIds = yield* recordRejections(
-      rejected,
-      input.codes,
-      [...settled].map((id) => Buffer.from(id, "hex")),
-    );
+    const rejectedTxIds = yield* recordRejections(rejected, input.codes);
     // A deposit outside any block is consumed exactly when a surviving
     // transaction spent its output.
     const present = new Set(

@@ -9,9 +9,12 @@ import {
   NODE_PROCESS_MPF_AUDIT_LEASES,
   OFFLINE_MPF_AUDIT_LEASES,
 } from "../src/commands/mpf-audit-leases.js";
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as MpfEngineStateDB from "../src/database/mpfEngineState.js";
-import { HistoryPreparation } from "../src/services/event-history-recovery.js";
+import {
+  type FollowerDriverPermit,
+  FollowerDriverWrite,
+} from "../src/services/follower-write-gate.js";
+import { supersededDriver } from "./helpers/follower-write-gate.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // A node killed while its commit worker or its own payload audit held the
@@ -98,27 +101,18 @@ describe("startup retires the ledger MPF lease of a killed node process", () => 
       );
     });
 
-  it("retires only under the current history authority, never under a superseded or absent one", async () => {
+  it("retires only under the current follower-change driver, never under a superseded one or a fixture", async () => {
     const killed = MpfEngineStateDB.nodeProcessCommitLeaseOwner();
     await run(
       Effect.gen(function* () {
         yield* leftBehind(killed);
-        const acquire = Authority.acquire({
-          deploymentIdentity: "ab".repeat(32),
-          ownerToken: randomUUID(),
-          leaseDurationMs: 60_000,
-        });
-        const stale = yield* acquire;
-        const current = yield* acquire;
-        const releaseAs = (authority: Authority.Token | undefined) =>
+        const { stale, current } = yield* supersededDriver;
+        const releaseAs = (driver: FollowerDriverPermit | undefined) =>
           Effect.exit(
-            authority === undefined
+            driver === undefined
               ? releaseLedgerStoreLeaseOfPreviousNodeProcess
               : releaseLedgerStoreLeaseOfPreviousNodeProcess.pipe(
-                  Effect.provideService(HistoryPreparation, {
-                    token: authority,
-                    assertCurrent: Effect.void,
-                  }),
+                  Effect.provideService(FollowerDriverWrite, driver),
                 ),
           );
         expect(Exit.isFailure(yield* releaseAs(undefined))).toBe(true);

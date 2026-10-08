@@ -2,7 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import * as DaPayloadsDB from "./daPayloads.js";
 import * as MutationJobsDB from "./mutationJobs.js";
 import {
@@ -195,7 +195,7 @@ export const assertNoUnreconciledSignedSubmission = Effect.gen(function* () {
       }),
     );
 }).pipe(
-  withHistoryWrite,
+  withFollowerWrite,
   sqlErrorToDatabaseError(tableName, "Failed signed submission preflight"),
 );
 
@@ -227,8 +227,8 @@ export const withdrawalMemberToAssignment = (
  * (`orphanMemberJournal`). Recovery dependencies are also kept:
  * unfinished/abandoned journals' bases, same-base siblings and descendants,
  * and every retained native recovery plan's primary/member headers. Each batch
- * is its own history write, so it needs the history producer permit and holds
- * it for one statement at a time. Returns the number removed.
+ * is its own gated write, so it needs the follower write gate and holds it
+ * for one statement at a time. Returns the number removed.
  */
 export const pruneFinalizedBeyondChallengeability = ({
   challengeableCutoff,
@@ -283,7 +283,7 @@ export const pruneFinalizedBeyondChallengeability = ({
         RETURNING ${sql(Columns.HEADER_HASH)}`;
         return rows.length;
       }).pipe(
-        withHistoryWrite,
+        withFollowerWrite,
         Effect.withLogSpan(`pruneFinalizedBeyondChallengeability ${tableName}`),
         sqlErrorToDatabaseError(
           tableName,

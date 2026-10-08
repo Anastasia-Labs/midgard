@@ -4,7 +4,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it, vi } from "vitest";
 
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -291,7 +291,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
             programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR,
             submitSource: "native",
           });
-          yield* withHistoryWrite(
+          yield* withFollowerWrite(
             sql.withTransaction(
               MempoolDB.insertMultipleCore([processedNormal]),
             ),
@@ -606,7 +606,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
               }),
             { concurrency: 1 },
           );
-          yield* withHistoryWrite(
+          yield* withFollowerWrite(
             sql.withTransaction(MempoolDB.insertMultipleCore(processed)),
           );
           for (let index = 0; index < processed.length; index += 1) {

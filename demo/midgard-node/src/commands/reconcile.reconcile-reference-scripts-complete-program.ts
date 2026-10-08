@@ -162,8 +162,8 @@ const serializeDepositEvidence = (
 
 /**
  * Read-only: reports whether the deposit is visible and projected. Projection
- * itself runs only under the node's history owner, which projects every due
- * deposit; a standalone CLI process holds no history-ingestion permit, so
+ * itself runs only in the running node's follower-change driver, which
+ * projects every due deposit; a standalone CLI process is no driver, so
  * there is no repair action here.
  */
 export const reconcileDepositProjectedProgram = ({

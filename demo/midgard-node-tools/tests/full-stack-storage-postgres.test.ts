@@ -88,7 +88,13 @@ describe.skipIf(!dbEnabled)(
             "Fresh deployment requires empty local storage: event_history_authority",
           );
           expect(yield* json(sql, ATTACHMENT_QUERY)).toEqual({
-            manifestId: marker.manifestId,
+            initTxHashes: [],
+          });
+          yield* sql.unsafe(
+            `INSERT INTO l1_protocol_init (one_shot, tx_hash, slot) VALUES (decode('${"01".repeat(34)}', 'hex'), decode('${"ab".repeat(32)}', 'hex'), 7)`,
+          );
+          expect(yield* json(sql, ATTACHMENT_QUERY)).toEqual({
+            initTxHashes: ["ab".repeat(32)],
           });
         }),
       ));

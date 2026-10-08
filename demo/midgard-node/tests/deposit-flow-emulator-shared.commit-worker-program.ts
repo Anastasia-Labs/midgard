@@ -7,11 +7,10 @@ import { vi } from "vitest";
 import { withdrawalEventIdFromBuildMetadata } from "../src/commands/submit-withdrawal.js";
 import { type SlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import type { NodeConfigDep } from "../src/services/config.js";
-import type {
-  EventHistoryOwner,
-  HistoryOwnerCoverage,
-} from "../src/services/event-history-owner.js";
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
+import {
+  FollowerWriteFixture,
+  type FollowerWritePermit,
+} from "../src/services/follower-write-gate.js";
 import {
   Globals,
   MidgardContracts,
@@ -103,14 +102,19 @@ export const makeLucidRuntimeService = async ({
   };
 };
 
+/**
+ * The production lifecycle's node services (`openProductionLifecycle`):
+ * producers run at the follower-change driver's applied view
+ * (`runAtFollowerView`), and `synchronize` runs the driver at the
+ * emulator's tip.
+ */
 export type ProductionHistoryFixtureRuntime = {
-  readonly owner: EventHistoryOwner;
   readonly cache: MempoolLedgerCacheService;
   readonly nodeConfig: NodeConfigDep;
   readonly synchronize: () => Promise<void>;
   readonly onCommitAttempt?: (
     receipt: Readonly<{
-      coverage: HistoryOwnerCoverage;
+      permit: FollowerWritePermit;
       startedAtMs: number;
       finishedAtMs: number;
       output: CommitWorkerOutput;
@@ -188,7 +192,7 @@ export const commitWorkerProgram = (
   ).pipe(
     Effect.provideService(MidgardContracts, contracts as any),
     workerInput.history === undefined
-      ? Effect.provideService(UnownedHistoryFixture, true)
+      ? Effect.provideService(FollowerWriteFixture, true)
       : (effect) => effect,
   );
   return nodeConfig === undefined

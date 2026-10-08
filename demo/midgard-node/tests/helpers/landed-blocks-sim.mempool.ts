@@ -1,22 +1,19 @@
 /**
  * The landed-block fork simulator's mempool (N3): pending transactions
  * admitted the way the node's admission leaves them (mempool row, delta,
- * working-ledger outputs, one acceptance receipt per accepted batch), and
- * the model of what a working-ledger rebuild makes of them.
+ * working-ledger outputs), and the model of what a working-ledger rebuild
+ * makes of them.
  *
  * The model replays the pending transactions in admission order on a base
  * ledger. One a block on the base's lineage includes is settled, not
  * pending: its row stays (marked) until that block's fold is final (its
  * retained fold pruned), then leaves; a rollback that takes the block off
- * the lineage makes it pending again. Of
- * the rest, one whose input is gone is rejected ("direct"), one that spends
- * a rejected transaction's output with it ("dependent"), and every pending
- * co-member of an acceptance receipt that holds a rejected transaction
- * ("batch"), transitively; a co-member a block on the lineage includes
- * (folded or not) is settled by it. A rejection reverses the receipts it
- * touches, and is final unless the node revives an own block: that deletes
- * the rejections of its members and the dependent and batch rejections
- * every recorded cause of which is deleted, transitively.
+ * the lineage makes it pending again. Of the rest, one whose input is gone
+ * is rejected ("direct"), and one that spends a rejected transaction's
+ * output with it ("dependent"), transitively. A rejection is final unless
+ * the node revives an own block: that deletes the rejections of its members
+ * and the dependent rejections every recorded cause of which is deleted,
+ * transitively.
  */
 import {
   decodeMidgardTxOutput,
@@ -31,7 +28,7 @@ import {
   TxUtils,
 } from "../../src/database/index.js";
 import type * as Ledger from "../../src/database/utils/ledger.js";
-import { withHistoryWrite } from "../../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 
 const hex = (value: Uint8Array) => Buffer.from(value).toString("hex");
 
@@ -44,10 +41,7 @@ export type SimPendingTx = Readonly<{
   cbor?: Buffer;
 }>;
 
-export type SimRejection = "direct" | "dependent" | "batch";
-
-/** One accepted batch's receipt: its transaction ids (hex). */
-export type SimReceipt = { ids: readonly string[]; reversed: boolean };
+export type SimRejection = "direct" | "dependent";
 
 export type SimMempool = {
   /** Every row, in admission order: pending, or included by a block that has not folded. */
@@ -55,9 +49,8 @@ export type SimMempool = {
   /** Every transaction admitted, by hex id. */
   txs: Map<string, SimPendingTx>;
   rejected: Map<string, SimRejection>;
-  /** The rejected transactions a dependent or batch rejection follows from. */
+  /** The rejected transactions a dependent rejection follows from. */
   causes: Map<string, readonly string[]>;
-  receipts: SimReceipt[];
   admitted: number;
   poolUsed: number;
 };
@@ -67,7 +60,6 @@ export const newSimMempool = (): SimMempool => ({
   txs: new Map(),
   rejected: new Map(),
   causes: new Map(),
-  receipts: [],
   admitted: 0,
   poolUsed: 0,
 });
@@ -79,8 +71,6 @@ export const newSimMempool = (): SimMempool => ({
  */
 export type SimIncluded = Readonly<{
   settled: ReadonlySet<string>;
-  /** Settled by a folded block, by the folded block's kind. */
-  folded: ReadonlyMap<string, "own" | "foreign">;
   /** Settled by a block whose fold is final (released): those rows are gone. */
   released: ReadonlySet<string>;
 }>;
@@ -88,26 +78,20 @@ export type SimIncluded = Readonly<{
 export type SimSettlement = Readonly<{
   ledger: Map<string, Buffer>;
   newly: readonly (readonly [string, SimRejection])[];
-  /** A batch was rejected around a co-member a base block settled. */
-  batchSettled: boolean;
-  /** ...around one a folded block settled, by that block's kind. */
-  foldThenReject: ReadonlySet<"own" | "foreign">;
 }>;
 
 /**
  * Rebuilds the model's working ledger on `base`; moves the pending
  * transactions that cannot apply to the rejections and drops the ones a
- * block whose fold is final includes. A string is a model failure: a batch the rebuild
- * could neither reject nor settle.
+ * block whose fold is final includes.
  */
 export const settleMempool = (
   mempool: SimMempool,
   base: ReadonlyMap<string, Buffer>,
   included: SimIncluded,
-): SimSettlement | string => {
-  const { settled, folded } = included;
+): SimSettlement => {
+  const { settled } = included;
   const pending = mempool.survivors.filter((tx) => !settled.has(hex(tx.id)));
-  const pendingIds = new Set(pending.map((tx) => hex(tx.id)));
   const rejected = new Map<string, SimRejection>();
   const causes = new Map<string, readonly string[]>();
   const simulate = (record: boolean) => {
@@ -141,42 +125,14 @@ export const settleMempool = (
     }
     return { ledger, changed };
   };
-  let batchSettled = false;
-  const foldThenReject = new Set<"own" | "foreign">();
-  for (let widened = true; widened; ) {
-    widened = false;
-    while (simulate(true).changed);
-    const before = new Set(rejected.keys());
-    for (const receipt of mempool.receipts) {
-      if (receipt.reversed || !receipt.ids.some((id) => before.has(id)))
-        continue;
-      const after = receipt.ids.filter((id) => before.has(id));
-      for (const id of receipt.ids) {
-        if (rejected.has(id)) continue;
-        if (settled.has(id)) {
-          batchSettled = true;
-          const kind = folded.get(id);
-          if (kind !== undefined) foldThenReject.add(kind);
-          continue;
-        }
-        if (!pendingIds.has(id))
-          return `model: batch ${receipt.ids.join(",")} holds ${id}, neither pending nor settled`;
-        rejected.set(id, "batch");
-        causes.set(id, after);
-        widened = true;
-      }
-    }
-  }
+  while (simulate(true).changed);
   const { ledger } = simulate(false);
-  for (const receipt of mempool.receipts)
-    if (!receipt.reversed && receipt.ids.some((id) => rejected.has(id)))
-      receipt.reversed = true;
   mempool.survivors = mempool.survivors.filter(
     (tx) => !rejected.has(hex(tx.id)) && !included.released.has(hex(tx.id)),
   );
   for (const [id, reason] of rejected) mempool.rejected.set(id, reason);
   for (const [id, after] of causes) mempool.causes.set(id, after);
-  return { ledger, newly: [...rejected], batchSettled, foldThenReject };
+  return { ledger, newly: [...rejected] };
 };
 
 /**
@@ -236,7 +192,7 @@ export const restoreDisposedMembers = (
 export const admitPending = (txs: readonly SimPendingTx[]) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* withHistoryWrite(
+    yield* withFollowerWrite(
       Effect.gen(function* () {
         for (const tx of txs) {
           yield* TxUtils.insertEntry(MempoolDB.tableName, {
@@ -268,35 +224,3 @@ export const admitPending = (txs: readonly SimPendingTx[]) =>
       }),
     );
   });
-
-const BINDING = Buffer.alloc(32, 0x5a);
-const DIGEST = Buffer.alloc(32, 0x5b);
-
-/** The history cursor acceptance receipts hang off. */
-export const insertSimCursor = Effect.flatMap(
-  SqlClient.SqlClient,
-  (sql) => sql`INSERT INTO event_history_cursor (binding_digest, manifest_id,
-      origin_receipt, origin_receipt_digest, anchor_hash, anchor_slot,
-      anchor_height, anchor_snapshot_digest, head_hash, head_slot,
-      head_height, head_application_revision, snapshot_digest, revision,
-      addresses)
-    VALUES (${BINDING}, ${Buffer.alloc(32, 0xde)}, 'origin', ${DIGEST},
-      ${DIGEST}, 0, 0, ${DIGEST}, ${DIGEST}, 0, 0, NULL, ${DIGEST}, 0,
-      '[]'::jsonb)`,
-);
-
-/** One unreversed acceptance receipt for the batch `ids`. */
-export const insertSimReceipt = (ids: readonly Buffer[]) =>
-  withHistoryWrite(
-    Effect.flatMap(SqlClient.SqlClient, (sql) => {
-      const array = (sql as unknown as { array: (v: string[]) => unknown })
-        .array;
-      return sql`INSERT INTO event_history_l2_ledger_receipts (binding_digest,
-          owner_generation, checkpoint_revision, head_hash, snapshot_digest,
-          tx_ids, reference_outrefs, ledger_before, reference_before,
-          deposits_before, payloads_before)
-        VALUES (${BINDING}, 0, 0, ${DIGEST}, ${DIGEST},
-          ${array(ids.map((id) => `\\x${hex(id)}`)) as never}::bytea[],
-          '{}'::bytea[], '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb)`;
-    }),
-  );

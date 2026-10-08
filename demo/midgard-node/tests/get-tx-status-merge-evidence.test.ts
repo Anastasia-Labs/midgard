@@ -1,7 +1,7 @@
 import { HttpServerRequest } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql";
-import { Effect, Ref } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/database/index.js", async (importOriginal) => {
@@ -36,11 +36,6 @@ vi.mock("../src/database/index.js", async (importOriginal) => {
 
 import { getTxStatusHandler } from "../src/commands/listen-router.get-tx-status-handler.js";
 import { postTxStatusBatchHandler } from "../src/commands/listen-router.post-tx-status-batch-handler.js";
-import type {
-  EventHistoryOwner,
-  HistoryOwnerCoverage,
-} from "../src/services/event-history-owner.js";
-import { HistoryRecoverySuperseded } from "../src/services/event-history-recovery.js";
 import { Globals } from "../src/services/globals.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
 import { canonicalManifest } from "./deployment-manifest.canonical-identity.js";
@@ -52,15 +47,6 @@ const otherHeader = Buffer.alloc(28, 0xcc);
 const root = "11".repeat(32);
 /** The follower's covered tip height in every case. */
 const TIP_HEIGHT = 1_000;
-const ownerToken = "00000000-0000-4000-8000-000000000001";
-const unavailable = new HistoryRecoverySuperseded({ message: "test rollback" });
-const coverage: HistoryOwnerCoverage = {
-  bindingDigest: "22".repeat(32),
-  checkpointRevision: "1",
-  point: { id: "33".repeat(32), slot: 1 },
-  snapshotDigest: "44".repeat(32),
-  includedThroughMs: 1,
-};
 type Options = {
   status?: string;
   job?: string;
@@ -71,58 +57,15 @@ type Options = {
   ambiguous?: boolean;
   oldAbandoned?: boolean;
   revoked?: boolean;
-  authority?: string;
-  expired?: boolean;
-  missingOwner?: boolean;
-  superseded?: boolean;
+  /** The follower write gate: open at an applied view (the default), a
+   * driver recompute pending, or no view applied yet. */
+  gate?: "open" | "pending" | "unapplied";
 };
-const fixtureOwner = (
-  manifestId: string,
-  superseded: boolean,
-): EventHistoryOwner => ({
-  close: Effect.void,
-  requestReconciliation: () => Effect.void,
-  reconciliationStatus: Effect.succeed(undefined),
-  sourceStatus: Effect.succeed({
-    state: "following",
-    reason: null,
-    since: null,
-    escalated: false,
-    attempts: 0,
-    lastError: null,
-  }),
-  frontier: Effect.succeed({
-    ready: true,
-    headHeight: 1,
-    tipHeight: 1,
-    lagBlocks: 0,
-    maximumLagBlocks: 5,
-  }),
-  awaitReady: Effect.void,
-  awaitReadyAt: () => Effect.succeed(coverage),
-  awaitStopped: Effect.void,
-  runProducer: (work) =>
-    work(
-      { deploymentIdentity: manifestId, ownerToken, generation: "1" },
-      Effect.void,
-      coverage,
-    ).pipe(
-      Effect.tap(() => (superseded ? Effect.fail(unavailable) : Effect.void)),
-    ),
-});
-
 const query = (route: "GET" | "batch", options: Options = {}) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
         const manifest = canonicalManifest();
-        const globals = yield* Globals;
-        yield* Ref.set(
-          globals.EVENT_HISTORY_OWNER,
-          options.missingOwner
-            ? undefined
-            : fixtureOwner(manifest.manifestId, options.superseded ?? false),
-        );
         const sql = yield* SqlClient.SqlClient;
         return yield* sql.withTransaction(
           Effect.gen(function* () {
@@ -133,7 +76,7 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
             yield* sql`CREATE TEMP TABLE node_l1_queue_terminals (header_hash bytea, terminal_outcome text, height bigint) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE l1_follower_cursor (height bigint) ON COMMIT DROP`;
             yield* sql`INSERT INTO l1_follower_cursor VALUES (${TIP_HEIGHT})`;
-            yield* sql`CREATE TEMP TABLE event_history_authority (singleton boolean, deployment_identity bytea, owner_token uuid, generation bigint, state text, lease_until timestamptz) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE node_follower_write_gate (singleton boolean, applied_generation bigint, pending_reason text) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE immutable (tx_id bytea) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE mempool (tx_id bytea, included_by bytea) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE processed_mempool (tx_id bytea, included_by bytea) ON COMMIT DROP`;
@@ -155,7 +98,10 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
                 TIP_HEIGHT - manifest.l1Finality.confirmationDepth + 1;
               yield* sql`INSERT INTO node_l1_queue_terminals VALUES (${header}, ${options.outcome}, ${options.shallow ? safeHeight + 1 : safeHeight})`;
             }
-            yield* sql`INSERT INTO event_history_authority VALUES (true, ${Buffer.from(manifest.manifestId, "hex")}, ${ownerToken}::uuid, 1, ${options.authority ?? "ready"}, clock_timestamp() + (${options.expired ? -1 : 60000} * interval '1 millisecond'))`;
+            const gate = options.gate ?? "open";
+            yield* sql`INSERT INTO node_follower_write_gate VALUES (true,
+              ${gate === "unapplied" ? null : 7},
+              ${gate === "pending" ? "l1_driver_recompute_pending" : null})`;
             if (options.revoked)
               yield* sql`DELETE FROM node_l1_queue_terminals`;
             const handler =
@@ -209,7 +155,7 @@ for (const route of ["GET", "batch"] as const)
     it("does not call an L1-confirmed commitment an actual merge", async () => {
       expect((await query(route)).body.confirmedLedgerFinalized).toBe(false);
     });
-    it("reports a completed local merge of the exact current authenticated header", async () => {
+    it("reports a completed local merge of the exact current header", async () => {
       expect(
         (await query(route, { job: "completed", outcome: "merged" })).body,
       ).toMatchObject({
@@ -230,12 +176,10 @@ for (const route of ["GET", "batch"] as const)
       { job: "completed", outcome: "merged", ambiguous: true },
       { job: "completed", outcome: "merged", status: "abandoned" },
       { job: "completed", outcome: "merged", revoked: true },
-      { job: "completed", outcome: "merged", authority: "recovering" },
-      { job: "completed", outcome: "merged", expired: true },
-      { job: "completed", outcome: "merged", missingOwner: true },
-      { job: "completed", outcome: "merged", superseded: true },
+      { job: "completed", outcome: "merged", gate: "pending" },
+      { job: "completed", outcome: "merged", gate: "unapplied" },
     ])(
-      "refuses missing, revoked or mismatched merge authority: %j",
+      "refuses missing, revoked or mismatched merge evidence, or a gate a driver recompute holds: %j",
       async (options) => {
         const result = await query(route, options);
         expect(result.status).toBe(200);

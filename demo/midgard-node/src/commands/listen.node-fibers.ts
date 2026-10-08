@@ -97,7 +97,7 @@ const heldRestart = <A, E, R>(name: HeldFiber, fiber: Effect.Effect<A, E, R>) =>
 /**
  * The scheduled background fibers `runNode` runs for the node's lifetime,
  * keyed by name. `runNodeFiberSet` adds the fibers that need its startup
- * state (the retained-payload server and history owner). The HTTP listener is
+ * state (the retained-payload server). The HTTP listener is
  * scoped at the CLI boundary so local probes are available during startup.
  * None of them fails: a condition a fiber cannot resolve raises a liveness
  * reason instead, and the fibers whose effects that condition must stop are
@@ -160,12 +160,11 @@ export const nodeFibers = ({
 });
 
 /**
- * The startup fiber whose failure still ends the process: the history owner
- * stopping. HTTP acquisition failure propagates at the CLI boundary. Every
- * other fiber `runNodeFiberSet` returns, startup or scheduled, has error channel
- * `never`.
+ * The startup fibers whose failure ends the process: none. HTTP acquisition
+ * failure propagates at the CLI boundary; every fiber `runNodeFiberSet`
+ * returns, startup or scheduled, has error channel `never`.
  */
-export type ProcessEndingStartupFiber = "historyOwnerStopped";
+export type ProcessEndingStartupFiber = never;
 
 /**
  * Every fiber `runNode` runs for the node's lifetime: the ones built from its

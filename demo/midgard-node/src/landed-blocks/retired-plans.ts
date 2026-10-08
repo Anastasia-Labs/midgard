@@ -3,8 +3,7 @@
  * recovery, a signed-intent release, a displaced-block revival, a
  * displacement compensation or a correction rewind that a node prepared
  * before the services that resumed them were deleted. No service resumes
- * one now, so while one is retained the history owner's reconciliation
- * stays pending (`pendingHistoryLedgerDisposition`), for good.
+ * one now; the landed-block rebase discards each one it supersedes.
  *
  * The landed-block rebase covers what each one was preparing. A prepared
  * plan committed nothing in SQL (its journal disposition and its applied

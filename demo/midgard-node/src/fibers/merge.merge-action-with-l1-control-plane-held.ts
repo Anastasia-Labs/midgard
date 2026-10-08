@@ -8,7 +8,7 @@ import {
   TxAdmissionsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -126,8 +126,8 @@ export const mergeActionWithL1ControlPlaneHeld = (
     };
     // Finalize any merge that landed without its local finalization before
     // deciding anything else, so even an attempt that skips catches it up.
-    // Its failure fails this attempt, and the attempt runs under the producer
-    // permit, so only while the history owner is Ready. A merge landing after
+    // Its failure fails this attempt, and the attempt runs under the
+    // follower write gate, so only while the driver's view is published. A merge landing after
     // this read is finalized by buildAndSubmitMergeTx before it builds on it.
     yield* finalizeLandedMergesProgram(fetchConfig);
     const minQueueLength =
@@ -333,7 +333,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
               // the L1 confirmation cannot write without it.
               assertSubmitAuthority: () =>
                 StateQueueMutationLeasesDB.revalidate(leaseToken).pipe(
-                  Effect.zipRight(withHistoryWrite(Effect.void)),
+                  Effect.zipRight(withFollowerWrite(Effect.void)),
                 ),
               onConfirmedFinalization: (outcome) =>
                 Ref.set(confirmed, Option.some({ ...outcome, trigger })),

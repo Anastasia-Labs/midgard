@@ -19,6 +19,12 @@ import {
 const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(provideDatabaseLayers(effect) as Effect.Effect<A, E>);
 
+/** The singletons a migration seeds, which the reset restores. */
+const SEEDED_SINGLETONS = new Set([
+  "commit_build_calibration",
+  "node_follower_write_gate",
+]);
+
 /** A table no migration and no reset names: created here, dropped after. */
 const PROBE = "reset_guard_unlisted_probe";
 
@@ -66,8 +72,8 @@ describe("per-file database reset", () => {
       const leftover = [...after].filter(
         ([name, count]) =>
           !RESET_KEPT_TABLES.has(name) &&
-          // The migration seed row the reset restores.
-          count !== (name === "commit_build_calibration" ? 1 : 0),
+          // The migration seed rows the reset restores.
+          count !== (SEEDED_SINGLETONS.has(name) ? 1 : 0),
       );
       expect(leftover).toEqual([]);
       expect(after.get(PROBE)).toBe(0);

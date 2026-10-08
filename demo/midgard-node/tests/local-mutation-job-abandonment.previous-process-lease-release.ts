@@ -1,7 +1,5 @@
 import "./local-mutation-job-abandonment.killed-process-startup-recovery.js";
 
-import { randomUUID } from "node:crypto";
-
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { Cause, Effect, Exit } from "effect";
@@ -16,12 +14,15 @@ import {
   NODE_PROCESS_MPF_AUDIT_LEASES,
   OFFLINE_MPF_AUDIT_LEASES,
 } from "../src/commands/mpf-audit-leases.js";
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as MutationJobsDB from "../src/database/mutationJobs.js";
 import * as StateQueueLeases from "../src/database/stateQueueMutationLeases.js";
 import { TIMEOUT_CORRECTION_LEASE_HOLDER } from "../src/fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
 import { Database } from "../src/services/database.js";
-import { HistoryPreparation } from "../src/services/event-history-recovery.js";
+import {
+  type FollowerDriverPermit,
+  FollowerDriverWrite,
+} from "../src/services/follower-write-gate.js";
+import { supersededDriver } from "./helpers/follower-write-gate.js";
 import {
   failedLocalJob,
   header,
@@ -126,28 +127,18 @@ describe("startup retires state-queue leases of a killed node process", () => {
   );
 
   it.effect(
-    "retires only under the current history authority, never under a superseded or absent one",
+    "retires only under the current follower-change driver, never under a superseded one or a fixture",
     () =>
       leaseDb(
         Effect.gen(function* () {
           const token = yield* leftBehind("block_commitment");
-          const ownerToken = randomUUID();
-          const acquire = Authority.acquire({
-            deploymentIdentity: "ab".repeat(32),
-            ownerToken,
-            leaseDurationMs: 60_000,
-          });
-          const stale = yield* acquire;
-          const current = yield* acquire;
-          const releaseAs = (authority: Authority.Token | undefined) =>
+          const { stale, current } = yield* supersededDriver;
+          const releaseAs = (driver: FollowerDriverPermit | undefined) =>
             Effect.exit(
-              authority === undefined
+              driver === undefined
                 ? releaseStateQueueLeasesOfPreviousNodeProcess
                 : releaseStateQueueLeasesOfPreviousNodeProcess.pipe(
-                    Effect.provideService(HistoryPreparation, {
-                      token: authority,
-                      assertCurrent: Effect.void,
-                    }),
+                    Effect.provideService(FollowerDriverWrite, driver),
                   ),
             );
           expect(Exit.isFailure(yield* releaseAs(undefined))).toBe(true);
@@ -160,8 +151,6 @@ describe("startup retires state-queue leases of a killed node process", () => {
           expect((yield* readLease(token))[L.STATUS]).toBe(
             StateQueueLeases.Status.Failed,
           );
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`TRUNCATE TABLE event_history_authority`;
         }),
       ),
   );

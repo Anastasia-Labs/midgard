@@ -1,10 +1,11 @@
 /**
  * Whichever lands wins (plan §8.3, I3) for two real state-queue commits on
  * one tail. The production commit worker builds both, journaling them in
- * the production intent journal over the follower's facts. The production
- * history owner runs the landed-block rebase. The node's landed-block
- * processing (`processLandedQueue` over `nodeLandedBlockPorts`, the follower
- * run's hook) reads the emulator's queue through the follower stand-in.
+ * the production intent journal over the follower's facts. The
+ * follower-change driver's recompute runs the landed-block rebase. The
+ * node's landed-block processing (`processLandedQueue` over
+ * `nodeLandedBlockPorts`, the follower run's hook) reads the emulator's
+ * queue through the follower stand-in.
  *
  * - (a) The replacement lands. The old journal is disposed of, the native
  *   root returns to the base, and the next commit builds on the winner.
@@ -15,8 +16,9 @@
  *   transfer the disposed-of replacement had taken from the mempool.
  * - (c) A deposit leaves the chain (a rollback past its admission). The
  *   journal holding it is disposed of, S6 abandons its intent, the L2
- *   transfer it also held is requeued, and the replacement carries the
- *   transfer and omits the deposit.
+ *   transfer it also held stays accepted and pending (its funding output
+ *   survives), and the replacement carries the transfer and omits the
+ *   deposit.
  *
  * Keeping the old commit from landing: every old commit (and the
  * replacement in (b)) is dropped from the emulator's mempool before any
@@ -39,13 +41,13 @@
  * drops spent outputs instead of marking their spender. The journey writes
  * each landing (`recordLanding`), and writes (b)'s replacement dead as S6's
  * abandoned event where the follower would read it conflicted. (c)'s old
- * commit also holds an L2 transfer; the rollback's repair requeues it after
- * the disposal rebuilt the working ledger.
+ * commit also holds an L2 transfer; the driver's recompute keeps it pending
+ * when the disposal rebuilds the working ledger.
  */
 import "./helpers/follower-emulator-installed.js";
 
 import { decodeTransaction } from "@al-ft/midgard-l1-follower";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { HELD_HEADER_DETAIL } from "../src/workers/commit-block-header/submission.submit-with-durable-intent.js";
@@ -62,7 +64,6 @@ import {
   admitTransfer,
   buildDepositorTransfer,
   depositorL2Utxos,
-  settleAdmissions,
 } from "./helpers/emulator-l2-transfer.js";
 
 const S = Pending.Status;
@@ -198,6 +199,8 @@ const depositLeavesChain = async () => {
   await j.deposit(15_000_000n);
   const transfer = await buildDepositorTransfer(j.live, [funding!], 2_000_000n);
   expect(await admitTransfer(j.live, transfer)).toBe("accepted");
+  // The admission's time: the mempool row's time stamp is at most this.
+  const admittedAtMs = Date.now();
   const old = await j.commitUnlanded();
   expect(old.base).toBe(j.winner);
   expect(old.deposits).toHaveLength(1);
@@ -225,11 +228,16 @@ const depositLeavesChain = async () => {
     kind: "abandoned",
   });
 
-  // The repair requeued the transfer from its inverse receipt, which matched
-  // the working ledger the disposal rebuilt, and the owner stayed available.
-  // Admission accepts it again.
-  expect(await j.admissionStatus(transfer.txId)).toBe("queued");
-  expect(await settleAdmissions(j.live, [transfer.txId])).toEqual(["accepted"]);
+  // The disposal's rebuild re-simulated the transfer on the base: its
+  // funding output survives the rollback, so it stays accepted and pending,
+  // with no re-admission.
+  expect(await j.admissionStatus(transfer.txId)).toBe("accepted");
+  // Restoring the ancestor also set the emulator's clock back, behind the
+  // transfer's admission; L1 time never runs back, so the chain moves past
+  // it before the next commit selects the mempool up to its start time.
+  await advanceEmulatorPastUnixTime(j.h.fixture, admittedAtMs);
+  vi.setSystemTime(j.h.fixture.emulator.now());
+  await synchronizeBounded(j.live);
   // The replacement carries the transfer and omits the deposit that left
   // the chain.
   const replacement = await j.commitLanded();

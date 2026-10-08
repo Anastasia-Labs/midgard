@@ -1,8 +1,9 @@
 /**
- * The node services and the rollback handle for
- * `commit-replacement-state-queue-emulator.test.ts`: the follower run's
- * landed-block processing, own-commit disposition and S6 pass over the
- * follower stand-in, and a lifecycle handle that follows a fork.
+ * The node services for `commit-replacement-state-queue-emulator.test.ts`:
+ * the follower run's landed-block processing (at the driver's applied view,
+ * under its write capability, with its recompute as the rebase), the
+ * own-commit disposition (the rebase it makes due) and the S6 pass over the
+ * follower stand-in.
  */
 import {
   appendIntentEventIn,
@@ -16,20 +17,21 @@ import { eventProjectionConfigFromContracts } from "@al-ft/midgard-l1-follower/e
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect, Layer, ManagedRuntime } from "effect";
-import { expect, vi } from "vitest";
 
 import { followerSqlTx } from "../../src/database/follower-schema.js";
 import { forcedOrderConfigFromContracts } from "../../src/forced-orders/index.js";
 import { readLandedStateQueueFrom } from "../../src/l1-state-queue/hook.js";
 import { stateQueueProjectionConfig } from "../../src/l1-state-queue/index.js";
-import {
-  disposeDeadOwnCommits,
-  nodeLandedBlockPorts,
-} from "../../src/landed-blocks/node-ports.js";
+import { nodeLandedBlockPorts } from "../../src/landed-blocks/node-ports.js";
 import { processLandedQueue } from "../../src/landed-blocks/process.js";
 import { bytea } from "../../src/landed-blocks/store.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { Database } from "../../src/services/database.js";
+import { withDriverView } from "../../src/services/follower-write-gate.driver.js";
+import {
+  followerViewOf,
+  readFollowerWriteGate,
+} from "../../src/services/follower-write-gate.js";
 import { Globals } from "../../src/services/globals.js";
 import {
   makeIntentJournal,
@@ -43,12 +45,6 @@ import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
 import { SDK } from "../deposit-flow-emulator-shared.js";
 import type { Lifecycle } from "./correction-admission-scenario.js";
 import { nodeFactStore } from "./emulator-operator-set.js";
-import type { emulatorState } from "./emulator-snapshot.js";
-import {
-  captureConfirmedHistoryObservations,
-  historyOutputObservation,
-} from "./history-projection-observations.js";
-import type { makeRollbackHistoryTransport } from "./history-rollback-transport.js";
 import {
   mirrorEmulatorStateQueue,
   writeAddressFacts,
@@ -134,7 +130,7 @@ export const openNodeServices = async (life: Lifecycle) => {
     nodeLucid,
     /** The production journal (`IntentJournalLive`) over the node database. */
     journal: await runtime.runPromise(makeIntentJournal),
-    /** The follower run's landed-block hook at the follower's current view. */
+    /** The follower run's landed-block hook at the driver's applied view. */
     processLanded: () =>
       runtime.runPromise(
         Effect.gen(function* () {
@@ -148,15 +144,24 @@ export const openNodeServices = async (life: Lifecycle) => {
           );
           if (read.kind !== "ok" || !read.queue.healthy)
             throw new Error(`The landed queue is unreadable: ${read.kind}`);
-          return yield* processLandedQueue(
-            nodeLandedBlockPorts(store as FactStore, plan),
-            read.queue,
+          const gate = yield* readFollowerWriteGate;
+          if (gate.applied === undefined)
+            throw new Error("The driver has applied no view");
+          return yield* withDriverView(followerViewOf(gate.applied))(
+            processLandedQueue(
+              nodeLandedBlockPorts(store as FactStore, plan, (reason) =>
+                Effect.promise(() => life.rebaseIfDue(reason)),
+              ),
+              read.queue,
+            ),
           );
         }),
       ),
     mirrorTracked,
-    /** The follower run's own-commit disposition, after S6. */
-    disposeDead: () => runtime.runPromise(disposeDeadOwnCommits),
+    /** The follower run's own-commit disposition after S6: the driver's
+     * recompute when the rebase it makes due can run. */
+    disposeDead: () =>
+      life.rebaseIfDue("S6 derived the status of this node's own commits"),
     intentStatus: (txHash: string) =>
       runtime.runPromise(readIntentStatus(txHash)),
     /** S6's abandon event for `txHash`, at the follower's cursor. */
@@ -259,105 +264,5 @@ export const openNodeServices = async (life: Lifecycle) => {
       return { report, sent };
     },
     close: () => runtime.dispose(),
-  };
-};
-
-/**
- * (c)'s rollback: the emulator back at `ancestor`, the history source
- * rolled back to its point, and a handle whose synchronize follows the
- * fork (the sealed recording cannot be extended past a rollback).
- */
-export const followFork = async ({
-  h,
-  source: fork,
-  ancestor,
-}: {
-  h: Lifecycle;
-  source: ReturnType<typeof makeRollbackHistoryTransport>;
-  ancestor: {
-    id: string;
-    height: number;
-    state: ReturnType<typeof emulatorState>;
-  };
-}): Promise<{
-  fork: Lifecycle;
-  observer: Pick<Lifecycle["observer"], "forgetDropped">;
-}> => {
-  const { fixture, binding } = h;
-  const emulator = fixture.emulator;
-  h.observer.restore();
-  Object.assign(emulator, structuredClone(ancestor.state));
-  fixture.operatorLucid.clearUTxOOverride();
-  vi.setSystemTime(emulator.now());
-  fork.rollbackTo(ancestor.id);
-  // Until the owner has read the rollback, its head is the old branch's,
-  // whose slot is past the fork's first point: waiting there would fail as
-  // superseded rather than wait.
-  for (let polls = 0; ; polls += 1) {
-    const frontier = await Effect.runPromise(h.production.owner.frontier);
-    if (!frontier.ready || frontier.headHeight === ancestor.height) break;
-    if (polls > 1_500) throw new Error("The owner never read the rollback");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  const addresses = [
-    ...new Set([
-      binding.hubAddress,
-      ...Object.values(binding.deployments).flatMap(
-        ({ address, retentionAddress }) => [address, retentionAddress],
-      ),
-      fixture.contracts.stateQueue.spendingScriptAddress,
-    ]),
-  ];
-  type Batch = Parameters<typeof fork.appendFork>[0];
-  const batch = async (
-    observations: Batch["observations"],
-  ): Promise<Batch> => ({
-    observations,
-    observedSlot: emulator.slot,
-    observedHeight: emulator.blockHeight,
-    outputs: (
-      await Promise.all(
-        addresses.map((address) => fixture.operatorLucid.utxosAt(address)),
-      )
-    )
-      .flat()
-      .map(historyOutputObservation),
-  });
-  const batches: Batch[] = [];
-  const forkObserver = captureConfirmedHistoryObservations(
-    fixture.operatorLucid,
-    emulator,
-    async (observations) => {
-      batches.push(await batch(observations));
-    },
-  );
-  const synchronize = async () => {
-    await forkObserver.flush();
-    expect(forkObserver.pendingCount()).toBe(0);
-    expect(Object.keys(emulator.mempool)).toHaveLength(0);
-    for (const next of batches.splice(0)) fork.appendFork(next);
-    const tip = fork.points.at(-1)!.point;
-    if (emulator.slot > tip.slot || tip.id === ancestor.id) {
-      if (emulator.slot <= tip.slot || emulator.blockHeight <= tip.height)
-        emulator.awaitBlock(1);
-      fork.appendFork(await batch([]));
-    }
-    vi.setSystemTime(emulator.now());
-    const point = fork.points.at(-1)!.point;
-    expect((await h.readyAt(point)).point.id).toBe(point.id);
-  };
-  const command: Lifecycle["command"] = async (effect) => {
-    const result = await h.runWithoutSynchronizing(effect);
-    await synchronize();
-    return result;
-  };
-  return {
-    fork: {
-      ...h,
-      synchronize,
-      command,
-      production: { ...h.production, synchronize, onCommitAttempt: () => {} },
-    },
-    observer: forkObserver,
   };
 };

@@ -26,9 +26,9 @@ import type { HistoryIncarnation } from "../../src/l1-event-history-provenance.j
 import type { IngestionPlan } from "../../src/l1-events/driver.js";
 import type { HistoryOwnerChange } from "../../src/services/event-history-owner.js";
 import {
-  UnownedHistoryFixture,
-  withHistoryIngestion,
-} from "../../src/services/event-history-producer.js";
+  FollowerWriteFixture,
+  withFollowerWrite,
+} from "../../src/services/follower-write-gate.js";
 import type { CommitHorizonLag } from "../../src/services/history-commit-window.js";
 
 export const FOLLOWER_GENERATION = 1;
@@ -246,7 +246,7 @@ export const followerMaterialize = (
 
 /**
  * The follower-change driver's ingestion of `events` at a follower view at
- * `slot`, without a history owner (the unowned-history fixture gate); model
+ * `slot`, without a running driver (the gate's fixture capability); model
  * slots are 1 s from zero and no deposit is projected.
  */
 export const ingestFollowerViewUnowned = (
@@ -257,13 +257,13 @@ export const ingestFollowerViewUnowned = (
 ) =>
   Effect.gen(function* () {
     const plan = yield* writeFollowerView(slot, events, generation, height);
-    const outcome = yield* withHistoryIngestion(
+    const outcome = yield* withFollowerWrite(
       reconcileFollowerEvents(plan, {
         network: "Preprod",
         slotToUnixTime: modelSlotTime,
         cutoffMs: 0,
       }),
-    ).pipe(Effect.provideService(UnownedHistoryFixture, true));
+    ).pipe(Effect.provideService(FollowerWriteFixture, true));
     if (outcome.kind === "stale")
       return yield* Effect.fail(
         new DatabaseError({

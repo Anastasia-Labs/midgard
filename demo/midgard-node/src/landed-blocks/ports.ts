@@ -1,7 +1,7 @@
 /**
  * What landed-block processing needs from the node, as ports, so the same
- * processing runs under the node's history producer in production and
- * under the fork simulator in tests.
+ * processing runs under the follower-change driver's write capability in
+ * production and under the fork simulator in tests.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
 import { Data, Effect } from "effect";
@@ -63,14 +63,13 @@ export type LandedBlockPorts<R> = Readonly<{
     R | Database
   >;
   /**
-   * Asks the history owner to run the working-ledger rebase, unless it cannot
-   * run yet; then returns why, as its hold (and asks nothing).
+   * Runs the working-ledger rebase now (the driver's recompute), unless it
+   * cannot run yet; returns why it did not finish, as its hold. A held or
+   * failed rebase is retried on the driver's backoff.
    */
-  requestRebase: (
+  rebase: (
     reason: string,
   ) => Effect.Effect<DriverHold | undefined, unknown, R | Database>;
-  /** Why the last rebase failed, as its hold, until one runs (the owner retries it). */
-  rebaseFailure: Effect.Effect<DriverHold | undefined, unknown, R | Database>;
 }>;
 
 /** The follower moved off the view a write was computed at. */

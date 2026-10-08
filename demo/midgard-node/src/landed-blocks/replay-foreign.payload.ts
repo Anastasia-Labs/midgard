@@ -14,10 +14,7 @@ import {
   foreignRetainedDaInsert,
 } from "../da/foreign-retained-da.js";
 import { DaPayloadsDB } from "../database/index.js";
-import {
-  runHistoryProducer,
-  withHistoryWrite,
-} from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 import { sha256 } from "../sha256.js";
 import { Verdict } from "./replay-foreign.verdict.js";
@@ -47,10 +44,8 @@ const discardCorrupt = (
     yield* Effect.logWarning(
       `deleting the retained DA payload of ${headerHash} to refetch it: ${why}`,
     );
-    yield* runHistoryProducer(
-      withHistoryWrite(
-        DaPayloadsDB.removeByHeaderHash(Buffer.from(headerHash, "hex")),
-      ),
+    yield* withFollowerWrite(
+      DaPayloadsDB.removeByHeaderHash(Buffer.from(headerHash, "hex")),
     );
     refetching.delete(headerHash);
     refetching.set(headerHash, why);

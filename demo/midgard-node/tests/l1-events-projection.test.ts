@@ -24,7 +24,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   depositDataToEntry,
   withdrawalDataToEntry,
-} from "../src/l1-event-history-entries.js";
+} from "../src/database/user-event-entries.js";
 import { userEventEntry } from "../src/l1-events/entries.js";
 import {
   admissionTx,

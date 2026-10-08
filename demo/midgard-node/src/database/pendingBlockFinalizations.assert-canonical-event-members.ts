@@ -3,11 +3,11 @@ import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
 import {
-  requireCandidateHistory,
-  withHistoryWrite,
-} from "../services/event-history-producer.js";
+  inRuntimeFollowerWrite,
+  requireCandidateView,
+  withFollowerWrite,
+} from "../services/follower-write-gate.js";
 import * as DepositsDB from "./deposits.js";
-import * as HistoryAuthority from "./eventHistoryAuthority.js";
 import { canonicalForcedAdmission } from "./l1-admission-identity.js";
 import {
   ACTIVE_STATUSES,
@@ -43,9 +43,9 @@ export const assertCanonicalEventMembers = (record: {
     MemberColumns.MEMBER_ID
   >[];
 }): Effect.Effect<void, DatabaseError, Database> =>
-  withHistoryWrite(
+  withFollowerWrite(
     Effect.gen(function* () {
-      const owned = yield* HistoryAuthority.currentOwnedTransaction;
+      const owned = yield* inRuntimeFollowerWrite;
       const sql = yield* SqlClient.SqlClient;
       for (const [kind, eventTable, members] of [
         ["deposit", DepositsDB.tableName, record.depositMembers],
@@ -54,9 +54,10 @@ export const assertCanonicalEventMembers = (record: {
         for (const member of members) {
           const key = member.l1_event_key;
           const origin = member.l1_origin_outref;
-          // Only the explicit, unowned fixture transaction may contain old model
-          // members. withHistoryWrite has already excluded any acquired owner.
-          if (Option.isNone(owned) && key == null && origin == null) continue;
+          // Only the explicit fixture transaction may contain old model
+          // members: withFollowerWrite refuses a fixture once a driver applied
+          // a view.
+          if (!owned && key == null && origin == null) continue;
           if (key?.length !== 32 || origin?.length !== 34)
             return yield* Effect.fail(
               new DatabaseError({
@@ -146,10 +147,10 @@ export const recordSignedIntent = <J = never>(
           cause,
         }),
     });
-    yield* withHistoryWrite(
+    yield* withFollowerWrite(
       Effect.gen(function* () {
         yield* journalInsert;
-        yield* requireCandidateHistory;
+        yield* requireCandidateView;
         const sql = yield* SqlClient.SqlClient;
         const record = yield* retrieveByHeaderHash(headerHash, true);
         if (Option.isNone(record))
@@ -191,7 +192,7 @@ export const markSubmitted = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const owned = yield* HistoryAuthority.currentOwnedTransaction;
+    const owned = yield* inRuntimeFollowerWrite;
     const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
       SET ${sql(Columns.SUBMITTED_TX_HASH)} = ${submittedTxHash},
           ${sql(Columns.STATUS)} = CASE WHEN ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
@@ -199,7 +200,7 @@ export const markSubmitted = (
           ${sql(Columns.UPDATED_AT)} = NOW()
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
         AND ${sql(Columns.STATUS)} IN ${sql.in([...ACTIVE_STATUSES, Status.LocallyApplied])}
-        AND (${sql(Columns.INTENDED_TX_HASH)} = ${submittedTxHash} OR (${sql(Columns.INTENDED_TX_HASH)} IS NULL AND ${Option.isNone(owned)}))
+        AND (${sql(Columns.INTENDED_TX_HASH)} = ${submittedTxHash} OR (${sql(Columns.INTENDED_TX_HASH)} IS NULL AND ${!owned}))
         AND (${sql(Columns.SUBMITTED_TX_HASH)} IS NULL OR ${sql(Columns.SUBMITTED_TX_HASH)} = ${submittedTxHash})
       RETURNING *`;
     if (rows.length !== 1) {
@@ -212,7 +213,7 @@ export const markSubmitted = (
       );
     }
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markSubmitted ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -231,7 +232,7 @@ export const discardUnsubmittedPendingSubmission = (
         AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
       AND ${sql(Columns.INTENDED_TX_HASH)} IS NULL`;
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`discardUnsubmittedPendingSubmission ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -264,7 +265,7 @@ export const markLocalFinalizationComplete = (
       );
     }
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markLocalFinalizationComplete ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -310,7 +311,7 @@ export const markObservedWaitingStability = (
       );
     }
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markObservedWaitingStability ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,

@@ -1,7 +1,6 @@
 import "./utils.js";
 
-import { randomUUID } from "node:crypto";
-
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -13,10 +12,10 @@ import {
   PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
   type PipelineStatusOldestActiveRow,
 } from "../src/commands/listen-router.js";
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { BatchSql } from "../src/services/database.js";
 import { Globals } from "../src/services/index.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /**
@@ -126,7 +125,10 @@ const getPipelineStatus = Effect.gen(function* () {
  * never touches the L1 wallet, contract, or validation services the wider
  * router declares.
  */
-const runAgainstShard = <A, E, R>(program: Effect.Effect<A, E, R>) =>
+const runAgainstShard = <A, E, R>(
+  program: Effect.Effect<A, E, R>,
+  manifestId?: string,
+) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
@@ -135,7 +137,18 @@ const runAgainstShard = <A, E, R>(program: Effect.Effect<A, E, R>) =>
           resetApplicationTables,
           program as Effect.Effect<A, E, SqlClient.SqlClient>,
         ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
-      }).pipe(Effect.provide(Globals.Default)),
+      }).pipe(
+        Effect.provide(Globals.Default),
+        // The settlement backlog is the deployment manifest's.
+        Effect.provideService(
+          ContractDeploymentIdentity,
+          ContractDeploymentIdentity.make({
+            kind: manifestId === undefined ? "derived" : "manifest",
+            ...(manifestId === undefined ? {} : { manifestId }),
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+          }),
+        ),
+      ),
     ) as Effect.Effect<A, E, never>,
   );
 
@@ -298,15 +311,6 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
     const result = await runAgainstShard(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const token = yield* Authority.acquire({
-          deploymentIdentity: deploymentId,
-          ownerToken: randomUUID(),
-          leaseDurationMs: 60_000,
-        });
-        yield* Authority.publishReady(token, {
-          point: { slot: 10, id: "b1".repeat(32) },
-          snapshotDigest: "c1".repeat(32),
-        });
         const job = (
           deployment: string,
           kind: "deposit" | "withdrawal",
@@ -324,6 +328,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
         yield* job("b2".repeat(32), "withdrawal", "04", "fund", "stale");
         return yield* getPipelineStatus;
       }),
+      deploymentId,
     );
 
     expect(result.status).toBe(200);

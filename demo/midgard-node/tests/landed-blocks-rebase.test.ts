@@ -1,41 +1,37 @@
 /**
- * The working-ledger rebase run from the history owner's preparation
- * (`prepareLandedBlockRebase`, plan §7.3, N3) on the node database, with a
- * modelled native MPF owner:
+ * The working-ledger rebase run by the follower-change driver (its
+ * recompute's `rebaseIfDue`, plan §7.3, N1, N3) on the node database, with
+ * a modelled native MPF owner and no history owner:
  *
  * - every failure the rebase can meet past the transient ones (the native
- *   move, the event check, the batch closure, the receipt reversal, the
- *   ledger encoding) is caught: the preparation returns, the failure is
- *   recorded and raised as `landed_block_rebase_failed` (an undecided batch
- *   member as `landed_block_batch_undecided`), the reconciliation
- *   stays pending, and the next attempt after the cause is gone runs the
- *   rebase and clears it; a fresh process meets the same hold;
- * - a batch co-member a base block includes is settled by it, while the
- *   member whose input the base spent is rejected `direct`;
+ *   move, the event check, the rejection record, the ledger encoding) is
+ *   caught: the driver run returns it as its hold, raised as
+ *   `landed_block_rebase_failed` (a store that lost the chain's root as
+ *   `native_mpf_restore_root_not_retained`), the rebase stays due, and the next run
+ *   after the cause is gone rebases and clears it; a fresh process meets
+ *   the same hold;
+ * - a pending transaction a base block includes stays out of the rebuild,
+ *   while one whose input the base spent is rejected `direct`;
  * - a pending transaction this node's own landed block includes is not
  *   re-applied on top of that block.
  */
 
 import type { View } from "@al-ft/midgard-l1-follower";
-import { SqlClient } from "@effect/sql";
-import { Effect, Exit, Fiber } from "effect";
+import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { reportHistorySyncReasons } from "../src/commands/listen-startup.report-history-sync.js";
 import { foldToRoot } from "../src/landed-blocks/fold.js";
-import {
-  LANDED_BLOCK_BATCH_UNDECIDED,
-  LANDED_BLOCK_REBASE_FAILED,
-} from "../src/landed-blocks/holds.js";
+import { LANDED_BLOCK_REBASE_FAILED } from "../src/landed-blocks/holds.js";
 import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
 import { REBASE_REJECTIONS } from "../src/landed-blocks/rebase.js";
 import { rollBackRows } from "../src/landed-blocks/settlements.js";
 import { insertRow, retrieveRows } from "../src/landed-blocks/store.js";
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
-import { Globals } from "../src/services/globals.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
+import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
 import { NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED } from "../src/services/liveness-halt.js";
 import { failure as recomputeFailure } from "../src/services/working-ledger-recompute.pending-txs.js";
 import * as RejectClosure from "../src/services/working-ledger-recompute.reject-closure.js";
+import { testWrite } from "./helpers/driver-recompute.js";
 import { admitPending } from "./helpers/landed-blocks-sim.mempool.js";
 import { simDigest } from "./helpers/landed-blocks-sim.universe.js";
 import {
@@ -55,14 +51,11 @@ import {
   processOf,
   R0,
   R1,
-  receipt,
   rejections,
   root,
   run,
   seed,
-  settlements,
   sqlRun,
-  unreversedReceipts,
 } from "./landed-blocks-rebase.fixture.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
@@ -77,7 +70,7 @@ beforeEach(() => {
 const foldPorts = {
   confirmView: () => Effect.succeed(true),
   ownJournal: () => Effect.succeed({ status: "locally_applied" }),
-  write: <A, E, R>(work: Effect.Effect<A, E, R>) => withHistoryWrite(work),
+  write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
 } as unknown as LandedBlockPorts<never>;
 afterEach(() => {
   vi.restoreAllMocks();
@@ -147,29 +140,7 @@ describe(
       expectRebased(await attempt(globals));
     });
 
-    it("catches a batch whose acceptance cannot be reversed", async () => {
-      const globals = await processOf(freshNative());
-      await seed(globals);
-      const a = pendingTx("a", [E0.outref], 1);
-      await run(globals, admitPending([a]));
-      // Its co-member is neither pending nor in a base block.
-      await receipt(globals, [a.id, simDigest("rebase:tx:gone")]);
-      expectHeld(
-        await attempt(globals),
-        /batch's acceptance cannot be reversed/,
-        LANDED_BLOCK_BATCH_UNDECIDED,
-      );
-      await sqlRun(
-        globals,
-        (sql) => sql`DELETE FROM event_history_l2_ledger_receipts`,
-      );
-      expectRebased(await attempt(globals));
-      expect(await rejections(globals)).toEqual([
-        [hex(a.id), REBASE_REJECTIONS.direct.code],
-      ]);
-    });
-
-    it("catches a receipt the rejection could not reverse", async () => {
+    it("catches a rejection record that fails", async () => {
       const globals = await processOf(freshNative());
       await seed(globals);
       const spy = vi
@@ -177,17 +148,17 @@ describe(
         .mockReturnValue(
           Effect.fail(
             recomputeFailure(
-              "A rejected transaction's acceptance receipt could not be reversed",
+              "A rejected transaction's rejection could not be recorded",
               "1",
             ),
           ) as never,
         );
-      expectHeld(await attempt(globals), /receipt could not be reversed/);
+      expectHeld(await attempt(globals), /rejection could not be recorded/);
       spy.mockRestore();
       expectRebased(await attempt(globals));
     });
 
-    it("starts a fresh process on a rebase that still fails: the hold is shown during startup", async () => {
+    it("starts a fresh process on a rebase that still fails: its driver shows the same hold", async () => {
       const native: Native = {
         ...freshNative(),
         durableRoot: root(0x99),
@@ -207,22 +178,11 @@ describe(
         /retains no root/,
         NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
       );
-      const reported: (readonly string[])[] = [];
-      const reporter = Effect.runFork(
-        reportHistorySyncReasons(
-          (reasons) => Effect.sync(() => void reported.push(reasons)),
-          1,
-        ).pipe(Effect.provideService(Globals, restarted)),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 20));
       native.retainsNothing = false;
       expectRebased(await attempt(restarted));
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      await Effect.runPromise(Fiber.interrupt(reporter));
-      expect(reported[0]).toContain(NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED);
-      expect(reported.at(-1)).not.toContain(
-        NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
-      );
+      expect(
+        await Effect.runPromise(currentLivenessReasons(restarted)),
+      ).not.toContain(NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED);
     });
   },
 );
@@ -231,26 +191,18 @@ describe(
   "pending transactions a base block includes",
   { concurrent: false },
   () => {
-    it("settles a batch co-member a foreign block includes and rejects the member whose input it spent", async () => {
+    it("keeps a transaction a foreign block includes out of the rebuild and rejects the one whose input it spent", async () => {
       const b = pendingTx("b", [], 2);
       const globals = await processOf(freshNative());
       await seed(globals, { txIds: [b.id] });
       const a = pendingTx("a", [E0.outref], 1);
       await run(globals, admitPending([a, b]));
-      await receipt(globals, [a.id, b.id]);
-      expectRebased(await attempt(globals));
+      const shown = await attempt(globals);
+      expectRebased(shown);
+      expect(shown.working).toEqual([hex(E1.outref)]);
       expect(await rejections(globals)).toEqual([
         [hex(a.id), REBASE_REJECTIONS.direct.code],
       ]);
-      const unreversed = await run(
-        globals,
-        Effect.flatMap(
-          SqlClient.SqlClient,
-          (sql) => sql`SELECT 1 FROM event_history_l2_ledger_receipts
-          WHERE reversed_at_revision IS NULL`,
-        ),
-      );
-      expect(unreversed).toHaveLength(0);
     });
 
     it("does not re-apply a pending transaction this node's own landed block includes", async () => {
@@ -270,7 +222,7 @@ describe(
       });
       await run(
         globals,
-        withHistoryWrite(
+        testWrite(
           insertRow({
             headerHash: OWN,
             parentHeaderHash: FRONTIER,
@@ -291,17 +243,16 @@ describe(
       );
       await run(globals, admitPending([t]));
       const shown = await attempt(globals);
-      expect(Exit.isSuccess(shown.exit)).toBe(true);
-      expect(shown.failure).toBeUndefined();
-      expect(shown.disposition).toBeUndefined();
+      expect(shown.hold).toBeUndefined();
+      expect(shown.due).toBe("none");
       expect(shown.working).toEqual([hex(E2.outref)]);
       // T is settled by O: neither re-applied nor rejected.
       expect(await rejections(globals)).toEqual([]);
     });
 
-    it("keeps a batch co-member settled by a base block folded before a later rebuild rejects another member", async () => {
+    it("keeps a transaction a base block included out of the rebuild after that block folds and a later rebuild rejects another", async () => {
       // frontier -> X (E0 -> E1, includes b); a spends E1. The first rebuild
-      // settles b by X; X folds; Y (E1 -> E2) on X then rejects a.
+      // leaves b out; X folds; Y (E1 -> E2) on X then rejects a.
       const E2 = entry("e2", 4_000_000n);
       const R2 = root(0x12);
       const b = pendingTx("b", [], 2);
@@ -310,12 +261,10 @@ describe(
       const globals = await processOf(native);
       await seed(globals, { txIds: [b.id] });
       await run(globals, admitPending([a, b]));
-      await receipt(globals, [a.id, b.id]);
       const first = await attempt(globals);
       expect(first.failure).toBeUndefined();
       expect(first.applied).toEqual([true]);
       expect(await rejections(globals)).toEqual([]);
-      expect(await settlements(globals)).toEqual([[hex(b.id), BLOCK]]);
 
       // The production fold of X up to the merged root, with the view held.
       await sqlRun(globals, () =>
@@ -337,23 +286,21 @@ describe(
       });
       native.reaches = R2;
       const shown = await attempt(globals);
-      expect(Exit.isSuccess(shown.exit)).toBe(true);
-      expect(shown.failure).toBeUndefined();
+      expect(shown.hold).toBeUndefined();
       expect(shown.reasons).not.toContain(LANDED_BLOCK_REBASE_FAILED);
-      expect(shown.disposition).toBeUndefined();
+      expect(shown.due).toBe("none");
       expect(shown.applied).toEqual([true]);
       expect(shown.working).toEqual([hex(E2.outref)]);
       expect(await rejections(globals)).toEqual([
         [hex(a.id), REBASE_REJECTIONS.direct.code],
       ]);
-      expect(await unreversedReceipts(globals)).toBe(0);
     });
 
-    it("keeps a batch co-member settled by this node's own block folded before a later rebuild rejects another member", async () => {
+    it("keeps a transaction this node's own block included out of the rebuild after that block folds and a later rebuild rejects another", async () => {
       // frontier -> own O (E0 -> E1, includes b) -> foreign X (E2 out of
-      // nothing); a spends E1. The first rebuild settles b by O; O folds
-      // once its journal is locally applied; Y (E1 -> E3) on X then rejects
-      // a, and b stays settled by the folded own block.
+      // nothing); a spends E1. The first rebuild leaves b out; O folds once
+      // its journal is locally applied; Y (E1 -> E3) on X then rejects a,
+      // and b stays out.
       const E2 = entry("e2", 4_000_000n);
       const E3 = entry("e3", 5_000_000n);
       const R2 = root(0x12);
@@ -373,11 +320,9 @@ describe(
         produced: [E2],
       });
       await run(globals, admitPending([a, b]));
-      await receipt(globals, [a.id, b.id]);
       const first = await attempt(globals);
       expect(first.failure).toBeUndefined();
       expect(await rejections(globals)).toEqual([]);
-      expect(await settlements(globals)).toEqual([[hex(b.id), BLOCK]]);
 
       await sqlRun(globals, () =>
         foldToRoot(
@@ -400,9 +345,8 @@ describe(
       });
       native.reaches = R3;
       const shown = await attempt(globals);
-      expect(Exit.isSuccess(shown.exit)).toBe(true);
-      expect(shown.failure).toBeUndefined();
-      expect(shown.disposition).toBeUndefined();
+      expect(shown.hold).toBeUndefined();
+      expect(shown.due).toBe("none");
       expect(shown.applied).toEqual([true, true]);
       expect(shown.working.sort()).toEqual(
         [hex(E2.outref), hex(E3.outref)].sort(),
@@ -410,11 +354,9 @@ describe(
       expect(await rejections(globals)).toEqual([
         [hex(a.id), REBASE_REJECTIONS.direct.code],
       ]);
-      expect(await settlements(globals)).toEqual([[hex(b.id), BLOCK]]);
-      expect(await unreversedReceipts(globals)).toBe(0);
     });
 
-    it("rewinds the settlement of a rolled-back base block, so the co-member is pending again", async () => {
+    it("returns a transaction a rolled-back base block included to the rebuild", async () => {
       // frontier -> own block O (E0 -> E1, includes b) -> foreign X (E1 ->
       // E2); a spends E1. O and X are rolled back; foreign Z (E0 -> E3)
       // lands on the frontier instead.
@@ -440,16 +382,13 @@ describe(
         produced: [E2],
       });
       await run(globals, admitPending([a, b]));
-      await receipt(globals, [a.id, b.id]);
       const first = await attempt(globals);
       expect(first.failure).toBeUndefined();
       expect(await rejections(globals)).toEqual([]);
-      expect(await settlements(globals)).toEqual([[hex(b.id), BLOCK]]);
 
-      // The production rollback of O and X: their settlements rewind.
+      // The production rollback of O and X.
       const left = await run(globals, retrieveRows);
       await sqlRun(globals, () => rollBackRows(left, []));
-      expect(await settlements(globals)).toEqual([]);
 
       await land(globals, {
         headerHash: "c3".repeat(28),
@@ -458,40 +397,16 @@ describe(
       });
       native.reaches = R3;
       const shown = await attempt(globals);
-      expect(Exit.isSuccess(shown.exit)).toBe(true);
-      expect(shown.failure).toBeUndefined();
-      expect(shown.disposition).toBeUndefined();
+      expect(shown.hold).toBeUndefined();
+      expect(shown.due).toBe("none");
       expect(shown.applied).toEqual([true]);
-      expect(shown.working).toEqual([hex(E3.outref)]);
-      // b is pending again: the batch rejection takes it with a.
-      expect(await rejections(globals)).toEqual(
-        [
-          [hex(a.id), REBASE_REJECTIONS.direct.code],
-          [hex(b.id), REBASE_REJECTIONS.batch.code],
-        ].sort(([x], [y]) => (x! < y! ? -1 : 1)),
+      // b is pending again and rebuilt on Z; a's input is gone.
+      expect(shown.working.sort()).toEqual(
+        [hex(E3.outref), hex(b.produced[0]!.outref)].sort(),
       );
-      expect(await unreversedReceipts(globals)).toBe(0);
-    });
-
-    it("records the settlement again when a rolled-back base block relands before a rebase reverts it", async () => {
-      const b = pendingTx("b", [], 2);
-      const globals = await processOf(freshNative());
-      await seed(globals, { txIds: [b.id] });
-      await run(globals, admitPending([b]));
-      await receipt(globals, [b.id, pendingTx("a", [E1.outref], 1).id]);
-      expectRebased(await attempt(globals));
-      expect(await settlements(globals)).toEqual([[hex(b.id), BLOCK]]);
-      const [applied] = await run(globals, retrieveRows);
-      await sqlRun(globals, () => rollBackRows([applied!], []));
-      expect(await settlements(globals)).toEqual([]);
-      // The production reland: the removed row is processed again.
-      const [removed] = await run(globals, retrieveRows);
-      expect(removed?.state).toBe("removed");
-      await sqlRun(globals, () => rollBackRows([], [removed!]));
-      expect(
-        (await run(globals, retrieveRows)).map((row) => row.state),
-      ).toEqual(["processed"]);
-      expect(await settlements(globals)).toEqual([[hex(b.id), BLOCK]]);
+      expect(await rejections(globals)).toEqual([
+        [hex(a.id), REBASE_REJECTIONS.direct.code],
+      ]);
     });
   },
 );

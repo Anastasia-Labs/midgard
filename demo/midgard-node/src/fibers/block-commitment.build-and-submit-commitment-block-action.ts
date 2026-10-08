@@ -6,9 +6,9 @@ import {
 } from "../database/index.js";
 import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 import {
-  HistoryProducer,
-  runHistoryProducer,
-} from "../services/event-history-producer.js";
+  FollowerWrite,
+  runAtFollowerView,
+} from "../services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -55,7 +55,7 @@ export const buildAndSubmitCommitmentBlockAction = (
   stateQueueLeaseToken?: string,
 ) => {
   return Effect.gen(function* () {
-    const history = yield* HistoryProducer;
+    const history = yield* FollowerWrite;
     const workerStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
@@ -403,5 +403,5 @@ export const buildAndSubmitCommitmentBlockAction = (
     }
     yield* emitQueueStateMetrics;
     return workerOutput;
-  }).pipe(runHistoryProducer);
+  }).pipe(runAtFollowerView);
 };

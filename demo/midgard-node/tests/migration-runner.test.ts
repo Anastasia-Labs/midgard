@@ -41,7 +41,6 @@ describe("splitSqlStatements", () => {
       /* block comment with a semicolon; */
       SELECT 2;
     `);
-
     expect(statements).toEqual([
       "SELECT 'state; restore', 'escaped '' ; still string'",
       'SELECT "semi;colon"',
@@ -110,6 +109,7 @@ describe("splitSqlStatements", () => {
         name: "drop_queue_terminal_observer",
         transactional: true,
       },
+      { version: 21, name: "follower_write_gate", transactional: true },
     ]);
   });
 

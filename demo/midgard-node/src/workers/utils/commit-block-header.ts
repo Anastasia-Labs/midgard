@@ -14,7 +14,7 @@ import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
 import type { UnwrittenHold } from "../../services/intent-journal.holds.js";
 
 export type WorkerInput = {
-  readonly history?: import("../../services/event-history-producer.js").HistoryProducerPermit;
+  readonly history?: import("../../services/follower-write-gate.js").FollowerWritePermit;
   readonly nativeMpf?: {
     readonly port: MessagePort;
     readonly durableRoot: string;
@@ -90,15 +90,9 @@ export type NothingToCommitOutput = {
   type: "NothingToCommitOutput";
 };
 
-/** The readiness reason of a commit-stage rejection that reached an
- * acceptance receipt with an undecided member (`UndecidedBatchMember`). */
-export const COMMIT_STAGE_BATCH_UNDECIDED = "commit_stage_batch_undecided";
-
 export type FailureOutput = {
   type: "FailureOutput";
   error: string;
-  /** The named reason the failure raises instead of `commit_worker_failed`. */
-  reason?: typeof COMMIT_STAGE_BATCH_UNDECIDED;
 };
 
 export type RegisteredDueWorkOutput = {

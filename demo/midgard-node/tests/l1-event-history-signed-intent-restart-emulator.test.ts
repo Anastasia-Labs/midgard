@@ -9,6 +9,12 @@ import { expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { Database } from "../src/services/database.js";
+import {
+  FOLLOWER_VIEW_STALE,
+  followerWriteHoldOf,
+  runAtFollowerView,
+} from "../src/services/follower-write-gate.js";
+import { Globals } from "../src/services/globals.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/workers/utils/commit-end-time.js";
 import {
@@ -27,13 +33,13 @@ import {
   SDK,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
-/** Recreate source owner, Globals, cache, managed runtime and native child using
+/** Recreate the follower-change driver, Globals, cache, managed runtime and native child using
  * retained SQL/Level state after a real provider response loss. The test process
  * and accepted emulator chain remain alive; this is not an OS-process crash. */
 it("recreates production services after accepted response loss, preserves intent without promotion, then confirms and finalizes the canonical header", async () => {
-  const initial = await openHistoryProductionOwnerLifecycle();
+  const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
   let { globals, production } = h;
@@ -271,7 +277,6 @@ it("recreates production services after accepted response loss, preserves intent
     h = await initial.restartRuntime();
     ({ globals, production } = h);
     expect(h.globals).not.toBe(initial.globals);
-    expect(h.production.owner).not.toBe(initial.production.owner);
     expect(h.production.cache).not.toBe(initial.production.cache);
     expect(h.production.nodeConfig).toEqual(initial.production.nodeConfig);
     expect(h.fixture).toBe(initial.fixture);
@@ -279,12 +284,20 @@ it("recreates production services after accepted response loss, preserves intent
     await expect(initial.synchronize()).rejects.toThrow(
       "runtime generation is closed",
     );
+    // The stopped generation's producers are refused: the next generation's
+    // driver took a new gate epoch.
     const oldProducer = await Effect.runPromise(
-      initial.production.owner
-        .runProducer(() => Effect.succeed(true))
-        .pipe(Effect.either, Effect.provide(Database.layer)),
+      runAtFollowerView(Effect.succeed(true)).pipe(
+        Effect.either,
+        Effect.provideService(Globals, initial.globals),
+        Effect.provide(Database.layer),
+      ),
     );
     expect(oldProducer._tag).toBe("Left");
+    if (oldProducer._tag === "Left")
+      expect(followerWriteHoldOf(oldProducer.left)?.reason).toBe(
+        FOLLOWER_VIEW_STALE,
+      );
     const restartedEvidence = await h.evidence();
     expect(restartedEvidence.generation).toBe(1);
     expect(restartedEvidence.native?.ownerEpoch).not.toEqual(
@@ -406,7 +419,7 @@ it("recreates production services after accepted response loss, preserves intent
           JSON.stringify(
             {
               scope:
-                "Actual emulator acceptance followed by one lost provider response, disposal and recreation of production source owner/Globals/cache/runtime/native child using unchanged SQL/Level/deployment state, then canonical confirmation/native finalization. Synthetic transport ancestry; no OS-process kill, queue continuation, or production failure-to-lease classification coverage.",
+                "Actual emulator acceptance followed by one lost provider response, disposal and recreation of the follower-change driver/Globals/cache/runtime/native child using unchanged SQL/Level/deployment state, then canonical confirmation/native finalization. Synthetic transport ancestry; no OS-process kill, queue continuation, or production failure-to-lease classification coverage.",
               manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,

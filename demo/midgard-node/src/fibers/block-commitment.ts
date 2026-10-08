@@ -3,7 +3,7 @@ import "effect";
 import "worker_threads";
 import "../database/index.js";
 import "../lucid-time.js";
-import "../services/event-history-producer.js";
+import "../services/follower-write-gate.js";
 import "../services/globals.js";
 import "../services/history-commit-window.js";
 import "../services/index.js";

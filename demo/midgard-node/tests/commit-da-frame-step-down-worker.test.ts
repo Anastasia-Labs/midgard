@@ -12,7 +12,7 @@ import {
   processMpfs,
   type UtxoPayloadSizeAggregate,
 } from "../src/mpf/index.js";
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   ContractDeploymentIdentity,
   type Lucid,
@@ -259,7 +259,7 @@ const runWorker = async (
       Effect.provideService(NodeConfig, nodeConfig),
       Effect.provideService(MidgardContracts, {} as never),
       Effect.provideService(ContractDeploymentIdentity, deploymentIdentity),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
       Effect.provide(Logger.remove(Logger.defaultLogger)),
       withoutFollowerJournal,

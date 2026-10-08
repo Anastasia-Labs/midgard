@@ -1,10 +1,9 @@
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { NodeSdk } from "@effect/opentelemetry";
 import { SqlClient } from "@effect/sql";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { Cause, Effect, Fiber, Option, pipe, Ref } from "effect";
+import { Cause, Effect, Option, pipe, Ref } from "effect";
 
 import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.js";
 import {
@@ -12,14 +11,11 @@ import {
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
 } from "../da/startup.js";
-import { restoreRetainedStatePins } from "../database/cekProgramMaterial.restore-retained-state-pins.js";
-import { PredecessorLeaseWait } from "../database/eventHistoryAuthority.js";
 import { DaPayloadsDB, InitDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import { refreshAdmissionBacklogGauge } from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
-import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
 import {
   admissionAsDefaultSqlLayer,
   AdmissionSql,
@@ -42,12 +38,8 @@ import {
   makeIntentJournal,
 } from "../services/intent-journal.js";
 import { startL1Follower } from "../services/l1-follower.js";
-import {
-  initializeArchitectureGOwner,
-  requirePinnedNativeOwnerBinary,
-} from "../services/native-mpf-startup.js";
+import { requirePinnedNativeOwnerBinary } from "../services/native-mpf-startup.js";
 import { settlementWalletAddress } from "../services/settlement.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import { runNodeFiberSet } from "./listen.node-fibers.js";
 import {
   logStartupFailure,
@@ -56,16 +48,10 @@ import {
 } from "./listen.retained-payload-server-thread.js";
 import type { StartupHttp } from "./listen.startup-http.js";
 import { buildListenRouter } from "./listen-router.js";
+import { awaitFollowerViewOnStartup } from "./listen-startup.await-follower-view.js";
 import { awaitLandedStateQueueOnStartup } from "./listen-startup.await-landed-state-queue.js";
-import {
-  assertStartupMutationJobsRecoverable,
-  ensureProtocolInitializedOnStartup,
-  hydratePendingBlockFinalizationOnStartup,
-  releaseStateQueueLeasesOfPreviousNodeProcess,
-  seedLatestLocalBlockBoundaryOnStartup,
-} from "./listen-startup.js";
-import { releaseLedgerStoreLeaseOfPreviousNodeProcess } from "./listen-startup.release-ledger-store-lease-of-previous-node-process.js";
-import { reportHistorySyncReasons } from "./listen-startup.report-history-sync.js";
+import { ensureProtocolInitializedOnStartup } from "./listen-startup.js";
+import { prepareNodeOnStartup } from "./listen-startup.prepare-node.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 /**
@@ -177,7 +163,6 @@ export const runNode = (
           ),
     });
 
-    let startupPrepared = false;
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         const owned = yield* Ref.get(globals.NATIVE_MPF_OWNER);
@@ -190,9 +175,10 @@ export const runNode = (
     // One journal for the node process, opened once its database is: its
     // refusals are `/readyz` holds.
     const intentJournal = yield* makeIntentJournal;
-    // The L1 follower (N1) starts first: the history owner's recovery
-    // ingests events at its view, and its driver writes the event rows.
-    yield* startL1Follower.pipe(
+    // The L1 follower (N1): its driver writes the event rows, and its first
+    // recompute runs the startup preparation, starts the native MPF owner
+    // and recomputes the node's derived state from the follower's view.
+    yield* startL1Follower({ startupPreparation: prepareNodeOnStartup }).pipe(
       Effect.provideService(IntentJournal, intentJournal),
     );
     // Startup recovery seeds the commit base from the landed state queue
@@ -202,126 +188,12 @@ export const runNode = (
     yield* awaitLandedStateQueueOnStartup((reasons) =>
       startup.setStage("l1_follower_catch_up", reasons),
     );
-    yield* startup.setStage("history_initialization");
-    const historyOwner = yield* makeProductionEventHistoryOwner({
-      expectedGenesisLosslessSha256:
-        nodeConfig.L1_HISTORY_GENESIS_LOSSLESS_SHA256,
-      transport: {
-        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-        kupoUrl: nodeConfig.L1_KUPO_KEY,
-        timeoutMs: 30_000,
-        blockScanLimit: 100_000,
-        maximumResponseBytes: 16 * 1024 * 1024,
-        maximumTransactionBytes: 65_536,
-      },
-      heartbeatIntervalMs: 10_000,
-      retainedPointLimit: 2_160,
-      maximumReceiptBytes: 16 * 1024 * 1024,
-      leaseDurationMs: 60_000,
-      prepareCompletion: (_checkpoint, preparation) =>
-        Effect.gen(function* () {
-          yield* preparation.assertCurrent;
-          if (startupPrepared) return;
-          yield* startup.setStage("recovery_preparation");
-          yield* runStartupProviderStepWithRetry(
-            "Startup state-queue boundary seed",
-            seedLatestLocalBlockBoundaryOnStartup,
-            startupProviderRetry,
-          ).pipe(
-            Effect.tapError(
-              logStartupFailure("Startup state-queue boundary seed failed"),
-            ),
-            Effect.mapError(
-              (e) =>
-                new DatabaseInitializationError({
-                  message: "Startup state-queue boundary seed failed",
-                  cause: e,
-                }),
-            ),
-          );
-          yield* restoreRetainedStatePins.pipe(
-            Effect.mapError(
-              (cause) =>
-                new DatabaseInitializationError({
-                  message: "Startup retained script material recovery failed",
-                  cause,
-                }),
-            ),
-          );
-          yield* hydratePendingBlockFinalizationOnStartup;
-          yield* releaseStateQueueLeasesOfPreviousNodeProcess;
-          yield* releaseLedgerStoreLeaseOfPreviousNodeProcess;
-          yield* assertStartupMutationJobsRecoverable;
-          yield* backfillMissingDaPayloadsFromFinalizedJournals({
-            limit: 100,
-          }).pipe(
-            Effect.tap((summary) =>
-              summary.scanned === 0
-                ? Effect.void
-                : Effect.logInfo(
-                    `Startup DA payload backfill scanned=${summary.scanned.toString()},backfilled=${summary.backfilled.length.toString()},skipped=${summary.skipped.length.toString()}`,
-                  ),
-            ),
-            Effect.catchAll((error) =>
-              Effect.logWarning(
-                `Startup DA payload backfill skipped after error: ${formatUnknownError(error)}`,
-              ),
-            ),
-          );
-          // Source advancement may supersede preparation after resource creation.
-          // Keep the existing owner for the next attempt instead of reopening Level.
-          if ((yield* Ref.get(globals.NATIVE_MPF_OWNER)) === undefined) {
-            yield* initializeArchitectureGOwner(
-              globals,
-              nodeConfig,
-              preparation,
-            ).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new DatabaseInitializationError({
-                    message: "Architecture G native owner startup failed",
-                    cause,
-                  }),
-              ),
-            );
-          }
-          yield* preparation.assertCurrent;
-          startupPrepared = true;
-        }),
-    }).pipe(
-      // A predecessor killed without releasing its history lease is waited
-      // out, not treated as a live owner; a lease still renewed past one
-      // duration plus the margin is one, and startup fails as before.
-      Effect.provideService(PredecessorLeaseWait, {
-        marginMs: 10_000,
-        pollIntervalMs: 2_000,
-      }),
-      Effect.mapError(
-        (cause) =>
-          new DatabaseInitializationError({
-            message: "Authenticated history owner startup failed",
-            cause,
-          }),
-      ),
-    );
-    yield* Ref.set(globals.EVENT_HISTORY_OWNER, historyOwner);
-    yield* startup.setStage("history_sync");
-    // A held owner (a failed landed-block rebase it retries) keeps startup
-    // here, unready by name, never exiting.
-    const historySyncReport = yield* Effect.fork(
-      reportHistorySyncReasons((reasons) =>
-        startup.setStage("history_sync", reasons),
-      ),
-    );
-    yield* historyOwner.awaitReady.pipe(
-      Effect.ensuring(Fiber.interrupt(historySyncReport)),
-      Effect.mapError(
-        (cause) =>
-          new DatabaseInitializationError({
-            message: "Authenticated history owner did not become ready",
-            cause,
-          }),
-      ),
+    // Then until the driver published its first view: what holds it (a
+    // failed startup preparation or rebase it retries) is named, and the
+    // process stays up.
+    yield* startup.setStage("follower_view_apply");
+    yield* awaitFollowerViewOnStartup((reasons) =>
+      startup.setStage("follower_view_apply", reasons),
     );
 
     if (
@@ -377,7 +249,6 @@ export const runNode = (
             nodeConfig,
             withMonitoring,
             startupFibers: {
-              historyOwnerStopped: historyOwner.awaitStopped,
               retainedPayloadServer: retainedPayloadServerThread(
                 retrieveRetainedDaPayload,
               ),

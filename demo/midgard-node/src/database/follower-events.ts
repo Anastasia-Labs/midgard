@@ -336,10 +336,10 @@ export const countOrphanedAdmissions = Effect.gen(function* () {
 export type ViewTime = (slot: number) => number;
 
 /**
- * Ingests `plan` in the caller's transaction. The caller holds the write
- * gate: the owner's source transaction, or a Ready producer with
- * `FollowerIngestion` (see `withHistoryIngestion`). `cutoffMs` bounds the
- * deposit projection; the caller passes min(view time, journal coverage).
+ * Ingests `plan` in the caller's transaction: the follower-change driver's
+ * gated transaction (`withFollowerWrite` under `FollowerDriverWrite`).
+ * `cutoffMs` bounds the deposit projection; the driver passes the view's
+ * time.
  */
 export const reconcileFollowerEvents = (
   plan: IngestionPlan,

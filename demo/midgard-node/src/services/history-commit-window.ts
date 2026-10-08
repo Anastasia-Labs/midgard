@@ -10,26 +10,7 @@ import type {
   CommitTimingCheckpoint,
 } from "../workers/utils/commit-end-time.js";
 import { NodeConfig } from "./config.js";
-import type { HistoryOwnerCoverage } from "./event-history-owner.js";
 import { Lucid } from "./lucid.js";
-
-/** Both admitted validator environments enforce inclusion = inclusive validTo
- * + this delay. An admission after the whole canonical point cannot be eligible
- * at or before this conservative horizon. This does not move the source point,
- * and known admissions in the lookahead interval still have to be selected. */
-export const historyEligibilityHorizon = (
-  coverage: HistoryOwnerCoverage,
-): number => {
-  const end = coverage.includedThroughMs + EVENT_WAIT_DURATION_MS - 1;
-  if (
-    !Number.isSafeInteger(coverage.includedThroughMs) ||
-    !Number.isSafeInteger(end)
-  )
-    throw new Error(
-      "Authenticated history time cannot form a safe commit horizon",
-    );
-  return end;
-};
 
 /**
  * The horizon lag d (`HISTORY_COMMIT_HORIZON_LAG_BLOCKS`) and the L1 slot
@@ -86,29 +67,20 @@ export const laggedEligibilityCap = <E, R>(lag: CommitHorizonLag<E, R>) =>
       });
 
 /**
- * The commit end-time horizon (E-N1-2 item 3): min(journal coverage, the
- * follower's ingestion horizon, the forced-order bound), capped by the
- * horizon lag d (`laggedEligibilityCap`). A block never claims an end time
- * past the events the follower-change driver has ingested, nor reaches a
- * forced order the node has not rebuilt yet (N10); before its first
- * ingestion (or after a rewind removed it), or while the lagged block is
- * unavailable, nothing is eligible and the commit holds (`null`).
- * `coverage` is the owner's journal coverage when the commit runs under a
- * history producer; N1-close drops that term.
+ * The commit end-time horizon (E-N1-2 item 3): min(the follower's ingestion
+ * horizon, the forced-order bound), capped by the horizon lag d
+ * (`laggedEligibilityCap`). A block never claims an end time past the
+ * events the follower-change driver has ingested, nor reaches a forced
+ * order the node has not rebuilt yet (N10); before its first ingestion (or
+ * after a rewind removed it), or while the lagged block is unavailable,
+ * nothing is eligible and the commit holds (`null`).
  */
-export const commitEventHorizon = <E, R>(
-  coverage: HistoryOwnerCoverage | undefined,
-  lag: CommitHorizonLag<E, R>,
-) =>
+export const commitEventHorizon = <E, R>(lag: CommitHorizonLag<E, R>) =>
   Effect.gen(function* () {
     const follower = yield* followerEligibilityHorizon;
     if (follower === null) return null;
     const forced = yield* forcedOrderHorizon;
-    const unlagged = Math.min(
-      follower,
-      ...(forced === null ? [] : [forced]),
-      ...(coverage === undefined ? [] : [historyEligibilityHorizon(coverage)]),
-    );
+    const unlagged = Math.min(follower, ...(forced === null ? [] : [forced]));
     const cap = yield* laggedEligibilityCap(lag);
     return cap === undefined
       ? unlagged

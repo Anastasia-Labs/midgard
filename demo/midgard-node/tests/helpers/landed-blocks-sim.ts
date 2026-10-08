@@ -2,8 +2,8 @@
  * Landed-block processing (N3) in the fork simulator. After every chain-sync
  * event the check runs the node's landed-block hook at the follower's view
  * and the working-ledger rebase it asks for (the native MPF move, then the
- * SQL recompute), until nothing is left to do, the way the driver and the
- * history owner's reconcile do; then it compares the node with the model
+ * SQL recompute), until nothing is left to do, the way the follower-change
+ * driver's landed-block hook and its recompute do; then it compares the node with the model
  * (`landed-blocks-sim.model.ts`), a fresh derivation from the canonical
  * queue.
  *
@@ -21,16 +21,15 @@
  *   and holds on a late payload its block's merge already passed. The
  *   frontier folds to the root only once the root's lineage is processed.
  * - The mempool model admits pending chains (one spending the processed
- *   tip's `X`, one spending that) and single spends of `Y` and the pool,
- *   some as one accepted batch, so rebases reject directly, transitively
- *   and by batch, on rollbacks and on double spends (blocks spend the pool
- *   outputs too); foreign blocks include pending transactions.
+ *   tip's `X`, one spending that) and single spends of `Y` and the pool, so
+ *   rebases reject directly and transitively, on rollbacks and on double
+ *   spends (blocks spend the pool outputs too); foreign blocks include
+ *   pending transactions.
  * - The model's settlement record is what every block on the processed
  *   chain includes, folded blocks too; a rollback takes a block's out. A
- *   member it names is settled for the batch closure, its row stays marked
+ *   transaction it names is settled, not pending: its row stays marked
  *   until the block's fold is final (its retained fold pruned), and the
- *   node's recorded receipt settlements and marks must equal it. So a batch
- *   can be rejected around a member a folded block settled.
+ *   node's marks must equal it.
  * - The node commits its own blocks on the processed tip
  *   (`landed-blocks-sim.node.ts`): the traffic's own candidate on it, which
  *   lands later (or never), or a fresh block that never lands. It abandons
@@ -277,7 +276,6 @@ export const landedBlocksSimProjection = (
       ledgerMap(env.universe.ledger(topInfo.h, topInfo.b)),
       includedBy(record, live),
     );
-    if (typeof rebuild === "string") return rebuild;
     const difference = await compareState(model, top, rebuild.ledger, record);
     if (difference !== null) return difference;
     // Case counters (the node agreed with the model).
@@ -300,16 +298,12 @@ export const landedBlocksSimProjection = (
     }
     for (const [, reason] of rebuild.newly)
       if (reason === "direct") stats.directRejections += 1;
-      else if (reason === "dependent") stats.dependentRejections += 1;
-      else stats.batchRejections += 1;
+      else stats.dependentRejections += 1;
     for (const header of model.processed)
       if (!env.registry.get(header)!.own && !countedIncludes.has(header)) {
         countedIncludes.add(header);
         stats.foreignIncluded += includesOf(header).length;
       }
-    if (rebuild.batchSettled) stats.batchSettled += 1;
-    if (rebuild.foldThenReject.has("own")) stats.foldThenRejectOwn += 1;
-    if (rebuild.foldThenReject.has("foreign")) stats.foldThenRejectForeign += 1;
     if (model.rows.some((header) => env.registry.get(header)!.own))
       stats.ownProcessed += 1;
     modelFrontier = model.frontier;

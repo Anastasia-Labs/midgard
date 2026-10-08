@@ -266,7 +266,7 @@ export type MergeOptions = {
   /**
    * Checked immediately before the merge transaction is signed and submitted:
    * the caller re-proves every authority the local finalization will need (the
-   * state-queue lease and the history producer permit), so a revocation after
+   * state-queue lease and the follower write gate), so a revocation after
    * the merge started refuses the submission instead of stranding a confirmed
    * L1 merge whose local finalization cannot write.
    */

@@ -43,7 +43,6 @@ import "../src/fibers/merge.js";
 import "../src/fibers/slot-aware-due-work.js";
 import "../src/lucid-time.js";
 import "../src/mpf/index.js";
-import "../src/services/event-history-producer.js";
 import "../src/services/index.js";
 import "../src/services/landed-state-queue.js";
 import "../src/services/mempool-ledger-cache.js";
@@ -161,10 +160,7 @@ import {
   MidgardMpf,
 } from "../src/mpf/index.js";
 import type { NodeConfigDep } from "../src/services/config.js";
-import {
-  HistoryProducer,
-  UnownedHistoryFixture,
-} from "../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import {
   ContractDeploymentIdentity,
@@ -248,7 +244,6 @@ import {
 } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 import {
-  driveEmulatorFollower,
   ingestEmulatorEventsUnowned,
   mirrorEmulatorEvents,
   syncEmulatorFollower,
@@ -694,7 +689,7 @@ export const withUnownedNativeOwnerStopped = async <A>(
         withEmulatorStateQueue(lucidService.api, fixture.contracts.stateQueue),
         Effect.zipRight(attachUnownedNativeOwner(globals)),
         Effect.provide(Database.layer),
-        Effect.provideService(UnownedHistoryFixture, true),
+        Effect.provideService(FollowerWriteFixture, true),
       ),
     );
   }
@@ -860,7 +855,7 @@ export const runCommitWorker = async (
         ContractDeploymentIdentity.make(deploymentIdentity),
       ),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       journal === undefined
         ? (effect) => effect
         : Effect.provideService(IntentJournal, journal),
@@ -977,28 +972,16 @@ export const runMergeUntilMerged = async ({
           ),
           (program) =>
             production === undefined
-              ? program.pipe(Effect.provideService(UnownedHistoryFixture, true))
-              : production.owner.runProducer((token, assertCurrent, coverage) =>
-                  assertCurrent.pipe(
-                    Effect.zipRight(
-                      program.pipe(
-                        Effect.provideService(HistoryProducer, {
-                          token,
-                          coverage,
-                        }),
-                        Effect.provideService(
-                          MempoolLedgerCache,
-                          production.cache,
-                        ),
-                      ),
-                    ),
-                  ),
+              ? program.pipe(Effect.provideService(FollowerWriteFixture, true))
+              : // The merge action takes its own producer permit.
+                program.pipe(
+                  Effect.provideService(MempoolLedgerCache, production.cache),
                 ),
           Effect.provideService(LucidService, lucidService as any),
           Effect.provideService(MidgardContracts, fixture.contracts as any),
           Effect.provideService(Globals, globals),
           Effect.provide(Database.layer),
-          Effect.provideService(UnownedHistoryFixture, true),
+          Effect.provideService(FollowerWriteFixture, true),
           Effect.provideService(NodeConfig, nodeConfig),
           Effect.provideService(
             ContractDeploymentIdentity,
@@ -1082,7 +1065,7 @@ export const runBarrierRefresherForTest = async (
       ),
       Effect.provideService(Globals, globals),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(NodeConfig, nodeConfig),
     ),
   );
@@ -1187,7 +1170,7 @@ export const runConfirmationJournalInsertionRace = async (
       Effect.provideService(Globals, globals),
       Effect.provideService(NodeConfig, testNodeConfig),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
     ),
   );
 
@@ -1272,7 +1255,7 @@ export const runNodeCommandProgram = <A>(
         Effect.provideService(Globals, globals),
         Effect.provideService(NodeConfig, nodeConfig),
         Effect.provide(Database.layer),
-        Effect.provideService(UnownedHistoryFixture, true),
+        Effect.provideService(FollowerWriteFixture, true),
         withoutFollowerJournal,
       ) as Effect.Effect<A, any, never>,
     );
@@ -1324,7 +1307,7 @@ export const runLocalFinalizationRecoveryWorker = async (
         ContractDeploymentIdentity.make(deploymentIdentity),
       ),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       nodeConfig === undefined
         ? Effect.provide(NodeConfig.layer)
         : Effect.provideService(NodeConfig, nodeConfig),
@@ -1783,7 +1766,6 @@ export {
   Database,
   decodeNodeUtxo,
   DepositsDB,
-  driveEmulatorFollower,
   Effect,
   emulatorStateQueueSnapshot,
   encodeMidgardCekProgramMaterialSidecar,

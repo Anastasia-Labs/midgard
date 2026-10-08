@@ -19,6 +19,7 @@ import dropSettlementHoldSlotSql from "./sql/0017_drop_settlement_hold_slot.sql"
 import landedBlocksOwnRemovedSql from "./sql/0018_landed_blocks_own_removed.sql";
 import txRejectionCausesSql from "./sql/0019_tx_rejection_causes.sql";
 import dropQueueTerminalObserverSql from "./sql/0020_drop_queue_terminal_observer.sql";
+import followerWriteGateSql from "./sql/0021_follower_write_gate.sql";
 
 export type Migration = {
   readonly version: number;
@@ -169,6 +170,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: dropQueueTerminalObserverSql,
     transactional: true,
   },
+  {
+    version: 21,
+    name: "follower_write_gate",
+    checksumSha256: sha256Hex(followerWriteGateSql),
+    sql: followerWriteGateSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -258,6 +266,8 @@ export const APPLICATION_TABLE_NAMES = [
   "node_confirmed_merges",
   "node_confirmed_ledger_spent",
   "intent_refusal_holds",
+  "node_follower_write_gate",
+  "node_deployment",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [

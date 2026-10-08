@@ -18,7 +18,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -339,7 +339,7 @@ export const runNodeDatabaseEffect = <A, E>(
   Effect.runPromise(
     effect.pipe(
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provide(NodeConfig.layer),
     ),
   );

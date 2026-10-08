@@ -1,25 +1,21 @@
 /**
  * Commit-stage rejections with the working ledger's rejection closure
  * (`closeRejections`, the one every rebuild applies): a rejected transaction
- * takes every pending transaction that spends its outputs ("dependent") and
- * every pending co-member of an unreversed acceptance receipt that holds it
- * ("batch") with it, transitively; the receipts are reversed. A co-member
- * whose row a block's inclusion mark holds is settled by that block. A
- * closure that reaches a transaction the block being built accepts takes it
- * out of the block: Phase B runs again without it.
+ * takes every pending transaction that spends its outputs ("dependent") with
+ * it, transitively. A closure that reaches a transaction the block being
+ * built accepts takes it out of the block: Phase B runs again without it.
  */
 
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import * as TxRejectionsDB from "../database/txRejections.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { Database } from "../services/index.js";
 import {
   hex,
@@ -33,7 +29,6 @@ import {
   txIdHex,
 } from "../services/working-ledger-recompute.reject-closure.js";
 import {
-  COMMIT_REJECT_CODE_BATCH_MEMBER,
   COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
   type CommitStageInputPostState,
   type CommitStageTxEffects,
@@ -70,10 +65,10 @@ const entryId = (entry: RejectionEntry) =>
 /**
  * Applies a commit-stage rejection as one database mutation. The closure
  * over `rejectionEntries` ("direct", each with its own code) is taken over
- * the pending transactions, the marked rows settled; if it reaches one of
+ * the pending transactions; if it reaches one of
  * `blockTxIds` nothing is written. Otherwise its ledger effects are reverted
  * against the block post-state, and every transaction in it is recorded
- * rejected, with its receipts reversed (`recordRejections`). A rejected
+ * rejected (`recordRejections`). A rejected
  * transaction that is no longer pending is left as it is.
  */
 export const persistCommitStageRejectedTransactions = ({
@@ -102,11 +97,9 @@ export const persistCommitStageRejectedTransactions = ({
         const pendingById = new Map(
           pending.map((tx) => [txIdHex(tx), tx] as const),
         );
-        const settled = yield* MempoolInclusionsDB.markedTxIds;
         const dependentDetail = new Map<string, string>();
         const rejected = yield* closeRejections({
           pending,
-          settled: new Set(settled.map(hex)),
           spread: (reject, done) => {
             let changed = false;
             for (const id of direct.keys()) {
@@ -167,18 +160,12 @@ export const persistCommitStageRejectedTransactions = ({
               detail: entry[TxRejectionsDB.Columns.REJECT_DETAIL] ?? "",
             };
           }
-          return reason === "dependent"
-            ? {
-                code: COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
-                detail: dependentDetail.get(id)!,
-              }
-            : {
-                code: COMMIT_REJECT_CODE_BATCH_MEMBER,
-                detail:
-                  "Transaction was accepted in one batch with a transaction rejected at commit",
-              };
+          return {
+            code: COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
+            detail: dependentDetail.get(id)!,
+          };
         };
-        yield* recordRejections(rejected, codeOf, settled);
+        yield* recordRejections(rejected, codeOf);
         return {
           _tag: "Persisted",
           recorded: [...rejected.entries()].map(([id, rejection]) => {
@@ -194,7 +181,7 @@ export const persistCommitStageRejectedTransactions = ({
       }),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     sqlErrorToDatabaseError(
       TxRejectionsDB.tableName,
       "Failed to persist commit-stage transaction rejections",

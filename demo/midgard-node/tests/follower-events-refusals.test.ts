@@ -1,7 +1,9 @@
 /**
  * The follower-change driver's Postgres sink refuses, by name, a projected
  * deposit it cannot decode into the node's row, and ingests the rest of the
- * run: one user-made admission must never fail every run.
+ * run: one user-made admission must never fail every run. A block journal's
+ * event member is refused unless its admission identity is still its event
+ * row's and the follower's key set still holds it.
  */
 import {
   encodeOutRef,
@@ -22,13 +24,17 @@ import {
   type FollowerIngestionOutcome,
   reconcileFollowerEvents,
 } from "../src/database/follower-events.js";
+import { assertCanonicalEventMembers } from "../src/database/pendingBlockFinalizations.js";
 import { EVENT_UNDECODABLE } from "../src/l1-events/driver.js";
 import {
-  UnownedHistoryFixture,
-  withHistoryIngestion,
-} from "../src/services/event-history-producer.js";
+  FollowerWriteFixture,
+  withFollowerWrite,
+} from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.globals.js";
-import { writeFollowerView } from "./helpers/follower-view.js";
+import {
+  rewindFollowerKey,
+  writeFollowerView,
+} from "./helpers/follower-view.js";
 import {
   admissionTx,
   eventOrder,
@@ -69,18 +75,18 @@ const nonceRef = (): OutRef => {
   return { txHash, index: nonces % 3 };
 };
 
-/** The driver's sink under the unowned-history fixture gate. */
+/** The driver's sink under the follower write gate's fixture capability. */
 const ingest = (
   plan: Parameters<typeof reconcileFollowerEvents>[0],
   cutoffMs: number,
 ) =>
-  withHistoryIngestion(
+  withFollowerWrite(
     reconcileFollowerEvents(plan, {
       network: "Preprod",
       slotToUnixTime: (slot: number) => slot * 1000,
       cutoffMs,
     }),
-  ).pipe(Effect.provideService(UnownedHistoryFixture, true));
+  ).pipe(Effect.provideService(FollowerWriteFixture, true));
 
 const applied = (outcome: FollowerIngestionOutcome) => {
   if (outcome.kind !== "applied") throw new Error(`outcome ${outcome.kind}`);
@@ -157,4 +163,68 @@ describe("follower event ingestion refusals (Postgres)", () => {
       { source_event_id: identityOf(byKey(honest.key)).event_id },
     ]);
   });
+});
+
+describe("a block journal's event members (Postgres)", () => {
+  it.each(["deposit", "withdrawal"] as const)(
+    "accepts a %s member only at its canonical follower admission",
+    async (kind) => {
+      const store = await storeOpener("sqlite", databases)(
+        [eventProjection(EVENTS_CONFIG)],
+        4,
+      );
+      opened.push(store);
+      const d = new ChainDriver(store, eventTrackedSet(EVENTS_CONFIG));
+      await d.init();
+      const order = eventOrder(kind, nonceRef());
+      await d.forward([admissionTx(order, 1)]);
+      const read = await eventsAt(store, listOf(kind), d.tip.point);
+      if (read.kind !== "ok") throw new Error(JSON.stringify(read));
+      const event = read.value[0]!;
+      const { event_id, ...identity } = identityOf(event);
+      const member = { member_id: event_id, ...identity };
+      const check = (value: typeof member) =>
+        withFollowerWrite(
+          assertCanonicalEventMembers({
+            depositMembers: kind === "deposit" ? [value] : [],
+            withdrawalMembers: kind === "withdrawal" ? [value] : [],
+          }),
+        ).pipe(
+          Effect.provideService(FollowerWriteFixture, true),
+          Effect.either,
+          Effect.map((result) => result._tag),
+        );
+      const result = await run(
+        Effect.gen(function* () {
+          yield* resetApplicationTables;
+          applied(
+            yield* ingest(yield* writeFollowerView(VIEW_SLOT, [event]), 0),
+          );
+          const canonical = yield* check(member);
+          const otherKey = yield* check({
+            ...member,
+            l1_event_key: Buffer.alloc(32, 0x99),
+          });
+          const otherOrigin = yield* check({
+            ...member,
+            l1_origin_outref: Buffer.alloc(34, 9),
+          });
+          // The follower rewinds past the admission: the member is orphaned.
+          yield* rewindFollowerKey(event, identity.l1_origin_outref);
+          return {
+            canonical,
+            otherKey,
+            otherOrigin,
+            rewound: yield* check(member),
+          };
+        }),
+      );
+      expect(result).toEqual({
+        canonical: "Right",
+        otherKey: "Left",
+        otherOrigin: "Left",
+        rewound: "Left",
+      });
+    },
+  );
 });

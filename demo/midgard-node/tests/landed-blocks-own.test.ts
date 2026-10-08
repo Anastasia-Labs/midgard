@@ -32,7 +32,7 @@ import {
 } from "../src/landed-blocks/holds.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import { Frontier, retrieveRows } from "../src/landed-blocks/store.js";
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { hex32 } from "./helpers/state-queue-sim.fixtures.js";
 import {
   A1,
@@ -302,7 +302,7 @@ describe("own landed blocks", () => {
         // The merge fiber folded it first, through the same fold, with no
         // merge point (it reads no queue history).
         const [row] = yield* retrieveRows;
-        yield* withHistoryWrite(
+        yield* withFollowerWrite(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
             yield* sql.withTransaction(foldMerge(row!, null));

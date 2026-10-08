@@ -406,7 +406,6 @@ export const registerMpfTests = () => {
             // (with no frontier yet) after the one-time bootstrap at its base.
             for (let index = 0; index < headers.length; index += 1) {
               const step = yield* finalizeConfirmedMergeTransaction({
-                headerHash: headers[index]!,
                 journal: yield* journalOf(headers[index]!),
               });
               expect(step).toBe("folded");
@@ -428,7 +427,6 @@ export const registerMpfTests = () => {
             // A re-run converges without folding twice.
             expect(
               yield* finalizeConfirmedMergeTransaction({
-                headerHash: headers[2]!,
                 journal: yield* journalOf(headers[2]!),
               }),
             ).toBe("already_folded");
@@ -467,7 +465,6 @@ export const registerMpfTests = () => {
             yield* insertDeposits([successDeposit]);
             expect(
               yield* finalizeConfirmedMergeTransaction({
-                headerHash: mergeHeaderHash,
                 journal: mergeJournal,
               }),
             ).toBe("folded");
@@ -490,7 +487,6 @@ export const registerMpfTests = () => {
             yield* insertDeposits([deferredDeposit]);
             expect(
               yield* finalizeConfirmedMergeTransaction({
-                headerHash: mergeHeaderHash,
                 journal: mergeJournal,
               }),
             ).toBe("deferred");
@@ -515,7 +511,6 @@ export const registerMpfTests = () => {
               yield* Frontier.upsert(frontier);
               const refused = yield* Effect.either(
                 finalizeConfirmedMergeTransaction({
-                  headerHash: mergeHeaderHash,
                   journal: mergeJournal,
                 }),
               );

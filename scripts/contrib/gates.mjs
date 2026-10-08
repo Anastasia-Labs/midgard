@@ -88,7 +88,7 @@ export const GATES = {
       "midgard-node",
       [
         "tests/readiness.test.ts",
-        "tests/readiness-history-frontier-route.test.ts",
+        "tests/readiness-follower-write-gate-route.test.ts",
         "tests/pipeline-status-route.test.ts",
       ],
     ],

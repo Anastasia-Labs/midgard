@@ -8,14 +8,13 @@
  *
  * The journal is the production one (`intentJournalOver`, which
  * `IntentJournalLive` builds over the node database) on a follower store
- * that followed the emulator; the gate is never stubbed. Under a Ready
- * history producer's permit (an acquired authority, published Ready at a
- * modeled cursor) the commit is journaled, its pending row's signed intent
- * is written and the tx is sent; a gate or journal refusal leaves neither.
+ * that followed the emulator; the gate is never stubbed. Under a follower
+ * write permit at the follower's view (the write gate open at it, as the
+ * follower-change driver publishes it) the commit is journaled, its pending
+ * row's signed intent is written and the tx is sent; a gate or journal
+ * refusal leaves neither.
  */
 import "./helpers/follower-emulator-installed.js";
-
-import { randomUUID } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -30,12 +29,11 @@ import {
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Redacted } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import {
-  HistoryProducer,
-  type HistoryProducerPermit,
-} from "../src/services/event-history-producer.js";
+  FollowerWrite,
+  type FollowerWritePermit,
+} from "../src/services/follower-write-gate.js";
 import {
   INTENT_INPUT_UNTRACKED,
   IntentJournal,
@@ -48,6 +46,7 @@ import {
 } from "../src/transactions/utils.js";
 import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
 import { submitWithDurableIntent } from "../src/workers/commit-block-header/submission.submit-with-durable-intent.js";
+import { openFollowerWriteGateAt } from "./helpers/follower-write-gate.js";
 import {
   type IntentEmulator,
   openIntentEmulator,
@@ -143,8 +142,8 @@ describe("the commit gate under the follower-backed journal", () => {
     );
     expect(exit._tag).toBe("Failure");
     expect(text).not.toContain(INHERITED);
-    // No permit: the gate's own history-write check refuses.
-    expect(text).toContain("Missing producer permit");
+    // No permit: the gate's own follower-write check refuses.
+    expect(text).toContain("Missing follower write permit");
     expect(direct).toEqual([]);
     expect(env.sent).toEqual([]);
     expect(await journalRows(env)).toBe(0);
@@ -160,53 +159,21 @@ describe("the commit gate under the follower-backed journal", () => {
     );
     expect(exit._tag).toBe("Failure");
     expect(text).not.toContain(INHERITED);
-    expect(text).toContain("Missing producer permit");
+    expect(text).toContain("Missing follower write permit");
     expect(direct).toEqual([]);
   });
 });
 
 const digest = (n: number) => Buffer.alloc(32, n).toString("hex");
 
-/** A Ready history producer's permit: the authority acquired and published
- * Ready at a modeled cursor (no block applied: head = anchor). */
-const readyProducer = async (
+/** A producer's permit at the follower's current view: the write gate
+ * opened at it, as the follower-change driver publishes the view it applied. */
+const followerPermit = async (
   env: IntentEmulator,
-): Promise<HistoryProducerPermit> => {
-  const deploymentIdentity = digest(0x11);
-  const binding = digest(0x12);
-  const point = { id: digest(0x13), slot: 0 };
-  const snapshotDigest = digest(0x14);
-  const token = await env.runtime.runPromise(
-    Authority.acquire({
-      deploymentIdentity,
-      ownerToken: randomUUID(),
-      leaseDurationMs: 600_000,
-    }),
-  );
-  await env.runtime.runPromise(
-    Authority.publishReady(token, { point, snapshotDigest }),
-  );
-  await env.runtime.runPromise(
-    env.sql`INSERT INTO event_history_cursor (binding_digest, manifest_id,
-      origin_receipt, origin_receipt_digest, anchor_hash, anchor_slot,
-      anchor_height, anchor_snapshot_digest, head_hash, head_slot, head_height,
-      head_application_revision, snapshot_digest, revision, addresses)
-      VALUES (${Buffer.from(binding, "hex")}, ${Buffer.from(deploymentIdentity, "hex")},
-        'modeled cursor; not ledger admission', ${Buffer.alloc(32, 0x15)},
-        ${Buffer.from(point.id, "hex")}, 0, 0, ${Buffer.from(snapshotDigest, "hex")},
-        ${Buffer.from(point.id, "hex")}, 0, 0, NULL,
-        ${Buffer.from(snapshotDigest, "hex")}, 0, '[]'::jsonb)`,
-  );
-  return {
-    token,
-    coverage: {
-      bindingDigest: binding,
-      checkpointRevision: "0",
-      point,
-      snapshotDigest,
-      includedThroughMs: 0,
-    },
-  };
+): Promise<FollowerWritePermit> => {
+  const view = await env.store.currentView();
+  if (view === null) throw new Error("the follower holds no view");
+  return env.runtime.runPromise(openFollowerWriteGateAt(view));
 };
 
 const EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
@@ -215,7 +182,7 @@ const EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
  * prepared under the producer as the commit worker prepares it. */
 const preparePendingBlock = async (
   env: IntentEmulator,
-  permit: HistoryProducerPermit,
+  permit: FollowerWritePermit,
   preparedTxHash: Buffer,
 ): Promise<Buffer> => {
   const roots = {
@@ -260,44 +227,39 @@ const preparePendingBlock = async (
     "hex",
   );
   await env.runtime.runPromise(
-    Authority.withReady(
-      permit.token,
-      PendingBlockFinalizationsDB.preparePendingSubmission({
-        headerHash,
-        headerCbor: Buffer.from(Data.to(header, SDK.Header), "hex"),
-        preparedTxHash,
-        metadata: {
-          deploymentMarker: makeDeploymentMarker(
-            permit.token.deploymentIdentity,
-          ),
-          consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
-          stateQueueLeaseToken: "modeled-pending-owner",
-          baseSnapshotId: "modeled-pending-base",
-          baseTailOutRef: `${digest(0x16)}#0`,
-          baseTailHeaderHash: Buffer.alloc(28, 0x41),
-          baseTailDatumCbor: "d87980",
-          baseRoots: roots,
-          blockStartTime: time,
-          expectedRoots,
-          expectedCounts: counts,
-        },
-        blockEndTime: new Date(time.getTime() + 60_000),
-        depositEventIds: [],
-        depositEntries: [],
-        forcedTransactionEventIds: [],
-        forcedTransactionEntries: [],
-        withdrawalEventIds: [],
-        withdrawalEntries: [],
-        mempoolTxIds: [],
-        mempoolTxs: [],
-        mempoolTxSourceTable: "none",
-        transitionTraceMembers: [],
-        eventToStepMembers: [],
-        validationTraceMembers: [],
-        validationTraceWitnessMembers: [],
-        ledgerDelta: { spent: [], produced: [] },
-      }).pipe(Effect.provideService(HistoryProducer, permit)),
-    ),
+    PendingBlockFinalizationsDB.preparePendingSubmission({
+      headerHash,
+      headerCbor: Buffer.from(Data.to(header, SDK.Header), "hex"),
+      preparedTxHash,
+      metadata: {
+        deploymentMarker: makeDeploymentMarker(digest(0x11)),
+        consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
+        stateQueueLeaseToken: "modeled-pending-owner",
+        baseSnapshotId: "modeled-pending-base",
+        baseTailOutRef: `${digest(0x16)}#0`,
+        baseTailHeaderHash: Buffer.alloc(28, 0x41),
+        baseTailDatumCbor: "d87980",
+        baseRoots: roots,
+        blockStartTime: time,
+        expectedRoots,
+        expectedCounts: counts,
+      },
+      blockEndTime: new Date(time.getTime() + 60_000),
+      depositEventIds: [],
+      depositEntries: [],
+      forcedTransactionEventIds: [],
+      forcedTransactionEntries: [],
+      withdrawalEventIds: [],
+      withdrawalEntries: [],
+      mempoolTxIds: [],
+      mempoolTxs: [],
+      mempoolTxSourceTable: "none",
+      transitionTraceMembers: [],
+      eventToStepMembers: [],
+      validationTraceMembers: [],
+      validationTraceWitnessMembers: [],
+      ledgerDelta: { spent: [], produced: [] },
+    }).pipe(Effect.provideService(FollowerWrite, permit)),
   );
   return headerHash;
 };
@@ -306,7 +268,7 @@ const preparePendingBlock = async (
  * `submitWithDurableIntent`, the producer's permit and the journal. */
 const submitCommit = async (
   env: IntentEmulator,
-  permit: HistoryProducerPermit,
+  permit: FollowerWritePermit,
   lucid: LucidEvolution,
   unsigned: TxSignBuilder,
   headerHash: Buffer,
@@ -331,7 +293,7 @@ const submitCommit = async (
           headerHash,
         ),
       ).pipe(Effect.provide(env.journalLayer)),
-    ).pipe(Effect.provideService(HistoryProducer, permit)),
+    ).pipe(Effect.provideService(FollowerWrite, permit)),
   );
   return {
     exit,
@@ -360,12 +322,12 @@ const journaled = async (env: IntentEmulator) =>
     }>`SELECT tx_hash, family, content_ref FROM l1_intents`,
   );
 
-describe("the commit gate under a Ready history producer", () => {
+describe("the commit gate under a follower write permit", () => {
   it("journals the commit, writes its pending row's signed intent and sends it, in one gate transaction", async () => {
     const env = await openIntentEmulator(databases, { nodeSchema: true });
     opened.push(env);
     expect(await env.stage.run()).toEqual([]);
-    const permit = await readyProducer(env);
+    const permit = await followerPermit(env);
     const lucid = await env.wallet();
     const unsigned = await lucid
       .newTx()
@@ -418,7 +380,7 @@ describe("the commit gate under a Ready history producer", () => {
     const env = await openIntentEmulator(databases, { nodeSchema: true });
     opened.push(env);
     expect(await env.stage.run()).toEqual([]);
-    const permit = await readyProducer(env);
+    const permit = await followerPermit(env);
     const lucid = await env.wallet();
     const unsigned = await lucid
       .newTx()
@@ -457,7 +419,7 @@ describe("the commit gate under a Ready history producer", () => {
     const env = await openIntentEmulator(databases, { nodeSchema: true });
     opened.push(env);
     expect(await env.stage.run()).toEqual([]);
-    const permit = await readyProducer(env);
+    const permit = await followerPermit(env);
     // The payee's wallet is not a tracked one: its inputs are not facts,
     // so its view offers nothing and the journal refuses them at the gate.
     const lucid = await env.wallet();

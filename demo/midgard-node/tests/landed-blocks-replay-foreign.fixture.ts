@@ -45,7 +45,7 @@ import {
 import { NodeConfig } from "../src/services/config.js";
 import type { Database } from "../src/services/database.js";
 import * as Producer from "../src/services/event-history-producer.js";
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.js";
 import { Lucid } from "../src/services/lucid.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
@@ -368,7 +368,7 @@ export const unownedHistory = () =>
 
 /** Retains `row` through the history-write gate. */
 export const retain = (row: DaPayloadsDB.InsertInput) =>
-  inNode(withHistoryWrite(DaPayloadsDB.upsertAvailable(row)));
+  inNode(withFollowerWrite(DaPayloadsDB.upsertAvailable(row)));
 
 export const retained = (payload: SDK.DaPayload) =>
   inNode(

@@ -39,8 +39,6 @@ export const COMMIT_REJECT_CODE_FORCED_TRANSACTION_INPUT =
 export const COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT =
   "E_COMMIT_SPENDS_REJECTED_OUTPUT";
 
-export const COMMIT_REJECT_CODE_BATCH_MEMBER = "E_COMMIT_BATCH_MEMBER";
-
 export type ResolvedTxDeltaForCommit =
   | {
       readonly _tag: "Decoded";

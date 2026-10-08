@@ -1,6 +1,6 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import JSONBig from "json-bigint";
-import { decodeLedgerSnapshotOutput } from "midgard-node/l1-ledger-snapshot";
+import { decodeLedgerSnapshotOutput } from "midgard-node/l1-ogmios-utxo";
 
 import {
   acceptanceOutRefKey,

@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { DatabaseError } from "../src/database/utils/common.js";
-import { isHistoryGateClosedCause } from "../src/fibers/tx-queue-processor.run-phase-afor-batch.js";
 import {
   HistoryProducer,
   type HistoryProducerPermit,
@@ -195,46 +194,5 @@ describe("runHistoryProducer error attribution", () => {
     );
     expectProducerRequired(error, supersededMidWork);
     expect(isHistoryProducerGateClosed(error)).toBe(true);
-  });
-});
-
-describe("the tx-queue gate-closed classification over runHistoryProducer", () => {
-  const causeOf = (exit: Exit.Exit<unknown, unknown>) => {
-    if (Exit.isSuccess(exit)) throw new Error("Expected the producer to fail");
-    return exit.cause;
-  };
-
-  it("treats a supersession raised mid-work as a closed gate", async () => {
-    const exit = await runUnder(
-      stubOwner({}),
-      Effect.fail(superseded("History source gate is closed")),
-    );
-    expect(isHistoryGateClosedCause(causeOf(exit))).toBe(true);
-  });
-
-  it("treats a gate refusal withHistoryWrite already raised as a closed gate", async () => {
-    const midWork = superseded("History source gate is closed");
-    const refusal = new DatabaseError({
-      table: Authority.tableName,
-      message: PRODUCER_REQUIRED,
-      cause: midWork,
-    });
-    const exit = await runUnder(stubOwner({}), Effect.fail(refusal));
-    expect(failureOf(exit)).toBe(refusal);
-    expect(isHistoryGateClosedCause(causeOf(exit))).toBe(true);
-  });
-
-  it("does not treat the work's own submit refusal as a closed gate", async () => {
-    const exit = await runUnder(
-      stubOwner({}),
-      Effect.fail(
-        new TxSubmitError({
-          message: "Commit block submit refused",
-          cause: "OutsideValidityInterval",
-          txHash: "77".repeat(32),
-        }),
-      ),
-    );
-    expect(isHistoryGateClosedCause(causeOf(exit))).toBe(false);
   });
 });

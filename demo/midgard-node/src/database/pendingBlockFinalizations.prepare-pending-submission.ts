@@ -4,9 +4,9 @@ import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
 import {
-  requireCandidateHistory,
-  withHistoryWrite,
-} from "../services/event-history-producer.js";
+  requireCandidateView,
+  withFollowerWrite,
+} from "../services/follower-write-gate.js";
 import * as DepositsDB from "./deposits.js";
 import * as ForcedTransactionsDB from "./forcedTransactions.js";
 import {
@@ -252,9 +252,9 @@ export const preparePendingSubmission = (
           blockEndTime: input.blockEndTime,
         }),
       );
-    return yield* withHistoryWrite(
+    return yield* withFollowerWrite(
       Effect.gen(function* () {
-        const candidateHistory = yield* requireCandidateHistory;
+        const candidateHistory = yield* requireCandidateView;
         if (
           (Option.isSome(candidateHistory) &&
             input.preparedTxHash === undefined) ||

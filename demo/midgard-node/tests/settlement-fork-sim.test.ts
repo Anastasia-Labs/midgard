@@ -47,7 +47,6 @@ import { Effect, ManagedRuntime, Redacted } from "effect";
 import fc from "fast-check";
 import { afterAll, describe, expect, it } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import * as Journal from "../src/database/settlement.js";
 import { readIntentStatus } from "../src/services/intent-journal.js";
@@ -57,6 +56,7 @@ import {
   type SettlementLevel,
   settlementLevel,
 } from "../src/services/settlement.status.js";
+import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 
 const SIM_K = 6;
@@ -189,19 +189,7 @@ const settlementSimulation = (stats: Stats, node: () => Run) => {
         blocks.pop();
     }
     if (!owned) {
-      await run(
-        Effect.gen(function* () {
-          const token = yield* Authority.acquire({
-            deploymentIdentity: deploymentId,
-            ownerToken: randomUUID(),
-            leaseDurationMs: 3_600_000,
-          });
-          yield* Authority.publishReady(token, {
-            point: { slot: 10, id: "b1".repeat(32) },
-            snapshotDigest: "c1".repeat(32),
-          });
-        }),
-      );
+      await run(openFollowerWriteGate);
       owned = true;
     }
     await run(Journal.renew(owner));

@@ -28,9 +28,7 @@ export type NodeStartupStage =
   | "protocol_initialization"
   | "provider_assertions"
   | "l1_follower_catch_up"
-  | "history_initialization"
-  | "history_sync"
-  | "recovery_preparation";
+  | "follower_view_apply";
 
 type StartupState = {
   readonly stage: NodeStartupStage | "serving" | "fatal";

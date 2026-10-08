@@ -5,8 +5,7 @@
  * working-ledger rebase it asks for, then equals a fresh derivation from
  * the canonical chain (`helpers/landed-blocks-sim.model.ts`): its rows, the
  * confirmed and working ledgers, the native MPF root, the mempool and its
- * inclusion marks, the rejections, the recorded receipt settlements and the
- * deposit statuses.
+ * inclusion marks, the rejections and the deposit statuses.
  *
  * Each suite proves its corpus exercised every case: every block processed
  * exactly once across restarts, crashes and head changes; a rollback that
@@ -16,9 +15,8 @@
  * adopted and holds `landed_block_invalid` with the process up; late DA
  * and transient replay faults each hold by name and clear; a merge a
  * rollback undid is unfolded back to the root's lineage by header identity
- * (N5), its retained folds pruned once no rollback reaches them; and a
- * batch is rejected around a member an own block, and one a foreign block,
- * settled and folded before the rejection. Corrections (N4, plan §7.4): a
+ * (N5), its retained folds pruned once no rollback reaches them.
+ * Corrections (N4, plan §7.4): a
  * queue tail removal that lands is admitted at once (the processed rows it
  * took out are reverted), a rollback of it gives the rows back, and the same
  * rows removed again are admitted again, the node equal to the model through
@@ -72,10 +70,7 @@ import {
   testDatabases,
 } from "./helpers/l1-events-store.js";
 import { landedBlocksSimProjection } from "./helpers/landed-blocks-sim.js";
-import {
-  insertSimCursor,
-  newSimMempool,
-} from "./helpers/landed-blocks-sim.mempool.js";
+import { newSimMempool } from "./helpers/landed-blocks-sim.mempool.js";
 import { newSimOwnBook } from "./helpers/landed-blocks-sim.own.js";
 import {
   type LandedSimStats,
@@ -188,7 +183,6 @@ const runScenario = (
   Effect.gen(function* () {
     yield* resetApplicationTables;
     yield* insertDeposits(universe.deposits.map(({ row }) => row));
-    yield* insertSimCursor;
     // Node startup seeds the working ledger with the genesis outputs.
     yield* MempoolLedgerDB.insert([
       ...(yield* ledgerRows(universe.genesis, new Map())),
@@ -278,12 +272,6 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "rejectionsOnRollback",
     "latentHoleClosed",
     "foreignIncluded",
-    "batchRejections",
-    "batchSettled",
-    // The own-block variant (`foldThenRejectOwn`) is too rare in this corpus
-    // to count on; landed-blocks-rebase.test.ts pins it directly ("keeps a
-    // batch co-member settled by this node's own block folded ...").
-    "foldThenRejectForeign",
     "ownCommits",
     "ownAppends",
     "liveRebases",

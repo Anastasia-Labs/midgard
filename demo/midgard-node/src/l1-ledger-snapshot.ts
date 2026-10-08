@@ -1,4 +1,3 @@
-import type { Assets } from "@lucid-evolution/lucid";
 import JSONBig from "json-bigint";
 
 import {
@@ -8,21 +7,21 @@ import {
   type WebSocketLike,
 } from "./l1-kupmios.js";
 import { ogmiosJsonRpcAnswerCode } from "./l1-kupmios.open-ogmios-session.js";
+import {
+  decodeLedgerSnapshotOutput,
+  type LedgerSnapshotOutput,
+  ogmiosBytes,
+  ogmiosNatural,
+  ogmiosRecord,
+} from "./l1-ogmios-utxo.js";
 import { L1SourceUnavailable } from "./l1-source-unavailable.js";
 
-export type LedgerSnapshotPoint = Readonly<{ slot: number; id: string }>;
+export {
+  decodeLedgerSnapshotOutput,
+  type LedgerSnapshotOutput,
+} from "./l1-ogmios-utxo.js";
 
-/** History readers need the presence of a reference script, never its bytes.
- * Keeping this distinct from Lucid's UTxO avoids inventing a script witness. */
-export type LedgerSnapshotOutput = Readonly<{
-  txHash: string;
-  outputIndex: number;
-  address: string;
-  assets: Readonly<Assets>;
-  datum?: string;
-  datumHash?: string;
-  hasReferenceScript: boolean;
-}>;
+export type LedgerSnapshotPoint = Readonly<{ slot: number; id: string }>;
 
 /** Coherent ledger capture, NOT current canonical eligibility. An acquired
  * state may survive a later rollback. The node's generation owner must fence
@@ -34,41 +33,11 @@ export type AcquiredLedgerSnapshot = Readonly<{
 }>;
 
 const losslessJson = JSONBig({ useNativeBigInt: true, strict: true });
-const hex = /^(?:[0-9a-f]{2})*$/u;
-const record = (value: unknown, label: string): Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    throw new Error(`${label} must be an object`);
-  return value as Record<string, unknown>;
-};
-const bytes = (value: unknown, label: string, size?: number): string => {
-  if (
-    typeof value !== "string" ||
-    !hex.test(value) ||
-    (size !== undefined && value.length !== size * 2)
-  )
-    throw new Error(
-      `${label} must be lowercase base16${size === undefined ? "" : ` (${size} bytes)`}`,
-    );
-  return value;
-};
-const natural = (value: unknown, label: string): number => {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
-    throw new Error(`${label} must be a safe natural number`);
-  return value;
-};
-const quantity = (value: unknown): bigint => {
-  const parsed =
-    typeof value === "bigint"
-      ? value
-      : BigInt(natural(value, "asset quantity"));
-  if (parsed < 0n) throw new Error("UTxO asset quantity must be nonnegative");
-  return parsed;
-};
 const point = (value: unknown): LedgerSnapshotPoint => {
-  const parsed = record(value, "Ogmios ledger point");
+  const parsed = ogmiosRecord(value, "Ogmios ledger point");
   return Object.freeze({
-    slot: natural(parsed.slot, "Ogmios ledger slot"),
-    id: bytes(parsed.id, "Ogmios ledger hash", 32),
+    slot: ogmiosNatural(parsed.slot, "Ogmios ledger slot"),
+    id: ogmiosBytes(parsed.id, "Ogmios ledger hash", 32),
   });
 };
 const samePoint = (left: LedgerSnapshotPoint, right: LedgerSnapshotPoint) =>
@@ -87,49 +56,6 @@ export class LedgerPointUnavailable extends L1SourceUnavailable {}
 // Byron, 2003 acquired state expired), as an `L1SourceUnavailable`; any other
 // code refuses the request itself and stays a refusal.
 const ACQUIRE_FAILURE = 2000;
-
-export const decodeLedgerSnapshotOutput = (
-  value: unknown,
-  addresses: ReadonlySet<string>,
-): LedgerSnapshotOutput => {
-  const parsed = record(value, "Ogmios UTxO");
-  if (typeof parsed.address !== "string" || !addresses.has(parsed.address))
-    throw new Error("Ogmios UTxO lies outside the requested addresses");
-  const valueRecord = record(parsed.value, "Ogmios UTxO Value");
-  const ada = record(valueRecord.ada, "Ogmios UTxO ADA");
-  const assets: Assets = { lovelace: quantity(ada.lovelace) };
-  for (const [policy, rawTokens] of Object.entries(valueRecord)) {
-    if (policy === "ada") continue;
-    bytes(policy, "Ogmios asset policy", 28);
-    for (const [name, amount] of Object.entries(
-      record(rawTokens, "Ogmios asset map"),
-    )) {
-      bytes(name, "Ogmios asset name");
-      if (name.length > 64)
-        throw new Error("Ogmios asset name exceeds 32 bytes");
-      assets[policy + name] = quantity(amount);
-    }
-  }
-  if (parsed.datum !== undefined && parsed.datumHash !== undefined)
-    throw new Error("Ogmios UTxO has both inline datum and datum hash");
-  return Object.freeze({
-    txHash: bytes(
-      record(parsed.transaction, "Ogmios transaction").id,
-      "Ogmios transaction id",
-      32,
-    ),
-    outputIndex: natural(parsed.index, "Ogmios output index"),
-    address: parsed.address,
-    assets: Object.freeze(assets),
-    ...(parsed.datum === undefined
-      ? {}
-      : { datum: bytes(parsed.datum, "Ogmios inline datum") }),
-    ...(parsed.datumHash === undefined
-      ? {}
-      : { datumHash: bytes(parsed.datumHash, "Ogmios datum hash", 32) }),
-    hasReferenceScript: parsed.script !== undefined,
-  });
-};
 
 /** Ogmios has no address index, so every address-scope ledger query walks the
  * whole UTxO set, and concurrent scans by other clients of the same node
@@ -183,8 +109,10 @@ export const readAcquiredLedgerSnapshot = async ({
     throw new Error("Ledger snapshot requires nonempty addresses");
   const selectedPoint = at === undefined ? undefined : point(at);
   const selectedReferences = outputReferences?.map((ref) => ({
-    transaction: { id: bytes(ref.txHash, "Requested transaction id", 32) },
-    index: natural(ref.outputIndex, "Requested output index"),
+    transaction: {
+      id: ogmiosBytes(ref.txHash, "Requested transaction id", 32),
+    },
+    index: ogmiosNatural(ref.outputIndex, "Requested output index"),
   }));
   if (selectedReferences?.length === 0)
     throw new Error("Exact-reference snapshot requires candidates");
@@ -205,7 +133,7 @@ export const readAcquiredLedgerSnapshot = async ({
     captureSignal.throwIfAborted();
     const requestedPoint =
       selectedPoint ?? point(await session.request("queryLedgerState/tip", {}));
-    const acquired = record(
+    const acquired = ogmiosRecord(
       await session
         .request("acquireLedgerState", { point: requestedPoint })
         .catch((cause: unknown) => {
@@ -270,7 +198,7 @@ export const readAcquiredLedgerSnapshot = async ({
       throw new L1SourceUnavailable(
         "Ogmios ledger point changed during acquired capture",
       );
-    const released = record(
+    const released = ogmiosRecord(
       await session.request("releaseLedgerState", {}),
       "Ogmios release",
     );

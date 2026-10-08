@@ -1,7 +1,6 @@
 import { SqlClient } from "@effect/sql";
 import { Effect, Exit, Option, Ref } from "effect";
 
-import * as Authority from "../database/eventHistoryAuthority.js";
 import {
   MempoolLedgerDB,
   MpfEngineStateDB,
@@ -14,8 +13,7 @@ import {
 } from "../mpf/index.js";
 import type { NodeConfigDep } from "./config.js";
 import type { Database } from "./database.js";
-import { withHistoryWrite } from "./event-history-producer.js";
-import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
+import { withFollowerWrite } from "./follower-write-gate.js";
 import type { Globals } from "./globals.js";
 import { landedStateQueueSnapshot } from "./landed-state-queue.js";
 import { Lucid } from "./lucid.js";
@@ -66,7 +64,11 @@ export const requirePinnedNativeOwnerBinary = (
 export const initializeArchitectureGOwner = <R = never>(
   globals: Globals,
   nodeConfig: NodeConfigDep,
-  preparation?: HistoryRecoveryPreparation,
+  /**
+   * Re-checked around each SQL write when a driver recompute runs the
+   * initialization: it fails once the recompute was superseded.
+   */
+  assertCurrent?: Effect.Effect<void, unknown>,
   beforeJournalReplay?: (
     owner: ProductionNativeMpfOwnerService,
   ) => Effect.Effect<void, unknown, R>,
@@ -79,15 +81,14 @@ export const initializeArchitectureGOwner = <R = never>(
     yield* requirePinnedNativeOwnerBinary(nodeConfig);
 
     const writeSql = <A, E, R>(work: Effect.Effect<A, E, R>) =>
-      preparation === undefined
-        ? withHistoryWrite(work)
-        : Authority.withRecovery(
-            preparation.token,
-            preparation.assertCurrent.pipe(
+      withFollowerWrite(
+        assertCurrent === undefined
+          ? work
+          : assertCurrent.pipe(
               Effect.zipRight(work),
-              Effect.tap(() => preparation.assertCurrent),
+              Effect.tap(() => assertCurrent),
             ),
-          );
+      );
     const sql = yield* SqlClient.SqlClient;
     const initializedStores = yield* sql<{ root_hex: string | null }>`
       SELECT root_hex FROM mpf_engine_state

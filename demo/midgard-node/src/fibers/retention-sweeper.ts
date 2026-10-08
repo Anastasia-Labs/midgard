@@ -191,7 +191,7 @@ export const fetchRetentionL1View: Effect.Effect<
  *    transaction still in the mempool is kept);
  *  - ended state-queue mutation leases past the window;
  *  - with an L1 view and a verified deployment, finalized journals past the
- *    window, under the history producer permit
+ *    window, under the follower write gate
  *    (`withRetentionHistoryProducer`), each kept while challenge-relevant.
  * Deposit and withdrawal rows are retained: settlement proofs recompute the
  * whole header's root, and a completed job records confirmation, without the

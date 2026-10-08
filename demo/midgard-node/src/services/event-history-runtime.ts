@@ -1,6 +1,7 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
+import type { SqlError } from "@effect/sql/SqlError";
 import { Effect } from "effect";
 
 import {
@@ -10,13 +11,10 @@ import {
 import { DatabaseError } from "../database/utils/common.js";
 import { makeEventHistorySourceBinding } from "../l1-event-history-source.js";
 import type { HistoryTransportOptions } from "../l1-event-history-transport.js";
-import {
-  landedBlockRebaseDisposition,
-  prepareLandedBlockRebase,
-} from "../landed-blocks/index.js";
 import { NodeConfig } from "./config.js";
 import { makeEventHistoryOwner } from "./event-history-owner.js";
 import { HistoryPreparation } from "./event-history-recovery.js";
+import type { Globals } from "./globals.globals.js";
 import { ingestAtFollowerView } from "./l1-follower.recovery.js";
 import { Lucid } from "./lucid.js";
 import { MempoolLedgerCache } from "./mempool-ledger-cache.js";
@@ -64,25 +62,14 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
         }),
     });
     return yield* makeEventHistoryOwner<
-      | E
-      | DatabaseError
-      | Effect.Effect.Error<ReturnType<typeof prepareLandedBlockRebase>>,
-      | R
-      | SqlClient.SqlClient
-      | Effect.Effect.Context<ReturnType<typeof prepareLandedBlockRebase>>
+      E | DatabaseError | SqlError,
+      R | SqlClient.SqlClient | Globals
     >({
       ...input,
       prepareCompletion: (checkpoint, preparation) =>
         (
           input.prepareCompletion?.(checkpoint, preparation) ?? Effect.void
         ).pipe(Effect.provideService(HistoryPreparation, preparation)),
-      // A rollback, or a landed correction that removed blocks the working
-      // ledger held, is recomputed by the landed-block rebase: it disposes
-      // of the own journals that cannot land, revives the abandoned ones
-      // that landed (whichever lands wins), and moves native MPF and the
-      // working ledger to the processed landed chain.
-      preparePendingReconciliation: (_checkpoint, preparation) =>
-        prepareLandedBlockRebase(preparation),
       binding,
       histories,
       cache,
@@ -95,8 +82,6 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
         identity.manifest?.steps.initProtocol.txHash,
       reconcile: (change) =>
         Effect.gen(function* () {
-          const rebase = yield* landedBlockRebaseDisposition;
-          if (rebase !== undefined) return rebase;
           const pending = yield* pendingHistoryLedgerDisposition(change);
           if (pending !== undefined) return pending;
           // The follower-change driver writes the event rows (E-N1-2

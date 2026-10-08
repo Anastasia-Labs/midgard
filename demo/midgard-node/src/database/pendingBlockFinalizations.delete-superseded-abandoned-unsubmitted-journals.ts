@@ -2,7 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import * as MutationJobsDB from "./mutationJobs.js";
 import {
   ACTIVE_STATUSES,
@@ -44,7 +44,7 @@ export const reviveAbandonedCanonical = (
       );
     }
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`reviveAbandonedCanonical ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -85,7 +85,7 @@ export const markFinalized = (
       );
     }
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markFinalized ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -191,7 +191,7 @@ export const deleteSupersededAbandonedUnsubmitted = (): Effect.Effect<
     );
     return deleted;
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`deleteSupersededAbandonedUnsubmitted ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -225,7 +225,7 @@ export const markAbandoned = (
       "pending block journal abandoned before its commit was signed",
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markAbandoned ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -270,7 +270,7 @@ export const markCorrectedAfterStateQueueRemoval = (
       `block removed on L1 by admitted state-queue correction ${transitionDigest}`,
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markCorrectedAfterStateQueueRemoval ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -298,7 +298,7 @@ export const markUnsubmittedAbandoned = (
     );
     return true;
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markUnsubmittedAbandoned ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,

@@ -1,10 +1,12 @@
 /**
- * One production-owner emulator lifecycle with the node services of
+ * One production emulator lifecycle (the follower-change driver over the
+ * follower stand-in) with the node services of
  * `commit-replacement-state-queue.ts`, and the journey steps the
  * state-queue replacement journeys share: commits through the production
  * worker with the follower's journal (landed, or lost before any block),
  * deposits, the journal and database reads they assert through, and one
- * rollback to an ancestor point (the rollback transport follows one fork).
+ * rollback to an ancestor emulator state (the driver's sink sees the rewind
+ * and runs its recompute).
  */
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -20,14 +22,10 @@ import {
   fetchLatestCommittedBlock,
   runCommitWorker,
 } from "../deposit-flow-emulator-shared.js";
-import {
-  followFork,
-  openNodeServices,
-} from "./commit-replacement-state-queue.js";
+import { openNodeServices } from "./commit-replacement-state-queue.js";
 import {
   closeLifecycle,
   finalizeLocally,
-  type Lifecycle,
   nativeRoot,
   readJournal,
   submitDeposit,
@@ -35,8 +33,7 @@ import {
 } from "./correction-admission-scenario.js";
 import { dropPendingEmulatorTransaction } from "./emulator-rollback.js";
 import { emulatorState } from "./emulator-snapshot.js";
-import { openHistoryProductionOwnerLifecycle } from "./history-production-owner-lifecycle.js";
-import { makeRollbackHistoryTransport } from "./history-rollback-transport.js";
+import { openProductionLifecycle } from "./production-lifecycle.js";
 
 const C = Pending.Columns;
 
@@ -55,18 +52,9 @@ export type Journal = Readonly<{
 export type CommitJourney = Awaited<ReturnType<typeof openCommitJourney>>;
 
 export const openCommitJourney = async () => {
-  let source: ReturnType<typeof makeRollbackHistoryTransport> | undefined;
-  const h = await openHistoryProductionOwnerLifecycle({
-    transportFactory: (recorded) =>
-      (source = makeRollbackHistoryTransport(recorded)),
-  });
-  /** `live` is `h`, or after the rollback, its fork. `winner` is the landed
-   * block the next commit must build on. */
-  const state: {
-    live: Lifecycle;
-    observer: Pick<Lifecycle["observer"], "forgetDropped">;
-    winner: string | undefined;
-  } = { live: h, observer: h.observer, winner: undefined };
+  const h = await openProductionLifecycle();
+  /** `winner` is the landed block the next commit must build on. */
+  const state: { winner: string | undefined } = { winner: undefined };
   const node = await openNodeServices(h);
   await advanceEmulatorPastLatestBlockEndTime(h.fixture);
   await synchronizeBounded(h);
@@ -76,7 +64,7 @@ export const openCommitJourney = async () => {
   /** One commit attempt through the production worker with the follower's
    * journal, up to its first output that is not a scheduler wait. */
   const commitOutput = async () => {
-    const { fixture, globals, production } = state.live;
+    const { fixture, globals, production } = h;
     const lucidService = node.nodeLucid;
     for (let attempt = 1; attempt <= 4; attempt += 1) {
       await alignCommitSchedulerBeforeTestWorker({
@@ -84,7 +72,7 @@ export const openCommitJourney = async () => {
         lucidService,
         targetEndTimeMs: Date.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
-      await synchronizeBounded(state.live);
+      await synchronizeBounded(h);
       await node.mirrorTracked();
       const output = await runCommitWorker(
         fixture.contracts,
@@ -134,7 +122,7 @@ export const openCommitJourney = async () => {
   /** Rows of the node's database, read through the running handle. */
   const query = <A>(
     read: (sql: SqlClient.SqlClient) => Effect.Effect<A, unknown>,
-  ) => state.live.command(Effect.flatMap(SqlClient.SqlClient, read));
+  ) => h.command(Effect.flatMap(SqlClient.SqlClient, read));
 
   /** A commit whose transaction the emulator loses before any block. */
   const commitUnlanded = async () => {
@@ -143,9 +131,9 @@ export const openCommitJourney = async () => {
       h.fixture.emulator,
       committed.submittedTxHash,
     );
-    state.observer.forgetDropped(committed.submittedTxHash);
+    h.observer.forgetDropped(committed.submittedTxHash);
     h.fixture.operatorLucid.clearUTxOOverride();
-    await synchronizeBounded(state.live);
+    await synchronizeBounded(h);
     return journalOf(committed.submittedHeaderHash);
   };
 
@@ -155,7 +143,7 @@ export const openCommitJourney = async () => {
     expect(
       await h.fixture.operatorLucid.awaitTx(committed.submittedTxHash),
     ).toBe(true);
-    await synchronizeBounded(state.live);
+    await synchronizeBounded(h);
     const landed = await journalOf(committed.submittedHeaderHash);
     await node.recordLanding(landed.signed);
     expect(await node.processLanded()).toBeUndefined();
@@ -165,10 +153,7 @@ export const openCommitJourney = async () => {
   return {
     h,
     node,
-    source: source!,
-    get live() {
-      return state.live;
-    },
+    live: h,
     get winner() {
       return state.winner;
     },
@@ -189,10 +174,10 @@ export const openCommitJourney = async () => {
       )[0]?.status,
     /** A deposit, with the ledger past its inclusion time. */
     deposit: async (lovelace: bigint) => {
-      const inclusion = await submitDeposit(state.live, lovelace);
-      await state.live.deployment.chain.awaitLedgerTime(inclusion + 1000);
+      const inclusion = await submitDeposit(h, lovelace);
+      await h.deployment.chain.awaitLedgerTime(inclusion + 1000);
       vi.setSystemTime(h.fixture.emulator.now());
-      await synchronizeBounded(state.live);
+      await synchronizeBounded(h);
     },
     /** `journal` won: it landed, the node processed it, and it finalizes. */
     expectWinner: async (journal: Journal) => {
@@ -201,34 +186,24 @@ export const openCommitJourney = async () => {
         state: "processed",
         applied: true,
       });
-      await finalizeLocally(state.live, journal.header);
+      await finalizeLocally(h, journal.header);
       expect(await nativeRoot(h)).toBe(journal.root);
       state.winner = journal.header;
     },
-    /** The current point, to roll back to: nothing pending on L1. */
+    /** The current emulator state, to roll back to: nothing pending on L1. */
     ancestor: () => {
       expect(Object.keys(h.fixture.emulator.mempool)).toHaveLength(0);
-      const point = source!.points.at(-1)!.point;
-      expect(point.slot).toBe(h.fixture.emulator.slot);
-      return {
-        id: point.id,
-        height: point.height,
-        state: emulatorState(h.fixture.emulator),
-      };
+      return emulatorState(h.fixture.emulator);
     },
     /** Roll the chain back to `ancestor`; the journey continues on the fork.
-     * The history owner synchronizes unless `synchronize` is false (a
-     * rollback past a landed block's events waits for its processing). */
+     * The node synchronizes unless `synchronize` is false (a rollback past a
+     * landed block's events waits for its processing). */
     rollBackTo: async (
-      ancestor: Parameters<typeof followFork>[0]["ancestor"],
+      ancestor: ReturnType<typeof emulatorState>,
       { synchronize = true } = {},
     ) => {
-      ({ fork: state.live, observer: state.observer } = await followFork({
-        h,
-        source: source!,
-        ancestor,
-      }));
-      if (synchronize) await synchronizeBounded(state.live);
+      await h.rollBackTo(ancestor, { synchronize: false });
+      if (synchronize) await synchronizeBounded(h);
     },
     close: async () => {
       await node.close();

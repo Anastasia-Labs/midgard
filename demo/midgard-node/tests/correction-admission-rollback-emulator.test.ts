@@ -37,13 +37,13 @@ import {
   captureEmulatorChain,
   rollBackEmulatorChain,
 } from "./helpers/emulator-rollback.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 import { prepareTimedOutTailRemoval } from "./helpers/history-timeout-correction-fixture.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 /** No journal has this header: `observe` before any block is committed. */
 const NO_BLOCK = "00".repeat(32);
 
-/** Advance `blocks` L1 blocks, then let the history owner synchronize. */
+/** Advance `blocks` L1 blocks, then let the follower driver synchronize. */
 const advance = async (h: Lifecycle, blocks: number) => {
   if (blocks > 0) h.fixture.emulator.awaitBlock(blocks);
   vi.setSystemTime(new Date(h.fixture.emulator.now()));
@@ -58,7 +58,7 @@ const clearWalletPins = (h: Lifecycle) => {
 };
 
 it("admits a landed correction, recomputes its rollback at cd + 1 and its relanding exactly once, then commits, merges and settles on the parent", async () => {
-  const h = await openHistoryProductionOwnerLifecycle({ landedBlocks: true });
+  const h = await openProductionLifecycle({ landedBlocks: true });
   const { fixture } = h;
   try {
     const { confirmationDepth: cd, automaticRecoveryMaxDepth: k } =

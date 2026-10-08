@@ -11,7 +11,7 @@ import { Effect } from "effect";
 
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { type LedgerSnapshotOutput } from "../l1-ledger-snapshot.js";
+import { type LedgerSnapshotOutput } from "../l1-ogmios-utxo.js";
 
 const C = Pending.Columns;
 

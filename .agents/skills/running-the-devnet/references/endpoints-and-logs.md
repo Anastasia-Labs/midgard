@@ -56,11 +56,11 @@ Sources:
   30-minute `readyMs` deadline). Any reason `/readyz` publishes, including one
   that stays raised after its cause is gone, stops the journey there.
 - Node `/readyz` reasons you will meet at startup include
-  `history_owner_not_ready`, `history_follower_lagging:<lag>:<max>`,
-  `provider_query_unhealthy:l1-provider`, `native_mpf_owner_unavailable` and
-  `unfinished_local_mutation_jobs:<n>`, on top of the worker-heartbeat,
-  backlog and database checks. `/readyz` never checks that blocks are
-  committing; that is bar 4.
+  `l1_follower_view_unapplied`, `l1_driver_recompute_pending`,
+  `l1_follower_catching_up`, `provider_query_unhealthy:l1-provider`,
+  `native_mpf_owner_unavailable` and `unfinished_local_mutation_jobs:<n>`, on
+  top of the worker-heartbeat, backlog and database checks. `/readyz` never
+  checks that blocks are committing; that is bar 4.
 
 ## Logs
 

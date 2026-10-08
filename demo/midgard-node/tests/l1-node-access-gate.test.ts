@@ -16,13 +16,14 @@ const SOURCE = /\.(?:ts|mts|js|mjs)$/u;
 
 /**
  * The files that may still name `L1_OGMIOS_KEY` or `L1_KUPO_KEY`: the
- * event-history owner's transport inputs, read once into the config and handed
- * to the owner, and the `history-genesis-pin` command's Ogmios URL default.
+ * config keys the event-history owner took its transport from (read into
+ * the config; no runtime path reads them since the follower-change driver
+ * took the owner's duties), and the `history-genesis-pin` command's Ogmios
+ * URL default.
  */
 const OWNER_ENDPOINT_READERS = new Set([
   "src/services/config.make-config.ts",
   "src/services/config.node-config-dep.ts",
-  "src/commands/listen.run-node.ts",
   "src/commands/history-genesis-pin.ts",
   "src/index.registration-2.ts",
   "scripts/capture-node-slot-config.mjs",

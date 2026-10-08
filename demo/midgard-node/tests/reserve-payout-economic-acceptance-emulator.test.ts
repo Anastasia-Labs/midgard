@@ -8,7 +8,7 @@ import "@lucid-evolution/uplc";
 import "vitest";
 import "../src/services/history-commit-window.js";
 import "./deposit-flow-emulator-shared.js";
-import "./helpers/history-production-owner-lifecycle.js";
+import "./helpers/production-lifecycle.js";
 import "./helpers/redeemer-inspection.js";
 import "./reserve-payout-economic-acceptance-emulator.evaluation-context.js";
 
@@ -44,8 +44,8 @@ import {
   utxosProgram,
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 import { findRedeemerDataCbor } from "./helpers/redeemer-inspection.js";
 import {
   evaluationContext,
@@ -58,7 +58,7 @@ import {
  * evaluated only; their unchanged signatures/integrity hashes do not constitute
  * ledger-valid transactions, and none are submitted to the emulator. */
 it("enforces reserve sibling/accounting and exact payout economics on a real settled withdrawal", async () => {
-  const h = await openHistoryProductionOwnerLifecycle();
+  const h = await openProductionLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const context = { fixture, lucidService, globals, production };
   const lucid = fixture.operatorLucid;

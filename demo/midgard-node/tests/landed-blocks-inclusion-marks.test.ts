@@ -1,18 +1,16 @@
 /**
  * Inclusion marks on the pending tables (plan §7.3, N3; migration 0013), on
  * the node database through the production writes and the production
- * working-ledger rebase (`prepareLandedBlockRebase`, with the modelled
- * native MPF owner of `landed-blocks-rebase.fixture.ts`):
+ * working-ledger rebase (the follower-change driver's `rebaseIfDue`, with
+ * the modelled native MPF owner of `landed-blocks-rebase.fixture.ts`):
  *
  * - this node's local finalization of its own block, and the processing
  *   insert of a landed block, keep the block's rows in the pending tables,
  *   marked by the block; the rollback of the block clears the marks, so a
- *   later rebuild reads its members as pending and the batch closure
- *   rejects them with a rejected co-member;
+ *   later rebuild reads its members as pending again;
  * - an own block that lands and folds with no rebase between leaves its
- *   receipt members recorded settled and its rows marked until its fold is
- *   final (`final-folds.ts`), so a later rebase is not held by them and a
- *   rejection of a co-member leaves them settled;
+ *   rows marked until its fold is final (`final-folds.ts`), so a later
+ *   rebase neither re-applies nor rejects them;
  * - commit selection reads no marked row;
  * - a skipped submission moves its selected mempool rows to the processed
  *   mempool with the marks they hold at the move, not at the selection.
@@ -29,7 +27,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -50,12 +48,13 @@ import {
   type LandedBlockRow,
   retrieveRows,
 } from "../src/landed-blocks/store.js";
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { selectCommitTxCandidates } from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import {
   finalizeCommittedBlockLocally,
   skippedSubmissionProgram,
 } from "../src/workers/utils/commit-submission.js";
+import { testWrite } from "./helpers/driver-recompute.js";
 import {
   admitPending,
   type SimPendingTx,
@@ -74,14 +73,10 @@ import {
   processOf,
   R0,
   R1,
-  receipt,
   rejections,
-  released,
   root,
   run,
-  settlements,
   sqlRun,
-  unreversedReceipts,
 } from "./landed-blocks-rebase.fixture.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import { resetApplicationTables } from "./utils.js";
@@ -154,12 +149,12 @@ const nativeTx = (
 
 /** `confirmed_ledger` at the frontier holds `E0`; no landed block yet. */
 const seedFrontier = async (globals: Globals) => {
-  await released(globals);
+  // The reset leaves the gate unapplied, so the seed runs as a fixture.
+  await run(globals, resetApplicationTables);
   await run(
     globals,
-    withHistoryWrite(
+    testWrite(
       Effect.gen(function* () {
-        yield* resetApplicationTables;
         yield* ConfirmedLedgerDB.insertMultiple([
           ...(yield* ledgerRows([E0], new Map())),
         ]);
@@ -189,7 +184,6 @@ const finalizeOwnLocally = async (
   const transactionsMpf = {
     resetToEmpty: () => Effect.void,
   } as unknown as Parameters<typeof finalizeCommittedBlockLocally>[0];
-  await released(globals);
   await run(
     globals,
     finalizeCommittedBlockLocally(
@@ -199,7 +193,7 @@ const finalizeOwnLocally = async (
       header,
       [],
       { useAmbientProcessedMempool: false },
-    ),
+    ).pipe(testWrite),
   );
 };
 
@@ -230,10 +224,10 @@ const sortedRejections = (pairs: (readonly [Buffer, string])[]) =>
     .sort(([x], [y]) => (x! < y! ? -1 : 1));
 
 describe("inclusion marks on the pending tables", { concurrent: false }, () => {
-  it("rebuilds the members of a rolled-back own block as pending: the batch closure rejects its receipt co-member", async () => {
-    // frontier (E0) -> own block O (E0 -> E1, includes b and d); receipt
-    // {a, b}, a spends E1. O is rolled back; foreign Z (E0 -> E3) lands on
-    // the frontier instead.
+  it("rebuilds the members of a rolled-back own block as pending", async () => {
+    // frontier (E0) -> own block O (E0 -> E1, includes b and d); a spends
+    // E1. O is rolled back; foreign Z (E0 -> E3) lands on the frontier
+    // instead.
     const b = nativeTx(1, [], 1);
     const d = nativeTx(2, [], 2);
     const a = nativeTx(3, [E1.outref], 3);
@@ -243,7 +237,6 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     await run(globals, admitPending([b, d]));
     await finalizeOwnLocally(globals, OWN, [b, d]);
     await run(globals, admitPending([a]));
-    await receipt(globals, [a.id, b.id]);
     await processLanded(globals, {
       headerHash: OWN,
       kind: "own",
@@ -258,7 +251,6 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     // The production rollback of O, then the processing insert of Z.
     const left = await run(globals, retrieveRows);
     await sqlRun(globals, () => rollBackRows(left, []));
-    expect(await settlements(globals)).toEqual([]);
     await processLanded(globals, {
       headerHash: REPLACEMENT,
       utxosRoot: R3,
@@ -266,29 +258,29 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     });
     native.reaches = R3;
     const shown = await attempt(globals);
-    expect(Exit.isSuccess(shown.exit)).toBe(true);
-    expect(shown.failure).toBeUndefined();
+    expect(shown.hold).toBeUndefined();
     expect(shown.reasons).not.toContain(LANDED_BLOCK_REBASE_FAILED);
-    expect(shown.disposition).toBeUndefined();
+    expect(shown.due).toBe("none");
     expect(shown.applied).toEqual([true]);
     expect(await rejections(globals)).toEqual(
-      sortedRejections([
-        [a.id, REBASE_REJECTIONS.direct.code],
-        [b.id, REBASE_REJECTIONS.batch.code],
-      ]),
+      sortedRejections([[a.id, REBASE_REJECTIONS.direct.code]]),
     );
-    expect(await unreversedReceipts(globals)).toBe(0);
-    // d is pending again and applies on Z.
-    expect(await pendingPage(globals)).toEqual([hex(d.id)]);
+    // b and d are pending again and apply on Z.
+    expect((await pendingPage(globals)).sort()).toEqual(
+      [hex(b.id), hex(d.id)].sort(),
+    );
     expect(shown.working.sort()).toEqual(
-      [hex(E3.outref), hex(d.produced[0]!.outref)].sort(),
+      [
+        hex(E3.outref),
+        hex(b.produced[0]!.outref),
+        hex(d.produced[0]!.outref),
+      ].sort(),
     );
   });
 
-  it("rebuilds the members of a rolled-back foreign block as pending: the batch closure rejects its receipt co-member", async () => {
-    // frontier (E0) -> foreign X (E0 -> E1, includes b and d); receipt
-    // {a, b}, a spends E1. X is rolled back; foreign Z (E0 -> E3) lands on
-    // the frontier instead.
+  it("rebuilds the members of a rolled-back foreign block as pending", async () => {
+    // frontier (E0) -> foreign X (E0 -> E1, includes b and d); a spends E1.
+    // X is rolled back; foreign Z (E0 -> E3) lands on the frontier instead.
     const b = nativeTx(11, [], 1);
     const d = nativeTx(12, [], 2);
     const a = nativeTx(13, [E1.outref], 3);
@@ -296,13 +288,11 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     const globals = await processOf(native);
     await seedFrontier(globals);
     await run(globals, admitPending([b, d, a]));
-    await receipt(globals, [a.id, b.id]);
     await processLanded(globals, { headerHash: FOREIGN, txIds: [b.id, d.id] });
     const first = await attempt(globals);
     expect(first.failure).toBeUndefined();
     expect(first.applied).toEqual([true]);
     expect(await rejections(globals)).toEqual([]);
-    expect(await settlements(globals)).toEqual([[hex(b.id), FOREIGN]]);
     // X's members are not pending while X holds them.
     expect(await pendingPage(globals)).toEqual([hex(a.id)]);
 
@@ -315,28 +305,29 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     });
     native.reaches = R3;
     const shown = await attempt(globals);
-    expect(Exit.isSuccess(shown.exit)).toBe(true);
-    expect(shown.failure).toBeUndefined();
+    expect(shown.hold).toBeUndefined();
     expect(shown.reasons).not.toContain(LANDED_BLOCK_REBASE_FAILED);
-    expect(shown.disposition).toBeUndefined();
+    expect(shown.due).toBe("none");
     expect(shown.applied).toEqual([true]);
     expect(await rejections(globals)).toEqual(
-      sortedRejections([
-        [a.id, REBASE_REJECTIONS.direct.code],
-        [b.id, REBASE_REJECTIONS.batch.code],
-      ]),
+      sortedRejections([[a.id, REBASE_REJECTIONS.direct.code]]),
     );
-    expect(await unreversedReceipts(globals)).toBe(0);
-    expect(await pendingPage(globals)).toEqual([hex(d.id)]);
+    expect((await pendingPage(globals)).sort()).toEqual(
+      [hex(b.id), hex(d.id)].sort(),
+    );
     expect(shown.working.sort()).toEqual(
-      [hex(E3.outref), hex(d.produced[0]!.outref)].sort(),
+      [
+        hex(E3.outref),
+        hex(b.produced[0]!.outref),
+        hex(d.produced[0]!.outref),
+      ].sort(),
     );
   });
 
-  it("keeps the members of an own block that landed and folded with no rebase between settled when a later rebuild rejects a co-member", async () => {
-    // frontier (E0) -> own block O (E0 -> E1, includes b); receipt {a, b},
-    // a spends E1. O lands and folds with no rebase between; foreign Y
-    // (E1 -> E2) on O then rejects a.
+  it("keeps the members of an own block that landed and folded with no rebase between out of a later rebuild that rejects another", async () => {
+    // frontier (E0) -> own block O (E0 -> E1, includes b); a spends E1. O
+    // lands and folds with no rebase between; foreign Y (E1 -> E2) on O
+    // then rejects a.
     const b = nativeTx(21, [], 1);
     const a = nativeTx(22, [E1.outref], 2);
     const native: Native = freshNative();
@@ -345,7 +336,6 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     await run(globals, admitPending([b]));
     await finalizeOwnLocally(globals, OWN, [b]);
     await run(globals, admitPending([a]));
-    await receipt(globals, [a.id, b.id]);
     await processLanded(globals, {
       headerHash: OWN,
       kind: "own",
@@ -355,10 +345,9 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     // The production fold past O: its members stay marked until it is final.
     const foldPorts = {
       confirmView: () => Effect.succeed(true),
-      write: <A, E, R>(work: Effect.Effect<A, E, R>) => withHistoryWrite(work),
+      write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
       ownJournal: () => Effect.succeed({ status: "locally_applied" }),
     } as unknown as LandedBlockPorts<never>;
-    await released(globals);
     await sqlRun(globals, () =>
       foldToRoot(
         foldPorts,
@@ -380,18 +369,15 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     });
     native.reaches = R2;
     const shown = await attempt(globals);
-    expect(Exit.isSuccess(shown.exit)).toBe(true);
-    expect(shown.failure).toBeUndefined();
+    expect(shown.hold).toBeUndefined();
     expect(shown.reasons).not.toContain(LANDED_BLOCK_REBASE_FAILED);
-    expect(shown.disposition).toBeUndefined();
+    expect(shown.due).toBe("none");
     expect(shown.applied).toEqual([true]);
     expect(shown.working).toEqual([hex(E2.outref)]);
-    // a is rejected; b stays settled by O.
+    // a is rejected; b stays marked by O, neither re-applied nor rejected.
     expect(await rejections(globals)).toEqual([
       [hex(a.id), REBASE_REJECTIONS.direct.code],
     ]);
-    expect(await settlements(globals)).toEqual([[hex(b.id), OWN]]);
-    expect(await unreversedReceipts(globals)).toBe(0);
     expect(await pendingPage(globals)).toEqual([]);
     expect(await markedRows(globals)).toEqual([["mempool", hex(b.id), OWN]]);
   });

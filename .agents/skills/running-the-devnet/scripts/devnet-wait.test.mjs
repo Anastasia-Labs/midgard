@@ -80,11 +80,11 @@ test("ready after a slow start: 503 twice, then 200", async () => {
 test("timed out: the service answers but never becomes ready", async () => {
   const url = await serve(() => [
     503,
-    { ready: false, reasons: ["history_owner_not_ready"] },
+    { ready: false, reasons: ["l1_follower_view_unapplied"] },
   ]);
   const { code, output } = await run(["--url", url, "--timeout", "0.5"]);
   assert.equal(code, 2, output);
-  assert.match(output, /history_owner_not_ready/);
+  assert.match(output, /l1_follower_view_unapplied/);
 });
 
 test("unreachable: a refused connection is exit 3, not a timeout", async () => {

@@ -27,6 +27,7 @@ import {
   type AcquiredLedgerSnapshot,
   readAcquiredLedgerSnapshot,
 } from "./l1-ledger-snapshot.js";
+import { losslessCanonicalJson } from "./lossless-canonical-json.js";
 import type { ContractDeploymentIdentityValue } from "./services/midgard-contracts.js";
 
 export const HISTORY_GENESIS_DIGEST_ALGORITHM =
@@ -43,39 +44,7 @@ const requireDigest = (value: string) => {
     throw new Error("History source requires an approved lowercase SHA256 pin");
 };
 
-/** The Shelley response uses integer JSON quantities and string ratios. Reject
- * already-rounded Number values rather than assigning them an exact identity.
- * Bigints are serialized as integer tokens, distinctly from JSON strings. */
-const canonicalValue = (value: unknown): unknown => {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    typeof value === "bigint"
-  )
-    return value;
-  if (typeof value === "number" && Number.isSafeInteger(value)) return value;
-  if (Array.isArray(value)) return value.map(canonicalValue);
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    (Object.getPrototypeOf(value) === Object.prototype ||
-      Object.getPrototypeOf(value) === null)
-  )
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((key) => [
-          key,
-          canonicalValue((value as Record<string, unknown>)[key]),
-        ]),
-    );
-  throw new Error(
-    "History source identity requires losslessly decoded JSON values",
-  );
-};
-export const eventHistoryCanonicalJson = (value: unknown): string =>
-  lossless.stringify(canonicalValue(value));
+export const eventHistoryCanonicalJson = losslessCanonicalJson;
 
 /** Hash only the losslessly decoded Shelley query RESULT, not its RPC envelope
  * or genesis-file bytes. This deliberately does not reuse configurationSha256

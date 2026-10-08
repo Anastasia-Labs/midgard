@@ -4,7 +4,7 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { DatabaseInitializationError } from "../services/index.js";
 import {
   classifyUnfinishedMutationJobOnStartup,
@@ -44,7 +44,7 @@ export const assertStartupMutationJobsRecoverable = Effect.gen(function* () {
       continue;
     }
     if (disposition === "complete") {
-      yield* MutationJobsDB.markCompleted(jobId).pipe(withHistoryWrite);
+      yield* MutationJobsDB.markCompleted(jobId).pipe(withFollowerWrite);
       yield* Effect.logWarning(
         `Startup completed local mutation job ${jobId} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()}): its journal is finalized, so the process that ran it ended after its last durable step and before recording completion.`,
       );
@@ -53,7 +53,7 @@ export const assertStartupMutationJobsRecoverable = Effect.gen(function* () {
     yield* Effect.logWarning(
       job[MutationJobsDB.Columns.KIND] ===
         MutationJobsDB.Kind.ConfirmedMergeFinalization
-        ? `Startup left ${job[MutationJobsDB.Columns.STATUS]} confirmed-merge finalization job ${jobId} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()}) to the runtime: the merge fiber finalizes every merge L1 confirmed before it merges again, once the history owner is Ready. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`
+        ? `Startup left ${job[MutationJobsDB.Columns.STATUS]} confirmed-merge finalization job ${jobId} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()}) to the runtime: the merge fiber finalizes every merge L1 confirmed before it merges again, once the follower-change driver has published its view. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`
         : `Startup left ${job[MutationJobsDB.Columns.STATUS]} local mutation job ${jobId} (attempts=${job[MutationJobsDB.Columns.ATTEMPTS].toString()},journal_status=${journalStatus ?? "none"}) to the runtime: finalization is retried while its block is live, and a correction removing the block also removes the job. last_error=${job[MutationJobsDB.Columns.LAST_ERROR] ?? "none"}`,
     );
   }

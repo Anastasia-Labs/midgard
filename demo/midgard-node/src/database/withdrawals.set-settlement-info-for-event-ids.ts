@@ -2,7 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import {
   Columns,
@@ -101,7 +101,7 @@ export const markAwaitingAsProjected = (
       }),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     sqlErrorToDatabaseError(tableName, "Failed to project withdrawals"),
   );
 
@@ -250,7 +250,7 @@ export const setSettlementInfoForEventIds = (
       ),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`setSettlementInfoForEventIds ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -274,7 +274,7 @@ export const markProjectedByEventIds = (
       }),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     sqlErrorToDatabaseError(tableName, "Failed to assign withdrawal header"),
   );
 
@@ -284,4 +284,4 @@ export const clearProjectedHeaderAssignmentByEventIds = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   projectedEventAdapter
     .clearProjectedHeaderAssignmentByEventIds(ids, projectedHeaderHash)
-    .pipe(withHistoryWrite);
+    .pipe(withFollowerWrite);

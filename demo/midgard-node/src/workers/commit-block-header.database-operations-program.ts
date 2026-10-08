@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
-import { assertHistoryProducer } from "../services/event-history-producer.js";
+import { assertFollowerWrite } from "../services/follower-write-gate.js";
 import { buildOnVerifiedCommitBaseProgram } from "./commit-block-header.build-on-verified-base-program.js";
 import { WorkerOutput } from "./utils/commit-block-header.js";
 
@@ -11,7 +11,7 @@ export const databaseOperationsProgram = (
   ...args: Parameters<typeof buildOnVerifiedCommitBaseProgram>
 ): ReturnType<typeof buildOnVerifiedCommitBaseProgram> =>
   Effect.gen(function* () {
-    yield* assertHistoryProducer(args[0].history);
+    yield* assertFollowerWrite(args[0].history);
     return yield* buildOnVerifiedCommitBaseProgram(...args);
   }).pipe(
     Effect.catchAll((cause) => {
