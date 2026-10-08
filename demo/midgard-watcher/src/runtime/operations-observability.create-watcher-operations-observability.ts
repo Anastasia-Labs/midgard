@@ -318,6 +318,7 @@ export const createWatcherOperationsObservability = (input: {
     if (supervisor.deadlineHealth === "at_risk")
       reasons.push("deadline_at_risk");
     if (supervisor.deadlineHealth === "unsafe") reasons.push("deadline_unsafe");
+    if (supervisor.journalIntegrity !== null) reasons.push("journal_integrity");
     if (supervisor.journalCapacity) reasons.push("journal_capacity");
     if (latestL1Sources.size === 0) reasons.push("l1_source_unavailable");
     else if (sources.stale > 0 || sources.disagreement > 0)

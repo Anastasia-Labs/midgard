@@ -10,6 +10,13 @@ export class WatcherJournalIntegrityError extends Error {
   }
 }
 
+/** A journal that fails integrity holds the watcher unready until an
+ * operator repairs it or starts a fresh deployment; never fatal. */
+export const isWatcherJournalIntegrityError = (
+  error: unknown,
+): error is WatcherJournalIntegrityError =>
+  error instanceof WatcherJournalIntegrityError;
+
 /** A journal at its live-row cap refuses new live rows; never fatal. */
 export class WatcherJournalCapacityError extends Error {
   readonly journal: WatcherJournalName;
@@ -71,6 +78,8 @@ export type WatcherJournalDatabase = Readonly<{
   head(journal: WatcherJournalName): WatcherJournalHead;
   /** Full integrity check of every journal; startup runs it once. */
   verify(): void;
+  /** Refuses the journals for this process: every later call throws. */
+  refuse(journal: WatcherJournalName, detail: string): never;
   close(): void;
 }>;
 

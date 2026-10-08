@@ -23,7 +23,7 @@ import {
   openWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
   WatcherJournalCapacityError,
-  WatcherJournalIntegrityError,
+  type WatcherJournalDatabase,
   type WatcherJournalRow,
 } from "./watcher-journal-database.js";
 import {
@@ -49,21 +49,31 @@ const decisionScope = (decision: HeaderDecision): string =>
     ? watcherObjectiveScope(decision.category, decision.headerHash)
     : `${decision.decision}:${decision.headerHash}`;
 
+/** A row whose body is not a decision of this deployment, or differs from
+ * its key, refuses the journals for this process. */
 const parseRow = (
+  database: WatcherJournalDatabase,
   row: WatcherJournalRow,
   deploymentFingerprint: string,
   launchScope: readonly WatcherInstalledWorkflowCategory[],
 ): WatcherPersistedFaultDecisionRecord => {
-  const decision = parseDecision(row.body, deploymentFingerprint, launchScope);
+  let decision: HeaderDecision;
+  try {
+    decision = parseDecision(row.body, deploymentFingerprint, launchScope);
+  } catch (error) {
+    return database.refuse(
+      JOURNAL,
+      `row ${row.key} body is not a decision: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
   if (
     row.key !== decision.decisionDigest ||
     row.scope !== decisionScope(decision) ||
     row.state !== decision.decision
   )
-    throw new WatcherJournalIntegrityError(
-      JOURNAL,
-      `row ${row.key} differs from its decision`,
-    );
+    database.refuse(JOURNAL, `row ${row.key} differs from its decision`);
   return Object.freeze({
     schemaVersion: WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
     revision: row.revision.toString(),
@@ -94,7 +104,10 @@ const createJournal = (
       JOURNAL,
       afterRevision === undefined ? {} : { afterRevision },
     ))
-      byDigest.set(row.key, parseRow(row, deploymentFingerprint, launchScope));
+      byDigest.set(
+        row.key,
+        parseRow(database, row, deploymentFingerprint, launchScope),
+      );
   };
   const refresh = (): void => {
     const head = database.head(JOURNAL);

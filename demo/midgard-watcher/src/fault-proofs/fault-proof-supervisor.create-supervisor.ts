@@ -38,7 +38,9 @@ import {
 } from "./fault-proof-supervisor.validate-job.js";
 import {
   isWatcherJournalCapacityError,
+  isWatcherJournalIntegrityError,
   openWatcherJournalDatabase,
+  watcherJournalIntegrityFailure,
 } from "./watcher-journal-database.js";
 
 export const createSupervisor = (input: {
@@ -82,6 +84,7 @@ export const createSupervisor = (input: {
       openedQueueJournal = journal;
       return journal;
     });
+  void queueJournal.catch(() => undefined); // each use reports the refusal
   const categories = Object.freeze([...input.dependencies.categories]);
   const journals = () =>
     openWatcherJournalDatabase({
@@ -178,9 +181,12 @@ export const createSupervisor = (input: {
   // validation failure from becoming an unhandled rejection before mounting.
   void done.catch(() => undefined);
 
+  // A refused journal holds the watcher unready (`journal_integrity`) and
+  // never fails the process; every other failure blocks it.
   const block = (error: unknown, job: WatcherFaultProofJob | null): Error => {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
+    if (isWatcherJournalIntegrityError(error)) return normalized;
     if (phase !== "blocked" && phase !== "closed") {
       phase = "blocked";
       blockedJob = job;
@@ -836,6 +842,9 @@ export const createSupervisor = (input: {
               remaining <= BigInt(input.deadlineAlertHeadroomMs)
             ? ("at_risk" as const)
             : ("safe" as const);
+      const journalIntegrity = watcherJournalIntegrityFailure(
+        input.journalRoot,
+      );
       return Object.freeze({
         phase,
         recovered,
@@ -846,7 +855,9 @@ export const createSupervisor = (input: {
         deadlineHealth,
         earliestDeadlineJob,
         remainingSafeStartMs: remaining?.toString() ?? null,
+        journalIntegrity,
         journalCapacity:
+          journalIntegrity === null &&
           openedQueueJournal !== null &&
           watcherJournalCapacityReached(journals()),
       });

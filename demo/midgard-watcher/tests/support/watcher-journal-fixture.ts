@@ -59,11 +59,13 @@ export const recordObjectives = (
   );
 };
 
-/** Writes an authenticated objective row with an arbitrary body, as a bug
- * in an earlier writer could have; recovery must refuse it. */
+/** Writes an authenticated objective row with an arbitrary body, keyed by
+ * its body's scope unless `key` says otherwise, as a bug in an earlier
+ * writer could have; recovery must refuse it. */
 export const recordRawObjectiveRow = (
   journalRoot: string,
   body: Readonly<{ category: string; headerHash: string }>,
+  key?: string,
 ): void => {
   const scope = watcherObjectiveScope(body.category, body.headerHash);
   openWatcherJournalDatabase({
@@ -71,7 +73,7 @@ export const recordRawObjectiveRow = (
     authenticationKey: TEST_JOURNAL_KEY,
   }).transaction((tx) =>
     tx.put("fault_proof_objectives", {
-      key: scope,
+      key: key ?? scope,
       scope,
       state: "open",
       body,

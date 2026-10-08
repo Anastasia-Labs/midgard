@@ -1,4 +1,5 @@
 import type { WatcherInstalledWorkflowCategory } from "../fault-proofs/fault-proof-application.js";
+import { isWatcherJournalIntegrityError } from "../fault-proofs/watcher-journal-database.js";
 import type { WatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
 import { createWatcherProverFundingAuthorityFactory } from "../funding/prover-funding-authority.js";
 import { openWatcherSqliteProverFundingReservationStore } from "../funding/sqlite-prover-funding-reservation-store.js";
@@ -36,7 +37,11 @@ export const openWatcherProverFundingRuntime = async (input: {
       store: store.store,
     });
     // No supervisor jobs exist yet; reclaim reservations left before any signed attempt.
-    await factory.releaseUnused();
+    // A refused decision journal keeps them reserved: the supervisor reports
+    // journal_integrity once the operations server binds.
+    await factory.releaseUnused().catch((error: unknown) => {
+      if (!isWatcherJournalIntegrityError(error)) throw error;
+    });
     return { store, factory };
   } catch (cause) {
     store.close();

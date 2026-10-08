@@ -14,6 +14,7 @@ export const supervisor = () => {
     deadlineHealth: "safe",
     earliestDeadlineJob: null,
     remainingSafeStartMs: "1000000",
+    journalIntegrity: null,
     journalCapacity: false,
   });
   return {

@@ -23,17 +23,18 @@ import {
   watcherDurableStoreBytesSha256,
 } from "../../src/storage/durable-store.js";
 import {
-  clientFor,
   daPayload,
   EVENT_ENTRY_BYTES,
-  EVENT_KEY,
   EVENT_PROOF_BYTES,
   FINGERPRINT,
   HEADER_HASH,
   identityOf,
   MARKER,
-  nonmembershipClient,
   PROOF_BUNDLE_BYTES,
+  publicDaEventToStep,
+  publicDaPayload,
+  publicDaProofBundle,
+  publicDaTraceStep,
   sha256Hex,
   TRACE_PROOF_BYTES,
   TRACE_STEP_BYTES,
@@ -144,9 +145,7 @@ export let payloadRecord: WatcherCanonicalBlockRecord;
 beforeEach(async () => {
   innerCbor = encodeDaPayload(daPayload(HEADER_HASH));
   envelope = await wrapDaPayload(innerCbor, { mode: "identity" });
-  const payload = await clientFor(envelope).fetchPayloadByHeader({
-    headerHash: HEADER_HASH,
-  });
+  const payload = await publicDaPayload(envelope);
   payloadRecord = makeWatcherCanonicalDaPayloadRecord({
     payload,
     context: contextOf(),
@@ -158,7 +157,7 @@ beforeEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe("W21 canonical block store: hash-addressed persistence", () => {
-  it("persists the exact envelope bytes returned by the public DA client", async () => {
+  it("persists the exact envelope bytes of a verified public DA payload", async () => {
     const backend = new MemoryAtomicBackend();
     const result = await persistWatcherCanonicalPublicBytes({
       backend,
@@ -180,7 +179,7 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
     expect(payloadRecord.metadata.envelopeSha256).not.toBe(
       payloadRecord.metadata.innerSha256,
     );
-    // Hash addressing: the client's inputId is the envelope digest.
+    // Hash addressing: the record's inputId is the envelope digest.
     expect(payloadRecord.input.inputId).toBe(
       payloadRecord.metadata.envelopeSha256,
     );
@@ -217,35 +216,23 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
   });
 
   it("persists proof-bundle, trace-step, and event-to-step artifacts under proof_input", async () => {
-    const client = clientFor(envelope);
     const backend = new MemoryAtomicBackend();
     const identity = identityOf();
 
     const bundle = makeWatcherCanonicalProofBundleRecord({
-      proofBundle: await client.fetchProofBundleByHeader({
-        headerHash: HEADER_HASH,
-      }),
+      proofBundle: publicDaProofBundle(),
       context: contextOf(),
     });
     const traceStep = makeWatcherCanonicalTraceStepRecord({
-      traceStep: await client.fetchTraceStepByIndex({
-        headerHash: HEADER_HASH,
-        stepIndex: 3,
-      }),
+      traceStep: publicDaTraceStep(),
       context: contextOf(),
     });
     const entry = makeWatcherCanonicalEventToStepRecord({
-      eventToStep: await client.fetchEventToStepByEvent({
-        headerHash: HEADER_HASH,
-        eventKey: EVENT_KEY,
-      }),
+      eventToStep: publicDaEventToStep(),
       context: contextOf(),
     });
     const nonmembership = makeWatcherCanonicalEventToStepRecord({
-      eventToStep: await nonmembershipClient().fetchEventToStepByEvent({
-        headerHash: HEADER_HASH,
-        eventKey: EVENT_KEY,
-      }),
+      eventToStep: publicDaEventToStep(null),
       context: contextOf(),
     });
 
