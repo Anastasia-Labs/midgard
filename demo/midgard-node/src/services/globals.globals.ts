@@ -5,7 +5,6 @@ import type { OperatorMembershipState } from "../fibers/operator-membership.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import type { EventHistoryOwner } from "./event-history-owner.js";
-import type { ForeignBaseVerificationState } from "./foreign-base-verification.js";
 import type { IdleBackoffState } from "./globals.idle-backoff.js";
 import {
   initialL1ControlPlaneActivity,
@@ -139,8 +138,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       state: "starting",
       detail: "settlement worker starting",
     });
-    const FOREIGN_BASE_VERIFICATION =
-      yield* Ref.make<ForeignBaseVerificationState>({ status: "unobserved" });
     const EVENT_HISTORY_OWNER = yield* Ref.make<EventHistoryOwner | undefined>(
       undefined,
     );
@@ -245,7 +242,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       EVENT_HISTORY_OWNER,
       L1_FOLLOWER,
       L1_HEAD_SEQUENCE,
-      FOREIGN_BASE_VERIFICATION,
       ADMISSION_BACKLOG_GAUGE,
       LOCAL_FINALIZATION_PENDING,
       HEARTBEAT_BLOCK_COMMITMENT,

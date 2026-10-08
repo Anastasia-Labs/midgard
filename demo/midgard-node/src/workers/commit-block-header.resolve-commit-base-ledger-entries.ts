@@ -9,18 +9,29 @@ import {
 import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
 import {
+  landedLedger,
+  ledgerAt,
+  ledgerEntries,
+} from "../landed-blocks/ledger.js";
+import { retrieveRows } from "../landed-blocks/store.js";
+import {
   computeLedgerMpfRootFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
   utxoToLedgerInsertMaterial,
 } from "../mpf/index.js";
+import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
 import { Database, NodeConfig } from "../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
-import { resolveVerifiedCommitBase } from "./commit-block-header.resolve-verified-commit-base.js";
 import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.select-authenticated-foreign-base-candidate.js";
 import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,
 } from "./utils/commit-block-header.js";
+
+/** Why a commit waits on a foreign tail landed-block processing has not
+ * applied to the working ledger yet. */
+export const LANDED_COMMIT_BASE_PENDING =
+  "The foreign commit base is not a processed landed block the working ledger holds yet";
 
 export const resolveCommitBaseLedgerEntries = ({
   availableConfirmedBlock,
@@ -139,16 +150,31 @@ export const resolveCommitBaseLedgerEntries = ({
               ledgerPayloadAggregateFromEntries(snapshot.entries),
           } satisfies ResolvedCommitBaseLedgerEntries;
         }
-        // A root match cannot authenticate a foreign block. Preflight's
-        // complete-prefix verifier is mandatory even for unchanged UTxO roots.
-        const verified = yield* resolveVerifiedCommitBase(latestBlock);
+        // A foreign tail is built on only once landed-block processing
+        // replayed it to its header's root and the rebase applied it: its
+        // post-state is the processed landed ledger at that header.
+        const landed = yield* landedLedger(yield* retrieveRows);
+        const at =
+          landed === undefined ? undefined : ledgerAt(landed, headerHash);
+        if (
+          at === undefined ||
+          at.root !== header.utxosRoot ||
+          currentLedgerRootHex !== header.utxosRoot ||
+          (at.row !== undefined && !at.row.applied)
+        )
+          return yield* Effect.fail(
+            new ForeignBlockVerificationError({
+              foreignHeaderHash: headerHash,
+              reason: "missing",
+              detail: LANDED_COMMIT_BASE_PENDING,
+            }),
+          );
+        const entries = ledgerEntries(at.ledger);
         return {
-          source: `verified-foreign:${verified.headerHash}`,
-          entries: verified.entries,
-          root: verified.root,
-          utxoPayloadAggregate: ledgerPayloadAggregateFromEntries(
-            verified.entries,
-          ),
+          source: `landed:${headerHash}`,
+          entries,
+          root: at.root,
+          utxoPayloadAggregate: ledgerPayloadAggregateFromEntries(entries),
         } satisfies ResolvedCommitBaseLedgerEntries;
       }
     }

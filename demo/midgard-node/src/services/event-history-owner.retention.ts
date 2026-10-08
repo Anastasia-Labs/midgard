@@ -1,8 +1,6 @@
 import { Effect } from "effect";
 
-import * as ForeignCensus from "../database/eventHistoryForeignCensus.js";
 import * as Journal from "../database/eventHistoryJournal.js";
-import { foreignNativeAdoptionHoldSlot } from "../database/foreignNativeAdoptions.js";
 import { settlementRetentionHoldSlot } from "../database/settlement.js";
 import type { EventHistorySourceBinding } from "../l1-event-history-source.js";
 import { HistoryOwnerUnavailable } from "./event-history-owner.history-owner-change.js";
@@ -25,31 +23,13 @@ export const makeRetainedHistoryAppender = <E, R>(input: {
       appended: Journal.Appended,
     ) => Effect.Effect<Journal.Checkpoint, E2, R2>,
   ) =>
-    Effect.all([
-      settlementRetentionHoldSlot(input.binding.manifestId),
-      foreignNativeAdoptionHoldSlot(
-        input.binding.digest,
-        input.rollbackHorizon,
-      ),
-    ]).pipe(
-      Effect.map((slots) => {
-        const held = slots.filter((slot): slot is number => slot !== undefined);
-        return held.length === 0 ? undefined : Math.min(...held);
-      }),
+    settlementRetentionHoldSlot(input.binding.manifestId).pipe(
       Effect.flatMap((holdSlot) =>
-        ForeignCensus.append({
-          binding: input.binding,
-          block: prepared.block,
-          receipt: prepared.receipt,
-        }).pipe(
-          Effect.zipRight(
-            Journal.append(input.binding, prepared, reconcile, {
-              tipHeight,
-              horizon: input.rollbackHorizon,
-              holdSlot,
-            }),
-          ),
-        ),
+        Journal.append(input.binding, prepared, reconcile, {
+          tipHeight,
+          horizon: input.rollbackHorizon,
+          holdSlot,
+        }),
       ),
       Effect.flatMap((appended) =>
         appended.applied

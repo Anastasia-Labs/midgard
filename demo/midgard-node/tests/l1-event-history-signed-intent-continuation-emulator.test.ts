@@ -494,11 +494,6 @@ it("retains the original signed intent through an accepted queue pointer continu
     );
     diagnostic.recovery = recovery;
     expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
-    expect(recovery.foreignBaseVerification).toMatchObject({
-      status: "verified",
-      foreignHeaderHash: child.headerHash,
-      verifiedHeaderHashes: [child.headerHash],
-    });
     if (recovery.type !== "SuccessfulLocalFinalizationRecoveryOutput")
       throw new Error("Canonical intent requires native local finalization");
     expect(recovery.finalizedHeaderHash).toBe(accepted.headerHash);

@@ -41,7 +41,7 @@ export const decodeStoredPayload = ({
       }).then((unwrapped) => SDK.decodeDaPayload(unwrapped.innerBytes));
 
 /** Construct a retained row only from the canonical header and acquired bytes.
- * The caller persists it after whole-prefix replay, census and rebinding. */
+ * The caller persists it once the block's replay reached its header's root. */
 export const foreignRetainedDaInsert = (
   headerHash: string,
   header: SDK.Header,

@@ -6,7 +6,6 @@ import {
   decodeBoundEventHistoryLedgerSnapshot,
   type EventHistorySourceBinding,
 } from "../l1-event-history-source.js";
-import * as ForeignCensus from "./eventHistoryForeignCensus.js";
 import {
   lockCheckpoint,
   putIncarnation,
@@ -166,8 +165,6 @@ export const undoHead = <A, E, R>(
     yield* sql`UPDATE event_history_block_applications SET canonical = false WHERE binding_digest = ${bytes(binding.digest)} AND block_hash = ${bytes(actual.head.id)} AND application_revision = ${actual.headApplicationRevision}::bigint`;
     const revision = (BigInt(actual.revision) + 1n).toString();
     yield* sql`UPDATE event_history_cursor SET head_hash = ${bytes(parent.id)}, head_slot = ${parent.slot}, head_height = ${parent.height}, head_application_revision = ${restored.application.parent_application_revision}::bigint, snapshot_digest = ${bytes(capture.snapshotDigest)}, revision = ${revision}::bigint WHERE binding_digest = ${bytes(binding.digest)}`;
-    if (yield* ForeignCensus.exists(binding))
-      yield* ForeignCensus.undo(binding, actual.head, parent);
     const result = yield* repair;
     return { revision, result };
   }).pipe(

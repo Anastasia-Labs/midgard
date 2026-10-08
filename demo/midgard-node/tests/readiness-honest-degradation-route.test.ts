@@ -38,7 +38,6 @@ import {
   runningFollower,
   seedCaughtUpL1Follower,
 } from "./readiness-l1-follower.fixture.js";
-import { seedVerifiedForeignBase } from "./readiness-verified-foreign-base.fixture.js";
 import { withFailingStatements } from "./sql-fault-injection.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -101,7 +100,6 @@ const readyz = ({
   journal = Effect.void,
   ogmiosTipMaxAgeMs,
   forceProviderProbe = false,
-  foreignBaseVerified = true,
   l1Follower,
   path = "readyz",
 }: {
@@ -110,9 +108,6 @@ const readyz = ({
   readonly journal?: Effect.Effect<void, unknown, never>;
   readonly ogmiosTipMaxAgeMs?: number;
   readonly forceProviderProbe?: boolean;
-  /** False models a node whose commitment tick has not yet checked the
-   * canonical base of its current history authority. */
-  readonly foreignBaseVerified?: boolean;
   /** The L1 follower state; a caught-up follower by default. */
   readonly l1Follower?: L1FollowerState;
   readonly path?: "readyz" | "healthz";
@@ -130,7 +125,6 @@ const readyz = ({
         return yield* Effect.gen(function* () {
           yield* journal;
           const globals = yield* Globals;
-          if (foreignBaseVerified) yield* seedVerifiedForeignBase(globals);
           yield* seedCaughtUpL1Follower(globals, l1Follower);
           for (const observation of provider)
             yield* Ref.update(globals.L1_PROVIDER_HEALTH, (current) =>
@@ -227,13 +221,6 @@ const asJournalSetup = <E, R>(effect: Effect.Effect<void, E, R>) =>
   effect as unknown as Effect.Effect<void, unknown, never>;
 
 describe("GET /readyz under internal transients", () => {
-  it("holds readiness until the current authority's foreign base is verified", async () => {
-    const response = await readyz({ foreignBaseVerified: false });
-    expect(response.status).toBe(503);
-    expect(response.ready).toBe(false);
-    expect(response.reasons).toEqual(["foreign_base_verification_unobserved"]);
-  });
-
   it.each([
     { boundMs: 200_000, ageMs: 150_000, healthy: true },
     { boundMs: 10_000, ageMs: 15_000, healthy: false },

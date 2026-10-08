@@ -205,6 +205,7 @@ import { materializeConfirmedLedgerSnapshot } from "../src/transactions/state-qu
 import { mergeMaturityWindow } from "../src/transactions/state-queue/merge-readiness.js";
 import { buildUnsignedDepositTxFromFundingContextProgram } from "../src/transactions/submit-deposit.js";
 import { commitExplicitBlockHeaderProgram } from "../src/workers/commit-block-header.js";
+import { LANDED_COMMIT_BASE_PENDING } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput as CommitWorkerInput,
@@ -955,8 +956,7 @@ export const runCommitWorkerUntilSubmitted = async ({
     if (
       production !== undefined &&
       output?.type === "AwaitingForeignDaOutput" &&
-      output.reason ===
-        "Verified foreign ledger adoption is pending source-owner recovery"
+      output.reason === LANDED_COMMIT_BASE_PENDING
     )
       continue;
     if (output?.type !== "RegisteredDueWorkOutput") {

@@ -139,11 +139,7 @@ describe("signed-intent release evidence", { concurrent: false }, () => {
       view.setRewrite(mergedIntoRootView(h, "f1".repeat(28)));
       await synchronizeWithin(h);
       await expectLandedAndFinalizedOnce(h, journal, async (handle, hash) => {
-        const finalized = await finalizeRecordedBlock(handle, hash);
-        expect(finalized.foreignBaseVerification).toEqual({
-          status: "not_required",
-          baseHeaderHash: hash,
-        });
+        await finalizeRecordedBlock(handle, hash);
       });
       expect(await readImmutableCounts(txIds)).toEqual(
         Object.fromEntries(txIds.map((id) => [id, 1])),

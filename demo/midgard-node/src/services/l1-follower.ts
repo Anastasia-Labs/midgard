@@ -20,6 +20,9 @@
  *   view it applies: it publishes the queue length, bumps the head signal
  *   the planner fibers wake on (`l1-head-trigger.ts`) and holds
  *   `state_queue_unhealthy` while the queue is unhealthy.
+ * - The driver's landed-block hook (N3, `landed-blocks/`) processes each
+ *   landed block once, in queue order: an own block from its journal, a
+ *   foreign one by replay; what it cannot do yet is a named hold.
  * - The driver's forced-order hook (N10, plan §12.3) ingests the forced
  *   orders the follower projects, resolving carriage its blocks did not
  *   carry through the local node's ledger and the configured content
@@ -64,6 +67,10 @@ import {
   landedStateQueueHook,
   stateQueueProjection,
 } from "../l1-state-queue/index.js";
+import {
+  landedBlockHook,
+  nodeLandedBlockPorts,
+} from "../landed-blocks/index.js";
 import { NodeConfig } from "./config.js";
 import type { Database } from "./database.js";
 import {
@@ -366,7 +373,9 @@ export const startL1Follower = Effect.gen(function* () {
       `the follower store or transport did not open: ${message(opened.left.error)}`,
     );
   const { transport, store, abort } = opened.right;
-  const dbRuntime = yield* Effect.runtime<Database | NodeConfig>();
+  const dbRuntime = yield* Effect.runtime<
+    Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
+  >();
   const driver = createFollowerDriver({
     store,
     config: plan.projection,
@@ -387,6 +396,12 @@ export const startL1Follower = Effect.gen(function* () {
                 yield* publishL1HeadChange(globals);
             }),
           ),
+      }),
+      foreignBlockInclusion: landedBlockHook({
+        store,
+        config: plan.stateQueue,
+        ports: nodeLandedBlockPorts({ store, events: plan.projection }),
+        run: (effect) => Runtime.runPromise(dbRuntime)(effect),
       }),
       forcedOrderIngestion: forcedOrderIngestionHook({
         store,

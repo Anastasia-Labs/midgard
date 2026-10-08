@@ -260,7 +260,7 @@ const deployHistorySource = async (
 };
 
 /** Every lifecycle of one file restores the same deployment, so rows an
- * earlier lifecycle keyed by its binding (census frontier, journal, receipts)
+ * earlier lifecycle keyed by its binding (journal, receipts)
  * would otherwise be found by the next one. When each lifecycle published its
  * own deployment, those rows were keyed to an older binding and never read.
  * Returning every application table to its freshly migrated contents gives a

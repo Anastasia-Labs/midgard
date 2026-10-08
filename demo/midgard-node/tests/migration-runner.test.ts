@@ -90,6 +90,7 @@ describe("splitSqlStatements", () => {
         name: "follower_admission_identity",
         transactional: true,
       },
+      { version: 9, name: "landed_blocks", transactional: true },
     ]);
   });
 
@@ -345,6 +346,27 @@ describe("applied fresh-install schema", () => {
                WHERE relnamespace = 'public'::regnamespace
                  AND relname = 'foreign_tip_reconciliations'`;
           expect(dropped).toEqual([]);
+
+          // Version 9 drops the census and foreign-adoption tables (N3) and
+          // adds the landed-block processing tables.
+          const landed = yield* sql<{
+            readonly relname: string;
+          }>`SELECT relname
+               FROM pg_class
+               WHERE relnamespace = 'public'::regnamespace
+                 AND relkind = 'r'
+                 AND relname IN ('foreign_native_adoptions',
+                   'foreign_verified_segments', 'foreign_confirmed_frontier',
+                   'event_history_census_frontier',
+                   'event_history_census_blocks', 'node_landed_blocks',
+                   'node_working_ledger_basis',
+                   'node_confirmed_ledger_frontier')
+               ORDER BY relname`;
+          expect(landed.map((row) => row.relname)).toEqual([
+            "node_confirmed_ledger_frontier",
+            "node_landed_blocks",
+            "node_working_ledger_basis",
+          ]);
 
           const constraints = yield* sql<{
             readonly relname: string;
