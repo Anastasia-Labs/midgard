@@ -33,6 +33,7 @@ import {
 } from "../src/transactions/register-active-operator.js";
 import * as LifecycleClock from "../src/transactions/register-active-operator/clock.js";
 import { inspectSignedTxValidityInterval } from "../src/transactions/utils.js";
+import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   EMULATOR_PROTOCOL_PARAMETERS,
@@ -285,7 +286,7 @@ describe("operator lifecycle emulator", () => {
     }
   });
 
-  it("refreshes the dedicated reference-script wallet from provider state after external replenishment", async () => {
+  it("funds and signs the dedicated reference-script wallet from its view after external replenishment, whatever the instance pins", async () => {
     const operator = generateEmulatorAccount({
       lovelace: 200_000_000n,
     });
@@ -299,7 +300,7 @@ describe("operator lifecycle emulator", () => {
     const fundingLucid = await Lucid(emulator, "Custom");
     fundingLucid.selectWallet.fromSeed(operator.seedPhrase);
     const referenceScriptsLucid = await Lucid(emulator, "Custom");
-    referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
+    selectNodeWallet(referenceScriptsLucid, referenceScripts.seedPhrase);
 
     const oneShotNonce = (await fundingLucid.wallet().getUtxos())[0];
     if (!oneShotNonce) {
@@ -318,6 +319,7 @@ describe("operator lifecycle emulator", () => {
       referenceScriptAuth,
     );
 
+    // A stale pin on the instance: the view never reads it.
     referenceScriptsLucid.overrideUTxOs([]);
     const staleReferenceWalletUtxos = await referenceScriptsLucid
       .wallet()
@@ -353,7 +355,8 @@ describe("operator lifecycle emulator", () => {
 
     expect(liveReferenceScriptCount).toBeGreaterThanOrEqual(2);
     expect(livePlainBalance).toBeGreaterThan(0n);
-    expect(await referenceScriptsLucid.wallet().getUtxos()).not.toEqual([]);
+    // The node pins nothing: the stale pin is as the test left it.
+    expect(await referenceScriptsLucid.wallet().getUtxos()).toEqual([]);
   }, 240_000);
 
   it("deep-clones the authenticated deployment snapshot for each scenario", async () => {

@@ -11,6 +11,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { IntentJournalWithoutFollower } from "../../src/services/intent-journal.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
@@ -196,7 +197,7 @@ const buildDeploymentSnapshot = async (
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
       publishedReferenceScripts,
-    ),
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
   await submitAndAwait(lucid, await initTx.complete({ localUPLCEval: true }));
 

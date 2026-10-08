@@ -3,7 +3,7 @@ import { CML, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import { NodeConfig } from "../services/config.js";
-import { resolvePreSubmitSlotSnapshot } from "./utils.reconcile-wallet-utxos-from-signed-tx.js";
+import { resolvePreSubmitSlotSnapshot } from "./utils.submit-recovery-options.js";
 
 /** The slot through which the provider answering `observe` has indexed L1:
  * the emulator's, or the configured Kupo's most recent checkpoint. Undefined,

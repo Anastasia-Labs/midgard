@@ -122,7 +122,7 @@ export const attestHeader = ({
       );
       initTxHash = yield* submitCompletedTx(
         lucid,
-        yield* completeWithLocalUplc(initTx, "DA attestation init"),
+        yield* completeWithLocalUplc(lucid, initTx, "DA attestation init"),
         attestIntent(target.headerHash, "init"),
       );
       candidates = yield* fetchVisibleDaAttestationCandidates(
@@ -192,6 +192,7 @@ export const attestHeader = ({
       addSignaturesTxHash = yield* submitCompletedTx(
         lucid,
         yield* completeWithLocalUplc(
+          lucid,
           addSignaturesTx,
           "DA attestation add-signatures",
         ),
@@ -243,7 +244,7 @@ export const attestHeader = ({
           );
         return yield* submitCompletedTx(
           lucid,
-          yield* completeWithLocalUplc(applyTx, "DA attestation apply"),
+          yield* completeWithLocalUplc(lucid, applyTx, "DA attestation apply"),
           attestIntent(target.headerHash, "apply"),
         );
       }),

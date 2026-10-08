@@ -28,10 +28,6 @@ import {
   type UtxoPayloadEntry,
   type UtxoPayloadSizeAggregate,
 } from "../../mpf/index.js";
-import {
-  isPotentiallyStaleOperatorWalletViewError,
-  type OperatorWalletView,
-} from "../../operator-wallet-view.js";
 import { configuredCommitHorizonLag } from "../../services/history-commit-window.js";
 import {
   type ContractDeploymentIdentityValue,
@@ -67,17 +63,14 @@ import {
   assertPreSubmitDaPayloadSize,
   daProgramMaterialFromSidecars,
   forcedProgramMaterialSidecars,
-  maybeAbandonPreviousStaleAttempt,
 } from "./submission.assert-pre-submit-da-payload-size.js";
 import {
   assertCommitUserEventSourceCompleteness,
   isStaleCommitBaseError,
   journalUtxoEntries,
   refreshCommitUserEventSourcesThroughBlockEnd,
-  runWithStaleOperatorWalletRetry,
-  signalStaleOperatorWalletRetry,
   submitErrorReferencesOutRef,
-} from "./submission.run-with-stale-operator-wallet-retry.js";
+} from "./submission.commit-event-sources.js";
 import {
   retainedIntentFailure,
   submitWithDurableIntent,
@@ -311,10 +304,7 @@ export const submitTxBackedCommit = ({
     );
     yield* Effect.logInfo(`🔹 Withdrawals root is: ${withdrawalsRoot}`);
 
-    const submitCommitAttempt = (
-      initialOperatorWalletView?: OperatorWalletView,
-      previousPendingHeaderHash?: Buffer,
-    ) =>
+    const submitCommitAttempt = () =>
       revalidateStateQueueLease(workerInput).pipe(
         Effect.zipRight(
           PendingBlockFinalizationsDB.assertNoUnreconciledSignedSubmission,
@@ -333,7 +323,6 @@ export const submitTxBackedCommit = ({
             transitionCommitments,
             consensusProfile,
             endTime,
-            initialOperatorWalletView,
             blockEndTimeCapMs,
           ).pipe(
             Effect.flatMap((buildResult) => {
@@ -408,10 +397,6 @@ export const submitTxBackedCommit = ({
                   cekProgramMaterial,
                 });
                 yield* afterDaFrameAccepted ?? Effect.void;
-                yield* maybeAbandonPreviousStaleAttempt(
-                  previousPendingHeaderHash,
-                  headerHashBuffer,
-                );
                 yield* MpfEngineStateDB.stampLedgerPayloadAggregate({
                   rootHex: utxoRoot,
                   aggregate: utxoPayloadAggregate,
@@ -555,17 +540,6 @@ export const submitTxBackedCommit = ({
                             return yield* Effect.gen(function* () {
                               if (
                                 error instanceof TxSubmitError &&
-                                isPotentiallyStaleOperatorWalletViewError(error)
-                              ) {
-                                return yield* signalStaleOperatorWalletRetry({
-                                  pendingHeaderHash: headerHashBuffer,
-                                  error,
-                                  label: "Tx-backed commit submission",
-                                });
-                              }
-
-                              if (
-                                error instanceof TxSubmitError &&
                                 submitErrorReferencesOutRef(
                                   error,
                                   stateQueueOutRef(commitBaseTail),
@@ -661,8 +635,5 @@ export const submitTxBackedCommit = ({
         ),
       );
 
-    return yield* runWithStaleOperatorWalletRetry({
-      label: "Tx-backed commit submission",
-      attempt: submitCommitAttempt,
-    });
+    return yield* submitCommitAttempt();
   });

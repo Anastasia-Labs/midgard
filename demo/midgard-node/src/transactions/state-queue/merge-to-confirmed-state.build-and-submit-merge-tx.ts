@@ -10,10 +10,6 @@ import { Duration, Effect, Metric, Ref } from "effect";
 
 import { DatabaseError } from "../../database/utils/common.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
-import {
-  availableOperatorWalletUtxos,
-  fetchOperatorWalletView,
-} from "../../operator-wallet-view.js";
 import { Database, Globals, NodeConfig } from "../../services/index.js";
 import {
   type IntentJournal,
@@ -30,6 +26,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "../utils.js";
+import { readSelectedWalletView } from "../utils.wallet-view.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeSubmitValidityEvidence,
@@ -355,20 +352,21 @@ export const buildAndSubmitMergeTx = (
         "state-queue merge withdrawal",
       );
 
-      const operatorWalletView = yield* Effect.tryPromise({
-        try: () => fetchOperatorWalletView(lucid),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message: "Failed to initialize merge wallet view",
-            cause,
-          }),
-      });
+      const operatorWalletView = yield* readSelectedWalletView(lucid).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: `Failed to read the merge wallet view: ${cause.message}`,
+              cause,
+            }),
+        ),
+      );
       const presetWalletInputs = yield* SDK.requireOperatorWalletInputs(
-        availableOperatorWalletUtxos(operatorWalletView),
+        operatorWalletView.utxos,
         "state_queue merge tx",
       );
       yield* Effect.logInfo(
-        `🔸 Using ${presetWalletInputs.length.toString()} preset operator wallet input(s) for merge tx (known_wallet_utxos=${operatorWalletView.knownUtxos.length.toString()}).`,
+        `🔸 Using ${presetWalletInputs.length.toString()} operator wallet view input(s) for merge tx (source=${operatorWalletView.source}, held=${operatorWalletView.held.size.toString()}).`,
       );
 
       const builtMerge = yield* SDK.buildMergeToConfirmedStateTxProgram({

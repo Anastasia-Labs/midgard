@@ -1,13 +1,15 @@
 /**
  * Wallet funding preflight for operator lifecycle commands. Every command that
  * locks a bond or pays a fee runs this first, so an underfunded wallet gets a
- * shortfall figure instead of a failed transaction build, and so the wallet
- * view the build and the signature rely on is the provider's current ledger.
+ * shortfall figure instead of a failed transaction build. It measures the
+ * wallet view (plan §8.5) the build selects from and the signature covers.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { IntentJournal } from "../../services/intent-journal.js";
+import { readWalletView } from "../utils.wallet-view.js";
 import { isPlainAdaOnlyUtxo } from "../wallet-hygiene.js";
 
 /** Fee and change headroom kept beyond the value a command locks or pays. */
@@ -62,14 +64,8 @@ export const collateralForExactFee = (
 };
 
 /**
- * Drops the wallet's cached UTxO view and measures the plain lovelace the
- * provider holds at its address against the value a command needs.
- *
- * `handleSignSubmit` pins a predicted view of the wallet after every submit
- * and nothing refreshes it, so a coin another process spent since would still
- * be offered to the builder, and Lucid signs only for inputs its view knows.
- * Clearing the pin here makes the build, the exact-fee plan and the signature
- * all read the same ledger.
+ * Measures the plain lovelace in the wallet view of the selected wallet
+ * against the value a command needs.
  *
  * Only plain-ADA coins count, which also keeps reference-script publications
  * out. `collateralLovelace` is not spent, but it must be present in plain-ADA
@@ -84,7 +80,11 @@ const operatorFundingPreflightProgram = (
     readonly collateralLovelace?: bigint;
     readonly feeHeadroomLovelace?: bigint;
   },
-): Effect.Effect<OperatorFundingPreflight, SDK.StateQueueError> =>
+): Effect.Effect<
+  OperatorFundingPreflight,
+  SDK.StateQueueError,
+  IntentJournal
+> =>
   Effect.gen(function* () {
     const walletAddress = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
@@ -94,16 +94,15 @@ const operatorFundingPreflightProgram = (
           cause,
         }),
     });
-    lucid.clearUTxOOverride();
-    const utxos = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message:
-            "Failed to fetch operator wallet UTxOs for funding preflight",
-          cause,
-        }),
-    });
+    const { utxos } = yield* readWalletView(lucid, walletAddress).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: `Failed to read the operator wallet view for funding preflight: ${cause.message}`,
+            cause,
+          }),
+      ),
+    );
     const availableLovelace = utxos
       .filter(isPlainAdaOnlyUtxo)
       .reduce((sum, utxo) => sum + (utxo.assets["lovelace"] ?? 0n), 0n);
@@ -136,7 +135,8 @@ export const requireOperatorFundingProgram = (
   input: Parameters<typeof operatorFundingPreflightProgram>[1],
 ): Effect.Effect<
   OperatorFundingPreflight,
-  SDK.StateQueueError | OperatorFundingShortfall
+  SDK.StateQueueError | OperatorFundingShortfall,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const preflight = yield* operatorFundingPreflightProgram(lucid, input);

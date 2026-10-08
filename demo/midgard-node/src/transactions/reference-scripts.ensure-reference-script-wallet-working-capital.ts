@@ -31,10 +31,10 @@ import {
   sumWalletLovelace,
 } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 import {
-  refreshWalletUtxosFromOwnAddress,
+  awaitWalletViewUtxos,
   resolveLiveWalletUtxo,
   resolveSpendableWalletUtxos,
-} from "./reference-scripts.refresh-wallet-utxos-from-own-address.js";
+} from "./reference-scripts.wallet-view-utxos.js";
 import {
   handleSignSubmit,
   TxConfirmError,
@@ -90,7 +90,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
   IntentJournal
 > =>
   Effect.gen(function* () {
-    const referenceScriptWalletUtxos = yield* refreshWalletUtxosFromOwnAddress(
+    const referenceScriptWalletUtxos = yield* awaitWalletViewUtxos(
       referenceScriptsLucid,
       {
         scopeName: `${scopeName} reference scripts`,
@@ -198,7 +198,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
       ),
       REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
     );
-    yield* refreshWalletUtxosFromOwnAddress(referenceScriptsLucid, {
+    yield* awaitWalletViewUtxos(referenceScriptsLucid, {
       scopeName: `${scopeName} reference scripts after replenishment`,
       failureMessage: `Failed to refresh reference-script wallet after replenishing ${scopeName} reference scripts`,
       minimumPlainBalance: targetPlainBalance,

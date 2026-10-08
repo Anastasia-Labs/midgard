@@ -249,9 +249,6 @@ export const sweepRetiredReferenceScriptsProgram = ({
     // final re-plan that finds nothing left.
     const maxRounds = plan.totals.inputCount + 1;
     for (let round = 0; round < maxRounds; round += 1) {
-      // A pinned wallet view from the previous batch would hide fresh inputs
-      // from the signer.
-      lucid.clearUTxOOverride();
       const current = round === 0 ? initialPlan : yield* planFromChain;
       const batch = current.batches[0];
       if (batch === undefined) {

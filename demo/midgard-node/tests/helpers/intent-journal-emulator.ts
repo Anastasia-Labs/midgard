@@ -7,6 +7,9 @@
  * - Every transaction the emulator accepts is captured as its exact bytes;
  *   `follow` applies the ones confirmed since the last call, one block per
  *   emulator block height, with synthetic block hashes.
+ * - A fork is simulated on the follower side: `applyForkBlock` applies a
+ *   block the emulator never sees, and `rewindTo` rolls the follower back
+ *   (what the emulator confirmed is followed again).
  * - The journal records through the production `recordSignedIntent`, on a
  *   node SQL client over the same database, as `IntentJournalLive` does.
  * - The wallet seed is the production seeder's, answered from the
@@ -53,6 +56,7 @@ import {
 } from "../../src/services/intent-journal.js";
 import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
 import { createNodeIntentStage } from "../../src/services/l1-follower.intents.js";
+import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
 import type { testDatabases } from "./l1-events-store.js";
 import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
 
@@ -129,7 +133,7 @@ export const openIntentEmulator = async (
   };
   const wallet = async (): Promise<LucidEvolution> => {
     const lucid = await Lucid(emulator, "Custom");
-    lucid.selectWallet.fromSeed(own.seedPhrase);
+    selectNodeWallet(lucid, own.seedPhrase);
     return lucid;
   };
   const ownAddress = addressBytes(own.address);
@@ -165,7 +169,23 @@ export const openIntentEmulator = async (
   if (init.kind !== "initialized") throw new Error(`initialize: ${init.kind}`);
 
   let tip = { hash: origin.hash, height: 0 };
-  const applied = new Set<string>();
+  /** The point of every block applied so far, by height (0: the origin). */
+  const points = new Map([[0, origin]]);
+  /** Emulator-confirmed hashes applied, and the height each was applied at. */
+  const applied = new Map<string, number>();
+  const applyNext = async (slot: number, txs: readonly Buffer[]) => {
+    const blockHeight = tip.height + 1;
+    const block: BlockSummary = {
+      point: { slot, hash: blockHash(blockHeight) },
+      height: blockHeight,
+      parentHash: tip.hash,
+      txs: txs.map((cbor, index) => txSummary(cbor, index)),
+    };
+    const result = await store.applyBlock(block);
+    if (result.kind !== "applied") throw new Error(`apply: ${result.kind}`);
+    tip = { hash: block.point.hash, height: blockHeight };
+    points.set(blockHeight, block.point);
+  };
   /** Applies the transactions the emulator confirmed since the last call. */
   const follow = async (): Promise<void> => {
     const byHeight = new Map<number, { slot: number; hashes: string[] }>();
@@ -180,23 +200,40 @@ export const openIntentEmulator = async (
       }
     for (const height of [...byHeight.keys()].sort((a, b) => a - b)) {
       const { slot, hashes } = byHeight.get(height)!;
-      const blockHeight = tip.height + 1;
-      const block: BlockSummary = {
-        point: { slot, hash: blockHash(blockHeight) },
-        height: blockHeight,
-        parentHash: tip.hash,
-        txs: hashes.sort().map((hash, index) => {
+      // In the order the emulator accepted them, so a transaction spending
+      // another's output in the same block comes after it.
+      const order = [...accepted.keys()];
+      hashes.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      await applyNext(
+        slot,
+        hashes.map((hash) => {
           const cbor = accepted.get(hash);
           if (cbor === undefined)
             throw new Error(`the emulator confirmed ${hash} unseen`);
-          return txSummary(cbor, index);
+          return cbor;
         }),
-      };
-      const result = await store.applyBlock(block);
-      if (result.kind !== "applied") throw new Error(`apply: ${result.kind}`);
-      for (const hash of hashes) applied.add(hash);
-      tip = { hash: block.point.hash, height: blockHeight };
+      );
+      for (const hash of hashes) applied.set(hash, tip.height);
     }
+  };
+  /**
+   * A fork's block the emulator never sees: `txs` applied to the follower
+   * only, one slot after the emulator's, as the next block.
+   */
+  const applyForkBlock = (txs: readonly Buffer[]) =>
+    applyNext(emulator.slot + 1, txs);
+  /** Rolls the follower back to the block at `height` (0: the origin). */
+  const rewindTo = async (height: number): Promise<void> => {
+    const target = points.get(height);
+    if (target === undefined) throw new Error(`no block at height ${height}`);
+    const result = await store.rewind(target);
+    if (result.kind !== "rewound")
+      throw new Error(`rewind: ${JSON.stringify(result)}`);
+    for (const above of [...points.keys()].filter((h) => h > height))
+      points.delete(above);
+    // The emulator still holds what was rolled back: `follow` applies it again.
+    for (const [hash, at] of applied) if (at > height) applied.delete(hash);
+    tip = { hash: target.hash, height };
   };
 
   const sent: Buffer[] = [];
@@ -281,6 +318,8 @@ export const openIntentEmulator = async (
     wallet,
     store,
     follow,
+    applyForkBlock,
+    rewindTo,
     sent,
     accepted,
     record,

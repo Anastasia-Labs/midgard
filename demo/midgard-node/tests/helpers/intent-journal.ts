@@ -69,6 +69,7 @@ export const recordingIntentJournal = () => {
     handOff: () => [],
     adopt: () => undefined,
     refresh: () => Effect.void,
+    walletView: noFollower.walletView,
   });
   return { recorded, layer };
 };

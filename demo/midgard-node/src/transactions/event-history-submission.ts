@@ -84,10 +84,7 @@ export const historyIntentOptionsData = (
 
 /** Exact-body transport shared by fresh submission and restart. Absence is
  * deliberately not a rejection: providers may lag or outputs may be spent. */
-export const historySubmissionTransport = (
-  lucid: LucidEvolution,
-  walletAddress: string,
-) => {
+export const historySubmissionTransport = (lucid: LucidEvolution) => {
   const observe = async (
     attempt: SDK.EventHistorySubmissionAttempt,
   ): Promise<SDK.EventHistorySubmissionOutcome> => {
@@ -133,7 +130,6 @@ export const historySubmissionTransport = (
         awaitSubmittedTransactionConfirmation(lucid, {
           txHash: attempt.txHash,
           signedTxCbor,
-          walletAddress,
         }),
       );
       return { kind: "Confirmed" };
@@ -376,7 +372,7 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
           }
           row = saved;
         };
-        const transport = historySubmissionTransport(lucid, walletAddress);
+        const transport = historySubmissionTransport(lucid);
         // A reserved input frees once its holder's transaction settles, which
         // it observes no faster than its confirmation poll, or once the
         // holder's attempt expires, so the SDK rebuilds at that cadence until

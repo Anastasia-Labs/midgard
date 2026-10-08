@@ -537,7 +537,7 @@ export const initializeProtocol = async ({
       contracts,
     ),
   );
-  const initTx = await Effect.runPromise(
+  const initTx = await runWithoutFollower(
     buildAtomicProtocolInitTxProgram(
       operatorLucid,
       contracts,

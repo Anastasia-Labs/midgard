@@ -109,21 +109,14 @@ vi.mock("../src/workers/commit-block-header/build-unsigned-tx.js", async () => {
   };
 });
 vi.mock(
-  "../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js",
+  "../src/workers/commit-block-header/submission.commit-event-sources.js",
   async () => {
     const actual = await vi.importActual<
-      typeof import("../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js")
-    >(
-      "../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js",
-    );
+      typeof import("../src/workers/commit-block-header/submission.commit-event-sources.js")
+    >("../src/workers/commit-block-header/submission.commit-event-sources.js");
     return {
       ...actual,
       refreshCommitUserEventSourcesThroughBlockEnd: () => Effect.void,
-      runWithStaleOperatorWalletRetry: ({
-        attempt,
-      }: {
-        attempt: () => Effect.Effect<unknown>;
-      }) => attempt(),
     };
   },
 );

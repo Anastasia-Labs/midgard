@@ -3,7 +3,6 @@ import type { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import type { OperatorWalletView } from "../../operator-wallet-view.js";
 import { HistoryProducer } from "../../services/event-history-producer.js";
 import {
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
@@ -105,7 +104,6 @@ export const buildUnsignedCommitTx = (
   transitionCommitments: SDK.HeaderTransitionCommitments,
   _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
   endDate: Date,
-  initialOperatorWalletView?: OperatorWalletView,
   maximumEndTimeMs?: number,
 ): Effect.Effect<
   CommitBuildResult,
@@ -236,7 +234,6 @@ export const buildUnsignedCommitTx = (
         lucid.api,
         contracts,
         witnessEndTime,
-        witnessContext?.operatorWalletView ?? initialOperatorWalletView,
         lucid.referenceScriptsAddress,
         submitSlotSnapshot,
         false,

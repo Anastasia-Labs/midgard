@@ -13,6 +13,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
@@ -229,7 +230,7 @@ const buildOperatorExitSnapshot = async (): Promise<OperatorExitSnapshot> => {
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
       referenceScriptPublications,
-    ),
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
   const initCompleted = await initTx.complete({ localUPLCEval: true });
   const initSigned = await initCompleted.sign.withWallet().complete();

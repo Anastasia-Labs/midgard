@@ -43,9 +43,9 @@ import {
   utxoOutRefKey,
 } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 import {
+  awaitWalletViewUtxos,
   buildReferenceScriptDeploymentPlan,
-  refreshWalletUtxosFromOwnAddress,
-} from "./reference-scripts.refresh-wallet-utxos-from-own-address.js";
+} from "./reference-scripts.wallet-view-utxos.js";
 import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
 
 /**
@@ -256,7 +256,11 @@ export const planReferenceScriptCommandProgram = (
   commandName: ReferenceScriptCommandName,
   authPolicy: ReferenceScriptAuthMintingPolicy,
   referenceScriptsAddress?: string,
-): Effect.Effect<ReferenceScriptDeploymentPlan, SDK.StateQueueError> =>
+): Effect.Effect<
+  ReferenceScriptDeploymentPlan,
+  SDK.StateQueueError,
+  IntentJournal
+> =>
   Effect.gen(function* () {
     const walletAddress = yield* Effect.tryPromise({
       try: () => referenceScriptsLucid.wallet().address(),
@@ -291,13 +295,10 @@ export const planReferenceScriptCommandProgram = (
         )
         .map(({ name }) => name),
     );
-    const walletUtxos = yield* refreshWalletUtxosFromOwnAddress(
-      referenceScriptsLucid,
-      {
-        scopeName: `${commandName} reference-script deployment plan`,
-        failureMessage: `Failed to fetch wallet UTxOs while planning ${commandName} reference scripts`,
-      },
-    );
+    const walletUtxos = yield* awaitWalletViewUtxos(referenceScriptsLucid, {
+      scopeName: `${commandName} reference-script deployment plan`,
+      failureMessage: `Failed to fetch wallet UTxOs while planning ${commandName} reference scripts`,
+    });
     return buildReferenceScriptDeploymentPlan({
       scopeName: commandName,
       targets,

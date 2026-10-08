@@ -14,24 +14,16 @@ import {
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
 import { type UtxoPayloadEntry } from "../../mpf/index.js";
-import {
-  fetchOperatorWalletView,
-  type OperatorWalletView,
-} from "../../operator-wallet-view.js";
 import { HistoryProducer } from "../../services/event-history-producer.js";
 import {
   commitEventHorizon,
   type CommitHorizonLag,
 } from "../../services/history-commit-window.js";
-import { Database, Lucid } from "../../services/index.js";
+import { Database } from "../../services/index.js";
 import {
   isUnknownOutputReferenceSubmitError,
-  TxSubmitError,
+  type TxSubmitError,
 } from "../../transactions/utils.js";
-import {
-  COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES,
-  StaleOperatorWalletRetrySignal,
-} from "./submission.assert-pre-submit-da-payload-size.js";
 
 /** True when both lists hold the same ids, each exactly once. */
 const sameSourceIdSet = (
@@ -180,40 +172,6 @@ export const assertCommitUserEventSourceCompleteness = ({
     ),
   );
 
-export const signalStaleOperatorWalletRetry = ({
-  pendingHeaderHash,
-  error,
-  label,
-}: {
-  readonly pendingHeaderHash: Buffer;
-  readonly error: TxSubmitError;
-  readonly label: string;
-}) =>
-  Effect.gen(function* () {
-    yield* Effect.logWarning(
-      `🔹 ${label} hit a stale operator-wallet view before submission recovery; retrying with a refreshed wallet view: ${formatUnknownError(
-        error,
-      )}`,
-    );
-    yield* PendingBlockFinalizationsDB.discardUnsubmittedPendingSubmission(
-      pendingHeaderHash,
-    ).pipe(
-      Effect.catchAll((cause) =>
-        Effect.logWarning(
-          `🔹 Failed to discard stale unsubmitted pending journal before retry (${pendingHeaderHash.toString(
-            "hex",
-          )}): ${formatUnknownError(cause)}`,
-        ),
-      ),
-    );
-    return yield* Effect.fail(
-      new StaleOperatorWalletRetrySignal({
-        pendingHeaderHash,
-        txSubmitError: error,
-      }),
-    );
-  });
-
 export const journalUtxoEntries = (
   entries: readonly UtxoPayloadEntry[],
 ): readonly PendingBlockFinalizationsDB.UtxoInput[] =>
@@ -248,85 +206,3 @@ export const isStaleCommitBaseError = (error: unknown): boolean =>
   formatUnknownError(error, { includeCause: true }).includes(
     "Commit base is stale",
   );
-
-export const runWithStaleOperatorWalletRetry = <A, E, R>({
-  label,
-  attempt,
-}: {
-  readonly label: string;
-  readonly attempt: (
-    initialOperatorWalletView?: OperatorWalletView,
-    previousPendingHeaderHash?: Buffer,
-  ) => Effect.Effect<A, E | StaleOperatorWalletRetrySignal, R>;
-}): Effect.Effect<
-  A,
-  E | SDK.StateQueueError | DatabaseError | TxSubmitError,
-  R | Lucid | Database
-> =>
-  Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    let previousPendingHeaderHash: Buffer | undefined;
-    let lastResult = yield* Effect.either(
-      attempt(undefined, previousPendingHeaderHash),
-    );
-    let retryCount = 0;
-
-    while (
-      lastResult._tag === "Left" &&
-      lastResult.left instanceof StaleOperatorWalletRetrySignal &&
-      retryCount < COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES
-    ) {
-      const stalePendingHeaderHash = Buffer.from(
-        lastResult.left.pendingHeaderHash,
-      );
-      previousPendingHeaderHash = stalePendingHeaderHash;
-      retryCount += 1;
-      const refreshed = yield* Effect.either(
-        Effect.gen(function* () {
-          yield* lucid.switchToOperatorsMainWallet;
-          const reloadedOperatorWalletView = yield* Effect.tryPromise({
-            try: () => fetchOperatorWalletView(lucid.api),
-            catch: (cause) =>
-              new SDK.StateQueueError({
-                message:
-                  "Failed to reload operator wallet view after stale commit submission",
-                cause,
-              }),
-          });
-          yield* Effect.logWarning(
-            `${label} hit a stale operator-wallet input class error; reloading wallet view and rebuilding (attempt=${retryCount}/${COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES}).`,
-          );
-          return reloadedOperatorWalletView;
-        }),
-      );
-      if (refreshed._tag === "Left") {
-        yield* PendingBlockFinalizationsDB.markAbandoned(
-          stalePendingHeaderHash,
-        ).pipe(Effect.catchAll(() => Effect.void));
-        return yield* Effect.fail(refreshed.left);
-      }
-      lastResult = yield* Effect.either(
-        attempt(refreshed.right, stalePendingHeaderHash),
-      );
-    }
-
-    if (lastResult._tag === "Left") {
-      if (lastResult.left instanceof StaleOperatorWalletRetrySignal) {
-        // The signal already discarded an intent-free journal, so this
-        // matches nothing then, and markAbandoned never touches a journal
-        // with a signed intent; either refusal must not replace the submit
-        // error the commit reports.
-        yield* PendingBlockFinalizationsDB.markAbandoned(
-          lastResult.left.pendingHeaderHash,
-        ).pipe(Effect.catchAll(() => Effect.void));
-        return yield* Effect.fail(lastResult.left.txSubmitError);
-      }
-      if (previousPendingHeaderHash !== undefined) {
-        yield* PendingBlockFinalizationsDB.markAbandoned(
-          previousPendingHeaderHash,
-        ).pipe(Effect.catchAll(() => Effect.void));
-      }
-      return yield* Effect.fail(lastResult.left);
-    }
-    return lastResult.right;
-  });

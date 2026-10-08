@@ -37,7 +37,6 @@ describe("sign/submit wrapper recovery options", () => {
           {
             txHash: "tx-emulator-confirmation",
             signedTxCbor: "00",
-            walletAddress: "addr_test1emulatorconfirmation",
           },
           {
             confirmationTimeoutMs: 120_000,
@@ -81,7 +80,6 @@ describe("sign/submit wrapper recovery options", () => {
           {
             txHash: "tx-transient-confirmation-provider",
             signedTxCbor: "00",
-            walletAddress: "addr_test1transientconfirmation",
           },
           {
             confirmationTimeoutMs: 120_000,
@@ -149,7 +147,6 @@ describe("sign/submit wrapper recovery options", () => {
           {
             txHash: "tx-long-confirmation",
             signedTxCbor: "00",
-            walletAddress: "addr_test1longconfirmation",
           },
           {
             confirmationTimeoutMs: 120_000,
@@ -202,7 +199,6 @@ describe("sign/submit wrapper recovery options", () => {
             {
               txHash: "tx-confirmation-timeout",
               signedTxCbor: "00",
-              walletAddress: "addr_test1confirmationtimeout",
             },
             {
               confirmationTimeoutMs: 120_000,
@@ -257,7 +253,6 @@ describe("sign/submit wrapper recovery options", () => {
             {
               txHash: "tx-confirmation-deadline",
               signedTxCbor: "00",
-              walletAddress: "addr_test1confirmationdeadline",
             },
             {
               confirmationTimeoutMs: 1_000,
