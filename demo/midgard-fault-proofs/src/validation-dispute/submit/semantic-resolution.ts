@@ -965,6 +965,11 @@ export const submitValidationDisputeSemanticResolution = async ({
   const range = requireValidityRange(
     validityRange ?? validationDisputeValidityRange(Date.now()),
   );
+  const getStageValidityRange = () =>
+    refreshExpiredValidationDisputeValidityRange({
+      range,
+      currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
+    });
   const outputDatum = Data.to(
     {
       fraud_prover: inputDatum.fraud_prover,
@@ -1041,11 +1046,8 @@ export const submitValidationDisputeSemanticResolution = async ({
       auxiliary: staged.auxiliaryData,
       successorWorkWitnessCbor,
       awardDatum: outputDatum,
-      getValidityRange: () =>
-        refreshExpiredValidationDisputeValidityRange({
-          range,
-          currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
-        }),
+      getValidityRange: getStageValidityRange,
+      preSubmitBoundary,
     });
     const last = result.transactions.at(-1)!;
     return {
@@ -1104,11 +1106,8 @@ export const submitValidationDisputeSemanticResolution = async ({
       transition: staged.transitionData,
       step,
       awardDatum: outputDatum,
-      getValidityRange: () =>
-        refreshExpiredValidationDisputeValidityRange({
-          range,
-          currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
-        }),
+      getValidityRange: getStageValidityRange,
+      preSubmitBoundary,
     });
     const last = result.transactions.at(-1)!;
     return {

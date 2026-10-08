@@ -117,11 +117,16 @@ export const createValidationTraceFieldCarriageProvider = ({
     const thread = action.input.threadOutRef;
     if (typeof thread !== "string")
       throw new Error("validation field carriage action omitted thread");
-    const utxo = await fetchUtxoByOutRef({
+    const live = await fetchUtxoByOutRef({
       lucid,
       outRef: parseOutRef(thread, "resolution thread"),
       label: "resolution thread",
     });
+    // A CEK stage continuation resolves against the preparation its route
+    // consumed, not the live stage checkpoint.
+    const prepared = action.input.cekPreparedResolutionCbor;
+    const utxo =
+      typeof prepared === "string" ? { ...live, datum: prepared } : live;
     const canonical = readCanonicalCheckpoint(
       utxo,
       binding.resolvedContracts.contracts.validationTraceDispute,

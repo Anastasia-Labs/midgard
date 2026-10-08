@@ -47,6 +47,7 @@ export const resumeValidationCekCore = async ({
   oneStepArgument,
   validityRange,
   maxTransactions,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -57,6 +58,8 @@ export const resumeValidationCekCore = async ({
   readonly oneStepArgument: ValidationOneStepSubmissionArgument;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly maxTransactions?: number;
+  /** Production workflow seam: each stage reaches it before submission. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }) => {
   const {
     deploymentInfo: deployed,
@@ -158,6 +161,7 @@ export const resumeValidationCekCore = async ({
         currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
       }),
     maxTransactions,
+    preSubmitBoundary,
   });
 };
 
