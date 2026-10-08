@@ -33,14 +33,18 @@ export type WatcherDecisionHold =
     }>;
 
 /**
- * `validation_transcript_pre_follower`: a validation-trace dispute was
- * started from a transcript recorded before user events were read from the
- * follower's facts. The challenge rebuilt from the facts has another digest
- * than the one its open workflow journaled, so the dispute is held rather
- * than re-keyed.
+ * - `validation_transcript_pre_follower`: a validation-trace dispute was
+ *   started from a transcript recorded before user events were read from the
+ *   follower's facts. The challenge rebuilt from the facts has another digest
+ *   than the one its open workflow journaled, so the dispute is held rather
+ *   than re-keyed.
+ * - `fault_proof_start_deadline_passed`: the objective's latest safe start,
+ *   fixed by its header, passed before it signed any attempt, so it can
+ *   never start. Its detail is `<category>/<headerHash>`.
  */
 export type WatcherObjectiveHoldReadiness =
-  "validation_transcript_pre_follower";
+  | "validation_transcript_pre_follower"
+  | "fault_proof_start_deadline_passed";
 
 /** The readiness reason a hold names. */
 export const watcherDecisionHoldReason = (

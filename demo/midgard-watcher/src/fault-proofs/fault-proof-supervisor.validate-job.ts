@@ -14,7 +14,10 @@ import {
 } from "../indexers/authenticated-state-queue-observation.js";
 import { type WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
-import { type WatcherProofExecution } from "./fault-proof-objective-journal.js";
+import {
+  type WatcherProofExecution,
+  type WatcherProofObjective,
+} from "./fault-proof-objective-journal.js";
 import { listWatcherProofObjectives } from "./fault-proof-objective-table.js";
 import { type WatcherFaultProofProgressRequest } from "./fault-proof-progress-authority.js";
 import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
@@ -182,6 +185,8 @@ export type SupervisorDependencies = Readonly<{
   isActuationRevokedError(
     error: unknown,
   ): error is WorkflowActuationRevokedError;
+  /** The objective is no longer driven: held, completed or its header gone. */
+  objectiveSettled?(objective: WatcherProofObjective): void;
 }>;
 
 /** The recorded objectives that still hold work, in category order. */

@@ -40,6 +40,7 @@ import {
 import {
   isWatcherProofDecisionMissingError,
   type WatcherDecisionHold,
+  WatcherProofDecisionMissingError,
 } from "./watcher-decision-hold.js";
 import {
   createWatcherJournalBusyHold,
@@ -120,6 +121,9 @@ export const createSupervisor = (input: {
       ...(input.proofRetention === undefined
         ? {}
         : { retention: input.proofRetention }),
+      ...(input.dependencies.objectiveSettled === undefined
+        ? {}
+        : { onObjectiveSettled: input.dependencies.objectiveSettled }),
     });
   let progressAuthority = createAuthority();
   let progressSerial = Promise.resolve();
@@ -207,8 +211,9 @@ export const createSupervisor = (input: {
   // A refused journal (`journal_integrity`), one that could not be opened
   // (`journal_unavailable`), work whose recorded decision is missing
   // (`journal_decision_missing`) or a busy database (`journal_busy`) holds
-  // the watcher unready and never fails the process; every other failure
-  // blocks it.
+  // the watcher unready and never fails the process, as does an objective
+  // past its latest safe start (`fault_proof_start_deadline_passed`); every
+  // other failure blocks it.
   const block = (error: unknown, job: WatcherFaultProofJob | null): Error => {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
@@ -421,16 +426,24 @@ export const createSupervisor = (input: {
         }
       } else {
         if (job.deadline !== null && remainingSafeStartMs(job) <= 0n) {
+          // Past its latest safe start only signed work is reconciled. The
+          // deadline is fixed by the header, so an objective with no signed
+          // attempt can never start: it is held by name, never run again,
+          // and clears once its header leaves the finalized queue.
           if (
-            input.exposeUnsafeRunnerForTest ||
             execution === undefined ||
             !execution.entries.some(
               ({ event }) => event.kind === "submission_intent",
             )
           )
-            throw new Error(
-              `watcher fault-proof deadline is unsafe for ${job.category}/${job.headerHash}`,
-            );
+            throw new WatcherProofDecisionMissingError({
+              kind: "objective",
+              category: job.category,
+              headerHash: job.headerHash,
+              decisionDigest: job.decisionDigest,
+              detail: `${job.category}/${job.headerHash}`,
+              readiness: "fault_proof_start_deadline_passed",
+            });
           invocationPermit = await progressAuthority.reconcileExecution({
             objective: job,
             execution,

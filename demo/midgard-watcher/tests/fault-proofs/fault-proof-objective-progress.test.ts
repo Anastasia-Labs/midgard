@@ -37,6 +37,8 @@ import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-ad
 import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.exact-record.js";
 import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
 import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
+import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
+import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
@@ -128,11 +130,12 @@ afterEach(async () => {
 const setup = async (
   headerEndTime = BigInt(Date.now()),
   terminalBeyondRecoveryHorizon = true,
+  withoutSubmissionIntent = false,
 ) => {
   const fixture = await setupFundingRecoveryFixture(
     false,
     false,
-    false,
+    withoutSubmissionIntent,
     false,
     false,
     headerEndTime,
@@ -359,7 +362,177 @@ const setup = async (
   };
 };
 
+/** The reasons `/readyz` names for this supervisor alone. */
+const readyzReasons = async (
+  supervisor: ReturnType<typeof createWatcherFaultProofSupervisor>,
+): Promise<readonly string[]> => {
+  const operations = createWatcherOperationsObservability({
+    deploymentFingerprint: deploymentIdentity.manifestId,
+    supervisor,
+    launchScopeStatus: () => ({
+      installedCategoryCount: 1,
+      requiredCategoryCount: 1,
+    }),
+    retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
+    durableProofQueueStatus: () => supervisor.durableQueueStatus(),
+    nowMs: () => 100_000n,
+  });
+  const response = await handleWatcherOperationsHttpRequest(
+    new Request("http://127.0.0.1/readyz"),
+    operations.api,
+  );
+  return ((await response.json()) as { reasons: readonly string[] }).reasons;
+};
+
 describe("proof objective progress with durable funding and journals", () => {
+  it("holds an objective past its latest safe start with no signed attempt by name, again after a restart, until its header leaves the queue", async () => {
+    const test = await setup(20n, true, true);
+    const supervisor = test.createSupervisor();
+    // Whether the running supervisor's liveness ended.
+    let settled = false;
+    let watched: Promise<void> | undefined;
+    const watch = (done: Promise<void>) => {
+      watched = done;
+      settled = false;
+      const end = () => {
+        if (watched === done) settled = true;
+      };
+      void done.then(end, end);
+    };
+    watch(supervisor.done);
+    const hold = {
+      kind: "objective",
+      category: "doubleSpend",
+      headerHash: test.fixture.fresh.headerHash,
+      decisionDigest: test.fixture.fresh.decisionDigest,
+      detail: `doubleSpend/${test.fixture.fresh.headerHash}`,
+      readiness: "fault_proof_start_deadline_passed",
+    } as const;
+    const expectHeld = async (
+      held: ReturnType<typeof test.createSupervisor>,
+    ) => {
+      expect(held.status()).toMatchObject({
+        phase: "accepting",
+        blockedJob: null,
+        unfinishedObjectiveCount: 1,
+        journalDecisionMissing: [hold],
+      });
+      expect(await readyzReasons(held)).toContain(
+        "fault_proof_start_deadline_passed",
+      );
+      expect(settled).toBe(false);
+    };
+    await test.request(supervisor, 2).accepted;
+    await test.idle(supervisor);
+    await expectHeld(supervisor);
+    // Held work takes no new run while its header stays queued.
+    await test.request(supervisor, 3).accepted;
+    await test.idle(supervisor);
+    await expectHeld(supervisor);
+    await supervisor.close();
+    // A restart over the same stores meets it again and holds it again.
+    await test.fixture.restartStore();
+    const restarted = test.createSupervisor();
+    watch(restarted.done);
+    await test.request(restarted, 4).accepted;
+    await test.idle(restarted);
+    await expectHeld(restarted);
+    expect(test.runOrResume).not.toHaveBeenCalled();
+    expect(test.getUtxos).not.toHaveBeenCalled();
+    // The header left the finalized queue: the hold clears.
+    await test.request(restarted, 5, test.fixture.fresh, false).accepted;
+    await test.idle(restarted);
+    expect(restarted.status()).toMatchObject({
+      phase: "accepting",
+      unfinishedObjectiveCount: 0,
+      journalDecisionMissing: [],
+    });
+    expect(await readyzReasons(restarted)).not.toContain(
+      "fault_proof_start_deadline_passed",
+    );
+    expect(test.runOrResume).not.toHaveBeenCalled();
+    expect(settled).toBe(false);
+  });
+
+  it("runs an objective with no signed attempt inside its safe-start window", async () => {
+    const test = await setup(BigInt(Date.now()), true, true);
+    const supervisor = test.createSupervisor();
+    await test.request(supervisor, 2).accepted;
+    await test.idle(supervisor);
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      journalDecisionMissing: [],
+    });
+  });
+
+  it("drops a refusal hold once the deadline holds the objective under its own name", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const startedAt = Date.now();
+      const latestSafeStartOffsetMs =
+        MIDGARD_RETENTION_WINDOW.maturityMs -
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs;
+      // Its latest safe start is a minute away.
+      const test = await setup(
+        BigInt(startedAt - latestSafeStartOffsetMs + 60_000),
+        true,
+        true,
+      );
+      let refuse = true;
+      test.setBeforeRun(async () => {
+        if (!refuse) return;
+        refuse = false;
+        throw new WatcherFaultProofL1RefusedError(
+          "untracked_address",
+          "addr_test1 is not tracked",
+        );
+      });
+      const supervisor = test.createSupervisor();
+      await test.request(supervisor, 1).accepted;
+      await test.idle(supervisor);
+      expect(test.readiness().map(({ reason }) => reason)).toEqual([
+        "fault_proof_l1_refused:untracked_address",
+      ]);
+      vi.setSystemTime(startedAt + 120_000);
+      await test.request(supervisor, 2).accepted;
+      await test.idle(supervisor);
+      // Never run again, so no run would clear the refusal: the hold does.
+      expect(supervisor.status().journalDecisionMissing).toMatchObject([
+        { readiness: "fault_proof_start_deadline_passed" },
+      ]);
+      expect(test.readiness()).toEqual([]);
+      expect(test.runOrResume).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops a refusal hold once its header leaves the queue with no signed attempt to reconcile", async () => {
+    const test = await setup(BigInt(Date.now()), true, true);
+    let refuse = true;
+    test.setBeforeRun(async () => {
+      if (!refuse) return;
+      refuse = false;
+      throw new WatcherFaultProofL1RefusedError(
+        "untracked_address",
+        "addr_test1 is not tracked",
+      );
+    });
+    const supervisor = test.createSupervisor();
+    await test.request(supervisor, 1).accepted;
+    await test.idle(supervisor);
+    expect(test.readiness().map(({ reason }) => reason)).toEqual([
+      "fault_proof_l1_refused:untracked_address",
+    ]);
+    await test.request(supervisor, 2, test.fixture.fresh, false).accepted;
+    await test.idle(supervisor);
+    expect(test.readiness()).toEqual([]);
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+    expect(supervisor.status().phase).toBe("accepting");
+  });
+
   it.each([
     ["the run", "directly"],
     ["the run", "wrapped"],
@@ -644,6 +817,7 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
     expect(test.getUtxos).not.toHaveBeenCalled();
     expect(await test.fixture.records()).toHaveLength(1);
+    expect(supervisor.status().journalDecisionMissing).toEqual([]);
   });
 
   it("does not spin or repeat funding admission for identical pending observations", async () => {

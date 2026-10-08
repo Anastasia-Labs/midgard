@@ -25,7 +25,8 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly execution: Pick<
     WatcherFaultProofExecution,
     "verifyCompleted" | "execute"
-  >;
+  > &
+    Partial<Pick<WatcherFaultProofExecution, "objectiveSettled">>;
   /** The follower-store pins that hold open objectives' L1 history. */
   readonly proofRetention: WatcherProofRetention;
   /** Funding reservations held because their recorded decision is missing. */
@@ -83,6 +84,9 @@ export const createWatcherFaultProofSupervisor = (input: {
           : verification;
       },
       isActuationRevokedError: isWorkflowActuationRevokedError,
+      ...(input.execution.objectiveSettled === undefined
+        ? {}
+        : { objectiveSettled: input.execution.objectiveSettled }),
     }),
   }) as WatcherFaultProofSupervisor;
 
