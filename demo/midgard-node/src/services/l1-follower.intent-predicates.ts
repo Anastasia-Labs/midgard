@@ -14,7 +14,8 @@
  *   with its own named hold (`INTENT_EVENTS_NOT_DEEP`).
  * - Every node family has a predicate (`PREDICATES`); the payout,
  *   reference-script and stake-registration families are in
- *   `l1-follower.intent-predicates.wallet.ts`.
+ *   `l1-follower.intent-predicates.wallet.ts`, the list inserts in
+ *   `l1-follower.intent-predicates.list-insert.ts`.
  */
 import {
   currentViewIn,
@@ -35,6 +36,7 @@ import {
   landedTail,
 } from "../l1-state-queue/index.js";
 import type { NodeIntentFamily } from "./intent-journal.js";
+import { listInsert } from "./l1-follower.intent-predicates.list-insert.js";
 import {
   contentRefHex,
   count,
@@ -324,6 +326,7 @@ const PREDICATES: Readonly<
   reference_funding: referenceFunding,
   script_reward_registration: stakeRegistration,
   phas_membership: stakeRegistration,
+  list_insert: listInsert,
 };
 
 /** The §8.4 predicate over the projections (see the module doc). */

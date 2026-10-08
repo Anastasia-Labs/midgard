@@ -113,7 +113,11 @@ export {
 } from "./intents/journal.js";
 export { insertIntentIn, recordIntentIn } from "./intents/journal.record.js";
 export { intentJournalProjection } from "./intents/projection.js";
-export { INTENT_PRUNE_HOOK, pruneIntentsIn } from "./intents/prune.js";
+export {
+  INTENT_PRUNE_FLOOR,
+  INTENT_PRUNE_HOOK,
+  pruneIntentsIn,
+} from "./intents/prune.js";
 export {
   createIntentReconciler,
   type IntentReconciler,

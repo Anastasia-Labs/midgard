@@ -312,6 +312,10 @@ export const program: Effect.Effect<
       contracts.consensusProfile,
     ),
     "Failed to build atomic real protocol initialization transaction",
+    {
+      txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+      outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+    },
   );
   yield* Effect.logInfo(
     `Atomic real protocol initialization submitted: txHash=${txHash}`,

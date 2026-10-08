@@ -1,5 +1,5 @@
 import type { Dialect, SqlTx } from "../sql/backend.js";
-import type { PruneHook } from "../store/context.js";
+import type { PruneFloor, PruneHook } from "../store/context.js";
 import { readCursor } from "../store/rows.js";
 import { chunks, distinctHashes, placeholders } from "./journal.js";
 import { deriveIntentClosureIn } from "./status.js";
@@ -120,4 +120,31 @@ export const INTENT_PRUNE_HOOK: PruneHook = {
   table: "l1_intents",
   apply: ({ tx, dialect, boundarySlot }) =>
     pruneIntentsIn(tx, dialect, boundarySlot),
+};
+
+/**
+ * The journal's floor on the prune boundary while a store reset replays
+ * (the tracked-set record's `replaying` mark). The retention hook is skipped
+ * then, but the step's class A retention goes on; the floor keeps it from
+ * deleting spent outputs and `l1_txs` rows above the last boundary the hook
+ * read before the hook's next run reads them. The floor is the boundary in
+ * the hook's mark (`l1_intent_prune_mark`): the hook read every fact at or
+ * below it before the reset, so class A may delete those again once
+ * replayed. With no mark the floor is the boundary in force, so the
+ * boundary stays where the replay began. The floor reads the replay mark in
+ * the step's transaction: the first step after the loop clears `replaying`
+ * sets no floor and runs the hook over the kept facts before class A
+ * deletes them. Nothing else lifts it.
+ */
+export const INTENT_PRUNE_FLOOR: PruneFloor = {
+  name: "intent_journal_replay",
+  floor: async ({ tx, dialect }) => {
+    const replaying = await tx.query(
+      "SELECT 1 AS one FROM l1_follower_tracked_set WHERE id = 1 AND replaying <> 0",
+    );
+    if (replaying.length === 0) return null;
+    const mark = await readPruneMarkIn(tx);
+    if (mark !== null) return mark.boundarySlot;
+    return (await readCursor(tx, dialect))?.prunedThroughSlot ?? 0;
+  },
 };

@@ -2,12 +2,12 @@
  * The intent prune hook across a store reset's replay (§8.2 retention over
  * §5's reset), on a SQLite and a Postgres store. While a reset replays, a
  * prune step skips the retention hook but still deletes spent outputs at or
- * below its boundary, so the hook's candidate read (spent outputs at or
- * below the boundary) no longer finds an intent whose inputs went then. The
- * hook's mark (`l1_intent_prune_mark`: the generation it last ran under)
- * names that run: the reset's generation is one the rollback log does not
- * explain, so the hook's first run after the replay derives every retained
- * intent once, then reads candidates again.
+ * below its boundary; the journal's floor (`INTENT_PRUNE_FLOOR`) holds that
+ * boundary at the one in the hook's mark (`l1_intent_prune_mark`). The mark
+ * also holds the generation the hook last ran under: the reset's generation
+ * is one the rollback log does not explain, so the hook's first run after
+ * the replay derives every retained intent once, then reads candidates
+ * again.
  *
  * The skip is the prune step's own, while the tracked-set record says
  * `replaying`; the test's hook only records the SQL each run reads.
@@ -194,6 +194,8 @@ describe.each(["sqlite", "postgres"] as const)(
         await prune(store);
       }
       expect(runs).toHaveLength(1);
+      // The intent spent the funding output above the mark's boundary: the
+      // journal's floor keeps it through the replay.
       const funded = [simTxHash(funding)];
       expect(
         await count(
@@ -201,7 +203,7 @@ describe.each(["sqlite", "postgres"] as const)(
           "SELECT count(*) AS n FROM l1_outputs WHERE tx_hash = ?",
           funded,
         ),
-      ).toBe(0);
+      ).toBe(1);
       expect(await count(store, "SELECT count(*) AS n FROM l1_intents")).toBe(
         1,
       );

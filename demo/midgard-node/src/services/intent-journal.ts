@@ -16,13 +16,12 @@
  *   landed transaction spends the refused one's input. Holds live in the
  *   node database (`intent-journal.holds.ts`), so a worker thread's reach the
  *   main process. The process stays up.
- * - `unjournaled` submissions name why they cannot be journaled: protocol
- *   bootstrap runs before the follower starts, and user or committee wallets
- *   are not the node's tracked wallets.
  * - A phase or process with no running follower (protocol initialization
  *   before `startL1Follower`, a one-shot CLI command) provides
  *   `IntentJournalWithoutFollower`: journaled families are submitted
- *   unjournaled (`no_follower`) and await their own confirmation there.
+ *   unjournaled (`no_follower`) and await their own confirmation there. A
+ *   path that runs only from a CLI command passes an `unjournaled` intent
+ *   (`no_follower`) itself.
  */
 import {
   deriveIntentStatusIn,
@@ -76,6 +75,7 @@ export const NODE_INTENT_FAMILIES = [
   "reference_funding",
   "script_reward_registration",
   "phas_membership",
+  "list_insert",
 ] as const;
 
 export type NodeIntentFamily = (typeof NODE_INTENT_FAMILIES)[number];
@@ -90,20 +90,13 @@ export const CONTENT_REF_FAMILIES: ReadonlySet<NodeIntentFamily> = new Set([
   "settlement",
 ]);
 
-/** Why a submission is not journaled. */
-export type UnjournaledReason =
-  /** Protocol bootstrap: it runs before the node's follower starts. */
-  | "bootstrap"
-  /** A user's own wallet (deposit, withdrawal): not a node wallet. */
-  | "user_wallet"
-  /** A committee member's wallet (DA bond): the committee journals its own. */
-  | "committee_wallet"
-  /**
-   * No follower runs in this phase or process (protocol initialization
-   * before the follower starts, a one-shot CLI command): nothing would
-   * reconcile the intent, so the submission awaits its own confirmation.
-   */
-  | "no_follower";
+/**
+ * Why a submission is not journaled: no follower runs in this phase or
+ * process (protocol initialization before the follower starts, a one-shot
+ * CLI command), so nothing would reconcile the intent and the submission
+ * awaits its own confirmation.
+ */
+export type UnjournaledReason = "no_follower";
 
 export type SubmissionIntent =
   | Readonly<{
