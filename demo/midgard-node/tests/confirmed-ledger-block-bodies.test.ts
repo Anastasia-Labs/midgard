@@ -90,6 +90,7 @@ const recordOf = (a: Block, journal: OwnJournal) =>
     depositEventIds: journal.depositIds,
     forcedTransactionEventIds: journal.forcedIds,
     withdrawalEventIds: [],
+    withdrawalMembers: [],
     mempoolTxIds: journal.txIds,
     ledgerDelta: { spent: journal.spent, produced: journal.produced },
   }) as unknown as PendingBlockFinalizationsDB.Record;
