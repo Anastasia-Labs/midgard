@@ -24,6 +24,7 @@ import {
   COMMIT_DA_FRAME_LEDGER_CEILING,
   COMMIT_DA_FRAME_SOURCE,
   HaltSource,
+  HISTORY_CORRECTION_REWIND_SOURCE,
   raiseLivenessIncident,
 } from "../src/services/liveness-halt.js";
 import { Lucid } from "../src/services/lucid.js";
@@ -32,10 +33,6 @@ import {
   MidgardContracts,
 } from "../src/services/midgard-contracts.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/protocol.js";
-import {
-  SIGNED_INTENT_UNDECIDED,
-  SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
-} from "../src/services/signed-intent-undecided.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
 import {
   COMMIT_DA_FRAME_FITS_NOTICE,
@@ -163,7 +160,9 @@ const onNode = <A, E>(
     ),
   );
 
-const SOURCE = HaltSource.blockConfirmationSignedIntent;
+const SOURCE = HaltSource.stateQueueCorrectionRewind;
+const REASON = "state_queue_correction_rewind_conflict";
+const ESCALATE_AFTER_MS = 10 * 60_000;
 
 describe("GET /readyz liveness reasons", () => {
   it.each([50, 75, 90])(
@@ -290,9 +289,9 @@ describe("GET /readyz liveness reasons", () => {
         yield* raiseLivenessIncident(
           globals,
           SOURCE,
-          SIGNED_INTENT_UNDECIDED,
-          "replaced block holds its base's slot",
-          { escalateAfterMs: SIGNED_INTENT_UNDECIDED_ESCALATION_MS },
+          REASON,
+          "removal disagrees with L1",
+          { escalateAfterMs: ESCALATE_AFTER_MS },
         );
         const raised = yield* readyz;
         yield* clearLivenessIncident(globals, SOURCE);
@@ -304,13 +303,13 @@ describe("GET /readyz liveness reasons", () => {
 
     expect(raised.status).toBe(503);
     expect(raised.ready).toBe(false);
-    expect(raised.reasons).toEqual([SIGNED_INTENT_UNDECIDED]);
+    expect(raised.reasons).toEqual([REASON]);
     expect(raised.livenessReasons).toEqual([
       {
         source: SOURCE,
-        reason: SIGNED_INTENT_UNDECIDED,
+        reason: REASON,
         ageMs: expect.any(Number),
-        escalateAfterMs: SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
+        escalateAfterMs: ESCALATE_AFTER_MS,
         escalated: false,
       },
     ]);
@@ -372,24 +371,19 @@ describe("GET /readyz liveness reasons", () => {
   it("lists one reason two sources raise once, with both sources", async () => {
     const both = await onNode(({ globals, readyz }) =>
       Effect.gen(function* () {
+        yield* raiseLivenessIncident(globals, SOURCE, REASON, "confirmation");
         yield* raiseLivenessIncident(
           globals,
-          SOURCE,
-          SIGNED_INTENT_UNDECIDED,
-          "confirmation",
-        );
-        yield* raiseLivenessIncident(
-          globals,
-          "history_signed_intent_release",
-          SIGNED_INTENT_UNDECIDED,
+          HISTORY_CORRECTION_REWIND_SOURCE,
+          REASON,
           "history",
         );
         return yield* readyz;
       }),
     );
-    expect(both.reasons).toEqual([SIGNED_INTENT_UNDECIDED]);
+    expect(both.reasons).toEqual([REASON]);
     expect(
       (both.livenessReasons ?? []).map((entry) => entry.source).sort(),
-    ).toEqual([SOURCE, "history_signed_intent_release"].sort());
+    ).toEqual([SOURCE, HISTORY_CORRECTION_REWIND_SOURCE].sort());
   });
 });

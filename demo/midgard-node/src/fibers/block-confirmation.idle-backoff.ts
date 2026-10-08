@@ -6,7 +6,6 @@ import {
   recordIdleTick,
   resetIdleBackoff,
 } from "../services/globals.idle-backoff.js";
-import { HaltSource } from "../services/liveness-halt.js";
 
 export const CONFIRMATION_IDLE_BACKOFF_KEY = "block_confirmation";
 /** The longest a provably idle confirmation fiber waits between refreshes. */
@@ -19,7 +18,6 @@ type ConfirmationIdleGlobals = Pick<
   | "LOCAL_FINALIZATION_PENDING"
   | "COMMIT_PIPELINE_IDLE"
   | "IDLE_BACKOFF"
-  | "LIVENESS_REASONS"
 >;
 
 /**
@@ -28,10 +26,7 @@ type ConfirmationIdleGlobals = Pick<
  * recover, a confirmed tip already published, and a commitment fiber whose
  * last tick found no work. Only then may a refresh be skipped; the commitment
  * takes its own fresh state-queue snapshot before it builds, so a skipped
- * refresh never becomes a commit base. Never while this fiber's own hold
- * (`signed_intent_undecided`) is raised: only a refresh re-derives it, so a
- * held node refreshes at the configured cadence and clears it on the first
- * tick that decides.
+ * refresh never becomes a commit base.
  */
 export const confirmationProvablyIdle = (
   globals: ConfirmationIdleGlobals,
@@ -39,12 +34,6 @@ export const confirmationProvablyIdle = (
 ): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     if (Option.isSome(pending)) return false;
-    if (
-      (yield* Ref.get(globals.LIVENESS_REASONS)).has(
-        HaltSource.blockConfirmationSignedIntent,
-      )
-    )
-      return false;
     if ((yield* Ref.get(globals.AVAILABLE_CONFIRMED_BLOCK)) === "")
       return false;
     if ((yield* Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH)) !== "")

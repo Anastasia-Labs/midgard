@@ -25,7 +25,6 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  * for, and the reason the shard scheme exists.
  *
  *   tests/admission-writer.test.ts
- *   tests/canonical-journal-recovery-replacement-siblings.test.ts
  *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
  *   tests/event-history-submission-backstop-emulator.test.ts
  *   tests/event-history-submission-emulator.test.ts
@@ -69,7 +68,6 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/block-commitment-signed-intent-skip.test.ts
  *   tests/history-retention-prune.test.ts
  *   tests/readiness-honest-degradation-route.test.ts
- *   tests/history-expired-intent-release-query-budget.test.ts
  *   tests/state-queue-mutation-lease-settle-retry.test.ts
  *   tests/forced-order-carriage.test.ts
  *   tests/forced-order-carriage-emulator.test.ts

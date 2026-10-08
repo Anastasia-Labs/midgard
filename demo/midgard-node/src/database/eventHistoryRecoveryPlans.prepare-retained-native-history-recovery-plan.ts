@@ -157,9 +157,11 @@ export const discardPreparedHistoryRecoveryPlan = (
   );
 
 /** The single prepared native recovery of this binding, if any, decoded by
- * domain. A signed-header or signed-intent release plan is reported by kind,
- * header, the native root its CAS moves from and the journal digest it binds: the service that prepared it
- * for that header resumes it. An undecodable retained identity fails closed. */
+ * domain. A plan of a kind only removed services prepared (signed-header
+ * recovery, signed-intent release, displacement) is still reported by kind,
+ * header, the native root its CAS moves from and the journal digest it
+ * binds, so a reader can name it; no service resumes it any more. An
+ * undecodable retained identity fails closed. */
 export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;

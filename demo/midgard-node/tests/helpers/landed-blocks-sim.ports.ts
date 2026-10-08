@@ -14,6 +14,7 @@ import {
   ConfirmedLedgerDB,
   DepositsDB,
   MempoolInclusionsDB,
+  MutationJobsDB,
 } from "../../src/database/index.js";
 import { readQueueHistory } from "../../src/landed-blocks/history.js";
 import { ownJournal } from "../../src/landed-blocks/journal.js";
@@ -306,6 +307,14 @@ export const simPorts = (
         ]);
         yield* recordSettlements([row]);
         yield* MempoolInclusionsDB.deleteIncluded(headerHash);
+        // Its completed merge job, which the rebase's journal disposition
+        // reads as merged and finalized here.
+        const job = MutationJobsDB.confirmedMergeFinalizationJobId(hash);
+        yield* MutationJobsDB.start({
+          jobId: job,
+          kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
+        });
+        yield* MutationJobsDB.markCompleted(job);
         env.completed.add(hash);
         const ids = new Set(row.txIds.map(hex));
         env.mempool.survivors = env.mempool.survivors.filter(

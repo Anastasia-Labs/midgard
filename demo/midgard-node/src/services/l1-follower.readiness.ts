@@ -8,11 +8,11 @@
  * `forced_order_carriage_pending`, `forced_order_admission_stopped` and
  * `forced_order_ingestion_failed`; and landed-block processing's, from
  * `landed-blocks/holds.ts`: `landed_block_invalid`,
- * `landed_block_own_journal_abandoned`, `landed_block_event_unknown`,
+ * `landed_block_event_unknown`,
  * `landed_block_forced_order_pending`, `landed_block_awaiting_da`,
  * `landed_block_rebase_failed`, `landed_block_replay_failed`,
- * `landed_blocks_waiting`, `confirmed_ledger_behind` and
- * `landed_block_rebase_pending`, the first by priority named as the reason
+ * `landed_blocks_waiting`, `confirmed_ledger_behind`,
+ * `landed_block_own_revival_pending` and `landed_block_rebase_pending`, the first by priority named as the reason
  * and the rest in its detail), the intent stage's (`wallet_seed_pending`,
  * `intent_reconcile_failed`, `intent_reconcile_transient`,
  * `intent_resubmit_rejected`, a predicate's wait such as

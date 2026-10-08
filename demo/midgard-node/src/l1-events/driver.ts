@@ -71,8 +71,6 @@ export type DriverHooks = Readonly<{
   correctionRecompute?: DriverHook;
   /** I1: the status of the node's signed commit intents. */
   intentStatus?: DriverHook;
-  /** I3: recovery of own commits orphaned by a rewind. */
-  orphanedCommitRecovery?: DriverHook;
   /** N6: settlement and the operator set. */
   settlementAndOperatorSet?: DriverHook;
   /** N10: forced-order carriage resolution and ingestion. */
@@ -88,7 +86,6 @@ export const DRIVER_HOOK_ORDER = [
   "foreignBlockInclusion",
   "correctionRecompute",
   "intentStatus",
-  "orphanedCommitRecovery",
   "settlementAndOperatorSet",
   "forcedOrderIngestion",
 ] as const satisfies readonly (keyof DriverHooks)[];

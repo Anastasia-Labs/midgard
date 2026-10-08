@@ -98,14 +98,15 @@ export const retrieveFinalizedMissingDaPayloads = ({
     ),
   );
 
-/** A signed commit intent no acknowledgement, landing or replacement has
- * resolved: only the history owner's signed-intent reconciliation clears it. */
+/** A signed commit intent no acknowledgement, landing or disposal has
+ * resolved: S6 derives its status, and the landed-block rebase disposes of
+ * its journal once it is dead or its base left (whichever lands wins). */
 const unreconciledSignedSubmission = (sql: SqlClient.SqlClient) =>
   sql`status = ${Status.PendingSubmission} AND intended_tx_hash IS NOT NULL`;
 
 /** How long an active journal may stay unresolved before the node reports it:
- * well past the signed-intent replacement window, so an honest replacement
- * never trips it. */
+ * well past the time S6 takes to derive a missed commit dead, so an honest
+ * replacement never trips it. */
 export const PENDING_FINALIZATION_AGE_BOUND_MS = 15 * 60_000;
 
 export type UnreconciledSignedSubmission = {

@@ -51,8 +51,8 @@ export type MpfAuditResult = {
   readonly tipUnverifiable?: string;
   /**
    * The root of the native committed point: the expected UTxO root of this
-   * node's newest finalized journal, or the target root of a native recovery
-   * (correction rewind or signed-header recovery) applied after it.
+   * node's newest finalized journal, or the target root of a native move
+   * (correction rewind or landed-block rebase) applied after it.
    */
   readonly tipCommittedRoot?: string;
   readonly unmergedJournalCount: number;

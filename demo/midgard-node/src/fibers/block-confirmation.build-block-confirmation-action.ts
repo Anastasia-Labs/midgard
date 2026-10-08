@@ -3,7 +3,6 @@ import { Duration, Effect, Metric, Option, Ref } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { SignedIntentReplacementIntegrityError } from "../services/canonical-journal-recovery.js";
 import { logOnStateChange } from "../services/globals.liveness-reasons.js";
 import { Database, Globals, Lucid, NodeConfig } from "../services/index.js";
 import {
@@ -46,10 +45,7 @@ export const buildBlockConfirmationAction = (
   } = {},
 ): Effect.Effect<
   void,
-  | WorkerError
-  | DatabaseError
-  | ConfirmationInvariantError
-  | SignedIntentReplacementIntegrityError,
+  WorkerError | DatabaseError | ConfirmationInvariantError,
   Globals | Database | NodeConfig
 > =>
   Effect.gen(function* () {
@@ -338,11 +334,11 @@ export const buildBlockConfirmationAction = (
           pending.value[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] !=
             null
         ) {
-          // A signed commit is replaced only by the history owner, from its
-          // authenticated view at an exact point (whichever block holds the
-          // tail node's slot wins).
+          // A signed commit is disposed of only by the landed-block rebase,
+          // once the follower's intent reconciliation derives it dead
+          // (whichever block holds the tail node's slot wins).
           yield* Effect.logInfo(
-            "Signed commit intent is unresolved; the history owner's signed-intent reconciliation decides whether it is confirmed, replaced or revived.",
+            "Signed commit intent is unresolved; the follower's intent reconciliation and the landed-block rebase decide whether it is followed or replaced.",
           );
           return;
         }

@@ -333,12 +333,6 @@
         "histories[a].list.policyId.localeCompare(histories[b].list.policyId),"
       ]
     },
-    "midgard-node/tests/l1-event-history-observed-recovery-emulator.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        ") => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex;"
-      ]
-    },
     "midgard-node/tests/l1-event-history-projection-emulator.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": ["nonceOutputs.sort((a, b) => key(a).localeCompare(key(b)));"]
@@ -711,12 +705,6 @@
     "midgard-node/tests/deposit-flow-emulator-shared.submit-with-wallet.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": ["return outRefLabel(left).localeCompare(outRefLabel(right));"]
-    },
-    "midgard-node/tests/helpers/history-owner-rollback-journey.run-history-owner-rollback-journey.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        ") => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex;"
-      ]
     },
     "midgard-node/tests/helpers/operator-inactivity.build-deployment-snapshot.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
@@ -1250,18 +1238,6 @@
     "midgard-node/tests/helpers/correction-rewind-scenario.open-correction-rewind-scenario.ts": {
       "reason": "Test driver: mines the emulator to a depth; not a decision.",
       "sites": ["if (needed > 0) fixture.emulator.awaitBlock(needed);"]
-    },
-    "midgard-node/tests/helpers/history-owner-rollback-journey.run-history-owner-rollback-journey.ts": {
-      "reason": "Test driver loop: mines cd blocks; not a decision.",
-      "sites": ["for (let depth = 0; depth < finalityDepth; depth += 1) {"]
-    },
-    "midgard-node/tests/helpers/signed-intent-replacement.canonical-fork.ts": {
-      "reason": "Test driver loop: mines cd blocks; not a decision.",
-      "sites": ["block < identity.manifest.l1Finality.confirmationDepth;"]
-    },
-    "midgard-node/tests/l1-event-history-observed-recovery-emulator.test.ts": {
-      "reason": "Test driver loop: mines cd blocks; not a decision.",
-      "sites": ["for (let depth = 0; depth < finalityDepth; depth++) {"]
     },
     "midgard-watcher/src/availability/observation.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",

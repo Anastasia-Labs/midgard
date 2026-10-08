@@ -36,8 +36,8 @@
  *   the follower is caught up it also deletes the rows whose order left
  *   the chain.
  * - After each driver run, S6 (`l1-follower.intents.ts`, I1) seeds wallets
- *   and reconciles intents, then the journal re-reads its refusal holds
- *   (workers' too); its and the journal's holds join the driver's.
+ *   and reconciles intents, the own commits it derived dead are disposed of
+ *   (I3), and the journal re-reads its refusal holds; all join the driver's.
  * - Uncleared states are named `/readyz` reasons; nothing here exits.
  */
 import { L1NodeTransport } from "@al-ft/l1-node-transport";
@@ -76,6 +76,7 @@ import {
 } from "../l1-operator-set/index.js";
 import { landedStateQueueHook } from "../l1-state-queue/index.js";
 import {
+  disposeDeadOwnCommits,
   landedBlockHook,
   landedStateQueueProjection,
   nodeLandedBlockPorts,
@@ -392,14 +393,13 @@ const followL1 = Effect.fnUntraced(function* (
     }),
     log: (line) => log(`intents: ${line}`),
   });
-  // S6 follows the driver in the same coalesced run (§8.3: every head and
-  // generation change), then the journal re-reads its refusal holds: the
-  // commit and settlement workers raise theirs in the node database.
+  // S6, own-commit disposal and the journal follow each driver run (§8.3).
   const trigger = coalescedRunner(
     () =>
       driver
         .run()
         .then(() => intents.run())
+        .then(() => Runtime.runPromise(dbRuntime)(disposeDeadOwnCommits))
         .then(() => Runtime.runPromise(runtime)(journal.refresh()))
         .then(() => [...driver.holds(), ...intents.holds()]),
     abort.signal,

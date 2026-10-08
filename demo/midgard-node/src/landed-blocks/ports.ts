@@ -10,6 +10,7 @@ import type * as Ledger from "../database/utils/ledger.js";
 import type { LandedStateQueueElement } from "../l1-state-queue/index.js";
 import type { Database } from "../services/database.js";
 import type { ReplayInput, ReplayOutcome } from "./replay.js";
+import type { WithdrawalMembership } from "./store.js";
 
 /** This node's journal of a block it committed, as processing reads it. */
 export type OwnJournal = Readonly<{
@@ -21,7 +22,15 @@ export type OwnJournal = Readonly<{
   produced: readonly Ledger.MinimalEntry[];
   depositIds: readonly Buffer[];
   forcedIds: readonly Buffer[];
+  /** The withdrawals it included, with the classification it journaled. */
+  withdrawals: readonly WithdrawalMembership[];
   txIds: readonly Buffer[];
+  /**
+   * Revived: its block landed after its journal was abandoned, and it waits
+   * for local finalization (`observed_waiting_stability`, abandonment digest
+   * kept).
+   */
+  revived: boolean;
 }>;
 
 export type LandedBlockPorts<R> = Readonly<{

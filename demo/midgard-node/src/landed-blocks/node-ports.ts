@@ -56,7 +56,12 @@ const genesis = Effect.gen(function* () {
   return yield* ledgerRows(entries, new Map());
 });
 
-const requestRebase = (reason: string) =>
+/**
+ * Asks the history owner for the landed-block rebase when one is due: a
+ * processed landed row the working ledger lags, or an own journal it
+ * disposes of or revives. Returns why it cannot run yet, if it cannot.
+ */
+export const requestRebase = (reason: string) =>
   Effect.gen(function* () {
     const plan = yield* rebasePlan;
     if (plan.kind === "blocked") return plan.detail;
@@ -70,6 +75,23 @@ const requestRebase = (reason: string) =>
       yield* owner.requestReconciliation(reason);
     return undefined;
   });
+
+/**
+ * The follower run's own-commit disposition, after S6: an own commit it
+ * derives dead, or one holding an event whose admission left the chain, is
+ * disposed of by the rebase asked for here, so the commit path builds its
+ * replacement on the next tick (whichever lands wins). Never fails.
+ */
+export const disposeDeadOwnCommits = requestRebase(
+  "S6 derived the status of this node's own commits",
+).pipe(
+  Effect.catchAllCause((cause) =>
+    Effect.logWarning(
+      "The own-commit disposition could not be read; the next follower run reads it again",
+      cause,
+    ),
+  ),
+);
 
 /** The node's landed-block ports over `store`, with the follower plan's configs. */
 export const nodeLandedBlockPorts = (

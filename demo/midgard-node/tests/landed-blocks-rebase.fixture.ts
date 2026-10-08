@@ -326,7 +326,10 @@ export const unreversedReceipts = (globals: Globals) =>
     ),
   ).then((rows) => rows.length);
 
-/** A processed foreign row, the seeded block's fields under `row`. */
+/**
+ * A processed row, the seeded block's fields under `row`: foreign by default;
+ * an own one is applied, as an own block processed with its journal live.
+ */
 export const landedRow = (row: Partial<LandedBlockRow>): LandedBlockRow => ({
   headerHash: BLOCK,
   parentHeaderHash: FRONTIER,
@@ -334,7 +337,7 @@ export const landedRow = (row: Partial<LandedBlockRow>): LandedBlockRow => ({
   utxosRoot: R1,
   kind: "foreign",
   state: "processed",
-  applied: false,
+  applied: row.kind === "own",
   spent: [E0.outref],
   produced: [E1],
   depositIds: [],

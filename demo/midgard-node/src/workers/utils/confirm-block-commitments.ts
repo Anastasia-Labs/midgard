@@ -115,8 +115,8 @@ export const decideUnsubmittedPendingBlockRecovery = ({
   if (canonicalMatchFound) {
     return "recover_canonical";
   }
-  // A signed intent is resolved only by the history owner's signed-intent
-  // reconciliation (authenticated view of the tail node's slot); defer to it.
+  // A signed intent is resolved only by the landed-block rebase's journal
+  // disposition (S6's derived status and the landed chain); defer to it.
   if (pendingBlock.intendedTxHash != null) return "defer";
   return shouldDeferUnsubmittedPendingBlockRecovery({
     pendingBlock,

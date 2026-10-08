@@ -12,7 +12,6 @@ import "../l1-event-history-transport.js";
 import "../l1-ledger-snapshot.js";
 import "./event-history-recovery.js";
 import "./history-pending-backoff.js";
-import "./history-signed-header-recovery.js";
 import "./event-history-owner.history-owner-change.js";
 import "./event-history-owner.make-event-history-owner.js";
 import "./event-history-owner.types.js";

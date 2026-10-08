@@ -175,7 +175,7 @@ describe("liveness halts", () => {
       }),
   );
 
-  it("holds commit, merge and settlement on a rewind conflict, only commit on an undecided signed intent, and every operator duty on removal", () => {
+  it("holds commit, merge and settlement on a rewind conflict, and every operator duty on removal", () => {
     const held = (source: HaltSource) =>
       Object.entries(FIBER_HALT_SOURCES)
         .filter(([, sources]) => sources.includes(source))
@@ -185,9 +185,6 @@ describe("liveness halts", () => {
       "blockCommitment",
       "merge",
       "settlement",
-    ]);
-    expect(held(HaltSource.blockConfirmationSignedIntent)).toEqual([
-      "blockCommitment",
     ]);
     expect(held(HaltSource.operatorMembership)).toEqual([
       "blockCommitment",

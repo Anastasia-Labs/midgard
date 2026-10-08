@@ -1,5 +1,5 @@
 import { SqlClient } from "@effect/sql";
-import { Context, Effect, Option } from "effect";
+import { Effect } from "effect";
 
 import type { HistoryOwnerChange } from "../services/event-history-owner.js";
 import { releaseAdmissionOwnership } from "./cekProgramMaterial.js";
@@ -15,17 +15,32 @@ import {
 } from "./l1-admission-identity.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
-/** Private production recovery capability. Supplied only after fresh signed
- * non-inclusion evidence, durable native restore and exact journal revalidation.
- * It authorizes the one retained header; memberships themselves remain archived.
- */
-export const AuthorizedHistoryHeaderRetirement = Context.GenericTag<{
-  readonly headerHash: Buffer;
-}>("midgard/AuthorizedHistoryHeaderRetirement");
+/** SQL condition: a block journal neither locally applied nor abandoned exists. */
+const activeJournal = (sql: SqlClient.SqlClient) =>
+  sql`EXISTS (SELECT 1 FROM pending_block_finalizations
+    WHERE status NOT IN ('locally_applied', 'abandoned'))`;
+
+/** SQL condition: the membership row aliased `m` belongs to a journal that
+ * is not abandoned. An abandoned journal's memberships are its archived
+ * record: no block of it holds the event unless it lands, and then the
+ * landed-block rebase revives it first. */
+const heldMembership = (sql: SqlClient.SqlClient) =>
+  sql`EXISTS (SELECT 1 FROM pending_block_finalizations j
+    WHERE j.header_hash = m.header_hash AND j.status <> 'abandoned')`;
 
 const table = "event_history_l2_ledger_receipts";
 const refuse = (message: string) =>
   Effect.fail(new DatabaseError({ table, message, cause: undefined }));
+
+/** Moves every unmarked processed row back to the mempool (its deltas
+ * never left), the inverse of `ProcessedMempoolDB.moveFromMempool`. */
+const returnProcessedToMempool = (sql: SqlClient.SqlClient) =>
+  sql`WITH returned AS (
+      DELETE FROM processed_mempool WHERE included_by IS NULL
+      RETURNING tx_id, tx, time_stamp_tz)
+    INSERT INTO mempool (tx_id, tx, time_stamp_tz)
+    SELECT tx_id, tx, time_stamp_tz FROM returned
+    ON CONFLICT (tx_id) DO NOTHING`;
 
 /** An event row whose follower admission L1 no longer holds in its key set. */
 export type OrphanAdmission = {
@@ -84,15 +99,19 @@ export const ledgerReceiptIsIncomplete = (sequence: string) =>
               OR a.status IS DISTINCT FROM 'accepted'
               OR EXISTS (SELECT 1 FROM blocks b WHERE b.tx_id = ids.tx_id)
               OR EXISTS (SELECT 1 FROM immutable i WHERE i.tx_id = ids.tx_id)
-              OR EXISTS (SELECT 1 FROM pending_block_finalization_txs p WHERE p.member_id = ids.tx_id))
+              OR EXISTS (SELECT 1 FROM pending_block_finalization_txs m
+                WHERE m.member_id = ids.tx_id AND ${heldMembership(sql)}))
           OR jsonb_array_length(payloads_before) <> cardinality(tx_ids))`;
     return rows.length !== 0;
   });
 
-/** Detect dispositions that require additional canonical source evidence before
- * touching dependent SQL. This is used only by the production source owner;
- * the strict inverse/materialization APIs still refuse such state. Keeping the
- * journal moving while Recovering permits collection of expiry/finality proof.
+/** The orphan whose dependent SQL the repair cannot undo yet: one an
+ * unfinished block journal holds (the landed-block rebase disposes of that
+ * journal first), one a journal not abandoned names (it waits for that
+ * journal's disposition, or for a correction of its landed block), or one
+ * whose dependency already left the unpublished overlay. Used only by the
+ * production source owner; the strict inverse/materialization APIs still
+ * refuse such state.
  */
 export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
   Effect.gen(function* () {
@@ -118,6 +137,11 @@ export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
         reason:
           "A durable native/SQL recovery operation requires current-branch disposition",
       };
+    // An orphan waits while an unfinished journal exists (the landed-block
+    // rebase disposes of one that holds it, and the others resolve by
+    // landing or by the follower's intent reconciliation), or while a block
+    // that is not abandoned holds it. Unmarked processed rows left by a
+    // disposed journal are pending transactions the repair requeues.
     const assigned = yield* sql`WITH orphans AS (
       SELECT d.l1_event_key, d.l1_origin_outref, d.projected_header_hash, d.status::text AS status
         FROM deposits_utxos d WHERE ${orphanedAdmission(sql, "d", "deposit")}
@@ -125,11 +149,12 @@ export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
       SELECT w.l1_event_key, w.l1_origin_outref, w.projected_header_hash, w.status::text AS status
         FROM withdrawal_utxos w WHERE ${orphanedAdmission(sql, "w", "withdrawal")}
     ) SELECT 1 FROM orphans o WHERE
-      EXISTS (SELECT 1 FROM pending_block_finalizations WHERE status NOT IN ('locally_applied', 'abandoned'))
-      OR EXISTS (SELECT 1 FROM processed_mempool WHERE included_by IS NULL)
+      ${activeJournal(sql)}
       OR o.projected_header_hash IS NOT NULL OR o.status = 'finalized'
-      OR EXISTS (SELECT 1 FROM pending_block_finalization_deposits m WHERE ${sameAdmission(sql, "m", "o")})
-      OR EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals m WHERE ${sameAdmission(sql, "m", "o")})
+      OR EXISTS (SELECT 1 FROM pending_block_finalization_deposits m
+        WHERE ${sameAdmission(sql, "m", "o")} AND ${heldMembership(sql)})
+      OR EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals m
+        WHERE ${sameAdmission(sql, "m", "o")} AND ${heldMembership(sql)})
       LIMIT 1`;
     // A forced orphan is counted only while an unfinished block journal
     // holds it, so it is always assigned: the journal's disposition clears it.
@@ -140,7 +165,7 @@ export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
       : {
           status: "pending" as const,
           reason:
-            "Canonical history advanced; dependent L2 state awaits authenticated candidate, signed-submission or published-header disposition",
+            "Canonical history advanced; dependent L2 state awaits its unfinished block journal's disposition or a landed block's correction",
         };
   }).pipe(
     sqlErrorToDatabaseError(
@@ -262,9 +287,12 @@ export const requeueUnpublishedHistoryLedger = (input: {
   });
 
 /** First repair slice: undo the complete, proved-unpublished acceptance overlay.
- * The source journal's orphan flags supply authority; inverse receipts supply
- * bytes. Published/possibly broadcast state and missing inverse evidence remain
- * fenced. The owner must drain producers and deferred writes before calling.
+ * The follower's key set supplies authority; inverse receipts supply bytes.
+ * Every unfinished block journal must be disposed of first; the transactions
+ * an abandoned block had taken from the mempool go back to it, so the whole
+ * unpublished overlay is requeued. Published/possibly broadcast state and
+ * missing inverse evidence remain fenced. The owner must drain producers and
+ * deferred writes before calling.
  */
 export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
   Effect.gen(function* () {
@@ -286,14 +314,15 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
     // part of a Ready append.
     yield* requireRecoveryTransaction;
 
-    const pending = yield* sql`SELECT 1 FROM pending_block_finalizations
-      WHERE status NOT IN ('locally_applied', 'abandoned') LIMIT 1`;
-    const processed = yield* sql`SELECT 1 FROM processed_mempool
-      WHERE included_by IS NULL LIMIT 1`;
-    if (pending.length !== 0 || processed.length !== 0)
+    const pending = yield* sql`SELECT 1 WHERE ${activeJournal(sql)}`;
+    if (pending.length !== 0)
       return yield* refuse(
-        "Orphan repair requires explicit pending-candidate or signed-submission disposition",
+        "Orphan repair requires the unfinished block journal's disposition",
       );
+    // With no unfinished journal, an unmarked processed row is a pending
+    // transaction a disposed journal returned: it rejoins the unpublished
+    // overlay its receipt inverts.
+    yield* returnProcessedToMempool(sql);
     // Without retained receipts, absence of a current spend is not proof that a
     // published transaction did not reference an orphan. Require reconstruction
     // of that accepted baseline rather than guessing from the present UTxO set.
@@ -308,27 +337,18 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
       return yield* refuse(
         "Orphan repair requires retained inverse evidence or authenticated accepted-baseline reconstruction",
       );
-    const retirement = yield* Effect.serviceOption(
-      AuthorizedHistoryHeaderRetirement,
-    );
-    const retiredHeader = Option.isSome(retirement)
-      ? retirement.value.headerHash
-      : null;
     for (const orphan of orphans) {
       const eventTable =
         orphan.kind === "deposit" ? "deposits_utxos" : "withdrawal_utxos";
       const identity = sql`l1_event_key = ${orphan.l1_event_key} AND l1_origin_outref = ${orphan.l1_origin_outref}`;
       const assigned = yield* sql`SELECT 1 FROM ${sql(eventTable)}
         WHERE ${identity}
-          AND (projected_header_hash IS NOT NULL OR status = 'finalized')
-          AND (${retiredHeader}::bytea IS NULL OR projected_header_hash IS DISTINCT FROM ${retiredHeader}) LIMIT 1`;
+          AND (projected_header_hash IS NOT NULL OR status = 'finalized') LIMIT 1`;
       const memberships =
-        yield* sql`SELECT 1 FROM pending_block_finalization_deposits
-        WHERE ${identity}
-          AND (${retiredHeader}::bytea IS NULL OR header_hash <> ${retiredHeader})
-        UNION ALL SELECT 1 FROM pending_block_finalization_withdrawals
-        WHERE ${identity}
-          AND (${retiredHeader}::bytea IS NULL OR header_hash <> ${retiredHeader})`;
+        yield* sql`SELECT 1 FROM pending_block_finalization_deposits m
+        WHERE ${identity} AND ${heldMembership(sql)}
+        UNION ALL SELECT 1 FROM pending_block_finalization_withdrawals m
+        WHERE ${identity} AND ${heldMembership(sql)}`;
       if (assigned.length !== 0 || memberships.length !== 0)
         return yield* refuse(
           "Orphan admission has retained header membership requiring authenticated published correction",
@@ -343,13 +363,6 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
       bindingDigest: change.after.bindingDigest,
       checkpointRevision: change.after.revision,
     });
-    if (retiredHeader !== null) {
-      // Clear assignments only AFTER inverse receipts checked/restored their exact
-      // preimages. Header membership rows and signed intent are never deleted.
-      yield* sql`UPDATE deposits_utxos d SET projected_header_hash = NULL
-        WHERE d.projected_header_hash = ${retiredHeader}
-          AND ${orphanedAdmission(sql, "d", "deposit")}`;
-    }
     for (const orphan of orphans) {
       if (orphan.kind === "deposit") {
         const unsafe = yield* sql`SELECT 1 FROM deposits_utxos d

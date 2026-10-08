@@ -13,23 +13,14 @@ import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/index.js";
 import {
   type CanonicalCommittedHeader,
   fetchCanonicalCommittedHeaders,
-  findSignedIntentReplacementIntegrityError,
   reviveEarliestCanonicalPayloadJournal,
 } from "../services/canonical-journal-recovery.js";
-import { signedCommitNode } from "../services/history-expired-intent-release.js";
 import { Globals, MidgardContracts } from "../services/index.js";
 import {
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/landed-state-queue.js";
-import {
-  HaltSource,
-  raiseLivenessIncident,
-} from "../services/liveness-halt.js";
-import {
-  SIGNED_INTENT_UNDECIDED,
-  SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
-} from "../services/signed-intent-undecided.js";
+import { signedCommitNode } from "../services/own-block-node.js";
 import {
   applyConfirmedLedgerDeltaChainTransaction,
   materializeConfirmedLedgerSnapshot,
@@ -46,23 +37,15 @@ import {
  *
  * Only the earliest unattributed abandoned payload journal is revived, under
  * the single-active guard of reviveEarliestCanonicalPayloadJournal. A
- * replaced journal is revived only by the history owner from its
- * authenticated view; a correction-abandoned one is never revived.
- *
- * A replaced block that won its slot after the node moved past its base
- * (`SignedIntentReplacementIntegrityError`, refused before anything is
- * written) cannot be decided from this one view either. As in steady state
- * (blockConfirmationStep), it raises `signed_intent_undecided`, which holds
- * block commitment before any commit fiber starts; confirmation re-derives it
- * on every tick and clears it. Every other failure still fails startup.
+ * journal disposed of under its replacement digest is revived by the
+ * landed-block rebase once the follower processed its block; a
+ * correction-abandoned one is never revived. A failure fails startup.
  */
 export const recoverCanonicalJournalsOnStartup = ({
-  globals,
   canonicalHeaders,
   latestHeaderHash,
   latestEndTimeMs,
 }: {
-  readonly globals: Pick<Globals, "LIVENESS_REASONS">;
   readonly canonicalHeaders: readonly CanonicalCommittedHeader[];
   readonly latestHeaderHash: Option.Option<Buffer>;
   readonly latestEndTimeMs: number;
@@ -71,20 +54,7 @@ export const recoverCanonicalJournalsOnStartup = ({
     const revivedPayloadJournal = yield* reviveEarliestCanonicalPayloadJournal({
       canonicalHeaders,
       logPrefix: "Startup",
-    }).pipe(
-      Effect.catchAllCause((cause) => {
-        const integrity = findSignedIntentReplacementIntegrityError(cause);
-        return integrity === undefined
-          ? Effect.failCause(cause)
-          : raiseLivenessIncident(
-              globals,
-              HaltSource.blockConfirmationSignedIntent,
-              SIGNED_INTENT_UNDECIDED,
-              `${integrity.message} Startup revived no journal; block commitment is held, the signed intent stays in place, and confirmation re-derives it on every tick.`,
-              { escalateAfterMs: SIGNED_INTENT_UNDECIDED_ESCALATION_MS },
-            ).pipe(Effect.as(Option.none<CanonicalCommittedHeader>()));
-      }),
-    );
+    });
     let seededBoundaryMs = latestEndTimeMs;
     if (Option.isSome(latestHeaderHash)) {
       const latestJournal =
@@ -211,7 +181,6 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
           ),
         );
   const seededBoundaryMs = yield* recoverCanonicalJournalsOnStartup({
-    globals,
     canonicalHeaders: yield* fetchCanonicalCommittedHeaders,
     latestHeaderHash,
     latestEndTimeMs,

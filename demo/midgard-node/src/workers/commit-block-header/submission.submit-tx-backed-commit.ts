@@ -465,6 +465,7 @@ export const submitTxBackedCommit = ({
                 const beforeJournalInsert =
                   assertCommitUserEventSourceCompleteness({
                     blockEndTimeMs,
+                    lagBlocks: (yield* configuredCommitHorizonLag).lagBlocks,
                     includedDepositEntries,
                     includedForcedTransactionEntries,
                     includedWithdrawalEntries,

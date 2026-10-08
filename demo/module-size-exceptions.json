@@ -996,13 +996,13 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
-    "max": 546,
-    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d."
+    "max": 547,
+    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1)."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",
-    "max": 668,
-    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d."
+    "max": 669,
+    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1)."
   },
   {
     "file": "midgard-node/src/workers/mpf-engine-probe.ts",
@@ -1136,7 +1136,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-journal.test.ts",
-    "max": 2208,
+    "max": 2130,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1171,7 +1171,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-retired-membership.test.ts",
-    "max": 867,
+    "max": 826,
     "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1183,11 +1183,6 @@
     "file": "midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
     "max": 797,
     "reason": "createFixture is the dominant indivisible declaration (688 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-node/tests/helpers/history-owner-rollback-journey.run-history-owner-rollback-journey.ts",
-    "max": 2073,
-    "reason": "runHistoryOwnerRollbackJourney is the dominant indivisible declaration (2004 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
@@ -1225,11 +1220,6 @@
     "reason": "Retained test registration “whole-block history initialization replay” (238 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-node/tests/l1-event-history-observed-recovery-emulator.test.ts",
-    "max": 807,
-    "reason": "Retained test registration “recovers a genuinely observed deposit-only signed commitment before local finalization” (748 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-node/tests/l1-event-history-parent-lease-emulator.test.ts",
     "max": 592,
     "reason": "Retained test registration “fails the parent operation lease after accepted response loss while a later lease preserves and then reconciles the signed intent” (544 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. N2 (+2): the replacement attempt now stops on the landed queue's named no_root reason, explained where it is asserted. I1 (+1): the submissions run under the journal of a process with no follower. I1-fix (+2): the finalized status is renamed locally_applied (I1-E1 option B), whose longer name wraps."
@@ -1251,7 +1241,7 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-signed-intent-continuation-emulator.test.ts",
-    "max": 578,
+    "max": 575,
     "reason": "Retained test registration “retains the original signed intent through an accepted queue pointer continuation before local confirmation” (545 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1-fix (+2): the finalized status is renamed locally_applied (I1-E1 option B), whose longer name wraps."
   },
   {
@@ -1358,11 +1348,6 @@
     "file": "midgard-node/tests/sdk-abi-fixtures.test.ts",
     "max": 1046,
     "reason": "Retained test registration “SDK canonical ABI fixtures” (1000 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-node/tests/signed-intent-canonical-coverage.test.ts",
-    "max": 508,
-    "reason": "Retained test registration “signed intent canonical coverage supplied-evidence classifier” (415 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/state-queue-correction-observer.test.ts",

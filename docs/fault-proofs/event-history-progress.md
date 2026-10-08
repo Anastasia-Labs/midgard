@@ -5101,6 +5101,10 @@ original implementation application or broad-suite completion is claimed.
 
 ### 2026-09-24 — Signed range loader, acceptance progression and current ownership
 
+> Note (deleted 2026-10-08, #810): `eventHistoryCanonicalCoverage.ts`,
+> `signed-intent-canonical-coverage.ts` and their tests no longer exist; the
+> landed-block rebase replaced them. The entries below are kept for history.
+
 Root owns new `eventHistoryCanonicalCoverage.ts`: under recovery authority, it
 checks the exact current binding/generation/checkpoint, follows the retained
 activation-to-anchor predecessor chain, then the canonical post-anchor applications.

@@ -274,8 +274,10 @@ export const fixture = async (): Promise<Fixture> => {
       spent: [G0.outref],
       produced: [A1],
       depositIds: [],
+      withdrawals: [],
       forcedIds: [],
       txIds: [simDigest("own:tx-a")],
+      revived: false,
     },
   };
 };

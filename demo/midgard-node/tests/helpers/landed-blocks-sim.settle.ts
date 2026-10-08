@@ -1,8 +1,9 @@
 /**
- * The landed-block fork simulator's settle step (N3): the node's
+ * The landed-block fork simulator's settle step (N3, I3): the node's
  * landed-block hook at the follower's view, then what the history owner's
- * reconcile and the node's journal resolution do about its holds (the
- * rebase, an abandoned journal revived, an active journal abandoned),
+ * reconcile does about its holds (the rebase, which also disposes of and
+ * revives own journals), the commit path's local finalization of a revived
+ * block, and S6 deriving a commit dead whose base left without a rebase,
  * until nothing is left to do. A rebase is deferred now and then, and
  * every third one crashes after the native move and resumes after a
  * reopen.
@@ -14,11 +15,12 @@ import type { DriverHold } from "../../src/l1-events/driver.js";
 import {
   CONFIRMED_LEDGER_BEHIND,
   LANDED_BLOCK_AWAITING_DA,
-  LANDED_BLOCK_OWN_JOURNAL_ABANDONED,
+  LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
 } from "../../src/landed-blocks/holds.js";
 import { landedBlockHook } from "../../src/landed-blocks/hook.js";
+import { rebaseNeeded } from "../../src/landed-blocks/process.js";
 import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import {
   rebasePlan,
@@ -47,8 +49,6 @@ export const holdNames = (
   hold !== undefined &&
   (hold.reason === reason || hold.detail.includes(`also ${reason}:`));
 
-const OWN_ABANDONED =
-  /own block ([0-9a-f]+) landed but its journal is abandoned/;
 const AWAITING_OWN = "awaiting own journal resolution";
 
 export type Settled =
@@ -91,9 +91,6 @@ export const simSettler = (
     const removedBefore = (await run(retrieveRows))
       .filter((row) => row.state === "removed")
       .map((row) => row.headerHash);
-    // A revived or abandoned journal moves the working ledger onto the
-    // processed chain once processing settled.
-    let restore = false;
     for (let round = 0; round < 40; round++) {
       faults.missing = [];
       faults.transient = 0;
@@ -107,16 +104,6 @@ export const simSettler = (
         stats.relands += removedBefore.filter(
           (hash) => after.get(hash) === "processed",
         ).length;
-      }
-      if (holdNames(hold, LANDED_BLOCK_OWN_JOURNAL_ABANDONED)) {
-        const header = OWN_ABANDONED.exec(hold!.detail)?.[1];
-        if (header === undefined || !book.blocks.has(header))
-          return {
-            error: `an abandoned own block held ${JSON.stringify(hold)}`,
-          };
-        await node.revive(header, rooted.has(header), onQueue);
-        restore = true;
-        continue;
       }
       if (faults.missing.length > 0) {
         if (hold?.reason !== LANDED_BLOCK_AWAITING_DA)
@@ -135,6 +122,9 @@ export const simSettler = (
         if (!plan.detail.startsWith(AWAITING_OWN) || book.active === undefined)
           return { error: `rebase blocked: ${plan.detail}` };
         await node.abandonActive(onQueue);
+        const moved = await node.rebaseOnto();
+        if (typeof moved === "string") return { error: moved };
+        rebuilds += 1;
         continue;
       }
       if (plan.kind === "none") {
@@ -147,19 +137,29 @@ export const simSettler = (
           book.active !== undefined
         ) {
           await node.abandonActive(onQueue);
-          restore = true;
-        }
-        if (restore) {
           const moved = await node.rebaseOnto();
           if (typeof moved === "string") return { error: moved };
           rebuilds += 1;
+          continue;
         }
+        if ((await node.finalizeRevived()) > 0) continue;
+        if (holdNames(hold, LANDED_BLOCK_OWN_REVIVAL_PENDING))
+          return { error: `a finalized revival held ${JSON.stringify(hold)}` };
         return { hold };
       }
+      // A rebase due only for journals to dispose of is asked for after S6
+      // derived the commits' statuses, not by processing.
+      const disposalOnly =
+        plan.target.journals.dispose.length > 0 &&
+        !rebaseNeeded(await run(retrieveRows));
       const offRoot = hold?.reason === CONFIRMED_LEDGER_BEHIND;
-      if (!offRoot && !holdNames(hold, LANDED_BLOCK_REBASE_PENDING))
+      if (
+        !offRoot &&
+        !disposalOnly &&
+        !holdNames(hold, LANDED_BLOCK_REBASE_PENDING)
+      )
         return { error: `a due rebase held ${JSON.stringify(hold)}` };
-      if (!offRoot && !requested.value)
+      if (!offRoot && !disposalOnly && !requested.value)
         return { error: "a due rebase was not requested" };
       if (round === 0 && rollback && (rollbacks += 1) % 2 === 0)
         deferUntil = stats.checks + 3;
@@ -183,6 +183,7 @@ export const simSettler = (
         continue;
       }
       await run(withHistoryWrite(rebaseSql(plan.target)));
+      node.followDisposition(plan.target.journals, onQueue);
       rebuilds += 1;
     }
     return { error: "landed-block processing did not settle" };

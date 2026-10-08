@@ -1,8 +1,10 @@
 /**
  * This node's own landed blocks (plan §7.3, §15 N3), processed against stub
  * ports on the node database: an own block is adopted from its journal and
- * never replayed, exactly once across runs; a journal that is abandoned or
- * does not describe the landed block holds by name and records nothing; a
+ * never replayed, exactly once across runs; one whose journal is abandoned
+ * is adopted unapplied for the rebase to revive, and the blocks after it
+ * wait for its local finalization; a journal that does not describe the
+ * landed block holds by name and records nothing; a
  * merged own block folds into `confirmed_ledger` through its local merge
  * finalization only; a foreign block after it replays on the journal's
  * post-state, and one that misses its header's root is never adopted.
@@ -16,7 +18,7 @@ import { describe, expect, it } from "vitest";
 import {
   CONFIRMED_LEDGER_BEHIND,
   LANDED_BLOCK_INVALID,
-  LANDED_BLOCK_OWN_JOURNAL_ABANDONED,
+  LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCKS_WAITING,
 } from "../src/landed-blocks/holds.js";
@@ -132,26 +134,43 @@ describe("own landed blocks", () => {
     );
   }, 120_000);
 
-  it("holds an own block whose journal is abandoned, recording and replaying nothing", async () => {
-    const { a, genesisState, journalA } = await fixture();
+  it("adopts an own block whose journal is abandoned unapplied for the rebase to revive, and holds the blocks after it until its revival is finalized", async () => {
+    const { a, f, genesisState, journalA } = await fixture();
     const state = harness();
     state.journals.set(a.hash, { ...journalA, status: "abandoned" });
     await inNode(
       Effect.gen(function* () {
-        const held = yield* processLandedQueue(
-          ports(state),
-          queueOf(genesisState, [a]),
-        );
-        expect(held?.reason).toBe(LANDED_BLOCK_OWN_JOURNAL_ABANDONED);
+        const process = (nodes: readonly Block[]) =>
+          processLandedQueue(ports(state), queueOf(genesisState, nodes));
+        const held = yield* process([a, f]);
+        expect(held?.reason).toBe(LANDED_BLOCK_OWN_REVIVAL_PENDING);
         expect(held?.detail).toContain(a.hash);
-        expect(yield* retrieveRows).toHaveLength(0);
+        expect(held?.detail).toContain(`also ${LANDED_BLOCK_REBASE_PENDING}:`);
+        const rows = yield* retrieveRows;
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({
+          headerHash: a.hash,
+          kind: "own",
+          state: "processed",
+          applied: false,
+        });
         expect(state.replays).toHaveLength(0);
-        // Revived: the next run adopts it.
-        state.journals.set(a.hash, journalA);
-        expect(
-          yield* processLandedQueue(ports(state), queueOf(genesisState, [a])),
-        ).toBeUndefined();
-        expect(yield* retrieveRows).toHaveLength(1);
+        expect(state.rebaseRequests).toBe(1);
+        // Revived by the rebase, not yet finalized locally: still held.
+        state.journals.set(a.hash, { ...journalA, revived: true });
+        expect((yield* process([a, f]))?.reason).toBe(
+          LANDED_BLOCK_OWN_REVIVAL_PENDING,
+        );
+        expect(state.replays).toHaveLength(0);
+        // Finalized locally: the next block is processed.
+        state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
+        expect((yield* process([a, f]))?.reason).toBe(
+          LANDED_BLOCK_REBASE_PENDING,
+        );
+        expect(state.replays.map((input) => input.headerHash)).toEqual([
+          f.hash,
+        ]);
+        expect(yield* retrieveRows).toHaveLength(2);
       }),
     );
   }, 120_000);

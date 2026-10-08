@@ -1539,12 +1539,6 @@
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
-      "file": "demo/midgard-node/tests/helpers/history-owner-rollback-journey.run-history-owner-rollback-journey.ts",
-      "lines": 2077,
-      "reason": "runHistoryOwnerRollbackJourney is the dominant indivisible declaration (2008 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
       "file": "demo/midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
       "lines": 576,
       "reason": "openHistoryProductionOwnerLifecycle is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
@@ -1584,12 +1578,6 @@
       "file": "demo/midgard-node/tests/l1-event-history-initialization.test.ts",
       "lines": 574,
       "reason": "Retained test registration \u201cwhole-block history initialization replay\u201d (238 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-observed-recovery-emulator.test.ts",
-      "lines": 807,
-      "reason": "Retained test registration \u201crecovers a genuinely observed deposit-only signed commitment before local finalization\u201d (748 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
@@ -1746,18 +1734,6 @@
       "file": "demo/midgard-node/tests/sdk-abi-fixtures.test.ts",
       "lines": 1046,
       "reason": "Retained test registration \u201cSDK canonical ABI fixtures\u201d (1000 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/signed-intent-canonical-coverage.test.ts",
-      "lines": 508,
-      "reason": "Retained test registration \u201csigned intent canonical coverage supplied-evidence classifier\u201d (415 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/signed-intent-replacement-revival-emulator.test.ts",
-      "lines": 505,
-      "reason": "Retained test registration \u201crevives a replaced commit that wins its base slot after all, abandons its unlanded replacement with the same members, never revives it while an admitted correction abandoned it, and locally finalizes the winner once\u201d (119 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {

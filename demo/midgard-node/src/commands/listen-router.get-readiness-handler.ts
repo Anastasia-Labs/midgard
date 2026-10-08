@@ -230,8 +230,9 @@ export const getReadinessHandler = Effect.gen(function* () {
   // only a settlement worker that keeps dying does.
   const settlementReason = settlementReadinessReason(settlement, Date.now());
   if (settlementReason !== undefined) reasons.push(settlementReason);
-  // Informational: pending signed-header recovery holding history retention
-  // more than the rollback horizon back grows the journal until it resolves.
+  // Informational: a retention hold (an interrupted settlement confirmation) keeping
+  // history retention more than the rollback horizon back grows the journal
+  // until it resolves.
   const historyOwner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
   const eventHistoryRetentionHold =
     historyOwner === undefined

@@ -3,6 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
+import { assertIncludedEventsDeep } from "../../database/commit-event-depth.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
@@ -108,13 +109,20 @@ export const refreshCommitUserEventSourcesThroughBlockEnd = <
       );
   });
 
+/**
+ * Inside the journal transaction: the commit's included events are exactly
+ * the due set through its end time, and each is at least `lagBlocks` (d)
+ * deep below the follower's view (plan §8.1, `assertIncludedEventsDeep`).
+ */
 export const assertCommitUserEventSourceCompleteness = ({
   blockEndTimeMs,
+  lagBlocks,
   includedDepositEntries,
   includedForcedTransactionEntries,
   includedWithdrawalEntries,
 }: {
   readonly blockEndTimeMs: number;
+  readonly lagBlocks: number;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
   readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
@@ -173,6 +181,18 @@ export const assertCommitUserEventSourceCompleteness = ({
         }),
       );
     }
+    yield* assertIncludedEventsDeep({
+      lagBlocks,
+      depositIds: includedDepositEntries.map((entry) =>
+        Buffer.from(entry[DepositsDB.Columns.ID]),
+      ),
+      forcedIds: includedForcedTransactionEntries.map((entry) =>
+        Buffer.from(entry[ForcedTransactionsDB.Columns.TX_ORDER_ID]),
+      ),
+      withdrawalIds: includedWithdrawalEntries.map((entry) =>
+        Buffer.from(entry[WithdrawalsDB.Columns.ID]),
+      ),
+    });
   }).pipe(
     sqlErrorToDatabaseError(
       PendingBlockFinalizationsDB.tableName,

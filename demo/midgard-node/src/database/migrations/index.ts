@@ -12,6 +12,7 @@ import intentRefusalHoldsSql from "./sql/0010_intent_refusal_holds.sql";
 import locallyAppliedBlockStatusSql from "./sql/0011_locally_applied_block_status.sql";
 import receiptSettlementsSql from "./sql/0012_receipt_settlements.sql";
 import mempoolInclusionMarksSql from "./sql/0013_mempool_inclusion_marks.sql";
+import landedBlocksOwnRemovedSql from "./sql/0014_landed_blocks_own_removed.sql";
 
 export type Migration = {
   readonly version: number;
@@ -111,6 +112,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "mempool_inclusion_marks",
     checksumSha256: sha256Hex(mempoolInclusionMarksSql),
     sql: mempoolInclusionMarksSql,
+    transactional: true,
+  },
+  {
+    version: 14,
+    name: "landed_blocks_own_removed",
+    checksumSha256: sha256Hex(landedBlocksOwnRemovedSql),
+    sql: landedBlocksOwnRemovedSql,
     transactional: true,
   },
 ] as const;

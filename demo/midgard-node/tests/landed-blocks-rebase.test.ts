@@ -251,7 +251,8 @@ describe(
             utxosRoot: R1,
             kind: "own",
             state: "processed",
-            applied: false,
+            // An own block is applied when processed (its journal live).
+            applied: true,
             spent: [E0.outref],
             produced: [E1],
             depositIds: [],
@@ -337,7 +338,7 @@ describe(
         reaches: R2,
       };
       const globals = await processOf(native);
-      await seed(globals, { kind: "own", txIds: [b.id] });
+      await seed(globals, { kind: "own", applied: true, txIds: [b.id] });
       await land(globals, {
         headerHash: "c2".repeat(28),
         parentHeaderHash: BLOCK,

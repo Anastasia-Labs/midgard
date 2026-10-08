@@ -358,17 +358,16 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       } satisfies WorkerOutput;
     }
 
-    // A signed commit is replaced (or a replaced one revived) in one place:
-    // the history owner's signed-intent reconciliation, which decides from
-    // its authenticated exact-point view of the tail node's slot once the
-    // intent is past its TTL or the journaled history shows its base output
-    // spent. This unauthenticated snapshot only defers to it.
+    // A signed commit is disposed of (and revived if it lands anyway) in one
+    // place: the landed-block rebase, from S6's derived status of the intent
+    // and the landed chain the follower holds (whichever lands wins). This
+    // unauthenticated snapshot only defers to it.
     // Only the journal's age since its last update is reported here (age_ms,
     // as in the lines above); past the warning age it is logged as a warning.
     // Readiness reports signedIntentUnresolvedAgeMs from the journal's
     // creation instead.
     if (pendingBlock.intendedTxHash != null) {
-      const deferral = `🔍 Pending block header ${pendingBlock.expectedHeaderHash} holds a signed commit intent and is not on the queue; deferring to the history owner's signed-intent reconciliation (age_ms=${pendingAgeMs}, warning_age_ms=${nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS}).`;
+      const deferral = `🔍 Pending block header ${pendingBlock.expectedHeaderHash} holds a signed commit intent and is not on the queue; deferring to the landed-block rebase's journal disposition (age_ms=${pendingAgeMs}, warning_age_ms=${nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS}).`;
       yield* pendingAgeMs >= nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS
         ? Effect.logWarning(deferral)
         : Effect.logInfo(deferral);

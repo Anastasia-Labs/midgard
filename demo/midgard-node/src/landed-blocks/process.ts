@@ -9,19 +9,23 @@
  *    the last processed header on it and takes the merged headers first.
  * 2. The landed queue is walked from the root (or that header). A node already processed on
  *    the same parent is kept (a `removed` one relands); every processed row
- *    the walk did not reach left the queue: a foreign row the working ledger
- *    took in becomes `removed` (the rebase reverts it), any other is deleted,
+ *    the walk did not reach left the queue: a row the working ledger took in
+ *    becomes `removed` (the rebase reverts it), any other is deleted,
  *    and the receipt settlements they recorded are rewound (`settlements.ts`).
  *    Rewind is that walk plus the rebase's recompute, never an inverse.
  * 3. Each new node, in queue order and exactly once (the row's primary key),
  *    must link to its parent (hash, root, start time). This node's own block
- *    is adopted from its journal and never replayed; a foreign block is
+ *    is adopted from its journal and never replayed; one whose journal was
+ *    abandoned (whichever lands wins) is adopted unapplied for the rebase to
+ *    revive, and the blocks after it hold `landed_block_own_revival_pending`
+ *    until the commit path finalized it locally. A foreign block is
  *    replayed on its parent's ledger and must reach its header's root. A
  *    block that does not is never recorded: it holds `landed_block_invalid`
  *    and nothing after it is processed. A mismatch never feeds a fault-proof
  *    path.
- * 4. A foreign row the working ledger does not hold yet, or a removed row,
- *    asks the history owner for the rebase and holds
+ * 4. A row the working ledger does not hold yet (a foreign or a revived own
+ *    one), or a removed row, asks the history owner for the rebase (which
+ *    also disposes of the own journals that cannot land) and holds
  *    `landed_block_rebase_pending` until it ran, or
  *    `landed_block_rebase_failed` (with the failure) while the owner
  *    retries a rebase that failed.
@@ -53,7 +57,7 @@ import {
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_INVALID,
-  LANDED_BLOCK_OWN_JOURNAL_ABANDONED,
+  LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_FAILED,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
@@ -150,14 +154,6 @@ const newRow = <R>(
     } as const;
     const journal = yield* ports.ownJournal(node.headerHash);
     if (journal !== undefined) {
-      if (journal.status === "abandoned")
-        return {
-          kind: "held",
-          hold: hold(
-            LANDED_BLOCK_OWN_JOURNAL_ABANDONED,
-            `own block ${node.headerHash} landed but its journal is abandoned`,
-          ),
-        } satisfies Step;
       if (
         journal.baseTailHeaderHash !== parent.headerHash ||
         journal.baseUtxosRoot !== parent.utxosRoot ||
@@ -170,16 +166,20 @@ const newRow = <R>(
             `own block ${node.headerHash}'s journal does not describe the landed block (base ${journal.baseTailHeaderHash}/${journal.baseUtxosRoot}, expected ${journal.expectedUtxosRoot})`,
           ),
         } satisfies Step;
+      // An abandoned own block that landed anyway is revived by the rebase:
+      // its row waits unapplied, with its withdrawals, until the rebase took
+      // it in.
+      const abandoned = journal.status === "abandoned";
       return {
         kind: "row",
         row: {
           ...base,
           kind: "own",
-          applied: true,
+          applied: !abandoned,
           spent: journal.spent,
           produced: journal.produced,
           depositIds: journal.depositIds,
-          withdrawals: [],
+          withdrawals: abandoned ? journal.withdrawals : [],
           forcedIds: journal.forcedIds,
           txIds: journal.txIds,
         },
@@ -235,12 +235,30 @@ const newRow = <R>(
     } satisfies Step;
   });
 
+/**
+ * The hold before a node built on an own block that is revived and not yet
+ * locally finalized here: the revived block stays the newest processed one
+ * until the commit path finalized it.
+ */
+const revivalHold = <R>(ports: LandedBlockPorts<R>, parent: Parent) =>
+  Effect.gen(function* () {
+    const journal = yield* ports.ownJournal(parent.headerHash);
+    if (
+      journal === undefined ||
+      (journal.status !== "abandoned" && !journal.revived)
+    )
+      return undefined;
+    return hold(
+      LANDED_BLOCK_OWN_REVIVAL_PENDING,
+      `own block ${parent.headerHash} landed after its journal was abandoned; the blocks after it wait for its revival and local finalization`,
+    );
+  });
+
 /** Whether the working ledger and native MPF lag the processed rows. */
 export const rebaseNeeded = (rows: readonly LandedBlockRow[]): boolean =>
   rows.some(
     (row) =>
-      row.state === "removed" ||
-      (row.kind === "foreign" && row.state === "processed" && !row.applied),
+      row.state === "removed" || (row.state === "processed" && !row.applied),
   );
 
 const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
@@ -346,6 +364,11 @@ const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
       yield* viewChecked(ports, queue.view, rollBackRows(left, relands));
     for (; next < sequence.length; next++) {
       const node = sequence[next]!;
+      const revival = yield* revivalHold(ports, parent);
+      if (revival !== undefined) {
+        holds.push(revival);
+        break;
+      }
       const step = yield* newRow(ports, queue.view, node, parent, ledger);
       if (step.kind === "held") {
         holds.push(step.hold);
