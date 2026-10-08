@@ -122,6 +122,20 @@ export type CommitteeRetentionReadinessSnapshot = {
    */
   readonly alerting: number;
   readonly error?: string;
+  /**
+   * Retirements held at a header, each naming it and its cause
+   * (`committee_retirement_held`): a degraded detail shown on `/readyz` and
+   * in status that never makes the committee not ready. Retention keeps the
+   * header's record meanwhile.
+   */
+  readonly holds?: readonly string[];
+  /**
+   * Retention pins the follower could not keep or write
+   * (`committee_retention_pin_pruned`, `committee_retention_pin_failed`):
+   * each makes the committee not ready, as a lost pin loses history a record
+   * needs and a failed pin write holds the follower's prune.
+   */
+  readonly pinFailures?: readonly string[];
 };
 
 /**

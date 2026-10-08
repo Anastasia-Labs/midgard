@@ -162,6 +162,71 @@ export const registerReadinessTests = () => {
     ).resolves.toMatchObject({ ready: true, reasons: [] });
   });
 
+  it("shows a retirement hold as detail while ready, and is not ready on a pin failure or a failed compaction", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const service = new CommitteeService({
+      config: minimalConfig({
+        manifestPath: `${dir}/manifest.json`,
+        deploymentInfoPath: `${dir}/deployment.json`,
+        signerSeed: seed,
+        signerPublicKey: signer.publicKeyHex,
+      }),
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({ fetchStateQueueNodes: async () => [] }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    await service.tick();
+    const retention = {
+      status: "ok",
+      checkedAt: "2026-10-08T00:00:00.000Z",
+      scanned: 1,
+      retained: 1,
+      prunable: 0,
+      alerting: 0,
+    } as const;
+    const hold = `committee_retirement_held: header ${"bb".repeat(28)}: submission_without_valid_landing: its submission has no valid landing`;
+
+    const pinPruned = `committee_retention_pin_pruned: retirement need 1 pruned item(s): block ${"cc".repeat(32)}`;
+    const pinFailed = "committee_retention_pin_failed: connection refused";
+    const compaction = "committee_retirement_compaction_failed: disk full";
+
+    // A hold no rule releases is detail on /readyz, never a readiness failure.
+    await expect(
+      service.readinessSnapshot({ retention: { ...retention, holds: [hold] } }),
+    ).resolves.toMatchObject({
+      ready: true,
+      reasons: [],
+      retention: { holds: [hold] },
+    });
+    for (const pin of [pinPruned, pinFailed]) {
+      await expect(
+        service.readinessSnapshot({
+          retention: { ...retention, holds: [hold], pinFailures: [pin] },
+        }),
+      ).resolves.toMatchObject({
+        ready: false,
+        reasons: [pin],
+        retention: { holds: [hold], pinFailures: [pin] },
+      });
+    }
+    await expect(
+      service.readinessSnapshot({
+        retention: { ...retention, status: "failed", error: compaction },
+      }),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: [`retention check failed: ${compaction}`],
+    });
+    await expect(
+      service.readinessSnapshot({
+        retention: { ...retention, holds: [], pinFailures: [] },
+      }),
+    ).resolves.toMatchObject({ ready: true, reasons: [] });
+  });
+
   it("is not ready while the pooled DA bond is short or Withdrawing, and ready again after a top-up or cancel", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";

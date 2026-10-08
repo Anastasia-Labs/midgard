@@ -3,15 +3,15 @@ import type { CommitteeStore } from "../store.js";
 
 /**
  * The chain authority every responder transaction needs: the committee
- * store bound to this committee's configured L1 source (its network, node
- * authority and L1 origin). Answering a challenge spends, so it is a new
+ * store bound to this committee's configured L1 source (its network and node
+ * authority). Answering a challenge spends, so it is a new
  * decision. Reading the retained bytes that answer is not gated on this:
  * those stay servable to any holder that can act (see
  * `retainedAvailabilityPayload`).
  */
 export const assertAvailabilityResponderSourceHealthy = async (
   store: Pick<CommitteeStore, "getL1SourceState">,
-  config: Pick<CommitteeConfig, "network" | "l1Origin" | "nativeLedger">,
+  config: Pick<CommitteeConfig, "network" | "nativeLedger">,
 ): Promise<void> => {
   const source = await store.getL1SourceState();
   if (

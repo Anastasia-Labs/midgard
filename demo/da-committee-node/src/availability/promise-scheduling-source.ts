@@ -74,7 +74,12 @@ export const promiseSchedulingSource = (
       complete: input.complete,
       liabilities: input.liabilities,
       readCanonicalPoint: (point) =>
-        scope.read(() => args.reads.canonicalPoint(point, input.point)),
+        scope.read(() =>
+          args.reads.canonicalPoint(point, {
+            ...input.point,
+            generation: input.generation,
+          }),
+        ),
       assertCurrent,
     });
     return {

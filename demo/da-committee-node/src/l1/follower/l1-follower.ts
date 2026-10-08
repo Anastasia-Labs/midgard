@@ -36,6 +36,12 @@ import {
   type CommitteeView,
   readCommitteeView,
 } from "./projection.js";
+import {
+  type CommitteeL1Retention,
+  committeeL1Retention,
+  type CommitteePinTargets,
+  pruneAfterPins,
+} from "./retention-pins.js";
 
 /** The committee's follower is not configured; the detail names what is missing. */
 export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
@@ -81,6 +87,11 @@ export type CommitteeL1Follower = Readonly<{
    * LocalTxSubmission. Null when the follower is not configured.
    */
   provider: L1FollowerProvider | null;
+  /**
+   * The committee's retention pins on the follower's store; null when the
+   * follower is not configured.
+   */
+  retention: CommitteeL1Retention | null;
   /** A Lucid client on the follower's provider; throws when not configured. */
   lucid(): Promise<LucidEvolution>;
   /** Settles once the follower stopped and released its store and transport. */
@@ -336,11 +347,16 @@ const openFollowerParts = async (
  * suspended or passive, its loop waits on `store_locked`. Never throws for
  * a missing configuration: the committee then stays unready with
  * `l1_follower_unconfigured`.
+ *
+ * `records` reads every L1 point and submission the committee store names:
+ * before each prune step the loop brings their retention pins current, so
+ * no history a stored record reads again is pruned (plan §11).
  */
 export const startCommitteeL1Follower = async (
   config: LoadedCommitteeConfig,
   writerLease: CommitteeWriterLease,
   log: (line: string) => void,
+  records: () => Promise<CommitteePinTargets>,
 ): Promise<CommitteeL1Follower> => {
   const parameters = depthParameters(config);
   const plan = committeeL1FollowerPlan(config);
@@ -350,6 +366,7 @@ export const startCommitteeL1Follower = async (
       source: unconfiguredSource(parameters, plan.reason),
       store: null,
       provider: null,
+      retention: null,
       lucid: () =>
         Promise.reject(
           new Error(`L1 follower is not configured: ${plan.reason}`),
@@ -373,10 +390,12 @@ export const startCommitteeL1Follower = async (
           ledger: parts.transport,
           wallets: parts.wallets,
         });
+  const retention = committeeL1Retention(store);
+  retention.bind("records", records);
   let status: FollowStatus | null = null;
   const abort = new AbortController();
   const running = followChain({
-    store,
+    store: pruneAfterPins(store, retention),
     transport: parts.transport,
     origin: plan.origin,
     signal: abort.signal,
@@ -395,6 +414,7 @@ export const startCommitteeL1Follower = async (
     }),
     store,
     provider: parts.provider,
+    retention,
     lucid: parts.lucid,
     stop: async () => {
       abort.abort();

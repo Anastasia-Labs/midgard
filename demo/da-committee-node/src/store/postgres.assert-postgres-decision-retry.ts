@@ -15,6 +15,7 @@ import {
   parseStoredJson,
 } from "../store.js";
 import type { PostgresStoreInstanceLockEvents } from "./postgres.instance-lock.js";
+import type { CommitteeStoreOpenChecks } from "./postgres.open-checks.js";
 
 export type JsonRecordRow = {
   readonly record: unknown;
@@ -45,7 +46,10 @@ export const COMMITTEE_TABLES = [
 ] as const;
 
 /** The instance lock's events; see `PostgresStoreInstanceLock`. */
-export type PostgresCommitteeStoreOptions = PostgresStoreInstanceLockEvents;
+export type PostgresCommitteeStoreOptions = PostgresStoreInstanceLockEvents & {
+  /** Checked, and the retirement floor re-bound, as the store opens. */
+  readonly openChecks?: CommitteeStoreOpenChecks;
+};
 
 export const ensureL1SourceStateRow = async (
   client: PoolClient,

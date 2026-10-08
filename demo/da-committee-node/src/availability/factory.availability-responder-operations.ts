@@ -1,6 +1,6 @@
 import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { type CommitteeConfig } from "../config.js";
 import {
@@ -23,6 +23,12 @@ import { AvailabilityResponderAwaitingScanError } from "./responder.js";
  * one of them spends only protocol UTxOs) expires that intent once the rival
  * spend is final, instead of waiting on it forever.
  */
+/** The view moved under an observation: the next pass observes again. */
+const moved = {
+  status: "unknown",
+  reason: "Canonical source changed during availability reconciliation",
+} as const satisfies SDK.DaAvailabilityOperationObservation;
+
 export const availabilityResponderOperations = (input: {
   readonly lucid: LucidEvolution;
   readonly reads: CommitteeAvailabilityReads;
@@ -61,36 +67,106 @@ export const availabilityResponderOperations = (input: {
     else await input.assertSourceHealthy();
     await readBoundary(scope);
   };
+  // Every own transaction is pinned on the follower before it is submitted,
+  // and the pins then follow what the journal retains (plan §11): its
+  // status stays readable after a downtime longer than k.
+  const { journal, actor, deploymentIdentity } = input.context;
+  reads.intentPins.bind(() =>
+    journal
+      .actorSnapshot(actor, deploymentIdentity)
+      .retainedAttempts.map(({ txHash }) => txHash),
+  );
+  const observeInputs = SDK.createDaAvailabilityOperationObserver({
+    lucid: input.lucid,
+    readBoundary,
+    resolveForeignSpend: async (outRef, scope) => {
+      const before = await readBoundary(scope);
+      try {
+        return await SDK.resolveDaAvailabilityForeignSpend({
+          ...reads.foreignSpend,
+          outRef,
+          readBoundary,
+          scope,
+        });
+      } catch (error) {
+        // A spend read the follower's view moved under is the wait for the
+        // next pass, which reads it again at one view.
+        if (
+          !(error instanceof AvailabilityResponderAwaitingScanError) &&
+          !sameBoundary(before, await readBoundary(scope))
+        )
+          throw new AvailabilityResponderAwaitingScanError(
+            "its view advanced during a canonical spend read; the next pass reads again",
+          );
+        throw error;
+      }
+    },
+  });
+  /**
+   * The observation, with the intent's own failed landing added as the
+   * spend of each missing collateral input: the SDK expires the intent once
+   * that spend is final. Read at the observation's own boundary; a moved
+   * view reads as unknown, for the next pass.
+   */
+  const observe: SDK.DaAvailabilityOperationContext["observe"] = async (
+    intent,
+    scope,
+  ) => {
+    const observed = await observeInputs(intent, scope);
+    if (observed.status !== "inputs_missing") return observed;
+    const collateral = intent.collateralOutRefs.filter((ref) =>
+      observed.missingOutRefs.includes(ref),
+    );
+    if (collateral.length === 0) return observed;
+    const read = <T>(run: () => Promise<T>) =>
+      scope === undefined ? run() : scope.read(run);
+    const before = await readBoundary(scope);
+    if (before.slot !== observed.currentSlot) return moved;
+    const own: SDK.DaAvailabilityForeignSpend[] = [];
+    for (const outRef of collateral) {
+      const spend = await read(() =>
+        SDK.resolveDaAvailabilityForeignSpend({
+          ...reads.foreignSpend,
+          fetchSpend: () => reads.failedLanding(intent.txHash),
+          outRef,
+          readBoundary,
+          scope,
+          consumes: "collateral",
+        }),
+      ).catch(async (error: unknown) => {
+        if (!sameBoundary(before, await readBoundary(scope))) return moved;
+        throw error;
+      });
+      if (spend !== undefined && "status" in spend) return moved;
+      if (spend !== undefined && spend.spendingTxHash === intent.txHash)
+        own.push({
+          outRef,
+          spendingTxHash: spend.spendingTxHash,
+          spendPoint: spend.spendPoint,
+          confirmationDepth: spend.confirmationDepth,
+        });
+    }
+    if (!sameBoundary(before, await readBoundary(scope))) return moved;
+    return own.length === 0
+      ? observed
+      : {
+          ...observed,
+          foreignSpends: [...(observed.foreignSpends ?? []), ...own],
+        };
+  };
   const context: SDK.DaAvailabilityOperationContext = {
     ...input.context,
+    submit: async (signedCbor) => {
+      await reads.intentPins.add(
+        CML.hash_transaction(
+          CML.Transaction.from_cbor_hex(signedCbor).body(),
+        ).to_hex(),
+      );
+      return input.context.submit(signedCbor);
+    },
     assertActuationCurrent,
     readBoundary,
-    observe: SDK.createDaAvailabilityOperationObserver({
-      lucid: input.lucid,
-      readBoundary,
-      resolveForeignSpend: async (outRef, scope) => {
-        const before = await readBoundary(scope);
-        try {
-          return await SDK.resolveDaAvailabilityForeignSpend({
-            ...reads.foreignSpend,
-            outRef,
-            readBoundary,
-            scope,
-          });
-        } catch (error) {
-          // A spend read the follower's view moved under is the wait for the
-          // next pass, which reads it again at one view.
-          if (
-            !(error instanceof AvailabilityResponderAwaitingScanError) &&
-            !sameBoundary(before, await readBoundary(scope))
-          )
-            throw new AvailabilityResponderAwaitingScanError(
-              "its view advanced during a canonical spend read; the next pass reads again",
-            );
-          throw error;
-        }
-      },
-    }),
+    observe,
   };
   const reconcile = async (
     scope?: SDK.DaAvailabilityReadScope,

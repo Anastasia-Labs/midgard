@@ -23,6 +23,16 @@ import type { ProtocolParameters } from "@lucid-evolution/lucid";
 
 import { AvailabilityResponderAwaitingScanError } from "../../availability/responder.js";
 import type { CommitteeL1Readiness } from "./l1-follower.js";
+import { COMMITTEE_QUEUE_TABLE } from "./queue-table.js";
+import { type CommitteeL1Retention, NO_PIN_TARGETS } from "./retention-pins.js";
+
+/**
+ * A read reached a block the follower no longer retains: pruned below its
+ * k-deep window with no retention pin keeping it.
+ */
+export class FollowerPointBeyondRetentionError extends Error {
+  override readonly name = "FollowerPointBeyondRetentionError";
+}
 
 /** A block on the follower's chain: its slot, hash and height. */
 export type FollowerPoint = Readonly<{
@@ -38,6 +48,10 @@ export type FollowerPoint = Readonly<{
  */
 export type FollowerBoundary = FollowerPoint &
   Readonly<{ pointId: string; generation: number; view: View }>;
+
+/** A boundary a canonical read is bracketed by: a view's tip and generation. */
+export type FollowerReadBoundary = FollowerPoint &
+  Readonly<{ generation: number }>;
 
 /** A point proof read at `tip`, the boundary it was read under. */
 export type FollowerPointProof = Readonly<{
@@ -65,7 +79,7 @@ const boundaryOf = (view: View): FollowerBoundary => {
   };
 };
 
-const tipOf = (boundary: FollowerPoint): FollowerPoint => ({
+const tipOf = (boundary: FollowerReadBoundary): FollowerPoint => ({
   slot: boundary.slot,
   blockHash: boundary.blockHash,
   blockNo: boundary.blockNo,
@@ -131,6 +145,7 @@ export const protocolParametersDigest = (
 export type CommitteeAvailabilityReadsInput = Readonly<{
   store: Pick<
     FactStore,
+    | "transaction"
     | "currentView"
     | "viewValid"
     | "pointStatus"
@@ -141,6 +156,19 @@ export type CommitteeAvailabilityReadsInput = Readonly<{
   >;
   /** The follower's readiness reasons: any one holds every read. */
   readiness: () => readonly CommitteeL1Readiness[];
+  /** The committee's retention pins; absent, own intents are not pinned. */
+  retention?: Pick<CommitteeL1Retention, "add" | "bind">;
+}>;
+
+/**
+ * The availability responder's own transactions, pinned on the follower so
+ * their history outlives a downtime longer than k (plan §11).
+ */
+export type CommitteeIntentPins = Readonly<{
+  /** Pins `txHash` now: called before it is submitted. */
+  add(txHash: string): Promise<void>;
+  /** Binds the hashes the journal retains; the pins follow it from then on. */
+  bind(retained: () => readonly string[]): void;
 }>;
 
 /** The availability, promise and retirement reads over the follower's facts. */
@@ -160,7 +188,7 @@ export type CommitteeAvailabilityReads = Readonly<{
    */
   canonicalPoint: (
     point: Readonly<{ slot: number; blockHash: string }>,
-    boundary: FollowerPoint,
+    boundary: FollowerReadBoundary,
   ) => Promise<FollowerPointProof | null>;
   /**
    * The block a valid transaction `txHash` landed in, read under
@@ -168,8 +196,30 @@ export type CommitteeAvailabilityReads = Readonly<{
    */
   submissionPoint: (
     txHash: string,
-    boundary: FollowerPoint,
+    boundary: FollowerReadBoundary,
   ) => Promise<FollowerPointProof | null>;
+  /**
+   * The block on the follower's chain that carries the transaction which
+   * put the header's node in the state queue (its first node output), read
+   * under `boundary`: null when the follower holds no such node row.
+   */
+  landingPoint: (
+    headerHash: string,
+    boundary: FollowerReadBoundary,
+  ) => Promise<FollowerPointProof | null>;
+  intentPins: CommitteeIntentPins;
+  /**
+   * The block a stored transaction `txHash` that failed phase 2 landed in,
+   * as a spend of its collateral: undefined while the follower holds no such
+   * failed transaction. The SDK verifies the spend from its stored bytes.
+   */
+  failedLanding: (txHash: string) => Promise<
+    | Readonly<{
+        transactionId: string;
+        point: Readonly<{ slot: number; blockHash: string }>;
+      }>
+    | undefined
+  >;
   /** The SDK's verified foreign-spend readers over stored spends and txs. */
   foreignSpend: Omit<SDK.DaAvailabilityForeignSpendReaders, "readBoundary">;
 }>;
@@ -192,13 +242,14 @@ export const committeeAvailabilityReads = (
     return boundaryOf(view);
   };
   /** Throws unless the follower's view is still exactly `boundary`. */
-  const assertAt = async (boundary: FollowerPoint): Promise<void> => {
+  const assertAt = async (boundary: FollowerReadBoundary): Promise<void> => {
     const view = await store.currentView();
     if (
       view === null ||
       view.point.slot !== boundary.slot ||
       view.point.hash.toString("hex") !== boundary.blockHash ||
-      view.height !== boundary.blockNo
+      view.height !== boundary.blockNo ||
+      view.generation !== boundary.generation
     )
       throw new Error("The follower's view moved during a canonical read");
   };
@@ -221,6 +272,10 @@ export const committeeAvailabilityReads = (
         blockNo: status.height,
       };
     if (status.kind === "point_not_canonical") return null;
+    if (status.kind === "point_beyond_retention")
+      throw new FollowerPointBeyondRetentionError(
+        `${status.kind}: ${status.detail}`,
+      );
     throw new Error(`${status.kind}: ${status.detail}`);
   };
   return {
@@ -250,6 +305,52 @@ export const committeeAvailabilityReads = (
       });
       await assertAt(boundary);
       return found === null ? null : { point: found, tip: tipOf(boundary) };
+    },
+    landingPoint: async (headerHash, boundary) => {
+      await assertAt(boundary);
+      const rows = await store.transaction("read", (tx) =>
+        tx.query(
+          `SELECT MIN(created_slot) AS slot FROM ${COMMITTEE_QUEUE_TABLE} WHERE kind = 'node' AND header_hash = ?`,
+          [headerHash],
+        ),
+      );
+      const slot = rows[0]?.slot;
+      const block =
+        slot === null || slot === undefined
+          ? null
+          : await blockAt(Number(slot));
+      const found =
+        block === null
+          ? null
+          : await pointOf({
+              slot: block.slot,
+              blockHash: block.hash.toString("hex"),
+            });
+      await assertAt(boundary);
+      return found === null ? null : { point: found, tip: tipOf(boundary) };
+    },
+    intentPins: {
+      add: async (txHash) => {
+        await input.retention?.add("intents", {
+          ...NO_PIN_TARGETS,
+          txs: [txHash],
+        });
+      },
+      bind: (retained) =>
+        input.retention?.bind("intents", () => ({
+          ...NO_PIN_TARGETS,
+          txs: retained(),
+        })),
+    },
+    failedLanding: async (txHash) => {
+      const tx = await store.txByHash(Buffer.from(txHash, "hex"));
+      if (tx === null || tx.isValid) return undefined;
+      const block = await blockAt(tx.blockSlot);
+      if (block === null) return undefined;
+      return {
+        transactionId: txHash,
+        point: { slot: block.slot, blockHash: block.hash.toString("hex") },
+      };
     },
     foreignSpend: {
       fetchSpend: async (ref) => {

@@ -421,6 +421,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
     promiseLoopEnforcement,
     bindRetirementOperationalPins: retirement.bindOperationalPins,
     compactRetainedPromises: retirement.compact,
+    retirementHolds: retirement.holds,
     close: () => journal.close(),
   };
 };

@@ -12,6 +12,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  COMMITTEE_PINNED_BLOCKS_TABLE,
+  COMMITTEE_PINNED_HEADERS_TABLE,
+  COMMITTEE_PINNED_TXS_TABLE,
   COMMITTEE_QUEUE_TABLE,
   COMMITTEE_QUEUE_TABLE_SPEC,
   committeeMigrations,
@@ -44,7 +47,13 @@ describe("committee follower lints", () => {
           table.table,
           table.tableClass,
         ]),
-      ).toEqual([[COMMITTEE_QUEUE_TABLE, "D-t"]]);
+      ).toEqual([
+        [COMMITTEE_QUEUE_TABLE, "D-t"],
+        // The committee's retention pins: its own records, never rewound.
+        [COMMITTEE_PINNED_BLOCKS_TABLE, "B"],
+        [COMMITTEE_PINNED_TXS_TABLE, "B"],
+        [COMMITTEE_PINNED_HEADERS_TABLE, "B"],
+      ]);
     }
   });
 

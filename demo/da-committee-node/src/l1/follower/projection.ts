@@ -31,6 +31,7 @@ import {
 import {
   COMMITTEE_QUEUE_TABLE,
   COMMITTEE_QUEUE_TABLE_SPEC,
+  COMMITTEE_RETENTION_PINS,
   committeeMigrations,
 } from "./queue-table.js";
 
@@ -81,6 +82,7 @@ export const committeeProjection = (
   temporalTables: [COMMITTEE_QUEUE_TABLE_SPEC],
   migrations: committeeMigrations,
   derivations: [committeeQueueDerivation(parameters)],
+  retentionPins: COMMITTEE_RETENTION_PINS,
 });
 
 /** Where a header left the landed queue: the block that spent its last node. */

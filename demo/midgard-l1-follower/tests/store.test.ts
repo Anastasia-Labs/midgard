@@ -355,6 +355,29 @@ describe.each(adapters)("fact store ($name)", (adapter) => {
       expect(
         await store.liveUtxos({ by: "address", address: TRACKED }, point(b1)),
       ).toMatchObject({ kind: "point_beyond_retention" });
+      // The origin's block row is kept below the window: it is canonical,
+      // with its height and depth, while the facts at it are refused.
+      const cursor = (await store.cursor())!;
+      expect(ORIGIN.point.slot).toBeLessThan(cursor.prunedThroughSlot);
+      expect(await store.pointStatus(ORIGIN.point)).toEqual({
+        kind: "canonical",
+        height: ORIGIN.height,
+        depth: cursor.height - ORIGIN.height + 1,
+      });
+      expect(
+        await store.liveUtxos(
+          { by: "address", address: TRACKED },
+          ORIGIN.point,
+        ),
+      ).toMatchObject({ kind: "point_beyond_retention" });
+      // Another hash at a kept row's slot below the window is provably off
+      // the chain; one at a slot whose row was pruned cannot be told apart.
+      expect(
+        await store.pointStatus({ slot: ORIGIN.point.slot, hash: fill(0xee) }),
+      ).toMatchObject({ kind: "point_not_canonical" });
+      expect(
+        await store.pointStatus({ slot: point(b1).slot, hash: fill(0xee) }),
+      ).toMatchObject({ kind: "point_beyond_retention" });
       expect(await store.rewind(point(b1))).toMatchObject({
         kind: "intervention",
         reason: "rollback_beyond_k",

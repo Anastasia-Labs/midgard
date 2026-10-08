@@ -2,6 +2,13 @@ import { MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION } from "@al-ft/midgard-core/de
 import type { MigrationSet } from "@al-ft/midgard-l1-follower";
 import type { Pool } from "pg";
 
+import type { PostgresStoreInstanceLock } from "./postgres.instance-lock.js";
+import {
+  assertNoPointBeforeL1Origin,
+  type CommitteeStoreOpenChecks,
+  fencedOpenTransaction,
+  rebindRetirementFloor,
+} from "./postgres.open-checks.js";
 import { upgradeCommitteeL1Records } from "./postgres.upgrade-l1-records.js";
 
 /**
@@ -234,6 +241,10 @@ CREATE INDEX IF NOT EXISTS committee_state_queue_headers_unsettled
   ON committee_state_queue_headers (header_hash)
   WHERE ${UNSETTLED_HEADER_PREDICATE};
 
+CREATE INDEX IF NOT EXISTS committee_decision_outbox_pending
+  ON committee_decision_outbox (effect_id)
+  WHERE record->>'status' = 'pending';
+
 CREATE INDEX IF NOT EXISTS committee_da_signatures_signed_decisions
   ON committee_da_signatures (header_hash)
   WHERE end_time_ms IS NOT NULL;
@@ -396,10 +407,18 @@ export const committeeStoreMigrations: MigrationSet = {
 /**
  * Creates or upgrades the committee store schema. One multi-statement query
  * runs as one implicit transaction: it applies whole or not at all. The L1
- * records are upgraded after it (`upgradeCommitteeL1Records`); that step
- * may refuse the open with a named readiness reason, never exit.
+ * records are upgraded after it (`upgradeCommitteeL1Records`), then the
+ * stored retirement floor is re-bound and the stored points are checked
+ * against the L1 origin (`checks`), each write fenced on the instance lock.
+ * A refusal is a named readiness reason; only a point before the L1 origin
+ * is a startup error the node exits on.
  */
-export const initializeCommitteeSchema = async (pool: Pool): Promise<void> => {
+export const initializeCommitteeSchema = async (
+  pool: Pool,
+  lock: Pick<PostgresStoreInstanceLock, "assertHeldAtServer">,
+  checks: CommitteeStoreOpenChecks = {},
+  write: (line: string) => void = (line) => process.stderr.write(line),
+): Promise<void> => {
   await pool.query(
     [
       COMMITTEE_STORE_TABLES_SQL,
@@ -407,7 +426,13 @@ export const initializeCommitteeSchema = async (pool: Pool): Promise<void> => {
       COMMITTEE_STORE_DERIVED_SQL,
     ].join("\n"),
   );
-  await upgradeCommitteeL1Records(pool);
+  await upgradeCommitteeL1Records(pool, lock, write);
+  await fencedOpenTransaction(pool, lock, async (client) => {
+    if (checks.l1Origin !== undefined)
+      await assertNoPointBeforeL1Origin(client, checks.l1Origin);
+    if (checks.retirementBinding !== undefined)
+      await rebindRetirementFloor(client, checks.retirementBinding, write);
+  });
 };
 
 /**

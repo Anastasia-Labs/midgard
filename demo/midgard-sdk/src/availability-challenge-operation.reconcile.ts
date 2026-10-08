@@ -94,6 +94,18 @@ const missingInputExpiry = (
     )
   )
     return "invalid";
+  // Our own transaction consumed its collateral: it landed and failed. Once
+  // that spend is final the signed transaction can never land again, so the
+  // intent expires and its action is planned anew.
+  if (
+    foreignSpends.some(
+      (spend) =>
+        intent.collateralOutRefs.includes(spend.outRef) &&
+        spend.spendingTxHash === intent.txHash &&
+        spend.confirmationDepth >= context.minimumConfirmationDepth,
+    )
+  )
+    return "Expired with its own landing failed and its collateral spend final";
   if (observation.currentSlot < intent.validUntilSlot) return undefined;
   if (
     observation.missingOutRefs.every((ref) => {

@@ -139,13 +139,29 @@ const main = async (): Promise<void> => {
       })
     : undefined;
 
-  let retentionReadiness: CommitteeRetentionReadinessSnapshot = {
-    status: "not_checked",
-    scanned: 0,
-    retained: 0,
-    prunable: 0,
-    alerting: 0,
-  };
+  let retentionReadiness: CommitteeRetentionReadinessSnapshot =
+    runtime.startupCompactionFailure === undefined
+      ? {
+          status: "not_checked",
+          scanned: 0,
+          retained: 0,
+          prunable: 0,
+          alerting: 0,
+        }
+      : {
+          status: "failed",
+          checkedAt: new Date().toISOString(),
+          scanned: 0,
+          retained: 0,
+          prunable: 0,
+          alerting: 0,
+          error: runtime.startupCompactionFailure,
+        };
+  /** Retirement holds (degraded detail) and the follower's pin failures. */
+  const retentionDetail = () => ({
+    holds: availabilityRuntime?.retirementHolds?.() ?? [],
+    pinFailures: runtime.l1Retention?.reasons() ?? [],
+  });
   const runRetention = async (view: RetentionL1View): Promise<void> => {
     // The exemption sets come from the L1 view the poller accepted this tick.
     const options = retentionCycleOptions(config, view, Date.now());
@@ -241,7 +257,7 @@ const main = async (): Promise<void> => {
         : { l1SubmitterPreflight: preflight.snapshot() }),
       l1SubmitterFunding: runtime.submitterFunding(),
       ...runtime.daBondPool.readiness(),
-      retention: retentionReadiness,
+      retention: { ...retentionReadiness, ...retentionDetail() },
     });
     const liveness = tickRunner.liveness();
     const reasons = [

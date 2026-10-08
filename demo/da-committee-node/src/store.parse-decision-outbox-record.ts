@@ -135,7 +135,11 @@ export const parseDecisionOutboxRecord = (
     typeof record.effectId !== "string" ||
     typeof record.deploymentFingerprint !== "string" ||
     record.deploymentFingerprint.length === 0 ||
-    record.sourceMode !== "local_node" ||
+    (record.sourceMode !== "local_node" &&
+      !(
+        record.sourceMode === "external_providers" &&
+        record.status !== "pending"
+      )) ||
     typeof record.network !== "string" ||
     record.network.length === 0 ||
     (record.effectKind !== "signature_publish" &&

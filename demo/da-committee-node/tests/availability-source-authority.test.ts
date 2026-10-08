@@ -54,13 +54,14 @@ describe("availability responder chain authority", () => {
         nativeLedger: { ...nativeLedger, authorityNodeId: "node-b" },
       }),
     ).rejects.toThrow(/bound to its configured L1 source/u);
-    // Another L1 origin names another chain.
+    // The L1 origin is not part of the authority: correcting L1_ORIGIN
+    // keeps the binding (and every retirement floor bound to it).
     await expect(
       assertAvailabilityResponderSourceHealthy(store, {
         ...responderConfig,
         l1Origin: { ...l1Origin, blockHash: "cd".repeat(32) },
-      }),
-    ).rejects.toThrow(/bound to its configured L1 source/u);
+      } as typeof responderConfig),
+    ).resolves.toBeUndefined();
     // A source recorded on another network keeps the configured authority
     // digest, so only the network clause can refuse it.
     const unbound = await openStore();

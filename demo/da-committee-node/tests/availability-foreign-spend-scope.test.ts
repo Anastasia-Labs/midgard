@@ -42,6 +42,9 @@ const fixture = () => {
     viewValid: async () => true,
     canonicalPoint: async () => null,
     submissionPoint: async () => null,
+    landingPoint: async () => null,
+    failedLanding: async () => undefined,
+    intentPins: { add: async () => {}, bind: () => {} },
     foreignSpend: {
       fetchSpend: async () => {
         consulted.push("spend");
