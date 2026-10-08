@@ -597,23 +597,31 @@ describe("production fault-proof supervisor", () => {
     await supervisor.close();
   });
 
-  it("reports at-risk headroom and fails closed before an unsafe job starts", async () => {
+  it("reports at-risk headroom and holds an unsafe job by name while later work runs, again after a restart", async () => {
     const root = await directory();
     const gate = deferred<void>();
     const started = deferred<void>();
     const starts: string[] = [];
     let nowMs = latestSafeStartOffsetMs - 500;
-    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
-      journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      deadlineAlertHeadroomMs: 1_000,
-      unsafeNowMsForTest: () => nowMs,
-      run: async (job) => {
-        starts.push(job.headerHash);
-        started.resolve();
-        await gate.promise;
-      },
-    });
+    const create = () =>
+      unsafeCreateWatcherFaultProofSupervisorForTest({
+        journalRoot: root,
+        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        deadlineAlertHeadroomMs: 1_000,
+        unsafeNowMsForTest: () => nowMs,
+        run: async (job) => {
+          starts.push(job.headerHash);
+          started.resolve();
+          if (job.headerHash === h28(0x91)) await gate.promise;
+          return { kind: "completed" };
+        },
+      });
+    const supervisor = create();
+    let settled = false;
+    void supervisor.done.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
     await supervisor.recoverExisting(null);
     const run = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
@@ -631,25 +639,73 @@ describe("production fault-proof supervisor", () => {
       remainingSafeStartMs: "500",
     });
     nowMs = latestSafeStartOffsetMs;
-    const unsafe = supervisor.unsafeRunOrResumeForTest({
+    const late = {
       mode: "run",
       category: "networkId",
       headerHash: h28(0x92),
       decisionDigest: "92".repeat(32),
       rollbackGeneration: "0",
       deadline: deadline(h28(0x92), 0),
-    });
-    const unsafeRejected = expect(unsafe).rejects.toThrow("deadline is unsafe");
+    } as const;
+    const unsafe = supervisor.unsafeRunOrResumeForTest(late);
     await waitUntil(() => supervisor.status().queuedJobCount === 1);
-    gate.resolve();
-    await expect(run).resolves.toBeUndefined();
-    await unsafeRejected;
-    await expect(supervisor.done).rejects.toThrow("deadline is unsafe");
-    expect(supervisor.status()).toMatchObject({
-      phase: "blocked",
-      deadlineHealth: "unsafe",
+    const later = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "invalidRange",
+      headerHash: h28(0x93),
+      decisionDigest: "93".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x93), 10_000),
     });
-    expect(starts).toEqual([h28(0x91)]);
+    await waitUntil(() => supervisor.status().queuedJobCount === 2);
+    gate.resolve();
+    const hold = {
+      kind: "objective",
+      category: "networkId",
+      headerHash: h28(0x92),
+      decisionDigest: "92".repeat(32),
+      detail: `networkId/${h28(0x92)}`,
+      readiness: "fault_proof_start_deadline_passed",
+    } as const;
+    await expect(run).resolves.toEqual({ kind: "completed" });
+    // The late objective never starts; it is held by name and the next
+    // objective, queued behind it, still runs.
+    await expect(unsafe).resolves.toEqual({
+      kind: "pending",
+      resume: "await_observation",
+      reason: hold.detail,
+    });
+    await expect(later).resolves.toEqual({ kind: "completed" });
+    expect(starts).toEqual([h28(0x91), h28(0x93)]);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      deadlineHealth: "safe",
+      journalDecisionMissing: [hold],
+    });
+    expect(settled).toBe(false);
     await supervisor.close();
+
+    // A restart over the same journals meets the same objective and holds it
+    // again under the same name, instead of failing on it.
+    const restarted = create();
+    let restartSettled = false;
+    void restarted.done.then(
+      () => (restartSettled = true),
+      () => (restartSettled = true),
+    );
+    await expect(restarted.unsafeRunOrResumeForTest(late)).resolves.toEqual({
+      kind: "pending",
+      resume: "await_observation",
+      reason: hold.detail,
+    });
+    expect(restarted.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      journalDecisionMissing: [hold],
+    });
+    expect(starts).toEqual([h28(0x91), h28(0x93)]);
+    expect(restartSettled).toBe(false);
+    await restarted.close();
   });
 });

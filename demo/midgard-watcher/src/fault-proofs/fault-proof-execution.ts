@@ -30,6 +30,7 @@ import type {
   WatcherFaultProofApplication,
   WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
+import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
@@ -74,9 +75,15 @@ export type WatcherFaultProofExecution = Readonly<{
   /**
    * Objectives held on an L1 read the source refused
    * (`fault_proof_l1_refused:<reason>`), until their next run or completion
-   * check meets something else.
+   * check meets something else, or until the objective is settled.
    */
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
+  /**
+   * The supervisor no longer drives the objective (held under another name,
+   * completed, or its header left the queue with nothing signed), so no run
+   * or completion check would clear its refusal hold: this does.
+   */
+  objectiveSettled(objective: WatcherProofObjective): void;
 }>;
 
 // Only failures from this adapter's read-only provider calls receive transport
@@ -229,8 +236,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
     string,
     Readonly<{ reason: string; detail: string }>
   >();
-  const objectiveOf = (job: WatcherFaultProofJob) =>
-    `${job.category}/${job.headerHash}`;
+  const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
+    `${category}/${headerHash}`;
   const holdOnRefusal = (
     job: WatcherFaultProofJob,
     error: unknown,
@@ -246,6 +253,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
   };
   return Object.freeze({
     readiness: () => Object.freeze([...refusals.values()]),
+    objectiveSettled: (objective) =>
+      void refusals.delete(objectiveOf(objective)),
     verifyCompleted: async ({ job, actuationPermit, entries, terminal }) => {
       const identity = assertWorkflowActuationPermitIdentity({
         permit: actuationPermit,

@@ -128,6 +128,8 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   readonly categories: readonly WatcherInstalledWorkflowCategory[];
   readonly authenticationKey: Uint8Array;
   readonly retention?: WatcherProofRetention; // holds open objectives' L1 history
+  /** Told when an objective stops being driven (`objectiveSettled`). */
+  readonly onObjectiveSettled?: (objective: WatcherProofObjective) => void;
 }): WatcherFaultProofProgressAuthority => {
   const database = () =>
     openWatcherJournalDatabase({
@@ -236,6 +238,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       await input.retention?.pin(hold);
     objectives.delete(key);
     held.set(key, hold);
+    input.onObjectiveSettled?.(hold);
   };
   // A held objective whose header left the finalized queue has resolved:
   // its proof or another landed and is final, or the header merged.
@@ -548,8 +551,18 @@ export const createWatcherFaultProofProgressAuthority = (input: {
             !objective.entries.some(
               ({ event }) => event.kind === "submission_intent",
             )
-          )
+          ) {
+            // With no fault naming it and no signed attempt to reconcile,
+            // nothing drives it again until its header is queued again.
+            if (
+              !request.observation.finalizedHeaders.some(
+                ({ headerHash }) =>
+                  headerHash === objective.decision.headerHash,
+              )
+            )
+              input.onObjectiveSettled?.(objective.decision);
             continue;
+          }
           if (objective.historical?.generation !== request.rollbackGeneration) {
             const controller = createWorkflowReconciliationPermitController({
               decision: objective.decision,
@@ -616,6 +629,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       objectives.delete(keyOf(objective));
       unheld.delete(keyOf(objective));
       held.delete(keyOf(objective));
+      input.onObjectiveSettled?.(objective);
       pruneDecisions();
       // The row frees the cap slot and spares a restart one verification. A
       // failed write leaves it open, so the next start verifies it again.
