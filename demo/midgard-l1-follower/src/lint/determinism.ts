@@ -3,22 +3,28 @@ import { dirname, relative, resolve } from "node:path";
 
 import ts from "typescript";
 
+import {
+  bannedModuleRule,
+  CLOCK_GLOBALS,
+  type DeterminismRule,
+  GLOBAL_OBJECTS,
+  INSPECTED_GLOBALS,
+  isContainedGlobalRead,
+  isValueReference,
+  NETWORK_GLOBALS,
+  normalise,
+  RANDOM_IMPORTS,
+  RANDOM_MEMBERS,
+} from "./determinism-vocabulary.js";
+
+export type { DeterminismRule } from "./determinism-vocabulary.js";
+
 /**
  * The §7.2 determinism lint for S3 derivation modules: a derivation is a pure
  * function of facts, class B/C content and the manifest, so it may not read
  * a clock, draw randomness, reach the network or the sidecar, or read the
  * host (its files, its OS, its environment).
  */
-export type DeterminismRule =
-  | "clock"
-  | "randomness"
-  | "network_import"
-  | "network_global"
-  | "host_import"
-  | "environment"
-  | "unresolved_import"
-  | "stale_allowance";
-
 export type DeterminismProblem = Readonly<{
   path: string;
   line: number;
@@ -30,114 +36,6 @@ export type DeterminismLintOptions = Readonly<{
   /** Extra module specifiers (exact, or a prefix ending in `/`) to refuse. */
   bannedModules?: readonly string[];
 }>;
-
-const NETWORK_MODULES: readonly string[] = [
-  "http",
-  "https",
-  "http2",
-  "net",
-  "tls",
-  "dgram",
-  "dns",
-  "child_process",
-  "undici",
-  "axios",
-  "node-fetch",
-  "ws",
-  "pg",
-  "@lucid-evolution/provider",
-  "@cardano-ogmios/client",
-  "@al-ft/l1-node-transport",
-];
-
-const HOST_MODULES: readonly string[] = ["fs", "os"];
-
-/** Names the global object goes by: `globalThis.Date` is `Date`. */
-const GLOBAL_OBJECTS = new Set(["globalThis", "global", "window", "self"]);
-
-const CLOCK_GLOBALS = new Set([
-  "Date",
-  "performance",
-  "setTimeout",
-  "setInterval",
-  "setImmediate",
-]);
-const NETWORK_GLOBALS = new Set([
-  "fetch",
-  "WebSocket",
-  "XMLHttpRequest",
-  "EventSource",
-]);
-const RANDOM_MEMBERS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ["Math", new Set(["random"])],
-  [
-    "crypto",
-    new Set(["randomUUID", "getRandomValues", "randomBytes", "randomInt"]),
-  ],
-  ["process", new Set(["hrtime", "uptime", "cpuUsage"])],
-]);
-const RANDOM_IMPORTS = new Set([
-  "randomBytes",
-  "randomUUID",
-  "randomInt",
-  "randomFill",
-  "randomFillSync",
-  "getRandomValues",
-]);
-
-const normalise = (specifier: string): string =>
-  specifier.replace(/^node:/u, "");
-
-const matchesModule = (name: string, banned: string): boolean =>
-  banned.endsWith("/")
-    ? name.startsWith(banned)
-    : name === banned || name.startsWith(`${banned}/`);
-
-const bannedModuleRule = (
-  specifier: string,
-  extra: readonly string[],
-): DeterminismRule | null => {
-  const name = normalise(specifier);
-  if (HOST_MODULES.some((banned) => matchesModule(name, banned)))
-    return "host_import";
-  if (/l1-node-transport/u.test(name)) return "network_import";
-  return [...NETWORK_MODULES, ...extra].some((banned) =>
-    matchesModule(name, banned),
-  )
-    ? "network_import"
-    : null;
-};
-
-/** True where an identifier is a value reference, not a name or a type. */
-const isValueReference = (node: ts.Identifier): boolean => {
-  const parent = node.parent;
-  if (ts.isPropertyAccessExpression(parent) && parent.name === node)
-    return false;
-  if (ts.isQualifiedName(parent) || ts.isTypeReferenceNode(parent))
-    return false;
-  if (
-    ts.isExpressionWithTypeArguments(parent) &&
-    ts.isHeritageClause(parent.parent)
-  )
-    return (
-      parent.parent.token === ts.SyntaxKind.ExtendsKeyword &&
-      ts.isClassLike(parent.parent.parent)
-    );
-  if (
-    (ts.isPropertyAssignment(parent) ||
-      ts.isPropertyDeclaration(parent) ||
-      ts.isPropertySignature(parent) ||
-      ts.isMethodDeclaration(parent) ||
-      ts.isMethodSignature(parent)) &&
-    parent.name === node
-  )
-    return false;
-  if (ts.isImportSpecifier(parent) || ts.isExportSpecifier(parent))
-    return false;
-  if (ts.isVariableDeclaration(parent) && parent.name === node) return false;
-  if (ts.isParameter(parent) && parent.name === node) return false;
-  return true;
-};
 
 type Scan = Readonly<{
   problems: DeterminismProblem[];
@@ -169,7 +67,12 @@ const scanSource = (
     specifier: ts.Expression | undefined,
     typeOnly = false,
   ): void => {
-    if (specifier === undefined || !ts.isStringLiteralLike(specifier)) return;
+    if (specifier === undefined) return;
+    if (!ts.isStringLiteralLike(specifier)) {
+      // A module named at run time cannot be followed or checked.
+      report(node, "unresolved_import");
+      return;
+    }
     const rule = bannedModuleRule(specifier.text, extra);
     if (rule !== null) report(node, rule);
     if (!typeOnly && specifier.text.startsWith("."))
@@ -207,6 +110,14 @@ const scanSource = (
       : NETWORK_GLOBALS.has(name)
         ? "network_global"
         : null;
+  /** `globalThis.process` read whole is an alias of `process`. */
+  const wholeGlobalRule = (
+    node: ts.Expression,
+    name: string,
+  ): DeterminismRule | null =>
+    INSPECTED_GLOBALS.has(name) && !isContainedGlobalRead(node)
+      ? "global_alias"
+      : null;
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node)) {
       const clause = node.importClause;
@@ -247,7 +158,8 @@ const scanSource = (
         (base === null ? null : memberRule(base, node.name.text)) ??
         (ts.isIdentifier(node.expression) &&
         GLOBAL_OBJECTS.has(node.expression.text)
-          ? globalRule(node.name.text)
+          ? (globalRule(node.name.text) ??
+            wholeGlobalRule(node, node.name.text))
           : null);
       if (rule !== null) report(node, rule);
     } else if (
@@ -260,7 +172,7 @@ const scanSource = (
         (base === null ? null : memberRule(base, member)) ??
         (ts.isIdentifier(node.expression) &&
         GLOBAL_OBJECTS.has(node.expression.text)
-          ? globalRule(member)
+          ? (globalRule(member) ?? wholeGlobalRule(node, member))
           : null);
       if (rule !== null) report(node, rule);
     } else if (
@@ -282,6 +194,11 @@ const scanSource = (
     } else if (ts.isIdentifier(node) && isValueReference(node)) {
       const rule = globalRule(node.text);
       if (rule !== null) report(node, rule);
+      else if (
+        (INSPECTED_GLOBALS.has(node.text) || cryptoAliases.has(node.text)) &&
+        !isContainedGlobalRead(node)
+      )
+        report(node, "global_alias");
     }
     ts.forEachChild(node, visit);
   };
@@ -314,12 +231,17 @@ export type DeterminismModulesOptions = DeterminismLintOptions &
      * (for example `src/l1-events/*.ts`).
      */
     include: readonly string[];
-    /** Globs never linted or followed, relative to `root`. */
+    /**
+     * Globs never linted, relative to `root`. A linted module that imports
+     * one is an `excluded_import` problem: the walk never skips a module
+     * silently.
+     */
     exclude?: readonly string[];
     /**
-     * Problems the role accepts, each with its reason: every problem with
-     * this path, rule and text. An allowance no problem matches is itself
-     * a `stale_allowance` problem, so the list cannot outlive the code.
+     * Problems the role accepts, each with its reason: exactly `count`
+     * problems with this path, rule and text. A different number is a
+     * problem: more keeps every one of them, and fewer (none included) is a
+     * `stale_allowance`, so the list cannot outlive or outgrow the code.
      */
     allow?: readonly DeterminismAllowance[];
   }>;
@@ -328,6 +250,8 @@ export type DeterminismAllowance = Readonly<{
   path: string;
   rule: DeterminismRule;
   text: string;
+  /** How many problems it accepts (default 1). */
+  count?: number;
   reason: string;
 }>;
 
@@ -366,21 +290,30 @@ const resolveRelative = (from: string, specifier: string): string | null => {
  * as the derivation. Package imports are checked against the banned
  * modules, not followed. A relative import of a data file that exists
  * (`.json`, `.sql`) is not code; any other relative import that resolves to
- * no source file is a problem, so the walk cannot skip a module silently.
+ * no source file, a dynamic import of a computed specifier, and an import
+ * of an excluded module are problems, so the walk cannot skip a module
+ * silently.
  */
 export const lintDeterminismModules = (
   options: DeterminismModulesOptions,
 ): DeterminismModulesReport => {
   const root = resolve(options.root);
+  const extensions = [".ts", ".tsx", ".mts"];
   const exclude = [...TEST_FILES, ...(options.exclude ?? [])];
-  const excluded = new Set(
+  const list = (
+    excludes: readonly string[],
+    includes: readonly string[],
+  ): string[] =>
     ts.sys
-      .readDirectory(root, [".ts", ".tsx", ".mts"], undefined, exclude)
-      .map((path) => resolve(path)),
+      .readDirectory(root, extensions, excludes, includes)
+      .map((path) => resolve(path));
+  // The modules under `root` the exclude globs remove, read with the same
+  // (exclude) semantics the include walk uses.
+  const linted = new Set(list([...exclude, "**/node_modules/**"], ["**/*"]));
+  const excluded = new Set(
+    list(["**/node_modules/**"], ["**/*"]).filter((path) => !linted.has(path)),
   );
-  const pending = ts.sys
-    .readDirectory(root, [".ts", ".tsx", ".mts"], exclude, options.include)
-    .map((path) => resolve(path));
+  const pending = list(exclude, options.include);
   const seen = new Set<string>();
   const problems: DeterminismProblem[] = [];
   for (let path = pending.pop(); path !== undefined; path = pending.pop()) {
@@ -405,6 +338,13 @@ export const lintDeterminismModules = (
           rule: "unresolved_import",
           text: specifier,
         });
+      else if (excluded.has(target))
+        problems.push({
+          path: shown,
+          line: 0,
+          rule: "excluded_import",
+          text: specifier,
+        });
       else pending.push(target);
     }
   }
@@ -416,17 +356,22 @@ export const lintDeterminismModules = (
     entry.path === problem.path &&
     entry.rule === problem.rule &&
     entry.text === problem.text;
-  const kept = problems.filter(
-    (problem) => !allow.some((entry) => matches(entry, problem)),
-  );
-  for (const entry of allow)
-    if (!problems.some((problem) => matches(entry, problem)))
+  const allowed = new Set<DeterminismProblem>();
+  const kept: DeterminismProblem[] = [];
+  for (const entry of allow) {
+    const matched = problems.filter((problem) => matches(entry, problem));
+    const count = entry.count ?? 1;
+    if (matched.length > count) continue;
+    for (const problem of matched) allowed.add(problem);
+    if (matched.length < count)
       kept.push({
         path: entry.path,
         line: 0,
         rule: "stale_allowance",
-        text: entry.text,
+        text: `${entry.text} (${String(matched.length)} of ${String(count)})`,
       });
+  }
+  kept.push(...problems.filter((problem) => !allowed.has(problem)));
   return {
     files: [...seen].map((path) => relative(root, path)).sort(),
     problems: kept.sort(

@@ -114,6 +114,19 @@ export const watcherUnitHistoryPolicies = (
     ].filter((policy) => policy !== deployment.stateQueueMint),
   );
 
+/**
+ * Whether the projection records `unit`'s history in
+ * `WATCHER_UNIT_HISTORY_TABLE`: its policy is one of `policies`
+ * (`watcherUnitHistoryPolicies`). A state-queue node unit is not; its
+ * history is the header's `WATCHER_QUEUE_UNIT_HISTORY_TABLE` rows.
+ */
+export const recordsUnitHistory = (
+  policies: ReadonlySet<string>,
+  unit: string,
+): boolean =>
+  /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u.test(unit) &&
+  policies.has(unit.slice(0, 56));
+
 export type WatcherProjection = Readonly<{
   name: string;
   trackedSet: TrackedSet;

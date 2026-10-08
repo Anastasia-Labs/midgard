@@ -50,6 +50,8 @@ describe("decodeBlock over the ledger's full validity interval range", () => {
     0n,
     BigInt(Number.MAX_SAFE_INTEGER),
     BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+    // 2^53 + 1: the first integer a double cannot hold.
+    BigInt(Number.MAX_SAFE_INTEGER) + 2n,
     2n ** 63n,
     WORD64_MAX,
   ];
@@ -176,7 +178,7 @@ afterAll(async () => {
 describe.each(storeAdapters(databases, scratch))(
   "fact store keeps ledger-extreme values exactly ($name)",
   (adapter) => {
-    it("stores and reads back Word64 validity bounds and coins", async () => {
+    it("stores and reads back Word64 validity bounds, coins and asset quantities", async () => {
       const { store } = await adapter.open(2);
       try {
         expect(await store.start()).toMatchObject({ kind: "ready" });
@@ -194,6 +196,14 @@ describe.each(storeAdapters(databases, scratch))(
         expect(stored?.mint.get(POLICY.toString("hex"))?.get("bb")).toBe(
           INT64_MIN,
         );
+        const output = await store.output({
+          txHash: encoded.txHashes[0] as Buffer,
+          index: 0,
+        });
+        expect(output?.output.lovelace).toBe(WORD64_MAX);
+        expect(
+          output?.output.assets.get(POLICY.toString("hex"))?.get("aa"),
+        ).toBe(WORD64_MAX);
       } finally {
         await store.close();
       }

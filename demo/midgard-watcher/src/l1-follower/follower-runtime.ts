@@ -149,13 +149,16 @@ export const openWatcherFollowerRuntime = (
     ),
     path: input.storePath,
   });
+  const unitHistoryPolicies = watcherUnitHistoryPolicies(input.deployment);
   const rawReads = createFollowerRawReads(store, {
     stateQueuePolicyId: input.deployment.stateQueueMint,
-    unitHistoryPolicies: watcherUnitHistoryPolicies(input.deployment),
+    unitHistoryPolicies,
     ledgerOutputsAt: ledgerOutputsFromTransport(transport),
   });
   const provider = new L1FollowerProvider({ store, transport });
-  const proofRetention = createWatcherProofRetention(store);
+  const proofRetention = createWatcherProofRetention(store, {
+    unitHistoryPolicies,
+  });
   // Resolves recorded txs' inputs at ingest, while the node still serves
   // the predecessor's ledger state (E1 ruling, facet 2).
   const txInputs = createTxInputsResolver({

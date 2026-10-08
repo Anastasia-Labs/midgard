@@ -8,7 +8,10 @@ import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
-import type { WatcherProjectionDeployment } from "../../src/l1-follower/projection.js";
+import {
+  type WatcherProjectionDeployment,
+  watcherUnitHistoryPolicies,
+} from "../../src/l1-follower/projection.js";
 import { createWatcherProofRetention } from "../../src/l1-follower/proof-retention.js";
 import {
   type LedgerOutputsQuery,
@@ -65,7 +68,8 @@ export const removedHeader = async (
     resolveInit?: boolean;
   }>,
 ) => {
-  const h = await harness(options.followUnit === true ? FOLLOWING : D);
+  const deployment = options.followUnit === true ? FOLLOWING : D;
+  const h = await harness(deployment);
   closers.push(() => h.store.close());
   const real = ledgerOutputsQueryFromTransport(h.node);
   let isDown = false;
@@ -83,7 +87,9 @@ export const removedHeader = async (
     ledger: ledger.query,
   });
   closers.push(() => resolver.close());
-  const retention = createWatcherProofRetention(h.store);
+  const retention = createWatcherProofRetention(h.store, {
+    unitHistoryPolicies: watcherUnitHistoryPolicies(deployment),
+  });
 
   const funding: SimTx = {
     inputs: [h.chain.outsideInput()],
@@ -157,6 +163,16 @@ export const removedHeader = async (
     for (let i = 0; i < blocks; i += 1) await h.forward([]);
     await h.pruneAll();
   };
+  /**
+   * Moves the tip `K + 4` blocks past the removal and runs one prune step
+   * of `budget` rows per table: a budget-cut step, whose siblings wait.
+   */
+  const passKOneStep = async (budget = 1) => {
+    for (let i = 0; i < K + 4; i += 1) await h.forward([]);
+    const step = await h.store.prune(budget);
+    if ("kind" in step) throw new Error(`prune: ${step.kind}`);
+    expect(step.done).toBe(false);
+  };
   return {
     h,
     ledger,
@@ -172,6 +188,7 @@ export const removedHeader = async (
     unitTxs,
     count,
     passK,
+    passKOneStep,
   };
 };
 
