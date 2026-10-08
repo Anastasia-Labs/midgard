@@ -131,13 +131,13 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
 
 - **Symptom:** `EADDRINUSE`, or a test talking to a service it never started.
 - **Evidence:** test servers bind port 0 and read the assigned port
-  (`demo/midgard-node/tests/l1-kupmios-ogmios-tip.test.ts:83`,
+  (`demo/midgard-node/tests/settlement-worker-heap.test.ts:115`,
   `demo/midgard-watcher/tests/support/state-queue-observation-fixture.ts:338`).
-  Separately, the node test defaults point the L1 provider at
-  `127.0.0.1:1337` and `127.0.0.1:1442`
-  (`demo/midgard-node/tests/test-env.ts:66-67`), the Ogmios and Kupo ports a
-  local devnet publishes (`demo/midgard-node/docker-compose.kupmios.yaml:113,169`),
-  so a test that reaches the provider without a double gets a different
+  Separately, the node test defaults point the history owner's Ogmios and
+  Kupo endpoints at `127.0.0.1:1337` and `127.0.0.1:1442`
+  (`demo/midgard-node/tests/test-env.ts:84-85`), the Ogmios and Kupo ports a
+  local devnet publishes (`demo/midgard-node/docker-compose.kupmios.yaml:146,202`),
+  so a test that reaches those endpoints without a double gets a different
   answer depending on whether a devnet is up.
 - **Fix:** bind port 0; never pick a "free" port and bind it later. A test
   that must not reach L1 gets a double or an unroutable URL. `[review]`
