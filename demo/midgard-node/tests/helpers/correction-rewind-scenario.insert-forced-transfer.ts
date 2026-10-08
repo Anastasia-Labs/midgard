@@ -28,7 +28,7 @@ import {
   depositorL2Utxos,
   submitWithdrawal,
 } from "./correction-rewind-scenario.read-acceptance-traces.js";
-import { insertForcedEntriesWithOrders } from "./emulator-l1-follower.js";
+import { insertForcedEntriesWithOrders } from "./emulator-l1-follower.forced-orders.js";
 
 /** A forced transaction spending one of the depositor's L2 outputs, as the
  * forced-order ingestion records a valid order: with the order's row. */

@@ -20,6 +20,11 @@
  *   view it applies: it publishes the queue length, bumps the head signal
  *   the planner fibers wake on (`l1-head-trigger.ts`) and holds
  *   `state_queue_unhealthy` while the queue is unhealthy.
+ * - The driver's operator-set hook (N6) keeps the operator set from the
+ *   facts (only the rows that changed since its last read), publishes it
+ *   with the landed queue's tail for the watchdog, and derives this
+ *   operator's membership: a removed operator is unready `operator_removed`
+ *   with its duties held, and stays up.
  * - The driver's forced-order hook (N10, plan §12.3) ingests the forced
  *   orders the follower projects, resolving carriage its blocks did not
  *   carry through the local node's ledger and the configured content
@@ -63,6 +68,10 @@ import {
 import type { EventProjectionConfig } from "../l1-events/index.js";
 import { eventProjection } from "../l1-events/projection.js";
 import {
+  operatorSetProjection,
+  stateQueueTailOf,
+} from "../l1-operator-set/index.js";
+import {
   landedStateQueueHook,
   stateQueueProjection,
 } from "../l1-state-queue/index.js";
@@ -76,6 +85,7 @@ import {
   withHistoryIngestion,
 } from "./event-history-producer.js";
 import { Globals } from "./globals.globals.js";
+import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { l1FollowerPlan } from "./l1-follower.plan.js";
 import {
   followerCaughtUp,
@@ -281,12 +291,12 @@ export const startL1Follower = Effect.gen(function* () {
   const contracts = yield* MidgardContracts;
   const identity = yield* ContractDeploymentIdentity;
   const globals = yield* Globals;
+  const finality =
+    identity.manifest?.l1Finality ?? DEPLOYMENT_MANIFEST_L1_FINALITY;
   const plan = l1FollowerPlan({
     config,
     contracts,
-    securityParameter: (
-      identity.manifest?.l1Finality ?? DEPLOYMENT_MANIFEST_L1_FINALITY
-    ).automaticRecoveryMaxDepth,
+    securityParameter: finality.automaticRecoveryMaxDepth,
   });
   const unconfigured = (detail: string) =>
     Effect.logWarning(`L1 follower is not running: ${detail}`).pipe(
@@ -330,6 +340,7 @@ export const startL1Follower = Effect.gen(function* () {
             [
               eventProjection(plan.projection),
               stateQueueProjection(plan.stateQueue),
+              operatorSetProjection(plan.operatorSet),
               forcedOrderProjection(plan.forcedOrders),
             ],
             {
@@ -369,6 +380,14 @@ export const startL1Follower = Effect.gen(function* () {
     );
   const { transport, store, abort } = opened.right;
   const dbRuntime = yield* Effect.runtime<Database | NodeConfig>();
+  const operatorSet = yield* followerOperatorSet({
+    store,
+    config: plan.operatorSet,
+    depth: {
+      confirmationDepth: finality.confirmationDepth,
+      securityParameter: plan.securityParameter,
+    },
+  });
   const driver = createFollowerDriver({
     store,
     config: plan.projection,
@@ -380,6 +399,9 @@ export const startL1Follower = Effect.gen(function* () {
         publish: (change, read) =>
           Runtime.runPromise(runtime)(
             Effect.gen(function* () {
+              operatorSet.setStateQueueTail(
+                read.kind === "ok" ? stateQueueTailOf(read.queue) : null,
+              );
               if (read.kind === "ok")
                 yield* Ref.set(
                   globals.BLOCKS_IN_QUEUE,
@@ -390,6 +412,9 @@ export const startL1Follower = Effect.gen(function* () {
             }),
           ),
       }),
+      ...(operatorSet.hook === undefined
+        ? {}
+        : { settlementAndOperatorSet: operatorSet.hook }),
       forcedOrderIngestion: forcedOrderIngestionHook({
         store,
         config: plan.forcedOrders,

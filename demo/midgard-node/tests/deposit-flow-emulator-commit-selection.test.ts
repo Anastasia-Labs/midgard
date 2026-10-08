@@ -63,7 +63,7 @@ import {
   TxUtils,
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
-import { insertForcedEntriesWithOrders } from "./helpers/emulator-l1-follower.js";
+import { insertForcedEntriesWithOrders } from "./helpers/emulator-l1-follower.forced-orders.js";
 
 describe("deposit flow emulator", { concurrent: false }, () => {
   // 900s leaves headroom for the full real-contract workflow. Protocol

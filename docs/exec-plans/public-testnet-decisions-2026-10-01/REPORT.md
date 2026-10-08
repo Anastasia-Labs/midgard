@@ -367,6 +367,8 @@ A registered operator awaiting activation is different from a removed operator. 
 
 I agree with the policy. Operating fees can be maintained automatically; reinstating an operator after punishment is an explicit human decision.
 
+Amended by the L1 follower plan's D-N7 (§7.5 R7): the removed operator holds its duties and reports unready with `operator_removed`, but it no longer shuts down. A still-canonical removal would make a supervisor restart exit again, in a loop. See [A10](A10.md).
+
 ## B1 — Raise testing confirmation depth
 
 **Implemented policy: 12 L1 confirmations for local-devnet-testing and preprod-testing.** Emulator-only tests remain at three; public-testnet and mainnet remain at 30. Twelve improves the very shallow testing threshold while fitting the testing profiles' existing timing budget.

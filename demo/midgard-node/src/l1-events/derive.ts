@@ -157,6 +157,8 @@ export type AdmittedEvent = Readonly<{
   factsCbor: string;
   payloadCbor: string;
   originalAssetsCbor: string;
+  /** The retention output an external payload was read from; null inline. */
+  retained: Readonly<{ txHash: string; index: number }> | null;
 }>;
 
 /**
@@ -215,6 +217,13 @@ export const openOrder = (
     factsCbor: captured.factsCbor,
     payloadCbor,
     originalAssetsCbor: Data.to(captured.originalAssets, SDK.Value),
+    retained:
+      retainedDataUtxo === undefined
+        ? null
+        : {
+            txHash: retainedDataUtxo.txHash,
+            index: retainedDataUtxo.outputIndex,
+          },
   };
 };
 
@@ -380,7 +389,7 @@ const admit = async (
     [list.kind, key, encodeOutRef(created.outRef), block.point.slot],
   );
   await context.tx.query(
-    `INSERT INTO ${EVENTS_TABLE} (kind, event_key, event_id, inclusion_time, facts_cbor, payload_cbor, original_assets_cbor, admission_tx_hash, admission_output_index, admission_tx_index, admitted_block_hash, admitted_height, admitted_slot, retired_slot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    `INSERT INTO ${EVENTS_TABLE} (kind, event_key, event_id, inclusion_time, facts_cbor, payload_cbor, original_assets_cbor, admission_tx_hash, admission_output_index, admission_tx_index, admitted_block_hash, admitted_height, admitted_slot, retired_slot, retained_tx_hash, retained_output_index) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
     [
       list.kind,
       key,
@@ -395,6 +404,10 @@ const admit = async (
       block.point.hash,
       block.height,
       block.point.slot,
+      event.retained === null
+        ? null
+        : Buffer.from(event.retained.txHash, "hex"),
+      event.retained?.index ?? null,
     ],
   );
 };

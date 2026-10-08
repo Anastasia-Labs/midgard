@@ -1,3 +1,4 @@
+import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { ForeignBaseVerificationState } from "../services/foreign-base-verification.js";
 
 /** Path segment of the node's readiness route, `GET /readyz`. */
@@ -27,13 +28,9 @@ export type ReadinessInput = {
   readonly maxUnresolvedBlockSubmissionAgeMs: number;
   readonly dbHealthy: boolean;
   /** Only a registered key awaiting activation is unready here: removal
-   * arrives as a liveness reason, and `unknown` is a readiness detail. */
-  readonly operatorMembership?:
-    | "unknown"
-    | "active"
-    | "awaiting_activation"
-    | "removal_pending"
-    | "removed";
+   * arrives as the liveness reason `operator_removed`, and `unknown` is a
+   * readiness detail. */
+  readonly operatorMembership?: OperatorMembershipState;
   readonly foreignBaseVerification: ForeignBaseVerificationState;
   readonly validationPool?: {
     readonly configuredWorkers: number;

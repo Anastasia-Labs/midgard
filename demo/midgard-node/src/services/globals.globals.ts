@@ -1,7 +1,8 @@
 import { TxHash } from "@lucid-evolution/lucid";
-import { Deferred, Effect, Ref, SubscriptionRef } from "effect";
+import { Effect, Ref, SubscriptionRef } from "effect";
 
-import type { OperatorMembershipState } from "../fibers/operator-membership.js";
+import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
+import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import type { EventHistoryOwner } from "./event-history-owner.js";
@@ -41,12 +42,14 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Needed for development to prevent other actions triggering while spending
     // all UTxOs at state queue.
     const RESET_IN_PROGRESS = yield* Ref.make<boolean>(false);
-    const OPERATOR_MEMBERSHIP_MISSING_HEIGHT = yield* Ref.make<
-      number | undefined
-    >(undefined);
+    // This operator's membership and the operator set, as the follower
+    // driver's operator-set hook last derived them (unknown and unset until
+    // its first run).
     const OPERATOR_MEMBERSHIP =
       yield* Ref.make<OperatorMembershipState>("unknown");
-    const OPERATOR_REMOVAL_SHUTDOWN = yield* Deferred.make<void>();
+    const OPERATOR_SET = yield* Ref.make<PublishedOperatorSet | undefined>(
+      undefined,
+    );
 
     // Prevents overlapping commitment workers (periodic + manual trigger).
     const COMMIT_WORKER_ACTIVE = yield* Ref.make<boolean>(false);
@@ -222,8 +225,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       BLOCKS_IN_QUEUE,
       RESET_IN_PROGRESS,
       OPERATOR_MEMBERSHIP,
-      OPERATOR_MEMBERSHIP_MISSING_HEIGHT,
-      OPERATOR_REMOVAL_SHUTDOWN,
+      OPERATOR_SET,
       COMMIT_WORKER_ACTIVE,
       COMMIT_DA_FRAME_PRESSURE,
       COMMIT_PIPELINE_PHASE,

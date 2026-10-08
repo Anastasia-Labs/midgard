@@ -7,6 +7,7 @@
  * cadence and, while the reason stays raised, ticks again by that retry rather
  * than at the end of a long wait.
  */
+import { SqlClient } from "@effect/sql";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { type Context, Effect, Layer, Ref } from "effect";
 import { describe, expect, it } from "vitest";
@@ -21,6 +22,7 @@ import {
   clearSlotAwareDueWork,
   listSlotAwareDueWork,
 } from "../src/fibers/slot-aware-due-work.js";
+import { Database } from "../src/services/database.js";
 import {
   Globals,
   Lucid,
@@ -28,12 +30,14 @@ import {
   NodeConfig,
 } from "../src/services/index.js";
 import { planTakeoverProgram } from "../src/transactions/operators/takeover.js";
+import { publishEmulatorOperatorSet } from "./helpers/emulator-operator-set.js";
 import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
   fetchSchedulerDatum,
   initOperatorInactivityFixture,
 } from "./helpers/operator-inactivity.js";
+import { resetApplicationTables } from "./utils.js";
 
 const SOURCE = "operator_watchdog_manifest";
 
@@ -67,7 +71,7 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
       effect: Effect.Effect<
         A,
         never,
-        Globals | Lucid | MidgardContracts | NodeConfig
+        Globals | Lucid | MidgardContracts | NodeConfig | SqlClient.SqlClient
       >,
     ) =>
       Effect.runPromise(
@@ -75,6 +79,8 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
           Effect.provide(
             Layer.mergeAll(
               Globals.Default,
+              // The follower facts the operator set reads.
+              Database.layer,
               Layer.succeed(Lucid, {
                 api: fixture.lucid,
                 operatorMainAddress: operator.address,
@@ -124,6 +130,17 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
         yield* gate.beforeStrike(15_000);
         return gate;
       });
+    /** The follower-change driver's operator set, as `operator`'s node
+     * publishes it; the tick plans from it. */
+    const publishSetAs = (operator: (typeof fixture.operators)[number]) =>
+      Effect.zipRight(
+        resetApplicationTables,
+        publishEmulatorOperatorSet(
+          fixture.lucid,
+          fixture.contracts,
+          operator.keyHash,
+        ),
+      ).pipe(Effect.orDie);
     const raisedIn = (globals: Globals) =>
       Ref.get(globals.LIVENESS_REASONS).pipe(
         Effect.map((reasons) => reasons.get(SOURCE)),
@@ -140,6 +157,7 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
     const outcome = await runAs(
       successor,
       Effect.gen(function* () {
+        yield* publishSetAs(successor);
         const globals = yield* Globals;
         const raised = raisedIn(globals);
         const gate = yield* raisedGate(globals, waiting.verify);
@@ -183,6 +201,7 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
     const idleOutcome = await runAs(
       shiftOperator,
       Effect.gen(function* () {
+        yield* publishSetAs(shiftOperator);
         const globals = yield* Globals;
         const gate = yield* raisedGate(globals, idle.verify);
         const tick = makeOperatorWatchdogTick(

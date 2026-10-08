@@ -3,6 +3,12 @@
  * user-event ingestion as projections over L1 follower facts (N1).
  */
 export {
+  eventKeyOfId,
+  eventOrderByIdIn,
+  type EventOrderList,
+  type EventOrderRead,
+} from "./by-id.js";
+export {
   EVENT_KINDS,
   type EventKind,
   type EventListConfig,

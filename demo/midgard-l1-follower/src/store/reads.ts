@@ -149,6 +149,66 @@ export const liveUtxosIn = async (
   };
 };
 
+/**
+ * The tracked outputs matching `filter` that a block after slot `since`
+ * created, seeded or spent, live or spent, in ledger order: what changed
+ * since a reader's view at `since`. Spent rows below `prunedThroughSlot` are
+ * gone, so a `since` below it is `point_beyond_retention`: the reader reads
+ * the live set again. `since` null reads every retained row, live or
+ * spent (a narrow filter's history within retention). Rewinds are the
+ * caller's to detect (a generation change): a rewound spend leaves no row to
+ * report.
+ */
+export const changedUtxosIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  filter: UtxoFilter,
+  since: number | null,
+): Promise<UtxoRead> => {
+  const cursor = await readCursor(tx, dialect);
+  if (cursor === null)
+    return { kind: "not_initialized", detail: "no cursor row" };
+  if (since !== null && since < cursor.prunedThroughSlot)
+    return {
+      kind: "point_beyond_retention",
+      detail: `slot ${since} is below the retained window (slot ${cursor.prunedThroughSlot})`,
+    };
+  const { where, params } = filterSql(filter);
+  const rows = await tx.query(
+    since === null
+      ? `SELECT ${STORED_OUTPUT_SELECT} FROM ${STORED_OUTPUT_FROM} WHERE ${where}${ORDER}`
+      : `SELECT ${STORED_OUTPUT_SELECT} FROM ${STORED_OUTPUT_FROM} WHERE ${where}
+      AND (o.created_slot > ? OR o.seed_slot > ? OR o.spent_slot > ?)${ORDER}`,
+    since === null ? params : [...params, since, since, since],
+  );
+  return {
+    kind: "ok",
+    utxos: rows.map((row) => storedOutputFromRow(dialect, row)),
+  };
+};
+
+/**
+ * The live output holding the greatest asset of `policyId` whose name is at
+ * least `from` and below `below`, at the tip (null when none does): the
+ * predecessor of a key in a sorted linked list whose node names share a
+ * fixed-length prefix, read by the asset index without the list.
+ */
+export const liveUnitBeforeIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  query: Readonly<{ policyId: Buffer; from: Buffer; below: Buffer }>,
+): Promise<StoredOutput | null> => {
+  const rows = await tx.query(
+    `SELECT ${STORED_OUTPUT_SELECT} FROM ${STORED_OUTPUT_FROM}
+      JOIN l1_output_assets a ON a.tx_hash = o.tx_hash AND a.output_index = o.output_index
+      WHERE a.policy_id = ? AND a.asset_name >= ? AND a.asset_name < ? AND o.spent_slot IS NULL
+      ORDER BY a.asset_name DESC LIMIT 1`,
+    [query.policyId, query.from, query.below],
+  );
+  const row = rows[0];
+  return row === undefined ? null : storedOutputFromRow(dialect, row);
+};
+
 /** The stored row of an outref, live or spent (null if never tracked or pruned). */
 export const outputIn = async (
   tx: SqlTx,
@@ -278,5 +338,6 @@ export const blockAtOrBeforeSlotIn = async (
   return row === undefined ? null : storedBlockFromRow(row);
 };
 
+/** The cursor row: the tip, its generation and the retained window. */
 export const tipIn = (tx: SqlTx, dialect: Dialect): Promise<Cursor | null> =>
   readCursor(tx, dialect);

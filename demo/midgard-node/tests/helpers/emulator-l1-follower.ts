@@ -14,8 +14,12 @@
  *
  * Forced orders are not followed: a test that places a forced row writes
  * it with the order row the node ingested it from
- * (`insertForcedEntriesWithOrders`), as the forced-order ingestion only
- * writes a row for an order the follower projects.
+ * (`insertForcedEntriesWithOrders` in `emulator-l1-follower.forced-orders.ts`),
+ * as the forced-order ingestion only writes a row for an order the follower
+ * projects.
+ *
+ * `mirrorEmulatorEvents` writes what a lookup by event id reads: the list
+ * and retention outputs and one live event row per live Order.
  *
  * Heights count the synced tips: a new tip slot is one block above the
  * highest kept one, so the block d below the covered tip (the horizon lag)
@@ -38,12 +42,8 @@ import {
 import { Effect, Ref } from "effect";
 
 import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
-import {
-  ForcedTransactionsDB,
-  MempoolLedgerDB,
-} from "../../src/database/index.js";
+import { MempoolLedgerDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
-import { FORCED_ORDERS_TABLE } from "../../src/forced-orders/schema.js";
 import type { IngestionPlan, SinkResult } from "../../src/l1-events/driver.js";
 import {
   EVENT_KINDS,
@@ -68,7 +68,10 @@ import {
   followerBlockHash,
   writeFollowerTip,
 } from "./follower-view.js";
-import { mirrorEmulatorStateQueue } from "./landed-state-queue.js";
+import {
+  mirrorEmulatorStateQueue,
+  writeAddressFacts,
+} from "./landed-state-queue.js";
 
 const failed = (message: string, cause?: unknown) =>
   new DatabaseError({ table: "l1_follower_cursor", message, cause });
@@ -205,6 +208,7 @@ const writeFollowerView = (
     const hash = view.point.hash;
     const events: ProjectedEvent[] = [];
     for (const { kind, utxo, opened } of orders) {
+      const { retained: _retained, ...content } = opened;
       const key = Buffer.from(opened.key, "hex");
       const location = {
         txHash: Buffer.from(utxo.txHash, "hex"),
@@ -217,7 +221,7 @@ const writeFollowerView = (
       const admission = decodeOutRef(known[0]!.origin_outref);
       events.push({
         kind,
-        ...opened,
+        ...content,
         admission: {
           blockHash: hash.toString("hex"),
           slot,
@@ -231,6 +235,61 @@ const writeFollowerView = (
       });
     }
     return { view, events } satisfies IngestionPlan;
+  });
+
+/**
+ * The facts a lookup by event id reads (NC13), from the emulator's live
+ * outputs: the list and retention outputs as seed rows at the emulator's
+ * slot, and one live `node_l1_events` row per live Order, opened by the
+ * follower's own derivation with the retention output it read. A retired
+ * event has no live row, as on a followed chain.
+ */
+export const mirrorEmulatorEvents = (fixture: EmulatorFollowerFixture) =>
+  Effect.gen(function* () {
+    const lucid = fixture.operatorLucid;
+    const lists = listContracts(
+      fixture.contracts,
+      lucid.config().network === "Mainnet" ? 1 : 0,
+    );
+    const slot = lucid.currentSlot();
+    for (const list of lists)
+      for (const address of [list.listAddress, list.retentionAddress])
+        yield* writeAddressFacts(
+          address,
+          yield* Effect.promise(() => lucid.utxosAt(address)),
+          slot,
+        );
+    const orders = yield* Effect.tryPromise({
+      try: () => liveOrders(lucid, lists),
+      catch: (cause) => failed("Emulator list outputs are unreadable", cause),
+    });
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const [tip] = yield* sql<{
+          slot: string;
+          hash: Buffer;
+          height: string;
+        }>`SELECT slot::text AS slot, hash, height::text AS height FROM l1_follower_cursor`;
+        if (tip === undefined)
+          return yield* failed("The emulator follower has no cursor");
+        yield* sql`DELETE FROM node_l1_events WHERE retired_slot IS NULL`;
+        for (const { kind, utxo, opened } of orders)
+          yield* sql`INSERT INTO node_l1_events (kind, event_key, event_id,
+              inclusion_time, facts_cbor, payload_cbor, original_assets_cbor,
+              admission_tx_hash, admission_output_index, admission_tx_index,
+              admitted_block_hash, admitted_height, admitted_slot, retired_slot,
+              retained_tx_hash, retained_output_index)
+            VALUES (${kind}, ${Buffer.from(opened.key, "hex")},
+              ${Buffer.from(opened.idCbor, "hex")}, ${opened.inclusionTime.toString()},
+              ${Buffer.from(opened.factsCbor, "hex")}, ${Buffer.from(opened.payloadCbor, "hex")},
+              ${Buffer.from(opened.originalAssetsCbor, "hex")},
+              ${Buffer.from(utxo.txHash, "hex")}, ${utxo.outputIndex}, 0,
+              ${tip.hash}, ${tip.height}, ${tip.slot}, NULL,
+              ${opened.retained === null ? null : Buffer.from(opened.retained.txHash, "hex")},
+              ${opened.retained?.index ?? null})`;
+      }),
+    );
   });
 
 export type EmulatorFollowerFixture = {
@@ -265,6 +324,7 @@ export const syncEmulatorFollower = (
       yield* emulatorChain(lucid),
     );
     yield* mirrorEmulatorStateQueue(lucid, fixture.contracts.stateQueue);
+    yield* mirrorEmulatorEvents(fixture);
     if (globals !== undefined)
       yield* Ref.set(globals.L1_FOLLOWER, {
         ...runningFollower(),
@@ -383,13 +443,14 @@ export const projectOrderAsFollower = (
     retained,
   );
   if (opened === "not_an_order") throw new Error("expected an Order");
+  const { retained: _retained, ...content } = opened;
   const location = {
     txHash: Buffer.from(utxo.txHash, "hex"),
     index: utxo.outputIndex,
   };
   return {
     kind,
-    ...opened,
+    ...content,
     admission: {
       blockHash: followerBlockHash(0).toString("hex"),
       slot: 0,
@@ -402,51 +463,3 @@ export const projectOrderAsFollower = (
     location,
   };
 };
-
-/**
- * Writes forced rows as the forced-order ingestion writes them: each with
- * the follower's projection row (`node_l1_forced_order_fields`) of the order
- * it was rebuilt from, landed in the follower block at `slot`. The node
- * treats a forced row without a header whose order is gone as left the chain
- * (N10b): it bounds the commit horizon below the row's inclusion time and is
- * never selected. The order row carries what the node reads of it (outref,
- * slot, unspent, inclusion time); the order's carriage is not modelled.
- * The order's `forced` key is not written: the order is not on the emulator's
- * chain, so `rewindToEmulatorChain` would remove it as rolled back, and the
- * order row alone backs the forced row (`canonicalForcedAdmission`).
- */
-export const insertForcedEntriesWithOrders = (
-  entries: readonly ForcedTransactionsDB.Entry[],
-  slot: number,
-) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        for (const entry of entries)
-          yield* sql`INSERT INTO ${sql(FORCED_ORDERS_TABLE)} ${sql.insert({
-            order_tx_hash:
-              entry[ForcedTransactionsDB.Columns.TX_ORDER_L1_TX_HASH],
-            order_output_index:
-              entry[ForcedTransactionsDB.Columns.TX_ORDER_L1_OUTPUT_INDEX],
-            order_tx_index: 0,
-            block_hash: followerBlockHash(slot),
-            height: slot,
-            order_slot: slot,
-            spent_slot: null,
-            parent_slot: slot - 1,
-            parent_hash: followerBlockHash(slot - 1),
-            inclusion_time:
-              entry[ForcedTransactionsDB.Columns.INCLUSION_TIME].getTime(),
-            status: "resolved",
-            reference_inputs: Buffer.alloc(0),
-            block_datums: "{}",
-          })}`;
-        yield* ForcedTransactionsDB.insertEntries(entries);
-      }),
-    );
-  }).pipe(
-    Effect.catchTag("SqlError", (cause) =>
-      Effect.fail(failed("Forced order rows could not be written", cause)),
-    ),
-  );

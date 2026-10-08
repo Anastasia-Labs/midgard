@@ -16,7 +16,6 @@ import {
   retentionSweeperFiber,
   txQueueProcessorFiber,
 } from "../fibers/index.js";
-import { operatorMembershipFiber } from "../fibers/operator-membership.js";
 import { settlementFiber } from "../fibers/settlement.js";
 import { signedIntentRebroadcastFiber } from "../fibers/signed-intent-rebroadcast.js";
 import { Globals } from "../services/globals.js";
@@ -135,7 +134,6 @@ export const nodeFibers = ({
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
     operatorWatchdogFiber,
   ),
-  operatorMembership: operatorMembershipFiber,
   l1ProviderReadinessRefresher: l1ProviderReadinessRefresherFiber(
     mkSchedule(L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS),
   ),

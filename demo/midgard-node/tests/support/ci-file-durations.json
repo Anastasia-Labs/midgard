@@ -313,7 +313,6 @@
     "tests/operator-inactivity-emulator.test.ts": 44.2,
     "tests/operator-lifecycle-emulator.test.ts": 48.7,
     "tests/operator-membership.duties.test.ts": 3.5,
-    "tests/operator-membership.test.ts": 19.7,
     "tests/operator-wallet-view.test.ts": 1.6,
     "tests/operator-watchdog-emulator.test.ts": 22.3,
     "tests/operator-watchdog-manifest-gate-idle.test.ts": 22.9,
