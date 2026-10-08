@@ -7,6 +7,10 @@
  */
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
+  computeMidgardForcedTxProofCommitment,
+  computeMidgardNativeTxId,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSource,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
@@ -17,6 +21,8 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
+import { encodeMidgardFieldArrayHeader } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { deriveMidgardTxFieldPreimages } from "@al-ft/midgard-core/consensus-validation";
 import {
   compareOutRefs,
   decodeLedgerUtxos,
@@ -122,6 +128,34 @@ export const publishedOrderMaterial = (submittedTxCbor: Buffer) => {
   return { material, preimage: field.preimage };
 };
 
+/**
+ * The order material of any decodable forced transaction, every non-empty
+ * field carried inline, built from the codec alone: the SDK builder's
+ * admission screen is the creator's, and the order policy does not run it,
+ * so ingestion has to meet transactions the screen would have refused.
+ */
+export const inlineOrderMaterial = (submittedTxCbor: Buffer) => {
+  const tx = decodeMidgardForcedTxFullFromCanonicalCbor(submittedTxCbor);
+  const source = deriveMidgardForcedTxProofSource(tx);
+  const empty = encodeMidgardFieldArrayHeader(0);
+  return {
+    material: {
+      transactionId: computeMidgardNativeTxId(tx.compact).toString("hex"),
+      transactionCommitment:
+        computeMidgardForcedTxProofCommitment(source).toString("hex"),
+      submitted_source: {
+        compact_cbor: source.compactCbor.toString("hex"),
+        witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
+        field_preimage_lengths_cbor:
+          source.fieldPreimageLengthsCbor.toString("hex"),
+      },
+    },
+    inline: deriveMidgardTxFieldPreimages(submittedTxCbor, "forced")
+      .map((field) => field.preimageCbor)
+      .filter((preimage) => !preimage.equals(empty)),
+  };
+};
+
 /** A tx publishing `bytes` as one raw carriage output at the wallet. */
 export const publicationTx = (
   bytes: Uint8Array,
@@ -145,12 +179,17 @@ const ORDER_NAME = Buffer.from("order").toString("hex");
  * The order tx: mints the order token, pays the order output with its
  * datum, and names `carriage` (one tier-2 outref per carried field, in field
  * order) by its position among the sorted reference inputs, as the ledger
- * presents them to the mint.
+ * presents them to the mint. With `inline`, the vector is those preimages
+ * instead, each carried in the redeemer.
  */
 export const orderTx = (input: {
-  material: SDK.TxOrderMaterial;
+  material: Pick<
+    SDK.TxOrderMaterial,
+    "transactionId" | "transactionCommitment" | "submitted_source"
+  >;
   nonceInput: OutRef;
   carriage: readonly OutRef[];
+  inline?: readonly Buffer[];
   otherReferences?: readonly OutRef[];
   inclusionTime: bigint;
   nonce: number;
@@ -196,9 +235,14 @@ export const orderTx = (input: {
         witness_registration_redeemer_index: 0n,
       },
     },
-    material_carriage: input.carriage.map((outRef) => ({
-      RawUtxo: { ref_input_index: position(outRef) },
-    })),
+    material_carriage:
+      input.inline === undefined
+        ? input.carriage.map((outRef) => ({
+            RawUtxo: { ref_input_index: position(outRef) },
+          }))
+        : input.inline.map((preimage) => ({
+            Inline: { preimage: preimage.toString("hex") },
+          })),
   };
   const token = new Map([
     [FORCED_CONFIG.policyId, new Map([[ORDER_NAME, 1n]])],

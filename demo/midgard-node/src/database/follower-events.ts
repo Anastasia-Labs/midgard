@@ -34,6 +34,7 @@ import {
   type AdmissionKind,
   canonicalAdmission,
   orphanedAdmission,
+  orphanedForcedAdmission,
 } from "./l1-admission-identity.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
@@ -360,12 +361,17 @@ const projectAwaitingDeposits = (cutoff: Date) =>
     return entries.length;
   });
 
-/** Event rows whose admission the follower no longer holds (ruling 3). */
+/**
+ * Event rows whose admission the follower no longer holds (ruling 3). A
+ * forced row counts only while an unfinished block journal holds it; the
+ * forced-order hook deletes the others (N10b).
+ */
 export const countOrphanedAdmissions = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const orphans = yield* sql<{ count: string }>`SELECT
     (SELECT count(*) FROM deposits_utxos d WHERE ${orphanedAdmission(sql, "d", "deposit")})
-    + (SELECT count(*) FROM withdrawal_utxos w WHERE ${orphanedAdmission(sql, "w", "withdrawal")}) AS count`;
+    + (SELECT count(*) FROM withdrawal_utxos w WHERE ${orphanedAdmission(sql, "w", "withdrawal")})
+    + (SELECT count(*) FROM forced_transaction_utxos f WHERE ${orphanedForcedAdmission(sql, "f")}) AS count`;
   return Number(orphans[0]?.count ?? 0);
 });
 

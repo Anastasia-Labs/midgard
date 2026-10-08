@@ -24,7 +24,9 @@
  *   orders the follower projects, resolving carriage its blocks did not
  *   carry through the local node's ledger and the configured content
  *   sources; carriage no source has yet is the transient
- *   `forced_order_carriage_pending`, retried on the driver's backoff.
+ *   `forced_order_carriage_pending`, retried on the driver's backoff. While
+ *   the follower is caught up it also deletes the rows whose order left
+ *   the chain.
  * - Everything the follower cannot clear by itself is a named `/readyz`
  *   reason (`l1-follower.readiness.ts`). Nothing here exits the process.
  */
@@ -400,6 +402,7 @@ export const startL1Follower = Effect.gen(function* () {
           ),
         ],
         run: (effect) => Runtime.runPromiseExit(dbRuntime)(effect),
+        caughtUp: () => followerCaughtUp(status),
         log: (line) => log(`forced orders: ${line}`),
       }),
     },

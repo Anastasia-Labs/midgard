@@ -58,3 +58,65 @@ export const orphanedAdmission = (
   kind: AdmissionKind,
 ) =>
   sql`${sql(alias)}.l1_event_key IS NOT NULL AND NOT ${canonicalAdmission(sql, alias, kind)}`;
+
+/**
+ * The forced kind (N10b). A forced row (`forced_transaction_utxos`) carries
+ * no identity columns: its admission is its order output, so its key and its
+ * origin outref are both that outref in the follower's 34-byte encoding (the
+ * 32-byte transaction hash, then the output index as u16 big-endian). The
+ * forced-order derivation enters it into `l1_event_keys` under this kind; a
+ * follower rewind past the order's block deletes it.
+ */
+export const FORCED_ADMISSION_KIND = "forced";
+
+const forcedOutRef = (sql: SqlClient.SqlClient, alias: string) =>
+  sql`(${sql(alias)}.tx_order_l1_tx_hash || substring(int4send(${sql(alias)}.tx_order_l1_output_index) from 3 for 2))`;
+
+/**
+ * SQL condition: the forced row aliased `alias` is backed by its order, in
+ * the follower's key set or as the projection's order row (a row ingested
+ * before its key was written is backed by its order row).
+ */
+export const canonicalForcedAdmission = (
+  sql: SqlClient.SqlClient,
+  alias: string,
+) =>
+  sql`(EXISTS (SELECT 1 FROM l1_event_keys k WHERE k.kind = ${FORCED_ADMISSION_KIND}
+      AND k.key = ${forcedOutRef(sql, alias)} AND k.origin_outref = ${forcedOutRef(sql, alias)})
+    OR EXISTS (SELECT 1 FROM node_l1_forced_order_fields o
+      WHERE o.order_tx_hash = ${sql(alias)}.tx_order_l1_tx_hash
+        AND o.order_output_index = ${sql(alias)}.tx_order_l1_output_index))`;
+
+/** SQL condition: the forced row aliased `alias` is a member of a block journal neither finalized nor abandoned. */
+export const forcedInActiveBlock = (sql: SqlClient.SqlClient, alias: string) =>
+  sql`EXISTS (SELECT 1 FROM pending_block_finalization_forced_transactions m
+    JOIN pending_block_finalizations p ON p.header_hash = m.header_hash
+    WHERE m.member_id = ${sql(alias)}.tx_order_id
+      AND p.status NOT IN ('finalized', 'abandoned'))`;
+
+/**
+ * SQL condition: the forced row aliased `alias` has no header, its order is
+ * gone, and no unfinished block journal holds it. The forced-order hook
+ * deletes such a row.
+ */
+export const abandonedForcedAdmission = (
+  sql: SqlClient.SqlClient,
+  alias: string,
+) =>
+  sql`${sql(alias)}.projected_header_hash IS NULL
+    AND NOT ${canonicalForcedAdmission(sql, alias)}
+    AND NOT ${forcedInActiveBlock(sql, alias)}`;
+
+/**
+ * SQL condition: the forced row aliased `alias` has no header and its order
+ * is gone, but an unfinished block journal holds it: an orphan for the
+ * event-history recovery, as a deposit or withdrawal orphan is. A row with
+ * a header is its header's to settle.
+ */
+export const orphanedForcedAdmission = (
+  sql: SqlClient.SqlClient,
+  alias: string,
+) =>
+  sql`${sql(alias)}.projected_header_hash IS NULL
+    AND NOT ${canonicalForcedAdmission(sql, alias)}
+    AND ${forcedInActiveBlock(sql, alias)}`;
