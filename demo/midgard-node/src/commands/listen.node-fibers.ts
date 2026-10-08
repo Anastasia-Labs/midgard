@@ -18,7 +18,6 @@ import {
 } from "../fibers/index.js";
 import { operatorMembershipFiber } from "../fibers/operator-membership.js";
 import { settlementFiber } from "../fibers/settlement.js";
-import { signedIntentRebroadcastFiber } from "../fibers/signed-intent-rebroadcast.js";
 import { Globals } from "../services/globals.js";
 import { type NodeConfigDep, writeBehindFiber } from "../services/index.js";
 import { onL1HeadChange } from "../services/l1-head-trigger.js";
@@ -129,7 +128,6 @@ export const nodeFibers = ({
     nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
     blockConfirmationFiber,
   ),
-  signedIntentRebroadcast: signedIntentRebroadcastFiber(mkSchedule(1_000)),
   operatorWatchdog: heldSchedule(
     "operatorWatchdog",
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,

@@ -16,6 +16,7 @@ import {
   NodeConfig,
   withL1ControlPlane,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { WorkerError } from "../workers/utils/common.js";
 import { buildAndSubmitCommitmentBlockAction } from "./block-commitment.build-and-submit-commitment-block-action.js";
 import { shouldSkipIdleCommitPipelineBeforeSchedulerAlignment } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
@@ -106,6 +107,7 @@ export const blockCommitmentAction: Effect.Effect<
   | Database
   | NodeConfig
   | ContractDeploymentIdentity
+  | IntentJournal
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   const nodeConfig = yield* NodeConfig;
@@ -189,6 +191,7 @@ export const blockCommitmentFiber = (
   | Database
   | NodeConfig
   | ContractDeploymentIdentity
+  | IntentJournal
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔵 Block commitment fiber started.");

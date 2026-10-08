@@ -15,6 +15,10 @@ import {
   publishMempoolLedgerDelta,
 } from "./services/index.js";
 import {
+  type IntentJournal,
+  unjournaledSubmission,
+} from "./services/intent-journal.js";
+import {
   buildUnsignedDepositTxProgram,
   type SubmitDepositError,
 } from "./transactions/submit-deposit.js";
@@ -89,7 +93,7 @@ const submitGenesisDeposits: Effect.Effect<
   | TxSubmitError
   | TxConfirmError
   | TxSignError,
-  MidgardContracts | Lucid | NodeConfig
+  MidgardContracts | Lucid | NodeConfig | IntentJournal
 > = Effect.gen(function* () {
   yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
 
@@ -110,7 +114,11 @@ const submitGenesisDeposits: Effect.Effect<
     lovelace: 10_000_000n,
     additionalAssets: {},
   });
-  yield* handleSignSubmit(lucid.api, signedTx);
+  yield* handleSignSubmit(
+    lucid.api,
+    signedTx,
+    unjournaledSubmission("bootstrap", "genesis:deposit"),
+  );
 }).pipe(Effect.tapError(Effect.logInfo));
 
 /**
@@ -120,7 +128,7 @@ const submitGenesisDeposits: Effect.Effect<
 export const program: Effect.Effect<
   void,
   never,
-  MidgardContracts | Database | Lucid | NodeConfig | Globals
+  MidgardContracts | Database | Lucid | NodeConfig | Globals | IntentJournal
 > = Effect.all([insertGenesisUtxos, submitGenesisDeposits], {
   concurrency: "unbounded",
 }).pipe(Effect.catchAllCause(Effect.logInfo));

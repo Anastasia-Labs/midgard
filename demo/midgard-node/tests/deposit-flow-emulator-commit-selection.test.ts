@@ -63,6 +63,7 @@ import {
   TxUtils,
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 describe("deposit flow emulator", { concurrent: false }, () => {
   // 900s leaves headroom for the full real-contract workflow. Protocol
@@ -181,7 +182,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       const controlScanBefore = await Effect.runPromise(
         Metric.value(confirmedLedgerFullScanCounter),
       );
-      const controlOutput = await Effect.runPromise(
+      const controlOutput = await runWithoutFollower(
         runUnownedNativeCommit(
           fixture.contracts,
           lucidService,

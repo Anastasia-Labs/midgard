@@ -4,6 +4,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput, Lucid } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";
+import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
 import { activateOperatorProgram } from "midgard-node/transactions/register-active-operator";
 import { expect, it } from "vitest";
 
@@ -66,7 +67,7 @@ it.skipIf(runDirectory === undefined || !selected)(
           SDK.getProtocolParameters("Preprod").required_bond,
           context.deployment.publisherLucid,
           await context.deployment.publisherLucid.wallet().address(),
-        ),
+        ).pipe(Effect.provide(IntentJournalWithoutFollower)),
       ),
     ).rejects.toThrow("Retained activation captured before signing");
     expect(captured).toBe(true);

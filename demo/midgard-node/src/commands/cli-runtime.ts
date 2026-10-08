@@ -15,6 +15,10 @@ import { Cause, Effect, Exit, pipe } from "effect";
 
 import type { E2EEnvInheritance } from "../e2e/env.js";
 import * as Services from "../services/index.js";
+import {
+  type IntentJournal,
+  IntentJournalWithoutFollower,
+} from "../services/intent-journal.js";
 import { formatJson } from "./command-utils.js";
 
 export const parsePositiveIntegerOption = (
@@ -176,11 +180,15 @@ export const provideTxServices = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    Services.NodeConfig | Services.MidgardContracts | Services.Lucid
+    | Services.NodeConfig
+    | Services.MidgardContracts
+    | Services.Lucid
+    | IntentJournal
   >,
 ): Effect.Effect<A, E | Services.ConfigError, never> =>
   pipe(
     effect,
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.MidgardContracts.Default),
     Effect.provide(Services.Lucid.Default),
@@ -190,21 +198,30 @@ export const provideReferenceScriptDeploymentServices = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    Services.NodeConfig | Services.Lucid | Services.AlwaysSucceedsContract
+    | Services.NodeConfig
+    | Services.Lucid
+    | Services.AlwaysSucceedsContract
+    | IntentJournal
   >,
 ): Effect.Effect<A, E | Services.ConfigError, never> =>
   pipe(
     effect,
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.AlwaysSucceedsContract.Default),
     Effect.provide(Services.Lucid.Default),
   );
 
 export const provideLucidOnlyServices = <A, E>(
-  effect: Effect.Effect<A, E, Services.NodeConfig | Services.Lucid>,
+  effect: Effect.Effect<
+    A,
+    E,
+    Services.NodeConfig | Services.Lucid | IntentJournal
+  >,
 ): Effect.Effect<A, E | Services.ConfigError, never> =>
   pipe(
     effect,
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Lucid.Default),
   );
@@ -231,6 +248,7 @@ export const provideNodeRuntimeServices = <A, E>(
     | Services.MidgardContracts
     | Services.Lucid
     | Services.Globals
+    | IntentJournal
   >,
 ): Effect.Effect<
   A,
@@ -239,6 +257,8 @@ export const provideNodeRuntimeServices = <A, E>(
 > =>
   pipe(
     effect,
+    // A CLI process runs no follower; `runNode` provides its own journal.
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.AdmissionWriterLive),
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
@@ -258,6 +278,7 @@ export const provideDatabaseTxServices = <A, E>(
     | Services.ContractDeploymentIdentity
     | Services.MidgardContracts
     | Services.Lucid
+    | IntentJournal
   >,
 ): Effect.Effect<
   A,
@@ -266,6 +287,7 @@ export const provideDatabaseTxServices = <A, E>(
 > =>
   pipe(
     effect,
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),

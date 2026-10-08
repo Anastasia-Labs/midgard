@@ -4,6 +4,10 @@ import { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import {
+  IntentJournal,
+  type SubmissionIntent,
+} from "../services/intent-journal.js";
+import {
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,
 } from "./submit-timing.js";
@@ -36,13 +40,22 @@ import {
   submitRecoverySleep,
 } from "./utils.reconcile-wallet-utxos-from-signed-tx.js";
 
+/**
+ * Submits signed bytes with recovery for provider races and early-validity
+ * failures. The intent journal (§8.2) records the exact bytes immediately
+ * before the first submission; a refusal stops the submission
+ * (`IntentJournalRefused`). Every retry here sends the same bytes.
+ */
 export const submitSignedTxWithRecovery = (
   lucid: LucidEvolution,
   signed: Awaited<ReturnType<TxSignBuilder["complete"]>>,
   txHash: string,
+  intent: SubmissionIntent,
   options: SubmitRecoveryOptions = {},
-): Effect.Effect<void, unknown> =>
+): Effect.Effect<void, unknown, IntentJournal> =>
   Effect.gen(function* () {
+    const journal = yield* IntentJournal;
+    let journaled = false;
     const sleep = options.sleep ?? submitRecoverySleep(lucid);
     let providerRetryAttempts = 0;
     let outsideValidityRecoveryAttempts = 0;
@@ -135,13 +148,17 @@ export const submitSignedTxWithRecovery = (
           );
         }
       }
+      if (!journaled) {
+        yield* journal.record(intent, signed.toCBOR(), txHash);
+        journaled = true;
+      }
       // The callback must finish its durable commit before any provider call.
       // It runs for each attempt so a generation change also fences retries.
-      const intent = yield* Effect.serviceOption(
+      const durable = yield* Effect.serviceOption(
         BeforeSignedTransactionSubmission,
       );
-      if (Option.isSome(intent))
-        yield* intent.value.persist({ txHash, signedTxCbor: signed.toCBOR() });
+      if (Option.isSome(durable))
+        yield* durable.value.persist({ txHash, signedTxCbor: signed.toCBOR() });
       const submitResult = yield* Effect.either(signed.submitProgram());
       if (submitResult._tag === "Right") {
         return;

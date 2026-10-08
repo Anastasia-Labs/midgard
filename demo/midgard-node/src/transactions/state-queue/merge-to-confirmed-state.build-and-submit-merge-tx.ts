@@ -16,6 +16,10 @@ import {
 } from "../../operator-wallet-view.js";
 import { Database, Globals, NodeConfig } from "../../services/index.js";
 import {
+  type IntentJournal,
+  journaledIntent,
+} from "../../services/intent-journal.js";
+import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
 } from "../reference-scripts.js";
@@ -84,7 +88,7 @@ export const buildAndSubmitMergeTx = (
   | TxSubmitError
   | TxConfirmError
   | TxSignError,
-  Database | Globals | NodeConfig
+  Database | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     const mergeStartedAt = Date.now();
@@ -463,7 +467,16 @@ export const buildAndSubmitMergeTx = (
       // what actually happened.
       const submitOutcome = yield* Effect.uninterruptibleMask((restore) =>
         restore(
-          handleSignSubmit(lucid, txBuilder, submitRecoveryOptions).pipe(
+          handleSignSubmit(
+            lucid,
+            txBuilder,
+            journaledIntent(
+              "merge",
+              `merge:head=${headerHash.toString("hex")}`,
+              headerHash,
+            ),
+            submitRecoveryOptions,
+          ).pipe(
             Effect.as({ status: "submitted" } as const),
             Effect.catchTag("NoInlineSubmitDefer", (defer) =>
               Effect.succeed({ status: "deferred", defer } as const),

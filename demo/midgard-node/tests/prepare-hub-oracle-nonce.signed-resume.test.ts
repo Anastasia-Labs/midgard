@@ -18,6 +18,7 @@ import { hubOracleNonceRunStateHooks } from "../src/commands/prepare-hub-oracle-
 import { loadDeploymentRunState } from "../src/e2e/run-state.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/transactions/utils.js", async (importOriginal) => ({
@@ -131,7 +132,7 @@ describe("hub-oracle nonce signed before submission", () => {
       switchToOperatorsMainWallet: Effect.void,
     };
     const run = (beforeSubmission: () => Effect.Effect<void, unknown>) =>
-      Effect.runPromise(
+      runWithoutFollower(
         prepareHubOracleOneShotNonceProgram(5_000_000n, {
           outputLookupTimeoutMs: 0,
           beforeSubmission: (attempt) => {
@@ -184,7 +185,7 @@ describe("hub-oracle nonce signed before submission", () => {
       switchToOperatorsMainWallet: Effect.void,
     };
     await expect(
-      Effect.runPromise(
+      runWithoutFollower(
         prepareHubOracleOneShotNonceProgram(5_000_000n, {
           ...hubOracleNonceRunStateHooks(
             { runStatePath, freshRedeploy: false },

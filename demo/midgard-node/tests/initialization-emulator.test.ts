@@ -44,6 +44,7 @@ import {
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
 import { handleSignSubmit } from "../src/transactions/utils.js";
+import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import {
   buildAtomicInitializationTx,
   EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
@@ -633,10 +634,11 @@ describe("initialization emulator", () => {
       nonceUtxo,
       operatorSeedPhrase,
     );
-    await Effect.runPromise(
+    await runWithoutFollower(
       handleSignSubmit(
         lucid,
         await firstInit.complete({ localUPLCEval: true }),
+        TEST_INTENT,
       ),
     );
     const walletUtxosAfterFirstInit = await lucid.wallet().getUtxos();
@@ -697,7 +699,7 @@ describe("initialization emulator", () => {
     const txHash = await signed.submit();
     await lucid.awaitTx(txHash);
 
-    const registrationResult = await Effect.runPromise(
+    const registrationResult = await runWithoutFollower(
       registerOperatorProgram(
         lucid,
         contracts,
@@ -706,7 +708,7 @@ describe("initialization emulator", () => {
       ),
     );
     emulator.awaitSlot(180);
-    const onboardingResult = await Effect.runPromise(
+    const onboardingResult = await runWithoutFollower(
       activateOperatorProgram(
         lucid,
         contracts,

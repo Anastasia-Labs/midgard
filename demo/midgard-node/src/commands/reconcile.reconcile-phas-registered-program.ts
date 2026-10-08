@@ -5,6 +5,7 @@ import { Effect } from "effect";
 import { MutationJobsDB } from "../database/index.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import { Lucid, MidgardContracts } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import {
   ensurePhasMembershipRewardAccountRegisteredProgram,
@@ -82,7 +83,7 @@ export const reconcilePhasRegisteredProgram = ({
   repair,
 }: {
   readonly repair: boolean;
-}): Effect.Effect<ReconciliationResult, unknown, Lucid> =>
+}): Effect.Effect<ReconciliationResult, unknown, Lucid | IntentJournal> =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
     const identity = yield* Effect.try({

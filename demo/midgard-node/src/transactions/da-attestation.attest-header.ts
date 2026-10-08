@@ -2,6 +2,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  type IntentJournal,
+  journaledIntent,
+} from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   type AttestStateQueueHeaderResult,
@@ -20,6 +24,17 @@ import {
   localDaSignatureWitnesses,
 } from "./da-attestation.fetch-unattested-headers.js";
 import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
+
+/** One step of a header's DA attestation, journaled against the header. */
+const attestIntent = (
+  headerHash: string,
+  step: "init" | "add_signatures" | "apply",
+) =>
+  journaledIntent(
+    "attest",
+    `attest:${headerHash}:${step}`,
+    Buffer.from(headerHash, "hex"),
+  );
 
 export const attestHeader = ({
   lucid,
@@ -48,7 +63,8 @@ export const attestHeader = ({
   | SDK.StateQueueError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     let initTxHash: string | null = null;
@@ -107,6 +123,7 @@ export const attestHeader = ({
       initTxHash = yield* submitCompletedTx(
         lucid,
         yield* completeWithLocalUplc(initTx, "DA attestation init"),
+        attestIntent(target.headerHash, "init"),
       );
       candidates = yield* fetchVisibleDaAttestationCandidates(
         lucid,
@@ -178,6 +195,7 @@ export const attestHeader = ({
           addSignaturesTx,
           "DA attestation add-signatures",
         ),
+        attestIntent(target.headerHash, "add_signatures"),
       );
       candidates = yield* fetchVisibleDaAttestationCandidates(
         lucid,
@@ -226,6 +244,7 @@ export const attestHeader = ({
         return yield* submitCompletedTx(
           lucid,
           yield* completeWithLocalUplc(applyTx, "DA attestation apply"),
+          attestIntent(target.headerHash, "apply"),
         );
       }),
     });

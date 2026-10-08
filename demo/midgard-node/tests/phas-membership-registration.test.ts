@@ -18,6 +18,7 @@ import {
   queryPhasMembershipRewardAccountRegisteredProgram,
 } from "../src/transactions/phas-membership-registration.js";
 import { TxSubmitError } from "../src/transactions/utils.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const phasIdentity = SDK.phasMembershipIdentity(
   "Preprod",
@@ -219,7 +220,7 @@ describe("PHAS membership reward registration", () => {
       ),
     );
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
         queryRegistration: () => Effect.succeed("registered"),
         buildRegistrationTx,
@@ -248,7 +249,7 @@ describe("PHAS membership reward registration", () => {
     const buildRegistrationTx = vi.fn(() => Effect.succeed(built));
     const submitRegistrationTx = vi.fn(() => Effect.succeed("aa".repeat(32)));
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       ensurePhasMembershipRewardAccountRegisteredProgram(lucid, {
         queryRegistration: () => Effect.succeed("unregistered"),
         buildRegistrationTx,
@@ -275,7 +276,7 @@ describe("PHAS membership reward registration", () => {
       scriptHash: phasIdentity.scriptHash,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
         queryRegistration: () => Effect.succeed("unregistered"),
         buildRegistrationTx: () => Effect.succeed(built),
@@ -314,7 +315,7 @@ describe("PHAS membership reward registration", () => {
     };
 
     await expect(
-      Effect.runPromise(
+      runWithoutFollower(
         ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
           queryRegistration: () => Effect.succeed("unregistered"),
           buildRegistrationTx: () => Effect.succeed(built),
@@ -339,7 +340,7 @@ describe("PHAS membership reward registration", () => {
     );
 
     await expect(
-      Effect.runPromise(
+      runWithoutFollower(
         ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
           queryRegistration: () =>
             Effect.fail(

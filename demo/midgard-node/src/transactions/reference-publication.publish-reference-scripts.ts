@@ -12,6 +12,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { IntentJournalService } from "../services/intent-journal.js";
+import {
+  journalPublicationOnce,
+  submitPublicationFunding,
+} from "./reference-publication.journal.js";
 import {
   CONSOLIDATION_INPUTS,
   key,
@@ -22,7 +27,6 @@ import {
   referencePublicationLaneCount,
   type ReferencePublicationOptions,
 } from "./reference-publication.reference-publication-funding-required.js";
-import { handleSignSubmit } from "./utils.js";
 import { isPlainAdaOnlyUtxo } from "./wallet-hygiene.js";
 
 /** Called only by the existing publication entry point. No records outlive this invocation. */
@@ -35,6 +39,7 @@ export const publishReferenceScripts = async ({
   options,
   minAuthPolicyRemainingMs,
   signal,
+  journal,
 }: {
   lucid: LucidEvolution;
   address: string;
@@ -44,6 +49,8 @@ export const publishReferenceScripts = async ({
   options: ReferencePublicationOptions;
   minAuthPolicyRemainingMs: number;
   signal?: AbortSignal;
+  /** Every publication and funding tx is journaled before its first send. */
+  journal: IntentJournalService;
 }): Promise<readonly SDK.ReferenceScriptResolved[]> => {
   const startedAt = Date.now();
   const metrics = {
@@ -200,7 +207,7 @@ export const publishReferenceScripts = async ({
         );
       const output = coreToTxOutput(outputs.get(0));
       const hash = await Effect.runPromise(
-        handleSignSubmit(lucid, unsigned, {
+        submitPublicationFunding(journal, lucid, unsigned, "consolidate", {
           confirmationTimeoutMs: 30 * 60_000,
           confirmationRetries: 0,
           requiredOutputIndexes: [0],
@@ -302,7 +309,7 @@ export const publishReferenceScripts = async ({
       }
       signal?.throwIfAborted();
       const hash = await Effect.runPromise(
-        handleSignSubmit(lucid, unsigned, {
+        submitPublicationFunding(journal, lucid, unsigned, "split", {
           confirmationTimeoutMs: 30 * 60_000,
           confirmationRetries: 0,
           requiredOutputIndexes,
@@ -361,8 +368,10 @@ export const publishReferenceScripts = async ({
   const withinOutstandingByteBudget = () =>
     outstanding().reduce((sum, record) => sum + record.cbor.length / 2, 0) <=
     MAX_OUTSTANDING_BYTES;
+  const journalOnce = journalPublicationOnce(journal);
   const submit = async (record: Publication) => {
     signal?.throwIfAborted();
+    await journalOnce(record);
     const submittedAt = Date.now();
     metrics.submissionAttempts += 1;
     try {
@@ -470,6 +479,7 @@ export const publishReferenceScripts = async ({
                     options,
                     minAuthPolicyRemainingMs,
                     signal,
+                    journal,
                   });
                 }
               }

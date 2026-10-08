@@ -14,6 +14,7 @@ import {
   NativeMpfWorkerPortClient,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   type NotifyCommitWorkerParent,
   shouldPreserveCommitMpfRoots,
@@ -36,7 +37,11 @@ export const runCommitBlockHeaderWorkerProgram = (
 ): Effect.Effect<
   WorkerOutput,
   unknown,
-  MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Database
+  | NodeConfig
+  | IntentJournal
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");

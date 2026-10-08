@@ -13,6 +13,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   evidence,
   type ReconciliationResult,
@@ -34,7 +35,7 @@ export const reconcileMergeCompleteProgram = ({
 }): Effect.Effect<
   ReconciliationResult,
   unknown,
-  Database | Lucid | MidgardContracts | Globals | NodeConfig
+  Database | Lucid | MidgardContracts | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");

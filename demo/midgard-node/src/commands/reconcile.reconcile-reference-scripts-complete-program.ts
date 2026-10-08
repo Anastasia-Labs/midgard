@@ -13,6 +13,7 @@ import {
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { Database, Lucid, MidgardContracts } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
@@ -32,7 +33,11 @@ export const reconcileReferenceScriptsCompleteProgram = ({
   repair,
 }: {
   readonly repair: boolean;
-}): Effect.Effect<ReconciliationResult, unknown, Lucid | MidgardContracts> =>
+}): Effect.Effect<
+  ReconciliationResult,
+  unknown,
+  Lucid | MidgardContracts | IntentJournal
+> =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;

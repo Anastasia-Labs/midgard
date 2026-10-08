@@ -9,6 +9,8 @@ import {
   REFERENCE_SCRIPT_COMMAND_NAMES,
   type ReferenceScriptCommandName,
 } from "../deployable-scripts.js";
+import type { IntentJournal } from "../services/intent-journal.js";
+import { journaledIntent } from "../services/intent-journal.js";
 import { compareOutRefs } from "../tx-context.js";
 import {
   buildReferenceScriptWalletStatus,
@@ -80,7 +82,8 @@ export const ensureReferenceScriptWalletWorkingCapital = (
   | SDK.LucidError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const referenceScriptWalletUtxos = yield* refreshWalletUtxosFromOwnAddress(
@@ -183,6 +186,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
     const txHash = yield* handleSignSubmit(
       fundingLucid,
       unsigned,
+      journaledIntent("reference_funding", `reference_funding:${scopeName}`),
       REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
     );
     yield* refreshWalletUtxosFromOwnAddress(referenceScriptsLucid, {

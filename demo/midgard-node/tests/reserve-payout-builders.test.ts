@@ -44,6 +44,7 @@ import {
   buildInitializePayoutTxProgram,
   buildRefundInvalidWithdrawalTxProgram,
 } from "../src/transactions/reserve-payout.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   expectAbsorbRedeemerLayout,
   expectAddFundsRedeemerLayout,
@@ -951,7 +952,7 @@ describe("reserve/payout transaction builder primitives", () => {
       };
       // Without protection at the first build nothing here would wait.
       expect(Number(protectedUntil) - Date.now()).toBeGreaterThan(4_000);
-      const txHash = await Effect.runPromise(
+      const txHash = await runWithoutFollower(
         retirement === "absorb"
           ? submitAbsorbAfterProtectionProgram(f.lucid, f.contracts, {
               ...common,

@@ -19,6 +19,7 @@ import {
   Lucid,
   MidgardContracts,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   landedStateQueueSnapshot,
   type StateQueueSnapshot,
@@ -293,7 +294,7 @@ const resolveFreshDetailedSchedulerDueWork = Effect.gen(function* () {
 export const shouldSkipForDetailedSchedulerDueWork: Effect.Effect<
   boolean,
   never,
-  Globals | Lucid | MidgardContracts
+  Globals | Lucid | MidgardContracts | IntentJournal
 > = Effect.gen(function* () {
   const freshDueWork = yield* Effect.either(
     resolveFreshDetailedSchedulerDueWork,

@@ -35,6 +35,7 @@ import {
   NodeConfig,
   withL1ControlPlaneIfAvailable,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   configuredOperatorEconomicsProgram,
   retireOperatorProgram,
@@ -198,7 +199,7 @@ export const makeOperatorWatchdogTick = <R = never>(
 ): Effect.Effect<
   void,
   never,
-  Globals | Lucid | MidgardContracts | NodeConfig | R
+  Globals | Lucid | MidgardContracts | NodeConfig | R | IntentJournal
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
@@ -331,7 +332,7 @@ export const makeOperatorWatchdogTick = <R = never>(
         const submission: Effect.Effect<
           TakeoverOutcome,
           TakeoverError,
-          NodeConfig
+          NodeConfig | IntentJournal
         > =
           plan.kind === "ready"
             ? submitInactivityStrikeProgram(
@@ -435,7 +436,7 @@ export const operatorWatchdogFiber = (
 ): Effect.Effect<
   void,
   never,
-  Globals | Lucid | MidgardContracts | NodeConfig
+  Globals | Lucid | MidgardContracts | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;

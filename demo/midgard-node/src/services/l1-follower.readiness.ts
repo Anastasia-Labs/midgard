@@ -4,8 +4,12 @@
  * interventions R1 to R5 and `origin_mismatch`, `l1_follower_catching_up`,
  * `l1_follower_waiting`, `l1_follower_apply_stuck`), every hold of the
  * follower-change driver (`l1_events_*`, and the forced-order hook's
- * `forced_order_carriage_pending` and `forced_order_ingestion_failed`), and
- * `l1_follower_unconfigured` while the node has no follower. Each fails
+ * `forced_order_carriage_pending` and `forced_order_ingestion_failed`), the
+ * intent stage's (`wallet_seed_pending`, `intent_reconcile_failed`,
+ * `intent_reconcile_transient`) and the intent journal's refusals
+ * (`intent_journal_*`, `intent_input_untracked`, `intent_bytes_mismatch`,
+ * `intent_undecodable`), and `l1_follower_unconfigured` while the node has
+ * no follower. Each fails
  * readiness by name; none stops the process, and `/healthz` stays live.
  */
 import type { FollowStatus } from "@al-ft/midgard-l1-follower";
@@ -25,7 +29,7 @@ export type L1FollowerHandle = Readonly<{
   kind: "running";
   /** The follow loop's latest status. */
   status: () => FollowStatus;
-  /** The driver's holds from its latest run. */
+  /** The driver's and the intent stage's holds from their latest run, and the journal's refusals. */
   holds: () => readonly DriverHold[];
   /** Reads the event projection at the follower's current view. */
   planCurrent: () => Promise<FollowerPlanRead>;

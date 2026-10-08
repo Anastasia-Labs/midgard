@@ -29,6 +29,7 @@ import { hydrateLedgerMpfFromLedgerEntries } from "../src/mpf/ledger-hydration.j
 import type { NodeConfigDep } from "../src/services/config.js";
 import { HistoryProducer } from "../src/services/event-history-producer.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
@@ -140,6 +141,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       ),
       Effect.provideService(MempoolLedgerCache, production.cache),
       Effect.provide(Database.layer),
+      Effect.provide(IntentJournalWithoutFollower),
     ) as Effect.Effect<A, E, never>;
   const run = <A, E>(
     effect: Effect.Effect<A, E, any>,

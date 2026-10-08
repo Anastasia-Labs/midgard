@@ -8,6 +8,10 @@ import {
 import { LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  type IntentJournal,
+  journaledIntent,
+} from "../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import {
   OperatorFundingShortfall,
@@ -72,7 +76,8 @@ export const operatorLifecycleProgram = (
   | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     if (permissionlessActivation !== undefined && mode !== "activate-only") {
@@ -297,7 +302,11 @@ export const operatorLifecycleProgram = (
             }),
         });
         const deregisterSubmitResult = yield* Effect.either(
-          handleSignSubmit(lucid, deregisterUnsignedTx),
+          handleSignSubmit(
+            lucid,
+            deregisterUnsignedTx,
+            journaledIntent("deregister", `deregister:${operatorKeyHash}`),
+          ),
         );
         if (deregisterSubmitResult._tag === "Left") {
           return yield* Effect.fail(deregisterSubmitResult.left);
@@ -603,13 +612,18 @@ export const operatorLifecycleProgram = (
             cause,
           }),
       });
-      registerTxHash = yield* handleSignSubmit(lucid, registerUnsignedTx, {
-        label: "operator registration",
-        requiredOutputIndexes: [
-          Number(resolvedRegisterLayout.prependedNodeOutputIndex),
-          Number(resolvedRegisterLayout.anchorNodeOutputIndex),
-        ],
-      });
+      registerTxHash = yield* handleSignSubmit(
+        lucid,
+        registerUnsignedTx,
+        journaledIntent("register", `register:${operatorKeyHash}`),
+        {
+          label: "operator registration",
+          requiredOutputIndexes: [
+            Number(resolvedRegisterLayout.prependedNodeOutputIndex),
+            Number(resolvedRegisterLayout.anchorNodeOutputIndex),
+          ],
+        },
+      );
       let refreshedRegisteredNodeSet = false;
       for (
         let attempt = 0;
@@ -907,16 +921,23 @@ export const operatorLifecycleProgram = (
         }),
     });
     const activateSubmitResult = yield* Effect.either(
-      handleSignSubmit(lucid, activationUnsignedTx, {
-        label: "operator activation",
-        requiredOutputIndexes: [
-          Number(resolvedActivateLayout.activeOperatorsInsertedNodeOutputIndex),
-          Number(resolvedActivateLayout.activeOperatorsAnchorNodeOutputIndex),
-          Number(
-            resolvedActivateLayout.registeredOperatorsAnchorNodeOutputIndex,
-          ),
-        ],
-      }),
+      handleSignSubmit(
+        lucid,
+        activationUnsignedTx,
+        journaledIntent("activate", `activate:${operatorKeyHash}`),
+        {
+          label: "operator activation",
+          requiredOutputIndexes: [
+            Number(
+              resolvedActivateLayout.activeOperatorsInsertedNodeOutputIndex,
+            ),
+            Number(resolvedActivateLayout.activeOperatorsAnchorNodeOutputIndex),
+            Number(
+              resolvedActivateLayout.registeredOperatorsAnchorNodeOutputIndex,
+            ),
+          ],
+        },
+      ),
     );
     if (activateSubmitResult._tag === "Left") {
       const onChainFailureSummary = summarizeOnChainScriptFailure(

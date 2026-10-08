@@ -9,6 +9,7 @@
 import {
   applyMigrations,
   followerMigrations,
+  intentMigrations,
   type MigrationSet,
   postgresDialect,
   type SqlBackend,
@@ -23,17 +24,33 @@ import { forcedOrderMigrations } from "../forced-orders/schema.js";
 import { eventMigrations } from "../l1-events/schema.js";
 import { splitSqlStatements } from "./migrations/runner.split-sql-statements.js";
 
-/** The follower's own sets plus the node event and forced-order projections'. */
+/**
+ * The follower's own sets plus the node event, forced-order and intent
+ * journal (§8.2, I1) projections'.
+ */
 export const NODE_FOLLOWER_SCHEMA: readonly MigrationSet[] = [
   followerMigrations("postgres"),
   eventMigrations("postgres"),
   forcedOrderMigrations("postgres"),
+  intentMigrations("postgres"),
 ];
 
 export const numbered = (text: string): string => {
   let index = 0;
   return text.replace(/\?/gu, () => `$${String((index += 1))}`);
 };
+
+/**
+ * A `bytea[]` parameter as a Postgres array literal. The node's client
+ * types a JS array by its first element, so a `Buffer[]` would reach the
+ * server as one `bytea`; the literal goes untyped and the server types it
+ * from the column or operator it meets.
+ */
+export const byteaArrayLiteral = (items: readonly Buffer[]): string =>
+  `{${items.map((item) => `"\\\\x${item.toString("hex")}"`).join(",")}}`;
+
+const bindParam = (value: SqlValue): unknown =>
+  Array.isArray(value) ? byteaArrayLiteral(value) : value;
 
 /**
  * The follower's SQL interface over the node's connection: inside a
@@ -44,9 +61,9 @@ export const followerSqlTx = Effect.gen(function* () {
   const run = Runtime.runPromise(yield* Effect.runtime<SqlClient.SqlClient>());
   const tx: SqlTx = {
     query: (text, params: readonly SqlValue[] = []) =>
-      run(sql.unsafe<SqlRow>(numbered(text), params as never)).then((rows) => [
-        ...rows,
-      ]),
+      run(
+        sql.unsafe<SqlRow>(numbered(text), params.map(bindParam) as never),
+      ).then((rows) => [...rows]),
     exec: async (text) => {
       for (const statement of splitSqlStatements(text))
         await run(sql.unsafe(statement));

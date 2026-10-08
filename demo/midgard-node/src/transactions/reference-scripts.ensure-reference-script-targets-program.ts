@@ -15,6 +15,7 @@ import {
   type ProviderRetryOptions,
   runProviderStepWithRetry,
 } from "../provider-retry.js";
+import { IntentJournal } from "../services/intent-journal.js";
 import {
   publishReferenceScripts,
   referencePublicationFundingRequired,
@@ -111,7 +112,8 @@ export const ensureReferenceScriptTargetsProgram = (
   | SDK.LucidError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const walletAddress = yield* Effect.tryPromise({
@@ -183,9 +185,11 @@ export const ensureReferenceScriptTargetsProgram = (
             ),
         );
       }
+      const journal = yield* IntentJournal;
       yield* Effect.tryPromise({
         try: (signal) =>
           publishReferenceScripts({
+            journal,
             lucid: referenceScriptsLucid,
             address: referenceScriptsAddress,
             targets,
@@ -232,7 +236,8 @@ export const deployReferenceScriptCommandProgram = (
   | SDK.LucidError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   ensureReferenceScriptTargetsProgram(
     referenceScriptsLucid,
@@ -331,7 +336,8 @@ export const ensureNodeRuntimeReferenceScriptsProgram = (
   | SDK.LucidError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   ensureReferenceScriptTargetsProgram(
     referenceScriptsLucid,

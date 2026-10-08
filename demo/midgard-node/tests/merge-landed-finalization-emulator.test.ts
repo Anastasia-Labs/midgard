@@ -18,6 +18,7 @@ import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { HistoryProducer } from "../src/services/event-history-producer.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
@@ -145,6 +146,7 @@ const openMergeLifecycle = async () => {
         Effect.provideService(NodeConfig, h.production.nodeConfig),
         Effect.provideService(MempoolLedgerCache, h.production.cache),
         Effect.provide(Database.layer),
+        Effect.provide(IntentJournalWithoutFollower),
       ) as Effect.Effect<A, E, never>,
     );
   const sqlRun = <A>(

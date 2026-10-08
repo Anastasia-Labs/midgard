@@ -14,6 +14,7 @@ import {
   NodeConfig,
   withL1ControlPlane,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   awaitPostMergeSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
@@ -227,7 +228,7 @@ export const mergeFiber = (
 ): Effect.Effect<
   void,
   never,
-  Lucid | MidgardContracts | Database | Globals | NodeConfig
+  Lucid | MidgardContracts | Database | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟠 Merge fiber started.");

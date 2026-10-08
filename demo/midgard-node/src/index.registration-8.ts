@@ -13,6 +13,10 @@ import {
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import { program } from "./index.registration.js";
 import * as Services from "./services/index.js";
+import {
+  type IntentJournal,
+  IntentJournalWithoutFollower,
+} from "./services/intent-journal.js";
 import * as OperatorCommands from "./transactions/operators/commands.js";
 import {
   liveReferenceScriptDeployment,
@@ -146,6 +150,7 @@ program
   .action(async () => {
     const mainEffect = pipe(
       RegisterActiveOperator.program,
+      Effect.provide(IntentJournalWithoutFollower),
       Effect.provide(Services.NodeConfig.layer),
       Effect.provide(Services.MidgardContracts.Default),
       Effect.provide(Services.Lucid.Default),
@@ -169,7 +174,10 @@ export const runOperatorCommand = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    Services.NodeConfig | Services.MidgardContracts | Services.Lucid
+    | Services.NodeConfig
+    | Services.MidgardContracts
+    | Services.Lucid
+    | IntentJournal
   >,
 ): void => {
   runCliEffect(

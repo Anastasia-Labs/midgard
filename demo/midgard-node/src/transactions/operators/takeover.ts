@@ -12,6 +12,10 @@ import {
 import { Effect } from "effect";
 
 import { type L1SlotUnknownError } from "../../l1-heads.js";
+import {
+  type IntentJournal,
+  journaledIntent,
+} from "../../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
 import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";
@@ -113,7 +117,7 @@ export const submitInactivityStrikeProgram = (
   referenceScriptsAddress: string,
   planning: TakeoverPlanning & { readonly plan: ReadyTakeoverPlan },
   options: { readonly label?: string } = {},
-): Effect.Effect<StrikeSubmission, TakeoverError> =>
+): Effect.Effect<StrikeSubmission, TakeoverError, IntentJournal> =>
   Effect.gen(function* () {
     const label = options.label ?? "strike-inactive-operator";
     yield* requireOperatorFundingProgram(lucid, {
@@ -152,7 +156,15 @@ export const submitInactivityStrikeProgram = (
     yield* Effect.logInfo(
       `${label}: striking ${plan.currentOperator} (tier=${plan.tier}, strikes→${result.struckInactivityStrikes.toString()}, new_operator=${plan.newOperatorKey}, valid=[${plan.validity.validFrom.toString()},${plan.validity.validTo.toString()}))`,
     );
-    const txHash = yield* handleSignSubmit(lucid, result.tx, { label });
+    const txHash = yield* handleSignSubmit(
+      lucid,
+      result.tx,
+      journaledIntent(
+        "takeover",
+        `takeover:${plan.currentOperator}:${plan.newStartTime.toString()}`,
+      ),
+      { label },
+    );
     return {
       txHash,
       skippedOperator: plan.currentOperator,

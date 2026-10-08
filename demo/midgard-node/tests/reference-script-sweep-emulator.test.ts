@@ -28,6 +28,7 @@ import {
   sweepRetiredReferenceScriptsProgram,
 } from "../src/transactions/reference-script-sweep.js";
 import { resolveReferenceScriptUtxo } from "../src/transactions/reference-scripts.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const alwaysSucceedsCode = (
   JSON.parse(
@@ -204,7 +205,7 @@ const sweep = (
     readonly execute: boolean;
   },
 ) =>
-  Effect.runPromise(
+  runWithoutFollower(
     Effect.either(
       sweepRetiredReferenceScriptsProgram({
         lucid: fixture.lucid,

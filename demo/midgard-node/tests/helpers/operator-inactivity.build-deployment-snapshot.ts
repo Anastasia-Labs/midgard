@@ -21,6 +21,7 @@ import {
 } from "../../src/transactions/register-active-operator.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../../src/transactions/script-reward-registration.js";
 import { alignUnixTimeToSlotBoundary } from "../../src/workers/utils/commit-end-time.js";
+import { runWithoutFollower } from "./intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
 export const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -162,13 +163,13 @@ const buildDeploymentSnapshot = async (
     { txHash: nonceUtxo.txHash, outputIndex: nonceUtxo.outputIndex },
     referenceScriptAuth,
   );
-  const publishedReferenceScripts = await Effect.runPromise(
+  const publishedReferenceScripts = await runWithoutFollower(
     ensureAtomicProtocolInitReferenceScriptsProgram(
       referenceScriptsLucid,
       contracts,
     ),
   );
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensureEventHistoryRewardAccountsRegisteredProgram(
       referenceScriptsLucid,
       contracts,
@@ -211,7 +212,7 @@ const buildDeploymentSnapshot = async (
   for (const account of accounts) {
     const operatorLucid = await Lucid(emulator, "Custom");
     operatorLucid.selectWallet.fromSeed(account.seedPhrase);
-    await Effect.runPromise(
+    await runWithoutFollower(
       registerOperatorProgram(
         operatorLucid,
         contracts,
@@ -220,7 +221,7 @@ const buildDeploymentSnapshot = async (
       ),
     );
     emulator.awaitSlot(REGISTRATION_ACTIVATION_DELAY_SLOTS);
-    await Effect.runPromise(
+    await runWithoutFollower(
       activateOperatorProgram(
         operatorLucid,
         contracts,

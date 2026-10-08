@@ -26,6 +26,10 @@ import {
   type StateQueueCorrectionObserverResult,
   type StateQueueCorrectionObserverSource,
 } from "../services/index.js";
+import {
+  type IntentJournalService,
+  journaledIntent,
+} from "../services/intent-journal.js";
 
 export const ATTESTATION_TIMEOUT_ALERT_LEAD_MS =
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS;
@@ -156,6 +160,40 @@ export const withTimeoutCorrectionProgress = (
     );
   },
 });
+
+/**
+ * The journal store with the intent journal in front: a step's signed bytes
+ * are journaled (§8.2, family `correction`) when the step is first saved
+ * `prepared`, which precedes its first send. A refusal fails the save, so
+ * nothing is sent.
+ */
+export const withCorrectionIntentJournal = (
+  store: TimeoutCorrectionJournalStore,
+  journal: IntentJournalService,
+): TimeoutCorrectionJournalStore => {
+  const recorded = new Set<string>();
+  return {
+    ...store,
+    save: async (next) => {
+      for (const step of next.steps)
+        if (step.status === "prepared" && !recorded.has(step.txHash)) {
+          await Effect.runPromise(
+            journal.record(
+              journaledIntent(
+                "correction",
+                `correction:${step.kind}:${step.removedHeaderHash}`,
+                Buffer.from(step.removedHeaderHash, "hex"),
+              ),
+              step.signedCbor,
+              step.txHash,
+            ),
+          );
+          recorded.add(step.txHash);
+        }
+      await store.save(next);
+    },
+  };
+};
 
 /**
  * Admits authenticated state-queue corrections into the durable observer.

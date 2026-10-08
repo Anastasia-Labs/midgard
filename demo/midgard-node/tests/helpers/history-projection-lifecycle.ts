@@ -36,6 +36,7 @@ import {
   captureConfirmedHistoryObservations,
   historyOutputObservation,
 } from "./history-projection-observations.js";
+import { runWithoutFollower } from "./intent-journal.js";
 import {
   createPublishedWorkflowDeploymentAccounts,
   publishWorkflowDeployment,
@@ -122,7 +123,7 @@ export const openHistoryProjectionLifecycle = async () => {
       },
     },
   };
-  await Effect.runPromise(
+  await runWithoutFollower(
     registerOperatorProgram(
       lucid,
       contracts,
@@ -132,7 +133,7 @@ export const openHistoryProjectionLifecycle = async () => {
   );
   emulator.awaitSlot(REGISTRATION_ACTIVATION_DELAY_SLOTS);
   vi.setSystemTime(emulator.now());
-  await Effect.runPromise(
+  await runWithoutFollower(
     activateOperatorProgram(
       lucid,
       contracts,

@@ -32,6 +32,7 @@ import {
   pinnedWalletUtxos,
   recreateLucid,
 } from "./helpers/emulator-snapshot.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { loadOrCreateRunSharedFixture } from "./helpers/run-shared-fixture-directory.js";
 import { resetApplicationTables } from "./utils.js";
@@ -123,7 +124,7 @@ export const publishDepositFlowReferenceScripts = async ({
   const publications: readonly {
     readonly name: string;
     readonly utxo: UTxO;
-  }[] = await Effect.runPromise(
+  }[] = await runWithoutFollower(
     deployReferenceScriptCommandProgram(
       referenceScriptsLucid,
       contracts,

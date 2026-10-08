@@ -2,6 +2,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  type IntentJournal,
+  journaledIntent,
+} from "../../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
 import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";
@@ -41,7 +45,7 @@ export const retireOperatorProgram = (
     readonly snapshot?: SDK.OperatorDirectorySnapshot;
   },
   options: { readonly label?: string } = {},
-): Effect.Effect<RetirementSubmission, OperatorExitError> =>
+): Effect.Effect<RetirementSubmission, OperatorExitError, IntentJournal> =>
   Effect.gen(function* () {
     const label =
       options.label ??
@@ -141,7 +145,15 @@ export const retireOperatorProgram = (
       validFrom,
       validTo,
     });
-    const txHash = yield* handleSignSubmit(lucid, tx, { label });
+    const txHash = yield* handleSignSubmit(
+      lucid,
+      tx,
+      journaledIntent(
+        "retire",
+        `retire:${input.mode}:${input.operatorKeyHash}`,
+      ),
+      { label },
+    );
     return {
       txHash,
       operatorKeyHash: input.operatorKeyHash,
@@ -176,7 +188,7 @@ export const recoverOperatorBondProgram = (
     readonly snapshot?: SDK.OperatorDirectorySnapshot;
   },
   options: { readonly label?: string } = {},
-): Effect.Effect<BondRecoverySubmission, OperatorExitError> =>
+): Effect.Effect<BondRecoverySubmission, OperatorExitError, IntentJournal> =>
   Effect.gen(function* () {
     const label = options.label ?? "recover-operator-bond";
     const snapshot =
@@ -253,7 +265,12 @@ export const recoverOperatorBondProgram = (
       validFrom: lowerBound,
       validTo,
     });
-    const txHash = yield* handleSignSubmit(lucid, tx, { label });
+    const txHash = yield* handleSignSubmit(
+      lucid,
+      tx,
+      journaledIntent("recover_bond", `recover_bond:${input.operatorKeyHash}`),
+      { label },
+    );
     return {
       txHash,
       operatorKeyHash: input.operatorKeyHash,

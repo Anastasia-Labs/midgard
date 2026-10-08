@@ -168,6 +168,15 @@ export const encodeWitnessSet = (tx: SimTx): Buffer =>
     ? c.map()
     : c.map([c.uint(5), redeemerMap(tx.redeemers)]);
 
+/** The whole transaction `[body, witnesses, isValid, auxiliary]`, as signed. */
+export const encodeSimTx = (tx: SimTx): Buffer =>
+  c.array(
+    encodeTxBody(tx),
+    encodeWitnessSet(tx),
+    c.bool(tx.isValid !== false),
+    c.nul,
+  );
+
 /**
  * A raw Conway-shaped block `[header, bodies, witnesses, aux, invalid]`
  * whose header body is `[blockNo, slot, prevHash, branch]`; the block hash

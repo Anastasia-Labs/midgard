@@ -5,11 +5,11 @@ import { setTimeout as pause } from "node:timers/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Kupmios, Lucid } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { expect, it } from "vitest";
 
 import { synchronizePublicationIndexer } from "../src/transactions/reference-publication-provider.js";
 import { ensureReferenceScriptTargetsProgram } from "../src/transactions/reference-scripts.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const runDirectory = process.env.MIDGARD_PUBLICATION_LOCAL_DEVNET_DIR;
 const mode = process.env.MIDGARD_PUBLICATION_LOCAL_DEVNET_MODE ?? "chained";
@@ -276,7 +276,7 @@ it.skipIf(runDirectory === undefined)(
       }
       return slot;
     };
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       ensureReferenceScriptTargetsProgram(
         lucid,
         "local-devnet-publication",

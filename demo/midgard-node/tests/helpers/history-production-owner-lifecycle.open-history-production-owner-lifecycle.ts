@@ -25,6 +25,7 @@ import {
 } from "../../src/services/event-history-producer.js";
 import { makeProductionEventHistoryOwner } from "../../src/services/event-history-runtime.js";
 import { Globals } from "../../src/services/globals.js";
+import { IntentJournalWithoutFollower } from "../../src/services/intent-journal.js";
 import { Lucid } from "../../src/services/lucid.js";
 import {
   MempoolLedgerCache,
@@ -178,9 +179,11 @@ export const openHistoryProductionOwnerLifecycle = async (
       Database.layer,
     );
     const runtime = ManagedRuntime.make(
-      Layer.mergeAll(mempoolLedgerCacheLayer, WriteBehindLive).pipe(
-        Layer.provideMerge(services),
-      ),
+      Layer.mergeAll(
+        mempoolLedgerCacheLayer,
+        WriteBehindLive,
+        IntentJournalWithoutFollower,
+      ).pipe(Layer.provideMerge(services)),
     );
     if (generation === 0) {
       // The normal global setup owns this disposable worker shard. Existing shared

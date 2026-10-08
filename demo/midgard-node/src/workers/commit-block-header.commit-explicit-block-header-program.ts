@@ -8,6 +8,7 @@ import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
 import { MidgardMpf } from "../mpf/index.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   findLandedBlock,
   requireLandedStateQueue,
@@ -210,7 +211,7 @@ export const commitExplicitBlockHeaderProgram = (
   | SDK.HashingError
   | TxSignError
   | TxSubmitError,
-  Lucid | MidgardContracts | NodeConfig | SqlClient.SqlClient
+  Lucid | MidgardContracts | NodeConfig | SqlClient.SqlClient | IntentJournal
 > =>
   Effect.gen(function* () {
     const lucidService = yield* Lucid;

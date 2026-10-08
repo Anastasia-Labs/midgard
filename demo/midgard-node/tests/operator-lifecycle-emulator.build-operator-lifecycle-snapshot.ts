@@ -16,6 +16,7 @@ import {
   ensureAtomicProtocolInitReferenceScriptsProgram,
 } from "../src/transactions/initialization.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 export const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -57,13 +58,13 @@ const buildOperatorAwareInitializationTx = async (
   nonceUtxo: UTxO,
   operatorSeedPhrase: string,
 ) => {
-  const referenceScripts = await Effect.runPromise(
+  const referenceScripts = await runWithoutFollower(
     ensureAtomicProtocolInitReferenceScriptsProgram(
       referenceScriptsLucid,
       contracts,
     ),
   );
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensureEventHistoryRewardAccountsRegisteredProgram(
       referenceScriptsLucid,
       contracts,

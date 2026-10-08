@@ -2,6 +2,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  type IntentJournal,
+  journaledIntent,
+} from "../../services/intent-journal.js";
 import { handleSignSubmit } from "../utils.js";
 import {
   exitValidityWindow,
@@ -85,7 +89,7 @@ export const slashDuplicateOperatorProgram = (
     readonly snapshot?: SDK.OperatorDirectorySnapshot;
   },
   options: { readonly label?: string } = {},
-): Effect.Effect<DuplicateSlashSubmission, OperatorExitError> =>
+): Effect.Effect<DuplicateSlashSubmission, OperatorExitError, IntentJournal> =>
   Effect.gen(function* () {
     const label = options.label ?? "slash-duplicate-operator";
     const snapshot =
@@ -164,7 +168,12 @@ export const slashDuplicateOperatorProgram = (
       validTo,
     });
     const feeLovelace = tx.toTransaction().body().fee();
-    const txHash = yield* handleSignSubmit(lucid, tx, { label });
+    const txHash = yield* handleSignSubmit(
+      lucid,
+      tx,
+      journaledIntent("exit", `exit:slash_duplicate:${removedKey}`),
+      { label },
+    );
     return {
       txHash,
       operatorKeyHash: input.operatorKeyHash,

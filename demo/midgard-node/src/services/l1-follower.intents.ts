@@ -1,0 +1,183 @@
+/**
+ * The node follower's intent stage (plan §8.3 S6, I1): after each driver
+ * run at the node's tip it seeds the node's own wallets (once, and again
+ * after a rewind below a seed), then reconciles every journaled intent from
+ * the facts. A live intent the node's mempool lacks gets its exact journaled
+ * bytes again, at most once per tip; a dead one is never sent; a live one
+ * whose family predicate fails is abandoned.
+ *
+ * - The tracked set covers the journal's invariant (§8.2): the node's own
+ *   wallets, the reference-script addresses, and the protocol validators'
+ *   payment credentials, with the hub-oracle policy for the protocol-init tx.
+ * - Family predicates (§8.4) are reads over projections. A live intent's
+ *   inputs, reference inputs and collaterals are all unspent facts, so
+ *   everything a family's predicate says about those outputs (the commit's
+ *   tail, the merge's head and confirmed node, the operator-set nodes) is
+ *   already decided by the status. What remains is read here: an
+ *   attestation, a timeout correction or a merge still names a header the
+ *   landed queue (P1) holds.
+ * - A failed pass, or an intent whose mempool read, predicate or submission
+ *   failed, is a named transient `/readyz` hold, retried on the follower's
+ *   backoff. The process stays up.
+ */
+import type { L1NodeTransport } from "@al-ft/l1-node-transport";
+import {
+  createIntentReconciler,
+  createWalletSeeder,
+  type FactStore,
+  type IntentState,
+  type ReconcileReport,
+  type TrackedSet,
+  WALLET_SEED_PENDING,
+} from "@al-ft/midgard-l1-follower";
+
+import type { DriverHold } from "../l1-events/driver.js";
+import {
+  readLandedStateQueueFrom,
+  type StateQueueProjectionConfig,
+} from "../l1-state-queue/index.js";
+
+/** An S6 pass failed as a whole (the store read); the next trigger retries. */
+export const INTENT_RECONCILE_FAILED = "intent_reconcile_failed";
+/** An intent's mempool read, predicate or submission failed this pass. */
+export const INTENT_RECONCILE_TRANSIENT = "intent_reconcile_transient";
+
+/** The families whose predicate reads the header they name in P1. */
+const HEADER_FAMILIES: ReadonlySet<string> = new Set([
+  "attest",
+  "correction",
+  "merge",
+]);
+
+/** The node follower's tracked set (§8.2's invariant plus protocol init). */
+export const nodeIntentTrackedSet = (input: {
+  readonly seededAddresses: readonly Buffer[];
+  readonly protocolPaymentCredentials: readonly string[];
+  readonly hubOraclePolicyId: string;
+}): TrackedSet => ({
+  addresses: new Set(input.seededAddresses.map((a) => a.toString("hex"))),
+  paymentCredentials: new Set(input.protocolPaymentCredentials),
+  policies: new Set([input.hubOraclePolicyId]),
+});
+
+/**
+ * The §8.4 predicate over the projections: true unless the intent names a
+ * header (attestation, correction, merge) the healthy landed queue no longer
+ * holds. An unreadable or unhealthy queue throws: transient, never abandon.
+ */
+export const nodeFamilyPredicate =
+  (
+    store: Pick<FactStore, "dialect" | "transaction">,
+    stateQueue: StateQueueProjectionConfig,
+  ) =>
+  async (state: IntentState): Promise<boolean> => {
+    const { family, contentRef } = state.intent;
+    if (!HEADER_FAMILIES.has(family) || contentRef === null) return true;
+    const read = await readLandedStateQueueFrom(store, stateQueue);
+    if (read.kind !== "ok")
+      throw new Error(`the landed state queue is unreadable: ${read.detail}`);
+    if (!read.queue.healthy)
+      throw new Error(
+        `the landed state queue is unhealthy (${read.queue.reason ?? "unknown"})`,
+      );
+    const header = contentRef.toString("hex");
+    return read.queue.nodes.some((node) => node.headerHash === header);
+  };
+
+export type NodeIntentStage = Readonly<{
+  /** Seeds owed wallets, then one S6 pass; returns the holds it leaves. */
+  run(): Promise<readonly DriverHold[]>;
+  holds(): readonly DriverHold[];
+  /** The last pass's report, for status. */
+  lastReport(): ReconcileReport | null;
+  close(): void;
+}>;
+
+const message = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+/** The holds a pass leaves: one per transiently failed intent. */
+export const reconcileHolds = (report: ReconcileReport): DriverHold[] =>
+  report.intents.flatMap((entry) =>
+    entry.action === "wait_transient"
+      ? [
+          {
+            reason: INTENT_RECONCILE_TRANSIENT,
+            detail: `${entry.intent.family} ${entry.intent.workflowKey} (${entry.intent.txHash.toString("hex")}): ${entry.error ?? "unknown"}`,
+          },
+        ]
+      : [],
+  );
+
+export const createNodeIntentStage = (input: {
+  readonly store: FactStore;
+  readonly transport: Pick<
+    L1NodeTransport,
+    "hasTx" | "submit" | "withLedgerState"
+  >;
+  readonly securityParameter: number;
+  readonly seededAddresses: readonly Buffer[];
+  readonly wanted: (state: IntentState) => Promise<boolean>;
+  readonly log: (line: string) => void;
+}): NodeIntentStage => {
+  const { store, transport } = input;
+  const seeder = createWalletSeeder({
+    store,
+    ledger: transport,
+    wallets: input.seededAddresses,
+  });
+  const reconciler = createIntentReconciler({
+    dialect: store.dialect,
+    transaction: (mode, run) => store.transaction(mode, run),
+    securityParameter: input.securityParameter,
+    inMempool: (intent) => transport.hasTx(intent.txHash.toString("hex")),
+    wanted: input.wanted,
+    submit: async (intent) => {
+      const result = await transport.submit(new Uint8Array(intent.txCbor));
+      if (result.accepted) return { kind: "accepted" };
+      return {
+        kind: "rejected",
+        detail: Buffer.from(result.rejection).toString("hex"),
+      };
+    },
+  });
+  let holds: readonly DriverHold[] = [];
+  let last: ReconcileReport | null = null;
+  const run = async (): Promise<readonly DriverHold[]> => {
+    const left: DriverHold[] = [];
+    if (!seeder.ready()) {
+      const seeded = await seeder.step().catch(
+        (error: unknown) =>
+          ({
+            kind: "pending",
+            reason: "error",
+            detail: message(error),
+          }) as const,
+      );
+      if (seeded.kind === "pending")
+        left.push({
+          reason: WALLET_SEED_PENDING,
+          detail: `${seeded.reason}: ${seeded.detail}`,
+        });
+    }
+    try {
+      last = await reconciler.reconcile();
+      for (const entry of last.intents)
+        if (entry.action === "resubmit" || entry.action === "abandon")
+          input.log(
+            `${entry.action} ${entry.intent.family} ${entry.intent.workflowKey} (${entry.intent.txHash.toString("hex")})`,
+          );
+      left.push(...reconcileHolds(last));
+    } catch (error) {
+      left.push({ reason: INTENT_RECONCILE_FAILED, detail: message(error) });
+    }
+    holds = left;
+    return left;
+  };
+  return {
+    run,
+    holds: () => holds,
+    lastReport: () => last,
+    close: () => seeder.close(),
+  };
+};

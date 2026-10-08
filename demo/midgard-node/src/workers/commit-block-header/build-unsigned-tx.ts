@@ -16,6 +16,10 @@ import {
   NodeConfig,
 } from "../../services/index.js";
 import {
+  IntentJournal,
+  journaledIntent,
+} from "../../services/intent-journal.js";
+import {
   handleSignSubmitNoConfirmation,
   type NoInlineSubmitDefer,
   type NoInlineSubmitRecoveryOptions,
@@ -48,8 +52,9 @@ const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
 /** Whether a no-inline defer left anything to resubmit: the pre-submit check
  * defers before the signed intent is persisted, so nothing was sent; the
  * provider-slot and early-validity defers follow the persist and a provider
- * refusal of the bytes as not yet valid, which the signed-intent rebroadcast
- * fiber resubmits unchanged once the tip reaches their validity lower bound. */
+ * refusal of the bytes as not yet valid; the follower's intent stage (S6)
+ * resubmits the journaled bytes unchanged on each new tip until they land or
+ * are dead. */
 export const commitSubmitDeferMessage = (defer: NoInlineSubmitDefer) =>
   `Commit block submit deferred in no-inline mode (${defer.kind}, current slot ${defer.currentSlot.toString()}, target slot ${defer.targetSlot.toString()}, due slot ${defer.dueSlot.toString()}): ${
     defer.kind === "pre_submit_validity"
@@ -112,9 +117,10 @@ export const buildUnsignedCommitTx = (
   | SDK.LinkedListError
   | TxSignError
   | TxSubmitError,
-  Lucid | NodeConfig | SqlClient.SqlClient
+  Lucid | NodeConfig | SqlClient.SqlClient | IntentJournal
 > =>
   Effect.gen(function* () {
+    const journal = yield* IntentJournal;
     const history = yield* Effect.serviceOption(HistoryProducer);
     const ownedWindow = Option.isSome(history);
     const checkTimingBudget = ownedWindow
@@ -376,6 +382,11 @@ export const buildUnsignedCommitTx = (
       const signAndSubmitProgram = handleSignSubmitNoConfirmation(
         lucid.api,
         txBuilder,
+        journaledIntent(
+          "commit",
+          `commit:tail=${latestBlock.utxo.txHash}#${latestBlock.utxo.outputIndex.toString()}`,
+          Buffer.from(newHeaderHash, "hex"),
+        ),
         submitRecoveryOptions,
       )
         .pipe(
@@ -387,7 +398,10 @@ export const buildUnsignedCommitTx = (
                 ),
           ),
         )
-        .pipe(Effect.withSpan("handleSignSubmit-commit-block"));
+        .pipe(
+          Effect.provideService(IntentJournal, journal),
+          Effect.withSpan("handleSignSubmit-commit-block"),
+        );
 
       return {
         preparedTxHash: txBuilder.toHash(),

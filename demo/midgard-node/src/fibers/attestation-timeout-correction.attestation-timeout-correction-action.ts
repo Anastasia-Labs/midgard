@@ -28,6 +28,7 @@ import {
   NodeConfig,
   StateQueueCorrectionRewindIntegrityError,
 } from "../services/index.js";
+import { IntentJournal } from "../services/intent-journal.js";
 import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import {
   clearLivenessIncident,
@@ -38,6 +39,7 @@ import {
   observeAndRecordAttestationTimeoutQueue,
   reconcileStateQueueCorrections,
   TIMEOUT_CORRECTION_LEASE_HOLDER,
+  withCorrectionIntentJournal,
   withTimeoutCorrectionProgress,
 } from "./attestation-timeout-correction.reconcile-state-queue-corrections.js";
 
@@ -50,6 +52,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
   | Database
   | Globals
   | NodeConfig
+  | IntentJournal
 > =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
@@ -161,7 +164,10 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
         "attestation-timeout-correction-v1.json",
       );
     const journalStore = withTimeoutCorrectionProgress(
-      createFileTimeoutCorrectionJournalStore(journalPath),
+      withCorrectionIntentJournal(
+        createFileTimeoutCorrectionJournalStore(journalPath),
+        yield* IntentJournal,
+      ),
       globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
     );
     const retainedJournal = yield* Effect.tryPromise({

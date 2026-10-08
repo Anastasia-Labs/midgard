@@ -25,6 +25,8 @@
  *   carry through the local node's ledger and the configured content
  *   sources; carriage no source has yet is the transient
  *   `forced_order_carriage_pending`, retried on the driver's backoff.
+ * - After each driver run, S6 (`l1-follower.intents.ts`, I1) seeds wallets
+ *   and reconciles intents; its and the journal's holds join the driver's.
  * - Everything the follower cannot clear by itself is a named `/readyz`
  *   reason (`l1-follower.readiness.ts`). Nothing here exits the process.
  */
@@ -35,6 +37,7 @@ import {
   followChain,
   type FollowStatus,
   httpTxContentSource,
+  intentJournalProjection,
   openPostgresFactStore,
   projectionStoreOptions,
   readinessOf,
@@ -74,6 +77,16 @@ import {
   withHistoryIngestion,
 } from "./event-history-producer.js";
 import { Globals } from "./globals.globals.js";
+import {
+  IntentJournal,
+  nodeSeededAddresses,
+  protocolPaymentCredentials,
+} from "./intent-journal.js";
+import {
+  createNodeIntentStage,
+  nodeFamilyPredicate,
+  nodeIntentTrackedSet,
+} from "./l1-follower.intents.js";
 import { l1FollowerPlan } from "./l1-follower.plan.js";
 import {
   followerCaughtUp,
@@ -310,6 +323,8 @@ export const startL1Follower = Effect.gen(function* () {
       `the local node's network magic is unreadable: ${message(networkMagic.left.error)}`,
     );
   const sink = yield* readyProducerSink;
+  const journal = yield* IntentJournal;
+  const seededAddresses = nodeSeededAddresses(config);
   const runtime = yield* Effect.runtime<never>();
   const log = (line: string) =>
     Runtime.runFork(runtime)(Effect.logInfo(`L1 follower: ${line}`));
@@ -329,15 +344,18 @@ export const startL1Follower = Effect.gen(function* () {
               eventProjection(plan.projection),
               stateQueueProjection(plan.stateQueue),
               forcedOrderProjection(plan.forcedOrders),
+              intentJournalProjection,
             ],
             {
               securityParameter: plan.securityParameter,
-              // The protocol-init tx qualifies through the hub oracle mint.
-              trackedSet: {
-                addresses: new Set(),
-                paymentCredentials: new Set(),
-                policies: new Set([plan.hubOraclePolicyId]),
-              },
+              // The protocol-init tx qualifies through the hub oracle mint;
+              // the rest is the intent journal's invariant (§8.2).
+              trackedSet: nodeIntentTrackedSet({
+                seededAddresses,
+                protocolPaymentCredentials:
+                  protocolPaymentCredentials(contracts),
+                hubOraclePolicyId: plan.hubOraclePolicyId,
+              }),
             },
             "postgres",
           ),
@@ -405,8 +423,22 @@ export const startL1Follower = Effect.gen(function* () {
     },
     log: (line) => log(`driver: ${line}`),
   });
+  const intents = createNodeIntentStage({
+    store,
+    transport,
+    securityParameter: plan.securityParameter,
+    seededAddresses,
+    wanted: nodeFamilyPredicate(store, plan.stateQueue),
+    log: (line) => log(`intents: ${line}`),
+  });
+  // S6 follows the driver in the same coalesced run (§8.3: every head and
+  // generation change).
   const trigger = coalescedRunner(
-    () => driver.run().then(() => driver.holds()),
+    () =>
+      driver
+        .run()
+        .then(() => intents.run())
+        .then(() => [...driver.holds(), ...intents.holds()]),
     abort.signal,
   );
   const initial = {
@@ -427,7 +459,7 @@ export const startL1Follower = Effect.gen(function* () {
   const handle: L1FollowerHandle = {
     kind: "running",
     status: () => status,
-    holds: () => driver.holds(),
+    holds: () => [...driver.holds(), ...intents.holds(), ...journal.holds()],
     planCurrent: () => planCurrentView(store, plan.projection),
   };
   yield* Ref.set(globals.L1_FOLLOWER, handle);
@@ -452,6 +484,7 @@ export const startL1Follower = Effect.gen(function* () {
     Effect.promise(async () => {
       abort.abort();
       await running.catch(() => undefined);
+      intents.close();
     }),
   );
   yield* Effect.logInfo(

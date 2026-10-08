@@ -31,7 +31,12 @@ import {
   type ApplyRejection,
   type BlockApplied,
 } from "./apply.js";
-import type { DerivationHook, RetentionPins, StoreContext } from "./context.js";
+import type {
+  DerivationHook,
+  PruneHook,
+  RetentionPins,
+  StoreContext,
+} from "./context.js";
 import {
   describeViolations,
   type InvariantReport,
@@ -105,6 +110,8 @@ export type FactStoreOptions = Readonly<{
   derivations?: readonly DerivationHook[];
   /** Columns whose values keep txs (by hash) or blocks (by slot) from pruning. */
   retentionPins?: RetentionPins;
+  /** Class B retention decided by the facts, run in each prune step. */
+  pruneHooks?: readonly PruneHook[];
 }>;
 
 export type GenerationListener = (
@@ -210,6 +217,7 @@ export const createFactStore = (
     registry,
     derivations,
     pins: options.retentionPins ?? {},
+    pruneHooks: options.pruneHooks ?? [],
   };
   const dialect = backend.dialect;
   const lane = new Lane();

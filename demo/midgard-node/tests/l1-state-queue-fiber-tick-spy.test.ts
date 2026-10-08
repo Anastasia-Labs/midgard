@@ -40,6 +40,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
+import type { IntentJournal } from "../src/services/intent-journal.js";
 import { landedStateQueueSnapshot } from "../src/services/landed-state-queue.js";
 import { fetchUnattestedHeaders } from "../src/transactions/da-attestation.fetch-unattested-headers.js";
 import {
@@ -53,6 +54,7 @@ import {
   resolveCommitAppendFenceReferencesLocal,
 } from "../src/workers/commit-block-header/state-queue.js";
 import { fetchSortedCommittedStateQueueBlocks } from "../src/workers/utils/confirm-block-commitments.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { seedLandedStateQueue } from "./helpers/landed-state-queue.js";
 import {
   nodeDatum,
@@ -184,13 +186,14 @@ const run = <A, E>(
     | ContractDeploymentIdentity
     | NodeConfig
     | SqlClient.SqlClient
+    | IntentJournal
   >,
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const globals = yield* Effect.provide(Globals, Globals.Default);
       return yield* provideDatabaseLayers(
-        effect.pipe(
+        withoutFollowerJournal(effect).pipe(
           Effect.provideService(Globals, globals),
           Effect.provideService(Lucid, { api: lucid } as never),
           Effect.provideService(MidgardContracts, contracts as never),

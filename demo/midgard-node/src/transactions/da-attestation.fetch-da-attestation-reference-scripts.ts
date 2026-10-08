@@ -8,6 +8,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
+import type {
+  IntentJournal,
+  SubmissionIntent,
+} from "../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -85,8 +89,12 @@ export const completeWithLocalUplc = (
 export const submitCompletedTx = (
   lucid: LucidEvolution,
   tx: TxSignBuilder,
-): Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError> =>
-  handleSignSubmit(lucid, tx);
+  intent: SubmissionIntent,
+): Effect.Effect<
+  string,
+  TxConfirmError | TxSignError | TxSubmitError,
+  IntentJournal
+> => handleSignSubmit(lucid, tx, intent);
 
 export const fetchDaParamsUtxo = (
   lucid: LucidEvolution,

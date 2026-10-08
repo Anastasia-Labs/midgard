@@ -37,6 +37,11 @@ import {
   validationPoolLayer,
   WriteBehind,
 } from "../services/index.js";
+import {
+  IntentJournal,
+  IntentJournalWithoutFollower,
+  makeIntentJournal,
+} from "../services/intent-journal.js";
 import { startL1Follower } from "../services/l1-follower.js";
 import {
   initializeArchitectureGOwner,
@@ -142,9 +147,18 @@ export const runNode = (
         .pipe(
           Effect.zipRight(InitDB.program.pipe(Effect.provide(Database.layer))),
         ),
+      // Protocol initialization runs before the follower starts: nothing
+      // would reconcile its intents, so it submits unjournaled and awaits
+      // each confirmation itself.
       initializeProtocol: startup
         .setStage("protocol_initialization")
-        .pipe(Effect.zipRight(ensureProtocolInitializedOnStartup)),
+        .pipe(
+          Effect.zipRight(
+            ensureProtocolInitializedOnStartup.pipe(
+              Effect.provide(IntentJournalWithoutFollower),
+            ),
+          ),
+        ),
       providerAssertions: (preflight) =>
         startup
           .setStage("provider_assertions")
@@ -173,9 +187,14 @@ export const runNode = (
         }
       }),
     );
+    // One journal for the node process, opened once its database is: its
+    // refusals are `/readyz` holds.
+    const intentJournal = yield* makeIntentJournal;
     // The L1 follower (N1) starts first: the history owner's recovery
     // ingests events at its view, and its driver writes the event rows.
-    yield* startL1Follower;
+    yield* startL1Follower.pipe(
+      Effect.provideService(IntentJournal, intentJournal),
+    );
     // Startup recovery seeds the commit base from the landed state queue
     // (P1, N2): wait, unready and never exiting, until the follower is at
     // the tip and P1 is healthy there.
@@ -308,6 +327,7 @@ export const runNode = (
       );
       yield* Effect.forkDaemon(
         Genesis.program.pipe(
+          Effect.provideService(IntentJournal, intentJournal),
           Effect.tapErrorCause((cause) =>
             Effect.logError(
               `Startup genesis program failed: ${Cause.pretty(cause)}`,
@@ -362,6 +382,7 @@ export const runNode = (
           ),
         ),
       ),
+      Effect.provideService(IntentJournal, intentJournal),
     );
 
     if (withMonitoring) {

@@ -7,6 +7,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { journaledIntent } from "../services/intent-journal.js";
 import { handleSignSubmit } from "./utils.js";
 
 /** Register runtime rewarding roles after availability and PHAS initialization. */
@@ -67,7 +68,14 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
             cause,
           }),
       });
-      const txHash = yield* handleSignSubmit(lucid, tx);
+      const txHash = yield* handleSignSubmit(
+        lucid,
+        tx,
+        journaledIntent(
+          "script_reward_registration",
+          `script_reward_registration:runtime:${batch[0]!.scriptHash}+${batch.length.toString()}`,
+        ),
+      );
       for (const record of batch) {
         const after = yield* queryScriptRewardRegistrationProgram(
           lucid,
@@ -191,7 +199,14 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
           cause,
         }),
     });
-    yield* handleSignSubmit(lucid, tx);
+    yield* handleSignSubmit(
+      lucid,
+      tx,
+      journaledIntent(
+        "script_reward_registration",
+        `script_reward_registration:event_history:${missing.length.toString()}`,
+      ),
+    );
     return yield* Effect.tryPromise({
       try: async () => {
         for (const { rewardAddress } of missing)
@@ -247,7 +262,14 @@ export const ensureScriptRewardAccountRegisteredProgram = (
       lucid,
       script,
     );
-    const txHash = yield* handleSignSubmit(lucid, built.tx);
+    const txHash = yield* handleSignSubmit(
+      lucid,
+      built.tx,
+      journaledIntent(
+        "script_reward_registration",
+        `script_reward_registration:${before.scriptHash}`,
+      ),
+    );
     const after = yield* queryScriptRewardRegistrationProgram(lucid, script);
     if (!after.registered) {
       return yield* Effect.fail(
