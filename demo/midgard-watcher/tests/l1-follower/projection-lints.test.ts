@@ -23,6 +23,8 @@ import {
 import {
   WATCHER_PROOF_PIN_UNITS_TABLE,
   WATCHER_PROOF_PINS_TABLE,
+  WATCHER_PRUNED_HEADERS_TABLE,
+  WATCHER_PRUNED_UNITS_TABLE,
   WATCHER_TX_INPUTS_TABLE,
 } from "../../src/l1-follower/tables.js";
 import { SIM_WATCHER_DEPLOYMENT } from "../support/l1-follower-state-queue-traffic.js";
@@ -59,6 +61,31 @@ const LINTED = lintDeterminismModules({
       reason:
         "the ingest resolver's retry timer; the raw reads call only resolveStoredInputIn",
     },
+    // Pre-existing default-locale sorts of the durable store's records.
+    // Choosing their locale is a per-site owner call (the eslint baseline's
+    // locale-compare-explicit-locale entries), not a lint cleanup.
+    ...(
+      [
+        [
+          "src/storage/durable-store.assert-references.ts",
+          "left.namespace.localeCompare(right.namespace)",
+        ],
+        [
+          "src/storage/durable-store.assert-references.ts",
+          "left.key.localeCompare(right.key)",
+        ],
+        [
+          "src/storage/durable-store.journal-watcher-protocol-utxo-transition.ts",
+          "keyOf(left).localeCompare(keyOf(right))",
+        ],
+      ] as const
+    ).map(([path, text]) => ({
+      path,
+      rule: "implicit_locale" as const,
+      text,
+      reason:
+        "the durable store's record order; its locale is an owner call, untriaged",
+    })),
   ],
 });
 
@@ -89,7 +116,7 @@ const PROJECTION_SOURCES = [
 ];
 
 describe("watcher projection lints (F2 schema, F4 determinism)", () => {
-  it("declares eight class D-t tables, registered as temporal, and the proof-retention tables, on both dialects", () => {
+  it("declares eight class D-t tables, registered as temporal, the proof-retention tables and the pruned-key records, on both dialects", () => {
     const registry = createTemporalRegistry(projection.temporalTables);
     for (const dialect of ["postgres", "sqlite"] as const) {
       const sets = [projection.migrations(dialect)];
@@ -111,6 +138,8 @@ describe("watcher projection lints (F2 schema, F4 determinism)", () => {
         [WATCHER_PROOF_PINS_TABLE, "B"],
         [WATCHER_PROOF_PIN_UNITS_TABLE, "B"],
         [WATCHER_TX_INPUTS_TABLE, "C"],
+        [WATCHER_PRUNED_UNITS_TABLE, "B"],
+        [WATCHER_PRUNED_HEADERS_TABLE, "B"],
       ]);
     }
   });

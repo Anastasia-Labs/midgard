@@ -156,6 +156,7 @@ export const openWatcherFollowerRuntime = (
   const provider = new L1FollowerProvider({ store, transport });
   const proofRetention = createWatcherProofRetention(store, {
     unitHistoryPolicies,
+    stateQueuePolicyId: input.deployment.stateQueueMint,
   });
   // Resolves recorded txs' inputs at ingest, while the node still serves
   // the predecessor's ledger state (E1 ruling, facet 2).

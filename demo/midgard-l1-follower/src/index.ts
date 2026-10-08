@@ -166,6 +166,7 @@ export {
 } from "./projection.js";
 export {
   createTemporalRegistry,
+  prunePredicate,
   RegistryError,
   type RetentionRule,
   type Statement,

@@ -6,6 +6,9 @@ import type {
 import {
   applyChainSyncEvent,
   decodeLedgerUtxos,
+  type DialectName,
+  type FactStore,
+  type FactStoreOptions,
   openSqliteFactStore,
   type WalletLedger,
 } from "@al-ft/midgard-l1-follower";
@@ -128,11 +131,23 @@ type Landed = Readonly<{ hashes: string[]; point: FraudProofRawL1Point }>;
  * block of the current chain (for the LocalStateQuery seam): acquirable only
  * within k of the tip, as the node's volatile window.
  */
-export const harness = async (deployment: WatcherProjectionDeployment = D) => {
-  const store = openSqliteFactStore({
-    ...simStoreOptions([watcherProjection(deployment)], K, "sqlite"),
-    path: ":memory:",
-  });
+export const harness = async (
+  deployment: WatcherProjectionDeployment = D,
+  /** Opens the store on another dialect (default: in-memory SQLite). */
+  open?: Readonly<{
+    dialect: DialectName;
+    store: (options: FactStoreOptions) => FactStore;
+  }>,
+) => {
+  const options = simStoreOptions(
+    [watcherProjection(deployment)],
+    K,
+    open?.dialect ?? "sqlite",
+  );
+  const store =
+    open === undefined
+      ? openSqliteFactStore({ ...options, path: ":memory:" })
+      : open.store(options);
   expect((await store.start()).kind).toBe("ready");
   expect((await store.initialize(SIM_ORIGIN)).kind).toBe("initialized");
   const seeded = await store.insertSeedOutputs(

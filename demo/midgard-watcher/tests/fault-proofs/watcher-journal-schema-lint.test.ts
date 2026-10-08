@@ -27,10 +27,24 @@ const LINTED = lintDeterminismModules({
   ],
   allow: [
     {
-      path: "src/fault-proofs/watcher-journal-database.ts",
+      path: "src/fault-proofs/watcher-journal-database.configuration.ts",
       rule: "host_import",
       text: 'import { mkdirSync, realpathSync } from "node:fs";',
       reason: "creates and resolves the journal's directory before it opens",
+    },
+    {
+      path: "src/fault-proofs/watcher-journal-busy.ts",
+      rule: "clock",
+      text: "setTimeout",
+      reason:
+        "schedules the busy-journal requeue retry; no row, MAC or digest reads it",
+    },
+    {
+      path: "src/fault-proofs/watcher-journal-database.opener.ts",
+      rule: "clock",
+      text: "setTimeout",
+      reason:
+        "schedules the background reopen retry; no row, MAC or digest reads it",
     },
     {
       path: "src/fault-proofs/fault-proof-objective-table.ts",
@@ -38,6 +52,31 @@ const LINTED = lintDeterminismModules({
       text: 'import { rm } from "node:fs/promises";',
       reason: "removes a pruned objective's workflow journal directory",
     },
+    // Pre-existing default-locale sorts of the durable store's records.
+    // Choosing their locale is a per-site owner call (the eslint baseline's
+    // locale-compare-explicit-locale entries), not a lint cleanup.
+    ...(
+      [
+        [
+          "src/storage/durable-store.assert-references.ts",
+          "left.namespace.localeCompare(right.namespace)",
+        ],
+        [
+          "src/storage/durable-store.assert-references.ts",
+          "left.key.localeCompare(right.key)",
+        ],
+        [
+          "src/storage/durable-store.journal-watcher-protocol-utxo-transition.ts",
+          "keyOf(left).localeCompare(keyOf(right))",
+        ],
+      ] as const
+    ).map(([path, text]) => ({
+      path,
+      rule: "implicit_locale" as const,
+      text,
+      reason:
+        "the durable store's record order; its locale is an owner call, untriaged",
+    })),
   ],
 });
 

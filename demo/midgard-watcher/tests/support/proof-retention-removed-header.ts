@@ -43,6 +43,12 @@ const one = (policy: string, name: string, quantity = 1n) =>
 export const nodeUnit = (header: string): string =>
   `${D.stateQueueMint}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${header}`;
 
+/** The header a state-queue commit's node unit names. */
+const headerOf = (commit: SimTx): string =>
+  [...(commit.mint?.get(D.stateQueueMint)?.keys() ?? [])][0]!.slice(
+    SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+  );
+
 const closers: (() => Promise<void>)[] = [];
 /** Closes every fixture `removedHeader` opened; run it after each test. */
 export const closeRemovedHeaders = async (): Promise<void> => {
@@ -66,10 +72,11 @@ export const removedHeader = async (
     followUnit?: boolean;
     /** Resolve the init's inputs while its parent is in the window. */
     resolveInit?: boolean;
+    open?: Parameters<typeof harness>[1];
   }>,
 ) => {
   const deployment = options.followUnit === true ? FOLLOWING : D;
-  const h = await harness(deployment);
+  const h = await harness(deployment, options.open);
   closers.push(() => h.store.close());
   const real = ledgerOutputsQueryFromTransport(h.node);
   let isDown = false;
@@ -89,6 +96,7 @@ export const removedHeader = async (
   closers.push(() => resolver.close());
   const retention = createWatcherProofRetention(h.store, {
     unitHistoryPolicies: watcherUnitHistoryPolicies(deployment),
+    stateQueuePolicyId: deployment.stateQueueMint,
   });
 
   const funding: SimTx = {
@@ -104,9 +112,7 @@ export const removedHeader = async (
   // resolves from the ledger.
   if (options.resolveInit !== false) expect(await resolver.step()).toEqual([]);
   const commit = commitTx(queueState(h.chain, D)!, D, operatorUtxo);
-  const header = [
-    ...(commit.mint?.get(D.stateQueueMint)?.keys() ?? []),
-  ][0]!.slice(SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length);
+  const header = headerOf(commit);
   const committed = await h.forward([commit]);
   const commitHash = committed.hashes[0]!;
   if (options.resolveAtIngest) expect(await resolver.step()).toEqual([]);
@@ -173,11 +179,41 @@ export const removedHeader = async (
     if ("kind" in step) throw new Error(`prune: ${step.kind}`);
     expect(step.done).toBe(false);
   };
+  /** Mints `FOLLOWED_UNIT` again at its script address: new open rows. */
+  const remint = async (): Promise<string> =>
+    (
+      await h.forward([
+        {
+          inputs: [h.chain.outsideInput()],
+          outputs: [
+            {
+              address: scriptAddress(FOLLOWED),
+              lovelace: 2_000_000n,
+              assets: one(FOLLOWED, "aa"),
+            },
+          ],
+          mint: one(FOLLOWED, "aa"),
+          nonce: h.chain.nonce(),
+        },
+      ])
+    ).hashes[0]!;
+  /**
+   * Commits the removed header again: the queue is as it was before the
+   * commit, so the header (and its node unit) is the same key. Returns the
+   * commit's tx hash.
+   */
+  const recommit = async (): Promise<string> => {
+    const again = commitTx(queueState(h.chain, D)!, D);
+    expect(headerOf(again)).toBe(header);
+    return (await h.forward([again])).hashes[0]!;
+  };
   return {
     h,
     ledger,
     resolver,
     retention,
+    remint,
+    recommit,
     target,
     header,
     commitHash,
