@@ -1,13 +1,6 @@
-import { Effect } from "effect";
 import { expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
-import {
-  liveRebroadcastDeps,
-  REBROADCAST_INITIAL_DELAY_MS,
-  rebroadcastOnce,
-  type RebroadcastState,
-} from "../src/fibers/signed-intent-rebroadcast.js";
 import {
   closeLifecycle,
   commitNextBlock,
@@ -28,8 +21,6 @@ import {
   readPlans,
   snapshotUnreplaced,
   synchronizeWithin,
-  UNLANDED,
-  updateJournal,
 } from "./helpers/signed-intent-replacement.js";
 
 /**
@@ -41,9 +32,8 @@ import {
  * can't land on the current chain, meaning the observed head is past its TTL
  * or D is already spent by something else"), a journaled canonical spend of
  * E's base output by another transaction replaces E at once, and the
- * replacement builds on the node now on the queue. A persisted intent the
- * provider never accepted is resubmitted, byte for byte, while it can still
- * land.
+ * replacement builds on the node now on the queue. (The node's one sender of
+ * journaled bytes, S6, is tested over the follower's journal.)
  */
 
 it("replaces a signed commit whose base output a DA attestation spent in place well before its TTL, and the replacement lands on the attested base", async () => {
@@ -123,97 +113,6 @@ it("never replaces its own signed commit that landed first, even when D's attest
       Pending.Status.Abandoned,
     );
     expect(await readPlans()).toEqual([]);
-  } finally {
-    await closeLifecycle(h);
-  }
-}, 900_000);
-
-it("rebroadcasts the exact bytes of a persisted signed commit the provider refused as not yet valid, which lands and is finalized without waiting for its TTL", async () => {
-  const h = await openHistoryProductionOwnerLifecycle();
-  try {
-    const { base, inclusion } = await finalizeBaseAndAdmitDeposit(h);
-    const E = await loseCommitOnBase(h, base, inclusion);
-    // The state a no-inline provider-slot or early-validity defer leaves (and
-    // a stop between persisting the intent and submitting it): the signed
-    // intent persisted, never accepted, no submitted hash.
-    await updateJournal(E.header, {
-      [C.STATUS]: Pending.Status.PendingSubmission,
-      [C.SUBMITTED_TX_HASH]: null,
-    });
-    const untouched = await snapshotUnreplaced(E.header);
-    const deps = await h.runWithoutSynchronizing(liveRebroadcastDeps);
-    const { emulator } = h.fixture;
-    const submitted: string[] = [];
-    let clock = 0;
-    const once = (state: RebroadcastState) =>
-      Effect.runPromise(
-        rebroadcastOnce(
-          {
-            ...deps,
-            submit: (cbor) => {
-              submitted.push(cbor);
-              return deps.submit(cbor);
-            },
-            nowMs: () => clock,
-          },
-          state,
-        ),
-      );
-    const state: RebroadcastState = new Map();
-
-    // A stale ledger tip, below E's validity lower bound: the ledger refuses
-    // E's bytes as not yet valid, and the rebroadcast waits for the tip.
-    const saved = {
-      slot: emulator.slot,
-      time: emulator.time,
-      blockHeight: emulator.blockHeight,
-    };
-    expect(saved.slot).toBeGreaterThanOrEqual(E.invalidBefore);
-    emulator.slot = E.invalidBefore - 1;
-    emulator.time = saved.time - (saved.slot - emulator.slot) * 1000;
-    try {
-      await expect(
-        emulator.submitTx(E.signed.toString("hex")),
-      ).rejects.toBeDefined();
-      expect(await once(state)).toBe("first_seen");
-      clock += REBROADCAST_INITIAL_DELAY_MS;
-      expect(await once(state)).toBe("not_yet_valid");
-      expect(submitted).toEqual([]);
-    } finally {
-      emulator.slot = saved.slot;
-      emulator.time = saved.time;
-      emulator.blockHeight = saved.blockHeight;
-    }
-
-    // The tip reaches it: the journaled bytes, unchanged, are resubmitted.
-    expect(await once(state)).toBe("submitted");
-    expect(submitted).toEqual([E.signed.toString("hex")]);
-    // The journal is not written by the rebroadcast.
-    await expectUnreplaced(E.header, untouched);
-    expect(
-      (await readJournal(E.header))[C.SUBMITTED_TX_HASH] ?? null,
-    ).toBeNull();
-    expect(await h.fixture.operatorLucid.awaitTx(E.txHash)).toBe(true);
-    vi.setSystemTime(new Date(emulator.now()));
-    expect(emulator.slot).toBeLessThan(E.ttl - 1);
-
-    // The point showing it included replaces nothing; block confirmation
-    // records its landing (the submitted hash is the intended one) and it is
-    // locally finalized.
-    await synchronizeWithin(h);
-    await expectUnreplaced(E.header, untouched);
-    await finalizeLocally(h, E.header);
-    const landed = await readJournal(E.header);
-    expect(UNLANDED).not.toContain(landed[C.STATUS]);
-    expect(landed[C.SUBMITTED_TX_HASH]).toEqual(landed[C.INTENDED_TX_HASH]);
-    expect(await readDepositHeader(E.journal.depositEventIds[0]!)).toBe(
-      E.header,
-    );
-    expect(await readPlans()).toEqual([]);
-    // Landed: nothing is left to rebroadcast.
-    clock += 60_000;
-    expect(await once(state)).toBe("none");
-    expect(submitted).toHaveLength(1);
   } finally {
     await closeLifecycle(h);
   }

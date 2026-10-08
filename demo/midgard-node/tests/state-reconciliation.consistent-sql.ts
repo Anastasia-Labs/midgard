@@ -107,7 +107,7 @@ export const journal = (
   overrides: Partial<JournalSummary>,
 ): JournalSummary => ({
   headerHash: TIP,
-  status: "finalized",
+  status: "locally_applied",
   baseTailHeaderHash: CONFIRMED,
   baseUtxosRoot: R0,
   expected: { utxos: R1, ...ROOTS },

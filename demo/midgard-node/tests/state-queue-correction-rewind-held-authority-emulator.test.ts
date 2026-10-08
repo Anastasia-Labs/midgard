@@ -72,7 +72,7 @@ it("holds a retained rewind whose removal lost its authority after the native ro
     expect((await readSqlLedgerRoot()).root_hex).toBe(sqlRoot);
     expect(await readDeposits()).toEqual(deposits);
     expect((await readJournal(removedHeader))[C.STATUS]).toBe(
-      Pending.Status.Finalized,
+      Pending.Status.LocallyApplied,
     );
     expect((await readRecoveryPlans()).map(({ state }) => state)).toEqual([
       "prepared",

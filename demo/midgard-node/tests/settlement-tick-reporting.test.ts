@@ -201,32 +201,6 @@ const exitReport = async (program: Effect.Effect<unknown, unknown>) => {
 };
 
 describe("settlement tick reporting", () => {
-  it("names the failing submit, its job and the provider's error", async () => {
-    const { report } = await run(
-      withoutFollowerJournal(
-        firstTick(() => ({
-          submitTx: () =>
-            Promise.reject(
-              new OgmiosJsonRpcError({
-                code: 3005,
-                message: "Some transactions failed to pass validation.",
-                data: { valueNotConserved: true },
-                method: "submitTransaction",
-                id: null,
-              }),
-            ),
-        })),
-      ),
-    );
-    expect(report.state).toBe("error");
-    expect(report.detail).toContain(
-      `settlement withdrawal ${EVENT_ID} initialize reconcile: submit settlement transaction: Ogmios JSON-RPC error 3005: Some transactions failed to pass validation.`,
-    );
-    expect(report.detail).not.toContain(UNKNOWN);
-    // A failed tick is not a completed one.
-    expect(report.tickCompleted).toBeUndefined();
-  }, 30_000);
-
   it("names a job's failing build step in its stored error and the report", async () => {
     const { report, lastError } = await run(
       withoutFollowerJournal(
@@ -260,44 +234,17 @@ describe("settlement tick reporting", () => {
     expect(report.detail).not.toContain(UNKNOWN);
   }, 30_000);
 
-  it("waits, without an error, while the node refuses the resubmitted body's spent inputs", async () => {
+  it("reports a journaled pending body as a completed waiting tick and never sends it (S6 does)", async () => {
+    const submitTx = vi.fn(() => Promise.reject(new Error("never reached")));
     const { report, reports, attempt } = await run(
-      withoutFollowerJournal(
-        firstTick(() => ({
-          submitTx: () =>
-            Promise.reject(
-              new OgmiosJsonRpcError({
-                code: 3997,
-                message:
-                  "All inputs are spent. Transaction has probably already been included",
-                method: "submitTransaction",
-                id: null,
-              }),
-            ),
-        })),
-      ),
-    );
-    expect(report.state).toBe("waiting");
-    expect(report.detail).toBe(
-      `settlement transaction ${attempt.tx_hash} not confirmed yet; its resubmission is refused because its inputs are already spent (by it in a mempool, or by a block): Ogmios JSON-RPC error 3997: All inputs are spent. Transaction has probably already been included`,
-    );
-    expect(report.tickCompleted).toBe(true);
-    expect(reports.some((value) => value.state === "error")).toBe(false);
-  }, 30_000);
-
-  it("reports a successful submit as a completed tick with no error", async () => {
-    const { report, reports } = await run(
-      withoutFollowerJournal(
-        firstTick((attempt) => ({
-          submitTx: async () => attempt.tx_hash,
-        })),
-      ),
+      withoutFollowerJournal(firstTick(() => ({ submitTx }))),
     );
     expect(report).toMatchObject({
       state: "waiting",
-      detail: "submitted exact journaled settlement transaction",
+      detail: `settlement transaction ${attempt.tx_hash} journaled; S6 sends its exact bytes until it lands`,
       tickCompleted: true,
     });
+    expect(submitTx).not.toHaveBeenCalled();
     expect(reports.some((value) => value.state === "error")).toBe(false);
   }, 30_000);
 

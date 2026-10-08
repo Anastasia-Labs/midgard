@@ -5,9 +5,11 @@
  *
  * - a live, wanted intent the mempool lacks gets its exact journaled bytes,
  *   at most once per tip; one in the mempool is left alone;
- * - a header family (attestation, correction, merge) whose header P1 no
- *   longer holds is abandoned; one whose header P1 holds is sent; every
- *   other family reads no projection;
+ * - an intent whose §8.4 predicate fails (a merge of a header P1 does not
+ *   hold at its head) is abandoned; one whose predicate holds (an
+ *   attestation of a landed header, a payout funding step over live
+ *   inputs) is sent; each predicate's polarities are in
+ *   `l1-follower-intent-predicates.test.ts`;
  * - a landed intent, and one a foreign transaction beat to an input, are
  *   never sent;
  * - an unhealthy queue, a failed mempool read, a failed pass and an owed
@@ -30,11 +32,11 @@ import {
   stateQueueProjection,
   stateQueueTrackedSet,
 } from "../src/l1-state-queue/index.js";
+import { nodeFamilyPredicate } from "../src/services/l1-follower.intent-predicates.js";
 import {
   createNodeIntentStage,
   INTENT_RECONCILE_FAILED,
   INTENT_RECONCILE_TRANSIENT,
-  nodeFamilyPredicate,
   nodeIntentTrackedSet,
 } from "../src/services/l1-follower.intents.js";
 import {
@@ -139,12 +141,13 @@ const openScenario = async (dialect: "sqlite" | "postgres") => {
     family: string,
     tx: SimTx,
     contentRef: string | null = null,
+    workflowKey = `${family}:test`,
   ): Promise<Buffer> => {
     const txCbor = encodeSimTx(tx);
     const result = await store.transaction("write", (sqlTx) =>
       recordIntentIn(sqlTx, store.dialect, {
         family,
-        workflowKey: `${family}:test`,
+        workflowKey,
         txCbor,
         isOwnOutput: () => false,
         contentRef: contentRef === null ? null : Buffer.from(contentRef, "hex"),
@@ -161,7 +164,13 @@ const openScenario = async (dialect: "sqlite" | "postgres") => {
       transport,
       securityParameter: K,
       seededAddresses,
-      wanted: nodeFamilyPredicate(store, SIM_QUEUE_CONFIG),
+      wanted: nodeFamilyPredicate({
+        store,
+        stateQueue: SIM_QUEUE_CONFIG,
+        operatorSet: null,
+        slotToPosixMs: (slot) => slot * 1000,
+        horizonLagBlocks: 0,
+      }),
       log: (line) => logs.push(line),
     });
   const events = async (txCbor: Buffer) =>
@@ -194,7 +203,13 @@ describe.each(["sqlite", "postgres"] as const)(
   (dialect) => {
     it("resubmits the journaled bytes of live, wanted intents once per tip and abandons a header family P1 no longer holds", async () => {
       const s = await openScenario(dialect);
-      const register = await s.record("register", s.spend(s.spare(0)));
+      // A payout funding step: wanted while its inputs are live facts.
+      const funding = await s.record(
+        "reserve_payout",
+        s.spend(s.spare(0)),
+        "01".repeat(36),
+        "reserve_payout:test:add_funds",
+      );
       const attest = await s.record("attest", s.spend(s.spare(1)), s.firstHash);
       const merge = await s.record(
         "merge",
@@ -208,7 +223,7 @@ describe.each(["sqlite", "postgres"] as const)(
       expect(await stage.run()).toEqual([]);
       const sent = s.transport.sent.map((bytes) => bytes.toString("hex"));
       expect(sent.sort()).toEqual(
-        [register, attest].map((bytes) => bytes.toString("hex")).sort(),
+        [funding, attest].map((bytes) => bytes.toString("hex")).sort(),
       );
       const actions = new Map(
         stage
@@ -216,7 +231,7 @@ describe.each(["sqlite", "postgres"] as const)(
           .intents.map((entry) => [entry.intent.family, entry.action]),
       );
       expect(Object.fromEntries(actions)).toEqual({
-        register: "resubmit",
+        reserve_payout: "resubmit",
         attest: "resubmit",
         merge: "abandon",
         commit: "wait_in_mempool",

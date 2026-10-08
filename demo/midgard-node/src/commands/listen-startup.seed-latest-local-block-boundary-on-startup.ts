@@ -161,7 +161,7 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
       if (
         Option.isSome(finalizedJournal) &&
         finalizedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
-          PendingBlockFinalizationsDB.Status.Finalized
+          PendingBlockFinalizationsDB.Status.LocallyApplied
       ) {
         const finalizedSnapshot = yield* materializeConfirmedLedgerSnapshot(
           finalizedJournal.value,
@@ -388,7 +388,7 @@ export const classifyUnfinishedMutationJobOnStartup = (
     )
   )
     return "runtime";
-  return journalStatus === PendingBlockFinalizationsDB.Status.Finalized
+  return journalStatus === PendingBlockFinalizationsDB.Status.LocallyApplied
     ? "complete"
     : "refuse";
 };

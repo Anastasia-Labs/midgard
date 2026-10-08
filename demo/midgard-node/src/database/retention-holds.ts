@@ -137,7 +137,7 @@ export const recoveryRelevantJournal = (
   ), recovery_seeds AS (
     SELECT header_hash, base_tail_header_hash, base_tail_out_ref, base_utxos_root
     FROM pending_block_finalizations
-    WHERE status <> 'finalized' OR header_hash IN (
+    WHERE status <> 'locally_applied' OR header_hash IN (
       SELECT header_hash FROM plan_headers WHERE state = 'prepared')
   ), dependent AS (
     SELECT sibling.header_hash, sibling.base_tail_header_hash

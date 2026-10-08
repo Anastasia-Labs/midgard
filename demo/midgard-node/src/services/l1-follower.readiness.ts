@@ -2,20 +2,27 @@
  * What the node's L1 follower contributes to `/readyz` (N1): every named
  * reason the shared follow loop reports (`FollowStatus.readiness`: the
  * interventions R1 to R5 and `origin_mismatch`, `l1_follower_catching_up`,
- * `l1_follower_waiting`, `l1_follower_apply_stuck`), every hold of the
+ * `l1_follower_waiting`, `l1_follower_apply_stuck`,
+ * `l1_follower_prune_failing`), every hold of the
  * follower-change driver (`l1_events_*`, and the forced-order hook's
  * `forced_order_carriage_pending`, `forced_order_admission_stopped` and
  * `forced_order_ingestion_failed`), the intent stage's (`wallet_seed_pending`,
  * `intent_reconcile_failed`, `intent_reconcile_transient`) and the intent
- * journal's refusals (`intent_journal_*`, `intent_input_untracked`,
- * `intent_bytes_mismatch`, `intent_undecodable`), and
+ * journal's refusals, the worker threads' included (`intent_journal_*`,
+ * `intent_input_untracked`, `intent_bytes_mismatch`, `intent_undecodable`,
+ * `intent_content_ref_missing`), and
  * `l1_follower_unconfigured` while the node has no follower, and
  * `l1_node_config_unreadable` while its network magic is retried. Each fails
  * readiness by name; none stops the process, and `/healthz` stays live.
  */
-import type { FollowStatus } from "@al-ft/midgard-l1-follower";
+import type { FactStore, FollowStatus } from "@al-ft/midgard-l1-follower";
 
-import type { DriverHold, IngestionPlan } from "../l1-events/driver.js";
+import {
+  type DriverHold,
+  type IngestionPlan,
+  planIngestion,
+} from "../l1-events/driver.js";
+import type { EventProjectionConfig } from "../l1-events/index.js";
 
 /** The node has no follower: its configuration is missing a piece (named in the detail). */
 export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
@@ -30,6 +37,20 @@ export const L1_NODE_CONFIG_UNREADABLE = "l1_node_config_unreadable";
 export type FollowerPlanRead =
   | Readonly<{ kind: "ok"; plan: IngestionPlan }>
   | Readonly<{ kind: "none"; detail: string }>;
+
+/** The projection at the store's current view. */
+export const planCurrentView = async (
+  store: FactStore,
+  config: EventProjectionConfig,
+): Promise<FollowerPlanRead> => {
+  const view = await store.currentView();
+  if (view === null)
+    return { kind: "none", detail: "the follower store has no view yet" };
+  const planned = await planIngestion(store, config, view);
+  return planned.kind === "ok"
+    ? planned
+    : { kind: "none", detail: planned.detail };
+};
 
 /** The running follower, as the rest of the node reads it. */
 export type L1FollowerHandle = Readonly<{

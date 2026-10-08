@@ -21,7 +21,8 @@ import type { openHistoryProductionOwnerLifecycle } from "./history-production-o
 import { withoutFollowerJournal } from "./intent-journal.js";
 
 /** Real builders, signatures, script execution, SQL queue and reconciliation.
- * As in the owner fixture, only network point labels/transport are synthetic. */
+ * As in the owner fixture, only network point labels/transport are synthetic,
+ * and the S6 send of a pending journaled body is played by `runPhase`. */
 export const openAutomaticSettlement = async (
   h: Awaited<ReturnType<typeof openHistoryProductionOwnerLifecycle>>,
 ) => {
@@ -131,6 +132,14 @@ export const openAutomaticSettlement = async (
       const pending = await h.runWithoutSynchronizing(
         Journal.pending(owner.deploymentId),
       );
+      // No follower runs here, so this stands in for S6, the journaled
+      // bytes' one sender: it sends the pending body, exactly, while the
+      // chain does not know it.
+      if (
+        pending !== undefined &&
+        (await actualStatus(pending.tx_hash)).status === "not_found"
+      )
+        await api.config().provider!.submitTx(pending.signed_cbor);
       if (
         pending !== undefined &&
         (await actualStatus(pending.tx_hash)).status === "pending"

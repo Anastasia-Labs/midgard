@@ -28,6 +28,11 @@ export const FOLLOWER_NODE_UNAVAILABLE = "l1_node_unavailable";
  * first time the loop reports the cursor at the node tip.
  */
 export const FOLLOWER_TRACKED_SET_CHANGED = "tracked_set_changed";
+/**
+ * `PRUNE_FAILING_AFTER` prune passes in a row failed (a prune hook threw, or
+ * the store did): every fact past retention stays until one succeeds.
+ */
+export const FOLLOWER_PRUNE_FAILING = "l1_follower_prune_failing";
 
 /** A named reason a role's `/readyz` reports while the follower holds it unready. */
 export type FollowReadinessReason =
@@ -37,7 +42,8 @@ export type FollowReadinessReason =
   | typeof FOLLOWER_APPLY_STUCK
   | typeof FOLLOWER_MIGRATION_FAILED
   | typeof FOLLOWER_NODE_UNAVAILABLE
-  | typeof FOLLOWER_TRACKED_SET_CHANGED;
+  | typeof FOLLOWER_TRACKED_SET_CHANGED
+  | typeof FOLLOWER_PRUNE_FAILING;
 
 export type FollowReadiness = Readonly<{
   reason: FollowReadinessReason;
@@ -91,6 +97,8 @@ export type FollowStatus = Readonly<{
     steps: number;
     prunedThroughSlot: number | null;
     lastError: string | null;
+    /** Prune passes failed in a row; the next successful one resets it. */
+    failures: number;
   }>;
 }>;
 
@@ -123,6 +131,11 @@ export type FollowChainOptions = Readonly<{
 export const DEFAULT_STUCK_AFTER = 5;
 export const LOOP_PRUNE_BUDGET = 500;
 export const LOOP_PRUNE_EVERY = 100;
+/**
+ * Consecutive failed prune passes before `l1_follower_prune_failing`. One
+ * failure alone is not a reason: the next pass retries it.
+ */
+export const PRUNE_FAILING_AFTER = 3;
 
 /** The readiness reasons a status implies. */
 export const readinessOf = (
@@ -157,6 +170,11 @@ export const readinessOf = (
       reason: FOLLOWER_TRACKED_SET_CHANGED,
       detail:
         "the tracked set gained items the stored facts lacked; replaying from the origin until the cursor reaches the node tip",
+    });
+  if (status.prune.failures >= PRUNE_FAILING_AFTER)
+    reasons.push({
+      reason: FOLLOWER_PRUNE_FAILING,
+      detail: `${status.prune.failures} prune passes in a row failed: ${status.prune.lastError ?? "unknown"}`,
     });
   if (!status.atTip)
     reasons.push({

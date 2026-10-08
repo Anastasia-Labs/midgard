@@ -22,7 +22,7 @@ export const collectDbCounts = (): Effect.Effect<
         FROM tx_admissions WHERE status = 'accepted'
       UNION ALL
       SELECT 'pending_finalizations_finalized' AS label, COUNT(*) AS count
-        FROM pending_block_finalizations WHERE status = 'finalized'
+        FROM pending_block_finalizations WHERE status = 'locally_applied'
       UNION ALL
       SELECT 'pending_finalization_tx_headers' AS label, COUNT(DISTINCT header_hash) AS count
         FROM pending_block_finalization_txs
@@ -30,10 +30,10 @@ export const collectDbCounts = (): Effect.Effect<
       SELECT 'pending_finalizations_finalized_tx_headers' AS label, COUNT(DISTINCT f.header_hash) AS count
         FROM pending_block_finalizations f
         JOIN pending_block_finalization_txs t USING (header_hash)
-        WHERE f.status = 'finalized'
+        WHERE f.status = 'locally_applied'
       UNION ALL
       SELECT 'pending_finalizations_unfinished' AS label, COUNT(*) AS count
-        FROM pending_block_finalizations WHERE status <> 'finalized'
+        FROM pending_block_finalizations WHERE status <> 'locally_applied'
       UNION ALL
       SELECT 'mempool' AS label, COUNT(*) AS count FROM mempool
       UNION ALL

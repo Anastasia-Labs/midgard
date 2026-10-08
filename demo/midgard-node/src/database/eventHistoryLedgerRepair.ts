@@ -123,7 +123,7 @@ export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
       SELECT w.l1_event_key, w.l1_origin_outref, w.projected_header_hash, w.status::text AS status
         FROM withdrawal_utxos w WHERE ${orphanedAdmission(sql, "w", "withdrawal")}
     ) SELECT 1 FROM orphans o WHERE
-      EXISTS (SELECT 1 FROM pending_block_finalizations WHERE status NOT IN ('finalized', 'abandoned'))
+      EXISTS (SELECT 1 FROM pending_block_finalizations WHERE status NOT IN ('locally_applied', 'abandoned'))
       OR EXISTS (SELECT 1 FROM processed_mempool)
       OR o.projected_header_hash IS NOT NULL OR o.status = 'finalized'
       OR EXISTS (SELECT 1 FROM pending_block_finalization_deposits m WHERE ${sameAdmission(sql, "m", "o")})
@@ -160,7 +160,7 @@ export const requeueUnpublishedHistoryLedger = (input: {
     const sql = yield* SqlClient.SqlClient;
     const binding = Buffer.from(input.bindingDigest, "hex");
     const assigned = yield* sql`SELECT 1 FROM pending_block_finalizations
-    WHERE status NOT IN ('finalized', 'abandoned')
+    WHERE status NOT IN ('locally_applied', 'abandoned')
     UNION ALL SELECT 1 FROM processed_mempool LIMIT 1`;
     if (assigned.length !== 0)
       return yield* refuse(
@@ -283,7 +283,7 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
     yield* requireRecoveryTransaction;
 
     const pending = yield* sql`SELECT 1 FROM pending_block_finalizations
-      WHERE status NOT IN ('finalized', 'abandoned') LIMIT 1`;
+      WHERE status NOT IN ('locally_applied', 'abandoned') LIMIT 1`;
     const processed = yield* sql`SELECT 1 FROM processed_mempool LIMIT 1`;
     if (pending.length !== 0 || processed.length !== 0)
       return yield* refuse(

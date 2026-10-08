@@ -189,17 +189,17 @@ describe("an expired signed intent whose replaced sibling holds the slot", () =>
   it("is undecided, not fatal, while a third block on the same base is already finalized", async () => {
     await run(journal(W_HEADER, Pending.Status.Abandoned, TTL, "replacement"));
     await run(journal(R_HEADER, Pending.Status.PendingSubmission, TTL + 1));
-    await run(journal(T_HEADER, Pending.Status.Finalized, TTL + 2));
+    await run(journal(T_HEADER, Pending.Status.LocallyApplied, TTL + 2));
     const { exit, raised } = await decideFor(
       evidence(queueWithBaseLinkingTo(W_HEADER.toString("hex"))),
     );
     const decision = decisionOf(exit);
     expect(decision.kind).toBe("wait");
     expect(decision.reason).toContain(
-      `block ${T_HEADER.toString("hex")} built on the same base is already ${Pending.Status.Finalized}`,
+      `block ${T_HEADER.toString("hex")} built on the same base is already ${Pending.Status.LocallyApplied}`,
     );
     expect(raised).toBe(SIGNED_INTENT_UNDECIDED);
-    expect(await readStatus(T_HEADER)).toBe(Pending.Status.Finalized);
+    expect(await readStatus(T_HEADER)).toBe(Pending.Status.LocallyApplied);
   });
 
   it("decides the revival and clears the reason once nothing on the base went further", async () => {

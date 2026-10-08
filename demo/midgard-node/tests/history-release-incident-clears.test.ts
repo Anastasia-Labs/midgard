@@ -165,7 +165,7 @@ beforeEach(async () => {
   await run(seed);
   await run(journal(W_HEADER, Pending.Status.Abandoned, TTL, "replacement"));
   await run(journal(R_HEADER, Pending.Status.PendingSubmission, TTL + 1));
-  await run(journal(T_HEADER, Pending.Status.Finalized, TTL + 2));
+  await run(journal(T_HEADER, Pending.Status.LocallyApplied, TTL + 2));
 });
 
 describe("the undecided signed-intent release incident", () => {

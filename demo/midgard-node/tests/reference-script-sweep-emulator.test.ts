@@ -1,4 +1,6 @@
 import "./utils.js";
+// Loaded before the fixture's first submission, so its capture is complete.
+import "./helpers/emulator-chain-capture.js";
 
 import { readFileSync } from "node:fs";
 
@@ -11,6 +13,7 @@ import {
   generateEmulatorAccount,
   Lucid,
   type LucidEvolution,
+  paymentCredentialOf,
   type Script,
   toUnit,
   type UTxO,
@@ -28,7 +31,16 @@ import {
   sweepRetiredReferenceScriptsProgram,
 } from "../src/transactions/reference-script-sweep.js";
 import { resolveReferenceScriptUtxo } from "../src/transactions/reference-scripts.js";
-import { runWithoutFollower } from "./helpers/intent-journal.js";
+import {
+  drainJournaledWithoutFollower,
+  runWithoutFollower,
+} from "./helpers/intent-journal.js";
+import {
+  expectReplayedFamilies,
+  walletReplayConfig,
+} from "./helpers/intent-journal-replay.expect.js";
+import { replayJournaledOnFollower } from "./helpers/intent-journal-replay.js";
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const alwaysSucceedsCode = (
   JSON.parse(
@@ -69,6 +81,7 @@ type Fixture = {
   readonly emulator: Emulator;
   readonly lucid: LucidEvolution;
   readonly address: string;
+  readonly seedPhrase: string;
   readonly retiredPolicy: AuthPolicy;
   readonly livePolicy: AuthPolicy;
   readonly retiredScripts: readonly Script[];
@@ -183,6 +196,7 @@ const setUp = async ({
   };
   return {
     ...fixture,
+    seedPhrase: account.seedPhrase,
     retiredPolicy,
     livePolicy,
     retiredScripts,
@@ -282,6 +296,7 @@ const resolvedLiveOutRefs = (
 
 describe("retired reference-script sweep on the emulator", () => {
   it("reclaims every retired reference script in several batches and leaves live refs untouched", async () => {
+    drainJournaledWithoutFollower();
     const fixture = await setUp({ retiredTimelockMs: 20 * 60 * 1_000 });
     fixture.emulator.awaitSlot(30 * 60);
     const before = await fixture.lucid.utxosAt(fixture.address);
@@ -366,6 +381,30 @@ describe("retired reference-script sweep on the emulator", () => {
     const rerun = expectSwept(await sweep(fixture, { execute: true }));
     expect(rerun.plan.totals.batchCount).toBe(0);
     expect(rerun.submitted).toEqual([]);
+
+    // A node following this chain records each batch and judges it wanted
+    // at the block before it landed (I1-fix F5). The protocol contracts
+    // only shape the follower; the sweep touches none of their addresses.
+    const sweeps = expectReplayedFamilies(
+      await replayJournaledOnFollower({
+        emulator: fixture.emulator,
+        contracts: await loadRealMidgardContractsForTest({
+          txHash: "00".repeat(32),
+          outputIndex: 0,
+        }),
+        config: walletReplayConfig({
+          operatorSeed: fixture.seedPhrase,
+          referenceScriptsSeed: fixture.seedPhrase,
+          referenceScriptsAddress: fixture.address,
+        }),
+        slotToPosixMs: (slot) => fixture.lucid.slotToUnixTime(slot),
+        operatorKeyHash: paymentCredentialOf(fixture.address)!.hash,
+      }),
+      ["reference_sweep"],
+    ).reference_sweep!;
+    expect(sweeps.map(({ txHash }) => txHash)).toEqual(
+      executed.submitted.map(({ txHash }) => txHash),
+    );
   }, 180_000);
 
   it("refuses the live auth policy at the live-auth-policy check and spends nothing", async () => {

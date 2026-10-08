@@ -75,7 +75,7 @@ It is responsible for:
   DA challengeability horizon. It prunes `tx_rejections`, `address_history`
   (except entries of a transaction still in the mempool or processed
   mempool), ended `state_queue_mutation_leases` that no retained journal
-  names, and finalized `pending_block_finalizations` journals whose confirmed
+  names, and locally applied `pending_block_finalizations` journals whose confirmed
   merge completed locally before the correction observer last saved its
   state. A journal is kept while its header is the L1 confirmed head, live in
   the L1 state queue, held for finality, still in the correction observer's

@@ -15,12 +15,7 @@ import { synchronizePublicationIndexerPoint } from "../transactions/reference-pu
 import { NodeConfig, type NodeConfigDep } from "./config.js";
 import { readIntentStatus } from "./intent-journal.js";
 import { ContractDeploymentIdentity } from "./midgard-contracts.js";
-import {
-  describeSettlementError,
-  isSettlementInputsSpentRejection,
-  settlementCall,
-  settlementCheck,
-} from "./settlement-call.js";
+import { settlementCall, settlementCheck } from "./settlement-call.js";
 import { readSettlementOutputEvidence } from "./settlement-output.js";
 
 export type SettlementHealth = {
@@ -281,40 +276,15 @@ export const reconcileAttempt = (
       );
     }
     yield* Journal.assertOwner(owner);
-    // A dead intent (§8.2: an input spent by another tx, expired, failed) is
-    // never resubmitted; its attempt waits for the expiry decision above.
+    // The journaled bytes have one sender, S6 (the node follower's intent
+    // reconciler): it sends them at every tip while they are live, absent
+    // from the mempool and spendable, and never sends a dead intent (§8.2:
+    // an input spent by another tx, expired, failed). This tick only reads
+    // status; a dead body waits for the expiry decision above.
     const intentStatus = yield* readIntentStatus(attempt.tx_hash);
     if (intentStatus !== null && isDeadStatus(intentStatus))
       return `settlement transaction ${attempt.tx_hash} is dead (${intentStatus.kind}); not resubmitted`;
-    const provider = lucid.config().provider;
-    if (provider === undefined)
-      return yield* Effect.fail(new Error("Settlement provider unavailable"));
-    // The exact body is resubmitted every tick until its status reads
-    // confirmed. While it waits in a mempool (or in a block the indexer has
-    // not reached) the node refuses the copy because its inputs are spent;
-    // that is progress, not a failure, and the next tick reads its status. A
-    // body whose inputs another transaction spent never confirms; past its
-    // validity bound the expiry check above refuses it as ambiguous.
-    const submitted = yield* settlementCall(
-      "submit settlement transaction",
-      () => provider.submitTx(attempt.signed_cbor),
-    ).pipe(
-      Effect.map((hash) => ({ hash })),
-      Effect.catchIf(
-        (error) => isSettlementInputsSpentRejection(error.cause),
-        (error) =>
-          Effect.succeed({
-            waiting: `settlement transaction ${attempt.tx_hash} not confirmed yet; its resubmission is refused because its inputs are already spent (by it in a mempool, or by a block): ${describeSettlementError(error.cause).slice(0, 500)}`,
-          }),
-      ),
-    );
-    if ("waiting" in submitted) return submitted.waiting;
-    const hash = submitted.hash;
-    if (hash !== attempt.tx_hash)
-      return yield* Effect.fail(
-        new Error("Settlement submit returned a different transaction hash"),
-      );
-    return "submitted exact journaled settlement transaction";
+    return `settlement transaction ${attempt.tx_hash} journaled; S6 sends its exact bytes until it lands`;
   });
 
 /** Synchronize before both positive and negative receipt observations: a

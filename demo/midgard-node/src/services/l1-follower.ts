@@ -36,7 +36,8 @@
  *   the follower is caught up it also deletes the rows whose order left
  *   the chain.
  * - After each driver run, S6 (`l1-follower.intents.ts`, I1) seeds wallets
- *   and reconciles intents; its and the journal's holds join the driver's.
+ *   and reconciles intents, then the journal re-reads its refusal holds
+ *   (workers' too); its and the journal's holds join the driver's.
  * - Everything the follower cannot clear by itself is a named `/readyz`
  *   reason (`l1-follower.readiness.ts`). Nothing here exits the process.
  */
@@ -68,9 +69,7 @@ import {
   EVENTS_ORPHAN_RECOVERY,
   type FollowerEventSink,
   type IngestionPlan,
-  planIngestion,
 } from "../l1-events/driver.js";
-import type { EventProjectionConfig } from "../l1-events/index.js";
 import { eventProjection } from "../l1-events/projection.js";
 import {
   operatorSetProjection,
@@ -94,15 +93,15 @@ import {
   withHistoryIngestion,
 } from "./event-history-producer.js";
 import { Globals } from "./globals.globals.js";
+import { IntentJournal } from "./intent-journal.js";
 import {
-  IntentJournal,
   nodeSeededAddresses,
   protocolPaymentCredentials,
-} from "./intent-journal.js";
+} from "./intent-journal.tracked-set.js";
 import { coalescedRunner } from "./l1-follower.coalesced-runner.js";
+import { nodeFamilyPredicate } from "./l1-follower.intent-predicates.js";
 import {
   createNodeIntentStage,
-  nodeFamilyPredicate,
   nodeIntentTrackedSet,
 } from "./l1-follower.intents.js";
 import {
@@ -113,8 +112,8 @@ import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { type L1FollowerPlan, l1FollowerPlan } from "./l1-follower.plan.js";
 import {
   followerCaughtUp,
-  type FollowerPlanRead,
   type L1FollowerHandle,
+  planCurrentView,
 } from "./l1-follower.readiness.js";
 import { publishL1HeadChange } from "./l1-head-trigger.js";
 import { Lucid } from "./lucid.js";
@@ -130,20 +129,6 @@ class FollowerRecoveryRequired extends Data.TaggedError(
 
 const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
-
-/** The projection at the store's current view. */
-export const planCurrentView = async (
-  store: FactStore,
-  config: EventProjectionConfig,
-): Promise<FollowerPlanRead> => {
-  const view = await store.currentView();
-  if (view === null)
-    return { kind: "none", detail: "the follower store has no view yet" };
-  const planned = await planIngestion(store, config, view);
-  return planned.kind === "ok"
-    ? planned
-    : { kind: "none", detail: planned.detail };
-};
 
 /**
  * The driver's sink: ingests a plan under a Ready history producer, with
@@ -389,21 +374,33 @@ const followL1 = Effect.fnUntraced(function* (
     },
     log: (line) => log(`driver: ${line}`),
   });
+  const slotClock = (yield* Lucid).api;
   const intents = createNodeIntentStage({
     store,
     transport,
     securityParameter: plan.securityParameter,
     seededAddresses,
-    wanted: nodeFamilyPredicate(store, plan.stateQueue),
+    wanted: nodeFamilyPredicate({
+      store,
+      stateQueue: plan.stateQueue,
+      operatorSet:
+        operatorSet.ownKey === undefined
+          ? null
+          : { config: plan.operatorSet, ownKey: operatorSet.ownKey },
+      slotToPosixMs: (slot) => slotClock.slotToUnixTime(slot),
+      horizonLagBlocks: config.HISTORY_COMMIT_HORIZON_LAG_BLOCKS,
+    }),
     log: (line) => log(`intents: ${line}`),
   });
   // S6 follows the driver in the same coalesced run (§8.3: every head and
-  // generation change).
+  // generation change), then the journal re-reads its refusal holds: the
+  // commit and settlement workers raise theirs in the node database.
   const trigger = coalescedRunner(
     () =>
       driver
         .run()
         .then(() => intents.run())
+        .then(() => Runtime.runPromise(runtime)(journal.refresh()))
         .then(() => [...driver.holds(), ...intents.holds()]),
     abort.signal,
   );
@@ -420,7 +417,12 @@ const followL1 = Effect.fnUntraced(function* (
     replaying: false,
     events: 0,
     lastError: null,
-    prune: { steps: 0, prunedThroughSlot: null, lastError: null },
+    prune: {
+      steps: 0,
+      prunedThroughSlot: null,
+      lastError: null,
+      failures: 0,
+    },
   } as const;
   let status: FollowStatus = { ...initial, readiness: readinessOf(initial) };
   let lastCursor: string | null = null;

@@ -69,21 +69,21 @@ beforeEach(async () => {
 
 describe("reproduction: a Finalized sibling displaced by a rollback holds the release", () => {
   it("decides undecided on every evaluation and the incident never clears", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const rounds = await decideInTurn([evidence(), evidence(), evidence()]);
     for (const round of rounds) {
       expect(round.kind).toBe("wait");
       expect(round.reason).toContain(
-        `${SIGNED_INTENT_UNDECIDED}: this node's replaced block ${W_HEADER.toString("hex")} holds its base's slot, but block ${S_HEADER.toString("hex")} built on the same base is already ${Pending.Status.Finalized}`,
+        `${SIGNED_INTENT_UNDECIDED}: this node's replaced block ${W_HEADER.toString("hex")} holds its base's slot, but block ${S_HEADER.toString("hex")} built on the same base is already ${Pending.Status.LocallyApplied}`,
       );
       expect(round.raised).toBe(SIGNED_INTENT_UNDECIDED);
     }
-    expect(await readStatus(S_HEADER)).toBe(Pending.Status.Finalized);
+    expect(await readStatus(S_HEADER)).toBe(Pending.Status.LocallyApplied);
     expect(await readStatus(X_HEADER)).toBe(Pending.Status.PendingSubmission);
   });
 
   it("keeps the history gate closed: the expired intent stays pending at every later point", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const deferral = makeSignedIntentDeferral();
     for (const height of [200, 201, 202]) {
       const disposition = await run(
@@ -94,7 +94,7 @@ describe("reproduction: a Finalized sibling displaced by a rollback holds the re
   });
 
   it("refuses to reopen the Finalized sibling as an unlanded block", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const record = Option.getOrThrow(
       await run(Pending.retrieveByHeaderHash(S_HEADER)),
     );
@@ -111,9 +111,9 @@ describe("reproduction: a Finalized sibling displaced by a rollback holds the re
     );
     expect(Exit.isFailure(exit)).toBe(true);
     expect(failureMessage(exit)).toContain(
-      `Cannot reopen a unlanded block from journal status ${Pending.Status.Finalized}`,
+      `Cannot reopen a unlanded block from journal status ${Pending.Status.LocallyApplied}`,
     );
-    expect(await readStatus(S_HEADER)).toBe(Pending.Status.Finalized);
+    expect(await readStatus(S_HEADER)).toBe(Pending.Status.LocallyApplied);
   });
 });
 
@@ -160,7 +160,7 @@ describe("reproduction (b): the sibling at ObservedWaitingStability", () => {
 
 describe("a Finalized sibling displaced by a rollback, with canonical depth evidence", () => {
   it("waits while the winner's commit is short of the confirmation depth, then revives it and names the sibling displaced", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const rounds = await decideInTurn([atDepth(1n), atDepth(2n), atDepth(3n)]);
     for (const [index, round] of rounds.slice(0, 2).entries()) {
       expect(round.kind).toBe("wait");
@@ -175,11 +175,11 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
       raised: undefined,
     });
     // Deciding writes nothing.
-    expect(await readStatus(S_HEADER)).toBe(Pending.Status.Finalized);
+    expect(await readStatus(S_HEADER)).toBe(Pending.Status.LocallyApplied);
   });
 
   it("reads a winner's node output older than the retained chain as deeper than all of it", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const [deep, shallow] = await decideInTurn([
       evidence({ canonicalDepth: depthOf({}, 5n) }),
       evidence({ canonicalDepth: depthOf({}, 1n) }),
@@ -190,12 +190,12 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
   });
 
   it("names a locally finalized descendant of the displaced sibling displaced after it", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const child = bytes("displaced:t-header", 28);
     await run(
       insertJournal({
         header: child,
-        status: Pending.Status.Finalized,
+        status: Pending.Status.LocallyApplied,
         commit: signedCommit(`${hex("displaced:s-node-tx")}#0`, TTL + 3),
         baseOut: `${hex("displaced:s-node-tx")}#0`,
         baseHeader: S_HEADER,
@@ -221,13 +221,13 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
   });
 
   it("is the integrity failure when a descendant keeps a ledger root other than the base's", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const child = bytes("displaced:t-header", 28);
     const other = "22".repeat(32);
     await run(
       insertJournal({
         header: child,
-        status: Pending.Status.Finalized,
+        status: Pending.Status.LocallyApplied,
         commit: signedCommit(`${hex("displaced:s-node-tx")}#0`, TTL + 3),
         baseOut: `${hex("displaced:s-node-tx")}#0`,
         baseHeader: S_HEADER,
@@ -253,7 +253,7 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
   });
 
   it("is the integrity failure, never an undecided wait, when the sibling moved the ledger root", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     await run(
       Effect.flatMap(
         SqlClient.SqlClient,
@@ -274,7 +274,7 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
   });
 
   it("is the integrity failure when the sibling's signed commit is in the canonical history too", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const message = integrityFailure(
       await decideOnce(atDepth(3n, { [S_COMMIT.hash]: 7n })),
     );
@@ -284,7 +284,7 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
   });
 
   it("is the integrity failure when the sibling's node is on the queue too", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const queue = {
       root,
       nodes: [
@@ -326,7 +326,7 @@ describe("a decided release and the reason raised under its source", () => {
     );
 
   it("clears its own undecided reason, never an integrity hold raised under the same source", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     expect(await afterDecision(SIGNED_INTENT_UNDECIDED)).toEqual({
       kind: "revive",
       raised: undefined,

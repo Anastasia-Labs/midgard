@@ -79,7 +79,7 @@ export const reconcileLocalFinalizationProgram = ({
       ? journal.value[PendingBlockFinalizationsDB.Columns.STATUS]
       : null;
     const alreadyFinalized =
-      journalStatus === PendingBlockFinalizationsDB.Status.Finalized &&
+      journalStatus === PendingBlockFinalizationsDB.Status.LocallyApplied &&
       txHashes.length > 0 &&
       !unfinishedJobs.some(
         (entry) =>
@@ -165,7 +165,7 @@ export const reconcileLocalFinalizationProgram = ({
       workerOutput.type === "SuccessfulLocalFinalizationRecoveryOutput" &&
       Option.isSome(afterJournal) &&
       afterJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
-        PendingBlockFinalizationsDB.Status.Finalized &&
+        PendingBlockFinalizationsDB.Status.LocallyApplied &&
       txHashes.length > 0 &&
       !unfinishedJobs.some(
         (entry) =>

@@ -118,7 +118,7 @@ it("starts over a failed local finalization, then abandons the removed block's j
     );
     await finalizeLocally(restarted, next.submittedHeaderHash);
     expect((await readJournal(next.submittedHeaderHash))[C.STATUS]).toBe(
-      Pending.Status.Finalized,
+      Pending.Status.LocallyApplied,
     );
     expect(
       (await readLocalFinalizationJob(next.submittedHeaderHash))?.[J.STATUS],

@@ -52,9 +52,9 @@ export const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 export type JournalSpec = {
   readonly label: string;
-  readonly status: "finalized" | "abandoned" | "pending_submission";
+  readonly status: "locally_applied" | "abandoned" | "pending_submission";
   readonly endedAgoMs: number;
-  /** The journal's confirmed-merge finalization job; a finalized journal's
+  /** The journal's confirmed-merge finalization job; a locally applied journal's
    * merge has completed unless said otherwise. */
   readonly mergeJob?: "completed" | "running" | "none";
 };
@@ -96,7 +96,8 @@ export const journals = (specs: readonly JournalSpec[]) =>
           block_end_time = NOW() - make_interval(secs => ${spec.endedAgoMs / 1000})
         WHERE header_hash = ${headerHash}`;
       const mergeJob =
-        spec.mergeJob ?? (spec.status === "finalized" ? "completed" : "none");
+        spec.mergeJob ??
+        (spec.status === "locally_applied" ? "completed" : "none");
       if (mergeJob !== "none") yield* recordMergeJob(headerHash, mergeJob);
     }
   });

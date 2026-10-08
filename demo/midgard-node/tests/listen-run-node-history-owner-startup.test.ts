@@ -83,6 +83,7 @@ vi.mock("../src/services/intent-journal.js", async (importOriginal) => {
     makeIntentJournal: Effect.succeed({
       record: () => Effect.die("this wiring submits nothing"),
       holds: () => [],
+      refresh: () => Effect.void,
     }),
   };
 });

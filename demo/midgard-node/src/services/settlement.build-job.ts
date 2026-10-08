@@ -160,17 +160,21 @@ const buildJob = (
             yield* settlementCheck("inspect settlement attempt", () =>
               inspectSettlementAttempt(attempt),
             );
-            // The exact bytes are journaled before the checkpoint that leads
-            // to their first send; a refusal stops the attempt.
+            // The exact bytes are journaled in one transaction with the
+            // attempt checkpoint: a refusal of either stops the attempt and
+            // leaves neither. S6 sends the journaled bytes from there.
             yield* journal.record(
               journaledIntent(
                 "settlement",
                 `settlement:${job.kind}:${job.event_id}:${selectedPhase}`,
+                Buffer.from(job.event_id, "hex"),
               ),
               attempt.signed_cbor,
               attempt.tx_hash,
+              Journal.saveAttempt(owner, attempt).pipe(
+                Effect.provideService(SqlClient.SqlClient, sql),
+              ),
             );
-            yield* Journal.saveAttempt(owner, attempt);
             return attempt.tx_hash;
           }).pipe(
             Effect.provideService(SqlClient.SqlClient, sql),

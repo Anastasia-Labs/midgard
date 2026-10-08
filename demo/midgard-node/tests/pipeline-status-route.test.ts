@@ -26,7 +26,7 @@ import { provideDatabaseLayers } from "./utils.js";
  * here until someone deliberately marks it terminal.
  */
 const TERMINAL_STATUSES: readonly PendingBlockFinalizationsDB.Status[] = [
-  PendingBlockFinalizationsDB.Status.Finalized,
+  PendingBlockFinalizationsDB.Status.LocallyApplied,
   PendingBlockFinalizationsDB.Status.Abandoned,
 ];
 const EXPECTED_ACTIVE_STATUSES = Object.values(
@@ -159,7 +159,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
         yield* sql`INSERT INTO pending_block_finalizations ${sql.insert([
           journalRow({
             headerHash: "aa".repeat(28),
-            status: PendingBlockFinalizationsDB.Status.Finalized,
+            status: PendingBlockFinalizationsDB.Status.LocallyApplied,
             createdAt: new Date(Date.now() - 3_600_000),
             submittedTxHash: "cc".repeat(32),
           }),
@@ -182,7 +182,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.pendingBlockFinalizations.countsByStatus).toEqual({
-      finalized: "1",
+      locally_applied: "1",
       abandoned: "1",
       submitted_unconfirmed: "1",
     });
@@ -205,7 +205,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
         yield* sql`INSERT INTO pending_block_finalizations ${sql.insert([
           journalRow({
             headerHash: "aa".repeat(28),
-            status: PendingBlockFinalizationsDB.Status.Finalized,
+            status: PendingBlockFinalizationsDB.Status.LocallyApplied,
             createdAt: new Date(Date.now() - 3_600_000),
             submittedTxHash: "cc".repeat(32),
           }),
@@ -223,7 +223,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
     expect(result.status).toBe(200);
     expect(result.body.pendingBlockFinalizations.oldestActive).toBeNull();
     expect(result.body.pendingBlockFinalizations.countsByStatus).toEqual({
-      finalized: "1",
+      locally_applied: "1",
       abandoned: "1",
     });
   });

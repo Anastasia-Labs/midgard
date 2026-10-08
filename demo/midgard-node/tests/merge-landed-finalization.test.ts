@@ -104,7 +104,7 @@ const journal = ({
   readonly headerHash: string;
   readonly stored: SDK.Header;
   readonly status:
-    | typeof PendingBlockFinalizationsDB.Status.Finalized
+    | typeof PendingBlockFinalizationsDB.Status.LocallyApplied
     | typeof PendingBlockFinalizationsDB.Status.ObservedWaitingStability;
 }) =>
   Effect.gen(function* () {
@@ -150,7 +150,7 @@ const journal = ({
       Buffer.from(headerHash.padEnd(64, "7"), "hex"),
     );
     yield* PendingBlockFinalizationsDB.markObservedWaitingStability(hash, 1n);
-    if (status === PendingBlockFinalizationsDB.Status.Finalized)
+    if (status === PendingBlockFinalizationsDB.Status.LocallyApplied)
       yield* PendingBlockFinalizationsDB.markFinalized(hash);
     yield* BlocksDB.insert(hash, [
       Buffer.from(headerHash.padEnd(64, "0"), "hex"),
@@ -161,7 +161,7 @@ const finalizedJournal = ({ header, headerHash }: Block) =>
   journal({
     headerHash,
     stored: header,
-    status: PendingBlockFinalizationsDB.Status.Finalized,
+    status: PendingBlockFinalizationsDB.Status.LocallyApplied,
   });
 
 /** L1's confirmed state naming `headerHash`. */
@@ -248,7 +248,7 @@ describe("landed-merge finalization walk", () => {
           journal({
             headerHash: landed.headerHash,
             stored: forged.header,
-            status: PendingBlockFinalizationsDB.Status.Finalized,
+            status: PendingBlockFinalizationsDB.Status.LocallyApplied,
           }),
           confirmedAt(landed.headerHash),
         ),

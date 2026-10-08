@@ -182,12 +182,12 @@ const recoverFromQueue = Effect.flatMap(reportedOnQueue, (canonicalHeaders) =>
 describe("a replaced block reported on the queue after its other-incarnation replacement", () => {
   it("is the integrity failure once the replacement is locally finalized", async () => {
     const exit = await run(
-      seedReplacedPair(Pending.Status.Finalized).pipe(
+      seedReplacedPair(Pending.Status.LocallyApplied).pipe(
         Effect.zipRight(recoverFromQueue),
       ),
     );
     expect(integrityDetail(exit)).toContain(
-      siblingNamed(Pending.Status.Finalized),
+      siblingNamed(Pending.Status.LocallyApplied),
     );
   });
 
@@ -195,7 +195,7 @@ describe("a replaced block reported on the queue after its other-incarnation rep
     { case: "the replacement is abandoned", status: Pending.Status.Abandoned },
     {
       case: "the shared base header is the root, which names no incarnation",
-      status: Pending.Status.Finalized,
+      status: Pending.Status.LocallyApplied,
       baseHeader: ROOT_HEADER,
     },
   ])("only warns when $case", async ({ status, baseHeader }) => {

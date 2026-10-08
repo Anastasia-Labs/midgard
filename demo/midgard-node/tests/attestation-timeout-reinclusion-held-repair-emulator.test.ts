@@ -297,7 +297,7 @@ it("holds the repair when the removed chain stops proving after the native root 
     expect((await readSqlLedgerRoot()).root_hex).toBe(sqlRoot);
     expect(await readDeposits()).toEqual(deposits);
     expect((await readJournal(removedHeader))[C.STATUS]).toBe(
-      Pending.Status.Finalized,
+      Pending.Status.LocallyApplied,
     );
     expect((await readRecoveryPlans()).map(({ state }) => state)).toEqual([
       "prepared",
@@ -460,7 +460,7 @@ it("rolls back every repair write when the plan cannot be marked applied, and co
     expect((await readSqlLedgerRoot()).root_hex).toBe(sqlRoot);
     expect(await readDeposits()).toEqual(deposits);
     expect((await readJournal(removedHeader))[C.STATUS]).toBe(
-      Pending.Status.Finalized,
+      Pending.Status.LocallyApplied,
     );
     expect((await readRecoveryPlans()).map(({ state }) => state)).toEqual([
       "prepared",

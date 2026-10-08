@@ -135,9 +135,15 @@ beforeEach(async () => {
       yield* journal(W_HEADER, Pending.Status.Abandoned, W_COMMIT, 2_000_000, {
         abandonment: "replacement",
       });
-      yield* journal(S_HEADER, Pending.Status.Finalized, S_COMMIT, 3_000_000, {
-        empty: true,
-      });
+      yield* journal(
+        S_HEADER,
+        Pending.Status.LocallyApplied,
+        S_COMMIT,
+        3_000_000,
+        {
+          empty: true,
+        },
+      );
     }),
   );
 });
@@ -156,14 +162,14 @@ describe("displacement", () => {
       Effect.flatMap(
         SqlClient.SqlClient,
         (sql) => sql`UPDATE pending_block_finalizations
-          SET status = ${Pending.Status.Finalized} WHERE header_hash = ${T_HEADER}`,
+          SET status = ${Pending.Status.LocallyApplied} WHERE header_hash = ${T_HEADER}`,
       ),
     );
     expect(await displace()).toEqual({ displaced: [S, T] });
   });
 
   it("refuses a root-preserving descendant whose base root is not its parent's root", async () => {
-    await run(child(Pending.Status.Finalized));
+    await run(child(Pending.Status.LocallyApplied));
     await run(
       Effect.flatMap(
         SqlClient.SqlClient,

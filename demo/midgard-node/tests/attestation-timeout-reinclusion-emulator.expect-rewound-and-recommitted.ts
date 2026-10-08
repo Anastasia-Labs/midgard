@@ -57,7 +57,7 @@ export const nativeRoot = async (handle: Pick<Handle, "evidence">) => {
 export const captureRemoved = async (headers: readonly string[]) => {
   const journals = await Promise.all(headers.map(readJournal));
   for (const journal of journals) {
-    expect(journal[C.STATUS]).toBe(Pending.Status.Finalized);
+    expect(journal[C.STATUS]).toBe(Pending.Status.LocallyApplied);
     expect(journal[C.CORRECTION_TRANSITION_DIGEST] ?? null).toBeNull();
   }
   return journals.map((journal) => ({
@@ -167,7 +167,7 @@ export const expectUnobservedRemoval = async (
   if (cursorQueue !== undefined)
     expect((await readObserver()).cursorQueue).toEqual(cursorQueue);
   const journal = await readJournal(removed[0]!.headerHash);
-  expect(journal[C.STATUS]).toBe(Pending.Status.Finalized);
+  expect(journal[C.STATUS]).toBe(Pending.Status.LocallyApplied);
   expect(journal[C.CORRECTION_TRANSITION_DIGEST] ?? null).toBeNull();
   expect((await readDeposits())[0]).toEqual({
     status: "projected",
@@ -213,7 +213,7 @@ export const expectOwedAndUnreincluded = async (
 ) => {
   for (const block of removed) {
     const journal = await readJournal(block.headerHash);
-    expect(journal[C.STATUS]).toBe(Pending.Status.Finalized);
+    expect(journal[C.STATUS]).toBe(Pending.Status.LocallyApplied);
     expect(journal[C.CORRECTION_TRANSITION_DIGEST] ?? null).toBeNull();
   }
   expect((await readDeposits()).slice(-removed.length)).toEqual(

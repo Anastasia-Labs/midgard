@@ -34,6 +34,8 @@ export type FollowerOperatorSet = Readonly<{
   hook: DriverHook | undefined;
   /** Records the landed queue's tail of the current driver run. */
   setStateQueueTail: (tail: StateQueueTail) => void;
+  /** This operator's key hash; undefined when it is unreadable. */
+  ownKey: string | undefined;
 }>;
 
 export const followerOperatorSet = (options: {
@@ -59,7 +61,11 @@ export const followerOperatorSet = (options: {
       yield* Effect.logWarning(
         `L1 follower: no operator-set hook, the operator key is unreadable: ${ownKey.left.message}`,
       );
-      return { hook: undefined, setStateQueueTail } as FollowerOperatorSet;
+      return {
+        hook: undefined,
+        setStateQueueTail,
+        ownKey: undefined,
+      } as FollowerOperatorSet;
     }
     const hook = operatorSetHook({
       store,
@@ -92,5 +98,9 @@ export const followerOperatorSet = (options: {
           }),
         ),
     });
-    return { hook, setStateQueueTail } as FollowerOperatorSet;
+    return {
+      hook,
+      setStateQueueTail,
+      ownKey: ownKey.right,
+    } as FollowerOperatorSet;
   });

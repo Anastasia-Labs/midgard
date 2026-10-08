@@ -3,11 +3,6 @@ import { CML, OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect, vi } from "vitest";
 
-import {
-  liveRebroadcastDeps,
-  rebroadcastOnce,
-  type RebroadcastState,
-} from "../../src/fibers/signed-intent-rebroadcast.js";
 import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../../src/workers/utils/commit-end-time.js";
 import {
   advanceEmulatorToDueWork,
@@ -182,28 +177,4 @@ export const commitRefusedAsUnknownInputs = async (
     invalidBefore: signedInvalidBefore(signed),
     baseOutRef: tail!.outRef,
   };
-};
-
-/** The rebroadcast fiber's pass over the node's live dependencies, on a
- * clock the test moves, recording every body it submits. */
-export const liveRebroadcaster = async (h: Lifecycle) => {
-  const deps = await h.runWithoutSynchronizing(liveRebroadcastDeps);
-  const submitted: string[] = [];
-  const state: RebroadcastState = new Map();
-  const clock = { now: 0 };
-  const once = () =>
-    Effect.runPromise(
-      rebroadcastOnce(
-        {
-          ...deps,
-          submit: (cbor) => {
-            submitted.push(cbor);
-            return deps.submit(cbor);
-          },
-          nowMs: () => clock.now,
-        },
-        state,
-      ),
-    );
-  return { once, submitted, clock };
 };

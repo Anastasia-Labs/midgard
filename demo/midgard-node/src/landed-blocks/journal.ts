@@ -12,8 +12,8 @@ const Journals = PendingBlockFinalizationsDB;
 const statusOf = (
   status: PendingBlockFinalizationsDB.Status,
 ): OwnJournal["status"] =>
-  status === Journals.Status.Finalized
-    ? "finalized"
+  status === Journals.Status.LocallyApplied
+    ? "locally_applied"
     : status === Journals.Status.Abandoned
       ? "abandoned"
       : "active";

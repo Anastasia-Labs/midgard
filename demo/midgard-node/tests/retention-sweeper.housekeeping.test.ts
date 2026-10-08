@@ -128,7 +128,7 @@ const seed = Effect.gen(function* () {
   yield* journals(
     JOURNALS.map((label, index) => ({
       label,
-      status: "finalized" as const,
+      status: "locally_applied" as const,
       endedAgoMs: (40 - index) * DAY_MS,
     })),
   );

@@ -25,7 +25,12 @@ export const followingAtTip = (
     replaying: false,
     events: 1,
     lastError: null,
-    prune: { steps: 0, prunedThroughSlot: null, lastError: null },
+    prune: {
+      steps: 0,
+      prunedThroughSlot: null,
+      lastError: null,
+      failures: 0,
+    },
     ...change,
   };
   return { ...status, readiness: readinessOf(status) };

@@ -1,3 +1,6 @@
+// Loaded before the deployment's first submission, so its capture is complete.
+import "./helpers/emulator-chain-capture.js";
+
 import { randomUUID } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";

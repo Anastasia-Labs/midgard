@@ -113,7 +113,7 @@ const REMOVED_STATUSES: readonly PendingBlockFinalizationsDB.Status[] = [
   Status.SubmittedLocalFinalizationPending,
   Status.SubmittedUnconfirmed,
   Status.ObservedWaitingStability,
-  Status.Finalized,
+  Status.LocallyApplied,
 ];
 /** Journal statuses of a block this node never observed on L1. Observed and
  * finalized journals landed; they are never treated as unlanded. The one
@@ -130,7 +130,7 @@ export const LOCALLY_FINALIZED_STATUSES: readonly PendingBlockFinalizationsDB.St
   [
     Status.SubmittedUnconfirmed,
     Status.ObservedWaitingStability,
-    Status.Finalized,
+    Status.LocallyApplied,
   ];
 
 /** Terminal abandonment of a reopened journal that never reached a submitted

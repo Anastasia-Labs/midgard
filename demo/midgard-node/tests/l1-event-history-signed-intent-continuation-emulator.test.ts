@@ -518,7 +518,9 @@ it("retains the original signed intent through an accepted queue pointer continu
     expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
       accepted.txHash,
     );
-    expect(finalRow[Pending.Columns.STATUS]).toBe(Pending.Status.Finalized);
+    expect(finalRow[Pending.Columns.STATUS]).toBe(
+      Pending.Status.LocallyApplied,
+    );
     expect(
       h.receipts.filter(
         ({ transaction }) => transaction.txHash === accepted!.txHash,

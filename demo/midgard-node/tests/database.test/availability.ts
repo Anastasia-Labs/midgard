@@ -544,8 +544,14 @@ export const registerAvailabilityTests = () => {
             yield* sql`INSERT INTO ${sql(
               PendingBlockFinalizationsDB.tableName,
             )} ${sql.insert([
-              row(missingHeader, PendingBlockFinalizationsDB.Status.Finalized),
-              row(coveredHeader, PendingBlockFinalizationsDB.Status.Finalized),
+              row(
+                missingHeader,
+                PendingBlockFinalizationsDB.Status.LocallyApplied,
+              ),
+              row(
+                coveredHeader,
+                PendingBlockFinalizationsDB.Status.LocallyApplied,
+              ),
               row(
                 activeHeader,
                 PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,

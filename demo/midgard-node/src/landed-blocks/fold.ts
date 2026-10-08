@@ -190,11 +190,11 @@ export const foldToRoot = <R>(ports: LandedBlockPorts<R>, root: HeaderRoot) =>
         continue;
       }
       const journal = yield* ports.ownJournal(next.headerHash);
-      if (journal?.status !== "finalized")
+      if (journal?.status !== "locally_applied")
         return {
           kind: "held",
           hold: behind(
-            `own merged block ${next.headerHash} is not locally finalized yet (journal ${journal?.status ?? "missing"})`,
+            `own merged block ${next.headerHash} is not locally applied yet (journal ${journal?.status ?? "missing"})`,
           ),
         } satisfies FoldOutcome;
       const finalized = yield* Effect.either(

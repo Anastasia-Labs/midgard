@@ -12,7 +12,7 @@ import type { ReplayInput, ReplayOutcome } from "./replay.js";
 
 /** This node's journal of a block it committed, as processing reads it. */
 export type OwnJournal = Readonly<{
-  status: "active" | "finalized" | "abandoned";
+  status: "active" | "locally_applied" | "abandoned";
   baseTailHeaderHash: string;
   baseUtxosRoot: string;
   expectedUtxosRoot: string;

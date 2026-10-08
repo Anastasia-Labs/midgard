@@ -68,7 +68,7 @@ const winnerAt = (depth: number) => ({
 });
 
 const displacedState = Effect.gen(function* () {
-  yield* seedDisplaced(Pending.Status.Finalized);
+  yield* seedDisplaced(Pending.Status.LocallyApplied);
   yield* withNativeReplay(X_HEADER);
 });
 
@@ -107,7 +107,7 @@ describe("the production release over a locally finalized sibling an L1 rollback
     expect(result.short.reasons).toContain("signed_intent_undecided");
     expect(result.before).toMatchObject({
       w: { status: Pending.Status.Abandoned },
-      s: { status: Pending.Status.Finalized },
+      s: { status: Pending.Status.LocallyApplied },
       x: { status: Pending.Status.PendingSubmission },
       plans: [],
     });
@@ -141,7 +141,7 @@ describe("the production release over a locally finalized sibling an L1 rollback
         // T built on S, locally finalized, changing no ledger state.
         yield* insertJournal({
           header: child,
-          status: Pending.Status.Finalized,
+          status: Pending.Status.LocallyApplied,
           commit: signedCommit(`${hex("displaced:s-node-tx")}#0`, TTL + 3),
           baseOut: `${hex("displaced:s-node-tx")}#0`,
           baseHeader: S_HEADER,
@@ -193,7 +193,7 @@ describe("the production release over a locally finalized sibling an L1 rollback
     expect(result.held.raised.get(SOURCE)).toBe("signed_intent_undecided");
     expect(result.after).toMatchObject({
       w: { status: Pending.Status.Abandoned },
-      s: { status: Pending.Status.Finalized },
+      s: { status: Pending.Status.LocallyApplied },
       x: { status: Pending.Status.PendingSubmission },
       plans: [],
     });

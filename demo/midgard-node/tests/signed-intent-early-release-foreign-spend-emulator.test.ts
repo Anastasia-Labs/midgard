@@ -2,10 +2,6 @@ import { expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import {
-  REBROADCAST_ACCEPTED_WAIT_MS,
-  REBROADCAST_INITIAL_DELAY_MS,
-} from "../src/fibers/signed-intent-rebroadcast.js";
-import {
   closeLifecycle,
   commitNextBlock,
   finalizeLocally,
@@ -16,10 +12,7 @@ import {
   C,
   finalizeBaseAndAdmitDeposit,
 } from "./helpers/signed-intent-early-release.js";
-import {
-  commitRefusedAsUnknownInputs,
-  liveRebroadcaster,
-} from "./helpers/signed-intent-early-release.refused-submit.js";
+import { commitRefusedAsUnknownInputs } from "./helpers/signed-intent-early-release.refused-submit.js";
 import {
   expectReplaced,
   expectUnreplaced,
@@ -76,12 +69,6 @@ it("replaces, well before its TTL, a signed commit the provider refused because 
     const depositId = E.journal.depositEventIds[0]!;
     const untouched = await snapshotUnreplaced(E.header);
 
-    // Bytes whose base output is spent are never resubmitted.
-    const rebroadcast = await liveRebroadcaster(h);
-    expect(await rebroadcast.once()).toBe("first_seen");
-    rebroadcast.clock.now += REBROADCAST_INITIAL_DELAY_MS;
-    expect(await rebroadcast.once()).toBe("base_spent");
-    expect(rebroadcast.submitted).toEqual([]);
     // Nothing is decided before a source point shows the spend.
     await expectUnreplaced(E.header, untouched);
 
@@ -114,7 +101,7 @@ it("replaces, well before its TTL, a signed commit the provider refused because 
   }
 }, 900_000);
 
-it("never replaces a signed commit that a lagging provider refused as spending unknown inputs while its base output is unspent: its exact bytes are rebroadcast once, land and are finalized", async () => {
+it("never replaces a signed commit that a lagging provider refused as spending unknown inputs while its base output is unspent: its exact bytes, sent again, land and are finalized", async () => {
   const h = await openHistoryProductionOwnerLifecycle();
   try {
     const { base, inclusion } = await finalizeBaseAndAdmitDeposit(h);
@@ -132,16 +119,9 @@ it("never replaces a signed commit that a lagging provider refused as spending u
     await synchronizeWithin(h);
     await expectUnreplaced(E.header, untouched);
 
-    // The rebroadcast resubmits the journaled bytes unchanged; they land.
-    const rebroadcast = await liveRebroadcaster(h);
-    expect(await rebroadcast.once()).toBe("first_seen");
-    rebroadcast.clock.now += REBROADCAST_INITIAL_DELAY_MS;
-    expect(await rebroadcast.once()).toBe("submitted");
-    expect(rebroadcast.submitted).toEqual([E.signed.toString("hex")]);
-    // Accepted: not resubmitted while it waits to land.
-    rebroadcast.clock.now += REBROADCAST_INITIAL_DELAY_MS;
-    expect(await rebroadcast.once()).toBe("accepted");
-    expect(rebroadcast.submitted).toHaveLength(1);
+    // S6, the one sender of journaled bytes, sends them again unchanged
+    // (no follower runs here, so the test sends them); they land.
+    await h.fixture.emulator.submitTx(E.signed.toString("hex"));
     expect(await h.fixture.operatorLucid.awaitTx(E.txHash)).toBe(true);
     vi.setSystemTime(new Date(h.fixture.emulator.now()));
     expect(h.fixture.emulator.slot).toBeLessThan(E.ttl - 1);
@@ -156,10 +136,6 @@ it("never replaces a signed commit that a lagging provider refused as spending u
       E.header,
     );
     expect(await readPlans()).toEqual([]);
-    // Landed: nothing is left to rebroadcast.
-    rebroadcast.clock.now += REBROADCAST_ACCEPTED_WAIT_MS;
-    expect(await rebroadcast.once()).toBe("none");
-    expect(rebroadcast.submitted).toHaveLength(1);
   } finally {
     await closeLifecycle(h);
   }

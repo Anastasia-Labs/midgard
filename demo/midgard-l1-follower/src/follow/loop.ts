@@ -97,7 +97,7 @@ export const followChain = async (
     replaying: false,
     events: 0,
     lastError: null,
-    prune: { steps: 0, prunedThroughSlot: null, lastError: null },
+    prune: { steps: 0, prunedThroughSlot: null, lastError: null, failures: 0 },
   };
   let status: FollowStatus = { ...initial, readiness: readinessOf(initial) };
   const publish = async (
@@ -178,7 +178,11 @@ export const followChain = async (
       if (pruned.kind === "error") {
         log(`prune failed: ${pruned.error.message}`);
         await publish({
-          prune: { ...status.prune, lastError: pruned.error.message },
+          prune: {
+            ...status.prune,
+            lastError: pruned.error.message,
+            failures: status.prune.failures + 1,
+          },
         });
       }
       return;
@@ -189,6 +193,7 @@ export const followChain = async (
         steps: status.prune.steps + 1,
         prunedThroughSlot: pruned.prunedThroughSlot,
         lastError: null,
+        failures: 0,
       },
     });
   };

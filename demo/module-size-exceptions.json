@@ -976,8 +976,8 @@
   },
   {
     "file": "midgard-node/src/transactions/reference-publication.publish-reference-scripts.ts",
-    "max": 695,
-    "reason": "publishReferenceScripts is the dominant indivisible declaration (659 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+10): each publication and funding transaction's exact bytes are recorded in the intent journal before the first send."
+    "max": 684,
+    "reason": "publishReferenceScripts is the dominant indivisible declaration (659 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+10): each publication and funding transaction's exact bytes are recorded in the intent journal before the first send. I1-fix (-11): every publication transaction goes through the node's one submit seam, which journals it."
   },
   {
     "file": "midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts",
@@ -1096,8 +1096,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/availability.ts",
-    "max": 616,
-    "reason": "registerAvailabilityTests is the dominant indivisible declaration (593 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 622,
+    "reason": "registerAvailabilityTests is the dominant indivisible declaration (593 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1-fix (+6): the finalized status is renamed locally_applied (I1-E1 option B), whose longer name wraps."
   },
   {
     "file": "midgard-node/tests/database.test/finalization.register-finalization-tests.ts",
@@ -1126,13 +1126,13 @@
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-merge-payout.test.ts",
-    "max": 1185,
-    "reason": "Retained test registration “deposit flow emulator” (1094 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 1200,
+    "reason": "Retained test registration “deposit flow emulator” (1094 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1-fix (+15): the payout journey's journaled intents are replayed onto a follower of its chain, the one real flow that reaches the reserve-payout family."
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-shared.ts",
-    "max": 1868,
-    "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API. N2 (+21): the harness mirrors the emulator's state queue into the node's follower facts (P1) before it opens an owner and after each block, since the node reads its queue only from P1. N6 (+9): node commands run after the emulator's events are mirrored into the follower's event rows, since settlement opens an event by id from those rows (NC13). I1 (+3): the submissions and the node commands run under the journal of a process with no follower."
+    "max": 1870,
+    "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API. N2 (+21): the harness mirrors the emulator's state queue into the node's follower facts (P1) before it opens an owner and after each block, since the node reads its queue only from P1. N6 (+9): node commands run after the emulator's events are mirrored into the follower's event rows, since settlement opens an event by id from those rows (NC13). I1 (+3): the submissions and the node commands run under the journal of a process with no follower. I1-fix (+2): that journal keeps what it journals, so a flow's intents can be replayed onto a follower of its chain."
   },
   {
     "file": "midgard-node/tests/event-history-journal.test.ts",
@@ -1231,8 +1231,8 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-parent-lease-emulator.test.ts",
-    "max": 590,
-    "reason": "Retained test registration “fails the parent operation lease after accepted response loss while a later lease preserves and then reconciles the signed intent” (544 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. N2 (+2): the replacement attempt now stops on the landed queue's named no_root reason, explained where it is asserted. I1 (+1): the submissions run under the journal of a process with no follower."
+    "max": 592,
+    "reason": "Retained test registration “fails the parent operation lease after accepted response loss while a later lease preserves and then reconciles the signed intent” (544 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. N2 (+2): the replacement attempt now stops on the landed queue's named no_root reason, explained where it is asserted. I1 (+1): the submissions run under the journal of a process with no follower. I1-fix (+2): the finalized status is renamed locally_applied (I1-E1 option B), whose longer name wraps."
   },
   {
     "file": "midgard-node/tests/l1-event-history-projection-native-assets-emulator.test.ts",
@@ -1251,8 +1251,8 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-signed-intent-continuation-emulator.test.ts",
-    "max": 576,
-    "reason": "Retained test registration “retains the original signed intent through an accepted queue pointer continuation before local confirmation” (545 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 578,
+    "reason": "Retained test registration “retains the original signed intent through an accepted queue pointer continuation before local confirmation” (545 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1-fix (+2): the finalized status is renamed locally_applied (I1-E1 option B), whose longer name wraps."
   },
   {
     "file": "midgard-node/tests/l1-event-history-source-owner-emulator.test.ts",

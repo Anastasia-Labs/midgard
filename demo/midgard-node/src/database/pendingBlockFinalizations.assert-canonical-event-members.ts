@@ -165,7 +165,7 @@ export const markSubmitted = (
             THEN ${Status.SubmittedLocalFinalizationPending} ELSE ${sql(Columns.STATUS)} END,
           ${sql(Columns.UPDATED_AT)} = NOW()
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
-        AND ${sql(Columns.STATUS)} IN ${sql.in([...ACTIVE_STATUSES, Status.Finalized])}
+        AND ${sql(Columns.STATUS)} IN ${sql.in([...ACTIVE_STATUSES, Status.LocallyApplied])}
         AND (${sql(Columns.INTENDED_TX_HASH)} = ${submittedTxHash} OR (${sql(Columns.INTENDED_TX_HASH)} IS NULL AND ${Option.isNone(owned)}))
         AND (${sql(Columns.SUBMITTED_TX_HASH)} IS NULL OR ${sql(Columns.SUBMITTED_TX_HASH)} = ${submittedTxHash})
       RETURNING *`;

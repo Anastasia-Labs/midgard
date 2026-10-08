@@ -40,7 +40,7 @@ it.each([false, true])(
     const r = await completedChainReturnScenario(fixture, { movingWinner });
     expect(r.initial.failure).toBeUndefined();
     expect(r.original.map((p) => p.state)).toEqual(["applied"]);
-    expect(r.afterCompleted.w?.status).toBe(Pending.Status.Finalized);
+    expect(r.afterCompleted.w?.status).toBe(Pending.Status.LocallyApplied);
     expect(r.afterCompleted.native).toBe(r.afterCompleted.ledger);
     expect(r.parentPrepared.s?.status).toBe(
       Pending.Status.ObservedWaitingStability,
@@ -51,7 +51,7 @@ it.each([false, true])(
     expect(r.beforeParentFinalization.child?.status).toBe(
       Pending.Status.Abandoned,
     );
-    expect(r.childPrepared?.s?.status).toBe(Pending.Status.Finalized);
+    expect(r.childPrepared?.s?.status).toBe(Pending.Status.LocallyApplied);
     expect(r.childPrepared?.child?.status).toBe(
       Pending.Status.ObservedWaitingStability,
     );
@@ -59,8 +59,8 @@ it.each([false, true])(
     expect(r.childPrepared?.pending).toBe(true);
     expect(r.final.native).toBe(CHILD_ROOT);
     expect(r.final.ledger).toBe(CHILD_ROOT);
-    expect(r.final.s?.status).toBe(Pending.Status.Finalized);
-    expect(r.final.child?.status).toBe(Pending.Status.Finalized);
+    expect(r.final.s?.status).toBe(Pending.Status.LocallyApplied);
+    expect(r.final.child?.status).toBe(Pending.Status.LocallyApplied);
     expect(r.final.w?.status).toBe(Pending.Status.Abandoned);
     expect(r.final.plans.every((p) => p.state === "applied")).toBe(true);
     expect(r.again.failure).toBeUndefined();
@@ -96,7 +96,7 @@ it("never restores an absent descendant after a completed displacement", async (
   expect(r.final.native).toBe(PREFIX_ROOT);
   expect(r.final.ledger).toBe(PREFIX_ROOT);
   expect(r.final.child?.status).toBe(Pending.Status.Abandoned);
-  expect(r.final.s?.status).toBe(Pending.Status.Finalized);
+  expect(r.final.s?.status).toBe(Pending.Status.LocallyApplied);
 });
 it.each(["queue link", "native link", "historical child"] as const)(
   "keeps unsupported multiple landing evidence held for %s",

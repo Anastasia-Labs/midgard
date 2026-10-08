@@ -44,19 +44,21 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 
+import { migrationByVersion } from "../../src/database/migrations/index.js";
 import {
   IntentJournal,
+  intentJournalOver,
   type IntentJournalService,
-  recordSignedIntent,
 } from "../../src/services/intent-journal.js";
-import {
-  createNodeIntentStage,
-  nodeFamilyPredicate,
-} from "../../src/services/l1-follower.intents.js";
+import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
+import { createNodeIntentStage } from "../../src/services/l1-follower.intents.js";
 import type { testDatabases } from "./l1-events-store.js";
 import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
 
 export const EMULATOR_K = 6;
+
+/** `0010_intent_refusal_holds`. */
+const INTENT_REFUSAL_HOLDS_MIGRATION = 10;
 
 const addressBytes = (bech32: string): Buffer =>
   Buffer.from(getAddressDetails(bech32).address.hex, "hex");
@@ -222,18 +224,15 @@ export const openIntentEmulator = async (
     PgClient.layer({ url: Redacted.make(connectionString) }),
   );
   const sql = await runtime.runPromise(SqlClient.SqlClient);
+  // The node table the journal keeps its refusal holds in, as the node
+  // database (where the follower's tables live) has it.
+  await runtime.runPromise(
+    sql.unsafe(migrationByVersion.get(INTENT_REFUSAL_HOLDS_MIGRATION)!.sql),
+  );
   const isOwnOutput = (output: OutputSummary) =>
     output.address.equals(ownAddress);
-  /** The production journal over the node database, as `IntentJournalLive` records. */
-  const journal: IntentJournalService = {
-    record: (intent, signedTxCbor, txHash) =>
-      intent.kind === "unjournaled"
-        ? Effect.die("the emulator journal takes journaled intents")
-        : recordSignedIntent(intent, signedTxCbor, txHash, isOwnOutput).pipe(
-            Effect.provideService(SqlClient.SqlClient, sql),
-          ),
-    holds: () => [],
-  };
+  /** The production journal over the node database (`IntentJournalLive`'s). */
+  const journal: IntentJournalService = intentJournalOver(sql, isOwnOutput);
   const journalLayer = Layer.succeed(IntentJournal, journal);
   const record = (
     ...args: Parameters<IntentJournalService["record"]>
@@ -244,8 +243,13 @@ export const openIntentEmulator = async (
     transport: transport as never,
     securityParameter: EMULATOR_K,
     seededAddresses: [ownAddress],
-    // No intent here names a header, so the predicate reads no projection.
-    wanted: nodeFamilyPredicate(store, SIM_QUEUE_CONFIG),
+    wanted: nodeFamilyPredicate({
+      store,
+      stateQueue: SIM_QUEUE_CONFIG,
+      operatorSet: null,
+      slotToPosixMs: (slot) => slot * 1000,
+      horizonLagBlocks: 0,
+    }),
     log: () => undefined,
   });
 
@@ -255,6 +259,7 @@ export const openIntentEmulator = async (
     await store.close();
   };
   return {
+    connectionString,
     emulator,
     own,
     payee,

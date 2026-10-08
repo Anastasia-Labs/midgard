@@ -141,7 +141,7 @@ const reversal = (
         yield* withNativeReplay(W_HEADER);
         yield* journal(
           S_HEADER,
-          Pending.Status.Finalized,
+          Pending.Status.LocallyApplied,
           S_COMMIT,
           3_000_000,
           {
@@ -159,7 +159,7 @@ const reversal = (
         // W's local finalization completes.
         yield* sql(
           (sql) => sql`UPDATE pending_block_finalizations
-            SET status = ${Pending.Status.Finalized}
+            SET status = ${Pending.Status.LocallyApplied}
             WHERE header_hash = ${W_HEADER}`,
         );
         owner.durableRoot = wChangedTheLedger ? "00".repeat(32) : UTXOS_ROOT;
@@ -204,7 +204,7 @@ const reversal = (
         if (repeatCycle) {
           yield* sql(
             (sql) =>
-              sql`UPDATE pending_block_finalizations SET status = ${Pending.Status.Finalized} WHERE header_hash = ${S_HEADER}`,
+              sql`UPDATE pending_block_finalizations SET status = ${Pending.Status.LocallyApplied} WHERE header_hash = ${S_HEADER}`,
           );
           yield* observerNow({
             headerHash: W_HEADER.toString("hex"),
@@ -215,7 +215,7 @@ const reversal = (
           cycleAttempts.push(yield* revival(node));
           yield* sql(
             (sql) =>
-              sql`UPDATE pending_block_finalizations SET status = ${Pending.Status.Finalized} WHERE header_hash = ${W_HEADER}`,
+              sql`UPDATE pending_block_finalizations SET status = ${Pending.Status.LocallyApplied} WHERE header_hash = ${W_HEADER}`,
           );
           owner.durableRoot = "00".repeat(32);
           yield* sql(
@@ -334,7 +334,7 @@ describe("a displacement undone by a rollback deeper than the confirmation depth
             );
             yield* journal(
               S_HEADER,
-              Pending.Status.Finalized,
+              Pending.Status.LocallyApplied,
               S_COMMIT,
               3_000_000,
             );
@@ -345,7 +345,7 @@ describe("a displacement undone by a rollback deeper than the confirmation depth
             yield* withNativeReplay(S_HEADER);
             yield* insertJournal({
               header: child,
-              status: Pending.Status.Finalized,
+              status: Pending.Status.LocallyApplied,
               commit: signedCommit(S_NODE_OUT, TTL + 5),
               baseOut: S_NODE_OUT,
               baseHeader: S_HEADER,
@@ -393,7 +393,7 @@ describe("a displacement undone by a rollback deeper than the confirmation depth
         expect(result.again.failure).toBeUndefined();
         expect(result.after.plans).toEqual(["applied"]);
         expect(result.child).toBe(Pending.Status.Abandoned);
-        expect(result.after.s).toBe(Pending.Status.Finalized);
+        expect(result.after.s).toBe(Pending.Status.LocallyApplied);
         expect(owner.durableRoot).toBe(siblingRoot);
         expect(result.after.ledger).toBe(siblingRoot);
         expect(owner.restores).toBe(2);
@@ -430,7 +430,7 @@ describe("retained displacement after a branch return", () => {
     );
     expect(result.after.plans).toEqual([]);
     expect(result.durableRoot).toBe(result.after.ledger);
-    expect(result.after.w).toBe(Pending.Status.Finalized);
+    expect(result.after.w).toBe(Pending.Status.LocallyApplied);
     expect(result.after.s).toBe(Pending.Status.Abandoned);
     for (const attempt of result.reversed)
       expect(attempt.failure).toBeUndefined();
@@ -443,7 +443,7 @@ describe("retained displacement after a branch return", () => {
     expect(result.retained).toEqual(["prepared"]);
     expect(result.after.plans).not.toContain("prepared");
     expect(result.after).toMatchObject({
-      w: Pending.Status.Finalized,
+      w: Pending.Status.LocallyApplied,
       s: Pending.Status.Abandoned,
       ledger: "00".repeat(32),
     });

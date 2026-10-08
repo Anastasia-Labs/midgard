@@ -9,13 +9,8 @@
  * - The tracked set covers the journal's invariant (§8.2): the node's own
  *   wallets, the reference-script addresses, and the protocol validators'
  *   payment credentials, with the hub-oracle policy for the protocol-init tx.
- * - Family predicates (§8.4) are reads over projections. A live intent's
- *   inputs, reference inputs and collaterals are all unspent facts, so
- *   everything a family's predicate says about those outputs (the commit's
- *   tail, the merge's head and confirmed node, the operator-set nodes) is
- *   already decided by the status. What remains is read here: an
- *   attestation, a timeout correction or a merge still names a header the
- *   landed queue (P1) holds.
+ * - Family predicates (§8.4) are reads over projections
+ *   (`l1-follower.intent-predicates.ts`), passed in as `wanted`.
  * - A failed pass, or an intent whose mempool read, predicate or submission
  *   failed, is a named transient `/readyz` hold, retried on the follower's
  *   backoff. The process stays up.
@@ -32,22 +27,11 @@ import {
 } from "@al-ft/midgard-l1-follower";
 
 import type { DriverHold } from "../l1-events/driver.js";
-import {
-  readLandedStateQueueFrom,
-  type StateQueueProjectionConfig,
-} from "../l1-state-queue/index.js";
 
 /** An S6 pass failed as a whole (the store read); the next trigger retries. */
 export const INTENT_RECONCILE_FAILED = "intent_reconcile_failed";
 /** An intent's mempool read, predicate or submission failed this pass. */
 export const INTENT_RECONCILE_TRANSIENT = "intent_reconcile_transient";
-
-/** The families whose predicate reads the header they name in P1. */
-const HEADER_FAMILIES: ReadonlySet<string> = new Set([
-  "attest",
-  "correction",
-  "merge",
-]);
 
 /**
  * The node follower's protocol tracked set (§8.2's invariant plus protocol
@@ -62,30 +46,6 @@ export const nodeIntentTrackedSet = (input: {
   paymentCredentials: new Set(input.protocolPaymentCredentials),
   policies: new Set([input.hubOraclePolicyId]),
 });
-
-/**
- * The §8.4 predicate over the projections: true unless the intent names a
- * header (attestation, correction, merge) the healthy landed queue no longer
- * holds. An unreadable or unhealthy queue throws: transient, never abandon.
- */
-export const nodeFamilyPredicate =
-  (
-    store: Pick<FactStore, "dialect" | "transaction">,
-    stateQueue: StateQueueProjectionConfig,
-  ) =>
-  async (state: IntentState): Promise<boolean> => {
-    const { family, contentRef } = state.intent;
-    if (!HEADER_FAMILIES.has(family) || contentRef === null) return true;
-    const read = await readLandedStateQueueFrom(store, stateQueue);
-    if (read.kind !== "ok")
-      throw new Error(`the landed state queue is unreadable: ${read.detail}`);
-    if (!read.queue.healthy)
-      throw new Error(
-        `the landed state queue is unhealthy (${read.queue.reason ?? "unknown"})`,
-      );
-    const header = contentRef.toString("hex");
-    return read.queue.nodes.some((node) => node.headerHash === header);
-  };
 
 export type NodeIntentStage = Readonly<{
   /** Seeds owed wallets, then one S6 pass; returns the holds it leaves. */

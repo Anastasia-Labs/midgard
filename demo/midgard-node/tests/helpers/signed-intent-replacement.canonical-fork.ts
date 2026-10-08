@@ -97,7 +97,7 @@ export const createSignedIntentReplacementFork = () => {
     // only the authenticated history recovery below may reverse them.
     expect(
       (await readJournal(replacement.header_hash.toString("hex"))).status,
-    ).toBe(Pending.Status.Finalized);
+    ).toBe(Pending.Status.LocallyApplied);
     expect(await nativeRoot(h)).toBe(replacement.expected_utxos_root);
     expect(
       await readImmutableCounts(

@@ -83,7 +83,12 @@ export const completedChainReturnScenario = (
             sql`UPDATE pending_block_finalizations SET expected_utxos_root=${winnerRoot} WHERE header_hash=${W_HEADER}`,
         );
         yield* withNativeReplay(W_HEADER);
-        yield* journal(S_HEADER, Pending.Status.Finalized, S_COMMIT, 3_000_000);
+        yield* journal(
+          S_HEADER,
+          Pending.Status.LocallyApplied,
+          S_COMMIT,
+          3_000_000,
+        );
         yield* sql(
           (sql) =>
             sql`UPDATE pending_block_finalizations SET expected_utxos_root=${PREFIX_ROOT} WHERE header_hash=${S_HEADER}`,
@@ -91,7 +96,7 @@ export const completedChainReturnScenario = (
         yield* withNativeReplay(S_HEADER);
         yield* insertJournal({
           header: CHILD,
-          status: Pending.Status.Finalized,
+          status: Pending.Status.LocallyApplied,
           commit: childCommit,
           baseOut: S_OUT,
           baseHeader: S_HEADER,
@@ -116,7 +121,7 @@ export const completedChainReturnScenario = (
           Effect.gen(function* () {
             yield* sql(
               (sql) =>
-                sql`UPDATE pending_block_finalizations SET status=${Pending.Status.Finalized} WHERE header_hash=${header}`,
+                sql`UPDATE pending_block_finalizations SET status=${Pending.Status.LocallyApplied} WHERE header_hash=${header}`,
             );
             owner.durableRoot = candidateRoot;
             yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);

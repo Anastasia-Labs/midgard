@@ -427,7 +427,7 @@ describe("own landed blocks", () => {
         expect(yield* confirmedKeys).toEqual(sortedKeys(GENESIS));
         expect(state.finalized).toHaveLength(0);
 
-        state.journals.set(a.hash, { ...journalA, status: "finalized" });
+        state.journals.set(a.hash, { ...journalA, status: "locally_applied" });
         expect(
           yield* processLandedQueue(ports(state), queueOf(merged, [])),
         ).toBeUndefined();

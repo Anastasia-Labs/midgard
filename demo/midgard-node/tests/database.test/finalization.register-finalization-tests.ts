@@ -423,7 +423,7 @@ export const registerFinalizationTests = () => {
               ),
             );
             expect(record[PendingBlockFinalizationsDB.Columns.STATUS]).toBe(
-              PendingBlockFinalizationsDB.Status.Finalized,
+              PendingBlockFinalizationsDB.Status.LocallyApplied,
             );
           }),
         ),

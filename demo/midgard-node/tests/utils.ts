@@ -93,6 +93,14 @@ const FOLLOWER_BOOKKEEPING_TABLES = [
   "l1_follower_writer",
 ] as const;
 
+/**
+ * The follower's tracked-set record and replay flag describe the facts it
+ * emptied, so it is emptied with them: the next store starts unrecorded.
+ */
+const FOLLOWER_EMPTIED_BOOKKEEPING_TABLES = [
+  "l1_follower_tracked_set",
+] as const;
+
 const truncateApplicationTablesSql = `TRUNCATE TABLE ${APPLICATION_TABLE_NAMES.map(
   (table) => `"${table}"`,
 ).join(", ")} RESTART IDENTITY CASCADE`;
@@ -128,6 +136,7 @@ export const resetApplicationTables = Effect.gen(function* () {
     ...APPLICATION_TABLE_NAMES,
     ...followerTables,
     ...FOLLOWER_BOOKKEEPING_TABLES,
+    ...FOLLOWER_EMPTIED_BOOKKEEPING_TABLES,
     "schema_migrations",
     "schema_migration_events",
   ]);
@@ -140,9 +149,15 @@ export const resetApplicationTables = Effect.gen(function* () {
   yield* sql.withTransaction(
     Effect.gen(function* () {
       yield* sql.unsafe(truncateApplicationTablesSql);
-      if (followerTables.length > 0)
+      const emptied = [
+        ...followerTables,
+        ...FOLLOWER_EMPTIED_BOOKKEEPING_TABLES.filter((table) =>
+          tables.some(({ name }) => name === table),
+        ),
+      ];
+      if (emptied.length > 0)
         yield* sql.unsafe(
-          `TRUNCATE TABLE ${followerTables.map((table) => `"${table}"`).join(", ")} RESTART IDENTITY CASCADE`,
+          `TRUNCATE TABLE ${emptied.map((table) => `"${table}"`).join(", ")} RESTART IDENTITY CASCADE`,
         );
       for (const seedRowsSql of migrationSeedRowsSql) {
         yield* sql.unsafe(seedRowsSql);
