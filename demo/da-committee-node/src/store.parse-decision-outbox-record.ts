@@ -218,32 +218,6 @@ export const parseDecisionOutboxRecord = (
   return canonical;
 };
 
-export const assertDecisionRetry = (
-  existing: DecisionOutboxRecord | undefined,
-  next: DecisionOutboxRecord,
-): void => {
-  if (existing === undefined) {
-    return;
-  }
-  if (
-    existing.effectId !== next.effectId ||
-    existing.deploymentFingerprint !== next.deploymentFingerprint ||
-    existing.sourceMode !== next.sourceMode ||
-    existing.network !== next.network ||
-    existing.effectKind !== next.effectKind ||
-    existing.headerHash !== next.headerHash ||
-    existing.stateQueueOutRef !== next.stateQueueOutRef ||
-    existing.signerIndex !== next.signerIndex ||
-    existing.slot !== next.slot ||
-    existing.blockHash !== next.blockHash ||
-    existing.finalized !== next.finalized ||
-    existing.createdAt !== next.createdAt ||
-    next.attemptCount !== existing.attemptCount + 1
-  ) {
-    throw new Error("decision outbox retry does not match durable identity");
-  }
-};
-
 export const isCanonicalIsoTimestamp = (value: string): boolean => {
   const time = Date.parse(value);
   return Number.isFinite(time) && new Date(time).toISOString() === value;

@@ -23,13 +23,13 @@ import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
-import {
-  assertWatcherCanonicalRetentionWindow,
-  type WatcherCanonicalRetentionWindow,
-} from "./canonical-block-store.js";
 import { createWatcherReplayTranscriptAbsence } from "./replay-transcript-absence.js";
 import { createWatcherReplayTranscriptOperationDoors } from "./replay-transcript-operation-doors.js";
 import type { WatcherReplayTranscriptIdentity } from "./replay-transcript-store.js";
+import {
+  assertWatcherCanonicalRetentionWindow,
+  type WatcherCanonicalRetentionWindow,
+} from "./retention-window.js";
 
 export type WatcherReplayTranscriptLifecycle = Readonly<{
   header: WatcherStateQueueHeaderObservation;

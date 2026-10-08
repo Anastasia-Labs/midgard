@@ -12,8 +12,8 @@
  *   come from a committed header.
  * - The header hash: never taken from the caller. It is re-derived from the
  *   header struct by `admitAuthenticatedStateQueueHeaderObservation`.
- * - The payload bytes: an argument, standing in for the exact bytes the W21
- *   canonical block store persisted from a public DA peer.
+ * - The payload bytes: an argument, standing in for the exact bytes a public
+ *   DA peer served.
  * - The reconstruction: `reconstructDaPayload` in
  *   `@al-ft/midgard-fault-proofs`, reached through the Q03 evidence core.
  *   Nothing in the watcher recomputes a root.

@@ -1,6 +1,4 @@
-import type { DaSignatureRecordV1 } from "./domain.js";
 import type {
-  DecisionOutboxRecord,
   L1ObservedDecision,
   L1SourceState,
 } from "./store.committee-store.js";
@@ -56,41 +54,4 @@ const mergePersistedDecisionObservations = (
   return [...observations.values()].sort((left, right) =>
     left.headerHash.localeCompare(right.headerHash),
   );
-};
-
-export const assertDecisionSourceState = (
-  effect: DecisionOutboxRecord,
-  sourceState: L1SourceState,
-): void => {
-  const observation = sourceState.observations.find(
-    ({ headerHash }) => headerHash === effect.headerHash,
-  );
-  if (
-    sourceState.status !== "healthy" ||
-    sourceState.sourceMode !== effect.sourceMode ||
-    sourceState.network !== effect.network ||
-    observation?.stateQueueOutRef !== effect.stateQueueOutRef ||
-    observation.hasPersistedDecision !== true
-  ) {
-    throw new Error("decision outbox lacks matching durable L1 observation");
-  }
-};
-
-export const assertDecisionSignature = (
-  effect: DecisionOutboxRecord,
-  signature: DaSignatureRecordV1 | undefined,
-): void => {
-  if (
-    (effect.effectKind === "signature_publish" &&
-      (signature === undefined ||
-        signature.deploymentFingerprint !== effect.deploymentFingerprint ||
-        signature.headerHash !== effect.headerHash ||
-        signature.signerIndex !== effect.signerIndex ||
-        signature.validation.stateQueueOutRef !== effect.stateQueueOutRef ||
-        signature.l1ChainPoint.slot !== effect.slot ||
-        signature.l1ChainPoint.blockHash !== effect.blockHash)) ||
-    (effect.effectKind === "l1_reconcile" && signature !== undefined)
-  ) {
-    throw new Error("decision outbox signature does not match effect identity");
-  }
 };
