@@ -5,7 +5,7 @@ import {
   normalizeKupoHttpUrl,
   readOgmiosBlockTransaction,
   type WebSocketFactory,
-} from "midgard-node/l1-tx-order-carriage";
+} from "midgard-node/l1-kupmios";
 
 import {
   type ChainPoint,

@@ -151,7 +151,6 @@ export type NodeConfigDep = {
   BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: number;
   BLOCK_CONFIRMATION_AWAIT_RETRIES: number;
   UNCONFIRMED_BLOCK_MAX_AGE_MS: number;
-  WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   MIN_QUEUE_LENGTH_FOR_MERGING: number;
   VALIDATION_BATCH_SIZE: number;
@@ -202,6 +201,8 @@ export type NodeConfigDep = {
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
   /** The operator-configured L1 origin point; null when `L1_ORIGIN` is unset. */
   L1_ORIGIN: L1Origin | null;
+  /** URL templates (`{txId}`) for by-id L1 tx fetches; empty when unset. */
+  L1_TX_CONTENT_SOURCES: readonly string[];
   OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
   DA_COMMITTEE_HEX: string;

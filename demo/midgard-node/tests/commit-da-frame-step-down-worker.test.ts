@@ -121,10 +121,8 @@ vi.mock("../src/database/follower-events.js", async (importOriginal) => ({
   >()),
   followerEligibilityHorizon: Effect.succeed(Number.MAX_SAFE_INTEGER),
 }));
-vi.mock("../src/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
-  fetchAndInsertTxOrderUTxOsForCommitBarrier: vi.fn((end: Date) =>
-    Effect.succeed(end),
-  ),
+vi.mock("../src/forced-orders/horizon.js", () => ({
+  forcedOrderHorizon: Effect.succeed(null),
 }));
 vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
   reachCommitCrashCheckpoint: vi.fn(() => Effect.void),

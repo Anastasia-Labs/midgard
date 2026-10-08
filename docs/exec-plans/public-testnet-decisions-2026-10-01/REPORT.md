@@ -499,7 +499,7 @@ already exists.** The node's only reclassifier of an Ogmios JSON-RPC failure
 matches the string prefix `"Ogmios chain-sync error: "` and a small code set
 ([l1-ledger-snapshot.ts:83](../../../demo/midgard-node/src/l1-ledger-snapshot.ts#L83)),
 against an error constructed as a plain `Error` carrying that message
-([l1-tx-order-carriage.open-ogmios-session.ts:88](../../../demo/midgard-node/src/l1-tx-order-carriage.open-ogmios-session.ts#L88)).
+(`l1-tx-order-carriage.open-ogmios-session.ts:88`, since renamed `l1-kupmios.open-ogmios-session.ts`).
 The two committee clients — `provider.ogmios-rpc-session.ts:74` and
 `state-queue-replay-provider.open-rpc.ts:256` — reject with a plain `Error` and
 reclassify nothing. The fix is therefore one shared typed classification across

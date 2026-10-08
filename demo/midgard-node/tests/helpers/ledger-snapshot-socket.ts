@@ -1,10 +1,10 @@
 import { expect } from "vitest";
 
+import type { WebSocketLike } from "../../src/l1-kupmios.js";
 import {
   type LedgerSnapshotPoint,
   readAcquiredLedgerSnapshot,
 } from "../../src/l1-ledger-snapshot.js";
-import type { WebSocketLike } from "../../src/l1-tx-order-carriage.js";
 
 export const point = { slot: 123, id: "ab".repeat(32) };
 export const fork = { slot: 123, id: "cd".repeat(32) };

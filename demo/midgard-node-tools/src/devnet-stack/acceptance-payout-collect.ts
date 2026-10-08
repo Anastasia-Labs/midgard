@@ -5,11 +5,11 @@ import {
   fetchKupoCreationPoint,
   fetchKupoMatch,
   fetchKupoSpend,
-} from "midgard-node/l1-tx-order-carriage.fetch-kupo-spend";
+} from "midgard-node/l1-kupmios.fetch-kupo-spend";
 import type {
   FetchLike,
   L1ChainPoint,
-} from "midgard-node/l1-tx-order-carriage.l1-chain-point";
+} from "midgard-node/l1-kupmios.l1-chain-point";
 
 import type { AcceptanceNativePayoutScope } from "./acceptance-native-boundary.js";
 import { verifyAcceptancePayoutLineage } from "./acceptance-payout-lineage.js";

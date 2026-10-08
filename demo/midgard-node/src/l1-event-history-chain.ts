@@ -2,17 +2,17 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import JSONBig from "json-bigint";
 
-import type { LedgerSnapshotPoint } from "./l1-ledger-snapshot.js";
-import {
-  L1SourceUnavailable,
-  OgmiosRequestTimeout,
-} from "./l1-source-unavailable.js";
 import {
   normalizeOgmiosWebSocketUrl,
   openOgmiosSession,
   type WebSocketFactory,
   type WebSocketLike,
-} from "./l1-tx-order-carriage.js";
+} from "./l1-kupmios.js";
+import type { LedgerSnapshotPoint } from "./l1-ledger-snapshot.js";
+import {
+  L1SourceUnavailable,
+  OgmiosRequestTimeout,
+} from "./l1-source-unavailable.js";
 
 export type HistoryChainTip = LedgerSnapshotPoint & { readonly height: number };
 export type HistoryChainBlock = Readonly<{

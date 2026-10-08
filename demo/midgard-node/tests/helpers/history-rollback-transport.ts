@@ -1,10 +1,7 @@
 import JSONBig from "json-bigint";
 
+import type { FetchLike, WebSocketLike } from "../../src/l1-kupmios.js";
 import type { LedgerSnapshotOutput } from "../../src/l1-ledger-snapshot.js";
-import type {
-  FetchLike,
-  WebSocketLike,
-} from "../../src/l1-tx-order-carriage.js";
 import {
   makeRecordedHistoryTransport,
   makeStreamingHistoryTransport,

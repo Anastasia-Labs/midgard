@@ -4,7 +4,7 @@ import { Data } from "@lucid-evolution/lucid";
 import {
   type FetchLike,
   type ObservedL1TransactionAtPoint,
-} from "../l1-tx-order-carriage.js";
+} from "../l1-kupmios.js";
 import {
   decodeKupoCorrectionLockMatch,
   fetchKupoResolvedOutput,

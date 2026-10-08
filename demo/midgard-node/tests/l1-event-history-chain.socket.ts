@@ -2,7 +2,7 @@ import { expect, vi } from "vitest";
 
 import type { HistoryChainTip } from "../src/l1-event-history-chain.js";
 import { followEventHistoryChain } from "../src/l1-event-history-chain.js";
-import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
+import type { WebSocketLike } from "../src/l1-kupmios.js";
 
 export const anchor = { slot: 10, id: "aa".repeat(32) };
 

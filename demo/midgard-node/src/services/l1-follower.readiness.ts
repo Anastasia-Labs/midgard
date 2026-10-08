@@ -3,9 +3,10 @@
  * reason the shared follow loop reports (`FollowStatus.readiness`: the
  * interventions R1 to R5 and `origin_mismatch`, `l1_follower_catching_up`,
  * `l1_follower_waiting`, `l1_follower_apply_stuck`), every hold of the
- * follower-change driver (`l1_events_*`), and `l1_follower_unconfigured`
- * while the node has no follower. Each fails readiness by name; none stops
- * the process, and `/healthz` stays live.
+ * follower-change driver (`l1_events_*`, and the forced-order hook's
+ * `forced_order_carriage_pending` and `forced_order_ingestion_failed`), and
+ * `l1_follower_unconfigured` while the node has no follower. Each fails
+ * readiness by name; none stops the process, and `/healthz` stays live.
  */
 import type { FollowStatus } from "@al-ft/midgard-l1-follower";
 

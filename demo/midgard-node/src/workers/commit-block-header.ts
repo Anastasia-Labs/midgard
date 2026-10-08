@@ -15,7 +15,6 @@ import "../database/utils/common.js";
 import "../database/utils/ledger.js";
 import "../database/utils/tx.js";
 import "../e2e/commit-crash-checkpoint.js";
-import "../fibers/fetch-and-insert-tx-order-utxos.js";
 import "../lucid-time.js";
 import "../mpf/index.js";
 import "../services/event-history-producer.js";

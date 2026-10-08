@@ -1,9 +1,6 @@
 import { expect } from "vitest";
 
-import type {
-  FetchLike,
-  WebSocketLike,
-} from "../../src/l1-tx-order-carriage.js";
+import type { FetchLike, WebSocketLike } from "../../src/l1-kupmios.js";
 import {
   type HistoryTransportPoint,
   type HistoryTransportRecording,

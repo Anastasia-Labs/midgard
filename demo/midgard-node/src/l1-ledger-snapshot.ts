@@ -1,14 +1,14 @@
 import type { Assets } from "@lucid-evolution/lucid";
 import JSONBig from "json-bigint";
 
-import { L1SourceUnavailable } from "./l1-source-unavailable.js";
 import {
   normalizeOgmiosWebSocketUrl,
   openOgmiosSession,
   type WebSocketFactory,
   type WebSocketLike,
-} from "./l1-tx-order-carriage.js";
-import { ogmiosJsonRpcAnswerCode } from "./l1-tx-order-carriage.open-ogmios-session.js";
+} from "./l1-kupmios.js";
+import { ogmiosJsonRpcAnswerCode } from "./l1-kupmios.open-ogmios-session.js";
+import { L1SourceUnavailable } from "./l1-source-unavailable.js";
 
 export type LedgerSnapshotPoint = Readonly<{ slot: number; id: string }>;
 

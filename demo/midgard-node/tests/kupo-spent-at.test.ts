@@ -16,7 +16,7 @@ import {
   fetchKupoAncestorPoint,
   fetchKupoSpend,
   readOgmiosBlockTransaction,
-} from "../src/l1-tx-order-carriage.js";
+} from "../src/l1-kupmios.js";
 
 /**
  * What the node reads out of Kupo's `spent_at`, against what a live Kupo

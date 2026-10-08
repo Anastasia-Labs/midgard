@@ -66,13 +66,13 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/state-reconciliation-emulator.test.ts
  *   tests/tx-admissions-claim-load.test.ts
  *   tests/tx-admissions-monotone-timestamps.test.ts
- *   tests/tx-order-carriage-l1-observation.test.ts
- *   tests/user-event-ingestion-idempotent-reconcile.test.ts
  *   tests/block-commitment-signed-intent-skip.test.ts
  *   tests/history-retention-prune.test.ts
  *   tests/readiness-honest-degradation-route.test.ts
  *   tests/history-expired-intent-release-query-budget.test.ts
  *   tests/state-queue-mutation-lease-settle-retry.test.ts
+ *   tests/forced-order-carriage.test.ts
+ *   tests/forced-order-carriage-emulator.test.ts
  */
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:

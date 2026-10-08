@@ -115,7 +115,8 @@ const readWitnessRedeemers = (witness: Buffer): RedeemerSummary[] => {
   return [];
 };
 
-type BodyFields = {
+/** The body fields the follower reads from a transaction body map. */
+export type BodyFields = {
   inputs: OutRef[];
   outputs: OutputSummary[];
   collaterals: OutRef[];
@@ -127,7 +128,8 @@ type BodyFields = {
   invalidAfter: number | null;
 };
 
-const readBody = (body: Buffer): BodyFields => {
+/** Reads one transaction body map; `body` must be exactly the map's bytes. */
+export const readBody = (body: Buffer): BodyFields => {
   const fields: BodyFields = {
     inputs: [],
     outputs: [],

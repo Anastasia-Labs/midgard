@@ -1,13 +1,13 @@
-import { defaultWebSocketFactory } from "../l1-tx-order-carriage.fetch-kupo-spend.js";
+import { defaultWebSocketFactory } from "../l1-kupmios.fetch-kupo-spend.js";
 import {
   HEX_32,
   normalizeOgmiosWebSocketUrl,
   type WebSocketFactory,
-} from "../l1-tx-order-carriage.l1-chain-point.js";
+} from "../l1-kupmios.l1-chain-point.js";
 import {
   ogmiosJsonRpcAnswerCode,
   openOgmiosSession,
-} from "../l1-tx-order-carriage.open-ogmios-session.js";
+} from "../l1-kupmios.open-ogmios-session.js";
 
 /**
  * Proves this exact block belongs to the selected chain at the response's tip.

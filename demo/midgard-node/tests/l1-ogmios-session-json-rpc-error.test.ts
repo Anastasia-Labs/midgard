@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { L1SourceUnavailable } from "../src/l1-source-unavailable.js";
-import {
-  openOgmiosSession,
-  type WebSocketLike,
-} from "../src/l1-tx-order-carriage.js";
+import { openOgmiosSession, type WebSocketLike } from "../src/l1-kupmios.js";
 import {
   ogmiosJsonRpcAnswerCode,
   OgmiosJsonRpcUnavailable,
-} from "../src/l1-tx-order-carriage.open-ogmios-session.js";
+} from "../src/l1-kupmios.open-ogmios-session.js";
+import { L1SourceUnavailable } from "../src/l1-source-unavailable.js";
 import { isRecoverableHistorySourceFailure } from "../src/services/event-history-owner.source-failure.js";
 
 /** Answers every request with one JSON-RPC error envelope. */

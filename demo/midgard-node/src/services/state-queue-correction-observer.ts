@@ -7,7 +7,7 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "../database/daPayloadTerminalOutcomes.js";
 import "../database/eventHistoryRecoveryPlans.js";
-import "../l1-tx-order-carriage.js";
+import "../l1-kupmios.js";
 import "@al-ft/midgard-core/ogmios-slot";
 import "./state-queue-correction-observer.parse-state-queue-correction-observer-state.js";
 import "./state-queue-correction-observer.create-database-state-queue-correction-observer-store.js";

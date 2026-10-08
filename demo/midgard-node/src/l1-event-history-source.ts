@@ -18,15 +18,15 @@ import {
   type HistoryChainTransaction,
 } from "./l1-event-history-transaction.js";
 import {
-  type AcquiredLedgerSnapshot,
-  readAcquiredLedgerSnapshot,
-} from "./l1-ledger-snapshot.js";
-import {
   normalizeOgmiosWebSocketUrl,
   openOgmiosSession,
   type WebSocketFactory,
   type WebSocketLike,
-} from "./l1-tx-order-carriage.js";
+} from "./l1-kupmios.js";
+import {
+  type AcquiredLedgerSnapshot,
+  readAcquiredLedgerSnapshot,
+} from "./l1-ledger-snapshot.js";
 import type { ContractDeploymentIdentityValue } from "./services/midgard-contracts.js";
 
 export const HISTORY_GENESIS_DIGEST_ALGORITHM =

@@ -2,7 +2,7 @@ import {
   HISTORY_GENESIS_DIGEST_ALGORITHM,
   readEventHistoryGenesisPin,
 } from "../l1-event-history-source.js";
-import type { WebSocketFactory } from "../l1-tx-order-carriage.js";
+import type { WebSocketFactory } from "../l1-kupmios.js";
 
 export const HISTORY_GENESIS_PIN_VARIABLE =
   "L1_HISTORY_GENESIS_LOSSLESS_SHA256";

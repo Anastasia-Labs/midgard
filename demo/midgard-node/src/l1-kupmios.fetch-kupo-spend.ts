@@ -1,8 +1,7 @@
 import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 
-import { KupoNotYetIndexed } from "./l1-source-unavailable.js";
 import {
-  DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
+  DEFAULT_L1_READ_TIMEOUT_MS,
   exactPoint,
   exactSlot,
   fetchJsonWithTimeout,
@@ -14,22 +13,21 @@ import {
   normalizeKupoHttpUrl,
   type WebSocketFactory,
   type WebSocketLike,
-} from "./l1-tx-order-carriage.l1-chain-point.js";
+} from "./l1-kupmios.l1-chain-point.js";
+import { KupoNotYetIndexed } from "./l1-source-unavailable.js";
 
 /**
  * The chain point at which an output was created, from Kupo's match for it.
  *
  * The pattern is Kupo's `{output_index}@{transaction_id}` output-reference form,
- * and the query is deliberately **not** filtered to unspent matches: an order's
- * own UTxO is unspent when the walk sees it, but this same read locates carriage
- * that §8.7 lets its creator reclaim at any time, and history is what §8.11 says
- * the material is.
+ * and the query is deliberately **not** filtered to unspent matches: the
+ * readers locate outputs that may have been spent since they were created.
  */
 export const fetchKupoCreationPoint = async ({
   kupoUrl,
   outRef,
   fetchImpl = fetch,
-  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
+  timeoutMs = DEFAULT_L1_READ_TIMEOUT_MS,
 }: {
   readonly kupoUrl: string;
   readonly outRef: OutRefLike;
@@ -98,7 +96,7 @@ export const fetchKupoSpend = async ({
   kupoUrl,
   outRef,
   fetchImpl = fetch,
-  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
+  timeoutMs = DEFAULT_L1_READ_TIMEOUT_MS,
 }: {
   readonly kupoUrl: string;
   readonly outRef: OutRefLike;
@@ -204,7 +202,7 @@ export const fetchKupoMatch = async ({
  *
  * `findIntersection` positions the read pointer *at* the point it finds and
  * `nextBlock` then yields what comes after it, so intersecting at the block that
- * created the order would skip that block. Kupo's flexible checkpoint lookup
+ * created the output would skip that block. Kupo's flexible checkpoint lookup
  * answers with the most recent checkpoint before a slot, which is exactly the
  * ancestor this needs.
  */
@@ -212,7 +210,7 @@ export const fetchKupoAncestorPoint = async ({
   kupoUrl,
   slot,
   fetchImpl = fetch,
-  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
+  timeoutMs = DEFAULT_L1_READ_TIMEOUT_MS,
 }: {
   readonly kupoUrl: string;
   readonly slot: number;

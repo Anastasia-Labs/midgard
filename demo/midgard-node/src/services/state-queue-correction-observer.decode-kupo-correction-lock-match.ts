@@ -3,11 +3,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
+  DEFAULT_L1_READ_TIMEOUT_MS,
   type FetchLike,
   type KupoSpend,
   normalizeKupoHttpUrl,
-} from "../l1-tx-order-carriage.js";
+} from "../l1-kupmios.js";
 import {
   HEX_32,
   type Tip,
@@ -73,7 +73,7 @@ export const fetchTip = async (
  * query (the tip, one output, one transaction's outputs), never a ledger
  * scan, so it takes the same bound as the tx-order carriage reads. */
 export const STATE_QUEUE_CORRECTION_REQUEST_TIMEOUT_MS =
-  DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS;
+  DEFAULT_L1_READ_TIMEOUT_MS;
 
 /** A hung Kupo or Ogmios fails the read after `timeoutMs` instead of wedging
  * the fiber that awaits it; a caller's own signal still applies. */

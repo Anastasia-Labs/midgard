@@ -13,7 +13,6 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
-import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-tx-order-utxos.js";
 import { type UtxoPayloadEntry } from "../../mpf/index.js";
 import {
   fetchOperatorWalletView,
@@ -21,13 +20,7 @@ import {
 } from "../../operator-wallet-view.js";
 import { HistoryProducer } from "../../services/event-history-producer.js";
 import { commitEventHorizon } from "../../services/history-commit-window.js";
-import {
-  ContractDeploymentIdentity,
-  Database,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../../services/index.js";
+import { Database, Lucid } from "../../services/index.js";
 import {
   isUnknownOutputReferenceSubmitError,
   TxSubmitError,
@@ -69,38 +62,29 @@ export const commitUserEventSourceIdSetsAreExact = ({
   sameSourceIdSet(pendingForcedTransactionIds, includedForcedTransactionIds) &&
   sameSourceIdSet(pendingWithdrawalIds, includedWithdrawalIds);
 
-type CommitUserEventSourceRefreshers<E, R> = {
-  readonly txOrder: (upperBound: Date) => Effect.Effect<Date, E, R>;
-};
-
 /**
  * Rechecks the final end time against the event horizon, min(journal
- * coverage, follower ingestion) (E-N1-2 item 3), then refreshes tx orders
- * through it. Deposits and withdrawals are the follower-change driver's:
- * nothing here fetches them. Every runtime commit runs under a history
- * producer; the unowned model fixture (no producer) needs an ingestion but
- * plans its end time past it, as its source polling did before.
+ * coverage, follower ingestion, the earliest forced order not yet rebuilt)
+ * (E-N1-2 item 3, N10). Deposits, withdrawals and forced orders are the
+ * follower-change driver's: nothing here fetches them. Every runtime commit
+ * runs under a history producer; the unowned model fixture (no producer)
+ * needs an ingestion but plans its end time past it, as its source polling
+ * did before.
  */
-export const refreshCommitUserEventSourcesThroughBlockEnd = <
-  E = SDK.LucidError | DatabaseError,
-  R =
-    | ContractDeploymentIdentity
-    | Database
-    | Lucid
-    | MidgardContracts
-    | NodeConfig,
->(
+export const refreshCommitUserEventSourcesThroughBlockEnd = (
   blockEndTimeMs: number,
-  refreshers: CommitUserEventSourceRefreshers<E, R> = {
-    txOrder: fetchAndInsertTxOrderUTxOsForCommitBarrier,
-  } as unknown as CommitUserEventSourceRefreshers<E, R>,
 ) =>
   Effect.gen(function* () {
-    const finalBlockEndTime = new Date(blockEndTimeMs);
     const history = yield* Effect.serviceOption(HistoryProducer);
     const horizon = yield* commitEventHorizon(
       Option.isSome(history) ? history.value.coverage : undefined,
     );
+    // The final header window may differ from the initial plan. Recheck the
+    // same immutable owner coverage; polling cannot extend its authority.
+    // preparePendingSubmission rechecks the generation and that this coverage
+    // is still a journaled prefix (the exact cursor, the anchor, or a
+    // canonical earlier block under a newer cursor revision) under the
+    // authority row lock, before journal writes.
     if (
       horizon === null ||
       (Option.isSome(history) && blockEndTimeMs > horizon)
@@ -113,13 +97,6 @@ export const refreshCommitUserEventSourcesThroughBlockEnd = <
           cause: `end=${blockEndTimeMs},horizon=${String(horizon)}`,
         }),
       );
-    // The final header window may differ from the initial plan. Recheck the
-    // same immutable owner coverage; polling cannot extend its authority.
-    // preparePendingSubmission rechecks the generation and that this coverage
-    // is still a journaled prefix (the exact cursor, the anchor, or a
-    // canonical earlier block under a newer cursor revision) under the
-    // authority row lock after this provider work, before journal writes.
-    yield* refreshers.txOrder(finalBlockEndTime);
   });
 
 export const assertCommitUserEventSourceCompleteness = ({

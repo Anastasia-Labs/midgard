@@ -2,6 +2,7 @@ import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import { followerEligibilityHorizon } from "../database/follower-events.js";
+import { forcedOrderHorizon } from "../forced-orders/horizon.js";
 import type {
   CommitTimingBudget,
   CommitTimingCheckpoint,
@@ -28,21 +29,30 @@ export const historyEligibilityHorizon = (
 
 /**
  * The commit end-time horizon (E-N1-2 item 3): min(journal coverage, the
- * follower's ingestion horizon). A block never claims an end time past the
- * events the follower-change driver has ingested; before its first
- * ingestion (or after a rewind removed it) nothing is eligible and the
- * commit holds (`null`). `coverage` is the owner's journal coverage when the
- * commit runs under a history producer; N1-close drops that term.
+ * follower's ingestion horizon, the forced-order bound). A block never
+ * claims an end time past the events the follower-change driver has
+ * ingested, nor reaches a forced order the node has not rebuilt yet (N10);
+ * before the driver's first ingestion (or after a rewind removed it)
+ * nothing is eligible and the commit holds (`null`). `coverage` is the
+ * owner's journal coverage when the commit runs under a history producer;
+ * N1-close drops that term.
  */
 export const commitEventHorizon = (
   coverage: HistoryOwnerCoverage | undefined,
 ) =>
-  Effect.map(followerEligibilityHorizon, (follower) =>
-    follower === null
-      ? null
-      : coverage === undefined
-        ? follower
-        : Math.min(follower, historyEligibilityHorizon(coverage)),
+  Effect.zipWith(
+    followerEligibilityHorizon,
+    forcedOrderHorizon,
+    (follower, forced) =>
+      follower === null
+        ? null
+        : Math.min(
+            follower,
+            ...(forced === null ? [] : [forced]),
+            ...(coverage === undefined
+              ? []
+              : [historyEligibilityHorizon(coverage)]),
+          ),
   );
 
 /** The fixed header interval cannot be extended to rescue a slow build. These

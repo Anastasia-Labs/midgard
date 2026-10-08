@@ -155,15 +155,15 @@ services:
 
   kupo:
     image: cardanosolutions/kupo:${KUPO_IMAGE_TAG:-v2.11.0@sha256:0a8cd8b5e373103e9e0a68b162d82c69a6f76042bb073c31912724034e51ca9e}
-    # No --prune-utxo: the node's forced-order carriage reader
-    # (src/l1-tx-order-carriage.ts) reads spent carriage outputs, which a
+    # No --prune-utxo: the node's remaining Kupo readers
+    # (src/l1-kupmios.ts) read spent outputs, which a
     # pruning index deletes. The official Kupo snapshot restored by
     # kupo-bootstrap was itself built pruned, so outputs spent before the
     # snapshot point are absent. That is fine for a deployment initialised
     # after this bring-up (the usual case); to serve a deployment whose L1
     # history predates the snapshot, set KUPO_BOOTSTRAP_MODE=origin and let
     # Kupo sync from origin instead. Kupo >= v2.10.0 is required for the
-    # ?resolve_hashes query the same reader depends on.
+    # ?resolve_hashes query the same readers depend on.
     command:
       - --ogmios-host
       - cardano-node-ogmios

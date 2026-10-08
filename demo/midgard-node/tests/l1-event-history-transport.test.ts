@@ -21,7 +21,7 @@ import {
   locateEventHistoryActivation,
   readEventHistoryCreatingBody,
 } from "../src/l1-event-history-transport.js";
-import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
+import type { WebSocketLike } from "../src/l1-kupmios.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const hash = (n: number) => n.toString(16).padStart(64, "0");

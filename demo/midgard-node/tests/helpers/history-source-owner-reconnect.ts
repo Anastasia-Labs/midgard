@@ -11,7 +11,7 @@ import { vi } from "vitest";
 import * as Authority from "../../src/database/eventHistoryAuthority.js";
 import type * as Journal from "../../src/database/eventHistoryJournal.js";
 import { MempoolLedgerDB } from "../../src/database/index.js";
-import type { WebSocketLike } from "../../src/l1-tx-order-carriage.js";
+import type { WebSocketLike } from "../../src/l1-kupmios.js";
 import {
   type HistoryOwnerChange,
   makeEventHistoryOwner,
