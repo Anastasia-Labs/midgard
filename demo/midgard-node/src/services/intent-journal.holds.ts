@@ -14,7 +14,7 @@
  */
 import { decodeTransaction, encodeOutRef } from "@al-ft/midgard-l1-follower";
 import type { SqlClient, SqlError } from "@effect/sql";
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 
 import { byteaArrayLiteral } from "../database/follower-schema.js";
 import type { DriverHold } from "../l1-events/driver.js";
@@ -86,14 +86,70 @@ const messageOf = (cause: unknown): string =>
     ? `${cause.message}${cause.cause instanceof Error ? `: ${cause.cause.message}` : ""}`
     : String(cause);
 
+/** Attempts at one hold write before it is left to the next record or refresh. */
+const HOLD_WRITE_RETRIES = Schedule.exponential("100 millis").pipe(
+  Schedule.intersect(Schedule.recurs(3)),
+);
+
+/** A refusal hold whose write to `intent_refusal_holds` has not landed. */
+export type UnwrittenHold = Readonly<{
+  family: string;
+  hold: DriverHold;
+  txHash: string;
+  signedTxCbor: string;
+}>;
+
 /**
  * One journal's view of the holds: the last read of the table, its own
- * writes, and refusals whose hold write failed (kept in this process until
- * the family's next success).
+ * writes, and refusals whose hold write has not landed yet. An unwritten
+ * hold is never left only in a worker's memory (I1-H1): it is written again
+ * on every record (`flush`) and every refresh until it lands, and until then
+ * it is named in `holds()`. A worker thread, whose journal ends with it,
+ * hands its unwritten holds to the main process (`handOff`), whose journal
+ * takes them over (`adopt`): `/readyz` names them from then on, and the
+ * main process's refresh at every tip writes them until they land.
  */
 export const refusalHoldsOver = (sql: SqlClient.SqlClient) => {
   let persisted: ReadonlyMap<string, DriverHold> = new Map();
-  const unpersisted = new Map<string, DriverHold>();
+  const unpersisted = new Map<string, Omit<UnwrittenHold, "family">>();
+  const write = (
+    family: string,
+    hold: DriverHold,
+    txHash: string,
+    signedTxCbor: string,
+    retry: boolean,
+  ): Effect.Effect<void> =>
+    persistRefusalHold(sql, family, hold, txHash, signedTxCbor).pipe(
+      retry ? Effect.retry(HOLD_WRITE_RETRIES) : (effect) => effect,
+      Effect.matchEffect({
+        onSuccess: () =>
+          Effect.sync(() => {
+            // A newer refusal of the family may have replaced this one.
+            if (unpersisted.get(family)?.txHash === txHash)
+              unpersisted.delete(family);
+            persisted = new Map([...persisted, [family, hold]]);
+          }),
+        onFailure: (cause) =>
+          Effect.sync(() =>
+            unpersisted.set(family, { hold, txHash, signedTxCbor }),
+          ).pipe(
+            Effect.zipRight(
+              Effect.logWarning(
+                `Intent journal: the ${family} refusal hold is not written yet (named here until it lands; retried on the next record or refresh): ${messageOf(cause)}`,
+              ),
+            ),
+          ),
+      }),
+    );
+  /** Writes every unwritten hold again. Never fails. */
+  const flush: Effect.Effect<void> = Effect.suspend(() =>
+    Effect.forEach(
+      [...unpersisted],
+      ([family, { hold, txHash, signedTxCbor }]) =>
+        write(family, hold, txHash, signedTxCbor, false),
+      { discard: true },
+    ),
+  );
   return {
     /** Holds `family`'s refusal of the transaction. Never fails. */
     raise: (
@@ -101,24 +157,9 @@ export const refusalHoldsOver = (sql: SqlClient.SqlClient) => {
       hold: DriverHold,
       txHash: string,
       signedTxCbor: string,
-    ): Effect.Effect<void> =>
-      persistRefusalHold(sql, family, hold, txHash, signedTxCbor).pipe(
-        Effect.matchEffect({
-          onSuccess: () =>
-            Effect.sync(() => {
-              unpersisted.delete(family);
-              persisted = new Map([...persisted, [family, hold]]);
-            }),
-          onFailure: (cause) =>
-            Effect.sync(() => unpersisted.set(family, hold)).pipe(
-              Effect.zipRight(
-                Effect.logWarning(
-                  `Intent journal: the ${family} refusal hold was not written (held in this process only): ${messageOf(cause)}`,
-                ),
-              ),
-            ),
-        }),
-      ),
+    ): Effect.Effect<void> => write(family, hold, txHash, signedTxCbor, true),
+    /** Writes the holds whose write has not landed yet. Never fails. */
+    flush,
     /** The delete, for the successful record's own transaction. */
     clearIn: (family: string) => clearRefusalHold(sql, family),
     /** `family`'s record succeeded and its transaction committed. */
@@ -128,10 +169,32 @@ export const refusalHoldsOver = (sql: SqlClient.SqlClient) => {
         persisted = new Map([...persisted].filter(([at]) => at !== family));
       }),
     holds: (): readonly DriverHold[] => [
-      ...new Map([...persisted, ...unpersisted]).values(),
+      ...new Map([
+        ...persisted,
+        ...[...unpersisted].map(
+          ([family, { hold }]) => [family, hold] as const,
+        ),
+      ]).values(),
     ],
+    /** Returns the unwritten holds and forgets them: the caller owns them now. */
+    handOff: (): readonly UnwrittenHold[] => {
+      const handed = [...unpersisted].map(([family, rest]) => ({
+        family,
+        ...rest,
+      }));
+      unpersisted.clear();
+      return handed;
+    },
+    /**
+     * Takes over another journal's unwritten holds: named in `holds()` at
+     * once, and written on the next record or refresh until they land.
+     */
+    adopt: (holds: readonly UnwrittenHold[]): void => {
+      for (const { family, ...rest } of holds) unpersisted.set(family, rest);
+    },
     refresh: (): Effect.Effect<void> =>
-      releaseAndReadRefusalHolds(sql).pipe(
+      flush.pipe(
+        Effect.zipRight(releaseAndReadRefusalHolds(sql)),
         Effect.matchEffect({
           onSuccess: (read) =>
             Effect.sync(() => {

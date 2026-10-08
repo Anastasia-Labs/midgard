@@ -270,7 +270,7 @@ const stepEvidence = (id) => {
         ownerEpochAfter: "02".repeat(16),
         authoritativeMarkerAfter: tx("f"),
         replayedCandidateRoot: tx("f"),
-        journalStatus: "finalized",
+        journalStatus: "locally_applied",
         l2Status: "committed",
         auditDivergence: 0,
         recoveryLogMarker:

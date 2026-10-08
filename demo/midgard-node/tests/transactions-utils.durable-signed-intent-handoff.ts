@@ -36,7 +36,7 @@ describe("durable signed intent handoff", () => {
           Effect.provideService(BeforeSignedTransactionSubmission, {
             persist: (intent) =>
               Effect.gen(function* () {
-                expect(intent).toEqual({
+                expect(intent).toMatchObject({
                   txHash: "intent-hash",
                   signedTxCbor: cbor,
                 });

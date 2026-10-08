@@ -113,7 +113,12 @@ describe("hub-oracle nonce signed before submission", () => {
           BeforeSignedTransactionSubmission,
         );
         if (Option.isSome(intent))
-          yield* intent.value.persist({ txHash: "aa", signedTxCbor: "84a0" });
+          yield* intent.value.persist({
+            txHash: "aa",
+            signedTxCbor: "84a0",
+            // An unjournaled (bootstrap) submission: nothing to insert.
+            journal: Effect.void,
+          });
         order.push("submit");
         return { txHash: "aa", signedTxCbor: "84a0", walletAddress: ADDRESS };
       }),
@@ -164,7 +169,8 @@ describe("hub-oracle nonce signed before submission", () => {
         const intent = yield* Effect.serviceOption(
           BeforeSignedTransactionSubmission,
         );
-        if (Option.isSome(intent)) yield* intent.value.persist(signed);
+        if (Option.isSome(intent))
+          yield* intent.value.persist({ ...signed, journal: Effect.void });
         const state = yield* Effect.promise(() =>
           loadDeploymentRunState(runStatePath),
         );

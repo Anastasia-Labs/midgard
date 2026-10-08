@@ -20,6 +20,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/settlement.js";
 import { NodeConfig } from "../src/services/config.js";
+import {
+  IntentJournal,
+  IntentJournalWithoutFollower,
+} from "../src/services/intent-journal.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
@@ -246,6 +250,37 @@ describe("settlement tick reporting", () => {
     });
     expect(submitTx).not.toHaveBeenCalled();
     expect(reports.some((value) => value.state === "error")).toBe(false);
+  }, 30_000);
+
+  it("hands the node the refusal holds its journal could not write, once, in its next report", async () => {
+    const hold = {
+      family: "settlement",
+      hold: { reason: "intent_input_untracked", detail: "settlement probe" },
+      txHash: "ab".repeat(32),
+      signedTxCbor: "84a0a0f5f6",
+    };
+    let unwritten = [hold];
+    const noFollower = await Effect.runPromise(
+      Effect.provide(IntentJournal, IntentJournalWithoutFollower),
+    );
+    const { reports } = await run(
+      firstTick(() => ({
+        submitTx: () => Promise.reject(new Error("never reached")),
+      })).pipe(
+        Effect.provideService(IntentJournal, {
+          ...noFollower,
+          handOff: () => {
+            const handed = unwritten;
+            unwritten = [];
+            return handed;
+          },
+        }),
+      ),
+    );
+    expect(reports[0]!.intentRefusalHolds).toEqual([hold]);
+    expect(
+      reports.flatMap((report) => report.intentRefusalHolds ?? []),
+    ).toEqual([hold]);
   }, 30_000);
 
   it("gives the worker-exit report the failing call and its reason", async () => {

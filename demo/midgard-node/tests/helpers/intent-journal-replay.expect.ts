@@ -4,7 +4,8 @@
  *
  * - every intent is recorded: each input, reference input and collateral
  *   is a tracked fact or a journaled parent's output, at the tip before it
- *   landed;
+ *   landed; a commit through its production pre-broadcast gate, which writes
+ *   its pending block's signed intent in the journal's transaction;
  * - a family whose §8.4 predicate reads the follower's facts is judged
  *   wanted there (`resubmit`), unless it is chained on a parent landing in
  *   the same block, when S6 waits on its inputs;
@@ -44,6 +45,10 @@ export const expectReplayedFamilies = (
       outcome: "recorded",
       after: "follow",
     });
+    // A commit records through its production pre-broadcast gate, which
+    // writes the signed bytes to its pending block in the same transaction.
+    if (entry.family === "commit")
+      expect(entry, entry.family).toMatchObject({ gated: true });
     if (FAMILIES_WITHOUT_FACTS.includes(entry.family))
       expect(entry, entry.family).toMatchObject({
         verdict: expect.stringContaining(

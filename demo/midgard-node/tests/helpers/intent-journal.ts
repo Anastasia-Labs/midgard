@@ -8,7 +8,8 @@
  *   (`replayJournaledOnFollower`, `helpers/intent-journal-replay.ts`).
  * - `TEST_INTENT` is the intent a submission-mechanics test passes.
  * - `recordingIntentJournal` remembers what it was asked to record, in
- *   order, records nothing, and runs the caller's gate.
+ *   order, records nothing, and runs the caller's gate with an insert that
+ *   writes nothing.
  */
 import { Effect, Layer } from "effect";
 
@@ -60,8 +61,13 @@ export const recordingIntentJournal = () => {
       Effect.sync((): RecordOutcome => {
         recorded.push({ intent, signedTxCbor, txHash });
         return { kind: "recorded" };
-      }).pipe(Effect.zipLeft(gate ?? Effect.void)),
+      }).pipe(
+        // No follower here: the gate runs with an insert that writes nothing.
+        Effect.zipLeft(gate === undefined ? Effect.void : gate(Effect.void)),
+      ),
     holds: () => [],
+    handOff: () => [],
+    adopt: () => undefined,
     refresh: () => Effect.void,
   });
   return { recorded, layer };

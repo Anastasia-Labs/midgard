@@ -13,6 +13,7 @@ import { EventSettlementProofError } from "../commands/event-settlement-proof.js
 import * as Journal from "../database/settlement.js";
 import { synchronizePublicationIndexerPoint } from "../transactions/reference-publication-provider.js";
 import { NodeConfig, type NodeConfigDep } from "./config.js";
+import type { UnwrittenHold } from "./intent-journal.holds.js";
 import { readIntentStatus } from "./intent-journal.js";
 import { ContractDeploymentIdentity } from "./midgard-contracts.js";
 import { settlementCall, settlementCheck } from "./settlement-call.js";
@@ -30,6 +31,14 @@ export type SettlementHealth = {
    * it clears the node's failure streak; the node strips it before
    * publishing the health. */
   tickCompleted?: boolean;
+  /**
+   * Set by the worker when its intent journal holds refusals whose write to
+   * the node database has not landed (I1-H1): the worker hands them over,
+   * and the node's journal takes them (`adopt`), names them on `/readyz`
+   * and writes them until they land. The node strips it before publishing
+   * the health.
+   */
+  intentRefusalHolds?: readonly UnwrittenHold[];
 };
 
 export const settlementWalletAddress = (config: NodeConfigDep): string => {

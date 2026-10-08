@@ -63,8 +63,14 @@ const scenario = async (refusePublication: boolean) => {
               cbor: signedTxCbor,
             });
             return { kind: "recorded" };
-          }).pipe(Effect.zipLeft(gate ?? Effect.void)),
+          }).pipe(
+            Effect.zipLeft(
+              gate === undefined ? Effect.void : gate(Effect.void),
+            ),
+          ),
     holds: () => [],
+    handOff: () => [],
+    adopt: () => undefined,
     refresh: () => Effect.void,
   };
   const address = await lucid.wallet().address();

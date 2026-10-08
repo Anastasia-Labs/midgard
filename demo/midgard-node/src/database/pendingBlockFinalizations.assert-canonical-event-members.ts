@@ -85,12 +85,21 @@ export const assertCanonicalEventMembers = (record: {
     ),
   );
 
-/** SQL commit must complete before handing these exact signed bytes to L1. */
-export const recordSignedIntent = (
+/**
+ * SQL commit must complete before handing these exact signed bytes to L1.
+ *
+ * This is the commit family's pre-broadcast gate (`PreBroadcastGate`). It
+ * owns the outermost transaction (its history write), and runs
+ * `journalInsert` (the intent journal's insert of these bytes, recorded in
+ * this transaction) first inside it, so the journal row and the pending row's
+ * signed intent commit together or not at all.
+ */
+export const recordSignedIntent = <J = never>(
   headerHash: Buffer,
   txHash: Buffer,
   signedCbor: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
+  journalInsert: Effect.Effect<void, J> = Effect.void as Effect.Effect<void, J>,
+): Effect.Effect<void, DatabaseError | J, Database> =>
   Effect.gen(function* () {
     if (
       Option.isSome(
@@ -116,6 +125,7 @@ export const recordSignedIntent = (
     });
     yield* withHistoryWrite(
       Effect.gen(function* () {
+        yield* journalInsert;
         yield* requireCandidateHistory;
         const sql = yield* SqlClient.SqlClient;
         const record = yield* retrieveByHeaderHash(headerHash, true);

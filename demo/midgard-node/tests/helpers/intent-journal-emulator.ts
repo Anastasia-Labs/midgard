@@ -45,6 +45,7 @@ import {
 import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 
 import { migrationByVersion } from "../../src/database/migrations/index.js";
+import * as MigrationRunner from "../../src/database/migrations/runner.js";
 import {
   IntentJournal,
   intentJournalOver,
@@ -104,9 +105,15 @@ export type IntentEmulator = Awaited<ReturnType<typeof openIntentEmulator>>;
  * An emulator with the node's own wallet (`own`) and a wallet that only
  * receives (`payee`), and the node's follower store at the emulator's
  * origin, tracking the own wallet.
+ *
+ * With `nodeSchema`, the database is migrated to the node's full schema
+ * before the follower store opens there, as the node does, so a test can
+ * run the node's own durable writes (a pending block finalization, the
+ * history authority) in the database the journal records in.
  */
 export const openIntentEmulator = async (
   databases: ReturnType<typeof testDatabases>,
+  options: Readonly<{ nodeSchema?: boolean }> = {},
 ) => {
   const own: EmulatorAccount = generateEmulatorAccount({
     lovelace: 50_000_000n,
@@ -127,6 +134,14 @@ export const openIntentEmulator = async (
   };
   const ownAddress = addressBytes(own.address);
   const connectionString = await databases.create();
+  const runtime = ManagedRuntime.make(
+    PgClient.layer({ url: Redacted.make(connectionString) }),
+  );
+  const sql = await runtime.runPromise(SqlClient.SqlClient);
+  if (options.nodeSchema === true)
+    await runtime.runPromise(
+      MigrationRunner.migrate({ appVersion: "test", actor: "intent-emulator" }),
+    );
   const store: FactStore = openPostgresFactStore({
     ...projectionStoreOptions(
       [intentJournalProjection],
@@ -220,15 +235,12 @@ export const openIntentEmulator = async (
       }),
   };
 
-  const runtime = ManagedRuntime.make(
-    PgClient.layer({ url: Redacted.make(connectionString) }),
-  );
-  const sql = await runtime.runPromise(SqlClient.SqlClient);
   // The node table the journal keeps its refusal holds in, as the node
   // database (where the follower's tables live) has it.
-  await runtime.runPromise(
-    sql.unsafe(migrationByVersion.get(INTENT_REFUSAL_HOLDS_MIGRATION)!.sql),
-  );
+  if (options.nodeSchema !== true)
+    await runtime.runPromise(
+      sql.unsafe(migrationByVersion.get(INTENT_REFUSAL_HOLDS_MIGRATION)!.sql),
+    );
   const isOwnOutput = (output: OutputSummary) =>
     output.address.equals(ownAddress);
   /** The production journal over the node database (`IntentJournalLive`'s). */
@@ -260,6 +272,9 @@ export const openIntentEmulator = async (
   };
   return {
     connectionString,
+    /** A node SQL client over the same database, for the test's own writes. */
+    sql,
+    runtime,
     emulator,
     own,
     payee,

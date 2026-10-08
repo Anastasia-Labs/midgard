@@ -5,6 +5,7 @@ import { Effect, Option } from "effect";
 
 import {
   IntentJournal,
+  type JournalInsert,
   type SubmissionIntent,
 } from "../services/intent-journal.js";
 import {
@@ -148,15 +149,21 @@ export const submitSignedTxWithRecovery = (
           );
         }
       }
-      // The pre-broadcast gate commits in the journal row's transaction, so
-      // a refused gate leaves no journal row, and a row never outlives a
-      // gate that did not pass. It runs for each attempt so a generation
-      // change also fences retries; the row itself is written once.
+      // The pre-broadcast gate owns one outermost transaction and runs the
+      // journal's insert inside it, so a refused gate leaves no journal row,
+      // and a row never outlives a gate that did not pass. It runs for each
+      // attempt so a generation change also fences retries; the row itself
+      // is written once (a second insert is `already_recorded`).
       const durable = yield* Effect.serviceOption(
         BeforeSignedTransactionSubmission,
       );
       const gate = Option.isSome(durable)
-        ? durable.value.persist({ txHash, signedTxCbor: signed.toCBOR() })
+        ? (journal: JournalInsert) =>
+            durable.value.persist({
+              txHash,
+              signedTxCbor: signed.toCBOR(),
+              journal,
+            })
         : undefined;
       if (!journaled || gate !== undefined) {
         yield* journal.record(intent, signed.toCBOR(), txHash, gate);

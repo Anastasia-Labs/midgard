@@ -24,23 +24,35 @@
  *   `IntentJournalWithoutFollower`: journaled families are submitted
  *   unjournaled (`no_follower`) and await their own confirmation there.
  */
-import { inspect } from "node:util";
-
 import {
   deriveIntentStatusIn,
   type IntentStatus,
   type OutputSummary,
   postgresDialect,
   recordIntentIn,
-  type RecordIntentResult,
 } from "@al-ft/midgard-l1-follower";
-import { SqlClient, type SqlError } from "@effect/sql";
-import { Context, Data, Effect, Layer } from "effect";
+import { SqlClient } from "@effect/sql";
+import { Context, Effect, Layer, Option } from "effect";
 
 import { followerSqlTx } from "../database/follower-schema.js";
 import type { DriverHold } from "../l1-events/driver.js";
 import { NodeConfig } from "./config.js";
-import { refusalHoldsOver } from "./intent-journal.holds.js";
+import {
+  refusalHoldsOver,
+  type UnwrittenHold,
+} from "./intent-journal.holds.js";
+import {
+  causeText,
+  INTENT_BYTES_MISMATCH,
+  INTENT_CONTENT_REF_MISSING,
+  INTENT_GATE_UNJOURNALED,
+  INTENT_JOURNAL_UNAVAILABLE,
+  INTENT_UNDECODABLE,
+  IntentJournalRefused,
+  refusal,
+  refusalOf,
+  unavailable,
+} from "./intent-journal.refusals.js";
 import { nodeOwnWallets } from "./intent-journal.tracked-set.js";
 
 /** The node's L1 families (§8.4, Node rows). */
@@ -130,52 +142,82 @@ export const intentLabel = (intent: SubmissionIntent): string =>
     ? `${intent.family} ${intent.workflowKey}`
     : `unjournaled (${intent.reason}) ${intent.workflowKey}`;
 
-/** The follower store has no cursor: there is no view to journal under. */
-export const INTENT_JOURNAL_NO_VIEW = "intent_journal_no_view";
-/** §8.2: an input, reference input or collateral is not a tracked fact. */
-export const INTENT_INPUT_UNTRACKED = "intent_input_untracked";
-/** The same transaction was journaled with other bytes; only those are sent. */
-export const INTENT_BYTES_MISMATCH = "intent_bytes_mismatch";
-/** The signed bytes do not decode, or hash to another transaction. */
-export const INTENT_UNDECODABLE = "intent_undecodable";
-/** A family that names its content (§8.2) journaled no content reference. */
-export const INTENT_CONTENT_REF_MISSING = "intent_content_ref_missing";
-/** The journal write failed (the database). */
-export const INTENT_JOURNAL_UNAVAILABLE = "intent_journal_unavailable";
-
-/** The journal refused the transaction; it was not submitted. */
-export class IntentJournalRefused extends Data.TaggedError(
-  "IntentJournalRefused",
-)<{
-  readonly reason: string;
-  readonly txHash: string;
-  readonly message: string;
-}> {}
+export {
+  INTENT_BYTES_MISMATCH,
+  INTENT_CONTENT_REF_MISSING,
+  INTENT_GATE_UNJOURNALED,
+  INTENT_INPUT_UNTRACKED,
+  INTENT_JOURNAL_NO_VIEW,
+  INTENT_JOURNAL_UNAVAILABLE,
+  INTENT_UNDECODABLE,
+  IntentJournalRefused,
+} from "./intent-journal.refusals.js";
 
 export type RecordOutcome =
   | Readonly<{ kind: "recorded" | "already_recorded" }>
   | Readonly<{ kind: "unjournaled"; reason: UnjournaledReason }>;
+
+/**
+ * The journal's insert of one intent, recorded in the caller's transaction:
+ * it must run inside a SQL transaction the caller opened and owns, on the
+ * node database, and commits or rolls back with it. Outside a transaction it
+ * refuses (`INTENT_GATE_UNJOURNALED`) and writes nothing. It fails with the
+ * journal's refusal (§8.2), which the caller must let roll its transaction
+ * back. For an unjournaled submission it does nothing.
+ */
+export type JournalInsert = Effect.Effect<void, IntentJournalRefused>;
+
+/**
+ * A workflow's pre-broadcast gate: its checks and durable write (the
+ * commit's pending-finalization row, the settlement attempt), run in one SQL
+ * transaction the gate itself opens as the outermost one (a history write
+ * must own it), with the journal's insert run inside that same transaction.
+ * The single transaction is what makes the gate and the journal row one
+ * fact: a gate that refuses, or a process that stops anywhere before the
+ * transaction commits, leaves no journal row, so S6 never holds bytes whose
+ * gate did not pass.
+ */
+export type PreBroadcastGate<E> = (
+  journalInsert: JournalInsert,
+) => Effect.Effect<void, E>;
 
 export type IntentJournalService = Readonly<{
   /**
    * Journals the signed bytes before their first submission. Idempotent per
    * transaction: a second call with the same bytes is `already_recorded`.
    *
-   * `gate` is the workflow's pre-broadcast check and durable write (the
-   * commit's pending-finalization row, the settlement attempt). It runs in
-   * the journal row's own SQL transaction, after the row is written: a gate
-   * that fails, or a process that stops before the transaction commits,
-   * leaves no journal row, so S6 never holds bytes whose gate did not pass.
-   * The gate's error is returned as it is.
+   * With no `gate`, the journal writes the row in its own transaction.
+   *
+   * With a `gate` (`PreBroadcastGate`), the gate owns the transaction: it is
+   * handed the journal's insert and runs it inside its own outermost
+   * transaction, together with its write ("record in the caller's
+   * transaction"). The journal never opens a transaction around a gate. A
+   * gate that fails returns its error as it is, unless the journal's insert
+   * refused inside it, in which case the refusal is returned (and held). A
+   * gate that passes without the insert having succeeded inside a
+   * transaction is refused (`INTENT_GATE_UNJOURNALED`).
    */
   record: <E = never>(
     intent: SubmissionIntent,
     signedTxCbor: string,
     txHash: string,
-    gate?: Effect.Effect<void, E>,
+    gate?: PreBroadcastGate<E>,
   ) => Effect.Effect<RecordOutcome, IntentJournalRefused | E>;
   /** The refusals still standing, one per family: each fails `/readyz`. */
   holds: () => readonly DriverHold[];
+  /**
+   * Returns this journal's refusal holds whose write to the node database
+   * has not landed yet, and forgets them. A worker thread's journal ends
+   * with the thread, so the worker hands them to the main process (I1-H1),
+   * which `adopt`s them.
+   */
+  handOff: () => readonly UnwrittenHold[];
+  /**
+   * Takes over a worker's unwritten refusal holds: they are holds of this
+   * journal at once (so `/readyz` names them), and are written on its next
+   * record or refresh until they land.
+   */
+  adopt: (holds: readonly UnwrittenHold[]) => void;
   /**
    * Re-reads the standing refusals from the node database, after clearing
    * those whose refused transaction lost an input to another landed one
@@ -190,68 +232,6 @@ export class IntentJournal extends Context.Tag("midgard/IntentJournal")<
   IntentJournal,
   IntentJournalService
 >() {}
-
-/** An error and the causes under it (a SQL error names its driver's). */
-const causeText = (error: unknown): string => {
-  const parts: string[] = [];
-  for (
-    let at: unknown = error, depth = 0;
-    at !== undefined && at !== null && depth < 4;
-    at = typeof at === "object" ? (at as { cause?: unknown }).cause : undefined,
-      depth += 1
-  )
-    parts.push(
-      at instanceof Error
-        ? at.message
-        : typeof at === "string"
-          ? at
-          : typeof at === "object" &&
-              typeof (at as { message?: unknown }).message === "string"
-            ? (at as { message: string }).message
-            : inspect(at, { depth: 1 }),
-    );
-  return parts.join(": ");
-};
-
-const refusal = (
-  reason: string,
-  txHash: string,
-  message: string,
-): IntentJournalRefused =>
-  new IntentJournalRefused({ reason, txHash, message });
-
-const refusalOf = (
-  result: Exclude<
-    RecordIntentResult,
-    { kind: "recorded" } | { kind: "already_recorded" }
-  >,
-  txHash: string,
-): IntentJournalRefused => {
-  switch (result.kind) {
-    case "no_view":
-      return refusal(
-        INTENT_JOURNAL_NO_VIEW,
-        txHash,
-        `tx ${txHash} not submitted: the L1 follower has no view to journal it under`,
-      );
-    case "input_untracked":
-      return refusal(
-        INTENT_INPUT_UNTRACKED,
-        txHash,
-        `tx ${txHash} not submitted: ${result.untracked
-          .map((o) => `${o.txHash.toString("hex")}#${o.index.toString()}`)
-          .join(
-            ", ",
-          )} not a tracked fact or an output of a journaled intent (§8.2); the follower may be behind`,
-      );
-    case "undecodable":
-      return refusal(
-        INTENT_UNDECODABLE,
-        txHash,
-        `tx ${txHash} not submitted: ${result.detail}`,
-      );
-  }
-};
 
 /**
  * Records `signedTxCbor` in the caller's database, refusing what §8.2
@@ -354,16 +334,10 @@ export const readIntentStatus = (
     return state?.status ?? null;
   });
 
-/** A gate failure carried through the journal's transaction unchanged. */
-class GateFailed<E> {
-  readonly _tag = "GateFailed";
-  constructor(readonly error: E) {}
-}
-
 /**
- * The journal over one node SQL client: the row and the caller's gate in one
- * transaction. A refusal is held for its family (`refusalHoldsOver`) until
- * that family's next success clears it, in the record's transaction.
+ * The journal over one node SQL client. A refusal is held for its family
+ * (`refusalHoldsOver`) until that family's next success clears it, in the
+ * record's transaction.
  */
 export const intentJournalOver = (
   sql: SqlClient.SqlClient,
@@ -375,43 +349,85 @@ export const intentJournalOver = (
       intent: SubmissionIntent,
       signedTxCbor: string,
       txHash: string,
-      gate?: Effect.Effect<void, E>,
+      gate?: PreBroadcastGate<E>,
     ): Effect.Effect<RecordOutcome, IntentJournalRefused | E> => {
       if (intent.kind === "unjournaled")
         return submitUnjournaled(
           intent.reason,
           intent.workflowKey,
           txHash,
-        ).pipe(Effect.zipLeft(gate ?? Effect.void));
-      const inTransaction: Effect.Effect<
-        RecordOutcome,
-        IntentJournalRefused | GateFailed<E> | SqlError.SqlError
-      > = sql.withTransaction(
-        recordSignedIntent(intent, signedTxCbor, txHash, isOwnOutput).pipe(
-          Effect.provideService(SqlClient.SqlClient, sql),
-          Effect.zipLeft(
-            (gate ?? Effect.void).pipe(
-              Effect.mapError((error) => new GateFailed(error)),
-            ),
+        ).pipe(
+          Effect.zipLeft(gate === undefined ? Effect.void : gate(Effect.void)),
+        );
+      const attempt = Effect.suspend(() => {
+        // What the insert did, in the transaction that ran it last. A gate
+        // may wrap the insert's refusal in its own error (a history write
+        // maps every failure), so the journal keeps it here.
+        let inserted: RecordOutcome | undefined;
+        let refused: IntentJournalRefused | undefined;
+        const insert: JournalInsert = Effect.gen(function* () {
+          inserted = undefined;
+          refused = undefined;
+          if (
+            gate !== undefined &&
+            Option.isNone(
+              yield* Effect.serviceOption(SqlClient.TransactionConnection),
+            )
+          )
+            return yield* refusal(
+              INTENT_GATE_UNJOURNALED,
+              txHash,
+              `tx ${txHash} not submitted: the ${intent.family} gate ran the journal insert outside its own transaction`,
+            );
+          const outcome = yield* recordSignedIntent(
+            intent,
+            signedTxCbor,
+            txHash,
+            isOwnOutput,
+          ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
+          yield* held
+            .clearIn(intent.family)
+            .pipe(Effect.mapError((cause) => unavailable(txHash, cause)));
+          inserted = outcome;
+        }).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              refused = error;
+            }),
           ),
-          Effect.zipLeft(held.clearIn(intent.family)),
-        ),
-      );
-      return inTransaction.pipe(
-        Effect.catchAll(
-          (error): Effect.Effect<never, IntentJournalRefused | E> =>
-            error instanceof GateFailed
-              ? Effect.fail(error.error)
-              : error instanceof IntentJournalRefused
-                ? Effect.fail(error)
-                : Effect.fail(
-                    refusal(
-                      INTENT_JOURNAL_UNAVAILABLE,
-                      txHash,
-                      `tx ${txHash} not submitted: the intent journal transaction failed: ${causeText(error)}`,
-                    ),
+        );
+        /** The insert's outcome once its transaction committed. */
+        const outcome = (): Effect.Effect<
+          RecordOutcome,
+          IntentJournalRefused
+        > =>
+          inserted !== undefined
+            ? Effect.succeed(inserted)
+            : Effect.fail(
+                refused ??
+                  refusal(
+                    INTENT_GATE_UNJOURNALED,
+                    txHash,
+                    `tx ${txHash} not submitted: the ${intent.family} gate passed without journaling it`,
                   ),
-        ),
+              );
+        return gate === undefined
+          ? sql.withTransaction(insert).pipe(
+              Effect.catchTag("SqlError", (cause) =>
+                Effect.fail(unavailable(txHash, cause)),
+              ),
+              Effect.flatMap(outcome),
+            )
+          : gate(insert).pipe(
+              Effect.catchAll(
+                (error): Effect.Effect<never, IntentJournalRefused | E> =>
+                  Effect.fail(refused ?? error),
+              ),
+              Effect.flatMap(outcome),
+            );
+      });
+      return held.flush.pipe(
+        Effect.zipRight(attempt),
         Effect.tap(() => held.cleared(intent.family)),
         Effect.tapError((error) =>
           error instanceof IntentJournalRefused
@@ -429,6 +445,8 @@ export const intentJournalOver = (
       );
     },
     holds: held.holds,
+    handOff: held.handOff,
+    adopt: held.adopt,
     refresh: held.refresh,
   };
 };
@@ -457,7 +475,12 @@ export const IntentJournalWithoutFollower = Layer.succeed(IntentJournal, {
         ? intent.workflowKey
         : `${intent.family} ${intent.workflowKey}`,
       txHash,
-    ).pipe(Effect.zipLeft(gate ?? Effect.void)),
+    ).pipe(
+      Effect.zipLeft(gate === undefined ? Effect.void : gate(Effect.void)),
+    ),
   holds: () => [],
+  handOff: () => [],
+  // No worker journals in a phase without a follower.
+  adopt: () => undefined,
   refresh: () => Effect.void,
 });

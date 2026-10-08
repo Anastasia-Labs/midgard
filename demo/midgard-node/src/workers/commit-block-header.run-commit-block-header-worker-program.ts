@@ -20,6 +20,7 @@ import {
   shouldPreserveCommitMpfRoots,
 } from "./commit-block-header.commit-explicit-block-header-program.js";
 import { databaseOperationsProgram } from "./commit-block-header.database-operations-program.js";
+import { handOffUnwrittenRefusalHolds } from "./commit-block-header.hand-off-refusal-holds.js";
 import {
   type CommitLucidFactory,
   CommitWorkerInvariantError,
@@ -157,6 +158,7 @@ export const runCommitBlockHeaderWorkerProgram = (
     }
     return result;
   }).pipe(
+    Effect.ensuring(handOffUnwrittenRefusalHolds(notifyParent)),
     workerInput.history === undefined
       ? (effect) => effect
       : Effect.provideService(HistoryProducer, workerInput.history),
