@@ -240,11 +240,10 @@ export const observeMergeCompletion = (headerHash: Buffer, jobId: string) =>
 
 /**
  * A merge is complete only when the header has left the state queue AND its
- * confirmed-merge local finalization job completed. That job clears the
- * block's rows in the same transaction that folds its ledger delta, so rows
- * that remain after the header left the queue mean the local finalization did
- * not happen; an absent row set alone proves nothing, because a block without
- * L2 transactions never had rows.
+ * confirmed-merge local finalization job completed. The block's rows prove
+ * neither: they stay until its fold is final (`releaseFinalFolds`), well
+ * after its merge completed, and a block without L2 transactions never had
+ * rows.
  */
 export const mergeCompletionVerdict = (
   observed: MergeCompletionObservation,
@@ -260,13 +259,7 @@ export const mergeCompletionVerdict = (
     };
   const jobStatus = observed.job?.[MutationJobsDB.Columns.STATUS];
   if (jobStatus === MutationJobsDB.Status.Completed)
-    return observed.txCount === 0
-      ? { status: "satisfied", nextAction: null }
-      : {
-          status: "ambiguous",
-          nextAction:
-            "The confirmed-merge finalization job completed but block rows for this header exist again; inspect local_block_rows before claiming merge complete.",
-        };
+    return { status: "satisfied", nextAction: null };
   if (observed.job !== undefined)
     return {
       status: "blocked",

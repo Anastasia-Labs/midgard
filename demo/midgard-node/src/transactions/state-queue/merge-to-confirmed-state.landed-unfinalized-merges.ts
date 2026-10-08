@@ -110,8 +110,8 @@ const landedUnfinalizedMerges = (
         journal.value[PendingBlockFinalizationsDB.Columns.STATUS] !==
         PendingBlockFinalizationsDB.Status.LocallyApplied
       ) {
-        // Its block rows are not local yet; clearing them now would leave the
-        // later block finalization to write them back after the merge.
+        // Its block's own local finalization (its bodies, its included
+        // rows) has not run yet; the merge finalizes after it.
         return yield* Effect.fail(
           new DatabaseError({
             table: PendingBlockFinalizationsDB.tableName,

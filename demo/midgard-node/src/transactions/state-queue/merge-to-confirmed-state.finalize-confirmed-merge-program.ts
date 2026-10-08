@@ -4,7 +4,6 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Metric, Option, Ref } from "effect";
 
 import {
-  BlocksDB,
   ConfirmedLedgerDB,
   MutationJobsDB,
   PendingBlockFinalizationsDB,
@@ -102,11 +101,13 @@ const foldOwnMergeAtFrontier = (journal: PendingBlockFinalizationsDB.Record) =>
 
 /**
  * The confirmed-merge finalization's one transaction: the own block's fold
- * at the frontier (when the frontier is its base), then its block rows
- * cleared and the receipt members its transactions settle recorded (so a
- * block that folds with no rebase between still records them). The
- * pending-table rows the block marked stay marked until its fold is final
- * (`releaseFinalFolds`). O(delta): no whole-ledger read, root or table lock.
+ * at the frontier (when the frontier is its base), then the receipt members
+ * its transactions settle recorded (so a block that folds with no rebase
+ * between still records them). The block's bodies (`blocks` rows) and the
+ * pending-table rows it marked stay until its fold is final
+ * (`releaseFinalFolds`): a rollback of this merge leaves the block queued,
+ * and merging it again reads them. O(delta): no whole-ledger read, root or
+ * table lock.
  */
 export const finalizeConfirmedMergeTransaction = ({
   headerHash,
@@ -121,10 +122,7 @@ export const finalizeConfirmedMergeTransaction = ({
       Effect.gen(function* () {
         const step = yield* foldOwnMergeAtFrontier(journal);
         yield* Effect.logInfo(
-          `🔸 Confirmed-ledger step of the merge finalization: ${step}; clearing the block from BlocksDB...`,
-        );
-        yield* BlocksDB.clearBlock(headerHash).pipe(
-          Effect.withSpan("clear-block-from-BlocksDB"),
+          `🔸 Confirmed-ledger step of the merge finalization: ${step}.`,
         );
         yield* recordSettlements([
           {
@@ -197,15 +195,17 @@ export const observeNativeOwnerAfterConfirmedMerge = ({
 /**
  * Finalizes one L1-confirmed merge into the local database under its
  * confirmed-merge job: folds the block's journal delta into
- * `confirmed_ledger` at the frontier (marking its events terminal), clears
- * its block rows, then confirms the native MPF owner is live (see
+ * `confirmed_ledger` at the frontier (marking its events terminal), then
+ * confirms the native MPF owner is live (see
  * observeNativeOwnerAfterConfirmedMerge). `headerUtxosRoot` is the header's
  * committed UTxO root, which the journal's expected root must be.
  *
  * Idempotent, so a failed or interrupted attempt can simply run again: a
- * block already folded is not folded twice, and clearing converges. A
- * frontier elsewhere leaves the fold to landed-block processing, which folds
- * every merged block in queue order. A failure records the job as failed.
+ * block already folded is not folded twice, and its settlements are
+ * recorded once. A frontier elsewhere leaves the fold to landed-block
+ * processing, which folds every merged block in queue order. The block's
+ * bodies stay until its fold is final (`releaseFinalFolds`). A failure
+ * records the job as failed.
  */
 export const finalizeConfirmedMergeProgram = ({
   headerHash,

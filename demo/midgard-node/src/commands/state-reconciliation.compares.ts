@@ -273,6 +273,7 @@ export type SqlStateSnapshot = {
     readonly sourceEventId: string | null;
   }[];
   readonly pendingTxs: readonly PendingTxDelta[];
+  /** The headers with `blocks` rows, except those a retained fold holds. */
   readonly blockHeaderHashes: readonly string[];
   readonly observer: ObserverSnapshot;
 };

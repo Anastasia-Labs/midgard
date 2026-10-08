@@ -1116,8 +1116,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/mpf.ts",
-    "max": 674,
-    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts."
+    "max": 672,
+    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts. N5b (-2): the merge finalization no longer clears the block rows, so the refusal case needs no rows of its own."
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-commit-selection.test.ts",

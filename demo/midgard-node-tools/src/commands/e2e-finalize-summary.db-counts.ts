@@ -41,7 +41,9 @@ export const collectDbCounts = (): Effect.Effect<
       SELECT 'processed_mempool' AS label, COUNT(*) AS count FROM processed_mempool
         WHERE included_by IS NULL
       UNION ALL
-      SELECT 'blocks' AS label, COUNT(*) AS count FROM blocks
+      SELECT 'blocks' AS label, COUNT(*) AS count FROM blocks b
+        WHERE NOT EXISTS (SELECT 1 FROM node_confirmed_merges m
+          WHERE m.header_hash = b.header_hash)
       UNION ALL
       SELECT 'immutable' AS label, COUNT(*) AS count FROM immutable
       UNION ALL

@@ -449,6 +449,7 @@ export const registerMpfTests = () => {
             const mergeHeaderHash = headers[1]!;
             const mergeJournal = yield* journalOf(mergeHeaderHash);
             const successTxHash = Buffer.alloc(32, 0x61);
+            const successRows = [successTxHash.toString("hex")];
             const successDeposit = makeDepositEntry({
               [DepositsDB.Columns.PROJECTED_HEADER_HASH]: mergeHeaderHash,
               [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
@@ -471,13 +472,14 @@ export const registerMpfTests = () => {
             ).toBe("folded");
             expect((yield* confirmedState).set).toEqual(utxoSet(states[2]!));
             expect((yield* confirmedState).root).toBe(roots[2]);
-            expect(yield* blockTxs(mergeHeaderHash)).toEqual([]);
+            // Its bodies stay until its fold is final (releaseFinalFolds).
+            expect(yield* blockTxs(mergeHeaderHash)).toEqual(successRows);
             expect(yield* depositStatus(successDeposit)).toBe(
               DepositsDB.Status.Consumed,
             );
 
             // A frontier elsewhere defers the fold to landed-block
-            // processing; the block rows still clear.
+            // processing; the block rows stay.
             yield* resetTo(0);
             const deferredDeposit = makeDepositEntry({
               [DepositsDB.Columns.PROJECTED_HEADER_HASH]: mergeHeaderHash,
@@ -492,7 +494,7 @@ export const registerMpfTests = () => {
               }),
             ).toBe("deferred");
             expect((yield* confirmedState).root).toBe(roots[0]);
-            expect(yield* blockTxs(mergeHeaderHash)).toEqual([]);
+            expect(yield* blockTxs(mergeHeaderHash)).toEqual(successRows);
             expect(yield* depositStatus(deferredDeposit)).toBe(
               DepositsDB.Status.Projected,
             );
@@ -500,8 +502,6 @@ export const registerMpfTests = () => {
             // A wrong base is refused, writing nothing: a frontier at the
             // base header with another root, or a ledger lacking what the
             // merge spends.
-            const failureTxHash = Buffer.alloc(32, 0x62);
-            yield* BlocksDB.insert(mergeHeaderHash, [failureTxHash]);
             for (const wrong of [
               { utxosRoot: roots[2]!, ledger: 1 },
               { utxosRoot: roots[1]!, ledger: 0 },
@@ -521,9 +521,7 @@ export const registerMpfTests = () => {
               expect(refused._tag).toBe("Left");
               expect(yield* Frontier.retrieve).toEqual(frontier);
               expect((yield* confirmedState).root).toBe(roots[wrong.ledger]);
-              expect(yield* blockTxs(mergeHeaderHash)).toEqual([
-                failureTxHash.toString("hex"),
-              ]);
+              expect(yield* blockTxs(mergeHeaderHash)).toEqual(successRows);
               expect(yield* depositStatus(deferredDeposit)).toBe(
                 DepositsDB.Status.Projected,
               );

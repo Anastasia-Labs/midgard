@@ -16,15 +16,20 @@
  * merge fiber's folds are released once processing has recorded their merge
  * point). A block whose fold a rollback unfolds never reaches here.
  *
- * Released here: the pending-table rows each block marked included
- * (`included_by`) and their deltas (`MempoolInclusionsDB.deleteIncluded`).
- * They stay marked from the fold until here, never deleted at the fold or at
- * the own merge finalization, so an unfold restores nothing for them: the
- * rows are still marked by the block it reopens, and a rollback that takes
- * that block off the landed chain clears the marks.
+ * Released here, for each block:
+ * - the pending-table rows it marked included (`included_by`) and their
+ *   deltas (`MempoolInclusionsDB.deleteIncluded`);
+ * - an own block's bodies, its `blocks` rows (`BlocksDB.clearBlock`; a
+ *   foreign block has none). A merge that a rollback undoes leaves the block
+ *   queued, and merging it again reads them.
+ * Both stay from the fold until here, never deleted at the fold or at the
+ * own merge finalization, so an unfold restores nothing for them: the rows
+ * are still marked by the block it reopens, and a rollback that takes that
+ * block off the landed chain clears the marks.
  */
 import { Effect } from "effect";
 
+import * as BlocksDB from "../database/blocks.js";
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import type { DatabaseError } from "../database/utils/common.js";
 import type { Database } from "../services/database.js";
@@ -32,6 +37,12 @@ import type { Database } from "../services/database.js";
 export const releaseFinalFolds = (
   headerHashes: readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.forEach(headerHashes, MempoolInclusionsDB.deleteIncluded, {
-    discard: true,
-  });
+  Effect.forEach(
+    headerHashes,
+    (headerHash) =>
+      Effect.zipRight(
+        MempoolInclusionsDB.deleteIncluded(headerHash),
+        BlocksDB.clearBlock(headerHash),
+      ),
+    { discard: true },
+  );
