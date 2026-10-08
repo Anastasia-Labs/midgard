@@ -6,6 +6,7 @@ import { Effect, Option } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import type { OwnJournal } from "./ports.js";
+import type { LandedBlockRow } from "./store.js";
 
 const Journals = PendingBlockFinalizationsDB;
 
@@ -33,6 +34,31 @@ export const ownJournalOf = (
   forcedIds: record.forcedTransactionEventIds,
   txIds: record.mempoolTxIds,
 });
+
+/**
+ * The landed row of this node's journaled block on the journal's own base,
+ * as landed-block processing records it, for a fold at that base.
+ */
+export const ownFoldRow = (
+  record: PendingBlockFinalizationsDB.Record,
+): LandedBlockRow => {
+  const own = ownJournalOf(record);
+  return {
+    headerHash: own.headerHash,
+    parentHeaderHash: own.baseTailHeaderHash,
+    parentUtxosRoot: own.baseUtxosRoot,
+    utxosRoot: own.expectedUtxosRoot,
+    kind: "own",
+    state: "processed",
+    applied: true,
+    spent: own.spent,
+    produced: own.produced,
+    depositIds: own.depositIds,
+    withdrawals: [],
+    forcedIds: own.forcedIds,
+    txIds: own.txIds,
+  };
+};
 
 /** This node's journal of `headerHash`, if it committed that block. */
 export const ownJournal = (headerHash: string) =>

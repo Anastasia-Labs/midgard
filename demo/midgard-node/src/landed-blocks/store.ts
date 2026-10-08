@@ -56,13 +56,15 @@ export type HeaderRoot = Readonly<{ headerHash: string; utxosRoot: string }>;
 const failure = (message: string, cause?: unknown) =>
   new DatabaseError({ table: tableName, message, cause });
 
-const bytea = (values: readonly Buffer[]) =>
+/** `values` as Postgres `bytea[]` literals. */
+export const bytea = (values: readonly Buffer[]) =>
   values.map((value) => `\\x${value.toString("hex")}`);
 
 const buffers = (value: unknown): Buffer[] =>
   ((value ?? []) as Uint8Array[]).map((item) => Buffer.from(item));
 
-type RawRow = {
+/** A landed row as Postgres returns it (also a `node_confirmed_merges` row's shape, less `state`). */
+export type RawRow = {
   header_hash: Buffer;
   parent_header_hash: Buffer;
   parent_utxos_root: string;
@@ -79,7 +81,7 @@ type RawRow = {
   tx_ids: unknown;
 };
 
-const decodeRow = (row: RawRow): LandedBlockRow => {
+export const decodeRow = (row: RawRow): LandedBlockRow => {
   const outRefs = buffers(row.produced_outrefs);
   const outputs = buffers(row.produced_outputs);
   const withdrawals =

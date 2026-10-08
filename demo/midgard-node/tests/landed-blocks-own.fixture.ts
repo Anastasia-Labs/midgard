@@ -2,7 +2,7 @@
  * The own-landed-block test's fixture (plan §7.3, §15 N3): a genesis
  * ledger, an own block A on it with its journal and a foreign block F on A,
  * their landed queue, and stub landed-block ports over the node database
- * that record replays, merge finalizations and rebase requests.
+ * that record replays and rebase requests and serve a set queue history.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -164,9 +164,9 @@ export const confirmedAt = (target: Block | "genesis", root: string) =>
 
 export type Harness = {
   journals: Map<string, OwnJournal>;
-  completed: Set<string>;
+  /** The retained queue outputs `queueHistory` serves. */
+  history: LandedStateQueueElement[];
   replays: ReplayInput[];
-  finalized: string[];
   rebaseRequests: number;
   replayRoot: string | undefined;
   /** Whether the follower is still at the run's view when it writes. */
@@ -175,9 +175,8 @@ export type Harness = {
 
 export const harness = (): Harness => ({
   journals: new Map(),
-  completed: new Set(),
+  history: [],
   replays: [],
-  finalized: [],
   rebaseRequests: 0,
   replayRoot: undefined,
   viewHeld: true,
@@ -185,7 +184,7 @@ export const harness = (): Harness => ({
 
 export const ports = (state: Harness): LandedBlockPorts<never> => ({
   confirmView: () => Effect.sync(() => state.viewHeld),
-  queueHistory: () => Effect.succeed([]),
+  queueHistory: () => Effect.sync(() => state.history),
   // The fixture gate reports a failed write as its own refusal; the
   // production producer gate passes the work's failure through, so a moved
   // view is unwrapped here.
@@ -217,21 +216,6 @@ export const ports = (state: Harness): LandedBlockPorts<never> => ({
       } as const;
     }),
   ownJournal: (headerHash) => Effect.succeed(state.journals.get(headerHash)),
-  ownMergeCompleted: (headerHash) =>
-    Effect.succeed(state.completed.has(headerHash)),
-  // The local merge finalization: the journal's delta, then the job completes.
-  finalizeOwnMerge: ({ headerHash }) =>
-    withHistoryWrite(
-      Effect.gen(function* () {
-        const journal = state.journals.get(hex(headerHash))!;
-        yield* ConfirmedLedgerDB.clearUTxOs([...journal.spent]);
-        yield* ConfirmedLedgerDB.insertMultiple([
-          ...(yield* ledgerRows(journal.produced, new Map())),
-        ]);
-        state.finalized.push(hex(headerHash));
-        state.completed.add(hex(headerHash));
-      }),
-    ),
   genesis: ledgerRows(GENESIS, new Map()),
   requestRebase: () =>
     Effect.sync(() => {

@@ -3,13 +3,16 @@
  * admits pending transactions (one acceptance receipt per accepted batch),
  * commits its own block on the processed tip (the journal, then the
  * working-ledger move onto it), finalizes its journal once the block is
- * merged, and resolves its active journal the way the node's journal
+ * merged (the transactions it included leave the mempool; landed-block
+ * processing folds it into `confirmed_ledger`), and resolves its active
+ * journal the way the node's journal
  * resolution does: abandoned once its base is no longer the processed tip,
  * revived when an abandoned block lands anyway. Every resolution ends with
  * the working ledger and native MPF moved onto the processed chain.
  */
 import { Effect } from "effect";
 
+import { MempoolDB } from "../../src/database/index.js";
 import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import { rebaseTargetOf } from "../../src/landed-blocks/rebase-target.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
@@ -61,6 +64,21 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
       stats.ownOnRemovedBase += 1;
   };
 
+  /**
+   * An own merged block's local finalization, as far as the simulation sees
+   * it: its journal is locally applied and the transactions it included
+   * leave the mempool.
+   */
+  const finalizeOwn = async (header: string) => {
+    await run(setJournalStatus(header, JournalStatus.LocallyApplied));
+    const { txIds } = book.blocks.get(header)!;
+    if (txIds.length > 0)
+      await run(withHistoryWrite(MempoolDB.clearTxs([...txIds])));
+    const ids = new Set(txIds.map(hex));
+    mempool.survivors = mempool.survivors.filter((tx) => !ids.has(hex(tx.id)));
+    stats.ownMerges += 1;
+  };
+
   /** Revives an abandoned own block that landed (finalized if merged). */
   const revive = async (
     header: string,
@@ -69,14 +87,9 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
   ) => {
     if (book.active !== undefined && book.active !== header)
       await abandonActive(canonical);
-    await run(
-      setJournalStatus(
-        header,
-        merged
-          ? JournalStatus.LocallyApplied
-          : JournalStatus.SubmittedUnconfirmed,
-      ),
-    );
+    if (merged) await finalizeOwn(header);
+    else
+      await run(setJournalStatus(header, JournalStatus.SubmittedUnconfirmed));
     book.active = merged ? undefined : header;
     stats.ownRevivals += 1;
   };
@@ -84,7 +97,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
   /** The active journal's block was merged: its journal finalizes. */
   const finalizeMerged = async (rooted: ReadonlySet<string>) => {
     if (book.active === undefined || !rooted.has(book.active)) return;
-    await run(setJournalStatus(book.active, JournalStatus.LocallyApplied));
+    await finalizeOwn(book.active);
     book.active = undefined;
   };
 

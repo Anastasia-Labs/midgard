@@ -20,15 +20,15 @@ import {
   StateQueueMutationLeasesDB,
 } from "../../src/database/index.js";
 import {
+  retrieveMergeLinks,
+  unfoldFrontier,
+} from "../../src/landed-blocks/confirmed-merges.js";
+import { Frontier } from "../../src/landed-blocks/store.js";
+import {
   computeLedgerMpfRootFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
 } from "../../src/mpf/index.js";
-import {
-  applyConfirmedLedgerDelta,
-  applyConfirmedLedgerDeltaChainTransaction,
-  decodeConfirmedLedgerDelta,
-  materializeConfirmedLedgerSnapshot,
-} from "../../src/transactions/state-queue/confirmed-ledger-snapshot.js";
+import { materializeConfirmedLedgerSnapshot } from "../../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { finalizeConfirmedMergeTransaction } from "../../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { buildDaPayloadInsert } from "../../src/workers/commit-block-header/da-payload.js";
 import { resolvePendingJournalLedgerState } from "../../src/workers/commit-block-header/pending-journal.js";
@@ -132,7 +132,7 @@ export const registerMpfTests = () => {
     );
 
     it.effect(
-      "replays a depth-three ledger delta chain from confirmed state in a parent-plus-child confirmed merge transaction",
+      "materializes a depth-three ledger delta chain, folds and unfolds each confirmed merge by its delta, and refuses a wrong base",
       () =>
         isolatedDb(
           Effect.gen(function* () {
@@ -316,40 +316,6 @@ export const registerMpfTests = () => {
               ),
             );
             expect(snapshot.deltaChain).toHaveLength(3);
-            const wrongBase = yield* Effect.either(
-              applyConfirmedLedgerDeltaChainTransaction({
-                ...snapshot,
-                baseRoot: roots[1]!,
-              }),
-            );
-            expect(wrongBase._tag).toBe("Left");
-            expect(
-              yield* computeLedgerMpfRootFromLedgerEntries(
-                yield* ConfirmedLedgerDB.retrieve,
-              ),
-            ).toBe(roots[0]);
-            const wrongFinal = yield* Effect.either(
-              applyConfirmedLedgerDeltaChainTransaction({
-                ...snapshot,
-                root: roots[2]!,
-              }),
-            );
-            expect(wrongFinal._tag).toBe("Left");
-            expect(
-              yield* computeLedgerMpfRootFromLedgerEntries(
-                yield* ConfirmedLedgerDB.retrieve,
-              ),
-            ).toBe(roots[0]);
-            const transactionallyRecovered =
-              yield* applyConfirmedLedgerDeltaChainTransaction(snapshot);
-            expect(
-              yield* computeLedgerMpfRootFromLedgerEntries(
-                transactionallyRecovered,
-              ),
-            ).toBe(roots[3]);
-            yield* ConfirmedLedgerDB.clear;
-            yield* ConfirmedLedgerDB.insertMultiple([...states[0]!]);
-
             const fullUtxos = snapshot.entries.map((item) => ({
               outref: item[LedgerUtils.Columns.OUTREF],
               output: item[LedgerUtils.Columns.OUTPUT],
@@ -392,55 +358,6 @@ export const registerMpfTests = () => {
               expect(payload.block_body.header.utxosRoot).toBe(roots[3]);
             }
 
-            for (let index = 0; index < headers.length; index += 1) {
-              const header = headers[index]!;
-              const journal =
-                yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(header);
-              if (journal._tag === "None") throw new Error("missing journal");
-              const delta = yield* decodeConfirmedLedgerDelta(journal.value);
-              if (delta === undefined) throw new Error("missing delta");
-              yield* applyConfirmedLedgerDelta(delta);
-              const confirmedAtStep = yield* ConfirmedLedgerDB.retrieve;
-              expect(
-                confirmedAtStep.map((item) =>
-                  item[LedgerUtils.Columns.OUTREF].toString("hex"),
-                ),
-              ).toEqual(
-                states[index + 1]!.map((item) =>
-                  item[LedgerUtils.Columns.OUTREF].toString("hex"),
-                ),
-              );
-              expect(
-                yield* computeLedgerMpfRootFromLedgerEntries(confirmedAtStep),
-              ).toBe(roots[index + 1]);
-            }
-            const confirmedAfter = yield* ConfirmedLedgerDB.retrieve;
-            expect(
-              confirmedAfter.some((item) =>
-                item[LedgerUtils.Columns.OUTREF].equals(
-                  untouched[LedgerUtils.Columns.OUTREF],
-                ),
-              ),
-            ).toBe(true);
-            expect(
-              yield* computeLedgerMpfRootFromLedgerEntries(confirmedAfter),
-            ).toBe(roots[3]);
-
-            yield* ConfirmedLedgerDB.clear;
-            yield* ConfirmedLedgerDB.insertMultiple([...states[0]!]);
-            const parentChildJournal =
-              yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-                headers[1]!,
-              );
-            if (parentChildJournal._tag === "None") {
-              throw new Error("missing parent-child journal");
-            }
-            const parentChildSnapshot =
-              yield* materializeConfirmedLedgerSnapshot(
-                parentChildJournal.value,
-              );
-            expect(parentChildSnapshot.deltaChain).toHaveLength(2);
-
             const utxoSet = (entries: readonly LedgerUtils.Entry[]) =>
               entries
                 .map(
@@ -450,127 +367,167 @@ export const registerMpfTests = () => {
                     ].toString("hex")}`,
                 )
                 .sort();
+            const journalOf = (header: Buffer) =>
+              PendingBlockFinalizationsDB.retrieveByHeaderHash(header).pipe(
+                Effect.map((found) => {
+                  if (found._tag === "None") throw new Error("missing journal");
+                  return found.value;
+                }),
+              );
+            const confirmedState = Effect.gen(function* () {
+              const entries = yield* ConfirmedLedgerDB.retrieve;
+              return {
+                set: utxoSet(entries),
+                root: yield* computeLedgerMpfRootFromLedgerEntries(entries),
+              };
+            });
+            const blockTxs = (header: Buffer) =>
+              BlocksDB.retrieveTxHashesByHeaderHash(header).pipe(
+                Effect.map((hashes) =>
+                  hashes.map((hash) => hash.toString("hex")),
+                ),
+              );
+            const resetTo = (index: number) =>
+              Effect.gen(function* () {
+                yield* sql`DELETE FROM node_confirmed_merges`;
+                yield* ConfirmedLedgerDB.clear;
+                yield* ConfirmedLedgerDB.insertMultiple([...states[index]!]);
+                yield* Frontier.upsert({
+                  headerHash:
+                    index === 0
+                      ? "00".repeat(28)
+                      : headers[index - 1]!.toString("hex"),
+                  utxosRoot: roots[index]!,
+                });
+              });
+
+            // The merge fiber folds each journal by its delta: the first
+            // (with no frontier yet) after the one-time bootstrap at its base.
+            for (let index = 0; index < headers.length; index += 1) {
+              const step = yield* finalizeConfirmedMergeTransaction({
+                headerHash: headers[index]!,
+                journal: yield* journalOf(headers[index]!),
+              });
+              expect(step).toBe("folded");
+              const confirmed = yield* confirmedState;
+              expect(confirmed.set).toEqual(utxoSet(states[index + 1]!));
+              expect(confirmed.root).toBe(roots[index + 1]);
+              expect(yield* Frontier.retrieve).toEqual({
+                headerHash: headers[index]!.toString("hex"),
+                utxosRoot: roots[index + 1],
+              });
+            }
+            expect(
+              (yield* ConfirmedLedgerDB.retrieve).some((item) =>
+                item[LedgerUtils.Columns.OUTREF].equals(
+                  untouched[LedgerUtils.Columns.OUTREF],
+                ),
+              ),
+            ).toBe(true);
+            // A re-run converges without folding twice.
+            expect(
+              yield* finalizeConfirmedMergeTransaction({
+                headerHash: headers[2]!,
+                journal: yield* journalOf(headers[2]!),
+              }),
+            ).toBe("already_folded");
+            expect((yield* confirmedState).root).toBe(roots[3]);
+
+            // Each merge's rollback restores the prior ledger, exactly.
+            for (let index = headers.length - 1; index >= 0; index -= 1) {
+              const frontier = yield* Frontier.retrieve;
+              yield* sql.withTransaction(unfoldFrontier(frontier!));
+              const confirmed = yield* confirmedState;
+              expect(confirmed.set).toEqual(utxoSet(states[index]!));
+              expect(confirmed.root).toBe(roots[index]);
+            }
+            expect((yield* retrieveMergeLinks).size).toBe(0);
+
+            // A merge on its base folds, consuming its deposit.
+            yield* resetTo(1);
+            yield* sql`DELETE FROM node_landed_blocks`;
             const mergeHeaderHash = headers[1]!;
+            const mergeJournal = yield* journalOf(mergeHeaderHash);
             const successTxHash = Buffer.alloc(32, 0x61);
             const successDeposit = makeDepositEntry({
               [DepositsDB.Columns.PROJECTED_HEADER_HASH]: mergeHeaderHash,
               [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
             });
+            const depositStatus = (deposit: DepositsDB.Entry) =>
+              DepositsDB.retrieveByEventId(deposit[DepositsDB.Columns.ID]).pipe(
+                Effect.map((found) =>
+                  found._tag === "Some"
+                    ? found.value[DepositsDB.Columns.STATUS]
+                    : undefined,
+                ),
+              );
             yield* BlocksDB.insert(mergeHeaderHash, [successTxHash]);
             yield* DepositsDB.insertEntries([successDeposit]);
-            yield* finalizeConfirmedMergeTransaction({
-              headerHash: mergeHeaderHash,
-              snapshot: parentChildSnapshot,
-              projectedDepositEventIds: [successDeposit[DepositsDB.Columns.ID]],
-              projectedWithdrawalEventIds: [],
-              projectedForcedTransactionEventIds: [],
-            });
-            const mergedConfirmed = yield* ConfirmedLedgerDB.retrieve;
-            expect(utxoSet(mergedConfirmed)).toEqual(utxoSet(states[2]!));
             expect(
-              yield* computeLedgerMpfRootFromLedgerEntries(mergedConfirmed),
-            ).toBe(roots[2]);
-            expect(
-              (yield* BlocksDB.retrieveTxHashesByHeaderHash(
-                mergeHeaderHash,
-              )).map((hash) => hash.toString("hex")),
-            ).toEqual([]);
-            const consumedDeposit = yield* DepositsDB.retrieveByEventId(
-              successDeposit[DepositsDB.Columns.ID],
+              yield* finalizeConfirmedMergeTransaction({
+                headerHash: mergeHeaderHash,
+                journal: mergeJournal,
+              }),
+            ).toBe("folded");
+            expect((yield* confirmedState).set).toEqual(utxoSet(states[2]!));
+            expect((yield* confirmedState).root).toBe(roots[2]);
+            expect(yield* blockTxs(mergeHeaderHash)).toEqual([]);
+            expect(yield* depositStatus(successDeposit)).toBe(
+              DepositsDB.Status.Consumed,
             );
-            expect(consumedDeposit._tag).toBe("Some");
-            if (consumedDeposit._tag === "Some") {
-              expect(consumedDeposit.value[DepositsDB.Columns.STATUS]).toBe(
-                DepositsDB.Status.Consumed,
-              );
-            }
 
-            yield* ConfirmedLedgerDB.clear;
-            yield* ConfirmedLedgerDB.insertMultiple([...states[0]!]);
-            const failureTxHash = Buffer.alloc(32, 0x62);
-            const failureDeposit = makeDepositEntry({
+            // A frontier elsewhere defers the fold to landed-block
+            // processing; the block rows still clear.
+            yield* resetTo(0);
+            const deferredDeposit = makeDepositEntry({
               [DepositsDB.Columns.PROJECTED_HEADER_HASH]: mergeHeaderHash,
               [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
             });
-            yield* BlocksDB.insert(mergeHeaderHash, [failureTxHash]);
-            yield* DepositsDB.insertEntries([failureDeposit]);
-            const wrongBaseFinalization = yield* Effect.either(
-              finalizeConfirmedMergeTransaction({
+            yield* BlocksDB.insert(mergeHeaderHash, [successTxHash]);
+            yield* DepositsDB.insertEntries([deferredDeposit]);
+            expect(
+              yield* finalizeConfirmedMergeTransaction({
                 headerHash: mergeHeaderHash,
-                snapshot: {
-                  ...parentChildSnapshot,
-                  baseRoot: roots[1]!,
-                },
-                projectedDepositEventIds: [
-                  failureDeposit[DepositsDB.Columns.ID],
-                ],
-                projectedWithdrawalEventIds: [],
-                projectedForcedTransactionEventIds: [],
+                journal: mergeJournal,
               }),
+            ).toBe("deferred");
+            expect((yield* confirmedState).root).toBe(roots[0]);
+            expect(yield* blockTxs(mergeHeaderHash)).toEqual([]);
+            expect(yield* depositStatus(deferredDeposit)).toBe(
+              DepositsDB.Status.Projected,
             );
-            expect(wrongBaseFinalization._tag).toBe("Left");
-            const confirmedAfterWrongBase = yield* ConfirmedLedgerDB.retrieve;
-            expect(utxoSet(confirmedAfterWrongBase)).toEqual(
-              utxoSet(states[0]!),
-            );
-            expect(
-              yield* computeLedgerMpfRootFromLedgerEntries(
-                confirmedAfterWrongBase,
-              ),
-            ).toBe(roots[0]);
-            expect(
-              (yield* BlocksDB.retrieveTxHashesByHeaderHash(
-                mergeHeaderHash,
-              )).map((hash) => hash.toString("hex")),
-            ).toEqual([failureTxHash.toString("hex")]);
-            const projectedAfterWrongBase = yield* DepositsDB.retrieveByEventId(
-              failureDeposit[DepositsDB.Columns.ID],
-            );
-            expect(projectedAfterWrongBase._tag).toBe("Some");
-            if (projectedAfterWrongBase._tag === "Some") {
-              expect(
-                projectedAfterWrongBase.value[DepositsDB.Columns.STATUS],
-              ).toBe(DepositsDB.Status.Projected);
-            }
 
-            const wrongFinalRootFinalization = yield* Effect.either(
-              finalizeConfirmedMergeTransaction({
-                headerHash: mergeHeaderHash,
-                snapshot: {
-                  ...parentChildSnapshot,
-                  root: roots[1]!,
-                },
-                projectedDepositEventIds: [
-                  failureDeposit[DepositsDB.Columns.ID],
-                ],
-                projectedWithdrawalEventIds: [],
-                projectedForcedTransactionEventIds: [],
-              }),
-            );
-            expect(wrongFinalRootFinalization._tag).toBe("Left");
-            const confirmedAfterWrongFinal = yield* ConfirmedLedgerDB.retrieve;
-            expect(utxoSet(confirmedAfterWrongFinal)).toEqual(
-              utxoSet(states[0]!),
-            );
-            expect(
-              yield* computeLedgerMpfRootFromLedgerEntries(
-                confirmedAfterWrongFinal,
-              ),
-            ).toBe(roots[0]);
-            expect(
-              (yield* BlocksDB.retrieveTxHashesByHeaderHash(
-                mergeHeaderHash,
-              )).map((hash) => hash.toString("hex")),
-            ).toEqual([failureTxHash.toString("hex")]);
-            const projectedAfterWrongFinal =
-              yield* DepositsDB.retrieveByEventId(
-                failureDeposit[DepositsDB.Columns.ID],
+            // A wrong base is refused, writing nothing: a frontier at the
+            // base header with another root, or a ledger lacking what the
+            // merge spends.
+            const failureTxHash = Buffer.alloc(32, 0x62);
+            yield* BlocksDB.insert(mergeHeaderHash, [failureTxHash]);
+            for (const wrong of [
+              { utxosRoot: roots[2]!, ledger: 1 },
+              { utxosRoot: roots[1]!, ledger: 0 },
+            ]) {
+              yield* resetTo(wrong.ledger);
+              const frontier = {
+                headerHash: headers[0]!.toString("hex"),
+                utxosRoot: wrong.utxosRoot,
+              };
+              yield* Frontier.upsert(frontier);
+              const refused = yield* Effect.either(
+                finalizeConfirmedMergeTransaction({
+                  headerHash: mergeHeaderHash,
+                  journal: mergeJournal,
+                }),
               );
-            expect(projectedAfterWrongFinal._tag).toBe("Some");
-            if (projectedAfterWrongFinal._tag === "Some") {
-              expect(
-                projectedAfterWrongFinal.value[DepositsDB.Columns.STATUS],
-              ).toBe(DepositsDB.Status.Projected);
+              expect(refused._tag).toBe("Left");
+              expect(yield* Frontier.retrieve).toEqual(frontier);
+              expect((yield* confirmedState).root).toBe(roots[wrong.ledger]);
+              expect(yield* blockTxs(mergeHeaderHash)).toEqual([
+                failureTxHash.toString("hex"),
+              ]);
+              expect(yield* depositStatus(deferredDeposit)).toBe(
+                DepositsDB.Status.Projected,
+              );
+              expect((yield* retrieveMergeLinks).size).toBe(0);
             }
           }),
         ),

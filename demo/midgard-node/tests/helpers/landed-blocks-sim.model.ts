@@ -11,8 +11,9 @@
  * nodes, and stops at a block that does not replay to its header or whose
  * DA payload is still missing; the frontier ends at the last processed
  * header the root passed. A frontier off the root's lineage (a merge a
- * rollback undid) stays where it is, unless the root's ledger is the
- * frontier's (then it re-anchors at the root).
+ * rollback undid) first unfolds back to the newest header its lineage
+ * shares with the root's, by header identity (N5), even where the root's
+ * ledger equals the frontier's.
  */
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -26,59 +27,55 @@ import type { SimUniverse } from "./landed-blocks-sim.universe.js";
 const hex = (value: Uint8Array) => Buffer.from(value).toString("hex");
 
 /**
- * The node's state the model is compared with. A consumed deposit names its
- * merged block by height: a merge a rollback undid can be re-anchored on an
- * equal ledger of another fork, which keeps the header it was consumed at.
+ * The node's state the model is compared with. A consumed deposit names the
+ * exact header it was consumed at: an unfold reopens it (N5).
  */
-export const readActual = (registry: SimRegistry) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const confirmed = yield* sql<{ outref: Buffer; output: Buffer }>`
+export const readActual = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const confirmed = yield* sql<{ outref: Buffer; output: Buffer }>`
     SELECT outref, output FROM confirmed_ledger`;
-    const working = yield* sql<{
-      outref: Buffer;
-      output: Buffer;
-      source_event_id: Buffer | null;
-    }>`SELECT outref, output, source_event_id FROM mempool_ledger`;
-    const mempool = yield* sql<{ tx_id: Buffer }>`SELECT tx_id FROM mempool`;
-    const rejections = yield* sql<{ tx_id: Buffer; reject_code: string }>`
+  const working = yield* sql<{
+    outref: Buffer;
+    output: Buffer;
+    source_event_id: Buffer | null;
+  }>`SELECT outref, output, source_event_id FROM mempool_ledger`;
+  const mempool = yield* sql<{ tx_id: Buffer }>`SELECT tx_id FROM mempool`;
+  const rejections = yield* sql<{ tx_id: Buffer; reject_code: string }>`
     SELECT tx_id, reject_code FROM tx_rejections`;
-    const deposits = yield* sql<{
-      event_id: Buffer;
-      status: string;
-      projected_header_hash: Buffer | null;
-    }>`SELECT event_id, status, projected_header_hash FROM deposits_utxos`;
-    const sorted = <A>(items: A[]) => items.sort();
-    return {
-      confirmed: sorted(
-        confirmed.map((row) => `${hex(row.outref)}=${hex(row.output)}`),
+  const deposits = yield* sql<{
+    event_id: Buffer;
+    status: string;
+    projected_header_hash: Buffer | null;
+  }>`SELECT event_id, status, projected_header_hash FROM deposits_utxos`;
+  const sorted = <A>(items: A[]) => items.sort();
+  return {
+    confirmed: sorted(
+      confirmed.map((row) => `${hex(row.outref)}=${hex(row.output)}`),
+    ),
+    working: sorted(
+      working.map(
+        (row) =>
+          `${hex(row.outref)}=${hex(row.output)}@${row.source_event_id === null ? "-" : hex(row.source_event_id)}`,
       ),
-      working: sorted(
-        working.map(
-          (row) =>
-            `${hex(row.outref)}=${hex(row.output)}@${row.source_event_id === null ? "-" : hex(row.source_event_id)}`,
-        ),
+    ),
+    mempool: sorted(mempool.map((row) => hex(row.tx_id))),
+    rejections: sorted(
+      rejections.map((row) => `${hex(row.tx_id)}:${row.reject_code}`),
+    ),
+    deposits: sorted(
+      deposits.map(
+        (row) =>
+          `${hex(row.event_id)}:${row.status}@${
+            row.projected_header_hash === null
+              ? "-"
+              : hex(row.projected_header_hash)
+          }`,
       ),
-      mempool: sorted(mempool.map((row) => hex(row.tx_id))),
-      rejections: sorted(
-        rejections.map((row) => `${hex(row.tx_id)}:${row.reject_code}`),
-      ),
-      deposits: sorted(
-        deposits.map(
-          (row) =>
-            `${hex(row.event_id)}:${row.status}@${
-              row.projected_header_hash === null
-                ? "-"
-                : row.status === "consumed"
-                  ? `h${registry.get(hex(row.projected_header_hash))?.h ?? "?"}`
-                  : hex(row.projected_header_hash)
-            }`,
-        ),
-      ),
-    };
-  });
+    ),
+  };
+});
 
-export type ActualState = Effect.Effect.Success<ReturnType<typeof readActual>>;
+export type ActualState = Effect.Effect.Success<typeof readActual>;
 
 /** The canonical queue as the model reads it: the root's header, then the nodes' headers. */
 export type ModelQueueHeaders = Readonly<{
@@ -112,21 +109,22 @@ export type ModelStop = Readonly<{
   merged: boolean;
 }>;
 
-export type ModelProcessing =
-  | Readonly<{ kind: "behind"; frontier: string }>
-  | Readonly<{
-      kind: "processed";
-      /** The frontier the check started from (`undefined`: none yet). */
-      from: string | undefined;
-      reanchored: boolean;
-      frontier: string;
-      /** Every header processed past `from`, in order. */
-      processed: readonly string[];
-      /** The processed headers past the frontier: the node's rows. */
-      rows: readonly string[];
-      tip: string;
-      stop: ModelStop | undefined;
-    }>;
+export type ModelProcessing = Readonly<{
+  kind: "processed";
+  /** The frontier the check started from (`undefined`: none yet). */
+  from: string | undefined;
+  /** The header the frontier unfolded back to first, if it was off the root's lineage. */
+  unfoldedTo: string | undefined;
+  /** Whether that frontier's ledger equals the root's (another header, the same root). */
+  equalRoot: boolean;
+  frontier: string;
+  /** Every header processed past `from`, in order. */
+  processed: readonly string[];
+  /** The processed headers past the frontier: the node's rows. */
+  rows: readonly string[];
+  tip: string;
+  stop: ModelStop | undefined;
+}>;
 
 /**
  * Where processing must leave the node at `queue`, from the frontier the
@@ -142,14 +140,18 @@ export const modelProcessing = (
   const rooted = rootLineage(registry, queue.root);
   const position = previous === undefined ? 0 : rooted.indexOf(previous);
   const rootInfo = registry.get(queue.root)!;
-  let reanchored = false;
+  let unfoldedTo: string | undefined;
+  let equalRoot = false;
   let start = position;
   if (position < 0) {
+    // The newest header the frontier's lineage shares with the root's.
     const info = registry.get(previous!)!;
-    if (info.h !== rootInfo.h || info.b !== rootInfo.b)
-      return { kind: "behind", frontier: previous! };
-    reanchored = true;
-    start = rooted.length - 1;
+    equalRoot = info.h === rootInfo.h && info.b === rootInfo.b;
+    const shared = new Set(rooted);
+    unfoldedTo = previous!;
+    while (!shared.has(unfoldedTo))
+      unfoldedTo = registry.get(unfoldedTo)!.prevHeaderHash!;
+    start = rooted.indexOf(unfoldedTo);
   }
   const merged = new Set(rooted.slice(start + 1));
   const sequence = [...rooted.slice(start + 1), ...queue.nodes];
@@ -176,7 +178,8 @@ export const modelProcessing = (
   return {
     kind: "processed",
     from: previous,
-    reanchored,
+    unfoldedTo,
+    equalRoot,
     frontier,
     processed,
     rows: processed.slice(passed.length),
@@ -215,12 +218,7 @@ export const expectedState = (
         : deposit.h <= frontier.h
           ? "consumed"
           : "projected";
-    const at =
-      header === undefined
-        ? "-"
-        : status === "consumed"
-          ? `h${deposit.h}`
-          : header;
+    const at = header ?? "-";
     return `${hex(deposit.row[DepositsDB.Columns.ID])}:${status}@${at}`;
   });
   return {

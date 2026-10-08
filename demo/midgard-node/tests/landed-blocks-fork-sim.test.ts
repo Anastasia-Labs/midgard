@@ -12,9 +12,13 @@
  * removed a processed block reverts it, rejecting the pending transaction
  * that spent its output with its dependents (whose outputs leave the working
  * ledger too); a block whose replay misses its header's root is never
- * adopted and holds `landed_block_invalid` with the process up; late DA,
- * transient replay faults and a merge a rollback undid each hold by name
- * and clear.
+ * adopted and holds `landed_block_invalid` with the process up; late DA
+ * and transient replay faults each hold by name and clear; and a merge a
+ * rollback undid is unfolded back to the root's lineage by header identity
+ * (N5), its retained folds pruned once no rollback reaches them. A fork
+ * onto another header with the frontier's root (`equalRootUnfolds`) is
+ * counted but not required: the corpus does not reliably build one, so the
+ * deterministic `confirmed-ledger-temporal.test.ts` pins it.
  */
 import "./utils.js";
 
@@ -192,7 +196,7 @@ const runScenario = (
                 ...node,
                 includes: new Map(),
                 lateUntil: new Map(),
-                completed: new Set(),
+                published: { position: null },
               }),
             ],
           }),
@@ -241,8 +245,9 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "deferredRebases",
     "relandedAppends",
     "relands",
-    "behindHeld",
-    "behindHealed",
+    "unfolds",
+    "retainedFolds",
+    "prunedFolds",
     "rollbacksRemovingProcessed",
     "admitted",
     "directRejections",
@@ -264,7 +269,6 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "coalescedMerges",
     "bootstrapsPastGenesis",
     "heldPastMerge",
-    "behindCompared",
   ] as const)
     expect({ field, count: stats[field] > 0 }).toEqual({ field, count: true });
 };

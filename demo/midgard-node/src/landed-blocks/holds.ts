@@ -21,8 +21,23 @@ export const LANDED_BLOCK_FORCED_ORDER_PENDING =
 export const LANDED_BLOCK_REPLAY_FAILED = "landed_block_replay_failed";
 /** The history owner is recovering, or the follower moved off the run's view ("view moved"); the next run retries. */
 export const LANDED_BLOCKS_WAITING = "landed_blocks_waiting";
-/** `confirmed_ledger` cannot reach the merged queue root yet. */
+/**
+ * The merged queue root is on no lineage `confirmed_ledger` can reach: not
+ * forward from the frontier through the queue history, nor back through the
+ * retained folds (N5). On an honest chain it cannot occur once the frontier
+ * was set at genesis or on a fold this node made: every rollback a merge can
+ * suffer is above the prune boundary, where its fold is retained.
+ */
 export const CONFIRMED_LEDGER_BEHIND = "confirmed_ledger_behind";
+/**
+ * A fold's base is not what the block names: the frontier is not its parent
+ * (header and root), or `confirmed_ledger` lacks what it spends or holds
+ * what it produces. Refused, nothing written.
+ */
+export const CONFIRMED_LEDGER_BASE_MISMATCH = "confirmed_ledger_base_mismatch";
+/** The merged root passed this node's own block, whose journal is not locally applied yet. */
+export const CONFIRMED_LEDGER_OWN_BLOCK_PENDING =
+  "confirmed_ledger_own_block_pending";
 /** The working ledger and native MPF wait for the rebase onto the processed blocks. */
 export const LANDED_BLOCK_REBASE_PENDING = "landed_block_rebase_pending";
 /** The rebase failed; the history owner retries it on its backoff. */
@@ -38,8 +53,10 @@ const PRIORITY = [
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_REBASE_FAILED,
   LANDED_BLOCK_REPLAY_FAILED,
+  CONFIRMED_LEDGER_BASE_MISMATCH,
   LANDED_BLOCKS_WAITING,
   CONFIRMED_LEDGER_BEHIND,
+  CONFIRMED_LEDGER_OWN_BLOCK_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
 ] as const;
 

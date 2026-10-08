@@ -30,9 +30,12 @@
  *   lands later (or never), or a fresh block that never lands. It abandons
  *   a journal whose base left the tip and revives one whose block lands
  *   anyway; a candidate that lands with no journal is a foreign block.
- * - While `confirmed_ledger` is behind (only where the model says a merge a
- *   rollback undid left the frontier off the root's lineage), the rows,
- *   ledgers, mempool and deposits must not move.
+ * - A merge a rollback undid is unfolded (N5): the frontier rewinds by
+ *   header identity to the root's lineage, also where another fork's header
+ *   carries the same ledger, and `confirmed_ledger_behind` never holds. The
+ *   retained folds are exactly the frontier's lineage's, each pruned only
+ *   once the follower's prune boundary passed its merge; the published
+ *   position names the frontier with a level.
  */
 import {
   type BlockSummary,
@@ -45,6 +48,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Runtime } from "effect";
 
 import { stateQueueProjection } from "../../src/l1-state-queue/index.js";
+import { retrieveMergeLinks } from "../../src/landed-blocks/confirmed-merges.js";
 import {
   CONFIRMED_LEDGER_BEHIND,
   LANDED_BLOCK_AWAITING_DA,
@@ -92,13 +96,12 @@ export const landedBlocksSimProjection = (
 ): FollowerProjection => {
   const canonical: BlockSummary[] = [];
   const served = new Set<string>();
-  let behind = false;
   let lastFrontier: string | undefined;
+  /** The retained folds at the end of the last compared check. */
+  let lastRetained = new Set<string>();
   /** The frontier the model derived on the last check it compared. */
   let modelFrontier: string | undefined;
   let lastRows: readonly string[] = [];
-  /** The node's state at the end of the last check it was up for. */
-  let snapshot: string | undefined;
   let seen = 0;
   const run = <A, E>(effect: Effect.Effect<A, E, Database>) =>
     Runtime.runPromise(env.runtime)(effect);
@@ -108,12 +111,6 @@ export const landedBlocksSimProjection = (
     if (!env.registry.get(header)!.longLate) return true;
     const until = env.lateUntil.get(header);
     return until !== undefined && stats.checks >= until;
-  };
-  const state = async () => {
-    const rows = (await run(retrieveRows))
-      .map((row) => `${row.headerHash}:${row.kind}:${row.state}:${row.applied}`)
-      .sort();
-    return JSON.stringify({ rows, ...(await run(readActual(env.registry))) });
   };
 
   const settler = simSettler(env, node, run, served);
@@ -153,10 +150,7 @@ export const landedBlocksSimProjection = (
       ledger,
       mempool,
     );
-    const difference = stateDifference(
-      await run(readActual(env.registry)),
-      expected,
-    );
+    const difference = stateDifference(await run(readActual), expected);
     if (difference !== null) return difference;
     const info = env.registry.get(top)!;
     const { durableRoot } = await env.owner.current.diagnostics();
@@ -166,12 +160,41 @@ export const landedBlocksSimProjection = (
       : `native root ${durableRoot}, the model's ${root} (at ${top})`;
   };
 
+  /**
+   * The retained folds are the frontier's lineage's only, and a fold leaves
+   * it only by the prune once the prune boundary passed its merge.
+   */
+  const retainedFolds = async (
+    store: FactStore,
+    rooted: readonly string[],
+    frontier: string,
+  ) => {
+    const links = await run(retrieveMergeLinks);
+    const lineage = new Set(rooted.slice(0, rooted.indexOf(frontier) + 1));
+    for (const [hash, link] of links) {
+      if (!lineage.has(hash))
+        return `retained fold ${hash} is off the frontier's lineage`;
+      if (link.merge === null)
+        return `retained fold ${hash} has no merge point at a settled check`;
+    }
+    const boundary =
+      (await store.cursor())?.prunedThroughSlot ?? SIM_ORIGIN.point.slot;
+    for (const link of links.values())
+      if (link.merge !== null && link.merge.slot <= boundary)
+        return `retained fold ${link.headerHash} (merge slot ${link.merge.slot.toString()}) is at or below the prune boundary ${boundary.toString()}`;
+    stats.retainedFolds = Math.max(stats.retainedFolds, links.size);
+    stats.prunedFolds += [...lastRetained].filter(
+      (hash) => !links.has(hash) && lineage.has(hash),
+    ).length;
+    lastRetained = new Set(links.keys());
+    return links;
+  };
+
   const compare = async (
     store: FactStore,
     rollback: boolean,
     queue: ModelQueueHeaders,
     settled: Exclude<Settled, { error: string }>,
-    rebuilt: boolean,
     rowsBefore: ReadonlySet<string>,
   ): Promise<string | null> => {
     const { hold } = settled;
@@ -185,20 +208,11 @@ export const landedBlocksSimProjection = (
     if (frontier?.headerHash !== lastFrontier && lastFrontier !== undefined)
       stats.folds += 1;
     lastFrontier = frontier?.headerHash;
-    if (model.kind === "behind") {
-      if (frontier?.headerHash !== model.frontier)
-        return `confirmed_ledger is at ${frontier?.headerHash}, the model's (behind) at ${model.frontier}`;
-      if (!holdNames(hold, CONFIRMED_LEDGER_BEHIND))
-        return `a frontier off the root's lineage held ${JSON.stringify(hold)}`;
-      stats.behindHeld += 1;
-      behind = true;
-      if (!rebuilt && snapshot !== undefined) {
-        const now = await state();
-        if (now !== snapshot)
-          return `behind, the node moved: ${snapshot.slice(0, 600)} → ${now.slice(0, 600)}`;
-        stats.behindCompared += 1;
-      }
-      return null;
+    if (holdNames(hold, CONFIRMED_LEDGER_BEHIND))
+      return `confirmed_ledger held behind: ${JSON.stringify(hold)}`;
+    if (model.unfoldedTo !== undefined) {
+      stats.unfolds += 1;
+      if (model.equalRoot) stats.equalRootUnfolds += 1;
     }
     if (model.from === undefined && queue.root !== SDK.GENESIS_HEADER_HASH)
       stats.bootstrapsPastGenesis += 1;
@@ -219,8 +233,15 @@ export const landedBlocksSimProjection = (
     }
     if (frontier?.headerHash !== model.frontier)
       return `confirmed_ledger is at ${frontier?.headerHash}, the model's at ${model.frontier}`;
-    if (behind) stats.behindHealed += 1;
-    behind = false;
+    const folds = await retainedFolds(store, rooted, model.frontier);
+    if (typeof folds === "string") return folds;
+    const { position } = env.published;
+    if (
+      position?.headerHash !== model.frontier ||
+      position.atRoot !== (model.frontier === queue.root) ||
+      position.level === null
+    )
+      return `the published confirmed-ledger position ${JSON.stringify(position)} is not the frontier ${model.frontier} with a level`;
     stats.comparedChecks += 1;
     const { stop } = model;
     if (stop === undefined) {
@@ -366,7 +387,6 @@ export const landedBlocksSimProjection = (
       (await run(retrieveRows)).map((row) => row.headerHash),
     );
     const faults: Faults = { missing: [], transient: 0 };
-    const before = settler.rebuilds();
     const settled = await settler.settle(
       store,
       faults,
@@ -380,12 +400,10 @@ export const landedBlocksSimProjection = (
         event.kind === "roll_backward",
         queue,
         settled,
-        settler.rebuilds() !== before,
         rowsBefore,
       );
       if (failed !== null) return failed;
     }
-    snapshot = await state();
     return null;
   };
 

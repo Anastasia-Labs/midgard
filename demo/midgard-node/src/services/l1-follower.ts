@@ -25,9 +25,9 @@
  *   with the landed queue's tail for the watchdog, and derives this
  *   operator's membership: a removed operator is unready `operator_removed`
  *   with its duties held, and stays up.
- * - The driver's landed-block hook (N3, `landed-blocks/`) processes each
- *   landed block once, in queue order: an own block from its journal, a
- *   foreign one by replay; what it cannot do yet is a named hold.
+ * - The driver's landed-block hook (N3, N5, `landed-blocks/`) processes each
+ *   landed block once, in queue order, folding merges into `confirmed_ledger`
+ *   (its position joins the handle, P10); what it cannot do is a named hold.
  * - The driver's forced-order hook (N10, plan §12.3) ingests the forced
  *   orders the follower projects, resolving carriage its blocks did not
  *   carry through the local node's ledger and the configured content
@@ -76,6 +76,7 @@ import {
 } from "../l1-operator-set/index.js";
 import { landedStateQueueHook } from "../l1-state-queue/index.js";
 import {
+  type ConfirmedLedgerPosition,
   landedBlockHook,
   landedStateQueueProjection,
   nodeLandedBlockPorts,
@@ -102,12 +103,14 @@ import {
   nodeIntentTrackedSet,
 } from "./l1-follower.intents.js";
 import {
+  message,
   recordUnconfigured,
   withNodeNetworkMagic,
 } from "./l1-follower.network-magic.js";
 import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { type L1FollowerPlan, l1FollowerPlan } from "./l1-follower.plan.js";
 import {
+  cursorKey,
   followerCaughtUp,
   type L1FollowerHandle,
   planCurrentView,
@@ -123,9 +126,6 @@ import {
 class FollowerRecoveryRequired extends Data.TaggedError(
   "FollowerRecoveryRequired",
 )<{ readonly reason: string }> {}
-
-const message = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 /**
  * The driver's sink: ingests a plan under a Ready history producer, with
@@ -228,11 +228,6 @@ export const readyProducerSink = Effect.gen(function* () {
   return sink;
 });
 
-const cursorKey = (status: FollowStatus): string | null =>
-  status.cursor === null
-    ? null
-    : `${status.cursor.generation.toString()}:${status.cursor.slot.toString()}`;
-
 /** The follower over `plan`, once the node's network magic is known. */
 const followL1 = Effect.fnUntraced(function* (
   plan: Extract<L1FollowerPlan, { kind: "run" }>,
@@ -315,14 +310,16 @@ const followL1 = Effect.fnUntraced(function* (
       `the follower store or transport did not open: ${message(opened.left.error)}`,
     );
   const { transport, store, abort } = opened.right;
+  const depth = {
+    confirmationDepth: finality.confirmationDepth,
+    securityParameter: plan.securityParameter,
+  };
   const operatorSet = yield* followerOperatorSet({
     store,
     config: plan.operatorSet,
-    depth: {
-      confirmationDepth: finality.confirmationDepth,
-      securityParameter: plan.securityParameter,
-    },
+    depth,
   });
+  let confirmedLedger: ConfirmedLedgerPosition | null = null;
   const driver = createFollowerDriver({
     store,
     config: plan.projection,
@@ -355,6 +352,7 @@ const followL1 = Effect.fnUntraced(function* (
         config: plan.stateQueue,
         ports: nodeLandedBlockPorts(store, plan),
         run: (effect) => Runtime.runPromise(dbRuntime)(effect),
+        publish: { depth, position: (next) => (confirmedLedger = next) },
       }),
       forcedOrderIngestion: forcedOrderIngestionHook({
         store,
@@ -432,6 +430,7 @@ const followL1 = Effect.fnUntraced(function* (
     status: () => status,
     holds: () => [...driver.holds(), ...intents.holds(), ...journal.holds()],
     planCurrent: () => planCurrentView(store, plan.projection),
+    confirmedLedger: () => confirmedLedger,
   };
   yield* Ref.set(globals.L1_FOLLOWER, handle);
   const running = followChain({

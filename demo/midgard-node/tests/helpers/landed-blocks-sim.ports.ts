@@ -3,18 +3,13 @@
  * environment a scenario runs in, the stub ports processing runs on (honest,
  * exactly-once-checked replays with late DA and transient faults, foreign
  * blocks that include pending transactions; own blocks read from the node's
- * journals, their merge finalized by folding the journal's delta) and the
- * canonical queue read from the canonical blocks.
+ * journals) and the canonical queue read from the canonical blocks.
  */
 import { type BlockSummary, type FactStore } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { Effect, type Runtime } from "effect";
 
-import {
-  ConfirmedLedgerDB,
-  DepositsDB,
-  MempoolDB,
-} from "../../src/database/index.js";
+import { DepositsDB } from "../../src/database/index.js";
 import { readQueueHistory } from "../../src/landed-blocks/history.js";
 import { ownJournal } from "../../src/landed-blocks/journal.js";
 import {
@@ -23,8 +18,8 @@ import {
   ledgerRows,
 } from "../../src/landed-blocks/ledger.js";
 import type { LandedBlockPorts } from "../../src/landed-blocks/ports.js";
+import type { ConfirmedLedgerPosition } from "../../src/landed-blocks/position.js";
 import { rebasePlan } from "../../src/landed-blocks/rebase-target.js";
-import { retrieveRows } from "../../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/ledger-hydration.js";
 import type { Database } from "../../src/services/database.js";
 import { withHistoryWrite } from "../../src/services/event-history-producer.js";
@@ -58,8 +53,14 @@ export type LandedSimStats = TrafficStats & {
   deferredRebases: number;
   relands: number;
   folds: number;
-  behindHeld: number;
-  behindHealed: number;
+  /** Checks whose frontier unfolded back to the root's lineage (N5). */
+  unfolds: number;
+  /** ...from a header whose ledger equals the root's (no equal-root re-anchor). */
+  equalRootUnfolds: number;
+  /** The most folds retained at once. */
+  retainedFolds: number;
+  /** Folds on the frontier's lineage the prune deleted. */
+  prunedFolds: number;
   rollbacksRemovingProcessed: number;
   admitted: number;
   directRejections: number;
@@ -91,8 +92,6 @@ export type LandedSimStats = TrafficStats & {
   bootstrapsPastGenesis: number;
   /** A long-late block held while the root passed it. */
   heldPastMerge: number;
-  /** Checks behind on a rolled-back merge whose rows and ledger stayed put. */
-  behindCompared: number;
 };
 
 export const zeroLandedSimStats = (): LandedSimStats => ({
@@ -117,8 +116,10 @@ export const zeroLandedSimStats = (): LandedSimStats => ({
   deferredRebases: 0,
   relands: 0,
   folds: 0,
-  behindHeld: 0,
-  behindHealed: 0,
+  unfolds: 0,
+  equalRootUnfolds: 0,
+  retainedFolds: 0,
+  prunedFolds: 0,
   rollbacksRemovingProcessed: 0,
   admitted: 0,
   directRejections: 0,
@@ -140,7 +141,6 @@ export const zeroLandedSimStats = (): LandedSimStats => ({
   coalescedMerges: 0,
   bootstrapsPastGenesis: 0,
   heldPastMerge: 0,
-  behindCompared: 0,
 });
 
 /** The native owner the simulated node holds, reopenable as a restart. */
@@ -169,8 +169,8 @@ export type LandedSimEnv = Readonly<{
   lateFor: number;
   /** The traffic merges whenever it can. */
   mergeHeavy: boolean;
-  /** Own merged blocks whose local merge finalization completed. */
-  completed: Set<string>;
+  /** Where the hook last published `confirmed_ledger` stands. */
+  published: { position: ConfirmedLedgerPosition | null };
 }>;
 
 export type Faults = {
@@ -272,35 +272,6 @@ export const simPorts = (
       } as const;
     }),
   ownJournal,
-  ownMergeCompleted: (headerHash) =>
-    Effect.succeed(env.completed.has(headerHash)),
-  // The node's local merge finalization, as far as processing sees it: the
-  // block's delta folds into `confirmed_ledger` and the transactions it
-  // included leave the mempool.
-  finalizeOwnMerge: ({ headerHash }) =>
-    withHistoryWrite(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const hash = headerHash.toString("hex");
-        const row = (yield* retrieveRows).find(
-          (item) => item.headerHash === hash,
-        );
-        if (row === undefined)
-          return yield* Effect.fail(new Error(`no own row ${hash}`));
-        for (const outRef of row.spent)
-          yield* sql`DELETE FROM confirmed_ledger WHERE outref = ${outRef}`;
-        yield* ConfirmedLedgerDB.insertMultiple([
-          ...(yield* ledgerRows(row.produced, new Map())),
-        ]);
-        if (row.txIds.length > 0) yield* MempoolDB.clearTxs([...row.txIds]);
-        env.completed.add(hash);
-        const ids = new Set(row.txIds.map(hex));
-        env.mempool.survivors = env.mempool.survivors.filter(
-          (tx) => !ids.has(hex(tx.id)),
-        );
-        env.stats.ownMerges += 1;
-      }),
-    ),
   genesis: ledgerRows(env.universe.genesis, new Map()),
   requestRebase: () =>
     rebasePlan.pipe(

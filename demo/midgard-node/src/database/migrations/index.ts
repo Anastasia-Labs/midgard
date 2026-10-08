@@ -11,6 +11,7 @@ import landedBlocksSql from "./sql/0009_landed_blocks.sql";
 import intentRefusalHoldsSql from "./sql/0010_intent_refusal_holds.sql";
 import locallyAppliedBlockStatusSql from "./sql/0011_locally_applied_block_status.sql";
 import receiptSettlementsSql from "./sql/0012_receipt_settlements.sql";
+import confirmedLedgerMergesSql from "./sql/0013_confirmed_ledger_merges.sql";
 
 export type Migration = {
   readonly version: number;
@@ -105,6 +106,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: receiptSettlementsSql,
     transactional: true,
   },
+  {
+    version: 13,
+    name: "confirmed_ledger_merges",
+    checksumSha256: sha256Hex(confirmedLedgerMergesSql),
+    sql: confirmedLedgerMergesSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -191,6 +199,8 @@ export const APPLICATION_TABLE_NAMES = [
   "follower_event_ingestion",
   "node_landed_blocks",
   "node_confirmed_ledger_frontier",
+  "node_confirmed_merges",
+  "node_confirmed_ledger_spent",
   "intent_refusal_holds",
 ] as const;
 
@@ -249,6 +259,7 @@ export const APPLICATION_INDEX_NAMES = [
   "event_history_recovery_plans_prepared",
   "uniq_node_landed_blocks_processed_parent",
   "idx_receipt_settlements_settled_by",
+  "idx_node_confirmed_merges_merge_slot",
 ] as const;
 
 export const migrationByVersion = new Map(
