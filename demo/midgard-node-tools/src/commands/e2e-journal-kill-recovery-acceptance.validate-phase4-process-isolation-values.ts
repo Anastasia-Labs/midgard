@@ -4,6 +4,8 @@ import { isAbsolute } from "node:path";
 
 import { positiveSafeInteger } from "midgard-node/artifact-schema";
 
+import { assertNodeFollowerEnvironment } from "../l1-origin.js";
+
 export const ACCEPTANCE_ENABLE_VALUE = "journal-kill-recovery-live-v1";
 
 export const RESET_ATTESTATION_SCHEMA =
@@ -250,6 +252,9 @@ export const validatePhase4ProcessIsolationValues = (
       "Phase 4 nodes derive their owner sidecar from their own LEDGER_MPF_DB_PATH; MPF_NATIVE_OWNER_SIDECAR_PATH must be unset",
     );
   }
+  // Without its local node, origin and one-shot every node stays unready
+  // (l1_follower_unconfigured), so the gate would only time out at /readyz.
+  assertNodeFollowerEnvironment(values);
   const composeProject = requiredValue(
     values,
     "MIDGARD_PHASE4_COMPOSE_PROJECT",

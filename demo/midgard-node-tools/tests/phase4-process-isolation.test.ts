@@ -36,6 +36,12 @@ const values = (): Record<string, string> => ({
   MIDGARD_PHASE4_NETWORK_MAGIC: "420042",
   MPF_NATIVE_OWNER_BINARY_PATH: "/checkout/native/architecture-g-owner",
   MPF_NATIVE_OWNER_BINARY_SHA256: "ab".repeat(32),
+  L1_NODE_SOCKET_PATH: "/run/cardano/ipc/node.socket",
+  L1_NODE_CONFIG_PATH: "/run/config/host-config.json",
+  L1_NATIVE_CHAIN_SYNC_BINARY_PATH: "/run/bin/midgard-l1-node-transport",
+  L1_ORIGIN: `1234.${"cd".repeat(32)}`,
+  HUB_ORACLE_ONE_SHOT_TX_HASH: "ef".repeat(32),
+  HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0",
 });
 
 const canonicalPhasIdentity = SDK.phasMembershipIdentity(
@@ -231,6 +237,17 @@ describe("Phase 4 process isolation", () => {
       { MPF_NATIVE_OWNER_SIDECAR_PATH: "/shared/owner.sidecar" },
       "must be unset",
     ],
+    [{ L1_ORIGIN: "" }, "L1_ORIGIN is not set"],
+    [{ L1_NODE_CONFIG_PATH: "" }, "must be set together"],
+    [
+      {
+        L1_NODE_SOCKET_PATH: "",
+        L1_NODE_CONFIG_PATH: "",
+        L1_NATIVE_CHAIN_SYNC_BINARY_PATH: "",
+      },
+      "L1_NATIVE_CHAIN_SYNC_BINARY_PATH are not set",
+    ],
+    [{ HUB_ORACLE_ONE_SHOT_TX_HASH: "" }, "HUB_ORACLE_ONE_SHOT_TX_HASH and"],
   ])("rejects protected identity %#", (override, message) => {
     expect(() =>
       validatePhase4ProcessIsolationValues({ ...values(), ...override }),

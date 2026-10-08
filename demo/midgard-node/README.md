@@ -223,6 +223,15 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    7. A host that runs only a watcher or a DA committee node uses the same two
       files and the same `up -d cardano-node-ogmios kupo` command; nothing else
       in the base file starts.
+   8. `midgard-node` reads the in-stack node directly for its L1 follower: the
+      overlay mounts `./cardano/ipc` and `./cardano/config` and sets
+      `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
+      `L1_NATIVE_CHAIN_SYNC_BINARY_PATH` (the `midgard-l1-node-transport`
+      binary baked into the image). The one-shot `cardano-config-export`
+      service copies the cardano-node image's config and genesis files for
+      `NETWORK` into `./cardano/config` before the node starts. The follower
+      also needs `L1_ORIGIN` in `.env` (step 6); until it is set the node runs
+      but `/readyz` reports `l1_follower_unconfigured`.
 
    Confirm the route the node will use before spending anything:
 
@@ -253,6 +262,13 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    ```sh
    node dist/index.js prepare-hub-oracle-one-shot-nonce
    #   -> copy HUB_ORACLE_ONE_SHOT_TX_HASH / _OUTPUT_INDEX into .env
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+     run --rm --no-deps midgard-node \
+     node node_modules/@al-ft/midgard-l1-follower/dist/cli.js find-origin \
+     --tx <HUB_ORACLE_ONE_SHOT_TX_HASH> --network-magic 1 \
+     --socket /ipc/node.socket --sidecar /usr/local/bin/midgard-l1-node-transport
+   #   -> copy the printed l1Origin into .env as L1_ORIGIN (network magic:
+   #      1 preprod, 2 preview, 764824073 mainnet)
    node dist/index.js deploy-reference-script-node-runtime
    node dist/index.js init \
      --contract-deployment-info-output deploymentInfo/contract-deployment-info.json

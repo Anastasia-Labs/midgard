@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -208,7 +210,7 @@ test("the CLI prints what it derives for this checkout", () => {
 const dockerCompose = spawnSync("docker", ["compose", "version"]);
 const dockerMissing = dockerCompose.status !== 0 && !process.env.CI;
 
-const render = (variables) => {
+const render = (variables, { envLines = "" } = {}) => {
   const base = realpathSync(mkdtempSync(join(tmpdir(), "operator-render-")));
   try {
     const directory = join(base, MAIN_PROJECT_NAME);
@@ -223,6 +225,7 @@ const render = (variables) => {
       copyFileSync(join(composeDirectory, file), join(directory, file));
     }
     copyFileSync(join(directory, ".env.example"), join(directory, ".env"));
+    appendFileSync(join(directory, ".env"), envLines);
     const environment = { PATH: process.env.PATH, HOME: process.env.HOME };
     const run = (files) => {
       const result = spawnSync(
@@ -248,6 +251,7 @@ const render = (variables) => {
       return JSON.parse(result.stdout);
     };
     return {
+      directory,
       full: run([
         "docker-compose.yaml",
         "docker-compose.kupmios.yaml",
@@ -323,6 +327,74 @@ test(
         assert.ok(!MAIN_PORTS.includes(port), `${port} still hard-coded`);
         assert.ok(!portsB.includes(port), `${port} shared with the other`);
       }
+    });
+  },
+);
+
+// The node's L1 follower reads the in-stack cardano-node through its socket
+// and config, with the transport binary the node image bakes in, and takes
+// L1_ORIGIN from the operator's .env.
+const LOCAL_NODE_KEYS = {
+  L1_NODE_SOCKET_PATH: "/ipc/node.socket",
+  L1_NODE_CONFIG_PATH: "/cardano-config/config.json",
+  L1_NATIVE_CHAIN_SYNC_BINARY_PATH: "/usr/local/bin/midgard-l1-node-transport",
+};
+
+const bindMount = (service, target) =>
+  (service.volumes ?? []).find(
+    (volume) => volume.type === "bind" && volume.target === target,
+  );
+
+test("the node image installs the transport where compose points", () => {
+  const dockerfile = readFileSync(join(composeDirectory, "Dockerfile"), "utf8");
+  assert.match(dockerfile, /^FROM golang:\S+ AS l1-node-transport$/mu);
+  assert.ok(
+    dockerfile.includes(
+      `COPY --from=l1-node-transport /out/midgard-l1-node-transport ${LOCAL_NODE_KEYS.L1_NATIVE_CHAIN_SYNC_BINARY_PATH}\n`,
+    ),
+    "the node image must copy the transport to L1_NATIVE_CHAIN_SYNC_BINARY_PATH",
+  );
+});
+
+test(
+  "rendered: midgard-node follows the in-stack cardano-node",
+  { skip: dockerMissing && "docker compose is not available" },
+  () => {
+    withCheckouts(({ main }) => {
+      const origin = `1234.${"cd".repeat(32)}`;
+      const variables = operatorComposeVariables({ identity: main });
+      const { full: unset } = render(variables);
+      const { directory, full } = render(variables, {
+        envLines: `L1_ORIGIN=${origin}\n`,
+      });
+      const node = full.services["midgard-node"];
+      for (const [key, value] of Object.entries(LOCAL_NODE_KEYS))
+        assert.equal(node.environment[key], value, key);
+      // Empty until the operator runs find-origin: the node stays unready.
+      assert.equal(unset.services["midgard-node"].environment.L1_ORIGIN, "");
+      assert.equal(node.environment.L1_ORIGIN, origin);
+
+      const socket = bindMount(node, "/ipc");
+      const cardanoSocket = bindMount(full.services["cardano-node"], "/ipc");
+      assert.ok(socket !== undefined, "midgard-node mounts no /ipc");
+      assert.equal(socket.source, cardanoSocket.source);
+      assert.equal(socket.source, resolve(directory, "cardano/ipc"));
+
+      const config = bindMount(node, "/cardano-config");
+      assert.ok(config !== undefined, "midgard-node mounts no node config");
+      assert.equal(config.read_only, true);
+      const exporter = full.services["cardano-config-export"];
+      assert.equal(exporter.image, full.services["cardano-node"].image);
+      assert.equal(bindMount(exporter, "/export").source, config.source);
+      assert.equal(config.source, resolve(directory, "cardano/config"));
+      assert.deepEqual(node.depends_on["cardano-config-export"], {
+        condition: "service_completed_successfully",
+        required: true,
+      });
+
+      // Kupo and Ogmios stay in the stack.
+      assert.ok(full.services.kupo !== undefined);
+      assert.ok(full.services["cardano-node-ogmios"] !== undefined);
     });
   },
 );

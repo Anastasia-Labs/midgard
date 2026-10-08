@@ -918,7 +918,7 @@ Build the technical specification PDF with the repository's Nix environment.
 
 Phase 4 devnet generator and shell asset tests (no running devnet).
 
-- Command: `node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs`
+- Command: `node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs demo/midgard-node-tools/devnet/phase4-process/tests/l1-follower-inputs.test.mjs demo/midgard-node-tools/devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs`
 - Runs on:
   - `demo/midgard-node-tools/devnet/phase4-process/**`
 - Needs: `node-modules`, `blueprint`

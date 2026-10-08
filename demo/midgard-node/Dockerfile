@@ -13,6 +13,22 @@ RUN mkdir -p /native \
   && sha256sum /native/architecture-g-owner \
     | cut -d ' ' -f 1 > /native/architecture-g-owner.sha256
 
+# The node transport sidecar the node's L1 follower reads its local node
+# through; the same recipe as CI and the watcher image.
+FROM golang:1.26.5-bookworm AS l1-node-transport
+WORKDIR /src/native
+COPY l1-node-transport/native/go.mod l1-node-transport/native/go.sum ./
+RUN --mount=type=cache,id=midgard-l1-node-transport-go-mod,target=/go/pkg/mod \
+  go mod download && go mod verify
+COPY l1-node-transport/native ./
+RUN --mount=type=cache,id=midgard-l1-node-transport-go-mod,target=/go/pkg/mod \
+  --mount=type=cache,id=midgard-l1-node-transport-go-build,target=/root/.cache/go-build \
+  test "$(go version | awk '{print $3}')" = "go1.26.5" \
+  && go test ./... \
+  && CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -buildid=" \
+    -o /out/midgard-l1-node-transport .
+
 FROM base AS workspace
 WORKDIR /workspace/demo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -71,6 +87,8 @@ FROM base AS final
 WORKDIR /app
 COPY --from=build /prod/midgard-node ./
 COPY --from=native-mpf-owner /native /app/native
+# L1_NATIVE_CHAIN_SYNC_BINARY_PATH (docker-compose.kupmios.yaml).
+COPY --from=l1-node-transport /out/midgard-l1-node-transport /usr/local/bin/midgard-l1-node-transport
 COPY --from=onchain /plutus.json /onchain/aiken/plutus.json
 COPY --from=onchain /plutus.json.deployment.json /onchain/aiken/plutus.json.deployment.json
 ENV NODE_ENV=production
