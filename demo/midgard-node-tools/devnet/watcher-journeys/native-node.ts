@@ -2,11 +2,11 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { WatcherNativeRewardAccountQuery } from "midgard-watcher";
+import type { JourneyNativeNodeQuery } from "./local-kupmios.js";
 
 export const journeyNativeNodeQuery = async (
   runDirectory: string,
-): Promise<WatcherNativeRewardAccountQuery> => {
+): Promise<JourneyNativeNodeQuery> => {
   const bytes = await readFile(
     join(runDirectory, "genesis/shelley-genesis.json"),
   );

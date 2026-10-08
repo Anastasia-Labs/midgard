@@ -47,9 +47,9 @@ export { WatcherFaultProofL1RefusedError } from "./fault-proof-l1-source.chain.j
  * `WatcherFaultProofL1RefusedError` with its reason.
  */
 
-/** The sourceId prefix the earlier local source wrote. Persisted: snapshot digests bind it. */
+/** The sourceId prefix of the chain-follower source. Persisted: snapshot digests bind it. */
 export const WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX =
-  "midgard-local-kupo-http-ogmios-ws-source-v1:";
+  "midgard-local-chain-follower-source-v2:";
 
 /** The depth a snapshot's boundary sits at for each observation depth. */
 export const observationMinimumDepth = (
@@ -158,11 +158,11 @@ const captureOnce = async (
       sourceId,
       grade: "security",
       // Persisted value.
-      sourceMode: "local_kupo_ogmios",
+      sourceMode: "local_chain_follower",
       // Persisted field name: the boundary point.
-      kupoCheckpoint: point,
+      boundaryPoint: point,
       // Persisted field name: the tip point.
-      ogmiosTip: tip,
+      tipPoint: tip,
     },
     cursor: {
       point,

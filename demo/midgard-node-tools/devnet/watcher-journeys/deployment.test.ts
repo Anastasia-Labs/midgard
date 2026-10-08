@@ -24,7 +24,6 @@ import {
   type PublicationSchedule,
   synchronizePublicationIndexer,
 } from "midgard-node/tests/helpers/reference-publication-chain";
-import { WatcherLocalKupmios } from "midgard-watcher";
 import { expect, it } from "vitest";
 
 import {
@@ -36,6 +35,7 @@ import { verifyJourneyConfiguration } from "./configuration.js";
 import { readOgmiosTipSlot } from "./ledger-tip.js";
 import { createLiveWorkflowChain } from "./live-chain.js";
 import { loadJourneyContext } from "./live-context.js";
+import { JourneyLocalKupmios } from "./local-kupmios.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
@@ -79,7 +79,7 @@ it.skipIf(runDirectory === undefined)(
     };
     const kupoUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_KUPO_PORT}`;
     const ogmiosUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_OGMIOS_PORT}`;
-    const provider = new WatcherLocalKupmios(
+    const provider = new JourneyLocalKupmios(
       kupoUrl,
       ogmiosUrl,
       await journeyNativeNodeQuery(runDirectory),

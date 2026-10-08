@@ -167,10 +167,6 @@ export {
   type WatcherNativeChainSyncRuntime,
 } from "./l1/native-chain-sync.exact-record.js";
 export * as watcherNativeChainSyncRecord from "./l1/native-chain-sync.exact-record.js";
-export {
-  WatcherLocalKupmios,
-  type WatcherNativeRewardAccountQuery,
-} from "./l1/native-reward-account.js";
 export { isWatcherNativeNodeUnavailable } from "./l1/transient-failure.js";
 export { retryWatcherL1Transient } from "./l1/transient-retry.js";
 export {

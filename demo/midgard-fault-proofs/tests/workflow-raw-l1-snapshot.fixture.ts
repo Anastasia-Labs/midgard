@@ -148,9 +148,9 @@ export const fixture = (): {
       trustClass: "authenticated_cardano_l1",
       sourceId: SOURCE,
       grade: "security",
-      sourceMode: "local_kupo_ogmios",
-      kupoCheckpoint: cursorPoint,
-      ogmiosTip: tip,
+      sourceMode: "local_chain_follower",
+      boundaryPoint: cursorPoint,
+      tipPoint: tip,
     },
     cursor: {
       point: cursorPoint,

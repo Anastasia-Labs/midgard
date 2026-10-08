@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  WatcherLocalKupmios,
-  type WatcherNativeRewardAccountQuery,
-} from "../../src/l1/native-reward-account.js";
+  JourneyLocalKupmios,
+  type JourneyNativeNodeQuery,
+} from "./local-kupmios.js";
 
-const native: WatcherNativeRewardAccountQuery = {
+const native: JourneyNativeNodeQuery = {
   binaryPath: "/unused/native-query",
   timeoutMs: 10_000,
   watcherConfig: {
@@ -38,7 +38,7 @@ const confirmation = {
   spent_at: null,
 };
 const provider = (awaitTxTimeoutMs?: number) =>
-  new WatcherLocalKupmios("http://kupo.test", "http://ogmios.test", native, {
+  new JourneyLocalKupmios("http://kupo.test", "http://ogmios.test", native, {
     awaitTxTimeoutMs,
   });
 

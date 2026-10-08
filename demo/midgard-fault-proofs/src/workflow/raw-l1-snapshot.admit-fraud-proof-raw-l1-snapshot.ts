@@ -114,30 +114,30 @@ export const admitFraudProofRawL1Snapshot = ({
       "sourceId",
       "grade",
       "sourceMode",
-      "kupoCheckpoint",
-      "ogmiosTip",
+      "boundaryPoint",
+      "tipPoint",
     ],
     "raw L1 snapshot provenance",
   );
   if (
     provenanceRecord.trustClass !== "authenticated_cardano_l1" ||
     provenanceRecord.grade !== "security" ||
-    provenanceRecord.sourceMode !== "local_kupo_ogmios"
+    provenanceRecord.sourceMode !== "local_chain_follower"
   ) {
     throw new Error(
-      "raw L1 snapshot lacks security-grade Kupo/Ogmios provenance",
+      "raw L1 snapshot lacks security-grade chain-follower provenance",
     );
   }
   const provenance = {
     trustClass: "authenticated_cardano_l1" as const,
     sourceId: string(provenanceRecord.sourceId, "raw L1 snapshot sourceId"),
     grade: "security" as const,
-    sourceMode: "local_kupo_ogmios" as const,
-    kupoCheckpoint: point(
-      provenanceRecord.kupoCheckpoint,
-      "raw L1 Kupo checkpoint",
+    sourceMode: "local_chain_follower" as const,
+    boundaryPoint: point(
+      provenanceRecord.boundaryPoint,
+      "raw L1 boundary point",
     ),
-    ogmiosTip: point(provenanceRecord.ogmiosTip, "raw L1 Ogmios tip"),
+    tipPoint: point(provenanceRecord.tipPoint, "raw L1 tip point"),
   };
   const cursorRecord = exact(
     root.cursor,
@@ -162,8 +162,8 @@ export const admitFraudProofRawL1Snapshot = ({
     ),
   };
   if (
-    provenance.kupoCheckpoint.pointId !== cursor.point.pointId ||
-    provenance.ogmiosTip.pointId !== cursor.tip.pointId
+    provenance.boundaryPoint.pointId !== cursor.point.pointId ||
+    provenance.tipPoint.pointId !== cursor.tip.pointId
   ) {
     throw new Error(
       "raw L1 provider checkpoints disagree with the rollback cursor",

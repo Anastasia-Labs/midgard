@@ -117,8 +117,8 @@ const advance = (
     ...snapshot,
     provenance: {
       ...snapshot.provenance,
-      kupoCheckpoint: point,
-      ogmiosTip: tip,
+      boundaryPoint: point,
+      tipPoint: tip,
     },
     cursor: {
       ...snapshot.cursor,
@@ -678,7 +678,7 @@ describe("transition trace immutable L1 evidence", () => {
     const tip = seed.cursor.point;
     const included = await capture({
       ...seed,
-      provenance: { ...seed.provenance, ogmiosTip: tip },
+      provenance: { ...seed.provenance, tipPoint: tip },
       cursor: { ...seed.cursor, tip, confirmationDepth: 1 },
       transactions: seed.transactions.map((entry) => ({
         ...entry,
