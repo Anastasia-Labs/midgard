@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { EVENT_TABLES, eventMigrations } from "../src/events/schema.js";
-import { followerMigrations } from "../src/schema/follower-migrations.js";
 import {
   declaredTables,
   lintDeterminism,
@@ -12,6 +11,7 @@ import {
   lintSchema,
 } from "../src/lint/index.js";
 import { createTemporalRegistry } from "../src/registry.js";
+import { followerMigrations } from "../src/schema/follower-migrations.js";
 
 /**
  * The event projection's modules (what runs in the writer transaction, and
