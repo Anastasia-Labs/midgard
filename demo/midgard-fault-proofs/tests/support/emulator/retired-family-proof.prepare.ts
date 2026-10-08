@@ -130,10 +130,7 @@ export const prepare = async (
       transactions.push(record);
       input.onSigned(record);
     };
-  const refreshFunding = async () => {
-    signer.selectWallet(lucid);
-    lucid.overrideUTxOs(await lucid.utxosAt(signer.address));
-  };
+  const selectSigner = () => signer.selectWallet(lucid);
   const byOutRef = async (outRef: string) => {
     const found = await lucid.utxosByOutRef([
       parseOutRef(outRef, "family proof output"),
@@ -178,7 +175,7 @@ export const prepare = async (
     withdrawalsPhasRoot: leaf.phasRoot,
     withdrawalMembershipProofCbor: leaf.membershipProofCbor,
   });
-  await refreshFunding();
+  selectSigner();
   const init = await submitInit({
     lucid,
     blueprint: JSON.parse(deployment.blueprintJson),
@@ -231,7 +228,7 @@ export const prepare = async (
           inclusion: withdrawalInclusion,
         })
       ).step02State;
-  await refreshFunding();
+  selectSigner();
   const firstResult = deposit
     ? await submitFabricatedDepositStep01({ ...firstInput, depositInclusion })
     : await submitFabricatedWithdrawalStep01({
@@ -249,7 +246,7 @@ export const prepare = async (
       ? Data.from(second.datum!, SDK.FabricatedDepositStep02Datum)
       : Data.from(second.datum!, SDK.FabricatedWithdrawalStep02Datum),
   ).toEqual({ fraud_prover: signer.paymentKeyHash, data: expected02 });
-  await refreshFunding();
+  selectSigner();
   const secondInput = {
     ...common,
     network: binding.network,
@@ -299,7 +296,7 @@ export const prepare = async (
     preSubmitBoundary: boundary("step03"),
   };
   const step03 = async () => {
-    await refreshFunding();
+    selectSigner();
     return deposit
       ? submitFabricatedDepositStep03(thirdInput)
       : submitFabricatedWithdrawalStep03(thirdInput);
@@ -312,7 +309,7 @@ export const prepare = async (
     witnesses,
     transactions,
     boundary,
-    refreshFunding,
+    selectSigner,
     byOutRef,
     threadAt,
     spent,

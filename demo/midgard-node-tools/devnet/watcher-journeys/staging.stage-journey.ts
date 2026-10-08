@@ -191,7 +191,6 @@ export async function stageJourney(
       },
       onStage,
     });
-    lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
     if (disposition.kind === "included") return disposition.txHash;
     onStage(
       `${label} ${signed.txHash} retired: ${disposition.reason}; rebuilding from the current protocol state`,

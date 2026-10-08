@@ -76,7 +76,6 @@ it("escalates a Ready ingestion that restores spendable deposit rows to one reco
     );
     const signed = await built.tx.sign.withWallet().complete();
     expect(await wallet.awaitTx(await signed.submit())).toBe(true);
-    wallet.overrideUTxOs(await wallet.utxosAt(address));
     await h.synchronize();
     const deposits = await Effect.runPromise(
       SDK.fetchDepositUTxOsProgram(

@@ -43,7 +43,6 @@ import {
   fetchLatestCommittedBlock,
   mergeMaturityWindow,
   type ProductionHistoryFixtureRuntime,
-  refreshWalletUtxosFromProvider,
   runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
   runLocalFinalizationRecoveryWorker,
@@ -657,9 +656,6 @@ export const runHistoryOwnerRollbackJourney = async ({
       const signedStable = await stable.tx.sign.withWallet().complete();
       const stableHash = await signedStable.submit();
       expect(await wallet.awaitTx(stableHash)).toBe(true);
-      // The collateral split pinned the wallet's UTxO view; without a refresh
-      // the original deposit reuses this deposit's spent nonce as its event id.
-      await refreshWalletUtxosFromProvider(wallet);
       await h.deployment.chain.awaitLedgerTime(
         stable.metadata.inclusionTime + 1000,
       );

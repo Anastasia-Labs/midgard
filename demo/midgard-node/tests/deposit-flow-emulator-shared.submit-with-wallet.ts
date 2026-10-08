@@ -20,7 +20,7 @@ import {
 } from "./deposit-flow-emulator-shared.make-fixture.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
 
-export const refreshWalletUtxosFromProvider = async (
+const refreshWalletUtxosFromProvider = async (
   lucid: LucidEvolution,
 ): Promise<void> => {
   const overrideUTxOs = (

@@ -30,7 +30,6 @@ import {
   fetchLatestCommittedBlock,
   paymentCredentialOf,
   payoutStatusProgram,
-  refreshWalletUtxosFromProvider,
   resolveEventSettlementProofProgram,
   runCommitWorker,
   SDK,
@@ -70,7 +69,6 @@ it("streams public raw events through production reconciliation, native commitme
     const signed = await publication.tx.sign.withWallet().complete();
     const hash = await signed.submit();
     expect(await owner.awaitTx(hash)).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(await owner.wallet().address()));
     const outputs = await owner.utxosByOutRef([
       { txHash: hash, outputIndex: publication.publicationOutputIndex },
     ]);
@@ -240,7 +238,6 @@ it("streams public raw events through production reconciliation, native commitme
     const signedDeposit = await builtDeposit.tx.sign.withWallet().complete();
     const depositHash = await signedDeposit.submit();
     expect(await owner.awaitTx(depositHash)).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
     await h.synchronize();
     const deposits = await Effect.runPromise(
       SDK.fetchDepositUTxOsProgram(
@@ -392,7 +389,6 @@ it("streams public raw events through production reconciliation, native commitme
     const signedInvalid = await builtInvalid.tx.sign.withWallet().complete();
     const invalidHash = await signedInvalid.submit();
     expect(await owner.awaitTx(invalidHash)).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
     await h.synchronize();
     const invalidOrders = await Effect.runPromise(
       SDK.fetchWithdrawalUTxOsProgram(
@@ -626,7 +622,6 @@ it("streams public raw events through production reconciliation, native commitme
       (input) =>
         consumedWalletInputs.some((spent) => label(input) === label(spent)),
     );
-    await refreshWalletUtxosFromProvider(lucid);
     const refreshedWallet = await lucid.wallet().getUtxos();
     expect(
       refreshedWallet.some((input) =>
@@ -719,7 +714,6 @@ it("streams public raw events through production reconciliation, native commitme
       .complete();
     const withdrawalHash = await signedWithdrawal.submit();
     expect(await owner.awaitTx(withdrawalHash)).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
     await h.synchronize();
     const withdrawals = await Effect.runPromise(
       SDK.fetchWithdrawalUTxOsProgram(
@@ -896,7 +890,6 @@ it("streams public raw events through production reconciliation, native commitme
       ["Withdrawal", withdrawalRetained],
     ] as const) {
       diagnostic.stage = `reclaim-${kind}-${retained.txHash}`;
-      owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
       await ensureSeparateCollateralUtxo(owner);
       const reclaimed = await Effect.runPromise(
         SDK.buildReclaimEventHistoryDataTxProgram(owner, fixture.contracts, {

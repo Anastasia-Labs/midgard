@@ -257,7 +257,8 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
       .pay.ToAddress(address, { lovelace: 30_000_000n })
       .pay.ToAddress(address, { lovelace: 30_000_000n })
       .pay.ToAddress(address, { lovelace: 10_000_000n })
-      .complete({ localUPLCEval: true });
+      .complete({ localUPLCEval: true })
+      .finally(() => lucid.clearUTxOOverride());
     const funding = await submitHistoryObservation(lucid, split);
     const nonces = (await lucid.utxosAt(address)).filter(
       (output) =>
@@ -302,9 +303,9 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
               label(output) === label(eventNonce)),
         ),
       );
-      const built =
+      const built = await (
         kind === "deposit"
-          ? await Effect.runPromise(
+          ? Effect.runPromise(
               SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
                 nonceInput: eventNonce,
                 l2Address: address,
@@ -316,7 +317,7 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
                 },
               }),
             )
-          : await Effect.runPromise(
+          : Effect.runPromise(
               SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
                 lucid,
                 contracts,
@@ -340,7 +341,8 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
                   };
                 })(),
               ),
-            );
+            )
+      ).finally(() => lucid.clearUTxOOverride());
       const accepted = await submitHistoryObservation(lucid, built.tx);
       reserved.delete(label(eventNonce));
       const view = await Effect.runPromise(

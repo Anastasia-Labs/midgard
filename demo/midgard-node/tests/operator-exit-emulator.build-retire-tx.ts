@@ -26,17 +26,6 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Replaces the wallet's cached UTxO set with what the ledger actually holds.
- * The node's own transaction programs override the wallet view with predicted
- * outputs, and a stale entry there is picked as collateral and rejected at
- * submission, so every builder here starts from a fresh read.
- */
-export const resyncWallet = async (lucid: LucidEvolution): Promise<void> => {
-  const address = await lucid.wallet().address();
-  lucid.overrideUTxOs(await lucid.utxosAt(address));
-};
-
-/**
  * Lucid's own promises reject with an Effect `FiberFailure`, so every
  * submission goes through {@link describeFailure} as well.
  */
@@ -48,7 +37,6 @@ export const submitSigned = async (
     const signed = await tx.sign.withWallet().complete();
     const txHash = await signed.submit();
     await lucid.awaitTx(txHash);
-    await resyncWallet(lucid);
     return txHash;
   } catch (cause) {
     throw new Error(describeFailure(cause));
@@ -166,7 +154,6 @@ export const appointFirstOperator = async ({
   readonly operatorKeyHash: string;
 }): Promise<void> => {
   const { contracts, emulator, scriptRefs } = fixture;
-  await resyncWallet(operatorLucid);
   const snapshot = await fetchDirectorySnapshot(operatorLucid, contracts);
   const activeNode = SDK.findNodeByKey(snapshot.active, operatorKeyHash);
   const registeredWitnessNode = SDK.findTailNode(snapshot.registered);
@@ -224,7 +211,6 @@ export const buildRetireTx = async ({
   readonly overrides?: RetireOverrides;
 }): Promise<SDK.RetireOperatorTxResult> => {
   const { contracts, emulator, scriptRefs } = fixture;
-  await resyncWallet(submitterLucid);
   const snapshot = await fetchDirectorySnapshot(submitterLucid, contracts);
   const { validFrom, validTo } =
     validity ?? exitValidityWindow(submitterLucid, emulator);
@@ -286,7 +272,6 @@ export const recoverOperatorBond = async ({
   readonly overrides?: Partial<SDK.RecoverOperatorBondTxConfig>;
 }): Promise<string> => {
   const { contracts, emulator, scriptRefs } = fixture;
-  await resyncWallet(submitterLucid);
   const snapshot = await fetchDirectorySnapshot(submitterLucid, contracts);
   const witnesses = SDK.deriveRecoverOperatorBondWitnesses({
     snapshot,

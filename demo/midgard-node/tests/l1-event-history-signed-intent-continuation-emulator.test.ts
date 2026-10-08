@@ -113,7 +113,6 @@ it("retains the original signed intent through an accepted queue pointer continu
     const signedDeposit = await built.tx.sign.withWallet().complete();
     const depositHash = await signedDeposit.submit();
     expect(await wallet.awaitTx(depositHash)).toBe(true);
-    wallet.overrideUTxOs(await wallet.utxosAt(address));
     await h.synchronize();
     const deposits = await Effect.runPromise(
       SDK.fetchDepositUTxOsProgram(

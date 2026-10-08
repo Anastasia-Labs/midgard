@@ -442,9 +442,9 @@ it("replays actual initialized lists and joins current external orders whose ret
             (!reserved.has(label(output)) || label(output) === label(nonce)),
         ),
       );
-      const built =
+      const built = await (
         kind === "deposit"
-          ? await Effect.runPromise(
+          ? Effect.runPromise(
               SDK.buildUnsignedDepositTxWithMetadataProgram(owner, contracts, {
                 nonceInput: nonce,
                 externalData: retained[index]!,
@@ -457,7 +457,7 @@ it("replays actual initialized lists and joins current external orders whose ret
                 },
               }),
             )
-          : await Effect.runPromise(
+          : Effect.runPromise(
               SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
                 owner,
                 contracts,
@@ -473,7 +473,8 @@ it("replays actual initialized lists and joins current external orders whose ret
                   },
                 },
               ),
-            );
+            )
+      ).finally(() => owner.clearUTxOOverride());
       const receipt = await submitHistoryObservation(owner, built.tx);
       reserved.delete(label(nonce));
       const orders =

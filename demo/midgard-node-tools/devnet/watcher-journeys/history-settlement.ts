@@ -361,7 +361,7 @@ export const settleDuplicateEventHistory = async (
             settlementMinting: reference("settlementMint"),
           },
         }),
-      );
+      ).finally(() => lucid.clearUTxOOverride());
       const signed = await built.tx.sign.withWallet().complete();
       checkpoint = {
         deploymentFingerprint: history.deploymentFingerprint,

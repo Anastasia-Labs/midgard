@@ -321,42 +321,46 @@ describe("operator lifecycle emulator", () => {
 
     // A stale pin on the instance: the view never reads it.
     referenceScriptsLucid.overrideUTxOs([]);
-    const staleReferenceWalletUtxos = await referenceScriptsLucid
-      .wallet()
-      .getUtxos();
-    const stalePlainBalance = staleReferenceWalletUtxos
-      .filter((utxo) => utxo.scriptRef === undefined)
-      .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
-    expect(stalePlainBalance).toEqual(0n);
+    try {
+      const staleReferenceWalletUtxos = await referenceScriptsLucid
+        .wallet()
+        .getUtxos();
+      const stalePlainBalance = staleReferenceWalletUtxos
+        .filter((utxo) => utxo.scriptRef === undefined)
+        .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
+      expect(stalePlainBalance).toEqual(0n);
 
-    const published = await runWithoutFollower(
-      deployReferenceScriptCommandProgram(
-        referenceScriptsLucid,
-        contracts,
-        "active-operators",
-        contracts.referenceScriptAuth,
-        fundingLucid,
-      ),
-    );
-    expect(published).toHaveLength(2);
+      const published = await runWithoutFollower(
+        deployReferenceScriptCommandProgram(
+          referenceScriptsLucid,
+          contracts,
+          "active-operators",
+          contracts.referenceScriptAuth,
+          fundingLucid,
+        ),
+      );
+      expect(published).toHaveLength(2);
 
-    const referenceScriptAddress = await referenceScriptsLucid
-      .wallet()
-      .address();
-    const liveReferenceWalletUtxos = await referenceScriptsLucid.utxosAt(
-      referenceScriptAddress,
-    );
-    const liveReferenceScriptCount = liveReferenceWalletUtxos.filter(
-      (utxo) => utxo.scriptRef !== undefined,
-    ).length;
-    const livePlainBalance = liveReferenceWalletUtxos
-      .filter((utxo) => utxo.scriptRef === undefined)
-      .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
+      const referenceScriptAddress = await referenceScriptsLucid
+        .wallet()
+        .address();
+      const liveReferenceWalletUtxos = await referenceScriptsLucid.utxosAt(
+        referenceScriptAddress,
+      );
+      const liveReferenceScriptCount = liveReferenceWalletUtxos.filter(
+        (utxo) => utxo.scriptRef !== undefined,
+      ).length;
+      const livePlainBalance = liveReferenceWalletUtxos
+        .filter((utxo) => utxo.scriptRef === undefined)
+        .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
 
-    expect(liveReferenceScriptCount).toBeGreaterThanOrEqual(2);
-    expect(livePlainBalance).toBeGreaterThan(0n);
-    // The node pins nothing: the stale pin is as the test left it.
-    expect(await referenceScriptsLucid.wallet().getUtxos()).toEqual([]);
+      expect(liveReferenceScriptCount).toBeGreaterThanOrEqual(2);
+      expect(livePlainBalance).toBeGreaterThan(0n);
+      // The node pins nothing: the stale pin is as the test left it.
+      expect(await referenceScriptsLucid.wallet().getUtxos()).toEqual([]);
+    } finally {
+      referenceScriptsLucid.clearUTxOOverride();
+    }
   }, 240_000);
 
   it("deep-clones the authenticated deployment snapshot for each scenario", async () => {

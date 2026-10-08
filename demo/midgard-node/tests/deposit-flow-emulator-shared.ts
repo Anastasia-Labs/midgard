@@ -1751,7 +1751,6 @@ export {
   ensureSeparateCollateralUtxo,
   isPlainPureAdaUtxo,
   providerVisibleWalletUtxos,
-  refreshWalletUtxosFromProvider,
   stripPlutusV3WitnessByHash,
   submitDepositWithDiagnostics,
   submitWithWallet,

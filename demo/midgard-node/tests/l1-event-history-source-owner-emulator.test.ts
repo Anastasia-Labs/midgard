@@ -246,7 +246,6 @@ it("runs the default history owner through actual bootstrap, continuation, retir
     // Fresh ordinary controls use sorted actual nonce keys to force an Order
     // continuation. They are not asserted to have been included on L2.
     const funding = fixture.depositorLucid;
-    funding.overrideUTxOs(await funding.utxosAt(ownerAddress));
     const split = await funding
       .newTx()
       .pay.ToAddress(ownerAddress, { lovelace: 30_000_000n })
@@ -304,7 +303,7 @@ it("runs the default history owner through actual bootstrap, continuation, retir
             referenceScripts: fixture.referenceScripts.deposit,
           },
         ),
-      );
+      ).finally(() => funding.clearUTxOOverride());
       await submitHistoryObservation(funding, built.tx);
       const orders = await Effect.runPromise(
         SDK.fetchDepositUTxOsProgram(

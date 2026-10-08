@@ -81,7 +81,9 @@ it("projects accepted deposit and withdrawal admissions and an Order pointer con
       split = split.pay.ToAddress(address, { lovelace: 30_000_000n });
     split = split.pay.ToAddress(address, { lovelace: 10_000_000n });
     const splitSigned = await (
-      await split.complete({ localUPLCEval: true })
+      await split
+        .complete({ localUPLCEval: true })
+        .finally(() => lucid.clearUTxOOverride())
     ).sign
       .withWallet()
       .complete();
@@ -164,9 +166,9 @@ it("projects accepted deposit and withdrawal admissions and an Order pointer con
             (!reserved.has(label(output)) || label(output) === label(nonce)),
         ),
       );
-      const built =
+      const built = await (
         kind === "deposit"
-          ? await Effect.runPromise(
+          ? Effect.runPromise(
               SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
                 nonceInput: nonce,
                 l2Address: address,
@@ -178,7 +180,7 @@ it("projects accepted deposit and withdrawal admissions and an Order pointer con
                 },
               }),
             )
-          : await Effect.runPromise(
+          : Effect.runPromise(
               SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
                 lucid,
                 contracts,
@@ -202,7 +204,8 @@ it("projects accepted deposit and withdrawal admissions and an Order pointer con
                   };
                 })(),
               ),
-            );
+            )
+      ).finally(() => lucid.clearUTxOOverride());
       expect(built.metadata.nonceInput).toEqual(ref(nonce));
       const accepted = await submitHistoryObservation(lucid, built.tx);
       reserved.delete(label(nonce));

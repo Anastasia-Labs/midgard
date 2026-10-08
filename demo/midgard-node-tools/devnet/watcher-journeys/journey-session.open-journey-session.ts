@@ -224,14 +224,12 @@ export const openJourneySession = async (runDirectory: string) => {
         .pay.ToAddress(prover, { lovelace: 100_000_000n })
         .pay.ToAddress(availability, { lovelace: 40_000_000_000n })
         .pay.ToAddress(availability, { lovelace: 10_000_000n })
-        .complete({ localUPLCEval: true });
+        .complete({ localUPLCEval: true })
+        .finally(() => deployment.publisherLucid.clearUTxOOverride());
       const txHash = await (await built.sign.withWallet().complete()).submit();
       await provider.awaitTx(txHash, 500);
       await native.transaction(txHash);
       await writeFile(fundingPath, txHash);
-      deployment.publisherLucid.overrideUTxOs(
-        await provider.getUtxos(publisherAddress),
-      );
     });
     const launch = async () => {
       const processInput = {
