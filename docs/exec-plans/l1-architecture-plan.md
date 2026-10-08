@@ -1194,9 +1194,9 @@ available(wallet) = live own outputs at the tip (facts)
                   + own_outputs of live intents (predicted change)
 ```
 
-It is recomputed on each head change. This replaces
-`demo/midgard-node/src/operator-wallet-view.ts` (169 lines) and the Lucid wallet override,
-which freezes the UTxO view (`overrideUTxOs`). So there is no stale pin, and
+It is recomputed on each head change. It replaced
+`demo/midgard-node/src/operator-wallet-view.ts` (169 lines, since deleted by I2) <!-- doc-links:historical -->
+and the Lucid wallet override, which freezes the UTxO view (`overrideUTxOs`). So there is no stale pin, and
 "Missing vkey witness" for your own key cannot happen. The same function
 serves the watcher prover wallet and the committee submitter wallet.
 
