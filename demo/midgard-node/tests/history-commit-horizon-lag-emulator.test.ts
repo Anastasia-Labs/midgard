@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { expect, it, vi } from "vitest";

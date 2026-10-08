@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

@@ -19,6 +19,8 @@
  * suite in this package uses: the mint's §8.11 walk is covered in Aiken, and
  * the node must refuse what a permissive policy let through.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import {
   decodeTransaction,
   type FactStore,

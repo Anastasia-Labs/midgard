@@ -10,6 +10,8 @@
  * - with every own coin held by a live intent, it is refused by name before
  *   anything is built.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {

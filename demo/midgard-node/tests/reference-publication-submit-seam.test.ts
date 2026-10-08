@@ -4,6 +4,8 @@
  * bytes as a `reference_publication` intent before the provider sees them,
  * and a journal refusal stops the publication with nothing sent.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

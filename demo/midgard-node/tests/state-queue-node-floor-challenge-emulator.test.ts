@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
 import {
   CML,

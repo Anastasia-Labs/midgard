@@ -1,8 +1,8 @@
 /**
- * Imported first by a `follower-provider.*.test.ts` file: installs the
- * follower provider on every emulator (`follower-emulator.ts`) before the
- * family suite the file imports next is collected, and checks at the end
- * that the suite's transactions went through it.
+ * Imported first by an emulator family suite: installs the follower
+ * provider (`follower-emulator.ts`) on every emulator the suite creates, so
+ * the node's provider is the provider the suite runs with, and checks at
+ * the end that the suite's transactions went through it.
  */
 import { afterAll, expect } from "vitest";
 

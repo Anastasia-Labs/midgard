@@ -42,6 +42,8 @@
  * commit also holds an L2 transfer; the rollback's repair requeues it after
  * the disposal rebuilt the working ledger.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import { decodeTransaction } from "@al-ft/midgard-l1-follower";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 

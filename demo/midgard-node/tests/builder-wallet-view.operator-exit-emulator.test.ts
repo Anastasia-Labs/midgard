@@ -12,6 +12,8 @@
  *   their collateral and funding from the view: the largest coin, held by a
  *   live intent, is never their collateral, and both land.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { generateEmulatorAccount } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

@@ -1,3 +1,4 @@
+import "./helpers/follower-emulator-installed.js";
 import "@al-ft/midgard-core/deployment-profile";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
