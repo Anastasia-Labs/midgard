@@ -15,7 +15,7 @@ import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-ca
 import { historyOutputObservation } from "./helpers/history-projection-observations.js";
 import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transport.js";
 import { openHistorySourceOwnerLifecycle } from "./helpers/history-source-owner-emulator.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const lossless = JSONBig({ useNativeBigInt: true, strict: true });
 const digest = (text: string) => createHash("sha256").update(text).digest();
@@ -65,13 +65,8 @@ it("loads complete current-branch rosters and refuses stale or altered retained 
       provideDatabaseLayers(
         Effect.scoped(
           Effect.gen(function* () {
+            yield* resetApplicationTables;
             const sql = yield* SqlClient.SqlClient;
-            yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger,
-              deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits,
-              pending_block_finalization_withdrawals, event_history_cursor,
-              event_history_block_applications, event_history_live_outputs,
-              event_history_incarnations, event_history_replay_receipts,
-              event_history_authority CASCADE`;
             const cache = yield* makeMempoolLedgerCacheService(
               h.globals,
               MempoolLedgerDB.retrieveSpendable.pipe(

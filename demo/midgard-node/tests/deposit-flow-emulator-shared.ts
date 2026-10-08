@@ -133,25 +133,17 @@ import { utxosProgram } from "../src/commands/utxos.js";
 import { withdrawalStatusProgram } from "../src/commands/withdrawal-status.js";
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "../src/database/confirmedLedger.js";
 import {
-  AddressHistoryDB,
   BlocksDB,
-  CommonUtils,
-  ConfirmedLedgerDB,
   DaPayloadsDB,
   DepositsDB,
-  DepositSubmissionAttemptsDB,
   ForcedTransactionsDB,
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
-  MempoolTxDeltasDB,
   MigrationRunner,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
-  ProcessedMempoolDB,
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
-  TxRejectionsDB,
   TxUtils,
   UserEventsUtils,
   WithdrawalsDB,
@@ -270,7 +262,7 @@ import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
 } from "./helpers/native-owner-binary.js";
-import { testDatabaseName } from "./test-env.js";
+import { resetApplicationTables } from "./utils.js";
 
 // `EMULATOR_DEPLOYMENT_IDENTITY` is a `derived` identity with no finalized
 // manifest, so the wave's Q58 script derivation takes the
@@ -581,41 +573,6 @@ export const initializeProtocol = async ({
   );
 };
 
-export const clearNodeTables = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{ name: string }>`SELECT current_database() AS name`;
-  expect(rows[0]?.name).toBe(testDatabaseName());
-  // Reset the isolated model database as one FK-consistent operation. A prior
-  // test must not leave authority, reservations or a landed-block fold behind.
-  yield* sql`TRUNCATE event_history_l2_ledger_receipts, mpf_engine_state, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_replay_receipts, event_history_authority, event_history_submission_inputs, event_history_submissions, node_landed_blocks, node_confirmed_ledger_frontier, node_confirmed_merges, node_confirmed_ledger_spent`;
-}).pipe(
-  Effect.zipRight(
-    Effect.all(
-      [
-        AddressHistoryDB.clear,
-        BlocksDB.clear,
-        ConfirmedLedgerDB.clear,
-        MempoolDB.clear,
-        MempoolLedgerDB.clear,
-        MempoolTxDeltasDB.clear,
-        ProcessedMempoolDB.clear,
-        ImmutableDB.clear,
-        PendingBlockFinalizationsDB.clear,
-        DaPayloadsDB.clear,
-        DepositSubmissionAttemptsDB.clear,
-        TxRejectionsDB.clear,
-        ForcedTransactionsDB.clear,
-        CommonUtils.clearTable(TxAdmissionsDB.tableName),
-        CommonUtils.clearTable(MutationJobsDB.tableName),
-        CommonUtils.clearTable(StateQueueMutationLeasesDB.tableName),
-        CommonUtils.clearTable(DepositsDB.tableName),
-        CommonUtils.clearTable(WithdrawalsDB.tableName),
-      ],
-      { concurrency: "unbounded" },
-    ).pipe(Effect.asVoid),
-  ),
-);
-
 /**
  * Initializes the runtime used by the deposit-flow emulator tests.
  */
@@ -626,7 +583,10 @@ export const initializeNodeRuntime = async () => {
       actor: "deposit-flow-emulator.test",
     }),
   );
-  await runNodeDatabaseEffect(clearNodeTables);
+  // Every file on a worker shares its database and restarts its chain from
+  // the same genesis, so nothing a previous file left may survive: follower
+  // facts, a forced order or a projection row would read as this chain's.
+  await runNodeDatabaseEffect(resetApplicationTables);
 };
 
 export const cleanupRuntimePaths = async ({

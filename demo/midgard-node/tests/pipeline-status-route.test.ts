@@ -17,7 +17,7 @@ import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { BatchSql } from "../src/services/database.js";
 import { Globals } from "../src/services/index.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /**
  * Independent definition of "active": every journal status that is not one of
@@ -131,9 +131,9 @@ const runAgainstShard = <A, E, R>(program: Effect.Effect<A, E, R>) =>
     provideDatabaseLayers(
       Effect.gen(function* () {
         const sql = yield* BatchSql;
-        yield* sql`DELETE FROM pending_block_finalizations`;
-        return yield* (
-          program as Effect.Effect<A, E, SqlClient.SqlClient>
+        return yield* Effect.zipRight(
+          resetApplicationTables,
+          program as Effect.Effect<A, E, SqlClient.SqlClient>,
         ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
       }).pipe(Effect.provide(Globals.Default)),
     ) as Effect.Effect<A, E, never>,
@@ -298,7 +298,6 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
     const result = await runAgainstShard(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority CASCADE`;
         const token = yield* Authority.acquire({
           deploymentIdentity: deploymentId,
           ownerToken: randomUUID(),

@@ -13,7 +13,7 @@ import {
   noOpenAttempt,
   settleAttempts,
 } from "../src/services/settlement.status.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
@@ -91,12 +91,7 @@ beforeEach(() => {
   vi.spyOn(IntentJournal, "readIntentStatus").mockImplementation((hash) =>
     Effect.succeed(statuses.get(hash) ?? null),
   );
-  return run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority, deposits_utxos, withdrawal_utxos CASCADE`;
-    }),
-  );
+  return run(resetApplicationTables);
 });
 afterEach(() => {
   vi.restoreAllMocks();

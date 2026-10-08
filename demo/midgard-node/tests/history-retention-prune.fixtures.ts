@@ -7,7 +7,11 @@ import {
   header,
   journalFixture,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
-import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
+import {
+  deterministicFixtureBytes,
+  provideDatabaseLayers,
+  resetApplicationTables,
+} from "./utils.js";
 
 export const DAY_MS = 24 * 60 * 60_000;
 export const DEPLOYMENT = Buffer.alloc(32, 7);
@@ -35,17 +39,12 @@ export const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const clear = sql`TRUNCATE TABLE pending_block_finalizations,
-          state_queue_mutation_leases, event_history_authority,
-          local_mutation_jobs, da_payload_terminal_outcomes,
-          state_queue_terminal_observer_states, event_history_recovery_plans,
-          event_history_cursor
-          RESTART IDENTITY CASCADE`;
-        yield* clear;
+        yield* resetApplicationTables;
         // Never leave a seeded active lease behind for a later file on
         // this shard to find busy.
-        return yield* effect.pipe(Effect.ensuring(Effect.orDie(clear)));
+        return yield* effect.pipe(
+          Effect.ensuring(Effect.orDie(resetApplicationTables)),
+        );
       }),
     ) as Effect.Effect<A, unknown, never>,
   );

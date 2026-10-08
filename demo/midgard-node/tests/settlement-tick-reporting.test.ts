@@ -41,7 +41,7 @@ import {
 } from "../src/services/settlement-call.js";
 import { runSettlementWorker } from "../src/workers/settlement.run-settlement-worker.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 vi.mock(
   "../src/transactions/reference-publication-provider.js",
@@ -66,8 +66,7 @@ const EVENT_ID = "cc".repeat(34);
 beforeEach(() =>
   run(
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority CASCADE`;
+      yield* resetApplicationTables;
       const token = yield* Authority.acquire({
         deploymentIdentity: deploymentId,
         ownerToken: randomUUID(),

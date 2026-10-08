@@ -12,18 +12,18 @@ import {
   type SqlStatementCall,
   withFailingStatements,
 } from "./sql-fault-injection.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
-/** Only the lease table: no other table is read or written here. */
+/** Each test starts from an empty database and leaves one behind. */
 const isolatedLeases = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   provideDatabaseLayers(
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const clear = sql`TRUNCATE TABLE state_queue_mutation_leases`;
-      yield* clear;
+      yield* resetApplicationTables;
       // A lease a test leaves active would make a later file on this shard
       // find the scope busy.
-      return yield* effect.pipe(Effect.ensuring(Effect.orDie(clear)));
+      return yield* effect.pipe(
+        Effect.ensuring(Effect.orDie(resetApplicationTables)),
+      );
     }),
   );
 

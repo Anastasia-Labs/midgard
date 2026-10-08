@@ -39,7 +39,7 @@ import {
   seedCaughtUpL1Follower,
 } from "./readiness-l1-follower.fixture.js";
 import { withFailingStatements } from "./sql-fault-injection.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Only the settings /readyz reads. Provider evidence is always published
 // before the request, so the handler never probes a real provider.
@@ -116,11 +116,10 @@ const readyz = ({
     provideDatabaseLayers(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        // Cleared before and after: the handler reads journal ages from the
-        // real tables, so a row left here would leak into the next file.
-        const clear = sql`TRUNCATE TABLE pending_block_finalizations,
-          state_queue_mutation_leases, event_history_authority
-          RESTART IDENTITY CASCADE`;
+        // Reset before and after: the handler reads journal ages, jobs and
+        // leases from the real tables, so a row another file left would turn
+        // a ready answer unready, and one left here would leak into the next.
+        const clear = resetApplicationTables;
         yield* clear;
         return yield* Effect.gen(function* () {
           yield* journal;

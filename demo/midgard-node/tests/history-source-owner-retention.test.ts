@@ -28,7 +28,7 @@ import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-ca
 import { historyOutputObservation } from "./helpers/history-projection-observations.js";
 import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transport.js";
 import { openHistorySourceOwnerLifecycle } from "./helpers/history-source-owner-emulator.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const ledgerScans = (requests: readonly { method: string }[]) =>
   requests.filter(({ method }) => method === "queryLedgerState/utxo").length;
@@ -41,15 +41,6 @@ const until = (condition: () => boolean) =>
     Effect.retry(Schedule.spaced("10 millis")),
     Effect.timeout("15 seconds"),
   );
-const truncate = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_l2_ledger_receipts, mempool_ledger,
-    deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits,
-    pending_block_finalization_withdrawals, event_history_cursor,
-    event_history_block_applications, event_history_live_outputs,
-    event_history_incarnations, event_history_replay_receipts,
-    event_history_authority CASCADE`;
-});
 
 const openLifecycle = async () => {
   const h = await openHistorySourceOwnerLifecycle();
@@ -113,7 +104,7 @@ it("restarts near its head, appends at an open gate without recovery, ignores a 
       provideDatabaseLayers(
         Effect.scoped(
           Effect.gen(function* () {
-            yield* truncate;
+            yield* resetApplicationTables;
             const sql = yield* SqlClient.SqlClient;
             const cache = yield* makeMempoolLedgerCacheService(
               h.globals,
@@ -547,7 +538,7 @@ it("refuses a first start whose capture point left the chain before the replay r
       provideDatabaseLayers(
         Effect.scoped(
           Effect.gen(function* () {
-            yield* truncate;
+            yield* resetApplicationTables;
             const sql = yield* SqlClient.SqlClient;
             const cache = yield* makeMempoolLedgerCacheService(
               h.globals,

@@ -17,7 +17,7 @@ import {
   serializeStateQueueUTxO,
 } from "../src/workers/utils/commit-block-header.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Real SQL/serialization and authority checks; source rows below are explicit
 // model inputs. The native IO spy is not evidence of durable native recovery.
@@ -259,18 +259,8 @@ const nativeBoundary = () => {
 };
 
 beforeEach(async () => {
-  await run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      // tests/utils.ts pins this file to its disposable worker database. Reset
-      // the related fixture tables together, including their FK dependents.
-      yield* sql`TRUNCATE pending_block_finalizations, deposits_utxos, withdrawal_utxos,
-      pending_block_finalization_deposits, pending_block_finalization_withdrawals,
-      event_history_cursor, event_history_block_applications,
-      event_history_live_outputs, event_history_incarnations,
-      event_history_authority, event_history_replay_receipts, l1_event_keys CASCADE`;
-    }),
-  );
+  // tests/utils.ts pins this file to its disposable worker database.
+  await run(resetApplicationTables);
 });
 
 describe(
