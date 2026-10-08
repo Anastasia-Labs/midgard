@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either, Ref } from "effect";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -14,6 +15,8 @@ import {
   resolveCommitAppendFenceReferencesLocal,
 } from "../src/workers/commit-block-header/state-queue.js";
 import { registerTestL1Tip, TEN_MINUTES_MS } from "./helpers/l1-tip.js";
+import { seedLandedStateQueue } from "./helpers/landed-state-queue.js";
+import { provideDatabaseLayers } from "./utils.js";
 
 const policyId = "aa".repeat(28);
 const address =
@@ -97,18 +100,24 @@ const fixture = async (tailApplied = false, headApplied = true) => {
     "22",
   );
   const outputs = [root, first, tail];
-  const api = {
-    utxosAt: vi.fn(async () => outputs),
-    utxosAtWithUnit: vi.fn(async (_address: string, unit: string) =>
-      outputs.filter((x) => x.assets[unit] === 1n),
-    ),
-  } as unknown as LucidEvolution;
+  // The stub client serves only the L1 tip; the queue is the landed one (P1).
+  const api = {} as LucidEvolution;
+  /** `effect` over the landed queue holding exactly these outputs. */
+  const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
+    Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.zipRight(
+          seedLandedStateQueue({ spendingScriptAddress: address }, outputs),
+          effect,
+        ),
+      ),
+    );
   const queue = await Promise.all(
     outputs.map((utxo) =>
       Effect.runPromise(SDK.utxoToStateQueueUTxO(utxo, policyId)),
     ),
   );
-  return { api, queue, tailHash };
+  return { api, queue, tailHash, run };
 };
 
 describe("pending queue attestation expiry", () => {
@@ -158,7 +167,7 @@ describe("pending queue attestation expiry", () => {
     const unattestedTail = await fixture();
     tipAtZero(unattestedTail.api);
     expect(
-      await Effect.runPromise(
+      await unattestedTail.run(
         resolveCommitAppendFenceEndTimeCapLocal(
           unattestedTail.api,
           fetchConfig,
@@ -168,7 +177,7 @@ describe("pending queue attestation expiry", () => {
     const attested = await fixture(true);
     tipAtZero(attested.api);
     expect(
-      await Effect.runPromise(
+      await attested.run(
         resolveCommitAppendFenceEndTimeCapLocal(attested.api, fetchConfig),
       ),
     ).toBeUndefined();
@@ -178,7 +187,7 @@ describe("pending queue attestation expiry", () => {
       const unattestedHead = await fixture(tailApplied, false);
       tipAtZero(unattestedHead.api);
       expect(
-        await Effect.runPromise(
+        await unattestedHead.run(
           resolveCommitAppendFenceEndTimeCapLocal(
             unattestedHead.api,
             fetchConfig,
@@ -201,7 +210,7 @@ describe("pending queue attestation expiry", () => {
     ];
     for (const { queue, deadlineMs } of cases) {
       const fence = () =>
-        Effect.runPromise(
+        queue.run(
           resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
         );
       // One slot before the deadline the node still caps the end.
@@ -215,7 +224,7 @@ describe("pending queue attestation expiry", () => {
         "Commit paused until expired unattested suffix is corrected",
       );
       await expect(
-        Effect.runPromise(
+        queue.run(
           resolveCommitAppendFenceReferencesLocal(
             queue.api,
             fetchConfig,
@@ -243,12 +252,12 @@ describe("pending queue attestation expiry", () => {
     });
     vi.setSystemTime(2_000 + timeoutMs + TEN_MINUTES_MS);
     expect(
-      await Effect.runPromise(
+      await queue.run(
         resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
       ),
     ).toBe(2_000 + timeoutMs - 1);
     expect(
-      await Effect.runPromise(
+      await queue.run(
         resolveCommitAppendFenceReferencesLocal(
           queue.api,
           fetchConfig,
@@ -278,13 +287,13 @@ describe("pending queue attestation expiry", () => {
       { slotLengthMs: 1_000, monotonicNowMs: () => (available ? 1_000 : 0) },
     );
     await expect(
-      Effect.runPromise(
+      queue.run(
         resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
       ),
     ).rejects.toThrow("Commit paused until the L1 slot is known");
     available = true;
     expect(
-      await Effect.runPromise(
+      await queue.run(
         resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
       ),
     ).toBe(2_000 + Number(SDK.DA_ATTESTATION_TIMEOUT_MS) - 1);
@@ -296,7 +305,7 @@ describe("pending queue attestation expiry", () => {
       const expired = await fixture();
       registerTestL1Tip(expired.api, expiredAtSlot);
       await expect(
-        Effect.runPromise(
+        expired.run(
           resolveCommitAppendFenceReferencesLocal(
             expired.api,
             { stateQueueAddress: address, stateQueuePolicyId: policyId },
@@ -307,7 +316,7 @@ describe("pending queue attestation expiry", () => {
       const applied = await fixture(true);
       registerTestL1Tip(applied.api, expiredAtSlot);
       expect(
-        await Effect.runPromise(
+        await applied.run(
           resolveCommitAppendFenceReferencesLocal(
             applied.api,
             { stateQueueAddress: address, stateQueuePolicyId: policyId },

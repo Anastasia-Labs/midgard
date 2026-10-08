@@ -2,7 +2,7 @@ import "./utils.js";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Ref } from "effect";
+import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Globals, NodeConfig } from "../src/services/index.js";
@@ -12,7 +12,7 @@ import {
   type TestL1Tip,
 } from "./helpers/l1-tip.js";
 
-const fetchConfirmedStateAndItsLinkProgramMock = vi.hoisted(() => vi.fn());
+const requireLandedStateQueueMock = vi.hoisted(() => vi.fn());
 const getStateQueueNodeFromStateQueueDatumMock = vi.hoisted(() => vi.fn());
 const getHeaderFromStateQueueDatumMock = vi.hoisted(() => vi.fn());
 const hashBlockHeaderMock = vi.hoisted(() => vi.fn());
@@ -25,12 +25,22 @@ vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
   return {
     ...actual,
-    fetchConfirmedStateAndItsLinkProgram:
-      fetchConfirmedStateAndItsLinkProgramMock,
     getStateQueueNodeFromStateQueueDatum:
       getStateQueueNodeFromStateQueueDatumMock,
     getHeaderFromStateQueueDatum: getHeaderFromStateQueueDatumMock,
     hashBlockHeader: hashBlockHeaderMock,
+  };
+});
+
+// The landed queue (P1) the builder reads its length, root and link from.
+vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../src/services/landed-state-queue.js")
+    >();
+  return {
+    ...actual,
+    requireLandedStateQueue: requireLandedStateQueueMock,
   };
 });
 
@@ -144,10 +154,12 @@ const configureCandidate = ({
   const blockHeader = {
     endTime,
   } as SDK.Header;
-  fetchConfirmedStateAndItsLinkProgramMock.mockImplementation(() =>
+  // Eight queued blocks, above the default minimum queue length.
+  requireLandedStateQueueMock.mockImplementation(() =>
     Effect.succeed({
-      confirmed: genesisConfirmed,
-      link: makeLink(),
+      healthy: true,
+      root: { element: genesisConfirmed },
+      nodes: Array.from({ length: 8 }, () => ({ element: makeLink() })),
     }),
   );
   getStateQueueNodeFromStateQueueDatumMock.mockImplementation(() =>
@@ -165,15 +177,7 @@ const configureCandidate = ({
 
 const runBuilder = () =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      const globals = yield* Globals;
-      yield* Ref.set(globals.BLOCKS_IN_QUEUE, 8);
-      yield* Ref.set(
-        globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
-        Date.now(),
-      );
-      return yield* buildAndSubmitMergeTx(fakeLucid, fetchConfig, contracts);
-    }).pipe(
+    buildAndSubmitMergeTx(fakeLucid, fetchConfig, contracts).pipe(
       Effect.provide(Globals.Default),
       Effect.provide(NodeConfig.layer),
     ) as Effect.Effect<MergeTxResult, unknown, never>,
@@ -194,7 +198,7 @@ describe("merge builder maturity preflight", () => {
     vi.useFakeTimers();
     vi.setSystemTime(510_000);
     l1Tip = registerTestL1Tip(fakeLucid, 510);
-    fetchConfirmedStateAndItsLinkProgramMock.mockReset();
+    requireLandedStateQueueMock.mockReset();
     getStateQueueNodeFromStateQueueDatumMock.mockReset();
     getHeaderFromStateQueueDatumMock.mockReset();
     hashBlockHeaderMock.mockReset();

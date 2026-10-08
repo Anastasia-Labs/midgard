@@ -4,7 +4,6 @@ import { Duration, Effect } from "effect";
 
 import { isRetryableProviderError } from "../provider-retry.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
-import { formatStateQueueTopology } from "../services/state-queue-topology.js";
 import { assertAvailabilityChallengeRewardAccountsRegisteredProgram } from "../transactions/availability-challenge-registration.js";
 import * as Initialization from "../transactions/initialization.js";
 import {
@@ -176,19 +175,9 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
       retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
     },
   );
-  const details = formatStateQueueTopology(deploymentStatus.stateQueueTopology);
-
-  if (!deploymentStatus.stateQueueTopology.healthy) {
-    if (deploymentStatus.stateQueueTopology.initialized) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Startup initialization check failed: configured state_queue policy has invalid topology",
-          cause: `${details}; reason=${deploymentStatus.stateQueueTopology.reason ?? "unknown"}`,
-        }),
-      );
-    }
-  }
+  // The queue's health is the landed queue's (P1): once the follower runs,
+  // an unhealthy queue fails `/readyz` with its reason and stops proposals.
+  const details = `initialized=${String(deploymentStatus.stateQueueInitialized)}`;
 
   if (deploymentStatus.complete) {
     if (manifestReport === null) {

@@ -43,7 +43,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
-import { fetchCanonicalStateQueueNodesProgram } from "../services/state-queue-topology.js";
+import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import { sha256 } from "../sha256.js";
 import {
   materializeLedgerDeltaSuffix,
@@ -104,11 +104,10 @@ export const revalidateForeignCommitBase = (base: VerifiedForeignCommitBase) =>
   Effect.gen(function* () {
     const source = { kind: base.authority, binding: base.history };
     yield* assertForeignVerificationSource(source);
-    const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
-    const nodes = yield* fetchCanonicalStateQueueNodesProgram(
-      lucid.api,
+    const nodes = yield* landedStateQueueUTxOs(
       contracts.stateQueue,
+      "foreign base verification",
     );
     if (
       JSON.stringify(canonicalObservation(nodes)) !==
@@ -174,9 +173,9 @@ export const verifyForeignCommitBase = (
         "foreign import requires the active deployment marker",
       );
     const deploymentMarker = identity.deploymentMarker;
-    const observe = fetchCanonicalStateQueueNodesProgram(
-      lucid.api,
+    const observe = landedStateQueueUTxOs(
       contracts.stateQueue,
+      "foreign base verification",
     );
     const nodes = yield* observe;
     const observed = nodes.find(

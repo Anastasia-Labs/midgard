@@ -1,10 +1,12 @@
 /**
  * Reads a builder's node environment with the node's own parsers and asks the
  * node whether its L1 follower runs (`l1FollowerPlan`), for a deployed
- * contracts fixture carrying event-history lists and the hub oracle.
+ * contracts fixture carrying the event-history lists, the hub oracle, the
+ * state queue and the forced-order contracts.
  */
 import { ConfigProvider, Effect } from "effect";
 import { hubOracleOriginConfig } from "midgard-node/services/config.hub-oracle-origin";
+import { l1ContentSourcesConfig } from "midgard-node/services/config.l1-content-sources";
 import { l1FollowerPlan } from "midgard-node/services/l1-follower.plan";
 import { nativeLedgerSettingsFromEnv } from "midgard-node/services/native-ledger";
 
@@ -19,10 +21,17 @@ const eventList = (byte: string) => ({
   retirement: { withdrawalScriptHash: byte.repeat(28) },
 });
 
-/** A deployment with both event lists and the hub oracle. */
+/** A deployment with both event lists, the hub oracle, the state queue and
+ * the forced-order contracts. */
 export const deployedContracts = {
   eventHistory: { deposit: eventList("d1"), withdrawal: eventList("e2") },
   hubOracle: { policyId: "ab".repeat(28) },
+  stateQueue: {
+    policyId: "c3".repeat(28),
+    spendingScriptAddress: SCRIPT_ADDRESS,
+  },
+  txOrder: { policyId: "f4".repeat(28), spendingScriptAddress: SCRIPT_ADDRESS },
+  cekProgramMaterial: { spendingScriptHash: "a5".repeat(28) },
 } as unknown as PlanInput["contracts"];
 
 /** The node's follower plan for `env`, as the node would read it. */
@@ -32,15 +41,17 @@ export const nodeFollowerPlan = (
   const defined = Object.entries(env).filter(
     (entry): entry is [string, string] => entry[1] !== undefined,
   );
+  const provider = ConfigProvider.fromMap(new Map(defined));
   const origin = Effect.runSync(
-    Effect.withConfigProvider(
-      hubOracleOriginConfig,
-      ConfigProvider.fromMap(new Map(defined)),
-    ),
+    Effect.withConfigProvider(hubOracleOriginConfig, provider),
+  );
+  const contentSources = Effect.runSync(
+    Effect.withConfigProvider(l1ContentSourcesConfig, provider),
   );
   return l1FollowerPlan({
     config: {
       ...origin,
+      ...contentSources,
       L1_NATIVE_LEDGER: nativeLedgerSettingsFromEnv(env),
       NETWORK: (env.NETWORK ?? "Preprod") as PlanInput["config"]["NETWORK"],
       POSTGRES_HOST: env.POSTGRES_HOST ?? "",

@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
 import { assertHistoryProducer } from "../services/event-history-producer.js";
 import { Lucid, MidgardContracts } from "../services/index.js";
-import { fetchStateQueueSnapshotProgram } from "../services/state-queue-topology.js";
+import { landedStateQueueTail } from "../services/landed-state-queue.js";
 import { buildOnVerifiedCommitBaseProgram } from "./commit-block-header.build-on-verified-base-program.js";
 import { defaultCommitLucidFactory } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import {
@@ -40,15 +40,7 @@ export const databaseOperationsProgram = (
     const latest =
       workerInput.data.localFinalizationPending &&
       workerInput.data.availableLocalFinalizationBlock !== ""
-        ? yield* fetchStateQueueSnapshotProgram(
-            lucid.api,
-            contracts.stateQueue,
-            "commit_preflight",
-          ).pipe(
-            Effect.flatMap((snapshot) =>
-              deserializeStateQueueUTxO(snapshot.tailCommitBase.utxo),
-            ),
-          )
+        ? yield* landedStateQueueTail(contracts.stateQueue, "commit_preflight")
         : yield* deserializeStateQueueUTxO(
             workerInput.data.availableConfirmedBlock,
           );

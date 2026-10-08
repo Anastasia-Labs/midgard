@@ -213,7 +213,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       lucidService,
       globals: globalsAfterCommit,
     });
-    expect(mergeResult.postMergeSnapshot.topology.parsedNodeCount).toBe(1);
+    expect(mergeResult.postMergeSnapshot.blockCount).toBe(0);
 
     const sortedStateQueueAfterMerge = await Effect.runPromise(
       SDK.fetchSortedStateQueueUTxOsProgram(

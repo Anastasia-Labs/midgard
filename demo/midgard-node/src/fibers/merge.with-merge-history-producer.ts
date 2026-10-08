@@ -15,9 +15,9 @@ import {
   withL1ControlPlane,
 } from "../services/index.js";
 import {
-  fetchStateQueueSnapshotProgram,
+  awaitPostMergeSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
-} from "../services/state-queue-topology.js";
+} from "../services/landed-state-queue.js";
 import {
   recordMergeTickIdleness,
   skipIdleMergeTick,
@@ -176,13 +176,11 @@ const reportConfirmedMergeOverHoldTimeout = (
     yield* Effect.logWarning(
       `🔸 Merge completed its local finalization past the L1 control-plane hold timeout; reporting the merge (header=${headerHash},tx=${txHash},timeout=${timeout.message}).`,
     );
-    const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const globals = yield* Globals;
-    const snapshot = yield* fetchStateQueueSnapshotProgram(
-      lucid.api,
+    const snapshot = yield* awaitPostMergeSnapshot(
       contracts.stateQueue,
-      "post_merge",
+      headerHash,
     );
     yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
     return {

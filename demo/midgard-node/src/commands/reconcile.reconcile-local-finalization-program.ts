@@ -299,8 +299,8 @@ export const mergeResultEvidence = (
           trigger: mergeResult.trigger,
           headerHash: mergeResult.headerHash,
           txHash: mergeResult.txHash,
-          postMergeQueueNodeCount:
-            mergeResult.postMergeSnapshot.topology.parsedNodeCount,
+          // The root and the blocks, as the artifact has always counted them.
+          postMergeQueueNodeCount: mergeResult.postMergeSnapshot.blockCount + 1,
         }
       : Object.fromEntries(
           Object.entries(mergeResult).filter(

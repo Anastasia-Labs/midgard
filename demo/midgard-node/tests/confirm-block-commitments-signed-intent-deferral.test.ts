@@ -1,3 +1,4 @@
+import { SqlClient } from "@effect/sql";
 import { Effect, Logger, LogLevel } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -76,6 +77,11 @@ const defer = (ageMs: number) =>
       Effect.provideService(MidgardContracts, {
         stateQueue: {},
       } as unknown as MidgardContracts),
+      // The landed-queue reads are mocked above; the database is never read.
+      Effect.provideService(
+        SqlClient.SqlClient,
+        {} as unknown as SqlClient.SqlClient,
+      ),
       Effect.provideService(NodeConfig, {
         BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: 1_000,
         UNCONFIRMED_BLOCK_MAX_AGE_MS: WARNING_AGE_MS,

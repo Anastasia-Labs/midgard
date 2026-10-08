@@ -27,12 +27,15 @@ export type NodeStartupStage =
   | "database_initialization"
   | "protocol_initialization"
   | "provider_assertions"
+  | "l1_follower_catch_up"
   | "history_initialization"
   | "history_sync"
   | "recovery_preparation";
 
 type StartupState = {
   readonly stage: NodeStartupStage | "serving" | "fatal";
+  /** Named reasons the stage is waiting on, reported by `/readyz`. */
+  readonly waitingOn?: readonly string[];
   readonly failedStage?: NodeStartupStage | "serving";
   readonly application?: HttpApp.Default<unknown, Scope.Scope>;
   readonly runtimeDefaults?: Context.Context<DefaultServices.DefaultServices>;
@@ -40,7 +43,11 @@ type StartupState = {
 };
 
 export type StartupHttp = {
-  readonly setStage: (stage: NodeStartupStage) => Effect.Effect<void>;
+  /** Enters `stage`, waiting on the named reasons `waitingOn` (none by default). */
+  readonly setStage: (
+    stage: NodeStartupStage,
+    waitingOn?: readonly string[],
+  ) => Effect.Effect<void>;
   readonly publish: <R>(
     application: HttpApp.Default<unknown, R>,
   ) => Effect.Effect<
@@ -63,7 +70,11 @@ export const withStartupHttpServer = <A, E, R>(
       stage: "runtime_services",
     });
     const startup: StartupHttp = {
-      setStage: (stage) => Ref.set(state, { stage }),
+      setStage: (stage, waitingOn) =>
+        Ref.set(
+          state,
+          waitingOn === undefined ? { stage } : { stage, waitingOn },
+        ),
       publish: (application) =>
         Effect.gen(function* () {
           // Keep every runtime service (including admission SQL) alive in the
@@ -126,6 +137,7 @@ export const withStartupHttpServer = <A, E, R>(
           ready: false,
           reasons: [
             current.stage === "fatal" ? "startup_failed" : "startup_incomplete",
+            ...(current.waitingOn ?? []),
           ],
           stage: current.stage,
           ...(current.failedStage === undefined

@@ -18,14 +18,14 @@ import {
   L1ControlPlaneTimeoutError,
   NodeConfig,
 } from "../src/services/index.js";
-import { Lucid as LucidService } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
 import type {
   StateQueueSnapshot,
   StateQueueSnapshotReason,
-} from "../src/services/state-queue-topology.js";
+} from "../src/services/landed-state-queue.js";
+import { Lucid as LucidService } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.js";
 
-const fetchStateQueueSnapshotProgramMock = vi.hoisted(() => vi.fn());
+const landedStateQueueSnapshotMock = vi.hoisted(() => vi.fn());
 const buildAndSubmitMergeTxMock = vi.hoisted(() => vi.fn());
 const captureMergeLocalLedgerGateMock = vi.hoisted(() => vi.fn());
 const fetchCanonicalMergeCandidateReadinessMock = vi.hoisted(() => vi.fn());
@@ -33,14 +33,17 @@ const finalizeLandedMergesProgramMock = vi.hoisted(() => vi.fn());
 const tryWithLeaseMock = vi.hoisted(() => vi.fn());
 const revalidateMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../src/services/state-queue-topology.js", async (importOriginal) => {
+vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
   const actual =
     await importOriginal<
-      typeof import("../src/services/state-queue-topology.js")
+      typeof import("../src/services/landed-state-queue.js")
     >();
   return {
     ...actual,
-    fetchStateQueueSnapshotProgram: fetchStateQueueSnapshotProgramMock,
+    landedStateQueueSnapshot: landedStateQueueSnapshotMock,
+    // The post-merge wait reads the same snapshot, as `post_merge`.
+    awaitPostMergeSnapshot: (stateQueue: unknown) =>
+      landedStateQueueSnapshotMock(stateQueue, "post_merge"),
   };
 });
 
@@ -120,25 +123,17 @@ const makeSnapshot = (
 ): StateQueueSnapshot => ({
   snapshotId: `${reason}:root#0:tail#${parsedNodeCount.toString()}`,
   reason,
-  observedAtMs: 1_700_000_000_000 + parsedNodeCount,
-  topology: {
-    policyUtxoCount: parsedNodeCount,
-    parsedNodeCount,
-    invalidNodeCount: 0,
-    rootCount: 1,
-    tailCount: 1,
-    initialized: true,
-    healthy: true,
-    reason: undefined,
-  },
+  view: { generation: 1, slot: parsedNodeCount },
+  blockCount: Math.max(0, parsedNodeCount - 1),
   root: {
     outRef: "root#0",
-    headerHash: null,
+    headerHash: SDK.GENESIS_HEADER_HASH,
     utxo: {} as StateQueueSnapshot["root"]["utxo"],
   },
   tailCommitBase: {
     outRef: `tail#${parsedNodeCount.toString()}`,
-    headerHash: parsedNodeCount <= 1 ? null : "11".repeat(28),
+    headerHash:
+      parsedNodeCount <= 1 ? SDK.GENESIS_HEADER_HASH : "11".repeat(28),
     utxo: {} as StateQueueSnapshot["tailCommitBase"]["utxo"],
     blockEndTimeMs: 0,
     roots: {
@@ -312,7 +307,7 @@ const recordPermitAndMerge = (seen: (HistoryProducerPermit | null)[]) =>
 describe("merge maturity semantic preflight", () => {
   beforeEach(() => {
     slotAwareDueWorkRegistry.clearAll();
-    fetchStateQueueSnapshotProgramMock.mockReset();
+    landedStateQueueSnapshotMock.mockReset();
     buildAndSubmitMergeTxMock.mockReset();
     captureMergeLocalLedgerGateMock.mockReset();
     fetchCanonicalMergeCandidateReadinessMock.mockReset();
@@ -325,12 +320,9 @@ describe("merge maturity semantic preflight", () => {
       Effect.succeed([]),
     );
 
-    fetchStateQueueSnapshotProgramMock.mockImplementation(
-      (
-        _lucid: unknown,
-        _stateQueueAuthValidator: unknown,
-        reason: StateQueueSnapshotReason,
-      ) => Effect.succeed(makeSnapshot(9, reason)),
+    landedStateQueueSnapshotMock.mockImplementation(
+      (_stateQueue: unknown, reason: StateQueueSnapshotReason) =>
+        Effect.succeed(makeSnapshot(9, reason)),
     );
     fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
       Effect.succeed(makeCandidate("ready")),
@@ -372,7 +364,7 @@ describe("merge maturity semantic preflight", () => {
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
     expect(revalidateMock).not.toHaveBeenCalled();
     expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
-    expect(fetchStateQueueSnapshotProgramMock).not.toHaveBeenCalled();
+    expect(landedStateQueueSnapshotMock).not.toHaveBeenCalled();
     expect(switchToOperatorsMergingWalletMock).not.toHaveBeenCalled();
   });
 
@@ -394,13 +386,10 @@ describe("merge maturity semantic preflight", () => {
       status: "skipped_oldest_block_not_mature",
     });
     expect(finalizeLandedMergesProgramMock).toHaveBeenCalledTimes(1);
-    expect(finalizeLandedMergesProgramMock).toHaveBeenCalledWith(
-      expect.anything(),
-      {
-        stateQueueAddress: "addr_test1statequeue",
-        stateQueuePolicyId: "00".repeat(28),
-      },
-    );
+    expect(finalizeLandedMergesProgramMock).toHaveBeenCalledWith({
+      stateQueueAddress: "addr_test1statequeue",
+      stateQueuePolicyId: "00".repeat(28),
+    });
     expect(permits).toEqual([stubPermit]);
 
     // A catch-up failure fails the attempt: nothing is built on top of a
@@ -433,7 +422,7 @@ describe("merge maturity semantic preflight", () => {
     });
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
     expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
-    expect(fetchStateQueueSnapshotProgramMock).not.toHaveBeenCalled();
+    expect(landedStateQueueSnapshotMock).not.toHaveBeenCalled();
     expect(switchToOperatorsMergingWalletMock).not.toHaveBeenCalled();
   });
 
@@ -453,7 +442,7 @@ describe("merge maturity semantic preflight", () => {
     expect(tryWithLeaseMock).toHaveBeenCalledTimes(1);
     expect(revalidateMock).not.toHaveBeenCalled();
     expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
-    expect(fetchStateQueueSnapshotProgramMock).not.toHaveBeenCalled();
+    expect(landedStateQueueSnapshotMock).not.toHaveBeenCalled();
     expect(switchToOperatorsMergingWalletMock).not.toHaveBeenCalled();
   });
 
@@ -461,12 +450,9 @@ describe("merge maturity semantic preflight", () => {
     fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
       Effect.succeed(noCandidate),
     );
-    fetchStateQueueSnapshotProgramMock.mockImplementation(
-      (
-        _lucid: unknown,
-        _stateQueueAuthValidator: unknown,
-        reason: StateQueueSnapshotReason,
-      ) => Effect.succeed(makeSnapshot(1, reason)),
+    landedStateQueueSnapshotMock.mockImplementation(
+      (_stateQueue: unknown, reason: StateQueueSnapshotReason) =>
+        Effect.succeed(makeSnapshot(1, reason)),
     );
 
     const result = await runMergeAction(false);
@@ -512,7 +498,7 @@ describe("merge maturity semantic preflight", () => {
     );
     expect(tryWithLeaseMock).toHaveBeenCalledTimes(1);
     expect(fetchCanonicalMergeCandidateReadinessMock).toHaveBeenCalledTimes(2);
-    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(1);
+    expect(landedStateQueueSnapshotMock).toHaveBeenCalledTimes(1);
     expect(switchToOperatorsMergingWalletMock).toHaveBeenCalledTimes(1);
     expect(revalidateMock).toHaveBeenCalledTimes(1);
     expect(buildAndSubmitMergeTxMock).toHaveBeenCalledTimes(1);
@@ -535,7 +521,7 @@ describe("merge history producer permit", () => {
   beforeEach(() => {
     slotAwareDueWorkRegistry.clearAll();
     for (const mock of [
-      fetchStateQueueSnapshotProgramMock,
+      landedStateQueueSnapshotMock,
       buildAndSubmitMergeTxMock,
       captureMergeLocalLedgerGateMock,
       fetchCanonicalMergeCandidateReadinessMock,
@@ -549,12 +535,9 @@ describe("merge history producer permit", () => {
     finalizeLandedMergesProgramMock.mockImplementation(() =>
       Effect.succeed([]),
     );
-    fetchStateQueueSnapshotProgramMock.mockImplementation(
-      (
-        _lucid: unknown,
-        _stateQueueAuthValidator: unknown,
-        reason: StateQueueSnapshotReason,
-      ) => Effect.succeed(makeSnapshot(9, reason)),
+    landedStateQueueSnapshotMock.mockImplementation(
+      (_stateQueue: unknown, reason: StateQueueSnapshotReason) =>
+        Effect.succeed(makeSnapshot(9, reason)),
     );
     fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
       Effect.succeed(makeCandidate("ready")),

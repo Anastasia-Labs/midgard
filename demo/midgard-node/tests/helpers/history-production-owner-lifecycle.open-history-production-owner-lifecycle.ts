@@ -57,6 +57,7 @@ import {
   openHistorySourceOwnerLifecycle,
   type RecordedHistoryBatch,
 } from "./history-source-owner-emulator.js";
+import { followEmulatorStateQueue } from "./landed-state-queue.js";
 import { nativeOwnerBinaryPath } from "./native-owner-binary.js";
 export const openHistoryProductionOwnerLifecycle = async (
   options: ProductionOwnerFixtureOptions = {},
@@ -197,6 +198,14 @@ export const openHistoryProductionOwnerLifecycle = async (
       );
     }
     const scope = await runtime.runPromise(Scope.make());
+    // The node's follower over the emulator, for this generation's life:
+    // P1's facts (the landed state queue) follow the emulator's queue.
+    await runtime.runPromise(
+      followEmulatorStateQueue(
+        fixture.operatorLucid,
+        fixture.contracts.stateQueue,
+      ).pipe(Effect.provideService(Scope.Scope, scope)),
+    );
     const cache = await runtime.runPromise(MempoolLedgerCache);
     let nativeOwner: NativeMpfOwnerService | undefined;
     const owner = await runtime

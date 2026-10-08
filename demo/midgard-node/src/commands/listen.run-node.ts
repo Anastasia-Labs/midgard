@@ -52,6 +52,7 @@ import {
 } from "./listen.retained-payload-server-thread.js";
 import type { StartupHttp } from "./listen.startup-http.js";
 import { buildListenRouter } from "./listen-router.js";
+import { awaitLandedStateQueueOnStartup } from "./listen-startup.await-landed-state-queue.js";
 import {
   assertStartupMutationJobsRecoverable,
   ensureProtocolInitializedOnStartup,
@@ -175,6 +176,13 @@ export const runNode = (
     // The L1 follower (N1) starts first: the history owner's recovery
     // ingests events at its view, and its driver writes the event rows.
     yield* startL1Follower;
+    // Startup recovery seeds the commit base from the landed state queue
+    // (P1, N2): wait, unready and never exiting, until the follower is at
+    // the tip and P1 is healthy there.
+    yield* startup.setStage("l1_follower_catch_up");
+    yield* awaitLandedStateQueueOnStartup((reasons) =>
+      startup.setStage("l1_follower_catch_up", reasons),
+    );
     yield* startup.setStage("history_initialization");
     const historyOwner = yield* makeProductionEventHistoryOwner({
       expectedGenesisLosslessSha256:

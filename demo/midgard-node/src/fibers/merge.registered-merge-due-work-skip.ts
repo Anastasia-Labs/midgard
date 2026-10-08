@@ -7,7 +7,7 @@ import {
   Lucid,
   withL1ControlPlaneWaitTimeout,
 } from "../services/index.js";
-import { type StateQueueSnapshot } from "../services/state-queue-topology.js";
+import { type StateQueueSnapshot } from "../services/landed-state-queue.js";
 import { type MergeReadinessStatus } from "../transactions/state-queue/merge-readiness.js";
 import {
   type CanonicalMergeCandidateReadiness,

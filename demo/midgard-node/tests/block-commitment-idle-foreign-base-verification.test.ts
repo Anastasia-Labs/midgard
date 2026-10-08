@@ -38,12 +38,12 @@ vi.mock("../src/fibers/queue-metrics.js", async () => {
   return { emitQueueStateMetrics: EffectModule.void };
 });
 // A freshly initialized queue: only the root (confirmed-state) node.
-vi.mock("../src/services/state-queue-topology.js", async (importOriginal) => {
+vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
   const { Effect: EffectModule } = await import("effect");
   const { GENESIS_HEADER_HASH } = await import("@al-ft/midgard-sdk");
   return {
     ...(await importOriginal<Record<string, unknown>>()),
-    fetchStateQueueSnapshotProgram: () =>
+    landedStateQueueSnapshot: () =>
       EffectModule.sync(() => {
         snapshotCalls.count += 1;
         return {

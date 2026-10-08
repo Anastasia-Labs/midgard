@@ -8,16 +8,7 @@ import type { ProtocolDeploymentStatus } from "../src/transactions/initializatio
 
 const completeStatus = {
   hubOracleWitness: null,
-  stateQueueTopology: {
-    initialized: true,
-    healthy: true,
-    reason: undefined,
-    policyUtxoCount: 1,
-    parsedNodeCount: 1,
-    invalidNodeCount: 0,
-    rootCount: 1,
-    tailCount: 1,
-  },
+  stateQueueInitialized: true,
   schedulerInitialized: true,
   registeredOperatorsInitialized: true,
   activeOperatorsInitialized: true,

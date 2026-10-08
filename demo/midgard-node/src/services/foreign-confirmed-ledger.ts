@@ -20,12 +20,11 @@ import type { HistoryOwnerCoverage } from "./event-history-owner.js";
 import { withHistoryWrite } from "./event-history-producer.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { assertForeignVerificationSource } from "./foreign-verification-source.js";
-import { Lucid } from "./lucid.js";
+import { landedStateQueueUTxOs } from "./landed-state-queue.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "./midgard-contracts.js";
-import { fetchCanonicalStateQueueNodesProgram } from "./state-queue-topology.js";
 
 const row = (key: string, output: string): Ledger.EntryNoTimeStamp => ({
   outref: Buffer.from(key, "hex"),
@@ -62,16 +61,15 @@ export const reconcileForeignConfirmedLedger = (input: {
     yield* assertForeignVerificationSource(source);
     const retained = yield* Segments.retrieveVerifiedForeignSegments(binding);
     if (retained.length === 0) return;
-    const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const identity = yield* ContractDeploymentIdentity;
     if (identity.deploymentMarker === undefined)
       return yield* fail(
         "Confirmed foreign ancestry requires the active deployment marker",
       );
-    const nodes = yield* fetchCanonicalStateQueueNodesProgram(
-      lucid.api,
+    const nodes = yield* landedStateQueueUTxOs(
       contracts.stateQueue,
+      "confirmed foreign ancestry recovery",
     );
     const roots = nodes.filter((node) => node.datum.key === "Empty");
     if (roots.length !== 1)
@@ -307,9 +305,9 @@ export const reconcileForeignConfirmedLedger = (input: {
         "Confirmed ancestry does not end at the freshly observed header/root",
       );
     yield* input.preparation.assertCurrent;
-    const latest = yield* fetchCanonicalStateQueueNodesProgram(
-      lucid.api,
+    const latest = yield* landedStateQueueUTxOs(
       contracts.stateQueue,
+      "confirmed foreign ancestry recovery",
     );
     if (
       JSON.stringify(queueIdentity(latest)) !==

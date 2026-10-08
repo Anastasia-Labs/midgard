@@ -17,12 +17,11 @@ import type { HistoryOwnerCoverage } from "./event-history-owner.js";
 import { withHistoryWrite } from "./event-history-producer.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { assertForeignVerificationSource } from "./foreign-verification-source.js";
-import { Lucid } from "./lucid.js";
+import { landedStateQueueUTxOs } from "./landed-state-queue.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "./midgard-contracts.js";
-import { fetchCanonicalStateQueueNodesProgram } from "./state-queue-topology.js";
 
 const fail = (message: string) => Effect.fail(new Error(message));
 
@@ -42,12 +41,11 @@ export const reconcileLandedMergeConfirmedLedger = (input: {
       binding: { token: input.preparation.token, coverage: input.coverage },
     };
     yield* assertForeignVerificationSource(source);
-    const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const identity = yield* ContractDeploymentIdentity;
-    const nodes = yield* fetchCanonicalStateQueueNodesProgram(
-      lucid.api,
+    const nodes = yield* landedStateQueueUTxOs(
       contracts.stateQueue,
+      "landed merge recovery",
     );
     const confirmedNode = nodes.find((node) => node.datum.key === "Empty");
     if (confirmedNode === undefined)
@@ -128,9 +126,9 @@ export const reconcileLandedMergeConfirmedLedger = (input: {
         "Landed merge recovery delta chain differs from the canonical root",
       );
     yield* input.preparation.assertCurrent;
-    const latest = yield* fetchCanonicalStateQueueNodesProgram(
-      lucid.api,
+    const latest = yield* landedStateQueueUTxOs(
       contracts.stateQueue,
+      "landed merge recovery",
     );
     if (
       JSON.stringify(canonicalObservation(latest)) !==

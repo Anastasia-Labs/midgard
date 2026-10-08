@@ -1,13 +1,15 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { Lucid as RuntimeLucid } from "../src/services/index.js";
 import { resolveLiveTailCommitBase } from "../src/workers/commit-block-header/pending-journal.js";
 import { fetchExpectedStateQueueTailLocal } from "../src/workers/commit-block-header/state-queue.js";
 import { resolveCommitValidityInterval } from "../src/workers/utils/commit-end-time.js";
+import { seedLandedStateQueue } from "./helpers/landed-state-queue.js";
+import { provideDatabaseLayers } from "./utils.js";
 
 const policyId = "aa".repeat(28);
 const stateQueueAddress =
@@ -89,33 +91,59 @@ const contracts = {
   },
 } as unknown as SDK.MidgardValidators;
 
-const fakeLucid = (candidates: readonly UTxO[]) => {
-  const utxosAt = vi.fn(() =>
-    Promise.reject(new Error("address-wide lookup must not be called")),
+/** The confirmed-state root, linking to the node keyed `next`. */
+const rootLinkingTo = (next: string): UTxO => ({
+  txHash: "00".repeat(32),
+  outputIndex: 0,
+  address: stateQueueAddress,
+  assets: {
+    lovelace: 3_000_000n,
+    [toUnit(policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME)]: 1n,
+  },
+  datum: SDK.encodeLinkedListNodeView({
+    key: "Empty",
+    next: { Key: { key: next } },
+    data: SDK.castConfirmedStateToData({
+      headerHash: "22".repeat(28),
+      prevHeaderHash: "00".repeat(28),
+      utxoRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      startTime: 0n,
+      endTime: 0n,
+      protocolVersion: 1n,
+    }) as SDK.LinkedListNodeView["data"],
+  }),
+});
+
+const keyOf = (node: SDK.StateQueueUTxO): string =>
+  node.datum.key === "Empty" ? "" : node.datum.key.Key.key;
+
+/** `effect` over the landed queue: the root, then `nodes` in list order. */
+const overLandedQueue = <A, E>(
+  nodes: readonly SDK.StateQueueUTxO[],
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+  extra: readonly UTxO[] = [],
+) =>
+  Effect.runPromise(
+    provideDatabaseLayers(
+      Effect.zipRight(
+        seedLandedStateQueue({ spendingScriptAddress: stateQueueAddress }, [
+          rootLinkingTo(keyOf(nodes[0]!)),
+          ...nodes.map((node) => node.utxo),
+          ...extra,
+        ]),
+        effect,
+      ),
+    ),
   );
-  const utxosAtWithUnit = vi.fn().mockResolvedValue(candidates);
-  return {
-    api: { utxosAt, utxosAtWithUnit } as unknown as LucidEvolution,
-    utxosAt,
-    utxosAtWithUnit,
-  };
-};
 
-describe("commit-block expected state-queue tail lookup", () => {
-  it("uses only the exact expected NFT unit for an unchanged tail", async () => {
+describe("commit-block expected state-queue tail lookup (landed queue)", () => {
+  it("returns the expected tail unchanged while it is the landed tail", async () => {
     const expected = await makeTail();
-    const lucid = fakeLucid([expected.utxo]);
-
-    const actual = await Effect.runPromise(
-      fetchExpectedStateQueueTailLocal(lucid.api, config, expected),
+    const actual = await overLandedQueue(
+      [expected],
+      fetchExpectedStateQueueTailLocal(config, expected),
     );
-
     expect(actual).toBe(expected);
-    expect(lucid.utxosAtWithUnit).toHaveBeenCalledWith(
-      stateQueueAddress,
-      toUnit(policyId, expected.assetName),
-    );
-    expect(lucid.utxosAt).not.toHaveBeenCalled();
   });
 
   it("accepts an out-ref replacement that preserves the logical tail header", async () => {
@@ -124,39 +152,34 @@ describe("commit-block expected state-queue tail lookup", () => {
       txHash: "55".repeat(32),
       outputIndex: 1,
     });
-    const lucid = fakeLucid([replacement.utxo]);
 
-    const actual = await Effect.runPromise(
-      resolveLiveTailCommitBase(
-        contracts,
-        expected,
-        MIDGARD_CONSENSUS_PROFILE,
-      ).pipe(
-        Effect.provideService(RuntimeLucid, lucid as unknown as RuntimeLucid),
-      ),
+    const actual = await overLandedQueue(
+      [replacement],
+      resolveLiveTailCommitBase(contracts, expected, MIDGARD_CONSENSUS_PROFILE),
     );
 
     expect(actual.utxo.txHash).toBe(replacement.utxo.txHash);
     expect(actual.utxo.outputIndex).toBe(replacement.utxo.outputIndex);
-    expect(lucid.utxosAt).not.toHaveBeenCalled();
   });
 
   it("classifies the expected NFT becoming a non-tail as a stale commit base", async () => {
     const expected = await makeTail();
+    const newTail = await makeTail({
+      txHash: "77".repeat(32),
+      header: headerFixture({ startTime: 2_000n, endTime: 3_000n }),
+    });
     const advanced = await makeTail({
       txHash: "66".repeat(32),
-      next: { Key: { key: "77".repeat(28) } },
+      next: { Key: { key: keyOf(newTail) } },
     });
-    const lucid = fakeLucid([advanced.utxo]);
 
-    const outcome = await Effect.runPromise(
+    const outcome = await overLandedQueue(
+      [advanced, newTail],
       Effect.either(
         resolveLiveTailCommitBase(
           contracts,
           expected,
           MIDGARD_CONSENSUS_PROFILE,
-        ).pipe(
-          Effect.provideService(RuntimeLucid, lucid as unknown as RuntimeLucid),
         ),
       ),
     );
@@ -168,25 +191,21 @@ describe("commit-block expected state-queue tail lookup", () => {
           "Commit base is stale; aborting block build before creating a pending journal",
       },
     });
-    expect(lucid.utxosAt).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the exact expected unit has zero or multiple matches", async () => {
+  it("fails closed when the expected unit is gone, and when it is duplicated", async () => {
     const expected = await makeTail();
-    const duplicate = await makeTail({ txHash: "88".repeat(32) });
-
-    const missingLucid = fakeLucid([]);
-    const missingOutcome = await Effect.runPromise(
+    const other = await makeTail({
+      txHash: "99".repeat(32),
+      header: headerFixture({ startTime: 2_000n, endTime: 3_000n }),
+    });
+    const missingOutcome = await overLandedQueue(
+      [other],
       Effect.either(
         resolveLiveTailCommitBase(
           contracts,
           expected,
           MIDGARD_CONSENSUS_PROFILE,
-        ).pipe(
-          Effect.provideService(
-            RuntimeLucid,
-            missingLucid as unknown as RuntimeLucid,
-          ),
         ),
       ),
     );
@@ -199,23 +218,23 @@ describe("commit-block expected state-queue tail lookup", () => {
       },
     });
 
-    const duplicateLucid = fakeLucid([expected.utxo, duplicate.utxo]);
-    const duplicateOutcome = await Effect.runPromise(
-      Effect.either(
-        fetchExpectedStateQueueTailLocal(duplicateLucid.api, config, expected),
-      ),
+    // A second live output under the same key makes the landed queue
+    // unhealthy: the commit stops on the named reason.
+    const duplicate = await makeTail({ txHash: "88".repeat(32) });
+    const duplicateOutcome = await overLandedQueue(
+      [expected],
+      Effect.either(fetchExpectedStateQueueTailLocal(config, expected)),
+      [duplicate.utxo],
     );
     expect(duplicateOutcome).toMatchObject({
       _tag: "Left",
       left: {
         _tag: "StateQueueError",
-        message: "Expected state-queue tail unit is not unique",
-        cause: expect.stringContaining("matches=2"),
+        message: expect.stringContaining(
+          "The landed state queue is unhealthy (duplicate_key)",
+        ),
       },
     });
-
-    expect(missingLucid.utxosAt).not.toHaveBeenCalled();
-    expect(duplicateLucid.utxosAt).not.toHaveBeenCalled();
   });
 });
 

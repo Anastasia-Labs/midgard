@@ -12,7 +12,7 @@ import "../mpf/index.js";
 import "../services/canonical-journal-recovery.js";
 import "../services/history-expired-intent-release.js";
 import "../services/index.js";
-import "../services/state-queue-topology.js";
+import "../services/landed-state-queue.js";
 import "../transactions/availability-challenge-registration.js";
 import "../transactions/initialization.js";
 import "../transactions/reference-scripts.js";

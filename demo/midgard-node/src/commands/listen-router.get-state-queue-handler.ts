@@ -16,12 +16,14 @@ import {
 } from "../database/index.js";
 import { mergeAction } from "../fibers/index.js";
 import { l1NowUnixTimeMs } from "../l1-heads.js";
+import { landedElements } from "../l1-state-queue/index.js";
 import {
   Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import { readLandedStateQueue } from "../services/landed-state-queue.js";
 import {
   classifyOldestQueuedBlockReadiness,
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
@@ -160,14 +162,19 @@ export const getStateQueueHandler = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
   const nodeConfig = yield* NodeConfig;
-  const fetchConfig: SDK.StateQueueFetchConfig = {
-    stateQueuePolicyId: contracts.stateQueue.policyId,
-    stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-  };
-  const sortedUTxOs = yield* SDK.fetchSortedStateQueueUTxOsProgram(
-    lucid.api,
-    fetchConfig,
-  );
+  // The landed queue (P1). An unhealthy queue is still drawn, as far as its
+  // walk reached, with its reason: reads keep serving.
+  const read = yield* readLandedStateQueue(contracts.stateQueue);
+  if (read.kind !== "ok") {
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message: "The landed state queue is unavailable",
+        cause: `${read.kind}: ${read.detail}`,
+      }),
+    );
+  }
+  const landed = read.queue;
+  const sortedUTxOs = landedElements(landed).map(({ element }) => element);
   const headers = sortedUTxOs.flatMap((u) =>
     u.datum.key === "Empty" ? [] : [u.datum.key.Key.key],
   );
@@ -253,6 +260,13 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
   yield* Effect.logInfo(drawn);
   return yield* HttpServerResponse.json({
     headers,
+    landedQueue: {
+      healthy: landed.healthy,
+      reason: landed.reason,
+      detail: landed.detail,
+      generation: landed.view.generation,
+      slot: landed.view.point.slot,
+    },
     mergeReadiness: {
       ...mergeReadiness,
       durableAdmissionBacklog: durableAdmissionBacklog.toString(),
@@ -264,9 +278,6 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", "logStateQueue", e),
-  ),
-  Effect.catchTag("LinkedListError", (e) =>
-    failWith500("GET", "logStateQueue", e.cause, e.message),
   ),
   Effect.catchTag("DataCoercionError", (e) =>
     failWith500("GET", "logStateQueue", e.cause, e.message),
@@ -282,8 +293,8 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
       `db failure with table ${e.table}`,
     ),
   ),
-  Effect.catchTag("LucidError", (e) =>
-    failWith500("GET", "logStateQueue", e.cause, e.message),
+  Effect.catchTag("StateQueueError", (e) =>
+    handleStateQueueGetFailure("logStateQueue", e),
   ),
 );
 

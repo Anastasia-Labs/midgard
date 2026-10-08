@@ -14,7 +14,6 @@ import {
   type ContractDeploymentIdentityValue,
   MidgardContracts,
 } from "../services/midgard-contracts.js";
-import { fetchStateQueueTopologyProgram } from "../services/state-queue-topology.js";
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "./availability-challenge-registration.js";
 import {
   type AtomicProtocolInitReferenceScripts,
@@ -37,6 +36,7 @@ import {
   fetchHistoryRootState,
   isDaBondPoolInitialized,
   isDaParamsInitialized,
+  isStateQueueInitialized,
   makePartialProtocolDeploymentError,
   type ProtocolDeploymentStatus,
   resolveDefaultDeploymentDeadline,
@@ -67,7 +67,7 @@ export const fetchProtocolDeploymentStatus = (
       lucid,
       contracts,
     );
-    const stateQueueTopology = yield* fetchStateQueueTopologyProgram(
+    const stateQueueInitialized = yield* isStateQueueInitialized(
       lucid,
       contracts.stateQueue,
     );
@@ -120,7 +120,7 @@ export const fetchProtocolDeploymentStatus = (
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
       ...(correctionLockWitness === null ? ["correction-lock"] : []),
       ...(!daParamsInitialized ? ["da-params"] : []),
-      ...(!stateQueueTopology.initialized ? ["state-queue"] : []),
+      ...(!stateQueueInitialized ? ["state-queue"] : []),
       ...(!schedulerInitialized ? ["scheduler"] : []),
       ...(!registeredOperatorsInitialized ? ["registered-operators"] : []),
       ...(!activeOperatorsInitialized ? ["active-operators"] : []),
@@ -134,8 +134,7 @@ export const fetchProtocolDeploymentStatus = (
       hubOracleWitness !== null &&
       correctionLockWitness !== null &&
       daParamsInitialized &&
-      stateQueueTopology.initialized &&
-      stateQueueTopology.healthy &&
+      stateQueueInitialized &&
       schedulerInitialized &&
       registeredOperatorsInitialized &&
       activeOperatorsInitialized &&
@@ -148,7 +147,7 @@ export const fetchProtocolDeploymentStatus = (
       hubOracleWitness === null &&
       correctionLockWitness === null &&
       !daParamsInitialized &&
-      !stateQueueTopology.initialized &&
+      !stateQueueInitialized &&
       !schedulerInitialized &&
       !registeredOperatorsInitialized &&
       !activeOperatorsInitialized &&
@@ -161,7 +160,7 @@ export const fetchProtocolDeploymentStatus = (
       withdrawalHistoryInitialized: withdrawalHistory.initialized,
       hubOracleWitness,
       correctionLockWitness,
-      stateQueueTopology,
+      stateQueueInitialized,
       daParamsInitialized,
       daBondPoolInitialized,
       schedulerInitialized,

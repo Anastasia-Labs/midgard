@@ -10,8 +10,8 @@ import {
   foreignBaseVerificationForAuthority,
   type ForeignBaseVerificationOutcome,
 } from "../services/foreign-base-verification.js";
-import { Globals, Lucid, MidgardContracts } from "../services/index.js";
-import { fetchStateQueueSnapshotProgram } from "../services/state-queue-topology.js";
+import { Globals, MidgardContracts } from "../services/index.js";
+import { landedStateQueueSnapshot } from "../services/landed-state-queue.js";
 import { verifyForeignCommitBase } from "../workers/commit-block-header.verify-foreign-base.js";
 import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import {
@@ -61,10 +61,8 @@ export const verifyForeignBaseOnIdleTick = Effect.gen(function* () {
   let adoptionRequested = false;
   yield* Effect.gen(function* () {
     const history = yield* HistoryProducer;
-    const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
-    const snapshot = yield* fetchStateQueueSnapshotProgram(
-      lucid.api,
+    const snapshot = yield* landedStateQueueSnapshot(
       contracts.stateQueue,
       "commit_preflight",
     );

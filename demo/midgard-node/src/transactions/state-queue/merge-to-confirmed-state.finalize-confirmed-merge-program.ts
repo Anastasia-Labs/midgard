@@ -1,7 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect, Metric, Option, Ref } from "effect";
 
 import {
@@ -16,8 +15,13 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
+import { formatLandedStateQueue } from "../../l1-state-queue/index.js";
 import { withHistoryWrite } from "../../services/event-history-producer.js";
 import { Database, Globals } from "../../services/index.js";
+import {
+  readLandedStateQueue,
+  stateQueueContractOf,
+} from "../../services/landed-state-queue.js";
 import {
   assertNativeMpfHashHex,
   type NativeMpfOwnerService,
@@ -268,53 +272,28 @@ export type LandedUnfinalizedMerge = {
  */
 export const MAX_LANDED_MERGE_CATCH_UP = 1_000;
 
-export const fetchL1ConfirmedState = (
-  lucid: LucidEvolution,
+/** The confirmed state in the landed queue's root (P1, never L1). */
+export const fetchLandedConfirmedState = (
   fetchConfig: SDK.StateQueueFetchConfig,
 ): Effect.Effect<
   SDK.ConfirmedState,
-  SDK.LucidError | SDK.StateQueueError | SDK.DataCoercionError
+  SDK.StateQueueError | SDK.DataCoercionError,
+  SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
-    const unit = toUnit(
-      fetchConfig.stateQueuePolicyId,
-      SDK.STATE_QUEUE_ROOT_ASSET_NAME,
-    );
-    const matches = yield* Effect.tryPromise({
-      try: () => lucid.utxosAtWithUnit(fetchConfig.stateQueueAddress, unit),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: `Failed to fetch the state-queue root at: ${fetchConfig.stateQueueAddress}`,
-          cause,
-        }),
-    });
-    if (matches.length !== 1) {
+    const read = yield* readLandedStateQueue(stateQueueContractOf(fetchConfig));
+    const root = read.kind === "ok" ? read.queue.root : null;
+    if (root === null) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
-          message: "State-queue root unit is missing or not unique",
-          cause: `unit=${unit},matches=${matches.length.toString()}`,
+          message: "The landed state queue has no single root",
+          cause:
+            read.kind === "ok"
+              ? formatLandedStateQueue(read.queue)
+              : `${read.kind}: ${read.detail}`,
         }),
       );
     }
-    const root = yield* SDK.utxoToStateQueueUTxO(
-      matches[0],
-      fetchConfig.stateQueuePolicyId,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message: "Failed to authenticate the state-queue root",
-            cause,
-          }),
-      ),
-    );
-    if (root.assetName !== SDK.STATE_QUEUE_ROOT_ASSET_NAME) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: "State-queue root unit returned the wrong node",
-          cause: `asset_name=${root.assetName}`,
-        }),
-      );
-    }
-    return (yield* SDK.getConfirmedStateFromStateQueueDatum(root.datum)).data;
+    return (yield* SDK.getConfirmedStateFromStateQueueDatum(root.element.datum))
+      .data;
   });

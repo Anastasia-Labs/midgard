@@ -49,6 +49,7 @@ import {
   runNodeDatabaseEffect,
 } from "./deposit-flow-emulator-shared.make-fixture.js";
 import { stripPlutusV3WitnessByHash } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
+import { withEmulatorStateQueue } from "./helpers/landed-state-queue.js";
 
 export const withEmulatorExtraneousScriptRetry = async <A>(
   lucid: LucidEvolution,
@@ -101,6 +102,8 @@ export const runBlockConfirmation = (
         input: ConfirmationWorkerInput,
       ): Effect.Effect<ConfirmationWorkerOutput, WorkerError, never> =>
         runConfirmBlockCommitmentsWorkerProgram(input).pipe(
+          // As the worker thread does: its own pool on the node database.
+          Effect.provide(Database.workerLayer),
           Effect.provideService(LucidService, lucidService as any),
           Effect.provideService(MidgardContracts, contracts as any),
           nodeConfig === undefined
@@ -117,6 +120,7 @@ export const runBlockConfirmation = (
           ),
         ),
     ).pipe(
+      withEmulatorStateQueue(lucidService.api, contracts.stateQueue),
       (program) =>
         production === undefined
           ? program

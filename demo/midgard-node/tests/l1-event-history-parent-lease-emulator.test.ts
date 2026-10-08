@@ -396,8 +396,10 @@ it("fails the parent operation lease after accepted response loss while a later 
     expect(secondAttempt.right.value.type).toBe("FailureOutput");
     if (secondAttempt.right.value.type !== "FailureOutput")
       throw new Error("Replacement attempt must refuse durable preparation");
+    // The pending commit spent the queue's root in the emulator: the landed
+    // queue (P1) has no root, so the attempt stops before any preparation.
     expect(secondAttempt.right.value.error).toContain(
-      "State-queue linked-list unit is missing or not unique",
+      "The landed state queue is unhealthy (no_root)",
     );
     expect(attempts[1]!.output?.type).toBe("FailureOutput");
     expect(providerCalls).toBe(1);
@@ -522,7 +524,7 @@ it("fails the parent operation lease after accepted response loss while a later 
       globals,
       production,
     });
-    expect(merged.postMergeSnapshot.topology.parsedNodeCount).toBe(1);
+    expect(merged.postMergeSnapshot.blockCount).toBe(0);
     const settled = await lucid.utxosAtWithUnit(
       fixture.contracts.settlement.spendingScriptAddress,
       fixture.contracts.settlement.policyId + accepted.headerHash,

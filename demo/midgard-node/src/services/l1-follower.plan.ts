@@ -13,6 +13,10 @@ import {
   type EventProjectionConfig,
   eventProjectionConfigFromContracts,
 } from "../l1-events/index.js";
+import {
+  type StateQueueProjectionConfig,
+  stateQueueProjectionConfig,
+} from "../l1-state-queue/index.js";
 import type { NodeConfigDep } from "./config.js";
 
 /** How the node's follower runs, or the missing piece that stops it. */
@@ -30,6 +34,8 @@ export type L1FollowerPlan =
       projection: EventProjectionConfig;
       /** N10: the forced orders the follower projects and the node ingests. */
       forcedOrders: ForcedOrderConfig;
+      /** The landed state queue (P1). */
+      stateQueue: StateQueueProjectionConfig;
       hubOraclePolicyId: string;
       /** §12.3 step 4: by-id L1 tx sources, hash-checked. */
       contentSources: readonly string[];
@@ -55,7 +61,10 @@ export const l1FollowerPlan = (input: {
   >;
   readonly contracts: Parameters<typeof SDK.requireEventHistoryContracts>[0] &
     Parameters<typeof forcedOrderConfigFromContracts>[0] &
-    Readonly<{ hubOracle: Readonly<{ policyId: string }> }>;
+    Readonly<{
+      hubOracle: Readonly<{ policyId: string }>;
+      stateQueue: Readonly<{ spendingScriptAddress: string; policyId: string }>;
+    }>;
   readonly securityParameter: number;
 }): L1FollowerPlan => {
   const { config } = input;
@@ -119,6 +128,7 @@ export const l1FollowerPlan = (input: {
     securityParameter: input.securityParameter,
     projection,
     forcedOrders,
+    stateQueue: stateQueueProjectionConfig(input.contracts.stateQueue),
     hubOraclePolicyId: input.contracts.hubOracle.policyId.toLowerCase(),
     contentSources: config.L1_TX_CONTENT_SOURCES,
   };

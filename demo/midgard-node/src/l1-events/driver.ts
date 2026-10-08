@@ -7,7 +7,7 @@
  *   hands the whole set to a sink, which ingests the admissions it lacks,
  *   moves locations and finds orphaned admissions (ruling 3);
  * - it then runs one typed hook per ticket that recomputes from the change
- *   (N3, N4, I1, I3, N6, N10), in a fixed order.
+ *   (N2, N3, N4, I1, I3, N6, N10), in a fixed order.
  *
  * It holds no loop of its own: the shared follow loop (`followChain`) calls
  * it through the node follower service. Every condition it cannot clear by
@@ -63,6 +63,8 @@ export const EVENTS_HOOK_FAILED = "l1_events_hook_failed";
  * `DRIVER_HOOK_ORDER`; a hook returns a hold to keep the node unready.
  */
 export type DriverHooks = Readonly<{
+  /** N2: the landed state queue (P1), its health and the head signal. */
+  landedStateQueue?: DriverHook;
   /** N3: inclusion of events in foreign blocks (P3 beyond own blocks). */
   foreignBlockInclusion?: DriverHook;
   /** N4: the correction recompute after a rewind. */
@@ -82,6 +84,7 @@ export type DriverHook = (
 ) => Promise<DriverHold | undefined>;
 
 export const DRIVER_HOOK_ORDER = [
+  "landedStateQueue",
   "foreignBlockInclusion",
   "correctionRecompute",
   "intentStatus",

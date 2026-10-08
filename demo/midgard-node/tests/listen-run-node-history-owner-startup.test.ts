@@ -73,6 +73,17 @@ vi.mock("../src/commands/listen-startup.js", async (importOriginal) => {
     ).pipe(Effect.zipRight(Effect.fail(new Error("stop after the releases")))),
   };
 });
+vi.mock("../src/services/l1-follower.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/services/l1-follower.js")>()),
+  startL1Follower: await recordStep("l1-follower"),
+}));
+vi.mock(
+  "../src/commands/listen-startup.await-landed-state-queue.js",
+  async () => {
+    const step = await recordStep("landed-state-queue");
+    return { awaitLandedStateQueueOnStartup: () => step };
+  },
+);
 vi.mock(
   "../src/database/cekProgramMaterial.restore-retained-state-pins.js",
   async () => ({ restoreRetainedStatePins: await recordStep("restore-pins") }),
@@ -84,10 +95,6 @@ vi.mock(
       await recordStep("ledger-mpf-lease"),
   }),
 );
-vi.mock("../src/services/l1-follower.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/services/l1-follower.js")>()),
-  startL1Follower: await recordStep("l1-follower"),
-}));
 vi.mock("../src/services/event-history-runtime.js", async () => {
   const { Effect, Option } = await import("effect");
   const { PredecessorLeaseWait } = await import(
@@ -143,6 +150,7 @@ describe("runNode history-owner startup wiring", () => {
     expect(seen.leaseDurationMs).toBe(60_000);
     expect(seen.steps).toEqual([
       "l1-follower",
+      "landed-state-queue",
       "seed",
       "restore-pins",
       "hydrate",
