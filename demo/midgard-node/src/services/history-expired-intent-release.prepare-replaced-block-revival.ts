@@ -58,6 +58,7 @@ import {
 import { reviveOver } from "./history-expired-intent-release.revive-over.js";
 import {
   authenticateQueue,
+  requireHeaderBoundBase,
   signedCommitNode,
 } from "./history-expired-intent-release.signed-commit-node.js";
 import {
@@ -301,6 +302,19 @@ export const prepareReplacedBlockRevival = (input: ReplacedBlockRevivalInput) =>
           winner,
           reason: `${SIGNED_INTENT_UNDECIDED}: replaced block ${winner.record[C.HEADER_HASH].toString("hex")} extends corrected or abandoned base ${baseHeader.toString("hex")}; its removal or authenticated canonical parent recovery must resolve before replay`,
         };
+      // The winner's base root is the revival's target root: its retained
+      // parent journal's root, or, with none, named by its own header.
+      if (Option.isNone(parent))
+        yield* requireHeaderBoundBase(winner.record, "replaced block");
+      else if (
+        parent.value[C.EXPECTED_UTXOS_ROOT] !== winner.record[C.BASE_UTXOS_ROOT]
+      )
+        return yield* Effect.fail(
+          new SignedIntentReplacementIntegrityError(
+            winner.record[C.HEADER_HASH].toString("hex"),
+            `the replay base of replaced block ${winner.record[C.HEADER_HASH].toString("hex")} is not its retained parent's root`,
+          ),
+        );
       const blocking = (yield* sameBaseJournals(journalBase(winner.record), [
         winner.record[C.HEADER_HASH],
       ])).filter(({ status }) =>

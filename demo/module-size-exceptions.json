@@ -1191,8 +1191,8 @@
   },
   {
     "file": "midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
-    "max": 588,
-    "reason": "openHistoryProductionOwnerLifecycle is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N2 (+9): each generation follows the emulator's state queue into the node's follower facts (P1) inside the generation's scope. I1 (+3): the runtime provides the journal of a process with no follower."
+    "max": 589,
+    "reason": "openHistoryProductionOwnerLifecycle is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N2 (+9): each generation follows the emulator's state queue into the node's follower facts (P1) inside the generation's scope. I1 (+3): the runtime provides the journal of a process with no follower. N3d (+1): a restart stops the running generation, so one test can restart the node twice."
   },
   {
     "file": "midgard-node/tests/history-source-owner-retention.test.ts",

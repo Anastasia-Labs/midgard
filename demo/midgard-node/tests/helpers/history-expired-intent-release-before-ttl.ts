@@ -1,6 +1,7 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { CML } from "@lucid-evolution/lucid";
+import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import * as MigrationRunner from "../../src/database/migrations/runner.js";
@@ -67,8 +68,59 @@ export const signedCommit = (spent: string, ttl: number) => {
   return { hash, cbor };
 };
 
+/** Header bytes of the fixture blocks `fixtureHeader` named, by header hash. */
+const FIXTURE_HEADER_CBOR = new Map<string, Buffer>();
+
+/**
+ * A fixture block's header hash: the hash of a header on `base` moving
+ * `baseRoot` to `root`, told apart by `label`. `insertJournal` writes that
+ * header's bytes for it, so its journal names the base and roots the journal
+ * records by its own header bytes, as the commit worker writes them; any
+ * other header hash is journaled with header bytes that bind nothing.
+ */
+export const fixtureHeader = (
+  label: string,
+  base: Buffer,
+  baseRoot: string = UTXOS_ROOT,
+  root: string = ZERO_ROOT,
+) => {
+  const header: SDK.Header = {
+    prevUtxosRoot: baseRoot,
+    utxosRoot: root,
+    withdrawalsRoot: ZERO_ROOT,
+    forcedTransactionsRoot: ZERO_ROOT,
+    transactionsRoot: ZERO_ROOT,
+    depositsRoot: ZERO_ROOT,
+    transitionTraceRoot: ZERO_ROOT,
+    eventToStepRoot: ZERO_ROOT,
+    validationTracesRoot: ZERO_ROOT,
+    withdrawalCount: 0n,
+    forcedTransactionCount: 0n,
+    l2TransactionCount: 0n,
+    depositCount: 0n,
+    totalEventCount: 0n,
+    transitionStepCount: 0n,
+    validationTraceCount: 0n,
+    startTime: 1n,
+    endTime: 2n,
+    blockSlot: 0n,
+    expectedNetworkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
+    prevHeaderHash: base.toString("hex"),
+    operatorVkey: bytes(`header:${label}`, 28).toString("hex"),
+    protocolVersion: 1n,
+  };
+  const hash = Effect.runSync(SDK.hashBlockHeader(header));
+  FIXTURE_HEADER_CBOR.set(
+    hash,
+    Buffer.from(Data.to(header as never, SDK.Header as never), "hex"),
+  );
+  return Buffer.from(hash, "hex");
+};
+
 export const E = signedCommit(BASE_OUT, TTL);
-export const E_HEADER = bytes("e-header", 28);
+export const E_HEADER = fixtureHeader("e-header", BASE_HEADER);
 
 export const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(
@@ -127,7 +179,9 @@ export const insertJournal = (input: {
       expected_withdrawals_root: ZERO_ROOT,
       base_forced_transactions_root: ZERO_ROOT,
       expected_forced_transactions_root: ZERO_ROOT,
-      header_cbor: Buffer.from("a0", "hex"),
+      header_cbor:
+        FIXTURE_HEADER_CBOR.get(input.header.toString("hex")) ??
+        Buffer.from("a0", "hex"),
       format_version: 1,
       replay_kind: "ledger_delta_v1",
       deployment_marker_schema_version: "midgard-deployment-marker-v1",
@@ -157,6 +211,28 @@ export const activeE = (baseHeader: Buffer = BASE_HEADER) =>
     baseHeader,
     createdAt: new Date(2_000_000),
   });
+
+/** A retained, locally applied journal of the base D (`BASE_HEADER`, on the
+ * root) whose root is the fixture base root `UTXOS_ROOT`: the retained parent
+ * journal that binds the replay base of a fixture block on D. */
+export const retainedBaseJournal = insertJournal({
+  header: BASE_HEADER,
+  status: Pending.Status.LocallyApplied,
+  commit: signedCommit(`${hex("root-tx")}#0`, TTL - 1),
+  baseOut: `${hex("root-tx")}#0`,
+  baseHeader: ROOT_HEADER,
+  createdAt: new Date(1_000_000),
+}).pipe(
+  Effect.zipRight(
+    Effect.flatMap(
+      SqlClient.SqlClient,
+      (sql) => sql`UPDATE pending_block_finalizations
+        SET expected_utxos_root = base_utxos_root,
+          block_end_time = block_start_time + INTERVAL '1 second'
+        WHERE header_hash = ${BASE_HEADER}`,
+    ),
+  ),
+);
 
 export type ReceiptTx = Readonly<{
   txHash: string;

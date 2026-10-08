@@ -6,9 +6,11 @@ import {
   NativeRecoveryRootRefused,
   RetainedReplacementPlanChanged,
 } from "./history-expired-intent-release.retained-journal-digest.js";
+import { SignedIntentJournalUnbound } from "./history-expired-intent-release.signed-commit-node.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,
+  SIGNED_INTENT_JOURNAL_UNBOUND,
   SIGNED_INTENT_REPLACEMENT_INTEGRITY,
 } from "./liveness-halt.js";
 
@@ -26,16 +28,21 @@ export const clearLivenessReasonIf = (
   );
 
 /** The held failure a cause carries: a replacement integrity failure however
- * deeply wrapped, a retained replacement plan that binds another journal, or
- * a native durable root the replacement plan refuses. */
+ * deeply wrapped, a retained replacement plan that binds another journal, a
+ * native durable root the replacement plan refuses, or a journal whose
+ * replay base nothing binds. */
 const heldFailure = (cause: Cause.Cause<unknown>) =>
   findSignedIntentReplacementIntegrityError(cause) ??
   [...Cause.failures(cause)].find(
     (
       value,
-    ): value is RetainedReplacementPlanChanged | NativeRecoveryRootRefused =>
+    ): value is
+      | RetainedReplacementPlanChanged
+      | NativeRecoveryRootRefused
+      | SignedIntentJournalUnbound =>
       value instanceof RetainedReplacementPlanChanged ||
-      value instanceof NativeRecoveryRootRefused,
+      value instanceof NativeRecoveryRootRefused ||
+      value instanceof SignedIntentJournalUnbound,
   );
 
 /**
@@ -52,7 +59,10 @@ const heldFailure = (cause: Cause.Cause<unknown>) =>
  * production with it, and every later evaluation re-derives it from fresh
  * evidence; no winner is ever chosen here. A later completion that meets no
  * integrity failure clears it, as does its runtime once no release or
- * revival is in question. Any other failure propagates unchanged.
+ * revival is in question. A `SignedIntentJournalUnbound` holds the same way
+ * under `signed_intent_journal_unbound`, raised before anything is read from
+ * L1 or written, and clears the same way. Any other failure propagates
+ * unchanged.
  */
 export const heldOnIntegrityFailure =
   (source: string) =>
@@ -64,12 +74,27 @@ export const heldOnIntegrityFailure =
             globals,
             source,
             SIGNED_INTENT_REPLACEMENT_INTEGRITY,
+          ).pipe(
+            Effect.zipRight(
+              clearLivenessReasonIf(
+                globals,
+                source,
+                SIGNED_INTENT_JOURNAL_UNBOUND,
+              ),
+            ),
           ),
         ),
         Effect.catchAllCause((cause) => {
           const integrity = heldFailure(cause);
-          return integrity === undefined
-            ? Effect.failCause(cause)
+          if (integrity === undefined) return Effect.failCause(cause);
+          return integrity instanceof SignedIntentJournalUnbound
+            ? raiseLivenessIncident(
+                globals,
+                source,
+                SIGNED_INTENT_JOURNAL_UNBOUND,
+                `${integrity.message} The recovery holds with native MPF, the SQL root and the journal unchanged, and the history gate stays closed, which holds block production; every evaluation re-reads the journal. Operator action is needed if the journal does not change.`,
+                { escalateAfterMs: 0 },
+              )
             : raiseLivenessIncident(
                 globals,
                 source,

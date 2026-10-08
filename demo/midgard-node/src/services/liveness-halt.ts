@@ -326,6 +326,19 @@ export const HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE =
 export const SIGNED_INTENT_REPLACEMENT_INTEGRITY =
   "signed_intent_replacement_integrity";
 
+/** A journal base the signed-intent release or the replaced-block revival
+ * reads its target root from is bound neither by a retained parent journal
+ * (none has its base tail header hash) nor by its own header (see
+ * `unboundJournalReason`). The release holds under
+ * `HISTORY_SIGNED_INTENT_RELEASE_SOURCE` (the active journal) and the revival
+ * under `HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE` (the replaced block it would
+ * revive): native MPF, the SQL root and the journal stay as they are and the
+ * history gate stays closed. Every evaluation re-reads the journal; one that
+ * completes clears it. The release runtime also clears it once no release is
+ * in question or the active journal changes, and the revival disposition
+ * once a journal is active or no revival candidate remains. */
+export const SIGNED_INTENT_JOURNAL_UNBOUND = "signed_intent_journal_unbound";
+
 /** The source the state-queue correction rewind raises under while it holds
  * on a removed block's journal. Like `HISTORY_SIGNED_INTENT_RELEASE_SOURCE`
  * it holds no fiber: the rewind's disposition keeps the history gate closed,
@@ -345,6 +358,18 @@ export const HISTORY_CORRECTION_REWIND_SOURCE = "history_correction_rewind";
  * stay as they are. */
 export const CORRECTION_REWIND_JOURNAL_UNBOUND =
   "correction_rewind_journal_unbound";
+
+/** A correction rewind whose native restore was refused because the native
+ * MPF store does not retain its target root (the removed chain's replay
+ * base) in full (`NativeMpfRootNotRetained`). The refusal changes nothing,
+ * so the rewind holds with its plan retained and native MPF, the SQL root
+ * and the journals as they are, and every evaluation retries the restore.
+ * A completed rewind, any other outcome of a rewind evaluation, or a
+ * reconcile with no rewind owed clears it. The node cannot put the root's
+ * closure back itself: the operator stops it, installs a native MPF store
+ * that retains the root in full, and restarts it. */
+export const CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED =
+  "correction_rewind_target_root_not_retained";
 
 /** The source the commit worker's DA frame notices raise under. It holds no
  * fiber: the block is already refused on every tick (by the pre-submit frame

@@ -1,5 +1,5 @@
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 import { Level } from "level";
 import { expect } from "vitest";
 
@@ -7,6 +7,7 @@ import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import {
   activeLivenessReasons,
   CORRECTION_REWIND_JOURNAL_UNBOUND,
+  CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
   HISTORY_CORRECTION_REWIND_SOURCE,
 } from "../../src/services/liveness-halt.js";
 import {
@@ -14,7 +15,6 @@ import {
   captureRemoved,
   expectOwedAndUnreincluded,
   expectUnobservedRemoval,
-  failureText,
   nativeRoot,
   openRemovedTailOverRetainedBlock,
   restartAfter,
@@ -164,44 +164,81 @@ export const assertUnboundRemovedJournalHolds = async () => {
   }
 };
 
+/**
+ * A removed tail over a retained block whose rewind target (the removed
+ * block's base root) is dropped from the native MPF store while the node is
+ * down. The rewind prepares and retains its plan; the native owner refuses
+ * the restore before changing its marker (`NativeMpfRootNotRetained`), and
+ * the rewind holds on the native state: the restart stays up and unready,
+ * readiness names `correction_rewind_target_root_not_retained`, native MPF,
+ * the SQL root and the journals stay unchanged, the plan stays retained, and
+ * the history gate stays closed through later source blocks. Once the
+ * operator puts the root's record back with the node stopped, the next start
+ * resumes the retained plan and completes the rewind.
+ */
 export const assertUnretainedCorrectionRoot = async () => {
   const { scenario, removed } = await openRemovedTailOverRetainedBlock();
   const levelPath = scenario.h.production.nodeConfig.LEDGER_MPF_DB_PATH;
   const target = removed[0]!.base;
-  const readMarker = async () => {
+  const header = removed[0]!.headerHash;
+  const withStore = async <A>(
+    work: (db: Level<string, unknown>) => Promise<A>,
+  ) => {
     const db = new Level<string, unknown>(levelPath, { valueEncoding: "json" });
     await db.open();
     try {
-      return await db.get("__root__");
+      return await work(db);
     } finally {
       await db.close();
     }
   };
+  let h: Pick<Lifecycle, "close"> = scenario.h;
   try {
     // Drop the base root's own record while no service holds the store.
-    const failure = await failureText(
-      scenario.h.restartRuntime({
-        afterStop: async () => {
-          const db = new Level<string, unknown>(levelPath, {
-            valueEncoding: "json",
-          });
-          await db.open();
-          try {
-            expect(await db.get(target)).toBeDefined();
-            await db.del(target);
-          } finally {
-            await db.close();
-          }
-        },
-      }),
+    let record: unknown;
+    const restarted = await scenario.h.restartRuntime({
+      synchronize: false,
+      afterStop: () =>
+        withStore(async (db) => {
+          record = await db.get(target);
+          expect(record).toBeDefined();
+          await db.del(target);
+        }),
+    });
+    h = restarted;
+    await awaitRewindLivenessReason(
+      restarted,
+      CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
     );
-    expect(failure).toContain(
-      `Native MPF canonical recovery target root ${target} is not retained in full; refusing to restore`,
+    // Held through a later source block: the owner journals it and keeps its
+    // gate closed, and every evaluation retries and refuses the restore.
+    await scenario.nextSourceBlockWhileRefused(restarted);
+    expect(await rewindLivenessReason(restarted)).toBe(
+      CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
     );
-    expect(await readMarker()).toBe(removed[0]!.expected);
-    expect((await readSqlLedgerRoot()).root_hex).not.toBe(target);
+    const owner = await Effect.runPromise(
+      Ref.get(restarted.globals.NATIVE_MPF_OWNER),
+    );
+    expect((await owner!.diagnostics()).durableRoot).toBe(removed[0]!.expected);
+    expect((await readSqlLedgerRoot()).root_hex).toBe(removed[0]!.expected);
     await expectOwedAndUnreincluded(removed);
+    await assertClosedCorrectionGate(restarted);
+    // The operator stops the node and puts the root's record back; the next
+    // start resumes the retained plan, and the rewind completes.
+    const recovered = await scenario.h.restartRuntime({
+      afterStop: () => withStore((db) => db.put(target, record)),
+    });
+    h = recovered;
+    expect(await nativeRoot(recovered)).toBe(target);
+    expect((await readSqlLedgerRoot()).root_hex).toBe(target);
+    expect((await readJournal(header))[C.STATUS]).toBe(
+      Pending.Status.Abandoned,
+    );
+    expect((await readRecoveryPlans()).map(({ state }) => state)).toEqual([
+      "applied",
+    ]);
+    expect(await rewindLivenessReason(recovered)).toBeUndefined();
   } finally {
-    await closeLifecycle(scenario.h);
+    await closeLifecycle(h);
   }
 };

@@ -9,6 +9,7 @@ import {
   bytes,
   hex,
   insertJournal,
+  retainedBaseJournal,
   signedCommit,
   TTL,
 } from "./helpers/history-expired-intent-release-before-ttl.js";
@@ -128,6 +129,7 @@ const reversal = (
     owner,
     (node) =>
       Effect.gen(function* () {
+        yield* retainedBaseJournal;
         yield* journal(
           W_HEADER,
           Pending.Status.Abandoned,
