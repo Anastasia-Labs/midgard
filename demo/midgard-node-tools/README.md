@@ -255,16 +255,6 @@ and an explanation of that correction. The same code, deployment and service
 set guards apply; switching the port or credentials requires the normal
 controller/deployment procedure, not an old queued recovery request.
 
-The authority supports `recover-service --service watcher-authority` with its
-current token and a note after restoring the exact recorded authority config,
-signed release/rules, authentication credentials and retained record chain. Its
-read-only probe verifies the deployment release/finality, configured endpoint,
-the authenticated record-key identity derived from the recorded credential, and
-the current trusted-head policy/MAC. A null head is accepted only after matching
-identity and deployment checks. The probe never opens/repairs the authority store
-or submits CAS. Missing or inconsistent recorded state stays held. Runtime code
-and service generation must still match after the awaited readiness probe.
-
 History archive/tunnel/recorder roles still remain held after an exit 78 until
 an authenticated service-specific readiness check is supported.
 A plain HTTP response or TLS connection is insufficient.

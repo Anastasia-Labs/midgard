@@ -43,7 +43,6 @@ import {
   type CompleteCanonicalReplayPredecessor,
   completeCanonicalReplayPredecessorEvidence,
 } from "../workflow/complete-replay.js";
-import { eventSubject } from "../workflow/detection-subject.js";
 import {
   type ReplayPrerequisiteFailure,
   replayPrerequisiteFailure,
@@ -52,11 +51,10 @@ import {
   authorities,
   committedDepositMatchesOrigin,
   committedWithdrawalMatchesOrigin,
-  isInteractiveDisagreement,
   matchingOrigin,
   readmitEvidence,
   readOriginEvents,
-  replayDetectionId,
+  replayDetections,
   type ReplayMaterial,
   sameEvidenceIdentity,
   VALIDATION_TRACE_REPLAY_CONTEXT,
@@ -437,16 +435,7 @@ export const admitValidationTraceReplayContext = async ({
     priorRoot = replay.replayInput.postUtxosRoot;
   }
   const detections = Object.freeze(
-    material.filter(isInteractiveDisagreement).map((entry) =>
-      Object.freeze({
-        ...eventSubject(Data.from(entry.eventKeyCbor, EventKey)),
-        detectionId: replayDetectionId(entry),
-        headerHash: current.headerHash,
-        violationId: "validation-trace",
-        position: BigInt(entry.transactionIndex),
-        diagnostic: `Canonical Plutus execution disagrees with the retained validation descriptor at step ${entry.stepIndex.toString()}`,
-      }),
-    ),
+    material.flatMap((entry) => replayDetections(entry, current.headerHash)),
   );
   const eventEvidenceDigest =
     transitionTraceEvents === undefined

@@ -21,12 +21,15 @@ import {
   type OutRef,
   type TrackedSet,
 } from "@al-ft/midgard-l1-follower";
+import {
+  eventProjection,
+  eventTrackedSet,
+} from "@al-ft/midgard-l1-follower/events";
 import { encodeSimTx, type SimTx } from "@al-ft/midgard-l1-follower/testing";
 import { SqlClient } from "@effect/sql";
 import { Effect, Either } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { eventProjection, eventTrackedSet } from "../src/l1-events/index.js";
 import {
   stateQueueProjection,
   stateQueueTrackedSet,
@@ -178,7 +181,14 @@ const record = (
   const { cbor, txHash } = bytesOf(tx);
   return Effect.runPromise(
     Effect.either(
-      journal.record(journaledIntent("list_insert", workflowKey), cbor, txHash),
+      Effect.flatMap(journal.openPlan, (plan) =>
+        journal.record(
+          journaledIntent("list_insert", workflowKey, plan),
+          cbor,
+          txHash,
+          { kind: "record_only" },
+        ),
+      ),
     ),
   );
 };

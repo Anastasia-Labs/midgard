@@ -5,6 +5,12 @@ export {
   type RecordedActivity,
 } from "./activity.js";
 export {
+  activityPruneFloor,
+  activityPruneHook,
+  type ActivityRecordBinding,
+  OPERATOR_ACTIVITY_TABLE,
+} from "./activity-prune.js";
+export {
   OPERATOR_LIST_MAX_NODES,
   type OperatorListContract,
   type OperatorSetConfig,

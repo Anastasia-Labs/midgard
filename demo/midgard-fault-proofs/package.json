@@ -51,6 +51,10 @@
       "midgard-source": "./src/cross-block-duplicate-event/settlement-authority.ts",
       "types": "./src/cross-block-duplicate-event/settlement-authority.ts"
     },
+    "./test-support/fabricated-history-witness": {
+      "midgard-source": "./src/fabricated-history-witness.ts",
+      "types": "./src/fabricated-history-witness.ts"
+    },
     "./test-support/prepare-fabricated-deposit": {
       "midgard-source": "./src/prepare-fabricated-deposit.ts",
       "types": "./src/prepare-fabricated-deposit.ts"
@@ -74,6 +78,14 @@
     "./test-support/transition-trace-reconstruct": {
       "midgard-source": "./src/transition-trace/reconstruct.ts",
       "types": "./src/transition-trace/reconstruct.ts"
+    },
+    "./test-support/installed-validation-trace-dispute-journey": {
+      "midgard-source": "./tests/support/installed-validation-trace-dispute-journey.ts",
+      "types": "./tests/support/installed-validation-trace-dispute-journey.ts"
+    },
+    "./test-support/installed-validation-follower-fixture": {
+      "midgard-source": "./tests/support/installed-validation-follower-fixture.ts",
+      "types": "./tests/support/installed-validation-follower-fixture.ts"
     },
     "./test-support/validation-one-step-staging": {
       "midgard-source": "./src/validation-dispute/submit/reference-scripts.require-staged-one-step-argument.ts",

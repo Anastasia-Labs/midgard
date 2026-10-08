@@ -1,28 +1,29 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  CML,
-  coreToTxOutput,
-  datumToHash,
-  generateSeedPhrase,
-  Lucid as makeLucid,
-} from "@lucid-evolution/lucid";
+import { SqlClient } from "@effect/sql";
+import { generateSeedPhrase, Lucid as makeLucid } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect, vi } from "vitest";
 
 import * as Journal from "../../src/database/settlement.js";
+import * as IntentJournal from "../../src/services/intent-journal.js";
 import { Lucid } from "../../src/services/lucid.js";
 import {
   type SettlementHealth,
+  settlementLevel,
   settlementTick,
 } from "../../src/services/settlement.js";
+import { settlementDepthParameters } from "../../src/services/settlement.status.js";
 import * as publicationProvider from "../../src/transactions/reference-publication-provider.js";
 import type { openHistoryProductionOwnerLifecycle } from "./history-production-owner-lifecycle.js";
 import { withoutFollowerJournal } from "./intent-journal.js";
 
 /** Real builders, signatures, script execution, SQL queue and reconciliation.
  * As in the owner fixture, only network point labels/transport are synthetic,
- * and the S6 send of a pending journaled body is played by `runPhase`. */
+ * and the S6 send of a pending journaled body is played by `runPhase`. No
+ * follower runs, so the intent journal's derived status of an attempt is the
+ * recorded history's: landed in the block that holds it, at its depth below
+ * the recorded tip, else live. */
 export const openAutomaticSettlement = async (
   h: Awaited<ReturnType<typeof openHistoryProductionOwnerLifecycle>>,
 ) => {
@@ -79,48 +80,25 @@ export const openAutomaticSettlement = async (
       const points = (await h.evidence()).points;
       return points[points.length - 1]!.point;
     });
-  const fetchBefore = globalThis.fetch;
-  const fetchSpy = vi
-    .spyOn(globalThis, "fetch")
-    .mockImplementation(async (input, init) => {
-      const match = /\/matches\/\*@([a-f0-9]{64})$/u.exec(String(input));
-      if (match === null) return fetchBefore(input, init);
-      const receipt = h.receipts.find((r) => r.transaction.txHash === match[1]);
-      const block = (await h.evidence()).points.find((p) =>
-        p.transactions.some((tx) => tx.id === match[1]),
-      );
-      if (receipt === undefined || block === undefined)
-        return Response.json([]);
-      const outputs = CML.Transaction.from_cbor_hex(receipt.signedCbor)
-        .body()
-        .outputs();
-      return Response.json(
-        Array.from({ length: outputs.len() }, (_, index) => {
-          const output = coreToTxOutput(outputs.get(index));
-          return {
-            transaction_id: match[1],
-            output_index: index,
-            address: output.address,
-            value: {
-              coins: String(output.assets.lovelace),
-              assets: Object.fromEntries(
-                Object.entries(output.assets)
-                  .filter(([unit]) => unit !== "lovelace")
-                  .map(([unit, amount]) => [unit, String(amount)]),
-              ),
-            },
-            datum_hash:
-              output.datumHash ??
-              (output.datum == null ? null : datumToHash(output.datum)),
-            script_hash: null,
-            created_at: {
-              slot_no: block.point.slot,
-              header_hash: block.point.id,
-            },
-          };
-        }),
-      );
-    });
+  const journalStatus = vi
+    .spyOn(IntentJournal, "readIntentStatus")
+    .mockImplementation((hash) =>
+      Effect.promise(async () => {
+        const points = (await h.evidence()).points;
+        const index = points.findIndex((p) =>
+          p.transactions.some((tx) => tx.id === hash),
+        );
+        return index < 0
+          ? { kind: "live" as const, inputsAvailable: true }
+          : {
+              kind: "landed" as const,
+              slot: points[index]!.point.slot,
+              height: index,
+              depth: points.length - index,
+            };
+      }),
+    );
+  const depths = await h.command(settlementDepthParameters);
   const health: SettlementHealth[] = [];
   const tick = settlementTick(owner, api, (value) => health.push(value)).pipe(
     Effect.provideService(Lucid, service),
@@ -129,9 +107,19 @@ export const openAutomaticSettlement = async (
     for (let i = 0; i < 40; i++) {
       await h.command(Journal.renew(owner));
       await h.runWithoutSynchronizing(withoutFollowerJournal(tick));
-      const pending = await h.runWithoutSynchronizing(
-        Journal.pending(owner.deploymentId),
-      );
+      const pending = (
+        await h.runWithoutSynchronizing(
+          Journal.openAttempts(owner.deploymentId),
+        )
+      )
+        // Settled attempts stay pending until k deep, so pick this phase's.
+        .filter(
+          (attempt) =>
+            attempt.status === "pending" &&
+            attempt.event_id === eventId &&
+            attempt.phase === phase,
+        )
+        .at(-1);
       // No follower runs here, so this stands in for S6, the journaled
       // bytes' one sender: it sends the pending body, exactly, while the
       // chain does not know it.
@@ -147,17 +135,25 @@ export const openAutomaticSettlement = async (
         await api.awaitTx(pending.tx_hash);
         await h.synchronize();
       }
-      const receipts = await h.command(
-        Journal.attempts({
-          deployment_id: owner.deploymentId,
-          kind: phase === "absorb" ? "deposit" : "withdrawal",
-          event_id: eventId,
-          phase,
-          failures: 0,
-          verified_generation: "0",
+      // A receipt: the phase's attempt the tick read cd deep (its job
+      // took the next phase from it), or one stored final.
+      const receipt = await h.command(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const rows = yield* sql<Journal.SettlementAttempt>`SELECT a.*
+          FROM settlement_attempts a JOIN settlement_jobs j USING (deployment_id, kind, event_id)
+          WHERE a.deployment_id = ${owner.deploymentId} AND a.event_id = ${eventId}
+            AND a.phase = ${phase} AND a.status <> 'expired'
+          ORDER BY a.created_at DESC LIMIT 1`;
+          const attempt = rows[0];
+          if (attempt === undefined) return undefined;
+          const status = yield* IntentJournal.readIntentStatus(attempt.tx_hash);
+          return attempt.status === "final" ||
+            settlementLevel(status, depths) !== "open"
+            ? attempt
+            : undefined;
         }),
       );
-      const receipt = receipts.find((r) => r.phase === phase);
       if (receipt !== undefined) {
         expect(health.some((value) => value.state === "error")).toBe(false);
         return receipt;
@@ -175,7 +171,7 @@ export const openAutomaticSettlement = async (
     close: () => {
       status.mockRestore();
       barrier.mockRestore();
-      fetchSpy.mockRestore();
+      journalStatus.mockRestore();
     },
   };
 };

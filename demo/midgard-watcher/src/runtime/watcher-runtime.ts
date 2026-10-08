@@ -14,7 +14,7 @@ import "../funding/sqlite-prover-funding-reservation-store.js";
 import "../funding/workflow-funding-profile-overlay.js";
 import "../l1-follower/follower-runtime.js";
 import "../l1-follower/observation.js";
-import "../storage/durable-runtime.js";
+import "../l1-follower/user-events.js";
 import "../storage/durable-store.js";
 import "../storage/retained-da-runtime.js";
 import "../storage/sqlite-durable-backend.js";
@@ -25,8 +25,6 @@ import "./operations-http.js";
 import "./operations-observability.js";
 import "./process-config.js";
 import "./startup-progress.js";
-import "./trusted-head-runtime.js";
-import "./user-event-runtime.js";
 import "./watcher-runtime.decision-driver.js";
 import "./watcher-runtime.launch-checks.js";
 import "./watcher-runtime.create-watcher-runtime.js";
@@ -41,7 +39,6 @@ export {
   WATCHER_RELEASE_OBSERVATION_PENDING,
   WATCHER_RETIREMENT_RESET_FAILED,
   WATCHER_RETIREMENT_RESET_PENDING,
-  WATCHER_USER_EVENT_HISTORY_UNAVAILABLE,
   type WatcherDecisionDriver,
   type WatcherDecisionDriverInput,
   type WatcherDecisionReadiness,

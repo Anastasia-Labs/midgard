@@ -13,11 +13,9 @@ import {
 afterEach(removeStackFixtures);
 
 const secrets = {
-  WATCHER_RECORD_KEY_FILE: "/private/record",
   WATCHER_ROLLBACK_KEY_FILE: "/private/rollback",
   WATCHER_PROVER_KEY_FILE: "/private/prover",
   WATCHER_AVAILABILITY_KEY_FILE: "/private/availability",
-  WATCHER_BEARER_FILE: "/private/bearer",
 };
 const mount = (source: string, target: string) => ({
   type: "bind",
@@ -27,14 +25,6 @@ const mount = (source: string, target: string) => ({
 /** `docker compose config --format json` for demo/midgard-watcher/compose.yaml. */
 const rendered = (files: Record<string, string>) => ({
   services: {
-    "watcher-authority": {
-      image: "midgard-watcher:local",
-      volumes: [
-        mount("/checkout/config/authority.json", "/etc/midgard/authority.json"),
-        mount(files.WATCHER_RECORD_KEY_FILE!, "/run/secrets/record_key"),
-        mount(files.WATCHER_BEARER_FILE!, "/run/secrets/bearer"),
-      ],
-    },
     watcher: {
       image: "midgard-watcher:local",
       volumes: [
@@ -55,15 +45,11 @@ const rendered = (files: Record<string, string>) => ({
           files.WATCHER_AVAILABILITY_KEY_FILE!,
           "/run/secrets/availability_key",
         ),
-        mount(files.WATCHER_BEARER_FILE!, "/run/secrets/bearer"),
       ],
     },
   },
   volumes: {
     "watcher-state": { name: "midgard-watcher_watcher-state" },
-    "watcher-authority-records": {
-      name: "midgard-watcher_watcher-authority-records",
-    },
   },
 });
 async function watcher(files = secrets) {
@@ -80,7 +66,6 @@ async function watcher(files = secrets) {
     renderWatcherCompose(processes, {
       env: secrets,
       operationsEndpoint: "http://127.0.0.1:17402",
-      authorityEndpoint: "http://127.0.0.1:17401",
       l1Directory: "/stack/cardano",
     });
   return { config, processes, render };
@@ -96,12 +81,13 @@ it("renders the watcher from its own env file and the template ports only", asyn
     ...secrets,
     MIDGARD_L1_CONFIG_DIR: "/stack/cardano",
     MIDGARD_L1_IPC_DIR: join(config.nodeRoot, "cardano/ipc"),
-    WATCHER_AUTHORITY_PORT: "17401",
     WATCHER_OPERATIONS_PORT: "17402",
   });
   expect(call!.args).toContain(config.watcher.composeEnvFile);
-  for (const service of Object.values(source.services))
-    expect(service.image).toBe("midgard-watcher:${COMPOSE_PROJECT_NAME}");
+  expect(Object.keys(source.services)).toEqual(["watcher"]);
+  expect(source.services.watcher!.image).toBe(
+    "midgard-watcher:${COMPOSE_PROJECT_NAME}",
+  );
   expect(source.volumes["watcher-state"]).toEqual({});
 });
 it("refuses a secret mount that differs from the validated env file", async () => {
@@ -113,11 +99,7 @@ it("refuses a secret mount that differs from the validated env file", async () =
 });
 it("refuses watcher ports that are implicit or already taken", async () => {
   const { config, processes } = await watcher();
-  const endpoints = {
-    env: secrets,
-    l1Directory: "/stack/cardano",
-    authorityEndpoint: "http://127.0.0.1:17401",
-  };
+  const endpoints = { env: secrets, l1Directory: "/stack/cardano" };
   await expect(
     renderWatcherCompose(processes, {
       ...endpoints,

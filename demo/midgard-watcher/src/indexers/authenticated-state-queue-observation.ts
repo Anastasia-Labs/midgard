@@ -27,7 +27,6 @@ export {
 } from "./authenticated-state-queue-observation.parse-persisted-header.js";
 export { WatcherRetainedHeaderAttestationPendingError } from "./authenticated-state-queue-observation.parse-persisted-header.js";
 export { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "./authenticated-state-queue-observation.parse-persisted-observation.js";
-export { unsafeSelectWatcherStateQueueRawCandidatesForTest } from "./authenticated-state-queue-observation.queue-output.js";
 export {
   unsafeAnchoredHeaderObservationForTest,
   unsafeDeriveFraudProofCorrectionIdentityForTest,

@@ -30,14 +30,17 @@ export const createValidationTraceOneStepArgumentResolver = ({
     threadOutRef,
     retained,
     action,
+    resolutionInput,
   }: {
     readonly action: ValidationTraceDisputeActuatorAction;
     readonly material: ValidationTraceDisputeActuationMaterial;
     readonly threadOutRef: string;
     readonly retained?: ValidationTraceDisputeRetainedRouteInput;
+    /** The prepared resolution a staged route resumes against, if not live. */
+    readonly resolutionInput?: UTxO;
   }) => {
     const resolution = validationResolutionFromUtxo(
-      await threadUtxo(threadOutRef),
+      resolutionInput ?? (await threadUtxo(threadOutRef)),
     );
     const stateIndex = recoverValidationTraceStateIndex({
       trace: material.challengerTrace,

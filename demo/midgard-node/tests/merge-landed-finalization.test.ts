@@ -188,14 +188,17 @@ const blockRows = (headerHash: string) =>
     (rows) => rows.length,
   );
 
-/** The job completed after `attempts` attempts and the block rows are gone. */
+/**
+ * The job completed after `attempts` attempts; the block rows stay until
+ * its fold is final (`releaseFinalFolds`).
+ */
 const expectFinalized = (headerHash: string, attempts: number) =>
   Effect.gen(function* () {
     expect(yield* mergeJob(headerHash)).toMatchObject({
       [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
       [MutationJobsDB.Columns.ATTEMPTS]: attempts,
     });
-    expect(yield* blockRows(headerHash)).toBe(0);
+    expect(yield* blockRows(headerHash)).toBe(1);
   });
 
 /** No job was started and the block rows are still there. */

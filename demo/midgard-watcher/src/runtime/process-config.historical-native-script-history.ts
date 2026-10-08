@@ -5,9 +5,6 @@ import { type WatcherConfig, type WatcherWalletKeySource } from "./config.js";
 export const WATCHER_PROCESS_CONFIG_SCHEMA_VERSION =
   "midgard-watcher-production-process-config-v1" as const;
 
-export const WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION =
-  "midgard-watcher-trusted-head-authority-process-config-v1" as const;
-
 const ENVIRONMENT_VARIABLE = /^[A-Z][A-Z0-9_]{0,127}$/u;
 
 export const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -133,9 +130,7 @@ export type WatcherProcessConfig = Readonly<{
   ruleBundlePath: string;
   fundingProfileBundlePath: string;
   l1NodeTransportBinaryPath: string;
-  trustedHeadAuthorityEndpoint: string;
   operationsEndpoint: string;
-  httpBearerSecretSource: WatcherWalletKeySource;
   workflowJournalDirectory: string;
   availability: Readonly<{
     keySource: WatcherWalletKeySource;

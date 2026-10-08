@@ -6,6 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
 import {
   CML,
@@ -40,7 +41,7 @@ import {
 } from "../src/services/settlement-call.js";
 import { runSettlementWorker } from "../src/workers/settlement.run-settlement-worker.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 vi.mock(
   "../src/transactions/reference-publication-provider.js",
@@ -57,6 +58,8 @@ vi.mock(
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
 ) => Effect.runPromise(provideDatabaseLayers(effect));
+/** The stub L1 client's selected wallet (one object, as Lucid keeps it). */
+const stubWallet = {};
 const deploymentId = "a2".repeat(32);
 const UNKNOWN = "An unknown error occurred";
 /** A withdrawal event id as the journal keys it: the event's bytes in hex. */
@@ -65,8 +68,7 @@ const EVENT_ID = "cc".repeat(34);
 beforeEach(() =>
   run(
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority CASCADE`;
+      yield* resetApplicationTables;
       const token = yield* Authority.acquire({
         deploymentIdentity: deploymentId,
         ownerToken: randomUUID(),
@@ -80,8 +82,8 @@ beforeEach(() =>
   ),
 );
 
-/** A signed-looking withdrawal initialize body, valid until slot 120. */
-const pendingAttempt = (): Journal.SettlementAttempt => {
+/** A signed-looking withdrawal initialize body, valid until slot `ttl`. */
+const pendingAttempt = (ttl = 120n): Journal.SettlementAttempt => {
   const inputs = CML.TransactionInputList.new();
   inputs.add(
     CML.TransactionInput.new(CML.TransactionHash.from_hex("ab".repeat(32)), 0n),
@@ -96,7 +98,7 @@ const pendingAttempt = (): Journal.SettlementAttempt => {
     ),
   );
   const body = CML.TransactionBody.new(inputs, outputs, 200_000n);
-  body.set_ttl(120n);
+  body.set_ttl(ttl);
   const tx = CML.Transaction.new(body, CML.TransactionWitnessSet.new(), true);
   return {
     deployment_id: deploymentId,
@@ -108,7 +110,6 @@ const pendingAttempt = (): Journal.SettlementAttempt => {
     required_outputs: [0],
     fee_inputs: [`${"ab".repeat(32)}#0`],
     status: "pending",
-    recovery: false,
   };
 };
 
@@ -118,6 +119,8 @@ type L1 = {
   readonly utxosAt?: (address: string) => Promise<unknown>;
   /** Queue the job with no journaled body, so the tick builds it. */
   readonly unbuilt?: boolean;
+  /** The body's validity bound (default slot 120, above the indexer tip). */
+  readonly ttl?: bigint;
 };
 
 /** Runs the worker program over one pending body (or one queued job) until
@@ -132,13 +135,15 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
       walletAddress: settlementWalletAddress(config),
       token,
     };
-    const attempt = pendingAttempt();
+    const probe = l1(pendingAttempt());
+    const attempt = pendingAttempt(probe.ttl);
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
       VALUES (${deploymentId}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase})`;
     const { transactionStatus, submitTx, utxosAt, unbuilt } = l1(attempt);
     yield* Journal.renew(owner);
-    if (unbuilt !== true) yield* Journal.saveAttempt(owner, attempt);
+    if (unbuilt !== true)
+      yield* Journal.saveAttempt(owner, attempt, Effect.void);
     const reports: SettlementHealth[] = [];
     const fiber = yield* Effect.fork(
       settlementProgram((health) => reports.push(health), token).pipe(
@@ -146,6 +151,7 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
         Effect.provideService(ContractDeploymentIdentity, {
           kind: "manifest",
           manifestId: deploymentId,
+          l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
         } as unknown as ContractDeploymentIdentity),
         Effect.provideService(
           MidgardContracts,
@@ -156,10 +162,12 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
           new Lucid({
             api: {
               selectWallet: { fromSeed: () => undefined },
+              // `selectNodeWallet` keys the settlement wallet's signer by it.
+              wallet: () => stubWallet,
               transactionStatus:
                 transactionStatus ??
                 (async (txHash: string) => ({ txHash, status: "not_found" })),
-              config: () => ({ provider: { submitTx } }),
+              config: () => ({ network: "Preprod", provider: { submitTx } }),
               utxosAt,
             },
           } as unknown as Lucid),
@@ -210,15 +218,20 @@ describe("settlement tick reporting", () => {
       withoutFollowerJournal(
         firstTick(() => ({
           unbuilt: true,
-          utxosAt: () => Promise.reject(new Error("Kupo timed out")),
           submitTx: () => Promise.reject(new Error("never reached")),
         })),
       ),
     );
-    const detail = `settlement withdrawal ${EVENT_ID} initialize: settlement wallet utxosAt: Kupo timed out`;
-    expect(lastError).toBe(detail);
+    // The build's first step reads the payout from the event id, which
+    // this probe's id does not decode as.
+    expect(lastError).toMatch(
+      new RegExp(
+        `^settlement withdrawal ${EVENT_ID} initialize: Invalid --withdrawal-event-id: `,
+        "u",
+      ),
+    );
     expect(report.state).toBe("error");
-    expect(report.detail).toBe(detail);
+    expect(report.detail).toBe(lastError);
     expect(report.tickCompleted).toBeUndefined();
   }, 30_000);
 
@@ -226,6 +239,9 @@ describe("settlement tick reporting", () => {
     const { report, attempt } = await run(
       withoutFollowerJournal(
         firstTick(() => ({
+          // Past its validity bound at the indexer tip (slot 10): the tick
+          // reads its status before it may expire it.
+          ttl: 5n,
           transactionStatus: () => Promise.reject(new Error("socket hang up")),
           submitTx: () => Promise.reject(new Error("never reached")),
         })),

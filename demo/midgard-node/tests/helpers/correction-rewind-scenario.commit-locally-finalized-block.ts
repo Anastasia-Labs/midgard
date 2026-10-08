@@ -2,15 +2,12 @@ import { inspect } from "node:util";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { SqlClient } from "@effect/sql";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { expect, vi } from "vitest";
 
 import * as MutationJobs from "../../src/database/mutationJobs.js";
-import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import { Database } from "../../src/services/database.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../../src/services/history-commit-window.js";
-import { materializeConfirmedLedgerSnapshot } from "../../src/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { withLocalBlockFinalizationJob } from "../../src/workers/utils/commit-submission.with-local-block-finalization-job.js";
 import {
   advanceEmulatorPastUnixTime,
   advanceHistoryAdmissionClock,
@@ -80,8 +77,8 @@ export const submitDeposit = async (h: Handle, lovelace: bigint) => {
   const { fixture, lucidService } = h;
   const wallet = fixture.depositorLucid;
   const address = await wallet.wallet().address();
-  // A scheduler refresh pins its predicted change; this flow spends the same
-  // wallet before the next one.
+  // Node programs read the wallet afresh and hold no pin; clearing the node's
+  // view keeps this flow independent of any harness pin left on it.
   lucidService.api.clearUTxOOverride();
   await ensureSeparateCollateralUtxo(wallet);
   await advanceHistoryAdmissionClock(fixture, "deposit");
@@ -103,7 +100,6 @@ export const submitDeposit = async (h: Handle, lovelace: bigint) => {
   );
   const signed = await built.tx.sign.withWallet().complete();
   expect(await wallet.awaitTx(await signed.submit())).toBe(true);
-  wallet.overrideUTxOs(await wallet.utxosAt(address));
   await h.synchronize();
   return built.metadata.inclusionTime;
 };
@@ -212,9 +208,9 @@ export const commitLocallyFinalizedBlock = async (
     return finalizeLocally(h, committed.submittedHeaderHash);
   const headerHash = committed.submittedHeaderHash;
   await corruptLedgerDelta(headerHash);
-  // Current verification refuses the corrupt journal before starting a job.
-  // Reproduce the historical failed job through its real job wrapper and
-  // authenticated materializer, while retaining the current worker's refusal.
+  // Each local finalization attempt starts the block's job, and the job's
+  // authenticated materializer refuses the delta before any SQL mutation:
+  // the failed job and the still-waiting journal of the live f5215638 state.
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const outcome = await runLocalFinalization(h).then(
       (output) => output,
@@ -224,36 +220,6 @@ export const commitLocallyFinalizedBlock = async (
       }),
     );
     expect(outcome.type).not.toBe("SuccessfulLocalFinalizationRecoveryOutput");
-    await h
-      .runWithoutSynchronizing(
-        Effect.gen(function* () {
-          const journal = yield* Pending.retrieveByHeaderHash(
-            Buffer.from(headerHash, "hex"),
-          );
-          if (Option.isNone(journal))
-            return yield* Effect.fail(
-              new Error("Historical failed finalization lacks its journal"),
-            );
-          const record = journal.value;
-          return yield* withLocalBlockFinalizationJob(
-            {
-              headerHash,
-              mempoolTxCount: record.mempoolTxIds.length,
-              includedDepositCount: record.depositEventIds.length,
-              includedForcedTransactionCount:
-                record.forcedTransactionEventIds.length,
-              includedWithdrawalCount: record.withdrawalEventIds.length,
-            },
-            materializeConfirmedLedgerSnapshot(record),
-          );
-        }),
-      )
-      .then(
-        () => {
-          throw new Error("Invalid historical delta unexpectedly materialized");
-        },
-        () => undefined,
-      );
     const job = await readLocalFinalizationJob(headerHash);
     expect(
       job?.[MutationJobs.Columns.STATUS],
@@ -301,7 +267,8 @@ export const submitUnlandedBlock = async (
   });
   dropPendingEmulatorTransaction(fixture.emulator, committed.submittedTxHash);
   h.observer.forgetDropped(committed.submittedTxHash);
-  // A wallet view pinned to the lost commit's predicted change is stale.
+  // Node programs hold no wallet pin; this clears any harness pin that still
+  // holds the dropped commit's inputs.
   lucidService.api.clearUTxOOverride();
   fixture.operatorLucid.clearUTxOOverride();
   expect(

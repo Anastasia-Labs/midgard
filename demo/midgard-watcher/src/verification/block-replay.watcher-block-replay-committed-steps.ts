@@ -203,7 +203,7 @@ export const snapshotWatcherBlockReplayEventAuthorities = (
 ): readonly WatcherBlockReplayEventAuthority[] =>
   Object.freeze(
     authorities.map((authority) => {
-      const origin = { localUserEvent: authority.localUserEvent };
+      const origin = { userEvent: authority.userEvent };
       const eventKey = structuredClone(authority.eventKey);
       if (authority.phase === "ForcedTransaction") {
         if (

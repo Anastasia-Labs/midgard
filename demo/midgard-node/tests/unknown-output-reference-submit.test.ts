@@ -1,11 +1,9 @@
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  isUnknownOutputReferenceSubmitError,
-  submitSignedTxWithRecovery,
-} from "../src/transactions/utils.js";
+import { submitSignedTxWithRecovery } from "../src/transactions/utils.js";
 import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
@@ -45,16 +43,12 @@ const noInline = {
 
 describe("unknown output reference submit errors", () => {
   it("matches the live Ogmios 3117 rejection carried only as text", () => {
-    expect(isUnknownOutputReferenceSubmitError(LIVE_3117_SUBMIT_ERROR)).toBe(
+    expect(isSpentInputSubmitRejection(LIVE_3117_SUBMIT_ERROR)).toBe(true);
+    expect(isSpentInputSubmitRejection(LIVE_3117_WRAPPER)).toBe(true);
+    expect(isSpentInputSubmitRejection(new Error(LIVE_3117_WRAPPER))).toBe(
       true,
     );
-    expect(isUnknownOutputReferenceSubmitError(LIVE_3117_WRAPPER)).toBe(true);
-    expect(
-      isUnknownOutputReferenceSubmitError(new Error(LIVE_3117_WRAPPER)),
-    ).toBe(true);
-    expect(isUnknownOutputReferenceSubmitError(live3117ErrorChain())).toBe(
-      true,
-    );
+    expect(isSpentInputSubmitRejection(live3117ErrorChain())).toBe(true);
   });
 
   it("does not match validity-interval or generic provider errors", () => {
@@ -78,7 +72,7 @@ describe("unknown output reference submit errors", () => {
       '{"code":31171,"message":"unrelated"}',
       new Error("socket hang up", { cause: new Error("ECONNRESET") }),
     ]) {
-      expect(isUnknownOutputReferenceSubmitError(error)).toBe(false);
+      expect(isSpentInputSubmitRejection(error)).toBe(false);
     }
   });
 

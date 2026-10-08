@@ -21,6 +21,10 @@ const total = (all: readonly IntentSimStats[]) => ({
   unlandedToLive: all.reduce((n, s) => n + s.unlandedToLive, 0),
   pruned: all.reduce((n, s) => n + s.pruned, 0),
   superseded: all.reduce((n, s) => n + s.superseded, 0),
+  staleAtWrite: all.reduce((n, s) => n + s.staleAtWrite, 0),
+  recordedAcrossRewind: all.reduce((n, s) => n + s.recordedAcrossRewind, 0),
+  submitHeld: all.reduce((n, s) => n + s.submitHeld, 0),
+  sentAcrossRewind: all.reduce((n, s) => n + s.sentAcrossRewind, 0),
   seen: (kind: string) => all.reduce((n, s) => n + (s.seen[kind] ?? 0), 0),
 });
 
@@ -29,6 +33,10 @@ const total = (all: readonly IntentSimStats[]) => ({
  * statuses equal those over a fresh replay, with prune on; a rollback
  * writes nothing to the journal (a landed intent it un-lands is live
  * again); S6 sends only a live intent's journaled bytes, never a dead one.
+ * §15 I5: a rewind between plan and record makes the record
+ * `stale_at_write` exactly when the planned view is gone, and a rewind
+ * between record and submit holds the send exactly then; a view whose
+ * point survived an unrelated rewind is accepted at both.
  */
 describe("intent journal in the fork simulator (SQLite)", () => {
   it("holds over the corpus and random scenarios, reaching every status", async () => {
@@ -81,6 +89,10 @@ describe("intent journal in the fork simulator (SQLite)", () => {
     expect(t.unlandedToLive).toBeGreaterThan(0);
     expect(t.pruned).toBeGreaterThan(0);
     expect(t.superseded).toBeGreaterThan(0);
+    expect(t.staleAtWrite).toBeGreaterThan(0);
+    expect(t.recordedAcrossRewind).toBeGreaterThan(0);
+    expect(t.submitHeld).toBeGreaterThan(0);
+    expect(t.sentAcrossRewind).toBeGreaterThan(0);
     for (const kind of [
       "landed",
       "failed_landed",

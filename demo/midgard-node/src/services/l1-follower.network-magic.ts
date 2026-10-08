@@ -17,7 +17,8 @@ import { nativeLedgerNetworkMagic } from "./native-ledger.js";
 
 type FollowerGlobals = Readonly<{ L1_FOLLOWER: Ref.Ref<L1FollowerState> }>;
 
-const message = (error: unknown): string =>
+/** An error's message, for a detail. */
+export const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 /** Records a follower the configuration does not allow (a `/readyz` reason). */

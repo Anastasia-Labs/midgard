@@ -181,7 +181,6 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     const signed = await built.tx.sign.withWallet().complete();
     const hash = await signed.submit();
     expect(await wallet.awaitTx(hash)).toBe(true);
-    wallet.overrideUTxOs(await wallet.utxosAt(address));
     await h.synchronize();
     return hash;
   };
@@ -731,7 +730,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     });
     expect(await auditHealthy()).toBe(false);
     await deleteRewind(rewindId);
-    // The rebased journal stays in place through both merges below.
+    // The rebased journal stays in place through the first merge below.
     await writeJournalFields(second.headerHash, rebased);
     await acknowledgeCleanAudit();
 
@@ -881,6 +880,8 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       diverged: false,
     });
 
+    // The second block's journal bound to its parent again, for its merge.
+    await writeJournalFields(second.headerHash, secondFields);
     // The admin merge of the second block is interrupted (as the L1 control
     // plane's hold timeout would) after the L1 confirmation, while its local
     // finalization is running: the finalization still completes.

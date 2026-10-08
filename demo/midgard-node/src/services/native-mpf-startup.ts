@@ -20,6 +20,7 @@ import type { Globals } from "./globals.js";
 import { landedStateQueueSnapshot } from "./landed-state-queue.js";
 import { Lucid } from "./lucid.js";
 import { MidgardContracts } from "./midgard-contracts.js";
+import { NativeMpfPromotionIndexCapExceeded } from "./mpf-native-owner/protocol.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
 
 /**
@@ -248,7 +249,21 @@ export const initializeArchitectureGOwner = <R = never>(
                       eventCount: replay.eventCount,
                     }),
                   catch: (cause) => cause,
-                });
+                }).pipe(
+                  // A replay the owner refuses over a full-index cap left it
+                  // at its durable root: the owner starts there, holding the
+                  // refusal (which readiness names), instead of failing
+                  // startup into a crash loop. The journal stays active, and
+                  // its next replay (local finalization) retries it.
+                  Effect.catchIf(
+                    (cause): cause is NativeMpfPromotionIndexCapExceeded =>
+                      cause instanceof NativeMpfPromotionIndexCapExceeded,
+                    (cause) =>
+                      Effect.logWarning(
+                        `${cause.message}. The native owner starts at its durable root and holds the journal's replay.`,
+                      ),
+                  ),
+                );
               }
             }
           }),

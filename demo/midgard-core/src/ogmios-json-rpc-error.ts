@@ -164,3 +164,37 @@ export const ogmiosJsonRpcErrorCodeOf = (
  */
 export const isTransientOgmiosJsonRpcFailure = (value: unknown): boolean =>
   isTransientOgmiosJsonRpcErrorCode(ogmiosJsonRpcErrorCodeOf(value));
+
+const SPENT_INPUT_REJECTION =
+  /BadInputsUTxO|UnknownInput|unknownOutputReferences|JSON-RPC error 3117\b|"code":\s*3117\b|does not exist or was already spent/u;
+
+/**
+ * Whether the ledger refused a submission because an input is spent or
+ * unknown: Ogmios's JSON-RPC 3117 (its outrefs under
+ * `data.unknownOutputReferences`), the ledger's `BadInputsUTxO` text as
+ * Blockfrost and the submit API carry it, and the Lucid emulator's "does not
+ * exist or was already spent". It is searched through the error's message,
+ * its cause chain and its structured fields, because a provider wrapper can
+ * carry the answer only as formatted text (an `Error.cause` is not
+ * enumerable). Ogmios 3997 ("All inputs are spent", a mempool view of the
+ * submitter's own transaction) is not this refusal and does not match.
+ */
+export const isSpentInputSubmitRejection = (error: unknown): boolean => {
+  const seen = new Set<unknown>();
+  const search = (value: unknown): boolean => {
+    if (typeof value === "string") return SPENT_INPUT_REJECTION.test(value);
+    if (typeof value !== "object" || value === null || seen.has(value))
+      return false;
+    seen.add(value);
+    if (
+      value instanceof Error &&
+      (search(value.message) || search(value.cause))
+    )
+      return true;
+    const record = value as Record<string, unknown>;
+    if ("unknownOutputReferences" in record || "badInputs" in record)
+      return true;
+    return Object.values(record).some(search);
+  };
+  return search(error);
+};

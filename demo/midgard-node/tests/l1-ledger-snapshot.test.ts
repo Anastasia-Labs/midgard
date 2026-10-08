@@ -9,7 +9,6 @@ import {
 } from "../src/l1-ledger-snapshot.js";
 import { L1SourceUnavailable } from "../src/l1-source-unavailable.js";
 import { isRecoverableHistorySourceFailure } from "../src/services/event-history-owner.source-failure.js";
-import { captureRecoveryQueueAtPoint } from "../src/services/history-signed-header-recovery.js";
 import {
   addresses,
   fork,
@@ -350,27 +349,37 @@ const losingSocket = () => {
   };
   return socket;
 };
-// Signed-header recovery's capture over the real wire session.
-const recover = (socket: Socket, at: LedgerSnapshotPoint = point) =>
+// An exact-point read over the real wire session, its rejection carried as
+// a history-source failure's cause.
+const capture = (socket: Socket, at: LedgerSnapshotPoint = point) =>
   Effect.runPromise(
     Effect.either(
-      captureRecoveryQueueAtPoint((signal) => socket.read(signal, 200, at)),
+      Effect.tryPromise({
+        try: (signal) => socket.read(signal, 200, at),
+        catch: (cause) =>
+          new DatabaseError({
+            table: "event_history_cursor",
+            message: "Exact-point capture failed",
+            cause,
+          }),
+      }),
     ),
   );
-const refusal = async (socket: Socket) => {
-  const result = await recover(socket);
+const refusal = async (socket: Socket, at?: LedgerSnapshotPoint) => {
+  const result = await capture(socket, at);
   if (Either.isRight(result)) return expect.unreachable("capture succeeded");
   expect(result.left).toBeInstanceOf(DatabaseError);
   return result.left;
 };
 
-describe("signed-header recovery capture failures", () => {
+describe("exact-point capture failures", () => {
   it.each<Fault>([
     ["an acquisition refusal", failing("acquireLedgerState", 2000)],
     ["an acquisition of another point", () => new Socket(), fork],
-  ])("leaves the recovery pending on %s", async (_label, make, at) => {
+  ])("names %s as the point unavailable", async (_label, make, at) => {
     const socket = make();
-    expect(await recover(socket, at)).toEqual(Either.right(undefined));
+    const error = await refusal(socket, at);
+    expect(error.cause).toBeInstanceOf(LedgerPointUnavailable);
     expect(socket.requests.map(({ method }) => method)).toEqual([
       "acquireLedgerState",
     ]);
@@ -385,7 +394,7 @@ describe("signed-header recovery capture failures", () => {
     ["an era mismatch on acquisition", failing("acquireLedgerState", 2001)],
     ["acquired state lost", answering("queryLedgerState/tip", fork)],
     ["a socket lost mid-scan", losingSocket],
-  ])("waits out %s as a source outage", async (_label, make) => {
+  ])("reads %s as a source outage", async (_label, make) => {
     const error = await refusal(make());
     expect(error.cause).toBeInstanceOf(L1SourceUnavailable);
     expect(error.cause).not.toBeInstanceOf(LedgerPointUnavailable);
@@ -403,25 +412,5 @@ describe("signed-header recovery capture failures", () => {
     const error = await refusal(make());
     expect(error.cause).not.toBeInstanceOf(L1SourceUnavailable);
     expect(isRecoverableHistorySourceFailure(error)).toBe(false);
-  });
-
-  it("proceeds exactly once when a later attempt can acquire its point", async () => {
-    const reads: Socket[] = [
-      failing("acquireLedgerState", 2000)(),
-      new Socket(),
-    ];
-    const attempts = [await recover(reads[0]!), await recover(reads[1]!)];
-    expect(attempts[0]).toEqual(Either.right(undefined));
-    const captured = Either.getOrThrow(attempts[1]!);
-    expect(captured?.point).toEqual(point);
-    expect(captured?.outputs).toHaveLength(1);
-    expect(
-      reads.map(
-        (socket) =>
-          socket.requests.filter(
-            ({ method }) => method === "queryLedgerState/utxo",
-          ).length,
-      ),
-    ).toEqual([0, 1]);
   });
 });

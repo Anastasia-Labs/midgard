@@ -37,7 +37,6 @@ import {
   mergeMaturityWindow,
   MidgardContracts,
   NodeConfig,
-  refreshWalletUtxosFromProvider,
   runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
   runLocalFinalizationRecoveryWorker,
@@ -209,7 +208,6 @@ const openMergeLifecycle = async () => {
     const signed = await built.tx.sign.withWallet().complete();
     const hash = await signed.submit();
     expect(await wallet.awaitTx(hash)).toBe(true);
-    await refreshWalletUtxosFromProvider(wallet);
     await h.synchronize();
     return hash;
   };
@@ -641,10 +639,7 @@ it("finalizes a merge that lands after its confirmation wait gave up, across a r
 it("refuses to fold a landed merge whose retained journal names a different canonical parent", async () => {
   const m = await openMergeLifecycle();
   try {
-    await assertLandedMergeParentRefusal(
-      m,
-      () => mergeHooks.confirmedFinalizations,
-    );
+    await assertLandedMergeParentRefusal(m, mergeHooks, expectFinalizedOnce);
   } finally {
     await m.close();
   }

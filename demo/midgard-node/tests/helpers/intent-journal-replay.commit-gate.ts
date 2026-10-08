@@ -11,7 +11,7 @@ import { UnownedHistoryFixture } from "../../src/services/event-history-producer
 import type { IntentJournalService } from "../../src/services/intent-journal.js";
 import { BeforeSignedTransactionSubmission } from "../../src/transactions/utils.js";
 import { submitWithDurableIntent } from "../../src/workers/commit-block-header/submission.submit-with-durable-intent.js";
-import type { RecordedIntent } from "./intent-journal.js";
+import { type RecordedIntent, SEND_AT_TIP } from "./intent-journal.js";
 
 /**
  * Records a commit through its production pre-broadcast gate: the
@@ -67,6 +67,7 @@ export const recordCommitThroughGate = async ({
                   entry.intent,
                   entry.signedTxCbor,
                   entry.txHash,
+                  SEND_AT_TIP,
                   (insert) =>
                     before.value.persist({
                       txHash: entry.txHash,

@@ -7,16 +7,16 @@
  * unknown-input error names, which is wrong while their own transaction may
  * still land, so the unknown-input matcher leaves 3997 alone.
  */
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  isUnknownOutputReferenceSubmitError,
   submitSignedTxWithRecovery,
   TxSubmitError,
 } from "../src/transactions/utils.js";
-import { submitErrorReferencesOutRef } from "../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js";
+import { submitErrorReferencesOutRef } from "../src/workers/commit-block-header/submission.commit-event-sources.js";
 import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
@@ -73,9 +73,9 @@ describe("Ogmios 3997 'All inputs are spent' submit errors", () => {
       ALL_INPUTS_SPENT_BODY,
       `TxSubmitError: OgmiosJsonRpcError: ${ALL_INPUTS_SPENT_TEXT}; cause=${ALL_INPUTS_SPENT_BODY}`,
     ]) {
-      expect(isUnknownOutputReferenceSubmitError(error)).toBe(false);
+      expect(isSpentInputSubmitRejection(error)).toBe(false);
     }
-    expect(isUnknownOutputReferenceSubmitError(unknownTail())).toBe(true);
+    expect(isSpentInputSubmitRejection(unknownTail())).toBe(true);
   });
 
   it("never make a commit submitter abandon its attempt over the tail, even when the text names it", () => {

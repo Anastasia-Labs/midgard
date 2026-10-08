@@ -25,11 +25,13 @@ import {
   settlementWalletAddress,
 } from "../src/services/settlement.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
 ) => Effect.runPromise(provideDatabaseLayers(effect));
+/** The stub L1 client's selected wallet (one object, as Lucid keeps it). */
+const stubWallet = {};
 const deploymentId = "a1".repeat(32);
 const REFUSAL =
   "Settlement wallet identity changed or another node owns settlement";
@@ -37,8 +39,7 @@ const REFUSAL =
 beforeEach(() =>
   run(
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority CASCADE`;
+      yield* resetApplicationTables;
       const token = yield* Authority.acquire({
         deploymentIdentity: deploymentId,
         ownerToken: randomUUID(),
@@ -75,7 +76,12 @@ const worker = (token: string, seed: string) =>
         Effect.provideService(
           Lucid,
           new Lucid({
-            api: { selectWallet: { fromSeed: () => undefined } },
+            api: {
+              selectWallet: { fromSeed: () => undefined },
+              // `selectNodeWallet` keys the settlement wallet's signer by it.
+              wallet: () => stubWallet,
+              config: () => ({ network: "Preprod" }),
+            },
           } as unknown as Lucid),
         ),
       ),

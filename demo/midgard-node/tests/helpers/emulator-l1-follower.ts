@@ -32,6 +32,13 @@
  * are absent, as for a node that ingested them before).
  */
 import { encodeOutRef } from "@al-ft/midgard-l1-follower";
+import {
+  EVENT_KINDS,
+  type EventListConfig,
+  eventProjectionConfigFromContracts,
+  openOrder,
+  type ProjectedEvent,
+} from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import {
@@ -45,13 +52,6 @@ import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
 import { MempoolLedgerDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
 import type { IngestionPlan, SinkResult } from "../../src/l1-events/driver.js";
-import {
-  EVENT_KINDS,
-  type EventListConfig,
-  eventProjectionConfigFromContracts,
-  openOrder,
-  type ProjectedEvent,
-} from "../../src/l1-events/index.js";
 import {
   UnownedHistoryFixture,
   withHistoryIngestion,
@@ -242,7 +242,9 @@ const writeFollowerView = (
  * outputs: the list and retention outputs as seed rows at the emulator's
  * slot, and one live `node_l1_events` row per live Order, opened by the
  * follower's own derivation with the retention output it read. A retired
- * event has no live row, as on a followed chain.
+ * event has no live row, as on a followed chain. An event keeps the block
+ * of the first sync that admitted it while that block is kept, so its depth
+ * below the view grows as on a followed chain.
  */
 export const mirrorEmulatorEvents = (fixture: EmulatorFollowerFixture) =>
   Effect.gen(function* () {
@@ -273,8 +275,25 @@ export const mirrorEmulatorEvents = (fixture: EmulatorFollowerFixture) =>
         }>`SELECT slot::text AS slot, hash, height::text AS height FROM l1_follower_cursor`;
         if (tip === undefined)
           return yield* failed("The emulator follower has no cursor");
+        const kept = new Map(
+          (yield* sql<{
+            kind: string;
+            event_key: Buffer;
+            hash: Buffer;
+            height: string;
+            slot: string;
+          }>`SELECT e.kind, e.event_key, e.admitted_block_hash AS hash,
+              e.admitted_height::text AS height, e.admitted_slot::text AS slot
+            FROM node_l1_events e JOIN l1_blocks b
+              ON b.hash = e.admitted_block_hash
+            WHERE e.retired_slot IS NULL`).map((row) => [
+            `${row.kind}:${row.event_key.toString("hex")}`,
+            row,
+          ]),
+        );
         yield* sql`DELETE FROM node_l1_events WHERE retired_slot IS NULL`;
-        for (const { kind, utxo, opened } of orders)
+        for (const { kind, utxo, opened } of orders) {
+          const admitted = kept.get(`${kind}:${opened.key}`) ?? tip;
           yield* sql`INSERT INTO node_l1_events (kind, event_key, event_id,
               inclusion_time, facts_cbor, payload_cbor, original_assets_cbor,
               admission_tx_hash, admission_output_index, admission_tx_index,
@@ -285,9 +304,10 @@ export const mirrorEmulatorEvents = (fixture: EmulatorFollowerFixture) =>
               ${Buffer.from(opened.factsCbor, "hex")}, ${Buffer.from(opened.payloadCbor, "hex")},
               ${Buffer.from(opened.originalAssetsCbor, "hex")},
               ${Buffer.from(utxo.txHash, "hex")}, ${utxo.outputIndex}, 0,
-              ${tip.hash}, ${tip.height}, ${tip.slot}, NULL,
+              ${admitted.hash}, ${admitted.height}, ${admitted.slot}, NULL,
               ${opened.retained === null ? null : Buffer.from(opened.retained.txHash, "hex")},
               ${opened.retained?.index ?? null})`;
+        }
       }),
     );
   });

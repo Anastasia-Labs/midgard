@@ -84,12 +84,6 @@ export const until = async (
   }
 };
 
-export const ORIGIN_ROLLBACK = {
-  kind: "point",
-  blockHash: SIM_ORIGIN.point.hash.toString("hex"),
-  slot: String(SIM_ORIGIN.point.slot),
-};
-
 export const openStore = (path: string) =>
   openSqliteFactStore({
     ...simStoreOptions([watcherProjection(D)], K, "sqlite"),
@@ -127,37 +121,13 @@ export const applyAll = async (
   }
 };
 
-/** Stub bridge, availability and user-event history counting what the driver asks of them. */
+/** Stub bridge and availability counting what the driver asks of them. */
 export const collaborators = () => {
   const seen = {
     bridgeInvalidations: 0,
     availabilityInvalidations: 0,
     recoveryPreparations: 0,
     dispatched: [] as string[],
-    historyRollbacks: [] as unknown[],
-  };
-  let head = {
-    blockHash: SIM_ORIGIN.point.hash.toString("hex"),
-    slot: String(SIM_ORIGIN.point.slot),
-    blockNo: String(SIM_ORIGIN.height),
-    pointId: "",
-  };
-  const history = {
-    read: () => ({
-      status: "ready" as const,
-      currentPoint: head,
-      headCursor: head,
-      generation: 0,
-    }),
-    advanceThrough: (point: typeof head) => {
-      head = point;
-      return Promise.resolve();
-    },
-    handleRollback: (point: { slot: string; blockHash: string }) => {
-      seen.historyRollbacks.push(point);
-      head = { ...head, slot: point.slot, blockHash: point.blockHash };
-      return Promise.resolve();
-    },
   };
   const bridge = {
     prepareForRecovery: (observation: { observationDigest: string }) => {
@@ -180,7 +150,6 @@ export const collaborators = () => {
     invalidateForRollback: () => {
       seen.bridgeInvalidations += 1;
     },
-    beforeHistoryAdvance: () => undefined,
   };
   const availability = {
     reconcile: () => Promise.resolve(),
@@ -188,7 +157,7 @@ export const collaborators = () => {
       seen.availabilityInvalidations += 1;
     },
   };
-  return { seen, history, bridge, availability, head: () => head };
+  return { seen, bridge, availability };
 };
 
 export type Collaborators = ReturnType<typeof collaborators>;
@@ -208,7 +177,6 @@ export const driverOver = (
       releaseDepth: RELEASE_DEPTH,
       bridge: c.bridge as never,
       availability: c.availability as never,
-      history: c.history as never,
       onRewind: (generation) => rewound.push(generation),
       retryDelayMs: 10,
     },

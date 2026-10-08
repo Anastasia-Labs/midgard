@@ -5,7 +5,7 @@ import { Deferred, Effect, Fiber, Option } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const deploymentIdentity = "aa".repeat(32);
 const capture = {
@@ -38,14 +38,7 @@ beforeAll(async () =>
     }),
   ),
 );
-beforeEach(async () =>
-  run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE event_history_authority, history_authority_probe`;
-    }),
-  ),
-);
+beforeEach(async () => run(resetApplicationTables));
 afterAll(async () =>
   run(
     Effect.gen(function* () {

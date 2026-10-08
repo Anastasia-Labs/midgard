@@ -434,14 +434,15 @@ describe("journal_busy holds the watcher and requeues its work in process", () =
       expect(inProcess.queue).toEqual(["finished"]);
       expect(inProcess.alerts).toBe(0);
       // A busy startup or start runs once; a busy run runs again; a busy
-      // finish verifies the completed run again. Each reaches the durable
-      // finish and the objective marker.
+      // finish takes the marker its verification wrote as final and does
+      // not verify the completed run again. Each reaches the durable finish
+      // and the objective marker.
       expect(inProcess).toMatchObject(
         {
           initialize: { runs: ["resume"], verifications: 1 },
           markStarted: { runs: ["resume"], verifications: 1 },
           midRun: { runs: ["resume", "resume"], verifications: 1 },
-          markFinished: { runs: ["resume"], verifications: 2 },
+          markFinished: { runs: ["resume"], verifications: 1 },
         }[busy],
       );
       expect(inProcess.objectives).toEqual(["marked"]);

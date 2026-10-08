@@ -10,7 +10,7 @@ import "effect";
 import "../database/index.js";
 import "../mpf/index.js";
 import "../services/canonical-journal-recovery.js";
-import "../services/history-expired-intent-release.js";
+import "../services/own-block-node.js";
 import "../services/index.js";
 import "../services/landed-state-queue.js";
 import "../transactions/availability-challenge-registration.js";

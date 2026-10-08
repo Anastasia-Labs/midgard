@@ -3,6 +3,7 @@ import {
   createWalletSeeder,
   type FactStore,
   followChain,
+  type FollowerProjection,
   type FollowStatus,
   openSqliteFactStore,
   type OriginConfig,
@@ -10,6 +11,10 @@ import {
   WALLET_SEED_PENDING,
   type WalletSeedStatus,
 } from "@al-ft/midgard-l1-follower";
+import {
+  eventProjection,
+  type EventProjectionConfig,
+} from "@al-ft/midgard-l1-follower/events";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
@@ -88,6 +93,12 @@ export type WatcherFollowerRuntimeInput = Readonly<{
   }>;
   /** The watcher's own wallets (bech32): tracked and seeded. */
   walletAddresses: readonly string[];
+  /**
+   * The deployment's deposit and withdrawal event lists: the shared event
+   * projection (`@al-ft/midgard-l1-follower/events`) the user-event reads
+   * use. Absent: the store records no event lists.
+   */
+  eventProjection?: EventProjectionConfig;
   log?: (line: string) => void;
   /** Test seam: a transport other than the node sidecar. */
   unsafeTransportForTest?: L1NodeTransport;
@@ -112,6 +123,18 @@ export const watcherSecurityParameter = (
   automaticRecoveryMaxDepth: number,
 ): number => automaticRecoveryMaxDepth + 2;
 
+/**
+ * The projections the watcher's store runs: the state queue, and the
+ * deposit and withdrawal event lists when the deployment names them.
+ */
+export const watcherFollowerProjections = (
+  deployment: WatcherProjectionDeployment,
+  events: EventProjectionConfig | undefined,
+): FollowerProjection[] =>
+  events === undefined
+    ? [watcherProjection(deployment)]
+    : [watcherProjection(deployment), eventProjection(events)];
+
 export const openWatcherFollowerRuntime = (
   input: WatcherFollowerRuntimeInput,
 ): WatcherFollowerRuntime => {
@@ -119,7 +142,6 @@ export const openWatcherFollowerRuntime = (
   const wallets = input.walletAddresses.map((address) =>
     Buffer.from(getAddressDetails(address).address.hex, "hex"),
   );
-  const projection = watcherProjection(input.deployment);
   const transport =
     input.unsafeTransportForTest ??
     new L1NodeTransport({
@@ -130,7 +152,7 @@ export const openWatcherFollowerRuntime = (
     });
   const store = openSqliteFactStore({
     ...projectionStoreOptions(
-      [projection],
+      watcherFollowerProjections(input.deployment, input.eventProjection),
       {
         securityParameter: watcherSecurityParameter(
           input.automaticRecoveryMaxDepth,
@@ -154,6 +176,16 @@ export const openWatcherFollowerRuntime = (
     ledgerOutputsAt: ledgerOutputsFromTransport(transport),
   });
   const provider = new L1FollowerProvider({ store, transport });
+  // The node's slot configuration, read once it answers (`l1_node_behind`).
+  let slotConfig: ReturnType<L1FollowerProvider["slotConfig"]> | undefined;
+  const slotTime = async (slot: number): Promise<number> => {
+    slotConfig ??= provider.slotConfig().catch((error: unknown) => {
+      slotConfig = undefined;
+      throw error;
+    });
+    const { zeroTime, zeroSlot, slotLength } = await slotConfig;
+    return zeroTime + (slot - zeroSlot) * slotLength;
+  };
   const proofRetention = createWatcherProofRetention(store, {
     unitHistoryPolicies,
     stateQueuePolicyId: input.deployment.stateQueueMint,
@@ -226,6 +258,9 @@ export const openWatcherFollowerRuntime = (
           origin: input.origin,
           signal: abort.signal,
           log: (line) => log(`L1 follower: ${line}`),
+          // `l1_node_behind` at the follower's default bound; it clears
+          // when the node catches up.
+          nodeBehind: { slotTime },
           onStatus: (status) => {
             latest = status;
             if (status.cursor !== null && !seeder.ready()) stepSeed();

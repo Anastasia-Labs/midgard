@@ -323,7 +323,6 @@ const committeeReady = (signerIndex: number) => ({
 describe("published stack readiness schemas", () => {
   const ready = {
     manifestId: "a".repeat(64),
-    recordKeyId: "b".repeat(64),
     node: { ready: true, reasons: [], settlement: { state: "waiting" } },
     watcher: {
       liveness: "live",
@@ -332,19 +331,12 @@ describe("published stack readiness schemas", () => {
       deploymentFingerprint: "a".repeat(64),
       launchScope: { complete: true },
     },
-    authority: { recordAuthenticationKeyId: "b".repeat(64) },
     committees: [committeeReady(0)],
     committeePeerIds: ["peer-0"],
   };
   it("accepts healthy automatic settlement waiting for work", () =>
     expect(stackIsReady(ready)).toBe(true));
   it("rejects live services with wrong identities or readiness reasons", () => {
-    expect(
-      stackIsReady({
-        ...ready,
-        authority: { recordAuthenticationKeyId: "c".repeat(64) },
-      }),
-    ).toBe(false);
     expect(
       stackIsReady({
         ...ready,

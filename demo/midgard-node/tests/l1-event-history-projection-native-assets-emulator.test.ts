@@ -179,7 +179,6 @@ it("preserves native assets through real node deposit settlement and withdrawal 
     const mintSigned = await mint.sign.withWallet().complete();
     const mintHash = await mintSigned.submit();
     expect(await owner.awaitTx(mintHash)).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
     await h.observer.flush();
     expect(
       h.receipts.find(({ transaction }) => transaction.txHash === mintHash)

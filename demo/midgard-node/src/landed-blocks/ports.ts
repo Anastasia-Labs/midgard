@@ -7,9 +7,11 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import { Data, Effect } from "effect";
 
 import type * as Ledger from "../database/utils/ledger.js";
+import type { DriverHold } from "../l1-events/driver.js";
 import type { LandedStateQueueElement } from "../l1-state-queue/index.js";
 import type { Database } from "../services/database.js";
 import type { ReplayInput, ReplayOutcome } from "./replay.js";
+import type { WithdrawalMembership } from "./store.js";
 
 /** This node's journal of a block it committed, as processing reads it. */
 export type OwnJournal = Readonly<{
@@ -21,7 +23,15 @@ export type OwnJournal = Readonly<{
   produced: readonly Ledger.MinimalEntry[];
   depositIds: readonly Buffer[];
   forcedIds: readonly Buffer[];
+  /** The withdrawals it included, with the classification it journaled. */
+  withdrawals: readonly WithdrawalMembership[];
   txIds: readonly Buffer[];
+  /**
+   * Revived: its block landed after its journal was abandoned, and it waits
+   * for local finalization (`observed_waiting_stability`, abandonment digest
+   * kept).
+   */
+  revived: boolean;
 }>;
 
 export type LandedBlockPorts<R> = Readonly<{
@@ -46,15 +56,6 @@ export type LandedBlockPorts<R> = Readonly<{
   ownJournal: (
     headerHash: string,
   ) => Effect.Effect<OwnJournal | undefined, unknown, R | Database>;
-  /** Whether this node finalized its own merged block `headerHash` locally. */
-  ownMergeCompleted: (
-    headerHash: string,
-  ) => Effect.Effect<boolean, unknown, R | Database>;
-  /** Folds this node's own merged block into `confirmed_ledger` (its journal's delta). */
-  finalizeOwnMerge: (input: {
-    readonly headerHash: Buffer;
-    readonly headerUtxosRoot: string;
-  }) => Effect.Effect<void, unknown, R | Database>;
   /** The configured genesis ledger. */
   genesis: Effect.Effect<
     readonly Ledger.EntryNoTimeStamp[],
@@ -68,8 +69,8 @@ export type LandedBlockPorts<R> = Readonly<{
   requestRebase: (
     reason: string,
   ) => Effect.Effect<string | undefined, unknown, R | Database>;
-  /** Why the last rebase failed, until one runs (the owner retries it). */
-  rebaseFailure: Effect.Effect<string | undefined, unknown, R | Database>;
+  /** Why the last rebase failed, as its hold, until one runs (the owner retries it). */
+  rebaseFailure: Effect.Effect<DriverHold | undefined, unknown, R | Database>;
 }>;
 
 /** The follower moved off the view a write was computed at. */

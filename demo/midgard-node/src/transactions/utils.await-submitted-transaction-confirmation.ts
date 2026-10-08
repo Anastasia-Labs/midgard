@@ -25,12 +25,12 @@ import {
 import {
   isNoInlineSubmitDefer,
   type NoInlineSubmitRecoveryOptions,
-  reconcileWalletUtxosFromSignedTx,
   type SignSubmitNoConfirmationResult,
   type SubmitRecoveryInlineOptions,
   type SubmitRecoveryOptions,
-} from "./utils.reconcile-wallet-utxos-from-signed-tx.js";
+} from "./utils.submit-recovery-options.js";
 import { submitSignedTxWithRecovery } from "./utils.submit-signed-tx-with-recovery.js";
+import { signOverWalletView } from "./utils.wallet-view.js";
 
 /**
  * Handle the signing and submission of a transaction.
@@ -182,7 +182,6 @@ export const awaitSubmittedTransactionConfirmation = (
               }),
             ),
     );
-    yield* reconcileWalletUtxosFromSignedTx(lucid, submission);
     yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
     return txHash;
   });
@@ -307,8 +306,7 @@ const signSubmitTransactionWithDefer = (
     ).pipe(Effect.catchAll((_e) => Effect.succeed("<unknown>")));
     yield* Effect.logInfo(`✍  Signing tx with ${walletAddr}`);
     const txHash = signBuilder.toHash();
-    const signedProgram = signBuilder.sign
-      .withWallet()
+    const signedProgram = (yield* signOverWalletView(lucid, signBuilder))
       .completeProgram()
       .pipe(
         Effect.tapError((e) => Effect.logError(e)),
@@ -359,9 +357,5 @@ const signSubmitTransactionWithDefer = (
       ),
     );
     yield* Effect.logInfo(`🚀 Transaction submitted: ${txHash}`);
-    return {
-      txHash,
-      signedTxCbor,
-      walletAddress: walletAddr,
-    };
+    return { txHash, signedTxCbor };
   });

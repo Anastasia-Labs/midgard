@@ -5,6 +5,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
 
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
+import { WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT } from "./authenticated-replay-transcript.assert-raw-cbor-value.js";
 import type { WatcherAuthenticatedReplayTranscript } from "./authenticated-replay-transcript.js";
 import {
   watcherBlockReplayCommittedSteps,
@@ -61,7 +62,7 @@ export const readWatcherReplayTranscriptRecords = async (
   );
   equal(
     t.schemaVersion,
-    "midgard-watcher-production-authenticated-replay-transcript-v1",
+    WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT,
     "transcript schema",
   );
   stringFields(
@@ -348,19 +349,16 @@ export const readWatcherReplayTranscriptRecords = async (
       "event release",
     );
     const cutoff = event.origin.throughHeader;
-    if (cutoff !== null) {
-      for (const key of [
-        "headerHash",
-        "headerCborHex",
-        "queueOutRef",
-        "observedTransactionHash",
-        "observedBlockHash",
-        "observedSlot",
-        "observedBlockNo",
-      ] as const) {
-        equal(cutoff[key], headerRecord[key], `event cutoff ${key}`);
-      }
-    }
+    for (const key of [
+      "headerHash",
+      "headerCborHex",
+      "queueOutRef",
+      "observedTransactionHash",
+      "observedBlockHash",
+      "observedSlot",
+      "observedBlockNo",
+    ] as const)
+      equal(cutoff[key], headerRecord[key], `event cutoff ${key}`);
   }
   equal(
     w25.authorityManifestDigest,

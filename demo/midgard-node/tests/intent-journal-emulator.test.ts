@@ -18,16 +18,35 @@
  *
  * The submit seam itself (`handleSignSubmit`) journals the exact bytes
  * before the provider sees them, and those bytes are what lands.
+ *
+ * The seam sends only on S6's decision, taken in the record's transaction
+ * (S5/S6, §8.1, I5), in both polarities: a plan a rewind passed before the
+ * record is recorded `stale_at_write` and never sent from that write; a
+ * rewind between the record and a retry's send removes its view and holds
+ * the retry; a follower view behind wall-clock time past the bound holds
+ * the send, which goes out once the view is within it.
  */
-import { decodeTransaction } from "@al-ft/midgard-l1-follower";
-import { Effect, Layer } from "effect";
+import {
+  decodeTransaction,
+  FOLLOWER_NODE_BEHIND,
+  readIntentEventsIn,
+} from "@al-ft/midgard-l1-follower";
+import { Lucid, type TxSignBuilder } from "@lucid-evolution/lucid";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
   IntentJournal,
+  intentJournalOver,
+  type IntentPlan,
+  IntentSubmitHeld,
   journaledIntent,
 } from "../src/services/intent-journal.js";
-import { handleSignSubmit } from "../src/transactions/utils.js";
+import {
+  handleSignSubmit,
+  submitSignedTxWithRecovery,
+} from "../src/transactions/utils.js";
+import { RECORD_ONLY } from "./helpers/intent-journal.js";
 import {
   type IntentEmulator,
   openIntentEmulator,
@@ -59,10 +78,11 @@ const statusOf = (env: IntentEmulator, hash: string) =>
   env.stage.lastReport()!.entry(Buffer.from(hash, "hex"));
 
 /** A payout funding step's intent (content: the settled event's id). */
-const fundingIntent = (label: string) =>
+const fundingIntent = (label: string, plan: IntentPlan) =>
   journaledIntent(
     "reserve_payout",
     `reserve_payout:${label}:add_funds`,
+    plan,
     Buffer.alloc(36, 1),
   );
 
@@ -74,7 +94,12 @@ describe("the node intent journal on the emulator", () => {
       env.payee.address,
       2_000_000n,
     );
-    await env.record(fundingIntent("honest"), tx.cbor, tx.hash);
+    await env.record(
+      fundingIntent("honest", await env.plan()),
+      tx.cbor,
+      tx.hash,
+      RECORD_ONLY,
+    );
     expect(env.sent).toEqual([]);
 
     expect(await env.stage.run()).toEqual([]);
@@ -105,9 +130,10 @@ describe("the node intent journal on the emulator", () => {
       2_000_000n,
     );
     await env.record(
-      fundingIntent("adversarial"),
+      fundingIntent("adversarial", await env.plan()),
       journaled.cbor,
       journaled.hash,
+      RECORD_ONLY,
     );
     // The same wallet, used outside the node, spends the same input.
     const foreign = await signedPayment(
@@ -152,7 +178,11 @@ describe("the node intent journal on the emulator", () => {
       return submitTx(tx);
     };
     const hash = await Effect.runPromise(
-      handleSignSubmit(lucid, unsigned, fundingIntent("seam")).pipe(
+      handleSignSubmit(
+        lucid,
+        unsigned,
+        fundingIntent("seam", await env.plan()),
+      ).pipe(
         Effect.provide(
           Layer.succeed(IntentJournal, {
             ...env.journal,
@@ -172,5 +202,157 @@ describe("the node intent journal on the emulator", () => {
     const landed = env.accepted.get(hash)!.toString("hex");
     expect(order).toEqual([`record ${landed}`, `submit ${landed}`]);
     expect(env.sent).toEqual([]);
+  });
+});
+
+/** Lands a payment between foreign wallets: the follower's block 1. */
+const landForeignBlock = async (env: IntentEmulator) => {
+  const lucid = await Lucid(env.emulator, "Custom");
+  lucid.selectWallet.fromSeed(env.payee.seedPhrase);
+  const tx = await signedPayment(lucid, env.payee.address, 1_000_000n);
+  await env.emulator.submitTx(tx.cbor);
+  env.emulator.awaitBlock(1);
+  await env.follow();
+  expect((await env.store.cursor())?.height).toBe(1);
+};
+
+/** Rewinds the follower to its origin, removing block 1: a new generation. */
+const rewindToOrigin = async (env: IntentEmulator) => {
+  const origin = (await env.store.blockAtHeight(0))!;
+  await env.store.rewind({ slot: origin.slot, hash: origin.hash });
+};
+
+/** A signed own payment of `lovelace`, and the provider sends it reaches. */
+const signedOwnPayment = async (env: IntentEmulator, lovelace = 2_000_000n) => {
+  const lucid = await env.wallet();
+  const unsigned: TxSignBuilder = await lucid
+    .newTx()
+    .pay.ToAddress(env.payee.address, { lovelace })
+    .complete();
+  const signed = await unsigned.sign.withWallet().complete();
+  const provider = lucid.config().provider!;
+  const sent: string[] = [];
+  const submitTx = provider.submitTx.bind(provider);
+  provider.submitTx = (tx) => {
+    sent.push(tx);
+    return submitTx(tx);
+  };
+  return { lucid, signed, txHash: signed.toHash(), provider, sent };
+};
+
+const eventKinds = async (env: IntentEmulator, txHash: string) =>
+  (
+    await env.store.transaction("read", (sql) =>
+      readIntentEventsIn(sql, Buffer.from(txHash, "hex")),
+    )
+  ).map((event) => event.kind);
+
+/** The hold a seam run failed with, or the run's outcome when it did not. */
+const heldReason = (exit: Exit.Exit<unknown, unknown>): string => {
+  if (Exit.isSuccess(exit)) return "sent";
+  const failure = Cause.failureOption(exit.cause);
+  return failure._tag === "Some" && failure.value instanceof IntentSubmitHeld
+    ? failure.value.reason
+    : Cause.pretty(exit.cause);
+};
+
+describe("the submit seam sends only on S6's decision in the record's transaction", () => {
+  it("records a plan a rewind passed before the record as stale_at_write and never sends it", async () => {
+    const env = await open();
+    await landForeignBlock(env);
+    const plan = await env.plan();
+    // The rewind lands between the plan and the record.
+    await rewindToOrigin(env);
+    const { lucid, signed, txHash, sent } = await signedOwnPayment(env);
+    const exit = await Effect.runPromiseExit(
+      submitSignedTxWithRecovery(
+        lucid,
+        signed,
+        txHash,
+        fundingIntent("planned-across-rewind", plan),
+      ).pipe(Effect.provide(env.journalLayer)),
+    );
+    expect(heldReason(exit)).toBe("intent_stale_at_write");
+    expect(sent).toEqual([]);
+    expect(await eventKinds(env, txHash)).toEqual(["signed", "stale_at_write"]);
+    // Opposite polarity: a plan opened after the rewind sends its bytes (a
+    // different transaction: the held one is S6's).
+    const fresh = await signedOwnPayment(env, 3_000_000n);
+    const sentFresh = await Effect.runPromiseExit(
+      submitSignedTxWithRecovery(
+        fresh.lucid,
+        fresh.signed,
+        fresh.txHash,
+        fundingIntent("planned-after-rewind", await env.plan()),
+      ).pipe(Effect.provide(env.journalLayer)),
+    );
+    expect(heldReason(sentFresh)).toBe("sent");
+    expect(fresh.sent).toEqual([fresh.signed.toCBOR()]);
+  });
+
+  it("holds a retry whose view a rewind removed after the record, and leaves the bytes to S6", async () => {
+    const env = await open();
+    await landForeignBlock(env);
+    const plan = await env.plan();
+    const { lucid, signed, txHash, provider, sent } =
+      await signedOwnPayment(env);
+    let attempts = 0;
+    const send = provider.submitTx.bind(provider);
+    provider.submitTx = async (tx) => {
+      attempts += 1;
+      if (attempts > 1) return send(tx);
+      // The first send is lost, and a rewind removes the record's view
+      // before the retry.
+      await rewindToOrigin(env);
+      throw new Error("provider connection reset");
+    };
+    const exit = await Effect.runPromiseExit(
+      submitSignedTxWithRecovery(
+        lucid,
+        signed,
+        txHash,
+        fundingIntent("rewound-before-retry", plan),
+        { sleep: () => Effect.void },
+      ).pipe(Effect.provide(env.journalLayer)),
+    );
+    expect(heldReason(exit)).toBe("intent_view_stale");
+    expect(attempts).toBe(1);
+    expect(sent).toEqual([]);
+    expect(await eventKinds(env, txHash)).toEqual(["signed", "submit_attempt"]);
+    // S6 decides under the current view: its input survived and it is
+    // wanted, so it sends the exact journaled bytes.
+    expect(await env.stage.run()).toEqual([]);
+    expect(statusOf(env, txHash)?.action).toBe("resubmit");
+    expect(env.sent.map((bytes) => bytes.toString("hex"))).toEqual([
+      signed.toCBOR(),
+    ]);
+  });
+
+  it("holds a send while the follower's view is behind wall-clock time past the bound, and sends once it is within", async () => {
+    const env = await open();
+    const { lucid, signed, txHash, sent } = await signedOwnPayment(env);
+    const intent = fundingIntent("node-behind", await env.plan());
+    // A bound of 1 ms: the origin's slot time is already further behind.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const behind = intentJournalOver(env.sql, () => false, {
+      nodeBehindMs: 1,
+    });
+    const held = await Effect.runPromiseExit(
+      submitSignedTxWithRecovery(lucid, signed, txHash, intent).pipe(
+        Effect.provide(Layer.succeed(IntentJournal, behind)),
+      ),
+    );
+    expect(heldReason(held)).toBe(FOLLOWER_NODE_BEHIND);
+    expect(sent).toEqual([]);
+    expect(await eventKinds(env, txHash)).toEqual(["signed"]);
+    // Within the default bound the same bytes go out.
+    const within = await Effect.runPromiseExit(
+      submitSignedTxWithRecovery(lucid, signed, txHash, intent).pipe(
+        Effect.provide(env.journalLayer),
+      ),
+    );
+    expect(heldReason(within)).toBe("sent");
+    expect(sent).toEqual([signed.toCBOR()]);
+    expect(await eventKinds(env, txHash)).toEqual(["signed", "submit_attempt"]);
   });
 });

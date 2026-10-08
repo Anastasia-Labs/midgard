@@ -2,6 +2,7 @@ import "./listen-startup.ensure-protocol-initialized-on-startup.js";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { Effect, Option, Ref } from "effect";
 
 import {
@@ -9,31 +10,22 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
+import { foldMerge } from "../landed-blocks/confirmed-merges.js";
+import { ownFoldRow } from "../landed-blocks/journal.js";
+import { Frontier } from "../landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/index.js";
 import {
   type CanonicalCommittedHeader,
   fetchCanonicalCommittedHeaders,
-  findSignedIntentReplacementIntegrityError,
   reviveEarliestCanonicalPayloadJournal,
 } from "../services/canonical-journal-recovery.js";
-import { signedCommitNode } from "../services/history-expired-intent-release.js";
 import { Globals, MidgardContracts } from "../services/index.js";
+import { unboundJournalReason } from "../services/journal-header-binding.js";
 import {
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/landed-state-queue.js";
-import {
-  HaltSource,
-  raiseLivenessIncident,
-} from "../services/liveness-halt.js";
-import {
-  SIGNED_INTENT_UNDECIDED,
-  SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
-} from "../services/signed-intent-undecided.js";
-import {
-  applyConfirmedLedgerDeltaChainTransaction,
-  materializeConfirmedLedgerSnapshot,
-} from "../transactions/state-queue/confirmed-ledger-snapshot.js";
+import { signedCommitNode } from "../services/own-block-node.js";
 import {
   deserializeStateQueueUTxO,
   serializeStateQueueUTxO,
@@ -46,23 +38,15 @@ import {
  *
  * Only the earliest unattributed abandoned payload journal is revived, under
  * the single-active guard of reviveEarliestCanonicalPayloadJournal. A
- * replaced journal is revived only by the history owner from its
- * authenticated view; a correction-abandoned one is never revived.
- *
- * A replaced block that won its slot after the node moved past its base
- * (`SignedIntentReplacementIntegrityError`, refused before anything is
- * written) cannot be decided from this one view either. As in steady state
- * (blockConfirmationStep), it raises `signed_intent_undecided`, which holds
- * block commitment before any commit fiber starts; confirmation re-derives it
- * on every tick and clears it. Every other failure still fails startup.
+ * journal disposed of under its replacement digest is revived by the
+ * landed-block rebase once the follower processed its block; a
+ * correction-abandoned one is never revived. A failure fails startup.
  */
 export const recoverCanonicalJournalsOnStartup = ({
-  globals,
   canonicalHeaders,
   latestHeaderHash,
   latestEndTimeMs,
 }: {
-  readonly globals: Pick<Globals, "LIVENESS_REASONS">;
   readonly canonicalHeaders: readonly CanonicalCommittedHeader[];
   readonly latestHeaderHash: Option.Option<Buffer>;
   readonly latestEndTimeMs: number;
@@ -71,20 +55,7 @@ export const recoverCanonicalJournalsOnStartup = ({
     const revivedPayloadJournal = yield* reviveEarliestCanonicalPayloadJournal({
       canonicalHeaders,
       logPrefix: "Startup",
-    }).pipe(
-      Effect.catchAllCause((cause) => {
-        const integrity = findSignedIntentReplacementIntegrityError(cause);
-        return integrity === undefined
-          ? Effect.failCause(cause)
-          : raiseLivenessIncident(
-              globals,
-              HaltSource.blockConfirmationSignedIntent,
-              SIGNED_INTENT_UNDECIDED,
-              `${integrity.message} Startup revived no journal; block commitment is held, the signed intent stays in place, and confirmation re-derives it on every tick.`,
-              { escalateAfterMs: SIGNED_INTENT_UNDECIDED_ESCALATION_MS },
-            ).pipe(Effect.as(Option.none<CanonicalCommittedHeader>()));
-      }),
-    );
+    });
     let seededBoundaryMs = latestEndTimeMs;
     if (Option.isSome(latestHeaderHash)) {
       const latestJournal =
@@ -122,6 +93,78 @@ export const recoverCanonicalJournalsOnStartup = ({
   });
 
 /**
+ * Startup's one-time repair of a `confirmed_ledger` that no landed-block run
+ * anchored yet (no frontier): the locally applied journal chain from the
+ * ledger's root up to `journal` is folded through the stored-delta fold
+ * (N5), with the frontier set at the chain's base header first, and the
+ * result's root must be `journal`'s. Undefined when the chain does not reach
+ * the ledger's root or a journal on it is not its own header's
+ * (`unboundJournalReason`); a wrong fold rolls back and fails startup as
+ * before.
+ * Startup runs before any history writer, so nothing else holds the ledger.
+ */
+const repairUnanchoredConfirmedLedger = (
+  journal: PendingBlockFinalizationsDB.Record,
+  confirmedRoot: string,
+) =>
+  Effect.gen(function* () {
+    const Journals = PendingBlockFinalizationsDB;
+    const chain = [journal];
+    const seen = new Set<string>();
+    for (
+      let first = journal;
+      first[Journals.Columns.BASE_UTXOS_ROOT] !== confirmedRoot;
+      first = chain[0]!
+    ) {
+      const base = first[Journals.Columns.BASE_TAIL_HEADER_HASH];
+      if (seen.has(base.toString("hex"))) return undefined;
+      seen.add(base.toString("hex"));
+      const parent = yield* Journals.retrieveByHeaderHash(base);
+      if (
+        Option.isNone(parent) ||
+        parent.value[Journals.Columns.STATUS] !== Journals.Status.LocallyApplied
+      )
+        return undefined;
+      chain.unshift(parent.value);
+    }
+    // Each fold's base is its journal's: a journal whose header bytes do not
+    // bind that base and root is never folded, nor its base anchored.
+    for (const record of chain) {
+      const unbound = yield* unboundJournalReason(record);
+      if (unbound !== undefined) {
+        yield* Effect.logWarning(
+          `Startup leaves confirmed_ledger unrepaired: ${unbound}`,
+        );
+        return undefined;
+      }
+    }
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* Frontier.upsert({
+          headerHash:
+            chain[0]![Journals.Columns.BASE_TAIL_HEADER_HASH].toString("hex"),
+          utxosRoot: confirmedRoot,
+        });
+        for (const record of chain) yield* foldMerge(ownFoldRow(record), null);
+        const root = yield* computeLedgerMpfRootFromLedgerEntries(
+          yield* ConfirmedLedgerDB.retrieve,
+        );
+        const expected = journal[Journals.Columns.EXPECTED_UTXOS_ROOT];
+        if (root !== expected)
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Startup's journal-chain fold of confirmed_ledger does not reach the journal's root",
+              cause: `folded_root=${root},journal_root=${expected}`,
+            }),
+          );
+        return chain.length;
+      }),
+    );
+  });
+
+/**
  * Seeds the in-memory local block-boundary cache from the current state-queue
  * tip during startup.
  */
@@ -141,7 +184,15 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   yield* Effect.logInfo(
     `Startup state-queue snapshot hydrated: tail=${snapshot.tailCommitBase.outRef},snapshot=${snapshot.snapshotId}`,
   );
-  if (snapshot.blockCount === 0) {
+  // Once a landed-block run anchored `confirmed_ledger` (a frontier), it
+  // holds the ledger to the queue root itself, with a named hold for what it
+  // cannot do yet, so a lag here is no startup failure (N5).
+  const anchored = (yield* Frontier.retrieve) !== undefined;
+  if (anchored && snapshot.blockCount === 0)
+    yield* Effect.logInfo(
+      "Startup left the confirmed ledger to landed-block processing: its frontier is anchored.",
+    );
+  if (!anchored && snapshot.blockCount === 0) {
     const confirmedLedgerEntries = yield* ConfirmedLedgerDB.retrieve;
     const confirmedLedgerRoot = yield* computeLedgerMpfRootFromLedgerEntries(
       confirmedLedgerEntries,
@@ -158,32 +209,22 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
           : yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
               Buffer.from(snapshot.tailCommitBase.headerHash, "hex"),
             );
-      if (
+      const repaired =
         Option.isSome(finalizedJournal) &&
         finalizedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
-          PendingBlockFinalizationsDB.Status.LocallyApplied
-      ) {
-        const finalizedSnapshot = yield* materializeConfirmedLedgerSnapshot(
-          finalizedJournal.value,
+          PendingBlockFinalizationsDB.Status.LocallyApplied &&
+        finalizedJournal.value[
+          PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
+        ] === onChainUtxoRoot
+          ? yield* repairUnanchoredConfirmedLedger(
+              finalizedJournal.value,
+              confirmedLedgerRoot,
+            )
+          : undefined;
+      if (repaired !== undefined) {
+        yield* Effect.logInfo(
+          `Startup repaired confirmed ledger by folding ${repaired.toString()} authenticated journal(s); native owner must recover the corresponding durable root before Ready.`,
         );
-        if (finalizedSnapshot.root === onChainUtxoRoot) {
-          yield* applyConfirmedLedgerDeltaChainTransaction(finalizedSnapshot);
-          yield* Effect.logInfo(
-            "Startup repaired confirmed ledger from authenticated journals; native owner must recover the corresponding durable root before Ready.",
-          );
-        } else if (confirmedLedgerEntries.length > 0) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message:
-                "Startup clean-queue confirmed ledger root does not match the on-chain state queue root",
-              cause: `confirmed_ledger_entries=${confirmedLedgerEntries.length.toString()},confirmed_ledger_root=${confirmedLedgerRoot},journal_snapshot_root=${finalizedSnapshot.root},on_chain_utxo_root=${onChainUtxoRoot},snapshot=${snapshot.snapshotId}`,
-            }),
-          );
-        } else {
-          yield* Effect.logInfo(
-            `Startup skipped clean-queue commit MPF synchronization because confirmed_ledger is empty and the finalized journal root (${finalizedSnapshot.root}) does not match the on-chain root (${onChainUtxoRoot}).`,
-          );
-        }
       } else if (confirmedLedgerEntries.length > 0) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
@@ -211,7 +252,6 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
           ),
         );
   const seededBoundaryMs = yield* recoverCanonicalJournalsOnStartup({
-    globals,
     canonicalHeaders: yield* fetchCanonicalCommittedHeaders,
     latestHeaderHash,
     latestEndTimeMs,

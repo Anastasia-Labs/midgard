@@ -40,12 +40,12 @@ let reportedHeaderHex: string | undefined;
 let reportedOverBound = false;
 
 /**
- * True while a signed commit intent awaits the history owner's signed-intent
- * reconciliation: the commit worker would only refuse at its signed-submission
- * preflight, so the tick takes neither the L1 control plane nor the
- * state-queue lease and spawns no worker. Logged once per journal, again once
- * it outlives the bound, and once when it resolves. A pending local
- * finalization recovery always runs.
+ * True while a signed commit intent is unresolved (S6 derives its status;
+ * the landed-block rebase disposes of it once it is dead): the commit worker
+ * would only refuse at its signed-submission preflight, so the tick takes
+ * neither the L1 control plane nor the state-queue lease and spawns no
+ * worker. Logged once per journal, again once it outlives the bound, and once
+ * when it resolves. A pending local finalization recovery always runs.
  */
 export const shouldSkipForActivePendingFinalization = Effect.gen(function* () {
   const globals = yield* Globals;
@@ -72,7 +72,7 @@ export const shouldSkipForActivePendingFinalization = Effect.gen(function* () {
     reportedHeaderHex = headerHex;
     reportedOverBound = false;
     yield* Effect.logInfo(
-      `🔹 Skipping block commitment ticks (${SKIPPED_ACTIVE_PENDING_FINALIZATION}): signed commit intent header=${headerHex} awaits the history owner's signed-intent reconciliation; pending_finalization_age:${signed.ageMs.toString()}.`,
+      `🔹 Skipping block commitment ticks (${SKIPPED_ACTIVE_PENDING_FINALIZATION}): signed commit intent header=${headerHex} awaits the follower's intent reconciliation; pending_finalization_age:${signed.ageMs.toString()}.`,
     );
   } else if (
     !reportedOverBound &&

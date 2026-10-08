@@ -1,27 +1,13 @@
 import { createHash } from "node:crypto";
 
-import { SqlClient } from "@effect/sql";
-import { Cause, Effect, Option, Runtime } from "effect";
+import { Effect, Option } from "effect";
 
-import {
-  DepositsDB,
-  ForcedTransactionsDB,
-  ImmutableDB,
-  MempoolDB,
-  PendingBlockFinalizationsDB,
-  ProcessedMempoolDB,
-  WithdrawalsDB,
-} from "../database/index.js";
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "../database/utils/common.js";
+import { PendingBlockFinalizationsDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
-import { withHistoryWrite } from "./event-history-producer.js";
 import { Database, MidgardContracts } from "./index.js";
 import { requireLandedStateQueue } from "./landed-state-queue.js";
-import { ROOT_TAIL_HEADER_HASH } from "./state-queue-correction-rewind.admitted-removals.js";
 
 export type CanonicalCommittedHeaderIdentity = {
   readonly headerHash: Buffer;
@@ -49,8 +35,8 @@ const SIGNED_INTENT_REPLACEMENT_DOMAIN = "midgard-signed-intent-replacement-v1";
 
 /**
  * The correction digest a journal is abandoned under when its signed commit
- * is replaced because it can no longer land on the observed chain (see
- * history-expired-intent-release). It is a function of the journal's own
+ * is disposed of by the landed-block rebase (`landed-blocks/own-journals`),
+ * whichever lands wins. It is a function of the journal's own
  * immutable signed identity, so the abandonment names its cause without a
  * schema change and is told apart from an admitted correction's transition
  * digest. Undefined for a journal without a signed intent: it can never be
@@ -95,258 +81,6 @@ export const journalAbandonment = (
     : "correction";
 };
 
-/** Explicit integrity failure: a replaced signed commit won its state-queue
- * slot, but the node has already moved its local ledger past the replaced
- * block's base (a sibling built on the same base was locally finalized, a
- * member was committed elsewhere, or the ledger root advanced). The node
- * cannot reconcile to the landed block; whoever meets it holds instead. */
-export class SignedIntentReplacementIntegrityError extends Error {
-  readonly headerHash: string;
-  constructor(headerHash: string, detail: string) {
-    super(
-      `Signed-intent replacement integrity failure: replaced block ${headerHash} won its state-queue slot on the observed chain, but ${detail}. This node cannot reconcile to the landed block.`,
-    );
-    this.name = "SignedIntentReplacementIntegrityError";
-    this.headerHash = headerHash;
-  }
-}
-
-/** The replacement integrity failure a cause carries, however deeply it was
- * wrapped on its way out. */
-export const findSignedIntentReplacementIntegrityError = (
-  cause: Cause.Cause<unknown>,
-): SignedIntentReplacementIntegrityError | undefined => {
-  const seen = new Set<unknown>();
-  const search = (
-    value: unknown,
-  ): SignedIntentReplacementIntegrityError | undefined => {
-    if (value === null || typeof value !== "object" || seen.has(value))
-      return undefined;
-    seen.add(value);
-    if (value instanceof SignedIntentReplacementIntegrityError) return value;
-    if (Cause.isCause(value)) return searchCause(value);
-    if (Runtime.isFiberFailure(value))
-      return searchCause(value[Runtime.FiberFailureCauseId]);
-    return value instanceof Error ? search(value.cause) : undefined;
-  };
-  const searchCause = (
-    inner: Cause.Cause<unknown>,
-  ): SignedIntentReplacementIntegrityError | undefined => {
-    for (const value of [...Cause.failures(inner), ...Cause.defects(inner)]) {
-      const found = search(value);
-      if (found !== undefined) return found;
-    }
-    return undefined;
-  };
-  return searchCause(cause);
-};
-
-/** Statuses a sibling may hold when a replaced journal is revived: every
- * other block built on the same base must have been abandoned. A sibling
- * that landed or wrote local finalization makes the revival an integrity
- * failure; an active unlanded one must be abandoned first by the caller. */
-export const REVIVAL_BLOCKING_SIBLING_STATUSES: readonly PendingBlockFinalizationsDB.Status[] =
-  [
-    Status.SubmittedUnconfirmed,
-    Status.ObservedWaitingStability,
-    Status.LocallyApplied,
-  ];
-
-/**
- * Takes a replaced journal back once its signed commit won its state-queue
- * slot: the inverse of the replacement's reinclusion for a block that never
- * wrote local finalization. Its deposits, forced transactions and withdrawals
- * are assigned to it again (withdrawals reopened by it or by any later
- * replacement built on the same base), the journal returns to observed and
- * the SQL MPF marker moves to its candidate root. Its transactions stay in
- * the mempool, as for any observed block, until local finalization moves them
- * to ImmutableDB. Native replay to the candidate root follows through the
- * journal's retained replay, exactly as for a normally observed block.
- *
- * One transaction. A sibling on the same base that landed or was locally
- * finalized, a member already committed or no longer pending, or a ledger
- * marker off this journal's roots is an integrity failure; nothing is
- * written.
- */
-export const reviveReplacedCanonicalJournal = (
-  headerHash: Buffer,
-): Effect.Effect<
-  PendingBlockFinalizationsDB.Record,
-  DatabaseError | SignedIntentReplacementIntegrityError,
-  Database
-> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const header = headerHash.toString("hex");
-    const integrity = (detail: string) =>
-      Effect.fail(new SignedIntentReplacementIntegrityError(header, detail));
-    return yield* sql.withTransaction(
-      Effect.gen(function* () {
-        const found = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-          headerHash,
-          true,
-        );
-        if (
-          Option.isNone(found) ||
-          found.value[J.STATUS] !== Status.Abandoned ||
-          journalAbandonment(found.value) !== "replacement"
-        )
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: PendingBlockFinalizationsDB.tableName,
-              message: "Only a replaced abandoned journal can be revived",
-              cause: `header_hash=${header}`,
-            }),
-          );
-        const record = found.value;
-        yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(record);
-        const siblings = yield* sql<{
-          header_hash: Buffer;
-          status: PendingBlockFinalizationsDB.Status;
-        }>`SELECT header_hash, status FROM pending_block_finalizations
-          WHERE (base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
-              OR (${!record[J.BASE_TAIL_HEADER_HASH].equals(ROOT_TAIL_HEADER_HASH)}
-                AND base_tail_header_hash = ${record[J.BASE_TAIL_HEADER_HASH]} AND base_utxos_root = ${record[J.BASE_UTXOS_ROOT]}))
-            AND header_hash <> ${headerHash}
-          ORDER BY created_at, header_hash FOR UPDATE`;
-        const landed = siblings.find(({ status }) =>
-          REVIVAL_BLOCKING_SIBLING_STATUSES.includes(status),
-        );
-        if (landed !== undefined)
-          return yield* integrity(
-            `block ${landed.header_hash.toString("hex")} built on the same base is already ${landed.status}`,
-          );
-        const active = siblings.find(
-          ({ status }) => status !== Status.Abandoned,
-        );
-        if (active !== undefined)
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: PendingBlockFinalizationsDB.tableName,
-              message:
-                "A replaced journal is revived only after every sibling on its base is abandoned",
-              cause: `header_hash=${header},sibling=${active.header_hash.toString("hex")},status=${active.status}`,
-            }),
-          );
-        const txIds = record.txMembers.map((member) =>
-          Buffer.from(
-            member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-          ),
-        );
-        if (txIds.length > 0) {
-          const committed = yield* sql<{ tx_id: Buffer }>`
-            SELECT tx_id FROM ${sql(ImmutableDB.tableName)}
-            WHERE tx_id IN ${sql.in(txIds)}`;
-          if (committed.length > 0)
-            return yield* integrity(
-              `its transaction ${committed[0]!.tx_id.toString("hex")} is already committed locally`,
-            );
-          const pending = yield* sql<{ tx_id: Buffer }>`
-            SELECT tx_id FROM ${sql(MempoolDB.tableName)}
-              WHERE tx_id IN ${sql.in(txIds)} AND included_by IS NULL
-            UNION SELECT tx_id FROM ${sql(ProcessedMempoolDB.tableName)}
-              WHERE tx_id IN ${sql.in(txIds)} AND included_by IS NULL`;
-          const present = new Set(
-            pending.map(({ tx_id }) => tx_id.toString("hex")),
-          );
-          const missing = txIds.find((id) => !present.has(id.toString("hex")));
-          if (missing !== undefined)
-            return yield* integrity(
-              `its transaction ${missing.toString("hex")} is no longer pending (rejected or dropped after the replacement reopened it)`,
-            );
-        }
-        yield* DepositsDB.markProjectedByEventIds(
-          record.depositEventIds,
-          headerHash,
-        );
-        yield* ForcedTransactionsDB.markProjectedByEventIds(
-          record.forcedTransactionEventIds,
-          headerHash,
-        );
-        yield* WithdrawalsDB.restoreCorrectedClassification(
-          record.withdrawalMembers.map((member) => ({
-            eventId:
-              member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-            settlementEventInfo:
-              member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR],
-            validity:
-              member[
-                PendingBlockFinalizationsDB.WithdrawalMemberColumns.VALIDITY
-              ],
-            validityDetail:
-              member[
-                PendingBlockFinalizationsDB.WithdrawalMemberColumns
-                  .VALIDITY_DETAIL
-              ],
-          })),
-          headerHash,
-          [headerHash, ...siblings.map(({ header_hash }) => header_hash)],
-        );
-        yield* PendingBlockFinalizationsDB.reviveAbandonedCanonical(
-          headerHash,
-          BigInt(Date.now()),
-        );
-        // The replacement moved the marker to this journal's base; a later
-        // replacement on the same base leaves it there too. Anything else
-        // means the local ledger advanced past the base.
-        const aggregate = record.utxoPayloadAggregate;
-        const engine = yield* sql`UPDATE mpf_engine_state
-          SET root_hex = ${record[J.EXPECTED_UTXOS_ROOT]},
-            utxo_payload_entry_count = ${aggregate?.entryCount ?? null},
-            utxo_payload_encoded_tuple_bytes = ${aggregate?.encodedTupleBytes ?? null},
-            updated_at = NOW()
-          WHERE store_name = 'ledger'
-            AND root_hex IN (${record[J.BASE_UTXOS_ROOT]}, ${record[J.EXPECTED_UTXOS_ROOT]})
-          RETURNING store_name`;
-        if (engine.length !== 1)
-          return yield* integrity(
-            `the local ledger root is no longer its base ${record[J.BASE_UTXOS_ROOT]}`,
-          );
-        return record;
-      }),
-    );
-  }).pipe(
-    withHistoryWrite,
-    sqlErrorToDatabaseError(
-      PendingBlockFinalizationsDB.tableName,
-      "Failed to revive a replaced journal",
-    ),
-  );
-
-/** Read-only: a replaced block reported on the queue after a sibling on its
- * base landed or was locally finalized is the explicit integrity failure (see
- * reviveReplacedCanonicalJournal); the revival refuses it and writes nothing. */
-const assertNoLandedReplacementSibling = (
-  record: PendingBlockFinalizationsDB.Record,
-) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const siblings = yield* sql<{
-      header_hash: Buffer;
-      status: PendingBlockFinalizationsDB.Status;
-    }>`SELECT header_hash, status FROM pending_block_finalizations
-      WHERE (base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
-          OR (${!record[J.BASE_TAIL_HEADER_HASH].equals(ROOT_TAIL_HEADER_HASH)}
-            AND base_tail_header_hash = ${record[J.BASE_TAIL_HEADER_HASH]} AND base_utxos_root = ${record[J.BASE_UTXOS_ROOT]}))
-        AND header_hash <> ${record[J.HEADER_HASH]}
-      ORDER BY created_at, header_hash`;
-    const landed = siblings.find(({ status }) =>
-      REVIVAL_BLOCKING_SIBLING_STATUSES.includes(status),
-    );
-    if (landed !== undefined)
-      return yield* Effect.fail(
-        new SignedIntentReplacementIntegrityError(
-          record[J.HEADER_HASH].toString("hex"),
-          `block ${landed.header_hash.toString("hex")} built on the same base is already ${landed.status}`,
-        ),
-      );
-  }).pipe(
-    sqlErrorToDatabaseError(
-      PendingBlockFinalizationsDB.tableName,
-      "Failed to read a replaced journal's siblings",
-    ),
-  );
-
 export const withCanonicalHeaderJournals = (
   headers: readonly CanonicalCommittedHeaderIdentity[],
 ): Effect.Effect<
@@ -387,8 +121,8 @@ export const fetchCanonicalCommittedHeaders = Effect.gen(function* () {
 /** An abandoned payload-bearing local journal of a block on the canonical
  * queue whose abandonment is unattributed. A journal an admitted correction
  * abandoned is never revivable here, even when the same members appear in
- * another journal; one a signed-intent replacement abandoned is revived only
- * by the history owner's decision on its authenticated exact-point view. */
+ * another journal; one disposed of under its replacement digest is revived
+ * by the landed-block rebase once its block is processed. */
 const revivableCanonicalJournal = ({ journal }: CanonicalCommittedHeader) =>
   Option.isSome(journal) &&
   journal.value[J.STATUS] === Status.Abandoned &&
@@ -407,11 +141,9 @@ export const findEarliestCanonicalPayloadJournal = (
  * the canonical queue, so local finalization replays it before later
  * canonical descendants. Only an unattributed abandonment is revived here.
  * One an admitted correction abandoned is never revived: the correction
- * observer alone reconciles a retracted correction. One a signed-intent
- * replacement abandoned is revived only by the history owner, from its
- * authenticated view (reviveReplacedCanonicalJournal); this unauthenticated
- * view only refuses the revival when such a block is reported on the queue
- * after a sibling on its base already landed or was locally finalized.
+ * observer alone reconciles a retracted correction. One disposed of under
+ * its replacement digest is revived by the landed-block rebase, from the
+ * follower's processed landed blocks, not from this unauthenticated view.
  */
 export const reviveEarliestCanonicalPayloadJournal = ({
   canonicalHeaders,
@@ -421,7 +153,7 @@ export const reviveEarliestCanonicalPayloadJournal = ({
   readonly logPrefix: string;
 }): Effect.Effect<
   Option.Option<CanonicalCommittedHeader>,
-  DatabaseError | SignedIntentReplacementIntegrityError,
+  DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
@@ -441,12 +173,10 @@ export const reviveEarliestCanonicalPayloadJournal = ({
         journal.value[J.STATUS] === Status.Abandoned &&
         localJournalHasPayloadMembers(journal.value) &&
         journalAbandonment(journal.value) === "replacement"
-      ) {
-        yield* assertNoLandedReplacementSibling(journal.value);
-        yield* Effect.logWarning(
-          `${logPrefix} will not revive canonical block ${headerHash.toString("hex")}: its journal was replaced after its signed commit missed its validity window; only the history owner revives a replaced block, from its authenticated view of the queue.`,
+      )
+        yield* Effect.logInfo(
+          `${logPrefix} leaves canonical block ${headerHash.toString("hex")} to the landed-block rebase: its journal was disposed of under its replacement digest, and the rebase revives it once the follower processed the block.`,
         );
-      }
     const candidateIndex = canonicalHeaders.findIndex(
       revivableCanonicalJournal,
     );

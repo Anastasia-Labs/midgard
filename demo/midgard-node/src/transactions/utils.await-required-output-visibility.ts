@@ -48,7 +48,6 @@ const cmlBodySlotNumber = (
 export type SignSubmitContext = {
   readonly txHash: string;
   readonly signedTxCbor: string;
-  readonly walletAddress: string;
 };
 
 type AwaitTxConfirmationOptions = {

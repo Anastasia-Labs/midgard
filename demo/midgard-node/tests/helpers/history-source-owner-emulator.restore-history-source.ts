@@ -25,11 +25,7 @@ import {
 } from "../deposit-flow-emulator-shared.js";
 import { resetApplicationTables } from "../utils.js";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./cardano-protocol-parameters.js";
-import {
-  emulatorState,
-  pinnedWalletUtxos,
-  recreateLucid,
-} from "./emulator-snapshot.js";
+import { emulatorState, recreateLucid } from "./emulator-snapshot.js";
 import {
   type AcceptedHistoryObservation,
   captureConfirmedHistoryObservations,
@@ -201,7 +197,6 @@ const deployHistorySource = async (
     .complete({ localUPLCEval: true });
   const funded = await fund.sign.withWallet().complete();
   expect(await lucid.awaitTx(await funded.submit())).toBe(true);
-  lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
   vi.setSystemTime(emulator.now());
   const emulatorCreationTimeMs = emulator.now();
   await runWithoutFollower(
@@ -237,11 +232,6 @@ const deployHistorySource = async (
     depositorCreation,
     emulatorCreationTimeMs,
     emulator: emulatorState(emulator),
-    wallets: {
-      operator: await pinnedWalletUtxos(lucid, emulator),
-      publisher: await pinnedWalletUtxos(publisherLucid, emulator),
-      depositor: await pinnedWalletUtxos(depositorLucid, emulator),
-    },
     // Validators carry applied scripts only and every lifecycle of the file
     // shares them, so they are frozen: a mutation throws instead of leaking
     // into the next lifecycle. Every other deployment record is copied per
@@ -347,21 +337,18 @@ export const restoreHistorySource = async (
     emulator,
     prefix.creation,
     accounts.operator.seedPhrase,
-    prefix.wallets.operator,
     preprodEmulatorLucid,
   );
   const publisherLucid = await recreateLucid(
     emulator,
     prefix.creation,
     accounts.publisher.seedPhrase,
-    prefix.wallets.publisher,
     preprodEmulatorLucid,
   );
   const depositorLucid = await recreateLucid(
     emulator,
     prefix.depositorCreation,
     depositorAccount.seedPhrase,
-    prefix.wallets.depositor,
     preprodEmulatorLucid,
   );
   const batches = structuredClone(prefix.batches);

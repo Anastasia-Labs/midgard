@@ -13,11 +13,10 @@ import type {
 } from "@al-ft/midgard-validation/types";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
-import { assertWatcherLocalUserEventAuthorityCurrent } from "../indexers/user-event-indexer.js";
 import { finalizeResult } from "./block-replay.bind-committed-steps.js";
 import { replayCommittedBlock } from "./block-replay.replay-committed-block.js";
 import {
-  readLocalEventAuthority,
+  readUserEventAuthority,
   type ReplayDeploymentBinding,
 } from "./block-replay.validate-event-authority.js";
 import {
@@ -54,6 +53,7 @@ import {
   computeWatcherRuleBundleCommitment,
   type WatcherRuleBundle,
 } from "./rule-bundle.js";
+import { assertWatcherUserEventAuthorityCurrent } from "./user-event.js";
 
 /**
  * The W25 entry point: an accepted W22 reconstruction, an accepted W24 Phase A
@@ -90,7 +90,7 @@ export const evaluateWatcherBlockReplay = async (
     ) {
       return fail(
         "user_event_authority_identity_mismatch",
-        "$.localUserEvent.ruleBundleCommitment",
+        "$.userEvent.ruleBundleCommitment",
       );
     }
   } catch (error) {
@@ -238,13 +238,13 @@ export const evaluateWatcherBlockReplay = async (
     // handles after that work so a closed, rolled-back or replaced head cannot
     // authorize a newly admitted W25 record.
     for (const authority of eventAuthorities) {
-      await readLocalEventAuthority(authority.localUserEvent);
+      await readUserEventAuthority(authority.userEvent);
     }
     for (const authority of eventAuthorities) {
       try {
-        assertWatcherLocalUserEventAuthorityCurrent(authority.localUserEvent);
+        assertWatcherUserEventAuthorityCurrent(authority.userEvent);
       } catch {
-        return fail("user_event_authority_invalid", "$.localUserEvent");
+        return fail("user_event_authority_invalid", "$.userEvent");
       }
     }
     const replay = admitFullBlockReplayResult(

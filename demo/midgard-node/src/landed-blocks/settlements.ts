@@ -105,8 +105,8 @@ export const processRow = (row: LandedBlockRow) =>
 
 /**
  * A rollback took the processed rows `left` off the landed chain: an
- * applied foreign row stays as `removed` until the rebase reverts it, every
- * other row goes, the settlements any of them recorded are rewound, and the
+ * applied row (foreign, or own) stays as `removed` until the rebase reverts
+ * it (and disposes of an own row's journal), every other row goes, the settlements any of them recorded are rewound, and the
  * marks they set are cleared, so the rows they included are pending again.
  * The removed rows `relands` landed again before a rebase reverted them:
  * they are processed again, mark their rows and settle their receipt
@@ -118,15 +118,11 @@ export const rollBackRows = (
 ) =>
   Effect.gen(function* () {
     yield* setState(
-      left
-        .filter((row) => row.kind === "foreign" && row.applied)
-        .map((row) => row.headerHash),
+      left.filter((row) => row.applied).map((row) => row.headerHash),
       "removed",
     );
     yield* deleteRows(
-      left
-        .filter((row) => row.kind === "own" || !row.applied)
-        .map((row) => row.headerHash),
+      left.filter((row) => !row.applied).map((row) => row.headerHash),
     );
     yield* rewindSettlements(left.map((row) => row.headerHash));
     yield* MempoolInclusionsDB.clearMarks(left.map((row) => row.headerHash));

@@ -2460,7 +2460,7 @@ Extended genuine staged tests from eight to twelve: nine native assets plus ADA,
 
 The main six-file 46-case command has completed 19 standard finalization, 13 installed, eight earlier staged, four genuine admission boundary and the unchanged 1,304-asset accepted stress cases successfully; the 1,287-asset/depth-64 deposit stress is still running (session 86387, verified live). Do not claim the full maximum gate passed yet. Fault-proof build, final fault-proof/node typechecks, targeted ESLint and ABI check passed. Root docs links passed **306 Markdown/MDX files**. Current 67-path cumulative TypeScript/generated patch has zero overlap and passes apply check; remains unapplied, excludes Aiken. Reverified 1,225 Aiken/3,037 TypeScript/config source hashes, pinned compiler hash, protected docs and root whitespace.
 
-Next independent consumer migration must include the existing watcher fold at `demo/midgard-watcher/src/indexers/user-event-indexer.ts` (still decodes `DepositDatumSchema` around 1348) and node submit-deposit datum reader (still `SDK.DepositDatum` around 143). Neither is covered by current proof tests. Do not infer node/watcher rollout or rollback support from successful installed proof fixtures. Full descriptor ledger, public rollback/L2 correction/retired-ID reuse, finalized retirement/merge/funds flows, safe full inline/payload frontiers, automatic user/node lifecycles, root integration and live acceptance remain incomplete. No external blocker or live reset/redeployment.
+Next independent consumer migration must include the existing watcher fold at `demo/midgard-watcher/src/indexers/user-event-indexer.ts` (since deleted; it still decoded `DepositDatumSchema` around 1348) and node submit-deposit datum reader (still `SDK.DepositDatum` around 143). Neither is covered by current proof tests. Do not infer node/watcher rollout or rollback support from successful installed proof fixtures. Full descriptor ledger, public rollback/L2 correction/retired-ID reuse, finalized retirement/merge/funds flows, safe full inline/payload frontiers, automatic user/node lifecycles, root integration and live acceptance remain incomplete. No external blocker or live reset/redeployment. <!-- doc-links:historical -->
 
 #### Verified maximum-Value reopening checkpoint (2026-09-22)
 
@@ -3182,10 +3182,10 @@ The full objective remains active. Root retained submission persistence,
 ingestion, reconciliation, shared schemas, deployment and integration ownership.
 SDK event/witness/receipt schemas, manifests and builder signatures were frozen
 for this parallel checkpoint. The watcher agent owned only
-`demo/midgard-watcher/tests/indexers/user-event-history.test.ts`; the builder
+`demo/midgard-watcher/tests/indexers/user-event-history.test.ts` (since deleted); the builder
 agent produced profiling artifacts only; the consumer agent remained read-only.
 All implementation changes remain in the isolated transition workspace. No main
-implementation integration, reset, deployment or live acceptance ran.
+implementation integration, reset, deployment or live acceptance ran. <!-- doc-links:historical -->
 
 Root added a node-private acquired Ogmios ledger snapshot reader and an adapter
 that decodes both complete authenticated history lists and actual retained data
@@ -3325,12 +3325,12 @@ new error payload, delta fixture and deferred completion were fixed; final node
 and SDK typechecks, scoped lint and formatting passed.
 
 Watcher ownership remained with the watcher agent for
-`demo/midgard-watcher/tests/indexers/user-event-history.test.ts`. It added retired-ID
+`demo/midgard-watcher/tests/indexers/user-event-history.test.ts` (since deleted). It added retired-ID
 reuse refusal after publisher reopen for both event kinds. Root independently ran
 the whole file: **31/31, 180.56s**. These cases use the existing in-memory durable
 fixture and synthetic native transport, not SQLite/process restart or a valid
 L1 nonce re-spend. Later L2 headers containing reused IDs still require the separate
-proof/acceptance coverage; this change does not claim that gate closed.
+proof/acceptance coverage; this change does not claim that gate closed. <!-- doc-links:historical -->
 
 The builder agent produced an artifact-only Lucid optimization; root reviewed and
 installed the tracked ESM/CJS patch centrally. Static explicit funding with the
@@ -5100,6 +5100,10 @@ native and pending-reconciliation ESLint checks PASS. No deployment, service res
 original implementation application or broad-suite completion is claimed.
 
 ### 2026-09-24 — Signed range loader, acceptance progression and current ownership
+
+> Note (deleted 2026-10-08, #810): `eventHistoryCanonicalCoverage.ts`,
+> `signed-intent-canonical-coverage.ts` and their tests no longer exist; the
+> landed-block rebase replaced them. The entries below are kept for history.
 
 Root owns new `eventHistoryCanonicalCoverage.ts`: under recovery authority, it
 checks the exact current binding/generation/checkpoint, follows the retained

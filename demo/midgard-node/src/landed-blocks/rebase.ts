@@ -20,12 +20,21 @@
  * and the rest is applied forward. Each step is idempotent, so a crash
  * between them resumes from the root the owner holds.
  *
- * SQL, in one transaction under the preparation: the shared working-ledger
- * recompute (`working-ledger-recompute.rebuild.ts`) on the target's ledger;
- * every event a removed block or an unknown header held goes back to
- * `awaiting`; every event a processed foreign block holds is projected to
- * it; removed rows are deleted, processed ones marked applied, and the
- * ledger-store root stamp moves to the target.
+ * SQL, in one transaction under the preparation: the own journals the
+ * target disposes of are abandoned and their members made pending again,
+ * and the abandoned ones whose block landed are revived (`own-journals.ts`);
+ * every event a removed block, a disposed-of journal or an unknown header
+ * held goes back to `awaiting`; every event a processed foreign or revived
+ * own block holds is projected to it; the shared working-ledger recompute
+ * (`working-ledger-recompute.rebuild.ts`) runs on the target's ledger;
+ * removed rows are deleted, processed ones marked applied, the
+ * ledger-store root stamp moves to the target, and the retained plans of
+ * retired kinds the native move superseded are discarded
+ * (`retired-plans.ts`).
+ *
+ * Once that commits, the commit path's globals follow: a revived block's
+ * local finalization is pending (its node read back from its signed
+ * commit), and with the unfinished journal disposed of nothing is.
  */
 import { randomUUID } from "node:crypto";
 
@@ -33,6 +42,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Cause, Effect, Ref } from "effect";
 
 import { MpfEngineStateDB } from "../database/index.js";
+import type * as Pending from "../database/pendingBlockFinalizations.js";
 import { NodeConfig } from "../services/config.js";
 import { isRecoverableHistorySourceFailure } from "../services/event-history-owner.source-failure.js";
 import { withHistoryWrite } from "../services/event-history-producer.js";
@@ -45,25 +55,34 @@ import {
   clearLivenessIncident,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
+import { MidgardContracts } from "../services/midgard-contracts.js";
 import {
   type NativeMpfOwnerService,
   NativeMpfRootNotRetained,
 } from "../services/mpf-native-owner/protocol.js";
 import { encodeNativeMpfEventLog } from "../services/mpf-native-owner/service.js";
 import { initializeArchitectureGOwner } from "../services/native-mpf-startup.js";
-import { rebuildWorkingLedger } from "../services/working-ledger-recompute.js";
-import { sha256Hex } from "../sha256.js";
+import { signedCommitNode } from "../services/own-block-node.js";
 import {
+  rebuildWorkingLedger,
+  UndecidedBatchMember,
+} from "../services/working-ledger-recompute.js";
+import { sha256Hex } from "../sha256.js";
+import { serializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import {
+  LANDED_BLOCK_BATCH_UNDECIDED,
   LANDED_BLOCK_REBASE_FAILED,
   LANDED_BLOCK_REBASE_SOURCE,
 } from "./holds.js";
 import { depositOutputs } from "./ledger.js";
+import { disposeJournals, reviveJournals } from "./own-journals.js";
 import {
   assignChainEvents,
   resetUnheldEvents,
   settleChainDeposits,
 } from "./rebase-events.js";
 import { rebasePlan, type RebaseTarget, walkTarget } from "./rebase-target.js";
+import { discardRetiredPlans } from "./retired-plans.js";
 import { markRows, recordSettlements } from "./settlements.js";
 import { deleteRows, markApplied } from "./store.js";
 
@@ -122,10 +141,13 @@ export const moveNativeRoot = (
       else if (!(restored.left instanceof NativeMpfRootNotRetained))
         return yield* Effect.fail(restored.left);
     }
+    // The store only ever adds the nodes of a root it promotes, and every
+    // block folded into `confirmed_ledger` was applied natively first, so
+    // the frontier's root is retained unless the store lost it.
     if (from < 0)
       return yield* Effect.fail(
         new Error(
-          `The native MPF retains no root of the processed landed chain (durable root ${durableRoot})`,
+          `The native MPF retains no root of the processed landed chain (durable root ${durableRoot}, confirmed-ledger frontier root ${roots[0]!}). The native MPF store keeps every root it promoted, and the frontier's root was promoted when its block was applied, so the store at LEDGER_MPF_DB_PATH lost it (replaced, restored from an older copy or damaged). The rebase holds with native MPF, the SQL root and the journals unchanged, and the history owner retries it on its backoff while the history gate stays closed, which holds block production. Operator action is needed: stop the node, install at LEDGER_MPF_DB_PATH a native MPF store that retains root ${roots[0]!} in full (such as a copy of this node's store taken at or after that root), and restart it; the next rebase completes.`,
         ),
       );
     for (let index = from + 1; index < roots.length; index++) {
@@ -177,9 +199,15 @@ export const moveNativeRoot = (
 export const rebaseSql = (target: RebaseTarget) =>
   Effect.gen(function* () {
     const { ledger, roots } = walkTarget(target);
-    const foreign = target.steps.flatMap((step) =>
-      step.kind === "foreign" && step.row !== undefined ? [step.row] : [],
+    const { dispose, revive } = target.journals;
+    const reviving = new Set(revive);
+    const chained = target.steps.flatMap((step) =>
+      step.row !== undefined &&
+      (step.kind === "foreign" || reviving.has(step.headerHash))
+        ? [step.row]
+        : [],
     );
+    const foreign = chained.filter((row) => row.kind === "foreign");
     const ownTxIds = target.steps.flatMap((step) =>
       step.kind === "own" && step.row !== undefined
         ? step.row.txIds
@@ -193,8 +221,13 @@ export const rebaseSql = (target: RebaseTarget) =>
     ];
     const deposits = yield* depositOutputs(depositIds);
     const removed = target.rows.filter((row) => row.state === "removed");
-    yield* resetUnheldEvents(target, removed);
-    yield* assignChainEvents(foreign);
+    yield* disposeJournals(dispose);
+    yield* resetUnheldEvents(target, [
+      ...removed.map((row) => row.headerHash),
+      ...dispose.map((disposal) => disposal.headerHash),
+    ]);
+    const revived = yield* reviveJournals(revive);
+    yield* assignChainEvents(chained);
     // A receipt member a processed (landed) row includes is settled by it
     // from this rebuild on, and the row marks it in the pending tables; the
     // live own block has not landed.
@@ -217,43 +250,101 @@ export const rebaseSql = (target: RebaseTarget) =>
       includedByOwn: new Set(ownTxIds.map((id) => id.toString("hex"))),
       codes: REBASE_REJECTIONS,
     });
-    yield* settleChainDeposits(foreign, rebuilt.ledger, deposits);
+    yield* settleChainDeposits(chained, rebuilt.ledger, deposits);
     yield* deleteRows(removed.map((row) => row.headerHash));
-    yield* markApplied(foreign.map((row) => row.headerHash));
+    yield* markApplied(chained.map((row) => row.headerHash));
     yield* MpfEngineStateDB.stampLedgerMigration(roots.at(-1)!);
-    return rebuilt;
+    yield* discardRetiredPlans(target.retired);
+    return {
+      ...rebuilt,
+      revived,
+      disposedActive: dispose.some((disposal) => disposal.active),
+    };
+  });
+
+/**
+ * The commit path's globals once a rebase that revived or disposed of own
+ * journals committed: a revived block's local finalization is pending (the
+ * hold on the blocks after it keeps it the newest), and with the unfinished
+ * journal disposed of nothing is pending or awaiting confirmation.
+ */
+const followJournals = (
+  globals: Globals,
+  outcome: Readonly<{
+    revived: readonly Pending.Record[];
+    disposedActive: boolean;
+  }>,
+) =>
+  Effect.gen(function* () {
+    const winner = outcome.revived.at(-1);
+    if (winner === undefined && !outcome.disposedActive) return;
+    yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+    yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+    if (winner === undefined) {
+      yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
+      yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
+      return;
+    }
+    const contracts = yield* MidgardContracts;
+    const block = yield* signedCommitNode(winner, contracts).pipe(
+      Effect.flatMap(({ node }) => serializeStateQueueUTxO(node)),
+      Effect.catchAll((cause) =>
+        Effect.logWarning(
+          "A revived block's node cannot be read back from its signed commit; the commit preflight recovers its local finalization from the landed tail",
+          cause,
+        ).pipe(Effect.as("" as const)),
+      ),
+    );
+    yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
+    yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, block);
   });
 
 /**
  * A failure and the causes under it: the history write gate reports a
  * failed step under its own message, with the step's error as its cause.
  */
-const failureDetail = (failure: unknown) => {
-  const parts: string[] = [];
+const causeChain = (failure: unknown) => {
+  const chain: unknown[] = [];
   let current = failure;
   for (let depth = 0; depth < 8 && current !== undefined; depth += 1) {
-    const part = formatUnknownError(current);
-    if (parts.at(-1) !== part) parts.push(part);
+    chain.push(current);
     current =
       typeof current === "object" && current !== null
         ? (current as { readonly cause?: unknown }).cause
         : undefined;
   }
-  return parts.join("; caused by ");
+  return chain;
+};
+
+/** The hold a failed rebase shows: its reason, and the failure as detail. */
+const failureHold = (failure: unknown) => {
+  const chain = causeChain(failure);
+  const parts: string[] = [];
+  for (const part of chain.map((cause) => formatUnknownError(cause)))
+    if (parts.at(-1) !== part) parts.push(part);
+  return {
+    reason: chain.some((cause) => cause instanceof UndecidedBatchMember)
+      ? LANDED_BLOCK_BATCH_UNDECIDED
+      : LANDED_BLOCK_REBASE_FAILED,
+    detail: parts.join("; caused by "),
+  };
 };
 
 /**
  * The rebase, run from the history owner's pending-reconciliation
  * preparation. A rebase that cannot run yet (no lease, or a target that
- * waits for an own journal's resolution) leaves the reconciliation pending.
+ * waits for S6 to derive an own commit dead or landed) leaves the
+ * reconciliation pending.
  *
  * A failure the owner treats as recoverable (a transport-class SQL error, a
  * deadline, a superseded preparation) and an interrupt propagate as before.
  * Any other failure is caught here: it is recorded
- * (`LANDED_BLOCK_REBASE_FAILURE`), raised as the liveness reason
- * `landed_block_rebase_failed` with its detail, and the preparation returns,
- * so the reconciliation stays pending on the owner's backoff and the owner
- * retries it; the record and the reason clear once a rebase runs.
+ * (`LANDED_BLOCK_REBASE_FAILURE`), raised as a liveness reason with its
+ * detail (`landed_block_batch_undecided` when the batch closure met an
+ * undecided receipt member, `landed_block_rebase_failed` otherwise), and
+ * the preparation returns, so the reconciliation stays pending on the
+ * owner's backoff and the owner retries it; the record and the reason
+ * clear once a rebase runs.
  */
 export const prepareLandedBlockRebase = (
   preparation: HistoryRecoveryPreparation,
@@ -280,11 +371,14 @@ export const prepareLandedBlockRebase = (
             // Producers are drained for the preparation: the rows the plan
             // read cannot change before the SQL step.
             yield* preparation.assertCurrent;
-            yield* withHistoryWrite(rebaseSql(plan.target));
+            return yield* withHistoryWrite(rebaseSql(plan.target));
           }),
       );
       const result = yield* run;
-      if (result._tag !== "Busy") return "ran" as const;
+      if (result._tag !== "Busy") {
+        if (result._tag === "Ran") yield* followJournals(globals, result.value);
+        return "ran" as const;
+      }
       yield* Effect.logInfo(
         "Landed-block rebase waits for the ledger store lease",
       );
@@ -298,14 +392,14 @@ export const prepareLandedBlockRebase = (
           isRecoverableHistorySourceFailure(failure)
         )
           return Effect.failCause(cause);
-        const detail = failureDetail(failure);
+        const hold = failureHold(failure);
         return Effect.gen(function* () {
-          yield* Ref.set(globals.LANDED_BLOCK_REBASE_FAILURE, detail);
+          yield* Ref.set(globals.LANDED_BLOCK_REBASE_FAILURE, hold);
           yield* raiseLivenessIncident(
             globals,
             LANDED_BLOCK_REBASE_SOURCE,
-            LANDED_BLOCK_REBASE_FAILED,
-            detail,
+            hold.reason,
+            hold.detail,
           );
           return "failed" as const;
         });

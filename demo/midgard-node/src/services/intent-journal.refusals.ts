@@ -28,6 +28,31 @@ export const INTENT_JOURNAL_UNAVAILABLE = "intent_journal_unavailable";
  */
 export const INTENT_GATE_UNJOURNALED = "intent_gate_unjournaled";
 
+/**
+ * S6 held a send (§8.1): the journal recorded the transaction, but the
+ * decision taken with the view check, in the record's transaction, was not
+ * to send it now. The reasons:
+ *
+ * - `intent_stale_at_write`: a rewind since the family opened its plan;
+ *   the row carries `stale_at_write` and is never sent from this write.
+ * - `intent_view_stale`: the journaled row's view was removed by a rewind
+ *   since it was recorded.
+ * - `intent_abandoned`: S6 abandoned it (its family no longer wants it).
+ * - `intent_not_journaled`: the row is not there to send from.
+ * - `l1_node_behind`: the follower's view is past the node-behind bound
+ *   (`L1_NODE_BEHIND_MAX_MS`) behind wall-clock time.
+ *
+ * In each case S6's reconciler decides under the current view whether the
+ * journaled bytes can still land and are still wanted, and resends them if
+ * so. Not a refusal: never a readiness hold (the follower names
+ * `l1_node_behind` itself); the family retries on its own schedule.
+ */
+export class IntentSubmitHeld extends Data.TaggedError("IntentSubmitHeld")<{
+  readonly reason: string;
+  readonly txHash: string;
+  readonly message: string;
+}> {}
+
 /** The journal refused the transaction; it was not submitted. */
 export class IntentJournalRefused extends Data.TaggedError(
   "IntentJournalRefused",

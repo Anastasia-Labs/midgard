@@ -7,20 +7,11 @@ import * as Authority from "../../src/database/eventHistoryAuthority.js";
 import type { Checkpoint } from "../../src/database/eventHistoryJournal.js";
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import { Globals } from "../../src/services/globals.js";
-import { prepareExpiredIntentRelease } from "../../src/services/history-expired-intent-release.prepare-expired-intent-release.js";
-import { prepareReplacedBlockRevival } from "../../src/services/history-expired-intent-release.prepare-replaced-block-revival.js";
-import type { QueueView } from "../../src/services/history-expired-intent-release.signed-commit-node.js";
-import { makeSignedIntentDeferral } from "../../src/services/history-expired-intent-release.table.js";
 import { activeLivenessReasons } from "../../src/services/liveness-halt.js";
-import {
-  makeState,
-  STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION,
-} from "../../src/services/state-queue-correction-observer.parse-state-queue-correction-observer-state.js";
 import { prepareStateQueueCorrectionRewind } from "../../src/services/state-queue-correction-rewind.js";
 import { provideDatabaseLayers } from "../utils.js";
 import {
   BINDING,
-  binding,
   bytes,
   hex,
   seed,
@@ -28,16 +19,11 @@ import {
   ZERO_ROOT,
 } from "./history-expired-intent-release-before-ttl.js";
 import { authority } from "./history-expired-intent-release-displaced-sibling.js";
-import type { Coverage } from "./history-expired-intent-release-preparation.coverage.js";
 import {
   fakeOwner,
   type OwnerModel,
 } from "./history-expired-intent-release-preparation.owner.js";
 
-export {
-  type Coverage,
-  coverageOf,
-} from "./history-expired-intent-release-preparation.coverage.js";
 export {
   fakeOwner,
   type OwnerModel,
@@ -45,17 +31,10 @@ export {
 } from "./history-expired-intent-release-preparation.owner.js";
 
 /**
- * Drives the production signed-intent release and replaced-block revival
- * preparations over seeded SQL. Only their L1 reads are modelled: the test
- * file mocks the exact-point capture, its authentication (to `fixture.queue`)
- * and the canonical coverage loader (to `fixture.coverage`), and the native
- * owner is a model whose durable root follows the plan's CAS.
+ * Drives a production history recovery preparation (the state-queue
+ * correction rewind) over seeded SQL. The native owner is a model whose
+ * durable root follows the plan's CAS.
  */
-
-export type Fixture = {
-  queue: QueueView | undefined;
-  coverage: Coverage;
-};
 
 /** The checkpoint of the cursor `seed` writes, at a head past every TTL. */
 export const checkpoint = {
@@ -104,21 +83,7 @@ export const seedNode = (ledgerRoot: string = ZERO_ROOT) =>
 export type Node = Readonly<{
   token: Authority.Token;
   owner: OwnerModel | undefined;
-  deferral: ReturnType<typeof makeSignedIntentDeferral>;
 }>;
-
-export const inputs = (node: Node) => ({
-  binding: { ...binding, manifestId: hex("manifest") },
-  checkpoint,
-  preparation: { token: node.token, assertCurrent: Effect.void },
-  config: {} as never,
-  rewindAuthority: authority,
-  transport: {} as never,
-  contracts: {
-    stateQueue: { spendingScriptAddress: "addr_test_state_queue" },
-  } as never,
-  deferral: node.deferral,
-});
 
 export type Attempt = Readonly<{
   /** The failure's messages, outermost first, or undefined on success. */
@@ -160,8 +125,8 @@ export const attempt = <E>(
     } satisfies Attempt;
   });
 
-/** One node: `rounds` runs with one set of globals, the native owner model
- * installed (when given) and one deferral, as one history owner would. */
+/** One node: `rounds` runs with one set of globals and the native owner
+ * model installed (when given), as one history owner would. */
 export const onNode = <A>(
   owner: OwnerModel | undefined,
   rounds: (
@@ -176,62 +141,21 @@ export const onNode = <A>(
         const globals = yield* Globals;
         if (owner !== undefined)
           yield* Ref.set(globals.NATIVE_MPF_OWNER, fakeOwner(owner) as never);
-        return yield* rounds({
-          token,
-          owner,
-          deferral: makeSignedIntentDeferral(),
-        });
+        return yield* rounds({ token, owner });
       }).pipe(Effect.provide(Globals.Default)),
     ) as Effect.Effect<A, unknown, never>,
   );
 
-export const release = (node: Node) =>
-  attempt(prepareExpiredIntentRelease(inputs(node)));
-
-export const revival = (node: Node) =>
-  attempt(prepareReplacedBlockRevival(inputs(node)));
-
-export const rewind = (node: Node) => {
-  const input = inputs(node);
-  return attempt(
+export const rewind = (node: Node) =>
+  attempt(
     prepareStateQueueCorrectionRewind({
-      bindingDigest: input.binding.digest,
+      bindingDigest: BINDING,
       checkpoint,
-      preparation: input.preparation,
-      config: input.config,
+      preparation: { token: node.token, assertCurrent: Effect.void },
+      config: {} as never,
       authority,
     }),
   );
-};
-
-/** A correction observer view whose cursor queue holds the root and then
- * `nodes`, and that recorded no transition: the hint that selects revival
- * candidates. */
-export const observerSees = (
-  nodes: readonly { readonly headerHash: string; readonly outRef: string }[],
-) =>
-  Effect.gen(function* () {
-    const state = makeState({
-      schemaVersion: STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION,
-      deploymentIdentityDigest: authority.manifestId,
-      stateQueuePolicyId: authority.stateQueuePolicyId,
-      cursorQueue: [
-        { headerHash: null, outRef: `${hex("root-tx")}#0` },
-        ...nodes.map(({ headerHash, outRef }) => ({ headerHash, outRef })),
-      ],
-      pending: [],
-      admitted: [],
-      retractedTransactionHashes: [],
-      postFinalityRollbackIncidents: [],
-    });
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO state_queue_terminal_observer_states (
-        deployment_identity_digest, state_queue_policy_id, state_digest,
-        state_record, updated_at
-      ) VALUES (${Buffer.from(authority.manifestId, "hex")},
-        ${Buffer.from(authority.stateQueuePolicyId, "hex")},
-        ${Buffer.from(state.stateDigest, "hex")}, ${JSON.stringify(state)}, NOW())`;
-  });
 
 export const statusOf = (header: Buffer) =>
   Effect.map(Pending.retrieveByHeaderHash(header, true), (found) => {

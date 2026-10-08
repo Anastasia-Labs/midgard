@@ -26,6 +26,7 @@ export {
   isPlainAdaUtxo,
   readL1SubmitterKeySource,
   refreshL1SubmitterPlainAdaUtxos,
+  selectL1KeySourceWallet,
   selectL1SubmitterWallet,
   signSubmitAndConfirm,
 } from "./submitter.prune-in-flight-spends.js";

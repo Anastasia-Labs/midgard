@@ -35,18 +35,16 @@ import type { MidgardForcedTxAdmissionStopped } from "@al-ft/midgard-core/consen
 import {
   type FactStore,
   type LedgerOutputs,
-  postgresDialect,
   resolveOutputs,
   type TxContentSource,
   type View,
-  viewValidQuery,
 } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit, Option } from "effect";
 
-import { numbered } from "../database/follower-schema.js";
+import { followerViewValid } from "../database/follower-schema.js";
 import { ForcedTransactionsDB } from "../database/index.js";
 import {
   abandonedForcedAdmission,
@@ -176,12 +174,8 @@ const writeAtView = (
     const sql = yield* SqlClient.SqlClient;
     return yield* sql.withTransaction(
       Effect.gen(function* () {
-        const check = viewValidQuery(postgresDialect, view);
-        const valid = yield* sql.unsafe<{ valid: boolean }>(
-          numbered(check.sql),
-          check.params as never,
-        );
-        if (valid[0]?.valid !== true) return { kind: "stale" } as ViewWrite;
+        if (!(yield* followerViewValid(view)))
+          return { kind: "stale" } as ViewWrite;
         yield* sql`LOCK TABLE ${sql(ForcedTransactionsDB.tableName)} IN SHARE ROW EXCLUSIVE MODE`;
         const deleted = sweep
           ? yield* sql<OrderOutRef>`DELETE FROM ${sql(ForcedTransactionsDB.tableName)} t

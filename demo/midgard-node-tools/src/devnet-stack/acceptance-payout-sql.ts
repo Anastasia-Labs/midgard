@@ -102,14 +102,15 @@ export const readAcceptanceSettlements = async (
       );
       const attempts = await read<
         AcceptanceSettlementRow[]
-      >`SELECT event_id, tx_hash, phase,
-        CASE WHEN octet_length(signed_cbor) <= ${maxTransactionBytes * 2}
-          THEN signed_cbor ELSE NULL END AS signed_cbor,
-        CASE WHEN cardinality(required_outputs) <= ${maxTransactionBytes}
-          THEN array_to_json(required_outputs) ELSE NULL END AS required_outputs
-        FROM settlement_attempts WHERE deployment_id = ${deploymentId}
-        AND kind = 'withdrawal' AND status = 'confirmed' AND event_id IN ${read(eventIds)}
-        ORDER BY event_id, tx_hash LIMIT ${maxRows + 1}`;
+      >`SELECT a.event_id, a.tx_hash, a.phase,
+        CASE WHEN octet_length(a.signed_cbor) <= ${maxTransactionBytes * 2}
+          THEN a.signed_cbor ELSE NULL END AS signed_cbor,
+        CASE WHEN cardinality(a.required_outputs) <= ${maxTransactionBytes}
+          THEN array_to_json(a.required_outputs) ELSE NULL END AS required_outputs
+        FROM settlement_attempts a JOIN settlement_jobs j USING (deployment_id, kind, event_id)
+        WHERE a.deployment_id = ${deploymentId} AND a.kind = 'withdrawal'
+        AND a.status <> 'expired' AND j.phase = 'complete' AND a.event_id IN ${read(eventIds)}
+        ORDER BY a.event_id, a.tx_hash LIMIT ${maxRows + 1}`;
       scope.assertCurrent();
       requireAcceptance(
         attempts.length <= maxRows,

@@ -32,7 +32,6 @@ import { type SubmitWithdrawalReferenceScripts } from "../src/transactions/submi
 import {
   type EmulatorState,
   emulatorState,
-  pinnedWalletUtxos,
   recreateLucid,
 } from "./helpers/emulator-snapshot.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
@@ -174,7 +173,7 @@ const makeCustomLucid = (emulator: Emulator) => makeLucid(emulator, "Custom");
 
 /** A deployed fixture as plain data: the emulator ledger the moment the
  * reference scripts are published, the accounts, contracts and published
- * references, and the wallet pins the deployment left. */
+ * references. */
 type DeployedFixture = {
   readonly emulator: EmulatorState;
   readonly creation: { readonly time: number; readonly slot: number };
@@ -185,9 +184,6 @@ type DeployedFixture = {
   readonly contracts: SDK.MidgardValidators;
   readonly referenceScripts: DepositFlowReferenceScripts;
   readonly operatorKeyHash: string;
-  readonly wallets: Readonly<
-    Record<"operator" | "depositor" | "referenceScripts", UTxO[] | undefined>
-  >;
 };
 
 const deployFixture = async (): Promise<{
@@ -252,14 +248,6 @@ const deployFixture = async (): Promise<{
     contracts: structuredClone(contracts),
     referenceScripts: structuredClone(referenceScripts),
     operatorKeyHash,
-    wallets: {
-      operator: await pinnedWalletUtxos(operatorLucid, emulator),
-      depositor: await pinnedWalletUtxos(depositorLucid, emulator),
-      referenceScripts: await pinnedWalletUtxos(
-        referenceScriptsLucid,
-        emulator,
-      ),
-    },
   };
 
   return {
@@ -280,9 +268,9 @@ const deployFixture = async (): Promise<{
   };
 };
 
-/** A fresh emulator and fresh lucid instances holding exactly the chain,
- * wallets and pins `deployed` captured; nothing is shared with any other
- * restored copy. */
+/** A fresh emulator and fresh lucid instances holding exactly the chain and
+ * wallets `deployed` captured; nothing is shared with any other restored
+ * copy. */
 const restoreFixture = async (
   deployed: DeployedFixture,
 ): Promise<EmulatorFixture> => {
@@ -290,14 +278,8 @@ const restoreFixture = async (
   Object.assign(emulator, structuredClone(deployed.emulator));
   const { operatorAccount, depositorAccount, referenceScriptsAccount } =
     structuredClone(deployed.accounts);
-  const recreate = (seedPhrase: string, pinned: UTxO[] | undefined) =>
-    recreateLucid(
-      emulator,
-      deployed.creation,
-      seedPhrase,
-      pinned,
-      makeCustomLucid,
-    );
+  const recreate = (seedPhrase: string) =>
+    recreateLucid(emulator, deployed.creation, seedPhrase, makeCustomLucid);
   return {
     emulator,
     emulatorCreationTimeMs: deployed.creation.time,
@@ -306,18 +288,9 @@ const restoreFixture = async (
     operatorAccount,
     depositorAccount,
     referenceScriptsAccount,
-    operatorLucid: await recreate(
-      operatorAccount.seedPhrase,
-      deployed.wallets.operator,
-    ),
-    depositorLucid: await recreate(
-      depositorAccount.seedPhrase,
-      deployed.wallets.depositor,
-    ),
-    referenceScriptsLucid: await recreate(
-      referenceScriptsAccount.seedPhrase,
-      deployed.wallets.referenceScripts,
-    ),
+    operatorLucid: await recreate(operatorAccount.seedPhrase),
+    depositorLucid: await recreate(depositorAccount.seedPhrase),
+    referenceScriptsLucid: await recreate(referenceScriptsAccount.seedPhrase),
     operatorKeyHash: deployed.operatorKeyHash,
   };
 };

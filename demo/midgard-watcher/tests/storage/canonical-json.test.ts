@@ -1,9 +1,6 @@
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  encodeWatcherDurableStore,
-  makeEmptyWatcherDurableStore,
   watcherCanonicalJson,
   WatcherDurableStoreError,
 } from "../../src/storage/durable-store.js";
@@ -86,40 +83,5 @@ describe("canonical snapshot encoding", () => {
       );
     }
     expect(getter).not.toHaveBeenCalled();
-  });
-
-  it("reuses immutable store validation while returning detached bytes", () => {
-    const store = makeEmptyWatcherDurableStore(
-      makeDeploymentMarker("ab".repeat(32)),
-    );
-    const freeze = (value: unknown): void => {
-      if (value === null || typeof value !== "object") return;
-      for (const child of Object.values(value)) freeze(child);
-      Object.freeze(value);
-    };
-    freeze(store);
-    const expected = encodeWatcherDurableStore(store);
-    const first = encodeWatcherDurableStore(store);
-    first.fill(0);
-    expect(encodeWatcherDurableStore(store)).toEqual(expected);
-    const descriptors = vi.spyOn(Object, "getOwnPropertyDescriptor");
-    try {
-      expect(encodeWatcherDurableStore(store)).toEqual(expected);
-      expect(descriptors).not.toHaveBeenCalled();
-    } finally {
-      descriptors.mockRestore();
-    }
-  });
-
-  it("revalidates store integrity when only the top-level object is frozen", () => {
-    const store = makeEmptyWatcherDurableStore(
-      makeDeploymentMarker("ab".repeat(32)),
-    );
-    Object.freeze(store);
-    encodeWatcherDurableStore(store);
-    Reflect.set(store.caches, "sourceSha256", "00".repeat(32));
-    expect(() => encodeWatcherDurableStore(store)).toThrow(
-      WatcherDurableStoreError,
-    );
   });
 });

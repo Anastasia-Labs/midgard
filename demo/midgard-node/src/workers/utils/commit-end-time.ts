@@ -109,10 +109,9 @@ export const alignedUnixTimeStrictlyAfter = (
 
 /**
  * The commit's validity interval for a fixed `validToMs`. On-chain only the
- * upper bound and the range width are checked, but the signed lower bound is
- * the earliest-inclusion boundary that signed-intent canonical coverage and
- * its retention hold read, so it is backdated from the ledger tip rather than
- * widened to the full range. The ledger tip, not the wall-clock submit slot:
+ * upper bound and the range width are checked; the signed lower bound is
+ * backdated from the ledger tip rather than widened to the full range, so
+ * the window in which the commit can land stays as narrow as it can be. The ledger tip, not the wall-clock submit slot:
  * between blocks the submit slot runs ahead, and a lower bound past the tip is
  * refused by the mempool as outside its validity interval.
  */

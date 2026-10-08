@@ -12,7 +12,10 @@ import { expect } from "vitest";
 
 import { ConfirmedLedgerDB } from "../src/database/index.js";
 import type * as Ledger from "../src/database/utils/ledger.js";
-import { LANDED_BLOCK_REBASE_FAILED } from "../src/landed-blocks/holds.js";
+import {
+  LANDED_BLOCK_BATCH_UNDECIDED,
+  LANDED_BLOCK_REBASE_FAILED,
+} from "../src/landed-blocks/holds.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import {
   landedBlockRebaseDisposition,
@@ -203,11 +206,13 @@ export const attempt = async (globals: Globals) => {
       ),
     ),
   );
+  const held = await Effect.runPromise(
+    Ref.get(globals.LANDED_BLOCK_REBASE_FAILURE),
+  );
   return {
     exit,
-    failure: await Effect.runPromise(
-      Ref.get(globals.LANDED_BLOCK_REBASE_FAILURE),
-    ),
+    held: held?.reason,
+    failure: held?.detail,
     reasons: await Effect.runPromise(currentLivenessReasons(globals)),
     disposition: await run(globals, landedBlockRebaseDisposition),
     applied: (await run(globals, retrieveRows)).map((row) => row.applied),
@@ -226,11 +231,13 @@ export const attempt = async (globals: Globals) => {
 export const expectHeld = (
   shown: Awaited<ReturnType<typeof attempt>>,
   detail: RegExp,
+  reason: string = LANDED_BLOCK_REBASE_FAILED,
 ) => {
   // The preparation returns: the owner is not failed by it.
   expect(Exit.isSuccess(shown.exit)).toBe(true);
   expect(shown.failure).toMatch(detail);
-  expect(shown.reasons).toContain(LANDED_BLOCK_REBASE_FAILED);
+  expect(shown.held).toBe(reason);
+  expect(shown.reasons).toContain(reason);
   expect(shown.disposition?.status).toBe("pending");
   expect(shown.applied).toEqual([false]);
 };
@@ -239,6 +246,7 @@ export const expectRebased = (shown: Awaited<ReturnType<typeof attempt>>) => {
   expect(Exit.isSuccess(shown.exit)).toBe(true);
   expect(shown.failure).toBeUndefined();
   expect(shown.reasons).not.toContain(LANDED_BLOCK_REBASE_FAILED);
+  expect(shown.reasons).not.toContain(LANDED_BLOCK_BATCH_UNDECIDED);
   expect(shown.disposition).toBeUndefined();
   expect(shown.applied).toEqual([true]);
   expect(shown.working).toContain(hex(E1.outref));
@@ -326,7 +334,10 @@ export const unreversedReceipts = (globals: Globals) =>
     ),
   ).then((rows) => rows.length);
 
-/** A processed foreign row, the seeded block's fields under `row`. */
+/**
+ * A processed row, the seeded block's fields under `row`: foreign by default;
+ * an own one is applied, as an own block processed with its journal live.
+ */
 export const landedRow = (row: Partial<LandedBlockRow>): LandedBlockRow => ({
   headerHash: BLOCK,
   parentHeaderHash: FRONTIER,
@@ -334,7 +345,7 @@ export const landedRow = (row: Partial<LandedBlockRow>): LandedBlockRow => ({
   utxosRoot: R1,
   kind: "foreign",
   state: "processed",
-  applied: false,
+  applied: row.kind === "own",
   spent: [E0.outref],
   produced: [E1],
   depositIds: [],

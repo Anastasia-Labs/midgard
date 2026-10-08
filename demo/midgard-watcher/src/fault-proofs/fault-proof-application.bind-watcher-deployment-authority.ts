@@ -184,10 +184,7 @@ type WatcherDeploymentBinding = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
-  localL1Source: Extract<
-    WatcherConfig["l1"]["source"],
-    { sourceMode: "local_node" }
-  >;
+  localL1Source: WatcherConfig["l1"]["source"];
   lucid: LucidEvolution;
   resolveReferenceScript: WatcherWorkflowInfrastructure["resolveReferenceScript"];
 }>;
@@ -204,11 +201,6 @@ export const bindWatcherDeploymentAuthority = async ({
   readonly dependencies: WatcherFaultProofApplicationDependencies;
 }): Promise<WatcherDeploymentBinding> => {
   const localL1Source = watcherConfig.l1.source;
-  if (localL1Source.sourceMode !== "local_node") {
-    throw new Error(
-      "watcher production workflows require the admitted local-node L1 source",
-    );
-  }
   const [manifestPath, blueprintPath, deploymentInfoPath] = await Promise.all([
     requireCanonicalFile(infrastructure.manifestPath, dependencies),
     requireCanonicalFile(infrastructure.blueprintPath, dependencies),
@@ -232,11 +224,7 @@ export const bindWatcherDeploymentAuthority = async ({
     manifestRecord.l1Finality,
     "deployment manifest l1Finality",
   );
-  if (
-    manifestFinality.confirmationDepth !== watcherConfig.l1.finality.depth ||
-    manifestFinality.automaticRecoveryMaxDepth !==
-      watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth
-  ) {
+  if (manifestFinality.confirmationDepth !== watcherConfig.l1.finality.depth) {
     throw new Error(
       "watcher configured finality differs from the deployment manifest",
     );

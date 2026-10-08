@@ -5,13 +5,8 @@ import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  applySubmittedTxToOperatorWalletView,
-  availableOperatorWalletUtxos,
-  fetchOperatorWalletView,
-  type OperatorWalletView,
-} from "../../operator-wallet-view.js";
-import {
   type IntentJournal,
+  type IntentPlan,
   journaledIntent,
 } from "../../services/intent-journal.js";
 import { planSubmitTiming } from "../../transactions/submit-timing.js";
@@ -21,6 +16,7 @@ import {
   type TxSignError,
   type TxSubmitError,
 } from "../../transactions/utils.js";
+import { readSelectedWalletView } from "../../transactions/utils.wallet-view.js";
 import { compareOutRefs, outRefLabel } from "../../tx-context.js";
 import { getSchedulerDatumFromUTxO } from "./scheduler-refresh.fetch-fresh-active-operator-input-for-commit.js";
 import {
@@ -60,7 +56,8 @@ export const ensureSchedulerAlignedForCommit = (
   registeredOperatorUtxos: readonly UTxO[],
   alignedEndTime: number,
   schedulerWitnessUnit: string,
-  operatorWalletView?: OperatorWalletView,
+  /** S5: the caller's plan, opened before it read the scheduler and lists. */
+  plan: IntentPlan,
   schedulerSpendingScriptRef?: UTxO,
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
   allowSchedulerRefresh: boolean = true,
@@ -70,20 +67,6 @@ export const ensureSchedulerAlignedForCommit = (
   IntentJournal
 > =>
   Effect.gen(function* () {
-    const resolveOperatorWalletView = (
-      walletView?: OperatorWalletView,
-    ): Effect.Effect<OperatorWalletView, SDK.StateQueueError> =>
-      walletView === undefined
-        ? Effect.tryPromise({
-            try: () => fetchOperatorWalletView(lucid),
-            catch: (cause) =>
-              new SDK.StateQueueError({
-                message:
-                  "Failed to initialize operator wallet view for scheduler alignment",
-                cause,
-              }),
-          })
-        : Effect.succeed(walletView);
     const targetStartTime = BigInt(alignedEndTime);
     const activeNodes = yield* parseNodeSetUtxos(
       activeOperatorUtxos,
@@ -94,7 +77,6 @@ export const ensureSchedulerAlignedForCommit = (
       "registered-operators",
     );
     let currentSchedulerRefInput = schedulerRefInput;
-    let currentOperatorWalletView = operatorWalletView;
     const startTimeMode = schedulerRefreshStartTimeModeForSpendingScriptHash(
       contracts.scheduler.spendingScriptHash,
     );
@@ -115,12 +97,7 @@ export const ensureSchedulerAlignedForCommit = (
           targetStartTime,
         })
       ) {
-        return {
-          schedulerRefInput: currentSchedulerRefInput,
-          operatorWalletView: yield* resolveOperatorWalletView(
-            currentOperatorWalletView,
-          ),
-        };
+        return { schedulerRefInput: currentSchedulerRefInput };
       }
       if (refreshCount === SCHEDULER_ALIGNMENT_MAX_REFRESHES_PER_CALL) {
         return yield* Effect.fail(
@@ -313,11 +290,17 @@ export const ensureSchedulerAlignedForCommit = (
           }
         }
       }
-      const flowOperatorWalletView = yield* resolveOperatorWalletView(
-        currentOperatorWalletView,
+      const operatorWalletView = yield* readSelectedWalletView(lucid).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: `Failed to read the operator wallet view for the scheduler refresh tx: ${cause.message}`,
+              cause,
+            }),
+        ),
       );
       const presetWalletInputs = yield* SDK.requireOperatorWalletInputs(
-        availableOperatorWalletUtxos(flowOperatorWalletView),
+        operatorWalletView.utxos,
         "scheduler refresh tx",
       );
       yield* Effect.logInfo(
@@ -370,6 +353,7 @@ export const ensureSchedulerAlignedForCommit = (
         journaledIntent(
           "scheduler_refresh",
           `scheduler:${schedulerRefInput.txHash}#${schedulerRefInput.outputIndex.toString()}`,
+          plan,
         ),
         submitRecoveryOptions,
       );
@@ -381,16 +365,8 @@ export const ensureSchedulerAlignedForCommit = (
         });
       }
       const refreshTxHash = refreshSubmitResult.txHash;
-      const refreshedOperatorWalletView = applySubmittedTxToOperatorWalletView(
-        flowOperatorWalletView,
-        refreshTx.toTransaction(),
-        refreshTxHash,
-      );
       yield* Effect.logInfo(
         `🔹 Scheduler refresh transaction submitted: ${refreshTxHash}`,
-      );
-      yield* Effect.logInfo(
-        `🔹 Scheduler refresh tx updated operator wallet view: available_utxos=${refreshedOperatorWalletView.knownUtxos.length.toString()},consumed_outrefs=${refreshedOperatorWalletView.consumedOutRefs.length.toString()}.`,
       );
       yield* awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh");
 
@@ -445,7 +421,6 @@ export const ensureSchedulerAlignedForCommit = (
       }
 
       currentSchedulerRefInput = refreshedSchedulerRefInput;
-      currentOperatorWalletView = refreshedOperatorWalletView;
     }
 
     return yield* Effect.fail(

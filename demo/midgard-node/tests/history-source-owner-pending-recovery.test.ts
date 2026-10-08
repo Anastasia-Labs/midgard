@@ -15,7 +15,7 @@ import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-ca
 import { historyOutputObservation } from "./helpers/history-projection-observations.js";
 import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transport.js";
 import { openHistorySourceOwnerLifecycle } from "./helpers/history-source-owner-emulator.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Accepted emulator initialization and actually observed empty intervals feed
 // production source decoding, replay, journal and SQL authority. Branch ancestry
@@ -56,15 +56,9 @@ it("retains streamed recovery evidence while pending, opens only the current fro
         Effect.scoped(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger,
-        deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits,
-        pending_block_finalization_withdrawals, event_history_cursor,
-        event_history_block_applications, event_history_live_outputs,
-        event_history_incarnations, event_history_replay_receipts,
-        event_history_authority CASCADE`;
             yield* sql`CREATE TABLE IF NOT EXISTS history_pending_recovery_probe
         (head text PRIMARY KEY, revision text NOT NULL)`;
-            yield* sql`TRUNCATE history_pending_recovery_probe`;
+            yield* resetApplicationTables;
             const dependent = sql<{
               head: string;
               revision: string;

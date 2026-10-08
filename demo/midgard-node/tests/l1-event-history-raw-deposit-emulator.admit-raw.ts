@@ -19,7 +19,7 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { userEventEntry } from "../src/l1-events/index.js";
+import { userEventEntry } from "../src/l1-events/entries.js";
 import { projectOrderAsFollower } from "./helpers/emulator-l1-follower.js";
 
 // Deployment manifests admit only the compiled profile's network.

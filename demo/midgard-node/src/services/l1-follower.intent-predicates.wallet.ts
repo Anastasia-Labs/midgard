@@ -12,8 +12,8 @@ import {
   type OutputSummary,
   readIntentIn,
 } from "@al-ft/midgard-l1-follower";
+import { eventKeyOfId } from "@al-ft/midgard-l1-follower/events";
 
-import { eventKeyOfId } from "../l1-events/by-id.js";
 import {
   allInputsLive,
   count,

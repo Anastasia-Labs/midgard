@@ -12,6 +12,11 @@
  *    ("batch"), transitively; the rejections commit with the rebuild or not
  *    at all.
  *
+ * The closure also repairs every unreversed receipt that records a
+ * rejected member (migration 0016) and has no undecided member: its pending
+ * members are rejected as "batch" and the receipt is reversed. A repair
+ * whose batch rejections reach an undecided member is not applied.
+ *
  * Pending means unmarked: a row a processed base block includes is marked
  * by it (`mempoolInclusions.ts`) and stays in its table until the block
  * folds, so it is not replayed; the live own block's members are excluded
@@ -44,6 +49,7 @@ import {
   type RejectionCodes,
   type Rejections,
   txIdHex,
+  UndecidedBatchMember,
 } from "./working-ledger-recompute.reject-closure.js";
 
 const Columns = MempoolLedgerDB.Columns;
@@ -180,11 +186,22 @@ export const rebuildWorkingLedger = (input: {
       ...input.includedByForeign,
       ...input.includedByOwn,
     ]);
-    const rejected = yield* closeRejections({
-      pending,
-      spread: (reject, done) => simulate(base, pending, done, reject).changed,
-      settled,
-    });
+    // The closure first repairs the receipts that record a rejected member
+    // (`closeRejections`); a repair that reaches an undecided member is not
+    // applied, and the closure runs without it.
+    const close = (repairRecordedRejections: boolean) =>
+      closeRejections({
+        pending,
+        spread: (reject, done) => simulate(base, pending, done, reject).changed,
+        settled,
+        repairRecordedRejections,
+      });
+    const rejected = yield* close(true).pipe(
+      Effect.catchIf(
+        (error) => error instanceof UndecidedBatchMember,
+        () => close(false),
+      ),
+    );
     const { ledger } = simulate(base, pending, rejected);
     const known = yield* provenance(ledger);
     for (const tx of pending)

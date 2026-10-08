@@ -175,6 +175,55 @@ export const landedLedger = (rows: readonly LandedBlockRow[]) =>
     } satisfies LandedLedger;
   });
 
+/** The frontier and the processed chain after it, reading no ledger row. */
+export const landedChain = (rows: readonly LandedBlockRow[]) =>
+  Frontier.retrieve.pipe(
+    Effect.map((frontier) =>
+      frontier === undefined
+        ? undefined
+        : { frontier, chain: processedChain(rows, frontier.headerHash) },
+    ),
+  );
+
+/**
+ * Where a walk from `headerHash` starts on the landed chain: its post-state
+ * root and the chain rows through it (none at the frontier), or undefined
+ * off the chain. It reads no `confirmed_ledger` row.
+ */
+export const landedStart = (
+  rows: readonly LandedBlockRow[],
+  headerHash: string,
+) =>
+  landedChain(rows).pipe(
+    Effect.map((landed) => {
+      if (landed === undefined) return undefined;
+      if (landed.frontier.headerHash === headerHash)
+        return { root: landed.frontier.utxosRoot, through: [] };
+      const index = landed.chain.findIndex(
+        (row) => row.headerHash === headerHash,
+      );
+      return index < 0
+        ? undefined
+        : {
+            root: landed.chain[index]!.utxosRoot,
+            through: landed.chain.slice(0, index + 1),
+          };
+    }),
+  );
+
+/**
+ * `confirmed_ledger` after `rows`' deltas in order: the whole-ledger read
+ * only new processing (a replay or an adoption) needs.
+ */
+export const ledgerAfter = (rows: readonly LandedBlockRow[]) =>
+  ConfirmedLedgerDB.retrieve.pipe(
+    Effect.map((confirmed) => {
+      const ledger = ledgerMap(confirmed);
+      for (const row of rows) applyDelta(ledger, row);
+      return ledger;
+    }),
+  );
+
 /** The post-state of `headerHash` on the landed ledger, if it is on it. */
 export const ledgerAt = (landed: LandedLedger, headerHash: string) => {
   const ledger = ledgerMap(landed.confirmed);

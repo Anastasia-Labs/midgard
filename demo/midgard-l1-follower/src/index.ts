@@ -32,12 +32,14 @@ export {
 } from "./follow/chain-sync.js";
 export { classifyFailure, type FailureClass } from "./follow/failure.js";
 export {
+  DEFAULT_NODE_BEHIND_MS,
   DEFAULT_STUCK_AFTER,
   followChain,
   type FollowChainOptions,
   FOLLOWER_APPLY_STUCK,
   FOLLOWER_CATCHING_UP,
   FOLLOWER_MIGRATION_FAILED,
+  FOLLOWER_NODE_BEHIND,
   FOLLOWER_NODE_UNAVAILABLE,
   FOLLOWER_PRUNE_FAILING,
   FOLLOWER_TRACKED_SET_CHANGED,
@@ -48,6 +50,8 @@ export {
   type FollowWaitCause,
   LOOP_PRUNE_BUDGET,
   LOOP_PRUNE_EVERY,
+  NODE_BEHIND_CHECK_EVERY_MS,
+  type NodeBehindOptions,
   PRUNE_FAILING_AFTER,
   readinessOf,
 } from "./follow/loop.js";
@@ -145,6 +149,21 @@ export {
   type IntentStatusRead,
   isDeadStatus,
 } from "./intents/status.js";
+export {
+  decideSubmitIn,
+  type SubmitDecision,
+  type SubmitHoldReason,
+} from "./intents/submit.js";
+export {
+  isLiveStatus,
+  LIVE_INTENT_STATUSES,
+  readWalletViewIn,
+  type WalletView,
+  walletView,
+  type WalletViewIntent,
+  type WalletViewOutput,
+  type WalletViewRead,
+} from "./intents/wallet-view.js";
 export {
   type LinkedQueueEntry,
   type LinkedQueueUnhealthyReason,
@@ -263,6 +282,7 @@ export {
 } from "./store/pin.js";
 export {
   CHECKPOINT_INTERVAL,
+  type PruneFloorLag,
   type PruneResult,
   ROLLBACK_LOG_ROWS,
 } from "./store/prune.js";
@@ -304,5 +324,5 @@ export {
   type TrackedSetRecord,
   type TrackedSetReplayEnd,
 } from "./store/tracked-set-record.js";
-export { currentViewIn, viewValidIn, viewValidQuery } from "./store/view.js";
+export { currentViewIn, viewValidIn } from "./store/view.js";
 export type * from "./types.js";

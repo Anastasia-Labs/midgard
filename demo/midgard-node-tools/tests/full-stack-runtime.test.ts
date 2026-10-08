@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -20,7 +19,6 @@ import {
 import { nodeFollowerPlan } from "./node-follower-plan.js";
 
 const manifestId = "a".repeat(64);
-const recordKey = "0f".repeat(32);
 const committeeReady = (signerIndex: number) => ({
   ready: true,
   deployment: {
@@ -95,11 +93,6 @@ async function stack() {
         deploymentFingerprint: manifestId,
         launchScope: { complete: true },
       },
-      "/v1/identity": {
-        recordAuthenticationKeyId: createHash("sha256")
-          .update(Buffer.from(recordKey, "hex"))
-          .digest("hex"),
-      },
     };
     const value = body[request.url ?? ""];
     response.statusCode = value === undefined ? 503 : 200;
@@ -134,11 +127,9 @@ async function stack() {
       da_committee: { members: [{ signer_index: 0, peer_id: "peer-0" }] },
     }),
   );
-  await writeFile(join(directory, "bearer"), "bearer-token\n");
-  await writeFile(join(directory, "record-key"), `${recordKey}\n`);
   await writeFile(
     join(directory, "watcher.env"),
-    `WATCHER_RECORD_KEY_FILE=${join(directory, "record-key")}\n`,
+    `WATCHER_ROLLBACK_KEY_FILE=${join(directory, "rollback-key")}\n`,
   );
   await writeFile(
     join(directory, "run/runtime.json"),
@@ -146,7 +137,6 @@ async function stack() {
       inputDigest: await runtimeInputDigest(processes),
       compose: join(directory, "run/services/compose.json"),
       operationsEndpoint: servicesUrl,
-      authorityEndpoint: servicesUrl,
       committeeServices: ["da-committee-0"],
     }),
   );
@@ -288,7 +278,7 @@ describe("runtime services step", () => {
     ).toMatchObject({ status: "complete" });
     await writeFile(
       join(directory, "watcher.env"),
-      `WATCHER_RECORD_KEY_FILE=${join(directory, "record-key")}\nOTHER=1\n`,
+      `WATCHER_ROLLBACK_KEY_FILE=${join(directory, "rollback-key")}\nOTHER=1\n`,
     );
     const complete = { status: "complete" as const, attempts: 1 };
     expect(
@@ -339,7 +329,7 @@ describe("runtime services step", () => {
     processes.config.da.ports.database -= 1;
     await writeFile(
       join(directory, "watcher.env"),
-      `WATCHER_RECORD_KEY_FILE=${join(directory, "record-key")}\nOTHER=1\n`,
+      `WATCHER_ROLLBACK_KEY_FILE=${join(directory, "rollback-key")}\nOTHER=1\n`,
     );
     expect(await configuration.reconcile(complete)).toEqual({
       status: "retry",

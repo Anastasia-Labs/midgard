@@ -275,11 +275,6 @@ export const outputHasPolicy = (
     ([unit, quantity]) => unit.startsWith(policyId) && quantity !== 0n,
   );
 
-export const outputHasUnit = (
-  output: CML.TransactionOutput,
-  unit: string,
-): boolean => (coreToTxOutput(output).assets[unit] ?? 0n) !== 0n;
-
 export const rawOutputHasPolicy = (
   outputCbor: string,
   policyId: string,

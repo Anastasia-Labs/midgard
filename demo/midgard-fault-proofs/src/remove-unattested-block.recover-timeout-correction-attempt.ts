@@ -3,7 +3,13 @@ import {
   type SlotClock,
   type StateQueueUTxO,
 } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type Network } from "@lucid-evolution/lucid";
+import {
+  type LucidEvolution,
+  type Network,
+  type TxSignBuilder,
+  type TxSigned,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import {
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
@@ -119,34 +125,28 @@ export class TimeoutCorrectionAttemptInFlightError extends Error {
   }
 }
 
-const SPENT_INPUT_REJECTION =
-  /BadInputsUTxO|UnknownInput|unknownOutputReferences|JSON-RPC error 3117\b|"code":\s*3117\b|does not exist or was already spent/u;
+/**
+ * The wallet a timeout correction is funded and signed from: the inputs its
+ * coin selection may spend (`presetWalletInputs`, read just before the
+ * build) and its signing.
+ */
+export type TimeoutCorrectionWallet = {
+  readonly utxos: () => Promise<UTxO[]>;
+  readonly sign: (unsigned: TxSignBuilder) => Promise<TxSigned>;
+};
 
 /**
- * The ledger refused a submission because an input is spent or unknown
- * (Ogmios 3117 / `BadInputsUTxO`, Blockfrost's ledger text, the emulator's
- * "already spent"), searched through the error's message, cause chain and
- * structured fields.
+ * `wallet`, or where none is given (a CLI run) the provider's UTxOs at the
+ * selected wallet's address and the selected wallet's own signature.
  */
-export const isSpentInputSubmitRejection = (error: unknown): boolean => {
-  const seen = new Set<unknown>();
-  const search = (value: unknown): boolean => {
-    if (typeof value === "string") return SPENT_INPUT_REJECTION.test(value);
-    if (typeof value !== "object" || value === null || seen.has(value))
-      return false;
-    seen.add(value);
-    if (
-      value instanceof Error &&
-      (search(value.message) || search(value.cause))
-    )
-      return true;
-    const record = value as Record<string, unknown>;
-    if ("unknownOutputReferences" in record || "badInputs" in record)
-      return true;
-    return Object.values(record).some(search);
+export const timeoutCorrectionWallet = (
+  lucid: LucidEvolution,
+  wallet: TimeoutCorrectionWallet | undefined,
+): TimeoutCorrectionWallet =>
+  wallet ?? {
+    utxos: async () => lucid.utxosAt(await lucid.wallet().address()),
+    sign: (unsigned) => unsigned.sign.withWallet().complete(),
   };
-  return search(error);
-};
 
 export type SubmitUnattestedTimeoutCorrectionParams = {
   readonly lucid: LucidEvolution;
@@ -169,6 +169,12 @@ export type SubmitUnattestedTimeoutCorrectionParams = {
   readonly recovery?: TimeoutCorrectionRecovery;
   /** Bounds re-reads of abandoned attempts; process-wide by default. */
   readonly attemptReadSchedule?: SupersededAttemptReadSchedule;
+  /**
+   * The node's wallet view (§8.5) and its signing over it. Without one (a
+   * CLI run), the provider's UTxOs at the selected wallet's address, and the
+   * selected wallet's own signature. Nothing is pinned on `lucid` either way.
+   */
+  readonly wallet?: TimeoutCorrectionWallet;
 };
 
 /**

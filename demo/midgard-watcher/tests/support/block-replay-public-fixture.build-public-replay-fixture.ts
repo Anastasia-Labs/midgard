@@ -11,10 +11,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
-  readWatcherLocalUserEventAuthority,
-  type WatcherLocalUserEventAuthority,
-} from "../../src/indexers/user-event-indexer.js";
-import {
   type WatcherBlockReplayEventAuthority,
   watcherBlockReplayPriorState,
   type WatcherBlockReplayPriorUtxo,
@@ -41,6 +37,23 @@ import {
   sortEntries,
   watcherHeaderRecord,
 } from "./block-replay-public-fixture.committed-steps-for-effects.js";
+import {
+  admitFixtureUserEventAt,
+  fixtureHeaderCutoff,
+  type FixtureUserEvent,
+} from "./user-event-authority-fixture.js";
+
+/**
+ * A replay event authority before its header exists: the originating event
+ * stands in for the capability, which the fixture mints at its own header's
+ * cutoff (a follower read is always scoped to one header).
+ */
+export type FixtureEventAuthority =
+  WithOrigin<WatcherBlockReplayEventAuthority>;
+
+type WithOrigin<A> = A extends unknown
+  ? Omit<A, "userEvent"> & Readonly<{ origin: FixtureUserEvent }>
+  : never;
 
 export const buildPublicReplayFixture = async (input: {
   readonly txCbors?: readonly Buffer[];
@@ -48,7 +61,7 @@ export const buildPublicReplayFixture = async (input: {
   readonly steps: readonly SDK.TransitionStep[];
   readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
   readonly postState: readonly WatcherBlockReplayPriorUtxo[];
-  readonly eventAuthorities?: readonly WatcherBlockReplayEventAuthority[];
+  readonly eventAuthorities?: readonly FixtureEventAuthority[];
   readonly eventToStep?: readonly {
     readonly key: SDK.EventKey;
     readonly value: SDK.EventToStepValue;
@@ -56,7 +69,7 @@ export const buildPublicReplayFixture = async (input: {
   readonly requireAcceptedBindings?: boolean;
   readonly minFeeB?: bigint;
   readonly eventWindow?: Readonly<{ start: bigint; end: bigint }>;
-  /** Defaults to the fixed test rule bundle; local event authority needs its own. */
+  /** Defaults to the fixed test rule bundle the fixture user events name. */
   readonly ruleBundle?: WatcherRuleBundle;
 }): Promise<PublicReplayFixture> => {
   const ruleBundle = input.ruleBundle ?? RULE_BUNDLE;
@@ -258,35 +271,26 @@ export const buildPublicReplayFixture = async (input: {
     expect(reconstruction.action).toBe("accept");
     expect(phaseA.action).toBe("accept");
   }
+  const cutoff = fixtureHeaderCutoff({
+    headerHash,
+    header,
+    chainPoint: CHAIN_POINT,
+  });
+  const eventAuthorities = (input.eventAuthorities ?? []).map(
+    ({ origin, ...authority }) =>
+      ({
+        ...authority,
+        userEvent: admitFixtureUserEventAt(origin, cutoff),
+      }) as WatcherBlockReplayEventAuthority,
+  );
   return {
     observation,
     reconstruction,
     phaseA,
     envelope,
     priorState: input.priorState,
-    eventAuthorities: input.eventAuthorities ?? [],
+    eventAuthorities,
     header,
     ruleBundle,
   };
-};
-
-type LocalUserEvent = Awaited<
-  ReturnType<typeof readWatcherLocalUserEventAuthority>
->["event"];
-
-export type LocalReplayEvent = Readonly<{
-  localUserEvent: WatcherLocalUserEventAuthority;
-  event: LocalUserEvent;
-  network: WatcherRuleBundle["network"];
-}>;
-
-export const readLocalReplayEvent = async (
-  localUserEvent: WatcherLocalUserEventAuthority,
-): Promise<LocalReplayEvent> => {
-  const read = await readWatcherLocalUserEventAuthority(localUserEvent);
-  return Object.freeze({
-    localUserEvent,
-    event: read.event,
-    network: read.network,
-  });
 };

@@ -15,9 +15,11 @@
  * exits and never needs a CLI.
  */
 import type { FactStore, View } from "@al-ft/midgard-l1-follower";
-
-import type { EventProjectionConfig } from "./config.js";
-import { eventsAt, type ProjectedEvent } from "./reads.js";
+import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
+import {
+  eventsAt,
+  type ProjectedEvent,
+} from "@al-ft/midgard-l1-follower/events";
 
 /** The follower view the driver last applied, and the one it is applying. */
 export type FollowerChange =
@@ -71,8 +73,6 @@ export type DriverHooks = Readonly<{
   correctionRecompute?: DriverHook;
   /** I1: the status of the node's signed commit intents. */
   intentStatus?: DriverHook;
-  /** I3: recovery of own commits orphaned by a rewind. */
-  orphanedCommitRecovery?: DriverHook;
   /** N6: settlement and the operator set. */
   settlementAndOperatorSet?: DriverHook;
   /** N10: forced-order carriage resolution and ingestion. */
@@ -88,7 +88,6 @@ export const DRIVER_HOOK_ORDER = [
   "foreignBlockInclusion",
   "correctionRecompute",
   "intentStatus",
-  "orphanedCommitRecovery",
   "settlementAndOperatorSet",
   "forcedOrderIngestion",
 ] as const satisfies readonly (keyof DriverHooks)[];

@@ -29,20 +29,17 @@ import {
   localJobId,
   observedJournal,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
+import { resetApplicationTables } from "./utils.js";
 
 const L = StateQueueLeases.Columns;
 
-/** No lease survives from an earlier test; the table allows one active. */
+/** No lease survives from an earlier test (`isolatedDb` resets first); the
+ * table allows one active. Assertions still observe intentionally abandoned
+ * leases. No test owner survives this synchronous lease fixture when its
+ * effect completes. */
 const leaseDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   isolatedDb(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const clear = sql`TRUNCATE TABLE state_queue_mutation_leases`;
-      yield* clear;
-      // Assertions still observe intentionally abandoned leases. No test owner
-      // survives this synchronous lease fixture when its effect completes.
-      return yield* effect.pipe(Effect.ensuring(Effect.orDie(clear)));
-    }),
+    effect.pipe(Effect.ensuring(Effect.orDie(resetApplicationTables))),
   );
 
 /** A lease a killed process took and never released. */

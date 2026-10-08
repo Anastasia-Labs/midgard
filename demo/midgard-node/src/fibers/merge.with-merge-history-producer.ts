@@ -46,8 +46,8 @@ export class MergeProducerPermitUnavailable extends Data.TaggedError(
 
 /**
  * Runs `work` under the history producer permit. A merge finalizes locally by
- * writing history rows (confirmed ledger, block rows, deposit/withdrawal/forced
- * statuses) and every such write requires a registered producer.
+ * writing history rows (confirmed ledger, deposit/withdrawal/forced statuses,
+ * receipt settlements) and every such write requires a registered producer.
  *
  * With a history owner in `Globals` the work always registers with it, even
  * when the caller already holds a permit, since producer registration nests.

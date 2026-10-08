@@ -53,7 +53,11 @@ export default defineConfig({
           test: {
             name: "testing-profile",
             include: ["./tests/**/*.test.ts"],
-            exclude: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
+            exclude: [
+              "./tests/fault-proofs/watcher-installed-journey.test.ts",
+              "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
+              "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
+            ],
             globalSetup: [blueprintStampGlobalSetup],
           },
         },
@@ -65,7 +69,11 @@ export default defineConfig({
         plugins: [interactiveEmulatorPlugin()],
         test: {
           name: "interactive-emulator",
-          include: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
+          include: [
+            "./tests/fault-proofs/watcher-installed-journey.test.ts",
+            "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
+            "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
+          ],
           globalSetup: [interactiveEmulatorSetup],
           env: { MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint },
         },

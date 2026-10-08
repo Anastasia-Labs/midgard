@@ -7,11 +7,8 @@ import {
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { CML } from "@lucid-evolution/lucid";
 
-import { createWatcherLocalBackfillUserEventReferenceAuthority } from "../../src/indexers/user-event-reference-authority.js";
-import { type WatcherLocalBackfillFinalityReceipt } from "../../src/l1/finality-engine.js";
-import { type WatcherLocalBackfillObservationReceipt } from "../../src/l1/l1-adapter.js";
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
-import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.js";
+import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.exact-record.js";
 import { type WatcherUserEventScriptBinding } from "../../src/runtime/deployment-identity.js";
 import {
   makeConfig,
@@ -107,15 +104,6 @@ export const buildBlock = (
   return Object.freeze({ point, parentPoint, nativeBlock });
 };
 
-export type SyntheticFinalizedUserEventBlock = Readonly<{
-  finality: WatcherLocalBackfillFinalityReceipt;
-  observation: WatcherLocalBackfillObservationReceipt;
-  referenceAuthority: ReturnType<
-    typeof createWatcherLocalBackfillUserEventReferenceAuthority
-  >;
-  close: () => Promise<void>;
-}>;
-
 export type SyntheticNativeTip = Readonly<{
   blockHash: string;
   blockNo: string;
@@ -155,9 +143,6 @@ export type SyntheticUserEventOriginFixture = Readonly<{
       slot?: number;
     }>,
   ) => Promise<SyntheticUserEventBlock>;
-  openFinalizedBlock: (
-    block: SyntheticUserEventBlock,
-  ) => Promise<SyntheticFinalizedUserEventBlock>;
   /** Controlled mode only. Set the initial tip before starting a monitor. */
   setNativeTip: (tip: SyntheticNativeTip) => Promise<void>;
   /** Append to the current controlled tip and publish the new tip atomically. */

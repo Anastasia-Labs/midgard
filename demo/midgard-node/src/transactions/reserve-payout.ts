@@ -1,9 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import type { LucidEvolution } from "@lucid-evolution/lucid";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Context, Effect, Option } from "effect";
 
 import {
   type IntentJournal,
+  type IntentPlan,
   journaledIntent,
 } from "../services/intent-journal.js";
 import {
@@ -12,6 +13,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
+import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
 
 export type {
   AbsorbConfirmedDepositConfig,
@@ -62,13 +64,15 @@ type ReservePayoutStep =
 
 /**
  * Sends one step. `eventId` is the settled event's id CBOR, the intent's
- * content reference (the §8.4 predicate reads the event by it).
+ * content reference (the §8.4 predicate reads the event by it); `plan` is
+ * the command's plan, opened before its first L1 read (S5).
  */
 const send = (
   lucid: LucidEvolution,
   tx: SDK.BuiltReservePayoutTx<unknown>["tx"],
   step: ReservePayoutStep,
   eventId: Buffer,
+  plan: IntentPlan,
   requiredOutputIndexes: readonly number[] = [],
   evidenceOutputIndexes: readonly number[] = requiredOutputIndexes,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
@@ -82,28 +86,52 @@ const send = (
           journaledIntent(
             "reserve_payout",
             `reserve_payout:${eventId.toString("hex")}:${step}`,
+            plan,
             eventId,
           ),
           { requiredOutputIndexes },
         );
   });
 
+/**
+ * `config` with the selected wallet's view (§8.5) as its `walletInputs`: the
+ * builder selects its fee input, coins and collateral from exactly those and
+ * never reads the provider. An empty view is refused by name.
+ */
+const fundedFromView = <C extends { readonly walletInputs?: readonly UTxO[] }>(
+  lucid: LucidEvolution,
+  config: C,
+  step: ReservePayoutStep,
+): Effect.Effect<C, SDK.ReservePayoutTxError, IntentJournal> =>
+  readSelectedWalletViewInputs(lucid, `the reserve payout ${step} step`).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SDK.ReservePayoutTxError({
+          message: `Failed to read the wallet view to fund the reserve payout ${step} step: ${cause.message}`,
+          cause,
+        }),
+    ),
+    Effect.map((walletInputs) => ({ ...config, walletInputs })),
+  );
+
 export const submitAbsorbConfirmedDepositToReserveProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SDK.AbsorbConfirmedDepositConfig,
+  plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildAbsorbConfirmedDepositToReserveTxProgram(
       lucid,
       contracts,
-      config,
+      yield* fundedFromView(lucid, config, "absorb_deposit"),
     );
     return yield* send(
       lucid,
       built.tx,
       "absorb_deposit",
       config.deposit.idCbor,
+      plan,
       [Number(built.layout.reserveOutputIndex)],
     );
   });
@@ -112,18 +140,20 @@ export const submitInitializePayoutProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SDK.InitializePayoutConfig,
+  plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildInitializePayoutTxProgram(
       lucid,
       contracts,
-      config,
+      yield* fundedFromView(lucid, config, "initialize"),
     );
     return yield* send(
       lucid,
       built.tx,
       "initialize",
       config.withdrawal.idCbor,
+      plan,
       [Number(built.layout.payoutOutputIndex)],
     );
   });
@@ -134,14 +164,15 @@ export const submitAddReserveFundsToPayoutProgram = (
   config: SDK.AddReserveFundsConfig,
   /** The withdrawal event id CBOR the payout settles. */
   eventId: Buffer,
+  plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildAddReserveFundsToPayoutTxProgram(
       lucid,
       contracts,
-      config,
+      yield* fundedFromView(lucid, config, "add_funds"),
     );
-    return yield* send(lucid, built.tx, "add_funds", eventId, [
+    return yield* send(lucid, built.tx, "add_funds", eventId, plan, [
       Number(built.layout.payoutOutputIndex),
     ]);
   });
@@ -152,18 +183,20 @@ export const submitConcludePayoutProgram = (
   config: SDK.ConcludePayoutConfig,
   /** The withdrawal event id CBOR the payout settles. */
   eventId: Buffer,
+  plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildConcludePayoutTxProgram(
       lucid,
       contracts,
-      config,
+      yield* fundedFromView(lucid, config, "conclude"),
     );
     return yield* send(
       lucid,
       built.tx,
       "conclude",
       eventId,
+      plan,
       [],
       [Number(built.layout.l1OutputIndex)],
     );

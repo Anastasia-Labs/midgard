@@ -20,49 +20,6 @@ import {
 } from "./deposit-flow-emulator-shared.make-fixture.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
 
-export const refreshWalletUtxosFromProvider = async (
-  lucid: LucidEvolution,
-): Promise<void> => {
-  const overrideUTxOs = (
-    lucid as LucidEvolution & { overrideUTxOs?: (utxos: UTxO[]) => void }
-  ).overrideUTxOs;
-  if (typeof overrideUTxOs !== "function") {
-    return;
-  }
-  const walletAddress = await lucid.wallet().address();
-  const provider = lucid.config().provider as {
-    readonly ledger?: Record<
-      string,
-      { readonly utxo?: UTxO; readonly spent?: boolean } | undefined
-    >;
-    readonly mempool?: Record<
-      string,
-      { readonly utxo?: UTxO; readonly spent?: boolean } | undefined
-    >;
-  };
-  const visibleProviderEntries = [
-    ...Object.values(provider.ledger ?? {}),
-    ...Object.values(provider.mempool ?? {}),
-  ];
-  const walletUtxos =
-    visibleProviderEntries.length > 0
-      ? visibleProviderEntries.flatMap((entry) => {
-          if (
-            entry === undefined ||
-            entry.spent === true ||
-            entry.utxo === undefined ||
-            entry.utxo.address !== walletAddress
-          ) {
-            return [];
-          }
-          return [entry.utxo];
-        })
-      : (await lucid.utxosAt(walletAddress)).filter((utxo) =>
-          isProviderVisibleUnspent(lucid, utxo),
-        );
-  overrideUTxOs.call(lucid, walletUtxos);
-};
-
 export const providerVisibleWalletUtxos = async (
   lucid: LucidEvolution,
 ): Promise<UTxO[]> => {
@@ -99,6 +56,26 @@ export const providerVisibleWalletUtxos = async (
   );
 };
 
+/**
+ * Runs `use` with the wallet's view pinned to the coins the provider shows
+ * now, and releases the pin when `use` settles. Node programs read the wallet
+ * afresh and maintain no pin, so a pin left behind would go stale at their
+ * next spend.
+ */
+const withProviderVisibleWalletUtxos = async <A>(
+  lucid: LucidEvolution,
+  use: () => Promise<A>,
+): Promise<A> => {
+  try {
+    if (typeof lucid.overrideUTxOs === "function") {
+      lucid.overrideUTxOs(await providerVisibleWalletUtxos(lucid));
+    }
+    return await use();
+  } finally {
+    lucid.clearUTxOOverride();
+  }
+};
+
 export const isPlainPureAdaUtxo = (utxo: UTxO): boolean =>
   utxo.scriptRef === undefined &&
   Object.entries(utxo.assets).every(
@@ -108,7 +85,6 @@ export const isPlainPureAdaUtxo = (utxo: UTxO): boolean =>
 export const ensureSeparateCollateralUtxo = async (
   lucid: LucidEvolution,
 ): Promise<void> => {
-  await refreshWalletUtxosFromProvider(lucid);
   const walletAddress = await lucid.wallet().address();
   const pureAdaUtxos = (await providerVisibleWalletUtxos(lucid))
     .filter(isPlainPureAdaUtxo)
@@ -128,23 +104,28 @@ export const ensureSeparateCollateralUtxo = async (
   if (source === undefined) {
     throw new Error("Operator wallet has no pure ADA UTxO to split");
   }
-  const splitTx = await lucid
-    .newTx()
-    .collectFrom([source])
-    .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
-    .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
-    .addSigner(walletAddress)
-    .complete({ localUPLCEval: true });
+  // The pin lasts for this build only.
+  const splitTx = await withProviderVisibleWalletUtxos(lucid, () =>
+    lucid
+      .newTx()
+      .collectFrom([source])
+      .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
+      .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
+      .addSigner(walletAddress)
+      .complete({ localUPLCEval: true }),
+  );
   await submitWithWallet(lucid, splitTx);
-  await refreshWalletUtxosFromProvider(lucid);
 };
 
 export const submitWithWallet = async (
   lucid: LucidEvolution,
   tx: TxSignBuilder,
 ): Promise<string> => {
-  await refreshWalletUtxosFromProvider(lucid);
-  const signed = await tx.sign.withWallet().complete();
+  // The wallet signs for the inputs its view holds; the pin lasts for the
+  // signature only.
+  const signed = await withProviderVisibleWalletUtxos(lucid, () =>
+    tx.sign.withWallet().complete(),
+  );
   const txHash = signed.toHash();
   const signedTx = CML.Transaction.from_cbor_hex(signed.toCBOR());
   const signedInputs = collectSortedInputOutRefs(signedTx.body().inputs()).map(

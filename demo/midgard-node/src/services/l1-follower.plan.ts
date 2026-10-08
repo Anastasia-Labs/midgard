@@ -3,16 +3,16 @@
  * configuration and its deployment.
  */
 import type { OriginConfig } from "@al-ft/midgard-l1-follower";
+import {
+  type EventProjectionConfig,
+  eventProjectionConfigFromContracts,
+} from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
   type ForcedOrderConfig,
   forcedOrderConfigFromContracts,
 } from "../forced-orders/config.js";
-import {
-  type EventProjectionConfig,
-  eventProjectionConfigFromContracts,
-} from "../l1-events/index.js";
 import {
   type OperatorSetConfig,
   operatorSetConfig,

@@ -82,7 +82,6 @@ export const GATES = {
         "tests/phase4-process-output.test.ts",
       ],
     ],
-    ["@al-ft/midgard-fault-proofs", ["tests/workflow-kupmios-source.test.ts"]],
   ],
   "runtime-progress": [
     [
@@ -121,7 +120,7 @@ export const GATES = {
       "midgard-watcher",
       [
         "tests/funding/workflow-funding-profile-overlay.test.ts",
-        "tests/storage/durable-runtime.test.ts",
+        "tests/runtime/process-config.test.ts",
       ],
     ],
   ],

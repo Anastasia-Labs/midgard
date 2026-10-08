@@ -9,7 +9,7 @@ import {
   type HeldLease,
   nextPredecessorLeaseWaitStep,
 } from "../src/database/eventHistoryAuthority.predecessor-lease-wait.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // A node restarted after a hard kill finds its predecessor's history lease
 // still live: nothing released it. Startup waits that lease out instead of
@@ -55,14 +55,7 @@ const readRow = Effect.map(Authority.retrieve, (row) =>
   row._tag === "Some" ? row.value : undefined,
 );
 
-beforeEach(async () =>
-  run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE event_history_authority`;
-    }),
-  ),
-);
+beforeEach(async () => run(resetApplicationTables));
 
 describe("history authority acquisition after a predecessor was killed", () => {
   it("waits out an unrenewed predecessor lease, logs the wait once, then claims the next generation", async () => {

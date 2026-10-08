@@ -65,9 +65,6 @@ it("preserves actual dynamic recorder native receipts in the production tools bu
     entry: ["tests/helpers/history-native-compiled-probe.ts"],
     outDir: ".probe-dist/native-receipt-probe",
     clean: true,
-    // Source-only public test fixture; real watcher runtime imports use the
-    // exact production external rule. The probe imports no midgard-node.
-    noExternal: ["midgard-watcher/tests/l1/native-chain-sync.config"],
   });
   const output = await command([
     join(

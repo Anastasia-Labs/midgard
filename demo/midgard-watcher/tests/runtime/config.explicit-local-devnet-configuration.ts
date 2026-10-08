@@ -10,10 +10,6 @@ import {
 export const PEER_A =
   "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
 
-export const OPERATOR_ID_A = "11".repeat(32);
-
-const OPERATOR_ID_B = "22".repeat(32);
-
 const GENESIS_ID = "33".repeat(32);
 
 export const validConfig = () => ({
@@ -22,29 +18,20 @@ export const validConfig = () => ({
   targetNetwork: "Preprod",
   l1: {
     source: {
-      sourceMode: "external_providers",
-      providers: [
-        {
-          identity: "provider-a",
-          operatorIdentitySha256: OPERATOR_ID_A,
-          endpoint: "https://cardano-a.example",
-        },
-        {
-          identity: "provider-b",
-          operatorIdentitySha256: OPERATOR_ID_B,
-          endpoint: "https://cardano-b.example",
-        },
-      ],
+      sourceMode: "local_node",
+      authorityNodeId: "watcher-node",
+      chainSync: {
+        kind: "cardano_node_socket",
+        socketPath: "/run/cardano/node.socket",
+        nodeConfigPath: "/etc/cardano/node-config.json",
+        genesisConfigPath: "/etc/cardano/shelley-genesis.json",
+        genesisIdentitySha256: GENESIS_ID,
+      },
     },
     requestTimeoutMs: 10_000,
     maxConcurrency: 8,
     finality: {
       depth: 15,
-      rollback: {
-        beforeFinality: "rewind",
-        afterFinality: "quarantine",
-        maxDepth: 15,
-      },
     },
   },
   da: {
@@ -74,44 +61,6 @@ export const validConfig = () => ({
   },
 });
 
-export const validLocalNodeConfig = () => {
-  const common = validConfig();
-  return {
-    ...common,
-    l1: {
-      ...common.l1,
-      source: {
-        sourceMode: "local_node",
-        authorityNodeId: "watcher-node",
-        chainSync: {
-          kind: "cardano_node_socket",
-          socketPath: "/run/cardano/node.socket",
-          nodeConfigPath: "/etc/cardano/node-config.json",
-          genesisConfigPath: "/etc/cardano/shelley-genesis.json",
-          genesisIdentitySha256: GENESIS_ID,
-        },
-        queryServices: [
-          {
-            kind: "ogmios",
-            identity: "local-ogmios",
-            endpoint: "ws://127.0.0.1:1337",
-          },
-          {
-            kind: "kupo",
-            identity: "local-kupo",
-            endpoint: "http://127.0.0.1:1442",
-          },
-          {
-            kind: "db_sync",
-            identity: "local-db-sync",
-            endpoint: "postgresql://127.0.0.1:5432/cexplorer",
-          },
-        ],
-      },
-    },
-  };
-};
-
 describe("explicit local devnet configuration", () => {
   const customNetwork = {
     networkMagic: 424242,
@@ -120,21 +69,21 @@ describe("explicit local devnet configuration", () => {
 
   it("admits a custom chain only with an explicit identity and clock", () => {
     const config = parseWatcherConfig({
-      ...validLocalNodeConfig(),
+      ...validConfig(),
       targetNetwork: "Custom",
       customNetwork,
     });
     expect(config).toMatchObject({ targetNetwork: "Custom", customNetwork });
     expect(() =>
       parseWatcherConfig({
-        ...validLocalNodeConfig(),
+        ...validConfig(),
         targetNetwork: "Custom",
       }),
     ).toThrow();
   });
 
   it("admits direct local DA transport only for an explicit custom devnet", () => {
-    const input = validLocalNodeConfig();
+    const input = validConfig();
     input.da.peers[0]!.multiaddr =
       "/ip4/127.0.0.1/tcp/4141/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
     expect(
@@ -149,26 +98,19 @@ describe("explicit local devnet configuration", () => {
     ).toThrow();
   });
 
-  it("refuses custom metadata on a named network, public magic and external authority", () => {
+  it("refuses custom metadata on a named network and public magic", () => {
     expect(() =>
-      parseWatcherConfig({ ...validLocalNodeConfig(), customNetwork }),
+      parseWatcherConfig({ ...validConfig(), customNetwork }),
     ).toThrow();
     for (const networkMagic of [1, 2, 764824073, -1, 2 ** 32]) {
       expect(() =>
         parseWatcherConfig({
-          ...validLocalNodeConfig(),
+          ...validConfig(),
           targetNetwork: "Custom",
           customNetwork: { ...customNetwork, networkMagic },
         }),
       ).toThrow();
     }
-    expect(() =>
-      parseWatcherConfig({
-        ...validConfig(),
-        targetNetwork: "Custom",
-        customNetwork,
-      }),
-    ).toThrow();
   });
 });
 

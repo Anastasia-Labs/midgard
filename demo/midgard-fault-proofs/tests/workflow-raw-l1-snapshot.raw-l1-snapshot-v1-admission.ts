@@ -6,8 +6,6 @@ import {
   admitFraudProofRawL1Transaction,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotRequest,
-  LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE,
-  type LocalKupmiosFraudProofRawSource,
 } from "../src/workflow/index.js";
 import { createFraudProofAuthenticatedPublicationObserver } from "../src/workflow/raw-l1-publication-observation.js";
 import {
@@ -17,7 +15,6 @@ import {
   mutable,
   OTHER_UNIT,
   releaseFinality,
-  SOURCE,
   UNIT,
 } from "./workflow-raw-l1-snapshot.fixture.js";
 
@@ -251,69 +248,3 @@ describe("raw L1 snapshot V1 admission", () => {
     );
   });
 });
-
-export const localSource = (
-  value: ReturnType<typeof fixture>,
-  overrides: Partial<LocalKupmiosFraudProofRawSource> = {},
-): LocalKupmiosFraudProofRawSource => {
-  const snapshot = value.snapshot;
-  const source: LocalKupmiosFraudProofRawSource = {
-    sourceVersion: LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE,
-    sourceId: SOURCE,
-    kupoHttpUrl: "http://127.0.0.1:1442",
-    ogmiosWebSocketUrl: "ws://127.0.0.1:1337",
-    readBoundary: async () => ({
-      kupoCheckpoint: snapshot.cursor.point,
-      ogmiosTip: snapshot.cursor.tip,
-    }),
-    readBlockAtPoint: async ({ point }) => ({
-      point,
-      transactions: [],
-    }),
-    scanAddressPage: async ({ after }) =>
-      after === null
-        ? {
-            checkpoint: snapshot.cursor.point,
-            utxos: [],
-            nextCursor: "address-page-2",
-            complete: false,
-          }
-        : {
-            checkpoint: snapshot.cursor.point,
-            utxos: snapshot.scopes[0]!.utxos,
-            nextCursor: null,
-            complete: true,
-          },
-    scanUnitHistoryPage: async ({ after }) =>
-      after === null
-        ? {
-            checkpoint: snapshot.cursor.point,
-            transactions: [],
-            nextCursor: "history-page-2",
-            complete: false,
-          }
-        : {
-            checkpoint: snapshot.cursor.point,
-            transactions: snapshot.transactions.map((transaction) => ({
-              txHash: transaction.txHash,
-              inclusionPoint: transaction.inclusionPoint,
-            })),
-            nextCursor: null,
-            complete: true,
-          },
-    readTransaction: async ({ txHash }) => {
-      const transaction = snapshot.transactions.find(
-        (candidate) => candidate.txHash === txHash,
-      )!;
-      return {
-        kupo: { txHash, inclusionPoint: transaction.inclusionPoint },
-        ogmios: transaction,
-      };
-    },
-    confirmCanonicalPoint: async ({ point }) => ({
-      canonical: true,
-      point,
-    }),
-  };
-  return { ...source, ...overrides };
-};

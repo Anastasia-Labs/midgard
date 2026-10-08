@@ -70,7 +70,7 @@ pnpm --dir "$TOOLS_DIR" run e2e-stack --config "$STACK_CONFIG" --check
 
 It prints the network, node and run directories, and the configured number of
 journey cycles. Fix every refusal before a live run. The Compose version, the
-`compose config` rendering, the watcher key and bearer decoding and the
+`compose config` rendering, the watcher rollback key decoding and the
 prover/availability seed match are checked later, after the builds.
 
 ## Choose where to run
@@ -89,8 +89,7 @@ prover/availability seed match are checked later, after the builds.
 A run's identity is its network, deployment profile, node and run
 directories, wallet seeds, DA members, transports, threshold, owners and
 cosigner, watcher keys, and release signer and program commitments. Timeouts,
-journey size, budgets, ports, templates and the watcher bearer may change
-between runs; a change that reaches the generated services regenerates them
+journey size, budgets, ports and templates may change between runs; a change that reaches the generated services regenerates them
 and recreates the affected containers. Raising `journey.cycles` on a complete
 deployment runs only the new cycles.
 

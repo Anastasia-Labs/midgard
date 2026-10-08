@@ -5,18 +5,18 @@
  * reads do not grow with the list.
  */
 import type { FactStore, OutRef, SqlTx } from "@al-ft/midgard-l1-follower";
+import {
+  eventOrderByIdIn,
+  type EventOrderRead,
+  eventProjection,
+  eventTrackedSet,
+} from "@al-ft/midgard-l1-follower/events";
 import { addressText } from "@al-ft/midgard-l1-follower/provider";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import {
-  eventOrderByIdIn,
-  type EventOrderRead,
-  eventProjection,
-  eventTrackedSet,
-} from "../src/l1-events/index.js";
 import {
   admissionTx,
   eventIdOf,

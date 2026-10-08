@@ -33,7 +33,9 @@ import {
   completeWatcherProofObjective,
   forgetWatcherProofObjective,
   listWatcherProofObjectives,
+  matchingWatcherProofMarker,
   pruneWatcherProofObjective,
+  type WatcherProofCompletionMarker,
   watcherProofJobActive,
   watcherProofMarkerMatches,
 } from "./fault-proof-objective-table.js";
@@ -85,6 +87,12 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
       confirmationDepth: number;
     }>,
   ): Promise<void>;
+  /** The objective's marker when it matches this exact execution: verified
+   * beyond rollback recovery, so final and never verified or held again. */
+  completionMarker(
+    objective: WatcherProofObjective,
+    execution: WatcherProofExecution,
+  ): WatcherProofCompletionMarker | null;
   updateExecution(input: {
     readonly objective: WatcherProofObjective;
     readonly execution: WatcherProofExecution;
@@ -620,5 +628,13 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       // Released once the marker holds; unmarked, it is verified again.
       if (marked) await input.retention?.release(objective);
     },
+    completionMarker: (objective, execution) =>
+      matchingWatcherProofMarker(
+        database(),
+        objective,
+        execution,
+        k,
+        input.categories,
+      ),
   });
 };

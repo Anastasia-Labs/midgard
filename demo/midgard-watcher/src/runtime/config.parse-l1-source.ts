@@ -1,10 +1,6 @@
 import { isAbsolute, normalize } from "node:path";
 
 import {
-  parseLocalNodeQueryServices,
-  parseProviders,
-} from "./config.parse-providers.js";
-import {
   ENVIRONMENT_VARIABLE_PATTERN,
   exactRecord,
   exactString,
@@ -12,7 +8,6 @@ import {
   HEX_32_PATTERN,
   IDENTITY_PATTERN,
   plainRecord,
-  type WatcherConfigMode,
   type WatcherL1SourceConfig,
   type WatcherWalletKeySource,
 } from "./config.watcher-config.js";
@@ -79,17 +74,13 @@ export const parseKeySource = (
   fail("invalid_value", `${path}.kind`);
 };
 
-export const parseL1Source = (
-  value: unknown,
-  mode: WatcherConfigMode,
-): WatcherL1SourceConfig => {
+export const parseL1Source = (value: unknown): WatcherL1SourceConfig => {
   const preliminary = plainRecord(value, "$.l1.source");
   if (preliminary.sourceMode === "local_node") {
     const source = exactRecord(value, "$.l1.source", [
       "sourceMode",
       "authorityNodeId",
       "chainSync",
-      "queryServices",
     ]);
     const chainSync = exactRecord(source.chainSync, "$.l1.source.chainSync", [
       "kind",
@@ -131,17 +122,6 @@ export const parseL1Source = (
           { maxLength: 64, pattern: HEX_32_PATTERN },
         ),
       }),
-      queryServices: parseLocalNodeQueryServices(source.queryServices),
-    });
-  }
-  if (preliminary.sourceMode === "external_providers") {
-    const source = exactRecord(value, "$.l1.source", [
-      "sourceMode",
-      "providers",
-    ]);
-    return Object.freeze({
-      sourceMode: "external_providers",
-      providers: parseProviders(source.providers, mode),
     });
   }
   fail("invalid_value", "$.l1.source.sourceMode");

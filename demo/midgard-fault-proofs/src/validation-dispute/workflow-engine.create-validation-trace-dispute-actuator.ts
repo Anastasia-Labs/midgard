@@ -37,6 +37,10 @@ import {
 } from "./submit.js";
 import { captureCanonicalCheckpoint } from "./workflow-canonical-continuation.js";
 import {
+  captureCekContinuation,
+  cekPreparationRouteInput,
+} from "./workflow-cek-continuation.js";
+import {
   type ValidationTraceDisputeActuationMaterial,
   type ValidationTraceDisputeActuatorAction,
   type ValidationTraceDisputeActuatorConfig,
@@ -353,14 +357,25 @@ export const createValidationTraceDisputeActuator = (
           });
         }
         case "semantic_resolution": {
+          const input = await threadUtxo(action.threadOutRef);
           const canonical = await captureCanonicalCheckpoint({
             config,
             material,
             action,
-            input: await threadUtxo(action.threadOutRef),
+            input,
             publishedThreadScriptReference,
           });
           if (canonical !== undefined) return canonical;
+          if (action.cekPreparedResolutionCbor !== undefined)
+            return await captureCekContinuation({
+              config,
+              oneStepArgumentFor,
+              action,
+              material,
+              ...(retained === undefined ? {} : { retained }),
+              preparedResolutionCbor: action.cekPreparedResolutionCbor,
+              input,
+            });
           const { argument: oneStepArgument, delivery } =
             await oneStepArgumentFor({
               material,
@@ -410,6 +425,7 @@ export const createValidationTraceDisputeActuator = (
               ...(delivery === undefined
                 ? {}
                 : { fieldCarriageBinding: delivery.durableBinding }),
+              ...cekPreparationRouteInput(oneStepArgument, input),
             },
           });
         }

@@ -214,7 +214,7 @@ describe("forced retained Plutus origin admission", () => {
 
 describe("existing bounded CEK refusal through canonical retained replay", () => {
   it.each(["accepted", "rejected"] as const)(
-    "classifies the %s operator claim from the actual canonical CEK boundary",
+    "classifies the %s operator claim of a script that fails at the canonical CEK boundary",
     async (verdict) => {
       const claim =
         verdict === "accepted"
@@ -237,7 +237,18 @@ describe("existing bounded CEK refusal through canonical retained replay", () =>
           evidence,
           context,
         );
-      expect(result.detections).toHaveLength(verdict === "accepted" ? 1 : 0);
+      // An accepting claim disagrees with the replay at the CEK core step; a
+      // rejecting claim of a normal source is routed by source verification
+      // whatever the replay says.
+      expect(result.detections).toEqual([
+        expect.objectContaining({
+          violationId: "validation-trace",
+          diagnostic:
+            verdict === "accepted"
+              ? "Canonical Plutus execution disagrees with the retained validation descriptor at step 0"
+              : "Normal source at step 0 commits a non-accepting validation descriptor",
+        }),
+      ]);
       const { decision } = await classifyRetainedReasonFixture({
         observation,
         payloadEnvelopeCbor: fixture.block.payloadEnvelopeCbor,
@@ -246,11 +257,10 @@ describe("existing bounded CEK refusal through canonical retained replay", () =>
         replayer: VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
         replayContext: context,
       });
-      expect(decision).toMatchObject(
-        verdict === "accepted"
-          ? { decision: "fault_detected", category: "validationTraceDispute" }
-          : { decision: "healthy" },
-      );
+      expect(decision).toMatchObject({
+        decision: "fault_detected",
+        category: "validationTraceDispute",
+      });
     },
   );
 });

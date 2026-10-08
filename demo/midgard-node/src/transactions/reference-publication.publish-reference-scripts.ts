@@ -11,7 +11,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { IntentJournalService } from "../services/intent-journal.js";
+import {
+  IntentJournal,
+  type IntentJournalService,
+} from "../services/intent-journal.js";
 import {
   sendPublication,
   submitPublicationFunding,
@@ -26,6 +29,7 @@ import {
   referencePublicationLaneCount,
   type ReferencePublicationOptions,
 } from "./reference-publication.reference-publication-funding-required.js";
+import { signOverWalletView } from "./utils.wallet-view.js";
 import { isPlainAdaOnlyUtxo } from "./wallet-hygiene.js";
 
 /** Called only by the existing publication entry point. No records outlive this invocation. */
@@ -62,6 +66,9 @@ export const publishReferenceScripts = async ({
   };
   if (lucid.config().provider === undefined)
     throw new Error("Reference publication requires a provider");
+  // S5: one plan per invocation, opened before its first L1 read; a restart
+  // after a rollback opens a new one.
+  const plan = await Effect.runPromise(journal.openPlan);
   const walletAddress = await lucid.wallet().address();
   const wait = options.wait ?? (() => pause(1_000));
   let deadline = Date.now() + 30 * 60_000;
@@ -166,7 +173,11 @@ export const publishReferenceScripts = async ({
   const batches: SDK.ReferenceScriptTarget[][] = [];
   for (let i = 0; i < remaining.length; i += 4)
     batches.push(remaining.slice(i, i + 4));
-  const funding = (await lucid.utxosAt(walletAddress)).filter(
+  // The wallet view (§8.5): own facts no live intent holds, plus the change
+  // live own intents predict.
+  const funding = (
+    await Effect.runPromise(journal.walletView(lucid, walletAddress))
+  ).utxos.filter(
     (utxo) => isPlainAdaOnlyUtxo(utxo) && !reserved.has(key(utxo)),
   );
   if (batches.length === 0) return resolveRoster(canonical);
@@ -185,56 +196,51 @@ export const publishReferenceScripts = async ({
   while (consolidationRequired && funding.length > 1) {
     signal?.throwIfAborted();
     const inputs = funding.slice(0, CONSOLIDATION_INPUTS);
-    lucid.overrideUTxOs(inputs);
-    try {
-      const unsigned = await lucid
-        .newTx()
-        .collectFrom(inputs)
-        .validTo(
-          lucid.slotToUnixTime(lucid.currentSlot()) +
-            SDK.REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS,
-        )
-        .complete({
-          localUPLCEval: true,
-          coinSelection: false,
-          presetWalletInputs: inputs,
-        });
-      const outputs = unsigned.toTransaction().body().outputs();
-      if (outputs.len() !== 1)
-        throw new Error(
-          "Funding consolidation must produce one plain wallet output",
-        );
-      const output = coreToTxOutput(outputs.get(0));
-      const hash = await Effect.runPromise(
-        submitPublicationFunding(journal, lucid, unsigned, "consolidate", {
-          funds,
-          confirmationTimeoutMs: 30 * 60_000,
-          confirmationRetries: 0,
-          requiredOutputIndexes: [0],
-        }),
-        { signal },
-      );
-      await options.synchronize();
-      const [confirmed] = await lucid.utxosByOutRef([
-        { txHash: hash, outputIndex: 0 },
-      ]);
-      if (
-        confirmed === undefined ||
-        !isPlainAdaOnlyUtxo(confirmed) ||
-        confirmed.address !== walletAddress ||
-        confirmed.assets.lovelace !== output.assets.lovelace
+    const unsigned = await lucid
+      .newTx()
+      .collectFrom(inputs)
+      .validTo(
+        lucid.slotToUnixTime(lucid.currentSlot()) +
+          SDK.REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS,
       )
-        throw new Error(
-          "Canonical funding consolidation output differs from the signed transaction",
-        );
-      funding.splice(0, inputs.length);
-      // Chain preparation too, so a fork can only restore a recorded prefix.
-      funding.unshift(confirmed);
-      fundingCheckpoints.push([...funding]);
-      madeProgress();
-    } finally {
-      lucid.clearUTxOOverride();
-    }
+      .complete({
+        localUPLCEval: true,
+        coinSelection: false,
+        presetWalletInputs: inputs,
+      });
+    const outputs = unsigned.toTransaction().body().outputs();
+    if (outputs.len() !== 1)
+      throw new Error(
+        "Funding consolidation must produce one plain wallet output",
+      );
+    const output = coreToTxOutput(outputs.get(0));
+    const hash = await Effect.runPromise(
+      submitPublicationFunding(journal, lucid, unsigned, "consolidate", plan, {
+        funds,
+        confirmationTimeoutMs: 30 * 60_000,
+        confirmationRetries: 0,
+        requiredOutputIndexes: [0],
+      }),
+      { signal },
+    );
+    await options.synchronize();
+    const [confirmed] = await lucid.utxosByOutRef([
+      { txHash: hash, outputIndex: 0 },
+    ]);
+    if (
+      confirmed === undefined ||
+      !isPlainAdaOnlyUtxo(confirmed) ||
+      confirmed.address !== walletAddress ||
+      confirmed.assets.lovelace !== output.assets.lovelace
+    )
+      throw new Error(
+        "Canonical funding consolidation output differs from the signed transaction",
+      );
+    funding.splice(0, inputs.length);
+    // Chain preparation too, so a fork can only restore a recorded prefix.
+    funding.unshift(confirmed);
+    fundingCheckpoints.push([...funding]);
+    madeProgress();
   }
   const groups: UTxO[][] = Array.from({ length: laneCount }, () => []);
   const balances = Array<bigint>(laneCount).fill(0n);
@@ -269,89 +275,83 @@ export const publishReferenceScripts = async ({
       requirements[0]! + surplus / 2n,
       requirements[1]! + surplus - surplus / 2n,
     ];
-    lucid.overrideUTxOs([...funding]);
-    try {
-      const unsigned = await lucid
-        .newTx()
-        .collectFrom([...funding])
-        .pay.ToAddress(walletAddress, { lovelace: amounts[0]! })
-        .pay.ToAddress(walletAddress, { lovelace: amounts[1]! })
-        .validTo(
-          lucid.slotToUnixTime(lucid.currentSlot()) +
-            SDK.REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS,
+    const unsigned = await lucid
+      .newTx()
+      .collectFrom([...funding])
+      .pay.ToAddress(walletAddress, { lovelace: amounts[0]! })
+      .pay.ToAddress(walletAddress, { lovelace: amounts[1]! })
+      .validTo(
+        lucid.slotToUnixTime(lucid.currentSlot()) +
+          SDK.REFERENCE_SCRIPT_PUBLICATION_VALIDITY_MS,
+      )
+      .complete({
+        localUPLCEval: true,
+        coinSelection: false,
+        presetWalletInputs: [...funding],
+      });
+    const splitOutputs = unsigned.toTransaction().body().outputs();
+    const requiredOutputIndexes: number[] = [];
+    for (const amount of amounts) {
+      const index = Array.from(
+        { length: splitOutputs.len() },
+        (_, i) => i,
+      ).find((i) => {
+        const output = coreToTxOutput(splitOutputs.get(i));
+        return (
+          !requiredOutputIndexes.includes(i) &&
+          output.address === walletAddress &&
+          output.assets.lovelace === amount &&
+          output.scriptRef == null &&
+          output.datum == null &&
+          output.datumHash == null &&
+          Object.keys(output.assets).length === 1
+        );
+      });
+      if (index === undefined)
+        throw new Error("Funding split omitted an exact lane output");
+      requiredOutputIndexes.push(index);
+    }
+    signal?.throwIfAborted();
+    const hash = await Effect.runPromise(
+      submitPublicationFunding(journal, lucid, unsigned, "split", plan, {
+        funds,
+        confirmationTimeoutMs: 30 * 60_000,
+        confirmationRetries: 0,
+        requiredOutputIndexes,
+      }),
+      { signal },
+    );
+    const refs = requiredOutputIndexes.map((outputIndex) => ({
+      txHash: hash,
+      outputIndex,
+    }));
+    while (true) {
+      await options.synchronize();
+      const outputs = await lucid.utxosByOutRef(refs);
+      if (
+        outputs.length === 2 &&
+        outputs.every(
+          (utxo) => utxo.address === walletAddress && isPlainAdaOnlyUtxo(utxo),
         )
-        .complete({
-          localUPLCEval: true,
-          coinSelection: false,
-          presetWalletInputs: [...funding],
-        });
-      const splitOutputs = unsigned.toTransaction().body().outputs();
-      const requiredOutputIndexes: number[] = [];
-      for (const amount of amounts) {
-        const index = Array.from(
-          { length: splitOutputs.len() },
-          (_, i) => i,
-        ).find((i) => {
-          const output = coreToTxOutput(splitOutputs.get(i));
-          return (
-            !requiredOutputIndexes.includes(i) &&
-            output.address === walletAddress &&
-            output.assets.lovelace === amount &&
-            output.scriptRef == null &&
-            output.datum == null &&
-            output.datumHash == null &&
-            Object.keys(output.assets).length === 1
+      ) {
+        groups[0] = outputs.filter(
+          (output) =>
+            output.outputIndex === requiredOutputIndexes[0] &&
+            output.assets.lovelace === amounts[0],
+        );
+        groups[1] = outputs.filter(
+          (output) =>
+            output.outputIndex === requiredOutputIndexes[1] &&
+            output.assets.lovelace === amounts[1],
+        );
+        if (groups.some((group) => group.length !== 1))
+          throw new Error(
+            "Canonical split outputs differ from the signed transaction",
           );
-        });
-        if (index === undefined)
-          throw new Error("Funding split omitted an exact lane output");
-        requiredOutputIndexes.push(index);
+        splitWasConfirmed = true;
+        break;
       }
-      signal?.throwIfAborted();
-      const hash = await Effect.runPromise(
-        submitPublicationFunding(journal, lucid, unsigned, "split", {
-          funds,
-          confirmationTimeoutMs: 30 * 60_000,
-          confirmationRetries: 0,
-          requiredOutputIndexes,
-        }),
-        { signal },
-      );
-      const refs = requiredOutputIndexes.map((outputIndex) => ({
-        txHash: hash,
-        outputIndex,
-      }));
-      while (true) {
-        await options.synchronize();
-        const outputs = await lucid.utxosByOutRef(refs);
-        if (
-          outputs.length === 2 &&
-          outputs.every(
-            (utxo) =>
-              utxo.address === walletAddress && isPlainAdaOnlyUtxo(utxo),
-          )
-        ) {
-          groups[0] = outputs.filter(
-            (output) =>
-              output.outputIndex === requiredOutputIndexes[0] &&
-              output.assets.lovelace === amounts[0],
-          );
-          groups[1] = outputs.filter(
-            (output) =>
-              output.outputIndex === requiredOutputIndexes[1] &&
-              output.assets.lovelace === amounts[1],
-          );
-          if (groups.some((group) => group.length !== 1))
-            throw new Error(
-              "Canonical split outputs differ from the signed transaction",
-            );
-          splitWasConfirmed = true;
-          break;
-        }
-        await waitForProgress();
-      }
-    } finally {
-      lucid.clearUTxOOverride();
+      await waitForProgress();
     }
   }
   const lanes: Lane[] = Array.from({ length: laneCount }, (_, index) => {
@@ -369,7 +369,7 @@ export const publishReferenceScripts = async ({
   const withinOutstandingByteBudget = () =>
     outstanding().reduce((sum, record) => sum + record.cbor.length / 2, 0) <=
     MAX_OUTSTANDING_BYTES;
-  const send = sendPublication(journal, lucid);
+  const send = sendPublication(journal, lucid, plan);
   const submit = async (record: Publication) => {
     signal?.throwIfAborted();
     const submittedAt = Date.now();
@@ -384,304 +384,303 @@ export const publishReferenceScripts = async ({
     }
   };
   let needsObservation = options.mode === "serial";
-  try {
-    publicationLoop: while (true) {
-      signal?.throwIfAborted();
-      if (needsObservation) {
-        const slot = await options.synchronize();
-        canonical = await readReferences();
-        for (const lane of lanes) {
-          for (const record of lane.records) {
-            const confirmed = record.targets.every((target) => {
-              const utxo = canonical.get(target.name);
-              return (
-                utxo?.txHash === record.hash &&
-                utxo.outputIndex === record.referenceIndexes.get(target.name)
-              );
-            });
-            if (!record.confirmed && confirmed) madeProgress();
-            if (record.confirmed && !confirmed) lane.recovering = true;
-            record.confirmed = confirmed;
-            if (!confirmed && slot >= record.expiresAtSlot)
-              lane.recovering = true;
-          }
+  publicationLoop: while (true) {
+    signal?.throwIfAborted();
+    if (needsObservation) {
+      const slot = await options.synchronize();
+      canonical = await readReferences();
+      for (const lane of lanes) {
+        for (const record of lane.records) {
+          const confirmed = record.targets.every((target) => {
+            const utxo = canonical.get(target.name);
+            return (
+              utxo?.txHash === record.hash &&
+              utxo.outputIndex === record.referenceIndexes.get(target.name)
+            );
+          });
+          if (!record.confirmed && confirmed) madeProgress();
+          if (record.confirmed && !confirmed) lane.recovering = true;
+          record.confirmed = confirmed;
+          if (!confirmed && slot >= record.expiresAtSlot)
+            lane.recovering = true;
         }
-        for (const lane of lanes) {
-          const unresolved = lane.records.filter((record) => !record.confirmed);
-          if (
-            lane.recovering &&
-            unresolved.every((record) => slot >= record.expiresAtSlot)
-          ) {
-            const candidates = [
-              ...lane.roots,
-              ...lane.records.flatMap((record) => record.outputs),
-            ].filter(isPlainAdaOnlyUtxo);
-            const live = await lucid.utxosByOutRef(candidates);
-            const exact = live.filter(
-              (utxo) =>
-                candidates.some(
-                  (candidate) =>
-                    key(candidate) === key(utxo) &&
-                    candidate.address === utxo.address &&
-                    candidate.assets.lovelace === utxo.assets.lovelace,
-                ) && isPlainAdaOnlyUtxo(utxo),
-            );
-            if (exact.length === 0) {
-              const records = lanes.flatMap((candidate) => candidate.records);
-              if (
-                (splitWasConfirmed || fundingCheckpoints.length > 1) &&
-                records.every((record) => !record.confirmed)
-              ) {
-                if (records.some((record) => slot < record.expiresAtSlot)) {
-                  await waitForProgress();
-                  needsObservation = true;
-                  continue publicationLoop;
-                }
-                const ancestors = [
-                  ...new Map(
-                    fundingCheckpoints
-                      .flat()
-                      .map((input) => [key(input), input]),
-                  ).values(),
-                ];
-                const restored = await lucid.utxosByOutRef(ancestors);
-                if (
-                  fundingCheckpoints.some((checkpoint) =>
-                    checkpoint.every((input) =>
-                      restored.some(
-                        (utxo) =>
-                          key(utxo) === key(input) &&
-                          utxo.address === input.address &&
-                          utxo.assets.lovelace === input.assets.lovelace &&
-                          isPlainAdaOnlyUtxo(utxo),
-                      ),
-                    ),
-                  )
-                ) {
-                  // Funding preparation rolled back. Both lane suffixes are
-                  // expired and an exact pre-consolidation or pre-split funding
-                  // set is canonical again. Restart also drains preparation TTLs.
-                  return await publishReferenceScripts({
-                    lucid,
-                    address,
-                    targets,
-                    authPolicy,
-                    reserved,
-                    options,
-                    minAuthPolicyRemainingMs,
-                    signal,
-                    journal,
-                  });
-                }
-              }
-              throw new Error(
-                "Cannot reconcile a usable publication lane output",
-              );
-            }
-            const retry = missing(
-              lane.records.flatMap((record) => record.targets),
-              canonical,
-            );
-            for (let i = retry.length; i > 0; i -= 4)
-              lane.queue.unshift(retry.slice(Math.max(0, i - 4), i));
-            lane.records.splice(
-              0,
-              lane.records.length,
-              ...lane.records.filter((record) => record.confirmed),
-            );
-            lane.funding = exact;
-            lane.recovering = false;
-          } else {
-            for (const record of unresolved) {
-              if (
-                unresolved.length <= depth &&
-                withinOutstandingByteBudget() &&
-                slot < record.expiresAtSlot &&
-                (!record.accepted || lane.recovering)
-              ) {
-                await submit(record);
-                if (!record.accepted) break;
-              }
-            }
-          }
-        }
-      }
-      if (
-        missing(targets, canonical).length === 0 &&
-        outstanding().length === 0
-      ) {
-        // Re-read the entire roster after synchronization. A cached confirmation
-        // or signed output is never completion evidence.
-        await options.synchronize();
-        const verified = await readReferences();
-        if (missing(targets, verified).length !== 0) continue;
-        await Effect.runPromise(
-          Effect.logInfo(
-            `Reference publication complete: ${JSON.stringify({ ...metrics, mode: options.mode, wallTimeMs: Date.now() - startedAt })}`,
-          ),
-        );
-        return resolveRoster(verified);
-      }
-      if (
-        lanes.every((lane) => lane.queue.length === 0) &&
-        outstanding().length === 0
-      ) {
-        throw new Error(
-          "Previously published references disappeared; restart requires canonical reconciliation before rebuilding",
-        );
-      }
-      let progressed = false;
-      // A rollback can withdraw several generations of confirmation at once.
-      // Wait for canonical resolution/expiry before resubmitting or extending
-      // that backlog; old confirmed bytes must not escape the submission caps.
-      if (!withinOutstandingByteBudget()) {
-        needsObservation = true;
-        await waitForProgress();
-        continue;
       }
       for (const lane of lanes) {
-        const pending = lane.records.filter((record) => !record.confirmed);
+        const unresolved = lane.records.filter((record) => !record.confirmed);
         if (
-          lane.recovering ||
-          pending.length >= depth ||
-          pending.some((record) => !record.accepted)
+          lane.recovering &&
+          unresolved.every((record) => slot >= record.expiresAtSlot)
+        ) {
+          const candidates = [
+            ...lane.roots,
+            ...lane.records.flatMap((record) => record.outputs),
+          ].filter(isPlainAdaOnlyUtxo);
+          const live = await lucid.utxosByOutRef(candidates);
+          const exact = live.filter(
+            (utxo) =>
+              candidates.some(
+                (candidate) =>
+                  key(candidate) === key(utxo) &&
+                  candidate.address === utxo.address &&
+                  candidate.assets.lovelace === utxo.assets.lovelace,
+              ) && isPlainAdaOnlyUtxo(utxo),
+          );
+          if (exact.length === 0) {
+            const records = lanes.flatMap((candidate) => candidate.records);
+            if (
+              (splitWasConfirmed || fundingCheckpoints.length > 1) &&
+              records.every((record) => !record.confirmed)
+            ) {
+              if (records.some((record) => slot < record.expiresAtSlot)) {
+                await waitForProgress();
+                needsObservation = true;
+                continue publicationLoop;
+              }
+              const ancestors = [
+                ...new Map(
+                  fundingCheckpoints.flat().map((input) => [key(input), input]),
+                ).values(),
+              ];
+              const restored = await lucid.utxosByOutRef(ancestors);
+              if (
+                fundingCheckpoints.some((checkpoint) =>
+                  checkpoint.every((input) =>
+                    restored.some(
+                      (utxo) =>
+                        key(utxo) === key(input) &&
+                        utxo.address === input.address &&
+                        utxo.assets.lovelace === input.assets.lovelace &&
+                        isPlainAdaOnlyUtxo(utxo),
+                    ),
+                  ),
+                )
+              ) {
+                // Funding preparation rolled back. Both lane suffixes are
+                // expired and an exact pre-consolidation or pre-split funding
+                // set is canonical again. Restart also drains preparation TTLs.
+                return await publishReferenceScripts({
+                  lucid,
+                  address,
+                  targets,
+                  authPolicy,
+                  reserved,
+                  options,
+                  minAuthPolicyRemainingMs,
+                  signal,
+                  journal,
+                });
+              }
+            }
+            throw new Error(
+              "Cannot reconcile a usable publication lane output",
+            );
+          }
+          const retry = missing(
+            lane.records.flatMap((record) => record.targets),
+            canonical,
+          );
+          for (let i = retry.length; i > 0; i -= 4)
+            lane.queue.unshift(retry.slice(Math.max(0, i - 4), i));
+          lane.records.splice(
+            0,
+            lane.records.length,
+            ...lane.records.filter((record) => record.confirmed),
+          );
+          lane.funding = exact;
+          lane.recovering = false;
+        } else {
+          for (const record of unresolved) {
+            if (
+              unresolved.length <= depth &&
+              withinOutstandingByteBudget() &&
+              slot < record.expiresAtSlot &&
+              (!record.accepted || lane.recovering)
+            ) {
+              await submit(record);
+              if (!record.accepted) break;
+            }
+          }
+        }
+      }
+    }
+    if (
+      missing(targets, canonical).length === 0 &&
+      outstanding().length === 0
+    ) {
+      // Re-read the entire roster after synchronization. A cached confirmation
+      // or signed output is never completion evidence.
+      await options.synchronize();
+      const verified = await readReferences();
+      if (missing(targets, verified).length !== 0) continue;
+      await Effect.runPromise(
+        Effect.logInfo(
+          `Reference publication complete: ${JSON.stringify({ ...metrics, mode: options.mode, wallTimeMs: Date.now() - startedAt })}`,
+        ),
+      );
+      return resolveRoster(verified);
+    }
+    if (
+      lanes.every((lane) => lane.queue.length === 0) &&
+      outstanding().length === 0
+    ) {
+      throw new Error(
+        "Previously published references disappeared; restart requires canonical reconciliation before rebuilding",
+      );
+    }
+    let progressed = false;
+    // A rollback can withdraw several generations of confirmation at once.
+    // Wait for canonical resolution/expiry before resubmitting or extending
+    // that backlog; old confirmed bytes must not escape the submission caps.
+    if (!withinOutstandingByteBudget()) {
+      needsObservation = true;
+      await waitForProgress();
+      continue;
+    }
+    for (const lane of lanes) {
+      const pending = lane.records.filter((record) => !record.confirmed);
+      if (
+        lane.recovering ||
+        pending.length >= depth ||
+        pending.some((record) => !record.accepted)
+      )
+        continue;
+      const batch = lane.queue[0];
+      if (batch === undefined) continue;
+      const needed = missing(batch, canonical);
+      if (needed.length === 0) {
+        lane.queue.shift();
+        progressed = true;
+        continue;
+      }
+      SDK.assertReferenceScriptAuthMinimumRemaining({
+        policy: authPolicy,
+        nowMs: lucid.slotToUnixTime(lucid.currentSlot()),
+        minRemainingMs: minAuthPolicyRemainingMs,
+        scopeName: "reference publication",
+        targetNames: needed.map((t) => t.name),
+      });
+      let record: Publication;
+      try {
+        const { tx, layout } = await Effect.runPromise(
+          SDK.completeReferenceScriptPublicationTxProgram({
+            lucid,
+            selectedFundingInputs: lane.funding,
+            walletAddress,
+            referenceScriptsAddress: address,
+            missingTargets: needed,
+            authPolicy,
+          }),
+        );
+        // Signed over the wallet view: a lane's funding may be the
+        // predicted change of its previous, still live, publication.
+        const signed = await (
+          await Effect.runPromise(
+            signOverWalletView(lucid, tx).pipe(
+              Effect.provideService(IntentJournal, journal),
+            ),
+          )
+        ).complete();
+        const cbor = signed.toCBOR();
+        const hash = signed.toHash();
+        const body = CML.Transaction.from_cbor_hex(cbor).body();
+        const expiry = body.ttl();
+        if (expiry === undefined)
+          throw new Error("Publication is missing a validity upper bound");
+        const outputs = Array.from(
+          { length: body.outputs().len() },
+          (_, outputIndex): UTxO => {
+            const output = coreToTxOutput(body.outputs().get(outputIndex));
+            return {
+              txHash: hash,
+              outputIndex,
+              address: output.address,
+              assets: output.assets,
+              datum: output.datum ?? undefined,
+              datumHash: output.datumHash ?? undefined,
+              scriptRef: output.scriptRef ?? undefined,
+            };
+          },
+        );
+        if (
+          !needed.every((target) =>
+            outputs.some((utxo) => matches(utxo, target)),
+          )
         )
-          continue;
-        const batch = lane.queue[0];
-        if (batch === undefined) continue;
-        const needed = missing(batch, canonical);
-        if (needed.length === 0) {
-          lane.queue.shift();
+          throw new Error(
+            "Signed publication is missing an authenticated reference output",
+          );
+        record = {
+          hash,
+          cbor,
+          signed,
+          inputs: lane.funding,
+          outputs,
+          targets: needed,
+          expiresAtSlot: Number(expiry),
+          referenceIndexes: new Map(
+            [...layout.localReferenceOutputs].map(([name, output]) => [
+              name,
+              output.outputIndex,
+            ]),
+          ),
+          accepted: false,
+          confirmed: false,
+        };
+      } catch (cause) {
+        if (
+          needed.length > 1 &&
+          /Max transaction size of \d+ exceeded/.test(String(cause))
+        ) {
+          const middle = Math.ceil(needed.length / 2);
+          lane.queue.splice(
+            0,
+            1,
+            needed.slice(0, middle),
+            needed.slice(middle),
+          );
           progressed = true;
           continue;
         }
-        SDK.assertReferenceScriptAuthMinimumRemaining({
-          policy: authPolicy,
-          nowMs: lucid.slotToUnixTime(lucid.currentSlot()),
-          minRemainingMs: minAuthPolicyRemainingMs,
-          scopeName: "reference publication",
-          targetNames: needed.map((t) => t.name),
-        });
-        lucid.overrideUTxOs([...lane.funding]);
-        let record: Publication;
-        try {
-          const { tx, layout } = await Effect.runPromise(
-            SDK.completeReferenceScriptPublicationTxProgram({
-              lucid,
-              selectedFundingInputs: lane.funding,
-              walletAddress,
-              referenceScriptsAddress: address,
-              missingTargets: needed,
-              authPolicy,
-            }),
-          );
-          const signed = await tx.sign.withWallet().complete();
-          const cbor = signed.toCBOR();
-          const hash = signed.toHash();
-          const body = CML.Transaction.from_cbor_hex(cbor).body();
-          const expiry = body.ttl();
-          if (expiry === undefined)
-            throw new Error("Publication is missing a validity upper bound");
-          const outputs = Array.from(
-            { length: body.outputs().len() },
-            (_, outputIndex): UTxO => {
-              const output = coreToTxOutput(body.outputs().get(outputIndex));
-              return {
-                txHash: hash,
-                outputIndex,
-                address: output.address,
-                assets: output.assets,
-                datum: output.datum ?? undefined,
-                datumHash: output.datumHash ?? undefined,
-                scriptRef: output.scriptRef ?? undefined,
-              };
-            },
-          );
-          if (
-            !needed.every((target) =>
-              outputs.some((utxo) => matches(utxo, target)),
-            )
-          )
-            throw new Error(
-              "Signed publication is missing an authenticated reference output",
-            );
-          record = {
-            hash,
-            cbor,
-            signed,
-            inputs: lane.funding,
-            outputs,
-            targets: needed,
-            expiresAtSlot: Number(expiry),
-            referenceIndexes: new Map(
-              [...layout.localReferenceOutputs].map(([name, output]) => [
-                name,
-                output.outputIndex,
-              ]),
-            ),
-            accepted: false,
-            confirmed: false,
-          };
-        } catch (cause) {
-          if (
-            needed.length > 1 &&
-            /Max transaction size of \d+ exceeded/.test(String(cause))
-          ) {
-            const middle = Math.ceil(needed.length / 2);
-            lane.queue.splice(
-              0,
-              1,
-              needed.slice(0, middle),
-              needed.slice(middle),
-            );
-            progressed = true;
-            continue;
-          }
-          throw cause;
-        } finally {
-          lucid.clearUTxOOverride();
-        }
-        if (record.cbor.length / 2 > MAX_OUTSTANDING_BYTES)
-          throw new Error(
-            "Signed publication exceeds the outstanding byte budget",
-          );
-        if (
-          outstanding().reduce((sum, tx) => sum + tx.cbor.length / 2, 0) +
-            record.cbor.length / 2 >
-          MAX_OUTSTANDING_BYTES
-        )
-          continue;
-        lane.queue.shift();
-        madeProgress();
-        lane.records.push(record);
-        metrics.transactions += 1;
-        metrics.signedBytes += record.cbor.length / 2;
-        metrics.peakOutstandingCount = Math.max(
-          metrics.peakOutstandingCount,
-          outstanding().length,
-        );
-        metrics.peakOutstandingBytes = Math.max(
-          metrics.peakOutstandingBytes,
-          outstanding().reduce(
-            (sum, pendingRecord) => sum + pendingRecord.cbor.length / 2,
-            0,
-          ),
-        );
-        lane.funding = record.outputs.filter(
-          (utxo) => utxo.address === walletAddress && isPlainAdaOnlyUtxo(utxo),
-        );
-        await submit(record);
-        await Effect.runPromise(
-          Effect.logInfo(
-            `Reference publication submission: txHash=${record.hash},outcome=${record.lastSubmission?.outcome},bytes=${record.cbor.length / 2},targets=[${record.targets.map((target) => target.name).join(",")}]`,
-          ),
-        );
-        progressed = true;
+        throw cause;
       }
-      needsObservation = !progressed || options.mode === "serial";
-      if (!progressed) await waitForProgress();
+      if (record.cbor.length / 2 > MAX_OUTSTANDING_BYTES)
+        throw new Error(
+          "Signed publication exceeds the outstanding byte budget",
+        );
+      if (
+        outstanding().reduce((sum, tx) => sum + tx.cbor.length / 2, 0) +
+          record.cbor.length / 2 >
+        MAX_OUTSTANDING_BYTES
+      )
+        continue;
+      lane.queue.shift();
+      madeProgress();
+      lane.records.push(record);
+      metrics.transactions += 1;
+      metrics.signedBytes += record.cbor.length / 2;
+      metrics.peakOutstandingCount = Math.max(
+        metrics.peakOutstandingCount,
+        outstanding().length,
+      );
+      metrics.peakOutstandingBytes = Math.max(
+        metrics.peakOutstandingBytes,
+        outstanding().reduce(
+          (sum, pendingRecord) => sum + pendingRecord.cbor.length / 2,
+          0,
+        ),
+      );
+      lane.funding = record.outputs.filter(
+        (utxo) => utxo.address === walletAddress && isPlainAdaOnlyUtxo(utxo),
+      );
+      await submit(record);
+      await Effect.runPromise(
+        Effect.logInfo(
+          `Reference publication submission: txHash=${record.hash},outcome=${record.lastSubmission?.outcome},bytes=${record.cbor.length / 2},targets=[${record.targets.map((target) => target.name).join(",")}]`,
+        ),
+      );
+      progressed = true;
     }
-  } finally {
-    lucid.clearUTxOOverride();
+    needsObservation = !progressed || options.mode === "serial";
+    if (!progressed) await waitForProgress();
   }
 };

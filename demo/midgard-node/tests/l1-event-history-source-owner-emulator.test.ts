@@ -45,7 +45,7 @@ import {
   makeRecordedHistoryTransport,
   openHistorySourceOwnerLifecycle,
 } from "./helpers/history-source-owner-emulator.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /** Complete address-scope ledger scans, and the most ever acquired at once. */
 const ledgerScans = (
@@ -246,7 +246,6 @@ it("runs the default history owner through actual bootstrap, continuation, retir
     // Fresh ordinary controls use sorted actual nonce keys to force an Order
     // continuation. They are not asserted to have been included on L2.
     const funding = fixture.depositorLucid;
-    funding.overrideUTxOs(await funding.utxosAt(ownerAddress));
     const split = await funding
       .newTx()
       .pay.ToAddress(ownerAddress, { lovelace: 30_000_000n })
@@ -304,7 +303,7 @@ it("runs the default history owner through actual bootstrap, continuation, retir
             referenceScripts: fixture.referenceScripts.deposit,
           },
         ),
-      );
+      ).finally(() => funding.clearUTxOOverride());
       await submitHistoryObservation(funding, built.tx);
       const orders = await Effect.runPromise(
         SDK.fetchDepositUTxOsProgram(
@@ -338,9 +337,8 @@ it("runs the default history owner through actual bootstrap, continuation, retir
       provideDatabaseLayers(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor,event_history_block_applications,event_history_live_outputs,event_history_incarnations,event_history_replay_receipts,event_history_authority`;
           yield* sql`CREATE TABLE IF NOT EXISTS history_owner_applied_probe (ordinal bigserial PRIMARY KEY,kind text NOT NULL,head text NOT NULL,snapshot_digest text NOT NULL)`;
-          yield* sql`TRUNCATE history_owner_applied_probe`;
+          yield* resetApplicationTables;
           const cache = yield* makeMempoolLedgerCacheService(
             globals,
             MempoolLedgerDB.retrieveSpendable.pipe(

@@ -52,18 +52,14 @@ async function fixture() {
   sample.watcher.configDirectory = join(directory, "logs/run/watcher");
   sample.watcher.releaseDirectory = join(directory, "logs/run/release");
   await writeFile(sample.watcher.processTemplate, "{}");
-  await writeFile(sample.watcher.authorityTemplate, "{}");
   const secretNames = [
-    "WATCHER_RECORD_KEY_FILE",
     "WATCHER_ROLLBACK_KEY_FILE",
     "WATCHER_PROVER_KEY_FILE",
     "WATCHER_AVAILABILITY_KEY_FILE",
-    "WATCHER_BEARER_FILE",
   ];
   const secretFiles = Object.fromEntries(
     secretNames.map((key, index) => [key, join(directory, `secret-${index}`)]),
   );
-  sample.watcher.bearerFile = secretFiles.WATCHER_BEARER_FILE;
   for (const path of Object.values(secretFiles))
     await writeFile(path, "a".repeat(64));
   await writeFile(
@@ -149,7 +145,7 @@ describe("stack intent", () => {
     const watcherEnv = parse(
       await readFile(value.config.watcher.composeEnvFile),
     );
-    await writeFile(watcherEnv.WATCHER_RECORD_KEY_FILE!, "c".repeat(64));
+    await writeFile(watcherEnv.WATCHER_ROLLBACK_KEY_FILE!, "c".repeat(64));
     expect((await loadStackConfig(value.path)).intentDigest).not.toBe(second);
   });
   it("lets operational settings change between runs", async () => {
@@ -161,7 +157,6 @@ describe("stack intent", () => {
     await value.writeConfig();
     value.env.MIN_FEE_A = "11";
     await writeFile(value.config.envFile, value.envText());
-    await writeFile(value.config.watcher.bearerFile, "b".repeat(64));
     expect((await loadStackConfig(value.path)).intentDigest).toBe(first);
   });
 });

@@ -25,15 +25,12 @@ import {
   NOW,
 } from "./retention-enforcement.q54-executable-retention-deadline-alert.js";
 import { seedPublished } from "./retention-enforcement.terminal-merge.js";
-import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
-const clear = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  yield* sql`DELETE FROM state_queue_terminal_observer_states`;
-  yield* sql`TRUNCATE TABLE pending_block_finalizations, local_mutation_jobs,
-    event_history_authority, event_history_recovery_plans RESTART IDENTITY CASCADE`;
-  yield* DaPayloadTerminalOutcomesDB.clear;
-  yield* DaPayloadsDB.clear;
-});
+import {
+  deterministicFixtureBytes,
+  provideDatabaseLayers,
+  resetApplicationTables,
+} from "./utils.js";
+const clear = resetApplicationTables;
 const run = <A>(work: Effect.Effect<A, unknown, SqlClient.SqlClient>) =>
   Effect.runPromise(provideDatabaseLayers(work) as Effect.Effect<A, never>);
 beforeAll(async () => {

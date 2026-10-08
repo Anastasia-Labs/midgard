@@ -21,6 +21,8 @@ const breakDownTxMock = vi.hoisted(() => vi.fn());
 const makeLocalOgmiosSubmitSlotSnapshotProviderMock = vi.hoisted(() => vi.fn());
 const localSlotSnapshotProviderMock = vi.hoisted(() => vi.fn());
 
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
+
 vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
   return {
@@ -178,6 +180,7 @@ const configureCandidate = ({
 const runBuilder = () =>
   Effect.runPromise(
     buildAndSubmitMergeTx(fakeLucid, fetchConfig, contracts).pipe(
+      withoutFollowerJournal,
       Effect.provide(Globals.Default),
       Effect.provide(NodeConfig.layer),
     ) as Effect.Effect<MergeTxResult, unknown, never>,

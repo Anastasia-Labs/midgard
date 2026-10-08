@@ -57,7 +57,6 @@ export const publishJourneyForcedOrder = async (
           "Cannot replace a forced order bound by a signed or published fault commitment",
         );
     }
-    lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
     const nonceInput = (await lucid.wallet().getUtxos()).find(
       (utxo) =>
         utxo.datum == null &&
@@ -159,7 +158,6 @@ export const publishJourneyForcedOrder = async (
     if (disposition.kind === "included") {
       checkpoint.confirmed = true;
       await writeJourneyArtifact(checkpointPath, checkpoint);
-      lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
       break;
     }
     onStage(

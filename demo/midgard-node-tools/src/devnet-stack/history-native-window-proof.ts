@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 
-import { parseWatcherConfig } from "midgard-watcher";
 import {
+  parseWatcherConfig,
   readWatcherNativeChainSyncEventReceipt,
-  startWatcherNativeChainSync,
+  WATCHER_CARDANO_SECURITY_PARAMETER_K,
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncEventReceipt,
   watcherNativeChainSyncEventReceipt,
   type WatcherNativeChainSyncRollForward,
   type WatcherNativeChainSyncRuntime,
-} from "midgard-watcher/native-chain-sync";
+} from "midgard-watcher";
 
 import {
   digest,
@@ -25,6 +25,7 @@ import {
   rowAt,
   rowFromEvent,
 } from "./history-window-canonical.js";
+import { startWatcherNativeChainSync } from "./native-chain-sync.js";
 export {
   type HistoryWindowPoint,
   HistoryWindowRefusal,
@@ -65,14 +66,8 @@ export const createHistoryWindowSealer = (input: {
   readonly binaryPath: string;
 }) => {
   const config = parseWatcherConfig(input.watcherConfig);
-  const recoveryWindow =
-    config.l1.finality.rollback.postFinalityRecoveryMaxDepth;
-  if (
-    !Number.isSafeInteger(recoveryWindow) ||
-    recoveryWindow === undefined ||
-    recoveryWindow <= 0
-  )
-    return refuse("explicit recovery window is required");
+  // The automatic recovery window is the Cardano security parameter.
+  const recoveryWindow = WATCHER_CARDANO_SECURITY_PARAMETER_K;
   if (input.directories.length !== 2)
     return refuse("exact provider pair is required");
   const actor = Object.freeze({ ...input.actor });

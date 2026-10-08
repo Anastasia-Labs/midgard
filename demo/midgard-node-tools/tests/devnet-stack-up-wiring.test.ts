@@ -104,23 +104,6 @@ const parseUp = async (args: readonly string[]) => {
 };
 
 describe("the up command", () => {
-  it("retains explicit authority initialization across controller rebuild/reexecution", async () => {
-    const parsed = await parseUp([
-      "up",
-      "--run-dir",
-      "/runs/lc1",
-      "--initialize-watcher-authority",
-    ]);
-    expect(parsed.wired[0]).toMatchObject({ initializeWatcherAuthority: true });
-    expect(parsed.spawned[0]).toEqual([
-      "/repo/dist/devnet-stack.js",
-      "up",
-      "--run-dir",
-      "/runs/lc1",
-      "--initialize-watcher-authority",
-      "--no-build",
-    ]);
-  });
   it("passes --no-build through as no build: it checks the dists and resumes in place, never re-executing", async () => {
     const parsed = await parseUp([
       "up",

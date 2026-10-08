@@ -55,7 +55,6 @@ import {
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
-import { assertWatcherUserEventRuntime } from "../runtime/user-event-runtime.js";
 import {
   verifyCompletedWatcherReplayTranscriptWorkflow,
   watcherReplayTranscriptClassification,
@@ -94,6 +93,7 @@ import {
   captureWatcherValidationReplayTranscript,
   refreshWatcherValidationReplayCapture,
 } from "./replay-transcript-capture.js";
+import { WatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
 
 export function createApplication(
   input: ApplicationConstruction &
@@ -124,25 +124,23 @@ export function createApplication({
   const l1 = options.l1;
   const deploymentAuthority = options.deploymentAuthority;
   const replayTranscriptStore = options.replayTranscriptStore;
-  const userEventRuntime = options.userEventRuntime;
+  const userEvents = options.userEvents;
   if (allowExecution) {
     if (
       deploymentAuthority === undefined ||
       replayTranscriptStore === undefined ||
-      userEventRuntime === undefined
+      userEvents === undefined
     ) {
       throw new Error(
         "watcher execution requires deployment/rule authority and durable replay transcripts",
       );
     }
     assertWatcherVerifiedDeploymentAuthority(deploymentAuthority);
-    assertWatcherUserEventRuntime(userEventRuntime);
     if (
-      userEventRuntime.deploymentFingerprint !==
-        deploymentIdentity.manifestId ||
-      userEventRuntime.blueprintHash !== deploymentIdentity.blueprintHash
+      userEvents.deploymentManifestId !== deploymentIdentity.manifestId ||
+      userEvents.blueprintHash !== deploymentIdentity.blueprintHash
     ) {
-      throw new Error("watcher event runtime deployment authority differs");
+      throw new Error("watcher user-event reads' deployment authority differs");
     }
     if (deploymentAuthority.deploymentIdentity !== deploymentIdentity) {
       throw new Error("watcher application deployment authorities differ");
@@ -220,6 +218,11 @@ export function createApplication({
     string,
     Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
   >();
+  /** Decisions held over a pre-follower transcript with an open proof. */
+  const heldValidationDecisions = new Map<
+    string,
+    Readonly<{ headerHash: string; detail: string }>
+  >();
   const retainedDaOptions = {
     deploymentIdentity,
     ...(options.unsafeTransportOptionsForTest === undefined
@@ -244,6 +247,16 @@ export function createApplication({
    */
   const validationChallenge: FamilyValidationChallengePort = Object.freeze({
     currentChallenge: async ({ headerHash, decisionDigest }) => {
+      const held = heldValidationDecisions.get(decisionDigest);
+      if (held !== undefined && held.headerHash === headerHash)
+        throw new WatcherProofDecisionMissingError({
+          kind: "objective",
+          category: "validationTraceDispute",
+          headerHash,
+          decisionDigest,
+          detail: held.detail,
+          readiness: "validation_transcript_pre_follower",
+        });
       const capture = validationCaptures.get(decisionDigest);
       if (
         capture === undefined ||
@@ -482,6 +495,7 @@ export function createApplication({
       authorityGeneration += 1;
       replayContexts.clear();
       validationCaptures.clear();
+      heldValidationDecisions.clear();
       await retainedDaOwner.close();
     },
     schemaVersion: WATCHER_FAULT_PROOF_APPLICATION,
@@ -491,7 +505,8 @@ export function createApplication({
     applicationRegistry,
     retainedDaTransportStatus: retainedDaOwner.transportStatus,
     decisionUsesLocalEventHistory: (decisionDigest) =>
-      validationCaptures.has(decisionDigest),
+      validationCaptures.has(decisionDigest) ||
+      heldValidationDecisions.has(decisionDigest),
     retainDecisionAuthorities: (decisionDigest) => {
       authorityGeneration += 1;
       for (const digest of replayContexts.keys()) {
@@ -499,6 +514,9 @@ export function createApplication({
       }
       for (const digest of validationCaptures.keys()) {
         if (digest !== decisionDigest) validationCaptures.delete(digest);
+      }
+      for (const digest of heldValidationDecisions.keys()) {
+        if (digest !== decisionDigest) heldValidationDecisions.delete(digest);
       }
     },
     classifyHeader: async (request) => {
@@ -551,6 +569,7 @@ export function createApplication({
       let pendingCapture:
         | Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
         | undefined;
+      let pendingHold: string | undefined;
       try {
         if (
           retainedDa.deploymentFingerprint !== deploymentIdentity.manifestId
@@ -600,20 +619,22 @@ export function createApplication({
           if (
             deploymentAuthority === undefined ||
             replayTranscriptStore === undefined ||
-            userEventRuntime === undefined
+            userEvents === undefined
           ) {
             throw new Error(
               "validation classification requires live deployment authority and transcript storage",
             );
           }
-          pendingCapture = await archiveWatcherValidationCapture({
+          const archived = await archiveWatcherValidationCapture({
             deploymentAuthority,
             replayTranscriptStore,
             stateQueueObservation: input.stateQueueObservation,
             header: input.header,
             decision,
-            userEventRuntime,
+            userEvents,
           });
+          if (archived.kind === "captured") pendingCapture = archived.capture;
+          else pendingHold = archived.detail;
         }
         completedDecision = decision;
       } finally {
@@ -637,10 +658,18 @@ export function createApplication({
           watcherReplayTranscriptClassification(pendingCapture),
         );
         assertWatcherValidationReplayCaptureCurrent(pendingCapture);
+        heldValidationDecisions.delete(completedDecision.decisionDigest);
         validationCaptures.set(
           completedDecision.decisionDigest,
           pendingCapture,
         );
+      }
+      if (pendingHold !== undefined) {
+        validationCaptures.delete(completedDecision.decisionDigest);
+        heldValidationDecisions.set(completedDecision.decisionDigest, {
+          headerHash: completedDecision.headerHash,
+          detail: pendingHold,
+        });
       }
       const replayContext = headerDecisionReplayContext(completedDecision);
       if (replayContext !== undefined) {
@@ -711,10 +740,6 @@ export function createApplication({
           ),
         );
       const config = parseWatcherConfig(JSON.parse(runtimeJson!));
-      if (config.l1.source.sourceMode !== "local_node")
-        throw new Error(
-          "completed workflow verification requires local-node authority",
-        );
       const binding = await bindFraudProofTerminalDeployment({
         manifest: JSON.parse(manifestJson!),
         blueprintJson: blueprintJson!,

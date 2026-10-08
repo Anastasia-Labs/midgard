@@ -59,16 +59,16 @@ describe("merge-complete reconciliation verdict", () => {
       ).toBe("pending");
   });
 
-  it("never reads surviving block rows of an unqueued header as a completed merge", () => {
-    // The merge's local finalization clears the block's rows in the same
-    // transaction that folds its ledger delta, so rows that survive are the
-    // opposite of completion.
+  it("reads an unqueued header's block rows as neither completion nor its absence", () => {
+    // The block's rows stay until its fold is final, after its merge's local
+    // finalization completed: only the job decides.
     expect(
       mergeCompletionVerdict(observed({ txCount: 3, job: undefined })).status,
     ).toBe("ambiguous");
-    expect(mergeCompletionVerdict(observed({ txCount: 3 })).status).toBe(
-      "ambiguous",
-    );
+    expect(mergeCompletionVerdict(observed({ txCount: 3 }))).toEqual({
+      status: "satisfied",
+      nextAction: null,
+    });
   });
 
   it("does not treat an empty row set without a finalization job as proof", () => {

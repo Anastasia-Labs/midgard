@@ -21,8 +21,12 @@ import {
   type UtxoOverrideLucid,
 } from "./submitter.classify-l1-submitter-utxos.js";
 
-export const selectL1SubmitterWallet = async (
-  lucid: Pick<LucidEvolution, "selectWallet"> & Partial<UtxoOverrideLucid>,
+/**
+ * Selects the wallet `keySource` names, with no UTxO pin: the wallet's reads
+ * and its signing see the provider's live UTxOs.
+ */
+export const selectL1KeySourceWallet = async (
+  lucid: Pick<LucidEvolution, "selectWallet">,
   keySource: string,
 ): Promise<L1SubmitterCredential> => {
   const credential = await readL1SubmitterKeySource(keySource);
@@ -31,6 +35,19 @@ export const selectL1SubmitterWallet = async (
   } else {
     lucid.selectWallet.fromPrivateKey(credential.value as never);
   }
+  return credential;
+};
+
+/**
+ * Selects the L1 submitter's wallet and pins it to its spendable plain-ADA
+ * UTxOs, leaving out the coins its own unconfirmed transactions spend. The
+ * submitter takes the pin again before each signing (`signSubmitAndConfirm`).
+ */
+export const selectL1SubmitterWallet = async (
+  lucid: Pick<LucidEvolution, "selectWallet"> & Partial<UtxoOverrideLucid>,
+  keySource: string,
+): Promise<L1SubmitterCredential> => {
+  const credential = await selectL1KeySourceWallet(lucid, keySource);
   await refreshL1SubmitterPlainAdaUtxos(lucid);
   return credential;
 };

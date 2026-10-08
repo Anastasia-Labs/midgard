@@ -54,7 +54,9 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
       ({ keyHash }) => keyHash === appointed.operatorKeyHash,
     )!;
     const early = await Effect.runPromise(
-      planTakeoverProgram(fixture.lucid, fixture.contracts),
+      withoutFollowerJournal(
+        planTakeoverProgram(fixture.lucid, fixture.contracts),
+      ),
     );
     if (early.plan.kind !== "not-yet") {
       throw new Error(`Expected a not-yet plan, got ${early.plan.kind}`);

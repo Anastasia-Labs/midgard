@@ -27,7 +27,6 @@ export {
   prepareAppend,
   type Retention,
   RETENTION_BATCH,
-  type RetentionHold,
   seed,
 } from "./eventHistoryJournal.prepare-append.js";
 export { type Appended } from "./eventHistoryJournal.retain.js";

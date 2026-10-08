@@ -14,7 +14,7 @@ import { makeEventHistoryRecovery } from "../src/services/event-history-recovery
 import { Globals, publishMempoolLedgerDelta } from "../src/services/globals.js";
 import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.js";
 import { WriteBehind } from "../src/services/write-behind.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const deploymentIdentity = "a2".repeat(32);
 const capture = {
@@ -133,9 +133,7 @@ beforeAll(async () =>
 beforeEach(async () =>
   run(
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE event_history_authority, history_recovery_drain_probe`;
-      yield* sql`DELETE FROM address_history WHERE tx_id = ${row(2).tx_id}`;
+      yield* resetApplicationTables;
     }),
   ),
 );

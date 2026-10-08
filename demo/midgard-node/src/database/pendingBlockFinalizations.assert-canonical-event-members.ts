@@ -8,6 +8,7 @@ import {
 } from "../services/event-history-producer.js";
 import * as DepositsDB from "./deposits.js";
 import * as HistoryAuthority from "./eventHistoryAuthority.js";
+import { canonicalForcedAdmission } from "./l1-admission-identity.js";
 import {
   ACTIVE_STATUSES,
   Columns,
@@ -31,10 +32,16 @@ type IdentifiedMember = Pick<
  * member's follower admission identity is its event row's, and the follower's
  * key set still holds it. Retirement keeps the key, so a spent list node
  * remains a valid member. Public event IDs alone never authorize mutation of a
- * replacement row. */
+ * replacement row. A forced member's row must still be a canonical admission:
+ * its order is in the follower's key set or its order row (a spent order
+ * keeps its row). */
 export const assertCanonicalEventMembers = (record: {
   readonly depositMembers: readonly IdentifiedMember[];
   readonly withdrawalMembers: readonly IdentifiedMember[];
+  readonly forcedTransactionMembers?: readonly Pick<
+    MemberRecord,
+    MemberColumns.MEMBER_ID
+  >[];
 }): Effect.Effect<void, DatabaseError, Database> =>
   withHistoryWrite(
     Effect.gen(function* () {
@@ -76,6 +83,22 @@ export const assertCanonicalEventMembers = (record: {
               }),
             );
         }
+      }
+      for (const member of record.forcedTransactionMembers ?? []) {
+        const rows = yield* sql`
+          SELECT f.tx_order_id FROM forced_transaction_utxos f
+          WHERE f.tx_order_id = ${member[MemberColumns.MEMBER_ID]}
+            AND ${canonicalForcedAdmission(sql, "f")}
+          FOR UPDATE OF f`;
+        if (rows.length !== 1)
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: tableName,
+              message:
+                "Journal forced member no longer identifies a canonical forced order",
+              cause: member[MemberColumns.MEMBER_ID].toString("hex"),
+            }),
+          );
       }
     }),
   ).pipe(

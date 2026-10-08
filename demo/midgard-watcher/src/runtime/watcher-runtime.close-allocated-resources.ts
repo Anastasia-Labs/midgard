@@ -4,10 +4,10 @@ import { type WatcherFaultProofApplication } from "../fault-proofs/fault-proof-a
 import { type WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
 import { type WatcherSqliteProverFundingReservationStoreRuntime } from "../funding/sqlite-prover-funding-reservation-store.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
+import { type WatcherUserEvents } from "../l1-follower/user-events.js";
 import { type WatcherRetainedDaOperationsBinding } from "../storage/retained-da-runtime.js";
 import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend.js";
 import { type WatcherOperationsHttpServer } from "./operations-http.js";
-import { type WatcherUserEventRuntime } from "./user-event-runtime.js";
 import { type WatcherDecisionDriver } from "./watcher-runtime.decision-driver.js";
 
 /**
@@ -33,7 +33,7 @@ export const closeWatcherAllocatedResources = async (
     proverFundingStore: () =>
       | WatcherSqliteProverFundingReservationStoreRuntime
       | undefined;
-    userEventRuntime: () => WatcherUserEventRuntime | undefined;
+    userEvents: () => WatcherUserEvents | undefined;
     sqlite: () => Awaited<ReturnType<typeof openWatcherSqliteDurableBackend>>;
   }>,
 ): Promise<void> => {
@@ -54,7 +54,7 @@ export const closeWatcherAllocatedResources = async (
   await attempt(() => allocated.allocatedFaultProofApplication()?.close());
   await attempt(() => allocated.availability()?.close());
   await attempt(() => allocated.proverFundingStore()?.close());
-  await attempt(() => allocated.userEventRuntime()?.close());
+  await attempt(() => allocated.userEvents()?.close());
   await attempt(() => allocated.follower()?.close());
   await attempt(() => allocated.sqlite().close());
   if (failures.length > 0) {

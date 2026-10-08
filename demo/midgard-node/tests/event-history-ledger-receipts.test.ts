@@ -53,7 +53,8 @@ import {
   makeMidgardTxOutput,
   makeOutRefCbor,
 } from "./midgard-output-helpers.js";
-import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
+import { applyMidgardNodeTestEnv } from "./test-env.js";
+import { resetApplicationTables } from "./utils.js";
 
 // Real SQL and canonical signed Midgard bodies; L1 history admission below is
 // explicitly modeled, not emulator acceptance or authority inferred from a receipt.
@@ -368,16 +369,7 @@ const admit = async (checkpoint: Journal.Checkpoint, n: number) => {
 };
 
 beforeEach(async () => {
-  await run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const [database] = yield* sql<{
-        name: string;
-      }>`SELECT current_database() AS name`;
-      expect(database?.name).toBe(testDatabaseName());
-      yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, follower_event_ingestion, l1_event_keys, l1_follower_cursor, l1_blocks CASCADE`;
-    }),
-  );
+  await run(resetApplicationTables);
 });
 
 const ownedFixture = async () => {

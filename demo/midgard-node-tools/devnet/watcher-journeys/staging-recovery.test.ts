@@ -271,13 +271,13 @@ const openStage = async () => {
     async () => current,
   );
   const onStage = vi.fn();
+  // "unreadable" is a hard reader failure, never permission to rebuild.
   let recoveryStatus:
     | "expired"
     | "invalidated"
     | "included"
-    | "conflict"
     | "pending"
-    | "unknown" = "expired";
+    | "unreadable" = "expired";
   const recoveryReads = vi.fn();
   const stageInput = (
     onHealthyPredecessor?: JourneyFixtureStage["onHealthyPredecessor"],
@@ -290,23 +290,12 @@ const openStage = async () => {
     historicalNativeScriptProviders: [],
     readSignedCommitRecovery: async (attempt) => {
       recoveryReads(attempt);
+      if (recoveryStatus === "unreadable")
+        throw new Error("Recorded transaction bytes are unreadable");
       return {
         transactionHash: attempt.txHash,
         signedTransactionCborHex: attempt.signedCbor,
         status: recoveryStatus,
-        canonicalPoint: {
-          pointId: "aa".repeat(32),
-          blockHash: "aa".repeat(32),
-          blockNo: "100",
-          slot: "100",
-        },
-        releaseFinalPoint: {
-          pointId: "bb".repeat(32),
-          blockHash: "bb".repeat(32),
-          blockNo: "70",
-          slot: "70",
-        },
-        inputs: [],
         reason:
           recoveryStatus === "expired"
             ? "its inputs are unspent past validity slot " +
@@ -326,8 +315,8 @@ const openStage = async () => {
       }),
     actor,
     recoveryReads,
-    refreshWallet: vi.spyOn(lucid, "overrideUTxOs"),
-    refreshSuccessorWallet: vi.spyOn(publisherLucid, "overrideUTxOs"),
+    pinWallet: vi.spyOn(lucid, "overrideUTxOs"),
+    pinSuccessorWallet: vi.spyOn(publisherLucid, "overrideUTxOs"),
     actions,
     emulator,
     onStage,
@@ -524,9 +513,9 @@ it.each([true, false])(
         commitTxHash: signedCommit.txHash,
       });
     } else {
-      fixture.setRecoveryStatus("conflict");
+      fixture.setRecoveryStatus("unreadable");
       await expect(fixture.stage()).rejects.toThrow(
-        "Header transaction recovery conflict: authenticated conflict",
+        "Recorded transaction bytes are unreadable",
       );
       expect(await readJourneyArtifact(fixture.checkpointPath)).toEqual({
         ...unsigned,
@@ -651,7 +640,7 @@ it.each(["included", "expired", "invalidated"] as const)(
         expect(await readJourneyArtifact(fixture.checkpointPath)).toMatchObject(
           { signedCommit: attempt },
         );
-        fixture.refreshWallet.mockClear();
+        fixture.pinWallet.mockClear();
         if (status === "included") fixture.publishTarget(attempt.txHash);
         throw new PublishedTransactionSubmissionError(
           attempt.txHash,
@@ -664,7 +653,7 @@ it.each(["included", "expired", "invalidated"] as const)(
     const staged = await fixture.stage();
     expect(staged.target.kind).toBe("attested");
     expect(fixture.recoveryReads).toHaveBeenCalledExactlyOnceWith(attempt);
-    expect(fixture.refreshWallet).toHaveBeenCalledOnce();
+    expect(fixture.pinWallet).not.toHaveBeenCalled();
     expect(fixture.actor.commit).toHaveBeenCalledTimes(
       status === "included" ? 1 : 2,
     );
@@ -710,7 +699,7 @@ it("keeps an ambiguous initial attempt through pending observations without rebu
   await writeJourneyArtifact(fixture.checkpointPath, draft);
   const attempt = signedAttempt();
   fixture.recoveryReads
-    .mockImplementationOnce(() => fixture.setRecoveryStatus("unknown"))
+    .mockImplementationOnce(() => fixture.setRecoveryStatus("pending"))
     .mockImplementationOnce(() => fixture.setRecoveryStatus("pending"))
     .mockImplementationOnce(() => {
       fixture.setRecoveryStatus("included");
@@ -734,14 +723,14 @@ it("keeps an ambiguous initial attempt through pending observations without rebu
   });
 });
 
-it.each(["construction", "identity", "conflict"] as const)(
+it.each(["construction", "identity", "unreadable"] as const)(
   "does not convert %s failure into permission to rebuild",
   async (failure) => {
     const fixture = await openStage();
     const { commitTxHash: _, ...draft } = fixture.checkpoint;
     await writeJourneyArtifact(fixture.checkpointPath, draft);
     const attempt = signedAttempt();
-    fixture.setRecoveryStatus("conflict");
+    fixture.setRecoveryStatus("unreadable");
     fixture.actor.commit.mockImplementationOnce(
       async (_block, _anchor, _head, onSigned) => {
         if (failure === "construction") throw new Error("cannot construct");
@@ -761,11 +750,11 @@ it.each(["construction", "identity", "conflict"] as const)(
         ? "cannot construct"
         : failure === "identity"
           ? "differs"
-          : "recovery conflict",
+          : "unreadable",
     );
     expect(fixture.actor.commit).toHaveBeenCalledOnce();
     expect(fixture.recoveryReads).toHaveBeenCalledTimes(
-      failure === "conflict" ? 1 : 0,
+      failure === "unreadable" ? 1 : 0,
     );
     if (failure !== "construction")
       expect(await readJourneyArtifact(fixture.checkpointPath)).toMatchObject({
@@ -774,7 +763,7 @@ it.each(["construction", "identity", "conflict"] as const)(
   },
 );
 
-it("reconciles a history submission failure and refreshes before its replacement", async () => {
+it("reconciles a history submission failure and replaces it from an unpinned wallet", async () => {
   const fixture = await openStage();
   await mkdir(join(fixture.directory, "work/journeys"), { recursive: true });
   await writeJourneyArtifact(
@@ -789,7 +778,7 @@ it("reconciles a history submission failure and refreshes before its replacement
   fixture.actor.commit.mockImplementationOnce(
     async (_block, _anchor, _head, onSigned) => {
       await onSigned!(attempt);
-      fixture.refreshWallet.mockClear();
+      fixture.pinWallet.mockClear();
       throw new PublishedTransactionSubmissionError(
         attempt.txHash,
         new Error("inputs spent"),
@@ -799,11 +788,11 @@ it("reconciles a history submission failure and refreshes before its replacement
   const history = await fixture.stageHistory();
   expect(history.commitTxHash).toBe(fixture.checkpoint.commitTxHash);
   expect(fixture.recoveryReads).toHaveBeenCalledExactlyOnceWith(attempt);
-  expect(fixture.refreshWallet).toHaveBeenCalledOnce();
+  expect(fixture.pinWallet).not.toHaveBeenCalled();
   expect(fixture.actor.commit).toHaveBeenCalledTimes(2);
 });
 
-it("reconciles a successor submission failure and refreshes before its replacement", async () => {
+it("reconciles a successor submission failure and replaces it from an unpinned wallet", async () => {
   const fixture = await openStage();
   await writeJourneyArtifact(fixture.checkpointPath, fixture.checkpoint);
   const staged = await fixture.stage();
@@ -812,7 +801,7 @@ it("reconciles a successor submission failure and refreshes before its replaceme
   fixture.actor.commit.mockImplementationOnce(
     async (_block, _anchor, _head, onSigned) => {
       await onSigned!(attempt);
-      fixture.refreshSuccessorWallet.mockClear();
+      fixture.pinSuccessorWallet.mockClear();
       throw new PublishedTransactionSubmissionError(
         attempt.txHash,
         new Error("inputs spent"),
@@ -824,7 +813,7 @@ it("reconciles a successor submission failure and refreshes before its replaceme
   });
   expect(successor.commitTxHash).toBe(fixture.checkpoint.commitTxHash);
   expect(fixture.recoveryReads).toHaveBeenCalledExactlyOnceWith(attempt);
-  expect(fixture.refreshSuccessorWallet).toHaveBeenCalledOnce();
+  expect(fixture.pinSuccessorWallet).not.toHaveBeenCalled();
   expect(fixture.actor.commit).toHaveBeenCalledTimes(2);
 });
 
@@ -835,13 +824,13 @@ it("does not replace a locally timed-out commit while canonical recovery still s
   const attempt = signedAttempt();
   const commit = fixture.actor.commit.getMockImplementation()!;
   fixture.recoveryReads
-    .mockImplementationOnce(() => fixture.setRecoveryStatus("unknown"))
+    .mockImplementationOnce(() => fixture.setRecoveryStatus("pending"))
     .mockImplementationOnce(() => fixture.setRecoveryStatus("pending"))
     .mockImplementationOnce(() => fixture.setRecoveryStatus("expired"));
   fixture.actor.commit
     .mockImplementationOnce(async (_block, _anchor, _head, onSigned) => {
       await onSigned!(attempt);
-      fixture.refreshWallet.mockClear();
+      fixture.pinWallet.mockClear();
       // Local TTL + grace has passed, but the node has not yet advanced its
       // canonical boundary and the original still reserves the mempool inputs.
       throw new PublishedTransactionExpiredError(
@@ -852,7 +841,7 @@ it("does not replace a locally timed-out commit while canonical recovery still s
     })
     .mockImplementationOnce(async (...args) => {
       expect(fixture.recoveryReads).toHaveBeenCalledTimes(3);
-      expect(fixture.refreshWallet).toHaveBeenCalledOnce();
+      expect(fixture.pinWallet).not.toHaveBeenCalled();
       return commit(...args);
     });
   await fixture.stage();

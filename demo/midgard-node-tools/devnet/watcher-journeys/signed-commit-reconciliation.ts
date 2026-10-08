@@ -1,12 +1,9 @@
-import {
-  LocalKupmiosCheckpointChangedError,
-  type readAdmittedLocalKupmiosSignedTransactionRecovery,
-} from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
-type SignedTransactionRecoveryObservation = Awaited<
-  ReturnType<typeof readAdmittedLocalKupmiosSignedTransactionRecovery>
->;
+import {
+  type SignedTransactionRecovery,
+  SignedTransactionRecoveryUnavailableError,
+} from "./signed-transaction-recovery.js";
 
 /** Exact signed header commitment bytes persisted before submission. */
 export type SignedCommitAttempt = { txHash: string; signedCbor: string };
@@ -17,10 +14,10 @@ export type SignedCommitDisposition =
 
 export type SignedCommitReconciliationPorts = {
   attempt: SignedCommitAttempt;
-  /** Concrete local recovery binds exact bytes to canonical/release-final evidence. */
+  /** The local node's classification of the exact recorded bytes. */
   readRecovery(
     attempt: SignedCommitAttempt,
-  ): Promise<SignedTransactionRecoveryObservation>;
+  ): Promise<SignedTransactionRecovery>;
   /** Delay between receipt observations without requiring a new block. */
   pollDelay(): Promise<void>;
   /** Broadcast the exact recorded bytes; resolves to the accepted hash. */
@@ -28,7 +25,7 @@ export type SignedCommitReconciliationPorts = {
   onStage?(name: string): void;
 };
 
-/** Only authenticated expiry or invalidation permits replacement of signed bytes. */
+/** Only proven expiry or invalidation permits replacement of signed bytes. */
 export const reconcileSignedCommit = async ({
   attempt,
   readRecovery,
@@ -51,15 +48,16 @@ export const reconcileSignedCommit = async ({
   }
   let rebroadcastAttempted = false;
   for (;;) {
-    let observed: SignedTransactionRecoveryObservation;
+    let observed: SignedTransactionRecovery;
     try {
       observed = await readRecovery(attempt);
     } catch (cause) {
-      // A moving capture boundary settles neither inclusion nor retirement.
-      // Keep the attempt and capture again; identity/authentication errors
-      // still escape instead of becoming permission to rebuild.
-      if (!(cause instanceof LocalKupmiosCheckpointChangedError)) throw cause;
-      onStage(`header recovery ${attempt.txHash} awaits a stable checkpoint`);
+      // An unanswered read settles neither inclusion nor retirement. Keep the
+      // attempt and read again; identity errors still escape instead of
+      // becoming permission to rebuild.
+      if (!(cause instanceof SignedTransactionRecoveryUnavailableError))
+        throw cause;
+      onStage(`header recovery ${attempt.txHash} awaits the local node`);
       await pollDelay();
       continue;
     }
@@ -73,18 +71,11 @@ export const reconcileSignedCommit = async ({
     switch (observed.status) {
       case "included":
         return { kind: "included", txHash: attempt.txHash };
-      // Impossible at the tip counts too: whichever lands wins, and a
-      // replacement spends the same state-queue input, so it cannot
-      // double-commit.
+      // Whichever lands wins, and a replacement spends the same state-queue
+      // input, so it cannot double-commit.
       case "expired":
       case "invalidated":
-      case "expired_at_tip":
-      case "invalidated_at_tip":
         return { kind: "retired", reason: observed.reason };
-      case "conflict":
-        throw new Error(
-          `Header transaction recovery conflict: ${observed.reason}`,
-        );
       case "rebroadcast":
         if (!rebroadcastAttempted) {
           // A failed RPC is ambiguous too: preserve the bytes and re-observe.
@@ -104,7 +95,6 @@ export const reconcileSignedCommit = async ({
         }
         break;
       case "pending":
-      case "unknown":
         break;
     }
     await pollDelay();

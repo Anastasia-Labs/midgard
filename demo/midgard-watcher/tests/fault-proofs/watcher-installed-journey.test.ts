@@ -43,8 +43,6 @@ import {
   closeWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
 } from "../../src/fault-proofs/watcher-journal-database.js";
-import { makeWatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
-import { WatcherLocalKupmios } from "../../src/l1/native-reward-account.js";
 import {
   parseWatcherProcessConfig,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
@@ -60,7 +58,6 @@ import { operationsVerifiedHeader } from "../support/operations-verified-header.
 import { createPublishedWatcherDeploymentAuthority } from "../support/published-deployment-authority.js";
 import { stagePublishedDepositTrace } from "../support/published-deposit-trace.js";
 import { createTerminalRelease } from "../support/terminal-release.js";
-import { startPublishedWatcherJourneyAuthorityFixture } from "../support/trusted-head-process-fixture.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 import { assertPublishedFundingCustodyRoles } from "./watcher-installed-journey.funding-policy-fixture.js";
 
@@ -358,10 +355,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     vi.spyOn(Kupmios.prototype, "getRewardAccount").mockImplementation(
       (address) => provider.getRewardAccount(address),
     );
-    vi.spyOn(
-      WatcherLocalKupmios.prototype,
-      "getRewardAccount",
-    ).mockImplementation((address) => provider.getRewardAccount(address));
     vi.spyOn(Kupmios.prototype, "submitTx").mockImplementation((cbor) =>
       provider.submitTx(cbor),
     );
@@ -406,7 +399,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     vi.stubEnv("MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY", "17".repeat(32));
     vi.stubEnv("MIDGARD_WATCHER_PROVER_KEY", accounts.publisher.seedPhrase);
     vi.stubEnv("WATCHER_AVAILABILITY_KEY", availabilityAccount.seedPhrase);
-    vi.stubEnv("MIDGARD_WATCHER_TRUSTED_HEAD_BEARER", "39".repeat(32));
     const watcherConfig = {
       ...native.watcherConfig,
       // The follower starts at the block before the protocol-init block.
@@ -422,17 +414,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         path: join(directory, "watcher.sqlite"),
       },
     };
-    const policy = makeWatcherFinalityPolicy(
-      watcherConfig,
-      configuration.deploymentAuthority.deploymentIdentity,
-    );
-    if (policy === null)
-      throw new Error("Fixture finality policy was not admitted");
-    const trusted = await startPublishedWatcherJourneyAuthorityFixture({
-      directory: join(directory, "trusted-head"),
-      policy,
-    });
-    cleanup.push(trusted.close);
     const config = parseWatcherProcessConfig({
       schemaVersion: WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
       watcherConfig,
@@ -441,12 +422,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       ruleBundlePath: configuration.ruleBundlePath,
       fundingProfileBundlePath: configuration.fundingProfileBundlePath,
       l1NodeTransportBinaryPath: native.l1NodeTransportBinaryPath,
-      trustedHeadAuthorityEndpoint: trusted.server.endpoint,
       operationsEndpoint: `http://127.0.0.1:${operations.port}`,
-      httpBearerSecretSource: {
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_TRUSTED_HEAD_BEARER",
-      },
       workflowJournalDirectory: join(directory, "workflows"),
       availability: {
         keySource: {

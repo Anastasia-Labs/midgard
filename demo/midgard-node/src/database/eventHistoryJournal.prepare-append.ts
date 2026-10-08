@@ -321,15 +321,4 @@ export type Retention = Readonly<{
   /** k: the manifest's deepest automatic rollback. Blocks deeper than this
    * behind the tip are never rolled back automatically. */
   horizon: number;
-  /** Earliest signed validity-start slot that signed-header recovery may still
-   * need to evaluate; the first retained block must not be later than it. */
-  holdSlot: number | undefined;
-}>;
-
-/** Set when holdSlot, not the horizon or batch size, stopped the anchor: the
- * anchor this step left, and the one the horizon alone would allow. */
-export type RetentionHold = Readonly<{
-  holdSlot: number;
-  anchorHeight: number;
-  unheldAnchorHeight: number;
 }>;

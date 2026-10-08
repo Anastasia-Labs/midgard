@@ -81,7 +81,7 @@ export type PruneHook =
  * each prune step, in its transaction. With several floors the lowest holds.
  */
 export type PruneFloor = Readonly<{
-  /** Who holds the floor (named in logs). */
+  /** Who holds the floor (named in logs and in `FollowStatus.prune.floorLags`). */
   name: string;
   floor(
     context: Readonly<{ tx: SqlTx; dialect: Dialect }>,
