@@ -37,6 +37,7 @@ import {
   pruneWatcherProofObjective,
   type WatcherProofCompletionMarker,
   watcherProofJobActive,
+  watcherProofJobPending,
   watcherProofMarkerMatches,
 } from "./fault-proof-objective-table.js";
 import type { WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
@@ -240,23 +241,29 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     held.set(key, hold);
     input.onObjectiveSettled?.(hold);
   };
-  // A held objective whose header left the finalized queue has resolved:
-  // its proof or another landed and is final, or the header merged.
+  const queued = (
+    observation: WatcherAuthenticatedStateQueueObservation,
+    target: WatcherProofObjective,
+  ): boolean =>
+    observation.finalizedHeaders.some(
+      ({ headerHash }) => headerHash === target.headerHash,
+    );
+  // An objective whose header left the finalized queue has resolved: its
+  // proof or another landed and is final, or the header merged. Its pin goes;
+  // the rows of a queued or active job are left to that job, whose run adopts
+  // the objective again for a later observation to release.
+  const release = async (target: WatcherProofObjective): Promise<void> => {
+    await input.retention?.release(target);
+    if (!watcherProofJobPending(database(), target))
+      forgetWatcherProofObjective(database(), target, { decisions: false });
+  };
   const clearResolvedHolds = async (
     observation: WatcherAuthenticatedStateQueueObservation,
   ): Promise<void> => {
     for (const [key, hold] of held) {
-      if (
-        observation.finalizedHeaders.some(
-          ({ headerHash }) => headerHash === hold.headerHash,
-        )
-      )
-        continue;
+      if (queued(observation, hold)) continue;
       held.delete(key);
-      await input.retention?.release(hold);
-      // Rows of an active job are left to that job's own finish.
-      if (!watcherProofJobActive(database(), hold))
-        forgetWatcherProofObjective(database(), hold, { decisions: false });
+      await release(hold);
     }
   };
   const loadExecution = async (objective: Objective): Promise<void> => {
@@ -553,14 +560,15 @@ export const createWatcherFaultProofProgressAuthority = (input: {
             )
           ) {
             // With no fault naming it and no signed attempt to reconcile,
-            // nothing drives it again until its header is queued again.
-            if (
-              !request.observation.finalizedHeaders.some(
-                ({ headerHash }) =>
-                  headerHash === objective.decision.headerHash,
-              )
-            )
+            // nothing drives it again until its header is queued again, which
+            // admits it afresh: it is released as a resolved hold is.
+            if (!queued(request.observation, objective.decision)) {
+              objectives.delete(key);
+              unheld.delete(key);
               input.onObjectiveSettled?.(objective.decision);
+              await release(objective.decision);
+              if (epoch !== startedEpoch) return [];
+            }
             continue;
           }
           if (objective.historical?.generation !== request.rollbackGeneration) {
