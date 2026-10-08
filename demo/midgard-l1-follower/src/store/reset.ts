@@ -78,10 +78,10 @@ export type ResetIn = Exclude<ResetResult, StoreLocked> &
  * The reset's deletes and fence, inside the caller's write transaction.
  * When the store had a cursor, it also leaves its own `l1_rollbacks` row
  * (generation `nextGeneration`, from the old cursor to the origin), so a
- * reader that missed the notification finds the reset by generation; and
- * when the store has a tracked-set record, it marks the replay on it
- * (`replaying`, and `replay_height`: the highest cursor height a reset
- * found since the mark was last cleared).
+ * reader that missed the notification finds the reset by generation, and
+ * it marks the replay on the tracked-set record (`replaying`, and
+ * `replay_height`: the highest cursor height a reset found since the mark
+ * was last cleared), inserting an empty record when there is none.
  */
 export const resetIn = async (
   tx: SqlTx,
@@ -141,11 +141,20 @@ export const resetIn = async (
         originHeight === null ? 0 : cursor.height - originHeight,
       ],
     );
+    // With no record yet (a store from before the record, reset by the CLI
+    // before its first upgraded start), an empty one carries the mark: the
+    // next `initialize` writes its items and keeps the mark
+    // (`writeTrackedSetRecordIn`), so this reset replays like any other.
     await tx.query(
-      `UPDATE l1_follower_tracked_set SET replaying = 1,
-         replay_height = CASE WHEN replaying <> 0 AND replay_height > ? THEN replay_height ELSE ? END
-       WHERE id = 1`,
-      [cursor.height, cursor.height],
+      `INSERT INTO l1_follower_tracked_set (id, addresses, payment_credentials, policies, replaying, replay_height)
+       VALUES (1, '[]', '[]', '[]', 1, ?)
+       ON CONFLICT (id) DO UPDATE SET replaying = 1,
+         replay_height = CASE
+           WHEN l1_follower_tracked_set.replaying <> 0
+             AND l1_follower_tracked_set.replay_height > excluded.replay_height
+           THEN l1_follower_tracked_set.replay_height
+           ELSE excluded.replay_height END`,
+      [cursor.height],
     );
   } else
     // A second reset before the next initialize: the first one's mark stays.
@@ -195,7 +204,8 @@ export const resetIn = async (
  * nothing and leaves the next generation as it was. D-x rows are deleted;
  * the external stores they version (MPF roots, Level nodes) are not touched.
  * Like a tracked-set reset, it marks the replay on the tracked-set record
- * and leaves its own `l1_rollbacks` row (`resetIn`).
+ * (inserting an empty one when the store has none) and leaves its own
+ * `l1_rollbacks` row (`resetIn`).
  */
 export const resetToOrigin = async (
   backend: SqlBackend,

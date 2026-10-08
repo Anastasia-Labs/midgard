@@ -1,7 +1,8 @@
 /**
  * The follower's L1 degradations reach status and metrics without failing
  * readiness (ruling C on permanently unresolvable tx inputs), while the same
- * name as a follower readiness reason makes the watcher not ready.
+ * name as a follower readiness reason makes the watcher not ready; the
+ * decision driver's reasons reach readiness the same way.
  */
 import { FOLLOWER_NODE_UNAVAILABLE } from "@al-ft/midgard-l1-follower";
 import { describe, expect, it } from "vitest";
@@ -12,6 +13,10 @@ import {
   type WatcherL1Degradation,
 } from "../../src/l1-follower/tx-inputs.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
+import {
+  WATCHER_RETIREMENT_RESET_FAILED,
+  type WatcherDecisionReadiness,
+} from "../../src/runtime/watcher-runtime.decision-driver.js";
 import { createWatcherL1Readiness } from "../../src/runtime/watcher-runtime.l1-readiness.js";
 import { supervisor } from "./operations-observability.supervisor.js";
 
@@ -22,13 +27,14 @@ const watcher = (
     readiness: readonly WatcherFollowerReadiness[];
     degradations: readonly WatcherL1Degradation[];
   }>,
+  driver: readonly WatcherDecisionReadiness[] = [],
 ) => {
   const l1 = createWatcherL1Readiness({
     follower: {
       readiness: () => Promise.resolve(follower.readiness),
       degradations: () => Promise.resolve(follower.degradations),
     },
-    driver: () => ({ readiness: () => [] }),
+    driver: () => ({ readiness: () => driver }),
   });
   const observability = createWatcherOperationsObservability({
     deploymentFingerprint: MANIFEST,
@@ -104,6 +110,20 @@ describe("L1 degradations in operations observability", () => {
       readiness: "not_ready",
       readinessReasons: [FOLLOWER_NODE_UNAVAILABLE],
       l1Readiness: [lost],
+    });
+  });
+
+  it("fails readiness by name while the decision driver reports a failed retirement reset", async () => {
+    const failed = {
+      reason: WATCHER_RETIREMENT_RESET_FAILED,
+      detail: "the transcript store is locked",
+    };
+    const w = watcher({ readiness: [], degradations: [] }, [failed]);
+    await w.l1.refresh();
+    expect(w.api.status()).toMatchObject({
+      readiness: "not_ready",
+      readinessReasons: [WATCHER_RETIREMENT_RESET_FAILED],
+      l1Readiness: [failed],
     });
   });
 });

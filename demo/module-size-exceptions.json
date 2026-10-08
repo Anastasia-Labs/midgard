@@ -1546,8 +1546,8 @@
   },
   {
     "file": "midgard-watcher/src/index.ts",
-    "max": 707,
-    "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation. Integrated recovered DA branch source; exact measured line count."
+    "max": 709,
+    "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation. Integrated recovered DA branch source; exact measured line count. SI-fix2 (+2): exports the decision driver's two retirement-reset readiness reasons."
   },
   {
     "file": "midgard-watcher/src/indexers/user-event-indexer/local-history.prepare-watcher-local-user-event-readmission.ts",
@@ -1563,6 +1563,11 @@
     "file": "midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts",
     "max": 1564,
     "reason": "createWatcherUserEventRuntime is the dominant indivisible declaration (1488 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-watcher/src/runtime/watcher-runtime.decision-driver.ts",
+    "max": 576,
+    "reason": "createWatcherDecisionDriver is one state owner: the pass, the push and pull rewind handler, the history rollback target, the handled-generation marker and the retirement reset it waits on share private state and ordering invariants (the target merges before the generation dedupe; the marker moves only after the history rollback and a held reset). Splitting them apart would expose that state across modules rather than separate independent declarations. SI-fix2 (+86): the marker waits on the retirement reset, bounded by the retry delay, with named readiness reasons, and the pull reads from the generation this process already rolled the history back through."
   },
   {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",

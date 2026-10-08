@@ -27,9 +27,10 @@ import { readCursor } from "./rows.js";
  * Every reset of a store with a record marks the replay in its own
  * transaction (`resetIn`): this one and a manual `reset --to-origin` alike.
  * The mark is the record's `replaying` flag and `replay_height`, the
- * cursor height before the reset. While it is set, prune runs no projection
+ * cursor height before the reset. While it is set, prune runs no retention
  * prune hook (`pruneIn`: the facts below the cursor are incomplete until the
- * replay passes them) and the role is unready with `tracked_set_changed`. The
+ * replay passes them; record hooks still run with the deletes they record)
+ * and the role is unready with `tracked_set_changed`. The
  * loop clears it at the first report at the node tip, with the node
  * available, once the cursor height is at least `replay_height`.
  *

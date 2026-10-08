@@ -226,6 +226,7 @@ export type {
   DerivationHook,
   PruneFloor,
   PruneHook,
+  PruneHookContext,
   RetentionPin,
   RetentionPins,
 } from "./store/context.js";

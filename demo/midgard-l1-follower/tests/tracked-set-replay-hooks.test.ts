@@ -18,6 +18,8 @@ import {
   deriveIntentStatusesIn,
   type DialectName,
   type FactStore,
+  type FactStoreOptions,
+  type FollowerProjection,
   intentJournalProjection,
   openPostgresBackend,
   openPostgresFactStore,
@@ -226,8 +228,15 @@ describe.each(adapters)("replay after a store reset ($name)", (adapter) => {
   it.each([
     ["a tracked-set reset at start", dropRecord],
     ["a manual reset --to-origin", manualReset],
+    [
+      "a manual reset --to-origin of a store with no tracked-set record",
+      async (location: Location) => {
+        await dropRecord(location);
+        await manualReset(location);
+      },
+    ],
   ] as const)(
-    "%s marks the replay, runs no prune hook until the cursor is back at its previous height, and keeps a journaled own intent whose input lands mid-replay",
+    "%s marks the replay, runs no retention prune hook until the cursor is back at its previous height, and keeps a journaled own intent whose input lands mid-replay",
     async (_, reset) => {
       const location = await adapter.create();
       const { blocks, expected, cursor: before } = await followed(location);
@@ -255,6 +264,12 @@ describe.each(adapters)("replay after a store reset ($name)", (adapter) => {
           },
         ]);
         expect((await store.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+        // The record holds the configured set, and the mark stays.
+        expect(await store.trackedSetRecord()).toEqual({
+          trackedSet: trackedSetItems(u.tracked),
+          replaying: true,
+          replayHeight: before.height,
+        });
         expect(await store.rewindsSince(0)).toEqual({
           generation: 1,
           target: SIM_ORIGIN.point,
@@ -303,6 +318,42 @@ describe.each(adapters)("replay after a store reset ($name)", (adapter) => {
   );
 });
 
+describe.each(adapters)("a second reset during a replay ($name)", (adapter) => {
+  it("keeps the higher replay height: the one the first reset recorded, above the replay's cursor", async () => {
+    const location = await adapter.create();
+    const { blocks, cursor: before } = await followed(location);
+    await manualReset(location);
+    const replay = location.store();
+    try {
+      expect((await replay.start()).kind).toBe("ready");
+      expect((await replay.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+      for (const raw of blocks.slice(0, 3))
+        expect((await replay.applyBlock(decodeBlock(raw))).kind).toBe(
+          "applied",
+        );
+      expect((await replay.cursor())?.height).toBeLessThan(before.height);
+    } finally {
+      await replay.close();
+    }
+    const backend = location.backend();
+    try {
+      expect(await resetToOrigin(backend)).toMatchObject({ kind: "reset" });
+    } finally {
+      await backend.close();
+    }
+    const store = location.store();
+    try {
+      expect(await store.start()).toMatchObject({ replaying: true });
+      expect(await store.trackedSetRecord()).toMatchObject({
+        replaying: true,
+        replayHeight: before.height,
+      });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe.each(adapters)("the configured tracked set ($name)", (adapter) => {
   it("an item configured in uppercase hex qualifies like its lowercase form, and the record holds it lowercase", async () => {
     const upper = (values: ReadonlySet<string>) =>
@@ -349,6 +400,82 @@ describe.each(adapters)("the configured tracked set ($name)", (adapter) => {
       });
     } finally {
       await lower.close();
+    }
+  });
+});
+
+describe.each(adapters)("prune hooks by kind ($name)", (adapter) => {
+  it("runs a record hook in every prune step and a retention hook only while the store is not replaying", async () => {
+    const calls: string[] = [];
+    const spies: FollowerProjection = {
+      name: "spies",
+      pruneHooks: [
+        {
+          kind: "retention",
+          table: "spy_retention",
+          apply: ({ boundarySlot }) => {
+            calls.push(`retention@${boundarySlot.toString()}`);
+            return Promise.resolve(0);
+          },
+        },
+        {
+          kind: "record",
+          table: "spy_record",
+          apply: ({ boundarySlot }) => {
+            calls.push(`record@${boundarySlot.toString()}`);
+            return Promise.resolve();
+          },
+        },
+      ],
+    };
+    const options = projectionStoreOptions(
+      [intentJournalProjection, spies],
+      { securityParameter: K, trackedSet: u.tracked },
+      adapter.name,
+    );
+    const store =
+      adapter.name === "sqlite"
+        ? openSqliteFactStore({
+            ...options,
+            path: join(scratch, `${String(Math.random()).slice(2)}.db`),
+          })
+        : openPostgresFactStore({
+            ...(options as FactStoreOptions),
+            connection: { connectionString: (await databases.create()).url },
+          });
+    try {
+      expect((await store.start()).kind).toBe("ready");
+      expect((await store.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+      const chain = new SimChain(u, SIM_ORIGIN);
+      for (let i = 0; i < K + 2; i += 1)
+        expect(
+          (await store.applyBlock(decodeBlock(chain.forward([]).encoded.raw)))
+            .kind,
+        ).toBe("applied");
+      const mark = (replaying: boolean) =>
+        store.transaction("write", (tx) =>
+          tx.query("UPDATE l1_follower_tracked_set SET replaying = ?", [
+            replaying ? 1 : 0,
+          ]),
+        );
+      const boundary = async () => {
+        const pruned = await store.prune();
+        if ("kind" in pruned) throw new Error(`prune: ${pruned.kind}`);
+        return pruned.prunedThroughSlot.toString();
+      };
+
+      await mark(true);
+      const replayed = await boundary();
+      expect(calls.splice(0)).toEqual([`record@${replayed}`]);
+
+      await mark(false);
+      const settled = await boundary();
+      expect(calls.splice(0)).toEqual([
+        `retention@${settled}`,
+        `record@${settled}`,
+      ]);
+    } finally {
+      await store.close();
     }
   });
 });

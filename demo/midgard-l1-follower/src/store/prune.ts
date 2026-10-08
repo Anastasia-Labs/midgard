@@ -41,7 +41,8 @@ const pinClauses = (
  * retained refers to, unreferenced blocks (keeping checkpoints and the
  * origin), unreferenced scripts, and the rollback log beyond its last 1,000
  * rows. Each table deletes at most `budget` rows. The role's prune hooks run
- * first, except while a store reset replays.
+ * first: its record hooks always, its retention hooks except while a store
+ * reset replays (`PruneHook`).
  */
 export const pruneIn = async (
   tx: SqlTx,
@@ -122,21 +123,23 @@ export const pruneIn = async (
     ]);
   // While a store reset replays from the origin (the tracked-set record's
   // `replaying` mark), the facts are incomplete until the replay reaches the
-  // height the cursor held before the reset, so no projection hook decides
-  // retention from them; this step's own retention below goes on, and a
-  // skipped hook is no failure.
+  // height the cursor held before the reset, so no retention hook decides
+  // from them; a skipped hook is no failure. This step's own retention below
+  // goes on, so every record hook runs, in this transaction, replaying or
+  // not.
   const replaying =
-    context.pruneHooks.length > 0 &&
+    context.pruneHooks.some((hook) => hook.kind === "retention") &&
     (
       await tx.query(
         "SELECT 1 AS one FROM l1_follower_tracked_set WHERE id = 1 AND replaying <> 0",
       )
     ).length > 0;
-  if (!replaying)
-    for (const hook of context.pruneHooks)
+  const hookContext = { tx, dialect, boundarySlot };
+  for (const hook of context.pruneHooks)
+    if (hook.kind === "record") await hook.apply(hookContext);
+    else if (!replaying)
       deleted[hook.table] =
-        (deleted[hook.table] ?? 0) +
-        (await hook.apply({ tx, dialect, boundarySlot }));
+        (deleted[hook.table] ?? 0) + (await hook.apply(hookContext));
   await step("l1_outputs", "t.spent_slot IS NOT NULL AND t.spent_slot <= ?", [
     boundarySlot,
   ]);
