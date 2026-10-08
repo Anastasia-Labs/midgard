@@ -77,8 +77,8 @@ export const submitDeposit = async (h: Handle, lovelace: bigint) => {
   const { fixture, lucidService } = h;
   const wallet = fixture.depositorLucid;
   const address = await wallet.wallet().address();
-  // A scheduler refresh pins its predicted change; this flow spends the same
-  // wallet before the next one.
+  // Node programs read the wallet afresh and hold no pin; clearing the node's
+  // view keeps this flow independent of any harness pin left on it.
   lucidService.api.clearUTxOOverride();
   await ensureSeparateCollateralUtxo(wallet);
   await advanceHistoryAdmissionClock(fixture, "deposit");
@@ -267,7 +267,8 @@ export const submitUnlandedBlock = async (
   });
   dropPendingEmulatorTransaction(fixture.emulator, committed.submittedTxHash);
   h.observer.forgetDropped(committed.submittedTxHash);
-  // A wallet view pinned to the lost commit's predicted change is stale.
+  // Node programs hold no wallet pin; this clears any harness pin that still
+  // holds the dropped commit's inputs.
   lucidService.api.clearUTxOOverride();
   fixture.operatorLucid.clearUTxOOverride();
   expect(

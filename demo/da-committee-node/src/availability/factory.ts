@@ -11,7 +11,10 @@ import "./responder.js";
 import "./factory.availability-responder-operations.js";
 import "./factory.discover-availability-responder-challenges.js";
 import "./factory.availability-responder-from-config.js";
-export { availabilityResponderFromConfig } from "./factory.availability-responder-from-config.js";
+export {
+  availabilityResponderFromConfig,
+  selectAvailabilityResponderWallet,
+} from "./factory.availability-responder-from-config.js";
 export {
   availabilityParametersFromConfig,
   availabilityResponderCollateral,
