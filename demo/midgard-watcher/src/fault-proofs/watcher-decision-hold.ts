@@ -18,6 +18,12 @@ export type WatcherDecisionHold =
       /** The decision the objective's workflow names, when it names one. */
       decisionDigest: string | null;
       detail: string;
+      /**
+       * Set when the hold is not a missing decision: the reason readiness
+       * names instead of `journal_decision_missing`. The clearing rule is the
+       * same (the header leaves the finalized queue).
+       */
+      readiness?: WatcherObjectiveHoldReadiness;
     }>
   | Readonly<{
       kind: "reservation";
@@ -25,6 +31,23 @@ export type WatcherDecisionHold =
       decisionDigest: string;
       detail: string;
     }>;
+
+/**
+ * `validation_transcript_pre_follower`: a validation-trace dispute was
+ * started from a transcript recorded before user events were read from the
+ * follower's facts. The challenge rebuilt from the facts has another digest
+ * than the one its open workflow journaled, so the dispute is held rather
+ * than re-keyed.
+ */
+export type WatcherObjectiveHoldReadiness =
+  "validation_transcript_pre_follower";
+
+/** The readiness reason a hold names. */
+export const watcherDecisionHoldReason = (
+  hold: WatcherDecisionHold,
+): WatcherObjectiveHoldReadiness | "journal_decision_missing" =>
+  (hold.kind === "objective" ? hold.readiness : undefined) ??
+  "journal_decision_missing";
 
 /** Work whose recorded decision is missing: held, never a process failure. */
 export class WatcherProofDecisionMissingError extends Error {

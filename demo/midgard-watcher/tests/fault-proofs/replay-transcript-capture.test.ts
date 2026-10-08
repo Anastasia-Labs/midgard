@@ -84,28 +84,21 @@ describe("validation transcript capture over follower user events", () => {
           }),
         ).rejects.toThrow();
         // Rewinding to the Init block removes the commit block, the cutoff.
+        // The capture is retired whether or not it read any user event: the
+        // header's cutoff fences it as well as each event's capability.
         await observed.follower.rewindTo(
           context.queue.initializationBlock.point,
         );
-        if (kind === "forced") {
-          expect(() =>
-            assertWatcherValidationReplayCaptureCurrent(capture),
-          ).toThrow(/retired by an L1 rewind/u);
-          await expect(
-            refreshWatcherValidationReplayCapture(capture),
-          ).rejects.toThrow(/retired by an L1 rewind/u);
-        } else {
-          // A capture without user events holds no follower capability, so
-          // nothing in it is fenced by the follower's rewinds.
-          expect(() =>
-            assertWatcherValidationReplayCaptureCurrent(capture),
-          ).not.toThrow();
-        }
+        expect(() =>
+          assertWatcherValidationReplayCaptureCurrent(capture),
+        ).toThrow(/retired by an L1 rewind/u);
+        await expect(
+          refreshWatcherValidationReplayCapture(capture),
+        ).rejects.toThrow(/retired by an L1 rewind/u);
         await observed.close();
-        if (kind === "forced")
-          await expect(
-            refreshWatcherValidationReplayCapture(capture),
-          ).rejects.toThrow();
+        await expect(
+          refreshWatcherValidationReplayCapture(capture),
+        ).rejects.toThrow();
 
         const deploymentAuthority = await context.loadAuthority();
         const fresh = await context.queue.observeFresh();
@@ -132,15 +125,15 @@ describe("validation transcript capture over follower user events", () => {
         expect(() =>
           assertWatcherValidationReplayCaptureCurrent(renewed),
         ).not.toThrow();
+        // Closing the follower source retires every capture it fenced, with
+        // or without user events: its rewinds are no longer heard.
         await fresh.close();
-        if (kind === "forced") {
-          expect(() =>
-            assertWatcherValidationReplayCaptureCurrent(renewed),
-          ).toThrow();
-          await expect(
-            refreshWatcherValidationReplayCapture(renewed),
-          ).rejects.toThrow();
-        }
+        expect(() =>
+          assertWatcherValidationReplayCaptureCurrent(renewed),
+        ).toThrow(/retired by an L1 rewind/u);
+        await expect(
+          refreshWatcherValidationReplayCapture(renewed),
+        ).rejects.toThrow(/retired by an L1 rewind/u);
       } finally {
         await context.close();
       }

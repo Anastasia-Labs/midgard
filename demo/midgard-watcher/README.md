@@ -134,6 +134,15 @@ again and never exits over it: it holds each item, `/readyz` reports
     unspent at the tip, and it holds no signed transaction, its inputs return to
     the wallet. Otherwise it stays held.
 
+A validation-trace transcript archived before user events were read from the
+follower's facts is captured again from the facts and re-keyed on top of the
+old one, unless a proof started from it is still open: its workflow journaled a
+challenge digest the new transcript cannot reproduce. That objective is held
+the same way, listed in `supervisor.journalDecisionMissing` with `readiness`
+`validation_transcript_pre_follower`, which `/readyz` reports instead of
+`journal_decision_missing`. It clears once its header leaves the finalized
+state queue.
+
 Retention handles the rest. Workflow directories, follower pins of objectives
 that are never admitted again, and the leases of reservations that hold a
 signed transaction stay in place. The moved-aside file is never read again.
