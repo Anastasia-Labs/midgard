@@ -752,6 +752,11 @@ jobs:
         with:
           blueprint: "true"
           interactive-blueprint: "true"
+      # No watcher test runs the built CLI; this step is the hosted proof that
+      # the watcher package builds (scripts/preflight/runtime-owner.test.mjs
+      # requires one for every package with a build script).
+      - name: Build the watcher package
+        run: pnpm --dir demo/midgard-watcher run build
       # The test run records each file's seconds (durationShards in
       # midgard-test-support); `test-durations` merges the shards' records into
       # the refreshed shard table.
