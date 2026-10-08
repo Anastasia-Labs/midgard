@@ -247,22 +247,6 @@ describe("state reconciliation evaluator", () => {
     expectOnlyFailure(report, "state-queue-journal", "no journal");
   });
 
-  it("state-queue-journal fails alone when a removed header's journal is not marked with the admitted transition", () => {
-    const report = evaluateStateReconciliation(
-      input(({ sql }) => ({
-        sql: {
-          ...sql,
-          journals: sql.journals.map((j) =>
-            j.headerHash === REMOVED
-              ? { ...j, correctionTransitionDigest: h32("98") }
-              : j,
-          ),
-        },
-      })),
-    );
-    expectOnlyFailure(report, "state-queue-journal", "correction digest");
-  });
-
   it("state-queue-journal fails alone when a finalized journal is neither on L1 nor merged", () => {
     const report = evaluateStateReconciliation(
       input(({ sql }) => ({
@@ -317,7 +301,7 @@ describe("state reconciliation evaluator", () => {
     );
   });
 
-  it("state-queue-journal treats an unreincluded admitted removal as in-flight", () => {
+  it("state-queue-journal treats a landed removal whose journal the rebase has not disposed of as in-flight", () => {
     const mutate = ({ sql }: World): Partial<World> => ({
       sql: {
         ...sql,
@@ -340,8 +324,8 @@ describe("state reconciliation evaluator", () => {
 
   it("passes a signed-intent journal abandoned for a replacement whose header never landed", () => {
     // The replaced intent shares its base with the landed replacement (TIP),
-    // carries the replacement digest rather than an observed correction's,
-    // and no admitted transition names it: nothing on L1 ever held it.
+    // carries the replacement digest, and no landed removal names it:
+    // nothing on L1 ever held it.
     const report = evaluateStateReconciliation(
       input(({ sql }) => ({
         sql: {

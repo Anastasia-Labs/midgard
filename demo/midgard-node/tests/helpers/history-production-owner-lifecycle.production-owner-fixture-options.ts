@@ -23,6 +23,10 @@ export type ProductionOwnerFixtureOptions = {
    * this fixture's in-memory identity only; retention scenarios need a k
    * smaller than the 2160 the manifest pins. The manifest id is unchanged. */
   readonly rollbackHorizon?: number;
+  /** Each driver run also runs the node's landed-block processing (the
+   * production driver's landed-block hook) at its view, which the history
+   * owner's rebase follows; `landedHold` reads its last hold. */
+  readonly landedBlocks?: boolean;
   /** Runs first in every startup completion preparation, before the fixture's
    * listen-startup steps: observes the state a completion starts from. */
   readonly beforeCompletion?: (

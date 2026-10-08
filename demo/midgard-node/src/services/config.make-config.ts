@@ -2,7 +2,6 @@ import { availableParallelism } from "node:os";
 
 import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { requireSelectedDeploymentProfile } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -469,19 +468,6 @@ const makeConfig = Effect.gen(function* () {
       if (!Number.isSafeInteger(value) || value < 0) {
         throw new Error(
           "STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS must be a non-negative safe integer",
-        );
-      }
-      return value;
-    }),
-  );
-  const stateQueueCorrectionFinalityDepth = yield* Config.integer(
-    "STATE_QUEUE_CORRECTION_FINALITY_DEPTH",
-  ).pipe(
-    Config.withDefault(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth),
-    Config.mapAttempt((value) => {
-      if (value !== DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth) {
-        throw new Error(
-          `STATE_QUEUE_CORRECTION_FINALITY_DEPTH must equal the deployment profile value ${DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth.toString()}`,
         );
       }
       return value;
@@ -989,7 +975,6 @@ const makeConfig = Effect.gen(function* () {
       stateQueueMutationLeaseRenewIntervalMs,
     STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS:
       stateQueueMutationLeaseStaleGraceMs,
-    STATE_QUEUE_CORRECTION_FINALITY_DEPTH: stateQueueCorrectionFinalityDepth,
     ...historyCommitHorizonLag,
     ...nodeBehind,
     RETENTION_DAYS: retentionDays,

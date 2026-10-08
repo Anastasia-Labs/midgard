@@ -303,16 +303,6 @@ export const clearProjectedHeaderAssignmentByEventIds = (
     .clearProjectedHeaderAssignmentByEventIds(ids, projectedHeaderHash)
     .pipe(withHistoryWrite);
 
-export const reopenAfterStateQueueCorrectionByEventIds = (
-  ids: readonly Buffer[],
-  removedHeaderHash: Buffer,
-) =>
-  ProjectedEvents.reopenAfterStateQueueCorrectionByEventIds(
-    projectedEventsTable,
-    ids,
-    removedHeaderHash,
-  ).pipe(withHistoryWrite);
-
 export const markConsumedByEventIds = (
   ids: readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>

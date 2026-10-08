@@ -169,29 +169,6 @@ describe("forced submission persistence and recovery", () => {
     );
   });
 
-  it("reopens a corrected projected order without rewriting its submission or verdict", async () => {
-    const original = await entry(4);
-    const header = Buffer.alloc(28, 0x44);
-    await run(DB.insertEntries([original]));
-    await run(DB.setProofClassifications([classify(original.tx_order_id)]));
-    await run(DB.markAwaitingAsProjected([original.tx_order_id]));
-    await run(DB.markProjectedByEventIds([original.tx_order_id], header));
-    await run(
-      DB.reopenAfterStateQueueCorrectionByEventIds(
-        [original.tx_order_id],
-        header,
-      ),
-    );
-    const reopened = await read(original.tx_order_id);
-    expect(reopened.status).toBe(DB.Status.Projected);
-    expect(reopened.projected_header_hash).toBeNull();
-    expect(reopened.native_tx_cbor).toEqual(bytes);
-    expect(reopened.transaction_commitment).toEqual(
-      original.transaction_commitment,
-    );
-    expect(DB.operatorVerdictOfEntry(reopened)).toEqual(rejected);
-  });
-
   it("refuses the old source encoding and old profile identity instead of inferring a migration", async () => {
     const oldBytes = encodeMidgardNativeTxCanonical(
       materializeMidgardNativeTxFromCanonical({

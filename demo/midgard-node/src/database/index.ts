@@ -6,7 +6,6 @@ export * as ConfirmedLedgerDB from "./confirmedLedger.js";
 export * as DaPayloadAnnouncementsDB from "./daPayloadAnnouncements.js";
 export * as DaPayloadPublicationsDB from "./daPayloadPublications.js";
 export * as DaPayloadsDB from "./daPayloads.js";
-export * as DaPayloadTerminalOutcomesDB from "./daPayloadTerminalOutcomes.js";
 export * as DepositsDB from "./deposits.js";
 export * as DepositSubmissionAttemptsDB from "./depositSubmissionAttempts.js";
 export * as EventHistorySubmissionsDB from "./eventHistorySubmissions.js";

@@ -42,7 +42,7 @@ import {
   runLocalFinalizationRecoveryWorker,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
-import { dropPendingEmulatorTransaction } from "./helpers/correction-rewind-scenario.js";
+import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 import { mirrorEmulatorStateQueue } from "./helpers/landed-state-queue.js";
 import { assertLandedMergeParentRefusal } from "./helpers/merge-landed-finalization-parent-refusal.js";

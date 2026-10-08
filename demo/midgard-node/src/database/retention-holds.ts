@@ -6,10 +6,8 @@ import { orphanedAdmission } from "./l1-admission-identity.js";
 
 /**
  * What a housekeeping prune reads to keep challenge-relevant rows: the
- * authenticated L1 view and the verified deployment's identity digest. A
- * history prune never runs without both (a derived bundle has no
- * authenticated transitions to consult, so it cannot tell a header still
- * inside L1 finality from one beyond it).
+ * L1 view and the verified deployment's identity digest. A history prune
+ * never runs without both.
  */
 export type HousekeepingHolds = Readonly<{
   view: RetentionL1View;
@@ -17,69 +15,13 @@ export type HousekeepingHolds = Readonly<{
 }>;
 
 /**
- * The SQL condition true when `headerColumn` names a header that some
- * transition in the correction observer's durable record, pending OR
- * admitted, took out of the state queue (a merge or a removal), or that the
- * observer's current durable cursor still names as live. A rollback revokes
- * terminal rows before saving the restored cursor: both sides must hold rows
- * even when a housekeeping pass carries an older topology snapshot.
- *
- * The observer admits a transition at confirmation depth, which is not
- * finality (k = 2160): an admitted merge or removal can still roll back, and
- * a removal reopens the events it carried. The observer keeps an admitted
- * merge until it is proven canonical deeper than k and nothing depends on
- * it, and never drops a timeout correction or fraud removal. A header in its
- * cursor queue may already have left L1's queue in a transition the observer
- * has not replayed yet; holding it covers that gap, since the replay names
- * it before the cursor moves past it. So while a header is named here, a
- * prune keeps every record it reaches.
- */
-export const observerRecordedHeader = (
-  sql: SqlClient.SqlClient,
-  headerColumn: string,
-  deploymentIdentityDigest: Buffer,
-) => sql`(${observerCursorHeader(sql, headerColumn, deploymentIdentityDigest)}
-  OR ${sql(headerColumn)} IN (
-  SELECT decode(named.header_hex, 'hex')
-  FROM state_queue_terminal_observer_states AS observer,
-    LATERAL (SELECT CASE jsonb_typeof(observer.state_record)
-        WHEN 'string' THEN (observer.state_record #>> '{}')::jsonb
-        ELSE observer.state_record
-      END AS record) AS state,
-    jsonb_array_elements(
-      COALESCE(state.record -> 'pending', '[]'::jsonb) ||
-      COALESCE(state.record -> 'admitted', '[]'::jsonb)) AS recorded(transition),
-    jsonb_array_elements_text(
-      COALESCE(recorded.transition -> 'removedHeaderHashes', '[]'::jsonb))
-      AS named(header_hex)
-  WHERE observer.deployment_identity_digest = ${deploymentIdentityDigest}
-    -- Filtered, not projected to NULL: a NULL in the held set would make
-    -- NOT IN unknown for every row and stop all pruning.
-    AND named.header_hex ~ '^[0-9a-f]{56}$'))`;
-
-/** Current durable live headers, re-read in each protective DELETE statement. */
-export const observerCursorHeader = (
-  sql: SqlClient.SqlClient,
-  headerColumn: string,
-  deploymentIdentityDigest: Buffer,
-) => sql`${sql(headerColumn)} IN (
-  SELECT decode(node ->> 'headerHash', 'hex')
-  FROM state_queue_terminal_observer_states AS observer,
-    LATERAL (SELECT CASE jsonb_typeof(observer.state_record)
-        WHEN 'string' THEN (observer.state_record #>> '{}')::jsonb
-        ELSE observer.state_record
-      END AS record) AS state,
-    jsonb_array_elements(COALESCE(state.record -> 'cursorQueue', '[]'::jsonb)) AS node
-  WHERE observer.deployment_identity_digest = ${deploymentIdentityDigest}
-    AND node ->> 'headerHash' ~ '^[0-9a-f]{56}$')`;
-
-/**
  * The SQL condition true when a row whose header is `headerColumn` is still
  * challenge-relevant and must be kept: the header is the L1 confirmed head,
- * live in the L1 state queue, held by DA retention for finality
- * (`finalityHeldPayload`), or still held by the correction observer
- * (`observerRecordedHeader`). A NULL header is never matched as kept, so
- * callers that may see one must also require it to be NOT NULL.
+ * live in the L1 state queue, or held by DA retention for finality
+ * (`finalityHeldPayload`: live in the follower's facts, taken out of the
+ * queue by a landed tx that is not final yet, or the merge boundary). A NULL
+ * header is never matched as kept, so callers that may see one must also
+ * require it to be NOT NULL.
  */
 export const challengeRelevantHeader = (
   sql: SqlClient.SqlClient,
@@ -89,8 +31,7 @@ export const challengeRelevantHeader = (
   holds.view.confirmedHeadHash,
   ...holds.view.liveQueueHeaderHashes,
 ])}
-  OR ${finalityHeldPayload(sql, holds.deploymentIdentityDigest, headerColumn)}
-  OR ${observerRecordedHeader(sql, headerColumn, holds.deploymentIdentityDigest)})`;
+  OR ${finalityHeldPayload(sql, holds.deploymentIdentityDigest, headerColumn, holds.view.finalThroughHeight)})`;
 
 /**
  * Journals recovery still reads, irrespective of age. Unfinished and abandoned

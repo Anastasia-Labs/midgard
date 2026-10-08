@@ -1,11 +1,10 @@
 /**
- * Prepared recovery plans of the retired kinds (I3): a signed-header
- * recovery, a signed-intent release, a displaced-block revival or a
- * displacement compensation that a node prepared before the services that
- * resumed them were deleted. No service resumes one now, so while one is
- * retained the history owner's reconciliation stays pending
- * (`pendingHistoryLedgerDisposition`) and the correction rewind waits for
- * it, for good.
+ * Prepared recovery plans of the retired kinds (I3, N4): a signed-header
+ * recovery, a signed-intent release, a displaced-block revival, a
+ * displacement compensation or a correction rewind that a node prepared
+ * before the services that resumed them were deleted. No service resumes
+ * one now, so while one is retained the history owner's reconciliation
+ * stays pending (`pendingHistoryLedgerDisposition`), for good.
  *
  * The landed-block rebase covers what each one was preparing. A prepared
  * plan committed nothing in SQL (its journal disposition and its applied
@@ -22,7 +21,12 @@
  *   revived from its processed row, and a displaced one is disposed of as
  *   removed, or as built on a base whose successor slot another block took;
  * - a displacement compensation reopened the unlanded signed suffix of such
- *   a chain: disposed of as dead or as built on a base that left.
+ *   a chain: disposed of as dead or as built on a base that left;
+ * - a correction rewind restored the native root below the blocks a landed
+ *   correction removed and reopened their journals and unlanded
+ *   descendants: a removed block's journal is disposed of as removed, and a
+ *   descendant as built on a base that left (whichever lands wins: it is
+ *   revived if it lands after all).
  *
  * Its native restore may have run. So a retained one makes the rebase due:
  * the rebase moves the native MPF to the landed target from wherever the
@@ -33,22 +37,13 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import { DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN } from "../database/eventHistoryRecoveryPlans.displacement-compensation.js";
-import {
-  DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN,
-  SIGNED_HEADER_RECOVERY_DOMAIN,
-  SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
-} from "../database/eventHistoryRecoveryPlans.js";
+import { RECOVERY_PLAN_KINDS } from "../database/eventHistoryRecoveryPlans.js";
 import { sqlErrorToDatabaseError } from "../database/utils/common.js";
 
 const table = "event_history_recovery_plans";
 
-const RETIRED_KINDS = new Map<string, string>([
-  [SIGNED_HEADER_RECOVERY_DOMAIN, "signed_header"],
-  [SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN, "signed_intent_release"],
-  [DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN, "displaced_block_revival"],
-  [DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN, "displacement_compensation"],
-]);
+/** Every plan domain is retired: no service prepares or resumes one. */
+const RETIRED_KINDS = RECOVERY_PLAN_KINDS;
 
 /** A retained prepared plan of a retired kind. */
 export type RetiredPlan = Readonly<{

@@ -51,7 +51,7 @@ vi.mock("../src/database/index.js", async () => {
         EffectModule.succeed(mempoolState.txCount),
       ),
     },
-    // Read at module load by state-queue-correction-ledger-restore.ts.
+    // Read at module load by working-ledger-recompute.pending-txs.ts.
     MempoolLedgerDB: {
       tableName: "mempool_ledger",
     },

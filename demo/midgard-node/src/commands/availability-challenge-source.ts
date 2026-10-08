@@ -6,10 +6,10 @@ import {
   fetchKupoCreationPoint,
   fetchKupoSpend,
   type FetchLike,
+  readLocalOgmiosTip,
   readOgmiosBlockTransaction,
   type WebSocketFactory,
 } from "../l1-kupmios.js";
-import { readLocalOgmiosTip } from "../services/state-queue-correction-observer.js";
 
 type CanonicalBoundary = Readonly<{
   pointId: string;

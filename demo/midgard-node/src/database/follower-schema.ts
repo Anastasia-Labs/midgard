@@ -24,16 +24,18 @@ import { SqlClient, SqlError } from "@effect/sql";
 import { Effect, Runtime } from "effect";
 
 import { forcedOrderMigrations } from "../forced-orders/schema.js";
+import { queueTerminalMigrations } from "../l1-queue-terminals/schema.js";
 import { splitSqlStatements } from "./migrations/runner.split-sql-statements.js";
 
 /**
- * The follower's own sets plus the node event, forced-order and intent
- * journal (§8.2, I1) projections'.
+ * The follower's own sets plus the node event, forced-order, queue-terminal
+ * (N4) and intent journal (§8.2, I1) projections'.
  */
 export const NODE_FOLLOWER_SCHEMA: readonly MigrationSet[] = [
   followerMigrations("postgres"),
   eventMigrations("postgres"),
   forcedOrderMigrations("postgres"),
+  queueTerminalMigrations("postgres"),
   intentMigrations("postgres"),
 ];
 

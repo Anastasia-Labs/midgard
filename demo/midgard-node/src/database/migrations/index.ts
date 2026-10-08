@@ -17,6 +17,7 @@ import settlementStatusDerivedSql from "./sql/0015_settlement_status_derived.sql
 import receiptRejectionsSql from "./sql/0016_receipt_rejections.sql";
 import dropSettlementHoldSlotSql from "./sql/0017_drop_settlement_hold_slot.sql";
 import landedBlocksOwnRemovedSql from "./sql/0018_landed_blocks_own_removed.sql";
+import dropQueueTerminalObserverSql from "./sql/0020_drop_queue_terminal_observer.sql";
 
 export type Migration = {
   readonly version: number;
@@ -153,6 +154,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: landedBlocksOwnRemovedSql,
     transactional: true,
   },
+  {
+    version: 20,
+    name: "drop_queue_terminal_observer",
+    checksumSha256: sha256Hex(dropQueueTerminalObserverSql),
+    sql: dropQueueTerminalObserverSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -220,8 +228,6 @@ export const APPLICATION_TABLE_NAMES = [
   "local_mutation_jobs",
   "state_queue_mutation_leases",
   "da_payloads",
-  "da_payload_terminal_outcomes",
-  "state_queue_terminal_observer_states",
   "da_payload_publications",
   "da_payload_announcements",
   "deposit_submission_attempts",
@@ -280,7 +286,6 @@ export const APPLICATION_INDEX_NAMES = [
   "uniq_state_queue_mutation_leases_active_scope",
   "idx_state_queue_mutation_leases_status_updated",
   "idx_da_payloads_created_at",
-  "idx_da_payload_terminal_outcomes_authority",
   "idx_da_payload_publications_retry",
   "idx_da_payload_announcements_retry",
   "idx_deposit_submission_attempts_deposit_event_id",

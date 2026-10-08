@@ -20,64 +20,6 @@ import {
   Validity,
 } from "./withdrawals.insert-entries.js";
 
-export const reopenAfterStateQueueCorrectionByEventIds = (
-  ids: readonly Buffer[],
-  removedHeaderHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.forEach(
-        [...ids].sort(Buffer.compare),
-        (id) =>
-          Effect.gen(function* () {
-            const [current] =
-              yield* sql<Entry>`SELECT * FROM ${sql(tableName)} WHERE ${sql(Columns.ID)} = ${id} FOR UPDATE`;
-            // A block that never reached confirmation (an unlanded signed
-            // commit, or one awaiting its submission acknowledgement)
-            // selected and classified the withdrawal without assigning it a
-            // header; no other block holds it while its journal does.
-            const selectedUnassigned =
-              current !== undefined &&
-              current[Columns.PROJECTED_HEADER_HASH] === null &&
-              current[Columns.STATUS] === Status.Projected;
-            if (
-              !selectedUnassigned &&
-              !current?.[Columns.PROJECTED_HEADER_HASH]?.equals(
-                removedHeaderHash,
-              )
-            ) {
-              return yield* Effect.fail(
-                new DatabaseError({
-                  table: tableName,
-                  message:
-                    "Cannot reopen withdrawal not assigned to the corrected header",
-                  cause: id.toString("hex"),
-                }),
-              );
-            }
-            yield* sql`UPDATE ${sql(tableName)} SET
-        ${sql(Columns.SETTLEMENT_EVENT_INFO)} = NULL,
-        ${sql(Columns.VALIDITY)} = NULL,
-        ${sql(Columns.VALIDITY_DETAIL)} = '{}'::jsonb,
-        ${sql(Columns.STATUS)} = ${Status.Awaiting},
-        ${sql(Columns.PROJECTED_HEADER_HASH)} = NULL,
-        ${sql(Columns.REOPENED_FROM_HEADER_HASH)} = ${removedHeaderHash},
-        ${sql(Columns.CLASSIFICATION_REVISION)} = ${sql(Columns.CLASSIFICATION_REVISION)} + 1,
-        updated_at = NOW()
-        WHERE ${sql(Columns.ID)} = ${id}`;
-          }),
-        { discard: true },
-      ),
-    );
-  }).pipe(
-    withHistoryWrite,
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to reopen corrected withdrawals",
-    ),
-  );
-
 /** Only a validated, locked correction journal may supply these snapshots.
  * Each withdrawal must be unassigned and reopened from one of `reopenedFrom`
  * (by default `headerHash` itself): a replaced block that won its state-queue

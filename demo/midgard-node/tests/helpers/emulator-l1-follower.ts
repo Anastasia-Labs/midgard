@@ -33,9 +33,6 @@
  */
 import { encodeOutRef } from "@al-ft/midgard-l1-follower";
 import {
-  EVENT_KINDS,
-  type EventListConfig,
-  eventProjectionConfigFromContracts,
   openOrder,
   type ProjectedEvent,
 } from "@al-ft/midgard-l1-follower/events";
@@ -51,7 +48,15 @@ import { Effect, Ref } from "effect";
 import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
 import { MempoolLedgerDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
-import type { IngestionPlan, SinkResult } from "../../src/l1-events/driver.js";
+import type {
+  DriverHold,
+  IngestionPlan,
+  SinkResult,
+} from "../../src/l1-events/driver.js";
+import {
+  LANDED_BLOCK_REBASE_PENDING,
+  LANDED_BLOCKS_WAITING,
+} from "../../src/landed-blocks/holds.js";
 import {
   UnownedHistoryFixture,
   withHistoryIngestion,
@@ -63,6 +68,11 @@ import {
 } from "../../src/services/index.js";
 import { readyProducerSink } from "../../src/services/l1-follower.js";
 import { runningFollower } from "../readiness-l1-follower.fixture.js";
+import {
+  listContracts,
+  liveOrders,
+  type OpenedOrder,
+} from "./emulator-l1-follower.live-orders.js";
 import {
   FOLLOWER_GENERATION,
   followerBlockHash,
@@ -81,57 +91,6 @@ const decodeOutRef = (bytes: Buffer) => ({
   txHash: Buffer.from(bytes.subarray(0, 32)),
   index: bytes.readUInt16BE(32),
 });
-
-type ListContracts = {
-  readonly config: EventListConfig;
-  readonly listAddress: string;
-  readonly retentionAddress: string;
-};
-
-const listContracts = (
-  contracts: SDK.MidgardValidators,
-  networkId: 0 | 1,
-): readonly ListContracts[] => {
-  const pair = SDK.requireEventHistoryContracts(contracts);
-  const projection = eventProjectionConfigFromContracts(pair, networkId);
-  return EVENT_KINDS.map((kind) => ({
-    config: projection.lists.find((list) => list.kind === kind)!,
-    listAddress: pair[kind].list.spendingScriptAddress,
-    retentionAddress: pair[kind].retention.spendingScriptAddress,
-  }));
-};
-
-type OpenedOrder = {
-  readonly kind: ProjectedEvent["kind"];
-  readonly utxo: UTxO;
-  readonly opened: Exclude<ReturnType<typeof openOrder>, "not_an_order">;
-};
-
-/** The live Orders the follower's derivation admits, per list. */
-const liveOrders = async (
-  lucid: LucidEvolution,
-  lists: readonly ListContracts[],
-): Promise<OpenedOrder[]> => {
-  const orders: OpenedOrder[] = [];
-  for (const list of lists) {
-    const retained = await lucid.utxosAt(list.retentionAddress);
-    for (const utxo of await lucid.utxosAt(list.listAddress)) {
-      const names = Object.keys(utxo.assets)
-        .filter((unit) => unit.startsWith(list.config.policyId))
-        .map((unit) => unit.slice(list.config.policyId.length));
-      if (!names.some((name) => name.length === 64)) continue;
-      let opened: ReturnType<typeof openOrder>;
-      try {
-        opened = openOrder(utxo, list.config, retained);
-      } catch {
-        continue; // the follower refuses it as malformed
-      }
-      if (opened !== "not_an_order")
-        orders.push({ kind: list.config.kind, utxo, opened });
-    }
-  }
-  return orders;
-};
 
 /** The emulator's confirmed transactions: the chain the follower follows. */
 const emulatorChain = (lucid: LucidEvolution) =>
@@ -398,6 +357,33 @@ export const ingestEmulatorEventsUnowned = (
   });
 
 /**
+ * The landed-block hook (`landedBlockHook`) a driver run runs after its sink,
+ * at the run's view, as the production driver runs it; its hold is what the
+ * node would report.
+ */
+export type EmulatorLandedBlocks = (
+  view: IngestionPlan["view"],
+) => Promise<DriverHold | undefined>;
+
+/** Holds a later driver run of the same view clears without help: the
+ * rebase the hook asked the history owner for, or a view that moved. */
+const RERUN_HOLDS: ReadonlySet<string> = new Set([
+  LANDED_BLOCK_REBASE_PENDING,
+  LANDED_BLOCKS_WAITING,
+]);
+
+const driveOnce = (fixture: EmulatorFollowerFixture, globals: Globals) =>
+  Effect.gen(function* () {
+    const plan = yield* syncEmulatorFollower(fixture, globals);
+    const sink = yield* readyProducerSink;
+    const result = yield* Effect.promise(
+      (): Promise<SinkResult> =>
+        sink.apply({ kind: "unchanged", view: plan.view }, plan),
+    );
+    return { result, view: plan.view };
+  });
+
+/**
  * One driver run under a Ready history owner: the production sink applies
  * the emulator's plan. A held result carries the hold (`/readyz` reason)
  * the node would report.
@@ -405,41 +391,57 @@ export const ingestEmulatorEventsUnowned = (
 export const driveEmulatorFollower = (
   fixture: EmulatorFollowerFixture,
   globals: Globals,
-) =>
-  Effect.gen(function* () {
-    const plan = yield* syncEmulatorFollower(fixture, globals);
-    const sink = yield* readyProducerSink;
-    return yield* Effect.promise(
-      (): Promise<SinkResult> =>
-        sink.apply({ kind: "unchanged", view: plan.view }, plan),
-    );
-  });
+) => Effect.map(driveOnce(fixture, globals), ({ result }) => result);
 
 /**
  * `awaitReady` (the history owner ready at the tip), then driver runs until
  * one applies; returns the owner's coverage. A run held for recovery
  * (orphans, a cache reload) has asked the owner to reconcile, and the
  * recovery ingests at the same view, so the run after it must apply.
+ *
+ * With `landedBlocks`, each run then runs the landed-block hook at its view;
+ * a run whose hook asked the owner for the rebase (or saw the view move) is
+ * followed, once the owner is ready again, by another, up to
+ * `LANDED_RERUNS` more. `onLandedHold` receives the last run's hook hold.
  */
 export const readyWithEmulatorFollower = <C, E, R>(
   awaitReady: Effect.Effect<C, E, R>,
   fixture: EmulatorFollowerFixture,
   globals: Globals,
+  landed?: Readonly<{
+    hook: EmulatorLandedBlocks;
+    onLandedHold: (hold: DriverHold | undefined) => void;
+  }>,
 ) =>
   Effect.gen(function* () {
     let coverage = yield* awaitReady;
-    for (let run = 0; ; run++) {
-      const result = yield* driveEmulatorFollower(fixture, globals);
-      if (result.kind === "applied") return coverage;
-      if (result.kind !== "held" || run > 0)
+    let reruns = 0;
+    let heldLast = false;
+    for (;;) {
+      const { result, view } = yield* driveOnce(fixture, globals);
+      const hold =
+        landed === undefined
+          ? undefined
+          : yield* Effect.promise(() => landed.hook(view));
+      landed?.onLandedHold(hold);
+      const rerun =
+        hold !== undefined &&
+        RERUN_HOLDS.has(hold.reason) &&
+        reruns++ < LANDED_RERUNS;
+      if (result.kind === "applied" && !rerun) return coverage;
+      if (result.kind !== "applied" && (result.kind !== "held" || heldLast))
         return yield* Effect.die(
           new Error(
             `The emulator driver run did not apply: ${JSON.stringify(result)}`,
           ),
         );
+      heldLast = result.kind === "held";
       coverage = yield* awaitReady;
     }
   });
+
+/** Driver runs after the first that a landed-block hook may ask for. */
+const LANDED_RERUNS = 3;
 
 /**
  * `utxo`, an Order of the list minting under `policyId`, as the follower

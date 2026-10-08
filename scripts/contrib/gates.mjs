@@ -37,8 +37,8 @@ export const GATES = {
       "midgard-node",
       [
         "tests/canonical-journal-recovery.test.ts",
-        "tests/event-history-recovery-plans.test.ts",
-        "tests/history-dependent-recovery-ordering.test.ts",
+        "tests/correction-admission-rollback-emulator.test.ts",
+        "tests/landed-blocks-fork-sim.test.ts",
         "tests/commit-recovery-planner.test.ts",
       ],
     ],

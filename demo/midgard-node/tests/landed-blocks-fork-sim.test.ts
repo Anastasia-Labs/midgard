@@ -18,7 +18,15 @@
  * rollback undid is unfolded back to the root's lineage by header identity
  * (N5), its retained folds pruned once no rollback reaches them; and a
  * batch is rejected around a member an own block, and one a foreign block,
- * settled and folded before the rejection. A fork onto another header with
+ * settled and folded before the rejection. Corrections (N4, plan §7.4): a
+ * queue tail removal that lands is admitted at once (the processed rows it
+ * took out are reverted), a rollback of it gives the rows back, and the same
+ * rows removed again are admitted again, the node equal to the model through
+ * each with no halt; a rollback deeper than k is refused by the follower as
+ * `rollback_beyond_k` with no fact, landed row, frontier, native root or
+ * cursor changed. The queue-terminal projection's rows (`removed` for a
+ * landed correction, `merged` for a merge) equal a fresh derivation from
+ * the canonical chain after every event, rollbacks and prunes included. A fork onto another header with
  * the frontier's root (`equalRootUnfolds`) is counted but not required: the
  * corpus does not reliably build one, so the deterministic
  * `confirmed-ledger-temporal.test.ts` pins it.
@@ -49,6 +57,7 @@ import { Level } from "level";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { DepositsDB, MempoolLedgerDB } from "../src/database/index.js";
+import { queueTerminalProjection } from "../src/l1-queue-terminals/index.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import type { Database } from "../src/services/database.js";
@@ -78,6 +87,7 @@ import {
   type SimUniverse,
 } from "./helpers/landed-blocks-sim.universe.js";
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
+import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const SIM_K = 6;
@@ -204,6 +214,7 @@ const runScenario = (
                 lateUntil: new Map(),
                 published: { position: null },
               }),
+              queueTerminalProjection(SIM_QUEUE_CONFIG),
             ],
           }),
         ),
@@ -255,6 +266,11 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "retainedFolds",
     "prunedFolds",
     "rollbacksRemovingProcessed",
+    "correctionsAdmitted",
+    "correctionRollbacks",
+    "correctionsReadmitted",
+    "beyondKRefused",
+    "terminalRemovals",
     "admitted",
     "directRejections",
     "dependentRejections",

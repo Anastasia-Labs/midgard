@@ -649,16 +649,6 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([a], [b]) => a.localeCompare(b))"]
     },
-    "midgard-node/src/services/state-queue-correction-observer.parse-state-queue-correction-observer-state.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
-    },
-    "midgard-node/src/services/state-queue-correction-observer.make-local-kupmios-state-queue-correction-source.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "left.transaction.txHash.localeCompare(right.transaction.txHash),"
-      ]
-    },
     "midgard-node/src/transactions/da-attestation.fetch-da-attestation-reference-scripts.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.txHash.localeCompare(right.txHash) ||"]
@@ -694,14 +684,6 @@
     "midgard-node/tests/operator-lifecycle-emulator.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [".sort((left, right) => left.key.localeCompare(right.key));"]
-    },
-    "midgard-node/tests/retention-enforcement.registration.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [".sort(([a], [b]) => a.localeCompare(b))"]
-    },
-    "midgard-node/tests/state-queue-correction-observer.authenticated-fraud-transition.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
     "midgard-sdk/src/state-queue-authenticated-replay-checkpoint.derive-state-queue-authenticated-replay-checkpoint.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -929,14 +911,6 @@
       "sites": [
         "if (point === undefined || tip - BigInt(point.blockNo) + 1n < depth)"
       ]
-    },
-    "midgard-node/src/fibers/retention-sweeper.da-retirement-view.ts": {
-      "reason": "Irreversible DA payload delete gates on depth > k + 1 (one block beyond `final`); kept as is, since moving it to `isFinal` would loosen an irreversible delete by one block.",
-      "sites": ["if (depth <= BigInt(args.automaticRecoveryMaxDepth) + 1n) {"]
-    },
-    "midgard-node/tests/helpers/correction-rewind-scenario.open-correction-rewind-scenario.ts": {
-      "reason": "Test driver: mines the emulator to a depth; not a decision.",
-      "sites": ["if (needed > 0) fixture.emulator.awaitBlock(needed);"]
     },
     "midgard-watcher/src/availability/observation.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",

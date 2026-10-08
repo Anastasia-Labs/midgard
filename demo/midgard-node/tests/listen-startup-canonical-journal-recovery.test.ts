@@ -21,7 +21,7 @@ import {
   signedCommit,
   TTL,
   UTXOS_ROOT,
-} from "./helpers/history-expired-intent-release-before-ttl.js";
+} from "./helpers/journal-recovery-sql-model.js";
 
 /**
  * Startup's recovery over the journals of the canonical queue. It runs once,

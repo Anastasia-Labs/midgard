@@ -175,17 +175,12 @@ describe("liveness halts", () => {
       }),
   );
 
-  it("holds commit, merge and settlement on a rewind conflict, and every operator duty on removal", () => {
+  it("holds every operator duty on removal", () => {
     const held = (source: HaltSource) =>
       Object.entries(FIBER_HALT_SOURCES)
         .filter(([, sources]) => sources.includes(source))
         .map(([name]) => name)
         .sort();
-    expect(held(HaltSource.stateQueueCorrectionRewind)).toEqual([
-      "blockCommitment",
-      "merge",
-      "settlement",
-    ]);
     expect(held(HaltSource.operatorMembership)).toEqual([
       "blockCommitment",
       "merge",

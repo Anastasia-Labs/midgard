@@ -25,12 +25,10 @@ import {
   type Entry,
   type ForcedInclusionValueV1Input,
   projectedEventAdapter,
-  projectedEventsTable,
   sameImmutablePayload,
   tableName,
 } from "./forcedTransactions.exact-forced-transaction-journal-member.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
-import * as ProjectedEvents from "./utils/projected-events.js";
 
 export const encodeForcedInclusionValueV1 = ({
   nativeTxCbor,
@@ -329,14 +327,4 @@ export const clearProjectedHeaderAssignmentByEventIds = (
   projectedEventAdapter.clearProjectedHeaderAssignmentByEventIds(
     ids,
     projectedHeaderHash,
-  );
-
-export const reopenAfterStateQueueCorrectionByEventIds = (
-  ids: readonly Buffer[],
-  removedHeaderHash: Buffer,
-) =>
-  ProjectedEvents.reopenAfterStateQueueCorrectionByEventIds(
-    projectedEventsTable,
-    ids,
-    removedHeaderHash,
   );

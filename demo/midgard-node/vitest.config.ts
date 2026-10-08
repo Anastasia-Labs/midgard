@@ -60,7 +60,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/migration-runner.test.ts
  *   tests/pipeline-status-route.test.ts
  *   tests/retention-enforcement.test.ts
- *   tests/state-queue-correction-ledger-restore.test.ts
+ *   tests/correction-admission-rollback-emulator.test.ts
  *   tests/state-queue-node-floor-challenge-emulator.test.ts
  *   tests/state-reconciliation-emulator.test.ts
  *   tests/tx-admissions-claim-load.test.ts
@@ -95,9 +95,9 @@ export default defineConfig({
     // after refusing a stale onchain/aiken/plutus.json.
     globalSetup: [blueprintStampGlobalSetup, "./tests/global-setup.ts"],
     // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
-    // the longest files first: three attestation-timeout and signed-intent
-    // emulator files run four to five minutes each while most files take
-    // seconds, so a giant that starts last sets a fork's wall time by itself.
+    // the longest files first: a few database and emulator files run two to
+    // three minutes each while most files take seconds, so a giant that starts
+    // last sets a fork's wall time by itself.
     // The table is keyed by package-relative path, so a file weighs the same in
     // `midgard-node` and `midgard-node:source`. Each CI shard is its own job
     // with its own Postgres service, so the per-worker database scheme above

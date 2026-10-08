@@ -204,7 +204,6 @@ export const stateReconciliationProgram = (
   Database | Lucid | MidgardContracts | NodeConfig
 > =>
   Effect.gen(function* () {
-    const contracts = yield* MidgardContracts;
     const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? 3));
     let last:
       | {
@@ -223,7 +222,6 @@ export const stateReconciliationProgram = (
         committedTipHeaderHash: committedTipSelector(
           Either.isRight(l1Before) ? l1Before.right : null,
         ),
-        stateQueuePolicyId: contracts.stateQueue.policyId,
       });
       // Taken before the L1 read the report uses: a header that read still
       // shows Unattested was Unattested at this instant too.

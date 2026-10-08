@@ -104,6 +104,11 @@ describe("splitSqlStatements", () => {
       { version: 16, name: "receipt_rejections", transactional: true },
       { version: 17, name: "drop_settlement_hold_slot", transactional: true },
       { version: 18, name: "landed_blocks_own_removed", transactional: true },
+      {
+        version: 20,
+        name: "drop_queue_terminal_observer",
+        transactional: true,
+      },
     ]);
   });
 

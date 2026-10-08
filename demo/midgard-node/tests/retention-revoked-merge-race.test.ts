@@ -1,22 +1,14 @@
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
 import { SqlClient } from "@effect/sql";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { beforeAll, expect, it } from "vitest";
 
-import {
-  DaPayloadsDB,
-  DaPayloadTerminalOutcomesDB,
-} from "../src/database/index.js";
+import { DaPayloadsDB } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import { pruneFinalizedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import { computeChallengeableCutoff } from "../src/database/retention-policy.js";
-import { createDatabaseStateQueueCorrectionObserverStore } from "../src/services/state-queue-correction-observer.js";
-import {
-  makeState,
-  STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION,
-} from "../src/services/state-queue-correction-observer.parse-state-queue-correction-observer-state.js";
-import { reconcileStateQueueCorrectionObserver } from "../src/services/state-queue-correction-observer.reconcile-state-queue-correction-observer.js";
+import { insertLiveQueueNode } from "./helpers/queue-terminal-rows.js";
 import { recordMergeJob } from "./history-retention-prune.fixtures.js";
 import { journalFixture } from "./local-mutation-job-abandonment.journal-fixture.js";
 import {
@@ -24,15 +16,22 @@ import {
   deploymentManifest,
   NOW,
 } from "./retention-enforcement.q54-executable-retention-deadline-alert.js";
-import { seedPublished } from "./retention-enforcement.terminal-merge.js";
+import {
+  FINAL_THROUGH,
+  seedPublished,
+} from "./retention-enforcement.terminal-merge.js";
 import {
   deterministicFixtureBytes,
   provideDatabaseLayers,
   resetApplicationTables,
 } from "./utils.js";
+
 const clear = resetApplicationTables;
 const run = <A>(work: Effect.Effect<A, unknown, SqlClient.SqlClient>) =>
   Effect.runPromise(provideDatabaseLayers(work) as Effect.Effect<A, never>);
+const identity = () => Buffer.from(deploymentManifest.manifestId, "hex");
+const OLD = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
+
 beforeAll(async () => {
   await run(
     MigrationRunner.migrate({
@@ -41,31 +40,34 @@ beforeAll(async () => {
     }),
   );
 }, 120_000);
-it.each(["pre-rollback", "post-save", "restored"] as const)(
-  "retains a revived live header with a %s topology view",
+
+/**
+ * A rollback deletes a landed merge's terminal row and puts the header's
+ * node back in the follower's facts. A sweep that read its L1 view before
+ * the rollback (the header neither queued nor the confirmed head) still keeps
+ * the payload and the journal: both prunes re-read the facts in the
+ * statement that deletes.
+ */
+it.each(["pre-rollback", "restored"] as const)(
+  "retains a header a rollback put back in the queue with a %s topology view",
   async (topology) => {
     const outcome = await run(
       clear.pipe(
         Effect.zipRight(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            const seeded = yield* seedPublished(
-              new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY),
-            );
-            const transition = seeded.transition;
+            const seeded = yield* seedPublished(OLD);
             const unrelatedHeader = deterministicFixtureBytes(
               "stable-aged-unrelated-payload",
               28,
             );
             yield* DaPayloadsDB.upsertAvailable({
-              ...daPayloadFixture(
-                "stable-aged-unrelated-payload",
-                new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY),
-              ),
+              ...daPayloadFixture("stable-aged-unrelated-payload", OLD),
               [DaPayloadsDB.Columns.HEADER_HASH]: unrelatedHeader,
             });
-            // Real producer journals survive confirmation and their completed merge
-            // jobs. A subsequent finalized journal supplies the newest-boundary hold.
+            // Producer journals survive confirmation and their completed
+            // merge jobs. A later finalized journal is the newest-boundary
+            // hold.
             const laterHeaderHash = deterministicFixtureBytes(
               "later-head-before-rollback",
               28,
@@ -87,98 +89,29 @@ it.each(["pre-rollback", "post-save", "restored"] as const)(
         WHERE header_hash = ${hash}`;
               yield* recordMergeJob(hash, "completed");
             }
-            const store = createDatabaseStateQueueCorrectionObserverStore({
-              sql,
-              deploymentManifest,
-            });
-            yield* Effect.promise(() =>
-              store.save(
-                makeState({
-                  schemaVersion: STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION,
-                  deploymentIdentityDigest: deploymentManifest.manifestId,
-                  stateQueuePolicyId:
-                    deploymentManifest.contracts.stateQueueMint.scriptHash,
-                  cursorQueue: transition.nextQueue,
-                  pending: [],
-                  admitted: [transition],
-                  retractedTransactionHashes: [],
-                  postFinalityRollbackIncidents: [],
-                }),
-              ),
-            );
-            // A legitimate pre-rollback topology snapshot excludes this formerly merged header.
-            const earlierView = {
+            // The view read before the rollback excludes the formerly merged
+            // header.
+            const view = {
               confirmedHeadHash: laterHeaderHash,
               liveQueueHeaderHashes:
                 topology === "restored" ? [seeded.headerHash] : [],
-              retirementProofs: [],
-              retirementProofUnavailable: true,
+              finalThroughHeight: FINAL_THROUGH,
             };
-            let deleted = -1;
-            yield* Effect.promise(() =>
-              reconcileStateQueueCorrectionObserver({
-                deploymentIdentityDigest: deploymentManifest.manifestId,
-                stateQueuePolicyId:
-                  deploymentManifest.contracts.stateQueueMint.scriptHash,
-                requiredFinalityDepth: BigInt(
-                  deploymentManifest.l1Finality.confirmationDepth,
-                ),
-                source: {
-                  readQueue: async () => transition.previousQueue,
-                  canonicalDepth: async () => null,
-                  observeTransitions: async () => {
-                    throw new Error(
-                      "Unexpected replay after exact restoration",
-                    );
-                  },
-                },
-                store,
-                provenFinal: new Set(),
-                reinclude: async () => undefined,
-                restoreAfterRollback: async () => {
-                  throw new Error("Merge should not displace journals");
-                },
-                revokeTerminal: async (revoked) => {
-                  await run(
-                    DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
-                      revoked,
-                      deploymentManifest,
-                    ),
-                  );
-                  // This is the actual production ordering: terminal revoke precedes observer save.
-                  if (topology !== "post-save")
-                    deleted = await run(
-                      DaPayloadsDB.pruneBeyondRetention({
-                        challengeableCutoff: computeChallengeableCutoff(NOW),
-                        view: earlierView,
-                        deploymentIdentityDigest: Buffer.from(
-                          deploymentManifest.manifestId,
-                          "hex",
-                        ),
-                      }),
-                    );
-                },
-              }),
-            );
-            if (topology === "post-save")
-              deleted = yield* DaPayloadsDB.pruneBeyondRetention({
-                challengeableCutoff: computeChallengeableCutoff(NOW),
-                view: earlierView,
-                deploymentIdentityDigest: Buffer.from(
-                  deploymentManifest.manifestId,
-                  "hex",
-                ),
-              });
-            // The observer has now saved the rollback (admitted H was removed). The
-            // same already-running sweep next executes its history-prune statement.
+            // The rollback: the follower's rewind deletes the merge row, and
+            // the header's node is live again.
+            yield* sql`DELETE FROM node_l1_queue_terminals
+              WHERE header_hash = ${seeded.headerHash}`;
+            yield* insertLiveQueueNode(seeded.headerHash);
+            const deleted = yield* DaPayloadsDB.pruneBeyondRetention({
+              challengeableCutoff: computeChallengeableCutoff(NOW),
+              view,
+              deploymentIdentityDigest: identity(),
+            });
             const journalsDeleted = yield* pruneFinalizedBeyondChallengeability(
               {
                 challengeableCutoff: computeChallengeableCutoff(NOW),
-                view: earlierView,
-                deploymentIdentityDigest: Buffer.from(
-                  deploymentManifest.manifestId,
-                  "hex",
-                ),
+                view,
+                deploymentIdentityDigest: identity(),
               },
             );
             const journals =
@@ -214,149 +147,41 @@ it.each(["pre-rollback", "post-save", "restored"] as const)(
   },
 );
 
-it("retires stable superseded admitted terminal bytes only with an exact current proof", async () => {
+it("does not hold an unrelated eligible payload for another header's live node", async () => {
   const result = await run(
     clear.pipe(
       Effect.zipRight(
         Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          const first = yield* seedPublished(
-            new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY),
+          const bytes = daPayloadFixture("live-node-elsewhere", OLD);
+          yield* DaPayloadsDB.upsertAvailable(bytes);
+          yield* insertLiveQueueNode(
+            deterministicFixtureBytes("some-other-live-header", 28),
           );
-          const latest = yield* seedPublished(NOW, 2);
-          const store = createDatabaseStateQueueCorrectionObserverStore({
-            sql,
-            deploymentManifest,
-          });
-          yield* Effect.promise(() =>
-            store.save(
-              makeState({
-                schemaVersion: STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION,
-                deploymentIdentityDigest: deploymentManifest.manifestId,
-                stateQueuePolicyId:
-                  deploymentManifest.contracts.stateQueueMint.scriptHash,
-                cursorQueue: latest.transition.nextQueue,
-                pending: [],
-                admitted: [first.transition, latest.transition],
-                retractedTransactionHashes: [],
-                postFinalityRollbackIncidents: [],
-              }),
-            ),
-          );
-          const bytes = Option.getOrThrow(
-            yield* DaPayloadsDB.retrieveByHeaderHash(first.headerHash),
-          );
-          const proof = {
-            headerHash: first.headerHash.toString("hex"),
-            payloadSha256: bytes.payload_sha256.toString("hex"),
-            transactionHash: first.transition.transactionHash,
-            blockHash: first.transition.blockHash,
-            transitionDigest: first.transition.transitionDigest,
-          };
-          const prune = (proofs: (typeof proof)[]) =>
-            DaPayloadsDB.pruneBeyondRetention({
-              challengeableCutoff: computeChallengeableCutoff(NOW),
-              view: {
-                confirmedHeadHash: latest.headerHash,
-                liveQueueHeaderHashes: [],
-                retirementProofs: proofs,
-              },
-              deploymentIdentityDigest: Buffer.from(
-                deploymentManifest.manifestId,
-                "hex",
+          const deleted = yield* DaPayloadsDB.pruneBeyondRetention({
+            challengeableCutoff: computeChallengeableCutoff(NOW),
+            view: {
+              confirmedHeadHash: deterministicFixtureBytes(
+                "unrelated-confirmed",
+                28,
               ),
-            });
-          const stale = yield* prune([
-            { ...proof, transactionHash: "ff".repeat(32) },
-          ]);
-          const current = yield* prune([proof]);
+              liveQueueHeaderHashes: [],
+              finalThroughHeight: FINAL_THROUGH,
+            },
+            deploymentIdentityDigest: identity(),
+          });
           return {
-            stale,
-            current,
-            payload: yield* DaPayloadsDB.retrieveByHeaderHash(first.headerHash),
+            deleted,
+            payload: yield* DaPayloadsDB.retrieveByHeaderHash(
+              bytes.header_hash,
+            ),
           };
         }),
       ),
       Effect.ensuring(Effect.orDie(clear)),
     ),
   );
-  expect({
-    stale: result.stale,
-    current: result.current,
-    payload: result.payload._tag,
-  }).toEqual({ stale: 0, current: 1, payload: "None" });
+  expect({ deleted: result.deleted, payload: result.payload._tag }).toEqual({
+    deleted: 1,
+    payload: "None",
+  });
 });
-
-it.each(["foreign identity", "null root"] as const)(
-  "does not hold an unrelated eligible payload for a %s cursor",
-  async (kind) => {
-    const result = await run(
-      clear.pipe(
-        Effect.zipRight(
-          Effect.gen(function* () {
-            const sql = yield* SqlClient.SqlClient;
-            const bytes = daPayloadFixture(
-              `cursor-${kind}`,
-              new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY),
-            );
-            yield* DaPayloadsDB.upsertAvailable(bytes);
-            const identity =
-              kind === "foreign identity"
-                ? "fe".repeat(32)
-                : deploymentManifest.manifestId;
-            const state = makeState({
-              schemaVersion: STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION,
-              deploymentIdentityDigest: identity,
-              stateQueuePolicyId:
-                deploymentManifest.contracts.stateQueueMint.scriptHash,
-              cursorQueue: [
-                { headerHash: null, outRef: `${"00".repeat(32)}#0` },
-                ...(kind === "foreign identity"
-                  ? [
-                      {
-                        headerHash: bytes.header_hash.toString("hex"),
-                        outRef: `${"01".repeat(32)}#0`,
-                      },
-                    ]
-                  : []),
-              ],
-              pending: [],
-              admitted: [],
-              retractedTransactionHashes: [],
-              postFinalityRollbackIncidents: [],
-            });
-            yield* sql`INSERT INTO state_queue_terminal_observer_states (
-        deployment_identity_digest,state_queue_policy_id,state_digest,state_record
-      ) VALUES (${Buffer.from(identity, "hex")},${Buffer.from(state.stateQueuePolicyId, "hex")},
-        ${Buffer.from(state.stateDigest, "hex")},${JSON.stringify(state)})`;
-            const deleted = yield* DaPayloadsDB.pruneBeyondRetention({
-              challengeableCutoff: computeChallengeableCutoff(NOW),
-              view: {
-                confirmedHeadHash: deterministicFixtureBytes(
-                  "unrelated-confirmed",
-                  28,
-                ),
-                liveQueueHeaderHashes: [],
-              },
-              deploymentIdentityDigest: Buffer.from(
-                deploymentManifest.manifestId,
-                "hex",
-              ),
-            });
-            return {
-              deleted,
-              payload: yield* DaPayloadsDB.retrieveByHeaderHash(
-                bytes.header_hash,
-              ),
-            };
-          }),
-        ),
-        Effect.ensuring(Effect.orDie(clear)),
-      ),
-    );
-    expect({ deleted: result.deleted, payload: result.payload._tag }).toEqual({
-      deleted: 1,
-      payload: "None",
-    });
-  },
-);

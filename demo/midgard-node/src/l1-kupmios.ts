@@ -4,6 +4,9 @@ import "./l1-kupmios.l1-chain-point.js";
 import "./l1-kupmios.fetch-kupo-spend.js";
 import "./l1-kupmios.open-ogmios-session.js";
 import "./l1-kupmios.read-ogmios-block-transaction.js";
+import "./l1-kupmios.canonical-block-depth.js";
+import "./l1-kupmios.ogmios-tip.js";
+export { canonicalOgmiosBlockDepth } from "./l1-kupmios.canonical-block-depth.js";
 export {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
@@ -23,5 +26,6 @@ export {
   type WebSocketFactory,
   type WebSocketLike,
 } from "./l1-kupmios.l1-chain-point.js";
+export { type OgmiosTip, readLocalOgmiosTip } from "./l1-kupmios.ogmios-tip.js";
 export { openOgmiosSession } from "./l1-kupmios.open-ogmios-session.js";
 export { readOgmiosBlockTransaction } from "./l1-kupmios.read-ogmios-block-transaction.js";

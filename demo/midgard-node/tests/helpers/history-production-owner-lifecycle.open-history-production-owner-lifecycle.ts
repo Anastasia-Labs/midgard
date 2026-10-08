@@ -17,6 +17,7 @@ import {
   decodeBoundEventHistoryLedgerSnapshot,
   eventHistoryGenesisLosslessSha256,
 } from "../../src/l1-event-history-source.js";
+import type { DriverHold } from "../../src/l1-events/driver.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { Database } from "../../src/services/database.js";
 import {
@@ -46,6 +47,7 @@ import {
 import { testDatabaseName } from "../test-env.js";
 import { resetApplicationTables } from "../utils.js";
 import { readyWithEmulatorFollower } from "./emulator-l1-follower.js";
+import { openLandedBlocks } from "./history-production-owner-lifecycle.open-landed-blocks.js";
 import {
   awaitHistoryAuthorityReleased,
   GATE_CLOSED_SETTLE_MS,
@@ -270,6 +272,19 @@ export const openHistoryProductionOwnerLifecycle = async (
         );
       });
     await runtime.runPromise(Ref.set(globals.EVENT_HISTORY_OWNER, owner));
+    // Landed-block processing as the production driver runs it (after its
+    // sink, at the run's view), over a follower store in the node's database.
+    let landedHold: DriverHold | undefined;
+    const landed =
+      options.landedBlocks === true
+        ? await openLandedBlocks({
+            contracts: fixture.contracts,
+            nodeConfig,
+            securityParameter:
+              identity.manifest?.l1Finality.automaticRecoveryMaxDepth ?? 2160,
+            run: (effect) => runtime.runPromise(effect),
+          })
+        : undefined;
     const emptyIntervals: RecordedHistoryBatch[] = [];
     const checkpoints: unknown[] = [];
     type CommitAttempt = Parameters<
@@ -300,7 +315,17 @@ export const openHistoryProductionOwnerLifecycle = async (
     /** The owner Ready at `point`, then the follower driver applied there. */
     const readyAt = (point: Parameters<typeof owner.awaitReadyAt>[0]) =>
       runtime.runPromise(
-        readyWithEmulatorFollower(owner.awaitReadyAt(point), fixture, globals),
+        readyWithEmulatorFollower(
+          owner.awaitReadyAt(point),
+          fixture,
+          globals,
+          landed === undefined
+            ? undefined
+            : {
+                hook: landed.hook,
+                onLandedHold: (hold) => (landedHold = hold),
+              },
+        ),
       );
     const synchronize = async (): Promise<void> => {
       const tip = await appendTip();
@@ -469,7 +494,11 @@ export const openHistoryProductionOwnerLifecycle = async (
           try {
             await runtime.runPromise(Scope.close(scope, Exit.void));
           } finally {
-            await runtime.dispose();
+            try {
+              await landed?.close();
+            } finally {
+              await runtime.dispose();
+            }
           }
         }
       }
@@ -531,6 +560,9 @@ export const openHistoryProductionOwnerLifecycle = async (
       commitAttempts,
       synchronize,
       readyAt,
+      /** The landed-block hook's hold at the last driver run (with
+       * `landedBlocks`; otherwise always undefined). */
+      landedHold: () => landedHold,
       appendTipWhileGateClosed,
       command,
       runWithoutSynchronizing,

@@ -1,7 +1,10 @@
 import "./utils.js";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { heightAtDepth } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Exit, Ref, Schedule } from "effect";
@@ -111,26 +114,6 @@ const staleReason = (reasons: ReadonlyMap<string, string>) =>
   [...reasons.values()].filter((reason) => reason === RETENTION_L1_VIEW_STALE);
 
 describe("retention sweeper L1-view deadline", () => {
-  it("reports unavailable DA recovery proof and clears it after the next successful proof read", async () => {
-    const seen: string[][] = [];
-    const result = await runSweeper({
-      clock: [START],
-      sweeps: 2,
-      read: (index, reasons) => {
-        seen.push([...reasons().values()]);
-        return Effect.succeed({
-          ...VIEW,
-          retirementProofUnavailable: index === 0,
-        });
-      },
-    });
-    expect(seen).toEqual([[], ["retention_da_recovery_proof_unavailable"]]);
-    expect([...result.reasons.values()]).not.toContain(
-      "retention_da_recovery_proof_unavailable",
-    );
-    expect(result.reads()).toBe(2);
-  });
-
   it("past L1_VIEW_FATAL_MS raises retention_l1_view_stale, sweeps nothing and keeps reading", async () => {
     // Ref init; sweep 1 reads at the deadline (a sweep without DA pruning);
     // sweeps 2-5 read 1 ms past it.
@@ -294,8 +277,32 @@ describe("retention L1 view exemption sets", () => {
       confirmedHeadHash: "ab".repeat(28),
       liveUtxosRoots: ["71".repeat(32), "72".repeat(32)],
     });
-    const view = await Effect.runPromise(
-      provideDatabaseLayers(queue.provide(fetchRetentionL1View)),
+    const { view, tipHeight } = await Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          const view = yield* queue.provide(fetchRetentionL1View);
+          const sql = yield* SqlClient.SqlClient;
+          const [cursor] = yield* sql<{ readonly height: number | string }>`
+            SELECT height FROM l1_follower_cursor`;
+          return { view, tipHeight: Number(cursor!.height) };
+        }).pipe(
+          Effect.provideService(
+            ContractDeploymentIdentity,
+            ContractDeploymentIdentity.make({
+              kind: "manifest",
+              manifestId: "cd".repeat(32),
+              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+            }),
+          ),
+        ),
+      ),
+    );
+    // Final at the queue's view: deeper than the deployment's k.
+    expect(view.finalThroughHeight).toBe(
+      heightAtDepth(
+        tipHeight,
+        DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth + 1,
+      ),
     );
     expect(view.confirmedHeadHash.toString("hex")).toBe("ab".repeat(28));
     expect(

@@ -14,12 +14,9 @@ import { describe, expect, it as vitestIt } from "vitest";
 import {
   DepositsDB,
   PendingBlockFinalizationsDB,
-  WithdrawalsDB,
 } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
-import { reincludeStateQueueCorrectedBlocks } from "../../src/services/state-queue-correction-recovery.js";
 import { makeCardanoSignedMapOutputTxBytes } from ".././helpers/cardano-native-fixtures.js";
-import { externalTimeoutTransition } from ".././helpers/state-queue-correction-transition.js";
 import { provideDatabaseLayers } from ".././utils.js";
 import { databaseTestDirectory } from "./finalization.database-test-directory.js";
 import {
@@ -27,11 +24,9 @@ import {
   collectChildProcess,
   databaseChildProcessEnv,
   databaseFixtureBytes,
-  databaseOutputReferenceId,
   databaseTxHash,
   isolatedDb,
   makeDepositEntry,
-  makeHistoryWithdrawalEntry,
 } from "./fixtures.js";
 
 export const registerFinalizationTests = () => {
@@ -128,187 +123,6 @@ export const registerFinalizationTests = () => {
         },
       };
     };
-    it.effect(
-      "journals correction classification and makes reinclusion idempotent",
-      () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            yield* WithdrawalsDB.clear;
-            const transition = externalTimeoutTransition({ terminal: true });
-            const removed = transition.removedHeaderHashes.map(
-              (headerHash) => ({
-                headerHash,
-                transitionDigest: transition.transitionDigest,
-                kind: "removed" as const,
-              }),
-            );
-            const header = Buffer.from(
-              transition.removedHeaderHashes[0]!,
-              "hex",
-            );
-            const initial = makeHistoryWithdrawalEntry();
-            const assignment = {
-              eventId: initial[WithdrawalsDB.Columns.ID],
-              expectedClassificationRevision: 0,
-              settlementEventInfo: Buffer.from("8101", "hex"),
-              validity: WithdrawalsDB.Validity.WithdrawalIsValid,
-              validityDetail: { z: 1, a: { z: 2, a: 3 } },
-            };
-            yield* WithdrawalsDB.insertEntries([initial]);
-            yield* WithdrawalsDB.setSettlementInfoForEventIds([assignment]);
-            yield* WithdrawalsDB.markAwaitingAsProjected([assignment]);
-            const classified = Option.getOrThrow(
-              yield* WithdrawalsDB.retrieveByEventId(assignment.eventId),
-            );
-            yield* PendingBlockFinalizationsDB.preparePendingSubmission({
-              ...pendingSubmissionFixture(header),
-              withdrawalEventIds: [assignment.eventId],
-              withdrawalEntries: [classified],
-            });
-            const journal = Option.getOrThrow(
-              yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(header),
-            );
-            expect(
-              journal.withdrawalMembers[0]![
-                PendingBlockFinalizationsDB.WithdrawalMemberColumns
-                  .VALIDITY_DETAIL
-              ],
-            ).toEqual(assignment.validityDetail);
-            yield* PendingBlockFinalizationsDB.markSubmitted(
-              header,
-              Buffer.alloc(32, 31),
-            );
-            yield* WithdrawalsDB.markProjectedByEventIds([assignment], header);
-            yield* WithdrawalsDB.markFinalizedByEventIds(
-              [assignment.eventId],
-              header,
-            );
-            expect(
-              (yield* reincludeStateQueueCorrectedBlocks(removed))[0]!
-                .reopenedEvents,
-            ).toBe(1);
-            const replacement = {
-              ...assignment,
-              expectedClassificationRevision: 1,
-              settlementEventInfo: Buffer.from("8102", "hex"),
-              validity: WithdrawalsDB.Validity.SpentWithdrawalUtxo,
-              validityDetail: { changed: true },
-            };
-            yield* WithdrawalsDB.setSettlementInfoForEventIds([replacement]);
-            expect(
-              (yield* reincludeStateQueueCorrectedBlocks(removed))[0]!
-                .reopenedEvents,
-            ).toBe(0);
-            const row = Option.getOrThrow(
-              yield* WithdrawalsDB.retrieveByEventId(assignment.eventId),
-            );
-            expect(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toEqual(
-              replacement.settlementEventInfo,
-            );
-            const sql = yield* SqlClient.SqlClient;
-            yield* sql`UPDATE pending_block_finalization_withdrawals SET validity_detail = '{"tampered":true}'::jsonb WHERE header_hash = ${header}`;
-            expect(
-              (yield* Effect.either(
-                PendingBlockFinalizationsDB.retrieveByHeaderHash(header),
-              ))._tag,
-            ).toBe("Left");
-          }),
-        ),
-    );
-
-    it.effect(
-      "reopens after a correction a withdrawal an unlanded block selected, and refuses one assigned to another header or never selected",
-      () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            yield* WithdrawalsDB.clear;
-            const removed = databaseFixtureBytes("reopen-removed-header", 28);
-            const other = databaseFixtureBytes("reopen-other-header", 28);
-            const entry = (label: string): WithdrawalsDB.Entry => ({
-              ...makeHistoryWithdrawalEntry(),
-              [WithdrawalsDB.Columns.ID]: databaseOutputReferenceId(
-                `reopen-${label}`,
-              ),
-              [WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH]: databaseTxHash(
-                `reopen-${label}-l1`,
-              ),
-            });
-            const selected = entry("selected");
-            const elsewhere = entry("elsewhere");
-            const unselected = entry("unselected");
-            const classify = (row: WithdrawalsDB.Entry) => ({
-              eventId: row[WithdrawalsDB.Columns.ID],
-              expectedClassificationRevision: 0,
-              settlementEventInfo: Buffer.from("8101", "hex"),
-              validity: WithdrawalsDB.Validity.WithdrawalIsValid,
-              validityDetail: {},
-            });
-            yield* WithdrawalsDB.insertEntries([
-              selected,
-              elsewhere,
-              unselected,
-            ]);
-            const classified = [selected, elsewhere].map(classify);
-            yield* WithdrawalsDB.setSettlementInfoForEventIds(classified);
-            yield* WithdrawalsDB.markAwaitingAsProjected(classified);
-            yield* WithdrawalsDB.markProjectedByEventIds(
-              [classified[1]!],
-              other,
-            );
-            const current = (row: WithdrawalsDB.Entry) =>
-              WithdrawalsDB.retrieveByEventId(
-                row[WithdrawalsDB.Columns.ID],
-              ).pipe(Effect.map(Option.getOrThrow));
-            const before = {
-              elsewhere: yield* current(elsewhere),
-              unselected: yield* current(unselected),
-            };
-            // A withdrawal another header holds (kills "accept any projected
-            // row"), and one no block selected (kills "drop the Projected
-            // clause" and "accept any null-header row"), are not the removed
-            // block's to reopen.
-            for (const refused of [elsewhere, unselected]) {
-              const error = yield* Effect.flip(
-                WithdrawalsDB.reopenAfterStateQueueCorrectionByEventIds(
-                  [refused[WithdrawalsDB.Columns.ID]],
-                  removed,
-                ),
-              );
-              // The unowned-history fixture gate wraps the refusal as its cause.
-              const refusal =
-                error.cause instanceof DatabaseError ? error.cause : error;
-              expect(refusal.message).toBe(
-                "Cannot reopen withdrawal not assigned to the corrected header",
-              );
-            }
-            expect(yield* current(elsewhere)).toEqual(before.elsewhere);
-            expect(yield* current(unselected)).toEqual(before.unselected);
-            // Selected and classified by the removed unlanded block, with no
-            // header assigned: it reopens from the removed header.
-            yield* WithdrawalsDB.reopenAfterStateQueueCorrectionByEventIds(
-              [selected[WithdrawalsDB.Columns.ID]],
-              removed,
-            );
-            const reopened = yield* current(selected);
-            expect(reopened[WithdrawalsDB.Columns.STATUS]).toBe(
-              WithdrawalsDB.Status.Awaiting,
-            );
-            expect(reopened[WithdrawalsDB.Columns.PROJECTED_HEADER_HASH]).toBe(
-              null,
-            );
-            expect(reopened[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toBe(
-              null,
-            );
-            expect(
-              reopened[WithdrawalsDB.Columns.REOPENED_FROM_HEADER_HASH],
-            ).toEqual(removed);
-            expect(
-              reopened[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
-            ).toBe(1);
-          }),
-        ),
-    );
-
     it.effect(
       "retains durable signed intent across cleanup, conflicting writes and duplicate acknowledgement",
       () =>

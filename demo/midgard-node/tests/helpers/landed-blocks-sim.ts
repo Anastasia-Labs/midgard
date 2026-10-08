@@ -68,9 +68,10 @@ import {
 import { Frontier, retrieveRows } from "../../src/landed-blocks/store.js";
 import type { Database } from "../../src/services/database.js";
 import {
-  settleMempool,
-  type SimIncluded,
-} from "./landed-blocks-sim.mempool.js";
+  correctionCounter,
+  refuseBeyondK,
+} from "./landed-blocks-sim.corrections.js";
+import { settleMempool } from "./landed-blocks-sim.mempool.js";
 import {
   expectedState,
   modelProcessing,
@@ -85,11 +86,13 @@ import {
   type Faults,
   type LandedSimEnv,
 } from "./landed-blocks-sim.ports.js";
+import { type SimRecord, simRecords } from "./landed-blocks-sim.record.js";
 import {
   holdNames,
   type Settled,
   simSettler,
 } from "./landed-blocks-sim.settle.js";
+import { compareTerminals } from "./landed-blocks-sim.terminals.js";
 import { landedBlocksTraffic } from "./landed-blocks-sim.traffic.js";
 import { H_MAX, hasDeposit } from "./landed-blocks-sim.universe.js";
 import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
@@ -109,11 +112,14 @@ export const landedBlocksSimProjection = (
   let modelFrontier: string | undefined;
   let lastRows: readonly string[] = [];
   let seen = 0;
+  /** The `removed` queue-terminal rows counted so far. */
+  const seenTerminals = new Set<string>();
   /** The foreign blocks whose included transactions `foreignIncluded` counted. */
   const countedIncludes = new Set<string>();
   const run = <A, E>(effect: Effect.Effect<A, E, Database>) =>
     Runtime.runPromise(env.runtime)(effect);
   const { stats, mempool, book } = env;
+  const corrections = correctionCounter(stats);
   const node = simNode(env, run);
   const servedNow = (header: string) => {
     if (!env.registry.get(header)!.longLate) return true;
@@ -123,60 +129,14 @@ export const landedBlocksSimProjection = (
 
   const settler = simSettler(env, node, run, served);
 
-  /** The transactions a block includes (an own block's journal, a foreign block's replay). */
-  const includesOf = (header: string): readonly Buffer[] =>
-    env.registry.get(header)!.own
-      ? book.blocks.get(header)!.txIds
-      : (env.includes.get(header) ?? []);
-
-  /**
-   * The model's settlement record at `model`: the block on the processed
-   * chain that includes each transaction, the kind of the folded block (at
-   * or below the frontier) for those a folded block includes, and those
-   * whose folded block is no longer among the `retained` folds (its fold
-   * is final, so its rows are gone).
-   */
-  const recordAt = (
-    model: Readonly<{ frontier: string; tip: string }>,
-    retained: ReadonlySet<string>,
-  ) => {
-    const chain = rootLineage(env.registry, model.tip);
-    const foldedThrough = chain.indexOf(model.frontier);
-    const settledBy = new Map<string, string>();
-    const folded = new Map<string, "own" | "foreign">();
-    const released = new Set<string>();
-    chain.forEach((header, at) => {
-      for (const id of includesOf(header)) {
-        settledBy.set(hex(id), header);
-        if (at > foldedThrough) continue;
-        folded.set(hex(id), env.registry.get(header)!.own ? "own" : "foreign");
-        if (!retained.has(header)) released.add(hex(id));
-      }
-    });
-    return { settledBy, folded, released };
-  };
-
-  type Record = ReturnType<typeof recordAt>;
-
-  /** The record and the live own block's members, as the batch closure reads them. */
-  const includedBy = (
-    record: Record,
-    live: Readonly<{ txIds: readonly Buffer[] }> | undefined,
-  ): SimIncluded => ({
-    settled: new Set([
-      ...record.settledBy.keys(),
-      ...(live?.txIds ?? []).map(hex),
-    ]),
-    folded: record.folded,
-    released: record.released,
-  });
+  const { includesOf, recordAt, includedBy } = simRecords(env);
 
   /** The node equals the model at `top` (the live own block or the processed tip). */
   const compareState = async (
     model: Readonly<{ frontier: string; tip: string }>,
     top: string,
     ledger: ReadonlyMap<string, Buffer>,
-    record: Record,
+    record: SimRecord,
   ) => {
     const expected = expectedState(
       env.universe,
@@ -331,6 +291,7 @@ export const landedBlocksSimProjection = (
     const removed = lastRows.filter(
       (header) => !model.processed.includes(header),
     );
+    corrections.count({ seen, rollback, removed, rows: model.rows });
     if (rollback && removed.length > 0) {
       stats.rollbacksRemovingProcessed += 1;
       if (rebuild.newly.length > 0) stats.rejectionsOnRollback += 1;
@@ -353,6 +314,7 @@ export const landedBlocksSimProjection = (
       stats.ownProcessed += 1;
     modelFrontier = model.frontier;
     lastRows = model.rows;
+    corrections.compared(seen);
     if (
       ((await store.cursor())?.prunedThroughSlot ?? SIM_ORIGIN.point.slot) >
       SIM_ORIGIN.point.slot
@@ -425,6 +387,14 @@ export const landedBlocksSimProjection = (
       )
         canonical.pop();
     }
+    // The follower's own projection, node up or down.
+    const terminals = await compareTerminals(
+      store,
+      canonical,
+      seenTerminals,
+      stats,
+    );
+    if (terminals !== null) return terminals;
     // The node is down: the follower moves on without it.
     if (seen <= env.offlineFor || seen % 17 >= 14) {
       stats.offlineChecks += 1;
@@ -457,6 +427,16 @@ export const landedBlocksSimProjection = (
         rowsBefore,
       );
       if (failed !== null) return failed;
+      if (stats.comparedChecks % 7 === 0) {
+        const refused = await refuseBeyondK({
+          store,
+          canonical,
+          owner: env.owner.current,
+          run,
+          stats,
+        });
+        if (refused !== null) return refused;
+      }
     }
     return null;
   };
