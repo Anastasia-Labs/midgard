@@ -58,6 +58,7 @@ import type { NodeConfigDep } from "../../src/services/config.js";
 import { Database } from "../../src/services/database.js";
 import {
   intentJournalOver,
+  IntentJournalRefused,
   type NodeIntentFamily,
 } from "../../src/services/intent-journal.js";
 import {
@@ -80,13 +81,17 @@ import {
   blockOf,
   ledgerOutput,
 } from "./intent-journal-replay.chain.js";
+import { recordCommitThroughGate } from "./intent-journal-replay.commit-gate.js";
 import { testDatabases } from "./l1-events-store.js";
 
 /**
- * The flow's node tables the commit predicate reads, parents first, each
- * with the event table its members' follower admission identity comes from.
+ * The flow's node tables the commit predicate and the commit's pre-broadcast
+ * gate read, parents first, each with the event table its members' follower
+ * admission identity comes from.
  */
 const NODE_TABLES_THE_PREDICATES_READ = [
+  ["deposits_utxos", null],
+  ["withdrawal_utxos", null],
   ["pending_block_finalizations", null],
   ["pending_block_finalization_deposits", "deposits_utxos"],
   ["pending_block_finalization_withdrawals", "withdrawal_utxos"],
@@ -99,8 +104,17 @@ export type ReplayedIntent = Readonly<{
   workflowKey: string;
   txHash: string;
   contentRef: string | null;
-  /** The production journal's outcome: `recorded`, or the refusal's reason. */
+  /**
+   * The production journal's outcome: `recorded`, the refusal's reason, or
+   * the gate's error.
+   */
   outcome: string;
+  /**
+   * A commit only: whether its production pre-broadcast gate
+   * (`submitWithDurableIntent`) wrote the signed bytes to its pending block
+   * in the transaction that journaled them.
+   */
+  gated?: boolean;
   /** A refusal's message, and where each spent outref came from. */
   refusal?: string;
   /**
@@ -402,25 +416,47 @@ export const replayJournaledOnFollower = async (input: {
       .map(({ entry }) => entry);
     const replayed: Omit<ReplayedIntent, "after">[] = [];
     for (const entry of ordered) {
-      if (entry.intent.kind !== "journaled") continue;
+      const { intent } = entry;
+      if (intent.kind !== "journaled") continue;
       await followTo(landedAt(entry.txHash));
-      const outcome = await Effect.runPromise(
-        Effect.either(
-          journal.record(entry.intent, entry.signedTxCbor, entry.txHash),
-        ),
-      );
+      const header = intent.family === "commit" ? intent.contentRef : undefined;
+      const { outcome, gated } =
+        header === undefined
+          ? {
+              outcome: await Effect.runPromise(
+                Effect.either(
+                  journal.record(intent, entry.signedTxCbor, entry.txHash),
+                ),
+              ),
+              gated: undefined,
+            }
+          : await recordCommitThroughGate({
+              runtime,
+              sql,
+              journal,
+              entry,
+              header,
+            });
       await stage.run();
+      const failure = Either.isLeft(outcome)
+        ? outcome.left instanceof Error
+          ? outcome.left
+          : new Error(String(outcome.left))
+        : undefined;
       replayed.push({
-        family: entry.intent.family,
-        workflowKey: entry.intent.workflowKey,
+        family: intent.family,
+        workflowKey: intent.workflowKey,
         txHash: entry.txHash,
-        contentRef: entry.intent.contentRef?.toString("hex") ?? null,
+        contentRef: intent.contentRef?.toString("hex") ?? null,
         outcome: Either.isRight(outcome)
           ? outcome.right.kind
-          : outcome.left.reason,
-        ...(Either.isLeft(outcome)
+          : failure instanceof IntentJournalRefused
+            ? failure.reason
+            : `gate: ${String(failure?.message)}`,
+        ...(gated === undefined ? {} : { gated }),
+        ...(failure !== undefined
           ? {
-              refusal: `${outcome.left.message}; ${originsOf(entry.signedTxCbor)}`,
+              refusal: `${failure.message}; ${originsOf(entry.signedTxCbor)}`,
             }
           : {}),
         chained: decodeTransaction(

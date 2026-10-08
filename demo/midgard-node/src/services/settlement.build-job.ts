@@ -161,8 +161,10 @@ const buildJob = (
               inspectSettlementAttempt(attempt),
             );
             // The exact bytes are journaled in one transaction with the
-            // attempt checkpoint: a refusal of either stops the attempt and
-            // leaves neither. S6 sends the journaled bytes from there.
+            // attempt checkpoint: this gate opens it and records the intent
+            // inside it (`PreBroadcastGate`), so a refusal of either stops
+            // the attempt and leaves neither. S6 sends the journaled bytes
+            // from there.
             yield* journal.record(
               journaledIntent(
                 "settlement",
@@ -171,9 +173,14 @@ const buildJob = (
               ),
               attempt.signed_cbor,
               attempt.tx_hash,
-              Journal.saveAttempt(owner, attempt).pipe(
-                Effect.provideService(SqlClient.SqlClient, sql),
-              ),
+              (journalInsert) =>
+                sql
+                  .withTransaction(
+                    journalInsert.pipe(
+                      Effect.zipRight(Journal.saveAttempt(owner, attempt)),
+                    ),
+                  )
+                  .pipe(Effect.provideService(SqlClient.SqlClient, sql)),
             );
             return attempt.tx_hash;
           }).pipe(
@@ -324,11 +331,20 @@ const acquireOwnership = (
 /** One serial transaction stream; waits happen between ticks, never in a node
  * control-plane or ledger lease. Local UPLC evaluation runs in the worker. */
 export const settlementProgram = (
-  report: (health: SettlementHealth) => void,
+  post: (health: SettlementHealth) => void,
   ownerToken: string = randomUUID(),
 ) =>
   Effect.gen(function* () {
     const config = yield* NodeConfig;
+    const journal = yield* IntentJournal;
+    // Each report hands the node the refusal holds this worker's journal
+    // could not write; the node's journal takes them over (I1-H1).
+    const report = (health: SettlementHealth) => {
+      const holds = journal.handOff();
+      post(
+        holds.length === 0 ? health : { ...health, intentRefusalHolds: holds },
+      );
+    };
     const identity = yield* ContractDeploymentIdentity;
     if (identity.kind !== "manifest" || identity.manifestId === undefined)
       return yield* Effect.fail(

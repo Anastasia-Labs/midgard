@@ -26,11 +26,14 @@ export const submitWithDurableIntent = <A, E>(
     const context = yield* Effect.context<Database>();
     return yield* program.pipe(
       Effect.provideService(BeforeSignedTransactionSubmission, {
-        persist: ({ txHash, signedTxCbor }) =>
+        // The gate's history write owns the transaction; the journal's
+        // insert runs inside it (`PreBroadcastGate`).
+        persist: ({ txHash, signedTxCbor, journal }) =>
           PendingBlockFinalizationsDB.recordSignedIntent(
             headerHash,
             Buffer.from(txHash, "hex"),
             Buffer.from(signedTxCbor, "hex"),
+            journal,
           ).pipe(Effect.provide(context)),
       }),
     );

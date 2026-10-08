@@ -8,6 +8,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Context, Data, Duration, Effect, Schedule } from "effect";
 
+import type { JournalInsert } from "../services/intent-journal.js";
 import {
   compactValidityInterval,
   type SignedTxValidityInterval,
@@ -241,8 +242,19 @@ export class NoInlineSubmitDefer extends Data.TaggedError(
  * early-validity-window failures.
  */
 export const BeforeSignedTransactionSubmission = Context.GenericTag<{
+  /**
+   * The workflow's pre-broadcast gate (`PreBroadcastGate`): its checks and
+   * durable write, in one SQL transaction it opens itself as the outermost
+   * one, with `journal` (the intent journal's insert of these bytes) run
+   * inside that same transaction. A refusal, or a stop before the commit,
+   * leaves neither the write nor the journal row.
+   */
   readonly persist: (
-    intent: Readonly<{ txHash: string; signedTxCbor: string }>,
+    intent: Readonly<{
+      txHash: string;
+      signedTxCbor: string;
+      journal: JournalInsert;
+    }>,
   ) => Effect.Effect<void, unknown>;
 }>("midgard/BeforeSignedTransactionSubmission");
 

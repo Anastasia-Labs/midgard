@@ -5,6 +5,8 @@
  * `worker_threads` thread running the workers' journal stack, bundled from
  * source; the main process reads the holds through its own journal's
  * `refresh` (run at every tip by the follower) and the follower readiness.
+ * A refusal whose hold write fails in the worker is handed to the main
+ * process, which names it and writes it until it lands.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -18,6 +20,8 @@ import { Effect } from "effect";
 import { build as bundleWithTsup } from "tsup";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
+import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
+import type { Globals } from "../src/services/globals.js";
 import {
   INTENT_CONTENT_REF_MISSING,
   intentJournalOver,
@@ -125,10 +129,18 @@ it("commit and settlement refusals raised in a worker thread fail the main proce
   const settlement = signed(2);
   // Each family names its content; these name none, so the journal refuses.
   expect(
-    await runProbe([
-      { family: "commit", workflowKey: "commit:probe", ...commit },
-      { family: "settlement", workflowKey: "settlement:probe", ...settlement },
-    ]),
+    (
+      await runProbe({
+        records: [
+          { family: "commit", workflowKey: "commit:probe", ...commit },
+          {
+            family: "settlement",
+            workflowKey: "settlement:probe",
+            ...settlement,
+          },
+        ],
+      })
+    ).reasons,
   ).toEqual([INTENT_CONTENT_REF_MISSING, INTENT_CONTENT_REF_MISSING]);
 
   await db(
@@ -154,4 +166,102 @@ it("commit and settlement refusals raised in a worker thread fail the main proce
       ).toEqual(["commit commit", "settlement settlement"]);
     }),
   );
+}, 300_000);
+
+it("a worker's refusal hold whose write fails is handed to the main process, named on /readyz, and written once the table takes it", async () => {
+  await db(resetApplicationTables);
+  const commit = signed(3);
+  // The hold table refuses every write until it is put back.
+  await db(
+    Effect.flatMap(
+      SqlClient.SqlClient,
+      (sql) =>
+        sql`ALTER TABLE intent_refusal_holds RENAME TO intent_refusal_holds_away`,
+    ),
+  );
+  const putBack = Effect.flatMap(
+    SqlClient.SqlClient,
+    (sql) =>
+      sql`ALTER TABLE intent_refusal_holds_away RENAME TO intent_refusal_holds`,
+  );
+  try {
+    const { reasons, notices } = await runProbe({
+      records: [{ family: "commit", workflowKey: "commit:probe", ...commit }],
+      handOff: true,
+    });
+    expect(reasons).toEqual([INTENT_CONTENT_REF_MISSING]);
+    // The run's retries did not land it, so it reaches the parent, which
+    // takes it over the way the commit fiber does.
+    expect(notices).toEqual([
+      {
+        type: "IntentRefusalHoldsNotice",
+        holds: [
+          expect.objectContaining({
+            family: "commit",
+            hold: expect.objectContaining({
+              reason: INTENT_CONTENT_REF_MISSING,
+            }),
+            txHash: commit.txHash,
+            signedTxCbor: commit.signedTxCbor,
+          }),
+        ],
+      },
+    ]);
+    await db(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const main = intentJournalOver(sql, () => false);
+        const handle: L1FollowerHandle = {
+          kind: "running",
+          status: () => following,
+          holds: main.holds,
+          planCurrent: () => Promise.resolve({ kind: "none", detail: "" }),
+        };
+        expect(
+          takeCommitWorkerOutput({} as Globals, notices[0]!, 0, main.adopt),
+        ).toBeUndefined();
+        // Named at once, and still named while its write keeps failing.
+        expect(l1FollowerReadiness(handle).reasons).toEqual([
+          INTENT_CONTENT_REF_MISSING,
+        ]);
+        yield* main.refresh();
+        expect(l1FollowerReadiness(handle).reasons).toEqual([
+          INTENT_CONTENT_REF_MISSING,
+        ]);
+        expect(main.handOff()).toHaveLength(1);
+        main.adopt(notices[0]!.holds);
+
+        // The table takes writes again: the next refresh writes it.
+        yield* putBack;
+        yield* main.refresh();
+        expect(l1FollowerReadiness(handle).reasons).toEqual([
+          INTENT_CONTENT_REF_MISSING,
+        ]);
+        expect(main.handOff()).toEqual([]);
+        const rows = yield* sql<{
+          readonly family: string;
+          readonly reason: string;
+        }>`SELECT family, reason FROM intent_refusal_holds`;
+        expect(rows).toEqual([
+          { family: "commit", reason: INTENT_CONTENT_REF_MISSING },
+        ]);
+        // A restarted node reads it from the table.
+        const restarted = intentJournalOver(sql, () => false);
+        yield* restarted.refresh();
+        expect(restarted.holds().map(({ reason }) => reason)).toEqual([
+          INTENT_CONTENT_REF_MISSING,
+        ]);
+      }),
+    );
+  } finally {
+    await db(
+      Effect.flatMap(SqlClient.SqlClient, (sql) =>
+        sql`SELECT to_regclass('intent_refusal_holds_away') AS away`.pipe(
+          Effect.flatMap(([row]) =>
+            row?.away === null ? Effect.void : putBack,
+          ),
+        ),
+      ),
+    );
+  }
 }, 300_000);

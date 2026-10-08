@@ -2,23 +2,44 @@
  * The journal row and the workflow's pre-broadcast gate
  * (`BeforeSignedTransactionSubmission.persist`) commit in one SQL
  * transaction (plan §8.2, I1-fix F1), on a Lucid emulator with the node's
- * follower-backed journal:
+ * follower-backed journal. The gate owns that transaction and runs the
+ * journal's insert inside it (I1FIX-R2):
  *
- * - a gate that refuses leaves no journal row: the workflow sends nothing
- *   and S6 has nothing to send at the next tip;
- * - a stop between the row write and the gate (the fiber interrupted, as a
- *   process shutdown interrupts it) leaves no row either;
+ * - a gate that refuses after the insert leaves no journal row: the workflow
+ *   sends nothing and S6 has nothing to send at the next tip;
+ * - a stop between the insert and the gate's write (the fiber interrupted,
+ *   as a process shutdown interrupts it) leaves no row either;
  * - a gate that passes commits with the row, and its write is visible with
- *   it: the workflow's send lands and S6 follows it.
+ *   it: the workflow's send lands and S6 follows it;
+ * - a gate that passes without running the insert in its transaction is
+ *   refused, and nothing is sent.
  */
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
-import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import {
+  Cause,
+  Effect,
+  Exit,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Redacted,
+} from "effect";
+import {
+  afterAll,
+  afterEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from "vitest";
 
 import {
+  INTENT_GATE_UNJOURNALED,
   IntentJournal,
+  IntentJournalRefused,
   journaledIntent,
+  type JournalInsert,
 } from "../src/services/intent-journal.js";
 import {
   BeforeSignedTransactionSubmission,
@@ -52,11 +73,25 @@ const journaledRows = async (env: IntentEmulator): Promise<number> =>
     return Number(rows[0]!.n);
   });
 
+/** A node SQL client over the emulator's database, for a gate to own its transaction with. */
+const gateSql = async (env: IntentEmulator) => {
+  const runtime = ManagedRuntime.make(
+    PgClient.layer({ url: Redacted.make(env.connectionString) }),
+  );
+  const sql = await runtime.runPromise(SqlClient.SqlClient);
+  onTestFinished(() => runtime.dispose());
+  return { runtime, sql };
+};
+
 /** Submits a payment from the own wallet as a commit under `persist`, counting direct sends. */
 const submitUnderGate = async (
   env: IntentEmulator,
   persist: (
-    intent: Readonly<{ txHash: string; signedTxCbor: string }>,
+    intent: Readonly<{
+      txHash: string;
+      signedTxCbor: string;
+      journal: JournalInsert;
+    }>,
   ) => Effect.Effect<void, unknown>,
 ) => {
   const lucid = await env.wallet();
@@ -87,10 +122,17 @@ const submitUnderGate = async (
 describe("the journal row commits with the pre-broadcast gate", () => {
   it("a refused gate leaves no journal row, so S6 sends nothing at the next tip", async () => {
     const env = await open();
-    const { exit, direct } = await submitUnderGate(env, () =>
-      Effect.fail(
-        new Error(
-          "Journal member no longer identifies its canonical history row",
+    const { sql } = await gateSql(env);
+    const { exit, direct } = await submitUnderGate(env, ({ journal }) =>
+      sql.withTransaction(
+        journal.pipe(
+          Effect.zipRight(
+            Effect.fail(
+              new Error(
+                "Journal member no longer identifies its canonical history row",
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -106,7 +148,10 @@ describe("the journal row commits with the pre-broadcast gate", () => {
 
   it("a stop between the row write and the gate leaves no journal row", async () => {
     const env = await open();
-    const { exit, direct } = await submitUnderGate(env, () => Effect.interrupt);
+    const { sql } = await gateSql(env);
+    const { exit, direct } = await submitUnderGate(env, ({ journal }) =>
+      sql.withTransaction(journal.pipe(Effect.zipRight(Effect.interrupt))),
+    );
     expect(exit._tag).toBe("Failure");
     expect(direct).toEqual([]);
     expect(await journaledRows(env)).toBe(0);
@@ -129,8 +174,15 @@ describe("the journal row commits with the pre-broadcast gate", () => {
         ),
       );
       const sql = await runtime.runPromise(SqlClient.SqlClient);
-      const { exit, direct } = await submitUnderGate(env, ({ txHash }) =>
-        Effect.asVoid(sql`INSERT INTO gate_marks VALUES (${txHash})`),
+      const { exit, direct } = await submitUnderGate(
+        env,
+        ({ txHash, journal }) =>
+          sql.withTransaction(
+            journal.pipe(
+              Effect.zipRight(sql`INSERT INTO gate_marks VALUES (${txHash})`),
+              Effect.asVoid,
+            ),
+          ),
       );
       expect(exit._tag).toBe("Success");
       expect(direct).toHaveLength(1);
@@ -153,5 +205,36 @@ describe("the journal row commits with the pre-broadcast gate", () => {
     } finally {
       await runtime.dispose();
     }
+  });
+
+  it("a gate that passes without journaling in its own transaction is refused, and nothing is sent", async () => {
+    const env = await open();
+    // The submit wraps the journal's refusal (TxSubmitError's cause).
+    const refusedReason = (exit: Exit.Exit<unknown, unknown>) => {
+      if (!Exit.isFailure(exit)) return undefined;
+      const failure = Cause.failureOption(exit.cause);
+      for (
+        let at: unknown = Option.getOrUndefined(failure);
+        at !== undefined && at !== null;
+        at = (at as { cause?: unknown }).cause
+      )
+        if (at instanceof IntentJournalRefused) return at.reason;
+      return undefined;
+    };
+    // Never runs the insert.
+    const skipped = await submitUnderGate(env, () => Effect.void);
+    expect(refusedReason(skipped.exit)).toBe(INTENT_GATE_UNJOURNALED);
+    expect(skipped.direct).toEqual([]);
+    // Runs it outside any transaction.
+    const outside = await submitUnderGate(env, ({ journal }) => journal);
+    expect(refusedReason(outside.exit)).toBe(INTENT_GATE_UNJOURNALED);
+    expect(outside.direct).toEqual([]);
+    expect(await journaledRows(env)).toBe(0);
+    expect(env.journal.holds().map(({ reason }) => reason)).toEqual([
+      INTENT_GATE_UNJOURNALED,
+    ]);
+    await env.stage.run();
+    expect(env.stage.lastReport()!.intents).toEqual([]);
+    expect(env.sent).toEqual([]);
   });
 });

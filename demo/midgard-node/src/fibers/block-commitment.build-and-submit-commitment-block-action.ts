@@ -16,6 +16,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import { IntentJournal } from "../services/intent-journal.js";
 import {
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
@@ -158,6 +159,7 @@ export const buildAndSubmitCommitmentBlockAction = (
     );
     const ledgerStoreLeaseOwner =
       MpfEngineStateDB.nodeProcessCommitLeaseOwner();
+    const intentJournal = yield* IntentJournal;
     const databaseRuntime = yield* Effect.runtime<Database>();
     const releaseTerminatedWorkerLedgerLease = () =>
       Runtime.runPromise(databaseRuntime)(
@@ -203,6 +205,7 @@ export const buildAndSubmitCommitmentBlockAction = (
           globals,
           message,
           nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
+          intentJournal.adopt,
         ),
       releaseLedgerLease: releaseTerminatedWorkerLedgerLease,
     });

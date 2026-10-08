@@ -11,6 +11,7 @@ import {
 import { Effect } from "effect";
 
 import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
+import type { UnwrittenHold } from "../../services/intent-journal.holds.js";
 
 export type WorkerInput = {
   readonly history?: import("../../services/event-history-producer.js").HistoryProducerPermit;
@@ -156,6 +157,18 @@ export type WorkerOutput =
  */
 export type MempoolLedgerRevertedNotice = {
   readonly type: "MempoolLedgerRevertedNotice";
+};
+
+/**
+ * Posted by the commit worker ahead of its output when its intent journal
+ * refused a submission and the refusal hold's write to the node database
+ * has not landed (I1-H1). The worker's journal ends with the thread, so the
+ * parent's journal takes the holds over: `/readyz` names them, and its
+ * refresh at every tip writes them until they land.
+ */
+export type IntentRefusalHoldsNotice = {
+  readonly type: "IntentRefusalHoldsNotice";
+  readonly holds: readonly UnwrittenHold[];
 };
 
 // Datatype to use CBOR hex of state queue UTxOs instead of `UTxO` from LE for
