@@ -34,10 +34,7 @@ import {
   displacement,
   observedRemoval,
 } from "./history-expired-intent-release.displacement.js";
-import {
-  clearLivenessReasonIf,
-  heldOnIntegrityFailure,
-} from "./history-expired-intent-release.integrity-hold.js";
+import { heldOnIntegrityFailure } from "./history-expired-intent-release.integrity-hold.js";
 import {
   displacementIdentity,
   recoverDisplacement,
@@ -70,6 +67,7 @@ import {
 } from "./history-expired-intent-release.table.js";
 import {
   clearLivenessIncident,
+  clearLivenessReasonIf,
   HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE,
   raiseLivenessIncident,
 } from "./liveness-halt.js";

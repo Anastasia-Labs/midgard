@@ -18,7 +18,6 @@ import {
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerDiagnostics,
   type NativeMpfOwnerService,
-  NativeMpfRootNotRetained,
   NativeMpfRpcKind,
   type PersistedNativeMpfReplay,
 } from "./protocol.js";
@@ -47,6 +46,7 @@ import {
   buildOrReadFullIndex,
   keyNibbles,
   parsePromotionRecords,
+  restoreIndexRefusal,
 } from "./service.parse-promotion-records.js";
 import {
   type NativeOwnerRestartHealth,
@@ -499,15 +499,15 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     // Never use a sidecar as authority for a different canonical root. Read the
     // retained content-addressed closure, then let the pinned native loader
     // verify every hash, path and child before changing the durable marker.
-    // A target whose closure is not fully retained is refused here, before any
-    // marker change: restoring onto a partial trie would commit on a wrong base.
+    // A target that cannot be loaded is refused here by cause, before any marker
+    // change: restoring onto a partial trie would commit on a wrong base.
     const fullIndex = await buildOrReadFullIndex({
       db: this.db,
       marker: plan.targetRoot,
       options: { ...this.options, sidecarPath: undefined },
       binarySha256: this.binarySha256,
     }).catch((cause: unknown) => {
-      throw new NativeMpfRootNotRetained(plan.targetRoot, { cause });
+      throw restoreIndexRefusal(plan.targetRoot, cause);
     });
     let replacement: NativeChildRpc | undefined;
     let committed = false;

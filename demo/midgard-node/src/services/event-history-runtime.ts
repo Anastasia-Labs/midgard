@@ -18,6 +18,7 @@ import { NodeConfig } from "./config.js";
 import { makeEventHistoryOwner } from "./event-history-owner.js";
 import { HistoryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.globals.js";
+import { NATIVE_RESTORE_HELD } from "./history-dependent-recovery.js";
 import {
   expiredIntentReleaseDisposition,
   makeSignedIntentDeferral,
@@ -188,7 +189,9 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                   authority: rewindAuthority,
                 })
             ).pipe(
-              Effect.zipLeft(
+              // A signed-header recovery held on its native restore holds
+              // the native root as the held rewind does: the rebase waits.
+              Effect.zipWith(
                 prepareSignedHeaderRecovery({
                   binding,
                   checkpoint,
@@ -200,6 +203,10 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                     identity.manifest.l1Finality.confirmationDepth,
                   slotToUnixTime: lucid.api.slotToUnixTime,
                 }),
+                (rewind, signed) =>
+                  signed === NATIVE_RESTORE_HELD
+                    ? CORRECTION_REWIND_HELD_ON_NATIVE_STATE
+                    : rewind,
               ),
               // A signed commit past its TTL, or once the journaled history
               // shows its base output spent, is reconciled to whichever block
@@ -238,9 +245,10 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                     }),
               ),
               // A correction rewind held on the native owner's state still
-              // owns the removed local suffix and that root: the landed-block
-              // rebase waits for the next pass instead of moving a root the
-              // rewind holds.
+              // owns the removed local suffix and that root (and a held
+              // signed-header recovery its retained plan's root): the
+              // landed-block rebase waits for the next pass instead of moving
+              // a root a held recovery owns.
               Effect.flatMap((rewind) =>
                 rewind === CORRECTION_REWIND_HELD_ON_NATIVE_STATE
                   ? Effect.void
