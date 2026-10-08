@@ -62,6 +62,7 @@ import {
 const nodeConfig = {
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: 120_000,
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: 30_000,
+  HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
 } as unknown as NodeConfig["Type"];
 
 const runWithNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>

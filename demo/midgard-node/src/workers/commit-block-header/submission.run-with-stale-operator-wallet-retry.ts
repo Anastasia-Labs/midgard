@@ -20,7 +20,10 @@ import {
   type OperatorWalletView,
 } from "../../operator-wallet-view.js";
 import { HistoryProducer } from "../../services/event-history-producer.js";
-import { commitEventHorizon } from "../../services/history-commit-window.js";
+import {
+  commitEventHorizon,
+  type CommitHorizonLag,
+} from "../../services/history-commit-window.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -75,8 +78,9 @@ type CommitUserEventSourceRefreshers<E, R> = {
 
 /**
  * Rechecks the final end time against the event horizon, min(journal
- * coverage, follower ingestion) (E-N1-2 item 3), then refreshes tx orders
- * through it. Deposits and withdrawals are the follower-change driver's:
+ * coverage, follower ingestion) (E-N1-2 item 3) capped by the horizon lag
+ * (`horizonLag`), then refreshes tx orders through it. This is the check
+ * that refuses a header end above the lagged cap before submission. Deposits and withdrawals are the follower-change driver's:
  * nothing here fetches them. Every runtime commit runs under a history
  * producer; the unowned model fixture (no producer) needs an ingestion but
  * plans its end time past it, as its source polling did before.
@@ -89,8 +93,11 @@ export const refreshCommitUserEventSourcesThroughBlockEnd = <
     | Lucid
     | MidgardContracts
     | NodeConfig,
+  LE = never,
+  LR = never,
 >(
   blockEndTimeMs: number,
+  horizonLag: CommitHorizonLag<LE, LR>,
   refreshers: CommitUserEventSourceRefreshers<E, R> = {
     txOrder: fetchAndInsertTxOrderUTxOsForCommitBarrier,
   } as unknown as CommitUserEventSourceRefreshers<E, R>,
@@ -100,6 +107,7 @@ export const refreshCommitUserEventSourcesThroughBlockEnd = <
     const history = yield* Effect.serviceOption(HistoryProducer);
     const horizon = yield* commitEventHorizon(
       Option.isSome(history) ? history.value.coverage : undefined,
+      horizonLag,
     );
     if (
       horizon === null ||

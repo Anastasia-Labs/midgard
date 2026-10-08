@@ -6,7 +6,10 @@ import {
   commitUserEventSourceIdSetsAreExact,
   refreshCommitUserEventSourcesThroughBlockEnd,
 } from "../src/workers/commit-block-header/submission.js";
-import { ingestFollowerViewUnowned } from "./helpers/follower-view.js";
+import {
+  ingestFollowerViewUnowned,
+  modelHorizonLag,
+} from "./helpers/follower-view.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
@@ -29,6 +32,7 @@ describe("commit source completeness", () => {
     const calls: string[] = [];
     const refresh = refreshCommitUserEventSourcesThroughBlockEnd(
       blockEndTimeMs,
+      modelHorizonLag(0),
       {
         txOrder: (upperBound: Date) =>
           Effect.sync(() => {

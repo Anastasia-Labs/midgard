@@ -193,6 +193,11 @@ export type NodeConfigDep = {
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: number;
   STATE_QUEUE_CORRECTION_FINALITY_DEPTH: number;
+  /** Horizon lag d in L1 blocks: the commit end time is capped at
+   * slot(the follower block d below its covered tip) + event_wait - 1, so no
+   * due event comes from the last d blocks. Operator config, not a deployment
+   * profile field; 0 reads nothing and keeps the unlagged horizon. */
+  HISTORY_COMMIT_HORIZON_LAG_BLOCKS: number;
   /** Explicit housekeeping window in days; undefined when unset, which means
    * the verified deployment manifest's window (`resolveHousekeepingRetentionDays`). */
   RETENTION_DAYS: number | undefined;

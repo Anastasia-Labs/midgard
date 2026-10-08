@@ -1,8 +1,8 @@
 /**
  * The L1 follower's tables as the node's event ingestion reads them (N1),
  * written directly for tests without a followed chain: the cursor and its
- * tip block (one generation, synthetic hashes, height = slot) and the
- * never-reuse key set `l1_event_keys`.
+ * tip block (one generation, synthetic hashes, height = slot unless given)
+ * and the never-reuse key set `l1_event_keys`.
  *
  * `followerMaterialize` stands in for the deleted journal materialization in
  * tests that still drive the history journal: the follower's key set becomes
@@ -29,6 +29,7 @@ import {
   UnownedHistoryFixture,
   withHistoryIngestion,
 } from "../../src/services/event-history-producer.js";
+import type { CommitHorizonLag } from "../../src/services/history-commit-window.js";
 
 export const FOLLOWER_GENERATION = 1;
 
@@ -45,25 +46,26 @@ export const followerBlockHash = (
     )
     .digest();
 
-/** The follower's cursor at `slot`, on a tip block of its own. */
+/** The follower's cursor at `slot`, on a tip block of its own at `height`. */
 export const writeFollowerTip = (
   slot: number,
   generation: number = FOLLOWER_GENERATION,
+  height: number = slot,
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const hash = followerBlockHash(slot, generation);
     yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
-      VALUES (${slot}, ${hash}, ${slot}, NULL, 0) ON CONFLICT DO NOTHING`;
+      VALUES (${slot}, ${hash}, ${height}, NULL, 0) ON CONFLICT DO NOTHING`;
     yield* sql`INSERT INTO l1_follower_cursor
         (id, slot, hash, height, generation, origin_slot, origin_hash, pruned_through_slot)
-      VALUES (true, ${slot}, ${hash}, ${slot}, ${generation}, 0, ${Buffer.alloc(32)}, 0)
+      VALUES (true, ${slot}, ${hash}, ${height}, ${generation}, 0, ${Buffer.alloc(32)}, 0)
       ON CONFLICT (id) DO UPDATE SET slot = EXCLUDED.slot, hash = EXCLUDED.hash,
         height = EXCLUDED.height, generation = EXCLUDED.generation`;
     const view: View = {
       generation,
       point: { slot, hash },
-      height: slot,
+      height,
     };
     return view;
   });
@@ -130,9 +132,10 @@ export const writeFollowerView = (
   slot: number,
   events: readonly ProjectedEvent[],
   generation: number = FOLLOWER_GENERATION,
+  height: number = slot,
 ) =>
   Effect.gen(function* () {
-    const view = yield* writeFollowerTip(slot, generation);
+    const view = yield* writeFollowerTip(slot, generation, height);
     yield* admitFollowerKeys(events);
     return { view, events } satisfies IngestionPlan;
   });
@@ -192,7 +195,13 @@ export const projectedFromIncarnation = (
 };
 
 /** POSIX ms of a model slot (the journal tests' 1 s slots from zero). */
-const modelSlotTime = (slot: number) => slot * 1000;
+export const modelSlotTime = (slot: number) => slot * 1000;
+
+/** The commit horizon lag d, dated by the model clock. */
+export const modelHorizonLag = (lagBlocks: number): CommitHorizonLag => ({
+  lagBlocks,
+  slotToUnixTime: Effect.succeed(modelSlotTime),
+});
 
 /**
  * The follower's key set at `change.after`'s history, the orphan repair, then
@@ -244,9 +253,10 @@ export const ingestFollowerViewUnowned = (
   slot: number,
   events: readonly ProjectedEvent[] = [],
   generation: number = FOLLOWER_GENERATION,
+  height: number = slot,
 ) =>
   Effect.gen(function* () {
-    const plan = yield* writeFollowerView(slot, events, generation);
+    const plan = yield* writeFollowerView(slot, events, generation, height);
     const outcome = yield* withHistoryIngestion(
       reconcileFollowerEvents(plan, {
         network: "Preprod",

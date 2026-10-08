@@ -19,7 +19,11 @@ import {
   currentForeignVerificationSource,
   ForeignVerificationSource,
 } from "../services/foreign-verification-source.js";
-import { historyEligibilityHorizon } from "../services/history-commit-window.js";
+import {
+  configuredCommitHorizonLag,
+  historyEligibilityHorizon,
+  laggedEligibilityCap,
+} from "../services/history-commit-window.js";
 
 export type ForeignEventCensus = Readonly<{
   deposits: readonly HistoryIncarnation[];
@@ -51,6 +55,20 @@ export const foreignEventCensus = (headerHash: string, header: SDK.Header) =>
         return yield* fail(
           "missing",
           "Canonical source has not covered the entire foreign event window",
+        );
+      // The horizon lag d caps what this node verifies as it caps what it
+      // commits: a foreign window is checked only once it ends at or below
+      // the follower block d below the covered tip. Until then it retries.
+      const lagCap = yield* laggedEligibilityCap(
+        yield* configuredCommitHorizonLag,
+      );
+      if (
+        lagCap === null ||
+        (lagCap !== undefined && header.endTime > BigInt(lagCap))
+      )
+        return yield* fail(
+          "missing",
+          "The foreign event window is not yet the horizon lag below the L1 follower's covered tip",
         );
       const sql = yield* SqlClient.SqlClient;
       const binding = Buffer.from(coverage.bindingDigest, "hex");

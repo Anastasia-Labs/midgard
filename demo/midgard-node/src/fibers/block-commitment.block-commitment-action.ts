@@ -18,6 +18,7 @@ import {
 } from "../services/index.js";
 import { WorkerError } from "../workers/utils/common.js";
 import { buildAndSubmitCommitmentBlockAction } from "./block-commitment.build-and-submit-commitment-block-action.js";
+import { publishCommitHorizonLagReadiness } from "./block-commitment.commit-horizon-lag-readiness.js";
 import { shouldSkipIdleCommitPipelineBeforeSchedulerAlignment } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import {
   alignCommitSchedulerBeforeMutationWorkerIfIdle,
@@ -110,6 +111,7 @@ export const blockCommitmentAction: Effect.Effect<
   const globals = yield* Globals;
   const nodeConfig = yield* NodeConfig;
   yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
+  yield* publishCommitHorizonLagReadiness;
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
     if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) {
