@@ -29,7 +29,7 @@ import {
   type HistoricalNativeScriptHistorySource,
   requireHistoricalNativeScriptHistoryAuthority,
 } from "../workflow/historical-native-script-corpus.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
@@ -60,7 +60,7 @@ export type ManifestBoundMissingNativeScriptTxWorkflowConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   referenceScripts: MissingNativeScriptTxWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
   historicalNativeScriptL1Roster: HistoricalNativeScriptSourceRoster;

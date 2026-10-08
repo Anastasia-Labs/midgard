@@ -122,7 +122,7 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
     binding,
     lucid: config.lucid,
     signer: config.signer,
-    source: config.source,
+    l1Source: config.l1Source,
     historicalNativeScriptCheckpointStore:
       config.historicalNativeScriptCheckpointStore,
     historicalNativeScriptHistorySource:

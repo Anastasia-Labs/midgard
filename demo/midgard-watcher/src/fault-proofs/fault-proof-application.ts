@@ -36,6 +36,7 @@ export {
   type WatcherFaultProofApplicationOptions,
   type WatcherFaultProofHeaderClassificationInput,
   type WatcherFaultProofInfrastructureAuthority,
+  type WatcherFaultProofL1,
   type WatcherFaultProofStartupReadiness,
   type WatcherHistoricalNativeScriptHistoryOverlay,
   type WatcherInstalledWorkflowCategory,

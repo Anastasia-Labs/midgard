@@ -35,7 +35,7 @@ import {
   resolveHistoricalNativeScriptCorpus,
 } from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
@@ -67,7 +67,7 @@ export type ManifestBoundMissingNativeScriptUtxoWorkflowConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   referenceScripts: MissingNativeScriptUtxoWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;

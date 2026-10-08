@@ -53,6 +53,7 @@ describe("production operations HTTP V1", () => {
       await expect(response.json()).resolves.toEqual({
         ready: status === 200,
         reasons,
+        l1: [],
       });
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(statusReads).toBe(1);

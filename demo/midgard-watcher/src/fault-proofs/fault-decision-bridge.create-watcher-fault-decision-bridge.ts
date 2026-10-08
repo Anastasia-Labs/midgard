@@ -9,10 +9,8 @@ import {
 import { GENESIS_HEADER_HASH, Header } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  assertWatcherStateQueueObservation,
-  type WatcherStateQueueObservationSource,
-} from "../indexers/authenticated-state-queue-observation.js";
+import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
+import type { WatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
 import { watcherDeferredRetryDelayMs } from "./fault-decision-bridge.classification-miss.js";
@@ -42,7 +40,7 @@ const writeWarning: NonNullable<BridgeDependencies["warn"]> = (warning) =>
 export const createWatcherFaultDecisionBridge = async (input: {
   readonly application: WatcherFaultProofApplication;
   readonly supervisor: WatcherFaultProofSupervisor;
-  readonly stateQueueSource: WatcherStateQueueObservationSource;
+  readonly stateQueueSource: WatcherQueueHeaderSource;
   readonly journalDirectory: string;
   /** The 32-byte key the fault-proof journals' rows are authenticated with. */
   readonly authenticationKey: Uint8Array;
@@ -98,9 +96,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
       deadlineForHeader: watcherFaultProofDeadline,
       deferredRetryDelayMs: watcherDeferredRetryDelayMs,
       mergedHeaders: async (observation) =>
-        (await input.stateQueueSource.resolveMergedHeaders?.({
-          observation,
-        })) ?? new Map(),
+        await input.stateQueueSource.resolveMergedHeaders({ observation }),
       resolvePredecessorHeader: async (header) => {
         const decoded = Data.from(header.headerCborHex, Header);
         if (decoded.prevHeaderHash === GENESIS_HEADER_HASH) return undefined;

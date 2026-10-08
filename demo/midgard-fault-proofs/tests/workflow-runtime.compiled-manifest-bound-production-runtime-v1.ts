@@ -1429,7 +1429,7 @@ describe("compiled manifest-bound production runtime V1", () => {
           headerHash: actuation.headerHash,
           lucid: {} as never,
           signer: {} as never,
-          source: {} as never,
+          l1Source: {} as never,
           stateQueueMutationLeaseCoordinator: {} as never,
         },
         resolveReferenceScript: async () => {

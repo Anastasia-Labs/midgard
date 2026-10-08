@@ -12,6 +12,7 @@ import {
   type WatcherFaultProofJob,
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   recordObjectives,
   recordRawObjectiveRow,
@@ -69,6 +70,7 @@ describe("production fault-proof supervisor", () => {
   it("does not expose caller-selected category dispatch in production", async () => {
     const root = await directory();
     const supervisor = createWatcherFaultProofSupervisor({
+      proofRetention: storelessProofRetention,
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       deadlineAlertHeadroomMs:
@@ -186,6 +188,7 @@ describe("production fault-proof supervisor", () => {
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
+      proofRetention: storelessProofRetention,
       execution: {
         verifyCompleted: async () => {
           throw new Error("unexpected completed execution");

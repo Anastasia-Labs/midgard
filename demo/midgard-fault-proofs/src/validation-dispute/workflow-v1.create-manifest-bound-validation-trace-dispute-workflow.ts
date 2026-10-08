@@ -15,10 +15,10 @@ import {
 } from "../workflow/deployment-manifest-binding.js";
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  createFraudProofFamilyL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowTerminalVerifier,
@@ -82,7 +82,7 @@ export const VALIDATION_TRACE_DISPUTE_CONFIG_KEYS = Object.freeze([
   "headerHash",
   "lucid",
   "signer",
-  "source",
+  "l1Source",
   "decisionDigest",
   "referenceScripts",
   "stateQueueMutationLeaseCoordinator",
@@ -107,7 +107,7 @@ export type ManifestBoundValidationTraceDisputeWorkflowConfig = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   decisionDigest: string;
   /**
    * The freshly admitted W25 validation-trace challenge: the operator's
@@ -245,8 +245,8 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
         role as keyof ValidationTraceDisputeRemovalReferences
       ],
     );
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
+  const l1 = createFraudProofFamilyL1ObservationPort({
+    l1: config.l1Source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,

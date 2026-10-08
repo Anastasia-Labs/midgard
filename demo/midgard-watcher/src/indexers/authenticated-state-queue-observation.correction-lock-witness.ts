@@ -22,6 +22,7 @@ export const correctionLockWitness = ({
   fraudProofPolicyId,
   fraudProofAddress,
   availabilityChallengePolicyId,
+  inOrder = orderedResolved,
 }: {
   raw: FraudProofRawL1Transaction;
   body: CML.TransactionBody;
@@ -33,14 +34,13 @@ export const correctionLockWitness = ({
   fraudProofPolicyId: string;
   fraudProofAddress: string;
   availabilityChallengePolicyId: string;
+  /** How resolved inputs are ordered; the default refuses an unresolved one. */
+  inOrder?: typeof orderedResolved;
 }): SDK.StateQueueCorrectionLockWitness => {
   const spentRefs = outputReferences(body.inputs());
   const referenceRefs = outputReferences(body.reference_inputs());
-  const spentResolved = orderedResolved(spentRefs, raw.resolvedInputs);
-  const referenceResolved = orderedResolved(
-    referenceRefs,
-    raw.resolvedReferenceInputs,
-  );
+  const spentResolved = inOrder(spentRefs, raw.resolvedInputs);
+  const referenceResolved = inOrder(referenceRefs, raw.resolvedReferenceInputs);
   const locksIn = spentResolved.flatMap((input) => {
     const decoded = lockOutput({
       output: CML.TransactionOutput.from_cbor_hex(input.outputCbor),
@@ -155,15 +155,23 @@ export const correctionLockWitness = ({
     const identity: SDK.CorrectionIdentity = timeout
       ? "AttestationTimeout"
       : fraudProofIdentity({
-          proof:
-            referenceResolved[
-              Number(
-                decoded.RemoveFraudulentBlockHeader.fraud_proof_ref_input_index,
-              )
-            ] ??
-            (() => {
+          proof: (() => {
+            const label =
+              referenceRefs[
+                Number(
+                  decoded.RemoveFraudulentBlockHeader
+                    .fraud_proof_ref_input_index,
+                )
+              ];
+            if (label === undefined)
               throw new Error("fraud proof reference index is out of bounds");
-            })(),
+            const proof = referenceResolved.find(
+              ({ outRef }) => outRef === label,
+            );
+            if (proof === undefined)
+              throw new Error("fraud proof reference input is not resolved");
+            return proof;
+          })(),
           fraudProofPolicyId,
           fraudProofAddress,
           targetHeaderHash,

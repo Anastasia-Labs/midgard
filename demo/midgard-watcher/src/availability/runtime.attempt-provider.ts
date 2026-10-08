@@ -1,26 +1,18 @@
 import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
 import type { Provider } from "@lucid-evolution/lucid";
 
-/** The provider library honors its request timeout, but exposes no external
- * AbortSignal. Fence results and bound each fresh request by the same remainder.
- * A generation abort can leave that request alive until its existing timeout;
- * this adapter therefore does not establish immediate resource cancellation. */
+/** The follower provider exposes no external AbortSignal: every request runs
+ * inside the attempt's scope, which fences its result and bounds it by the
+ * scope's remainder. A generation abort can leave a node query alive until it
+ * answers; this adapter does not establish immediate resource cancellation. */
 export const watcherAvailabilityAttemptProvider = (
   scope: DaAvailabilityReadScope,
-  configuredTimeoutMs: number,
-  create: (timeoutMs: number) => Provider,
+  provider: Provider,
 ): Provider => {
   const read = <T>(run: (provider: Provider) => Promise<T>): Promise<T> =>
     scope.read(() => {
       scope.assertCurrent();
-      return run(
-        create(
-          Math.max(
-            1,
-            Math.min(configuredTimeoutMs, Math.ceil(scope.remainingMs())),
-          ),
-        ),
-      );
+      return run(provider);
     });
   return {
     getProtocolParameters: () => read((p) => p.getProtocolParameters()),

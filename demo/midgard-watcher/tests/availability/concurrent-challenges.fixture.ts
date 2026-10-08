@@ -6,7 +6,6 @@ import {
   type AvailabilityOperationJournal,
   openAvailabilityOperationJournal,
 } from "@al-ft/midgard-core/availability-operation-journal";
-import type { LocalKupmiosFraudProofRawSource } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, beforeEach, vi } from "vitest";
@@ -155,9 +154,6 @@ vi.mock("@lucid-evolution/lucid", async (original) => ({
 vi.mock("@lucid-evolution/scalus-uplc", () => ({
   createScalusEvaluator: () => ({}),
 }));
-vi.mock("../../src/l1/native-reward-account.js", () => ({
-  WatcherLocalKupmios: class {},
-}));
 vi.mock("../../src/runtime/process-config.js", () => ({
   loadWatcherSecretText: async () => "seed",
 }));
@@ -195,14 +191,20 @@ vi.mock("../../src/availability/deployment.js", async () => {
   };
 });
 vi.mock("../../src/availability/observation.js", () => ({
-  createWatcherAvailabilityObservation: () => ({
-    pool: io.pool,
-    snapshot: io.snapshot,
-    attestedCommitment: io.attestedCommitment,
-    workflowRelease: io.workflowRelease,
-    operation: io.operation,
-    confirmationDepth: 1,
-  }),
+  // An attempt's reads are bound to its own scope; record its signal.
+  createWatcherAvailabilityObservation: (input: {
+    scope?: SDK.DaAvailabilityReadScope;
+  }) => {
+    if (input.scope !== undefined) io.sourceSignals.push(input.scope.signal);
+    return {
+      pool: io.pool,
+      snapshot: io.snapshot,
+      attestedCommitment: io.attestedCommitment,
+      workflowRelease: io.workflowRelease,
+      operation: io.operation,
+      confirmationDepth: 1,
+    };
+  },
 }));
 vi.mock("../../src/availability/published-payload.js", () => ({
   createWatcherL1AvailabilityPayloadSource: () => ({}),
@@ -360,7 +362,14 @@ export const runtime = (
       network: "Custom",
       manifestId,
     } as VerifiedWatcherDeploymentIdentity,
-    rawSource: {} as LocalKupmiosFraudProofRawSource,
+    l1: {
+      reads: {},
+      store: {},
+      provider: {},
+    } as unknown as Parameters<
+      typeof createWatcherAvailabilityRuntime
+    >[0]["l1"],
+    confirmationDepth: 17,
     proverWalletAddress: "prover",
   });
 
@@ -440,14 +449,6 @@ export const actions = () =>
 
 export { io };
 
-vi.mock("../../src/l1/local-kupmios-raw-source.js", () => ({
-  createWatcherLocalKupmiosRawSource: (input: {
-    captureBounds: { signal: AbortSignal };
-  }) => {
-    io.sourceSignals.push(input.captureBounds.signal);
-    return {};
-  },
-}));
 vi.mock("../../src/storage/retained-da-runtime.read-scope.js", () => ({
   withWatcherRetainedDaReadScope: async (
     input: { scope: SDK.DaAvailabilityReadScope },

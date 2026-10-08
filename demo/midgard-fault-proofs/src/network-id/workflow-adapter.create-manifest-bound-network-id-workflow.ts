@@ -18,7 +18,7 @@ import {
 } from "../workflow/orchestrator.js";
 import {
   createNetworkIdAuthenticatedL1TerminalVerifier,
-  createNetworkIdLocalKupmiosL1ObservationPort,
+  createNetworkIdL1ObservationPort,
   type NetworkIdWorkflowAdapterConfig,
 } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
 import { createNetworkIdWorkflowAdapter } from "./workflow-adapter.create-network-id-workflow-adapter.js";
@@ -70,8 +70,8 @@ export const createManifestBoundNetworkIdWorkflow = async (
     witnessReferenceScripts: config.witnessReferenceScripts,
     removal: config.removal,
   });
-  const rawL1 = createNetworkIdLocalKupmiosL1ObservationPort({
-    source: config.source,
+  const rawL1 = createNetworkIdL1ObservationPort({
+    l1: config.l1Source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,

@@ -31,6 +31,7 @@ import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-pr
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   recordObjectives,
   TEST_JOURNAL_KEY,
@@ -175,6 +176,7 @@ describe("existing signed workflow recovery authority", () => {
       });
     let ran = 0;
     const supervisor = createWatcherFaultProofSupervisor({
+      proofRetention: storelessProofRetention,
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT,
       deadlineAlertHeadroomMs:

@@ -3,10 +3,10 @@ import { join } from "node:path";
 
 import {
   assertWorkflowActuationPermitIdentity,
+  FraudProofL1CheckpointChangedError,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   isWorkflowActuationRevokedError,
-  LocalKupmiosCheckpointChangedError,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
   type WorkflowAdapterRunner,
@@ -364,7 +364,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           return { kind: "authority_revoked", error };
         }
         if (
-          error instanceof LocalKupmiosCheckpointChangedError ||
+          error instanceof FraudProofL1CheckpointChangedError ||
           error instanceof WatcherProverFundingUnavailableError
         ) {
           record("reconciling");

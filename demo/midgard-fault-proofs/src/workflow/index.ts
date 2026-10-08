@@ -41,6 +41,7 @@ export * from "./input-no-idx.js";
 export * from "./input-set-uniqueness.js";
 export * from "./invalid-signature.js";
 export * from "./journal.js";
+export * from "./l1-source.js";
 export * from "./l2-tx-mistag.js";
 export * from "./ledger-absence-artifact.js";
 export * from "./linear-family-adapter.js";

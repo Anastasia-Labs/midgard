@@ -25,18 +25,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
 
 const transport = vi.hoisted(() => ({ raw: undefined as unknown }));
-// Same raw transport seam as transition-trace-installed-lifecycle.test.ts.
-// Every snapshot, origin, replay, detector and classifier admission remains real.
-vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
-  const actual =
-    await load<typeof import("../src/workflow/family-l1-observation.js")>();
-  return {
-    ...actual,
-    createFraudProofFamilyLocalKupmiosL1ObservationPort: () => ({
-      rawL1: transport.raw,
-    }),
-  };
-});
 
 import { unsafeCreateCrossBlockSettlementAuthorityFromRawForTest } from "../src/cross-block-duplicate-event/settlement-authority.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
@@ -82,6 +70,7 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { fraudProofL1SourceForTest } from "./support/fraud-proof-l1-source.js";
 import {
   buildRetainedPlutusIdentityFixture,
   buildRetainedPlutusUnboundVariableFixture,
@@ -207,7 +196,7 @@ const setup = async (
   >[0]["binding"];
   const transitionTraceEventAuthority = createTransitionTraceEventAuthority({
     binding: transitionBinding,
-    source: {} as never,
+    l1: fraudProofL1SourceForTest({ authority: () => transport.raw }),
   });
   const settlementAuthority =
     unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
@@ -799,7 +788,7 @@ describe("installed catalogue retained classification", replayBudget, () => {
         ...transitionBinding,
         deploymentFingerprint: "f1".repeat(32),
       },
-      source: {} as never,
+      l1: fraudProofL1SourceForTest({ authority: () => transport.raw }),
     });
     await expect(
       createHeaderClassifier({

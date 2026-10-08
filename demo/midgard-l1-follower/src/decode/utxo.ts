@@ -3,11 +3,18 @@ import {
   readBytes,
   readMap,
   readSmallUint,
+  skipItem,
+  slice,
 } from "../cbor/reader.js";
 import type { OutputSummary, OutRef } from "../types.js";
 import { readOutput } from "./output.js";
 
-export type LedgerUtxo = Readonly<{ outRef: OutRef; output: OutputSummary }>;
+export type LedgerUtxo = Readonly<{
+  outRef: OutRef;
+  output: OutputSummary;
+  /** The output's bytes exactly as the ledger answered them. */
+  outputCbor: Buffer;
+}>;
 
 /**
  * Decodes a LocalStateQuery UTxO answer (`utxo_by_address`,
@@ -25,5 +32,6 @@ export const decodeLedgerUtxos = (bytes: Uint8Array): LedgerUtxo[] =>
         index: readSmallUint(bytes, index),
       },
       output: readOutput(bytes, value),
+      outputCbor: slice(bytes, value, skipItem(bytes, value)),
     };
   });

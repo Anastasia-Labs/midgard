@@ -1,23 +1,31 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  type FraudProofL1Source,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
   unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution, Provider, UTxO } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
 import {
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofInfrastructureAuthority,
 } from "../../src/fault-proofs/fault-proof-application.js";
+import type { WatcherFaultProofL1 } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 
 export const AUTHORITY = makeWatcherDeploymentAuthorityFixture();
+
+/** The follower-backed L1 the application is given; no test here reads it. */
+export const testFaultProofL1 = (): WatcherFaultProofL1 => ({
+  source: (sourceId) => ({ sourceId }) as unknown as FraudProofL1Source,
+  provider: {} as Provider,
+});
 
 export const DEPLOYMENT = AUTHORITY.result.manifestId;
 

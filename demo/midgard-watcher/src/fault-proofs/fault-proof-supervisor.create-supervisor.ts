@@ -6,6 +6,7 @@ import {
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs";
 
+import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -48,6 +49,8 @@ export const createSupervisor = (input: {
   readonly nowMs: () => number;
   readonly dependencies: SupervisorDependencies;
   readonly exposeUnsafeRunnerForTest: boolean;
+  /** Holds each open objective's L1 history past k (E1 ruling). */
+  readonly proofRetention?: WatcherProofRetention;
 }): WatcherFaultProofSupervisor | UnsafeWatcherFaultProofSupervisorForTest => {
   if (!DEPLOYMENT_FINGERPRINT.test(input.deploymentFingerprint)) {
     throw new Error(
@@ -90,6 +93,9 @@ export const createSupervisor = (input: {
     deploymentFingerprint: input.deploymentFingerprint,
     categories,
     authenticationKey: input.queueAuthenticationKey,
+    ...(input.proofRetention === undefined
+      ? {}
+      : { retention: input.proofRetention }),
   });
   let progressSerial = Promise.resolve();
   let authorityEpoch = 0;

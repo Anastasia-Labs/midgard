@@ -12,19 +12,19 @@ export type WatcherStartupProgress = Readonly<{
 }>;
 
 /**
- * Stages that read only the L1 provider and leave nothing allocated when they
- * fail, so an L1 transient (Kupo, Ogmios or the node did not answer) runs them
- * again in place instead of failing startup. Every other stage, and every
- * other error, still fails startup: the deployment identity and configuration
- * stages compare durable bytes, which no wait changes. A stage that allocates
- * resources it keeps (`workflow_readiness`) is not repeated whole; it repeats
- * only its L1 reads, through the `retryL1Read` it is handed. A stage that
- * consumes prepared work (`workflow_recovery`) is not repeated at all.
- * `user_event_catchup` and `header_classification` wait inside their own
- * components.
+ * Stages that read only L1 and leave nothing allocated when they fail, so an
+ * L1 transient (the node, its transport, or the user-event history's query
+ * services did not answer) runs them again in place instead of failing
+ * startup. Every other stage, and every other error, still fails startup: the
+ * deployment identity, configuration and node-identity stages compare durable
+ * bytes, which no wait changes. A stage that allocates resources it keeps
+ * (`workflow_readiness`) is not repeated whole; it repeats only its L1 reads,
+ * through the `retryL1Read` it is handed. `workflow_recovery` waits for the
+ * decision driver's first completed pass, which retries inside the driver
+ * and reports its reason on readiness. `user_event_catchup` and
+ * `header_classification` wait inside their own components.
  */
 export const WATCHER_STARTUP_L1_RETRIED_STAGES: ReadonlySet<string> = new Set([
-  "state_queue_recovery",
   "user_event_runtime",
 ]);
 

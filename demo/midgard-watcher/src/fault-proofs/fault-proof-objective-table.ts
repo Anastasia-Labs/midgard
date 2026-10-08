@@ -112,7 +112,8 @@ const completionMarker = (
     : null;
 
 /** Records a verified completion; one verified beyond rollback recovery is
- * marked with its execution so the next start skips and prunes it. */
+ * marked with its execution so the next start skips and prunes it. True
+ * once the row holds a marker. */
 export const completeWatcherProofObjective = (
   database: WatcherJournalDatabase,
   objective: WatcherProofObjective,
@@ -120,16 +121,16 @@ export const completeWatcherProofObjective = (
     execution: WatcherProofExecution;
     confirmationDepth: number;
   }>,
-): void => {
+): boolean => {
   const marker =
     verified === undefined
       ? null
       : completionMarker(verified.execution, verified.confirmationDepth);
   const scope = watcherObjectiveScope(objective.category, objective.headerHash);
-  database.transaction((tx) => {
+  return database.transaction((tx) => {
     const current = tx.row(JOURNAL, scope);
-    if (current?.state === "marked") return;
-    if (current?.state === "completed" && marker === null) return;
+    if (current?.state === "marked") return true;
+    if (current?.state === "completed" && marker === null) return false;
     tx.put(JOURNAL, {
       key: scope,
       scope,
@@ -140,6 +141,7 @@ export const completeWatcherProofObjective = (
         ...(marker === null ? {} : { marker }),
       },
     });
+    return marker !== null;
   });
 };
 

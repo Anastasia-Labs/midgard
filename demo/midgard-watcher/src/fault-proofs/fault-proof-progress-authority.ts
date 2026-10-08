@@ -17,6 +17,7 @@ import {
   assertWatcherNativeBlockAdmission,
   type WatcherNativeBlockAdmission,
 } from "../l1/native-block-admission.js";
+import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import {
   openWatcherFaultDecisionJournal,
   type WatcherFaultDecisionJournal,
@@ -107,6 +108,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   readonly deploymentFingerprint: string;
   readonly categories: readonly WatcherInstalledWorkflowCategory[];
   readonly authenticationKey: Uint8Array;
+  readonly retention?: WatcherProofRetention; // holds open objectives' L1 history
 }): WatcherFaultProofProgressAuthority => {
   const database = () =>
     openWatcherJournalDatabase({
@@ -221,18 +223,22 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         (execution === undefined ||
           watcherProofMarkerMatches(row.marker, execution))
       ) {
+        await input.retention?.release(target); // a crash can leave the pin
         await pruneWatcherProofObjective(database(), input.journalRoot, target);
         continue;
       }
       // A job queued but never started left no execution and holds no work;
       // a live fault queues it again.
       if (execution === undefined) {
-        if (settled)
+        if (settled) {
+          await input.retention?.release(target); // admission pins it again
           forgetWatcherProofObjective(database(), target, { decisions: false });
+        }
         continue;
       }
       const objective = {} as Objective;
       await adoptExecution(objective, execution);
+      await input.retention?.pin(target);
       objectives.set(keyOf(target), objective);
     }
     pruneDecisions();
@@ -271,6 +277,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       throw new Error(
         "proof progress execution update omitted its exact recorded decision",
       );
+    if (!objectives.has(keyOf(key))) await input.retention?.pin(key);
     const objective = objectives.get(keyOf(key)) ?? { decision };
     if (
       objective.workflowId !== undefined &&
@@ -389,6 +396,10 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           objectives.has(currentKey!) ||
           canOpenWatcherProofObjective(database(), fault.decision)
         ) {
+          if (!objectives.has(currentKey!)) {
+            await input.retention?.pin(fault.decision);
+            if (epoch !== startedEpoch) return [];
+          }
           decisions.set(fault.decision.decisionDigest, fault.decision);
           const objective = objectives.get(currentKey!) ?? {
             decision: fault.decision,
@@ -482,11 +493,14 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       pruneDecisions();
       // The row frees the cap slot and spares a restart one verification. A
       // failed write leaves it open, so the next start verifies it again.
+      let marked = false;
       try {
-        completeWatcherProofObjective(database(), objective, verified);
+        marked = completeWatcherProofObjective(database(), objective, verified);
       } catch {
         // Verified again on the next start.
       }
+      // Released once the marker holds; unmarked, it is verified again.
+      if (marked) await input.retention?.release(objective);
     },
   });
 };

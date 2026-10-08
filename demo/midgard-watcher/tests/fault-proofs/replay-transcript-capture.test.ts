@@ -15,6 +15,7 @@ import {
   createHeaderClassifier,
   createTransitionTraceEventAuthority,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  type FraudProofL1Source,
   type FraudProofRawL1SnapshotAuthority,
   VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
@@ -36,7 +37,7 @@ import {
   slotToBeginUnixTime,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   assertWatcherValidationReplayCaptureCurrent,
@@ -77,27 +78,6 @@ import {
 } from "../support/state-queue-observation-fixture.js";
 import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-forced-order-fixture.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
-
-const legacyTransport = vi.hoisted(() => ({ raw: undefined as unknown }));
-// The existing retained-classifier raw-port seam supplies its legacy originating
-// event snapshot. Its authority/classifier factories stay real. SQ observations,
-// the new user-event service, its local capabilities and replay capture are never
-// mocked; those independently admit the same order/native bytes below.
-vi.mock(
-  "@al-ft/midgard-fault-proofs/test-support/family-l1-observation",
-  async (load) => {
-    const actual =
-      await load<
-        typeof import("@al-ft/midgard-fault-proofs/test-support/family-l1-observation")
-      >();
-    return {
-      ...actual,
-      createFraudProofFamilyLocalKupmiosL1ObservationPort: () => ({
-        rawL1: legacyTransport.raw,
-      }),
-    };
-  },
-);
 
 const sha256 = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -395,7 +375,6 @@ const setup = async (kind: "normal" | "forced") => {
     close: async () => {
       await queue.close();
       await rm(directory, { recursive: true, force: true });
-      legacyTransport.raw = undefined;
     },
   };
 };
@@ -460,7 +439,6 @@ const classify = async (
         }),
       }),
     };
-    legacyTransport.raw = raw;
     const releaseFinality = await releaseFinalityAuthority.verifyForWorkflow({
       deploymentFingerprint: deploymentAuthority.deploymentIdentity.manifestId,
     });
@@ -482,7 +460,9 @@ const classify = async (
     } as Parameters<typeof createTransitionTraceEventAuthority>[0]["binding"];
     transitionTraceEventAuthority = createTransitionTraceEventAuthority({
       binding,
-      source: {} as never,
+      // The retained classifier fixture's originating-event snapshot is the
+      // L1 source's inclusion-depth authority.
+      l1: { snapshotAuthority: () => raw } as unknown as FraudProofL1Source,
     });
   }
   const classifier = await createHeaderClassifier({

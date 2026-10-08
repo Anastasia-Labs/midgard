@@ -60,6 +60,7 @@ import {
   rawConfig,
   SHARED_THREAD_REFERENCE_KEYS,
   TEST_HISTORY_STORE,
+  testFaultProofL1,
   transportFactory,
 } from "./fault-proof-application.raw-config.js";
 
@@ -82,6 +83,7 @@ describe("watcher production fault-proof application V1", () => {
         });
       const application = unsafeCreateWatcherFaultProofApplicationForTest(
         {
+          l1: testFaultProofL1(),
           deploymentIdentity: authority.result,
           infrastructure: infrastructure(),
           historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
@@ -118,6 +120,7 @@ describe("watcher production fault-proof application V1", () => {
     try {
       const application = unsafeCreateWatcherFaultProofApplicationForTest(
         {
+          l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
           infrastructure: infrastructure(),
           historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
@@ -304,6 +307,7 @@ describe("watcher production fault-proof application V1", () => {
     try {
       const application = unsafeCreateWatcherFaultProofApplicationForTest(
         {
+          l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
           infrastructure: infrastructure(),
           historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
@@ -361,6 +365,7 @@ describe("watcher production fault-proof application V1", () => {
     expect(() =>
       unsafeCreateWatcherFaultProofApplicationForTest(
         {
+          l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
           historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
           infrastructure: {
@@ -387,6 +392,7 @@ describe("watcher production fault-proof application V1", () => {
       expect(() =>
         unsafeCreateWatcherFaultProofApplicationForTest(
           {
+            l1: testFaultProofL1(),
             deploymentIdentity: AUTHORITY.result,
             historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
             infrastructure: { ...infrastructure(), ...deleted } as never,
@@ -399,6 +405,7 @@ describe("watcher production fault-proof application V1", () => {
     expect(() =>
       unsafeCreateWatcherFaultProofApplicationForTest(
         {
+          l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
           historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
           infrastructure: {
@@ -430,6 +437,7 @@ describe("watcher production fault-proof application V1", () => {
     try {
       const admitted = unsafeCreateWatcherFaultProofApplicationForTest(
         {
+          l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
           historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
           infrastructure: infrastructure(),
@@ -502,6 +510,7 @@ describe("watcher production fault-proof application V1", () => {
     });
     const application = unsafeCreateWatcherFaultProofApplicationForTest(
       {
+        l1: testFaultProofL1(),
         deploymentIdentity: AUTHORITY.result,
         historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
         infrastructure: infrastructure(),
@@ -551,6 +560,7 @@ describe("watcher production fault-proof application V1", () => {
     const deps = dependencies();
     const application = unsafeCreateWatcherFaultProofApplicationForTest(
       {
+        l1: testFaultProofL1(),
         deploymentIdentity: AUTHORITY.result,
         historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
         infrastructure: infrastructure(),
@@ -680,6 +690,7 @@ it("verifies completion deployment metadata without resolving wallet secrets", a
   });
   const application = unsafeCreateWatcherFaultProofApplicationForTest(
     {
+      l1: testFaultProofL1(),
       deploymentIdentity: AUTHORITY.result,
       infrastructure: infrastructure(),
       historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,

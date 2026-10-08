@@ -2,17 +2,18 @@ import { createServer, type Socket } from "node:net";
 
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import { readAdmittedLocalKupmiosBoundary } from "@al-ft/midgard-fault-proofs";
+import { decodeBlock, openSqliteFactStore } from "@al-ft/midgard-l1-follower";
+import { simStoreOptions } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
 
 import {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
-  createWatcherStateQueueObservationSource,
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
-  type WatcherStateQueueObservationSource,
 } from "../../src/indexers/authenticated-state-queue-observation.js";
+import { RELEASE_FINALITY_DEPTH } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import {
   createWatcherLocalKupmiosNativeObservationRuntime,
   type WatcherLocalKupmiosNativeObservation,
@@ -27,6 +28,8 @@ import {
   readWatcherNativeExactPointQuery,
   type WatcherNativeChainSyncEventReceipt,
 } from "../../src/l1/native-chain-sync.js";
+import { readWatcherObservation } from "../../src/l1-follower/observation.js";
+import { watcherProjection } from "../../src/l1-follower/projection.js";
 import { watcherDeploymentProtocolScriptAuthority } from "../../src/runtime/deployment-identity.js";
 import {
   closeAll,
@@ -34,6 +37,7 @@ import {
   createSyntheticStateQueueHeader,
   initializationTransaction,
 } from "./state-queue-observation-fixture.commit-transaction.js";
+import { buildBlock } from "./user-event-origin-fixture.build-block.js";
 import {
   createSyntheticUserEventOriginFixture,
   type SyntheticUserEventBlock,
@@ -71,7 +75,6 @@ const openTcpPeer = async () => {
 };
 
 export type SyntheticStateQueueObservationCapture = Readonly<{
-  stateQueueSource: WatcherStateQueueObservationSource;
   localRuntime: WatcherLocalKupmiosNativeObservationRuntime;
   initialObservation: WatcherAuthenticatedStateQueueObservation;
   observation: WatcherAuthenticatedStateQueueObservation;
@@ -176,8 +179,25 @@ export const createSyntheticStateQueueObservationFixture = async (
     const initializationBlock = await transport.makeBlock({
       transactions: [initializationTransactionCbor],
     });
+    // Every block the fixture makes, so a follower store can be fed the
+    // whole chain from Init to Commit, including blocks a composer adds.
+    const madeBlocks = new Map<string, SyntheticUserEventBlock>([
+      [initializationBlock.point.blockHash, initializationBlock],
+    ]);
+    const recordingTransport: SyntheticUserEventOriginFixture = {
+      ...transport,
+      makeBlock: async (args) => {
+        const block = await fixtureTransport.makeBlock(args);
+        madeBlocks.set(block.point.blockHash, block);
+        return block;
+      },
+    };
     const commitContents = await input.composeCommitBlock?.(
-      Object.freeze({ transport, initializationBlock, commitTransactionCbor }),
+      Object.freeze({
+        transport: recordingTransport,
+        initializationBlock,
+        commitTransactionCbor,
+      }),
     );
     const commitBlock = await transport.makeBlock({
       transactions: commitContents?.transactions ?? [commitTransactionCbor],
@@ -186,12 +206,14 @@ export const createSyntheticStateQueueObservationFixture = async (
         ? {}
         : { creatingBodies: commitContents.creatingBodies }),
     });
+    madeBlocks.set(commitBlock.point.blockHash, commitBlock);
     const observeFresh =
       async (): Promise<SyntheticStateQueueObservationCapture> => {
         if (closed) throw new Error("Synthetic SQ fixture is closed");
         const queries: Awaited<
           ReturnType<typeof openWatcherNativeExactPointQuery>
         >[] = [];
+        const stores: ReturnType<typeof openSqliteFactStore>[] = [];
         let localRuntime:
           | WatcherLocalKupmiosNativeObservationRuntime
           | undefined;
@@ -202,6 +224,7 @@ export const createSyntheticStateQueueObservationFixture = async (
           await closeAll([
             () => localRuntime?.close(),
             ...queries.map((query) => () => query.close()),
+            ...stores.map((store) => () => store.close()),
           ]);
         };
         const openQuery = async (block: SyntheticUserEventBlock) => {
@@ -234,24 +257,89 @@ export const createSyntheticStateQueueObservationFixture = async (
           await readAdmittedLocalKupmiosBoundary({
             source: localRuntime.rawSource,
           });
-          const stateQueueSource = createWatcherStateQueueObservationSource({
-            deploymentIdentity: fixtureTransport.deploymentIdentity,
-            rawSource: localRuntime.rawSource,
-          });
+          // The observations come from a watcher follower store fed the
+          // fixture's chain from Init to the observed block, then empty
+          // blocks up to the native query's tip, read at the release depth as
+          // the decision driver reads them. Each observation is a fresh store.
+          const origin = initializationBlock.parentPoint;
+          const observeAt = async (
+            block: SyntheticUserEventBlock,
+            depthAtTip: number,
+          ) => {
+            const store = openSqliteFactStore({
+              ...simStoreOptions(
+                [
+                  watcherProjection({
+                    network: fixtureTransport.deploymentIdentity.network,
+                    ...authority.protocolScriptHashes,
+                  }),
+                ],
+                RELEASE_FINALITY_DEPTH + 2,
+                "sqlite",
+              ),
+              path: ":memory:",
+            });
+            stores.push(store);
+            const started = await store.start();
+            if (started.kind !== "ready")
+              throw new Error(`Synthetic SQ follower store: ${started.kind}`);
+            const initialized = await store.initialize({
+              point: {
+                slot: Number(origin.slot),
+                hash: Buffer.from(origin.blockHash, "hex"),
+              },
+              height: Number(origin.blockNo),
+            });
+            if (initialized.kind !== "initialized")
+              throw new Error(
+                `Synthetic SQ follower origin: ${initialized.kind}`,
+              );
+            const chain: SyntheticUserEventBlock[] = [];
+            for (let cursor = block; ; ) {
+              chain.unshift(cursor);
+              if (cursor.parentPoint.blockHash === origin.blockHash) break;
+              const parent = madeBlocks.get(cursor.parentPoint.blockHash);
+              if (parent === undefined)
+                throw new Error(
+                  `Synthetic SQ block ${cursor.point.blockHash} does not descend from Init`,
+                );
+              cursor = parent;
+            }
+            let tip = block;
+            for (let extra = 1; extra < depthAtTip; extra++) {
+              tip = buildBlock([], tip.point);
+              chain.push(tip);
+            }
+            for (const next of chain) {
+              const result = await store.applyBlock(
+                decodeBlock(Buffer.from(next.nativeBlock.rawBlockCbor, "hex")),
+              );
+              if (result.kind !== "applied")
+                throw new Error(`Synthetic SQ block apply: ${result.kind}`);
+            }
+            const read = await readWatcherObservation(store, {
+              authority,
+              sourceId: "synthetic-state-queue-observation",
+              depth: RELEASE_FINALITY_DEPTH,
+              releaseDepth: RELEASE_FINALITY_DEPTH,
+            });
+            if (read.kind !== "ok")
+              throw new Error(
+                `Synthetic SQ observation: ${read.reason}: ${read.detail}`,
+              );
+            return read.observation;
+          };
           const initialNative = admitWatcherNativeRollForwardBlock(
             initialQuery.event,
           );
-          const initialLocal = await localRuntime.observe({
+          await localRuntime.observe({
             block: initialNative,
             depth: initialQuery.depthAtObservedTip,
           });
-          const initialObservation = await stateQueueSource.observe({
-            nativeBlock: initialNative,
-            localObservation: initialLocal,
-            previous: null,
-          });
-          if (initialObservation === null)
-            throw new Error("Synthetic SQ Init did not produce an observation");
+          const initialObservation = await observeAt(
+            initializationBlock,
+            Number(initialQuery.depthAtObservedTip),
+          );
           assertWatcherStateQueueObservation(initialObservation);
           const commitQuery = await openQuery(commitBlock);
           const nativeBlock = admitWatcherNativeRollForwardBlock(
@@ -261,15 +349,10 @@ export const createSyntheticStateQueueObservationFixture = async (
             block: nativeBlock,
             depth: commitQuery.depthAtObservedTip,
           });
-          const observation = await stateQueueSource.observe({
-            nativeBlock,
-            localObservation,
-            previous: initialObservation,
-          });
-          if (observation === null)
-            throw new Error(
-              "Synthetic SQ commit did not produce an observation",
-            );
+          const observation = await observeAt(
+            commitBlock,
+            Number(commitQuery.depthAtObservedTip),
+          );
           assertWatcherStateQueueObservation(observation);
           const observedHeader = observation.finalizedHeaders.find(
             (item) => item.headerHash === headerHash,
@@ -278,7 +361,6 @@ export const createSyntheticStateQueueObservationFixture = async (
             throw new Error("Synthetic SQ commit omitted its requested header");
           assertWatcherStateQueueHeaderObservation(observedHeader);
           const capture = Object.freeze({
-            stateQueueSource,
             localRuntime,
             initialObservation,
             observation,

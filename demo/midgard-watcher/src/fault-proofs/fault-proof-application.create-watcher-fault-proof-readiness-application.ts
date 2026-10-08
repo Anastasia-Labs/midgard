@@ -14,6 +14,7 @@ export const createWatcherFaultProofApplication = (
 ): WatcherFaultProofApplication =>
   createApplication({
     options: Object.freeze({
+      l1: options.l1,
       deploymentIdentity: options.deploymentAuthority.deploymentIdentity,
       deploymentAuthority: options.deploymentAuthority,
       replayTranscriptStore: options.replayTranscriptStore,
@@ -32,6 +33,7 @@ export const createWatcherFaultProofApplication = (
 export const createWatcherFaultProofReadinessApplication = (
   options: Pick<
     WatcherFaultProofApplicationOptions,
+    | "l1"
     | "deploymentAuthority"
     | "infrastructure"
     | "historicalNativeScriptCheckpointStore"

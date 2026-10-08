@@ -160,6 +160,23 @@ export const orderedResolved = (
   });
 };
 
+/**
+ * The values of `labels` that resolved, in label order. For a reader whose
+ * unresolved inputs are known to carry no protocol unit (the follower's
+ * tracked set covers every queue, lock and fraud-proof output), so a missing
+ * label is a plain input rather than an incomplete read.
+ */
+export const resolvedInOrder = (
+  labels: readonly string[],
+  values: FraudProofRawL1Transaction["resolvedInputs"],
+): readonly FraudProofRawL1Transaction["resolvedInputs"][number][] => {
+  const byRef = new Map(values.map((value) => [value.outRef, value]));
+  return labels.flatMap((label) => {
+    const value = byRef.get(label);
+    return value === undefined ? [] : [value];
+  });
+};
+
 export const fraudProofIdentity = ({
   proof,
   fraudProofPolicyId,

@@ -20,6 +20,7 @@ import {
   resolveProverSigner,
 } from "@al-ft/midgard-fault-proofs";
 import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
+import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -266,6 +267,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         nativeTipBaseDepth: 40,
         blockSlotInterval: 20,
         nativeTipMode: "controlled",
+        // The defaults are the emulator's parameters below.
+        nodeProtocolParameters: {},
         published: {
           deployment: configuration.nativeDeployment,
           inclusionSlot: initializationStatus.confirmation.slot,
@@ -353,12 +356,55 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     vi.spyOn(Kupmios.prototype, "awaitTx").mockImplementation((hash) =>
       provider.awaitTx(hash),
     );
+    // The follower provider's node queries and submissions reach the
+    // emulator; the synthetic native transport only serves chain-sync.
+    vi.spyOn(
+      L1FollowerProvider.prototype,
+      "getProtocolParameters",
+    ).mockImplementation(() => provider.getProtocolParameters());
+    vi.spyOn(L1FollowerProvider.prototype, "getUtxos").mockImplementation(
+      (address) => provider.getUtxos(address),
+    );
+    vi.spyOn(
+      L1FollowerProvider.prototype,
+      "getUtxosWithUnit",
+    ).mockImplementation((address, unit) =>
+      provider.getUtxosWithUnit(address, unit),
+    );
+    vi.spyOn(
+      L1FollowerProvider.prototype,
+      "getUtxosByOutRef",
+    ).mockImplementation((outRefs) => provider.getUtxosByOutRef(outRefs));
+    vi.spyOn(L1FollowerProvider.prototype, "getUtxoByUnit").mockImplementation(
+      (unit) => provider.getUtxoByUnit(unit),
+    );
+    vi.spyOn(L1FollowerProvider.prototype, "getDelegation").mockImplementation(
+      (address) => provider.getDelegation(address),
+    );
+    vi.spyOn(
+      L1FollowerProvider.prototype,
+      "getRewardAccount",
+    ).mockImplementation((address) => provider.getRewardAccount(address));
+    vi.spyOn(L1FollowerProvider.prototype, "submitTx").mockImplementation(
+      (cbor) => provider.submitTx(cbor),
+    );
+    vi.spyOn(L1FollowerProvider.prototype, "awaitTx").mockImplementation(
+      (hash) => provider.awaitTx(hash),
+    );
     vi.stubEnv("MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY", "17".repeat(32));
     vi.stubEnv("MIDGARD_WATCHER_PROVER_KEY", accounts.publisher.seedPhrase);
     vi.stubEnv("WATCHER_AVAILABILITY_KEY", availabilityAccount.seedPhrase);
     vi.stubEnv("MIDGARD_WATCHER_TRUSTED_HEAD_BEARER", "39".repeat(32));
     const watcherConfig = {
       ...native.watcherConfig,
+      // The follower starts at the block before the protocol-init block.
+      l1: {
+        ...native.watcherConfig.l1,
+        origin: {
+          slot: Number(native.activationBlock.parentPoint.slot),
+          blockHash: native.activationBlock.parentPoint.blockHash,
+        },
+      },
       storage: {
         ...native.watcherConfig.storage,
         path: join(directory, "watcher.sqlite"),
@@ -470,7 +516,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       operationsVerifiedHeader(watcher!.operations.api, headerHash);
     runtimeDiagnostics = async () => ({
       runtime: watcher!.status(),
-      coordinator: watcher!.coordinator.status(),
+      decisionDriver: watcher!.decisionDriver.status(),
+      follower: watcher!.follower.status(),
       chainTip: chain.tip(),
       decisions: (await readDecisions()).map(({ decision }) => ({
         headerHash: decision.headerHash,

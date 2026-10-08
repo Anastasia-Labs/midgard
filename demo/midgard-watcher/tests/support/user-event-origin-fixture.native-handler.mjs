@@ -8,6 +8,9 @@
 // - Any other stream follows the registry from its intersection up to the tip.
 // - Control commands roll every open stream back, or end the node.
 // - Once a canonical branch is selected, points off it are not found.
+// - `utxo_by_address` and `utxo_by_txin` answer from the fixture's ledger
+//   file: the outputs the initialization frames left unspent, folded
+//   through the blocks from the anchor to the acquired point.
 import { createHash } from "node:crypto";
 import {
   appendFileSync,
@@ -104,8 +107,97 @@ export default (options) => {
     block: Buffer.from(block.nativeBlock.rawBlockCbor, "hex"),
   });
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const readLedger = cachedJson(options.ledgerPath);
+  // CBOR heads: a definite map, a two-item array, a 32-byte string, a uint.
+  const head = (major, value) => {
+    const n = BigInt(value);
+    const m = major << 5;
+    if (n < 24n) return Buffer.of(m | Number(n));
+    if (n < 0x100n) return Buffer.of(m | 24, Number(n));
+    if (n < 0x10000n) {
+      const b = Buffer.alloc(3);
+      b[0] = m | 25;
+      b.writeUInt16BE(Number(n), 1);
+      return b;
+    }
+    const b = Buffer.alloc(5);
+    b[0] = m | 26;
+    b.writeUInt32BE(Number(n), 1);
+    return b;
+  };
+  const utxosAt = (acquired, keep) => {
+    const blocks = readBlocks();
+    const ledger = readLedger();
+    const byHash = new Map(
+      blocks.map((block) => [block.point.blockHash, block]),
+    );
+    const at =
+      acquired === "tip"
+        ? (byHash.get(readControl().tip.blockHash) ?? blocks.at(-1))
+        : byHash.get(acquired.hash);
+    if (at === undefined)
+      return {
+        error: {
+          code: "acquire_point_not_on_chain",
+          message: "the point is not on the node's chain",
+        },
+      };
+    const path = [];
+    for (let cursor = at; cursor !== undefined; ) {
+      path.unshift(cursor.point.blockHash);
+      cursor = byHash.get(cursor.parentPoint.blockHash);
+    }
+    const live = new Map(
+      ledger.preOrigin.map((output) => [output.outRef, output]),
+    );
+    for (const hash of path) {
+      const entry = ledger.blocks[hash];
+      if (entry === undefined) continue;
+      for (const outRef of entry.spent) live.delete(outRef);
+      for (const output of entry.created) live.set(output.outRef, output);
+    }
+    const entries = [...live.values()].filter(keep);
+    return Uint8Array.from(
+      Buffer.concat([
+        head(5, entries.length),
+        ...entries.flatMap((output) => {
+          const [txHash, index] = output.outRef.split("#");
+          return [
+            Buffer.of(0x82),
+            head(2, 32),
+            Buffer.from(txHash, "hex"),
+            head(0, index),
+            Buffer.from(output.cbor, "hex"),
+          ];
+        }),
+      ]),
+    );
+  };
 
   return {
+    // The node's `protocol_params` answer, when the fixture configures one,
+    // and its `utxo_by_address` and `utxo_by_txin` answers at the acquired
+    // point.
+    ledgerQuery: (query, acquired) =>
+      query.query === "utxo_by_address"
+        ? utxosAt(acquired, (output) =>
+            query.addresses.some(
+              (address) =>
+                Buffer.from(address).toString("hex") === output.address,
+            ),
+          )
+        : query.query === "utxo_by_txin"
+          ? utxosAt(acquired, (output) =>
+              query.txIns.some(
+                ([txId, index]) =>
+                  `${Buffer.from(txId).toString("hex")}#${index.toString()}` ===
+                  output.outRef,
+              ),
+            )
+          : query.query === "protocol_params" &&
+              options.protocolParametersHex !== undefined
+            ? Uint8Array.from(Buffer.from(options.protocolParametersHex, "hex"))
+            : undefined,
     openStream: async ({ points, window }, stream) => {
       const exact = window === 1;
       let closed = false;

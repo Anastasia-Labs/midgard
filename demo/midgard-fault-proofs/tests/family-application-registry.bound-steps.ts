@@ -210,7 +210,7 @@ export const infrastructure = {
   headerHash: "aa".repeat(28),
   lucid: {} as never,
   signer: {} as never,
-  source: {} as never,
+  l1Source: {} as never,
   stateQueueMutationLeaseCoordinator: {} as never,
   decisionDigest: DECISION_DIGEST,
   replayContext: REPLAY_CONTEXT as never,

@@ -24,7 +24,7 @@ import {
   type HistoricalNativeScriptCheckpointStore,
   type HistoricalNativeScriptHistorySource,
 } from "../workflow/historical-native-script-corpus.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -144,7 +144,7 @@ export const createManifestBoundSpendInputSignerMissingRuntime = ({
 export type ManifestBoundSpendInputSignerMissingWorkflowConfig =
   LoadManifestBoundSpendInputSignerMissingConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+      l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
       historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;

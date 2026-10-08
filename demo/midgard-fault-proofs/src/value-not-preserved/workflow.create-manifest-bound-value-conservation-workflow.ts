@@ -21,7 +21,7 @@ import {
 } from "../workflow/deployment-manifest-binding.js";
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  createFraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
 import { withFieldCarriagePrerequisite } from "../workflow/field-carriage-prerequisite.js";
 import {
@@ -89,7 +89,7 @@ export const createManifestBoundValueConservationWorkflow = async (
     "lucid",
     "signer",
     "referenceScripts",
-    "source",
+    "l1Source",
     "stateQueueMutationLeaseCoordinator",
     ...(config.replayContext === undefined ? [] : ["replayContext"]),
   ];
@@ -187,8 +187,8 @@ export const createManifestBoundValueConservationWorkflow = async (
       ],
     },
   };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
+  const l1 = createFraudProofFamilyL1ObservationPort({
+    l1: config.l1Source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition,

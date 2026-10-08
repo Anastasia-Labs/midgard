@@ -13,10 +13,10 @@ import {
 import {
   type FraudProofRawL1WebSocketFactory,
   type FraudProofRawL1WebSocketLike,
-  isNetworkFailure,
   type KupoPoint,
   LocalKupmiosTransportUnavailableError,
 } from "./local-kupmios-http-ogmios-source.read-admitted-local-kupmios-signed-transaction-recovery.js";
+import { isNetworkFailure } from "./network-failure.js";
 import { type FraudProofRawL1Point } from "./raw-l1-snapshot.js";
 
 export const openOgmiosSession = async ({

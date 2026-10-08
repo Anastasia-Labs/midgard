@@ -5,69 +5,17 @@ import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   WATCHER_STARTUP_READINESS_HEADER_HASH,
   type WatcherFaultProofApplication,
+  type WatcherFaultProofL1,
   type WatcherFaultProofStartupReadiness,
 } from "../fault-proofs/fault-proof-application.js";
-import { createWatcherStateQueueObservationSource } from "../indexers/authenticated-state-queue-observation.js";
-import {
-  createWatcherStateQueueReadScopes,
-  type WatcherStateQueueReadScopes,
-} from "../indexers/authenticated-state-queue-observation.read-scopes.js";
-import { createWatcherLocalKupmiosRawSource } from "../l1/local-kupmios-raw-source.js";
 import { type WatcherProcessConfig } from "./process-config.js";
 import { createWatcherStartupProgress } from "./startup-progress.js";
-import { createWatcherStateQueueRuntime } from "./state-queue-runtime.js";
 import { type WatcherUserEventRuntime } from "./user-event-runtime.js";
 import {
   assertWatcherFaultProofLaunchScope,
   prepareJournalDirectory,
-} from "./watcher-runtime.create-watcher-native-event-handler.js";
+} from "./watcher-runtime.launch-checks.js";
 import { prepareWatcherRuntimeAuthority } from "./watcher-runtime.prepare-authority.js";
-export const restoreWatcherRuntimeQueue = async (
-  input: Readonly<{ config: WatcherProcessConfig }>,
-  options: Pick<
-    Awaited<ReturnType<typeof prepareWatcherRuntimeAuthority>>,
-    "sqlite" | "deploymentIdentity"
-  > &
-    Readonly<{
-      startup: ReturnType<typeof createWatcherStartupProgress>;
-      onReadScopesAllocated(scopes: WatcherStateQueueReadScopes): void;
-    }>,
-) => {
-  const { sqlite, deploymentIdentity, startup } = options;
-  const readScopes = createWatcherStateQueueReadScopes({
-    watcherConfig: input.config.watcherConfig,
-    deploymentIdentity,
-  });
-  options.onReadScopesAllocated(readScopes);
-  const rawSource = createWatcherLocalKupmiosRawSource({
-    watcherConfig: input.config.watcherConfig,
-    deploymentIdentity,
-  });
-  const inclusionRawSource = createWatcherLocalKupmiosRawSource({
-    watcherConfig: input.config.watcherConfig,
-    deploymentIdentity,
-    observationDepth: "inclusion",
-  });
-  const stateQueueSource = createWatcherStateQueueObservationSource({
-    deploymentIdentity,
-    rawSource,
-    inclusionRawSource,
-    readScopes,
-  });
-  const stateQueueRuntime = await startup("state_queue_recovery", () =>
-    createWatcherStateQueueRuntime({
-      store: sqlite.stateQueueObservations,
-      source: stateQueueSource,
-    }),
-  );
-  return {
-    rawSource,
-    inclusionRawSource,
-    stateQueueSource,
-    stateQueueRuntime,
-  };
-};
-
 export const prepareWatcherRuntimeWorkflows = async (
   input: Readonly<{ config: WatcherProcessConfig }>,
   options: Pick<
@@ -81,6 +29,7 @@ export const prepareWatcherRuntimeWorkflows = async (
     Readonly<{
       startup: ReturnType<typeof createWatcherStartupProgress>;
       eventHistory: WatcherUserEventRuntime;
+      l1: WatcherFaultProofL1;
       onAllocated: (application: WatcherFaultProofApplication) => void;
     }>,
 ) => {
@@ -92,10 +41,12 @@ export const prepareWatcherRuntimeWorkflows = async (
     fundingProfileOverlay,
     startup,
     eventHistory,
+    l1,
     onAllocated,
   } = options;
   return await startup("workflow_readiness", async ({ retryL1Read }) => {
     const faultProofApplication = createWatcherFaultProofApplication({
+      l1,
       deploymentAuthority,
       replayTranscriptStore: sqlite.replayTranscripts,
       userEventRuntime: eventHistory,

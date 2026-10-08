@@ -41,9 +41,9 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
     await load<typeof import("../src/workflow/family-l1-observation.js")>();
   return {
     ...actual,
-    createFraudProofFamilyLocalKupmiosL1ObservationPort: (
+    createFraudProofFamilyL1ObservationPort: (
       input: Parameters<
-        typeof actual.createFraudProofFamilyLocalKupmiosL1ObservationPort
+        typeof actual.createFraudProofFamilyL1ObservationPort
       >[0],
     ) =>
       actual.createFraudProofFamilyRawL1ObservationPort({
@@ -686,7 +686,7 @@ describe("transition trace installed retained-history workflow", () => {
           lucid,
           signer: h.proverSigner,
           referenceScripts,
-          source: {} as never,
+          l1Source: {} as never,
           historicalNativeScriptCheckpointStore:
             createSqliteHistoricalNativeScriptCheckpointStore({
               path: join(directory, "history.sqlite"),

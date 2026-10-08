@@ -4,6 +4,7 @@ import {
   type WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs";
 
+import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
 import type { WatcherFaultProofExecution } from "./fault-proof-execution.js";
 import { createSupervisor } from "./fault-proof-supervisor.create-supervisor.js";
@@ -20,6 +21,8 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
   readonly execution: WatcherFaultProofExecution;
+  /** The follower-store pins that hold open objectives' L1 history. */
+  readonly proofRetention: WatcherProofRetention;
 }): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
@@ -28,6 +31,7 @@ export const createWatcherFaultProofSupervisor = (input: {
     queueAuthenticationKey: input.queueAuthenticationKey,
     nowMs: Date.now,
     exposeUnsafeRunnerForTest: false,
+    proofRetention: input.proofRetention,
     dependencies: Object.freeze({
       categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       run: async ({ job, actuationPermit, admission }) => {
@@ -80,8 +84,12 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
     error: unknown,
   ) => error is WorkflowActuationRevokedError;
   readonly unsafeVerifyCompletedForTest?: SupervisorDependencies["verifyCompleted"];
+  readonly unsafeProofRetentionForTest?: WatcherProofRetention;
 }): UnsafeWatcherFaultProofSupervisorForTest =>
   createSupervisor({
+    ...(input.unsafeProofRetentionForTest === undefined
+      ? {}
+      : { proofRetention: input.unsafeProofRetentionForTest }),
     journalRoot: input.journalRoot,
     deploymentFingerprint: input.deploymentFingerprint,
     deadlineAlertHeadroomMs:

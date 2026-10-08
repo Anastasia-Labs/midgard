@@ -27,7 +27,7 @@ import {
   type HistoricalNativeScriptHistorySource,
   resolveHistoricalNativeScriptCorpus,
 } from "../workflow/historical-native-script-corpus.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -112,7 +112,7 @@ export const createManifestBoundResolvedOutputNonCanonicalRuntime = ({
 export type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig =
   LoadManifestBoundResolvedOutputNonCanonicalConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+      l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
       historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;

@@ -12,8 +12,7 @@ import "../submit-init.js";
 import "./complete-replay.js";
 import "./deployment-manifest-binding.js";
 import "./family-l1-observation.js";
-import "./local-kupmios-http-ogmios-source.js";
-import "./local-kupmios-raw-l1-authority.js";
+import "./l1-source.js";
 import "./orchestrator.js";
 import "./raw-l1-family-derivation.js";
 import "./raw-l1-publication-observation.js";
@@ -27,7 +26,7 @@ import "./double-spend-adapter.create-manifest-bound-double-spend-workflow.js";
 export { createDoubleSpendConstrainedWorkflowAdapter } from "./double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
 export {
   createDoubleSpendAuthenticatedL1TerminalVerifier,
-  createDoubleSpendLocalKupmiosL1ObservationPort,
+  createDoubleSpendL1ObservationPort,
   createDoubleSpendRawL1ObservationPort,
   DOUBLE_SPEND_WORKFLOW_ADAPTER,
   type DoubleSpendL1ObservationPort,

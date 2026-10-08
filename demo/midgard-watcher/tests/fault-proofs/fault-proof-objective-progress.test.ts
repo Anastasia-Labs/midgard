@@ -46,6 +46,7 @@ import {
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
+import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
@@ -243,6 +244,7 @@ const setup = async (
     });
   const createSupervisor = () => {
     const supervisor = createWatcherFaultProofSupervisor({
+      proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:

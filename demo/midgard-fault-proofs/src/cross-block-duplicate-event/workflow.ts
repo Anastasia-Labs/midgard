@@ -32,7 +32,7 @@ import type {
   HistoricalNativeScriptHistorySource,
 } from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
@@ -187,7 +187,7 @@ export type ManifestBoundCrossBlockDuplicateEventWorkflowConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   referenceScripts: CrossBlockDuplicateEventWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
   historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
@@ -222,7 +222,7 @@ const settlementAuthorityFor = (context: CrossBlockContext) => {
   if (existing !== undefined) return existing;
   const authority = createCrossBlockSettlementAuthority({
     binding: context.binding,
-    source: context.source,
+    l1: context.l1Source,
     historySource: context.runtime.historicalNativeScriptHistorySource,
     checkpointStore: context.runtime.historicalNativeScriptCheckpointStore,
   });

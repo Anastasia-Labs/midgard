@@ -77,7 +77,7 @@ import {
   familyStepContractNames,
 } from "./family-definition.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 
 /**
  * The config key a family on the authenticated certificate shape reads each
@@ -342,7 +342,7 @@ export type BundleCursorFamilyConfig = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   replayContext?: CompleteCanonicalReplayContext;
   referenceScripts: Readonly<{

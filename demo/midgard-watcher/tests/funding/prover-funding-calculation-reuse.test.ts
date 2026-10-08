@@ -6,7 +6,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import * as parameterAuthorities from "../../src/funding/prover-funding.js";
-import { unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest } from "../../src/funding/prover-funding.js";
+import { createWatcherProtocolParameterRuntimeAuthority } from "../../src/funding/prover-funding.js";
 import * as authorityCreation from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
 import * as calculations from "../../src/funding/prover-funding-calculation.js";
@@ -16,8 +16,8 @@ import {
   setupFundingRecoveryFixture,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
+import { ledgerParameterQuery } from "../support/ledger-protocol-parameters.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
-import { ogmiosParameters } from "./prover-funding-calculation.transaction-cbor.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -125,24 +125,12 @@ it("still checks current actuation before reusing a prior generation's calculati
 });
 
 const updatedParameters = async (collateralPercentage = 150) =>
-  await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+  await createWatcherProtocolParameterRuntimeAuthority({
     deploymentIdentity,
-    ogmiosUrl: "http://127.0.0.1:1337",
-    timeoutMs: 10_000,
-    fetchImpl: vi.fn(async (_url, init) => {
-      const { id } = JSON.parse(String(init?.body)) as { id: string };
-      return new Response(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id,
-          result: {
-            ...ogmiosParameters(),
-            minFeeCoefficient: 45,
-            collateralPercentage,
-          },
-        }),
-      );
-    }) as unknown as typeof fetch,
+    query: ledgerParameterQuery({
+      minFeeA: 45n,
+      collateralPercentage: BigInt(collateralPercentage),
+    }),
   });
 
 it("resumes an exact deployed reservation after a live fee update and restart", async () => {
@@ -258,24 +246,10 @@ it("authenticates and resumes a nondeployment parameter basis after restart", as
     journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: fixture.old.launchScope,
     deploymentIdentity,
-    protocolParameters:
-      await parameterAuthorities.unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest(
-        {
-          deploymentIdentity,
-          ogmiosUrl: "http://127.0.0.1:1337",
-          timeoutMs: 10_000,
-          fetchImpl: vi.fn(async (_url, init) => {
-            const { id } = JSON.parse(String(init?.body)) as { id: string };
-            return new Response(
-              JSON.stringify({
-                jsonrpc: "2.0",
-                id,
-                result: ogmiosParameters(),
-              }),
-            );
-          }) as unknown as typeof fetch,
-        },
-      ),
+    protocolParameters: await createWatcherProtocolParameterRuntimeAuthority({
+      deploymentIdentity,
+      query: ledgerParameterQuery(),
+    }),
     protocolParameterHistory: fixture.protocolParameterHistory,
     store: fixture.store,
   });

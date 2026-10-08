@@ -1,6 +1,5 @@
 import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
 import { createSqliteHistoricalNativeScriptCheckpointStore } from "@al-ft/midgard-fault-proofs";
-import { Kupmios } from "@lucid-evolution/lucid";
 
 import { loadWatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import { makeWatcherFinalityPolicy } from "../l1/finality-engine.js";
@@ -17,7 +16,7 @@ import { createWatcherTrustedHeadClientRuntime } from "./trusted-head-runtime.js
 import {
   prepareJournalDirectory,
   requireWatcherRuntimeConfig,
-} from "./watcher-runtime.create-watcher-native-event-handler.js";
+} from "./watcher-runtime.launch-checks.js";
 
 export const prepareWatcherRuntimeAuthority = async (
   input: Readonly<{ config: WatcherProcessConfig }>,
@@ -95,27 +94,25 @@ export const prepareWatcherRuntimeAuthority = async (
   };
 };
 
-export const createWatcherRuntimeProverWallet = (
+/**
+ * A watcher wallet's enterprise address, from its secret (a bech32 private
+ * key or a seed phrase), derived exactly as the prover signer and the
+ * availability actor select it. Address derivation only: the runtime never
+ * holds a live signer from it.
+ */
+export const resolveWatcherRuntimeWalletAddress = (
   input: Readonly<{ config: WatcherProcessConfig }>,
-  proverSecret: string,
-  kupoService: Readonly<{ endpoint: string }>,
-  ogmiosService: Readonly<{ endpoint: string }>,
-) => {
-  const proverWalletAddress = resolveProverSigner(
-    proverSecret.startsWith("ed25519_sk")
+  secret: string,
+): string =>
+  resolveProverSigner(
+    secret.startsWith("ed25519_sk")
       ? {
           network: input.config.watcherConfig.targetNetwork,
-          walletPrivateKey: proverSecret,
+          walletPrivateKey: secret,
         }
       : {
           network: input.config.watcherConfig.targetNetwork,
-          walletSeedPhrase: proverSecret,
+          walletSeedPhrase: secret,
         },
     Object.freeze({}),
   ).address;
-  const proverUtxoProvider = new Kupmios(
-    kupoService.endpoint,
-    ogmiosService.endpoint,
-  );
-  return { proverWalletAddress, proverUtxoProvider };
-};

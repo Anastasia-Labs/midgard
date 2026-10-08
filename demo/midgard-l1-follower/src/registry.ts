@@ -13,6 +13,20 @@ export type RetentionRule =
   /** The follower never prunes it; the owning stage does, as `description` says. */
   | Readonly<{ kind: "owner"; description: string }>;
 
+/**
+ * Keeps a row past its retention rule while `table` holds a row whose
+ * `tableColumn` equals this row's `column`: a decision that reads the row
+ * stays answerable while the pinning row lives. `table` is a registered
+ * temporal table (itself possibly pinned: pins are transitive, never
+ * cyclic), or an owner-managed table a migration declares (the schema lint
+ * checks it), whose rows its owner deletes when the hold ends.
+ */
+export type TemporalRowPin = Readonly<{
+  column: string;
+  table: string;
+  tableColumn: string;
+}>;
+
 export type TemporalTableSpec =
   | Readonly<{
       name: string;
@@ -23,6 +37,7 @@ export type TemporalTableSpec =
       /** Tables this one references; rewound after it, pruned after it. */
       parents?: readonly string[];
       retention: RetentionRule;
+      pinnedBy?: readonly TemporalRowPin[];
     }>
   | Readonly<{
       name: string;
@@ -31,6 +46,7 @@ export type TemporalTableSpec =
       slotColumn: string;
       parents?: readonly string[];
       retention: RetentionRule;
+      pinnedBy?: readonly TemporalRowPin[];
     }>;
 
 export class RegistryError extends Error {
@@ -94,6 +110,20 @@ export const createTemporalRegistry = (
       );
     byName.set(spec.name, spec);
   }
+  // A registered pinning table prunes before the tables it pins (it comes
+  // after them in `tables`), so one prune step releases a whole pin chain.
+  const pinnedByTable = new Map<string, TemporalTableSpec[]>();
+  for (const spec of specs)
+    for (const pin of spec.pinnedBy ?? []) {
+      assertIdentifier(pin.table, "table");
+      assertIdentifier(pin.column, "column");
+      assertIdentifier(pin.tableColumn, "column");
+      if (byName.has(pin.table))
+        pinnedByTable.set(pin.table, [
+          ...(pinnedByTable.get(pin.table) ?? []),
+          spec,
+        ]);
+    }
   for (const spec of specs)
     for (const parent of spec.parents ?? []) {
       if (parent === spec.name)
@@ -103,7 +133,8 @@ export const createTemporalRegistry = (
           `${spec.name}: parent ${parent} is not registered`,
         );
     }
-  // Topological order, parents first; ties keep registration order.
+  // Topological order, parents (and the tables a table pins) first; ties
+  // keep registration order.
   const ordered: TemporalTableSpec[] = [];
   const state = new Map<string, "visiting" | "done">();
   const visit = (spec: TemporalTableSpec, path: string[]): void => {
@@ -111,13 +142,15 @@ export const createTemporalRegistry = (
     if (mark === "done") return;
     if (mark === "visiting")
       throw new RegistryError(
-        `parent cycle: ${[...path, spec.name].join(" -> ")}`,
+        `parent or pin cycle: ${[...path, spec.name].join(" -> ")}`,
       );
     state.set(spec.name, "visiting");
     for (const parent of spec.parents ?? []) {
       const parentSpec = byName.get(parent);
       if (parentSpec !== undefined) visit(parentSpec, [...path, spec.name]);
     }
+    for (const pinned of pinnedByTable.get(spec.name) ?? [])
+      visit(pinned, [...path, spec.name]);
     state.set(spec.name, "done");
     ordered.push(spec);
   };
@@ -150,16 +183,36 @@ export const createTemporalRegistry = (
   };
 };
 
-/** The pruning predicate of a table at the final boundary slot, or null. */
+/** The `NOT EXISTS` clauses of a table's row pins, for a row aliased `alias`. */
+export const rowPinClauses = (
+  table: TemporalTableSpec,
+  alias: string,
+): string =>
+  (table.pinnedBy ?? [])
+    .map(
+      (pin) =>
+        ` AND NOT EXISTS (SELECT 1 FROM ${pin.table} p WHERE p.${pin.tableColumn} = ${alias}.${pin.column})`,
+    )
+    .join("");
+
+/**
+ * The pruning predicate of a table (aliased `t`) at the final boundary
+ * slot, or null.
+ */
 export const prunePredicate = (table: TemporalTableSpec): string | null => {
-  switch (table.retention.kind) {
-    case "closed_k_deep":
-      return table.shape === "versioned"
-        ? `${table.endColumn} IS NOT NULL AND ${table.endColumn} <= ?`
-        : null;
-    case "created_k_deep":
-      return table.shape === "append_only" ? `${table.slotColumn} <= ?` : null;
-    case "owner":
-      return null;
-  }
+  const rule = ((): string | null => {
+    switch (table.retention.kind) {
+      case "closed_k_deep":
+        return table.shape === "versioned"
+          ? `t.${table.endColumn} IS NOT NULL AND t.${table.endColumn} <= ?`
+          : null;
+      case "created_k_deep":
+        return table.shape === "append_only"
+          ? `t.${table.slotColumn} <= ?`
+          : null;
+      case "owner":
+        return null;
+    }
+  })();
+  return rule === null ? null : `${rule}${rowPinClauses(table, "t")}`;
 };

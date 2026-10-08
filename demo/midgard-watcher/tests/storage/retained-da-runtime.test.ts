@@ -79,7 +79,7 @@ const builtInfrastructure = (
       : {}),
     lucid: {} as never,
     signer: {} as never,
-    source: {} as never,
+    l1Source: {} as never,
     stateQueueMutationLeaseCoordinator: {} as never,
     ...overrides,
   },

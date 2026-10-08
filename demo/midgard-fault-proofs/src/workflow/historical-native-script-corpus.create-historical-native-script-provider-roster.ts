@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
 
-import {
-  isNetworkFailure,
-  LocalKupmiosTransportUnavailableError,
-} from "./local-kupmios-http-ogmios-source.read-admitted-local-kupmios-signed-transaction-recovery.js";
+import { FraudProofL1UnavailableError } from "./l1-source.js";
+import { isNetworkFailure } from "./network-failure.js";
 import { type FraudProofRawL1Point } from "./raw-l1-snapshot.js";
 
 export const HISTORICAL_NATIVE_SCRIPT_CORPUS =
@@ -297,7 +295,7 @@ export const createHistoricalNativeScriptHttpHistoryProvider = ({
  * to every caller that already waits on one; the exact-bytes comparison
  * between providers is untouched.
  */
-export class HistoricalNativeScriptProviderUnavailableError extends LocalKupmiosTransportUnavailableError {
+export class HistoricalNativeScriptProviderUnavailableError extends FraudProofL1UnavailableError {
   constructor(
     readonly sourceId: string,
     message: string,
