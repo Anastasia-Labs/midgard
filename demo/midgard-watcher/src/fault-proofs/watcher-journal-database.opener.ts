@@ -7,6 +7,11 @@ import {
 const REOPEN_BASE_MS = 1_000;
 const REOPEN_MAX_MS = 30_000;
 
+/** The journals' retry backoff after `attempts` earlier retries: 1 s
+ * doubling to 30 s. */
+export const watcherJournalRetryDelayMs = (attempts: number): number =>
+  Math.min(REOPEN_MAX_MS, REOPEN_BASE_MS * 2 ** Math.min(attempts, 5));
+
 export type WatcherJournalOpener<T> = Readonly<{
   /** The memoized open; a journal failure is retried by the next call. */
   open(): Promise<T>;
@@ -33,10 +38,7 @@ export const watcherJournalOpener = <T>(
   let closed = false;
   const reopenLater = (): void => {
     if (!options.retryInBackground || closed || timer !== undefined) return;
-    const delay = Math.min(
-      REOPEN_MAX_MS,
-      REOPEN_BASE_MS * 2 ** Math.min(attempts, 5),
-    );
+    const delay = watcherJournalRetryDelayMs(attempts);
     attempts += 1;
     timer = setTimeout(() => {
       timer = undefined;

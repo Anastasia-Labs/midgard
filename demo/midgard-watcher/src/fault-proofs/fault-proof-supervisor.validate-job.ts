@@ -115,6 +115,18 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
    * missing: readiness reports journal_decision_missing until each one
    * resolves from L1 facts. */
   journalDecisionMissing: readonly WatcherDecisionHold[];
+  /** A busy or locked database the supervisor holds on, or null: readiness
+   * reports journal_busy until the in-process requeue after its backoff. */
+  journalBusy: string | null;
+}>;
+
+/** What the runtime does around the in-process requeue after journal_busy,
+ * as a fresh process does at startup. */
+export type WatcherJournalBusyRequeue = Readonly<{
+  /** The startup funding sweep; runs while no supervisor job runs. */
+  releaseUnusedFunding(): Promise<void>;
+  /** Asks the decision driver for a pass, which dispatches the work again. */
+  wake(): void;
 }>;
 
 export type WatcherFaultProofSupervisor = Readonly<{

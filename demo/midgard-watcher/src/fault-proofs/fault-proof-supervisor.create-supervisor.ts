@@ -35,11 +35,16 @@ import {
   type WatcherFaultProofJob,
   type WatcherFaultProofSupervisor,
   type WatcherFaultProofSupervisorStatus,
+  type WatcherJournalBusyRequeue,
 } from "./fault-proof-supervisor.validate-job.js";
 import {
   isWatcherProofDecisionMissingError,
   type WatcherDecisionHold,
 } from "./watcher-decision-hold.js";
+import {
+  createWatcherJournalBusyHold,
+  isWatcherSqliteBusyError,
+} from "./watcher-journal-busy.js";
 import {
   isWatcherJournalCapacityError,
   isWatcherJournalIntegrityError,
@@ -62,6 +67,8 @@ export const createSupervisor = (input: {
   readonly proofRetention?: WatcherProofRetention;
   /** Funding reservations held because their recorded decision is missing. */
   readonly reservationDecisionHolds?: () => readonly WatcherDecisionHold[];
+  /** What a fresh process does around requeueing work after journal_busy. */
+  readonly journalBusyRequeue?: WatcherJournalBusyRequeue;
 }): WatcherFaultProofSupervisor | UnsafeWatcherFaultProofSupervisorForTest => {
   if (!DEPLOYMENT_FINGERPRINT.test(input.deploymentFingerprint)) {
     throw new Error(
@@ -86,31 +93,35 @@ export const createSupervisor = (input: {
   // An open that could not complete (journal_unavailable) is retried by
   // every use and in the background; an integrity failure latches.
   let openedQueueJournal: WatcherFaultProofQueueJournal | null = null;
-  const queueOpener = watcherJournalOpener(
-    async () =>
-      (openedQueueJournal = await openWatcherFaultProofQueueJournal({
-        journalRoot: input.journalRoot,
-        deploymentFingerprint: input.deploymentFingerprint,
-        authenticationKey: input.queueAuthenticationKey,
-      })),
-    { retryInBackground: true },
-  );
-  const queueJournal = queueOpener.open;
+  const openQueue = () =>
+    watcherJournalOpener(
+      async () =>
+        (openedQueueJournal = await openWatcherFaultProofQueueJournal({
+          journalRoot: input.journalRoot,
+          deploymentFingerprint: input.deploymentFingerprint,
+          authenticationKey: input.queueAuthenticationKey,
+        })),
+      { retryInBackground: true },
+    );
+  let queueOpener = openQueue();
+  const queueJournal = () => queueOpener.open();
   const categories = Object.freeze([...input.dependencies.categories]);
   const journals = () =>
     openWatcherJournalDatabase({
       journalRoot: input.journalRoot,
       authenticationKey: input.queueAuthenticationKey,
     });
-  const progressAuthority = createWatcherFaultProofProgressAuthority({
-    journalRoot: input.journalRoot,
-    deploymentFingerprint: input.deploymentFingerprint,
-    categories,
-    authenticationKey: input.queueAuthenticationKey,
-    ...(input.proofRetention === undefined
-      ? {}
-      : { retention: input.proofRetention }),
-  });
+  const createAuthority = () =>
+    createWatcherFaultProofProgressAuthority({
+      journalRoot: input.journalRoot,
+      deploymentFingerprint: input.deploymentFingerprint,
+      categories,
+      authenticationKey: input.queueAuthenticationKey,
+      ...(input.proofRetention === undefined
+        ? {}
+        : { retention: input.proofRetention }),
+    });
+  let progressAuthority = createAuthority();
   let progressSerial = Promise.resolve();
   let authorityEpoch = 0;
   if (
@@ -194,9 +205,10 @@ export const createSupervisor = (input: {
   void done.catch(() => undefined);
 
   // A refused journal (`journal_integrity`), one that could not be opened
-  // (`journal_unavailable`) or work whose recorded decision is missing
-  // (`journal_decision_missing`) holds the watcher unready and never fails
-  // the process; every other failure blocks it.
+  // (`journal_unavailable`), work whose recorded decision is missing
+  // (`journal_decision_missing`) or a busy database (`journal_busy`) holds
+  // the watcher unready and never fails the process; every other failure
+  // blocks it.
   const block = (error: unknown, job: WatcherFaultProofJob | null): Error => {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
@@ -206,6 +218,10 @@ export const createSupervisor = (input: {
       isWatcherProofDecisionMissingError(error)
     )
       return normalized;
+    if (isWatcherSqliteBusyError(error)) {
+      if (phase === "accepting") busy.hold(normalized);
+      return normalized;
+    }
     if (phase !== "blocked" && phase !== "closed") {
       phase = "blocked";
       blockedJob = job;
@@ -213,6 +229,55 @@ export const createSupervisor = (input: {
     }
     return normalized;
   };
+  // The statement that met a busy database committed nothing. Rebuild the
+  // work from durable state as a fresh process does: drop every in-memory
+  // entry, open the queue and the progress authority again, run the startup
+  // funding sweep while no job runs, then let the decision driver dispatch.
+  const busy = createWatcherJournalBusyHold({
+    requeue: async () => {
+      const reset = progressSerial.then(async () => {
+        await pump;
+        await serializeSchedule(async () => {
+          authorityEpoch += 1;
+          for (const entry of queue.splice(0))
+            entry.reject(
+              new Error("fault-proof job requeued after journal_busy"),
+            );
+          for (const retry of transportRetries.values())
+            if (retry.timer !== undefined) clearTimeout(retry.timer);
+          transportRetries.clear();
+          jobs.clear();
+          pendingUpdates.clear();
+          selectedExecutions.clear();
+          processedContexts.clear();
+          completedValidations.clear();
+          queuedJobCount = 0;
+          activeJob = null;
+          activeInvocationPermit = null;
+          recovered = false;
+          queueOpener.close();
+          openedQueueJournal = null;
+          queueOpener = openQueue();
+          void queueJournal().catch(() => undefined);
+          progressAuthority = createAuthority();
+        });
+      });
+      progressSerial = reset.catch(() => undefined);
+      await reset;
+      await input.journalBusyRequeue
+        ?.releaseUnusedFunding()
+        .catch((error: unknown) => {
+          if (isWatcherSqliteBusyError(error)) throw error;
+          // As at startup, a refused or unopened journal keeps them reserved.
+          if (
+            !isWatcherJournalIntegrityError(error) &&
+            !isWatcherJournalUnavailableError(error)
+          )
+            block(error, null);
+        });
+    },
+    resumed: () => input.journalBusyRequeue?.wake(),
+  });
 
   const now = (): number => {
     const value = input.nowMs();
@@ -456,14 +521,16 @@ export const createSupervisor = (input: {
       }
     } finally {
       // A failed run blocks the supervisor and the process exits failed
-      // closed. Leave its queue registration active so the next process
-      // requeues the job instead of reading a durable finish that never
-      // reached the workflow journal.
+      // closed, or, on a busy database, holds it until the in-process
+      // requeue. Leave its queue registration active so the next process,
+      // or that requeue, requeues the job instead of reading a durable
+      // finish that never reached the workflow journal.
       if (failure === undefined) {
         try {
           await (
             await queueJournal()
           ).markFinished(entry.jobIdentityDigest, now().toString());
+          busy.committed();
         } catch (error) {
           failure = block(error, job);
         }
@@ -531,7 +598,7 @@ export const createSupervisor = (input: {
     pumping = true;
     pump = Promise.resolve().then(async () => {
       try {
-        while (queue.length > 0) {
+        while (queue.length > 0 && busy.reason() === null) {
           queue.sort(comparePending);
           const entry = queue.shift()!;
           await runPending(entry);
@@ -557,6 +624,9 @@ export const createSupervisor = (input: {
       !input.exposeUnsafeRunnerForTest,
       actuationPermit,
     );
+    // Held work is requeued from durable state once the hold clears.
+    if (busy.reason() !== null)
+      return { completion: Promise.resolve(undefined) };
     const key = objectiveKey(job);
     const existing = jobs.get(key);
     if (existing !== undefined) {
@@ -792,7 +862,7 @@ export const createSupervisor = (input: {
       const operation = progressSerial.then(async () => {
         if (phase === "blocked" || phase === "closed")
           throw new Error(`watcher fault-proof supervisor is ${phase}`);
-        if (epoch !== authorityEpoch) return;
+        if (epoch !== authorityEpoch || busy.reason() !== null) return;
         try {
           const contexts = await progressAuthority.admit(request);
           if (epoch !== authorityEpoch) return;
@@ -819,7 +889,9 @@ export const createSupervisor = (input: {
           }
         } catch (error) {
           if (input.dependencies.isActuationRevokedError(error)) return;
-          throw block(error, null);
+          const failure = block(error, null);
+          if (busy.reason() !== null && isWatcherSqliteBusyError(error)) return;
+          throw failure;
         }
       });
       progressSerial = operation.catch(() => undefined);
@@ -903,6 +975,7 @@ export const createSupervisor = (input: {
           ...progressAuthority.decisionHolds(),
           ...(input.reservationDecisionHolds?.() ?? []),
         ]),
+        journalBusy: busy.reason(),
       });
     },
     durableQueueStatus: () => {
@@ -918,6 +991,7 @@ export const createSupervisor = (input: {
       if (phase === "closed") return;
       if (phase === "accepting") phase = "closing";
       queueOpener.close();
+      busy.close();
       for (const retry of transportRetries.values())
         if (retry.timer !== undefined) clearTimeout(retry.timer);
       await progressSerial;

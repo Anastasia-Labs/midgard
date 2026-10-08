@@ -105,7 +105,13 @@ the journals (below) and restarts the watcher. If the journals cannot be opened 
 all (a busy, locked or unreadable file), the watcher stays up, `/readyz`
 reports `journal_unavailable` and `supervisor.journalUnavailable` names the
 failure, while the watcher retries the open, backing off from 1 s to 30 s; the
-reason clears without a restart once an open succeeds. A journal directory
+reason clears without a restart once an open succeeds. If a write to an open
+watcher SQLite file meets another connection's lock past the busy timeout
+(SQLITE_BUSY or SQLITE_LOCKED), the write commits nothing and the watcher
+stays up: `/readyz` reports `journal_busy` and `supervisor.journalBusy` names
+the failure. After the same 1 s to 30 s backoff the watcher drops its
+in-memory proof work, rebuilds it from the journals as a restart would, and
+lets the next decision pass dispatch it again; the reason clears then. A journal directory
 that cannot be used, or a rollback key the journals were not written under, is
 a configuration error: the watcher exits before the operations server binds.
 An objective whose completion was verified deeper than rollback recovery

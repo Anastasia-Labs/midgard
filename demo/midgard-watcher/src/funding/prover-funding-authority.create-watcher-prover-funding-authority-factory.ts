@@ -94,37 +94,49 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
       if (hold.kind === "reservation")
         decisionHolds.set(hold.reservationId, hold);
   };
+  // A sweep, a per-run release and a hold recheck each read the store and
+  // then record holds; one at a time, none records over another's newer read.
+  let releasing = Promise.resolve();
+  const serialize = (operation: () => Promise<void>): Promise<void> => {
+    const result = releasing.then(operation);
+    releasing = result.catch(() => undefined);
+    return result;
+  };
   const factory: WatcherProverFundingAuthorityFactory = Object.freeze({
     schemaVersion: WATCHER_PROVER_FUNDING_AUTHORITY,
-    releaseUnused: async (scope) => {
-      const reservation =
-        scope === undefined
-          ? undefined
-          : reservationByPermit.get(scope.actuationPermit);
-      if (scope !== undefined && reservation === undefined) return;
-      recordHolds(
-        reservation === undefined ? null : [reservation.reservationId],
-        await releaseUnusedWatcherProverFundingReservations({
-          ...input,
-          ...(reservation === undefined ? {} : { reservations: [reservation] }),
-        }),
-      );
-    },
-    recheckDecisionHolds: async () => {
-      if (decisionHolds.size === 0) return;
-      const checked = [...decisionHolds.keys()];
-      const reservations = (await input.store.readAll())
-        .map(parseWatcherProverFundingReservationRecord)
-        .filter(({ reservationId }) => checked.includes(reservationId));
-      recordHolds(
-        checked,
-        await releaseUnusedWatcherProverFundingReservations({
-          ...input,
-          reservations,
-          decisionMissingOnly: true,
-        }),
-      );
-    },
+    releaseUnused: (scope) =>
+      serialize(async () => {
+        const reservation =
+          scope === undefined
+            ? undefined
+            : reservationByPermit.get(scope.actuationPermit);
+        if (scope !== undefined && reservation === undefined) return;
+        recordHolds(
+          reservation === undefined ? null : [reservation.reservationId],
+          await releaseUnusedWatcherProverFundingReservations({
+            ...input,
+            ...(reservation === undefined
+              ? {}
+              : { reservations: [reservation] }),
+          }),
+        );
+      }),
+    recheckDecisionHolds: () =>
+      serialize(async () => {
+        if (decisionHolds.size === 0) return;
+        const checked = [...decisionHolds.keys()];
+        const reservations = (await input.store.readAll())
+          .map(parseWatcherProverFundingReservationRecord)
+          .filter(({ reservationId }) => checked.includes(reservationId));
+        recordHolds(
+          checked,
+          await releaseUnusedWatcherProverFundingReservations({
+            ...input,
+            reservations,
+            decisionMissingOnly: true,
+          }),
+        );
+      }),
     decisionHolds: () => Object.freeze([...decisionHolds.values()]),
     create: async (request) => {
       assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);

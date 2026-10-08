@@ -45,10 +45,8 @@ export const createWatcherOperationsObservability = (input: {
   }>;
   /** Live state of the application's shared retained-DA transport. */
   readonly retainedDaTransportStatus: () => WatcherRetainedDaTransportStatus;
-  /**
-   * The L1 follower's and decision driver's named reasons, read
-   * synchronously (the runtime caches them on every follower change).
-   */
+  /** The L1 follower's and decision driver's named reasons, read
+   * synchronously (the runtime caches them on every follower change). */
   readonly l1Readiness?: () => readonly Readonly<{
     reason: string;
     detail: string;
@@ -323,6 +321,7 @@ export const createWatcherOperationsObservability = (input: {
     if (supervisor.journalCapacity) reasons.push("journal_capacity");
     if (supervisor.journalDecisionMissing.length > 0)
       reasons.push("journal_decision_missing");
+    if (supervisor.journalBusy !== null) reasons.push("journal_busy");
     if (latestL1Sources.size === 0) reasons.push("l1_source_unavailable");
     else if (sources.stale > 0 || sources.disagreement > 0)
       reasons.push("l1_source_stale");

@@ -13,6 +13,7 @@ import {
   type UnsafeWatcherFaultProofSupervisorForTest,
   type WatcherFaultProofJob,
   type WatcherFaultProofSupervisor,
+  type WatcherJournalBusyRequeue,
 } from "./fault-proof-supervisor.validate-job.js";
 import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
 
@@ -26,6 +27,9 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly proofRetention: WatcherProofRetention;
   /** Funding reservations held because their recorded decision is missing. */
   readonly reservationDecisionHolds: () => readonly WatcherDecisionHold[];
+  /** The startup funding sweep and a decision-driver pass, around the
+   * in-process requeue after journal_busy; the runtime always passes it. */
+  readonly journalBusyRequeue?: WatcherJournalBusyRequeue;
 }): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
@@ -36,6 +40,9 @@ export const createWatcherFaultProofSupervisor = (input: {
     exposeUnsafeRunnerForTest: false,
     proofRetention: input.proofRetention,
     reservationDecisionHolds: input.reservationDecisionHolds,
+    ...(input.journalBusyRequeue === undefined
+      ? {}
+      : { journalBusyRequeue: input.journalBusyRequeue }),
     dependencies: Object.freeze({
       categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       run: async ({ job, actuationPermit, admission }) => {

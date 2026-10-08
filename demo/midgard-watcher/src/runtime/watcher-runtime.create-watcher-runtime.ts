@@ -298,6 +298,10 @@ export const createWatcherRuntime = async (input: {
       }),
       proofRetention: activeFollower.proofRetention,
       reservationDecisionHolds: fundingRuntime.factory.decisionHolds,
+      journalBusyRequeue: {
+        releaseUnusedFunding: () => fundingRuntime.factory.releaseUnused(),
+        wake: () => decisionDriver?.wake(),
+      },
     });
     faultProofSupervisor = activeSupervisor;
 

@@ -34,6 +34,7 @@ export const operations = () =>
         earliestDeadlineJob: null,
         remainingSafeStartMs: "1000",
         journalDecisionMissing: [],
+        journalBusy: null,
       }),
     } as unknown as WatcherFaultProofSupervisor,
     launchScopeStatus: () => ({

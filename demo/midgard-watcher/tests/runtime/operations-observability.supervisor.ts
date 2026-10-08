@@ -18,6 +18,7 @@ export const supervisor = () => {
     journalUnavailable: null,
     journalCapacity: false,
     journalDecisionMissing: [],
+    journalBusy: null,
   });
   return {
     runtime: Object.freeze({

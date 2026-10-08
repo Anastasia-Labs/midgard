@@ -1536,8 +1536,8 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",
-    "max": 945,
-    "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W1 (+6): the supervisor hands the follower's proof retention to its progress authority, which holds each open objective's L1 history past k (E1 ruling). W2b (+11): a refused journal holds the supervisor unready instead of blocking it, and its status names the refusal (journal_integrity). W2b-fix (+27): the queue journal opens through the shared opener with a background reopen, a journal that could not be opened holds the supervisor unready (journal_unavailable) instead of blocking it, and a capacity read that meets corruption is reported as journal_integrity. W2b-fix R2 (+20): a run or startup read that meets a missing recorded decision holds the objective by name instead of blocking the supervisor, and status names every held objective and funding reservation (journal_decision_missing)."
+    "max": 1019,
+    "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W1 (+6): the supervisor hands the follower's proof retention to its progress authority, which holds each open objective's L1 history past k (E1 ruling). W2b (+11): a refused journal holds the supervisor unready instead of blocking it, and its status names the refusal (journal_integrity). W2b-fix (+27): the queue journal opens through the shared opener with a background reopen, a journal that could not be opened holds the supervisor unready (journal_unavailable) instead of blocking it, and a capacity read that meets corruption is reported as journal_integrity. W2b-fix R2 (+20): a run or startup read that meets a missing recorded decision holds the objective by name instead of blocking the supervisor, and status names every held objective and funding reservation (journal_decision_missing). W2b-R3 (+74): a busy or locked journal database holds the supervisor unready (journal_busy) instead of blocking it, and after the backoff the supervisor resets its in-memory work, reopens its queue and progress authority, and reruns the startup funding sweep, requeueing from durable state in process as a restart does; the reset shares the supervisor's local state, so it cannot move out with the hold timer (watcher-journal-busy.ts)."
   },
   {
     "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
@@ -1571,8 +1571,8 @@
   },
   {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",
-    "max": 965,
-    "reason": "Retained concurrent challenge registrations share the imported hoisted mock fixture. Fixture setup and independent held workflow regression were extracted and verified separately; further division needs a fixture lifetime refactor. W2b-fix (+2): the readiness fixture's supervisor stub reports healthy journals (journalIntegrity and journalUnavailable null), as every readiness reason reads them. W2b-fix R2 (+1): the stub also reports no missing-decision holds (journalDecisionMissing empty)."
+    "max": 966,
+    "reason": "Retained concurrent challenge registrations share the imported hoisted mock fixture. Fixture setup and independent held workflow regression were extracted and verified separately; further division needs a fixture lifetime refactor. W2b-fix (+2): the readiness fixture's supervisor stub reports healthy journals (journalIntegrity and journalUnavailable null), as every readiness reason reads them. W2b-fix R2 (+1): the stub also reports no missing-decision holds (journalDecisionMissing empty). W2b-R3 (+1): the stub also reports no busy database (journalBusy null)."
   },
   {
     "file": "midgard-watcher/tests/availability/source-capture.test.ts",
