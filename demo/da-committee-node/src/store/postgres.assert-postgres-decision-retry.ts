@@ -23,7 +23,6 @@ export type JsonRecordRow = {
   readonly evidence_hash?: unknown;
   readonly header_hash?: unknown;
   readonly commitment_digest?: unknown;
-  readonly conflicting_header_hash?: unknown;
   readonly conflicting_commitment_digest?: unknown;
   readonly reporter_peer_id?: unknown;
   readonly signer_index?: unknown;

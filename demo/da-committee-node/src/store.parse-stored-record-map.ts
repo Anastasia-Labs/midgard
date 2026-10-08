@@ -1,6 +1,3 @@
-import { access, rename } from "node:fs/promises";
-import { join } from "node:path";
-
 export const parseStoredRecordMap = <T>(
   value: unknown,
   parseRecord: (entry: unknown) => T,
@@ -23,34 +20,6 @@ export const parseStoredRecordMap = <T>(
     }),
   );
 };
-
-/**
- * The committee node's file store was named `watcher.json` before the DA
- * committee role was split out of the watcher.  Rename a legacy file in place
- * so an existing directory store keeps its data.
- */
-export const committeeStoreFilePath = async (
-  directory: string,
-): Promise<string> => {
-  const filePath = join(directory, "committee.json");
-  const legacyPath = join(directory, "watcher.json");
-  try {
-    await access(filePath);
-    return filePath;
-  } catch {
-    // fall through: no current-name store yet
-  }
-  try {
-    await access(legacyPath);
-  } catch {
-    return filePath;
-  }
-  await rename(legacyPath, filePath);
-  return filePath;
-};
-
-export const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
-  error instanceof Error && "code" in error;
 
 export const jsonReplacer = (_key: string, value: unknown): unknown =>
   typeof value === "bigint"
