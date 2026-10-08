@@ -36,7 +36,8 @@ export type L1FollowerHandle = Readonly<{
 }>;
 
 export type L1FollowerState =
-  Readonly<{ kind: "unconfigured"; detail: string }> | L1FollowerHandle;
+  | Readonly<{ kind: "unconfigured"; detail: string }>
+  | L1FollowerHandle;
 
 /**
  * The follower has applied the chain through the node's tip with no

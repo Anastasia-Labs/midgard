@@ -35,9 +35,11 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
+import type { IntentJournal } from "../src/services/intent-journal.js";
 import { HaltSource } from "../src/services/liveness-halt.js";
 import { planTakeoverProgram } from "../src/transactions/operators/takeover.js";
 import { publishEmulatorOperatorSet } from "./helpers/emulator-operator-set.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
@@ -96,11 +98,16 @@ describe("operator watchdog forced retirement from the operator set", () => {
       effect: Effect.Effect<
         A,
         E,
-        Globals | Lucid | MidgardContracts | NodeConfig | SqlClient.SqlClient
+        | Globals
+        | IntentJournal
+        | Lucid
+        | MidgardContracts
+        | NodeConfig
+        | SqlClient.SqlClient
       >,
     ) =>
       Effect.runPromise(
-        effect.pipe(
+        withoutFollowerJournal(effect).pipe(
           Effect.provide(
             Layer.mergeAll(
               Globals.Default,

@@ -94,18 +94,18 @@ import {
   withHistoryIngestion,
 } from "./event-history-producer.js";
 import { Globals } from "./globals.globals.js";
-import { coalescedRunner } from "./l1-follower.coalesced-runner.js";
-import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import {
   IntentJournal,
   nodeSeededAddresses,
   protocolPaymentCredentials,
 } from "./intent-journal.js";
+import { coalescedRunner } from "./l1-follower.coalesced-runner.js";
 import {
   createNodeIntentStage,
   nodeFamilyPredicate,
   nodeIntentTrackedSet,
 } from "./l1-follower.intents.js";
+import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { l1FollowerPlan } from "./l1-follower.plan.js";
 import {
   followerCaughtUp,
