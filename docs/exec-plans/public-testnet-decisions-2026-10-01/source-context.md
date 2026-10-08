@@ -549,7 +549,7 @@ is the part that decides it.
 
 **Established by reading the code.** There are three independent Ogmios JSON-RPC clients in the
 tree, and all three reject an error envelope as a plain `Error`:
-- `demo/midgard-node/src/l1-tx-order-carriage.open-ogmios-session.ts:90`
+- `demo/midgard-node/src/l1-tx-order-carriage.open-ogmios-session.ts:90` (since deleted with the Kupo carriage reader in ticket N10, #805) <!-- doc-links:historical -->
 - `demo/da-committee-node/src/l1/provider.ogmios-rpc-session.ts:74`
 - `demo/da-committee-node/src/l1/state-queue-replay-provider.open-rpc.ts:256`
 
