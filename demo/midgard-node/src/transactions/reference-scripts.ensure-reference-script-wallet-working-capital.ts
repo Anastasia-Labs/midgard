@@ -1,6 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { type ReferenceScriptAuthPolicyRef } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import {
+  getAddressDetails,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -186,7 +190,12 @@ export const ensureReferenceScriptWalletWorkingCapital = (
     const txHash = yield* handleSignSubmit(
       fundingLucid,
       unsigned,
-      journaledIntent("reference_funding", `reference_funding:${scopeName}`),
+      // The target (§8.4 E2): the plain balance at the reference-script
+      // address this top-up reaches.
+      journaledIntent(
+        "reference_funding",
+        `reference_funding:${scopeName}:${getAddressDetails(referenceScriptAddress).address.hex}:${targetPlainBalance.toString()}`,
+      ),
       REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
     );
     yield* refreshWalletUtxosFromOwnAddress(referenceScriptsLucid, {

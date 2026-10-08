@@ -10,23 +10,69 @@
  * record's own SQL transaction), or once a landed transaction other than the
  * refused one spends one of the refused transaction's inputs: the work it
  * would have done is gone, so nothing is left to unblock. It never clears on
- * a timer.
+ * a timer. A refused transaction whose bytes no decoder reads names no
+ * inputs (no ledger accepts it either), so only the next success clears it.
  */
 import { decodeTransaction, encodeOutRef } from "@al-ft/midgard-l1-follower";
 import type { SqlClient, SqlError } from "@effect/sql";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
 import { byteaArrayLiteral } from "../database/follower-schema.js";
 import type { DriverHold } from "../l1-events/driver.js";
 
-/** The refused transaction's inputs as 34-byte outrefs; none when its bytes do not decode. */
-const refusedInputs = (signedTxCbor: string): Buffer[] => {
+/** The body's inputs by CML's ledger decoder, freeing every handle. */
+const ledgerDecodedInputs = (bytes: Buffer): Buffer[] => {
+  const tx = CML.Transaction.from_cbor_bytes(bytes);
   try {
-    return decodeTransaction(Buffer.from(signedTxCbor, "hex")).inputs.map(
-      encodeOutRef,
-    );
+    const body = tx.body();
+    try {
+      const inputs = body.inputs();
+      try {
+        const outRefs: Buffer[] = [];
+        for (let index = 0; index < inputs.len(); index += 1) {
+          const input = inputs.get(index);
+          const id = input.transaction_id();
+          try {
+            outRefs.push(
+              encodeOutRef({
+                txHash: Buffer.from(id.to_hex(), "hex"),
+                index: Number(input.index()),
+              }),
+            );
+          } finally {
+            id.free();
+            input.free();
+          }
+        }
+        return outRefs;
+      } finally {
+        inputs.free();
+      }
+    } finally {
+      body.free();
+    }
+  } finally {
+    tx.free();
+  }
+};
+
+/**
+ * The refused transaction's inputs as 34-byte outrefs. Bytes the follower's
+ * decoder refuses (the `intent_undecodable` refusal) are read by the ledger
+ * library's decoder instead, so a hold names the inputs of any transaction
+ * a ledger could accept; only bytes neither decoder reads hold no inputs.
+ */
+export const refusedInputs = (signedTxCbor: string): Buffer[] => {
+  const bytes = Buffer.from(signedTxCbor, "hex");
+  try {
+    return decodeTransaction(bytes).inputs.map(encodeOutRef);
   } catch {
-    return [];
+    try {
+      return ledgerDecodedInputs(bytes);
+    } catch {
+      return [];
+    }
   }
 };
 
@@ -59,7 +105,10 @@ export const clearRefusalHold = (
 /**
  * Clears every hold whose refused transaction lost an input to another
  * landed transaction (a valid one's inputs, or a phase-2-failed one's
- * collateral), then reads the holds that stand, one per family.
+ * collateral: either way the follower marks the output spent), then reads
+ * the holds that stand, one per family. Each held input is probed by the
+ * outputs' primary key, so the work is bounded by the held inputs, not by
+ * the tracked transactions.
  */
 export const releaseAndReadRefusalHolds = (
   sql: SqlClient.SqlClient,
@@ -67,10 +116,12 @@ export const releaseAndReadRefusalHolds = (
   Effect.gen(function* () {
     yield* sql`DELETE FROM intent_refusal_holds h
       WHERE EXISTS (
-        SELECT 1 FROM l1_txs t
-        WHERE t.tx_hash <> h.tx_hash
-          AND CASE WHEN t.is_valid THEN t.inputs && h.inputs
-                   ELSE t.collaterals && h.inputs END)`;
+        SELECT 1 FROM unnest(h.inputs) AS held(outref)
+        JOIN l1_outputs o
+          ON o.tx_hash = substring(held.outref FROM 1 FOR 32)
+         AND o.output_index = get_byte(held.outref, 32) * 256 + get_byte(held.outref, 33)
+        WHERE o.spent_slot IS NOT NULL
+          AND o.spent_tx IS DISTINCT FROM h.tx_hash)`;
     const rows = yield* sql<{
       readonly family: string;
       readonly reason: string;

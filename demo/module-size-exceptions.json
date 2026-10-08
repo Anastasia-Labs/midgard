@@ -976,8 +976,8 @@
   },
   {
     "file": "midgard-node/src/transactions/reference-publication.publish-reference-scripts.ts",
-    "max": 684,
-    "reason": "publishReferenceScripts is the dominant indivisible declaration (659 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+10): each publication and funding transaction's exact bytes are recorded in the intent journal before the first send. I1-fix (-11): every publication transaction goes through the node's one submit seam, which journals it."
+    "max": 687,
+    "reason": "publishReferenceScripts is the dominant indivisible declaration (659 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+10): each publication and funding transaction's exact bytes are recorded in the intent journal before the first send. I1-fix (-11): every publication transaction goes through the node's one submit seam, which journals it. I1c (+3): each funding step journals the scripts it funds as its target, which its §8.4 predicate reads."
   },
   {
     "file": "midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts",

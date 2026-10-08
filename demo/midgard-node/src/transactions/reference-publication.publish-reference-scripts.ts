@@ -170,6 +170,7 @@ export const publishReferenceScripts = async ({
     (utxo) => isPlainAdaOnlyUtxo(utxo) && !reserved.has(key(utxo)),
   );
   if (batches.length === 0) return resolveRoster(canonical);
+  const funds = remaining.map((target) => scriptHash(target.script));
   if (funding.length === 0)
     throw new Error(
       "No confirmed plain wallet funding for reference publication",
@@ -206,6 +207,7 @@ export const publishReferenceScripts = async ({
       const output = coreToTxOutput(outputs.get(0));
       const hash = await Effect.runPromise(
         submitPublicationFunding(journal, lucid, unsigned, "consolidate", {
+          funds,
           confirmationTimeoutMs: 30 * 60_000,
           confirmationRetries: 0,
           requiredOutputIndexes: [0],
@@ -308,6 +310,7 @@ export const publishReferenceScripts = async ({
       signal?.throwIfAborted();
       const hash = await Effect.runPromise(
         submitPublicationFunding(journal, lucid, unsigned, "split", {
+          funds,
           confirmationTimeoutMs: 30 * 60_000,
           confirmationRetries: 0,
           requiredOutputIndexes,

@@ -48,6 +48,13 @@ describe("the node's operator-set predicates over the follower's projections", (
     expect(await s.verdict(register)).toBe(false);
   });
 
+  it("register: not wanted while the operator is active, though not registered", async () => {
+    const s = await open();
+    const register = await intent(s, "register", `register:${FOREIGN}`);
+    await s.land(s.lists.insert(s.live(), "active", FOREIGN));
+    expect(await s.verdict(register)).toBe(false);
+  });
+
   it("activate: wanted while registered and not yet active", async () => {
     const s = await open();
     const activate = await intent(s, "activate", `activate:${FOREIGN}`);

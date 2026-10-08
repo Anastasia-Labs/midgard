@@ -10,6 +10,8 @@ export type SimOutput = Readonly<{
   assets?: ReadonlyMap<string, ReadonlyMap<string, bigint>>;
   /** An inline datum: the exact Plutus data CBOR. */
   datum?: Buffer;
+  /** A PlutusV3 reference script: its flat bytes (hash: blake2b-224 of `0x03 || bytes`). */
+  scriptRef?: Buffer;
 }>;
 
 /** One witness-set redeemer of a simulated transaction (no evaluation). */
@@ -34,6 +36,8 @@ export type SimTx = Readonly<{
   collateralReturn?: SimOutput;
   /** Signed quantities; negative burns. */
   mint?: ReadonlyMap<string, ReadonlyMap<string, bigint>>;
+  /** Certificates (body key 4): each one's exact CBOR, in this order. */
+  certificates?: readonly Buffer[];
   /** Reward withdrawals (body key 5), encoded in this order. */
   withdrawals?: readonly Readonly<{ rewardAccount: Buffer; amount: bigint }>[];
   /** Ledger Word64 slots, so a test can carry the full range. */
@@ -106,6 +110,11 @@ const output = (out: SimOutput): Buffer => {
   ];
   if (out.datum !== undefined)
     fields.push([c.uint(2), c.array(c.uint(1), c.tag(24, c.bytes(out.datum)))]);
+  if (out.scriptRef !== undefined)
+    fields.push([
+      c.uint(3),
+      c.tag(24, c.bytes(c.array(c.uint(3), c.bytes(out.scriptRef)))),
+    ]);
   return c.map(...fields);
 };
 
@@ -136,6 +145,8 @@ export const encodeTxBody = (tx: SimTx): Buffer => {
   ];
   if (tx.invalidAfter !== undefined)
     fields.push([c.uint(3), c.uint(tx.invalidAfter)]);
+  if (tx.certificates !== undefined && tx.certificates.length > 0)
+    fields.push([c.uint(4), c.array(...tx.certificates)]);
   if (tx.withdrawals !== undefined && tx.withdrawals.length > 0)
     fields.push([
       c.uint(5),

@@ -84,12 +84,13 @@ export const nodeDatum = (
   header: SDK.Header,
   status: SDK.DaAvailabilityStateQueueStatus,
   link: string | null,
+  provenFraud: string | null = null,
 ): Buffer =>
   datumOf({
     data: {
       Node: {
         data: Data.castTo(
-          { header, da_attestation: status, proven_fraud: null },
+          { header, da_attestation: status, proven_fraud: provenFraud },
           SDK.StateQueueNode,
         ),
       },

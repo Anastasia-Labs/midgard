@@ -90,6 +90,12 @@ export {
   type TipObservation,
 } from "./heads.js";
 export {
+  credentialsRegisteredBy,
+  landedStakeRegistrationsIn,
+  type StakeRegistrationChange,
+  stakeRegistrationChanges,
+} from "./intents/certificates.js";
+export {
   appendIntentEventIn,
   type Intent,
   type IntentEvent,

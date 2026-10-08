@@ -161,6 +161,4 @@ export const actionOf = async (
   reconciler: ReturnType<typeof s6>,
   tx: SimTx,
 ): Promise<string | undefined> =>
-  (await reconciler.reconcile()).intents.find((i) =>
-    i.intent.txHash.equals(simTxHash(tx)),
-  )?.action;
+  (await reconciler.reconcile()).entry(simTxHash(tx))?.action;

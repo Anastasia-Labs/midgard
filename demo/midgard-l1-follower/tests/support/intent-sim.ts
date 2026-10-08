@@ -28,6 +28,7 @@ import {
   readJournal,
   statusText,
 } from "./intent-sim.text.js";
+import { keptStatusesDiffer } from "./intent-sim.view-check.js";
 
 /**
  * The intent journal in the fork simulator. Its traffic is an own wallet
@@ -417,6 +418,9 @@ export const intentSimulation = (): {
       const reconciler = reconcilerFor(store);
       const report = await reconciler.reconcile();
       if (failures.length > 0) return failures.join("; ");
+      // S6 keeps its statuses between passes (`intent-sim.view-check.ts`).
+      const differs = await keptStatusesDiffer(store, report);
+      if (differs !== null) return differs;
       for (const entry of report.intents) {
         if (entry.error !== undefined) return `reconcile error: ${entry.error}`;
         const key = hex(entry.intent.txHash);

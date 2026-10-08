@@ -3,7 +3,9 @@
  * that clears only on that family's next successful record, or once a landed
  * transaction other than the refused one spends one of its inputs (a valid
  * one's input, or a phase-2-failed one's collateral). Nothing else clears it:
- * not an unrelated landed transaction, not the passing of time.
+ * not an unrelated landed transaction, not the passing of time. Bytes the
+ * follower's decoder refuses still name their inputs (the ledger library's
+ * decoder reads them); bytes no decoder reads name none.
  *
  * The journal runs over a follower store in the node's own test database, so
  * the refused inputs and the landed spends are the follower's facts. A
@@ -27,6 +29,7 @@ import {
 } from "../src/l1-state-queue/index.js";
 import {
   INTENT_CONTENT_REF_MISSING,
+  INTENT_UNDECODABLE,
   intentJournalOver,
   type IntentJournalService,
   journaledIntent,
@@ -188,6 +191,52 @@ describe("intent-journal refusal holds", () => {
 
       // Another tx spends one of the refused tx's inputs and lands.
       await s.land([s.spare(1)]);
+      expect(await reasons(main)).toEqual([]);
+    });
+  });
+
+  it("an undecodable refusal names the inputs the ledger decoder reads, and a landed spend of one clears it", async () => {
+    const s = await open();
+    await withJournals(async ({ worker, main }) => {
+      const tx = s.spend([s.spare(0)]);
+      // Trailing bytes: the follower's decoder refuses them, CML reads the tx.
+      const refused = await record(
+        worker,
+        "attest",
+        { cbor: `${tx.cbor}00`, txHash: tx.txHash },
+        Buffer.alloc(28, 7),
+      );
+      expect(Either.isLeft(refused) && refused.left).toMatchObject({
+        reason: INTENT_UNDECODABLE,
+      });
+      expect(await reasons(main)).toEqual([INTENT_UNDECODABLE]);
+      await s.land([s.spare(1)]);
+      expect(await reasons(main)).toEqual([INTENT_UNDECODABLE]);
+      await s.land([s.spare(0)]);
+      expect(await reasons(main)).toEqual([]);
+    });
+  });
+
+  it("bytes no decoder reads hold no inputs: only the family's next success clears the hold", async () => {
+    const s = await open();
+    await withJournals(async ({ worker, main }) => {
+      const ref = Buffer.alloc(28, 7);
+      const refused = await record(
+        worker,
+        "attest",
+        { cbor: "ff", txHash: "00".repeat(32) },
+        ref,
+      );
+      expect(Either.isLeft(refused) && refused.left).toMatchObject({
+        reason: INTENT_UNDECODABLE,
+      });
+      await s.land([s.spare(0)]);
+      expect(await reasons(main)).toEqual([INTENT_UNDECODABLE]);
+      expect(
+        Either.isRight(
+          await record(worker, "attest", s.spend([s.spare(1)]), ref),
+        ),
+      ).toBe(true);
       expect(await reasons(main)).toEqual([]);
     });
   });

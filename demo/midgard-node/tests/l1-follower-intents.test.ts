@@ -13,43 +13,38 @@
  * - a landed intent, and one a foreign transaction beat to an input, are
  *   never sent;
  * - an unhealthy queue, a failed mempool read, a failed pass and an owed
- *   wallet seed are named holds, and nothing is abandoned for them.
+ *   wallet seed are named holds, and nothing is abandoned for them;
+ * - a resend the ledger refuses at two tips in a row holds its family until
+ *   the facts make the intent dead or a resend is accepted; refused at a
+ *   third distinct tip at or past its lower validity bound, the intent is
+ *   abandoned (`ledger_rejected`) and the hold clears, while refusals at one
+ *   tip, or below the bound, keep it held and never abandon it.
  */
 import {
   decodeTransaction,
   type FactStore,
-  intentJournalProjection,
-  type OutRef,
-  readIntentEventsIn,
-  recordIntentIn,
   WALLET_SEED_PENDING,
 } from "@al-ft/midgard-l1-follower";
-import { encodeSimTx, type SimTx } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
-  stateQueueProjection,
-  stateQueueTrackedSet,
-} from "../src/l1-state-queue/index.js";
-import { nodeFamilyPredicate } from "../src/services/l1-follower.intent-predicates.js";
-import {
-  createNodeIntentStage,
   INTENT_RECONCILE_FAILED,
   INTENT_RECONCILE_TRANSIENT,
+  INTENT_RESUBMIT_REJECTED,
   nodeIntentTrackedSet,
 } from "../src/services/l1-follower.intents.js";
+import { testDatabases } from "./helpers/l1-events-store.js";
 import {
-  ChainDriver,
-  storeOpener,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+  GENESIS,
+  intentStageScenarios,
+  PREFIX,
+  txId,
+} from "./helpers/l1-follower-intents-scenario.js";
 import {
   nodeDatum,
   QUEUE_ADDRESS,
   queueOutput,
-  rootDatum,
-  SIM_QUEUE_CONFIG,
   simHeader,
 } from "./helpers/state-queue-sim.fixtures.js";
 
@@ -62,141 +57,7 @@ afterAll(async () => {
   await databases.dropAll();
 });
 
-const K = 6;
-const GENESIS = "00".repeat(28);
-const ROOT = SDK.STATE_QUEUE_ROOT_ASSET_NAME;
-const PREFIX = SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX;
-const SPARES = 6;
-
-type Transport = {
-  readonly sent: Buffer[];
-  readonly mempool: Set<string>;
-  failMempool: boolean;
-  hasTx(txId: string): Promise<boolean>;
-  submit(
-    bytes: Uint8Array,
-  ): Promise<{ accepted: true } | { accepted: false; rejection: Uint8Array }>;
-  withLedgerState(): Promise<never>;
-};
-
-const fakeTransport = (): Transport => {
-  const transport: Transport = {
-    sent: [],
-    mempool: new Set(),
-    failMempool: false,
-    hasTx: (txId) =>
-      transport.failMempool
-        ? Promise.reject(new Error("mempool read failed"))
-        : Promise.resolve(transport.mempool.has(txId)),
-    submit: (bytes) => {
-      transport.sent.push(Buffer.from(bytes));
-      return Promise.resolve({ accepted: true });
-    },
-    withLedgerState: () => Promise.reject(new Error("no ledger state")),
-  };
-  return transport;
-};
-
-/** A queue (root plus one node, header `first`) and `SPARES` plain outputs at the tracked address. */
-const openScenario = async (dialect: "sqlite" | "postgres") => {
-  const store = await storeOpener(dialect, databases)(
-    [stateQueueProjection(SIM_QUEUE_CONFIG), intentJournalProjection],
-    K,
-  );
-  opened.push(store);
-  const chain = new ChainDriver(store, stateQueueTrackedSet(SIM_QUEUE_CONFIG));
-  await chain.init();
-  const nonce = () => chain.chain.nonce();
-  const plain = { address: QUEUE_ADDRESS, lovelace: 3_000_000n };
-  const [rootTx] = await chain.forward([
-    {
-      inputs: [chain.chain.outsideInput()],
-      outputs: [
-        queueOutput(ROOT, rootDatum(GENESIS, null)),
-        ...Array.from({ length: SPARES }, () => plain),
-      ],
-      nonce: nonce(),
-    },
-  ]);
-  const first = simHeader(1, GENESIS);
-  const firstHash = SDK.stateQueueHeaderHash(first);
-  await chain.forward([
-    {
-      inputs: [{ txHash: rootTx!, index: 0 }],
-      outputs: [
-        queueOutput(ROOT, rootDatum(GENESIS, firstHash)),
-        queueOutput(PREFIX + firstHash, nodeDatum(first, "Unattested", null)),
-      ],
-      nonce: nonce(),
-    },
-  ]);
-  const spare = (i: number): OutRef => ({ txHash: rootTx!, index: 1 + i });
-  /** An own transaction spending `input` back to the tracked address. */
-  const spend = (input: OutRef): SimTx => ({
-    inputs: [input],
-    outputs: [plain],
-    nonce: nonce(),
-  });
-  const record = async (
-    family: string,
-    tx: SimTx,
-    contentRef: string | null = null,
-    workflowKey = `${family}:test`,
-  ): Promise<Buffer> => {
-    const txCbor = encodeSimTx(tx);
-    const result = await store.transaction("write", (sqlTx) =>
-      recordIntentIn(sqlTx, store.dialect, {
-        family,
-        workflowKey,
-        txCbor,
-        isOwnOutput: () => false,
-        contentRef: contentRef === null ? null : Buffer.from(contentRef, "hex"),
-      }),
-    );
-    expect(result.kind).toBe("recorded");
-    return txCbor;
-  };
-  const transport = fakeTransport();
-  const logs: string[] = [];
-  const stage = (seededAddresses: readonly Buffer[] = []) =>
-    createNodeIntentStage({
-      store,
-      transport,
-      securityParameter: K,
-      seededAddresses,
-      wanted: nodeFamilyPredicate({
-        store,
-        stateQueue: SIM_QUEUE_CONFIG,
-        operatorSet: null,
-        slotToPosixMs: (slot) => slot * 1000,
-        horizonLagBlocks: 0,
-      }),
-      log: (line) => logs.push(line),
-    });
-  const events = async (txCbor: Buffer) =>
-    (
-      await store.transaction("read", (sqlTx) =>
-        readIntentEventsIn(sqlTx, decodeTransaction(txCbor).hash),
-      )
-    ).map((event) => event.kind);
-  return {
-    store,
-    chain,
-    nonce,
-    first,
-    firstHash,
-    spare,
-    spend,
-    record,
-    transport,
-    logs,
-    stage,
-    events,
-  };
-};
-
-const txId = (txCbor: Buffer): string =>
-  decodeTransaction(txCbor).hash.toString("hex");
+const openScenario = intentStageScenarios(databases, opened);
 
 describe.each(["sqlite", "postgres"] as const)(
   "the node intent stage over a %s follower store",
@@ -327,6 +188,168 @@ describe.each(["sqlite", "postgres"] as const)(
       ).toBe(true);
       expect(await s.events(register)).toEqual(["signed"]);
       expect(stage.holds()).toEqual(failed);
+      stage.close();
+    });
+
+    it("holds a family whose resend the ledger refuses at two tips, until another landed tx spends its input", async () => {
+      const s = await openScenario(dialect);
+      const add = s.spend(s.spare(0));
+      const funding = await s.record(
+        "reserve_payout",
+        add,
+        "01".repeat(36),
+        "reserve_payout:test:add_funds",
+      );
+      s.transport.refuse.add(txId(funding));
+      const stage = s.stage();
+      expect(await stage.run()).toEqual([]);
+      // Same tip: not sent again, so not refused again.
+      expect(await stage.run()).toEqual([]);
+      await s.chain.forward([]);
+      const held = await stage.run();
+      expect(held.map((hold) => hold.reason)).toEqual([
+        INTENT_RESUBMIT_REJECTED,
+      ]);
+      expect(held[0]!.detail).toContain("reserve_payout:");
+      expect(held[0]!.detail).toContain(txId(funding));
+      expect(await s.events(funding)).toEqual([
+        "signed",
+        "submit_attempt",
+        "submit_rejected",
+        "submit_attempt",
+        "submit_rejected",
+      ]);
+      expect(await stage.run()).toEqual(held);
+      // Another tx spends its input and lands: the intent is dead.
+      await s.chain.forward([s.spend(s.spare(0))]);
+      expect(await stage.run()).toEqual([]);
+      stage.close();
+    });
+
+    it("abandons an intent the ledger refuses at a third distinct tip at or past its lower bound (ledger_rejected), and the hold clears", async () => {
+      const s = await openScenario(dialect);
+      const funding = await s.record(
+        "reserve_payout",
+        s.spend(s.spare(0)),
+        "01".repeat(36),
+        "reserve_payout:test:add_funds",
+      );
+      s.transport.refuse.add(txId(funding));
+      const stage = s.stage();
+      expect(await stage.run()).toEqual([]);
+      await s.chain.forward([]);
+      expect((await stage.run()).map((hold) => hold.reason)).toEqual([
+        INTENT_RESUBMIT_REJECTED,
+      ]);
+      await s.chain.forward([]);
+      expect(await stage.run()).toEqual([]);
+      const entry = stage
+        .lastReport()!
+        .intents.find((e) => e.intent.family === "reserve_payout")!;
+      expect([entry.action, entry.rejection]).toEqual([
+        "abandon",
+        Buffer.from("refused").toString("hex"),
+      ]);
+      const log = await s.eventLog(funding);
+      expect(log.map((event) => event.kind)).toEqual([
+        "signed",
+        ...Array.from({ length: 3 }, () => [
+          "submit_attempt",
+          "submit_rejected",
+        ]).flat(),
+        "abandoned",
+      ]);
+      expect(log.at(-1)!.detail).toEqual({
+        reason: "ledger_rejected",
+        tips: 3,
+      });
+      // Dead from now on: never sent again, nothing held.
+      const sent = s.transport.sent.length;
+      await s.chain.forward([]);
+      expect(await stage.run()).toEqual([]);
+      expect(s.transport.sent).toHaveLength(sent);
+      expect(
+        stage.lastReport()!.entry(decodeTransaction(funding).hash)?.status.kind,
+      ).toBe("abandoned");
+      stage.close();
+    });
+
+    it("keeps holding, and never abandons, an intent the ledger refuses three times at one tip", async () => {
+      const s = await openScenario(dialect);
+      const funding = await s.record(
+        "reserve_payout",
+        s.spend(s.spare(0)),
+        "01".repeat(36),
+        "reserve_payout:test:add_funds",
+      );
+      s.transport.refuse.add(txId(funding));
+      const stage = s.stage();
+      expect(await stage.run()).toEqual([]);
+      // A block on top, rolled back: the tip is the same block again, at a
+      // new generation, so the bytes go out (and are refused) once more.
+      for (let again = 0; again < 2; again += 1) {
+        await s.chain.forward([]);
+        await s.chain.backward(1);
+        expect((await stage.run()).map((hold) => hold.reason)).toEqual([
+          INTENT_RESUBMIT_REJECTED,
+        ]);
+      }
+      expect(await s.events(funding)).toEqual([
+        "signed",
+        ...Array.from({ length: 3 }, () => [
+          "submit_attempt",
+          "submit_rejected",
+        ]).flat(),
+      ]);
+      expect(
+        stage.lastReport()!.entry(decodeTransaction(funding).hash)?.status.kind,
+      ).toBe("live");
+      stage.close();
+    });
+
+    it("clears a resend-refusal hold once a resend is accepted, and once the intent's validity has passed; refusals below its lower bound never abandon it", async () => {
+      const s = await openScenario(dialect);
+      const accepted = await s.record(
+        "reserve_payout",
+        s.spend(s.spare(0)),
+        "01".repeat(36),
+        "reserve_payout:a:add_funds",
+      );
+      const tip = s.chain.chain.tip.point.slot;
+      const expiring = await s.record(
+        "settlement",
+        // Valid from a slot past every tip it is refused at below.
+        {
+          ...s.spend(s.spare(1)),
+          invalidBefore: tip + 5,
+          invalidAfter: tip + 6,
+        },
+        "02".repeat(36),
+        "settlement:b:add_funds",
+      );
+      for (const tx of [accepted, expiring]) s.transport.refuse.add(txId(tx));
+      const stage = s.stage();
+      await stage.run();
+      await s.chain.forward([]);
+      expect(
+        (await stage.run()).map((hold) => hold.detail.split(":")[0]),
+      ).toEqual(["reserve_payout", "settlement"]);
+      s.transport.refuse.delete(txId(accepted));
+      await s.chain.forward([]);
+      expect(
+        (await stage.run()).map((hold) => hold.detail.split(":")[0]),
+      ).toEqual(["settlement"]);
+      // Three refusals at distinct tips, all below its lower bound: held, not abandoned.
+      expect(s.chain.chain.tip.point.slot).toBeLessThan(tip + 5);
+      expect(await s.events(expiring)).toEqual([
+        "signed",
+        ...Array.from({ length: 3 }, () => [
+          "submit_attempt",
+          "submit_rejected",
+        ]).flat(),
+      ]);
+      while (s.chain.chain.tip.point.slot < tip + 6) await s.chain.forward([]);
+      expect(await stage.run()).toEqual([]);
       stage.close();
     });
 

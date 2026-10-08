@@ -393,18 +393,19 @@ export const deriveIntentStatusesIn = async (
 };
 
 /**
- * One intent's derived status, reading only it and its journaled
- * dependencies (transitively), by primary key. Equal to its entry in
- * `deriveIntentStatusesIn` at the same cursor.
+ * The derived states of the intents named and of every journaled intent
+ * they depend on (transitively), at `cursor`, reading only those, by
+ * primary key. Each is equal to its entry in `deriveIntentStatusesIn` at the
+ * same cursor. Names that are not journaled are absent from the result.
  */
-export const deriveIntentStatusIn = async (
+export const deriveIntentClosureIn = async (
   tx: SqlTx,
   dialect: Dialect,
-  txHash: Buffer,
-): Promise<IntentStatusRead> => {
-  const cursor = await readCursor(tx, dialect);
+  cursor: Cursor | null,
+  txHashes: readonly Buffer[],
+): Promise<Map<string, IntentState>> => {
   const closure = new Map<string, IntentHead>();
-  let frontier: Buffer[] = [txHash];
+  let frontier: Buffer[] = [...txHashes];
   while (frontier.length > 0) {
     const found = await readIntentHeadsIn(tx, dialect, frontier);
     frontier = [];
@@ -414,9 +415,9 @@ export const deriveIntentStatusIn = async (
         if (!closure.has(hex(dependency))) frontier.push(dependency);
     }
   }
-  if (!closure.has(hex(txHash))) return { cursor, state: null };
+  if (closure.size === 0) return new Map();
   const heads = [...closure.values()];
-  const derived = await deriveOver(
+  return deriveOver(
     tx,
     dialect,
     cursor,
@@ -427,5 +428,19 @@ export const deriveIntentStatusIn = async (
     ),
     (spenders) => journaledHashesIn(tx, spenders),
   );
+};
+
+/**
+ * One intent's derived status, reading only it and its journaled
+ * dependencies (transitively), by primary key. Equal to its entry in
+ * `deriveIntentStatusesIn` at the same cursor.
+ */
+export const deriveIntentStatusIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  txHash: Buffer,
+): Promise<IntentStatusRead> => {
+  const cursor = await readCursor(tx, dialect);
+  const derived = await deriveIntentClosureIn(tx, dialect, cursor, [txHash]);
   return { cursor, state: derived.get(hex(txHash)) ?? null };
 };

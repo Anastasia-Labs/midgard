@@ -14,7 +14,10 @@
  * `landed_blocks_waiting`, `confirmed_ledger_behind` and
  * `landed_block_rebase_pending`, the first by priority named as the reason
  * and the rest in its detail), the intent stage's (`wallet_seed_pending`,
- * `intent_reconcile_failed`, `intent_reconcile_transient`) and the intent
+ * `intent_reconcile_failed`, `intent_reconcile_transient`,
+ * `intent_resubmit_rejected`, a predicate's wait such as
+ * `intent_included_events_not_deep`, and `tracked_set_changed` while the
+ * store replays a tracked-set reset) and the intent
  * journal's refusals, the worker threads' included (`intent_journal_*`,
  * `intent_input_untracked`, `intent_bytes_mismatch`, `intent_undecodable`,
  * `intent_content_ref_missing`), and
