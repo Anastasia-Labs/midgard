@@ -56,6 +56,8 @@ export type LocalHistoryEventStage = {
   ownerSeedPhrase: string;
   ownerKey: CML.PrivateKey;
   rawAuthority: ReturnType<typeof recordCrossBlockRawEmulator>["authority"];
+  /** Every transaction the raw authority recorded, in submission order. */
+  recorded: ReturnType<typeof recordCrossBlockRawEmulator>["rows"];
   publishDeposit(): Promise<StagedLocalHistoryEvent>;
   publishWithdrawal(
     body: SDK.WithdrawalBody,
@@ -461,6 +463,7 @@ export const openLocalHistoryEventStage =
         ownerSeedPhrase,
         ownerKey,
         rawAuthority: recorder.authority,
+        recorded: recorder.rows,
         confirmedState,
         commit,
         settle,

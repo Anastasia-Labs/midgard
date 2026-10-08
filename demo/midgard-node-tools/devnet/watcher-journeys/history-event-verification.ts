@@ -22,6 +22,52 @@ import { bindJourneyEventAuthorities } from "./event-history-bindings.js";
 import type { VerifiableJourneyBlock } from "./fixture-verification.js";
 import type { LocalHistoryEventStage } from "./history-event-local-staging.js";
 
+/** Depth of the shallowest recorded transaction; one still pending is 0 deep. */
+const recordedDepth = async ({
+  deployment,
+  recorded,
+}: LocalHistoryEventStage) =>
+  (
+    await Promise.all(
+      recorded.map(({ txHash }) =>
+        deployment.emulator.getTransactionStatus(txHash),
+      ),
+    )
+  ).reduce(
+    (shallowest, status) =>
+      Math.min(
+        shallowest,
+        status.status === "confirmed"
+          ? (status.confirmation.confirmations ?? 0)
+          : 0,
+      ),
+    Number.POSITIVE_INFINITY,
+  );
+
+/**
+ * Advance the staging chain until its latest recorded transaction is `depth`
+ * blocks deep: the installed classifier admits a raw L1 snapshot only at the
+ * signed release depth, which a live chain reaches before a watcher acts.
+ * The wait moves the clock past a header's commit window, so a case that
+ * commits a header classifies it after the commit, as a watcher does.
+ */
+const awaitRecordedDepth = async (
+  stage: LocalHistoryEventStage,
+  depth: number,
+) => {
+  const missing = depth - (await recordedDepth(stage));
+  if (missing > 0) {
+    const { emulator, chain } = stage.deployment;
+    emulator.awaitBlock(missing);
+    // Pass the advanced clock through the chain clock callers synchronize with.
+    await chain.awaitLedgerTime(emulator.now());
+  }
+  if ((await recordedDepth(stage)) < depth)
+    throw new Error(
+      "Staging chain did not reach the release observation depth",
+    );
+};
+
 /**
  * Run the unmodified installed selector over an event-bearing retained block.
  * Unlike the transaction-only verifier, the deposit and withdrawal authorities
@@ -59,6 +105,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
   const releaseFinality = transition.releaseFinality;
   const policy = releaseFinality.policy;
   const hubOraclePolicyId = deployment.contracts.hubOracle.policyId;
+  await awaitRecordedDepth(input.stage, policy.confirmationDepth);
   const directory = await mkdtemp("/var/tmp/midgard-history-event-local-");
   try {
     const historySource = createHistoricalNativeScriptHistorySource({
