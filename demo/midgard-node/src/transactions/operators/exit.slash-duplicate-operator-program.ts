@@ -12,6 +12,8 @@ import {
   type OperatorEconomics,
   type OperatorExitError,
   OperatorExitRefusal,
+  type PlannedSnapshot,
+  plannedSnapshotProgram,
   resolveOperatorScriptRefsProgram,
 } from "./exit.resolve-operator-script-refs-program.js";
 import { type DuplicateSlashSubmission } from "./exit.retire-operator-program.js";
@@ -86,15 +88,16 @@ export const slashDuplicateOperatorProgram = (
   input: {
     readonly operatorKeyHash: string;
     readonly economics: OperatorEconomics;
-    readonly snapshot?: SDK.OperatorDirectorySnapshot;
-  },
+  } & PlannedSnapshot,
   options: { readonly label?: string } = {},
 ): Effect.Effect<DuplicateSlashSubmission, OperatorExitError, IntentJournal> =>
   Effect.gen(function* () {
     const label = options.label ?? "slash-duplicate-operator";
-    const snapshot =
-      input.snapshot ??
-      (yield* SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
+    const { snapshot, intentPlan } = yield* plannedSnapshotProgram(
+      lucid,
+      contracts,
+      input,
+    );
     const selection = selectDuplicateRegistration(
       snapshot,
       input.operatorKeyHash,
@@ -171,7 +174,7 @@ export const slashDuplicateOperatorProgram = (
     const txHash = yield* handleSignSubmit(
       lucid,
       tx,
-      journaledIntent("exit", `exit:slash_duplicate:${removedKey}`),
+      journaledIntent("exit", `exit:slash_duplicate:${removedKey}`, intentPlan),
       { label },
     );
     return {

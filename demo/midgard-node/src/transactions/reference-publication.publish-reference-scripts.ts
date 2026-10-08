@@ -62,6 +62,9 @@ export const publishReferenceScripts = async ({
   };
   if (lucid.config().provider === undefined)
     throw new Error("Reference publication requires a provider");
+  // S5: one plan per invocation, opened before its first L1 read; a restart
+  // after a rollback opens a new one.
+  const plan = await Effect.runPromise(journal.openPlan);
   const walletAddress = await lucid.wallet().address();
   const wait = options.wait ?? (() => pause(1_000));
   let deadline = Date.now() + 30 * 60_000;
@@ -206,12 +209,19 @@ export const publishReferenceScripts = async ({
         );
       const output = coreToTxOutput(outputs.get(0));
       const hash = await Effect.runPromise(
-        submitPublicationFunding(journal, lucid, unsigned, "consolidate", {
-          funds,
-          confirmationTimeoutMs: 30 * 60_000,
-          confirmationRetries: 0,
-          requiredOutputIndexes: [0],
-        }),
+        submitPublicationFunding(
+          journal,
+          lucid,
+          unsigned,
+          "consolidate",
+          plan,
+          {
+            funds,
+            confirmationTimeoutMs: 30 * 60_000,
+            confirmationRetries: 0,
+            requiredOutputIndexes: [0],
+          },
+        ),
         { signal },
       );
       await options.synchronize();
@@ -309,7 +319,7 @@ export const publishReferenceScripts = async ({
       }
       signal?.throwIfAborted();
       const hash = await Effect.runPromise(
-        submitPublicationFunding(journal, lucid, unsigned, "split", {
+        submitPublicationFunding(journal, lucid, unsigned, "split", plan, {
           funds,
           confirmationTimeoutMs: 30 * 60_000,
           confirmationRetries: 0,
@@ -369,7 +379,7 @@ export const publishReferenceScripts = async ({
   const withinOutstandingByteBudget = () =>
     outstanding().reduce((sum, record) => sum + record.cbor.length / 2, 0) <=
     MAX_OUTSTANDING_BYTES;
-  const send = sendPublication(journal, lucid);
+  const send = sendPublication(journal, lucid, plan);
   const submit = async (record: Publication) => {
     signal?.throwIfAborted();
     const submittedAt = Date.now();

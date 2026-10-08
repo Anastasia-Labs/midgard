@@ -8,7 +8,7 @@ import { Clock, Effect, Option } from "effect";
 import { inFollowerSnapshot } from "../database/follower-schema.js";
 import { eventOrderByIdIn } from "../l1-events/by-id.js";
 import { Database, Lucid, MidgardContracts } from "../services/index.js";
-import type { IntentJournal } from "../services/intent-journal.js";
+import { type IntentJournal, openPlan } from "../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
   type ReferenceScriptTarget,
@@ -257,6 +257,8 @@ export const absorbConfirmedDepositToReserveProgram = (
     const eventId = parseEventId(config.eventId, "--deposit-event-id");
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
+    // S5: the plan opens before the command's first L1 read.
+    const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const resolution = requireResolution(
       yield* resolveEventSettlementProofProgram({
@@ -283,6 +285,7 @@ export const absorbConfirmedDepositToReserveProgram = (
         membershipProof: resolution.proof,
         referenceScripts: refs,
       },
+      plan,
     );
     return {
       txHash,

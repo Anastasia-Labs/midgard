@@ -10,7 +10,7 @@ import {
 import { Effect } from "effect";
 
 import { type OperatorWalletView } from "../../operator-wallet-view.js";
-import type { IntentJournal } from "../../services/intent-journal.js";
+import { type IntentJournal, openPlan } from "../../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -45,6 +45,8 @@ export const fetchRealStateQueueWitnessContext = (
   IntentJournal
 > =>
   Effect.gen(function* () {
+    // S5: the plan opens before the reads a scheduler refresh rests on.
+    const plan = yield* openPlan;
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
     const resolvedReferenceScripts =
       referenceScriptsAddress === undefined
@@ -145,6 +147,7 @@ export const fetchRealStateQueueWitnessContext = (
       registeredOperatorUtxos,
       alignedEndTime,
       schedulerWitnessUnit,
+      plan,
       operatorWalletView,
       schedulerSpendingScriptRef,
       submitSlotSnapshot,

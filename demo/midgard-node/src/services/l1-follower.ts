@@ -50,7 +50,6 @@ import {
   intentJournalProjection,
   openPostgresFactStore,
   projectionStoreOptions,
-  readinessOf,
   storeTxContentSource,
   transportLedgerOutputs,
 } from "@al-ft/midgard-l1-follower";
@@ -111,6 +110,7 @@ import {
   followerCaughtUp,
   type L1FollowerHandle,
   planCurrentView,
+  startingStatus,
 } from "./l1-follower.readiness.js";
 import { publishL1HeadChange } from "./l1-head-trigger.js";
 import { Lucid } from "./lucid.js";
@@ -394,38 +394,19 @@ const followL1 = Effect.fnUntraced(function* (
   });
   // S6 follows the driver in the same coalesced run (§8.3: every head and
   // generation change), then the journal re-reads its refusal holds: the
-  // commit and settlement workers raise theirs in the node database.
+  // commit and settlement workers raise theirs in the node database. While
+  // the node is behind wall-clock time (`l1_node_behind`) S6 sends nothing;
+  // the next head change after it catches up runs it.
   const trigger = coalescedRunner(
     () =>
       driver
         .run()
-        .then(() => intents.run())
+        .then(() => (status.nodeBehind === null ? intents.run() : undefined))
         .then(() => Runtime.runPromise(runtime)(journal.refresh()))
         .then(() => [...driver.holds(), ...intents.holds()]),
     abort.signal,
   );
-  const initial = {
-    state: "starting",
-    interventions: [],
-    waiting: null,
-    stuck: null,
-    protocolInit: "unknown",
-    cursor: null,
-    node: null,
-    tip: null,
-    atTip: false,
-    replaying: false,
-    events: 0,
-    lastError: null,
-    prune: {
-      steps: 0,
-      prunedThroughSlot: null,
-      lastError: null,
-      floorLagSlots: null,
-      failures: 0,
-    },
-  } as const;
-  let status: FollowStatus = { ...initial, readiness: readinessOf(initial) };
+  let status: FollowStatus = startingStatus;
   let lastCursor: string | null = null;
   const handle: L1FollowerHandle = {
     kind: "running",
@@ -440,6 +421,10 @@ const followL1 = Effect.fnUntraced(function* (
     origin: plan.origin,
     signal: abort.signal,
     log,
+    nodeBehind: {
+      slotTime: (slot) => slotClock.slotToUnixTime(slot),
+      boundMs: config.L1_NODE_BEHIND_MAX_MS,
+    },
     onStatus: (next) => {
       status = next;
       // The driver applies only views at the node's tip: until then a key

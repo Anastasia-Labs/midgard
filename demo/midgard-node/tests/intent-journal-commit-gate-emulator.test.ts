@@ -111,7 +111,7 @@ const submitThroughCommitGate = async (
     handleSignSubmitNoConfirmation(
       lucid,
       unsigned,
-      journaledIntent("commit", "commit:tail=x", header),
+      journaledIntent("commit", "commit:tail=x", await env.plan(), header),
     ).pipe(
       Effect.provideService(BeforeSignedTransactionSubmission, {
         persist: ({ txHash, signedTxCbor, journal }) =>
@@ -324,6 +324,7 @@ const submitCommit = async (
         journaledIntent(
           "commit",
           `commit:${headerHash.toString("hex")}`,
+          await env.plan(),
           headerHash,
         ),
       ).pipe(Effect.provide(env.journalLayer)),

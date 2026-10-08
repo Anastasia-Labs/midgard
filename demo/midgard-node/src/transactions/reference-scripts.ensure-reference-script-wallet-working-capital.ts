@@ -13,8 +13,11 @@ import {
   REFERENCE_SCRIPT_COMMAND_NAMES,
   type ReferenceScriptCommandName,
 } from "../deployable-scripts.js";
-import type { IntentJournal } from "../services/intent-journal.js";
-import { journaledIntent } from "../services/intent-journal.js";
+import {
+  type IntentJournal,
+  journaledIntent,
+  openPlan,
+} from "../services/intent-journal.js";
 import { compareOutRefs } from "../tx-context.js";
 import {
   buildReferenceScriptWalletStatus,
@@ -90,6 +93,8 @@ export const ensureReferenceScriptWalletWorkingCapital = (
   IntentJournal
 > =>
   Effect.gen(function* () {
+    // S5: the plan opens before the wallet read the top-up rests on.
+    const plan = yield* openPlan;
     const referenceScriptWalletUtxos = yield* refreshWalletUtxosFromOwnAddress(
       referenceScriptsLucid,
       {
@@ -195,6 +200,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
       journaledIntent(
         "reference_funding",
         `reference_funding:${scopeName}:${getAddressDetails(referenceScriptAddress).address.hex}:${targetPlainBalance.toString()}`,
+        plan,
       ),
       REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
     );

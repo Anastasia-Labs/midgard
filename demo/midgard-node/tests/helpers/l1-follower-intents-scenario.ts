@@ -6,6 +6,7 @@
  * and a fake node transport whose mempool and ledger refusals a test sets.
  */
 import {
+  currentViewIn,
   decodeTransaction,
   type FactStore,
   intentJournalProjection,
@@ -131,12 +132,13 @@ export const intentStageScenarios =
       workflowKey = `${family}:test`,
     ): Promise<Buffer> => {
       const txCbor = encodeSimTx(tx);
-      const result = await store.transaction("write", (sqlTx) =>
+      const result = await store.transaction("write", async (sqlTx) =>
         recordIntentIn(sqlTx, store.dialect, {
           family,
           workflowKey,
           txCbor,
           isOwnOutput: () => false,
+          builtAt: (await currentViewIn(sqlTx, store.dialect))!,
           contentRef:
             contentRef === null ? null : Buffer.from(contentRef, "hex"),
         }),

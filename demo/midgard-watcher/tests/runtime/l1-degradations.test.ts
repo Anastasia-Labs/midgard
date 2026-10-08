@@ -4,7 +4,10 @@
  * name as a follower readiness reason makes the watcher not ready; the
  * decision driver's reasons reach readiness the same way.
  */
-import { FOLLOWER_NODE_UNAVAILABLE } from "@al-ft/midgard-l1-follower";
+import {
+  FOLLOWER_NODE_BEHIND,
+  FOLLOWER_NODE_UNAVAILABLE,
+} from "@al-ft/midgard-l1-follower";
 import { describe, expect, it } from "vitest";
 
 import type { WatcherFollowerReadiness } from "../../src/l1-follower/follower-runtime.js";
@@ -110,6 +113,21 @@ describe("L1 degradations in operations observability", () => {
       readiness: "not_ready",
       readinessReasons: [FOLLOWER_NODE_UNAVAILABLE],
       l1Readiness: [lost],
+    });
+  });
+
+  it("fails readiness by name, with the lag, while the follower reports the L1 node behind", async () => {
+    const behind = {
+      reason: FOLLOWER_NODE_BEHIND,
+      detail:
+        "node tip slot 1000 is 600 s behind wall-clock time (bound 300 s)",
+    };
+    const w = watcher({ readiness: [behind], degradations: [] });
+    await w.l1.refresh();
+    expect(w.api.status()).toMatchObject({
+      readiness: "not_ready",
+      readinessReasons: [FOLLOWER_NODE_BEHIND],
+      l1Readiness: [behind],
     });
   });
 

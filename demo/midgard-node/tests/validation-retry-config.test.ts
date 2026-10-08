@@ -183,3 +183,29 @@ describe("history commit horizon lag configuration", () => {
     );
   });
 });
+
+describe("L1 node-behind bound configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("defaults to the follower's five-minute bound", async () => {
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      L1_NODE_BEHIND_MAX_MS: 300_000,
+    });
+  });
+
+  it("accepts an operator override", async () => {
+    vi.stubEnv("L1_NODE_BEHIND_MAX_MS", "600000");
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      L1_NODE_BEHIND_MAX_MS: 600_000,
+    });
+  });
+
+  it.each(["0", "-1", "1.5"])("rejects a bound of %s ms", async (bound) => {
+    vi.stubEnv("L1_NODE_BEHIND_MAX_MS", bound);
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "L1_NODE_BEHIND_MAX_MS must be a positive safe integer",
+    );
+  });
+});

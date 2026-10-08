@@ -27,7 +27,7 @@ import {
   NodeConfig,
   StateQueueCorrectionRewindIntegrityError,
 } from "../services/index.js";
-import { IntentJournal } from "../services/intent-journal.js";
+import { IntentJournal, openPlan } from "../services/intent-journal.js";
 import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import {
   clearLivenessIncident,
@@ -55,6 +55,8 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
   | IntentJournal
 > =>
   Effect.gen(function* () {
+    // S5: the pass's plan opens before its first L1 read.
+    const plan = yield* openPlan;
     const lucid = yield* Lucid;
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
@@ -173,6 +175,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       withCorrectionIntentJournal(
         createFileTimeoutCorrectionJournalStore(journalPath),
         yield* IntentJournal,
+        { plan, slotTime: (slot) => lucid.api.slotToUnixTime(slot) },
       ),
       globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
     );

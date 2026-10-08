@@ -44,7 +44,7 @@ describe("operator watchdog wallet selection", () => {
     const successor = fixture.operators.find(
       ({ keyHash }) => keyHash !== appointed.operatorKeyHash,
     )!;
-    const early = await Effect.runPromise(
+    const early = await runWithoutFollower(
       planTakeoverProgram(fixture.lucid, fixture.contracts),
     );
     if (early.plan.kind !== "not-yet") {

@@ -9,6 +9,11 @@ import {
 } from "../../commands/contract-deployment-info.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "../../lucid-time.js";
 import { type NodeConfig } from "../../services/index.js";
+import {
+  type IntentJournal,
+  type IntentPlan,
+  openPlan,
+} from "../../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
 import {
   fetchReferenceScriptUtxosProgram,
@@ -208,6 +213,46 @@ export const deriveWitnesses = <A>(derive: () => A): Effect.Effect<A, Error> =>
     catch: (cause) =>
       cause instanceof Error ? cause : new Error(String(cause)),
   });
+
+// ---------------------------------------------------------------------------
+// Planning (S5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where an exit's directory snapshot comes from (S5, §8.1): the caller's,
+ * with the plan opened before the caller read it, or none, and the program
+ * opens a plan and then reads its own.
+ */
+export type PlannedSnapshot =
+  | Readonly<{ snapshot?: undefined; intentPlan?: undefined }>
+  | Readonly<{
+      snapshot: SDK.OperatorDirectorySnapshot;
+      intentPlan: IntentPlan;
+    }>;
+
+/** The directory snapshot an exit plans from, and the plan it records under. */
+export const plannedSnapshotProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.OperatorDirectoryValidators,
+  input: PlannedSnapshot,
+): Effect.Effect<
+  Readonly<{ snapshot: SDK.OperatorDirectorySnapshot; intentPlan: IntentPlan }>,
+  SDK.OperatorDirectorySnapshotError,
+  IntentJournal
+> =>
+  input.snapshot === undefined
+    ? Effect.gen(function* () {
+        const intentPlan = yield* openPlan;
+        const snapshot = yield* SDK.fetchOperatorDirectorySnapshotProgram(
+          lucid,
+          contracts,
+        );
+        return { snapshot, intentPlan };
+      })
+    : Effect.succeed({
+        snapshot: input.snapshot,
+        intentPlan: input.intentPlan,
+      });
 
 // ---------------------------------------------------------------------------
 // Retirement

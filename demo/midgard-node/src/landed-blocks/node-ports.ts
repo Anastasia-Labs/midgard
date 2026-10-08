@@ -3,16 +3,10 @@
  * follower store for the view check, the foreign replay, the node's block
  * journals and merge finalization, and the history owner for the rebase.
  */
-import {
-  type FactStore,
-  postgresDialect,
-  type View,
-  viewValidQuery,
-} from "@al-ft/midgard-l1-follower";
-import { SqlClient } from "@effect/sql";
+import type { FactStore } from "@al-ft/midgard-l1-follower";
 import { Effect, Ref } from "effect";
 
-import { numbered } from "../database/follower-schema.js";
+import { followerViewValid } from "../database/follower-schema.js";
 import { MutationJobsDB } from "../database/index.js";
 import type { ForcedOrderConfig } from "../forced-orders/index.js";
 import type { EventProjectionConfig } from "../l1-events/config.js";
@@ -32,16 +26,7 @@ import type { LandedBlockPorts } from "./ports.js";
 import { rebasePlan } from "./rebase-target.js";
 import { replayForeignBlock } from "./replay-foreign.js";
 
-const confirmView = (view: View) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const check = viewValidQuery(postgresDialect, view);
-    const valid = yield* sql.unsafe<{ valid: boolean }>(
-      numbered(check.sql),
-      check.params as never,
-    );
-    return valid[0]?.valid === true;
-  });
+const confirmView = followerViewValid;
 
 const genesis = Effect.gen(function* () {
   const config = yield* NodeConfig;

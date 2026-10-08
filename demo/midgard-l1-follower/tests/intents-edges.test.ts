@@ -9,7 +9,6 @@ import {
   deriveIntentStatusIn,
   type OutRef,
   readIntentEventsIn,
-  recordIntentIn,
 } from "../src/index.js";
 import { encodeSimTx, SIM_ORIGIN, simTxHash } from "../src/testing/index.js";
 import { modelStatuses, observedOf } from "./support/intent-sim.model.js";
@@ -23,6 +22,7 @@ import {
   spend,
   u,
 } from "./support/intents-harness.js";
+import { recordAtCurrentView } from "./support/record-at-view.js";
 
 let h: Harness;
 
@@ -181,7 +181,7 @@ describe("derived status edges (I1-fix)", () => {
     await h.store.initialize(SIM_ORIGIN);
     const registration = spend(h.chain, await h.fund());
     await h.store.transaction("write", (sql) =>
-      recordIntentIn(sql, h.store.dialect, {
+      recordAtCurrentView(sql, h.store.dialect, {
         family: "script_reward_registration",
         workflowKey:
           "script_reward_registration:availability_challenge:register",

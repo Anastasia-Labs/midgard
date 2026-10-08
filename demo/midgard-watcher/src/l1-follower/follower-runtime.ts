@@ -154,6 +154,16 @@ export const openWatcherFollowerRuntime = (
     ledgerOutputsAt: ledgerOutputsFromTransport(transport),
   });
   const provider = new L1FollowerProvider({ store, transport });
+  // The node's slot configuration, read once it answers (`l1_node_behind`).
+  let slotConfig: ReturnType<L1FollowerProvider["slotConfig"]> | undefined;
+  const slotTime = async (slot: number): Promise<number> => {
+    slotConfig ??= provider.slotConfig().catch((error: unknown) => {
+      slotConfig = undefined;
+      throw error;
+    });
+    const { zeroTime, zeroSlot, slotLength } = await slotConfig;
+    return zeroTime + (slot - zeroSlot) * slotLength;
+  };
   const proofRetention = createWatcherProofRetention(store, {
     unitHistoryPolicies,
     stateQueuePolicyId: input.deployment.stateQueueMint,
@@ -226,6 +236,9 @@ export const openWatcherFollowerRuntime = (
           origin: input.origin,
           signal: abort.signal,
           log: (line) => log(`L1 follower: ${line}`),
+          // `l1_node_behind` at the follower's default bound; it clears
+          // when the node catches up.
+          nodeBehind: { slotTime },
           onStatus: (status) => {
             latest = status;
             if (status.cursor !== null && !seeder.ready()) stepSeed();

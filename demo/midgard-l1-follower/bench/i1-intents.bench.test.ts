@@ -14,7 +14,6 @@ import {
   openSqliteFactStore,
   type OutRef,
   projectionStoreOptions,
-  recordIntentIn,
 } from "../src/index.js";
 import {
   encodeSimTx,
@@ -25,6 +24,7 @@ import {
   simUniverse,
 } from "../src/testing/index.js";
 import { testDatabases } from "../tests/support/postgres.js";
+import { recordAtCurrentView } from "../tests/support/record-at-view.js";
 import { now, writeReport } from "./support/workload.js";
 
 /**
@@ -156,7 +156,7 @@ const measure = async (
     for (let start = 0; start < all.length; start += RECORDS_PER_TX)
       await store.transaction("write", async (tx) => {
         for (const sim of all.slice(start, start + RECORDS_PER_TX)) {
-          const result = await recordIntentIn(tx, store.dialect, {
+          const result = await recordAtCurrentView(tx, store.dialect, {
             family: "commit",
             workflowKey: `bench:${simTxHash(sim).toString("hex")}`,
             txCbor: encodeSimTx(sim),

@@ -45,7 +45,10 @@ import {
  * Submits signed bytes with recovery for provider races and early-validity
  * failures. The intent journal (§8.2) records the exact bytes immediately
  * before the first submission; a refusal stops the submission
- * (`IntentJournalRefused`). Every retry here sends the same bytes.
+ * (`IntentJournalRefused`). Every send here, retries included, follows S6's
+ * decision taken in the record's transaction (§8.1); a held one stops the
+ * submission (`IntentSubmitHeld`) and S6's reconciler decides it under the
+ * current view. Every retry here sends the same bytes.
  */
 export const submitSignedTxWithRecovery = (
   lucid: LucidEvolution,
@@ -56,7 +59,10 @@ export const submitSignedTxWithRecovery = (
 ): Effect.Effect<void, unknown, IntentJournal> =>
   Effect.gen(function* () {
     const journal = yield* IntentJournal;
-    let journaled = false;
+    const purpose = {
+      kind: "send",
+      slotTime: (slot: number) => lucid.slotToUnixTime(slot),
+    } as const;
     const sleep = options.sleep ?? submitRecoverySleep(lucid);
     let providerRetryAttempts = 0;
     let outsideValidityRecoveryAttempts = 0;
@@ -151,9 +157,10 @@ export const submitSignedTxWithRecovery = (
       }
       // The pre-broadcast gate owns one outermost transaction and runs the
       // journal's insert inside it, so a refused gate leaves no journal row,
-      // and a row never outlives a gate that did not pass. It runs for each
-      // attempt so a generation change also fences retries; the row itself
-      // is written once (a second insert is `already_recorded`).
+      // and a row never outlives a gate that did not pass. The record and
+      // S6's send decision run for each attempt, so a rewind also fences
+      // retries; the row itself is written once (a second insert is
+      // `already_recorded`). The send follows the commit.
       const durable = yield* Effect.serviceOption(
         BeforeSignedTransactionSubmission,
       );
@@ -165,10 +172,7 @@ export const submitSignedTxWithRecovery = (
               journal,
             })
         : undefined;
-      if (!journaled || gate !== undefined) {
-        yield* journal.record(intent, signed.toCBOR(), txHash, gate);
-        journaled = true;
-      }
+      yield* journal.record(intent, signed.toCBOR(), txHash, purpose, gate);
       const submitResult = yield* Effect.either(signed.submitProgram());
       if (submitResult._tag === "Right") {
         return;

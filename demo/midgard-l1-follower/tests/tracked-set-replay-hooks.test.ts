@@ -27,7 +27,6 @@ import {
   openSqliteFactStore,
   type OutRef,
   projectionStoreOptions,
-  recordIntentIn,
   resetToOrigin,
   type SqlBackend,
   type TrackedSet,
@@ -43,6 +42,7 @@ import {
   simUniverse,
 } from "../src/testing/index.js";
 import { testDatabases } from "./support/postgres.js";
+import { recordAtCurrentView } from "./support/record-at-view.js";
 
 const databases = testDatabases();
 const scratch = mkdtempSync(join(tmpdir(), "l1-follower-replay-hooks-"));
@@ -157,7 +157,7 @@ const followed = async (location: Location) => {
       expect(
         (
           await store.transaction("write", (sql) =>
-            recordIntentIn(sql, store.dialect, {
+            recordAtCurrentView(sql, store.dialect, {
               family: "commit",
               workflowKey: `commit:${simTxHash(tx).toString("hex")}`,
               txCbor: encodeSimTx(tx),

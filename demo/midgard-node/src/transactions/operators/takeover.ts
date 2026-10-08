@@ -14,7 +14,9 @@ import { Effect } from "effect";
 import { type L1SlotUnknownError } from "../../l1-heads.js";
 import {
   type IntentJournal,
+  type IntentPlan,
   journaledIntent,
+  openPlan,
 } from "../../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
 import { resolveL1NowMs } from "../register-active-operator/clock.js";
@@ -58,6 +60,8 @@ export type TakeoverPlanning = {
   readonly nowMs: bigint;
   readonly snapshot: SDK.OperatorDirectorySnapshot;
   readonly plan: SDK.InactivityTakeoverPlan;
+  /** The intent plan (S5) opened before `snapshot` was read. */
+  readonly intentPlan: IntentPlan;
 };
 
 /**
@@ -68,6 +72,7 @@ export type TakeoverPlanning = {
 export const planTakeoverFrom = (
   lucid: LucidEvolution,
   snapshot: SDK.OperatorDirectorySnapshot,
+  intentPlan: IntentPlan,
   options: {
     readonly neglectedEvent?: SDK.NeglectedUserEventClaim;
     readonly params?: SDK.InactivityTimingParameters;
@@ -84,7 +89,7 @@ export const planTakeoverFrom = (
       validityWindowMs: OPERATOR_TX_VALIDITY_WINDOW_MS,
       alignValidFrom: (candidate) => alignedUnixTimeAtOrAfter(lucid, candidate),
     });
-    return { nowMs, snapshot, plan };
+    return { nowMs, snapshot, plan, intentPlan };
   });
 
 /**
@@ -95,15 +100,21 @@ export const planTakeoverFrom = (
 export const planTakeoverProgram = (
   lucid: LucidEvolution,
   contracts: SDK.OperatorDirectoryValidators,
-  options: Parameters<typeof planTakeoverFrom>[2] = {},
+  options: Parameters<typeof planTakeoverFrom>[3] = {},
 ): Effect.Effect<
   TakeoverPlanning,
-  SDK.OperatorDirectorySnapshotError | L1SlotUnknownError
+  SDK.OperatorDirectorySnapshotError | L1SlotUnknownError,
+  IntentJournal
 > =>
-  Effect.flatMap(
-    SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts),
-    (snapshot) => planTakeoverFrom(lucid, snapshot, options),
-  );
+  Effect.gen(function* () {
+    // S5: the plan opens before the directory read.
+    const intentPlan = yield* openPlan;
+    const snapshot = yield* SDK.fetchOperatorDirectorySnapshotProgram(
+      lucid,
+      contracts,
+    );
+    return yield* planTakeoverFrom(lucid, snapshot, intentPlan, options);
+  });
 
 export type ReadyTakeoverPlan = Extract<
   SDK.InactivityTakeoverPlan,
@@ -173,6 +184,7 @@ export const submitInactivityStrikeProgram = (
       journaledIntent(
         "takeover",
         `takeover:${plan.currentOperator}:${plan.newStartTime.toString()}`,
+        planning.intentPlan,
       ),
       { label },
     );

@@ -473,6 +473,12 @@ describe("GET /readyz names the L1 follower's reasons (N1)", () => {
       reason: "node_unreachable",
       detail: "dial: no such file",
     });
+    const behind = { tipSlot: 100, lagMs: 600_000, boundMs: 300_000 };
+    const late = await holds(
+      runningFollower(followingAtTip({ nodeBehind: behind })),
+      "l1_node_behind",
+    );
+    expect(late.l1Follower).toMatchObject({ nodeBehind: behind });
   });
 
   it("names each hold of the follower-change driver", async () => {

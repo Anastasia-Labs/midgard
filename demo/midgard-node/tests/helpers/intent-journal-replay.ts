@@ -74,6 +74,7 @@ import {
 import { capturedChainOf, GENESIS_HASH } from "./emulator-chain-capture.js";
 import {
   drainJournaledWithoutFollower,
+  RECORD_ONLY,
   type RecordedIntent,
 } from "./intent-journal.js";
 import {
@@ -412,17 +413,28 @@ export const replayJournaledOnFollower = async (input: {
       )
       .map(({ entry }) => entry);
     const replayed: Omit<ReplayedIntent, "after">[] = [];
-    for (const entry of ordered) {
-      const { intent } = entry;
-      if (intent.kind !== "journaled") continue;
-      await followTo(landedAt(entry.txHash));
+    for (const recorded of ordered) {
+      if (recorded.intent.kind !== "journaled") continue;
+      await followTo(landedAt(recorded.txHash));
+      // The flow planned without a follower; on this one its plan opens
+      // here, at the view the replay has followed to.
+      const intent = {
+        ...recorded.intent,
+        plan: await Effect.runPromise(journal.openPlan),
+      };
+      const entry = { ...recorded, intent };
       const header = intent.family === "commit" ? intent.contentRef : undefined;
       const { outcome, gated } =
         header === undefined
           ? {
               outcome: await Effect.runPromise(
                 Effect.either(
-                  journal.record(intent, entry.signedTxCbor, entry.txHash),
+                  journal.record(
+                    intent,
+                    entry.signedTxCbor,
+                    entry.txHash,
+                    RECORD_ONLY,
+                  ),
                 ),
               ),
               gated: undefined,

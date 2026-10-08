@@ -28,6 +28,7 @@ import {
 } from "../services/index.js";
 import {
   type IntentJournalService,
+  type IntentPlan,
   journaledIntent,
 } from "../services/intent-journal.js";
 
@@ -170,6 +171,9 @@ export const withTimeoutCorrectionProgress = (
  * `superseded` back to `prepared`, same bytes) is not a send decision and
  * is not journaled; its bytes were journaled when first prepared.
  * Recording precedes the save, so a refusal fails it and nothing is sent.
+ * The record takes S6's send decision under the pass's `plan` (§8.1): a
+ * held one (`IntentSubmitHeld`) fails the save too, so the workflow sends
+ * nothing and S6's reconciler decides the journaled step.
  *
  * Key: `correction:<target header>:<kind>:<removed header>`; the content
  * reference is the removed header.
@@ -177,6 +181,11 @@ export const withTimeoutCorrectionProgress = (
 export const withCorrectionIntentJournal = (
   store: TimeoutCorrectionJournalStore,
   journal: IntentJournalService,
+  pass: Readonly<{
+    /** The workflow pass's plan, opened before its first L1 read. */
+    plan: IntentPlan;
+    slotTime: (slot: number) => number;
+  }>,
 ): TimeoutCorrectionJournalStore => {
   let last: TimeoutCorrectionJournal | undefined;
   const decided = (
@@ -200,10 +209,12 @@ export const withCorrectionIntentJournal = (
             journaledIntent(
               "correction",
               `correction:${next.targetHeaderHash}:${step.kind}:${step.removedHeaderHash}`,
+              pass.plan,
               Buffer.from(step.removedHeaderHash, "hex"),
             ),
             step.signedCbor,
             step.txHash,
+            { kind: "send", slotTime: pass.slotTime },
           ),
         );
       await store.save(next);

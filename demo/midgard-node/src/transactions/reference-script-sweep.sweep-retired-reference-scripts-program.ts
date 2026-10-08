@@ -8,7 +8,7 @@ import {
 import { Effect } from "effect";
 
 import type { IntentJournal } from "../services/intent-journal.js";
-import { journaledIntent } from "../services/intent-journal.js";
+import { journaledIntent, openPlan } from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   buildReferenceScriptSweepPlan,
@@ -196,14 +196,16 @@ export const sweepRetiredReferenceScriptsProgram = ({
     const quarantineAddress = options.quarantineAddress ?? returnAddress;
     const spentOutRefs = new Set<string>();
 
+    // S5: each round's plan opens before the read its batch is built on.
     const planFromChain = Effect.gen(function* () {
+      const intentPlan = yield* openPlan;
       const utxos = yield* fetchReferenceScriptUtxosAt(
         lucid,
         referenceScriptsAddress,
         `reference-script sweep UTxO fetch at ${referenceScriptsAddress}`,
         `Failed to fetch reference-script sweep UTxOs at ${referenceScriptsAddress}`,
       );
-      return yield* Effect.try({
+      const sweep = yield* Effect.try({
         try: () =>
           buildReferenceScriptSweepPlan({
             utxos: utxos.filter((utxo) => !spentOutRefs.has(outRefLabel(utxo))),
@@ -225,9 +227,11 @@ export const sweepRetiredReferenceScriptsProgram = ({
           }),
         catch: refusalToError,
       });
+      return { sweep, intentPlan };
     });
 
-    const initialPlan = yield* planFromChain;
+    const initial = yield* planFromChain;
+    const initialPlan = initial.sweep;
     const plan = summarizeReferenceScriptSweepPlan(initialPlan);
     if (!options.execute || initialPlan.batches.length === 0) {
       return { dryRun: !options.execute, plan, submitted: [] };
@@ -252,7 +256,8 @@ export const sweepRetiredReferenceScriptsProgram = ({
       // A pinned wallet view from the previous batch would hide fresh inputs
       // from the signer.
       lucid.clearUTxOOverride();
-      const current = round === 0 ? initialPlan : yield* planFromChain;
+      const { sweep: current, intentPlan } =
+        round === 0 ? initial : yield* planFromChain;
       const batch = current.batches[0];
       if (batch === undefined) {
         break;
@@ -267,6 +272,7 @@ export const sweepRetiredReferenceScriptsProgram = ({
         journaledIntent(
           "reference_sweep",
           `reference_sweep:${outRefLabel(batch.inputs[0]!)}+${batch.inputs.length.toString()}`,
+          intentPlan,
         ),
         {
           confirmationTimeoutMs: REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
