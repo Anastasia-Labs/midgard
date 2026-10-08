@@ -36,8 +36,10 @@ export const collectDbCounts = (): Effect.Effect<
         FROM pending_block_finalizations WHERE status <> 'locally_applied'
       UNION ALL
       SELECT 'mempool' AS label, COUNT(*) AS count FROM mempool
+        WHERE included_by IS NULL
       UNION ALL
       SELECT 'processed_mempool' AS label, COUNT(*) AS count FROM processed_mempool
+        WHERE included_by IS NULL
       UNION ALL
       SELECT 'blocks' AS label, COUNT(*) AS count FROM blocks
       UNION ALL

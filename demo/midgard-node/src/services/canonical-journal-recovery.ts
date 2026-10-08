@@ -242,8 +242,10 @@ export const reviveReplacedCanonicalJournal = (
               `its transaction ${committed[0]!.tx_id.toString("hex")} is already committed locally`,
             );
           const pending = yield* sql<{ tx_id: Buffer }>`
-            SELECT tx_id FROM ${sql(MempoolDB.tableName)} WHERE tx_id IN ${sql.in(txIds)}
-            UNION SELECT tx_id FROM ${sql(ProcessedMempoolDB.tableName)} WHERE tx_id IN ${sql.in(txIds)}`;
+            SELECT tx_id FROM ${sql(MempoolDB.tableName)}
+              WHERE tx_id IN ${sql.in(txIds)} AND included_by IS NULL
+            UNION SELECT tx_id FROM ${sql(ProcessedMempoolDB.tableName)}
+              WHERE tx_id IN ${sql.in(txIds)} AND included_by IS NULL`;
           const present = new Set(
             pending.map(({ tx_id }) => tx_id.toString("hex")),
           );

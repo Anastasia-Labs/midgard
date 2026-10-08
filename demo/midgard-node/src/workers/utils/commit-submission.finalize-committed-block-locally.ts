@@ -9,7 +9,7 @@ import {
   CekProgramMaterialDB,
   DaPayloadsDB,
   ImmutableDB,
-  MempoolDB,
+  MempoolInclusionsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
@@ -151,7 +151,7 @@ export const finalizeCommittedBlockLocally = (
     }
 
     yield* Effect.logInfo(
-      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing included txs from MempoolDB/ProcessedMempoolDB, and resetting the transactions MPF root marker...",
+      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, marking included txs in MempoolDB/ProcessedMempoolDB, and resetting the transactions MPF root marker...",
     );
     const sql = yield* SqlClient.SqlClient;
     const transactionStartedAt = Date.now();
@@ -182,11 +182,15 @@ export const finalizeCommittedBlockLocally = (
             filteredBatches,
             (batch, i) =>
               Effect.gen(function* () {
+                // The block's rows stay, marked by its header, until the
+                // block folds (or a rollback clears the mark).
                 const clearMempoolProgram =
                   batch.clearMempoolTxHashes.length === 0
                     ? Effect.void
-                    : MempoolDB.clearTxs([...batch.clearMempoolTxHashes]).pipe(
-                        Effect.withSpan(`mempool-db-clear-txs-batch-${i}`),
+                    : MempoolInclusionsDB.markIncluded(newHeaderHashBuffer, [
+                        ...batch.clearMempoolTxHashes,
+                      ]).pipe(
+                        Effect.withSpan(`mempool-db-mark-included-batch-${i}`),
                       );
                 yield* ImmutableDB.insertTxsValidatedNative([
                   ...batch.txsToInsertImmutable,
@@ -203,9 +207,10 @@ export const finalizeCommittedBlockLocally = (
           const processedTxHashes = processedMempoolTxs.map((entry) =>
             Buffer.from(entry[TxColumns.TX_ID]),
           );
-          if (processedTxHashes.length > 0) {
-            yield* ProcessedMempoolDB.clearTxs(processedTxHashes);
-          }
+          yield* MempoolInclusionsDB.markIncluded(
+            newHeaderHashBuffer,
+            processedTxHashes,
+          );
           const deletedOutRefHexes =
             yield* applyFinalizedWithdrawalLedgerEffects(
               includedWithdrawalEventIds,

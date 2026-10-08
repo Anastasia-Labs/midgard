@@ -23,8 +23,14 @@
  * - The mempool model admits pending chains (one spending the processed
  *   tip's `X`, one spending that) and single spends of `Y` and the pool,
  *   some as one accepted batch, so rebases reject directly, transitively
- *   and by batch, on rollbacks and on double spends; foreign blocks include
- *   pending transactions.
+ *   and by batch, on rollbacks and on double spends (blocks spend the pool
+ *   outputs too); foreign blocks include pending transactions.
+ * - The model's settlement record is what every block on the processed
+ *   chain includes, folded blocks too; a rollback takes a block's out. A
+ *   member it names is settled for the batch closure, its row stays marked
+ *   until the block folds, and the node's recorded receipt settlements and
+ *   marks must equal it. So a batch can be rejected around a member a
+ *   folded block settled.
  * - The node commits its own blocks on the processed tip
  *   (`landed-blocks-sim.node.ts`): the traffic's own candidate on it, which
  *   lands later (or never), or a fresh block that never lands. It abandons
@@ -100,6 +106,8 @@ export const landedBlocksSimProjection = (
   /** The node's state at the end of the last check it was up for. */
   let snapshot: string | undefined;
   let seen = 0;
+  /** The foreign blocks whose included transactions `foreignIncluded` counted. */
+  const countedIncludes = new Set<string>();
   const run = <A, E>(effect: Effect.Effect<A, E, Database>) =>
     Runtime.runPromise(env.runtime)(effect);
   const { stats, mempool, book } = env;
@@ -118,26 +126,47 @@ export const landedBlocksSimProjection = (
 
   const settler = simSettler(env, node, run, served);
 
-  /** What the base blocks of `processed` (and the live own block) include. */
+  /** The transactions a block includes (an own block's journal, a foreign block's replay). */
+  const includesOf = (header: string): readonly Buffer[] =>
+    env.registry.get(header)!.own
+      ? book.blocks.get(header)!.txIds
+      : (env.includes.get(header) ?? []);
+
+  /**
+   * The model's settlement record at `model`: the block on the processed
+   * chain that includes each transaction, and the kind of the folded block
+   * (at or below the frontier) for those a folded block includes.
+   */
+  const recordAt = (model: Readonly<{ frontier: string; tip: string }>) => {
+    const chain = rootLineage(env.registry, model.tip);
+    const foldedThrough = chain.indexOf(model.frontier);
+    const settledBy = new Map<string, string>();
+    const folded = new Map<string, "own" | "foreign">();
+    chain.forEach((header, at) => {
+      for (const id of includesOf(header)) {
+        settledBy.set(hex(id), header);
+        if (at <= foldedThrough)
+          folded.set(
+            hex(id),
+            env.registry.get(header)!.own ? "own" : "foreign",
+          );
+      }
+    });
+    return { settledBy, folded };
+  };
+
+  type Record = ReturnType<typeof recordAt>;
+
+  /** The record and the live own block's members, as the batch closure reads them. */
   const includedBy = (
-    processed: readonly string[],
-    rows: readonly string[],
+    record: Record,
     live: Readonly<{ txIds: readonly Buffer[] }> | undefined,
   ): SimIncluded => ({
-    foreign: new Set(
-      processed
-        .filter((header) => !env.registry.get(header)!.own)
-        .flatMap((header) => env.includes.get(header) ?? [])
-        .map(hex),
-    ),
-    own: new Set(
-      [
-        ...rows
-          .filter((header) => env.registry.get(header)!.own)
-          .flatMap((header) => book.blocks.get(header)!.txIds),
-        ...(live?.txIds ?? []),
-      ].map(hex),
-    ),
+    settled: new Set([
+      ...record.settledBy.keys(),
+      ...(live?.txIds ?? []).map(hex),
+    ]),
+    folded: record.folded,
   });
 
   /** The node equals the model at `top` (the live own block or the processed tip). */
@@ -145,6 +174,7 @@ export const landedBlocksSimProjection = (
     model: Readonly<{ frontier: string; tip: string }>,
     top: string,
     ledger: ReadonlyMap<string, Buffer>,
+    record: Record,
   ) => {
     const expected = expectedState(
       env.universe,
@@ -152,6 +182,7 @@ export const landedBlocksSimProjection = (
       model,
       ledger,
       mempool,
+      record.settledBy,
     );
     const difference = stateDifference(
       await run(readActual(env.registry)),
@@ -254,13 +285,14 @@ export const landedBlocksSimProjection = (
       return `active own block ${live.headerHash} is built on ${live.parentHash}, the processed tip is ${model.tip}`;
     const top = live?.headerHash ?? model.tip;
     const topInfo = env.registry.get(top)!;
+    const record = recordAt(model);
     const rebuild = settleMempool(
       mempool,
       ledgerMap(env.universe.ledger(topInfo.h, topInfo.b)),
-      includedBy(model.processed, model.rows, live),
+      includedBy(record, live),
     );
     if (typeof rebuild === "string") return rebuild;
-    const difference = await compareState(model, top, rebuild.ledger);
+    const difference = await compareState(model, top, rebuild.ledger, record);
     if (difference !== null) return difference;
     // Case counters (the node agreed with the model).
     const merged = new Set(rooted);
@@ -283,8 +315,14 @@ export const landedBlocksSimProjection = (
       if (reason === "direct") stats.directRejections += 1;
       else if (reason === "dependent") stats.dependentRejections += 1;
       else stats.batchRejections += 1;
-    stats.foreignIncluded += rebuild.dropped.length;
+    for (const header of model.processed)
+      if (!env.registry.get(header)!.own && !countedIncludes.has(header)) {
+        countedIncludes.add(header);
+        stats.foreignIncluded += includesOf(header).length;
+      }
     if (rebuild.batchSettled) stats.batchSettled += 1;
+    if (rebuild.foldThenReject.has("own")) stats.foldThenRejectOwn += 1;
+    if (rebuild.foldThenReject.has("foreign")) stats.foldThenRejectForeign += 1;
     if (model.rows.some((header) => env.registry.get(header)!.own))
       stats.ownProcessed += 1;
     modelFrontier = model.frontier;
@@ -296,7 +334,17 @@ export const landedBlocksSimProjection = (
       stats.prunedChecks += 1;
     // The node's own moves: admissions, then now and then its own block on
     // the processed tail.
-    if (stats.checks % 2 === 0 && mempool.survivors.length < 6)
+    const pending = () =>
+      mempool.survivors.filter((tx) => !record.settledBy.has(hex(tx.id)));
+    // Pool spends stay pending for good: they do not count.
+    const poolKeys = new Set(
+      env.universe.pool.map((entry) => hex(entry.outref)),
+    );
+    if (
+      stats.checks % 2 === 0 &&
+      pending().filter((tx) => !tx.spent.some((key) => poolKeys.has(hex(key))))
+        .length < 6
+    )
       await node.admit(topInfo, rebuild.ledger);
     const tipInfo = env.registry.get(model.tip)!;
     const candidate =
@@ -314,19 +362,20 @@ export const landedBlocksSimProjection = (
         tipInfo.h + 1 <= H_MAX &&
         !hasDeposit(tipInfo.h + 1))
     ) {
-      const block = await node.commit(model.tip, candidate);
+      const block = await node.commit(model.tip, candidate, pending());
       if (typeof block === "string") return block;
       const info = env.registry.get(block.headerHash)!;
       const after = settleMempool(
         mempool,
         ledgerMap(env.universe.ledger(info.h, info.b)),
-        includedBy(model.processed, model.rows, block),
+        includedBy(record, block),
       );
       if (typeof after === "string") return after;
       const committed = await compareState(
         model,
         block.headerHash,
         after.ledger,
+        record,
       );
       if (committed !== null) return `after an own commit: ${committed}`;
     }

@@ -15,6 +15,7 @@ import { Effect, Metric, Option } from "effect";
 import * as CekProgramMaterialDB from "../database/cekProgramMaterial.js";
 import * as DepositsDB from "../database/deposits.js";
 import * as MempoolDB from "../database/mempool.js";
+import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import * as MempoolLedgerDB from "../database/mempoolLedger.js";
 import * as MempoolTxDeltasDB from "../database/mempoolTxDeltas.js";
 import * as ProcessedMempoolDB from "../database/processedMempool.js";
@@ -221,14 +222,18 @@ const withDepositOrigin = (row: MempoolLedgerDB.EntryNoTimeStamp) =>
     };
   });
 
-/** Pending transactions outside `excluded`, with their spends and outputs. An
- * undecodable one spends nothing this node can name; the commit stage rejects
- * it on its own. */
+/** Pending (unmarked) transactions outside `excluded`, with their spends and
+ * outputs. An undecodable one spends nothing this node can name; the commit
+ * stage rejects it on its own. */
 const loadPendingTxEffects = (excluded: ReadonlySet<string>) =>
   Effect.gen(function* () {
     const entries = [
-      ...(yield* Tx.retrieveAllEntries(MempoolDB.tableName)),
-      ...(yield* Tx.retrieveAllEntries(ProcessedMempoolDB.tableName)),
+      ...(yield* MempoolInclusionsDB.retrievePendingEntries(
+        MempoolDB.tableName,
+      )),
+      ...(yield* MempoolInclusionsDB.retrievePendingEntries(
+        ProcessedMempoolDB.tableName,
+      )),
     ].filter((entry) => !excluded.has(hex(entry[Tx.Columns.TX_ID])));
     const deltas = yield* MempoolTxDeltasDB.retrieveByTxIds(
       entries.map((entry) => entry[Tx.Columns.TX_ID]),

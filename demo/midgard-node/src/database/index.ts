@@ -14,6 +14,7 @@ export * as ForcedTransactionsDB from "./forcedTransactions.js";
 export * as ImmutableDB from "./immutable.js";
 export * as InitDB from "./init.js";
 export * as MempoolDB from "./mempool.js";
+export * as MempoolInclusionsDB from "./mempoolInclusions.js";
 export * as MempoolLedgerDB from "./mempoolLedger.js";
 export * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
 export * as Migrations from "./migrations/index.js";

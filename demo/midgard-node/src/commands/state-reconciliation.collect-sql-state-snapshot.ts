@@ -5,6 +5,7 @@ import {
   ConfirmedLedgerDB,
   DepositsDB,
   MempoolDB,
+  MempoolInclusionsDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
   PendingBlockFinalizationsDB,
@@ -193,7 +194,9 @@ export const collectSqlStateSnapshot = ({
             row[MempoolLedgerDB.Columns.SOURCE_EVENT_ID],
           ),
         }));
-        const mempoolTxs = yield* Tx.retrieveAllEntries(MempoolDB.tableName);
+        const mempoolTxs = yield* MempoolInclusionsDB.retrievePendingEntries(
+          MempoolDB.tableName,
+        );
         const processedTxs = yield* ProcessedMempoolDB.retrieve;
         const allPending = [
           ...mempoolTxs.map((entry) => ({ entry, source: "mempool" as const })),

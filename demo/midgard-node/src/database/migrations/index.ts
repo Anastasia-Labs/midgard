@@ -11,6 +11,7 @@ import landedBlocksSql from "./sql/0009_landed_blocks.sql";
 import intentRefusalHoldsSql from "./sql/0010_intent_refusal_holds.sql";
 import locallyAppliedBlockStatusSql from "./sql/0011_locally_applied_block_status.sql";
 import receiptSettlementsSql from "./sql/0012_receipt_settlements.sql";
+import mempoolInclusionMarksSql from "./sql/0013_mempool_inclusion_marks.sql";
 
 export type Migration = {
   readonly version: number;
@@ -103,6 +104,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "receipt_settlements",
     checksumSha256: sha256Hex(receiptSettlementsSql),
     sql: receiptSettlementsSql,
+    transactional: true,
+  },
+  {
+    version: 13,
+    name: "mempool_inclusion_marks",
+    checksumSha256: sha256Hex(mempoolInclusionMarksSql),
+    sql: mempoolInclusionMarksSql,
     transactional: true,
   },
 ] as const;
@@ -249,6 +257,8 @@ export const APPLICATION_INDEX_NAMES = [
   "event_history_recovery_plans_prepared",
   "uniq_node_landed_blocks_processed_parent",
   "idx_receipt_settlements_settled_by",
+  "idx_mempool_included_by",
+  "idx_processed_mempool_included_by",
 ] as const;
 
 export const migrationByVersion = new Map(

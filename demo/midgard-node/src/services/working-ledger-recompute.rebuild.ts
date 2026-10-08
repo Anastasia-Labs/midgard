@@ -12,12 +12,13 @@
  *    ("batch"), transitively; the rejections commit with the rebuild or not
  *    at all.
  *
- * A pending transaction a foreign base block included is dropped from the
- * pending sets (it is in the base); one this node's own base block included
- * is left to that block's finalization. Either is settled by the base: a
- * batch it was accepted in with a rejected transaction rejects the batch's
- * other pending members ("batch") and is not refused for it. A projected deposit whose output a
- * surviving transaction spends is `consumed`, any other `projected`.
+ * Pending means unmarked: a row a processed base block includes is marked
+ * by it (`mempoolInclusions.ts`) and stays in its table until the block
+ * folds, so it is not replayed; the live own block's members are excluded
+ * by id. Either is settled by the base: a batch it was accepted in with a
+ * rejected transaction rejects the batch's other pending members ("batch")
+ * and is not refused for it. A projected deposit whose output a surviving
+ * transaction spends is `consumed`, any other `projected`.
  *
  * Runs inside the caller's transaction.
  */
@@ -29,14 +30,7 @@ import {
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import {
-  DepositsDB,
-  MempoolDB,
-  MempoolLedgerDB,
-  MempoolTxDeltasDB,
-  ProcessedMempoolDB,
-} from "../database/index.js";
-import * as Tx from "../database/utils/tx.js";
+import { DepositsDB, MempoolLedgerDB } from "../database/index.js";
 import {
   failure,
   hex,
@@ -144,7 +138,6 @@ export type WorkingLedgerRebuild = Readonly<{
   /** The rebuilt working ledger, by hex outref. */
   ledger: ReadonlyMap<string, Buffer>;
   rejectedTxIds: readonly Buffer[];
-  droppedTxIds: readonly Buffer[];
 }>;
 
 export const rebuildWorkingLedger = (input: {
@@ -161,9 +154,6 @@ export const rebuildWorkingLedger = (input: {
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const all = yield* loadPendingTxs;
-    const dropped = all.filter((tx) =>
-      input.includedByForeign.has(txIdHex(tx)),
-    );
     const pending = all.filter(
       (tx) =>
         !input.includedByForeign.has(txIdHex(tx)) &&
@@ -210,12 +200,6 @@ export const rebuildWorkingLedger = (input: {
     yield* sql`DELETE FROM mempool_ledger`;
     for (let start = 0; start < rows.length; start += 1_000)
       yield* sql`INSERT INTO mempool_ledger ${sql.insert(rows.slice(start, start + 1_000))}`;
-    const droppedIds = dropped.map((tx) => tx.entry[Tx.Columns.TX_ID]);
-    if (droppedIds.length > 0) {
-      yield* MempoolDB.clearTxs(droppedIds);
-      yield* ProcessedMempoolDB.clearTxs(droppedIds);
-      yield* MempoolTxDeltasDB.clearTxs(droppedIds);
-    }
     const rejectedTxIds = yield* recordRejections(
       rejected,
       input.codes,
@@ -235,9 +219,5 @@ export const rebuildWorkingLedger = (input: {
     yield* DepositsDB.markConsumedByEventIds(
       outside.filter((id) => !present.has(hex(id))),
     );
-    return {
-      ledger,
-      rejectedTxIds,
-      droppedTxIds: droppedIds,
-    } satisfies WorkingLedgerRebuild;
+    return { ledger, rejectedTxIds } satisfies WorkingLedgerRebuild;
   });

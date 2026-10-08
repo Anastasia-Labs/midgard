@@ -192,7 +192,7 @@ export const prepareSignedHeaderRecovery = (input: {
         const otherPending =
           yield* sql`SELECT 1 FROM pending_block_finalizations WHERE status NOT IN ('locally_applied','abandoned')
         AND header_hash <> ${record[C.HEADER_HASH]}
-      UNION ALL SELECT 1 FROM processed_mempool`;
+      UNION ALL SELECT 1 FROM processed_mempool WHERE included_by IS NULL`;
         if (remaining.length || otherPending.length) return undefined;
         if (record[C.STATUS] === Pending.Status.ObservedWaitingStability) {
           // Observed can survive a partially committed local finalization. Its

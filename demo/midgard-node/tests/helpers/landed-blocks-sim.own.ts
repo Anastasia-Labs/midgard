@@ -225,7 +225,12 @@ export const ownBlockOn = (
       baseHeaderHash: tip,
       baseUtxosRoot: universe.root(parent.h, parent.b),
       expectedUtxosRoot: universe.root(h, b),
-      spent: [universe.x(parent.h, parent.b).outref],
+      spent: [
+        universe.x(parent.h, parent.b).outref,
+        ...[universe.ySpent(h)].flatMap((entry) =>
+          entry === undefined ? [] : [entry.outref],
+        ),
+      ],
       produced: [universe.y(h), universe.x(h, b)],
       txIds,
       at: new Date(

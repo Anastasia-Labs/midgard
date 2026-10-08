@@ -5,10 +5,11 @@
  *
  * - A foreign block folds its own net delta, once the working-ledger rebase
  *   applied it (its events' rows are then projected to it), and its events
- *   become terminal.
+ *   become terminal; the pending-table rows it marked are deleted.
  * - This node's own block folds through its local merge finalization (the
  *   journal's delta, under its merge job), which the merge fiber may also run
- *   first; either way the job completes before the frontier moves.
+ *   first; either way the job completes before the frontier moves, and the
+ *   rows the block marked are gone once it has.
  * - A root past blocks the node never processed is not a hold: processing
  *   walks the root's lineage from the frontier (`history.ts`) and processes
  *   them first. A root the frontier cannot reach on any retained lineage (a
@@ -27,6 +28,7 @@ import {
   ForcedTransactionsDB,
   WithdrawalsDB,
 } from "../database/index.js";
+import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { DriverHold } from "../l1-events/driver.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
@@ -175,6 +177,7 @@ const foldForeign = (frontier: HeaderRoot, row: LandedBlockRow) =>
       header,
     );
     yield* ForcedTransactionsDB.markFinalizedByEventIds(row.forcedIds, header);
+    yield* MempoolInclusionsDB.deleteIncluded(header);
     yield* Frontier.upsert(row);
     yield* deleteRows([row.headerHash]);
   });
@@ -183,6 +186,7 @@ const foldForeign = (frontier: HeaderRoot, row: LandedBlockRow) =>
 const passOwn = (frontier: HeaderRoot, row: LandedBlockRow) =>
   Effect.gen(function* () {
     yield* lockFrontier(frontier);
+    yield* MempoolInclusionsDB.deleteIncluded(row.headerHash);
     yield* Frontier.upsert(row);
     yield* deleteRows([row.headerHash]);
   });

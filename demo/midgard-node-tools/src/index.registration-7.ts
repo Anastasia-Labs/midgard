@@ -332,10 +332,10 @@ program
                           }>`SELECT status, COUNT(*)::bigint AS count FROM tx_admissions GROUP BY status ORDER BY status`,
                           sql<{
                             readonly count: bigint | number | string;
-                          }>`SELECT COUNT(*)::bigint AS count FROM mempool`,
+                          }>`SELECT COUNT(*)::bigint AS count FROM mempool WHERE included_by IS NULL`,
                           sql<{
                             readonly count: bigint | number | string;
-                          }>`SELECT COUNT(*)::bigint AS count FROM processed_mempool`,
+                          }>`SELECT COUNT(*)::bigint AS count FROM processed_mempool WHERE included_by IS NULL`,
                           sql<{
                             readonly status: string;
                             readonly count: bigint | number | string;

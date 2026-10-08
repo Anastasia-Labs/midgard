@@ -4,10 +4,16 @@
  * then this node's live own block, the active journal built on `T` that has
  * not landed yet. The rebase cannot run while the active journal is built on
  * anything else (its base left the queue, or another block took its slot):
- * that journal must be resolved first (released, replaced or revived).
+ * that journal must be resolved first (released, replaced or revived). Nor
+ * can it run while a pending-table row is marked by a block the target does
+ * not hold (this node's block between its local finalization and its
+ * processing): that row is neither pending nor in the base until processing
+ * takes the block in, its merge finalization deletes the row, or the
+ * reopening of its journal clears the mark.
  */
 import { Effect } from "effect";
 
+import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
 import type { NativeMpfEventOp } from "../services/mpf-native-owner/service.normalize-owner-options.js";
 import { activeJournal } from "./journal.js";
@@ -42,6 +48,9 @@ export type RebaseTarget = Readonly<{
   tip: HeaderRoot;
   live: (OwnJournal & { headerHash: string }) | undefined;
 }>;
+
+/** The blocked detail while a block the target does not hold marks rows. */
+export const AWAITING_MARKING_BLOCK = "awaiting landed-block processing";
 
 export type RebasePlan =
   | Readonly<{ kind: "none" }>
@@ -100,6 +109,15 @@ export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
         produced: active.produced,
       });
     }
+    const held = new Set(steps.map((step) => step.headerHash));
+    const unheld = (yield* MempoolInclusionsDB.markingHeaders).find(
+      (headerHash) => !held.has(headerHash),
+    );
+    if (unheld !== undefined)
+      return {
+        kind: "blocked",
+        detail: `${AWAITING_MARKING_BLOCK}: block ${unheld} marks pending-table rows as included and the processed landed chain does not hold it`,
+      } satisfies RebasePlan;
     return {
       kind: "ready",
       target: { rows, landed, steps, tip, live },

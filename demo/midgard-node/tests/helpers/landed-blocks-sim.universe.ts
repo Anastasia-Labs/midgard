@@ -2,10 +2,12 @@
  * The ledger universe of the landed-block fork simulator (N3). Every landed
  * block at queue height `h` (genesis is 0) spends its parent's `X` output
  * and produces `Y_h`, `X_{h,b}` (`b` is the block's parity bit) and, every
- * third height, the deposit `D_h`'s ledger output. The post-state of any
- * block at height `h` with bit `b` is therefore
+ * third height, the deposit `D_h`'s ledger output; past height
+ * `Y_LIFETIME` it also spends `Y_{h - Y_LIFETIME}` (another party's
+ * transaction the node never saw). The post-state of any block at height
+ * `h` with bit `b` is therefore
  *
- *   ledger(h, b) = pool ∪ {Y_1..Y_h} ∪ {D_j : j ≤ h} ∪ {X_{h,b}}
+ *   ledger(h, b) = pool ∪ {Y_j : h - Y_LIFETIME < j ≤ h} ∪ {D_j : j ≤ h} ∪ {X_{h,b}}
  *
  * whatever fork it is on, so its MPF root is precomputed once and a block
  * can commit a correct (or, for a bad block, the other bit's) root before
@@ -32,6 +34,12 @@ export const SIM_LEDGER_ADDRESS =
 /** The highest queue height the universe has roots for. */
 export const H_MAX = 120;
 export const POOL_SIZE = 8;
+/**
+ * How many heights a `Y` output stays unspent: blocks at `h` spend
+ * `Y_{h - Y_LIFETIME}`. Long enough that the block including a batch's `X`
+ * chain often folds before the batch's `Y` spend loses its input.
+ */
+export const Y_LIFETIME = 9;
 
 export const hasDeposit = (h: number): boolean => h > 0 && h % 3 === 0;
 
@@ -102,6 +110,8 @@ export type SimUniverse = Readonly<{
   xKeys: ReadonlySet<string>;
   deposit: (h: number) => SimDeposit;
   deposits: readonly SimDeposit[];
+  /** The `Y` output blocks at height `h` spend besides their parent's `X`, if any. */
+  ySpent: (h: number) => Ledger.MinimalEntry | undefined;
   ledger: (h: number, b: number) => Ledger.MinimalEntry[];
   root: (h: number, b: number) => string;
 }>;
@@ -131,10 +141,12 @@ export const createSimUniverse = async (): Promise<SimUniverse> => {
   const x = (h: number, b: number) =>
     h === 0 ? x0 : required(xs[h - 1]?.[b], `X_${h},${b}`);
   const deposit = (h: number) => required(depositsByHeight.get(h), `D_${h}`);
+  const ySpent = (h: number) =>
+    h - Y_LIFETIME >= 1 ? y(h - Y_LIFETIME) : undefined;
   const ledger = (h: number, b: number): Ledger.MinimalEntry[] => {
     const entries = [...pool];
     for (let j = 1; j <= h; j++) {
-      entries.push(y(j));
+      if (j > h - Y_LIFETIME) entries.push(y(j));
       if (hasDeposit(j)) entries.push(deposit(j).entry);
     }
     entries.push(x(h, b));
@@ -161,6 +173,7 @@ export const createSimUniverse = async (): Promise<SimUniverse> => {
     ),
     deposit,
     deposits: [...depositsByHeight.values()],
+    ySpent,
     ledger,
     root: (h, b) => required(roots[h]?.[b], `root(${h}, ${b})`),
   };
