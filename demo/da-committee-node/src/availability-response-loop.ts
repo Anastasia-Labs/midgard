@@ -90,9 +90,9 @@ const defaultTimers: AvailabilityResponseLoopTimers = {
  * several open challenges are all answered, nearest deadline first.
  *
  * The responder is not gated on the L1 view the scan tick tracks: every step
- * reads its own authenticated boundary (the committee's cursor at the aligned
- * Kupmios tip) and waits as `awaiting_scan` otherwise, and answering a
- * challenge can only keep a payload available.
+ * reads its own boundary (the committee follower's current view) and waits
+ * as `awaiting_scan` otherwise, and answering a challenge can only keep a
+ * payload available.
  *
  * A challenge found past its response deadline with a tranche unanswered is
  * one this committee can no longer answer. It is logged once as

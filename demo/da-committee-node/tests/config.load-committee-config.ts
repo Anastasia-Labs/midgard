@@ -717,7 +717,7 @@ describe("loadCommitteeConfig", () => {
     ).toEqual([]);
   });
 
-  it("binds the L1 source authority digest to the network, node authority and L1 origin", () => {
+  it("binds the L1 source authority digest to the network and node authority, never the L1 origin", () => {
     const base = {
       network: "Preprod",
       nativeLedger: {
@@ -743,8 +743,8 @@ describe("loadCommitteeConfig", () => {
       l1SourceAuthorityDigest({
         ...base,
         l1Origin: { slot: 7, blockHash: "cd".repeat(32) },
-      }),
-    ).not.toBe(baseline);
+      } as typeof base),
+    ).toBe(baseline);
     // Paths are not identity: moving the socket keeps the binding.
     expect(
       l1SourceAuthorityDigest({

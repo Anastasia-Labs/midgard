@@ -1,3 +1,4 @@
+import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { promiseCapacityEvidenceKey } from "../src/availability/promise-capacity-evidence.js";
@@ -20,6 +21,7 @@ import {
   emulatorFollower,
   emulatorWallet,
   noChainIndexCommitteeConfig,
+  transactionId,
 } from "./helpers/emulator-follower.js";
 
 /**
@@ -28,6 +30,10 @@ import {
  * Close is the emulator's signed bytes landed in a follower block, and the
  * terminal point is proved by the production canonical read under the
  * follower's boundary, as the promise admission source reads it.
+ *
+ * The follower prunes after every block at a small k, as its loop does at
+ * the tip; the terminal point stays readable through the committee's
+ * retention pins on its records.
  */
 
 const closers: (() => Promise<void>)[] = [];
@@ -97,11 +103,30 @@ const fixture = async () => {
       },
     });
   };
+  /**
+   * Spends the Close's outputs in the next block: the Close's block then
+   * holds nothing the follower tracks, so only a pin keeps it.
+   */
+  const spendClose = async () => {
+    const outputs = CML.Transaction.from_cbor_hex(close).body().outputs();
+    const inputs: UTxO[] = [];
+    for (let index = 0; index < outputs.len(); index += 1)
+      inputs.push({
+        txHash: transactionId(close),
+        outputIndex: index,
+        address: wallet.address,
+        assets: { lovelace: outputs.get(index).amount().coin() },
+      });
+    return follower.forward([
+      { cbor: await wallet.spend({ inputs, lovelace: 5_000_000n }) },
+    ]);
+  };
   return {
     config,
     follower,
     store,
     close,
+    spendClose,
     liability,
     retired,
     evidence: () => store.getPromiseCapacityEvidence(key),
@@ -179,4 +204,43 @@ describe("promise capacity released at a terminal Close on the follower's facts,
     );
     expect(await f.evidence()).toBeUndefined();
   });
+  it(
+    "certifies and admits the released capacity more than k + 2 blocks after the follower pruned the Close's block, and names the read without the pin",
+    { timeout: 120_000 },
+    async () => {
+      for (const pinned of [true, false]) {
+        const f = await fixture();
+        if (pinned)
+          f.follower.retention.bind("records", () =>
+            f.store.readL1PinTargets(),
+          );
+        const landed = await f.follower.forward([{ cbor: f.close }]);
+        await expect(f.retired(landed)).resolves.toEqual(
+          new Set([f.liability.commitmentDigest]),
+        );
+        await f.spendClose();
+        // Past the recovery depth: the release is certified.
+        await f.follower.empty(f.config.automaticRecoveryMaxDepth + 1);
+        expect(await f.follower.prunedThroughSlot()).toBeGreaterThan(
+          landed.slot,
+        );
+        expect(f.follower.pruneErrors).toEqual([]);
+        if (!pinned) {
+          await expect(f.retired(landed)).rejects.toThrow(
+            /^point_beyond_retention: /u,
+          );
+          continue;
+        }
+        await expect(f.retired(landed)).resolves.toEqual(
+          new Set([f.liability.commitmentDigest]),
+        );
+        expect((await f.evidence())?.certifiedAt).toBeDefined();
+        // Admission reads the certified point again, k + 2 blocks on.
+        await f.follower.empty(f.follower.securityParameter + 3);
+        await expect(f.retired(landed)).resolves.toEqual(
+          new Set([f.liability.commitmentDigest]),
+        );
+      }
+    },
+  );
 });

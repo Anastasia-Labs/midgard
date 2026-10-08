@@ -220,6 +220,44 @@ export const transactionConsumesOutRef = ({
   );
 };
 
+/**
+ * Positive evidence that `outRef` was consumed as collateral by the
+ * canonical transaction `transactionId`, read from its raw bytes: they hash
+ * to that id, the transaction failed phase 2 (it spent its collateral, not
+ * its inputs), and its collateral inputs list the outRef.
+ */
+export const transactionConsumesCollateral = ({
+  transactionCbor,
+  transactionId,
+  outRef,
+}: {
+  readonly transactionCbor: string;
+  readonly transactionId: string;
+  readonly outRef: string;
+}): boolean => {
+  let transaction: CML.Transaction;
+  try {
+    transaction = CML.Transaction.from_cbor_hex(transactionCbor);
+  } catch {
+    return false;
+  }
+  const body = transaction.body();
+  const collateral = body.collateral_inputs();
+  if (
+    CML.hash_transaction(body).to_hex() !== transactionId ||
+    transaction.is_valid() ||
+    collateral === undefined
+  )
+    return false;
+  return Array.from({ length: collateral.len() }, (_, index) =>
+    collateral.get(index),
+  ).some(
+    (entry) =>
+      `${entry.transaction_id().to_hex()}#${entry.index().toString()}` ===
+      outRef,
+  );
+};
+
 /** A chain point as the foreign-spend readers name it. */
 export type DaAvailabilityChainPoint = Readonly<{
   slot: number;
@@ -279,14 +317,20 @@ export type DaAvailabilityVerifiedForeignSpend = DaAvailabilityForeignSpend &
 
 /**
  * The canonical spend of `outRef`, verified from the consuming transaction's
- * own bytes through {@link transactionConsumesOutRef}. Kupo's `spent_at`
+ * own bytes through {@link transactionConsumesOutRef} (or, for `consumes:
+ * "collateral"`, {@link transactionConsumesCollateral}). Kupo's `spent_at`
  * alone is never trusted, so a spend that fails verification reads as none.
  * The whole read sits inside one canonical boundary; a moved boundary, a
  * spend above it, or a spend Ogmios serves without its raw bytes throws.
  */
 export const resolveDaAvailabilityForeignSpend = async (
   input: DaAvailabilityForeignSpendReaders &
-    Readonly<{ outRef: string; scope?: DaAvailabilityReadScope }>,
+    Readonly<{
+      outRef: string;
+      scope?: DaAvailabilityReadScope;
+      /** What the spend must consume `outRef` as: an input (the default) or collateral. */
+      consumes?: "inputs" | "collateral";
+    }>,
 ): Promise<DaAvailabilityVerifiedForeignSpend | undefined> => {
   const [txHash, outputIndex] = input.outRef.split("#");
   const scope = input.scope;
@@ -332,7 +376,11 @@ export const resolveDaAvailabilityForeignSpend = async (
       "Ogmios must run with --include-transaction-cbor to verify a rival spend",
     );
   if (
-    !transactionConsumesOutRef({
+    !(
+      input.consumes === "collateral"
+        ? transactionConsumesCollateral
+        : transactionConsumesOutRef
+    )({
       transactionCbor: transaction.cbor,
       transactionId: spend.transactionId,
       outRef: input.outRef,

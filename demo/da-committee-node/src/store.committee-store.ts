@@ -15,6 +15,7 @@ import type {
   StateQueueHeaderRecord,
 } from "./domain.js";
 import type { SignedHeader } from "./l1/follower/obligations.js";
+import type { CommitteePinTargets } from "./l1/follower/retention-pins.js";
 import type {
   PromiseStoreResourceLimits,
   PromiseStoreResourceUsage,
@@ -127,7 +128,12 @@ export type DecisionOutboxRecord = {
   readonly schemaVersion: 1;
   readonly effectId: string;
   readonly deploymentFingerprint: string;
-  readonly sourceMode: L1SourceState["sourceMode"];
+  /**
+   * `external_providers` only on a terminal record (published, reconciled
+   * or failed) a build from before the L1 follower wrote: the store open
+   * leaves those rows as they are. A pending record is always `local_node`.
+   */
+  readonly sourceMode: L1SourceState["sourceMode"] | "external_providers";
   readonly network: string;
   readonly effectKind: "signature_publish" | "l1_reconcile";
   readonly headerHash: string;
@@ -209,6 +215,11 @@ export interface CommitteeStore {
     record?: StateQueueHeaderRecord,
   ): void;
   readRetirementSnapshot(): Promise<CommitteeRetirementSnapshot>;
+  /**
+   * Every L1 point and submission the stored records read again, as the
+   * follower's retention pin targets (plan §11).
+   */
+  readL1PinTargets(): Promise<CommitteePinTargets>;
   applyRetirementCertificate(
     certificate: CommitteeRetirementCertificate,
   ): Promise<readonly string[]>;

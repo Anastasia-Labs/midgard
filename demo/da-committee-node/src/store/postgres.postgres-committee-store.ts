@@ -63,6 +63,7 @@ import {
   initializeCommitteeSchema,
   UNSETTLED_HEADER_PREDICATE,
 } from "./postgres.schema.js";
+import { readCommitteeL1PinTargets } from "./postgres.stored-l1-points.js";
 import * as capacity from "./promise-capacity-postgres.js";
 import { postgresPromiseResources } from "./promise-resource-usage.js";
 import {
@@ -136,7 +137,8 @@ export class PostgresCommitteeStore implements CommitteeStore {
     });
     const store = new PostgresCommitteeStore(pool, instanceLock);
     try {
-      await store.initSchema();
+      await store.renameLegacyTables();
+      await initializeCommitteeSchema(pool, instanceLock, options.openChecks);
       store.retirement.load(await store.getRetirementFloor());
     } catch (error) {
       await store.close().catch(() => undefined);
@@ -184,6 +186,8 @@ export class PostgresCommitteeStore implements CommitteeStore {
       client.release();
     }
   }
+  /** The L1 history the stored records name: the follower's pins. */
+  readonly readL1PinTargets = () => readCommitteeL1PinTargets(this.pool);
   async withRetainedHeaderPin<T>(
     headerHash: string,
     run: () => Promise<T>,
@@ -898,10 +902,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
       );
       return result.rowCount === 1;
     });
-  }
-  private async initSchema(): Promise<void> {
-    await this.renameLegacyTables();
-    await initializeCommitteeSchema(this.pool);
   }
 
   /** Rename legacy watcher_* tables in place to preserve existing data.

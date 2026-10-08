@@ -338,14 +338,14 @@ export class CommitteeService {
     if (args.daBondPool !== undefined) {
       reasons.push(...daBondPoolReadinessReasons(args.daBondPool));
     }
-    if (args.retention?.status === "not_checked") {
+    if (args.retention?.status === "not_checked")
       reasons.push("retention check has not completed");
-    }
     if (args.retention?.status === "failed") {
       reasons.push(
         `retention check failed: ${args.retention.error ?? "unknown error"}`,
       );
     }
+    reasons.push(...(args.retention?.pinFailures ?? []));
     if (args.retention?.status === "l1_view_stale") {
       reasons.push(
         `l1_view_stale:${(args.retention.l1ViewAgeMs ?? 0).toString()}`,

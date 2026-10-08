@@ -38,6 +38,7 @@ const followerFor = (lucid?: LucidEvolution): FollowerArg => ({
   source: { readiness: () => [] } as unknown as FollowerArg["source"],
   store: {} as NonNullable<FollowerArg["store"]>,
   provider: {} as NonNullable<FollowerArg["provider"]>,
+  retention: null,
   lucid: async () => {
     if (lucid === undefined)
       throw new Error("Follower reads must not run before the guard checks");

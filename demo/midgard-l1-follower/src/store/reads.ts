@@ -40,11 +40,25 @@ export type UtxoRead =
   | Readonly<{ kind: "ok"; utxos: readonly StoredOutput[] }>
   | PointRefusal;
 
+const beyondRetention = (point: Point, prunedThroughSlot: number) =>
+  ({
+    kind: "point_beyond_retention",
+    detail: `slot ${point.slot} is below the retained window (slot ${prunedThroughSlot})`,
+  }) as const;
+
 /**
  * Where a point stands against the stored chain. `depth` is the heads
  * module's `depth()`: 1 at the cursor.
- * A point below `prunedThroughSlot` is `point_beyond_retention` even if its
- * block row survived as a checkpoint: facts there are no longer complete.
+ * A block row the prune kept below `prunedThroughSlot` (one a retention pin
+ * holds, a checkpoint, the origin) is still canonical, with its height and
+ * depth: the block table holds the canonical chain only. So a point below
+ * the window whose slot holds a kept row with another hash is
+ * `point_not_canonical`: the chain's block at that slot is another one. A
+ * point below the window with no row at its slot is
+ * `point_beyond_retention`, as pruned and never canonical cannot be told
+ * apart there. Facts at such a point are another
+ * matter: `liveUtxosIn` refuses them, since the window's facts are no longer
+ * complete.
  */
 export const pointStatusIn = async (
   tx: SqlTx,
@@ -54,23 +68,26 @@ export const pointStatusIn = async (
   const cursor = await readCursor(tx, dialect);
   if (cursor === null)
     return { kind: "not_initialized", detail: "no cursor row" };
-  if (point.slot < cursor.prunedThroughSlot)
-    return {
-      kind: "point_beyond_retention",
-      detail: `slot ${point.slot} is below the retained window (slot ${cursor.prunedThroughSlot})`,
-    };
   const rows = await tx.query(
     "SELECT height FROM l1_blocks WHERE slot = ? AND hash = ?",
     [point.slot, point.hash],
   );
   const row = rows[0];
-  if (row === undefined)
-    return {
-      kind: "point_not_canonical",
-      detail: `${point.hash.toString("hex")} at slot ${point.slot} is not on the stored chain`,
-    };
-  const height = asNumber(row.height);
-  return { kind: "canonical", height, depth: depth(cursor.height, height) };
+  if (row !== undefined) {
+    const height = asNumber(row.height);
+    return { kind: "canonical", height, depth: depth(cursor.height, height) };
+  }
+  const notCanonical = {
+    kind: "point_not_canonical",
+    detail: `${point.hash.toString("hex")} at slot ${point.slot} is not on the stored chain`,
+  } as const;
+  if (point.slot >= cursor.prunedThroughSlot) return notCanonical;
+  const kept = await tx.query("SELECT 1 FROM l1_blocks WHERE slot = ?", [
+    point.slot,
+  ]);
+  return kept.length > 0
+    ? notCanonical
+    : beyondRetention(point, cursor.prunedThroughSlot);
 };
 
 const liveClause = (at: number | null): string =>
@@ -136,6 +153,11 @@ export const liveUtxosIn = async (
   if (at !== undefined) {
     const status = await pointStatusIn(tx, dialect, at);
     if (status.kind !== "canonical") return status;
+    // A kept block row below the window is canonical, but the outputs
+    // around it are pruned: the facts there are no longer complete.
+    const cursor = await readCursor(tx, dialect);
+    if (cursor !== null && at.slot < cursor.prunedThroughSlot)
+      return beyondRetention(at, cursor.prunedThroughSlot);
   }
   const slot = at?.slot ?? null;
   const { where, params } = filterSql(filter);

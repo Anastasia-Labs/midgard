@@ -10,13 +10,18 @@ export const STARTUP_RETRY_MAX_MS = 30_000;
 
 /**
  * A startup failure no retry can repair: the store holds state of another
- * deployment (`stale_deployment_state_requires_fresh_redeploy`). Everything
- * else a dependency throws while the node starts (Postgres, the local node
- * not up yet, a peer address that does not resolve yet) is retried.
+ * deployment (`stale_deployment_state_requires_fresh_redeploy`), or a stored
+ * record names an L1 point before the configured `L1_ORIGIN`
+ * (`committee_store_point_before_l1_origin`: the configuration is wrong).
+ * Everything else a dependency throws while the node starts (Postgres, the
+ * local node not up yet, a peer address that does not resolve yet) is
+ * retried.
  */
 export const isFatalStartupError = (error: unknown): boolean =>
   error instanceof Error &&
-  /stale_deployment_state_requires_fresh_redeploy/u.test(error.message);
+  /stale_deployment_state_requires_fresh_redeploy|committee_store_point_before_l1_origin/u.test(
+    error.message,
+  );
 
 /** The readiness reason a failed startup attempt reports. */
 export const startupReason = (error: unknown): string =>

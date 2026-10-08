@@ -1,7 +1,11 @@
 import { join } from "node:path";
 
 import type { L1NodeTransport } from "@al-ft/l1-node-transport";
-import { decodeBlock, openSqliteFactStore } from "@al-ft/midgard-l1-follower";
+import {
+  decodeBlock,
+  LOOP_PRUNE_BUDGET,
+  openSqliteFactStore,
+} from "@al-ft/midgard-l1-follower";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import { cbor } from "@al-ft/midgard-l1-follower/testing";
 import {
@@ -27,6 +31,10 @@ import {
   type CommitteeL1Readiness,
   depthParameters,
 } from "../../src/l1/follower/l1-follower.js";
+import {
+  committeeL1Retention,
+  pruneAfterPins,
+} from "../../src/l1/follower/retention-pins.js";
 import { tempDir } from "../helpers.js";
 import {
   libp2pConfigEnv,
@@ -179,24 +187,41 @@ const ORIGIN: FollowerPoint = {
 };
 
 /**
+ * The emulator follower's default k: small, so a test runs more than k + 2
+ * blocks with the follower pruning, as production does after every block at
+ * its tip. It is above the manifest's confirmation depth.
+ */
+export const EMULATOR_SECURITY_PARAMETER = 16;
+
+/**
  * The committee's follower store, opened with the production store options
- * for `config` (its projection, tracked set and own wallets; k from the
- * manifest), fed with blocks that carry the exact bytes of transactions the
- * Lucid emulator signed. The reads and the Lucid observer the availability,
+ * for `config` (its projection, tracked set and own wallets) at k =
+ * `securityParameter`, fed with blocks that carry the exact bytes of
+ * transactions the Lucid emulator signed. After every block it prunes
+ * exactly as the follow loop does at its tip, through the committee's
+ * retention pins (`retention`; bind the `records` holder to the committee
+ * store's pin targets). The reads and the Lucid observer the availability,
  * promise and retirement paths use are the production ones over it; the
  * node transport answers that no transaction is in the mempool and no
  * untracked output exists.
  */
-export const emulatorFollower = async (config: LoadedCommitteeConfig) => {
+export const emulatorFollower = async (
+  config: LoadedCommitteeConfig,
+  securityParameter = EMULATOR_SECURITY_PARAMETER,
+) => {
   const store = openSqliteFactStore({
     ...committeeFollowerStoreOptions(
       config,
-      depthParameters(config),
+      { ...depthParameters(config), securityParameter },
       await ownWallets(config),
       "sqlite",
     ),
     path: ":memory:",
   });
+  const retention = committeeL1Retention(store);
+  const pruning = pruneAfterPins(store, retention);
+  /** Each prune that failed, as the follow loop logs it: the step is skipped. */
+  const pruneErrors: string[] = [];
   const started = await store.start();
   if (started.kind !== "ready")
     throw new Error(`follower store did not start: ${started.kind}`);
@@ -255,6 +280,16 @@ export const emulatorFollower = async (config: LoadedCommitteeConfig) => {
     const applied = await store.applyBlock(block);
     if (applied.kind !== "applied")
       throw new Error(`block did not apply: ${applied.kind}`);
+    // The follow loop's prune at its tip (`maybePrune`): a failure is
+    // logged and the loop goes on.
+    const pruned = await pruning
+      .prune(LOOP_PRUNE_BUDGET)
+      .catch((error: unknown) => ({
+        kind: "error" as const,
+        error: error instanceof Error ? error : new Error(String(error)),
+      }));
+    if ("kind" in pruned && pruned.kind === "error")
+      pruneErrors.push(pruned.error.message);
     const point = {
       slot,
       blockHash: block.point.hash.toString("hex"),
@@ -273,6 +308,18 @@ export const emulatorFollower = async (config: LoadedCommitteeConfig) => {
   return {
     config,
     store,
+    /** The follower's k. */
+    securityParameter,
+    retention,
+    pruneErrors,
+    /** The slot the follower pruned through, or null before its first prune. */
+    prunedThroughSlot: async (): Promise<number | null> => {
+      const rows = await store.transaction("read", (tx) =>
+        tx.query("SELECT pruned_through_slot FROM l1_follower_cursor"),
+      );
+      const slot = rows[0]?.pruned_through_slot;
+      return slot === null || slot === undefined ? null : Number(slot);
+    },
     tip,
     forward,
     /** Applies `count` empty blocks. */
@@ -295,7 +342,11 @@ export const emulatorFollower = async (config: LoadedCommitteeConfig) => {
     hold: (reasons: readonly CommitteeL1Readiness[]) => {
       held = reasons;
     },
-    reads: committeeAvailabilityReads({ store, readiness: () => held }),
+    reads: committeeAvailabilityReads({
+      store,
+      readiness: () => held,
+      retention,
+    }),
     /** The observer's Lucid reads, through the follower's provider. */
     lucid: {
       transactionStatus: (txHash: string) =>

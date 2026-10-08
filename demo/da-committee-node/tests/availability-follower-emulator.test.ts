@@ -31,6 +31,10 @@ import {
  * The committee's step is a Settle or Close spending only protocol UTxOs;
  * the wallet's coins stand in for them, as reconcile judges an intent by its
  * signed bytes and the spends of its inputs.
+ *
+ * The follower prunes after every block at a small k, as its loop does at
+ * the tip; the responder's own transactions stay readable through its
+ * retention pins.
  */
 
 const closers: (() => Promise<void> | void)[] = [];
@@ -275,5 +279,93 @@ describe("the availability responder reconciles on the follower's facts, with no
       ).message,
     });
     expectNothingReleased(f);
+  });
+  it("confirms its own step after the committee was away for more than k + 2 blocks, the follower pruning", async () => {
+    const f = await fixture();
+    const landed = await f.follower.forward(
+      [{ cbor: f.ours.signedCbor }],
+      f.ours.validUntilSlot - 10,
+    );
+    await f.follower.empty(f.finality - 1);
+    await f.responder.tick();
+    expect(f.state()).toBe("included");
+    // The committee is down; the follower runs on and prunes.
+    await f.follower.empty(f.follower.securityParameter + 3);
+    expect(await f.follower.prunedThroughSlot()).toBeGreaterThan(landed.slot);
+    expect(f.follower.pruneErrors).toEqual([]);
+    await expect(f.responder.tick()).resolves.toStrictEqual({
+      challenges: 0,
+      status: "idle",
+    });
+    expect(f.state()).toBe("confirmed");
+    expect(f.submit).not.toHaveBeenCalled();
+  });
+
+  it("returns its own step to the mempool when its block was rolled back while the committee was away for more than k + 2 blocks", async () => {
+    const f = await fixture("prepare");
+    const before = tip(f.follower);
+    await f.follower.forward(
+      [{ cbor: f.ours.signedCbor }],
+      f.ours.validUntilSlot - 40,
+    );
+    await f.follower.empty(f.finality - 1);
+    await f.responder.tick();
+    expect(f.state()).toBe("included");
+    await f.follower.rollBackTo(before);
+    await f.follower.empty(f.follower.securityParameter + 3);
+    expect(await f.follower.prunedThroughSlot()).toBeGreaterThan(before.slot);
+    await expect(f.responder.tick()).resolves.toStrictEqual({
+      challenges: 0,
+      status: "pending",
+    });
+    expect(f.state()).toBe("pending");
+    expect(f.submit).toHaveBeenCalledWith(f.ours.signedCbor);
+  });
+
+  it("keeps its own step pending while its failed landing is one block short of finality", async () => {
+    const f = await fixture();
+    await f.follower.forward(
+      [{ cbor: f.ours.signedCbor, valid: false }],
+      f.ours.validUntilSlot - 10,
+    );
+    await f.follower.empty(f.finality - 1);
+    await expect(f.responder.tick()).resolves.toStrictEqual({
+      challenges: 0,
+      status: "pending",
+    });
+    expectNothingReleased(f);
+  });
+
+  it("expires its own step once its failed landing is final, and plans the action again", async () => {
+    const f = await fixture();
+    await f.follower.forward(
+      [{ cbor: f.ours.signedCbor, valid: false }],
+      f.ours.validUntilSlot - 10,
+    );
+    await f.follower.empty(f.finality);
+    await expect(f.responder.tick()).resolves.toStrictEqual({
+      challenges: 0,
+      status: "idle",
+    });
+    expect(f.state()).toBe("expired");
+    expect(f.journal.get(f.ours.id)?.detail).toBe(
+      "Expired with its own landing failed and its collateral spend final",
+    );
+    expect(f.journal.reservedOutRefs(f.ours.actor)).toEqual([]);
+    expect(f.discover).toHaveBeenCalledTimes(1);
+    expect(f.submit).not.toHaveBeenCalled();
+  });
+
+  it("expires its own failed step after the committee was away for more than k + 2 blocks, the follower pruning", async () => {
+    const f = await fixture();
+    const landed = await f.follower.forward(
+      [{ cbor: f.ours.signedCbor, valid: false }],
+      f.ours.validUntilSlot - 10,
+    );
+    await f.follower.empty(f.follower.securityParameter + 3);
+    expect(await f.follower.prunedThroughSlot()).toBeGreaterThan(landed.slot);
+    await f.responder.tick();
+    expect(f.state()).toBe("expired");
+    expect(f.discover).toHaveBeenCalledTimes(1);
   });
 });

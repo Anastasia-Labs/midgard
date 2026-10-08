@@ -58,6 +58,9 @@ const fixture = () => {
     viewValid: async (view) => view.generation === controls.generation,
     canonicalPoint: async () => null,
     submissionPoint: async () => null,
+    landingPoint: async () => null,
+    failedLanding: async () => undefined,
+    intentPins: { add: async () => {}, bind: () => {} },
     foreignSpend: {
       fetchSpend: async () => undefined,
       fetchAncestor: async () => {

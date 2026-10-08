@@ -5,7 +5,7 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import { type DeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
+import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import type { CommitteePromiseAdoptionConfig } from "./config.promise-admission.js";
 import type { DaCommitteeMember } from "./domain.js";
@@ -28,23 +28,20 @@ export type CardanoL1SourceConfig = {
 };
 
 /**
- * The identity of the committee's L1 source: its network, its node's
- * authority id, and the deployment's L1 origin (whose block hash names the
- * chain). The committee store is bound to it; a change is reported, never
- * fatal.
+ * The identity of the committee's L1 source: its network and its node's
+ * authority id. The deployment's L1 origin is deliberately out, so correcting
+ * `L1_ORIGIN` (or moving it into the manifest later) never invalidates a
+ * stored retirement floor. The committee store is bound to it; a change is
+ * reported, never fatal.
  */
 export const l1SourceAuthorityDigest = (
-  config: Pick<CommitteeConfig, "network" | "l1Origin" | "nativeLedger">,
+  config: Pick<CommitteeConfig, "network" | "nativeLedger">,
 ): string =>
   createHash("sha256")
     .update(
       JSON.stringify({
         network: config.network,
         authorityNodeId: config.nativeLedger?.authorityNodeId ?? null,
-        l1Origin:
-          config.l1Origin === undefined
-            ? null
-            : formatL1Origin(config.l1Origin),
       }),
     )
     .digest("hex");

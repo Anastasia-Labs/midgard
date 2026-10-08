@@ -42,7 +42,7 @@ export const availabilityResponderFromConfig = async (
   store: CommitteeStore,
   follower: Pick<
     CommitteeL1Follower,
-    "source" | "store" | "provider" | "lucid"
+    "source" | "store" | "provider" | "lucid" | "retention"
   >,
 ): Promise<{
   readonly responder: AvailabilityResponder;
@@ -53,6 +53,7 @@ export const availabilityResponderFromConfig = async (
     read: () => readonly string[],
   ) => void;
   readonly compactRetainedPromises?: () => Promise<readonly string[]>;
+  readonly retirementHolds?: () => readonly string[];
 }> => {
   await assertCommitteePromiseEnrollment(config, store);
   if (
@@ -71,6 +72,7 @@ export const availabilityResponderFromConfig = async (
   const reads = committeeAvailabilityReads({
     store: follower.store,
     readiness: () => follower.source.readiness(),
+    ...(follower.retention === null ? {} : { retention: follower.retention }),
   });
   const lucid = await follower.lucid();
   await selectL1SubmitterWallet(lucid, config.availabilitySubmitterKeySource);

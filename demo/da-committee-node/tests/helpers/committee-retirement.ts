@@ -43,6 +43,7 @@ export const descendantPoint = {
 /**
  * The chain the seeded rows name: the block every row was observed at, the
  * block its capacity was certified at, and the committee's L1 submission.
+ * Read when a header is seeded, so a test may set it once its chain exists.
  */
 export type RetentionSeedChain = Readonly<{
   observed: typeof oldPoint;
@@ -163,6 +164,15 @@ export const retentionFixture = async (
     };
   let submissionReader: CommitteeRetirementSourceDependencies["readSubmissionPoint"] =
     async (_tx, c) => ({ point: oldPoint, tip: c });
+  // Each header lands where its rows were observed, while that block is
+  // on the chain.
+  let landingReader: CommitteeRetirementSourceDependencies["readLandingPoint"] =
+    async (_header, c) => {
+      const point = proofs.get(
+        `${seedChain.observed.slot}:${seedChain.observed.blockHash}`,
+      );
+      return point ? { point, tip: c } : null;
+    };
   const deps: CommitteeRetirementSourceDependencies = {
     binding,
     deployment,
@@ -176,6 +186,7 @@ export const retentionFixture = async (
       return point ? { point, tip: c } : null;
     },
     readSubmissionPoint: (...args) => submissionReader(...args),
+    readLandingPoint: (...args) => landingReader(...args),
     readOperationalPins: async () => [...pinned],
     assertCurrent: async () => {},
     assertClaimsCurrent: async () => {
@@ -433,6 +444,9 @@ export const retentionFixture = async (
     persistFinancial,
     setSubmissionReader: (read: typeof submissionReader) => {
       submissionReader = read;
+    },
+    setLandingReader: (read: typeof landingReader) => {
+      landingReader = read;
     },
     binding,
     journal,

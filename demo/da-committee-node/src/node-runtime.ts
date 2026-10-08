@@ -4,6 +4,7 @@ import { deferredAvailabilityResponder } from "./availability/deferred-responder
 import { availabilityResponderFromConfig } from "./availability/factory.js";
 import { committeePromiseAdmission } from "./availability/promise-admission.js";
 import { assertCommitteePromiseEnrollment } from "./availability/promise-profile-selection.js";
+import { configuredRetirementBinding } from "./availability/promise-retirement-binding.js";
 import type { AvailabilityResponderReport } from "./availability/responder.js";
 import type { AvailabilityResponseLoopEnforcement } from "./availability-response-loop.js";
 import { CommitteeService } from "./committee-service.js";
@@ -58,7 +59,16 @@ export type CommitteeAvailabilityRuntime = Readonly<{
   close: () => void;
   promiseLoopEnforcement?: AvailabilityResponseLoopEnforcement;
   compactRetainedPromises?: () => Promise<readonly string[]>;
+  /** The named retention reasons the last promise compaction held at. */
+  retirementHolds?: () => readonly string[];
 }>;
+
+/**
+ * The startup promise compaction failed: the node starts and reports it on
+ * `/readyz` until a retention pass compacts.
+ */
+export const COMMITTEE_RETIREMENT_COMPACTION_FAILED =
+  "committee_retirement_compaction_failed";
 
 export type CommitteeNodeRuntime = Awaited<
   ReturnType<typeof openCommitteeNodeRuntime>
@@ -92,7 +102,16 @@ export const openCommitteeNodeRuntime = async (
     }
   };
   try {
-    const store = await openCommitteeStore(config.localState, storeLockEvents);
+    // The stored records are checked against the L1 origin, and a stored
+    // retirement floor re-bound to the member's binding, as the store opens.
+    const retirementBinding = await configuredRetirementBinding(config);
+    const store = await openCommitteeStore(config.localState, {
+      ...storeLockEvents,
+      openChecks: {
+        ...(config.l1Origin === undefined ? {} : { l1Origin: config.l1Origin }),
+        ...(retirementBinding === undefined ? {} : { retirementBinding }),
+      },
+    });
     closers.push(() => store.close?.());
     await assertCommitteePromiseEnrollment(config, store);
     // The committee's L1 follower, held on the store's instance lock
@@ -101,6 +120,7 @@ export const openCommitteeNodeRuntime = async (
       config,
       async () => store.instanceLock.followerWriterLease(),
       (line) => process.stderr.write(`${line}\n`),
+      () => store.readL1PinTargets(),
     );
     closers.push(() => follower.stop());
     const daChainReader =
@@ -293,7 +313,17 @@ export const openCommitteeNodeRuntime = async (
     adopted?.bindRetirementOperationalPins?.(() =>
       service.readRetirementOperationalPins(),
     );
-    await adopted?.compactRetainedPromises?.();
+    // Never unguarded: a failed compaction is the named reason the node
+    // reports while it runs; the retention pass compacts again.
+    let startupCompactionFailure: string | undefined;
+    try {
+      await adopted?.compactRetainedPromises?.();
+    } catch (error) {
+      startupCompactionFailure = `${COMMITTEE_RETIREMENT_COMPACTION_FAILED}: ${error instanceof Error ? error.message : String(error)}`;
+      process.stderr.write(
+        `${JSON.stringify({ event: COMMITTEE_RETIREMENT_COMPACTION_FAILED, detail: startupCompactionFailure })}\n`,
+      );
+    }
     if (config.availabilityPromiseAdoption !== undefined) {
       if (signerValidation === undefined || adopted === undefined)
         throw new Error(
@@ -323,6 +353,9 @@ export const openCommitteeNodeRuntime = async (
       service,
       l1: follower.source,
       l1Lucid: follower.lucid,
+      /** The committee's retention pins on its follower; null when unconfigured. */
+      l1Retention: follower.retention,
+      startupCompactionFailure,
       daLibp2pNode,
       onChainCoordinator,
       availabilityRuntime,
