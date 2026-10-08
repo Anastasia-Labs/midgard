@@ -92,7 +92,7 @@ export const forcedInActiveBlock = (sql: SqlClient.SqlClient, alias: string) =>
   sql`EXISTS (SELECT 1 FROM pending_block_finalization_forced_transactions m
     JOIN pending_block_finalizations p ON p.header_hash = m.header_hash
     WHERE m.member_id = ${sql(alias)}.tx_order_id
-      AND p.status NOT IN ('finalized', 'abandoned'))`;
+      AND p.status NOT IN ('locally_applied', 'abandoned'))`;
 
 /**
  * SQL condition: the forced row aliased `alias` has no header, its order is

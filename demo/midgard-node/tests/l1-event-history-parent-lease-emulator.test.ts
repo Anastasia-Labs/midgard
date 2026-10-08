@@ -536,7 +536,9 @@ it("fails the parent operation lease after accepted response loss while a later 
     expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
       accepted.txHash,
     );
-    expect(finalRow[Pending.Columns.STATUS]).toBe(Pending.Status.Finalized);
+    expect(finalRow[Pending.Columns.STATUS]).toBe(
+      Pending.Status.LocallyApplied,
+    );
     expect(
       h.receipts.filter(
         ({ transaction }) => transaction.txHash === accepted!.txHash,

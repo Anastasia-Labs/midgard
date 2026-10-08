@@ -148,17 +148,20 @@ export const submitSignedTxWithRecovery = (
           );
         }
       }
-      if (!journaled) {
-        yield* journal.record(intent, signed.toCBOR(), txHash);
-        journaled = true;
-      }
-      // The callback must finish its durable commit before any provider call.
-      // It runs for each attempt so a generation change also fences retries.
+      // The pre-broadcast gate commits in the journal row's transaction, so
+      // a refused gate leaves no journal row, and a row never outlives a
+      // gate that did not pass. It runs for each attempt so a generation
+      // change also fences retries; the row itself is written once.
       const durable = yield* Effect.serviceOption(
         BeforeSignedTransactionSubmission,
       );
-      if (Option.isSome(durable))
-        yield* durable.value.persist({ txHash, signedTxCbor: signed.toCBOR() });
+      const gate = Option.isSome(durable)
+        ? durable.value.persist({ txHash, signedTxCbor: signed.toCBOR() })
+        : undefined;
+      if (!journaled || gate !== undefined) {
+        yield* journal.record(intent, signed.toCBOR(), txHash, gate);
+        journaled = true;
+      }
       const submitResult = yield* Effect.either(signed.submitProgram());
       if (submitResult._tag === "Right") {
         return;
@@ -413,6 +416,7 @@ export const submitSignedTxWithRecovery = (
         return yield* Effect.fail(
           new Error(
             `Tx ${txHash} submit failed with provider error in no-inline mode; refusing provider retry sleep under ownership: ${submitError}`,
+            { cause: e },
           ),
         );
       }

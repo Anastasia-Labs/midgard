@@ -291,7 +291,8 @@ export const committedTipSelector =
     if (l1 !== null) {
       for (const header of [...l1.unmerged].reverse()) {
         if (
-          journals.get(header.headerHash)?.status === JOURNAL_STATUS.Finalized
+          journals.get(header.headerHash)?.status ===
+          JOURNAL_STATUS.LocallyApplied
         ) {
           return header.headerHash;
         }
@@ -299,7 +300,7 @@ export const committedTipSelector =
       return null;
     }
     const finalized = [...journals.values()].filter(
-      (j) => j.status === JOURNAL_STATUS.Finalized,
+      (j) => j.status === JOURNAL_STATUS.LocallyApplied,
     );
     const referenced = new Set(finalized.map((j) => j.baseTailHeaderHash));
     const leaves = finalized.filter((j) => !referenced.has(j.headerHash));

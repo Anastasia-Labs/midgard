@@ -126,7 +126,7 @@ export const successfulLocalFinalizationRecoveryProgram = (
     // parent as the full reload its failed output triggers.
     if (
       record[PendingBlockFinalizationsDB.Columns.STATUS] ===
-      PendingBlockFinalizationsDB.Status.Finalized
+      PendingBlockFinalizationsDB.Status.LocallyApplied
     ) {
       yield* MutationJobsDB.markCompleted(
         MutationJobsDB.localBlockFinalizationJobId(confirmedHeaderHash),

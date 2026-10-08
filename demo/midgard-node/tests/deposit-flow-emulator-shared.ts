@@ -791,9 +791,11 @@ const fixtureNodeConfigFromEnvironment = NodeConfig.pipe(
   })),
 );
 
-import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { runOwnedNativeCommit } from "./deposit-flow-emulator-shared.run-owned-native-commit.js";
-import { runWithoutFollower } from "./helpers/intent-journal.js";
+import {
+  runWithoutFollower,
+  withoutFollowerJournal,
+} from "./helpers/intent-journal.js";
 
 const runFixtureCommitProgram = (
   contracts: SDK.MidgardValidators,
@@ -1302,7 +1304,7 @@ export const runNodeCommandProgram = <A>(
         Effect.provideService(NodeConfig, nodeConfig),
         Effect.provide(Database.layer),
         Effect.provideService(UnownedHistoryFixture, true),
-        Effect.provide(IntentJournalWithoutFollower),
+        withoutFollowerJournal,
       ) as Effect.Effect<A, any, never>,
     );
   });

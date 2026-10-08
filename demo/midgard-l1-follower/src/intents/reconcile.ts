@@ -1,7 +1,13 @@
 import { isFinal } from "../heads.js";
 import type { Dialect, SqlTx, TransactionMode } from "../sql/backend.js";
+import { readCursor } from "../store/rows.js";
 import type { Cursor } from "../types.js";
-import { appendIntentEventIn, type Intent } from "./journal.js";
+import {
+  appendIntentEventIn,
+  type Intent,
+  type IntentHead,
+  readIntentIn,
+} from "./journal.js";
 import {
   deriveIntentStatusesIn,
   type IntentState,
@@ -35,6 +41,12 @@ export type ReconcileAction =
   | "resubmit"
   /** Live but the family predicate says it is no longer wanted. */
   | "abandon"
+  /**
+   * Live, the predicate said abandon, but the tip moved (a new block or a
+   * rewind) between the status read and the abandon write: nothing is
+   * written, and the next pass (at the new tip) decides again.
+   */
+  | "wait_tip_moved"
   /** Live; the mempool read, predicate or submission failed this pass (`error`). */
   | "wait_transient";
 
@@ -49,6 +61,7 @@ export const settledAction = (
   | "wait_attempted"
   | "resubmit"
   | "abandon"
+  | "wait_tip_moved"
   | "wait_transient"
 > | null => {
   switch (status.kind) {
@@ -109,7 +122,7 @@ export type IntentReconcilerOptions = Readonly<{
   /** k, for `landed` deeper than k (terminal). */
   securityParameter: number;
   /** LocalTxMonitor `HasTx`. A throw ends this pass; the next pass retries. */
-  inMempool: (intent: Intent) => Promise<boolean>;
+  inMempool: (intent: IntentHead) => Promise<boolean>;
   /** The §8.4 family predicate, read over projections: can it still land and is it still wanted. */
   wanted: (state: IntentState) => Promise<boolean>;
   /** LocalTxSubmission of the exact journaled bytes. A throw is transient. */
@@ -117,7 +130,7 @@ export type IntentReconcilerOptions = Readonly<{
 }>;
 
 export type ReconciledIntent = Readonly<{
-  intent: Intent;
+  intent: IntentHead;
   status: IntentStatus;
   action: ReconcileAction;
   /** A transient failure of the mempool read, predicate or submission. */
@@ -146,6 +159,8 @@ const errorText = (error: unknown): string =>
  * S6 (§8.3): derives every intent's status from the facts, then waits,
  * resubmits the exact bytes (at most once per tip), or abandons a live
  * intent whose predicate no longer holds. A dead intent is never sent.
+ * The abandon write re-reads the cursor and writes only at the tip the
+ * statuses were derived at; the signed bytes are read only to send them.
  */
 export const createIntentReconciler = (
   options: IntentReconcilerOptions,
@@ -188,17 +203,28 @@ export const createIntentReconciler = (
             inMempool,
             wanted,
           });
-          if (action === "abandon")
-            await options.transaction("write", (tx) =>
-              appendIntentEventIn(tx, dialect, intent.txHash, "abandoned", {
-                detail: { reason: "family_predicate_false" },
-                tipSlot,
-              }),
-            );
+          if (action === "abandon") {
+            const written = await options.transaction("write", async (tx) => {
+              if (tipKey(await readCursor(tx, dialect, "share")) !== tip)
+                return false;
+              await appendIntentEventIn(
+                tx,
+                dialect,
+                intent.txHash,
+                "abandoned",
+                { detail: { reason: "family_predicate_false" }, tipSlot },
+              );
+              return true;
+            });
+            if (!written) {
+              report.push({ intent, status, action: "wait_tip_moved" });
+              continue;
+            }
+          }
           if (action === "resubmit") {
             attempted.set(key, tip);
-            await options.transaction("write", (tx) =>
-              appendIntentEventIn(
+            const signed = await options.transaction("write", async (tx) => {
+              await appendIntentEventIn(
                 tx,
                 dialect,
                 intent.txHash,
@@ -207,9 +233,12 @@ export const createIntentReconciler = (
                   detail: { generation: cursor?.generation ?? null },
                   tipSlot,
                 },
-              ),
-            );
-            const outcome = await options.submit(intent);
+              );
+              return readIntentIn(tx, dialect, intent.txHash);
+            });
+            if (signed === null)
+              throw new Error("the intent was pruned during the pass");
+            const outcome = await options.submit(signed);
             if (outcome.kind === "rejected")
               await options.transaction("write", (tx) =>
                 appendIntentEventIn(

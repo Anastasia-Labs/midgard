@@ -386,7 +386,9 @@ it("recreates production services after accepted response loss, preserves intent
     expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
       accepted.txHash,
     );
-    expect(finalRow[Pending.Columns.STATUS]).toBe(Pending.Status.Finalized);
+    expect(finalRow[Pending.Columns.STATUS]).toBe(
+      Pending.Status.LocallyApplied,
+    );
     expect(providerCalls).toBe(1);
     expect(h.observer.pendingCount()).toBe(0);
     diagnostic.final = { journal: finalRow };

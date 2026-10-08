@@ -6,13 +6,10 @@ import {
   type FactStore,
   type FollowerProjection,
   insertIntentIn,
-  type Intent,
-  type IntentEvent,
+  type IntentHead,
   intentJournalProjection,
   type IntentState,
   type OutRef,
-  readIntentEventsIn,
-  readIntentsIn,
   recordIntentIn,
 } from "../../src/index.js";
 import {
@@ -23,7 +20,14 @@ import {
   simTxHash,
 } from "../../src/testing/index.js";
 import type { SimChain } from "../../src/testing/sim-chain.js";
+import { SIM_K } from "./fork-sim.js";
 import { expectedText, modelStatuses, observedOf } from "./intent-sim.model.js";
+import {
+  type Journal,
+  journalText,
+  readJournal,
+  statusText,
+} from "./intent-sim.text.js";
 
 /**
  * The intent journal in the fork simulator. Its traffic is an own wallet
@@ -69,36 +73,6 @@ const coin = (hash: Buffer, step: number, salt: number, percent: number) =>
   ((hash.readUInt32BE(0) ^ Math.imul(step + 1, 0x9e3779b1) ^ salt) >>> 0) %
     100 <
   percent;
-
-const replacer = (_: string, value: unknown): unknown =>
-  typeof value === "bigint"
-    ? value.toString()
-    : value instanceof Uint8Array
-      ? Buffer.from(value).toString("hex")
-      : value !== null &&
-          typeof value === "object" &&
-          (value as { type?: unknown }).type === "Buffer"
-        ? Buffer.from((value as { data: number[] }).data).toString("hex")
-        : value;
-
-const statusText = (state: IntentState): string =>
-  JSON.stringify(
-    { status: state.status, terminal: state.terminalSlot },
-    replacer,
-  );
-
-type Journal = Readonly<{ intents: Intent[]; events: IntentEvent[] }>;
-
-const journalText = (journal: Journal): string[] => [
-  ...journal.intents.map((intent) => JSON.stringify(intent, replacer)),
-  ...journal.events.map((event) => JSON.stringify(event, replacer)),
-];
-
-const readJournal = (store: FactStore): Promise<Journal> =>
-  store.transaction("read", async (tx) => ({
-    intents: await readIntentsIn(tx, store.dialect),
-    events: await readIntentEventsIn(tx),
-  }));
 
 export const intentSimulation = (): {
   projection: FollowerProjection;
@@ -151,9 +125,21 @@ export const intentSimulation = (): {
       (p) => !chain.isLive({ txHash: p.hash, index: 0 }),
     );
     const child = parents.length > 0 && rng.chance(0.3);
-    const input: OutRef | null = child
-      ? { txHash: rng.pick(parents).hash, index: 0 }
-      : pick();
+    const parent = child ? rng.pick(parents) : null;
+    // A failed parent's child may spend its collateral return (§8.2: that
+    // output exists on a phase-2 failure).
+    const input: OutRef | null =
+      parent === null
+        ? pick()
+        : {
+            txHash: parent.hash,
+            index:
+              parent.tx.isValid === false &&
+              parent.tx.collateralReturn !== undefined &&
+              rng.chance(0.5)
+                ? parent.tx.outputs.length
+                : 0,
+          };
     if (input === null) return block;
     const failed = rng.chance(0.1);
     const collateral = failed ? pick() : null;
@@ -276,6 +262,22 @@ export const intentSimulation = (): {
       }
       const cursor = await store.cursor();
       const prunedThrough = cursor?.prunedThroughSlot ?? 0;
+      // The prune step runs its hooks only when the block k below the
+      // cursor is still a row: right after a rewind of exactly k blocks it
+      // was pruned, and an intent abandoned at that tip waits for the next
+      // step whose boundary block exists.
+      const pruneRanHooks =
+        cursor !== null &&
+        (await store.transaction(
+          "read",
+          async (tx) =>
+            (
+              await tx.query(
+                "SELECT 1 AS one FROM l1_blocks WHERE height = ?",
+                [cursor.height - SIM_K],
+              )
+            ).length > 0,
+        ));
       const retained = new Set(journal.intents.map((i) => hex(i.txHash)));
       // Derived statuses against the fresh replay with the whole journal.
       await loadReference(reference);
@@ -315,8 +317,8 @@ export const intentSimulation = (): {
           state.terminalSlot !== null && state.terminalSlot <= prunedThrough;
         if (!isRetained && !terminalForK)
           return `intent ${key} pruned while not terminal for k (${statusText(state)}, pruned through ${prunedThrough})`;
-        if (isRetained && terminalForK && step.prune === true)
-          return `intent ${key} terminal for k but kept by the prune`;
+        if (isRetained && terminalForK && step.prune === true && pruneRanHooks)
+          return `intent ${key} terminal for k but kept by the prune (${statusText(state)}, pruned through ${prunedThrough})`;
       }
       // Every status against the naive oracle over the whole model chain.
       const abandonedNow = new Set(
@@ -396,9 +398,10 @@ export const intentSimulation = (): {
       const modelAfter = modelStatuses(
         blocks,
         tipSlot,
-        [...known.values()]
-          .flatMap((j) => j.intents)
-          .concat(fresh.states.map((s) => s.intent)),
+        [
+          ...[...known.values()].flatMap((j): IntentHead[] => j.intents),
+          ...fresh.states.map((s) => s.intent),
+        ],
         new Set(
           (await readJournal(store)).events
             .filter((e) => e.kind === "abandoned")

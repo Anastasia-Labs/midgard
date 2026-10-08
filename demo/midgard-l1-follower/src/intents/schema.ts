@@ -96,6 +96,15 @@ CREATE TABLE l1_intent_events (
 );
 `;
 
+/**
+ * The status read finds abandoned intents without scanning every event
+ * (each resubmission appends one): a partial index, the same in both
+ * dialects.
+ */
+const ANY_0002 = `
+CREATE INDEX l1_intent_events_abandoned ON l1_intent_events (tx_hash, tip_slot) WHERE kind = 'abandoned';
+`;
+
 export const intentMigrations = (dialect: DialectName): MigrationSet => ({
   namespace: INTENT_MIGRATION_NAMESPACE,
   migrations: [
@@ -103,5 +112,6 @@ export const intentMigrations = (dialect: DialectName): MigrationSet => ({
       id: "0001_intent_journal",
       sql: dialect === "postgres" ? POSTGRES_0001 : SQLITE_0001,
     },
+    { id: "0002_intent_abandoned_index", sql: ANY_0002 },
   ],
 });

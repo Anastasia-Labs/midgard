@@ -161,7 +161,7 @@ describe(
         h = restarted;
         await synchronizeWithin(restarted);
         expect((await readJournal(header))[C.STATUS]).toBe(
-          Pending.Status.Finalized,
+          Pending.Status.LocallyApplied,
         );
         expect(await readPlans()).toEqual([]);
         expect(await nativeRoot(h)).toBe(journal[C.EXPECTED_UTXOS_ROOT]);

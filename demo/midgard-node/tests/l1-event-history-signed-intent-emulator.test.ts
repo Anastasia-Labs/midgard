@@ -356,7 +356,9 @@ it("retains the exact durable signed commitment after an accepted submission los
     expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
       accepted.txHash,
     );
-    expect(finalRow[Pending.Columns.STATUS]).toBe(Pending.Status.Finalized);
+    expect(finalRow[Pending.Columns.STATUS]).toBe(
+      Pending.Status.LocallyApplied,
+    );
     expect(
       h.receipts.filter(
         ({ transaction }) => transaction.txHash === accepted!.txHash,

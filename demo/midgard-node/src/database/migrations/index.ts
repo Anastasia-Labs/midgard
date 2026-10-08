@@ -8,6 +8,8 @@ import foreignNativeAdoptionSql from "./sql/0006_foreign_native_adoption.sql";
 import dropForeignTipReconciliationsSql from "./sql/0007_drop_foreign_tip_reconciliations.sql";
 import followerAdmissionIdentitySql from "./sql/0008_follower_admission_identity.sql";
 import landedBlocksSql from "./sql/0009_landed_blocks.sql";
+import intentRefusalHoldsSql from "./sql/0010_intent_refusal_holds.sql";
+import locallyAppliedBlockStatusSql from "./sql/0011_locally_applied_block_status.sql";
 
 export type Migration = {
   readonly version: number;
@@ -79,6 +81,20 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "landed_blocks",
     checksumSha256: sha256Hex(landedBlocksSql),
     sql: landedBlocksSql,
+    transactional: true,
+  },
+  {
+    version: 10,
+    name: "intent_refusal_holds",
+    checksumSha256: sha256Hex(intentRefusalHoldsSql),
+    sql: intentRefusalHoldsSql,
+    transactional: true,
+  },
+  {
+    version: 11,
+    name: "locally_applied_block_status",
+    checksumSha256: sha256Hex(locallyAppliedBlockStatusSql),
+    sql: locallyAppliedBlockStatusSql,
     transactional: true,
   },
 ] as const;
@@ -167,6 +183,7 @@ export const APPLICATION_TABLE_NAMES = [
   "node_landed_blocks",
   "node_working_ledger_basis",
   "node_confirmed_ledger_frontier",
+  "intent_refusal_holds",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [

@@ -72,7 +72,7 @@ it("abandons a removed block's unlanded descendant in the same repair and commit
     const [removedHeader, childHeader] = scenario.headers as [string, string];
     const parent = await readJournal(removedHeader);
     const child = await readJournal(childHeader);
-    expect(parent[C.STATUS]).toBe(Pending.Status.Finalized);
+    expect(parent[C.STATUS]).toBe(Pending.Status.LocallyApplied);
     // Handed to L1 with its signed intent, never observed there.
     expect([
       Pending.Status.PendingSubmission,
@@ -435,7 +435,7 @@ it("rewinds a removed block whose journal stopped at pending_submission with its
     expect(journal[C.CORRECTION_TRANSITION_DIGEST]).toBe(
       (await readObserver()).admitted[0]!.transitionDigest,
     );
-    expect(submitted[C.STATUS]).toBe(Pending.Status.Finalized);
+    expect(submitted[C.STATUS]).toBe(Pending.Status.LocallyApplied);
     const next = await commitNextBlock(h);
     expect(
       (await readJournal(next.submittedHeaderHash)).depositEventIds.map((id) =>
@@ -468,7 +468,7 @@ it("accepts a rollback of an admitted removal whose rewind never ran, leaving ev
     expect(await readRecoveryPlans()).toEqual([]);
     expect(await captureState(scenario)).toEqual(before);
     expect(before.journals).toEqual([
-      { status: Pending.Status.Finalized, digest: null },
+      { status: Pending.Status.LocallyApplied, digest: null },
     ]);
     expect(before.native).toBe(removed[C.EXPECTED_UTXOS_ROOT]);
   } finally {

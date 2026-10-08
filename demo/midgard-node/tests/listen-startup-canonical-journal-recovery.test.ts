@@ -205,7 +205,7 @@ describe("startup over a replaced block reported on the queue", () => {
     const globals = freshGlobals();
     const exit = await run(
       Effect.gen(function* () {
-        yield* seedReplacedPair(Pending.Status.Finalized);
+        yield* seedReplacedPair(Pending.Status.LocallyApplied);
         return yield* recover(
           globals,
           yield* queueOf(E_HEADER),
@@ -216,7 +216,9 @@ describe("startup over a replaced block reported on the queue", () => {
     expect(exit).toEqual(Exit.succeed(2_001_000));
     expect(raisedHalt(globals)).toBe(SIGNED_INTENT_UNDECIDED);
     expect(await run(readStatus(E_HEADER))).toBe(Pending.Status.Abandoned);
-    expect(await run(readStatus(NEW_E_HEADER))).toBe(Pending.Status.Finalized);
+    expect(await run(readStatus(NEW_E_HEADER))).toBe(
+      Pending.Status.LocallyApplied,
+    );
   });
 
   it("raises nothing once the replacement is abandoned", async () => {

@@ -212,7 +212,7 @@ describe("drillCatalogue", () => {
       TRIGGERS.settlement.holds(
         settlement(
           "waiting",
-          "submitted exact journaled settlement transaction",
+          "settlement transaction abababababababababababababababababababababababababababababababab journaled; S6 sends its exact bytes until it lands",
         ),
       ),
     ).toBe(true);

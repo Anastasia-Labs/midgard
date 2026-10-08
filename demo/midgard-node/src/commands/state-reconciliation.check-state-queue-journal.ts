@@ -64,7 +64,7 @@ export const checkStateQueueJournal = (
           `${label}: journal base tail ${journal.baseTailHeaderHash} differs from the header's prevHeaderHash ${header.prevHeaderHash}`,
         );
       }
-      if (journal.status === JOURNAL_STATUS.Finalized) continue;
+      if (journal.status === JOURNAL_STATUS.LocallyApplied) continue;
       if (journal.status === JOURNAL_STATUS.Abandoned) {
         acc.failures.push(
           `${label}: its journal is marked abandoned (correction digest ${journal.correctionTransitionDigest ?? "<none>"}) but the header is still on L1`,
@@ -89,7 +89,7 @@ export const checkStateQueueJournal = (
     const onChain = ctx.onChainUnmerged.has(journal.headerHash);
     const isMergedHeader = merged.headers.has(journal.headerHash);
     if (
-      journal.status === JOURNAL_STATUS.Finalized &&
+      journal.status === JOURNAL_STATUS.LocallyApplied &&
       !onChain &&
       !isMergedHeader
     ) {

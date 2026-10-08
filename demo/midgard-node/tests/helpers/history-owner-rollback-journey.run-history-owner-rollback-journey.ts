@@ -602,7 +602,7 @@ export const runHistoryOwnerRollbackJourney = async ({
       );
       expect(durable.journal).toHaveLength(1);
       const journal = durable.journal[0]!;
-      expect(journal.status).toBe("finalized");
+      expect(journal.status).toBe("locally_applied");
       expect(journal.signed_tx_cbor.toString("hex")).toBe(receipt.signedCbor);
       expect(journal.intended_tx_hash.toString("hex")).toBe(
         output.submittedTxHash,

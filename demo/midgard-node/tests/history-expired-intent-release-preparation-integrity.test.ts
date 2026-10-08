@@ -107,7 +107,7 @@ describe("an integrity failure met by the signed-intent release", () => {
     const owner = ownerModel(ZERO_ROOT);
     const result = await onNode(owner, (node) =>
       Effect.gen(function* () {
-        yield* seedDisplaced(Pending.Status.Finalized);
+        yield* seedDisplaced(Pending.Status.LocallyApplied);
         yield* withNativeReplay(X_HEADER);
         fixture.coverage = coverage(true);
         const first = yield* release(node);
@@ -133,7 +133,7 @@ describe("an integrity failure met by the signed-intent release", () => {
     expect(result.held).toEqual({
       statuses: [
         Pending.Status.Abandoned,
-        Pending.Status.Finalized,
+        Pending.Status.LocallyApplied,
         Pending.Status.PendingSubmission,
       ],
       plans: [],
@@ -155,7 +155,7 @@ const revivalState = Effect.gen(function* () {
   yield* journal(W_HEADER, Pending.Status.Abandoned, W_COMMIT, 2_000_000, {
     abandonment: "replacement",
   });
-  yield* journal(S_HEADER, Pending.Status.Finalized, S_COMMIT, 3_000_000, {
+  yield* journal(S_HEADER, Pending.Status.LocallyApplied, S_COMMIT, 3_000_000, {
     empty: true,
   });
   yield* observerSees([
@@ -231,7 +231,7 @@ describe("the replaced-block revival with no journal active", () => {
     expect(result.short.raised.get(REVIVAL_SOURCE)).toBe(UNDECIDED);
     expect(result.short.reasons).toContain(UNDECIDED);
     expect(result.before).toEqual({
-      statuses: [Pending.Status.Abandoned, Pending.Status.Finalized],
+      statuses: [Pending.Status.Abandoned, Pending.Status.LocallyApplied],
       plans: [],
       ledger: UTXOS_ROOT,
     });
@@ -271,7 +271,7 @@ describe("the replaced-block revival with no journal active", () => {
     expect(result.held.raised.get(REVIVAL_SOURCE)).toBe(INTEGRITY);
     expect(result.held.reasons).toContain(INTEGRITY);
     expect(result.after).toEqual({
-      statuses: [Pending.Status.Abandoned, Pending.Status.Finalized],
+      statuses: [Pending.Status.Abandoned, Pending.Status.LocallyApplied],
       plans: [],
       ledger: UTXOS_ROOT,
     });
@@ -349,7 +349,7 @@ describe("a displaced sibling that moved the ledger root", () => {
     const owner = ownerModel(ZERO_ROOT);
     const result = await onNode(owner, (node) =>
       Effect.gen(function* () {
-        yield* seedDisplaced(Pending.Status.Finalized);
+        yield* seedDisplaced(Pending.Status.LocallyApplied);
         yield* sMovedTheRoot;
         yield* withNativeReplay(X_HEADER);
         fixture.coverage = coverage(false);
@@ -369,7 +369,7 @@ describe("a displaced sibling that moved the ledger root", () => {
     expect(result.after).toEqual({
       statuses: [
         Pending.Status.Abandoned,
-        Pending.Status.Finalized,
+        Pending.Status.LocallyApplied,
         Pending.Status.PendingSubmission,
       ],
       plans: [],
@@ -396,7 +396,7 @@ describe("a displaced sibling that moved the ledger root", () => {
     expect(result.held.raised.get(REVIVAL_SOURCE)).toBe(INTEGRITY);
     expect(result.held.reasons).not.toContain(UNDECIDED);
     expect(result.after).toEqual({
-      statuses: [Pending.Status.Abandoned, Pending.Status.Finalized],
+      statuses: [Pending.Status.Abandoned, Pending.Status.LocallyApplied],
       plans: [],
       ledger: UTXOS_ROOT,
     });

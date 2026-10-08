@@ -67,7 +67,7 @@ it("revives a replaced commit after a fork rolls back its canonically included l
     await branch.includeReplacement(h, N.journal);
     await finalizeLocally(h, N.header);
     expect((await readJournal(N.header))[C.STATUS]).toBe(
-      Pending.Status.Finalized,
+      Pending.Status.LocallyApplied,
     );
     const completedJob = await readLocalFinalizationJob(N.header);
     expect(completedJob?.status).toBe(MutationJobs.Status.Completed);

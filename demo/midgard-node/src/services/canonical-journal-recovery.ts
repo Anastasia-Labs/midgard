@@ -149,7 +149,7 @@ export const REVIVAL_BLOCKING_SIBLING_STATUSES: readonly PendingBlockFinalizatio
   [
     Status.SubmittedUnconfirmed,
     Status.ObservedWaitingStability,
-    Status.Finalized,
+    Status.LocallyApplied,
   ];
 
 /**

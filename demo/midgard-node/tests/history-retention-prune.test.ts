@@ -43,15 +43,19 @@ describe("pruning finalized journals beyond challengeability", () => {
     const result = await run(
       Effect.gen(function* () {
         yield* journals([
-          { label: "old-plain", status: "finalized", endedAgoMs: 10 * DAY_MS },
+          {
+            label: "old-plain",
+            status: "locally_applied",
+            endedAgoMs: 10 * DAY_MS,
+          },
           {
             label: "old-confirmed-head",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 10 * DAY_MS,
           },
           {
             label: "old-live-queue",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 9 * DAY_MS,
           },
           {
@@ -63,7 +67,7 @@ describe("pruning finalized journals beyond challengeability", () => {
           },
           {
             label: "recent-finalized",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 60_000,
           },
           {
@@ -96,7 +100,7 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (20 - index) * DAY_MS,
           })),
         );
@@ -151,17 +155,21 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals([
           {
             label: "merge-running",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 10 * DAY_MS,
             mergeJob: "running",
           },
           {
             label: "merge-unstarted",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 9 * DAY_MS,
             mergeJob: "none",
           },
-          { label: "newest", status: "finalized", endedAgoMs: 8 * DAY_MS },
+          {
+            label: "newest",
+            status: "locally_applied",
+            endedAgoMs: 8 * DAY_MS,
+          },
         ]);
         yield* recordObserverState();
         const whileUnmerged = yield* prune({
@@ -210,7 +218,7 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (10 - index) * DAY_MS,
           })),
         );
@@ -232,7 +240,7 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals(
           labels.map((label) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: DAY_MS / 2,
           })),
         );
@@ -265,7 +273,7 @@ describe("journals a recorded correction transition names", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
@@ -296,7 +304,7 @@ describe("journals a recorded correction transition names", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
@@ -325,7 +333,7 @@ describe("journals a recorded correction transition names", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
@@ -369,7 +377,7 @@ describe("journals a recorded correction transition names", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
@@ -403,7 +411,7 @@ describe("journals a recorded correction transition names", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
@@ -429,7 +437,7 @@ describe("journals with an orphaned event member", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );

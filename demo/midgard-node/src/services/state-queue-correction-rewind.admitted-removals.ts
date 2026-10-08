@@ -45,7 +45,7 @@ const REMOVABLE_STATUSES: readonly Pending.Status[] = [
   Pending.Status.SubmittedLocalFinalizationPending,
   Pending.Status.SubmittedUnconfirmed,
   Pending.Status.ObservedWaitingStability,
-  Pending.Status.Finalized,
+  Pending.Status.LocallyApplied,
 ];
 
 /** A removed header's journal may still read pending_submission when the

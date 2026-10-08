@@ -162,35 +162,52 @@ export const withTimeoutCorrectionProgress = (
 });
 
 /**
- * The journal store with the intent journal in front: a step's signed bytes
- * are journaled (§8.2, family `correction`) when the step is first saved
- * `prepared`, which precedes its first send. A refusal fails the save, so
- * nothing is sent.
+ * The journal store with the intent journal in front (§8.2, family
+ * `correction`). A step is journaled when the workflow decides to send it:
+ * the save that holds a `prepared` step whose bytes the journal last read
+ * or saved did not hold at that index (an appended step, or a replacement
+ * moved to the end). A step reopened in place by a rollback (`confirmed` or
+ * `superseded` back to `prepared`, same bytes) is not a send decision and
+ * is not journaled; its bytes were journaled when first prepared.
+ * Recording precedes the save, so a refusal fails it and nothing is sent.
+ *
+ * Key: `correction:<target header>:<kind>:<removed header>`; the content
+ * reference is the removed header.
  */
 export const withCorrectionIntentJournal = (
   store: TimeoutCorrectionJournalStore,
   journal: IntentJournalService,
 ): TimeoutCorrectionJournalStore => {
-  const recorded = new Set<string>();
+  let last: TimeoutCorrectionJournal | undefined;
+  const decided = (
+    next: TimeoutCorrectionJournal,
+  ): TimeoutCorrectionJournal["steps"] =>
+    next.steps.filter((step, index) => {
+      if (step.status !== "prepared") return false;
+      const before = last?.steps[index];
+      return before === undefined || before.txHash !== step.txHash;
+    });
   return {
     ...store,
+    load: async () => {
+      last = await store.load();
+      return last;
+    },
     save: async (next) => {
-      for (const step of next.steps)
-        if (step.status === "prepared" && !recorded.has(step.txHash)) {
-          await Effect.runPromise(
-            journal.record(
-              journaledIntent(
-                "correction",
-                `correction:${step.kind}:${step.removedHeaderHash}`,
-                Buffer.from(step.removedHeaderHash, "hex"),
-              ),
-              step.signedCbor,
-              step.txHash,
+      for (const step of decided(next))
+        await Effect.runPromise(
+          journal.record(
+            journaledIntent(
+              "correction",
+              `correction:${next.targetHeaderHash}:${step.kind}:${step.removedHeaderHash}`,
+              Buffer.from(step.removedHeaderHash, "hex"),
             ),
-          );
-          recorded.add(step.txHash);
-        }
+            step.signedCbor,
+            step.txHash,
+          ),
+        );
       await store.save(next);
+      last = next;
     },
   };
 };

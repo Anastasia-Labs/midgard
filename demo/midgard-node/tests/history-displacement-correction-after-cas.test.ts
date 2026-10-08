@@ -102,7 +102,7 @@ describe("retained displacement followed by an ancestor correction", () => {
           Effect.gen(function* () {
             yield* insertJournal({
               header: A_HEADER,
-              status: Pending.Status.Finalized,
+              status: Pending.Status.LocallyApplied,
               commit: signedCommit(`${hex("root-tx")}#0`, TTL),
               baseOut: `${hex("root-tx")}#0`,
               baseHeader: Buffer.alloc(28),
@@ -114,7 +114,7 @@ describe("retained displacement followed by an ancestor correction", () => {
             );
             yield* insertJournal({
               header: BASE_HEADER,
-              status: Pending.Status.Finalized,
+              status: Pending.Status.LocallyApplied,
               commit: signedCommit(A_OUT, TTL),
               baseOut: A_OUT,
               baseHeader: A_HEADER,
@@ -127,7 +127,7 @@ describe("retained displacement followed by an ancestor correction", () => {
             yield* withNativeReplay(BASE_HEADER);
             yield* journal(
               W_HEADER,
-              Pending.Status.Finalized,
+              Pending.Status.LocallyApplied,
               W_COMMIT,
               2_000_000,
             );

@@ -231,7 +231,7 @@ const retrieveNewestFinalizedWhere = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<RawRow>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.STATUS)} = ${Status.Finalized} AND ${filter(sql)}
+      WHERE ${sql(Columns.STATUS)} = ${Status.LocallyApplied} AND ${filter(sql)}
       ORDER BY ${sql(Columns.BLOCK_END_TIME)} DESC, ${sql(Columns.CREATED_AT)} DESC
       LIMIT 1`;
     return rows.length === 0

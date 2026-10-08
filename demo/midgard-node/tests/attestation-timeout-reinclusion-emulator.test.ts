@@ -75,7 +75,7 @@ it("does not rewind before the removal is final, and until then the next commit 
     expect(await nativeRoot(h)).toBe(removed[0]!.expected);
     expect(await readRecoveryPlans()).toEqual([]);
     expect((await readJournal(removed[0]!.headerHash))[C.STATUS]).toBe(
-      Pending.Status.Finalized,
+      Pending.Status.LocallyApplied,
     );
     // A new deposit gives the next block content. Without an admitted
     // removal nothing is owed or rewound.

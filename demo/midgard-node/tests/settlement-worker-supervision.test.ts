@@ -85,7 +85,7 @@ switch (workerData.behaviour) {
     let ticks = 0;
     const cheap = setInterval(() => {
       ticks += 1;
-      report("waiting", "submitted exact journaled settlement transaction", true);
+      report("waiting", "settlement transaction abababababababababababababababababababababababababababababababab journaled; S6 sends its exact bytes until it lands", true);
       if (ticks < workerData.recoveryTicks - 1) return;
       clearInterval(cheap);
       setTimeout(() => {

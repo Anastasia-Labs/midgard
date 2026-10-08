@@ -37,6 +37,7 @@ export {
   type FollowChainOptions,
   FOLLOWER_APPLY_STUCK,
   FOLLOWER_CATCHING_UP,
+  FOLLOWER_PRUNE_FAILING,
   FOLLOWER_WAITING,
   type FollowReadiness,
   type FollowReadinessReason,
@@ -44,6 +45,7 @@ export {
   type FollowWaitCause,
   LOOP_PRUNE_BUDGET,
   LOOP_PRUNE_EVERY,
+  PRUNE_FAILING_AFTER,
   readinessOf,
 } from "./follow/loop.js";
 export { startWhenFree } from "./follow/start.js";
@@ -86,18 +88,21 @@ export {
 } from "./heads.js";
 export {
   appendIntentEventIn,
-  insertIntentIn,
   type Intent,
   type IntentEvent,
+  type IntentHead,
+  journaledHashesIn,
   type OwnOutput,
   readIntentEventsIn,
+  readIntentHeadsIn,
+  readIntentIn,
   readIntentsByContentIn,
   readIntentsByWorkflowIn,
   readIntentsIn,
-  recordIntentIn,
   type RecordIntentInput,
   type RecordIntentResult,
 } from "./intents/journal.js";
+export { insertIntentIn, recordIntentIn } from "./intents/journal.record.js";
 export { intentJournalProjection } from "./intents/projection.js";
 export { INTENT_PRUNE_HOOK, pruneIntentsIn } from "./intents/prune.js";
 export {
@@ -119,10 +124,12 @@ export {
 } from "./intents/schema.js";
 export {
   deriveIntentStatusesIn,
+  deriveIntentStatusIn,
   type IntentState,
   type IntentStatus,
   type IntentStatuses,
   type IntentStatusKind,
+  type IntentStatusRead,
   isDeadStatus,
 } from "./intents/status.js";
 export {

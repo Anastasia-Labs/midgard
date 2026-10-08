@@ -28,9 +28,15 @@ import {
   submitInactivityStrikeProgram,
 } from "../src/transactions/operators/takeover.js";
 import {
+  drainJournaledWithoutFollower,
   runWithoutFollower,
   withoutFollowerJournal,
 } from "./helpers/intent-journal.js";
+import {
+  expectReplayedFamilies,
+  walletReplayConfig,
+} from "./helpers/intent-journal-replay.expect.js";
+import { replayJournaledOnFollower } from "./helpers/intent-journal-replay.js";
 import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
@@ -244,6 +250,7 @@ describe("voluntary retirement and bond recovery", () => {
 describe("takeover planning, strike, and forced retirement", () => {
   it("plans not-yet before the threshold, strikes after it, and force-retires at the strike limit", async () => {
     const fixture = await initOperatorInactivityFixture(2);
+    drainJournaledWithoutFollower();
     const appointed = await appointFirstSchedulerOperator(fixture);
     const successor = fixture.operators.find(
       ({ keyHash }) => keyHash !== appointed.operatorKeyHash,
@@ -367,6 +374,30 @@ describe("takeover planning, strike, and forced retirement", () => {
     expect((await report(fixture, appointed.operatorKeyHash)).state).toBe(
       "none",
     );
+
+    // Each operator's node, following this chain, records its own intents
+    // and judges them wanted at the tip before they landed (I1-fix F5).
+    const journaled = drainJournaledWithoutFollower();
+    for (const [operator, families] of [
+      [successor.keyHash, ["takeover", "retire"]],
+      [appointed.operatorKeyHash, ["recover_bond"]],
+    ] as const)
+      expectReplayedFamilies(
+        await replayJournaledOnFollower({
+          emulator: fixture.emulator,
+          contracts: fixture.contracts,
+          config: walletReplayConfig({
+            operatorSeed: fixture.operators.find((o) => o.keyHash === operator)!
+              .seedPhrase,
+            referenceScriptsSeed: fixture.referenceScriptsSeedPhrase,
+            referenceScriptsAddress: fixture.referenceScriptsAddress,
+          }),
+          slotToPosixMs: (slot) => fixture.lucid.slotToUnixTime(slot),
+          operatorKeyHash: operator,
+          journaled,
+        }),
+        families,
+      );
   }, 600_000);
 });
 

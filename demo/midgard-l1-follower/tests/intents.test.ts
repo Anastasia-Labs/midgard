@@ -2,129 +2,29 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createIntentReconciler,
-  decodeBlock,
-  deriveIntentStatusesIn,
   type FactStore,
   type Intent,
-  intentJournalProjection,
+  type IntentHead,
   type IntentReconcilerOptions,
-  type IntentStatus,
-  openSqliteFactStore,
-  type OutRef,
-  projectionStoreOptions,
   readIntentEventsIn,
   readIntentsByContentIn,
   readIntentsByWorkflowIn,
-  recordIntentIn,
-  type RecordIntentResult,
 } from "../src/index.js";
 import {
   cbor as c,
   encodeSimTx,
   encodeTxBody,
   SIM_ORIGIN,
-  SimChain,
   type SimTx,
   simTxHash,
-  simUniverse,
 } from "../src/testing/index.js";
-
-const K = 3;
-const u = simUniverse();
-
-type Harness = {
-  store: FactStore;
-  chain: SimChain;
-  /** Appends a block of `txs` to the model and applies it to the store. */
-  forward: (txs?: readonly SimTx[]) => Promise<void>;
-  /** Rolls the model and the store back `depth` blocks. */
-  backward: (depth: number) => Promise<void>;
-  record: (
-    tx: SimTx,
-    extra?: Partial<{
-      txCbor: Buffer;
-      contentRef: Buffer;
-      workflowKey: string;
-    }>,
-  ) => Promise<RecordIntentResult>;
-  statuses: () => Promise<Map<string, IntentStatus>>;
-  /** A funded tracked output, created in its own block. */
-  fund: () => Promise<OutRef>;
-};
-
-const open = async (): Promise<Harness> => {
-  const store = openSqliteFactStore({
-    ...projectionStoreOptions(
-      [intentJournalProjection],
-      { securityParameter: K, trackedSet: u.tracked },
-      "sqlite",
-    ),
-    path: ":memory:",
-  });
-  await store.start();
-  const chain = new SimChain(u, SIM_ORIGIN);
-  const harness: Harness = {
-    store,
-    chain,
-    forward: async (txs = []) => {
-      const { encoded } = chain.forward(txs);
-      const applied = await store.applyBlock(decodeBlock(encoded.raw));
-      expect(applied.kind).toBe("applied");
-    },
-    backward: async (depth) => {
-      chain.backward(depth);
-      const rewound = await store.rewind(chain.tip.point);
-      expect(rewound.kind).toBe("rewound");
-    },
-    record: (tx, extra = {}) =>
-      store.transaction("write", (sql) =>
-        recordIntentIn(sql, store.dialect, {
-          family: "commit",
-          workflowKey:
-            extra.workflowKey ?? `commit:${simTxHash(tx).toString("hex")}`,
-          txCbor: extra.txCbor ?? encodeSimTx(tx),
-          isOwnOutput: (output) => output.address.equals(u.trackedAddress),
-          ...(extra.contentRef === undefined
-            ? {}
-            : { contentRef: extra.contentRef }),
-        }),
-      ),
-    statuses: async () =>
-      new Map(
-        (
-          await store.transaction("read", (sql) =>
-            deriveIntentStatusesIn(sql, store.dialect),
-          )
-        ).states.map((s) => [s.intent.txHash.toString("hex"), s.status]),
-      ),
-    fund: async () => {
-      const funding: SimTx = {
-        inputs: [chain.outsideInput()],
-        outputs: [{ address: u.trackedAddress, lovelace: 10_000_000n }],
-        nonce: chain.nonce(),
-      };
-      await harness.forward([funding]);
-      return { txHash: simTxHash(funding), index: 0 };
-    },
-  };
-  return harness;
-};
-
-const spend = (
-  chain: SimChain,
-  input: OutRef,
-  extra: Partial<SimTx> = {},
-): SimTx => ({
-  inputs: [input],
-  outputs: [
-    { address: u.trackedAddress, lovelace: 4_000_000n },
-    { address: u.untrackedAddress, lovelace: 1_000_000n },
-  ],
-  nonce: chain.nonce(),
-  ...extra,
-});
-
-const hex = (tx: SimTx): string => simTxHash(tx).toString("hex");
+import {
+  type Harness,
+  hex,
+  K,
+  open,
+  spend,
+} from "./support/intents-harness.js";
 
 let h: Harness;
 
@@ -381,7 +281,7 @@ describe("S6 reconciliation (§8.3)", () => {
     const flaky = spend(h.chain, await h.fund());
     for (const tx of [pooled, unwanted, refused, flaky]) await h.record(tx);
     const sent: Intent[] = [];
-    const is = (intent: Intent, tx: SimTx) =>
+    const is = (intent: IntentHead, tx: SimTx) =>
       intent.txHash.equals(simTxHash(tx));
     const s6 = reconciler(h.store, {
       sent,
@@ -423,6 +323,61 @@ describe("S6 reconciliation (§8.3)", () => {
     await h.forward();
     await s6.reconcile();
     expect(sent.some((i) => is(i, unwanted))).toBe(false);
+  });
+
+  it("sends a not-yet-valid intent's exact bytes again at each tip until the ledger takes them and they land, and never sends one at or past its validity end", async () => {
+    await h.store.initialize(SIM_ORIGIN);
+    const early = await h.fund();
+    const closingInput = await h.fund();
+    const tip = () => h.chain.tip.point.slot;
+    const notYet = spend(h.chain, early, { invalidBefore: tip() + 5 });
+    const closing = spend(h.chain, closingInput, { invalidAfter: tip() + 3 });
+    await h.record(notYet);
+    await h.record(closing);
+    const sent: Intent[] = [];
+    const sentAt: Array<Readonly<{ tx: string; slot: number }>> = [];
+    const s6 = reconciler(h.store, {
+      sent,
+      // The ledger refuses a body below its lower bound, as a node does.
+      submit: (intent) => {
+        sent.push(intent);
+        sentAt.push({ tx: intent.txHash.toString("hex"), slot: tip() });
+        return Promise.resolve(
+          intent.txHash.equals(simTxHash(notYet)) &&
+            tip() < notYet.invalidBefore!
+            ? { kind: "rejected", detail: "OutsideValidityInterval" }
+            : { kind: "accepted" },
+        );
+      },
+    });
+    let tips = 0;
+    while (tip() < notYet.invalidBefore!) {
+      await s6.reconcile();
+      tips += 1;
+      await h.forward();
+    }
+    await s6.reconcile();
+    const notYetSends = sentAt.filter((s) => s.tx === hex(notYet));
+    expect(notYetSends).toHaveLength(tips + 1);
+    expect(
+      sent
+        .filter((i) => i.txHash.equals(simTxHash(notYet)))
+        .every((i) => i.txCbor.equals(encodeSimTx(notYet))),
+    ).toBe(true);
+    const closingSends = sentAt.filter((s) => s.tx === hex(closing));
+    expect(closingSends.length).toBeGreaterThan(0);
+    expect(closingSends.every((s) => s.slot < closing.invalidAfter!)).toBe(
+      true,
+    );
+    await h.forward([notYet]);
+    sent.length = 0;
+    await s6.reconcile();
+    await h.forward();
+    await s6.reconcile();
+    expect(sent).toEqual([]);
+    const statuses = await h.statuses();
+    expect(statuses.get(hex(notYet))).toMatchObject({ kind: "landed" });
+    expect(statuses.get(hex(closing))).toMatchObject({ kind: "expired" });
   });
 });
 

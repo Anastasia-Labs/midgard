@@ -246,6 +246,7 @@ export const addReserveFundsToPayoutProgram = (
           ? { validTo: Date.now() + 180_000 }
           : {}),
       },
+      eventId,
     );
     return {
       txHash,
@@ -298,6 +299,7 @@ export const concludePayoutProgram = (
           ? { validTo: Date.now() + 180_000 }
           : {}),
       },
+      eventId,
     );
     return {
       txHash,

@@ -105,19 +105,19 @@ describe("the release's reinclusion and revival over a displaced sibling", () =>
     // own transaction first (see
     // history-expired-intent-release-preparation-displaced.test.ts); the
     // revival itself still refuses a locally finalized sibling.
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const exit = await run(
       Effect.exit(reviveReplacedCanonicalJournal(W_HEADER)),
     );
     expect(failureMessage(exit)).toContain(
-      `block ${S_HEADER.toString("hex")} built on the same base is already ${Pending.Status.Finalized}`,
+      `block ${S_HEADER.toString("hex")} built on the same base is already ${Pending.Status.LocallyApplied}`,
     );
-    expect(await readStatus(S_HEADER)).toBe(Pending.Status.Finalized);
+    expect(await readStatus(S_HEADER)).toBe(Pending.Status.LocallyApplied);
     expect(await readStatus(W_HEADER)).toBe(Pending.Status.Abandoned);
   });
 
   it("never reopens a block as displaced unless it was locally finalized", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
+    await run(seedDisplaced(Pending.Status.LocallyApplied));
     const record = Option.getOrThrow(
       await run(Pending.retrieveByHeaderHash(X_HEADER)),
     );

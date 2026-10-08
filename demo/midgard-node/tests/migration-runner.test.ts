@@ -91,6 +91,12 @@ describe("splitSqlStatements", () => {
         transactional: true,
       },
       { version: 9, name: "landed_blocks", transactional: true },
+      { version: 10, name: "intent_refusal_holds", transactional: true },
+      {
+        version: 11,
+        name: "locally_applied_block_status",
+        transactional: true,
+      },
     ]);
   });
 

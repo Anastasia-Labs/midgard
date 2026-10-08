@@ -376,7 +376,6 @@
     "tests/signed-intent-early-release-emulator.test.ts": 24.9,
     "tests/signed-intent-early-release-foreign-spend-emulator.test.ts": 24.8,
     "tests/signed-intent-early-release-revival-emulator.test.ts": 17.4,
-    "tests/signed-intent-rebroadcast.test.ts": 2.9,
     "tests/signed-intent-replacement-content-emulator.test.ts": 47.6,
     "tests/signed-intent-replacement-revival-emulator.test.ts": 70.5,
     "tests/signed-intent-replacement-revival-over-locally-finalized-emulator.test.ts": 31.6,

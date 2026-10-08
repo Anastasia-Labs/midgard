@@ -39,7 +39,7 @@ const seed = (labels: readonly string[]) =>
     yield* journals(
       labels.map((label, index) => ({
         label,
-        status: "finalized" as const,
+        status: "locally_applied" as const,
         endedAgoMs: (40 - index) * DAY_MS,
       })),
     );

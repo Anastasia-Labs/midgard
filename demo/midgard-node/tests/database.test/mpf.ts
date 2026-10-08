@@ -286,7 +286,7 @@ export const registerMpfTests = () => {
                 });
                 yield* sql`UPDATE ${sql(
                   PendingBlockFinalizationsDB.tableName,
-                )} SET status = ${PendingBlockFinalizationsDB.Status.Finalized}
+                )} SET status = ${PendingBlockFinalizationsDB.Status.LocallyApplied}
               WHERE header_hash = ${headers[index]!}`;
               });
             yield* prepare(0, [a[LedgerUtils.Columns.OUTREF]], [c]);

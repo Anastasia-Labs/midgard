@@ -137,10 +137,10 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
             yield* sql`CREATE TEMP TABLE tx_rejections (tx_id bytea, reject_code text, reject_detail text, created_at timestamptz) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE tx_admissions (tx_id bytea, status text) ON COMMIT DROP`;
             yield* sql`INSERT INTO immutable VALUES (${txId})`;
-            yield* sql`INSERT INTO pending_block_finalizations VALUES (${header}, ${options.status ?? "finalized"}, ${root})`;
+            yield* sql`INSERT INTO pending_block_finalizations VALUES (${header}, ${options.status ?? "locally_applied"}, ${root})`;
             yield* sql`INSERT INTO pending_block_finalization_txs VALUES (${header}, ${txId})`;
             if (options.oldAbandoned || options.ambiguous) {
-              yield* sql`INSERT INTO pending_block_finalizations VALUES (${otherHeader}, ${options.oldAbandoned ? "abandoned" : "finalized"}, ${root})`;
+              yield* sql`INSERT INTO pending_block_finalizations VALUES (${otherHeader}, ${options.oldAbandoned ? "abandoned" : "locally_applied"}, ${root})`;
               yield* sql`INSERT INTO pending_block_finalization_txs VALUES (${otherHeader}, ${txId})`;
             }
             if (options.job) {

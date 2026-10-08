@@ -452,7 +452,7 @@ export const ledgerAuditIsDue = ({
       readonly finalized_count: bigint | string;
     }>`SELECT COUNT(*) AS finalized_count
        FROM pending_block_finalizations
-       WHERE status = 'finalized' AND updated_at > ${lastAuditAt}`;
+       WHERE status = 'locally_applied' AND updated_at > ${lastAuditAt}`;
     return BigInt(row?.finalized_count ?? 0) >= BigInt(intervalBlocks);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to determine MPF audit cadence"),

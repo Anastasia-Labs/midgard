@@ -98,7 +98,7 @@ describe("pruning ended state-queue mutation leases", () => {
           releasedAgoMs: 40 * DAY_MS,
         });
         yield* journals([
-          { label: "named", status: "finalized", endedAgoMs: DAY_MS },
+          { label: "named", status: "locally_applied", endedAgoMs: DAY_MS },
         ]);
         const removed = yield* StateQueueMutationLeasesDB.pruneSettledLeases({
           olderThanMs: MANIFEST_WINDOW_MS,

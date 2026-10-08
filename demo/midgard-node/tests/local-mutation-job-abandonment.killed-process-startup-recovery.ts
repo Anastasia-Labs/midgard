@@ -60,13 +60,13 @@ const submittedJournal = (
     }
     if (
       status === Status.ObservedWaitingStability ||
-      status === Status.Finalized
+      status === Status.LocallyApplied
     )
       yield* PendingBlockFinalizationsDB.markObservedWaitingStability(
         headerHash,
         1n,
       );
-    if (status === Status.Finalized)
+    if (status === Status.LocallyApplied)
       yield* PendingBlockFinalizationsDB.markFinalized(headerHash);
   });
 
@@ -104,16 +104,16 @@ describe("startup after a process killed mid local finalization", () => {
         Effect.gen(function* () {
           const done = header("killed-after-mark-finalized");
           yield* runningLocalJob(done);
-          yield* submittedJournal(done, Status.Finalized);
+          yield* submittedJournal(done, Status.LocallyApplied);
           const failedDone = header("failed-after-mark-finalized");
           yield* failedLocalJob(failedDone, "ack lost");
-          yield* submittedJournal(failedDone, Status.Finalized);
+          yield* submittedJournal(failedDone, Status.LocallyApplied);
           expect(yield* startupGate).toBeUndefined();
           for (const finalized of [done, failedDone]) {
             const job = yield* readJob(localJobId(finalized));
             expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Completed);
             expect(job[J.COMPLETED_AT]).not.toBeNull();
-            expect(yield* journalStatus(finalized)).toBe(Status.Finalized);
+            expect(yield* journalStatus(finalized)).toBe(Status.LocallyApplied);
           }
         }),
       ),
@@ -218,7 +218,7 @@ describe("startup after a process killed mid local finalization", () => {
           const job = yield* readJob(localJobId(killed));
           expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Completed);
           expect(job[J.ATTEMPTS]).toBe(2);
-          expect(yield* journalStatus(killed)).toBe(Status.Finalized);
+          expect(yield* journalStatus(killed)).toBe(Status.LocallyApplied);
           const immutable = yield* sql<{ readonly count: string }>`SELECT
             COUNT(*)::text AS count FROM immutable WHERE tx_id = ${tx.txId}`;
           const blocks = yield* sql<{ readonly count: string }>`SELECT

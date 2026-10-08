@@ -113,7 +113,11 @@ export const Status = {
   SubmittedLocalFinalizationPending: "submitted_local_finalization_pending",
   SubmittedUnconfirmed: "submitted_unconfirmed",
   ObservedWaitingStability: "observed_waiting_stability",
-  Finalized: "finalized",
+  /**
+   * The node applied the block locally (plan §13.1: formerly `finalized`).
+   * Whether it is final on L1 is derived from the follower's facts.
+   */
+  LocallyApplied: "locally_applied",
   Abandoned: "abandoned",
 } as const;
 

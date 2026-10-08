@@ -1,12 +1,11 @@
 /**
  * Ogmios refuses a body whose inputs its mempool view already consumed with
  * JSON-RPC 3997 "All inputs are spent. Transaction has probably already been
- * included". On lc1 that was the node's own pending settlement body, resubmitted
- * while it sat in the mempool. It is not the ledger's unknown-input failure
- * (3117): the commit submitters abandon their attempt and rebuild over a tail
- * the unknown-input error names, which is wrong while their own transaction may
- * still land, so the unknown-input matcher leaves 3997 alone. Settlement reads
- * 3997 through its own rule (services/settlement-call.ts).
+ * included", as it did to a node's own pending body resubmitted while it sat
+ * in the mempool. It is not the ledger's unknown-input failure (3117): the
+ * commit submitters abandon their attempt and rebuild over a tail the
+ * unknown-input error names, which is wrong while their own transaction may
+ * still land, so the unknown-input matcher leaves 3997 alone.
  */
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

@@ -10,13 +10,19 @@ export const FOLLOWER_CATCHING_UP = "l1_follower_catching_up";
 export const FOLLOWER_WAITING = "l1_follower_waiting";
 /** One point keeps failing to apply; an operator has to look. */
 export const FOLLOWER_APPLY_STUCK = "l1_follower_apply_stuck";
+/**
+ * `PRUNE_FAILING_AFTER` prune passes in a row failed (a prune hook threw, or
+ * the store did): every fact past retention stays until one succeeds.
+ */
+export const FOLLOWER_PRUNE_FAILING = "l1_follower_prune_failing";
 
 /** A named reason a role's `/readyz` reports while the follower holds it unready. */
 export type FollowReadinessReason =
   | InterventionReason
   | typeof FOLLOWER_CATCHING_UP
   | typeof FOLLOWER_WAITING
-  | typeof FOLLOWER_APPLY_STUCK;
+  | typeof FOLLOWER_APPLY_STUCK
+  | typeof FOLLOWER_PRUNE_FAILING;
 
 export type FollowReadiness = Readonly<{
   reason: FollowReadinessReason;
@@ -63,6 +69,8 @@ export type FollowStatus = Readonly<{
     steps: number;
     prunedThroughSlot: number | null;
     lastError: string | null;
+    /** Prune passes failed in a row; the next successful one resets it. */
+    failures: number;
   }>;
 }>;
 
@@ -92,6 +100,11 @@ export type FollowChainOptions = Readonly<{
 export const DEFAULT_STUCK_AFTER = 5;
 export const LOOP_PRUNE_BUDGET = 500;
 export const LOOP_PRUNE_EVERY = 100;
+/**
+ * Consecutive failed prune passes before `l1_follower_prune_failing`. One
+ * failure alone is not a reason: the next pass retries it.
+ */
+export const PRUNE_FAILING_AFTER = 3;
 
 /** The readiness reasons a status implies. */
 export const readinessOf = (
@@ -110,6 +123,11 @@ export const readinessOf = (
     reasons.push({
       reason: FOLLOWER_WAITING,
       detail: `${status.waiting.cause}: ${status.waiting.detail}`,
+    });
+  if (status.prune.failures >= PRUNE_FAILING_AFTER)
+    reasons.push({
+      reason: FOLLOWER_PRUNE_FAILING,
+      detail: `${status.prune.failures} prune passes in a row failed: ${status.prune.lastError ?? "unknown"}`,
     });
   if (!status.atTip)
     reasons.push({

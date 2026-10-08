@@ -74,7 +74,7 @@ export const loadCompensationSource = (
       winner[C.STATUS] !== Pending.Status.Abandoned ||
       journalAbandonment(winner) !== "replacement" ||
       displaced.some(
-        (record) => record[C.STATUS] !== Pending.Status.Finalized,
+        (record) => record[C.STATUS] !== Pending.Status.LocallyApplied,
       ) ||
       records.some(
         (record) =>

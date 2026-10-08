@@ -528,7 +528,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     const firstFields = await journalFields(first.headerHash);
     const secondFields = await journalFields(second.headerHash);
     expect(firstFields.status).toBe(
-      PendingBlockFinalizationsDB.Status.Finalized,
+      PendingBlockFinalizationsDB.Status.LocallyApplied,
     );
     expect(secondFields.base_tail_header_hash.toString("hex")).toBe(
       first.headerHash,

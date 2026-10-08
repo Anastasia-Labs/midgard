@@ -171,7 +171,7 @@ export const prepareSignedHeaderRecovery = (input: {
         if (Option.isNone(maybe)) return undefined;
         const record = maybe.value;
         if (
-          (record[C.STATUS] !== Pending.Status.Finalized &&
+          (record[C.STATUS] !== Pending.Status.LocallyApplied &&
             record[C.STATUS] !== Pending.Status.ObservedWaitingStability) ||
           record[C.DEPLOYMENT_MANIFEST_ID] !== checkpoint.manifestId ||
           record.txMembers.length ||
@@ -190,7 +190,7 @@ export const prepareSignedHeaderRecovery = (input: {
         (NOT (${orphanedAdmission(sql, "m", "deposit")})
           OR d.projected_header_hash IS DISTINCT FROM m.header_hash)`;
         const otherPending =
-          yield* sql`SELECT 1 FROM pending_block_finalizations WHERE status NOT IN ('finalized','abandoned')
+          yield* sql`SELECT 1 FROM pending_block_finalizations WHERE status NOT IN ('locally_applied','abandoned')
         AND header_hash <> ${record[C.HEADER_HASH]}
       UNION ALL SELECT 1 FROM processed_mempool`;
         if (remaining.length || otherPending.length) return undefined;

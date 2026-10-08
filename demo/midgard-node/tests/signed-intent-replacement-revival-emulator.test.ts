@@ -267,7 +267,7 @@ it("stops with an integrity error and persists nothing when a replaced commit wi
     await h.synchronize();
     await finalizeLocally(h, next.submittedHeaderHash);
     expect((await readJournal(next.submittedHeaderHash))[C.STATUS]).toBe(
-      Pending.Status.Finalized,
+      Pending.Status.LocallyApplied,
     );
 
     // A rollback deeper than NEW_E's local finalization brings E back: the

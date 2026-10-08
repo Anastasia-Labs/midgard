@@ -43,7 +43,7 @@ export const readTxStatusMergeEvidence = (txIds: readonly Buffer[]) =>
             merged: boolean;
           }>`SELECT encode(member.member_id, 'hex') AS tx_hash,
           encode(member.header_hash, 'hex') AS header_hash, pending.status,
-          (pending.status = 'finalized' AND EXISTS (
+          (pending.status = 'locally_applied' AND EXISTS (
             SELECT 1 FROM local_mutation_jobs job
             JOIN da_payload_terminal_outcomes outcome
               ON outcome.header_hash = pending.header_hash

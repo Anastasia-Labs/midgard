@@ -69,7 +69,7 @@ describe("durable returned-prefix displacement compensation", () => {
       expect(result.ledger).toBe(PREFIX_ROOT);
       expect(result.native).toBe(PREFIX_ROOT);
       expect(result.child?.status).toBe(Pending.Status.Abandoned);
-      expect(result.s?.status).toBe(Pending.Status.Finalized);
+      expect(result.s?.status).toBe(Pending.Status.LocallyApplied);
       expect(result.w?.status).toBe(Pending.Status.Abandoned);
       expect(result.replays).toBe(0);
       expect(result.final.map(({ state }) => state)).toEqual(["applied"]);
@@ -135,7 +135,7 @@ describe("durable returned-prefix displacement compensation", () => {
       expect(result.ledger).toBe(result.native);
       expect(result.child?.status).toBe(
         branch === "full chain"
-          ? Pending.Status.Finalized
+          ? Pending.Status.LocallyApplied
           : Pending.Status.Abandoned,
       );
       expect(result.replays).toBe(0);
@@ -159,7 +159,7 @@ describe("durable returned-prefix displacement compensation", () => {
         result.original[0]?.recovery_id,
       );
       expect(result.ledger).toBe(CHILD_ROOT);
-      expect(result.child?.status).toBe(Pending.Status.Finalized);
+      expect(result.child?.status).toBe(Pending.Status.LocallyApplied);
       expect(result.operations).toHaveLength(1);
       expect(result.replays).toBe(0);
     },

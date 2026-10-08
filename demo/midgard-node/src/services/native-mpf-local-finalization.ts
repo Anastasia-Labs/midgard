@@ -46,7 +46,7 @@ export const recoverNativeMpfForLocalFinalization = (
         const status = record[Pending.Columns.STATUS];
         const observed =
           status === Pending.Status.ObservedWaitingStability ||
-          status === Pending.Status.Finalized;
+          status === Pending.Status.LocallyApplied;
         const acknowledged =
           record[Pending.Columns.SUBMITTED_TX_HASH] !== null &&
           (status === Pending.Status.SubmittedUnconfirmed ||

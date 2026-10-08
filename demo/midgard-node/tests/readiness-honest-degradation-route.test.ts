@@ -435,6 +435,20 @@ describe("GET /readyz names the L1 follower's reasons (N1)", () => {
       ),
       "l1_follower_apply_stuck",
     );
+    // F8f: prune passes failing in a row (a prune hook that throws).
+    await holds(
+      runningFollower(
+        followingAtTip({
+          prune: {
+            steps: 4,
+            prunedThroughSlot: 40,
+            lastError: "prune hook threw",
+            failures: 3,
+          },
+        }),
+      ),
+      "l1_follower_prune_failing",
+    );
     await holds(
       runningFollower(
         followingAtTip({

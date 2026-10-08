@@ -69,7 +69,7 @@ export const retrieveFinalizedMissingDaPayloads = ({
               ON ${sql(DaPayloadsDB.tableName)}.${sql(
                 DaPayloadsDB.Columns.HEADER_HASH,
               )} = ${sql(tableName)}.${sql(Columns.HEADER_HASH)}
-            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.Finalized}
+            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.LocallyApplied}
               AND ${sql(DaPayloadsDB.tableName)}.${sql(
                 DaPayloadsDB.Columns.HEADER_HASH,
               )} IS NULL
@@ -80,7 +80,7 @@ export const retrieveFinalizedMissingDaPayloads = ({
               ON ${sql(DaPayloadsDB.tableName)}.${sql(
                 DaPayloadsDB.Columns.HEADER_HASH,
               )} = ${sql(tableName)}.${sql(Columns.HEADER_HASH)}
-            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.Finalized}
+            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.LocallyApplied}
               AND ${sql(DaPayloadsDB.tableName)}.${sql(
                 DaPayloadsDB.Columns.HEADER_HASH,
               )} IS NULL
@@ -261,7 +261,7 @@ export const pruneFinalizedBeyondChallengeability = ({
         )}
         WHERE ${sql(Columns.HEADER_HASH)} IN (
           SELECT ${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)}
-          WHERE ${sql(Columns.STATUS)} = ${Status.Finalized}
+          WHERE ${sql(Columns.STATUS)} = ${Status.LocallyApplied}
             AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
             AND NOT ${challengeRelevantHeader(sql, `${tableName}.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
             AND NOT ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`, deploymentIdentityDigest)}
@@ -286,7 +286,7 @@ export const pruneFinalizedBeyondChallengeability = ({
               SELECT newest.${sql(Columns.HEADER_HASH)} FROM ${sql(
                 tableName,
               )} AS newest
-              WHERE newest.${sql(Columns.STATUS)} = ${Status.Finalized}
+              WHERE newest.${sql(Columns.STATUS)} = ${Status.LocallyApplied}
               ORDER BY newest.${sql(Columns.BLOCK_END_TIME)} DESC,
                 newest.${sql(Columns.CREATED_AT)} DESC
               LIMIT 1)
@@ -327,7 +327,7 @@ export const retrieveCorrectionObserverJournalDependencies: Effect.Effect<
   }>`SELECT ${sql(Columns.HEADER_HASH)}, ${sql(Columns.BASE_TAIL_HEADER_HASH)},
       ${sql(Columns.BASE_TAIL_OUT_REF)}, ${sql(Columns.STATUS)}
     FROM ${sql(tableName)}
-    WHERE ${sql(Columns.STATUS)} <> ${Status.Finalized}
+    WHERE ${sql(Columns.STATUS)} <> ${Status.LocallyApplied}
       OR ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
       OR NOT EXISTS (
         SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job

@@ -157,7 +157,12 @@ export const compensationScenario = (
           2_000_000,
           { abandonment: "replacement" },
         );
-        yield* journal(S_HEADER, Pending.Status.Finalized, S_COMMIT, 3_000_000);
+        yield* journal(
+          S_HEADER,
+          Pending.Status.LocallyApplied,
+          S_COMMIT,
+          3_000_000,
+        );
         yield* sql(
           (sql) =>
             sql`UPDATE pending_block_finalizations SET expected_utxos_root = ${PREFIX_ROOT} WHERE header_hash = ${S_HEADER}`,
@@ -165,7 +170,7 @@ export const compensationScenario = (
         yield* withNativeReplay(S_HEADER);
         yield* insertJournal({
           header: CHILD,
-          status: Pending.Status.Finalized,
+          status: Pending.Status.LocallyApplied,
           commit,
           baseOut: S_OUT,
           baseHeader: S_HEADER,

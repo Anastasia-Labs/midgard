@@ -21,6 +21,11 @@ import {
 } from "../../src/transactions/register-active-operator.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../../src/transactions/script-reward-registration.js";
 import { alignUnixTimeToSlotBoundary } from "../../src/workers/utils/commit-end-time.js";
+import {
+  type CaptureSnapshot,
+  restoreCapture,
+  snapshotCapture,
+} from "./emulator-chain-capture.js";
 import { runWithoutFollower } from "./intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
@@ -65,7 +70,8 @@ type EmulatorState = Pick<
   | "datumTable"
   | "treasury"
   | "transactionHistory"
->;
+> &
+  CaptureSnapshot;
 
 type DeploymentSnapshot = {
   readonly emulatorState: EmulatorState;
@@ -85,6 +91,7 @@ const snapshotEmulator = (emulator: Emulator): EmulatorState => ({
   datumTable: structuredClone(emulator.datumTable),
   treasury: emulator.treasury,
   transactionHistory: structuredClone(emulator.transactionHistory),
+  ...snapshotCapture(emulator),
 });
 
 const cloneEmulator = (snapshot: EmulatorState): Emulator => {
@@ -101,6 +108,7 @@ const cloneEmulator = (snapshot: EmulatorState): Emulator => {
   emulator.time = snapshot.time;
   emulator.datumTable = structuredClone(snapshot.datumTable);
   emulator.transactionHistory = structuredClone(snapshot.transactionHistory);
+  restoreCapture(emulator, snapshot);
   return emulator;
 };
 
@@ -252,6 +260,7 @@ export type OperatorInactivityFixture = {
   readonly lucid: LucidEvolution;
   readonly referenceScriptsLucid: LucidEvolution;
   readonly referenceScriptsAddress: string;
+  readonly referenceScriptsSeedPhrase: string;
   readonly contracts: SDK.MidgardValidators;
   /** Active operators, ordered by key hash (i.e. in list order). */
   readonly operators: readonly InactivityOperatorAccount[];
@@ -286,6 +295,7 @@ export const initOperatorInactivityFixture = async (
     lucid,
     referenceScriptsLucid,
     referenceScriptsAddress: await referenceScriptsLucid.wallet().address(),
+    referenceScriptsSeedPhrase: snapshot.referenceScriptsSeedPhrase,
     contracts: snapshot.contracts,
     operators: snapshot.operators,
     lucidFor: async (keyHash: string) => {

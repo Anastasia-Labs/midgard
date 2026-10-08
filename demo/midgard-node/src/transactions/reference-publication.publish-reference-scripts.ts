@@ -5,7 +5,6 @@ import {
   CML,
   coreToTxOutput,
   type LucidEvolution,
-  OgmiosJsonRpcError,
   type Script,
   type UTxO,
   validatorToScriptHash,
@@ -14,7 +13,7 @@ import { Effect } from "effect";
 
 import type { IntentJournalService } from "../services/intent-journal.js";
 import {
-  journalPublicationOnce,
+  sendPublication,
   submitPublicationFunding,
 } from "./reference-publication.journal.js";
 import {
@@ -61,8 +60,7 @@ export const publishReferenceScripts = async ({
     peakOutstandingCount: 0,
     peakOutstandingBytes: 0,
   };
-  const provider = lucid.config().provider;
-  if (provider === undefined)
+  if (lucid.config().provider === undefined)
     throw new Error("Reference publication requires a provider");
   const walletAddress = await lucid.wallet().address();
   const wait = options.wait ?? (() => pause(1_000));
@@ -368,26 +366,16 @@ export const publishReferenceScripts = async ({
   const withinOutstandingByteBudget = () =>
     outstanding().reduce((sum, record) => sum + record.cbor.length / 2, 0) <=
     MAX_OUTSTANDING_BYTES;
-  const journalOnce = journalPublicationOnce(journal);
+  const send = sendPublication(journal, lucid);
   const submit = async (record: Publication) => {
     signal?.throwIfAborted();
-    await journalOnce(record);
     const submittedAt = Date.now();
     metrics.submissionAttempts += 1;
     try {
-      const hash = await provider.submitTx(record.cbor);
-      record.accepted = hash === record.hash;
-      record.lastSubmission = {
-        outcome: record.accepted ? "accepted" : "ambiguous",
-      };
-    } catch (cause) {
       // Transport errors and submit rejections are both inconclusive about an
       // earlier accepted copy. Retry identical bytes; never replace while valid.
-      record.accepted = false;
-      record.lastSubmission = {
-        outcome: cause instanceof OgmiosJsonRpcError ? "rejected" : "ambiguous",
-        cause,
-      };
+      record.lastSubmission = await send(record);
+      record.accepted = record.lastSubmission.outcome === "accepted";
     } finally {
       metrics.submissionDurationMs += Date.now() - submittedAt;
     }
@@ -617,6 +605,7 @@ export const publishReferenceScripts = async ({
           record = {
             hash,
             cbor,
+            signed,
             inputs: lane.funding,
             outputs,
             targets: needed,

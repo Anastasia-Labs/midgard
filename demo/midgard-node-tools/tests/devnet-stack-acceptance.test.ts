@@ -199,7 +199,8 @@ describe("finite acceptance phase gates", () => {
             {
               settlement: {
                 state: "waiting",
-                detail: "submitted exact journaled settlement transaction",
+                detail:
+                  "settlement transaction abababababababababababababababababababababababababababababababab journaled; S6 sends its exact bytes until it lands",
               },
             },
           ],
@@ -265,7 +266,8 @@ describe("finite acceptance phase gates", () => {
       {
         settlement: {
           state: "waiting",
-          detail: "submitted exact journaled settlement transaction",
+          detail:
+            "settlement transaction abababababababababababababababababababababababababababababababab journaled; S6 sends its exact bytes until it lands",
         },
       },
     ],

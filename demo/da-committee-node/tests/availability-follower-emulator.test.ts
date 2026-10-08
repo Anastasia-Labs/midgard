@@ -205,6 +205,34 @@ describe("the availability responder reconciles on the follower's facts, with no
     expect(f.submit).toHaveBeenCalledWith(f.ours.signedCbor);
   });
 
+  it("returns its confirmed step to the mempool when a rollback deeper than the finality depth removes its block", async () => {
+    // D-N8: confirming at the finality depth (cd) retires the step's
+    // workflow, but cd is not finality: a deeper rollback reverts it, with
+    // the same signed bytes and the inputs still reserved.
+    const f = await fixture("prepare");
+    const before = tip(f.follower);
+    await f.follower.forward(
+      [{ cbor: f.ours.signedCbor }],
+      f.ours.validUntilSlot - 20,
+    );
+    await f.follower.empty(f.finality);
+    await f.responder.tick();
+    expect(f.state()).toBe("confirmed");
+    expect(f.discover).toHaveBeenCalledTimes(1);
+    await f.follower.rollBackTo(before);
+    await f.follower.empty(2);
+    await expect(f.responder.tick()).resolves.toStrictEqual({
+      challenges: 0,
+      status: "pending",
+    });
+    expect(f.state()).toBe("pending");
+    expect(f.submit.mock.calls).toEqual([[f.ours.signedCbor]]);
+    expect(f.journal.reservedOutRefs(f.ours.actor)).toEqual(
+      expect.arrayContaining(f.normal.map(outRef)),
+    );
+    expect(f.discover).toHaveBeenCalledTimes(1);
+  });
+
   it("expires its step once a rival spend of its inputs is final, and discovers again", async () => {
     const f = await fixture();
     await landRival(f);
