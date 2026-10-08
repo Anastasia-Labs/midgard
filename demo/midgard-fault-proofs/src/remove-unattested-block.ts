@@ -1,7 +1,6 @@
 import "node:crypto";
 import "node:fs/promises";
 import "node:path";
-import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
@@ -9,8 +8,6 @@ import "./inspect-contracts.js";
 import "./remove-fraudulent-block.js";
 import "./runtime.js";
 import "./step-support.js";
-import "./workflow/local-kupmios-http-ogmios-source.js";
-import "./workflow/release-finality-policy.js";
 import "./workflow/signed-transaction-reconciliation.js";
 import "./remove-unattested-block.parse-timeout-correction-journal.js";
 import "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
@@ -36,14 +33,18 @@ export {
   reopenRolledBackTimeoutCorrectionSteps,
   selectTimeoutCorrectionTarget,
   type SubmitUnattestedTimeoutCorrectionResult,
+  type TimeoutCorrectionAttemptObservation,
+  timeoutCorrectionAttemptStatus,
+  type TimeoutCorrectionL1Point,
   type TimeoutCorrectionPlan,
   type TimeoutCorrectionRecovery,
 } from "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
 export {
-  createLocalKupmiosTimeoutCorrectionRecovery,
+  isSpentInputSubmitRejection,
   recoverTimeoutCorrectionAttempt,
   resolveTimeoutCorrectionValidityRange,
   type SubmitUnattestedTimeoutCorrectionParams,
+  TimeoutCorrectionAttemptInFlightError,
 } from "./remove-unattested-block.recover-timeout-correction-attempt.js";
 export { submitUnattestedTimeoutCorrection } from "./remove-unattested-block.submit-unattested-timeout-correction.js";
 export {
