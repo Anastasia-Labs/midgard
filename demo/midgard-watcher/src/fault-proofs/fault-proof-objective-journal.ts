@@ -1,4 +1,4 @@
-import { readdir, realpath } from "node:fs/promises";
+import { readdir, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -21,6 +21,35 @@ export type WatcherProofExecution = Readonly<{
   entries: readonly FraudProofWorkflowJournalEntry[];
 }>;
 
+/** The workflow directory that holds an objective's executions. */
+export const watcherProofObjectiveDirectory = (
+  journalRoot: string,
+  objective: WatcherProofObjective,
+): string =>
+  join(journalRoot, "fault-proofs", objective.category, objective.headerHash);
+
+const isMissing = (error: unknown): boolean =>
+  error instanceof Error && "code" in error && error.code === "ENOENT";
+
+/** Removes an objective's workflow directory. A path that resolves through a
+ * symlink is refused and left in place; a missing one is already removed. */
+export const removeWatcherProofObjectiveDirectory = async (
+  journalRoot: string,
+  objective: WatcherProofObjective,
+): Promise<void> => {
+  const directory = watcherProofObjectiveDirectory(journalRoot, objective);
+  let resolved;
+  try {
+    resolved = await realpath(directory);
+  } catch (error) {
+    if (isMissing(error)) return;
+    throw error;
+  }
+  if (resolved !== directory)
+    throw new Error("proof objective journal traverses a symlink");
+  await rm(directory, { recursive: true, force: true });
+};
+
 /** One selected durable execution per objective; scheduling records are not
  * completion evidence. Only affected objectives are read after startup. */
 export const readWatcherProofExecution = async (input: {
@@ -29,17 +58,15 @@ export const readWatcherProofExecution = async (input: {
   readonly objective: WatcherProofObjective;
   readonly selectedWorkflowId?: string;
 }): Promise<WatcherProofExecution | undefined> => {
-  const directory = join(
+  const directory = watcherProofObjectiveDirectory(
     input.journalRoot,
-    "fault-proofs",
-    input.objective.category,
-    input.objective.headerHash,
+    input.objective,
   );
   let names;
   try {
     names = await readdir(directory, { withFileTypes: true });
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+    if (isMissing(error)) {
       if (input.selectedWorkflowId !== undefined)
         throw new Error("selected proof execution disappeared");
       return undefined;

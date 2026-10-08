@@ -14,6 +14,7 @@ import {
 } from "../indexers/authenticated-state-queue-observation.js";
 import { type WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
+import type { WatcherProofCleanupFailure } from "./fault-proof-objective-cleanup.js";
 import {
   type WatcherProofExecution,
   type WatcherProofObjective,
@@ -118,6 +119,9 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
    * missing: readiness reports journal_decision_missing until each one
    * resolves from L1 facts. */
   journalDecisionMissing: readonly WatcherDecisionHold[];
+  /** Released or final objectives whose workflow directory could not be
+   * removed: their rows stay and every admission retries the removal. */
+  objectiveCleanupFailures: readonly WatcherProofCleanupFailure[];
   /** A busy or locked database the supervisor holds on, or null: readiness
    * reports journal_busy until the in-process requeue after its backoff. */
   journalBusy: string | null;

@@ -124,6 +124,15 @@ export const createSupervisor = (input: {
       ...(input.dependencies.objectiveSettled === undefined
         ? {}
         : { onObjectiveSettled: input.dependencies.objectiveSettled }),
+      jobInProcess: (objective) => {
+        const key = objectiveKey(objective);
+        return (
+          jobs.has(key) || registering.has(key) || transportRetries.has(key)
+        );
+      },
+      // A returning header starts a fresh execution.
+      onObjectiveRemoved: (objective) =>
+        void selectedExecutions.delete(objectiveKey(objective)),
     });
   let progressAuthority = createAuthority();
   let progressSerial = Promise.resolve();
@@ -160,6 +169,8 @@ export const createSupervisor = (input: {
   let pump: Promise<void> = Promise.resolve();
   let pumping = false;
   const jobs = new Map<string, PendingJob>();
+  // Objectives whose job is being registered, a handover included.
+  const registering = new Set<string>();
   // Authority generations are context for one objective, never another owner.
   const pendingUpdates = new Map<
     string,
@@ -196,8 +207,11 @@ export const createSupervisor = (input: {
   const contextKey = (job: WatcherFaultProofJob) =>
     `${job.rollbackGeneration}:${job.observationRevision ?? job.decisionDigest}`;
 
-  const objectiveKey = (job: WatcherFaultProofJob) =>
-    `${job.category}\u0000${job.headerHash}`;
+  const objectiveKey = ({
+    category,
+    headerHash,
+  }: Pick<WatcherFaultProofJob, "category" | "headerHash">) =>
+    `${category}\u0000${headerHash}`;
   let resolveDone!: () => void;
   let rejectDone!: (reason: Error) => void;
   const done = new Promise<void>((resolve, reject) => {
@@ -696,12 +710,18 @@ export const createSupervisor = (input: {
     // admitted inside the worker, after it acquires ownership of this objective.
     // At its cap of open objectives the journal refuses a new one: status
     // reports journal_capacity and a later observation retries.
-    const registration = await (await queueJournal())
-      .register(identity, now().toString())
-      .catch((error: unknown) => {
+    registering.add(key);
+    const registration = await (async () => {
+      try {
+        return await (
+          await queueJournal()
+        ).register(identity, now().toString());
+      } catch (error) {
+        registering.delete(key);
         if (isWatcherJournalCapacityError(error)) return null;
         throw error;
-      });
+      }
+    })();
     if (registration === null)
       return { completion: Promise.resolve(undefined) };
     queuedJobCount += 1;
@@ -721,6 +741,7 @@ export const createSupervisor = (input: {
       reject,
     });
     jobs.set(key, entry);
+    registering.delete(key);
     queue.push(entry);
     ensurePump();
     return Object.freeze({ completion });
@@ -1000,6 +1021,7 @@ export const createSupervisor = (input: {
           ...progressAuthority.decisionHolds(),
           ...(input.reservationDecisionHolds?.() ?? []),
         ]),
+        objectiveCleanupFailures: progressAuthority.cleanupFailures(),
         journalBusy: busy.reason(),
       });
     },
