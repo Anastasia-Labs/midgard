@@ -33,6 +33,7 @@ import { rollBackRows } from "../src/landed-blocks/settlements.js";
 import { insertRow, retrieveRows } from "../src/landed-blocks/store.js";
 import { withHistoryWrite } from "../src/services/event-history-producer.js";
 import { Globals } from "../src/services/globals.js";
+import { NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED } from "../src/services/liveness-halt.js";
 import { failure as recomputeFailure } from "../src/services/working-ledger-recompute.pending-txs.js";
 import * as RejectClosure from "../src/services/working-ledger-recompute.reject-closure.js";
 import { admitPending } from "./helpers/landed-blocks-sim.mempool.js";
@@ -97,6 +98,7 @@ describe(
       expectHeld(
         await attempt(globals),
         /retains no root of the processed landed chain/,
+        NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
       );
       native.retainsNothing = false;
       expectRebased(await attempt(globals));
@@ -192,11 +194,19 @@ describe(
         retainsNothing: true,
       };
       await seed(await processOf(native));
-      expectHeld(await attempt(await processOf(native)), /retains no root/);
+      expectHeld(
+        await attempt(await processOf(native)),
+        /retains no root/,
+        NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
+      );
       // A restart: new process globals, the same database and native store.
       const restarted = await processOf(native);
       const shown = await attempt(restarted);
-      expectHeld(shown, /retains no root/);
+      expectHeld(
+        shown,
+        /retains no root/,
+        NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
+      );
       const reported: (readonly string[])[] = [];
       const reporter = Effect.runFork(
         reportHistorySyncReasons(
@@ -209,8 +219,10 @@ describe(
       expectRebased(await attempt(restarted));
       await new Promise((resolve) => setTimeout(resolve, 20));
       await Effect.runPromise(Fiber.interrupt(reporter));
-      expect(reported[0]).toContain(LANDED_BLOCK_REBASE_FAILED);
-      expect(reported.at(-1)).not.toContain(LANDED_BLOCK_REBASE_FAILED);
+      expect(reported[0]).toContain(NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED);
+      expect(reported.at(-1)).not.toContain(
+        NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
+      );
     });
   },
 );

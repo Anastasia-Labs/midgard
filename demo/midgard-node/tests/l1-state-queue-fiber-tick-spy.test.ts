@@ -268,7 +268,7 @@ describe("the planner fibers' state-queue reads", () => {
         expect(Either.isLeft(correction)).toBe(true);
         if (Either.isLeft(correction))
           expect(String(correction.left)).toContain(
-            "requires a finalized deployment manifest identity",
+            "requires the exact authenticated deployment manifest",
           );
 
         expect(touches).toEqual([]);
