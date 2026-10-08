@@ -408,7 +408,8 @@ describe("decisionsToPrune", () => {
       headerHash,
       endTimeMs: 1_000n,
     })),
-    held: new Set(),
+    live: new Set(),
+    finalQueue: [],
     unsettled: new Set(),
     finalBlockTimeMs: 1_001,
     ...overrides,
@@ -433,9 +434,9 @@ describe("decisionsToPrune", () => {
     expect(
       decisionsToPrune(inputs(final, { unsettled: new Set([hash(1)]) })),
     ).toEqual([]);
-    expect(
-      decisionsToPrune(inputs(final, { held: new Set([hash(1)]) })),
-    ).toEqual([]);
+    expect(decisionsToPrune(inputs(final, { finalQueue: [hash(1)] }))).toEqual(
+      [],
+    );
     // An unsettled record of a header that never landed does not keep it.
     expect(
       decisionsToPrune(
@@ -444,6 +445,16 @@ describe("decisionsToPrune", () => {
         }),
       ),
     ).toEqual([hash(2)]);
+  });
+
+  it("keeps a header live at the tip whose commit is final, past its end time, with no unsettled record", () => {
+    // The tip's queue holds it on its own, whatever the final block's queue
+    // and the stored records read.
+    const final = [obligation(1, "final")];
+    expect(decisionsToPrune(inputs(final))).toEqual([hash(1)]);
+    expect(
+      decisionsToPrune(inputs(final, { live: new Set([hash(1)]) })),
+    ).toEqual([]);
   });
 
   it("keeps a final commit until the release clock is past its end time", () => {

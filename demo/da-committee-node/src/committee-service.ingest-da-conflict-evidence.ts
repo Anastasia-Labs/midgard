@@ -65,6 +65,7 @@ export type CommitteeServiceDeps = {
 export type CommitteeTickResult = {
   readonly scannedHeaders: number;
   readonly signedHeaders: number;
+  /** Headers in good standing (attested, final or reconciled), not posts. */
   readonly reconciledHeaders: number;
   readonly skippedHeaders: number;
   readonly payloadFetches: readonly CommitteePayloadFetchObservation[];
@@ -218,6 +219,7 @@ export type CommitteeReadinessSnapshot = {
     readonly lastFinishedAt?: string;
     readonly scannedHeaders: number;
     readonly signedHeaders: number;
+    /** The last tick's headers in good standing, not posts. */
     readonly reconciledHeaders: number;
     readonly skippedHeaders: number;
     readonly errors: readonly string[];

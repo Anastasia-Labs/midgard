@@ -8,7 +8,7 @@ import {
   coordinatorPostFailedMessage,
   shouldRepublishSignatureForHeader,
 } from "./committee-service.coordinator-post-failed-message.js";
-import { decisionsToPrune } from "./committee-service.decision-pruning.js";
+import { pruneDecisions } from "./committee-service.decision-pruning.js";
 import {
   type CommitteeL1SubmitterPreflightSnapshot,
   type CommitteeL1View,
@@ -762,10 +762,11 @@ export class CommitteeService {
       this.deps.config.availabilityPromiseAdoption === undefined
     ) {
       const settled = new Set(terminal.map(({ headerHash }) => headerHash));
-      const prune = decisionsToPrune({
+      const pruneErrors = await pruneDecisions(this.deps.store, {
         obligations: view.obligations,
         signed,
-        held: new Set([...live, ...view.finalQueueHeaderHashes]),
+        live,
+        finalQueue: view.finalQueueHeaderHashes,
         unsettled: new Set(
           stored
             .map(({ headerHash }) => headerHash)
@@ -773,7 +774,7 @@ export class CommitteeService {
         ),
         finalBlockTimeMs: view.finalBlockTimeMs,
       });
-      await this.deps.store.pruneSignedDecisions(prune);
+      errors.push(...pruneErrors);
     }
     return {
       scannedHeaders: records.length,
