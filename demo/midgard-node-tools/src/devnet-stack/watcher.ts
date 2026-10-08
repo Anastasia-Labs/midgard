@@ -297,7 +297,7 @@ export const ensureWatcherRelease = async (
     deploymentAuthorityPath: paths.authority,
     ruleBundlePath: paths.rules,
     fundingProfileBundlePath: paths.fundingProfiles,
-    nativeChainSyncBinaryPath: artifacts.transportBinary,
+    l1NodeTransportBinaryPath: artifacts.transportBinary,
     trustedHeadAuthorityEndpoint: authority,
     operationsEndpoint: operations,
     httpBearerSecretSource: secrets.bearer,

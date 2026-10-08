@@ -87,7 +87,7 @@ FROM base AS final
 WORKDIR /app
 COPY --from=build /prod/midgard-node ./
 COPY --from=native-mpf-owner /native /app/native
-# L1_NATIVE_CHAIN_SYNC_BINARY_PATH (docker-compose.kupmios.yaml).
+# L1_NODE_TRANSPORT_BINARY_PATH (docker-compose.kupmios.yaml).
 COPY --from=l1-node-transport /out/midgard-l1-node-transport /usr/local/bin/midgard-l1-node-transport
 COPY --from=onchain /plutus.json /onchain/aiken/plutus.json
 COPY --from=onchain /plutus.json.deployment.json /onchain/aiken/plutus.json.deployment.json

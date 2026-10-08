@@ -9,7 +9,15 @@ import {
   FrameError,
   FrameReader,
   MAX_HEADER_BYTES,
+  MAX_PAYLOAD_BYTES,
 } from "../src/index.js";
+
+const lengths = (header: number, payload: number): Buffer => {
+  const bytes = Buffer.alloc(8);
+  bytes.writeUInt32BE(header, 0);
+  bytes.writeUInt32BE(payload, 4);
+  return bytes;
+};
 
 describe("frame codec", () => {
   it("round-trips a header and raw payload split across chunks", () => {
@@ -40,12 +48,6 @@ describe("frame codec", () => {
   });
 
   it("refuses an empty or oversized header and a header without a type", () => {
-    const lengths = (header: number, payload: number) => {
-      const bytes = Buffer.alloc(8);
-      bytes.writeUInt32BE(header, 0);
-      bytes.writeUInt32BE(payload, 4);
-      return bytes;
-    };
     expect(() => new FrameReader().push(lengths(0, 0))).toThrow(FrameError);
     expect(() =>
       new FrameReader().push(lengths(MAX_HEADER_BYTES + 1, 0)),
@@ -54,6 +56,60 @@ describe("frame codec", () => {
     expect(() =>
       new FrameReader().push(
         Buffer.concat([lengths(untyped.length, 0), untyped]),
+      ),
+    ).toThrow(FrameError);
+  });
+});
+
+describe("frame bounds", () => {
+  it("round-trips a maximal payload and refuses one byte more", () => {
+    const payload = new Uint8Array(MAX_PAYLOAD_BYTES).fill(0xa5);
+    payload[0] = 1;
+    payload[MAX_PAYLOAD_BYTES - 1] = 2;
+    const frames = new FrameReader().push(
+      encodeFrame({ type: "cs_roll_forward" }, payload),
+    );
+    expect(frames).toHaveLength(1);
+    expect(Buffer.from(frames[0]!.payload).equals(Buffer.from(payload))).toBe(
+      true,
+    );
+    expect(() =>
+      encodeFrame(
+        { type: "cs_roll_forward" },
+        new Uint8Array(MAX_PAYLOAD_BYTES + 1),
+      ),
+    ).toThrow(FrameError);
+    expect(() =>
+      new FrameReader().push(lengths(1, MAX_PAYLOAD_BYTES + 1)),
+    ).toThrow(FrameError);
+  });
+
+  it("round-trips a maximal header and refuses one byte more", () => {
+    // A byte string of 256..65535 bytes has a fixed 3-byte length prefix,
+    // so the header's overhead is measured once and the string sized to it.
+    const overhead =
+      encodeCbor({ type: "x", p: new Uint8Array(256) }).length - 256;
+    const maximal = {
+      type: "x",
+      p: new Uint8Array(MAX_HEADER_BYTES - overhead),
+    };
+    const frame = encodeFrame(maximal);
+    expect(frame.readUInt32BE(0)).toBe(MAX_HEADER_BYTES);
+    const frames = new FrameReader().push(frame);
+    expect(frames).toHaveLength(1);
+    expect(frames[0]!.header.type).toBe("x");
+    expect(() =>
+      encodeFrame({
+        type: "x",
+        p: new Uint8Array(MAX_HEADER_BYTES - overhead + 1),
+      }),
+    ).toThrow(FrameError);
+    expect(() =>
+      new FrameReader().push(
+        Buffer.concat([
+          lengths(MAX_HEADER_BYTES + 1, 0),
+          Buffer.alloc(MAX_HEADER_BYTES + 1),
+        ]),
       ),
     ).toThrow(FrameError);
   });

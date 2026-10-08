@@ -13,7 +13,7 @@ service is a separate package, `demo/da-committee-node`.
 From `demo/midgard-watcher`, run `pnpm run build` before invoking the CLI, and
 build the node transport sidecar with
 `pnpm --dir ../l1-node-transport run native:build`. Configure
-`nativeChainSyncBinaryPath` to the resulting
+`l1NodeTransportBinaryPath` to the resulting
 `../l1-node-transport/dist/native/midgard-l1-node-transport` binary:
 
 ```sh

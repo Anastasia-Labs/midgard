@@ -84,21 +84,21 @@ func (t wireTip) MarshalCBOR() ([]byte, error) {
 // refused by the decoder. Required fields are checked by validate().
 
 type helloHeader struct {
-	Type         string  `cbor:"type"`
-	Version      *uint64 `cbor:"version"`
-	SocketPath   string  `cbor:"socketPath"`
-	NetworkMagic *uint64 `cbor:"networkMagic"`
+	Type              string  `cbor:"type"`
+	Version           *uint64 `cbor:"version"`
+	SocketPath        string  `cbor:"socketPath"`
+	NetworkMagic      *uint64 `cbor:"networkMagic"`
+	RequestDeadlineMs *uint64 `cbor:"requestDeadlineMs"`
 }
 
 type csOpenHeader struct {
-	Type       string      `cbor:"type"`
-	ID         uint64      `cbor:"id"`
-	Stream     uint64      `cbor:"stream"`
-	Points     []wirePoint `cbor:"points"`
-	StartSeq   *uint64     `cbor:"startSeq"`
-	AckedSeq   *uint64     `cbor:"ackedSeq,omitempty"`
-	Window     uint64      `cbor:"window"`
-	ConsumerAt *wirePoint  `cbor:"consumerAt,omitempty"`
+	Type     string      `cbor:"type"`
+	ID       uint64      `cbor:"id"`
+	Stream   uint64      `cbor:"stream"`
+	Points   []wirePoint `cbor:"points"`
+	StartSeq *uint64     `cbor:"startSeq"`
+	AckedSeq *uint64     `cbor:"ackedSeq,omitempty"`
+	Window   uint64      `cbor:"window"`
 }
 
 type csWindowHeader struct {

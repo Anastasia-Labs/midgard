@@ -40,7 +40,8 @@ describe("local node ledger settings", () => {
   const nativeLedgerEnv = {
     CARDANO_LOCAL_NODE_SOCKET_PATH: "/run/cardano/node.socket",
     CARDANO_LOCAL_NODE_CONFIG_PATH: "/etc/cardano/config.json",
-    CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: "/opt/midgard/midgard-chain-sync",
+    CARDANO_L1_NODE_TRANSPORT_BINARY_PATH:
+      "/opt/midgard/midgard-l1-node-transport",
   } as const;
 
   it("is absent when none of the settings is present", () => {
@@ -60,7 +61,7 @@ describe("local node ledger settings", () => {
           nativeLedgerEnv.CARDANO_LOCAL_NODE_SOCKET_PATH,
       }),
     ).toThrow(
-      /all-or-none; missing CARDANO_LOCAL_NODE_CONFIG_PATH, CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH$/u,
+      /all-or-none; missing CARDANO_LOCAL_NODE_CONFIG_PATH, CARDANO_L1_NODE_TRANSPORT_BINARY_PATH$/u,
     );
     expect(() =>
       parseNativeLedgerConfig({
@@ -76,8 +77,8 @@ describe("local node ledger settings", () => {
       ["CARDANO_LOCAL_NODE_SOCKET_PATH", "./run/node.socket"],
       ["CARDANO_LOCAL_NODE_CONFIG_PATH", "/etc/cardano/../cardano/config.json"],
       ["CARDANO_LOCAL_NODE_CONFIG_PATH", "/etc//cardano/config.json"],
-      ["CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH", "/opt/midgard/./chain-sync"],
-      ["CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH", "/opt/midgard/"],
+      ["CARDANO_L1_NODE_TRANSPORT_BINARY_PATH", "/opt/midgard/./chain-sync"],
+      ["CARDANO_L1_NODE_TRANSPORT_BINARY_PATH", "/opt/midgard/"],
     ] as const) {
       expect(() =>
         parseNativeLedgerConfig({ ...nativeLedgerEnv, [name]: value }),
@@ -92,7 +93,7 @@ describe("local node ledger settings", () => {
       authorityNodeId: "local-cardano-node",
       socketPath: "/run/cardano/node.socket",
       nodeConfigPath: "/etc/cardano/config.json",
-      binaryPath: "/opt/midgard/midgard-chain-sync",
+      binaryPath: "/opt/midgard/midgard-l1-node-transport",
     });
     expect(
       parseNativeLedgerConfig({
@@ -130,8 +131,8 @@ describe("local node ledger settings", () => {
     await expect(
       loadCommitteeConfig({
         ...baseEnv,
-        CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH:
-          nativeLedgerEnv.CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH,
+        CARDANO_L1_NODE_TRANSPORT_BINARY_PATH:
+          nativeLedgerEnv.CARDANO_L1_NODE_TRANSPORT_BINARY_PATH,
       }),
     ).rejects.toThrow(/all-or-none/u);
   });

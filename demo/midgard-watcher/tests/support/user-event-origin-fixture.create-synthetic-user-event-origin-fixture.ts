@@ -954,7 +954,7 @@ export const createSyntheticUserEventOriginFixture = async (
     const args = {
       watcherConfig,
       deploymentIdentity,
-      nativeChainSyncBinaryPath: binaryPath,
+      l1NodeTransportBinaryPath: binaryPath,
       point: block.point,
       limits: { timeoutMs: 60_000 },
     };
@@ -1037,7 +1037,7 @@ export const createSyntheticUserEventOriginFixture = async (
     deploymentIdentity,
     scriptBinding,
     watcherConfig,
-    nativeChainSyncBinaryPath: binaryPath,
+    l1NodeTransportBinaryPath: binaryPath,
     activationBlock,
     emptySuccessorBlock,
     activationTransactionCbor: initialization.transactionCbor,

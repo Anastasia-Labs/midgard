@@ -10,7 +10,7 @@ import {
 const complete = {
   L1_NODE_SOCKET_PATH: "/run/cardano/node.socket",
   L1_NODE_CONFIG_PATH: "/etc/cardano/preprod/config.json",
-  L1_NATIVE_CHAIN_SYNC_BINARY_PATH: "/opt/midgard/bin/midgard-chain-sync",
+  L1_NODE_TRANSPORT_BINARY_PATH: "/opt/midgard/bin/midgard-l1-node-transport",
 };
 const REWARD_ADDRESS =
   "stake_test17rrxhht4hajr32nu03ymgt6dascxfukfuz5wu3qqefvcdlq4a2z47";
@@ -20,7 +20,7 @@ describe("native ledger settings", () => {
     expect(parseNativeLedgerSettings(complete)).toEqual({
       socketPath: complete.L1_NODE_SOCKET_PATH,
       nodeConfigPath: complete.L1_NODE_CONFIG_PATH,
-      binaryPath: complete.L1_NATIVE_CHAIN_SYNC_BINARY_PATH,
+      binaryPath: complete.L1_NODE_TRANSPORT_BINARY_PATH,
     });
   });
 
@@ -29,7 +29,7 @@ describe("native ledger settings", () => {
       parseNativeLedgerSettings({
         L1_NODE_SOCKET_PATH: "",
         L1_NODE_CONFIG_PATH: " ",
-        L1_NATIVE_CHAIN_SYNC_BINARY_PATH: undefined,
+        L1_NODE_TRANSPORT_BINARY_PATH: undefined,
       }),
     ).toBeUndefined();
     expect(nativeLedgerSettingsFromEnv({})).toBeUndefined();
@@ -47,7 +47,7 @@ describe("native ledger settings", () => {
   it.each([
     ["L1_NODE_SOCKET_PATH", "run/node.socket"],
     ["L1_NODE_CONFIG_PATH", "/etc/cardano/../cardano/config.json"],
-    ["L1_NATIVE_CHAIN_SYNC_BINARY_PATH", "/opt/midgard//bin/helper"],
+    ["L1_NODE_TRANSPORT_BINARY_PATH", "/opt/midgard//bin/helper"],
   ] as const)("refuses a non-canonical %s", (name, value) => {
     expect(() =>
       parseNativeLedgerSettings({ ...complete, [name]: value }),

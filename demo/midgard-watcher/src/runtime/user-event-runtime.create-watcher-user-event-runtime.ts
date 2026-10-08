@@ -106,7 +106,7 @@ export const createWatcherUserEventRuntime = async (
     watcherConfig: unknown;
     deploymentAuthority: VerifiedWatcherDeploymentAuthority;
     blueprintBytes: Uint8Array;
-    nativeChainSyncBinaryPath: string;
+    l1NodeTransportBinaryPath: string;
     runtime: WatcherDurableRuntime;
     archive: WatcherUserEventArchive;
     /** The single mutable coverage record, authenticated by the store. */
@@ -120,7 +120,7 @@ export const createWatcherUserEventRuntime = async (
     runtime: durableRuntime,
     archive,
     coverage: coverageStore,
-    nativeChainSyncBinaryPath,
+    l1NodeTransportBinaryPath,
     signal: requestSignal,
   } = input;
   assertWatcherVerifiedDeploymentAuthority(input.deploymentAuthority);
@@ -224,7 +224,7 @@ export const createWatcherUserEventRuntime = async (
     const capture = await openWatcherLocalHistoricalCapture({
       watcherConfig,
       deploymentIdentity,
-      nativeChainSyncBinaryPath: nativeChainSyncBinaryPath,
+      l1NodeTransportBinaryPath: l1NodeTransportBinaryPath,
       point,
       signal: operationSignal,
       limits: {
@@ -611,7 +611,7 @@ export const createWatcherUserEventRuntime = async (
     try {
       try {
         stream = await startWatcherNativeChainSync({
-          binaryPath: nativeChainSyncBinaryPath,
+          binaryPath: l1NodeTransportBinaryPath,
           watcherConfig,
           intersection: {
             kind: "point",
@@ -745,7 +745,7 @@ export const createWatcherUserEventRuntime = async (
     let stream: WatcherNativeChainSyncRuntime | null = null;
     try {
       stream = await startWatcherNativeChainSync({
-        binaryPath: nativeChainSyncBinaryPath,
+        binaryPath: l1NodeTransportBinaryPath,
         watcherConfig,
         intersection: {
           kind: "point",
@@ -885,7 +885,7 @@ export const createWatcherUserEventRuntime = async (
     try {
       try {
         stream = await startWatcherNativeChainSync({
-          binaryPath: nativeChainSyncBinaryPath,
+          binaryPath: l1NodeTransportBinaryPath,
           watcherConfig,
           signal,
           intersection: {
@@ -1378,7 +1378,7 @@ export const createWatcherUserEventRuntime = async (
       let sawMonitorEvent = false;
       let selectedIntersection: WatcherNativeChainSyncPoint | null = null;
       const monitor = await startWatcherNativeChainSyncWithRetry({
-        binaryPath: nativeChainSyncBinaryPath,
+        binaryPath: l1NodeTransportBinaryPath,
         watcherConfig,
         intersectionCandidates: candidates.map((candidate) => ({
           kind: "point" as const,

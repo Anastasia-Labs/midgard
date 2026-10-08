@@ -178,7 +178,7 @@ export const createWatcherRuntime = async (input: {
         watcherConfig,
         deploymentAuthority,
         blueprintBytes,
-        nativeChainSyncBinaryPath: input.config.nativeChainSyncBinaryPath,
+        l1NodeTransportBinaryPath: input.config.l1NodeTransportBinaryPath,
         runtime: durable,
         archive: sqlite.userEventArchive,
         coverage: sqlite.openUserEventCoverage(
@@ -215,7 +215,7 @@ export const createWatcherRuntime = async (input: {
         blueprint: JSON.parse(Buffer.from(blueprintBytes).toString("utf8")),
       }),
       node: {
-        binaryPath: input.config.nativeChainSyncBinaryPath,
+        binaryPath: input.config.l1NodeTransportBinaryPath,
         socketPath: localL1Source.chainSync.socketPath,
         networkMagic,
       },

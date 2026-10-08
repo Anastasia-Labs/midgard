@@ -19,6 +19,7 @@ export const followingAtTip = (
     stuck: null,
     protocolInit: "seen",
     cursor: { slot: 100, height: 10, generation: 1 },
+    node: null,
     tip: { slot: 100, height: 10 },
     atTip: true,
     events: 1,

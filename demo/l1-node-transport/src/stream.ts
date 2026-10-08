@@ -38,7 +38,13 @@ const RESUME_POINTS = 64;
 const REOPEN_DELAY_MS = 1000;
 
 export type ChainSyncOptions = Readonly<{
-  /** Intersection candidates in preference order; include the origin to never miss. */
+  /**
+   * Intersection candidates in preference order; include the origin to never
+   * miss. The first point is the consumer's current position: when the node
+   * intersects anywhere else, the stream's first event is a rollback to the
+   * intersection, so a consumer that applies every event stays on the node's
+   * chain.
+   */
   points: readonly ChainPoint[];
   /** The sequence number of the last event the consumer already has. */
   startSeq?: bigint;
@@ -198,10 +204,10 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
     const stream = this.host.nextStreamId();
     this.#streamId = stream;
     sidecar.registerStream(stream, (frame) => this.#frame(sidecar, frame));
-    const consumerAt = resuming
-      ? (this.#lastPoint ?? this.#intersection)
-      : undefined;
     try {
+      // A resume lists the last delivered point first: the consumer's
+      // position, so the sidecar delivers a rollback exactly when that point
+      // left the node's chain.
       const answer = await sidecar.request({
         type: "cs_open",
         stream,
@@ -211,8 +217,6 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
         startSeq: this.#lastSeq,
         ackedSeq: this.#acked,
         window: this.#window,
-        consumerAt:
-          consumerAt === undefined ? undefined : encodePoint(consumerAt),
       });
       const tip = decodeTip(answer.header.tip, "tip");
       if (answer.header.type === "cs_intersect_not_found") {

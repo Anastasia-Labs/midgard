@@ -360,7 +360,7 @@ const setup = async (kind: "normal" | "forced") => {
     watcherConfig: fixture.watcherConfig,
     deploymentAuthority,
     blueprintBytes,
-    nativeChainSyncBinaryPath: fixture.nativeChainSyncBinaryPath,
+    l1NodeTransportBinaryPath: fixture.l1NodeTransportBinaryPath,
     runtime,
     archive,
     coverage: createInMemoryWatcherUserEventCoverageStore(),

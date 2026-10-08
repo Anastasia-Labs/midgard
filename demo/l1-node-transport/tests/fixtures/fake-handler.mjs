@@ -29,8 +29,10 @@ export default (options, controls) => ({
     );
     if (at === undefined) return { notFound: tip };
     const from = known.findIndex((entry) => samePoint(entry, at));
-    for (const block of blocks.slice(from))
+    for (const [index, block] of blocks.slice(from).entries()) {
+      if (options.skipSequenceAt === index) stream.skipSequence();
       stream.rollForward({ ...block, tip });
+    }
     if (options.rollBackAfter)
       stream.rollBackward({ point: blocks[0].point, tip });
     if (options.failAfter) stream.fail("node_connection_lost", "fake fault");
@@ -56,7 +58,12 @@ export default (options, controls) => ({
   submit: (tx) =>
     tx[0] === 1 ? { accepted: true } : { rejection: Uint8Array.from([0x80]) },
   hasTx: (txId) => txId === hash("ab"),
-  sizes: () => ({ capacity: 100, size: 10, txCount: 1 }),
+  sizes: () => {
+    if (!options.malformedAnswer)
+      return { capacity: 100, size: 10, txCount: 1 };
+    controls.writeFrame({ type: "ok", id: "not a number" });
+    return new Promise(() => {});
+  },
   ...(options.crashOnSubmit ? { submit: () => controls.exit(1) } : {}),
   ignoreInputEnd: options.ignoreInputEnd === true,
 });

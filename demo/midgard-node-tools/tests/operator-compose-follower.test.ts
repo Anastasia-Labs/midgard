@@ -23,7 +23,7 @@ const composeLocalNodeKeys = (): Record<string, string> => {
     [
       "L1_NODE_SOCKET_PATH",
       "L1_NODE_CONFIG_PATH",
-      "L1_NATIVE_CHAIN_SYNC_BINARY_PATH",
+      "L1_NODE_TRANSPORT_BINARY_PATH",
     ].map((key) => {
       const match = new RegExp(`^ {6}${key}: (\\S+)$`, "mu").exec(overlay);
       if (match === null) throw new Error(`the overlay does not set ${key}`);

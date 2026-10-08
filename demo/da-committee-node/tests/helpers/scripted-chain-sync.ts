@@ -1,4 +1,8 @@
-import type { ChainSyncEvent, ChainSyncStream } from "@al-ft/l1-node-transport";
+import type {
+  ChainSyncEvent,
+  ChainSyncStream,
+  TransportReadiness,
+} from "@al-ft/l1-node-transport";
 
 const pause = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -12,6 +16,12 @@ const pause = (ms: number): Promise<void> =>
 export const growingChainSync = (events: ChainSyncEvent[]) => {
   let acked = 0;
   return {
+    /** The scripted node is always reachable. */
+    readiness: {
+      ready: true,
+      nodeToClientVersion: 32784,
+    } as TransportReadiness,
+    onReadiness: (): (() => void) => () => undefined,
     openChainSync: (): ChainSyncStream => {
       let position = acked;
       let closed = false;

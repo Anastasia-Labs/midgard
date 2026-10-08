@@ -23,7 +23,12 @@ export type L1NodeTransportOptions = Readonly<{
   /** The node's local (node-to-client) socket. */
   socketPath: string;
   networkMagic: number;
-  /** Bound on one request's answer; a sidecar that misses it is restarted. */
+  /**
+   * Bound on one request's answer; a sidecar that misses it is restarted.
+   * The sidecar itself refuses a ledger-state query or a submission the node
+   * has not answered within half this bound (`node_timeout`), so a slow node
+   * answer never costs the sidecar and its streams.
+   */
   requestTimeoutMs?: number;
   /** Bound on waiting for a ready sidecar before a request is refused. */
   readyTimeoutMs?: number;
@@ -68,6 +73,12 @@ export type LedgerStateSession = Readonly<{
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 const DEFAULT_HELLO_TIMEOUT_MS = 30_000;
 const STABLE_RUN_MS = 30_000;
+
+const MAX_REQUEST_DEADLINE_MS = 24 * 60 * 60 * 1000;
+
+/** The sidecar's own bound, below the client's: half of it. */
+const requestDeadlineMs = (requestTimeoutMs: number): number =>
+  Math.min(Math.floor(requestTimeoutMs / 2), MAX_REQUEST_DEADLINE_MS);
 
 const unreadyReasonOf = (exit: SidecarExit): TransportUnreadyReason => {
   switch (exit.fatal?.code) {
@@ -130,6 +141,11 @@ export class L1NodeTransport {
     this.#options = options;
     this.#requestTimeoutMs =
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    if (
+      !Number.isSafeInteger(this.#requestTimeoutMs) ||
+      this.#requestTimeoutMs < 2
+    )
+      throw new RangeError("requestTimeoutMs must be an integer of at least 2");
     this.#readyTimeoutMs = options.readyTimeoutMs ?? this.#requestTimeoutMs;
     this.#restartDelay = options.restartDelayMs?.initial ?? 250;
     if (options.onReadiness !== undefined)
@@ -169,6 +185,7 @@ export class L1NodeTransport {
         binaryPath: this.#options.binaryPath,
         socketPath: this.#options.socketPath,
         networkMagic: this.#options.networkMagic,
+        requestDeadlineMs: requestDeadlineMs(this.#requestTimeoutMs),
         helloTimeoutMs:
           this.#options.helloTimeoutMs ?? DEFAULT_HELLO_TIMEOUT_MS,
         ...(this.#options.onDiagnostic === undefined
@@ -422,6 +439,7 @@ export const sharedL1NodeTransport = (
     options.binaryPath,
     options.socketPath,
     options.networkMagic,
+    options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
   ]);
   let transport = shared.get(key);
   if (

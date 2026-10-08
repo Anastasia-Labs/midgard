@@ -1,10 +1,25 @@
 # syntax=docker/dockerfile:1.7
-# Built from demo/. The midgard-l1-node-transport sidecar is not in the image:
-# services mount the host build (l1-node-transport native:build), the one
-# pinned Go build of that binary.
-# This isolated image owns its copied source and output tree. Use the same
-# compiler recipes directly; shared-checkout leases and Git receipts belong to
-# contributor builds, and the repository tooling is outside this demo context.
+# Built from demo/. This isolated image owns its copied source and output tree.
+# Use the same compiler recipes directly; shared-checkout leases and Git
+# receipts belong to contributor builds, and the repository tooling is outside
+# this demo context.
+
+# The node transport sidecar the committee's L1 follower reads its local node
+# through; the same recipe as CI and the node and watcher images.
+FROM golang:1.26.5-bookworm AS l1-node-transport
+WORKDIR /src/native
+COPY l1-node-transport/native/go.mod l1-node-transport/native/go.sum ./
+RUN --mount=type=cache,id=midgard-l1-node-transport-go-mod,target=/go/pkg/mod \
+  go mod download && go mod verify
+COPY l1-node-transport/native ./
+RUN --mount=type=cache,id=midgard-l1-node-transport-go-mod,target=/go/pkg/mod \
+  --mount=type=cache,id=midgard-l1-node-transport-go-build,target=/root/.cache/go-build \
+  test "$(go version | awk '{print $3}')" = "go1.26.5" \
+  && go test ./... \
+  && CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -buildid=" \
+    -o /out/midgard-l1-node-transport .
+
 FROM node:22.22.2 AS build
 RUN corepack enable
 WORKDIR /workspace/demo
@@ -37,6 +52,9 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm --filte
 FROM node:22.22.2-bookworm-slim
 WORKDIR /app
 COPY --from=build --chown=node:node /prod/da ./
+# CARDANO_L1_NODE_TRANSPORT_BINARY_PATH. The full stack mounts its own host
+# build over another path instead (midgard-node-tools full-stack/native-ledger.ts).
+COPY --from=l1-node-transport /out/midgard-l1-node-transport /usr/local/bin/midgard-l1-node-transport
 RUN mkdir -p /var/lib/midgard-da && chown node:node /var/lib/midgard-da
 USER node
 ENV NODE_ENV=production

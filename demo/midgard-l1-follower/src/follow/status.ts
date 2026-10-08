@@ -1,4 +1,7 @@
-import type { L1NodeTransport } from "@al-ft/l1-node-transport";
+import type {
+  L1NodeTransport,
+  TransportUnreadyReason,
+} from "@al-ft/l1-node-transport";
 
 import type { OriginConfig } from "../origin.js";
 import type { FactStore } from "../store/fact-store.js";
@@ -10,13 +13,16 @@ export const FOLLOWER_CATCHING_UP = "l1_follower_catching_up";
 export const FOLLOWER_WAITING = "l1_follower_waiting";
 /** One point keeps failing to apply; an operator has to look. */
 export const FOLLOWER_APPLY_STUCK = "l1_follower_apply_stuck";
+/** The L1 node transport is not ready; the detail carries its reason. */
+export const FOLLOWER_NODE_UNAVAILABLE = "l1_node_unavailable";
 
 /** A named reason a role's `/readyz` reports while the follower holds it unready. */
 export type FollowReadinessReason =
   | InterventionReason
   | typeof FOLLOWER_CATCHING_UP
   | typeof FOLLOWER_WAITING
-  | typeof FOLLOWER_APPLY_STUCK;
+  | typeof FOLLOWER_APPLY_STUCK
+  | typeof FOLLOWER_NODE_UNAVAILABLE;
 
 export type FollowReadiness = Readonly<{
   reason: FollowReadinessReason;
@@ -51,9 +57,14 @@ export type FollowStatus = Readonly<{
   /** Whether the protocol-init tx (the hubOracleOneShot spend) is in the facts. */
   protocolInit: "seen" | "pending" | "unknown";
   cursor: Readonly<{ slot: number; height: number; generation: number }> | null;
+  /**
+   * The transport's unready reason and detail while it is not ready (the
+   * sidecar or the node is down or restarting); null while it is ready.
+   */
+  node: Readonly<{ reason: TransportUnreadyReason; detail: string }> | null;
   /** The node tip the latest applied event reported. */
   tip: Readonly<{ slot: number; height: number }> | null;
-  /** The cursor equals that tip. */
+  /** The cursor equals that tip; false while `node` is set. */
   atTip: boolean;
   /** Events applied by this loop. */
   events: number;
@@ -68,7 +79,10 @@ export type FollowStatus = Readonly<{
 
 export type FollowChainOptions = Readonly<{
   store: FactStore;
-  transport: Pick<L1NodeTransport, "openChainSync">;
+  transport: Pick<
+    L1NodeTransport,
+    "openChainSync" | "readiness" | "onReadiness"
+  >;
   origin: OriginConfig;
   signal: AbortSignal;
   /** The chain-sync stream's credit (default 64). */
@@ -101,6 +115,11 @@ export const readinessOf = (
     reason: i.reason,
     detail: i.detail,
   }));
+  if (status.node !== null)
+    reasons.push({
+      reason: FOLLOWER_NODE_UNAVAILABLE,
+      detail: `${status.node.reason}: ${status.node.detail}`,
+    });
   if (status.stuck !== null)
     reasons.push({
       reason: FOLLOWER_APPLY_STUCK,

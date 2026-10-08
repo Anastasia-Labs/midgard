@@ -101,7 +101,7 @@ export const followerInputFixture = (runDir) => {
     L1_ORIGIN,
     L1_NODE_SOCKET_PATH: join(runDir, "cardano/ipc/node.socket"),
     L1_NODE_CONFIG_PATH: join(runDir, "config/host-config.json"),
-    L1_NATIVE_CHAIN_SYNC_BINARY_PATH: join(
+    L1_NODE_TRANSPORT_BINARY_PATH: join(
       runDir,
       "bin/midgard-l1-node-transport",
     ),

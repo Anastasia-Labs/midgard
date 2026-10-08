@@ -229,7 +229,7 @@ export const createSyntheticStateQueueObservationFixture = async (
         };
         const openQuery = async (block: SyntheticUserEventBlock) => {
           const query = await openWatcherNativeExactPointQuery({
-            binaryPath: fixtureTransport.nativeChainSyncBinaryPath,
+            binaryPath: fixtureTransport.l1NodeTransportBinaryPath,
             watcherConfig: fixtureTransport.watcherConfig,
             predecessor: {
               blockHash: block.parentPoint.blockHash,

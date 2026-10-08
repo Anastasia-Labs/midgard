@@ -132,7 +132,7 @@ export type WatcherProcessConfig = Readonly<{
   deploymentAuthorityPath: string;
   ruleBundlePath: string;
   fundingProfileBundlePath: string;
-  nativeChainSyncBinaryPath: string;
+  l1NodeTransportBinaryPath: string;
   trustedHeadAuthorityEndpoint: string;
   operationsEndpoint: string;
   httpBearerSecretSource: WatcherWalletKeySource;

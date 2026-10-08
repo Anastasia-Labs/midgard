@@ -2,6 +2,7 @@ import {
   type ChainSyncEvent,
   type ChainSyncStream,
   IntersectNotFoundError,
+  type TransportReadiness,
 } from "@al-ft/l1-node-transport";
 
 import {
@@ -47,6 +48,11 @@ const sleep = (ms: number, signal: AbortSignal): Promise<void> =>
     signal.addEventListener("abort", done, { once: true });
   });
 
+const nodeOf = (readiness: TransportReadiness): FollowStatus["node"] =>
+  readiness.ready
+    ? null
+    : { reason: readiness.reason, detail: readiness.detail };
+
 const describeEvent = (event: ChainSyncEvent): string =>
   event.point.kind === "point"
     ? `${event.kind} ${event.point.slot}.${event.point.hash}`
@@ -82,6 +88,7 @@ export const followChain = async (
     stuck: null,
     protocolInit: "unknown",
     cursor: null,
+    node: nodeOf(options.transport.readiness),
     tip: null,
     atTip: false,
     events: 0,
@@ -99,6 +106,15 @@ export const followChain = async (
     } catch (error) {
       log(`status listener failed: ${message(error)}`);
     }
+  };
+
+  const unsubscribe = options.transport.onReadiness((readiness) => {
+    const node = nodeOf(readiness);
+    void publish(node === null ? { node } : { node, atTip: false });
+  });
+  const finish = (): FollowStatus => {
+    unsubscribe();
+    return status;
   };
 
   let failure: { at: string; count: number } | null = null;
@@ -266,7 +282,7 @@ export const followChain = async (
       stuck: null,
       events: status.events + 1,
       lastError: null,
-      atTip,
+      atTip: atTip && status.node === null,
       tip:
         tip.kind === "point"
           ? { slot: Number(tip.slot), height: Number(event.tip.blockNo) }
@@ -303,7 +319,7 @@ export const followChain = async (
       if (started === undefined) break;
       if (started.kind !== "ready") {
         await stopOn(started);
-        return status;
+        return finish();
       }
       const begun = await startFromOrigin({
         store,
@@ -313,7 +329,7 @@ export const followChain = async (
       });
       if (begun.kind === "intervention") {
         await stopOn(begun);
-        return status;
+        return finish();
       }
       if (begun.kind === "store_locked" || begun.kind === "error") {
         if (begun.kind === "error")
@@ -375,7 +391,7 @@ export const followChain = async (
               options.origin.origin,
             ),
           );
-          return status;
+          return finish();
         }
         if (!signal.aborted)
           await failed("stream", message(error), "transient");
@@ -384,7 +400,7 @@ export const followChain = async (
         signal.removeEventListener("abort", onAbort);
         await stream.close();
       }
-      if (outcome === "intervention") return status;
+      if (outcome === "intervention") return finish();
       if (outcome === "relock") {
         await failed("store_locked", "store_locked", "transient");
         continue;
@@ -399,5 +415,5 @@ export const followChain = async (
     }
   }
   await publish({ state: "stopped" });
-  return status;
+  return finish();
 };

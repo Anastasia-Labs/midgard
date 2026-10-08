@@ -193,7 +193,7 @@ export const committeeEnvironment = (input: {
     L1_ORIGIN: formatL1Origin(l1Origin),
     CARDANO_LOCAL_NODE_SOCKET_PATH: layout.cardanoSocket,
     CARDANO_LOCAL_NODE_CONFIG_PATH: layout.hostCardanoConfig,
-    CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: transportBinary,
+    CARDANO_L1_NODE_TRANSPORT_BINARY_PATH: transportBinary,
     CARDANO_NETWORK_MAGIC: String(run.networkMagic),
     // The committee refuses any value but its manifest's confirmation depth,
     // which is the compiled deployment profile's.

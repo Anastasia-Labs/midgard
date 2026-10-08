@@ -724,7 +724,7 @@ describe("loadCommitteeConfig", () => {
         authorityNodeId: "preview-node-a",
         socketPath: "/run/cardano/node.socket",
         nodeConfigPath: "/etc/cardano/config.json",
-        binaryPath: "/usr/local/bin/midgard-native-chain-sync",
+        binaryPath: "/usr/local/bin/midgard-l1-node-transport",
       },
       l1Origin: { slot: 7, blockHash: "ab".repeat(32) },
     };

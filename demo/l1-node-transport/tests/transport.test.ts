@@ -34,12 +34,13 @@ const mockNode = async (): Promise<MockNode> => {
 const transportFor = (
   socketPath: string,
   onReadiness?: (readiness: TransportReadiness) => void,
+  requestTimeoutMs = 20_000,
 ): L1NodeTransport => {
   const transport = new L1NodeTransport({
     binaryPath: sidecarBinary,
     socketPath,
     networkMagic: MAGIC,
-    requestTimeoutMs: 20_000,
+    requestTimeoutMs,
     restartDelayMs: { initial: 50, max: 200 },
     ...(onReadiness === undefined ? {} : { onReadiness }),
   });
@@ -130,7 +131,7 @@ describe("supervisor", () => {
 });
 
 describe("chain-sync", () => {
-  it("intersects at the first known point and delivers raw blocks in order", async () => {
+  it("intersects at the first known point, rolls back to it, and delivers raw blocks in order", async () => {
     const node = await mockNode();
     const blocks = await node.extend(6);
     const transport = transportFor(node.socketPath);
@@ -152,8 +153,11 @@ describe("chain-sync", () => {
     const opened = await stream.opened;
     expect(opened.intersection).toEqual(third);
     expect(opened.tip.blockNo).toBe(6n);
-    const events = await take(stream, 3);
-    expectContiguous(events, 1n);
+    const [rollback, ...events] = await take(stream, 4);
+    expectContiguous([rollback!, ...events], 1n);
+    // The intersection is not the first point (the consumer's position), so
+    // the consumer is moved back to it before the blocks that follow it.
+    expect(rollback).toMatchObject({ kind: "roll_backward", point: third });
     events.forEach((event, index) => {
       const block = blocks[3 + index]!;
       expect(event.kind).toBe("roll_forward");
@@ -365,6 +369,38 @@ describe("local state query, submit and monitor", () => {
       rewardsLovelace: 0n,
       poolIdHash: null,
     });
+  });
+
+  it("refuses a slow ledger request with node_timeout and keeps the sidecar and its streams", async () => {
+    const node = await mockNode();
+    await node.extend(2);
+    const reasons: string[] = [];
+    // The sidecar's own deadline is half the client's bound: 500 ms.
+    const transport = transportFor(
+      node.socketPath,
+      (readiness) => {
+        if (!readiness.ready) reasons.push(readiness.reason);
+      },
+      1_000,
+    );
+    const stream = transport.openChainSync({ points: [ORIGIN], credit: 10 });
+    owned.push(stream);
+    expectContiguous(await take(stream, 2), 1n);
+    await node.command({ op: "ledgerDelay", ms: 2_000 });
+    const slow = transport.query({ query: "system_start" });
+    await node.extend(2);
+    await expect(slow).rejects.toMatchObject({
+      name: "TransportRequestError",
+      code: "node_timeout",
+    });
+    expectContiguous(await take(stream, 2), 3n);
+    await node.command({ op: "ledgerDelay", ms: 0 });
+    // Once the late answer is in, the next request is answered as usual.
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    expect(
+      decodeCbor(await transport.query({ query: "chain_block_no" })),
+    ).toEqual([1, 4]);
+    expect(reasons).toEqual([]);
   });
 
   it("returns submit rejections as raw bytes and tracks the mempool", async () => {

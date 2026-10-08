@@ -56,7 +56,7 @@ export function configureHostNativeLedger(processes: StackProcesses) {
   const env = {
     L1_NODE_SOCKET_PATH: node.socketPath,
     L1_NODE_CONFIG_PATH: join(paths.directory, "config.json"),
-    L1_NATIVE_CHAIN_SYNC_BINARY_PATH: node.binaryPath,
+    L1_NODE_TRANSPORT_BINARY_PATH: node.binaryPath,
   };
   Object.assign(processes.env, env);
   return env;
@@ -77,7 +77,7 @@ export function containerNativeLedger(processes: StackProcesses) {
     env: {
       L1_NODE_SOCKET_PATH: "/ipc/node.socket",
       L1_NODE_CONFIG_PATH: "/cardano-config/config.json",
-      L1_NATIVE_CHAIN_SYNC_BINARY_PATH: containerChainSync(processes).path,
+      L1_NODE_TRANSPORT_BINARY_PATH: containerChainSync(processes).path,
     },
     volumes: [
       `${paths.socketDirectory}:/ipc`,

@@ -234,7 +234,7 @@ export const availabilityJournalPath = (env: Env): string | undefined => {
 const NATIVE_LEDGER_PATH_SETTINGS = [
   ["socketPath", "CARDANO_LOCAL_NODE_SOCKET_PATH"],
   ["nodeConfigPath", "CARDANO_LOCAL_NODE_CONFIG_PATH"],
-  ["binaryPath", "CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH"],
+  ["binaryPath", "CARDANO_L1_NODE_TRANSPORT_BINARY_PATH"],
 ] as const;
 
 export const DEFAULT_NATIVE_LEDGER_AUTHORITY_ID = "local-cardano-node";

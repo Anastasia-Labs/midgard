@@ -37,6 +37,7 @@ export {
   type FollowChainOptions,
   FOLLOWER_APPLY_STUCK,
   FOLLOWER_CATCHING_UP,
+  FOLLOWER_NODE_UNAVAILABLE,
   FOLLOWER_WAITING,
   type FollowReadiness,
   type FollowReadinessReason,

@@ -108,7 +108,7 @@ export const nodeEnvironment = (input: {
       : { L1_HISTORY_GENESIS_LOSSLESS_SHA256: historyGenesisPin }),
     L1_NODE_SOCKET_PATH: layout.cardanoSocket,
     L1_NODE_CONFIG_PATH: layout.hostCardanoConfig,
-    L1_NATIVE_CHAIN_SYNC_BINARY_PATH: artifacts.transportBinary,
+    L1_NODE_TRANSPORT_BINARY_PATH: artifacts.transportBinary,
     L1_OPERATOR_SEED_PHRASE: identities.seeds.operator,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: identities.seeds.merge,
     L1_SETTLEMENT_SEED_PHRASE: identities.seeds.settlement,

@@ -411,7 +411,7 @@ Required configuration follows demo/da-committee-node/docs/da-committee-node-arc
 L1 submission requires L1_SUBMITTER_KEY_SOURCE for a funded Cardano wallet.
 The committee reads L1 through its own chain follower on the local node:
 L1_ORIGIN, the native ledger (CARDANO_LOCAL_NODE_SOCKET_PATH,
-CARDANO_LOCAL_NODE_CONFIG_PATH and CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH) and
+CARDANO_LOCAL_NODE_CONFIG_PATH and CARDANO_L1_NODE_TRANSPORT_BINARY_PATH) and
 the deployment's hubOracleOneShot. Until all are set it stays unready with
 l1_follower_unconfigured. The availability responder reads and submits
 through the same follower; no chain index (Kupo, Ogmios) is configured.

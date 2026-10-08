@@ -131,7 +131,7 @@ type NativeBlock = Readonly<{
 const blocks = async (native: SyntheticUserEventOriginFixture) =>
   JSON.parse(
     await readFile(
-      join(dirname(native.nativeChainSyncBinaryPath), "blocks.json"),
+      join(dirname(native.l1NodeTransportBinaryPath), "blocks.json"),
       "utf8",
     ),
   ) as NativeBlock[];

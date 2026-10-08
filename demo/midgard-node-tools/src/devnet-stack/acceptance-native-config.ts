@@ -125,7 +125,7 @@ export const loadAcceptanceNativeReadConfig = async (
     watcherConfig.targetNetwork !== "Custom" ||
     watcherConfig.mode !== "acceptance" ||
     processConfig.watcherRuntimeConfigPath !== layout.watcherRuntimeConfig ||
-    processConfig.nativeChainSyncBinaryPath !== binaryPath ||
+    processConfig.l1NodeTransportBinaryPath !== binaryPath ||
     processConfig.deploymentAuthorityPath !== paths.authority ||
     processConfig.ruleBundlePath !== paths.rules ||
     processConfig.faultProofInfrastructure.manifestPath !== paths.manifest ||

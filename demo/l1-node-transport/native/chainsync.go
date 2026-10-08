@@ -259,17 +259,25 @@ func (st *csStream) run(open csOpenHeader) {
 			_ = st.session.out.write(csIntersectNotFoundHeader{Type: "cs_intersect_not_found", ID: open.ID, Stream: st.id, Tip: tipOf(reply.Tip)}, nil)
 			return
 		default:
-			st.session.answerError(open.ID, refuse("protocol_violation", "unexpected reply to FindIntersect"))
-			failure(streamFailure{code: "protocol_violation", cause: fmt.Errorf("unexpected message type %d", msg.Type())})
+			// The open is answered once: a primary fault ends the sidecar,
+			// an auxiliary one answers the open with the error.
+			st.session.dropStream(st.id)
+			cause := fmt.Errorf("unexpected reply to FindIntersect: message type %d", msg.Type())
+			if lease.primary {
+				st.session.fatal("protocol_violation", cause)
+				return
+			}
+			pool.discard(lease)
+			st.session.answerError(open.ID, refuse("protocol_violation", "%v", cause))
 			return
 		}
 	case <-lease.node.dead:
+		st.session.dropStream(st.id)
 		if lease.primary {
-			st.session.dropStream(st.id)
 			st.session.fatal("node_connection_lost", lease.node.deathCause())
 			return
 		}
-		st.session.dropStream(st.id)
+		pool.discard(lease)
 		st.session.answerError(open.ID, refuse("node_unavailable", "%v", lease.node.deathCause()))
 		return
 	}
@@ -353,7 +361,11 @@ func (st *csStream) run(open csOpenHeader) {
 						failure(streamFailure{code: "protocol_violation", cause: errors.New("first reply after FindIntersect is not a rollback to the intersection")})
 						return
 					}
-					if open.ConsumerAt == nil || open.ConsumerAt.equal(intersect) {
+					// The first requested point is the consumer's position.
+					// Intersecting there needs no rollback; intersecting
+					// anywhere else moves the consumer back to the
+					// intersection, so the rollback is delivered.
+					if open.Points[0].equal(intersect) {
 						continue
 					}
 				}

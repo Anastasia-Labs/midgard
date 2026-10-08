@@ -9,7 +9,8 @@
  * `intent_reconcile_failed`, `intent_reconcile_transient`) and the intent
  * journal's refusals (`intent_journal_*`, `intent_input_untracked`,
  * `intent_bytes_mismatch`, `intent_undecodable`), and
- * `l1_follower_unconfigured` while the node has no follower. Each fails
+ * `l1_follower_unconfigured` while the node has no follower, and
+ * `l1_node_config_unreadable` while its network magic is retried. Each fails
  * readiness by name; none stops the process, and `/healthz` stays live.
  */
 import type { FollowStatus } from "@al-ft/midgard-l1-follower";
@@ -18,6 +19,12 @@ import type { DriverHold, IngestionPlan } from "../l1-events/driver.js";
 
 /** The node has no follower: its configuration is missing a piece (named in the detail). */
 export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
+/**
+ * The node's config files do not yield its network magic yet (the detail says
+ * why); the node reads them again with capped backoff and starts its follower
+ * once they do.
+ */
+export const L1_NODE_CONFIG_UNREADABLE = "l1_node_config_unreadable";
 
 /** The projection at the follower's current view, or why there is none. */
 export type FollowerPlanRead =
@@ -37,6 +44,11 @@ export type L1FollowerHandle = Readonly<{
 
 export type L1FollowerState =
   | Readonly<{ kind: "unconfigured"; detail: string }>
+  | Readonly<{
+      kind: "waiting";
+      reason: typeof L1_NODE_CONFIG_UNREADABLE;
+      detail: string;
+    }>
   | L1FollowerHandle;
 
 /**
@@ -80,6 +92,14 @@ export const l1FollowerReadiness = (
         readiness: [{ reason: L1_FOLLOWER_UNCONFIGURED, detail: state.detail }],
       },
     };
+  if (state.kind === "waiting")
+    return {
+      reasons: [state.reason],
+      report: {
+        state: "waiting",
+        readiness: [{ reason: state.reason, detail: state.detail }],
+      },
+    };
   const status = state.status();
   const holds = state.holds();
   const readiness = [...status.readiness, ...holds];
@@ -94,6 +114,7 @@ export const l1FollowerReadiness = (
       cursor: status.cursor,
       tip: status.tip,
       atTip: status.atTip,
+      node: status.node,
       protocolInit: status.protocolInit,
       events: status.events,
       lastError: status.lastError,

@@ -12,7 +12,10 @@ import {
   L1NodeTransport,
   ORIGIN,
   queryRewardAccount,
+  SidecarExitedError,
   StreamInterruptedError,
+  TransportProtocolError,
+  type TransportReadiness,
   TransportUnavailableError,
 } from "../src/index.js";
 import { writeFakeSidecar } from "../testing/fake-sidecar.mjs";
@@ -101,7 +104,7 @@ describe("fake sidecar", () => {
     expect(await stream.ended).toBeNull();
   });
 
-  it("intersects at the first known point and refuses an unknown one", async () => {
+  it("intersects at the first known point, rolls back to it, and refuses an unknown one", async () => {
     const transport = await transportWith();
     const stream = transport.openChainSync({
       points: [chainPoint(99n, hash("99")), chainPoint(20n, hash("02"))],
@@ -111,7 +114,14 @@ describe("fake sidecar", () => {
     expect((await stream.opened).intersection).toEqual(
       chainPoint(20n, hash("02")),
     );
-    const [event] = await take(() => stream.next(), 1);
+    // As with the sidecar: the intersection is not the first point (the
+    // consumer's position), so a rollback to it comes first.
+    const [rollback, event] = await take(() => stream.next(), 2);
+    expect(rollback).toMatchObject({
+      kind: "roll_backward",
+      seq: 1n,
+      point: chainPoint(20n, hash("02")),
+    });
     expect(event!.point).toEqual(chainPoint(30n, hash("03")));
     await stream.close();
     const missing = transport.openChainSync({
@@ -131,6 +141,38 @@ describe("fake sidecar", () => {
     await take(() => stream.next(), 3);
     await expect(stream.next()).rejects.toBeInstanceOf(StreamInterruptedError);
     expect(await stream.ended).toBeInstanceOf(StreamInterruptedError);
+  });
+
+  it("fails a stream whose sequence skips a number", async () => {
+    const transport = await transportWith({ skipSequenceAt: 1 });
+    const stream = transport.openChainSync({
+      points: [ORIGIN],
+      credit: 5,
+      resume: false,
+    });
+    const [first] = await take(() => stream.next(), 1);
+    expect(first!.seq).toBe(1n);
+    await expect(stream.next()).rejects.toBeInstanceOf(TransportProtocolError);
+    expect(await stream.ended).toBeInstanceOf(TransportProtocolError);
+  });
+
+  it("restarts a sidecar whose answer frame is malformed, without throwing", async () => {
+    const seen: TransportReadiness[] = [];
+    const transport = await transportWith({ malformedAnswer: true });
+    transport.onReadiness((readiness) => seen.push(readiness));
+    await transport.whenReady(10_000);
+    await expect(transport.mempoolSizes()).rejects.toBeInstanceOf(
+      SidecarExitedError,
+    );
+    expect(seen).toContainEqual(
+      expect.objectContaining({
+        ready: false,
+        reason: "sidecar_restarting",
+        detail: expect.stringContaining("answer id is not a natural number"),
+      }),
+    );
+    await transport.whenReady(10_000);
+    expect(transport.readiness).toMatchObject({ ready: true });
   });
 
   it("answers ledger queries, submission and the mempool", async () => {

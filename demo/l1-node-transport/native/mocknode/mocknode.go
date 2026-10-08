@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	ouroboros "github.com/blinklabs-io/gouroboros"
 	gcbor "github.com/blinklabs-io/gouroboros/cbor"
@@ -125,6 +126,19 @@ func SampleTx() ([]byte, []byte, error) {
 	return tx, id[:], nil
 }
 
+// FirstReply selects how a connection answers its first RequestNext after
+// FindIntersect. Only FirstReplyConformant is what a node does.
+type FirstReply int
+
+const (
+	// FirstReplyConformant rolls back to the intersection.
+	FirstReplyConformant FirstReply = iota
+	// FirstReplyRollbackToOrigin rolls back to the origin instead.
+	FirstReplyRollbackToOrigin
+	// FirstReplyRollForward skips the rollback and rolls forward.
+	FirstReplyRollForward
+)
+
 // Node is the mock node.
 type Node struct {
 	listener net.Listener
@@ -139,6 +153,8 @@ type Node struct {
 	mismatch bool
 	acquired []string
 	hasTxEra []uint64
+	first    FirstReply
+	slow     time.Duration
 	conns    map[*ouroboros.Connection]struct{}
 	// drops counts DropConnections calls, so a connection still in its
 	// handshake when the drop came is closed as soon as it registers.
@@ -260,6 +276,29 @@ func (n *Node) SetShelleyAnswer(tag uint64, raw []byte) {
 	n.mu.Unlock()
 }
 
+// SetFirstReply sets how later FindIntersects are followed.
+func (n *Node) SetFirstReply(first FirstReply) {
+	n.mu.Lock()
+	n.first = first
+	n.mu.Unlock()
+}
+
+// SetLedgerDelay delays every LocalStateQuery and LocalTxSubmission answer
+// by d, as a node busy with a heavy query does. A query's answer is taken
+// before the delay.
+func (n *Node) SetLedgerDelay(d time.Duration) {
+	n.mu.Lock()
+	n.slow = d
+	n.mu.Unlock()
+}
+
+func (n *Node) ledgerDelay() {
+	n.mu.Lock()
+	d := n.slow
+	n.mu.Unlock()
+	time.Sleep(d)
+}
+
 // SetEraMismatch makes every Shelley-era query answer an era mismatch.
 func (n *Node) SetEraMismatch(mismatch bool) {
 	n.mu.Lock()
@@ -329,6 +368,7 @@ type follower struct {
 	// intersection; path[0] is the intersection.
 	path            []pcommon.Point
 	pendingRollback bool
+	rollbackTo      pcommon.Point
 	requests        chan struct{}
 	responder       sync.Once
 }
@@ -382,7 +422,7 @@ func (f *follower) step(server *chainsync.Server) (bool, error) {
 	tip := n.tipLocked()
 	if f.pendingRollback {
 		f.pendingRollback = false
-		point := f.path[0]
+		point := f.rollbackTo
 		n.mu.Unlock()
 		return true, server.RollBackward(point, tip)
 	}
@@ -440,7 +480,11 @@ func (n *Node) serve(socket net.Conn) {
 				for _, point := range points {
 					if _, ok := n.heightOfLocked(point); ok {
 						f.path = []pcommon.Point{point}
-						f.pendingRollback = true
+						f.pendingRollback = n.first != FirstReplyRollForward
+						f.rollbackTo = point
+						if n.first == FirstReplyRollbackToOrigin {
+							f.rollbackTo = pcommon.NewPointOrigin()
+						}
 						return point, tip, nil
 					}
 				}
@@ -463,6 +507,7 @@ func (n *Node) serve(socket net.Conn) {
 		)),
 		ouroboros.WithLocalStateQueryConfig(localstatequery.NewConfig(
 			localstatequery.WithAcquireFunc(func(_ localstatequery.CallbackContext, target localstatequery.AcquireTarget, _ bool) error {
+				n.ledgerDelay()
 				n.mu.Lock()
 				defer n.mu.Unlock()
 				switch t := target.(type) {
@@ -477,12 +522,15 @@ func (n *Node) serve(socket net.Conn) {
 				return nil
 			}),
 			localstatequery.WithQueryFunc(func(_ localstatequery.CallbackContext, query localstatequery.QueryWrapper) (any, error) {
-				return n.answer(query.Cbor())
+				answer, err := n.answer(query.Cbor())
+				n.ledgerDelay()
+				return answer, err
 			}),
 			localstatequery.WithReleaseFunc(func(localstatequery.CallbackContext) error { return nil }),
 		)),
 		ouroboros.WithLocalTxSubmissionConfig(localtxsubmission.NewConfig(
 			localtxsubmission.WithSubmitTxFunc(func(_ localtxsubmission.CallbackContext, tx localtxsubmission.MsgSubmitTxTransaction) error {
+				n.ledgerDelay()
 				n.mu.Lock()
 				defer n.mu.Unlock()
 				if n.reject != nil {

@@ -180,7 +180,7 @@ export const setup = async (
     watcherConfig: fixture.watcherConfig,
     deploymentAuthority,
     blueprintBytes,
-    nativeChainSyncBinaryPath: fixture.nativeChainSyncBinaryPath,
+    l1NodeTransportBinaryPath: fixture.l1NodeTransportBinaryPath,
     runtime: durable.runtime,
     archive: durable.archive,
     // One store for the whole test so a restart restores the saved coverage.

@@ -226,7 +226,7 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    8. `midgard-node` reads the in-stack node directly for its L1 follower: the
       overlay mounts `./cardano/ipc` and `./cardano/config` and sets
       `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
-      `L1_NATIVE_CHAIN_SYNC_BINARY_PATH` (the `midgard-l1-node-transport`
+      `L1_NODE_TRANSPORT_BINARY_PATH` (the `midgard-l1-node-transport`
       binary baked into the image). The one-shot `cardano-config-export`
       service copies the cardano-node image's config and genesis files for
       `NETWORK` into `./cardano/config` before the node starts. The follower
@@ -714,7 +714,7 @@ lowercase hex block hash); it is not part of the profile or manifest.
 
 The node's L1 follower runs only with `L1_ORIGIN`, the hub-oracle one-shot and
 the local node (`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`,
-`L1_NATIVE_CHAIN_SYNC_BINARY_PATH`). Without any of them the node reports
+`L1_NODE_TRANSPORT_BINARY_PATH`). Without any of them the node reports
 `l1_follower_unconfigured` and ingests no deposits or withdrawals. The devnet
 and full-stack builders in `midgard-node-tools` derive `L1_ORIGIN` from the
 deployment's nonce tx on their own local node, record it with the run, and

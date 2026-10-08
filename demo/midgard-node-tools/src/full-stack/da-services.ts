@@ -200,7 +200,7 @@ export async function generateDaServices(processes: StackProcesses) {
       L1_ORIGIN: committeeL1Origin,
       CARDANO_LOCAL_NODE_SOCKET_PATH: "/ipc/node.socket",
       CARDANO_LOCAL_NODE_CONFIG_PATH: "/cardano-config/config.json",
-      CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: containerChainSync(processes).path,
+      CARDANO_L1_NODE_TRANSPORT_BINARY_PATH: containerChainSync(processes).path,
       CARDANO_FINALITY_DEPTH: String(manifest.l1Finality.confirmationDepth),
       DA_LIBP2P_PRIVATE_KEY_SOURCE: member.libp2pPrivateKeySource,
       DA_SIGNER_INDEX: String(member.signerIndex),

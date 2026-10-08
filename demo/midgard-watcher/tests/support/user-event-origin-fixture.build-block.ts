@@ -142,7 +142,7 @@ export type SyntheticUserEventOriginFixture = Readonly<{
   deploymentIdentity: ReturnType<typeof makeOriginDeployment>["result"];
   scriptBinding: WatcherUserEventScriptBinding;
   watcherConfig: ReturnType<typeof makeConfig>;
-  nativeChainSyncBinaryPath: string;
+  l1NodeTransportBinaryPath: string;
   activationBlock: SyntheticUserEventBlock;
   emptySuccessorBlock: SyntheticUserEventBlock;
   activationTransactionCbor: string;

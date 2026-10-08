@@ -758,7 +758,7 @@ export const createLiveDaBondPoolJourneyPort = async (
       MIDGARD_DOTENV_MODE: "disabled",
       L1_NODE_SOCKET_PATH: nativeLedgerPaths.socket,
       L1_NODE_CONFIG_PATH: nativeLedgerPaths.config,
-      L1_NATIVE_CHAIN_SYNC_BINARY_PATH: nativeLedgerPaths.binary,
+      L1_NODE_TRANSPORT_BINARY_PATH: nativeLedgerPaths.binary,
     },
     workDirectory: (label) => {
       const directory = join(

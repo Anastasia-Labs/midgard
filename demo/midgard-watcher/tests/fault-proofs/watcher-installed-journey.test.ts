@@ -316,7 +316,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       }),
     );
     nativeBlocksPath = join(
-      dirname(native.nativeChainSyncBinaryPath),
+      dirname(native.l1NodeTransportBinaryPath),
       "blocks.json",
     );
     cleanup.push(chain.close);
@@ -428,7 +428,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       deploymentAuthorityPath: configuration.authorityPath,
       ruleBundlePath: configuration.ruleBundlePath,
       fundingProfileBundlePath: configuration.fundingProfileBundlePath,
-      nativeChainSyncBinaryPath: native.nativeChainSyncBinaryPath,
+      l1NodeTransportBinaryPath: native.l1NodeTransportBinaryPath,
       trustedHeadAuthorityEndpoint: trusted.server.endpoint,
       operationsEndpoint: `http://127.0.0.1:${operations.port}`,
       httpBearerSecretSource: {

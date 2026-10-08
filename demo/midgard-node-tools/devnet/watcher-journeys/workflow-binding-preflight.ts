@@ -113,7 +113,7 @@ export const verifyJourneyWorkflowBindings = async (input: {
       ),
     }),
     node: {
-      binaryPath: input.config.nativeChainSyncBinaryPath,
+      binaryPath: input.config.l1NodeTransportBinaryPath,
       socketPath: watcherConfig.l1.source.chainSync.socketPath,
       networkMagic: (
         await deriveWatcherNativeGenesisIdentity({ watcherConfig })

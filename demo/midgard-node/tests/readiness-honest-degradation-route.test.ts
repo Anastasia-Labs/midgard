@@ -87,7 +87,7 @@ type Readyz = {
   readonly pendingFinalizationAgeMs?: number | null;
   readonly signedIntentUnresolvedAgeMs?: number | null;
   readonly providerQueryHealthy?: boolean;
-  readonly l1Follower?: { readonly state: string };
+  readonly l1Follower?: { readonly state: string; readonly node?: unknown };
 };
 
 const SUCCESS_NOW: readonly ProviderObservation[] = [
@@ -446,6 +446,18 @@ describe("GET /readyz names the L1 follower's reasons (N1)", () => {
       ),
       "rollback_beyond_k",
     );
+    const lost = await holds(
+      runningFollower(
+        followingAtTip({
+          node: { reason: "node_unreachable", detail: "dial: no such file" },
+        }),
+      ),
+      "l1_node_unavailable",
+    );
+    expect(lost.l1Follower?.node).toEqual({
+      reason: "node_unreachable",
+      detail: "dial: no such file",
+    });
   });
 
   it("names each hold of the follower-change driver", async () => {

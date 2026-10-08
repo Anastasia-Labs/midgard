@@ -30,6 +30,8 @@ export type FakeStream = Readonly<{
    * through; events still held back are dropped. The session lives on.
    */
   fail(code: string, message?: string): void;
+  /** Skips one sequence number, as a broken sidecar might. */
+  skipSequence(): void;
   onClose(listener: () => void): void;
 }>;
 
@@ -51,7 +53,6 @@ export type FakeSidecarHandler = Readonly<{
       startSeq: bigint;
       /** The stream's initial credit window. */
       window: number;
-      consumerAt: FakePoint | undefined;
     }>,
     stream: FakeStream,
   ) =>
@@ -93,6 +94,8 @@ export type FakeSidecarHandler = Readonly<{
 export type FakeSessionControls = Readonly<{
   /** Ends the session with a `fatal` frame and the given exit status. */
   fatal(code: string, message: string, status?: number): void;
+  /** Writes one frame as given, as a broken sidecar might. */
+  writeFrame(header: unknown, payload?: Uint8Array): void;
   /** Ends the process without a frame, as a crash would. */
   exit(status: number): void;
 }>;

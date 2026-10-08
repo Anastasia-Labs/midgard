@@ -87,7 +87,7 @@ const observeAll = async (
   const observed = [];
   for (const block of blocks) {
     const query = await openWatcherNativeExactPointQuery({
-      binaryPath: fixture.nativeChainSyncBinaryPath,
+      binaryPath: fixture.l1NodeTransportBinaryPath,
       watcherConfig: fixture.watcherConfig,
       predecessor: {
         blockHash: block.parentPoint.blockHash,

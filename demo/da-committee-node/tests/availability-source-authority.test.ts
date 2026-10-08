@@ -9,7 +9,7 @@ const nativeLedger = {
   authorityNodeId: "node-a",
   socketPath: "/run/cardano/node.socket",
   nodeConfigPath: "/etc/cardano/config.json",
-  binaryPath: "/usr/local/bin/midgard-native-chain-sync",
+  binaryPath: "/usr/local/bin/midgard-l1-node-transport",
 };
 const l1Origin = { slot: 100, blockHash: "ab".repeat(32) };
 const network = "Preprod";

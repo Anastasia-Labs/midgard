@@ -198,7 +198,7 @@ describe("the devnet committee environment", () => {
       });
       expect(env.L1_ORIGIN).toBe(`41.${"cd".repeat(32)}`);
       expect(env.CARDANO_LOCAL_NODE_SOCKET_PATH).toBe(layout.cardanoSocket);
-      expect(env.CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH).toBe(
+      expect(env.CARDANO_L1_NODE_TRANSPORT_BINARY_PATH).toBe(
         artifacts.transportBinary,
       );
       expect(
@@ -216,7 +216,7 @@ describe("assertNodeFollowerEnvironment", () => {
   const complete = {
     L1_NODE_SOCKET_PATH: "/ipc/node.socket",
     L1_NODE_CONFIG_PATH: "/cardano/config.json",
-    L1_NATIVE_CHAIN_SYNC_BINARY_PATH: "/bin/chain-sync",
+    L1_NODE_TRANSPORT_BINARY_PATH: "/bin/chain-sync",
     L1_ORIGIN: `41.${"cd".repeat(32)}`,
     HUB_ORACLE_ONE_SHOT_TX_HASH: "ab".repeat(32),
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0",

@@ -275,7 +275,7 @@ export const daBondPoolCommitteeSettings = (input: {
     : {
         CARDANO_LOCAL_NODE_SOCKET_PATH: input.nativeLedger.socket,
         CARDANO_LOCAL_NODE_CONFIG_PATH: input.nativeLedger.config,
-        CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: input.nativeLedger.binary,
+        CARDANO_L1_NODE_TRANSPORT_BINARY_PATH: input.nativeLedger.binary,
       }),
 });
 
