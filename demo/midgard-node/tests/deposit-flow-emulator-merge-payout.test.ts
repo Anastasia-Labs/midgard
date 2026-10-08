@@ -702,7 +702,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
           Buffer.from(l2TransactionBlock.queuedHeaderHash, "hex"),
         ),
       ),
-    ).toEqual([]);
+    ).toEqual([builtL2Transfer.txId]);
     expect(
       await runNodeDatabaseEffect(
         ImmutableDB.retrieveTxCborByHash(builtL2Transfer.txId),
