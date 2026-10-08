@@ -43,12 +43,19 @@ import { serializeStateQueueUTxO } from "../workers/utils/commit-block-header.js
 import type { NodeConfigDep } from "./config.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
-import { executeHistoryDependentRecovery } from "./history-dependent-recovery.js";
+import {
+  executeHistoryDependentRecovery,
+  heldOnNativeRestoreRefusal,
+} from "./history-dependent-recovery.js";
 import { validateRecoveryStateQueue } from "./history-recovery-state-queue.js";
 import {
   ingestAtCaughtUpView,
   repairWhenFollowerCaughtUp,
 } from "./l1-follower.recovery.js";
+import {
+  HISTORY_SIGNED_HEADER_RECOVERY_SOURCE,
+  SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
+} from "./liveness-halt.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
 import { evaluateSignedIntentCoverage } from "./signed-intent-canonical-coverage.js";
 
@@ -137,6 +144,13 @@ export const captureRecoveryQueueAtPoint = <A>(
  * shapes stay pending until their complete confirmed-ledger inverse is available.
  * Canonical absence through signed TTL plus finality is mandatory even when the
  * old base output is unspent.
+ *
+ * A native restore the owner refuses (its target root not retained in full,
+ * over a full-index cap, or unreadable for now) holds under
+ * `HISTORY_SIGNED_HEADER_RECOVERY_SOURCE` and returns `NATIVE_RESTORE_HELD`
+ * (see `heldOnNativeRestoreRefusal`): the plan stays prepared, native MPF,
+ * the SQL root and the journal stay as they are, and every evaluation
+ * retries the restore. An evaluation that meets no such refusal clears it.
  */
 export const prepareSignedHeaderRecovery = (input: {
   readonly binding: EventHistorySourceBinding;
@@ -437,4 +451,10 @@ export const prepareSignedHeaderRecovery = (input: {
         });
       }),
     });
-  });
+  }).pipe(
+    heldOnNativeRestoreRefusal(
+      HISTORY_SIGNED_HEADER_RECOVERY_SOURCE,
+      SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
+      "recovery",
+    ),
+  );
