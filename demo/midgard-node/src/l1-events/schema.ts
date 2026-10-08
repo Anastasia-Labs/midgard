@@ -56,6 +56,8 @@ CREATE TABLE ${EVENTS_TABLE} (
   admitted_height ${int8} NOT NULL,
   admitted_slot ${int8} NOT NULL,
   retired_slot ${int8},
+  retained_tx_hash ${bytes},
+  retained_output_index integer,
   PRIMARY KEY (kind, event_key)
 );
 CREATE INDEX ${EVENTS_TABLE}_admitted ON ${EVENTS_TABLE} (admitted_slot);

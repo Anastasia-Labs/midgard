@@ -1,9 +1,13 @@
 import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
+import { postgresDialect } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { mergeReferenceScripts } from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { Clock, Effect, Option } from "effect";
 
+import { followerSqlTx } from "../database/follower-schema.js";
+import { eventOrderByIdIn } from "../l1-events/by-id.js";
 import { Database, Lucid, MidgardContracts } from "../services/index.js";
 import {
   fetchReferenceScriptUtxosProgram,
@@ -144,32 +148,74 @@ export const fetchReferenceScripts = (
     return mergeReferenceScripts(undefined, resolved);
   });
 
+/**
+ * The live Order of the `kind` event with id CBOR `eventId`, opened as the
+ * SDK opens it, read by key from the follower's event projection in the
+ * node database (NC13): never a scan of the list or its retention address.
+ * The settlement retries while the follower has not admitted the event yet.
+ */
+const readEventOrderById = (
+  kind: "deposit" | "withdrawal",
+  eventId: Buffer,
+): Effect.Effect<
+  Readonly<{ order: UTxO; retained: readonly UTxO[] }>,
+  Error,
+  Database | MidgardContracts
+> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const contracts = yield* MidgardContracts;
+    const policyId =
+      SDK.requireEventHistoryContracts(contracts)[kind].list.policyId;
+    const read = yield* sql
+      .withTransaction(
+        Effect.flatMap(followerSqlTx, (tx) =>
+          Effect.tryPromise(() =>
+            eventOrderByIdIn(tx, postgresDialect, { kind, policyId }, eventId),
+          ),
+        ),
+      )
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new Error(`The ${kind} event projection is unreadable`, { cause }),
+        ),
+      );
+    const label = `${kind === "deposit" ? "Deposit" : "Withdrawal"} UTxO for event ${eventId.toString("hex")}`;
+    if (read.kind === "absent")
+      return yield* Effect.fail(
+        new Error(`${label} is not live at the follower's tip.`),
+      );
+    if (read.kind === "unavailable")
+      return yield* Effect.fail(
+        new Error(`${label} is unreadable: ${read.detail}.`),
+      );
+    return read;
+  });
+
+const eventDeployment = (
+  contracts: SDK.MidgardValidators,
+  kind: "deposit" | "withdrawal",
+) =>
+  SDK.eventHistoryDeploymentFromContracts(
+    SDK.requireEventHistoryContracts(contracts)[kind],
+  );
+
 const fetchDepositUtxoByEventId = (
   eventId: Buffer,
 ): Effect.Effect<
   SDK.DepositUTxO,
   SDK.LucidError | Error,
-  Lucid | MidgardContracts
+  Database | MidgardContracts
 > =>
   Effect.gen(function* () {
-    const { api: lucid } = yield* Lucid;
     const contracts = yield* MidgardContracts;
-    const deposits = yield* SDK.fetchDepositUTxOsProgram(lucid, {
-      ...SDK.eventHistoryDeploymentFromContracts(
-        SDK.requireEventHistoryContracts(contracts).deposit,
-      ),
-    });
-    const match = deposits.find((deposit) =>
-      Buffer.from(deposit.idCbor).equals(eventId),
+    const { order, retained } = yield* readEventOrderById("deposit", eventId);
+    return yield* SDK.orderToDepositUTxO(
+      order,
+      retained,
+      eventDeployment(contracts, "deposit"),
     );
-    if (match === undefined) {
-      return yield* Effect.fail(
-        new Error(
-          `Deposit UTxO for event ${eventId.toString("hex")} is not present on L1.`,
-        ),
-      );
-    }
-    return match;
   });
 
 export const fetchWithdrawalUtxoByEventId = (
@@ -177,27 +223,19 @@ export const fetchWithdrawalUtxoByEventId = (
 ): Effect.Effect<
   SDK.WithdrawalUTxO,
   SDK.LucidError | Error,
-  Lucid | MidgardContracts
+  Database | MidgardContracts
 > =>
   Effect.gen(function* () {
-    const { api: lucid } = yield* Lucid;
     const contracts = yield* MidgardContracts;
-    const withdrawals = yield* SDK.fetchWithdrawalUTxOsProgram(lucid, {
-      ...SDK.eventHistoryDeploymentFromContracts(
-        SDK.requireEventHistoryContracts(contracts).withdrawal,
-      ),
-    });
-    const match = withdrawals.find((withdrawal) =>
-      Buffer.from(withdrawal.idCbor).equals(eventId),
+    const { order, retained } = yield* readEventOrderById(
+      "withdrawal",
+      eventId,
     );
-    if (match === undefined) {
-      return yield* Effect.fail(
-        new Error(
-          `Withdrawal UTxO for event ${eventId.toString("hex")} is not present on L1.`,
-        ),
-      );
-    }
-    return match;
+    return yield* SDK.orderToWithdrawalUTxO(
+      order,
+      retained,
+      eventDeployment(contracts, "withdrawal"),
+    );
   });
 
 export const requireResolution = <

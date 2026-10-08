@@ -302,8 +302,9 @@ export const getReadinessHandler = Effect.gen(function* () {
     }
   }
 
-  // No membership check has authenticated yet (or none can): duties run, so
-  // this is reported but leaves the node ready. Removal is a liveness reason.
+  // The operator set has not shown this operator in any state yet (or it
+  // cannot read the key): duties run, so this is reported but leaves the
+  // node ready. Removal is a liveness reason (`operator_removed`).
   if (operatorMembership === "unknown")
     details.push("operator_membership_unavailable");
   const providerReadiness = l1ProviderReadiness({

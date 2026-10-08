@@ -57,27 +57,20 @@ export type TakeoverPlanning = {
 };
 
 /**
- * Reads the directory and plans a takeover of the current shift as of the
- * chain clock. `neglectedEvent` narrows the threshold to a specific neglected
- * user event when the caller has one.
+ * Plans a takeover of the current shift in `snapshot` as of the chain clock.
+ * `neglectedEvent` narrows the threshold to a specific neglected user event
+ * when the caller has one.
  */
-export const planTakeoverProgram = (
+export const planTakeoverFrom = (
   lucid: LucidEvolution,
-  contracts: SDK.OperatorDirectoryValidators,
+  snapshot: SDK.OperatorDirectorySnapshot,
   options: {
     readonly neglectedEvent?: SDK.NeglectedUserEventClaim;
     readonly params?: SDK.InactivityTimingParameters;
     readonly nowMs?: bigint;
   } = {},
-): Effect.Effect<
-  TakeoverPlanning,
-  SDK.OperatorDirectorySnapshotError | L1SlotUnknownError
-> =>
+): Effect.Effect<TakeoverPlanning, L1SlotUnknownError> =>
   Effect.gen(function* () {
-    const snapshot = yield* SDK.fetchOperatorDirectorySnapshotProgram(
-      lucid,
-      contracts,
-    );
     const nowMs = options.nowMs ?? (yield* resolveL1NowMs(lucid));
     const plan = SDK.planInactivityTakeover({
       snapshot,
@@ -89,6 +82,24 @@ export const planTakeoverProgram = (
     });
     return { nowMs, snapshot, plan };
   });
+
+/**
+ * Reads the directory from the provider and plans a takeover of the current
+ * shift (the CLI's read; the watchdog plans from the follower's operator
+ * set).
+ */
+export const planTakeoverProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.OperatorDirectoryValidators,
+  options: Parameters<typeof planTakeoverFrom>[2] = {},
+): Effect.Effect<
+  TakeoverPlanning,
+  SDK.OperatorDirectorySnapshotError | L1SlotUnknownError
+> =>
+  Effect.flatMap(
+    SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts),
+    (snapshot) => planTakeoverFrom(lucid, snapshot, options),
+  );
 
 export type ReadyTakeoverPlan = Extract<
   SDK.InactivityTakeoverPlan,

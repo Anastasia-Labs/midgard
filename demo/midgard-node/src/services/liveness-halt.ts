@@ -26,9 +26,10 @@ export const HaltSource = {
    * base slot that a sibling on the same base already finalized locally or
    * landed (see `SignedIntentReplacementIntegrityError`). */
   blockConfirmationSignedIntent: "block_confirmation_signed_intent",
-  /** Authenticated evidence that this operator left the active set: absence
-   * at the head after past activity, or removal at a finalized point (see
-   * `publishOperatorMembership`). Holds every operator duty. */
+  /** This operator is removed (`operator_removed`, plan §7.5 R7): retired,
+   * or in no list after having been active, in the follower's operator set
+   * (see `publishOperatorMembership`). Holds every operator duty; a rollback
+   * that undoes the removal clears it. */
   operatorMembership: "operator_membership",
 } as const;
 

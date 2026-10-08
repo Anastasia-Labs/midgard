@@ -1,100 +1,126 @@
-import { SqlClient } from "@effect/sql";
-import { Deferred, Effect, Fiber, Ref } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "@effect/vitest";
+import {
+  Duration,
+  Effect,
+  Fiber,
+  Option,
+  Ref,
+  Schedule,
+  TestClock,
+} from "effect";
 
 import {
-  OPERATOR_MEMBERSHIP_HALT_REASONS,
-  operatorMembershipTick,
+  OPERATOR_REMOVED,
+  type OperatorMembership,
   publishOperatorMembership,
-  untilOperatorRemoved,
-} from "../src/fibers/operator-membership.js";
+} from "../src/l1-operator-set/index.js";
 import { withL1ControlPlane } from "../src/services/globals.globals.js";
 import { Globals } from "../src/services/globals.js";
 import {
-  ContractDeploymentIdentity,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
-import { HaltSource } from "../src/services/liveness-halt.js";
+  activeLivenessReasons,
+  FIBER_HALT_SOURCES,
+  HALT_POLL_MS,
+  HaltSource,
+  pausedWhileHalted,
+} from "../src/services/liveness-halt.js";
+
+const membership = (
+  state: OperatorMembership["state"],
+): OperatorMembership => ({ state, detail: `operator k is ${state}` });
+
+const haltOf = (globals: Globals) =>
+  Effect.map(Ref.get(globals.LIVENESS_REASONS), (reasons) =>
+    reasons.get(HaltSource.operatorMembership),
+  );
 
 describe("operator membership holds duties", () => {
-  it("holds duties only on authenticated removal evidence and keeps the last state on a failed check", async () => {
-    await Effect.runPromise(
+  it.effect(
+    "raises operator_removed on removal and clears it on every other state",
+    () =>
       Effect.gen(function* () {
         const globals = yield* Globals;
-        const halt = Effect.map(Ref.get(globals.LIVENESS_REASONS), (reasons) =>
-          reasons.get(HaltSource.operatorMembership),
-        );
-        // The startup default holds nothing: duties start before the first check.
+        // The startup default holds nothing: duties run until the first
+        // operator-set read.
         expect(yield* Ref.get(globals.OPERATOR_MEMBERSHIP)).toBe("unknown");
-        expect(yield* halt).toBeUndefined();
-        yield* publishOperatorMembership("removal_pending");
-        expect(yield* halt).toBe(
-          OPERATOR_MEMBERSHIP_HALT_REASONS.removal_pending,
-        );
-        // A check that cannot authenticate anything changes nothing.
-        yield* operatorMembershipTick.pipe(
-          Effect.provideService(NodeConfig, {} as never),
-          Effect.provideService(MidgardContracts, {} as never),
-          Effect.provideService(ContractDeploymentIdentity, {} as never),
-          Effect.provideService(Lucid, {} as never),
-          Effect.provideService(SqlClient.SqlClient, {} as never),
-        );
-        expect(yield* Ref.get(globals.OPERATOR_MEMBERSHIP)).toBe(
-          "removal_pending",
-        );
-        expect(yield* halt).toBe(
-          OPERATOR_MEMBERSHIP_HALT_REASONS.removal_pending,
-        );
-        yield* publishOperatorMembership("active");
-        expect(yield* halt).toBeUndefined();
-        yield* publishOperatorMembership("awaiting_activation");
-        expect(yield* halt).toBeUndefined();
+        expect(yield* haltOf(globals)).toBeUndefined();
+
+        yield* publishOperatorMembership(membership("removed"));
+        expect(yield* Ref.get(globals.OPERATOR_MEMBERSHIP)).toBe("removed");
+        expect(yield* haltOf(globals)).toBe(OPERATOR_REMOVED);
+        // /readyz fails on every active liveness reason.
+        const reasons = yield* activeLivenessReasons(globals);
+        expect(reasons.map(({ reason }) => reason)).toContain(OPERATOR_REMOVED);
+
+        for (const state of [
+          "active",
+          "awaiting_activation",
+          "unknown",
+        ] as const) {
+          yield* publishOperatorMembership(membership("removed"));
+          yield* publishOperatorMembership(membership(state));
+          expect(yield* Ref.get(globals.OPERATOR_MEMBERSHIP)).toBe(state);
+          expect(yield* haltOf(globals)).toBeUndefined();
+        }
       }).pipe(Effect.provide(Globals.Default)),
-    );
-  });
-  it("ends the node after confirmed removal, awaiting durable-work finalizers", async () => {
-    const events: string[] = [];
-    await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const globals = yield* Globals;
-          yield* Ref.set(globals.OPERATOR_MEMBERSHIP, "active");
-          const started = yield* Deferred.make<void>();
-          const duties = Effect.gen(function* () {
-            events.push("started");
-            yield* Deferred.succeed(started, undefined);
-            yield* Effect.never;
-          }).pipe(Effect.ensuring(Effect.sync(() => events.push("drained"))));
-          const fiber = yield* Effect.forkScoped(untilOperatorRemoved(duties));
-          yield* Deferred.await(started);
-          yield* publishOperatorMembership("removed");
-          expect(yield* Ref.get(globals.OPERATOR_MEMBERSHIP)).toBe("removed");
-          yield* Fiber.join(fiber);
-          events.push("shutdown");
-        }),
-      ).pipe(Effect.provide(Globals.Default)),
-    );
-    expect(events).toEqual(["started", "drained", "shutdown"]);
-  });
-  it("leaves non-duty L1 work to run while removal is pending", async () => {
+  );
+
+  it.effect(
+    "holds every duty while removed, exits nothing, and resumes when a rollback undoes it",
+    () =>
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        let ticks = 0;
+        // Each held fiber's schedule, as `nodeFibers` runs it.
+        const fibers = yield* Effect.forEach(
+          Object.values(FIBER_HALT_SOURCES),
+          (sources) =>
+            Effect.fork(
+              Effect.repeat(
+                Effect.sync(() => {
+                  ticks += 1;
+                }),
+                pausedWhileHalted(
+                  Schedule.spaced("10 millis"),
+                  globals,
+                  sources,
+                ),
+              ),
+            ),
+        );
+        yield* TestClock.adjust("10 millis");
+        expect(ticks).toBeGreaterThan(0);
+
+        yield* publishOperatorMembership(membership("removed"));
+        const held = ticks;
+        yield* TestClock.adjust("10 seconds");
+        expect(ticks).toBe(held);
+        // Nothing exited: every duty fiber is still there, held.
+        for (const fiber of fibers)
+          expect(Option.isNone(yield* Fiber.poll(fiber))).toBe(true);
+
+        // A rollback that undoes the removal: the next read is active.
+        yield* publishOperatorMembership(membership("active"));
+        yield* TestClock.adjust(Duration.millis(2 * HALT_POLL_MS));
+        expect(ticks).toBeGreaterThan(held);
+        for (const fiber of fibers) yield* Fiber.interrupt(fiber);
+      }).pipe(Effect.provide(Globals.Default)),
+  );
+
+  it.effect("leaves non-duty L1 work to run while removed", () =>
     // The halt source holds the duties (see `FIBER_HALT_SOURCES`); block
     // confirmation, ingestion and the readiness refreshers keep the permit.
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        yield* publishOperatorMembership("removal_pending");
-        let ran = false;
-        yield* withL1ControlPlane(
-          globals,
-          { scope: "block_confirmation" },
-          Effect.sync(() => {
-            ran = true;
-          }),
-        );
-        expect(ran).toBe(true);
-      }).pipe(Effect.provide(Globals.Default)),
-    );
-  });
+    Effect.gen(function* () {
+      const globals = yield* Globals;
+      yield* publishOperatorMembership(membership("removed"));
+      let ran = false;
+      yield* withL1ControlPlane(
+        globals,
+        { scope: "block_confirmation" },
+        Effect.sync(() => {
+          ran = true;
+        }),
+      );
+      expect(ran).toBe(true);
+    }).pipe(Effect.provide(Globals.Default)),
+  );
 });

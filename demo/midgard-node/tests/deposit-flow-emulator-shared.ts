@@ -253,6 +253,7 @@ import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js
 import {
   driveEmulatorFollower,
   ingestEmulatorEventsUnowned,
+  mirrorEmulatorEvents,
   syncEmulatorFollower,
 } from "./helpers/emulator-l1-follower.js";
 import {
@@ -1274,7 +1275,15 @@ export const runNodeCommandProgram = <A>(
     const nodeConfig = await makeNodeConfigForFixture(fixture);
     await Effect.runPromise(attachUnownedNativeOwner(globals));
     return Effect.runPromise(
-      effect.pipe(
+      Effect.zipRight(
+        // The commands open the events they settle by id from the follower's
+        // event rows; the emulator's follower brings them to its tip first.
+        mirrorEmulatorEvents({
+          operatorLucid: lucidService.api,
+          contracts: fixture.contracts,
+        }),
+        effect,
+      ).pipe(
         withEmulatorStateQueue(lucidService.api, fixture.contracts.stateQueue),
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),

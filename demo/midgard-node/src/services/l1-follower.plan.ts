@@ -14,6 +14,10 @@ import {
   eventProjectionConfigFromContracts,
 } from "../l1-events/index.js";
 import {
+  type OperatorSetConfig,
+  operatorSetConfig,
+} from "../l1-operator-set/config.js";
+import {
   type StateQueueProjectionConfig,
   stateQueueProjectionConfig,
 } from "../l1-state-queue/index.js";
@@ -36,6 +40,8 @@ export type L1FollowerPlan =
       forcedOrders: ForcedOrderConfig;
       /** The landed state queue (P1). */
       stateQueue: StateQueueProjectionConfig;
+      /** N6: the operator lists, the scheduler and the hub oracle. */
+      operatorSet: OperatorSetConfig;
       hubOraclePolicyId: string;
       /** §12.3 step 4: by-id L1 tx sources, hash-checked. */
       contentSources: readonly string[];
@@ -61,8 +67,8 @@ export const l1FollowerPlan = (input: {
   >;
   readonly contracts: Parameters<typeof SDK.requireEventHistoryContracts>[0] &
     Parameters<typeof forcedOrderConfigFromContracts>[0] &
+    Parameters<typeof operatorSetConfig>[0] &
     Readonly<{
-      hubOracle: Readonly<{ policyId: string }>;
       stateQueue: Readonly<{ spendingScriptAddress: string; policyId: string }>;
     }>;
   readonly securityParameter: number;
@@ -129,6 +135,7 @@ export const l1FollowerPlan = (input: {
     projection,
     forcedOrders,
     stateQueue: stateQueueProjectionConfig(input.contracts.stateQueue),
+    operatorSet: operatorSetConfig(input.contracts),
     hubOraclePolicyId: input.contracts.hubOracle.policyId.toLowerCase(),
     contentSources: config.L1_TX_CONTENT_SOURCES,
   };

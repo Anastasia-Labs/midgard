@@ -77,7 +77,7 @@ export const outputSummaryOf = (utxo: UTxO): OutputSummary => {
  * a cursor already past `slot` stays), and the outputs at `address` replaced
  * by `utxos` as seed rows.
  */
-const writeQueueFacts = (
+export const writeAddressFacts = (
   address: string,
   utxos: readonly UTxO[],
   slot: number,
@@ -154,7 +154,7 @@ export const seedLandedStateQueue = (
   stateQueue: Pick<StateQueueContract, "spendingScriptAddress">,
   utxos: readonly UTxO[],
   slot = 1,
-) => writeQueueFacts(stateQueue.spendingScriptAddress, utxos, slot);
+) => writeAddressFacts(stateQueue.spendingScriptAddress, utxos, slot);
 
 /** The emulator's live outputs at the queue address, with the slot it is at. */
 const emulatorQueueOutputs = (
@@ -172,7 +172,7 @@ export const mirrorEmulatorStateQueue = (
   stateQueue: Pick<StateQueueContract, "spendingScriptAddress">,
 ) =>
   Effect.flatMap(emulatorQueueOutputs(lucid, stateQueue), ({ utxos, slot }) =>
-    writeQueueFacts(stateQueue.spendingScriptAddress, utxos, slot),
+    writeAddressFacts(stateQueue.spendingScriptAddress, utxos, slot),
   );
 
 /**
@@ -195,7 +195,7 @@ export const followEmulatorStateQueue = (
           .sort()
           .join(",")}`;
         if (key === last) return Effect.void;
-        return writeQueueFacts(
+        return writeAddressFacts(
           stateQueue.spendingScriptAddress,
           utxos,
           slot,

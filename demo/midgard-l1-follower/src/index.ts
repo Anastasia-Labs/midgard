@@ -203,11 +203,15 @@ export {
   qualifyBlock,
 } from "./store/qualify.js";
 export {
+  blockAtOrBeforeSlotIn,
+  changedUtxosIn,
+  liveUnitBeforeIn,
   liveUtxosIn,
   type PointRefusal,
   type PointStatus,
   pointStatusIn,
   type Spender,
+  tipIn,
   type TxSpending,
   type UtxoFilter,
   type UtxoRead,

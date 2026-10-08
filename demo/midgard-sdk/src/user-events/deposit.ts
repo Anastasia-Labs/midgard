@@ -33,6 +33,7 @@ import {
 import {
   type EventHistoryDeployment,
   type EventHistoryPresence,
+  readEventHistoryOrder,
   readEventHistoryOrders,
 } from "./history-query.js";
 import {
@@ -87,6 +88,22 @@ const toDepositUTxO = (
     );
   return event;
 };
+
+/** The deposit one authenticated Order holds, for a caller that found the
+ * Order by its event key; `retainedUtxos` holds its external payload. */
+export const orderToDepositUTxO = (
+  order: UTxO,
+  retainedUtxos: readonly UTxO[],
+  deployment: EventHistoryDeployment,
+): Effect.Effect<DepositUTxO, LucidError> =>
+  Effect.try({
+    try: () =>
+      toDepositUTxO(
+        readEventHistoryOrder(order, retainedUtxos, deployment),
+        deployment,
+      ),
+    catch: historyEventReadError,
+  });
 
 /** Reads a complete authenticated list and actual retained data; rejects partial
  * or malformed authenticated state instead of silently dropping events. */

@@ -12,6 +12,9 @@
  * rewind and replay, net (`rewindToEmulatorChain`): the keys whose admitting
  * transactions the emulator no longer holds go, the generation advances.
  *
+ * `mirrorEmulatorEvents` writes what a lookup by event id reads: the list
+ * and retention outputs and one live event row per live Order.
+ *
  * Heights count the synced tips: a new tip slot is one block above the
  * highest kept one, so the block d below the covered tip (the horizon lag)
  * is the tip synced d syncs earlier. A test that lags syncs every block.
@@ -59,7 +62,10 @@ import {
   followerBlockHash,
   writeFollowerTip,
 } from "./follower-view.js";
-import { mirrorEmulatorStateQueue } from "./landed-state-queue.js";
+import {
+  mirrorEmulatorStateQueue,
+  writeAddressFacts,
+} from "./landed-state-queue.js";
 
 const failed = (message: string, cause?: unknown) =>
   new DatabaseError({ table: "l1_follower_cursor", message, cause });
@@ -196,6 +202,7 @@ const writeFollowerView = (
     const hash = view.point.hash;
     const events: ProjectedEvent[] = [];
     for (const { kind, utxo, opened } of orders) {
+      const { retained: _retained, ...content } = opened;
       const key = Buffer.from(opened.key, "hex");
       const location = {
         txHash: Buffer.from(utxo.txHash, "hex"),
@@ -208,7 +215,7 @@ const writeFollowerView = (
       const admission = decodeOutRef(known[0]!.origin_outref);
       events.push({
         kind,
-        ...opened,
+        ...content,
         admission: {
           blockHash: hash.toString("hex"),
           slot,
@@ -222,6 +229,61 @@ const writeFollowerView = (
       });
     }
     return { view, events } satisfies IngestionPlan;
+  });
+
+/**
+ * The facts a lookup by event id reads (NC13), from the emulator's live
+ * outputs: the list and retention outputs as seed rows at the emulator's
+ * slot, and one live `node_l1_events` row per live Order, opened by the
+ * follower's own derivation with the retention output it read. A retired
+ * event has no live row, as on a followed chain.
+ */
+export const mirrorEmulatorEvents = (fixture: EmulatorFollowerFixture) =>
+  Effect.gen(function* () {
+    const lucid = fixture.operatorLucid;
+    const lists = listContracts(
+      fixture.contracts,
+      lucid.config().network === "Mainnet" ? 1 : 0,
+    );
+    const slot = lucid.currentSlot();
+    for (const list of lists)
+      for (const address of [list.listAddress, list.retentionAddress])
+        yield* writeAddressFacts(
+          address,
+          yield* Effect.promise(() => lucid.utxosAt(address)),
+          slot,
+        );
+    const orders = yield* Effect.tryPromise({
+      try: () => liveOrders(lucid, lists),
+      catch: (cause) => failed("Emulator list outputs are unreadable", cause),
+    });
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const [tip] = yield* sql<{
+          slot: string;
+          hash: Buffer;
+          height: string;
+        }>`SELECT slot::text AS slot, hash, height::text AS height FROM l1_follower_cursor`;
+        if (tip === undefined)
+          return yield* failed("The emulator follower has no cursor");
+        yield* sql`DELETE FROM node_l1_events WHERE retired_slot IS NULL`;
+        for (const { kind, utxo, opened } of orders)
+          yield* sql`INSERT INTO node_l1_events (kind, event_key, event_id,
+              inclusion_time, facts_cbor, payload_cbor, original_assets_cbor,
+              admission_tx_hash, admission_output_index, admission_tx_index,
+              admitted_block_hash, admitted_height, admitted_slot, retired_slot,
+              retained_tx_hash, retained_output_index)
+            VALUES (${kind}, ${Buffer.from(opened.key, "hex")},
+              ${Buffer.from(opened.idCbor, "hex")}, ${opened.inclusionTime.toString()},
+              ${Buffer.from(opened.factsCbor, "hex")}, ${Buffer.from(opened.payloadCbor, "hex")},
+              ${Buffer.from(opened.originalAssetsCbor, "hex")},
+              ${Buffer.from(utxo.txHash, "hex")}, ${utxo.outputIndex}, 0,
+              ${tip.hash}, ${tip.height}, ${tip.slot}, NULL,
+              ${opened.retained === null ? null : Buffer.from(opened.retained.txHash, "hex")},
+              ${opened.retained?.index ?? null})`;
+      }),
+    );
   });
 
 export type EmulatorFollowerFixture = {
@@ -256,6 +318,7 @@ export const syncEmulatorFollower = (
       yield* emulatorChain(lucid),
     );
     yield* mirrorEmulatorStateQueue(lucid, fixture.contracts.stateQueue);
+    yield* mirrorEmulatorEvents(fixture);
     if (globals !== undefined)
       yield* Ref.set(globals.L1_FOLLOWER, {
         ...runningFollower(),
@@ -374,13 +437,14 @@ export const projectOrderAsFollower = (
     retained,
   );
   if (opened === "not_an_order") throw new Error("expected an Order");
+  const { retained: _retained, ...content } = opened;
   const location = {
     txHash: Buffer.from(utxo.txHash, "hex"),
     index: utxo.outputIndex,
   };
   return {
     kind,
-    ...opened,
+    ...content,
     admission: {
       blockHash: followerBlockHash(0).toString("hex"),
       slot: 0,

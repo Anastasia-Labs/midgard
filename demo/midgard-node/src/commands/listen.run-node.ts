@@ -18,7 +18,6 @@ import { DaPayloadsDB, InitDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import { refreshAdmissionBacklogGauge } from "../fibers/index.js";
-import { untilOperatorRemoved } from "../fibers/operator-membership.js";
 import * as Genesis from "../genesis.js";
 import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
 import {
@@ -339,27 +338,25 @@ export const runNode = (
       .publish(buildListenRouter(withMonitoring))
       .pipe(Effect.provide(admissionAsDefaultSqlLayer));
 
-    // Membership starts with the node's other fibers; no duty waits on its
-    // first check. Authenticated removal holds the operator duties through
-    // `HaltSource.operatorMembership`; confirmed removal ends the process.
+    // Membership comes from the follower's operator-set hook; no duty waits
+    // on its first run. A removed operator's duties are held through
+    // `HaltSource.operatorMembership` and the process stays up (§7.5 R7).
     const program = publishHttp.pipe(
       Effect.zipRight(
-        untilOperatorRemoved(
-          Effect.all(
-            runNodeFiberSet({
-              nodeConfig,
-              withMonitoring,
-              startupFibers: {
-                historyOwnerStopped: historyOwner.awaitStopped,
-                retainedPayloadServer: retainedPayloadServerThread(
-                  retrieveRetainedDaPayload,
-                ),
-              },
-            }),
-            {
-              concurrency: "unbounded",
+        Effect.all(
+          runNodeFiberSet({
+            nodeConfig,
+            withMonitoring,
+            startupFibers: {
+              historyOwnerStopped: historyOwner.awaitStopped,
+              retainedPayloadServer: retainedPayloadServerThread(
+                retrieveRetainedDaPayload,
+              ),
             },
-          ),
+          }),
+          {
+            concurrency: "unbounded",
+          },
         ),
       ),
     );

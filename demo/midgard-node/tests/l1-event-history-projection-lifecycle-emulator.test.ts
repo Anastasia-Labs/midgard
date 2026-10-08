@@ -100,6 +100,13 @@ it("projects a real node deposit settlement and withdrawal payout to conclusion"
       `${deposit.utxo.txHash}#${deposit.utxo.outputIndex}`,
     );
     expect(h.capture().history.deposits).toHaveLength(0);
+    // The absorbed Order is no longer live at the follower's tip: settling
+    // the same event again is refused at the by-id lookup, before any tx.
+    await expect(
+      command(absorbConfirmedDepositToReserveProgram({ eventId: depositId })),
+    ).rejects.toThrow(
+      `Deposit UTxO for event ${depositId} is not live at the follower's tip.`,
+    );
     const reserve = (
       await lucid.utxosAt(fixture.contracts.reserve.spendingScriptAddress)
     ).find((output) => output.assets.lovelace === 12_000_000n);
