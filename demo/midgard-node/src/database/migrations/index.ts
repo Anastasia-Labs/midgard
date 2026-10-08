@@ -12,6 +12,7 @@ import intentRefusalHoldsSql from "./sql/0010_intent_refusal_holds.sql";
 import locallyAppliedBlockStatusSql from "./sql/0011_locally_applied_block_status.sql";
 import receiptSettlementsSql from "./sql/0012_receipt_settlements.sql";
 import mempoolInclusionMarksSql from "./sql/0013_mempool_inclusion_marks.sql";
+import receiptRejectionsSql from "./sql/0014_receipt_rejections.sql";
 
 export type Migration = {
   readonly version: number;
@@ -113,6 +114,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: mempoolInclusionMarksSql,
     transactional: true,
   },
+  {
+    version: 14,
+    name: "receipt_rejections",
+    checksumSha256: sha256Hex(receiptRejectionsSql),
+    sql: receiptRejectionsSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -195,6 +203,7 @@ export const APPLICATION_TABLE_NAMES = [
   "event_history_incarnations",
   "event_history_l2_ledger_receipts",
   "event_history_l2_ledger_receipt_settlements",
+  "event_history_l2_ledger_receipt_rejections",
   "event_history_recovery_plans",
   "follower_event_ingestion",
   "node_landed_blocks",

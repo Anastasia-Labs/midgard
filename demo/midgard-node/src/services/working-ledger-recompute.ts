@@ -23,4 +23,5 @@ export {
   type RejectionReason,
   type Rejections,
   txIdHex,
+  UndecidedBatchMember,
 } from "./working-ledger-recompute.reject-closure.js";

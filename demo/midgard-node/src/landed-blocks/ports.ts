@@ -7,6 +7,7 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import { Data, Effect } from "effect";
 
 import type * as Ledger from "../database/utils/ledger.js";
+import type { DriverHold } from "../l1-events/driver.js";
 import type { LandedStateQueueElement } from "../l1-state-queue/index.js";
 import type { Database } from "../services/database.js";
 import type { ReplayInput, ReplayOutcome } from "./replay.js";
@@ -68,8 +69,8 @@ export type LandedBlockPorts<R> = Readonly<{
   requestRebase: (
     reason: string,
   ) => Effect.Effect<string | undefined, unknown, R | Database>;
-  /** Why the last rebase failed, until one runs (the owner retries it). */
-  rebaseFailure: Effect.Effect<string | undefined, unknown, R | Database>;
+  /** Why the last rebase failed, as its hold, until one runs (the owner retries it). */
+  rebaseFailure: Effect.Effect<DriverHold | undefined, unknown, R | Database>;
 }>;
 
 /** The follower moved off the view a write was computed at. */
