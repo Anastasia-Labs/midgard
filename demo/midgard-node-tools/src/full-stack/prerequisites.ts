@@ -55,6 +55,8 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
     "@al-ft/midgard-sdk",
     "@al-ft/midgard-validation",
     "@al-ft/midgard-fault-proofs",
+    // The node's L1 follower, and the origin scan of the deployment steps.
+    "@al-ft/midgard-l1-follower",
     "midgard-node",
     "midgard-watcher",
   ])

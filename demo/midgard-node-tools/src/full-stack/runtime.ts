@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { parse } from "dotenv";
 
+import { assertNodeFollowerEnvironment } from "../l1-origin.js";
 import {
   generateDaServices,
   stackDaReaderGrantSql,
@@ -96,11 +97,12 @@ async function committeeExpectation(processes: StackProcesses) {
  * The node's container environment. Every stack-only secret uses the STACK_
  * namespace (checkStackEnvironment), so blanking that namespace removes other
  * roles' secrets and never a node setting. Blank values also override the base
- * Compose file's own env_file.
+ * Compose file's own env_file. It refuses an environment that leaves the
+ * node's L1 follower unconfigured.
  */
 function nodeEnvironment(processes: StackProcesses, ownerSha256: string) {
   const { config, env } = processes;
-  return {
+  const nodeEnv = {
     ...Object.fromEntries(
       Object.entries(env).map(([key, value]) => [
         key,
@@ -118,6 +120,9 @@ function nodeEnvironment(processes: StackProcesses, ownerSha256: string) {
     ...containerNativeLedger(processes).env,
     MPF_NATIVE_OWNER_BINARY_SHA256: ownerSha256,
   };
+  // The node's follower needs the origin and the nonce the deployment steps restored.
+  assertNodeFollowerEnvironment(nodeEnv);
+  return nodeEnv;
 }
 /** One read of every service's readiness; undefined while any is not ready. */
 async function runtimeReadinessReader(processes: StackProcesses) {

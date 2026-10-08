@@ -4,7 +4,6 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -16,7 +15,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { DaPayloadsDB } from "../src/database/index.js";
 import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import {
   ContractDeploymentIdentity,
@@ -367,17 +365,6 @@ export const runNodeDatabaseEffect = <A, E>(
       Effect.provideService(UnownedHistoryFixture, true),
       Effect.provide(NodeConfig.layer),
     ),
-  );
-
-export const countDaPayloadRows = (): Promise<number> =>
-  runNodeDatabaseEffect(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const rows = yield* sql<{ readonly count: string }>`
-        SELECT COUNT(*)::text AS count FROM ${sql(DaPayloadsDB.tableName)}
-      `;
-      return Number(rows[0]?.count ?? "0");
-    }),
   );
 
 /**

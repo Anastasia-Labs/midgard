@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { ensureL1Origin } from "./deployment-origin.js";
 import { readJsonIfPresent, writeDurableFile } from "./durable.js";
 import { execLogged, lastJsonValue, requireSuccess } from "./exec.js";
 import {
@@ -261,6 +262,10 @@ export const ensureDeployed = async (
     throw new Error(
       `${layout.deploymentRunState} records no completed hub-oracle nonce`,
     );
+  // The node's follower starts at the point before the nonce block; a run
+  // whose origin cannot be found never starts a node.
+  const origin = await ensureL1Origin(context, oneShot);
+  console.log(`deploy: L1 origin ${origin.slot}.${origin.blockHash}`);
 
   const manifest = () =>
     readJsonIfPresent<ContractManifest>(layout.contractManifest);

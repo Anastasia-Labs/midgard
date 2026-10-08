@@ -86,15 +86,21 @@ const context = (): DeployContext => {
     publicReaderPassword: "r",
   } as Identities;
   const artifacts = {
-    nativeOwnerBinary: "o",
+    nativeOwnerBinary: "/bin/o",
     nativeOwnerSha256: "h",
-    transportBinary: "c",
+    transportBinary: "/bin/c",
   };
   const layout = makeLayout(dir);
   mkdirSync(layout.state, { recursive: true });
   new Journal(layout.journal).set("historyGenesisPin", {
     algorithm: "ogmios-shelley-result-lossless-v1",
     sha256: "ab".repeat(32),
+    recordedAt: "2026-09-30T00:00:00.000Z",
+  });
+  new Journal(layout.journal).set("l1Origin", {
+    origin: { slot: 1, blockHash: "11".repeat(32) },
+    nonceTxHash: "00".repeat(32),
+    nonceBlock: { slot: 2, blockHash: "22".repeat(32) },
     recordedAt: "2026-09-30T00:00:00.000Z",
   });
   return { layout, run, identities, artifacts };
