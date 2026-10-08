@@ -45,16 +45,21 @@ export type SettlementObservation = {
   jobs: { phase: string }[] | null;
   attempts: SettlementAttempt[] | null;
 };
-/** The single confirmed conclusion of a complete job; undefined while the job is still settling. */
+/**
+ * The single conclusion of a complete job; undefined while the job is still
+ * settling. The node completes a job once its concluding attempt landed cd
+ * deep (its outcome is the intent journal's, derived, and only `final` past
+ * k is stored), and journals no other attempt for it unless one is proven
+ * expired; so the conclusion is its one attempt that is not expired.
+ */
 export function payoutConclusion(status: SettlementObservation) {
   const conclusions =
     status.attempts?.filter(
-      (attempt) =>
-        attempt.phase === "conclude" && attempt.status === "confirmed",
+      (attempt) => attempt.phase === "conclude" && attempt.status !== "expired",
     ) ?? [];
   if (conclusions.length > 1)
     throw new Error(
-      "More than one confirmed payout transaction for the same withdrawal",
+      "More than one unexpired payout transaction for the same withdrawal",
     );
   if (
     status.jobs?.length !== 1 ||

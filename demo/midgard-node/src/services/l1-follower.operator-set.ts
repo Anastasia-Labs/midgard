@@ -14,6 +14,7 @@ import {
   createOperatorSetMirror,
   databaseActivityRecord,
   memoryActivityRecord,
+  type OperatorActivityRecord,
   type OperatorSetConfig,
   operatorSetHook,
   publishedOperatorSetOf,
@@ -36,6 +37,11 @@ export type FollowerOperatorSet = Readonly<{
   setStateQueueTail: (tail: StateQueueTail) => void;
   /** This operator's key hash; undefined when it is unreadable. */
   ownKey: string | undefined;
+  /**
+   * This operator's activity record, which the follower's prune step also
+   * keeps (`operatorSetProjection`); undefined when the key is unreadable.
+   */
+  activity: OperatorActivityRecord | undefined;
 }>;
 
 export const followerOperatorSet = (options: {
@@ -65,20 +71,22 @@ export const followerOperatorSet = (options: {
         hook: undefined,
         setStateQueueTail,
         ownKey: undefined,
+        activity: undefined,
       } as FollowerOperatorSet;
     }
+    const activity =
+      identity.manifestId === undefined
+        ? memoryActivityRecord()
+        : databaseActivityRecord({
+            run: (effect) => Runtime.runPromise(dbRuntime)(effect),
+            manifestId: identity.manifestId,
+            ownKey: ownKey.right,
+          });
     const hook = operatorSetHook({
       store,
       mirror: createOperatorSetMirror({ config, ownKey: ownKey.right }),
       depth: options.depth,
-      activity:
-        identity.manifestId === undefined
-          ? memoryActivityRecord()
-          : databaseActivityRecord({
-              run: (effect) => Runtime.runPromise(dbRuntime)(effect),
-              manifestId: identity.manifestId,
-              ownKey: ownKey.right,
-            }),
+      activity,
       publish: ({ set, membership }) =>
         Runtime.runPromise(runtime)(
           Effect.gen(function* () {
@@ -102,5 +110,6 @@ export const followerOperatorSet = (options: {
       hook,
       setStateQueueTail,
       ownKey: ownKey.right,
+      activity,
     } as FollowerOperatorSet;
   });

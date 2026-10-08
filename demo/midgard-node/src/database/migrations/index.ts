@@ -11,6 +11,7 @@ import landedBlocksSql from "./sql/0009_landed_blocks.sql";
 import intentRefusalHoldsSql from "./sql/0010_intent_refusal_holds.sql";
 import locallyAppliedBlockStatusSql from "./sql/0011_locally_applied_block_status.sql";
 import receiptSettlementsSql from "./sql/0012_receipt_settlements.sql";
+import settlementStatusDerivedSql from "./sql/0013_settlement_status_derived.sql";
 
 export type Migration = {
   readonly version: number;
@@ -105,6 +106,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: receiptSettlementsSql,
     transactional: true,
   },
+  {
+    version: 13,
+    name: "settlement_status_derived",
+    checksumSha256: sha256Hex(settlementStatusDerivedSql),
+    sql: settlementStatusDerivedSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -196,10 +204,8 @@ export const APPLICATION_TABLE_NAMES = [
 
 export const APPLICATION_INDEX_NAMES = [
   "settlement_jobs_due",
-  "settlement_jobs_generation",
-  "settlement_one_pending",
   "settlement_attempts_event",
-  "settlement_confirmed_fee_inputs",
+  "settlement_attempts_open",
   "idx_address_history_created_at",
   "idx_blocks_header_hash",
   "idx_blocks_tx_id",

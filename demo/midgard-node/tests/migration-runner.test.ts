@@ -98,6 +98,7 @@ describe("splitSqlStatements", () => {
         transactional: true,
       },
       { version: 12, name: "receipt_settlements", transactional: true },
+      { version: 13, name: "settlement_status_derived", transactional: true },
     ]);
   });
 

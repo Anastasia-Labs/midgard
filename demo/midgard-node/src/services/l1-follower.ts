@@ -47,7 +47,6 @@ import {
   followChain,
   type FollowStatus,
   httpTxContentSource,
-  intentJournalProjection,
   openPostgresFactStore,
   projectionStoreOptions,
   readinessOf,
@@ -57,10 +56,7 @@ import {
 import { Data, Effect, Option, Ref, Runtime } from "effect";
 
 import { reconcileFollowerEvents } from "../database/follower-events.js";
-import {
-  forcedOrderIngestionHook,
-  forcedOrderProjection,
-} from "../forced-orders/index.js";
+import { forcedOrderIngestionHook } from "../forced-orders/index.js";
 import {
   createFollowerDriver,
   EVENTS_INGESTION_FAILED,
@@ -69,15 +65,10 @@ import {
   type FollowerEventSink,
   type IngestionPlan,
 } from "../l1-events/driver.js";
-import { eventProjection } from "../l1-events/projection.js";
-import {
-  operatorSetProjection,
-  stateQueueTailOf,
-} from "../l1-operator-set/index.js";
+import { stateQueueTailOf } from "../l1-operator-set/index.js";
 import { landedStateQueueHook } from "../l1-state-queue/index.js";
 import {
   landedBlockHook,
-  landedStateQueueProjection,
   nodeLandedBlockPorts,
 } from "../landed-blocks/index.js";
 import { NodeConfig } from "./config.js";
@@ -107,6 +98,7 @@ import {
 } from "./l1-follower.network-magic.js";
 import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { type L1FollowerPlan, l1FollowerPlan } from "./l1-follower.plan.js";
+import { nodeFollowerProjections } from "./l1-follower.projections.js";
 import {
   followerCaughtUp,
   type L1FollowerHandle,
@@ -254,6 +246,10 @@ const followL1 = Effect.fnUntraced(function* (
   const dbRuntime = yield* Effect.runtime<
     Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
   >();
+  const projections = nodeFollowerProjections(
+    plan,
+    Runtime.runPromise(dbRuntime),
+  );
   const opened = yield* Effect.acquireRelease(
     Effect.try(() => {
       const transport = new L1NodeTransport({
@@ -266,16 +262,7 @@ const followL1 = Effect.fnUntraced(function* (
       try {
         store = openPostgresFactStore({
           ...projectionStoreOptions(
-            [
-              eventProjection(plan.projection),
-              landedStateQueueProjection(
-                plan.stateQueue,
-                Runtime.runPromise(dbRuntime),
-              ),
-              operatorSetProjection(plan.operatorSet),
-              forcedOrderProjection(plan.forcedOrders),
-              intentJournalProjection,
-            ],
+            projections.projections,
             {
               securityParameter: plan.securityParameter,
               // The protocol-init tx qualifies through the hub oracle mint;
@@ -323,6 +310,7 @@ const followL1 = Effect.fnUntraced(function* (
       securityParameter: plan.securityParameter,
     },
   });
+  projections.bindActivity(operatorSet.activity);
   const driver = createFollowerDriver({
     store,
     config: plan.projection,

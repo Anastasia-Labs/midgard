@@ -10,16 +10,13 @@
  * It is `operator_membership_observations` (migration 0003), keyed by
  * (manifest_id, operator_key). The record counts while the follower's facts
  * do not show its block orphaned (`pointStatusIn`): on the stored chain, or
- * below the retained window. A hook run that finds its block orphaned
- * replaces it with current evidence or clears it. Every orphaning happens
- * within k, inside the retained window, and the driver runs the hook on every
- * rewind it sees, so the orphaned point is gone before it can fall below the
- * window and count. The one exception is a node whose driver does not run
- * between the rewind and a prune past the point (it caught up more than k
- * blocks first); that record then counts, which only reads `removed` for an
- * operator that is in no list at all.
+ * below the retained window. Two places drop a record whose block a fork
+ * orphaned: the driver hook, when it runs (caught up), and the follower's
+ * prune step, in its transaction (`activity-prune.ts`), so a catch-up that
+ * prunes past the orphaned point before the driver runs again never leaves
+ * it below the window, where it would count (N6-R5).
  */
-import type { Point } from "@al-ft/midgard-l1-follower";
+import type { Point, SqlTx } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
@@ -32,6 +29,10 @@ export type OperatorActivityRecord = Readonly<{
   write: (activity: RecordedActivity) => Promise<void>;
   /** Drops a record whose block a fork orphaned. */
   clear: () => Promise<void>;
+  /** The recorded activation, read in the follower's prune transaction. */
+  readIn: (tx: SqlTx) => Promise<RecordedActivity | null>;
+  /** Drops the record in the follower's prune transaction; the rows dropped. */
+  clearIn: (tx: SqlTx) => Promise<number>;
 }>;
 
 /** A record kept in memory only (tests, and a deployment without a manifest). */
@@ -47,10 +48,20 @@ export const memoryActivityRecord = (): OperatorActivityRecord => {
       recorded = null;
       return Promise.resolve();
     },
+    readIn: () => Promise.resolve(recorded),
+    clearIn: () => {
+      const dropped = recorded === null ? 0 : 1;
+      recorded = null;
+      return Promise.resolve(dropped);
+    },
   };
 };
 
-/** The node database's record of this operator under one deployment. */
+/**
+ * The node database's record of this operator under one deployment. The
+ * prune-step reads and deletes run in the follower's transaction, on the
+ * node database the follower's tables live in.
+ */
 export const databaseActivityRecord = (options: {
   readonly run: <A>(
     effect: Effect.Effect<A, unknown, SqlClient.SqlClient>,
@@ -107,5 +118,32 @@ export const databaseActivityRecord = (options: {
             WHERE manifest_id = ${manifestId} AND operator_key = ${operatorKey}`;
         }),
       ),
+    readIn: async (tx) => {
+      const row = (
+        await tx.query(
+          `SELECT active_block_hash, active_block_slot::text AS slot, active_block_height::text AS height
+            FROM operator_membership_observations
+            WHERE manifest_id = ? AND operator_key = ?`,
+          [manifestId, operatorKey],
+        )
+      )[0];
+      return row === undefined
+        ? null
+        : {
+            point: {
+              slot: Number(row.slot),
+              hash: Buffer.from(row.active_block_hash as Uint8Array),
+            },
+            height: Number(row.height),
+          };
+    },
+    clearIn: async (tx) =>
+      (
+        await tx.query(
+          `DELETE FROM operator_membership_observations
+            WHERE manifest_id = ? AND operator_key = ? RETURNING 1 AS one`,
+          [manifestId, operatorKey],
+        )
+      ).length,
   };
 };
