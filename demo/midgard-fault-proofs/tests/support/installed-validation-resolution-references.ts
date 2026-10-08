@@ -1,7 +1,10 @@
+import { CEK_CORE_STAGE_REFERENCES } from "@al-ft/midgard-sdk";
+
 import {
   resolveValidationTraceDisputeDeploymentContracts,
   validationSemanticResolverGlobalIndex,
 } from "../../src/index.js";
+import { validationCekSemanticReferenceScriptDeploymentEntry } from "../../src/validation-dispute/submit.js";
 import { network } from "./emulator/blueprints.js";
 import { type readBlueprint } from "./emulator/blueprints.js";
 import { type buildCatalogueDeploymentInfo } from "./emulator/catalogue.js";
@@ -15,6 +18,7 @@ import {
   type stageAuthenticatedValidationDisputePublication,
 } from "./emulator/dispute-staging.js";
 import {
+  publishAuthenticatedValidationDisputeControl,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./emulator/reference-scripts.js";
@@ -30,6 +34,8 @@ export const stageInstalledValidationResolutionReferences = async ({
   challenger,
   referenceScriptPublisherLucid,
   validationDisputePublication,
+  referenceScriptAuth,
+  referenceScriptPublisher,
 }: {
   readonly fixture: {
     readonly evidence: {
@@ -62,6 +68,13 @@ export const stageInstalledValidationResolutionReferences = async ({
   readonly validationDisputePublication: Awaited<
     ReturnType<typeof stageAuthenticatedValidationDisputePublication>
   >["validationDisputePublication"];
+  /** The authenticated publisher the CEK core stage references need. */
+  readonly referenceScriptAuth: Parameters<
+    typeof publishAuthenticatedValidationDisputeControl
+  >[0]["authPolicy"];
+  readonly referenceScriptPublisher: Parameters<
+    typeof publishAuthenticatedValidationDisputeControl
+  >[0]["publisher"];
 }) => {
   const resolverIndex = fixture.evidence.oneStepArgument.resolverIndex;
   const semanticResolverIndex =
@@ -130,6 +143,39 @@ export const stageInstalledValidationResolutionReferences = async ({
         }),
       );
       canonicalPublications[`validationCanonical${role}`] = {
+        scriptHash: contract.spendingScriptHash,
+        utxo: publication.utxo,
+      };
+    }
+  }
+  if (resolverIndex === 11 && semanticResolverIndex === 3) {
+    // The CEK core semantic body is consumed by reference under its
+    // deployment entry, and the core chain checks each stage publication
+    // carries the reference-script authentication token.
+    canonicalPublications[
+      validationCekSemanticReferenceScriptDeploymentEntry(
+        semanticResolverIndex,
+      )!
+    ] = {
+      scriptHash: semanticContract.spendingScriptHash,
+      utxo: semanticPublication.utxo,
+    };
+    for (const [key, spec] of Object.entries(CEK_CORE_STAGE_REFERENCES)) {
+      const contract =
+        contracts.fraudProofContracts.validationTraceDispute.cekCoreStages[
+          key as keyof typeof CEK_CORE_STAGE_REFERENCES
+        ];
+      const publication = await publishAuthenticatedValidationDisputeControl({
+        lucid: challengerLucid,
+        authPolicy: referenceScriptAuth,
+        publisher: referenceScriptPublisher,
+        target: {
+          control: `CEK core ${key}`,
+          name: spec.role,
+          script: contract.spendingScript,
+        },
+      });
+      canonicalPublications[spec.deployment] = {
         scriptHash: contract.spendingScriptHash,
         utxo: publication.utxo,
       };
