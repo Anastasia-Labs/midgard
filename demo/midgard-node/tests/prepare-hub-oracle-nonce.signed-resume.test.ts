@@ -116,7 +116,7 @@ describe("hub-oracle nonce signed before submission", () => {
           yield* intent.value.persist({
             txHash: "aa",
             signedTxCbor: "84a0",
-            // An unjournaled (bootstrap) submission: nothing to insert.
+            // An unjournaled (no_follower) submission: nothing to insert.
             journal: Effect.void,
           });
         order.push("submit");

@@ -124,7 +124,7 @@ export const historySubmissionTransport = (
           signed,
           attempt.txHash,
           unjournaledSubmission(
-            "user_wallet",
+            "no_follower",
             `event_history:${attempt.txHash}`,
           ),
         ).pipe(Effect.provide(IntentJournalWithoutFollower)),

@@ -210,7 +210,7 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
     expect(signSubmitTransactionMock).toHaveBeenCalledWith(
       (lucidService as { readonly api: LucidEvolution }).api,
       record.unsignedTx,
-      unjournaledSubmission("bootstrap", "hub_oracle_nonce:prepare"),
+      unjournaledSubmission("no_follower", "hub_oracle_nonce:prepare"),
     );
     expect(awaitSubmittedTransactionConfirmationMock).toHaveBeenCalledWith(
       (lucidService as { readonly api: LucidEvolution }).api,

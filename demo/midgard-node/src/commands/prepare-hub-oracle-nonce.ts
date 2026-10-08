@@ -351,7 +351,7 @@ export const prepareHubOracleOneShotNonceProgram = (
     const submit = signSubmitTransaction(
       lucid,
       unsigned,
-      unjournaledSubmission("bootstrap", "hub_oracle_nonce:prepare"),
+      unjournaledSubmission("no_follower", "hub_oracle_nonce:prepare"),
     );
     const { beforeSubmission } = options;
     const submission = yield* beforeSubmission === undefined

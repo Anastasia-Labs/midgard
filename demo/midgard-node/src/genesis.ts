@@ -16,10 +16,10 @@ import {
 } from "./services/index.js";
 import {
   type IntentJournal,
-  unjournaledSubmission,
+  journaledIntent,
 } from "./services/intent-journal.js";
 import {
-  buildUnsignedDepositTxProgram,
+  buildUnsignedDepositTxWithMetadataProgram,
   type SubmitDepositError,
 } from "./transactions/submit-deposit.js";
 import {
@@ -81,9 +81,13 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
 
 /**
  * Submits an initial deposit transaction for the configured genesis wallet
- * funds when genesis UTxOs are present.
+ * funds when genesis UTxOs are present. It inserts into the deposit list, so
+ * it is journaled as a list insert keyed by its event key
+ * (`list_insert:deposit:<event key>`): S6 resends it while that key is not
+ * in the follower's key set. Where no follower runs, it goes out
+ * unjournaled (`no_follower`).
  */
-const submitGenesisDeposits: Effect.Effect<
+export const submitGenesisDeposits: Effect.Effect<
   void,
   | SDK.LucidError
   | SDK.HashingError
@@ -108,16 +112,23 @@ const submitGenesisDeposits: Effect.Effect<
   yield* lucid.switchToOperatorsMainWallet;
 
   // Hard-coded 10 ADA deposit.
-  const signedTx = yield* buildUnsignedDepositTxProgram(lucid.api, contracts, {
-    l2Address: config.GENESIS_UTXOS[0].address,
-    l2Datum: null,
-    lovelace: 10_000_000n,
-    additionalAssets: {},
-  });
+  const { tx, metadata } = yield* buildUnsignedDepositTxWithMetadataProgram(
+    lucid.api,
+    contracts,
+    {
+      l2Address: config.GENESIS_UTXOS[0].address,
+      l2Datum: null,
+      lovelace: 10_000_000n,
+      additionalAssets: {},
+    },
+  );
   yield* handleSignSubmit(
     lucid.api,
-    signedTx,
-    unjournaledSubmission("bootstrap", "genesis:deposit"),
+    tx,
+    journaledIntent(
+      "list_insert",
+      `list_insert:deposit:${metadata.depositAssetName}`,
+    ),
   );
 }).pipe(Effect.tapError(Effect.logInfo));
 

@@ -20,6 +20,7 @@ import "./submit-deposit.parse-funding-utxos.js";
 import "./submit-deposit.parse-build-deposit-request.js";
 export {
   type BuildDepositRequest,
+  buildUnsignedDepositTxWithMetadataProgram,
   type BuiltUnsignedDepositTx,
   type DepositBuildMetadata,
   DepositConfirmationUnknownError,
