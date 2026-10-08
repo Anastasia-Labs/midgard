@@ -84,6 +84,10 @@ vi.mock(
       await recordStep("ledger-mpf-lease"),
   }),
 );
+vi.mock("../src/services/l1-follower.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/services/l1-follower.js")>()),
+  startL1Follower: await recordStep("l1-follower"),
+}));
 vi.mock("../src/services/event-history-runtime.js", async () => {
   const { Effect, Option } = await import("effect");
   const { PredecessorLeaseWait } = await import(
@@ -138,6 +142,7 @@ describe("runNode history-owner startup wiring", () => {
     expect(seen.wait).toEqual({ marginMs: 10_000, pollIntervalMs: 2_000 });
     expect(seen.leaseDurationMs).toBe(60_000);
     expect(seen.steps).toEqual([
+      "l1-follower",
       "seed",
       "restore-pins",
       "hydrate",

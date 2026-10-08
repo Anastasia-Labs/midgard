@@ -17,9 +17,11 @@ import {
 
 const databases = postgresTestDatabases("midgard_test_c1_fork_sim");
 
+// One database per opened store, dropped one by one: the default 10 s hook
+// bound timed out on a loaded CI runner after every test had passed.
 afterAll(async () => {
   await databases.dropAll();
-});
+}, 120_000);
 
 const openPostgres: ForkRunOptions["open"] = async (optionsFor) => {
   const database = await databases.create();

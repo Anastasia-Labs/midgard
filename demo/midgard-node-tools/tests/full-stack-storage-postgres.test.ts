@@ -41,6 +41,11 @@ const onMigratedDatabase = (
             "DROP TABLE IF EXISTS full_stack_controller_identity",
           );
           yield* resetApplicationTables;
+          // The reset keeps the follower's writer row; a never-deployed
+          // database holds it at its migrated seed.
+          yield* sql.unsafe(
+            "UPDATE l1_follower_writer SET writer_epoch = 0, next_generation = 0",
+          );
         });
         yield* clean;
         yield* body(sql).pipe(Effect.ensuring(Effect.orDie(clean)));
@@ -95,6 +100,17 @@ describe.skipIf(!dbEnabled)(
           );
           expect(yield* failure(sql, FRESH_STORAGE_QUERY)).toContain(
             "Fresh deployment requires empty local storage: commit_build_calibration",
+          );
+        }),
+      ));
+    it("accepts the L1 follower's writer seed only before a follower has run", () =>
+      onMigratedDatabase((sql) =>
+        Effect.gen(function* () {
+          yield* sql.unsafe(
+            "UPDATE l1_follower_writer SET writer_epoch = writer_epoch + 1",
+          );
+          expect(yield* failure(sql, FRESH_STORAGE_QUERY)).toContain(
+            "Fresh deployment requires empty local storage: l1_follower_writer",
           );
         }),
       ));

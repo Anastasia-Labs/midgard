@@ -12,11 +12,13 @@ import type { StackStep } from "./workflow.js";
 
 /**
  * A fresh identity may only start over a store that holds no deployment. The
- * node's migrations create their own ledger rows and one calibration seed row,
- * so a migrated, never-deployed database is fresh. Never clear a store.
+ * node's migrations create their own ledger rows, one calibration seed row
+ * and, for the L1 follower's tables, a migration ledger, a table catalog and
+ * one writer seed row, so a migrated, never-deployed database is fresh. A
+ * writer row past its seed means a follower has run here. Never clear a store.
  */
 export const FRESH_STORAGE_QUERY =
-  "DO $$ DECLARE relation record; populated boolean; BEGIN FOR relation IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('schema_migrations', 'schema_migration_events') LOOP IF relation.tablename = 'commit_build_calibration' THEN SELECT EXISTS(SELECT 1 FROM public.commit_build_calibration WHERE NOT (id = 1 AND ms_per_tx_ewma = 1.0 AND sample_count = 0)) INTO populated; ELSE EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I LIMIT 1)', relation.tablename) INTO populated; END IF; IF populated THEN RAISE EXCEPTION 'Fresh deployment requires empty local storage: %', relation.tablename; END IF; END LOOP; END $$; SELECT '{\"empty\":true}'::json";
+  "DO $$ DECLARE relation record; populated boolean; BEGIN FOR relation IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('schema_migrations', 'schema_migration_events', 'l1_follower_migrations', 'l1_follower_tables') LOOP IF relation.tablename = 'commit_build_calibration' THEN SELECT EXISTS(SELECT 1 FROM public.commit_build_calibration WHERE NOT (id = 1 AND ms_per_tx_ewma = 1.0 AND sample_count = 0)) INTO populated; ELSIF relation.tablename = 'l1_follower_writer' THEN SELECT EXISTS(SELECT 1 FROM public.l1_follower_writer WHERE NOT (id = 1 AND writer_epoch = 0 AND next_generation = 0)) INTO populated; ELSE EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I LIMIT 1)', relation.tablename) INTO populated; END IF; IF populated THEN RAISE EXCEPTION 'Fresh deployment requires empty local storage: %', relation.tablename; END IF; END LOOP; END $$; SELECT '{\"empty\":true}'::json";
 
 export const IDENTITY_TABLE_QUERY =
   "SELECT json_build_object('exists', to_regclass('public.full_stack_controller_identity') IS NOT NULL)";

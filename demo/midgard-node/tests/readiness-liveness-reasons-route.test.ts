@@ -107,8 +107,8 @@ const onNode = <A, E>(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         const clear = sql`TRUNCATE TABLE pending_block_finalizations,
-          state_queue_mutation_leases, event_history_authority
-          RESTART IDENTITY CASCADE`;
+          state_queue_mutation_leases, event_history_authority,
+          local_mutation_jobs RESTART IDENTITY CASCADE`;
         return yield* Effect.gen(function* () {
           yield* clear;
           const globals = yield* Globals;
