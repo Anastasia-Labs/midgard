@@ -18,7 +18,10 @@ import { NodeConfig } from "./config.js";
 import { makeEventHistoryOwner } from "./event-history-owner.js";
 import { HistoryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.globals.js";
-import { NATIVE_RESTORE_HELD } from "./history-dependent-recovery.js";
+import {
+  historyRecoveryPass,
+  NATIVE_RESTORE_HELD,
+} from "./history-dependent-recovery.js";
 import {
   expiredIntentReleaseDisposition,
   makeSignedIntentDeferral,
@@ -178,42 +181,45 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
             )
           : // A retained or owed correction rewind runs first: it resolves
             // the removed blocks' journals, and a prepared plan of either kind
-            // must be applied before another can be prepared.
-            (rewindAuthority === undefined
-              ? Effect.succeed(undefined)
-              : prepareStateQueueCorrectionRewind({
-                  bindingDigest: binding.digest,
-                  checkpoint,
-                  preparation,
-                  config,
-                  authority: rewindAuthority,
-                })
-            ).pipe(
-              // A signed-header recovery held on its native restore holds
-              // the native root as the held rewind does: the rebase waits.
-              Effect.zipWith(
-                prepareSignedHeaderRecovery({
-                  binding,
-                  checkpoint,
-                  preparation,
-                  transport: input.transport,
-                  contracts,
-                  config,
-                  confirmationDepth:
-                    identity.manifest.l1Finality.confirmationDepth,
-                  slotToUnixTime: lucid.api.slotToUnixTime,
-                }),
-                (rewind, signed) =>
-                  signed === NATIVE_RESTORE_HELD
-                    ? CORRECTION_REWIND_HELD_ON_NATIVE_STATE
+            // must be applied before another can be prepared. A recovery held
+            // on the native owner's state (the rewind, or a signed-header,
+            // release or revival held on its native restore) still owns the
+            // native root, so the landed-block rebase waits for the next pass
+            // instead of moving a root a held recovery owns.
+            historyRecoveryPass({
+              correctionRewind: (rewindAuthority === undefined
+                ? Effect.succeed(undefined)
+                : prepareStateQueueCorrectionRewind({
+                    bindingDigest: binding.digest,
+                    checkpoint,
+                    preparation,
+                    config,
+                    authority: rewindAuthority,
+                  })
+              ).pipe(
+                Effect.map((rewind) =>
+                  rewind === CORRECTION_REWIND_HELD_ON_NATIVE_STATE
+                    ? NATIVE_RESTORE_HELD
                     : rewind,
+                ),
               ),
+              signedHeaderRecovery: prepareSignedHeaderRecovery({
+                binding,
+                checkpoint,
+                preparation,
+                transport: input.transport,
+                contracts,
+                config,
+                confirmationDepth:
+                  identity.manifest.l1Finality.confirmationDepth,
+                slotToUnixTime: lucid.api.slotToUnixTime,
+              }),
               // A signed commit past its TTL, or once the journaled history
               // shows its base output spent, is reconciled to whichever block
               // holds its base's state-queue slot: confirmed, replaced (members
               // reopened, Architecture G native root restored) or, when an
               // earlier replaced block of this node won, revived.
-              Effect.zipLeft(
+              expiredIntentRelease:
                 rewindAuthority === undefined
                   ? Effect.void
                   : prepareExpiredIntentRelease({
@@ -226,11 +232,10 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                       contracts,
                       deferral: signedIntentDeferral,
                     }),
-              ),
               // With no journal active, a replaced block of this node that
               // holds its base's slot after all (it landed late, or a rollback
               // brought it back) is revived.
-              Effect.zipLeft(
+              replacedBlockRevival:
                 rewindAuthority === undefined
                   ? Effect.void
                   : prepareReplacedBlockRevival({
@@ -243,18 +248,8 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                       contracts,
                       deferral: signedIntentDeferral,
                     }),
-              ),
-              // A correction rewind held on the native owner's state still
-              // owns the removed local suffix and that root (and a held
-              // signed-header recovery its retained plan's root): the
-              // landed-block rebase waits for the next pass instead of moving
-              // a root a held recovery owns.
-              Effect.flatMap((rewind) =>
-                rewind === CORRECTION_REWIND_HELD_ON_NATIVE_STATE
-                  ? Effect.void
-                  : prepareLandedBlockRebase(preparation),
-              ),
-            ),
+              landedBlockRebase: prepareLandedBlockRebase(preparation),
+            }),
       binding,
       histories,
       cache,

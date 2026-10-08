@@ -5,6 +5,7 @@ import { Globals } from "./globals.js";
 import {
   clearNativeRestoreRefusal,
   holdNativeRestoreRefusal,
+  NATIVE_RESTORE_HELD,
 } from "./history-dependent-recovery.js";
 import {
   NativeRecoveryRootRefused,
@@ -61,8 +62,10 @@ const heldFailure = (cause: Cause.Cause<unknown>) =>
  * `NativeMpfRestoreReadFailed` under `native_mpf_restore_read_transient`:
  * the native owner refuses before it changes its marker and before the SQL
  * transaction opens, so the plan stays retained and every evaluation
- * retries the restore; each clears the same way. Any other failure
- * propagates unchanged.
+ * retries the restore; each clears the same way. Such a preparation returns
+ * `NATIVE_RESTORE_HELD`, so the landed-block rebase skips the pass it holds
+ * rather than move the native root the held plan still owns. Any other
+ * failure propagates unchanged.
  */
 export const heldOnIntegrityFailure =
   (source: string) =>
@@ -101,7 +104,8 @@ export const heldOnIntegrityFailure =
                 notRetainedReason: SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
                 subject: "recovery",
                 cause,
-              }) ?? Effect.failCause(cause)
+              })?.pipe(Effect.as(NATIVE_RESTORE_HELD)) ??
+              Effect.failCause(cause)
             );
           return integrity instanceof SignedIntentJournalUnbound
             ? raiseLivenessIncident(

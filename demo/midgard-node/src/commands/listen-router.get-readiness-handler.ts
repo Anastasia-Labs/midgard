@@ -22,6 +22,10 @@ import {
 } from "../services/index.js";
 import { l1FollowerReadiness } from "../services/l1-follower.readiness.js";
 import { activeLivenessReasons } from "../services/liveness-halt.js";
+import {
+  fullIndexHealthOf,
+  fullIndexNearCapDetails,
+} from "../services/mpf-native-owner/service.full-index-accounting.js";
 import { settlementReadinessReason } from "../services/settlement-readiness.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
@@ -296,6 +300,14 @@ export const getReadinessHandler = Effect.gen(function* () {
   // node ready. Removal is a liveness reason (`operator_removed`).
   if (operatorMembership === "unknown")
     details.push("operator_membership_unavailable");
+  // The live root's full index is past the warning fraction of a full-index
+  // cap: promotions still succeed, but one over the cap will be refused.
+  const nativeMpfFullIndex =
+    nativeMpfOwner === undefined
+      ? undefined
+      : fullIndexHealthOf(nativeMpfOwner);
+  if (nativeMpfFullIndex !== undefined)
+    details.push(...fullIndexNearCapDetails(nativeMpfFullIndex));
   const providerReadiness = l1ProviderReadiness({
     healthy: providerProbe.healthy,
     lastSuccessAtMs: providerHealthAfter.lastSuccessAtMs,

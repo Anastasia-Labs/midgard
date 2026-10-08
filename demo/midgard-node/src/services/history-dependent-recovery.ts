@@ -135,6 +135,37 @@ export const clearNativeRestoreRefusal = (
 export const NATIVE_RESTORE_HELD = "native_restore_held" as const;
 
 /**
+ * One reconciliation pass of the history owner's dependent recoveries: the
+ * correction rewind, the signed-header recovery, the expired-intent release
+ * and the replaced-block revival run in that order, then the landed-block
+ * rebase, unless one of them returned `NATIVE_RESTORE_HELD`. A recovery held
+ * on its native restore still owns the native root its retained plan
+ * restores, so the rebase waits for the next pass instead of moving that
+ * root from where the held plan expects it.
+ */
+export const historyRecoveryPass = <E1, R1, E2, R2, E3, R3, E4, R4, E5, R5>(
+  steps: Readonly<{
+    correctionRewind: Effect.Effect<unknown, E1, R1>;
+    signedHeaderRecovery: Effect.Effect<unknown, E2, R2>;
+    expiredIntentRelease: Effect.Effect<unknown, E3, R3>;
+    replacedBlockRevival: Effect.Effect<unknown, E4, R4>;
+    landedBlockRebase: Effect.Effect<void, E5, R5>;
+  }>,
+): Effect.Effect<void, E1 | E2 | E3 | E4 | E5, R1 | R2 | R3 | R4 | R5> =>
+  Effect.all([
+    steps.correctionRewind,
+    steps.signedHeaderRecovery,
+    steps.expiredIntentRelease,
+    steps.replacedBlockRevival,
+  ]).pipe(
+    Effect.flatMap((results) =>
+      results.includes(NATIVE_RESTORE_HELD)
+        ? Effect.void
+        : steps.landedBlockRebase,
+    ),
+  );
+
+/**
  * A history recovery preparation whose native restore the owner refuses
  * holds instead of failing the history owner, whose supervisor would only
  * restart it into the same store: the refusal is raised under `source` (as
