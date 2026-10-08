@@ -1,7 +1,8 @@
 import { isFinal } from "../heads.js";
 import type { Dialect, SqlTx, TransactionMode } from "../sql/backend.js";
 import { readCursor } from "../store/rows.js";
-import type { Cursor } from "../types.js";
+import { viewValidIn } from "../store/view.js";
+import type { Cursor, View } from "../types.js";
 import {
   appendIntentEventIn,
   type Intent,
@@ -43,8 +44,10 @@ export type ReconcileAction =
   | "abandon"
   /**
    * Live, the predicate said abandon, but the tip moved (a new block or a
-   * rewind) between the status read and the abandon write: nothing is
-   * written, and the next pass (at the new tip) decides again.
+   * rewind) between the status read and the abandon write; or it said
+   * resubmit, but a rewind removed the pass's view (§8.1) before the send
+   * decision: nothing is written or sent, and the next pass (at the new
+   * tip) decides again.
    */
   | "wait_tip_moved"
   /** Live; the mempool read, predicate or submission failed this pass (`error`). */
@@ -171,6 +174,13 @@ export type IntentReconciler = Readonly<{
   reconcile(): Promise<ReconcileReport>;
 }>;
 
+/** The view V = (g, P_b) a pass derived its statuses at. */
+const viewOf = (cursor: Cursor): View => ({
+  generation: cursor.generation,
+  point: cursor.point,
+  height: cursor.height,
+});
+
 const tipKey = (cursor: Cursor | null): string =>
   cursor === null
     ? "none"
@@ -265,8 +275,17 @@ export const createIntentReconciler = (
           action: (await refusedAbandon()) ? "abandon" : "wait_tip_moved",
         };
       if (action === "resubmit") {
-        attempted.set(key, tip);
+        // S6 (§8.1): the decision to send is taken under this pass's view,
+        // checked in the transaction that records the attempt. A rewind that
+        // removed the pass's point since its statuses were derived leaves
+        // nothing sent; the next pass decides at the new tip. The send itself
+        // follows the commit.
         const signed = await options.transaction("write", async (tx) => {
+          if (
+            cursor === null ||
+            !(await viewValidIn(tx, dialect, viewOf(cursor)))
+          )
+            return "view_stale" as const;
           await appendIntentEventIn(
             tx,
             dialect,
@@ -279,8 +298,11 @@ export const createIntentReconciler = (
           );
           return readIntentIn(tx, dialect, intent.txHash);
         });
+        if (signed === "view_stale")
+          return { intent, status, action: "wait_tip_moved" };
         if (signed === null)
           throw new Error("the intent was pruned during the pass");
+        attempted.set(key, tip);
         const outcome = await options.submit(signed);
         if (outcome.kind === "rejected") {
           await options.transaction("write", (tx) =>

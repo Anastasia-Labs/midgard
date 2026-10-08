@@ -46,6 +46,7 @@ import {
   NodeConfig,
   withL1ControlPlaneIfAvailable,
 } from "../services/index.js";
+import { intentPlanAt } from "../services/intent-journal.intent.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import {
   configuredOperatorEconomicsProgram,
@@ -118,9 +119,7 @@ const toSafeNumber = (value: bigint): number =>
     ? Number.MAX_SAFE_INTEGER
     : Number(value);
 
-/**
- * Projects the SDK planner's result onto the policy's view of it.
- */
+/** Projects the SDK planner's result onto the policy's view of it. */
 const toWatchdogPlan = (
   plan: SDK.InactivityTakeoverPlan,
 ): WatchdogTakeoverPlan => {
@@ -264,10 +263,12 @@ export const makeOperatorWatchdogTick = <R = never>(
       });
     if (directory.kind === "unavailable")
       return yield* deferUnplanned(directory.reason, directory.detail);
+    // S5: a plan from the published set records under the set's view.
+    const intentPlan = intentPlanAt(directory.view);
     const prepared = yield* Effect.either(
       Effect.all([
         resolveOwnOperatorKeyHashProgram(lucid.operatorMainAddress),
-        planTakeoverFrom(lucid.api, directory.snapshot),
+        planTakeoverFrom(lucid.api, directory.snapshot, intentPlan),
       ]),
     );
     if (prepared._tag === "Left")
@@ -382,6 +383,7 @@ export const makeOperatorWatchdogTick = <R = never>(
                       // The retirement inserts after one retired node; it is
                       // the only one the snapshot needs.
                       snapshot: { ...planning.snapshot, retired: [anchor] },
+                      intentPlan: planning.intentPlan,
                       operatorKeyHash: plan.currentOperator,
                       mode: "forced-inactivity",
                       economics,

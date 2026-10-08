@@ -166,7 +166,9 @@ describe("operator watchdog forced retirement from the operator set", () => {
     await strikeOperatorToMaxStrikes(fixture, target);
     await submitInactivityStrike(fixture);
     const exhausted = await Effect.runPromise(
-      planTakeoverProgram(fixture.lucid, fixture.contracts),
+      withoutFollowerJournal(
+        planTakeoverProgram(fixture.lucid, fixture.contracts),
+      ),
     );
     if (exhausted.plan.kind !== "strikes-exhausted")
       throw new Error(`Expected strikes-exhausted, got ${exhausted.plan.kind}`);
@@ -315,7 +317,9 @@ describe("operator watchdog forced retirement from the operator set", () => {
     await strikeOperatorToMaxStrikes(fixture, target);
     await submitInactivityStrike(fixture);
     const exhausted = await Effect.runPromise(
-      planTakeoverProgram(fixture.lucid, fixture.contracts),
+      withoutFollowerJournal(
+        planTakeoverProgram(fixture.lucid, fixture.contracts),
+      ),
     );
     if (exhausted.plan.kind !== "strikes-exhausted")
       throw new Error(`Expected strikes-exhausted, got ${exhausted.plan.kind}`);

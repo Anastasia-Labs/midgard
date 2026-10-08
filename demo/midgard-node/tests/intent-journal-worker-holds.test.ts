@@ -98,6 +98,7 @@ const following: FollowStatus = {
   tip: null,
   atTip: true,
   node: null,
+  nodeBehind: null,
   replaying: false,
   events: 0,
   lastError: null,

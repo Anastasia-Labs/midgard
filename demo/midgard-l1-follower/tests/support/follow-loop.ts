@@ -122,7 +122,12 @@ export const follow = async (
     /** The transport's readiness for the whole run (default: ready). */
     readiness?: TransportReadiness;
   }> &
-    Partial<Pick<FollowChainOptions, "stuckAfter" | "prune" | "onStatus">>,
+    Partial<
+      Pick<
+        FollowChainOptions,
+        "stuckAfter" | "prune" | "onStatus" | "nodeBehind"
+      >
+    >,
 ): Promise<FollowRun> => {
   const abort = new AbortController();
   const statuses: FollowStatus[] = [];
@@ -140,6 +145,9 @@ export const follow = async (
       ? {}
       : { stuckAfter: options.stuckAfter }),
     ...(options.prune === undefined ? {} : { prune: options.prune }),
+    ...(options.nodeBehind === undefined
+      ? {}
+      : { nodeBehind: options.nodeBehind }),
     onStatus: async (status) => {
       statuses.push(status);
       if (options.until(status)) reached = true;

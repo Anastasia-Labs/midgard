@@ -29,7 +29,6 @@ import {
   openSqliteFactStore,
   projectionStoreOptions,
   type PruneHook,
-  recordIntentIn,
   type SqlTx,
   type TrackedSet,
 } from "../src/index.js";
@@ -43,6 +42,7 @@ import {
   simUniverse,
 } from "../src/testing/index.js";
 import { testDatabases } from "./support/postgres.js";
+import { recordAtCurrentView } from "./support/record-at-view.js";
 
 const databases = testDatabases();
 const scratch = mkdtempSync(join(tmpdir(), "l1-follower-intent-prune-"));
@@ -172,7 +172,7 @@ describe.each(["sqlite", "postgres"] as const)(
         nonce: chain.nonce(),
       };
       const recorded = await store.transaction("write", (tx) =>
-        recordIntentIn(tx, store.dialect, {
+        recordAtCurrentView(tx, store.dialect, {
           family: "commit",
           workflowKey: "commit:replay",
           txCbor: encodeSimTx(intent),

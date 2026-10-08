@@ -21,6 +21,7 @@ import { join } from "node:path";
 import type { ChainSyncEvent } from "@al-ft/l1-node-transport";
 import {
   applyChainSyncEvent,
+  currentViewIn,
   decodeTransaction,
   type FactStore,
   FOLLOWER_TRACKED_SET_CHANGED,
@@ -218,12 +219,13 @@ const chainWithIntents = async (store: FactStore) => {
       outputs: [plain],
       nonce: chain.nonce(),
     });
-    const result = await store.transaction("write", (tx) =>
+    const result = await store.transaction("write", async (tx) =>
       recordIntentIn(tx, store.dialect, {
         family,
         workflowKey: `${family}:test`,
         txCbor,
         isOwnOutput: () => false,
+        builtAt: (await currentViewIn(tx, store.dialect))!,
         contentRef: Buffer.from(contentRef, "hex"),
       }),
     );

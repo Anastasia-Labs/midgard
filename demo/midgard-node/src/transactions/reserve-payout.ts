@@ -4,6 +4,7 @@ import { Context, Effect, Option } from "effect";
 
 import {
   type IntentJournal,
+  type IntentPlan,
   journaledIntent,
 } from "../services/intent-journal.js";
 import {
@@ -62,13 +63,15 @@ type ReservePayoutStep =
 
 /**
  * Sends one step. `eventId` is the settled event's id CBOR, the intent's
- * content reference (the §8.4 predicate reads the event by it).
+ * content reference (the §8.4 predicate reads the event by it); `plan` is
+ * the command's plan, opened before its first L1 read (S5).
  */
 const send = (
   lucid: LucidEvolution,
   tx: SDK.BuiltReservePayoutTx<unknown>["tx"],
   step: ReservePayoutStep,
   eventId: Buffer,
+  plan: IntentPlan,
   requiredOutputIndexes: readonly number[] = [],
   evidenceOutputIndexes: readonly number[] = requiredOutputIndexes,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
@@ -82,6 +85,7 @@ const send = (
           journaledIntent(
             "reserve_payout",
             `reserve_payout:${eventId.toString("hex")}:${step}`,
+            plan,
             eventId,
           ),
           { requiredOutputIndexes },
@@ -92,6 +96,7 @@ export const submitAbsorbConfirmedDepositToReserveProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SDK.AbsorbConfirmedDepositConfig,
+  plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildAbsorbConfirmedDepositToReserveTxProgram(
@@ -104,6 +109,7 @@ export const submitAbsorbConfirmedDepositToReserveProgram = (
       built.tx,
       "absorb_deposit",
       config.deposit.idCbor,
+      plan,
       [Number(built.layout.reserveOutputIndex)],
     );
   });
@@ -112,6 +118,7 @@ export const submitInitializePayoutProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SDK.InitializePayoutConfig,
+  plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildInitializePayoutTxProgram(
@@ -124,6 +131,7 @@ export const submitInitializePayoutProgram = (
       built.tx,
       "initialize",
       config.withdrawal.idCbor,
+      plan,
       [Number(built.layout.payoutOutputIndex)],
     );
   });
@@ -134,6 +142,7 @@ export const submitAddReserveFundsToPayoutProgram = (
   config: SDK.AddReserveFundsConfig,
   /** The withdrawal event id CBOR the payout settles. */
   eventId: Buffer,
+  plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildAddReserveFundsToPayoutTxProgram(
@@ -141,7 +150,7 @@ export const submitAddReserveFundsToPayoutProgram = (
       contracts,
       config,
     );
-    return yield* send(lucid, built.tx, "add_funds", eventId, [
+    return yield* send(lucid, built.tx, "add_funds", eventId, plan, [
       Number(built.layout.payoutOutputIndex),
     ]);
   });
@@ -152,6 +161,7 @@ export const submitConcludePayoutProgram = (
   config: SDK.ConcludePayoutConfig,
   /** The withdrawal event id CBOR the payout settles. */
   eventId: Buffer,
+  plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildConcludePayoutTxProgram(
@@ -164,6 +174,7 @@ export const submitConcludePayoutProgram = (
       built.tx,
       "conclude",
       eventId,
+      plan,
       [],
       [Number(built.layout.l1OutputIndex)],
     );

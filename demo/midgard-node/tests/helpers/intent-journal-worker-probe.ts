@@ -53,11 +53,13 @@ if (parentPort !== null) {
         signedTxCbor,
         txHash,
       } of input.records) {
+        const plan = yield* journal.openPlan;
         const outcome = yield* Effect.either(
           journal.record(
-            journaledIntent(family, workflowKey),
+            journaledIntent(family, workflowKey, plan),
             signedTxCbor,
             txHash,
+            { kind: "record_only" },
           ),
         );
         reasons.push(Either.isLeft(outcome) ? outcome.left.reason : null);

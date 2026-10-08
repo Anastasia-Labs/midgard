@@ -125,10 +125,13 @@ const record = (
 ) =>
   Effect.runPromise(
     Effect.either(
-      journal.record(
-        journaledIntent(family, `${family}:${tx.txHash}`, contentRef),
-        tx.cbor,
-        tx.txHash,
+      Effect.flatMap(journal.openPlan, (plan) =>
+        journal.record(
+          journaledIntent(family, `${family}:${tx.txHash}`, plan, contentRef),
+          tx.cbor,
+          tx.txHash,
+          { kind: "record_only" },
+        ),
       ),
     ),
   );

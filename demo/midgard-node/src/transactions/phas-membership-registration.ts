@@ -14,7 +14,9 @@ import { exactObjectKeys } from "../exact-object-keys.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
   type IntentJournal,
+  type IntentPlan,
   journaledIntent,
+  openPlan,
 } from "../services/intent-journal.js";
 import {
   handleSignSubmit,
@@ -79,6 +81,7 @@ export type PhasMembershipRegistrationOptions = {
   readonly submitRegistrationTx?: (
     lucid: LucidEvolution,
     built: SDK.BuiltPhasMembershipRewardRegistrationTx,
+    plan: IntentPlan,
   ) => Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError>;
   readonly inspectRegistrationTx?: (
     built: SDK.BuiltPhasMembershipRewardRegistrationTx,
@@ -346,6 +349,7 @@ const defaultSubmitRegistrationTx = (
   built: {
     readonly tx: TxSignBuilder;
   },
+  plan: IntentPlan,
 ): Effect.Effect<
   string,
   TxConfirmError | TxSignError | TxSubmitError,
@@ -354,7 +358,11 @@ const defaultSubmitRegistrationTx = (
   handleSignSubmit(
     lucid,
     built.tx,
-    journaledIntent("phas_membership", "phas_membership:reward_registration"),
+    journaledIntent(
+      "phas_membership",
+      "phas_membership:reward_registration",
+      plan,
+    ),
   );
 
 export const ensurePhasMembershipRewardAccountRegisteredProgram = (
@@ -382,6 +390,8 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       );
     }
     const identity = SDK.phasMembershipIdentity(network, script);
+    // S5: the plan opens before the registration read it is built on.
+    const plan = yield* openPlan;
     const registered = yield* (
       options.queryRegistration ??
       ((input) =>
@@ -433,6 +443,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       (options.submitRegistrationTx ?? defaultSubmitRegistrationTx)(
         lucid,
         built,
+        plan,
       ),
     );
     if (submitted._tag === "Left") {

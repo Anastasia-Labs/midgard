@@ -30,7 +30,6 @@ import {
   openPostgresFactStore,
   openSqliteFactStore,
   projectionStoreOptions,
-  recordIntentIn,
   type TrackedSet,
 } from "../src/index.js";
 import { readPruneMarkIn } from "../src/intents/windows.js";
@@ -43,6 +42,7 @@ import {
   simUniverse,
 } from "../src/testing/index.js";
 import { testDatabases } from "./support/postgres.js";
+import { recordAtCurrentView } from "./support/record-at-view.js";
 
 const databases = testDatabases();
 const scratch = mkdtempSync(join(tmpdir(), "l1-follower-intent-floor-"));
@@ -169,7 +169,7 @@ const replayed = async (dialect: DialectName) => {
     expect(
       (
         await store.transaction("write", (tx) =>
-          recordIntentIn(tx, store.dialect, {
+          recordAtCurrentView(tx, store.dialect, {
             family: "commit",
             workflowKey: `commit:${simTxHash(intent).toString("hex")}`,
             txCbor: encodeSimTx(intent),

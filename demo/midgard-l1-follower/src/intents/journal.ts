@@ -69,15 +69,31 @@ export type RecordIntentInput = Readonly<{
   isOwnOutput: (output: OutputSummary) => boolean;
   contentRef?: Buffer | null;
   /**
-   * The view the planner built under. Defaults to the store's current view.
-   * I5 checks it (`viewValid`) in this transaction and appends
-   * `stale_at_write` when it no longer holds; this function only records it.
+   * The planner's view V = (g, P_b) (§8.1): the generation it planned in and
+   * a cursor point at or above every fact it read. Required: no record skips
+   * the view. `viewValid(V)` runs in this transaction under the cursor share
+   * lock (SQLite: the writer's `BEGIN IMMEDIATE`). A stale view still
+   * records the row (class B never erases signed bytes), with a
+   * `stale_at_write` event: nothing may send it on the strength of this
+   * write, and S6 decides under the current view whether it can still land
+   * and is still wanted.
    */
-  builtAt?: View;
+  builtAt: View;
+  /**
+   * Set when the caller already knows its plan is stale (a rewind landed
+   * while it planned, so no point bounds what it read): recorded with
+   * `stale_at_write` and this detail, whatever `viewValid(builtAt)` says.
+   */
+  staleBecause?: string;
 }>;
 
 export type RecordIntentResult =
-  | Readonly<{ kind: "recorded"; intent: Intent }>
+  /**
+   * Journaled. `stale`: the planner's view was not valid in the record
+   * transaction (or the caller said so), and a `stale_at_write` event was
+   * appended with the `signed` one.
+   */
+  | Readonly<{ kind: "recorded"; intent: Intent; stale: boolean }>
   /**
    * Already journaled: the first bytes stand and are what any resubmission
    * sends. `identical` is false when these bytes differ (another witness set

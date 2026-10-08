@@ -29,8 +29,12 @@ import { type Effect, ManagedRuntime, Redacted } from "effect";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { intentJournalTimeoutCorrectionRecovery } from "../src/fibers/attestation-timeout-correction.intent-journal-recovery.js";
-import { journaledIntent } from "../src/services/intent-journal.js";
+import {
+  type IntentPlan,
+  journaledIntent,
+} from "../src/services/intent-journal.js";
 import { createNodeIntentStage } from "../src/services/l1-follower.intents.js";
+import { RECORD_ONLY } from "./helpers/intent-journal.js";
 import {
   EMULATOR_K,
   type IntentEmulator,
@@ -181,10 +185,11 @@ const open = async () => {
 };
 
 /** A correction's intent, as `withCorrectionIntentJournal` records it. */
-const correctionIntent = (removed: string) =>
+const correctionIntent = (removed: string, plan: IntentPlan) =>
   journaledIntent(
     "correction",
     `correction:${"aa".repeat(32)}:terminal:${removed}`,
+    plan,
     Buffer.from(removed, "hex"),
   );
 
@@ -199,7 +204,12 @@ describe("the attestation-timeout correction's intent-journal recovery", () => {
       env.payee.address,
       2_000_000n,
     );
-    await env.record(correctionIntent("bb".repeat(32)), tx.cbor, tx.hash);
+    await env.record(
+      correctionIntent("bb".repeat(32), await env.plan()),
+      tx.cbor,
+      tx.hash,
+      RECORD_ONLY,
+    );
 
     // Journaled, its first send lost: live, and S6 sends it.
     expect(await observe(tx.hash, tx.cbor)).toMatchObject({
@@ -252,9 +262,10 @@ describe("the attestation-timeout correction's intent-journal recovery", () => {
       2_000_000n,
     );
     await env.record(
-      correctionIntent("cc".repeat(32)),
+      correctionIntent("cc".repeat(32), await env.plan()),
       journaled.cbor,
       journaled.hash,
+      RECORD_ONLY,
     );
     // The same wallet, used outside the node, spends the same input first.
     const foreign = await signedPayment(
@@ -296,7 +307,12 @@ describe("the attestation-timeout correction's intent-journal recovery", () => {
       env.payee.address,
       2_000_000n,
     );
-    await env.record(correctionIntent("dd".repeat(32)), tx.cbor, tx.hash);
+    await env.record(
+      correctionIntent("dd".repeat(32), await env.plan()),
+      tx.cbor,
+      tx.hash,
+      RECORD_ONLY,
+    );
     await s6.run();
     env.emulator.awaitBlock(1);
     await env.follow();

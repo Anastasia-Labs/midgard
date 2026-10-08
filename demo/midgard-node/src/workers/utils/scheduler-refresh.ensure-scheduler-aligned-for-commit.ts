@@ -6,6 +6,7 @@ import { Effect } from "effect";
 
 import {
   type IntentJournal,
+  type IntentPlan,
   journaledIntent,
 } from "../../services/intent-journal.js";
 import { planSubmitTiming } from "../../transactions/submit-timing.js";
@@ -55,6 +56,8 @@ export const ensureSchedulerAlignedForCommit = (
   registeredOperatorUtxos: readonly UTxO[],
   alignedEndTime: number,
   schedulerWitnessUnit: string,
+  /** S5: the caller's plan, opened before it read the scheduler and lists. */
+  plan: IntentPlan,
   schedulerSpendingScriptRef?: UTxO,
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
   allowSchedulerRefresh: boolean = true,
@@ -350,6 +353,7 @@ export const ensureSchedulerAlignedForCommit = (
         journaledIntent(
           "scheduler_refresh",
           `scheduler:${schedulerRefInput.txHash}#${schedulerRefInput.outputIndex.toString()}`,
+          plan,
         ),
         submitRecoveryOptions,
       );

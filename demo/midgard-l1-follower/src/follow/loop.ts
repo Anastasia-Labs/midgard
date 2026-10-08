@@ -22,6 +22,7 @@ import {
   storePoint,
 } from "./chain-sync.js";
 import { classifyFailure, type FailureClass } from "./failure.js";
+import { watchNodeBehind } from "./node-behind.js";
 import { startWhenFree } from "./start.js";
 import {
   DEFAULT_STUCK_AFTER,
@@ -93,6 +94,7 @@ export const followChain = async (
     cursor: null,
     node: nodeOf(options.transport.readiness),
     tip: null,
+    nodeBehind: null,
     atTip: false,
     replaying: false,
     events: 0,
@@ -122,7 +124,15 @@ export const followChain = async (
     const node = nodeOf(readiness);
     void publish(node === null ? { node } : { node, atTip: false });
   });
+
+  const behind = watchNodeBehind(
+    options.nodeBehind,
+    log,
+    () => status,
+    publish,
+  );
   const finish = (): FollowStatus => {
+    behind.stop();
     unsubscribe();
     return status;
   };
@@ -309,6 +319,11 @@ export const followChain = async (
       else
         log(`clearing the tracked-set replay failed: ${ended.error.message}`);
     }
+    const nodeTip =
+      tip.kind === "point"
+        ? { slot: Number(tip.slot), height: Number(event.tip.blockNo) }
+        : null;
+    const nodeBehind = await behind.at(nodeTip);
     await publish({
       state: "following",
       waiting: null,
@@ -317,10 +332,8 @@ export const followChain = async (
       lastError: null,
       atTip: atNodeTip,
       replaying,
-      tip:
-        tip.kind === "point"
-          ? { slot: Number(tip.slot), height: Number(event.tip.blockNo) }
-          : null,
+      tip: nodeTip,
+      ...(nodeBehind === undefined ? {} : { nodeBehind }),
       cursor:
         cursor === null
           ? null
