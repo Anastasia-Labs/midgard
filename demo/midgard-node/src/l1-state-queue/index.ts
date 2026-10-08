@@ -11,6 +11,7 @@ export {
   STATE_QUEUE_UNHEALTHY,
 } from "./hook.js";
 export {
+  enteredSlot,
   formatLandedStateQueue,
   landedElements,
   type LandedStateQueue,
@@ -19,6 +20,9 @@ export {
   type LandedStateQueueRead,
   type LandedStateQueueRefusal,
   landedTail,
+  queueElementOf,
+  stateQueueHistoryIn,
+  type StateQueueHistoryRead,
   walkLandedStateQueue,
 } from "./landed.js";
 export { stateQueueProjection } from "./projection.js";

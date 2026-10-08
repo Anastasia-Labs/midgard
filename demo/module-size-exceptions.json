@@ -966,7 +966,7 @@
   },
   {
     "file": "midgard-node/src/services/mpf-native-owner/service.production-native-mpf-owner-service.ts",
-    "max": 930,
+    "max": 928,
     "reason": "ProductionNativeMpfOwnerService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {

@@ -6,6 +6,7 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   type FactStore,
+  type FactStoreOptions,
   type FollowerProjection,
   type LedgerOutputs,
   openPostgresFactStore,
@@ -46,6 +47,7 @@ const nodeDatabaseUrl = (): string => {
 export const openNodeFollowerStore = async (
   projections: readonly FollowerProjection[],
   securityParameter: number,
+  extra: Partial<FactStoreOptions> = {},
 ): Promise<FactStore> => {
   const store = openPostgresFactStore({
     ...projectionStoreOptions(
@@ -60,6 +62,7 @@ export const openNodeFollowerStore = async (
       },
       "postgres",
     ),
+    ...extra,
     connection: { connectionString: nodeDatabaseUrl() },
   });
   const started = await store.start();

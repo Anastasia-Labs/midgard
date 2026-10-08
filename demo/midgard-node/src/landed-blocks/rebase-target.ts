@@ -48,60 +48,69 @@ export type RebasePlan =
   | Readonly<{ kind: "blocked"; detail: string }>
   | Readonly<{ kind: "ready"; target: RebaseTarget }>;
 
+/**
+ * The rebase target over `rows`, due or not: what the working ledger and
+ * the native MPF hold once the rebase runs, or why it cannot run.
+ */
+export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
+  Effect.gen(function* () {
+    const landed = yield* landedLedger(rows);
+    if (landed === undefined)
+      return {
+        kind: "blocked",
+        detail: "confirmed_ledger has no frontier yet",
+      } satisfies RebasePlan;
+    const onChain = new Set(landed.chain.map((row) => row.headerHash));
+    const stray = rows.find(
+      (row) => row.state === "processed" && !onChain.has(row.headerHash),
+    );
+    if (stray !== undefined)
+      return {
+        kind: "blocked",
+        detail: `processed block ${stray.headerHash} does not chain from the confirmed-ledger frontier ${landed.frontier.headerHash}`,
+      } satisfies RebasePlan;
+    const last = landed.chain.at(-1);
+    const tip: HeaderRoot = last ?? landed.frontier;
+    const steps: TargetStep[] = landed.chain.map((row) => ({
+      headerHash: row.headerHash,
+      utxosRoot: row.utxosRoot,
+      kind: row.kind,
+      spent: row.spent,
+      produced: row.produced,
+      row,
+    }));
+    const active = yield* activeJournal;
+    const processed = new Set(rows.map((row) => row.headerHash));
+    let live: RebaseTarget["live"];
+    if (active !== undefined && !processed.has(active.headerHash)) {
+      if (
+        active.baseTailHeaderHash !== tip.headerHash ||
+        active.baseUtxosRoot !== tip.utxosRoot
+      )
+        return {
+          kind: "blocked",
+          detail: `awaiting own journal resolution: active own block ${active.headerHash} is built on ${active.baseTailHeaderHash}, the processed landed tip is ${tip.headerHash}`,
+        } satisfies RebasePlan;
+      live = active;
+      steps.push({
+        headerHash: active.headerHash,
+        utxosRoot: active.expectedUtxosRoot,
+        kind: "live",
+        spent: active.spent,
+        produced: active.produced,
+      });
+    }
+    return {
+      kind: "ready",
+      target: { rows, landed, steps, tip, live },
+    } satisfies RebasePlan;
+  });
+
 /** Reads the rebase target, and whether a rebase is due and can run. */
 export const rebasePlan = Effect.gen(function* () {
   const rows = yield* retrieveRows;
   if (!rebaseNeeded(rows)) return { kind: "none" } satisfies RebasePlan;
-  const landed = yield* landedLedger(rows);
-  if (landed === undefined)
-    return {
-      kind: "blocked",
-      detail: "confirmed_ledger has no frontier yet",
-    } satisfies RebasePlan;
-  const onChain = new Set(landed.chain.map((row) => row.headerHash));
-  const stray = rows.find(
-    (row) => row.state === "processed" && !onChain.has(row.headerHash),
-  );
-  if (stray !== undefined)
-    return {
-      kind: "blocked",
-      detail: `processed block ${stray.headerHash} does not chain from the confirmed-ledger frontier ${landed.frontier.headerHash}`,
-    } satisfies RebasePlan;
-  const last = landed.chain.at(-1);
-  const tip: HeaderRoot = last ?? landed.frontier;
-  const steps: TargetStep[] = landed.chain.map((row) => ({
-    headerHash: row.headerHash,
-    utxosRoot: row.utxosRoot,
-    kind: row.kind,
-    spent: row.spent,
-    produced: row.produced,
-    row,
-  }));
-  const active = yield* activeJournal;
-  const processed = new Set(rows.map((row) => row.headerHash));
-  let live: RebaseTarget["live"];
-  if (active !== undefined && !processed.has(active.headerHash)) {
-    if (
-      active.baseTailHeaderHash !== tip.headerHash ||
-      active.baseUtxosRoot !== tip.utxosRoot
-    )
-      return {
-        kind: "blocked",
-        detail: `awaiting own journal resolution: active own block ${active.headerHash} is built on ${active.baseTailHeaderHash}, the processed landed tip is ${tip.headerHash}`,
-      } satisfies RebasePlan;
-    live = active;
-    steps.push({
-      headerHash: active.headerHash,
-      utxosRoot: active.expectedUtxosRoot,
-      kind: "live",
-      spent: active.spent,
-      produced: active.produced,
-    });
-  }
-  return {
-    kind: "ready",
-    target: { rows, landed, steps, tip, live },
-  } satisfies RebasePlan;
+  return yield* rebaseTargetOf(rows);
 });
 
 /** A step's MPF mutation: its spends and replaced outputs, then its outputs. */

@@ -9,11 +9,14 @@
  * - This node's own block folds through its local merge finalization (the
  *   journal's delta, under its merge job), which the merge fiber may also run
  *   first; either way the job completes before the frontier moves.
- * - A root the frontier cannot reach (a merged block the node never
- *   processed, or a merge a rollback undid) holds `confirmed_ledger_behind`
- *   with the process up. Only a `confirmed_ledger` already at the root
- *   re-anchors the frontier; nothing is ever inverted here.
+ * - A root past blocks the node never processed is not a hold: processing
+ *   walks the root's lineage from the frontier (`history.ts`) and processes
+ *   them first. A root the frontier cannot reach on any retained lineage (a
+ *   merge a rollback undid) holds `confirmed_ledger_behind` with the
+ *   process up. Only a `confirmed_ledger` already at the root re-anchors the
+ *   frontier; nothing is ever inverted here.
  */
+import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -27,9 +30,11 @@ import {
 import { DatabaseError } from "../database/utils/common.js";
 import type { DriverHold } from "../l1-events/driver.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
+import type { Database } from "../services/database.js";
+import { lineageBack, type QueueHistory } from "./history.js";
 import { CONFIRMED_LEDGER_BEHIND } from "./holds.js";
 import { depositOutputs, ledgerRows, processedChain } from "./ledger.js";
-import type { LandedBlockPorts } from "./ports.js";
+import { type LandedBlockPorts, viewChecked } from "./ports.js";
 import {
   deleteRows,
   Frontier,
@@ -73,41 +78,76 @@ const lockFrontier = (expected: HeaderRoot) =>
   });
 
 /**
- * Sets the frontier when there is none: at the merged root if
- * `confirmed_ledger` is there already, or at genesis with the configured
- * genesis ledger written in.
+ * Sets the frontier when there is none, on the merged root's lineage: at
+ * the root if `confirmed_ledger` is there already; else at the latest
+ * header of the lineage (`history.ts`) whose post-state root
+ * `confirmed_ledger` holds, or at genesis (`confirmed_ledger` holding the
+ * configured genesis ledger, or empty and written in). Processing then
+ * walks forward from it.
  */
 export const bootstrapFrontier = <R>(
   ports: LandedBlockPorts<R>,
+  view: View,
   root: HeaderRoot,
+  history: Effect.Effect<QueueHistory, unknown, R | Database>,
 ) =>
   Effect.gen(function* () {
     if ((yield* Frontier.retrieve) !== undefined) return undefined;
     const confirmed = yield* confirmedRoot;
     if (confirmed.root === root.utxosRoot) {
-      yield* ports.write(Frontier.upsert(root));
+      yield* viewChecked(ports, view, Frontier.upsert(root));
       return undefined;
     }
-    if (
-      root.headerHash === SDK.GENESIS_HEADER_HASH &&
-      confirmed.entries.length === 0
-    ) {
+    const walked =
+      root.headerHash === SDK.GENESIS_HEADER_HASH ? undefined : yield* history;
+    const lineage =
+      walked === undefined
+        ? { anchor: SDK.GENESIS_HEADER_HASH, headers: [] }
+        : lineageBack(
+            walked,
+            root.headerHash,
+            (hash) =>
+              hash === SDK.GENESIS_HEADER_HASH ||
+              walked.headers.get(hash)?.utxosRoot === confirmed.root,
+          );
+    if (lineage !== undefined && lineage.anchor !== SDK.GENESIS_HEADER_HASH) {
+      yield* viewChecked(
+        ports,
+        view,
+        Frontier.upsert({
+          headerHash: lineage.anchor,
+          utxosRoot: confirmed.root,
+        }),
+      );
+      return undefined;
+    }
+    if (lineage !== undefined) {
       const genesis = yield* ports.genesis;
-      if (
-        (yield* computeLedgerMpfRootFromLedgerEntries(genesis)) ===
-        root.utxosRoot
-      ) {
-        yield* ports.write(
+      const genesisRoot = yield* computeLedgerMpfRootFromLedgerEntries(genesis);
+      const expected =
+        lineage.headers[0]?.header.prevUtxosRoot ?? root.utxosRoot;
+      const frontier = {
+        headerHash: SDK.GENESIS_HEADER_HASH,
+        utxosRoot: genesisRoot,
+      };
+      if (genesisRoot === expected && confirmed.root === genesisRoot) {
+        yield* viewChecked(ports, view, Frontier.upsert(frontier));
+        return undefined;
+      }
+      if (genesisRoot === expected && confirmed.entries.length === 0) {
+        yield* viewChecked(
+          ports,
+          view,
           Effect.gen(function* () {
             yield* ConfirmedLedgerDB.insertMultiple([...genesis]);
-            yield* Frontier.upsert(root);
+            yield* Frontier.upsert(frontier);
           }),
         );
         return undefined;
       }
     }
     return behind(
-      `confirmed_ledger (root ${confirmed.root}) is not at the merged queue root ${root.headerHash} (${root.utxosRoot}) and no processed block reaches it`,
+      `confirmed_ledger (root ${confirmed.root}) is not at the merged queue root ${root.headerHash} (${root.utxosRoot}) and no header on its retained lineage, nor genesis, reaches it`,
     );
   });
 
@@ -156,7 +196,11 @@ export type FoldOutcome =
   | Readonly<{ kind: "held"; hold: DriverHold }>;
 
 /** Folds every processed block up to the merged root `root`, in order. */
-export const foldToRoot = <R>(ports: LandedBlockPorts<R>, root: HeaderRoot) =>
+export const foldToRoot = <R>(
+  ports: LandedBlockPorts<R>,
+  view: View,
+  root: HeaderRoot,
+) =>
   Effect.gen(function* () {
     for (;;) {
       const frontier = yield* Frontier.retrieve;
@@ -182,11 +226,11 @@ export const foldToRoot = <R>(ports: LandedBlockPorts<R>, root: HeaderRoot) =>
       if (next.kind === "foreign") {
         if (!next.applied)
           return { kind: "awaiting_rebase" } satisfies FoldOutcome;
-        yield* ports.write(foldForeign(frontier, next));
+        yield* viewChecked(ports, view, foldForeign(frontier, next));
         continue;
       }
       if (yield* ports.ownMergeCompleted(next.headerHash)) {
-        yield* ports.write(passOwn(frontier, next));
+        yield* viewChecked(ports, view, passOwn(frontier, next));
         continue;
       }
       const journal = yield* ports.ownJournal(next.headerHash);
@@ -227,6 +271,7 @@ export const foldToRoot = <R>(ports: LandedBlockPorts<R>, root: HeaderRoot) =>
  */
 export const reanchorFrontier = <R>(
   ports: LandedBlockPorts<R>,
+  view: View,
   frontier: HeaderRoot,
   root: HeaderRoot,
 ) =>
@@ -236,7 +281,9 @@ export const reanchorFrontier = <R>(
       return behind(
         `the merged queue root ${root.headerHash} is not reachable from the confirmed-ledger frontier ${frontier.headerHash} (a merge this node did not process, or one a rollback undid)`,
       );
-    yield* ports.write(
+    yield* viewChecked(
+      ports,
+      view,
       Effect.gen(function* () {
         yield* lockFrontier(frontier);
         yield* Frontier.upsert(root);

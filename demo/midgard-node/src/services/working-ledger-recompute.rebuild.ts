@@ -14,7 +14,9 @@
  *
  * A pending transaction a foreign base block included is dropped from the
  * pending sets (it is in the base); one this node's own base block included
- * is left to that block's finalization. A projected deposit whose output a
+ * is left to that block's finalization. Either is settled by the base: a
+ * batch it was accepted in with a rejected transaction rejects the batch's
+ * other pending members ("batch") and is not refused for it. A projected deposit whose output a
  * surviving transaction spends is `consumed`, any other `projected`.
  *
  * Runs inside the caller's transaction.
@@ -183,9 +185,15 @@ export const rebuildWorkingLedger = (input: {
       });
       outside.push(entry.source_event_id);
     }
+    // A batch co-member a base block includes is settled by that block.
+    const settled = new Set([
+      ...input.includedByForeign,
+      ...input.includedByOwn,
+    ]);
     const rejected = yield* closeRejections({
       pending,
       spread: (reject, done) => simulate(base, pending, done, reject).changed,
+      settled,
     });
     const { ledger } = simulate(base, pending, rejected);
     const known = yield* provenance(ledger);
@@ -208,7 +216,11 @@ export const rebuildWorkingLedger = (input: {
       yield* ProcessedMempoolDB.clearTxs(droppedIds);
       yield* MempoolTxDeltasDB.clearTxs(droppedIds);
     }
-    const rejectedTxIds = yield* recordRejections(rejected, input.codes);
+    const rejectedTxIds = yield* recordRejections(
+      rejected,
+      input.codes,
+      [...settled].map((id) => Buffer.from(id, "hex")),
+    );
     // A deposit outside any block is consumed exactly when a surviving
     // transaction spent its output.
     const present = new Set(

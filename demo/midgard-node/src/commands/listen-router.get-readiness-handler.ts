@@ -270,7 +270,7 @@ export const getReadinessHandler = Effect.gen(function* () {
   const l1Follower = l1FollowerReadiness(yield* Ref.get(globals.L1_FOLLOWER));
   for (const reason of l1Follower.reasons)
     if (!reasons.includes(reason)) reasons.push(reason);
-  const details: string[] = [];
+  const details: string[] = [...l1Follower.details];
   const daFramePressure = yield* Ref.get(globals.COMMIT_DA_FRAME_PRESSURE);
   const commitDaFramePressure =
     daFramePressure === null

@@ -23,7 +23,12 @@ export const followingAtTip = (
     atTip: true,
     events: 1,
     lastError: null,
-    prune: { steps: 0, prunedThroughSlot: null, lastError: null },
+    prune: {
+      steps: 0,
+      prunedThroughSlot: null,
+      lastError: null,
+      floorLagSlots: null,
+    },
     ...change,
   };
   return { ...status, readiness: readinessOf(status) };

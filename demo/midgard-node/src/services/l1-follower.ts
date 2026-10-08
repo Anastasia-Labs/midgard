@@ -76,12 +76,10 @@ import {
   operatorSetProjection,
   stateQueueTailOf,
 } from "../l1-operator-set/index.js";
-import {
-  landedStateQueueHook,
-  stateQueueProjection,
-} from "../l1-state-queue/index.js";
+import { landedStateQueueHook } from "../l1-state-queue/index.js";
 import {
   landedBlockHook,
+  landedStateQueueProjection,
   nodeLandedBlockPorts,
 } from "../landed-blocks/index.js";
 import { NodeConfig } from "./config.js";
@@ -295,6 +293,9 @@ export const startL1Follower = Effect.gen(function* () {
   const runtime = yield* Effect.runtime<never>();
   const log = (line: string) =>
     Runtime.runFork(runtime)(Effect.logInfo(`L1 follower: ${line}`));
+  const dbRuntime = yield* Effect.runtime<
+    Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
+  >();
   const opened = yield* Effect.acquireRelease(
     Effect.try(() => {
       const transport = new L1NodeTransport({
@@ -309,7 +310,10 @@ export const startL1Follower = Effect.gen(function* () {
           ...projectionStoreOptions(
             [
               eventProjection(plan.projection),
-              stateQueueProjection(plan.stateQueue),
+              landedStateQueueProjection(
+                plan.stateQueue,
+                Runtime.runPromise(dbRuntime),
+              ),
               operatorSetProjection(plan.operatorSet),
               forcedOrderProjection(plan.forcedOrders),
               intentJournalProjection,
@@ -352,9 +356,6 @@ export const startL1Follower = Effect.gen(function* () {
       `the follower store or transport did not open: ${message(opened.left.error)}`,
     );
   const { transport, store, abort } = opened.right;
-  const dbRuntime = yield* Effect.runtime<
-    Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
-  >();
   const operatorSet = yield* followerOperatorSet({
     store,
     config: plan.operatorSet,
@@ -393,7 +394,7 @@ export const startL1Follower = Effect.gen(function* () {
       foreignBlockInclusion: landedBlockHook({
         store,
         config: plan.stateQueue,
-        ports: nodeLandedBlockPorts({ store, events: plan.projection }),
+        ports: nodeLandedBlockPorts(store, plan),
         run: (effect) => Runtime.runPromise(dbRuntime)(effect),
       }),
       forcedOrderIngestion: forcedOrderIngestionHook({
@@ -443,7 +444,12 @@ export const startL1Follower = Effect.gen(function* () {
     atTip: false,
     events: 0,
     lastError: null,
-    prune: { steps: 0, prunedThroughSlot: null, lastError: null },
+    prune: {
+      steps: 0,
+      prunedThroughSlot: null,
+      lastError: null,
+      floorLagSlots: null,
+    },
   } as const;
   let status: FollowStatus = { ...initial, readiness: readinessOf(initial) };
   let lastCursor: string | null = null;

@@ -4,6 +4,11 @@ export { nodeLandedBlockPorts } from "./node-ports.js";
 export type { LandedBlockPorts, OwnJournal } from "./ports.js";
 export { processLandedQueue, rebaseNeeded } from "./process.js";
 export {
+  landedFrontierNeeds,
+  landedFrontierPruneFloor,
+  landedStateQueueProjection,
+} from "./prune-floor.js";
+export {
   landedBlockRebaseDisposition,
   prepareLandedBlockRebase,
   REBASE_RECOVERY_DOMAIN,

@@ -44,7 +44,10 @@ export const txIdHex = (tx: PendingTx) => hex(tx.entry[Tx.Columns.TX_ID]);
  * Then every co-member of an unreversed acceptance receipt that holds a
  * rejected transaction is rejected as "batch" (a receipt is the inverse of
  * one accepted batch and cannot be split), and spreading resumes, until
- * nothing widens. A batch co-member that is no longer pending makes the
+ * nothing widens. A co-member in `settled` (one a base block includes), or
+ * one a landed block settled in an earlier rebuild (a row of
+ * `event_history_l2_ledger_receipt_settlements`), is settled by that block,
+ * not rejected. Any other co-member that is no longer pending makes the
  * batch irreversible, and the closure fails.
  *
  * `onReject` observes every rejection, including batch ones, in order.
@@ -56,6 +59,8 @@ export const closeRejections = (input: {
     rejected: Rejections,
   ) => boolean;
   readonly onReject?: (tx: PendingTx) => void;
+  /** Hex ids of transactions a base block includes (none by default). */
+  readonly settled?: ReadonlySet<string>;
 }) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -72,15 +77,23 @@ export const closeRejections = (input: {
       widened = false;
       while (input.spread(reject, rejected));
       if (rejected.size === 0) break;
-      const coMembers = yield* sql<{ sequence: string; tx_id: Buffer }>`
-        SELECT r.sequence::text AS sequence, ids.tx_id
+      const coMembers = yield* sql<{
+        sequence: string;
+        tx_id: Buffer;
+        settled: boolean;
+      }>`
+        SELECT r.sequence::text AS sequence, ids.tx_id,
+          EXISTS (SELECT 1 FROM event_history_l2_ledger_receipt_settlements s
+            WHERE s.receipt_sequence = r.sequence AND s.tx_id = ids.tx_id)
+            AS settled
         FROM event_history_l2_ledger_receipts r, unnest(r.tx_ids) AS ids(tx_id)
         WHERE r.reversed_at_revision IS NULL
           AND r.tx_ids && ${pg.array(byteaArray([...rejected.values()].map(({ tx }) => tx.entry[Tx.Columns.TX_ID])))}::bytea[]
         ORDER BY r.sequence, ids.tx_id`;
-      for (const { sequence, tx_id } of coMembers) {
+      for (const { sequence, tx_id, settled } of coMembers) {
         const id = hex(tx_id);
-        if (rejected.has(id)) continue;
+        if (rejected.has(id) || settled || input.settled?.has(id) === true)
+          continue;
         const tx = pendingById.get(id);
         if (tx === undefined)
           return yield* Effect.fail(
@@ -109,10 +122,17 @@ export const producedByRejections = (rejected: Rejections) =>
 /**
  * Removes rejected transactions from the pending sets and undoes their
  * acceptance: a terminal rejection row and admission, no address history, and
- * every acceptance receipt they belong to reversed. Ledger rows are the
- * caller's: run this after any read of the receipts' before-images.
+ * every acceptance receipt they belong to reversed. A receipt whose other
+ * members are all in `settled` (transactions a base block includes) or
+ * recorded as settled on it is reversed with them: those members are
+ * settled by the base. Ledger rows are the caller's: run this after any
+ * read of the receipts' before-images.
  */
-export const recordRejections = (rejected: Rejections, codes: RejectionCodes) =>
+export const recordRejections = (
+  rejected: Rejections,
+  codes: RejectionCodes,
+  settled: readonly Buffer[] = [],
+) =>
   Effect.gen(function* () {
     if (rejected.size === 0) return [] as readonly Buffer[];
     const sql = yield* SqlClient.SqlClient;
@@ -149,7 +169,14 @@ export const recordRejections = (rejected: Rejections, codes: RejectionCodes) =>
       FROM event_history_cursor c
       WHERE c.binding_digest = r.binding_digest
         AND r.reversed_at_revision IS NULL
-        AND r.tx_ids <@ ${pg.array(byteaArray(rejectedIds))}::bytea[]`;
+        AND r.tx_ids && ${pg.array(byteaArray(rejectedIds))}::bytea[]
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest(r.tx_ids) AS member(tx_id)
+          WHERE member.tx_id <> ALL(${pg.array(byteaArray([...rejectedIds, ...settled]))}::bytea[])
+            AND NOT EXISTS (
+              SELECT 1 FROM event_history_l2_ledger_receipt_settlements s
+              WHERE s.receipt_sequence = r.sequence
+                AND s.tx_id = member.tx_id))`;
     const unreversed = yield* sql<{ sequence: string }>`
       SELECT sequence::text AS sequence FROM event_history_l2_ledger_receipts
       WHERE reversed_at_revision IS NULL

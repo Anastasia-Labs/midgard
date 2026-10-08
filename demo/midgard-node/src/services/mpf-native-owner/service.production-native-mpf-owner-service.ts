@@ -18,6 +18,7 @@ import {
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerDiagnostics,
   type NativeMpfOwnerService,
+  NativeMpfRootNotRetained,
   NativeMpfRpcKind,
   type PersistedNativeMpfReplay,
 } from "./protocol.js";
@@ -506,10 +507,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       options: { ...this.options, sidecarPath: undefined },
       binarySha256: this.binarySha256,
     }).catch((cause: unknown) => {
-      throw new Error(
-        `Native MPF canonical recovery target root ${plan.targetRoot} is not retained in full; refusing to restore`,
-        { cause },
-      );
+      throw new NativeMpfRootNotRetained(plan.targetRoot, { cause });
     });
     let replacement: NativeChildRpc | undefined;
     let committed = false;

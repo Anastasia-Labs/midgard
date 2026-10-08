@@ -15,10 +15,24 @@
  *   (a crash) and resumes after a reopen. A pending rebase is deferred to
  *   the next event every fifth check, and every other rollback's for three
  *   events, so removed rows can reland before it runs.
+ * - The node is down for stretches of events (and for the first ones of
+ *   some scenarios; one long scenario's traffic merges whenever it can),
+ *   so one run meets appends and merges together, starts past genesis,
+ *   and holds on a late payload its block's merge already passed. The
+ *   frontier folds to the root only once the root's lineage is processed.
  * - The mempool model admits pending chains (one spending the processed
  *   tip's `X`, one spending that) and single spends of `Y` and the pool,
- *   so rebases reject directly and transitively, on rollbacks and on
- *   double spends.
+ *   some as one accepted batch, so rebases reject directly, transitively
+ *   and by batch, on rollbacks and on double spends; foreign blocks include
+ *   pending transactions.
+ * - The node commits its own blocks on the processed tip
+ *   (`landed-blocks-sim.node.ts`): the traffic's own candidate on it, which
+ *   lands later (or never), or a fresh block that never lands. It abandons
+ *   a journal whose base left the tip and revives one whose block lands
+ *   anyway; a candidate that lands with no journal is a foreign block.
+ * - While `confirmed_ledger` is behind (only where the model says a merge a
+ *   rollback undid left the frontier off the root's lineage), the rows,
+ *   ledgers, mempool and deposits must not move.
  */
 import {
   type BlockSummary,
@@ -27,200 +41,296 @@ import {
   type FollowerProjection,
 } from "@al-ft/midgard-l1-follower";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
+import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Runtime } from "effect";
 
-import type { DriverHold } from "../../src/l1-events/driver.js";
 import { stateQueueProjection } from "../../src/l1-state-queue/index.js";
 import {
   CONFIRMED_LEDGER_BEHIND,
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_INVALID,
-  LANDED_BLOCK_REBASE_PENDING,
-  LANDED_BLOCK_REPLAY_FAILED,
 } from "../../src/landed-blocks/holds.js";
-import { landedBlockHook } from "../../src/landed-blocks/hook.js";
 import { ledgerMap } from "../../src/landed-blocks/ledger.js";
-import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import {
-  rebasePlan,
-  walkTarget,
-} from "../../src/landed-blocks/rebase-target.js";
-import {
-  Basis,
-  Frontier,
-  retrieveRows,
-} from "../../src/landed-blocks/store.js";
+  landedFrontierNeeds,
+  landedFrontierPruneFloor,
+} from "../../src/landed-blocks/prune-floor.js";
+import { Frontier, retrieveRows } from "../../src/landed-blocks/store.js";
 import type { Database } from "../../src/services/database.js";
-import { withHistoryWrite } from "../../src/services/event-history-producer.js";
-import { makeOutRefCbor } from "../midgard-output-helpers.js";
 import {
-  admitPending,
-  expectedState,
-  processedPrefix,
-  readActual,
   settleMempool,
+  type SimIncluded,
+} from "./landed-blocks-sim.mempool.js";
+import {
+  expectedState,
+  modelProcessing,
+  type ModelQueueHeaders,
+  readActual,
+  rootLineage,
   stateDifference,
 } from "./landed-blocks-sim.model.js";
+import { simNode } from "./landed-blocks-sim.node.js";
 import {
   canonicalQueue,
   type Faults,
   type LandedSimEnv,
-  simPorts,
 } from "./landed-blocks-sim.ports.js";
+import {
+  holdNames,
+  type Settled,
+  simSettler,
+} from "./landed-blocks-sim.settle.js";
 import { landedBlocksTraffic } from "./landed-blocks-sim.traffic.js";
-import { simDigest, simOutput } from "./landed-blocks-sim.universe.js";
+import { H_MAX, hasDeposit } from "./landed-blocks-sim.universe.js";
 import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
 import { isQueueOutput } from "./state-queue-sim.model.js";
 
 const hex = (value: Uint8Array) => Buffer.from(value).toString("hex");
-
-const holdNames = (
-  hold: { reason: string; detail: string } | undefined,
-  reason: string,
-) =>
-  hold !== undefined &&
-  (hold.reason === reason || hold.detail.includes(`also ${reason}:`));
-
-type Settled =
-  | Readonly<{ error: string }>
-  | Readonly<{ hold: DriverHold | undefined; deferred?: true }>;
 
 export const landedBlocksSimProjection = (
   env: LandedSimEnv,
 ): FollowerProjection => {
   const canonical: BlockSummary[] = [];
   const served = new Set<string>();
-  let rolledBack = false;
   let behind = false;
   let lastFrontier: string | undefined;
-  let lastPrefix: string[] = [];
+  /** The frontier the model derived on the last check it compared. */
+  let modelFrontier: string | undefined;
+  let lastRows: readonly string[] = [];
+  /** The node's state at the end of the last check it was up for. */
+  let snapshot: string | undefined;
+  let seen = 0;
   const run = <A, E>(effect: Effect.Effect<A, E, Database>) =>
     Runtime.runPromise(env.runtime)(effect);
-  const { stats, mempool } = env;
-
-  // A rollback's rebase is held back for the next few events now and then,
-  // so the blocks it removed can reland before it runs.
-  let deferUntil = 0;
-  let rollbacks = 0;
-  const settle = async (
-    store: FactStore,
-    faults: Faults,
-    rollback: boolean,
-  ): Promise<Settled> => {
-    const view = (await store.currentView())!;
-    const requested = { value: false };
-    const hook = landedBlockHook({
-      store,
-      config: SIM_QUEUE_CONFIG,
-      ports: simPorts(env, store, faults, served, requested),
-      run,
-    });
-    const removedBefore = (await run(retrieveRows))
-      .filter((row) => row.state === "removed")
-      .map((row) => row.headerHash);
-    for (let round = 0; round < 40; round++) {
-      faults.missing = [];
-      faults.transient = 0;
-      requested.value = false;
-      const hold = await hook({ kind: "unchanged", view });
-      if (faults.violation !== undefined) return { error: faults.violation };
-      if (round === 0) {
-        const after = new Map(
-          (await run(retrieveRows)).map((row) => [row.headerHash, row.state]),
-        );
-        stats.relands += removedBefore.filter(
-          (hash) => after.get(hash) === "processed",
-        ).length;
-      }
-      if (faults.missing.length > 0) {
-        if (hold?.reason !== LANDED_BLOCK_AWAITING_DA)
-          return { error: `missing DA held ${JSON.stringify(hold)}` };
-        stats.awaitingDaHeld += 1;
-        continue;
-      }
-      if (faults.transient > 0) {
-        if (!holdNames(hold, LANDED_BLOCK_REPLAY_FAILED))
-          return { error: `a replay fault held ${JSON.stringify(hold)}` };
-        stats.transientHeld += 1;
-        continue;
-      }
-      const plan = await run(rebasePlan);
-      if (plan.kind === "blocked")
-        return { error: `rebase blocked: ${plan.detail}` };
-      if (plan.kind === "none") return { hold };
-      const offRoot = hold?.reason === CONFIRMED_LEDGER_BEHIND;
-      if (!offRoot && !holdNames(hold, LANDED_BLOCK_REBASE_PENDING))
-        return { error: `a due rebase held ${JSON.stringify(hold)}` };
-      if (!offRoot && !requested.value)
-        return { error: "a due rebase was not requested" };
-      if (round === 0 && rollback && (rollbacks += 1) % 2 === 0)
-        deferUntil = stats.checks + 3;
-      if (
-        round === 0 &&
-        (stats.checks % 5 === 4 || stats.checks <= deferUntil)
-      ) {
-        stats.deferredRebases += 1;
-        return { deferred: true, hold };
-      }
-      stats.rebases += 1;
-      const { durableRoot } = await env.owner.current.diagnostics();
-      if (!walkTarget(plan.target).roots.includes(durableRoot))
-        stats.restoredRoots += 1;
-      const preparation = { assertCurrent: Effect.void };
-      await run(moveNativeRoot(env.owner.current, plan.target, preparation));
-      if (stats.rebases % 3 === 0) {
-        await env.owner.reopen();
-        stats.crashResumes += 1;
-        continue;
-      }
-      await run(withHistoryWrite(rebaseSql(plan.target)));
-    }
-    return { error: "landed-block processing did not settle" };
+  const { stats, mempool, book } = env;
+  const node = simNode(env, run);
+  const servedNow = (header: string) => {
+    if (!env.registry.get(header)!.longLate) return true;
+    const until = env.lateUntil.get(header);
+    return until !== undefined && stats.checks >= until;
+  };
+  const state = async () => {
+    const rows = (await run(retrieveRows))
+      .map((row) => `${row.headerHash}:${row.kind}:${row.state}:${row.applied}`)
+      .sort();
+    return JSON.stringify({ rows, ...(await run(readActual(env.registry))) });
   };
 
-  const admit = async (tip: string, ledger: ReadonlyMap<string, Buffer>) => {
-    const info = env.registry.get(tip)!;
-    const spentBySurvivor = new Set(
-      mempool.survivors.flatMap((tx) => tx.spent.map(hex)),
+  const settler = simSettler(env, node, run, served);
+
+  /** What the base blocks of `processed` (and the live own block) include. */
+  const includedBy = (
+    processed: readonly string[],
+    rows: readonly string[],
+    live: Readonly<{ txIds: readonly Buffer[] }> | undefined,
+  ): SimIncluded => ({
+    foreign: new Set(
+      processed
+        .filter((header) => !env.registry.get(header)!.own)
+        .flatMap((header) => env.includes.get(header) ?? [])
+        .map(hex),
+    ),
+    own: new Set(
+      [
+        ...rows
+          .filter((header) => env.registry.get(header)!.own)
+          .flatMap((header) => book.blocks.get(header)!.txIds),
+        ...(live?.txIds ?? []),
+      ].map(hex),
+    ),
+  });
+
+  /** The node equals the model at `top` (the live own block or the processed tip). */
+  const compareState = async (
+    model: Readonly<{ frontier: string; tip: string }>,
+    top: string,
+    ledger: ReadonlyMap<string, Buffer>,
+  ) => {
+    const expected = expectedState(
+      env.universe,
+      env.registry,
+      model,
+      ledger,
+      mempool,
     );
-    const next = (spent: Buffer[]) => {
-      mempool.admitted += 1;
-      const id = simDigest(`tx:${env.label}:${mempool.admitted}`);
-      return {
-        id,
-        spent,
-        produced: [
-          {
-            outref: makeOutRefCbor(id, 0),
-            output: simOutput(9_000_000n + BigInt(mempool.admitted)),
-          },
-        ],
-        at: new Date(
-          Date.parse("2026-10-01T00:00:00.000Z") + mempool.admitted * 1_000,
-        ),
-      };
-    };
-    const free = (outRef: Buffer) =>
-      ledger.has(hex(outRef)) && !spentBySurvivor.has(hex(outRef));
-    const txs = [];
-    if (info.h >= 1) {
-      const x = env.universe.x(info.h, info.b).outref;
-      if (free(x)) {
-        const first = next([x]);
-        txs.push(first, next([first.produced[0]!.outref]));
+    const difference = stateDifference(
+      await run(readActual(env.registry)),
+      expected,
+    );
+    if (difference !== null) return difference;
+    const info = env.registry.get(top)!;
+    const { durableRoot } = await env.owner.current.diagnostics();
+    const root = env.universe.root(info.h, info.b);
+    return durableRoot === root
+      ? null
+      : `native root ${durableRoot}, the model's ${root} (at ${top})`;
+  };
+
+  const compare = async (
+    store: FactStore,
+    rollback: boolean,
+    queue: ModelQueueHeaders,
+    settled: Exclude<Settled, { error: string }>,
+    rebuilt: boolean,
+    rowsBefore: ReadonlySet<string>,
+  ): Promise<string | null> => {
+    const { hold } = settled;
+    const model = modelProcessing(
+      env.registry,
+      queue,
+      modelFrontier,
+      servedNow,
+    );
+    const frontier = await run(Frontier.retrieve);
+    if (frontier?.headerHash !== lastFrontier && lastFrontier !== undefined)
+      stats.folds += 1;
+    lastFrontier = frontier?.headerHash;
+    if (model.kind === "behind") {
+      if (frontier?.headerHash !== model.frontier)
+        return `confirmed_ledger is at ${frontier?.headerHash}, the model's (behind) at ${model.frontier}`;
+      if (!holdNames(hold, CONFIRMED_LEDGER_BEHIND))
+        return `a frontier off the root's lineage held ${JSON.stringify(hold)}`;
+      stats.behindHeld += 1;
+      behind = true;
+      if (!rebuilt && snapshot !== undefined) {
+        const now = await state();
+        if (now !== snapshot)
+          return `behind, the node moved: ${snapshot.slice(0, 600)} → ${now.slice(0, 600)}`;
+        stats.behindCompared += 1;
       }
-      const y = env.universe.y(info.h).outref;
-      if (free(y)) txs.push(next([y]));
+      return null;
     }
-    const pool = env.universe.pool[mempool.poolUsed];
-    if (pool !== undefined && free(pool.outref)) {
-      mempool.poolUsed += 1;
-      txs.push(next([pool.outref]));
+    if (model.from === undefined && queue.root !== SDK.GENESIS_HEADER_HASH)
+      stats.bootstrapsPastGenesis += 1;
+    const rooted = rootLineage(env.registry, queue.root);
+    if (settled.deferred === true) {
+      // Processing ran up to the rebase it asked for: the frontier is
+      // between where the model left it and where it is due.
+      const at = rooted.indexOf(frontier?.headerHash ?? "");
+      if (
+        frontier === undefined ||
+        (frontier.headerHash !== model.from &&
+          (at < Math.max(rooted.indexOf(model.from ?? ""), 0) ||
+            at > rooted.indexOf(model.frontier)))
+      )
+        return `a deferred rebase left confirmed_ledger at ${frontier?.headerHash}, outside ${model.from}..${model.frontier}`;
+      modelFrontier = frontier.headerHash;
+      return null;
     }
-    if (txs.length === 0) return;
-    await run(admitPending(txs));
-    mempool.survivors.push(...txs);
-    stats.admitted += txs.length;
+    if (frontier?.headerHash !== model.frontier)
+      return `confirmed_ledger is at ${frontier?.headerHash}, the model's at ${model.frontier}`;
+    if (behind) stats.behindHealed += 1;
+    behind = false;
+    stats.comparedChecks += 1;
+    const { stop } = model;
+    if (stop === undefined) {
+      if (hold !== undefined) return `unexpected hold ${JSON.stringify(hold)}`;
+    } else {
+      const reason =
+        stop.kind === "invalid"
+          ? LANDED_BLOCK_INVALID
+          : LANDED_BLOCK_AWAITING_DA;
+      if (hold?.reason !== reason || !hold.detail.includes(stop.header))
+        return `${stop.kind} block ${stop.header} held ${JSON.stringify(hold)}`;
+      if (stop.kind === "invalid") stats.invalidHeld += 1;
+      if (stop.merged) stats.heldPastMerge += 1;
+    }
+    const rowSummary = (await run(retrieveRows))
+      .map((row) => `${row.headerHash}:${row.kind}:${row.state}:${row.applied}`)
+      .sort();
+    const expectedRows = model.rows
+      .map(
+        (header) =>
+          `${header}:${env.registry.get(header)!.own ? "own" : "foreign"}:processed:true`,
+      )
+      .sort();
+    if (JSON.stringify(rowSummary) !== JSON.stringify(expectedRows))
+      return `rows ${JSON.stringify(rowSummary)} vs model ${JSON.stringify(expectedRows)}`;
+    const live =
+      book.active !== undefined && !model.rows.includes(book.active)
+        ? book.blocks.get(book.active)!
+        : undefined;
+    if (live !== undefined && live.parentHash !== model.tip)
+      return `active own block ${live.headerHash} is built on ${live.parentHash}, the processed tip is ${model.tip}`;
+    const top = live?.headerHash ?? model.tip;
+    const topInfo = env.registry.get(top)!;
+    const rebuild = settleMempool(
+      mempool,
+      ledgerMap(env.universe.ledger(topInfo.h, topInfo.b)),
+      includedBy(model.processed, model.rows, live),
+    );
+    if (typeof rebuild === "string") return rebuild;
+    const difference = await compareState(model, top, rebuild.ledger);
+    if (difference !== null) return difference;
+    // Case counters (the node agreed with the model).
+    const merged = new Set(rooted);
+    if (
+      model.processed.some(
+        (header) => merged.has(header) && !rowsBefore.has(header),
+      )
+    )
+      stats.coalescedMerges += 1;
+    const removed = lastRows.filter(
+      (header) => !model.processed.includes(header),
+    );
+    if (rollback && removed.length > 0) {
+      stats.rollbacksRemovingProcessed += 1;
+      if (rebuild.newly.length > 0) stats.rejectionsOnRollback += 1;
+      if (rebuild.newly.some(([, reason]) => reason === "dependent"))
+        stats.latentHoleClosed += 1;
+    }
+    for (const [, reason] of rebuild.newly)
+      if (reason === "direct") stats.directRejections += 1;
+      else if (reason === "dependent") stats.dependentRejections += 1;
+      else stats.batchRejections += 1;
+    stats.foreignIncluded += rebuild.dropped.length;
+    if (rebuild.batchSettled) stats.batchSettled += 1;
+    if (model.rows.some((header) => env.registry.get(header)!.own))
+      stats.ownProcessed += 1;
+    modelFrontier = model.frontier;
+    lastRows = model.rows;
+    if (
+      ((await store.cursor())?.prunedThroughSlot ?? SIM_ORIGIN.point.slot) >
+      SIM_ORIGIN.point.slot
+    )
+      stats.prunedChecks += 1;
+    // The node's own moves: admissions, then now and then its own block on
+    // the processed tail.
+    if (stats.checks % 2 === 0 && mempool.survivors.length < 6)
+      await node.admit(topInfo, rebuild.ledger);
+    const tipInfo = env.registry.get(model.tip)!;
+    const candidate =
+      stop === undefined &&
+      book.active === undefined &&
+      model.tip === (queue.nodes.at(-1) ?? queue.root)
+        ? await node.candidateOn(model.tip)
+        : undefined;
+    if (
+      candidate !== undefined ||
+      (stop === undefined &&
+        book.active === undefined &&
+        model.tip === (queue.nodes.at(-1) ?? queue.root) &&
+        stats.checks % 5 === 1 &&
+        tipInfo.h + 1 <= H_MAX &&
+        !hasDeposit(tipInfo.h + 1))
+    ) {
+      const block = await node.commit(model.tip, candidate);
+      if (typeof block === "string") return block;
+      const info = env.registry.get(block.headerHash)!;
+      const after = settleMempool(
+        mempool,
+        ledgerMap(env.universe.ledger(info.h, info.b)),
+        includedBy(model.processed, model.rows, block),
+      );
+      if (typeof after === "string") return after;
+      const committed = await compareState(
+        model,
+        block.headerHash,
+        after.ledger,
+      );
+      if (committed !== null) return `after an own commit: ${committed}`;
+    }
+    return null;
   };
 
   const check: NonNullable<FollowerProjection["check"]> = async ({
@@ -228,10 +338,10 @@ export const landedBlocksSimProjection = (
     step,
   }) => {
     stats.checks += 1;
+    seen += 1;
     const { event } = step;
     if (event.kind === "roll_forward") canonical.push(decodeBlock(event.block));
     else {
-      rolledBack = true;
       const target =
         event.point.kind === "point" ? event.point.hash.toLowerCase() : null;
       while (
@@ -240,97 +350,58 @@ export const landedBlocksSimProjection = (
       )
         canonical.pop();
     }
+    // The node is down: the follower moves on without it.
+    if (seen <= env.offlineFor || seen % 17 >= 14) {
+      stats.offlineChecks += 1;
+      return null;
+    }
     if (stats.checks % 4 === 0) {
       await env.owner.reopen();
       stats.ownerRestarts += 1;
     }
     const queue = canonicalQueue(canonical);
-    const faults: Faults = { missing: [], transient: 0 };
-    const settled = await settle(store, faults, event.kind === "roll_backward");
-    if ("error" in settled) return settled.error;
-    if (queue === undefined) return null;
-    if (settled.deferred === true) return null;
-    const { hold } = settled;
-    const frontier = await run(Frontier.retrieve);
-    if (frontier === undefined) return `no frontier at ${queue.root}`;
-    if (frontier.headerHash !== lastFrontier && lastFrontier !== undefined)
-      stats.folds += 1;
-    lastFrontier = frontier.headerHash;
-    if (frontier.headerHash !== queue.root) {
-      if (!rolledBack)
-        return `confirmed_ledger is at ${frontier.headerHash}, the queue root ${queue.root}, with no rollback yet`;
-      if (hold?.reason !== CONFIRMED_LEDGER_BEHIND)
-        return `a frontier off the queue root held ${JSON.stringify(hold)}`;
-      stats.behindHeld += 1;
-      behind = true;
-      return null;
-    }
-    if (behind) stats.behindHealed += 1;
-    behind = false;
-    stats.comparedChecks += 1;
-    const { prefix, bad } = processedPrefix(env.registry, queue);
-    if (bad === undefined) {
-      if (hold !== undefined) return `unexpected hold ${JSON.stringify(hold)}`;
-    } else {
-      if (hold?.reason !== LANDED_BLOCK_INVALID || !hold.detail.includes(bad))
-        return `bad block ${bad} held ${JSON.stringify(hold)}`;
-      stats.invalidHeld += 1;
-    }
-    const rows = await run(retrieveRows);
-    const rowSummary = rows
-      .map((row) => `${row.headerHash}:${row.kind}:${row.state}:${row.applied}`)
-      .sort();
-    const expectedRows = prefix
-      .map((hash) => `${hash}:foreign:processed:true`)
-      .sort();
-    if (JSON.stringify(rowSummary) !== JSON.stringify(expectedRows))
-      return `rows ${JSON.stringify(rowSummary)} vs model ${JSON.stringify(expectedRows)}`;
-    const tip = prefix.at(-1) ?? queue.root;
-    const tipInfo = env.registry.get(tip)!;
-    const base = ledgerMap(env.universe.ledger(tipInfo.h, tipInfo.b));
-    const { ledger, newly } = settleMempool(mempool, base);
-    const expected = expectedState(
-      env.universe,
-      env.registry,
-      queue,
-      ledger,
-      mempool,
+    if (queue !== undefined)
+      await node.finalizeMerged(new Set(rootLineage(env.registry, queue.root)));
+    const rowsBefore = new Set(
+      (await run(retrieveRows)).map((row) => row.headerHash),
     );
-    const actual = await run(readActual(env.registry));
-    const difference = stateDifference(actual, expected.actual);
-    if (difference !== null) return difference;
-    const { durableRoot } = await env.owner.current.diagnostics();
-    if (durableRoot !== expected.tipRoot)
-      return `native root ${durableRoot}, the processed tip's ${expected.tipRoot}`;
-    const basis = (await run(Basis.retrieve)) ?? frontier;
-    if (basis.headerHash !== tip)
-      return `working-ledger basis ${basis.headerHash}, the processed tip ${tip}`;
-    // Case counters (the node agreed with the model).
-    const removed = lastPrefix.filter((hash) => !prefix.includes(hash));
-    if (event.kind === "roll_backward" && removed.length > 0) {
-      stats.rollbacksRemovingProcessed += 1;
-      if (newly.length > 0) stats.rejectionsOnRollback += 1;
-      if (newly.some(([, reason]) => reason === "dependent"))
-        stats.latentHoleClosed += 1;
+    const faults: Faults = { missing: [], transient: 0 };
+    const before = settler.rebuilds();
+    const settled = await settler.settle(
+      store,
+      faults,
+      event.kind === "roll_backward",
+      queue,
+    );
+    if ("error" in settled) return settled.error;
+    if (queue !== undefined) {
+      const failed = await compare(
+        store,
+        event.kind === "roll_backward",
+        queue,
+        settled,
+        settler.rebuilds() !== before,
+        rowsBefore,
+      );
+      if (failed !== null) return failed;
     }
-    for (const [, reason] of newly)
-      if (reason === "direct") stats.directRejections += 1;
-      else stats.dependentRejections += 1;
-    lastPrefix = prefix;
-    if (
-      ((await store.cursor())?.prunedThroughSlot ?? SIM_ORIGIN.point.slot) >
-      SIM_ORIGIN.point.slot
-    )
-      stats.prunedChecks += 1;
-    if (stats.checks % 2 === 0 && mempool.survivors.length < 6)
-      await admit(tip, ledger);
+    snapshot = await state();
     return null;
   };
 
   return {
     ...stateQueueProjection(SIM_QUEUE_CONFIG),
     name: "landed-blocks",
-    traffic: landedBlocksTraffic(env.universe, env.registry, stats),
+    pruneFloor: landedFrontierPruneFloor({
+      config: SIM_QUEUE_CONFIG,
+      needs: () => run(landedFrontierNeeds),
+    }),
+    traffic: landedBlocksTraffic(
+      env.universe,
+      env.registry,
+      stats,
+      env.mergeHeavy,
+    ),
     check: async (context) => {
       try {
         return await check(context);
