@@ -6,10 +6,7 @@ import { type Address, Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Layer } from "effect";
 import { expect } from "vitest";
 
-import {
-  APPLICATION_TABLE_NAMES,
-  MIGRATIONS,
-} from "../src/database/migrations/index.js";
+import { MIGRATIONS } from "../src/database/migrations/index.js";
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
 import * as LedgerUtils from "../src/database/utils/ledger.js";
 import {
@@ -87,29 +84,42 @@ const migrationSeedRowsSql: readonly string[] = MIGRATIONS.flatMap(
       .match(MIGRATION_INSERT_STATEMENT) ?? [],
 );
 
-const FOLLOWER_BOOKKEEPING_TABLES = [
-  "l1_follower_migrations",
-  "l1_follower_tables",
-  "l1_follower_writer",
-] as const;
-
 /**
- * The follower's tracked-set record and replay flag describe the facts it
- * emptied, so it is emptied with them: the next store starts unrecorded.
+ * The tables a reset keeps, each with why. Every other table in the test
+ * database's schemas is emptied, so a table a new migration (node or
+ * follower) adds is reset without editing this list.
  */
-const FOLLOWER_EMPTIED_BOOKKEEPING_TABLES = [
-  "l1_follower_tracked_set",
-] as const;
-
-const truncateApplicationTablesSql = `TRUNCATE TABLE ${APPLICATION_TABLE_NAMES.map(
-  (table) => `"${table}"`,
-).join(", ")} RESTART IDENTITY CASCADE`;
+export const RESET_KEPT_TABLES: ReadonlyMap<string, string> = new Map([
+  [
+    "schema_migrations",
+    "the node's migration ledger: the runner checks it against MIGRATIONS on every migrate, and the schema it records is still in place",
+  ],
+  [
+    "schema_migration_events",
+    "the node's migration audit trail, written beside the ledger",
+  ],
+  [
+    "l1_follower_migrations",
+    "the follower store's migration ledger, the follower's schema_migrations",
+  ],
+  [
+    "l1_follower_tables",
+    "the follower's catalog of the tables its migrations declared; the follower's own reset reads it",
+  ],
+  [
+    "l1_follower_writer",
+    "the follower's writer-fence singleton (epoch, next generation), written by its migration; a store without the row refuses to open, and generations only ever rise",
+  ],
+]);
 
 /**
- * Returns the migration-built schema to its freshly migrated contents: every
- * application table is emptied (identities restarted) and the migrations' seed
- * rows are restored, in one transaction. The table list is the one the
- * migration runner checks, so a new table is reset without editing tests.
+ * Returns the test database to its freshly migrated contents: every table in
+ * its schemas except `RESET_KEPT_TABLES` is emptied in one TRUNCATE
+ * (identities restarted), and the migrations' seed rows (the
+ * `commit_build_calibration` singleton) are restored, in one transaction.
+ * The tables are read from the catalog, not listed, so no table can be left
+ * holding another file's chain: the fork pool runs every file of a worker
+ * on that worker's database.
  */
 export const resetApplicationTables = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -121,43 +131,20 @@ export const resetApplicationTables = Effect.gen(function* () {
       "Refusing application reset outside this invocation's disposable test shard",
     );
   }
-  const tables = yield* sql<{
-    name: string;
-  }>`SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public'`;
-  // The L1 follower's tables (installed with the node schema) reset by its
-  // own catalog: every catalogued table is emptied, while its migration
-  // ledger, catalog and writer row are bookkeeping the follower keeps.
-  const followerTables = (yield* sql<{
-    name: string;
-  }>`SELECT table_name AS name FROM l1_follower_tables ORDER BY table_name`).map(
-    ({ name }) => name,
-  );
-  const registered = new Set<string>([
-    ...APPLICATION_TABLE_NAMES,
-    ...followerTables,
-    ...FOLLOWER_BOOKKEEPING_TABLES,
-    ...FOLLOWER_EMPTIED_BOOKKEEPING_TABLES,
-    "schema_migrations",
-    "schema_migration_events",
-  ]);
-  const unknown = tables.filter(({ name }) => !registered.has(name));
-  if (unknown.length > 0) {
-    return yield* Effect.dieMessage(
-      `Application reset inventory is incomplete: ${unknown.map(({ name }) => name).join(", ")}; register the new migration tables before testing`,
-    );
-  }
   yield* sql.withTransaction(
     Effect.gen(function* () {
-      yield* sql.unsafe(truncateApplicationTablesSql);
-      const emptied = [
-        ...followerTables,
-        ...FOLLOWER_EMPTIED_BOOKKEEPING_TABLES.filter((table) =>
-          tables.some(({ name }) => name === table),
-        ),
-      ];
+      const tables = yield* sql<{
+        schema: string;
+        name: string;
+      }>`SELECT schemaname AS schema, tablename AS name FROM pg_tables
+        WHERE schemaname <> 'information_schema' AND left(schemaname, 3) <> 'pg_'
+        ORDER BY schemaname, tablename`;
+      const emptied = tables.filter(({ name }) => !RESET_KEPT_TABLES.has(name));
       if (emptied.length > 0)
         yield* sql.unsafe(
-          `TRUNCATE TABLE ${emptied.map((table) => `"${table}"`).join(", ")} RESTART IDENTITY CASCADE`,
+          `TRUNCATE TABLE ${emptied
+            .map(({ schema, name }) => `"${schema}"."${name}"`)
+            .join(", ")} RESTART IDENTITY CASCADE`,
         );
       for (const seedRowsSql of migrationSeedRowsSql) {
         yield* sql.unsafe(seedRowsSql);

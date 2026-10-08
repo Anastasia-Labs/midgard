@@ -7,10 +7,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Metric } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  DaPayloadsDB,
-  DaPayloadTerminalOutcomesDB,
-} from "../src/database/index.js";
+import { DaPayloadsDB } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { retentionSweepAction } from "../src/fibers/retention-sweeper.js";
 import { NodeConfig } from "../src/services/index.js";
@@ -29,7 +26,11 @@ import {
   terminalMerge,
   withSweepServices,
 } from "./retention-enforcement.terminal-merge.js";
-import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
+import {
+  deterministicFixtureBytes,
+  provideDatabaseLayers,
+  resetApplicationTables,
+} from "./utils.js";
 
 const OLD = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
 
@@ -122,12 +123,7 @@ describe.skipIf(!dbEnabled)("DA payload retention held to L1 finality", () => {
     );
   }, 120_000);
 
-  const clearAll = Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`DELETE FROM state_queue_terminal_observer_states`;
-    yield* DaPayloadTerminalOutcomesDB.clear;
-    yield* DaPayloadsDB.clear;
-  });
+  const clearAll = resetApplicationTables;
 
   const run = <A>(
     effect: Effect.Effect<A, unknown, SqlClient.SqlClient | NodeConfig>,

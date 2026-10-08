@@ -56,7 +56,7 @@ import {
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./helpers/reference-publication-chain.js";
 import { makeJournalDirectory } from "./helpers/run-journal-directory.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Deployment manifests admit only the compiled profile's network.
 const network = SELECTED_DEPLOYMENT_PROFILE.network;
@@ -81,14 +81,7 @@ type Receipt = AcceptedHistoryObservation & {
 it("replays actual initialized lists and joins current external orders whose retained bodies predate activation", async () => {
   // Standard globalSetup owns this disposable migrated worker database. Keep
   // this scenario's journal and singleton authority independent of prior tests.
-  await Effect.runPromise(
-    provideDatabaseLayers(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_replay_receipts, event_history_authority`;
-      }),
-    ),
-  );
+  await Effect.runPromise(provideDatabaseLayers(resetApplicationTables));
   const accounts = createPublishedWorkflowDeploymentAccounts();
   const user = generateEmulatorAccount({ lovelace: 2_000_000_000n });
   const p = MAINNET_PROTOCOL_PARAMETERS;

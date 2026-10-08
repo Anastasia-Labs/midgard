@@ -162,8 +162,6 @@ describe("startup after a process killed mid local finalization", () => {
       isolatedDb(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          yield* sql`TRUNCATE TABLE mempool, processed_mempool, immutable, blocks
-            RESTART IDENTITY CASCADE`;
           const killed = header("killed-after-finalization-sql");
           const headerHex = killed.toString("hex");
           yield* observedJournal(killed);

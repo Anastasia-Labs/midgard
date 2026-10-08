@@ -1116,27 +1116,27 @@
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-shared.ts",
-    "max": 1879,
+    "max": 1839,
     "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API. N2 (+21): the harness mirrors the emulator's state queue into the node's follower facts (P1) before it opens an owner and after each block, since the node reads its queue only from P1. N6 (+9): node commands run after the emulator's events are mirrored into the follower's event rows, since settlement opens an event by id from those rows (NC13). I1 (+3): the submissions and the node commands run under the journal of a process with no follower. I1-fix (+2): that journal keeps what it journals, so a flow's intents can be replayed onto a follower of its chain. I1-fix2 (+9): a commit worker run can take another journal, so a test runs the real worker under a follower-backed journal that refuses inside the commit's gate."
   },
   {
     "file": "midgard-node/tests/event-history-journal.test.ts",
-    "max": 2208,
+    "max": 2201,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
     "file": "midgard-node/tests/event-history-ledger-receipts.test.ts",
-    "max": 717,
+    "max": 709,
     "reason": "Retained test registration “owned accepted-ledger inverse receipts” (223 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/event-history-ledger-repair.test.ts",
-    "max": 1048,
+    "max": 1040,
     "reason": "Retained test registration “unpublished history-dependent ledger repair” (276 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/event-history-ready-append.test.ts",
-    "max": 906,
+    "max": 902,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1151,12 +1151,12 @@
   },
   {
     "file": "midgard-node/tests/event-history-recovery.test.ts",
-    "max": 603,
+    "max": 596,
     "reason": "Retained test registration “canonical history recovery composition” (457 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/event-history-retired-membership.test.ts",
-    "max": 867,
+    "max": 859,
     "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1181,7 +1181,7 @@
   },
   {
     "file": "midgard-node/tests/history-source-owner-retention.test.ts",
-    "max": 600,
+    "max": 591,
     "reason": "Retained production-owner lifecycle registration shares its emulator, follower gates and restart state across retention, readiness and rollback assertions. Independent fixture helpers are extracted; dividing the registration requires a separately verified harness refactor."
   },
   {
@@ -1196,12 +1196,12 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts",
-    "max": 894,
+    "max": 887,
     "reason": "Retained test registration “replays actual initialized lists and joins current external orders whose retained bodies predate activation” (818 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/l1-event-history-initialization-emulator.test.ts",
-    "max": 681,
+    "max": 673,
     "reason": "Retained test registration “bootstraps both histories from accepted atomic initialization and subsequent public admissions” (614 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1241,7 +1241,7 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-source-owner-emulator.test.ts",
-    "max": 807,
+    "max": 806,
     "reason": "Retained test registration “runs the default history owner through actual bootstrap, continuation, retirement and fresh restart intersection” (742 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

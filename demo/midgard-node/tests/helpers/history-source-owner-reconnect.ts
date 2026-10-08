@@ -19,20 +19,11 @@ import {
 import type { HistorySourceReconnectBounds } from "../../src/services/event-history-owner.source-outage.js";
 import type { HistoryRecoveryPreparation } from "../../src/services/event-history-recovery.js";
 import { makeMempoolLedgerCacheService } from "../../src/services/mempool-ledger-cache.js";
-import { provideDatabaseLayers } from "../utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "../utils.js";
 import { historyOutputObservation } from "./history-projection-observations.js";
 import { makeRollbackHistoryTransport } from "./history-rollback-transport.js";
 import { openHistorySourceOwnerLifecycle } from "./history-source-owner-emulator.js";
 
-export const truncate = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_l2_ledger_receipts, mempool_ledger,
-    deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits,
-    pending_block_finalization_withdrawals, event_history_cursor,
-    event_history_block_applications, event_history_live_outputs,
-    event_history_incarnations, event_history_replay_receipts,
-    event_history_authority CASCADE`;
-});
 export const eventually = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(
     Effect.retry(Schedule.spaced("10 millis")),
@@ -192,7 +183,7 @@ export const scenario =
         provideDatabaseLayers(
           Effect.scoped(
             Effect.gen(function* () {
-              yield* truncate;
+              yield* resetApplicationTables;
               const sql = yield* SqlClient.SqlClient;
               const cache = yield* makeMempoolLedgerCacheService(
                 h.globals,

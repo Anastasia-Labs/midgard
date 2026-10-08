@@ -35,7 +35,7 @@ import type { HistoryOwnerChange } from "../src/services/event-history-owner.js"
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { productionRuntimeHistoryBinding } from "./helpers/production-history-binding.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // The production composition's owner echoes the input it is handed, so the
 // restart test reads the binding the runtime derives from its transport.
@@ -614,11 +614,7 @@ beforeAll(async () => {
     ]),
   ];
 }, 120_000);
-const clear = () =>
-  sqlRun(
-    (sql) =>
-      sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, event_history_recovery_plans`,
-  );
+const clear = () => run(resetApplicationTables);
 beforeEach(clear);
 
 describe("Ready head append", () => {

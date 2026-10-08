@@ -37,7 +37,8 @@ import { executeHistoryDependentRecovery } from "../src/services/history-depende
 import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/protocol.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
-import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
+import { applyMidgardNodeTestEnv } from "./test-env.js";
+import { resetApplicationTables } from "./utils.js";
 
 // Ordering component test: actual SQL, recovery ownership, cache and Globals.
 // L1 evidence is explicitly modeled as in recovery-plans.test; this test does
@@ -133,12 +134,8 @@ beforeAll(async () => {
 
 const cleanup = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const [database] = yield* sql<{
-    name: string;
-  }>`SELECT current_database() AS name`;
-  expect(database?.name).toBe(testDatabaseName());
   yield* sql`CREATE TABLE IF NOT EXISTS history_dependent_ordering_probe(label text PRIMARY KEY)`;
-  yield* sql`TRUNCATE history_dependent_ordering_probe, event_history_recovery_plans, event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts`;
+  yield* resetApplicationTables;
 });
 beforeEach(async () => {
   await run(cleanup);

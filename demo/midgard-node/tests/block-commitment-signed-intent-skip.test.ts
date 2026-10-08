@@ -14,7 +14,7 @@ import {
   header,
   journalFixture,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const prepared = vi.hoisted(() => ({ count: 0 }));
 const buildAndSubmitMock = vi.hoisted(() => vi.fn());
@@ -69,12 +69,10 @@ const runWithNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const clear = sql`TRUNCATE TABLE pending_block_finalizations,
-          state_queue_mutation_leases, event_history_authority
-          RESTART IDENTITY CASCADE`;
-        yield* clear;
-        return yield* program.pipe(Effect.ensuring(Effect.orDie(clear)));
+        yield* resetApplicationTables;
+        return yield* program.pipe(
+          Effect.ensuring(Effect.orDie(resetApplicationTables)),
+        );
       }).pipe(
         Effect.provideService(NodeConfig, nodeConfig),
         Effect.provideService(Lucid, {} as Lucid),
