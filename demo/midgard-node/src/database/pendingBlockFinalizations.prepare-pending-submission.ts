@@ -43,6 +43,7 @@ import {
 import {
   exactBytes,
   exactDate,
+  type PreparedPendingSubmission,
   type PrepareInput,
 } from "./pendingBlockFinalizations.parse-ledger-delta.js";
 import {
@@ -66,7 +67,7 @@ export const preparePendingSubmission = (
      */
     readonly beforeJournalInsert?: Effect.Effect<void, DatabaseError, Database>;
   },
-): Effect.Effect<void, DatabaseError, Database> =>
+): Effect.Effect<PreparedPendingSubmission, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const pendingV1 = yield* Effect.try({
@@ -251,7 +252,7 @@ export const preparePendingSubmission = (
           blockEndTime: input.blockEndTime,
         }),
       );
-    yield* withHistoryWrite(
+    return yield* withHistoryWrite(
       Effect.gen(function* () {
         const candidateHistory = yield* requireCandidateHistory;
         if (
@@ -293,6 +294,14 @@ export const preparePendingSubmission = (
         yield* WithdrawalsDB.assertClassificationSnapshots(
           withdrawalMembers.map(withdrawalMemberToAssignment),
         );
+        const held = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
+          SELECT ${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)}
+          WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
+            AND ${sql(Columns.STATUS)} = ${Status.Abandoned}
+            AND (${sql(Columns.SUBMITTED_TX_HASH)} IS NOT NULL
+              OR ${sql(Columns.INTENDED_TX_HASH)} IS NOT NULL)`;
+        const heldHeaderHash = input.headerHash;
+        if (held.length !== 0) return { kind: "held" as const, heldHeaderHash };
         if (active !== undefined) {
           yield* sql`DELETE FROM ${sql(tableName)}
             WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
@@ -478,6 +487,7 @@ export const preparePendingSubmission = (
             validationTraceWitnessesTableName,
           )} ${sql.insert(validationTraceWitnessMembers)}`;
         }
+        return { kind: "prepared" as const };
       }),
     );
   }).pipe(

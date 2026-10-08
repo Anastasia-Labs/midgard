@@ -67,6 +67,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/tx-admissions-claim-load.test.ts
  *   tests/tx-admissions-monotone-timestamps.test.ts
  *   tests/block-commitment-signed-intent-skip.test.ts
+ *   tests/commit-held-header-journal.test.ts
  *   tests/history-retention-prune.test.ts
  *   tests/readiness-honest-degradation-route.test.ts
  *   tests/state-queue-mutation-lease-settle-retry.test.ts

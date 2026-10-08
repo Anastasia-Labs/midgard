@@ -46,7 +46,7 @@ vi.mock("../src/database/index.js", async () => {
           submissionTrace.calls.push("prepare-journal");
           return submissionTrace.failJournalPreparation
             ? Effect.fail(new Error("journal insert refused"))
-            : Effect.void;
+            : Effect.succeed({ kind: "prepared" as const });
         }),
       ),
       retrieveByHeaderHash: vi.fn(() =>

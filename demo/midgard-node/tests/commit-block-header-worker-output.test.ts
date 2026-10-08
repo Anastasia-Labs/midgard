@@ -297,6 +297,14 @@ describe("commit block worker output handling", () => {
       },
       preserve: false,
     },
+    AwaitingNextCommitWindowOutput: {
+      output: {
+        type: "AwaitingNextCommitWindowOutput",
+        heldHeaderHash: "ee".repeat(28),
+        detail: "a signed abandoned journal holds this header",
+      },
+      preserve: false,
+    },
     SubmittedAwaitingConfirmationOutput: {
       output: {
         type: "SubmittedAwaitingConfirmationOutput",
