@@ -6,8 +6,9 @@
  *
  * The model replays the pending transactions in admission order on a base
  * ledger. One a block on the base's lineage includes is settled, not
- * pending: its row stays (marked) until that block folds, then leaves; a
- * rollback that takes the block off the lineage makes it pending again. Of
+ * pending: its row stays (marked) until that block's fold is final (its
+ * retained fold pruned), then leaves; a rollback that takes the block off
+ * the lineage makes it pending again. Of
  * the rest, one whose input is gone is rejected ("direct"), one that spends
  * a rejected transaction's output with it ("dependent"), and every pending
  * co-member of an acceptance receipt that holds a rejected transaction
@@ -70,8 +71,10 @@ export const newSimMempool = (): SimMempool => ({
  */
 export type SimIncluded = Readonly<{
   settled: ReadonlySet<string>;
-  /** Settled by a folded block, by the folded block's kind: those rows are gone. */
+  /** Settled by a folded block, by the folded block's kind. */
   folded: ReadonlyMap<string, "own" | "foreign">;
+  /** Settled by a block whose fold is final (released): those rows are gone. */
+  released: ReadonlySet<string>;
 }>;
 
 export type SimSettlement = Readonly<{
@@ -86,7 +89,7 @@ export type SimSettlement = Readonly<{
 /**
  * Rebuilds the model's working ledger on `base`; moves the pending
  * transactions that cannot apply to the rejections and drops the ones a
- * folded block includes. A string is a model failure: a batch the rebuild
+ * block whose fold is final includes. A string is a model failure: a batch the rebuild
  * could neither reject nor settle.
  */
 export const settleMempool = (
@@ -154,7 +157,7 @@ export const settleMempool = (
     if (!receipt.reversed && receipt.ids.some((id) => rejected.has(id)))
       receipt.reversed = true;
   mempool.survivors = mempool.survivors.filter(
-    (tx) => !rejected.has(hex(tx.id)) && !folded.has(hex(tx.id)),
+    (tx) => !rejected.has(hex(tx.id)) && !included.released.has(hex(tx.id)),
   );
   for (const [id, reason] of rejected) mempool.rejected.set(id, reason);
   return { ledger, newly: [...rejected], batchSettled, foldThenReject };

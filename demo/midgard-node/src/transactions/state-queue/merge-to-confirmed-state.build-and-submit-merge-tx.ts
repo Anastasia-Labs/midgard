@@ -50,6 +50,7 @@ import {
 } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 import {
   finalizeConfirmedMergeProgram,
+  landedMergeOf,
   mergeBlockCounter,
 } from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import {
@@ -436,10 +437,9 @@ export const buildAndSubmitMergeTx = (
       if (options?.assertSubmitAuthority !== undefined) {
         yield* options.assertSubmitAuthority();
       }
-      const finalizeLocalMergeLogged = finalizeConfirmedMergeProgram({
-        headerHash,
-        headerUtxosRoot: blockHeader.utxosRoot,
-      }).pipe(
+      const finalizeLocalMergeLogged = finalizeConfirmedMergeProgram(
+        landedMergeOf(headerHash, blockHeader),
+      ).pipe(
         Effect.tapError((error) =>
           Effect.gen(function* () {
             yield* Metric.increment(mergeLocalFinalizationFailureCounter);

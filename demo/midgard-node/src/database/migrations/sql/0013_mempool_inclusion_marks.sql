@@ -1,7 +1,7 @@
--- class: D-x; retention: a mark lives while the block it names holds the row (landed and processed, or this node's block between its local finalization and its processing); the fold of that block deletes the row, and the rollback that takes the block off the landed chain clears the mark
+-- class: D-x; retention: a mark lives while the block it names holds the row (landed and processed, folded but not yet final, or this node's block between its local finalization and its processing); the prune that makes that block's fold final deletes the row, and the rollback that takes the block off the landed chain clears the mark
 -- A pending-table row a block includes stays in its table, marked by that
--- block's header hash (plan §7.3, N3), until the block folds into
--- `confirmed_ledger`; the rollback that takes the block off the landed
+-- block's header hash (plan §7.3, N3), until the block's fold into
+-- `confirmed_ledger` is final; the rollback that takes the block off the landed
 -- chain clears the mark, so the row is pending again. Pending means
 -- unmarked: selection, commit building and every pending read skip a
 -- marked row.

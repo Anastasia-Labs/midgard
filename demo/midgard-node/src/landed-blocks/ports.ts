@@ -46,15 +46,6 @@ export type LandedBlockPorts<R> = Readonly<{
   ownJournal: (
     headerHash: string,
   ) => Effect.Effect<OwnJournal | undefined, unknown, R | Database>;
-  /** Whether this node finalized its own merged block `headerHash` locally. */
-  ownMergeCompleted: (
-    headerHash: string,
-  ) => Effect.Effect<boolean, unknown, R | Database>;
-  /** Folds this node's own merged block into `confirmed_ledger` (its journal's delta). */
-  finalizeOwnMerge: (input: {
-    readonly headerHash: Buffer;
-    readonly headerUtxosRoot: string;
-  }) => Effect.Effect<void, unknown, R | Database>;
   /** The configured genesis ledger. */
   genesis: Effect.Effect<
     readonly Ledger.EntryNoTimeStamp[],

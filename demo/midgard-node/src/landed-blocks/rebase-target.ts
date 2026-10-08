@@ -5,17 +5,19 @@
  * not landed yet. The rebase cannot run while the active journal is built on
  * anything else (its base left the queue, or another block took its slot):
  * that journal must be resolved first (released, replaced or revived). Nor
- * can it run while a pending-table row is marked by a block the target does
- * not hold (this node's block between its local finalization and its
- * processing): that row is neither pending nor in the base until processing
- * takes the block in, its merge finalization deletes the row, or the
- * reopening of its journal clears the mark.
+ * can it run while a pending-table row is marked by a block neither the
+ * target nor `confirmed_ledger` holds (this node's block between its local
+ * finalization and its processing): that row is neither pending nor in the
+ * base until processing takes the block in or the reopening of its journal
+ * clears the mark. A folded block's rows stay marked until its fold is final
+ * (`final-folds.ts`); they are in the base, so they never block.
  */
 import { Effect } from "effect";
 
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
 import type { NativeMpfEventOp } from "../services/mpf-native-owner/service.normalize-owner-options.js";
+import { retrieveMergeLinks } from "./confirmed-merges.js";
 import { activeJournal } from "./journal.js";
 import {
   applyDelta,
@@ -109,7 +111,10 @@ export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
         produced: active.produced,
       });
     }
-    const held = new Set(steps.map((step) => step.headerHash));
+    const held = new Set([
+      ...steps.map((step) => step.headerHash),
+      ...(yield* retrieveMergeLinks).keys(),
+    ]);
     const unheld = (yield* MempoolInclusionsDB.markingHeaders).find(
       (headerHash) => !held.has(headerHash),
     );

@@ -18,6 +18,7 @@ import {
   stateQueueHistoryIn,
   type StateQueueProjectionConfig,
 } from "../l1-state-queue/index.js";
+import type { MergePoint } from "./confirmed-merges.js";
 import { ViewMoved } from "./ports.js";
 
 /** A queue node: its header hash and header. */
@@ -28,6 +29,12 @@ export type QueueHistory = Readonly<{
   headers: ReadonlyMap<string, SDK.Header>;
   /** Each header's end time, from a node or a root that carried it. */
   endTimes: ReadonlyMap<string, bigint>;
+  /**
+   * The root output that made each header the queue root (the earliest
+   * retained one, if a header was ever re-rooted), where its creation is
+   * known.
+   */
+  roots: ReadonlyMap<string, MergePoint>;
 }>;
 
 /** The retained queue elements at `view`; fails `ViewMoved` if the follower left it. */
@@ -58,9 +65,19 @@ export const decodeHistory = (
 ): QueueHistory => {
   const headers = new Map<string, SDK.Header>();
   const endTimes = new Map<string, bigint>();
+  const roots = new Map<string, MergePoint>();
   for (const element of elements) {
     if (element.element.datum.key === "Empty") {
       endTimes.set(element.headerHash, element.endTimeMs);
+      const known = roots.get(element.headerHash);
+      if (
+        element.created !== null &&
+        (known === undefined || element.created.slot < known.slot)
+      )
+        roots.set(element.headerHash, {
+          slot: element.created.slot,
+          outRef: element.outRef,
+        });
       continue;
     }
     const header = Effect.runSync(
@@ -70,7 +87,7 @@ export const decodeHistory = (
     headers.set(element.headerHash, header.right);
     endTimes.set(element.headerHash, header.right.endTime);
   }
-  return { headers, endTimes };
+  return { headers, endTimes, roots };
 };
 
 /** `to` and its ancestors after the first one `stop` accepts, oldest first. */

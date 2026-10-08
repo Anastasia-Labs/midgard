@@ -11,7 +11,8 @@
  * `landed_block_own_journal_abandoned`, `landed_block_event_unknown`,
  * `landed_block_forced_order_pending`, `landed_block_awaiting_da`,
  * `landed_block_rebase_failed`, `landed_block_replay_failed`,
- * `landed_blocks_waiting`, `confirmed_ledger_behind` and
+ * `confirmed_ledger_base_mismatch`, `landed_blocks_waiting`,
+ * `confirmed_ledger_behind`, `confirmed_ledger_own_block_pending` and
  * `landed_block_rebase_pending`, the first by priority named as the reason
  * and the rest in its detail), the intent stage's (`wallet_seed_pending`,
  * `intent_reconcile_failed`, `intent_reconcile_transient`,
@@ -29,6 +30,9 @@
  * `landed_frontier_prune_floor:<slots>` while the landed frontier's prune
  * floor holds the follower's prune boundary that many slots back (the facts
  * the frontier still needs are kept; the store grows until it moves).
+ *
+ * The report also carries `confirmedLedger`: the confirmed-ledger frontier,
+ * the slot of its merge and that merge's level (`landed`, `safe`, `final`).
  */
 import type { FactStore, FollowStatus } from "@al-ft/midgard-l1-follower";
 
@@ -38,6 +42,7 @@ import {
   planIngestion,
 } from "../l1-events/driver.js";
 import type { EventProjectionConfig } from "../l1-events/index.js";
+import type { ConfirmedLedgerPosition } from "../landed-blocks/position.js";
 
 /** The node has no follower: its configuration is missing a piece (named in the detail). */
 export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
@@ -47,6 +52,12 @@ export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
  * once they do.
  */
 export const L1_NODE_CONFIG_UNREADABLE = "l1_node_config_unreadable";
+
+/** The follower cursor's identity, to tell a moved cursor from a repeat. */
+export const cursorKey = (status: FollowStatus): string | null =>
+  status.cursor === null
+    ? null
+    : `${status.cursor.generation.toString()}:${status.cursor.slot.toString()}`;
 
 /** The landed frontier's prune floor holds the follower's prune boundary back (detail, with the lag in slots). */
 export const LANDED_FRONTIER_PRUNE_FLOOR = "landed_frontier_prune_floor";
@@ -79,6 +90,8 @@ export type L1FollowerHandle = Readonly<{
   holds: () => readonly DriverHold[];
   /** Reads the event projection at the follower's current view. */
   planCurrent: () => Promise<FollowerPlanRead>;
+  /** Where `confirmed_ledger` stands, with its merge's level (P10); null before the first run. */
+  confirmedLedger?: () => ConfirmedLedgerPosition | null;
 }>;
 
 export type L1FollowerState =
@@ -168,6 +181,7 @@ export const l1FollowerReadiness = (
       events: status.events,
       lastError: status.lastError,
       prune: status.prune,
+      confirmedLedger: state.confirmedLedger?.() ?? null,
     },
   };
 };

@@ -296,7 +296,12 @@ describe(
           withHistoryWrite(work),
       } as unknown as LandedBlockPorts<never>;
       await sqlRun(globals, () =>
-        foldToRoot(foldPorts, {} as View, { headerHash: BLOCK, utxosRoot: R1 }),
+        foldToRoot(
+          foldPorts,
+          {} as View,
+          { headerHash: BLOCK, utxosRoot: R1 },
+          () => Effect.succeed(null),
+        ),
       );
       expect(await run(globals, retrieveRows)).toEqual([]);
       await land(globals, {

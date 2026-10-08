@@ -12,6 +12,7 @@ import intentRefusalHoldsSql from "./sql/0010_intent_refusal_holds.sql";
 import locallyAppliedBlockStatusSql from "./sql/0011_locally_applied_block_status.sql";
 import receiptSettlementsSql from "./sql/0012_receipt_settlements.sql";
 import mempoolInclusionMarksSql from "./sql/0013_mempool_inclusion_marks.sql";
+import confirmedLedgerMergesSql from "./sql/0014_confirmed_ledger_merges.sql";
 
 export type Migration = {
   readonly version: number;
@@ -113,6 +114,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: mempoolInclusionMarksSql,
     transactional: true,
   },
+  {
+    version: 14,
+    name: "confirmed_ledger_merges",
+    checksumSha256: sha256Hex(confirmedLedgerMergesSql),
+    sql: confirmedLedgerMergesSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -199,6 +207,8 @@ export const APPLICATION_TABLE_NAMES = [
   "follower_event_ingestion",
   "node_landed_blocks",
   "node_confirmed_ledger_frontier",
+  "node_confirmed_merges",
+  "node_confirmed_ledger_spent",
   "intent_refusal_holds",
 ] as const;
 
@@ -259,6 +269,7 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_receipt_settlements_settled_by",
   "idx_mempool_included_by",
   "idx_processed_mempool_included_by",
+  "idx_node_confirmed_merges_merge_slot",
 ] as const;
 
 export const migrationByVersion = new Map(

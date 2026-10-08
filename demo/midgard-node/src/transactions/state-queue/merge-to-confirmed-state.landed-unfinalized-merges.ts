@@ -13,6 +13,7 @@ import { Database, Globals } from "../../services/index.js";
 import {
   fetchLandedConfirmedState,
   finalizeConfirmedMergeProgram,
+  landedMergeOf,
   type LandedUnfinalizedMerge,
   MAX_LANDED_MERGE_CATCH_UP,
 } from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
@@ -120,7 +121,7 @@ const landedUnfinalizedMerges = (
           }),
         );
       }
-      pending.push({ headerHash, headerUtxosRoot: header.utxosRoot });
+      pending.push(landedMergeOf(headerHash, header));
       confirmedUtxosRoot = undefined;
       current = header.prevHeaderHash;
     }

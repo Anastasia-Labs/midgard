@@ -2,15 +2,16 @@
  * Inclusion marks on the pending tables (`mempool`, `processed_mempool`;
  * migration 0013, plan §7.3, N3). A row a block includes keeps its bytes and
  * its delta, marked by that block's header hash (`included_by`), until the
- * block folds into `confirmed_ledger`; the rollback that takes the block off
- * the landed chain clears the mark, and the row is pending again.
+ * block's fold into `confirmed_ledger` is final; the rollback that takes the
+ * block off the landed chain clears the mark, and the row is pending again.
  *
  * - Marked: this node's local finalization of its own block, and landed-block
  *   processing of any block (the processing insert, a reland, the rebase).
  * - Cleared: the rollback of a processed block, and the reopening of an own
  *   block's journal.
- * - Deleted (rows and deltas): the fold of the block (a foreign fold, or the
- *   local merge finalization of an own block).
+ * - Deleted (rows and deltas): once the block's fold is final, by the prune
+ *   that releases it (`landed-blocks/final-folds.ts`), never at the fold
+ *   itself, so an unfold has nothing to restore.
  *
  * A pending row is an unmarked one. Every reader that means "pending" reads
  * through the helpers here (or filters `included_by IS NULL` itself).
@@ -142,7 +143,7 @@ export const clearMarks = (
     ),
   );
 
-/** Deletes the rows `headerHash` marked, and their deltas: the block folded. */
+/** Deletes the rows `headerHash` marked, and their deltas: the block's fold is final. */
 export const deleteIncluded = (
   headerHash: string | Buffer,
 ): Effect.Effect<readonly Buffer[], DatabaseError, Database> =>

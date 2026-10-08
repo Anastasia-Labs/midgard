@@ -12,7 +12,6 @@ import { Effect } from "effect";
 
 import type { DriverHold } from "../../src/l1-events/driver.js";
 import {
-  CONFIRMED_LEDGER_BEHIND,
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_OWN_JOURNAL_ABANDONED,
   LANDED_BLOCK_REBASE_PENDING,
@@ -46,6 +45,9 @@ export const holdNames = (
 ) =>
   hold !== undefined &&
   (hold.reason === reason || hold.detail.includes(`also ${reason}:`));
+
+/** The simulated follower's depth parameters, for the published level. */
+const SIM_DEPTH = { confirmationDepth: 2, securityParameter: 6 } as const;
 
 const OWN_ABANDONED =
   /own block ([0-9a-f]+) landed but its journal is abandoned/;
@@ -87,6 +89,10 @@ export const simSettler = (
       config: SIM_QUEUE_CONFIG,
       ports: simPorts(env, store, faults, served, requested),
       run,
+      publish: {
+        depth: SIM_DEPTH,
+        position: (position) => (env.published.position = position),
+      },
     });
     const removedBefore = (await run(retrieveRows))
       .filter((row) => row.state === "removed")
@@ -138,8 +144,7 @@ export const simSettler = (
         continue;
       }
       if (plan.kind === "none") {
-        // A base that left the tip without a rebase (a frontier re-anchored
-        // past it) is resolved here too.
+        // A base that left the tip without a rebase is resolved here too.
         const target = await run(Effect.flatMap(retrieveRows, rebaseTargetOf));
         if (
           target.kind === "blocked" &&
@@ -156,11 +161,9 @@ export const simSettler = (
         }
         return { hold };
       }
-      const offRoot = hold?.reason === CONFIRMED_LEDGER_BEHIND;
-      if (!offRoot && !holdNames(hold, LANDED_BLOCK_REBASE_PENDING))
+      if (!holdNames(hold, LANDED_BLOCK_REBASE_PENDING))
         return { error: `a due rebase held ${JSON.stringify(hold)}` };
-      if (!offRoot && !requested.value)
-        return { error: "a due rebase was not requested" };
+      if (!requested.value) return { error: "a due rebase was not requested" };
       if (round === 0 && rollback && (rollbacks += 1) % 2 === 0)
         deferUntil = stats.checks + 3;
       if (

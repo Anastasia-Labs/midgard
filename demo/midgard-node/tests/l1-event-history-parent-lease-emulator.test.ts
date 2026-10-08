@@ -397,10 +397,10 @@ it("fails the parent operation lease after accepted response loss while a later 
     expect(secondAttempt.right.value.type).toBe("FailureOutput");
     if (secondAttempt.right.value.type !== "FailureOutput")
       throw new Error("Replacement attempt must refuse durable preparation");
-    // The pending commit spent the queue's root in the emulator: the landed
-    // queue (P1) has no root, so the attempt stops before any preparation.
+    // The lost response's retained signed intent is reconciled before the
+    // candidate build's first queue read and stops any preparation.
     expect(secondAttempt.right.value.error).toContain(
-      "The landed state queue is unhealthy (no_root)",
+      "Refusing to prepare a new pending block while another active pending-finalization record exists",
     );
     expect(attempts[1]!.output?.type).toBe("FailureOutput");
     expect(providerCalls).toBe(1);

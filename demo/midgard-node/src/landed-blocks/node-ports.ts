@@ -1,7 +1,7 @@
 /**
  * The node's landed-block ports: the history producer gate for writes, the
  * follower store for the view check, the foreign replay, the node's block
- * journals and merge finalization, and the history owner for the rebase.
+ * journals, and the history owner for the rebase.
  */
 import {
   type FactStore,
@@ -13,7 +13,6 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 
 import { numbered } from "../database/follower-schema.js";
-import { MutationJobsDB } from "../database/index.js";
 import type { ForcedOrderConfig } from "../forced-orders/index.js";
 import type { EventProjectionConfig } from "../l1-events/config.js";
 import type { StateQueueProjectionConfig } from "../l1-state-queue/index.js";
@@ -24,7 +23,6 @@ import {
   withHistoryWrite,
 } from "../services/event-history-producer.js";
 import { Globals } from "../services/globals.globals.js";
-import { finalizeConfirmedMergeProgram } from "../transactions/state-queue/merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import { readQueueHistory } from "./history.js";
 import { ownJournal } from "./journal.js";
 import { ledgerRows } from "./ledger.js";
@@ -90,18 +88,6 @@ export const nodeLandedBlockPorts = (
       forcedOrders: plan.forcedOrders,
     }),
     ownJournal,
-    ownMergeCompleted: (headerHash) =>
-      MutationJobsDB.retrieveByJobId(
-        MutationJobsDB.confirmedMergeFinalizationJobId(headerHash),
-      ).pipe(
-        Effect.map(
-          (job) =>
-            job?.[MutationJobsDB.Columns.STATUS] ===
-            MutationJobsDB.Status.Completed,
-        ),
-      ),
-    finalizeOwnMerge: (input) =>
-      runHistoryProducer(finalizeConfirmedMergeProgram(input)),
     genesis,
     requestRebase,
     rebaseFailure: Effect.flatMap(Globals, (globals) =>
