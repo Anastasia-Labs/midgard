@@ -539,10 +539,10 @@ export const openHistoryProductionOwnerLifecycle = async (
     };
     return { handle, stopRuntime };
   };
-  const initial = await startRuntime(recorded.globals, 0);
+  let current = await startRuntime(recorded.globals, 0);
   let restarting = false;
   return {
-    ...initial.handle,
+    ...current.handle,
     /** Seal the next source point while no runtime generation is running
      * (from a restart's `afterStop`): the next owner finds it on connect. */
     sealSourcePointWhileStopped: () => sealTip(),
@@ -560,24 +560,25 @@ export const openHistoryProductionOwnerLifecycle = async (
       if (restarting)
         throw new Error("Fixture runtime restart was already requested");
       restarting = true;
-      const previous = structuredClone(await initial.handle.evidence());
+      const previous = structuredClone(await current.handle.evidence());
       try {
         const holder = (await readHistoryAuthority())?.owner_token;
-        await initial.stopRuntime();
+        await current.stopRuntime();
         stoppedGenerations.push(previous);
         // `afterStop` runs before the release check: a stopped owner that
         // cannot retire its lease (revoked generation) lapses it here, and
         // the check still refuses any lease live before the next generation.
         await afterStop?.();
         await awaitHistoryAuthorityReleased(holder);
-        const next = await startRuntime(
+        current = await startRuntime(
           await makeGlobalsService(),
-          1,
+          stoppedGenerations.length,
           synchronize,
           ogmiosUrl,
           holder,
         );
-        return next.handle;
+        restarting = false;
+        return current.handle;
       } catch (error) {
         transport.close();
         recorded.observer.restore();

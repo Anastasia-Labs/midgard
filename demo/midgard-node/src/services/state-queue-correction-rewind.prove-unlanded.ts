@@ -1,10 +1,10 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { unboundJournalReason } from "./journal-header-binding.js";
 import { type StateQueueCorrectionObserverState } from "./state-queue-correction-observer.js";
 import {
   type AdmittedRemovals,
@@ -20,46 +20,6 @@ import {
   UNLANDED_STATUSES,
   unresolvedRemovedHeaders,
 } from "./state-queue-correction-rewind.admitted-removals.js";
-
-/** Why a removed block's journal does not describe the header its admitted
- * correction removed, or undefined when it does. The correction names the
- * header hash, which commits to the header's predecessor hash and its two
- * UTxO roots; the journal's header bytes must hash to that name, and its
- * replay base (base tail header hash and base root) and candidate root must
- * be that header's own. Header bytes that do not decode or hash bind
- * nothing. */
-const unboundJournalReason = (record: Pending.Record) =>
-  Effect.gen(function* () {
-    const headerHash = record[C.HEADER_HASH].toString("hex");
-    const decoded = yield* Effect.try(
-      () =>
-        Data.from(
-          record[C.HEADER_CBOR].toString("hex"),
-          SDK.Header,
-        ) as SDK.Header,
-    ).pipe(
-      Effect.flatMap((header) =>
-        Effect.map(SDK.hashBlockHeader(header), (hash) => ({ header, hash })),
-      ),
-      Effect.catchAllDefect(Effect.fail),
-      Effect.option,
-    );
-    if (Option.isNone(decoded))
-      return `removed block ${headerHash}'s journal header bytes do not decode to a hashable header`;
-    const { header, hash } = decoded.value;
-    if (hash !== headerHash)
-      return `removed block ${headerHash}'s journal header bytes hash to ${hash}`;
-    const baseTail = record[C.BASE_TAIL_HEADER_HASH].toString("hex");
-    const baseRoot = record[C.BASE_UTXOS_ROOT];
-    const candidateRoot = record[C.EXPECTED_UTXOS_ROOT];
-    if (
-      header.prevHeaderHash !== baseTail ||
-      header.prevUtxosRoot !== baseRoot ||
-      header.utxosRoot !== candidateRoot
-    )
-      return `removed block ${headerHash}'s journal replay base ${baseTail}/${baseRoot} and candidate root ${candidateRoot} are not its header's predecessor ${header.prevHeaderHash}/${header.prevUtxosRoot} and root ${header.utxosRoot}`;
-    return undefined;
-  });
 
 /** Validates one linear removed chain, earliest first, and the retained
  * parent aggregate of its replay base. Any other shape is not a rewind this
@@ -124,7 +84,11 @@ export const validateChain = (
       const unbound = yield* unboundJournalReason(earliest);
       return unbound === undefined
         ? { kind: "ready", chain, parentAggregate: undefined }
-        : { kind: "blocked", reason: unbound, journalUnbound: true };
+        : {
+            kind: "blocked",
+            reason: `removed ${unbound}`,
+            journalUnbound: true,
+          };
     }
     if (
       parent.value[C.STATUS] === Pending.Status.Abandoned ||

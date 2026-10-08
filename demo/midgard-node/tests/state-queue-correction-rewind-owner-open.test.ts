@@ -1,10 +1,18 @@
 import { SqlClient } from "@effect/sql";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Logger, Option, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { Globals } from "../src/services/globals.js";
-import { prepareStateQueueCorrectionRewind } from "../src/services/state-queue-correction-rewind.js";
+import {
+  CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
+  HISTORY_CORRECTION_REWIND_SOURCE,
+} from "../src/services/liveness-halt.js";
+import { NativeMpfRootNotRetained } from "../src/services/mpf-native-owner/protocol.js";
+import {
+  CORRECTION_REWIND_HELD_ON_NATIVE_STATE,
+  prepareStateQueueCorrectionRewind,
+} from "../src/services/state-queue-correction-rewind.js";
 import {
   activeE,
   BINDING,
@@ -32,7 +40,9 @@ import type { OwnerModel } from "./helpers/history-expired-intent-release-prepar
  * the rest is the production preparation over seeded SQL. While the store's LevelDB lock is
  * held, the open is converted to a held gate: nothing written, no owner
  * installed. Once it is released the rewind runs exactly once. A binary
- * digest mismatch stays a failure.
+ * digest mismatch stays a failure. A native owner that refuses the restore
+ * because it does not retain the target root in full holds the rewind on the
+ * native state, its plan retained, until it retains the root again.
  */
 
 const fixture = vi.hoisted(
@@ -112,16 +122,16 @@ vi.mock("../src/services/mpf-native-owner/service.js", async (original) => {
   };
 });
 
-const rewind = (node: Node) =>
-  attempt(
-    prepareStateQueueCorrectionRewind({
-      bindingDigest: BINDING,
-      checkpoint,
-      preparation: { token: node.token, assertCurrent: Effect.void },
-      config: {} as never,
-      authority,
-    }),
-  );
+const prepare = (node: Node) =>
+  prepareStateQueueCorrectionRewind({
+    bindingDigest: BINDING,
+    checkpoint,
+    preparation: { token: node.token, assertCurrent: Effect.void },
+    config: {} as never,
+    authority,
+  });
+
+const rewind = (node: Node) => attempt(prepare(node));
 
 /** E journaled and promoted (the native root and the SQL marker at its
  * candidate), its signed commit never acknowledged. */
@@ -202,5 +212,73 @@ describe("the correction rewind while its native owner cannot open", () => {
       plans: [],
       ownerOpen: false,
     });
+  });
+});
+
+describe("the correction rewind while its native owner does not retain the target root", () => {
+  it("holds on the native state with its plan retained, writing nothing else, then completes once the root is retained", async () => {
+    const owner = ownerModel(ZERO_ROOT);
+    let retained = false;
+    owner.beforeRestore = async ({ targetRoot }) => {
+      if (!retained) throw new NativeMpfRootNotRetained(targetRoot);
+    };
+    const logs: string[] = [];
+    const captured = Logger.add(
+      Logger.make(({ message }) => {
+        logs.push([message].flat().map(String).join(" "));
+      }),
+    );
+    const result = await onNode(undefined, (node) =>
+      Effect.gen(function* () {
+        yield* removedE;
+        fixture.open = owner;
+        const returned = yield* prepare(node).pipe(Effect.provide(captured));
+        const attempts = [yield* rewind(node), yield* rewind(node)];
+        const held = { ...(yield* state), root: owner.durableRoot };
+        retained = true;
+        const completed = yield* rewind(node);
+        return { returned, attempts, held, completed, after: yield* state };
+      }),
+    );
+    expect(result.returned).toBe(CORRECTION_REWIND_HELD_ON_NATIVE_STATE);
+    for (const attempt of result.attempts) {
+      expect(attempt.failure).toBeUndefined();
+      expect(attempt.raised.get(HISTORY_CORRECTION_REWIND_SOURCE)).toBe(
+        CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
+      );
+    }
+    expect(
+      result.attempts[1]!.reasons.filter(
+        (reason) => reason === CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
+      ),
+    ).toHaveLength(1);
+    const raised = logs.find((line) =>
+      line.startsWith(`${CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED}:`),
+    );
+    expect(raised).toContain(
+      `Native MPF canonical recovery target root ${UTXOS_ROOT} is not retained in full; refusing to restore`,
+    );
+    expect(raised).toContain(
+      "Operator action is needed: stop the node, install at LEDGER_MPF_DB_PATH a native MPF store that retains this root in full",
+    );
+    expect(result.held).toEqual({
+      e: Pending.Status.PendingSubmission,
+      digest: undefined,
+      plans: ["prepared"],
+      ownerOpen: true,
+      root: ZERO_ROOT,
+    });
+    expect(owner.restores).toBe(1);
+    expect(result.completed.failure).toBeUndefined();
+    expect(
+      result.completed.raised.get(HISTORY_CORRECTION_REWIND_SOURCE),
+    ).toBeUndefined();
+    expect(result.after).toEqual({
+      e: Pending.Status.Abandoned,
+      digest: REMOVAL,
+      plans: ["applied"],
+      ownerOpen: true,
+    });
+    expect(owner.durableRoot).toBe(UTXOS_ROOT);
   });
 });

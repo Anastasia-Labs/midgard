@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
-import { Effect, Option } from "effect";
+import { Data, Effect, Option } from "effect";
 
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import { DatabaseError } from "../database/utils/common.js";
@@ -14,6 +14,7 @@ import {
   sha,
   UNLANDED_STATUSES,
 } from "./history-expired-intent-release.table.js";
+import { unboundJournalReason } from "./journal-header-binding.js";
 import { type StateQueueCorrectionRewindAuthority } from "./state-queue-correction-rewind.js";
 
 /** Immutable identity of the active journal: every root and hash fixing the
@@ -51,10 +52,35 @@ export const journalIdentityBeforeSubmissionAck = (record: Pending.Record) =>
     ? journalIdentity({ ...record, [C.SUBMITTED_TX_HASH]: null })
     : undefined;
 
+/** A journal's replay base is bound neither by a retained parent journal
+ * (none has its base tail header hash) nor by its own header (see
+ * `unboundJournalReason`). The signed-intent release and the replaced-block
+ * revival read their target root from that base, so they hold (see
+ * `heldOnIntegrityFailure`), with nothing written. */
+export class SignedIntentJournalUnbound extends Data.TaggedError(
+  "SignedIntentJournalUnbound",
+)<{ readonly message: string }> {}
+
+/** Fails with `SignedIntentJournalUnbound` unless `record`'s own header
+ * bytes bind its replay base: for a journal no retained parent journal binds
+ * (the root base included). `label` names the journal in the message. */
+export const requireHeaderBoundBase = (record: Pending.Record, label: string) =>
+  Effect.flatMap(unboundJournalReason(record), (unbound) =>
+    unbound === undefined
+      ? Effect.void
+      : Effect.fail(
+          new SignedIntentJournalUnbound({
+            message: `The replay base of ${label} ${record[C.HEADER_HASH].toString("hex")} is bound by no retained parent journal and not by its header: ${unbound}.`,
+          }),
+        ),
+  );
+
 /** The active journal and the aggregate of its replay base (its retained
  * parent journal's, or none, which makes the commit base recompute it). A
  * journal whose roots or parent do not prove its replay base cannot be
- * rewound and fails loudly: recovery retries it and the gate stays closed. */
+ * rewound and fails loudly: recovery retries it and the gate stays closed.
+ * With no retained parent journal (the root base included), its own header
+ * bytes must bind the base, or it fails with `SignedIntentJournalUnbound`. */
 export const replaceableJournal = (headerHash: Buffer, manifestId: string) =>
   Effect.gen(function* () {
     const header = headerHash.toString("hex");
@@ -80,27 +106,23 @@ export const replaceableJournal = (headerHash: Buffer, manifestId: string) =>
         ),
       );
     const baseTail = record[C.BASE_TAIL_HEADER_HASH];
-    let parentAggregate: Pending.UtxoPayloadSizeAggregate | undefined;
-    if (!baseTail.equals(ROOT_TAIL_HEADER_HASH)) {
-      const parent = yield* Pending.retrieveByHeaderHash(baseTail);
-      // A pruned parent journal leaves nothing to compare. The replay base is
-      // still bound: the native plan's CAS moves the durable root only from
-      // this journal's candidate root to its replay base, and the replay base
-      // is checked above to equal the journal's recorded base root.
-      if (Option.isSome(parent)) {
-        if (
-          parent.value[C.STATUS] === Pending.Status.Abandoned ||
-          parent.value[C.EXPECTED_UTXOS_ROOT] !== record[C.BASE_UTXOS_ROOT]
-        )
-          return yield* Effect.fail(
-            failure(
-              `The replay base of signed-intent journal ${header} is not its retained parent's root`,
-            ),
-          );
-        parentAggregate = parent.value.utxoPayloadAggregate;
-      }
+    const parent = baseTail.equals(ROOT_TAIL_HEADER_HASH)
+      ? Option.none()
+      : yield* Pending.retrieveByHeaderHash(baseTail);
+    if (Option.isNone(parent)) {
+      yield* requireHeaderBoundBase(record, "signed-intent journal");
+      return { record, parentAggregate: undefined };
     }
-    return { record, parentAggregate };
+    if (
+      parent.value[C.STATUS] === Pending.Status.Abandoned ||
+      parent.value[C.EXPECTED_UTXOS_ROOT] !== record[C.BASE_UTXOS_ROOT]
+    )
+      return yield* Effect.fail(
+        failure(
+          `The replay base of signed-intent journal ${header} is not its retained parent's root`,
+        ),
+      );
+    return { record, parentAggregate: parent.value.utxoPayloadAggregate };
   });
 
 /** A queue output named by the header it commits and the header that header

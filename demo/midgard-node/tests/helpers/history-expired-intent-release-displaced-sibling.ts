@@ -15,6 +15,7 @@ import {
   BASE_HEADER,
   BASE_OUT,
   bytes,
+  fixtureHeader,
   hex,
   insertJournal,
   ROOT_HEADER,
@@ -34,9 +35,9 @@ import {
  */
 
 export const SOURCE = "history_signed_intent_release";
-export const W_HEADER = bytes("displaced:w-header", 28);
+export const W_HEADER = fixtureHeader("displaced:w-header", BASE_HEADER);
 export const S_HEADER = bytes("displaced:s-header", 28);
-export const X_HEADER = bytes("displaced:x-header", 28);
+export const X_HEADER = fixtureHeader("displaced:x-header", BASE_HEADER);
 export const W_COMMIT = signedCommit(BASE_OUT, TTL);
 export const S_COMMIT = signedCommit(BASE_OUT, TTL + 1);
 export const X_COMMIT = signedCommit(BASE_OUT, TTL + 2);

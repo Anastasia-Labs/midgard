@@ -8,6 +8,7 @@ import {
   BASE_OUT,
   hex,
   insertJournal,
+  retainedBaseJournal,
   signedCommit,
   TTL,
   UTXOS_ROOT,
@@ -70,6 +71,7 @@ export const completedChainReturnScenario = (
     (node) =>
       Effect.gen(function* () {
         const childCommit = signedCommit(S_OUT, TTL + 5);
+        yield* retainedBaseJournal;
         yield* journal(
           W_HEADER,
           Pending.Status.Abandoned,

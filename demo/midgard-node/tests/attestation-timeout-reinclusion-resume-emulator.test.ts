@@ -236,7 +236,7 @@ it("resumes a rewind to a retained non-empty base interrupted after the native r
 }, 600_000);
 
 it(
-  "fails closed with a specific error when the rewind base is not retained, and never moves the marker or reincludes",
+  "holds the rewind unready under a named readiness reason when the native store does not retain its target root in full, with native, SQL, the plan and the gate unchanged, and completes it once the root is retained again",
   assertUnretainedCorrectionRoot,
   600_000,
 );
