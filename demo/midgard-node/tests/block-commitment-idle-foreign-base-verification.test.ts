@@ -106,10 +106,16 @@ vi.mock(
 );
 
 import { blockCommitmentAction } from "../src/fibers/block-commitment.block-commitment-action.js";
+import {
+  COMMIT_HORIZON_LAG_SOURCE,
+  COMMIT_HORIZON_LAG_UNAVAILABLE,
+} from "../src/fibers/block-commitment.commit-horizon-lag-readiness.js";
+import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 
 const nodeConfig = {
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: 120_000,
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: 30_000,
+  HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
 } as unknown as NodeConfig["Type"];
 
 /** Stands in for the node's history owner: registers the producer and hands
@@ -156,7 +162,10 @@ const leaseCount = Effect.gen(function* () {
 });
 
 /** A started node with a Ready history authority and no work at all. */
-const onIdleReadyNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>
+const onIdleReadyNode = <A, E, R>(
+  program: Effect.Effect<A, E, R>,
+  config: NodeConfig["Type"] = nodeConfig,
+) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
@@ -180,7 +189,7 @@ const onIdleReadyNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>
         yield* Ref.set(globals.NATIVE_MPF_OWNER, {} as never);
         return yield* program.pipe(Effect.ensuring(Effect.orDie(clear)));
       }).pipe(
-        Effect.provideService(NodeConfig, nodeConfig),
+        Effect.provideService(NodeConfig, config),
         Effect.provideService(Lucid, { api: {} } as unknown as Lucid),
         Effect.provideService(MidgardContracts, {
           stateQueue: {},
@@ -283,5 +292,24 @@ describe("foreign base verification on an idle commitment tick", () => {
     });
     expect(verifier.calls).toBe(2);
     expect(buildAndSubmitMock).not.toHaveBeenCalled();
+  });
+
+  it("names a horizon lag hold on /readyz from the commitment tick while the follower lacks the lagged block", async () => {
+    const reasons = await onIdleReadyNode(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        // No follower cursor yet: the block 1 below the covered tip is unknown.
+        yield* sql`DELETE FROM l1_follower_cursor`;
+        yield* blockCommitmentAction;
+        return yield* activeLivenessReasons(yield* Globals);
+      }),
+      { ...nodeConfig, HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 1 },
+    );
+    expect(reasons).toContainEqual(
+      expect.objectContaining({
+        source: COMMIT_HORIZON_LAG_SOURCE,
+        reason: COMMIT_HORIZON_LAG_UNAVAILABLE,
+      }),
+    );
   });
 });

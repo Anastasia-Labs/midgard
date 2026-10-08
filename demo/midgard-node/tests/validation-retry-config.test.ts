@@ -143,3 +143,43 @@ describe("CEK program material store configuration", () => {
     );
   });
 });
+
+describe("history commit horizon lag configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("defaults to no lag, so the commit end time is unchanged", async () => {
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
+    });
+  });
+
+  it("accepts a block count", async () => {
+    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", "3");
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 3,
+    });
+  });
+
+  it.each(["-1", "1.5"])("rejects a lag of %s blocks", async (lag) => {
+    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", lag);
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "HISTORY_COMMIT_HORIZON_LAG_BLOCKS must be a non-negative safe integer",
+    );
+  });
+
+  it("accepts a lag of exactly the rollback depth k the follower retains", async () => {
+    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", "2160");
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 2160,
+    });
+  });
+
+  it("refuses a lag deeper than the rollback depth k, whose block the follower prunes", async () => {
+    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", "2161");
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "HISTORY_COMMIT_HORIZON_LAG_BLOCKS must be at most the deployment profile's rollback depth k = 2160",
+    );
+  });
+});

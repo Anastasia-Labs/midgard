@@ -6,7 +6,10 @@ import {
   commitUserEventSourceIdSetsAreExact,
   refreshCommitUserEventSourcesThroughBlockEnd,
 } from "../src/workers/commit-block-header/submission.js";
-import { ingestFollowerViewUnowned } from "./helpers/follower-view.js";
+import {
+  ingestFollowerViewUnowned,
+  modelHorizonLag,
+} from "./helpers/follower-view.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
@@ -27,8 +30,10 @@ describe("commit source completeness", () => {
   // passes only after an ingestion.
   it("rechecks the exact finalized end against the horizon, after a follower ingestion", async () => {
     const blockEndTimeMs = Date.parse("2026-01-01T00:07:00.999Z");
-    const recheck =
-      refreshCommitUserEventSourcesThroughBlockEnd(blockEndTimeMs);
+    const recheck = refreshCommitUserEventSourcesThroughBlockEnd(
+      blockEndTimeMs,
+      modelHorizonLag(0),
+    );
     await run(resetApplicationTables);
     await expect(run(recheck)).rejects.toThrow(
       /exceeds the ingested event horizon/,

@@ -32,6 +32,7 @@ import {
   isPotentiallyStaleOperatorWalletViewError,
   type OperatorWalletView,
 } from "../../operator-wallet-view.js";
+import { configuredCommitHorizonLag } from "../../services/history-commit-window.js";
 import {
   type ContractDeploymentIdentityValue,
   Database,
@@ -355,6 +356,7 @@ export const submitTxBackedCommit = ({
               return Effect.gen(function* () {
                 yield* refreshCommitUserEventSourcesThroughBlockEnd(
                   blockEndTimeMs,
+                  yield* configuredCommitHorizonLag,
                 );
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
                 const mempoolTxProgramMaterialSidecars =

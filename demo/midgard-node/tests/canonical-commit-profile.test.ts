@@ -273,6 +273,9 @@ const forcedEntryMissingMaterial = {
   cek_program_material_sidecar_cbor: Buffer.alloc(0),
 } as never;
 
+/** The final recheck reads the horizon lag; d = 0 reads nothing more. */
+const unlaggedConfig = { HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0 } as never;
+
 const baseCommitArgs = {
   contracts,
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -327,7 +330,10 @@ describe("canonical V1 commit profile", () => {
           ...baseCommitArgs,
           includedForcedTransactionEntries: [forcedEntryMissingMaterial],
         } as unknown as Parameters<typeof submitDepositOnlyCommit>[0]),
-      ).pipe(Effect.provideService(Lucid, fakeLucid)),
+      ).pipe(
+        Effect.provideService(Lucid, fakeLucid),
+        Effect.provideService(NodeConfig, unlaggedConfig),
+      ),
     );
 
     expect(outcome._tag).toBe("Left");
@@ -376,7 +382,10 @@ describe("canonical V1 commit profile", () => {
           mempoolTxSourceTable: "mempool",
           sizeOfProcessedTxs: 2,
         } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
-      ).pipe(Effect.provideService(Lucid, fakeLucid)),
+      ).pipe(
+        Effect.provideService(Lucid, fakeLucid),
+        Effect.provideService(NodeConfig, unlaggedConfig),
+      ),
     );
 
     expect(outcome._tag).toBe("Left");
@@ -400,6 +409,7 @@ describe("canonical V1 commit profile", () => {
       MIN_FEE_A: 0n,
       MIN_FEE_B: 0n,
       VALIDATION_G4_BUCKET_CONCURRENCY: 1,
+      HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
     } as never;
     const deploymentIdentity = ContractDeploymentIdentity.make({
       kind: "derived",

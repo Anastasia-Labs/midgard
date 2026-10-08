@@ -19,7 +19,10 @@ import {
   type OperatorWalletView,
 } from "../../operator-wallet-view.js";
 import { HistoryProducer } from "../../services/event-history-producer.js";
-import { commitEventHorizon } from "../../services/history-commit-window.js";
+import {
+  commitEventHorizon,
+  type CommitHorizonLag,
+} from "../../services/history-commit-window.js";
 import { Database, Lucid } from "../../services/index.js";
 import {
   isUnknownOutputReferenceSubmitError,
@@ -65,19 +68,25 @@ export const commitUserEventSourceIdSetsAreExact = ({
 /**
  * Rechecks the final end time against the event horizon, min(journal
  * coverage, follower ingestion, the earliest forced order not yet rebuilt)
- * (E-N1-2 item 3, N10). Deposits, withdrawals and forced orders are the
- * follower-change driver's: nothing here fetches them. Every runtime commit
- * runs under a history producer; the unowned model fixture (no producer)
- * needs an ingestion but plans its end time past it, as its source polling
- * did before.
+ * (E-N1-2 item 3, N10) capped by the horizon lag (`horizonLag`). This is the
+ * check that refuses a header end above the lagged cap before submission.
+ * Deposits, withdrawals and forced orders are the follower-change driver's:
+ * nothing here fetches them. Every runtime commit runs under a history
+ * producer; the unowned model fixture (no producer) needs an ingestion but
+ * plans its end time past it, as its source polling did before.
  */
-export const refreshCommitUserEventSourcesThroughBlockEnd = (
+export const refreshCommitUserEventSourcesThroughBlockEnd = <
+  LE = never,
+  LR = never,
+>(
   blockEndTimeMs: number,
+  horizonLag: CommitHorizonLag<LE, LR>,
 ) =>
   Effect.gen(function* () {
     const history = yield* Effect.serviceOption(HistoryProducer);
     const horizon = yield* commitEventHorizon(
       Option.isSome(history) ? history.value.coverage : undefined,
+      horizonLag,
     );
     // The final header window may differ from the initial plan. Recheck the
     // same immutable owner coverage; polling cannot extend its authority.

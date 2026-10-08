@@ -12,8 +12,12 @@
  * rewind and replay, net (`rewindToEmulatorChain`): the keys whose admitting
  * transactions the emulator no longer holds go, the generation advances.
  *
+ * Heights count the synced tips: a new tip slot is one block above the
+ * highest kept one, so the block d below the covered tip (the horizon lag)
+ * is the tip synced d syncs earlier. A test that lags syncs every block.
+ *
  * Differences from a followed chain, none of which these tests rely on:
- * synthetic block hashes and heights, a key's first admission recorded where
+ * synthetic block hashes, a key's first admission recorded where
  * the first sync saw its Order, a rollback seen only through its orphaned
  * keys or a lower tip, and a plan without the events retired within k (they
  * are absent, as for a node that ingested them before).
@@ -181,7 +185,14 @@ const writeFollowerView = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const generation = yield* rewindToEmulatorChain(slot, confirmed);
-    const view = yield* writeFollowerTip(slot, generation);
+    const heights = yield* sql<{ height: string }>`SELECT COALESCE(
+        (SELECT height FROM l1_blocks WHERE slot = ${slot}),
+        (SELECT max(height) + 1 FROM l1_blocks), 0)::text AS height`;
+    const view = yield* writeFollowerTip(
+      slot,
+      generation,
+      Number(heights[0]!.height),
+    );
     const hash = view.point.hash;
     const events: ProjectedEvent[] = [];
     for (const { kind, utxo, opened } of orders) {

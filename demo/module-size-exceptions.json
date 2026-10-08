@@ -961,8 +961,8 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1071,
-    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1074,
+    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3): reads the horizon lag d from config.history-commit-horizon-lag.ts, which refuses a negative, fractional or deeper-than-k value at startup."
   },
   {
     "file": "midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
@@ -996,18 +996,18 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-    "max": 895,
-    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 903,
+    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
-    "max": 544,
-    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 546,
+    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",
-    "max": 666,
-    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 668,
+    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d."
   },
   {
     "file": "midgard-node/src/workers/mpf-engine-probe.ts",
@@ -1076,8 +1076,8 @@
   },
   {
     "file": "midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
-    "max": 508,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 513,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. U3 (+5): the commit submissions run under a d = 0 NodeConfig, which their final recheck now reads."
   },
   {
     "file": "midgard-node/tests/contract-deployment-info.contract-deployment-info.ts",

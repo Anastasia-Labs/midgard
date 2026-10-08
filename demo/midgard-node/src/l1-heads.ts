@@ -18,9 +18,9 @@
  *
  * `l1BlockBelowCoveredTip(store, d)` is the heads source for "the block d
  * below the covered tip": the follower block at depth d + 1 under the
- * store's cursor (the covered tip has depth 1). U3 caps the history commit
- * end time at `slot(tip − d) + W − 1` from it once N1 deletes the census
- * tables.
+ * store's cursor (the covered tip has depth 1). U3 caps the commit end time
+ * at `slot(tip − d) + W − 1` from it (`laggedEligibilityCap` in
+ * `services/history-commit-window.ts`).
  */
 import {
   type LocalOgmiosShelleyGenesisSlotOptions,
@@ -31,7 +31,11 @@ import {
   SUBMIT_SLOT_LENGTH_MS,
   type SubmitSlotSnapshot,
 } from "@al-ft/midgard-core/ogmios-slot";
-import type { FactStore, Point as L1Point } from "@al-ft/midgard-l1-follower";
+import type {
+  Cursor,
+  Point as L1Point,
+  StoredBlock,
+} from "@al-ft/midgard-l1-follower";
 import {
   createSlotClock,
   depth,
@@ -269,13 +273,22 @@ export type L1BlockBelowCoveredTip =
       detail: string;
     }>;
 
+/** The follower reads the lag needs: its cursor and a block by height. A
+ * `FactStore` is one; a caller with only SQL passes the same rows. */
+export type CoveredTipHeads = Readonly<{
+  cursor(): Promise<Pick<Cursor, "point" | "height"> | null>;
+  blockAtHeight(
+    height: number,
+  ): Promise<Pick<StoredBlock, "slot" | "hash" | "height"> | null>;
+}>;
+
 /**
  * The block d below the covered tip (the follower cursor), read through the
  * heads module's `depth()`: the block at depth d + 1. d = 0 is the covered
  * tip itself.
  */
 export const l1BlockBelowCoveredTip = async (
-  store: Pick<FactStore, "cursor" | "blockAtHeight">,
+  store: CoveredTipHeads,
   lagBlocks: number,
 ): Promise<L1BlockBelowCoveredTip> => {
   if (!Number.isSafeInteger(lagBlocks) || lagBlocks < 0)

@@ -100,7 +100,10 @@ const writeQueueFacts = (
             : Math.max(slot, Number(cursor[0].slot));
         // A block already stored at the tip slot (an earlier file's chain in
         // this worker's database) stays the tip: the cursor must name a
-        // stored block, or P1 reads `point_not_canonical`.
+        // stored block, or P1 reads `point_not_canonical`. A new tip block
+        // sits one height above the highest stored one, as on a followed
+        // chain, so the block d below it (the commit horizon lag) is the
+        // tip written d times earlier.
         const stored = yield* sql<{
           hash: Uint8Array;
           height: number | string;
@@ -109,11 +112,16 @@ const writeQueueFacts = (
           stored[0] === undefined
             ? followerBlockHash(tipSlot, generation)
             : Buffer.from(stored[0].hash);
-        const height =
+        let height =
           stored[0] === undefined ? tipSlot : Number(stored[0].height);
-        if (stored[0] === undefined)
+        if (stored[0] === undefined) {
+          const [highest] = yield* sql<{
+            height: string | null;
+          }>`SELECT max(height)::text AS height FROM l1_blocks`;
+          if (highest?.height != null) height = Number(highest.height) + 1;
           yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
-            VALUES (${tipSlot}, ${hash}, ${tipSlot}, NULL, 0)`;
+            VALUES (${tipSlot}, ${hash}, ${height}, NULL, 0)`;
+        }
         yield* sql`INSERT INTO l1_follower_cursor
             (id, slot, hash, height, generation, origin_slot, origin_hash, pruned_through_slot)
           VALUES (true, ${tipSlot}, ${hash}, ${height}, ${generation}, 0, ${Buffer.alloc(32)}, 0)

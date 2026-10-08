@@ -142,7 +142,7 @@ import {
   type CommitWorkerFailureJournalEvidence,
 } from "../src/fibers/commit-worker-failure-classification.js";
 import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
-import { Lucid } from "../src/services/index.js";
+import { Lucid, NodeConfig } from "../src/services/index.js";
 import { buildUnsignedCommitTx } from "../src/workers/commit-block-header/build-unsigned-tx.js";
 import {
   submitDepositOnlyCommit,
@@ -417,6 +417,9 @@ const processedMempoolTxs = [
   },
 ] as never;
 
+/** The final recheck reads the horizon lag; d = 0 reads nothing more. */
+const unlaggedConfig = { HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0 } as never;
+
 const runDepositOnlyCommit = () =>
   Effect.runPromise(
     Effect.either(
@@ -427,6 +430,7 @@ const runDepositOnlyCommit = () =>
       ),
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
+      Effect.provideService(NodeConfig, unlaggedConfig),
       Effect.provideService(UnownedHistoryFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,
@@ -445,6 +449,7 @@ const runTxBackedCommit = () =>
       } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
+      Effect.provideService(NodeConfig, unlaggedConfig),
       Effect.provideService(UnownedHistoryFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,
