@@ -1,13 +1,20 @@
 import type { Obligation, SignedHeader } from "./l1/follower/obligations.js";
+import type { CommitteeStore } from "./store.js";
 
 /** Signed decisions deleted per tick at most, so a backlog spreads out. */
 export const DECISION_PRUNE_BATCH = 256;
 
+/** A tick's prune of its deletable signed decisions failed. */
+export const COMMITTEE_DECISION_PRUNE_FAILED =
+  "committee_decision_prune_failed";
+
 export type DecisionPruneInputs = Readonly<{
   obligations: readonly Obligation[];
   signed: readonly SignedHeader[];
-  /** Headers live in the queue at the tip or at the latest final block. */
-  held: ReadonlySet<string>;
+  /** Headers live in the queue at the tip. */
+  live: ReadonlySet<string>;
+  /** Headers in the queue at the latest final block. */
+  finalQueue: readonly string[];
   /**
    * Headers whose stored record is still unsettled after this tick: no
    * terminal record (a final exit) is written for them.
@@ -45,11 +52,12 @@ export const decisionsToPrune = (inputs: DecisionPruneInputs): string[] => {
       clock !== null && endTimeMs !== undefined && BigInt(clock) > endTimeMs
     );
   };
+  const held = new Set([...inputs.live, ...inputs.finalQueue]);
   const out: string[] = [];
   for (const obligation of inputs.obligations) {
     if (out.length >= DECISION_PRUNE_BATCH) break;
     const { headerHash, state } = obligation;
-    if (!obligation.decisionDeletable || inputs.held.has(headerHash)) continue;
+    if (!obligation.decisionDeletable || held.has(headerHash)) continue;
     const exited =
       state === "cannot_land" ||
       state === "beyond_retention" ||
@@ -57,4 +65,24 @@ export const decisionsToPrune = (inputs: DecisionPruneInputs): string[] => {
     if (exited && pastEnd(headerHash)) out.push(headerHash);
   }
   return out;
+};
+
+/**
+ * Deletes the signed decisions `decisionsToPrune` selects. Returns the tick
+ * errors it adds: none, or `committee_decision_prune_failed` with the
+ * failure's message. A failure never fails the tick: its signing and
+ * reconcile work stands, the backlog carries forward, and the next tick
+ * retries; the reason clears with the next successful prune.
+ */
+export const pruneDecisions = async (
+  store: Pick<CommitteeStore, "pruneSignedDecisions">,
+  inputs: DecisionPruneInputs,
+): Promise<string[]> => {
+  try {
+    await store.pruneSignedDecisions(decisionsToPrune(inputs));
+    return [];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [`${COMMITTEE_DECISION_PRUNE_FAILED}: ${message}`];
+  }
 };
