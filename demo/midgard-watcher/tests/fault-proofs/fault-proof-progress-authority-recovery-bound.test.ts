@@ -15,9 +15,9 @@ import {
   openWatcherJournalDatabase,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
-import { WATCHER_ROLLBACK_BOUNDS } from "../../src/l1/rollback-engine/types.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   journalDirectory,
   removeJournalDirectories,
@@ -104,8 +104,9 @@ vi.mock(
 );
 
 const deploymentFingerprint = "ab".repeat(32);
-const BEYOND_RECOVERY =
-  Number(WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth) + 1;
+/** The deployment's k comes from the follower behind the retention. */
+const K = storelessProofRetention.securityParameter;
+const BEYOND_RECOVERY = K + 1;
 afterEach(async () => {
   journalState.missing.clear();
   journalState.changed.clear();
@@ -142,8 +143,7 @@ const restartOver = async (count: number, state: Seeded) => {
                   workflowId: execution.workflowId,
                   journalDigest: watcherSha256CanonicalJson(execution.entries),
                   confirmationDepth: BEYOND_RECOVERY,
-                  recoveryDepth:
-                    WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth.toString(),
+                  recoveryDepth: K.toString(),
                 },
               }
             : {}),
@@ -164,6 +164,7 @@ const restartOver = async (count: number, state: Seeded) => {
     deploymentFingerprint,
     categories: ["doubleSpend"],
     authenticationKey: TEST_JOURNAL_KEY,
+    retention: storelessProofRetention,
   });
   return {
     journalRoot,

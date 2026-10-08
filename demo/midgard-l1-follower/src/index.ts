@@ -192,6 +192,11 @@ export type {
   InvariantViolation,
 } from "./store/invariants.js";
 export {
+  type PinResult,
+  pinRetainedIn,
+  type RetainedPin,
+} from "./store/pin.js";
+export {
   CHECKPOINT_INTERVAL,
   type PruneResult,
   ROLLBACK_LOG_ROWS,

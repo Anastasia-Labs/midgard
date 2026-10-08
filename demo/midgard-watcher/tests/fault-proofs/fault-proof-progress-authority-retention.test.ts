@@ -4,7 +4,6 @@ import type { WatcherProofExecution } from "../../src/fault-proofs/fault-proof-o
 import { completeWatcherProofObjective } from "../../src/fault-proofs/fault-proof-objective-table.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
-import { WATCHER_ROLLBACK_BOUNDS } from "../../src/l1/rollback-engine/types.js";
 import type {
   WatcherProofRetention,
   WatcherProofRetentionTarget,
@@ -75,27 +74,32 @@ vi.mock(
   }),
 );
 
-const BEYOND = Number(WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth) + 1;
+/** The mainnet and preprod k; one test runs a deployment with a larger k. */
+const K = 2_160;
+const BEYOND = K + 1;
 afterEach(removeJournalDirectories);
 
-const recordingRetention = () => {
+const recordingRetention = (securityParameter: number) => {
   const pinned: WatcherProofRetentionTarget[] = [];
   const released: WatcherProofRetentionTarget[] = [];
   const retention: WatcherProofRetention = {
+    securityParameter,
     pin: async ({ category, headerHash }) => {
       pinned.push({ category, headerHash });
+      return { kind: "pinned" };
     },
     release: async ({ category, headerHash }) => {
       released.push({ category, headerHash });
     },
-    holdUnits: async () => undefined,
+    holdUnits: async () => ({ kind: "held" }),
     pinned: async () => pinned,
+    degradations: () => [],
   };
   return { retention, pinned, released };
 };
 
 /** A watcher restarting over completed proof journals. */
-const restartOver = async (count: number, marked: boolean) => {
+const restartOver = async (count: number, marked: boolean, k = K) => {
   const journalRoot = await journalDirectory("watcher-progress-retention");
   journalState.headers = Array.from({ length: count }, (_, index) =>
     index.toString(16).padStart(56, "0"),
@@ -111,12 +115,17 @@ const restartOver = async (count: number, marked: boolean) => {
       authenticationKey: TEST_JOURNAL_KEY,
     });
     for (const objective of objectives)
-      completeWatcherProofObjective(database, objective, {
-        execution: executionOf(objective.headerHash),
-        confirmationDepth: BEYOND,
-      });
+      completeWatcherProofObjective(
+        database,
+        objective,
+        {
+          execution: executionOf(objective.headerHash),
+          confirmationDepth: BEYOND,
+        },
+        K,
+      );
   }
-  const recorded = recordingRetention();
+  const recorded = recordingRetention(k);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot,
     deploymentFingerprint,
@@ -152,6 +161,30 @@ describe("proof progress holds each open objective's L1 history", () => {
       confirmationDepth: BEYOND,
     });
     expect(restart.released).toEqual([target]);
+  });
+
+  it("uses the deployment's k: with k above 2,160 a completion 2,161 deep keeps its hold, and one k + 1 deep releases it", async () => {
+    const k = 3_000;
+    const restart = await restartOver(1, false, k);
+    const [target] = restart.targets;
+    await restart.authority.markCompleted(target, {
+      execution: executionOf(target.headerHash),
+      confirmationDepth: BEYOND,
+    });
+    expect(restart.released).toEqual([]);
+    const again = await restartOver(1, false, k);
+    const [next] = again.targets;
+    await again.authority.markCompleted(next, {
+      execution: executionOf(next.headerHash),
+      confirmationDepth: k + 1,
+    });
+    expect(again.released).toEqual([next]);
+  });
+
+  it("verifies again, and pins, a completion marked under a smaller k", async () => {
+    const restart = await restartOver(2, true, 3_000);
+    expect(restart.released).toEqual([]);
+    expect(restart.pinned).toEqual(restart.targets);
   });
 
   it("keeps the hold when the completion is verified below recovery depth", async () => {

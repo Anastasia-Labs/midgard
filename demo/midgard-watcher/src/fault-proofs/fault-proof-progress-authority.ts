@@ -123,10 +123,23 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       launchScope: input.categories,
       authenticationKey: input.authenticationKey,
     }));
+  const k = input.retention?.securityParameter; // markers are made k deep
   const objectives = new Map<string, Objective>();
   const decisions = new Map<string, HeaderFaultDecision>();
   let initialized: Promise<void> | undefined;
   let epoch = 0;
+  // Open objectives whose L1 history pruning removed before a pin held it,
+  // by the admission that tried: the retention names them
+  // (l1_proof_history_pruned), each later new observation retries the pin
+  // from current facts, and they stay open.
+  const unheld = new Map<string, number>();
+  let admissions = 0;
+  const hold = async (target: WatcherProofObjective): Promise<void> => {
+    const result = await input.retention?.pin(target);
+    if (result?.kind === "already_pruned")
+      unheld.set(keyOf(target), admissions);
+    else unheld.delete(keyOf(target));
+  };
   let lastObservation: string | undefined;
   let generation = -1n;
   let latestNativeProgress:
@@ -221,7 +234,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         settled &&
         row.marker !== null &&
         (execution === undefined ||
-          watcherProofMarkerMatches(row.marker, execution))
+          watcherProofMarkerMatches(row.marker, execution, k))
       ) {
         await input.retention?.release(target); // a crash can leave the pin
         await pruneWatcherProofObjective(database(), input.journalRoot, target);
@@ -238,7 +251,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       }
       const objective = {} as Objective;
       await adoptExecution(objective, execution);
-      await input.retention?.pin(target);
+      await hold(target);
       objectives.set(keyOf(target), objective);
     }
     pruneDecisions();
@@ -277,7 +290,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       throw new Error(
         "proof progress execution update omitted its exact recorded decision",
       );
-    if (!objectives.has(keyOf(key))) await input.retention?.pin(key);
+    if (!objectives.has(keyOf(key))) await hold(key);
     const objective = objectives.get(keyOf(key)) ?? { decision };
     if (
       objective.workflowId !== undefined &&
@@ -304,6 +317,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           "proof progress observation has a foreign deployment or generation",
         );
       const startedEpoch = epoch;
+      admissions += 1;
       await (initialized ??= initialize());
       if (
         epoch !== startedEpoch ||
@@ -397,7 +411,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           canOpenWatcherProofObjective(database(), fault.decision)
         ) {
           if (!objectives.has(currentKey!)) {
-            await input.retention?.pin(fault.decision);
+            await hold(fault.decision);
             if (epoch !== startedEpoch) return [];
           }
           decisions.set(fault.decision.decisionDigest, fault.decision);
@@ -416,6 +430,9 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       }
       if (changed) {
         for (const [key, objective] of objectives) {
+          const tried = unheld.get(key);
+          if (tried !== undefined && tried < admissions)
+            await hold(objective.decision);
           if (key === currentKey) continue;
           // Newly started work acquires its durable identity on its first
           // historical observation. Already restored identities stay indexed.
@@ -488,14 +505,15 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       };
       return controller.permit;
     },
-    markCompleted: async (objective, verified) => {
+    markCompleted: async (objective, done) => {
       objectives.delete(keyOf(objective));
+      unheld.delete(keyOf(objective));
       pruneDecisions();
       // The row frees the cap slot and spares a restart one verification. A
       // failed write leaves it open, so the next start verifies it again.
       let marked = false;
       try {
-        marked = completeWatcherProofObjective(database(), objective, verified);
+        marked = completeWatcherProofObjective(database(), objective, done, k);
       } catch {
         // Verified again on the next start.
       }

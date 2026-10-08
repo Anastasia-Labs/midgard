@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 import { isFinal } from "@al-ft/midgard-l1-follower/heads";
 
-import { WATCHER_ROLLBACK_BOUNDS } from "../l1/rollback-engine/types.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import { MAX_RECORDS as MAX_DECISIONS } from "./fault-decision-journal.exact-record.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
@@ -52,17 +51,15 @@ export type WatcherProofObjectiveRow = Readonly<{
   marker: WatcherProofCompletionMarker | null;
 }>;
 
-/** A completion deeper than the watcher's rollback recovery reach cannot be
- * undone by any rollback the watcher recovers from automatically. */
+/** A completion deeper than the deployment's k (the security parameter the
+ * watcher's follower rewinds and prunes with) cannot be undone by any
+ * rollback the watcher recovers from automatically. */
 export const isBeyondWatcherRollbackRecovery = (
   confirmationDepth: number,
+  securityParameter: number,
 ): boolean =>
   Number.isSafeInteger(confirmationDepth) &&
-  isFinal(confirmationDepth, {
-    securityParameter: Number(
-      WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth,
-    ),
-  });
+  isFinal(confirmationDepth, { securityParameter });
 
 const STATES = new Set<string>(["open", "completed", "marked"]);
 
@@ -99,20 +96,21 @@ export const canOpenWatcherProofObjective = (
 const completionMarker = (
   execution: WatcherProofExecution,
   confirmationDepth: number,
+  securityParameter: number,
 ): WatcherProofCompletionMarker | null =>
   execution.entries.at(-1)?.event.kind === "completed" &&
-  isBeyondWatcherRollbackRecovery(confirmationDepth)
+  isBeyondWatcherRollbackRecovery(confirmationDepth, securityParameter)
     ? Object.freeze({
         workflowId: execution.workflowId,
         journalDigest: watcherSha256CanonicalJson(execution.entries),
         confirmationDepth,
-        recoveryDepth:
-          WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth.toString(),
+        recoveryDepth: securityParameter.toString(),
       })
     : null;
 
-/** Records a verified completion; one verified beyond rollback recovery is
- * marked with its execution so the next start skips and prunes it. True
+/** Records a verified completion; one verified beyond rollback recovery (k
+ * deep, the follower's `securityParameter`) is marked with its execution so
+ * the next start skips and prunes it. Without a k nothing is marked. True
  * once the row holds a marker. */
 export const completeWatcherProofObjective = (
   database: WatcherJournalDatabase,
@@ -121,11 +119,16 @@ export const completeWatcherProofObjective = (
     execution: WatcherProofExecution;
     confirmationDepth: number;
   }>,
+  securityParameter?: number,
 ): boolean => {
   const marker =
-    verified === undefined
+    verified === undefined || securityParameter === undefined
       ? null
-      : completionMarker(verified.execution, verified.confirmationDepth);
+      : completionMarker(
+          verified.execution,
+          verified.confirmationDepth,
+          securityParameter,
+        );
   const scope = watcherObjectiveScope(objective.category, objective.headerHash);
   return database.transaction((tx) => {
     const current = tx.row(JOURNAL, scope);
@@ -145,13 +148,20 @@ export const completeWatcherProofObjective = (
   });
 };
 
-/** True only for a marker bound to this exact completed execution. */
+/** True only for a marker bound to this exact completed execution under
+ * the current k: a marker written under another k, or checked without one,
+ * is verified again. */
 export const watcherProofMarkerMatches = (
   marker: WatcherProofCompletionMarker,
   execution: WatcherProofExecution | undefined,
+  securityParameter: number | undefined,
 ): boolean => {
-  if (execution === undefined) return false;
-  const expected = completionMarker(execution, marker.confirmationDepth);
+  if (execution === undefined || securityParameter === undefined) return false;
+  const expected = completionMarker(
+    execution,
+    marker.confirmationDepth,
+    securityParameter,
+  );
   return (
     expected !== null &&
     expected.workflowId === marker.workflowId &&

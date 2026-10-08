@@ -21,6 +21,7 @@ import {
   currentView,
   required,
   tipPointOf,
+  WatcherFaultProofL1RefusedError,
   withCheckpointRetries,
 } from "./fault-proof-l1-source.chain.js";
 import { createSignedTransactionRecovery } from "./fault-proof-l1-source.signed.js";
@@ -98,8 +99,19 @@ const captureOnce = async (
       ...scope,
       utxos: required(await rawReads.addressUtxosAtPoint(scope.address, point)),
     });
-  // A pinned objective's followed units stay readable past k (E1 ruling).
-  await proofRetention?.holdUnits(request.headerHash, request.historyUnits);
+  // A pinned objective's followed units stay readable past k (E1 ruling);
+  // a history pruning removed first is refused, never read partially. An
+  // unpinned header is a read for no open objective (classification): it
+  // proceeds, and past k the raw reads refuse it.
+  const hold = await proofRetention?.holdUnits(
+    request.headerHash,
+    request.historyUnits,
+  );
+  if (hold?.kind === "already_pruned")
+    throw new WatcherFaultProofL1RefusedError(
+      "beyond_retention",
+      `pruning removed the history of ${hold.units.join(", ")} before the proof held it`,
+    );
   const histories = [];
   for (const unit of request.historyUnits)
     histories.push({

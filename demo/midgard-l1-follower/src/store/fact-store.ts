@@ -37,6 +37,7 @@ import {
   type InvariantReport,
   runInvariantChecks,
 } from "./invariants.js";
+import { type PinResult, pinRetainedIn, type RetainedPin } from "./pin.js";
 import { pruneIn, type PruneResult } from "./prune.js";
 import * as reads from "./reads.js";
 import {
@@ -147,6 +148,16 @@ export type FactStore = Readonly<{
   isTrackedLive(outRef: OutRef): boolean;
   liveOutRefCount(): number;
   prune(budget?: number): Promise<PruneResult | StoreError | StoreLocked>;
+  /**
+   * Writes a retention pin under the cursor lock, in one write transaction
+   * of its own (`pinRetainedIn`): `already_pruned` when pruning removed the
+   * pinned rows first, and then nothing is written. Every role pin goes
+   * through it. It runs outside the writer lane and needs no writer lease,
+   * by design: a pin row is a role row, not a fact, and the only write it
+   * must be ordered against is a prune step, which the cursor lock orders.
+   * So a reader process can pin.
+   */
+  pinRetained(pin: RetainedPin): Promise<PinResult>;
   checkInvariants(): Promise<InvariantReport>;
   cursor(): Promise<Cursor | null>;
   currentView(): Promise<View | null>;
@@ -419,6 +430,8 @@ export const createFactStore = (
           return { kind: "error", error: asError(error) } as const;
         }
       }),
+    pinRetained: (pin) =>
+      backend.transaction("write", (tx) => pinRetainedIn(tx, dialect, pin)),
     checkInvariants,
     cursor: () => read((tx) => reads.tipIn(tx, dialect)),
     currentView: () => read((tx) => currentViewIn(tx, dialect)),
