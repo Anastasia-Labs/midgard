@@ -43,7 +43,9 @@ const RECORDS = [
  * deletes, by the same predicate (`prunePredicate`), in this step or, when
  * the budget cuts it, in a later step at the same boundary (no hold can be
  * written for the key in between: `partlyPrunedIn` refuses it). They run
- * before the deletes, in the same transaction, and delete nothing.
+ * before the deletes, in the same transaction, and delete nothing: record
+ * hooks, which run while a store reset replays as well, since the deletes
+ * they record run then too.
  */
 export const prunedKeyHooks = (
   specs: readonly TemporalTableSpec[],
@@ -54,13 +56,13 @@ export const prunedKeyHooks = (
     if (prunable === null)
       throw new Error(`${history} has no pruning predicate`);
     return {
+      kind: "record",
       table: record,
       apply: async ({ tx, boundarySlot }) => {
         await tx.query(
           `INSERT INTO ${record} (${column}) SELECT DISTINCT t.${column} FROM ${history} t WHERE ${prunable} AND NOT EXISTS (SELECT 1 FROM ${record} x WHERE x.${column} = t.${column})`,
           [boundarySlot],
         );
-        return 0;
       },
     };
   });

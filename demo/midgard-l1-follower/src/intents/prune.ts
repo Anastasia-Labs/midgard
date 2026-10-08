@@ -35,6 +35,7 @@ export const pruneIntentsIn = async (
 
 /** The journal's retention, as a follower prune hook. */
 export const INTENT_PRUNE_HOOK: PruneHook = {
+  kind: "retention",
   table: "l1_intents",
   apply: ({ tx, dialect, boundarySlot }) =>
     pruneIntentsIn(tx, dialect, boundarySlot),

@@ -56,7 +56,17 @@ import {
  * meet in one handler, idempotent per generation: the invalidations, the
  * rewind count and `onRewind` run once for each new generation, and the
  * history target is the lowest one either path saw (rolling the history
- * back to a point at or above its head is a no-op).
+ * back to a point at or above its head is a no-op). The pull reads from the
+ * higher of the durable marker and the generation this process last rolled
+ * the history back through, so a pull of a generation already applied in
+ * this process (the marker waits on the retirement reset) rolls nothing
+ * back again.
+ *
+ * The durable marker moves only once the history is back at every target
+ * and the replay-transcript retirement reset the last rewind started held.
+ * The pass waits for that reset at most `retryDelayMs`; while it is still
+ * pending or failed, the driver is unready by name and the marker waits
+ * (a failed reset is retried by the next pass, one `retryDelayMs` later).
  *
  * Liveness: a pass never throws out of the driver. A failure is a named
  * readiness reason with its detail and a retry after `retryDelayMs`.
@@ -76,6 +86,19 @@ export const WATCHER_RELEASE_OBSERVATION_PENDING =
  * may be incomplete for this process's tracked set: no pass reads them.
  */
 export const WATCHER_FOLLOWER_NOT_STARTED = "l1_follower_not_started";
+/**
+ * The replay-transcript retirement reset a rewind started failed; the
+ * detail names the failure. The handled-generation marker waits for it, and
+ * the next pass retries it.
+ */
+export const WATCHER_RETIREMENT_RESET_FAILED =
+  "watcher_retirement_reset_failed";
+/**
+ * The replay-transcript retirement reset a rewind started has not settled
+ * within the pass's wait. The handled-generation marker waits for it.
+ */
+export const WATCHER_RETIREMENT_RESET_PENDING =
+  "watcher_retirement_reset_pending";
 
 /** The driver's `started` gate: the follower published a status with a cursor. */
 export const watcherFollowerStarted = (
@@ -130,6 +153,10 @@ export type WatcherDecisionDriverInput = Readonly<{
   onDecided?: (tip: WatcherAuthenticatedStateQueueObservation) => void;
   /** Once per follower generation a rewind or reset raised, pushed or pulled. */
   onRewind?: (generation: number) => void;
+  /**
+   * The delay before a failed pass (or a failed retirement reset) is
+   * retried, and the most a pass waits for a pending retirement reset.
+   */
   retryDelayMs: number;
   log?: (line: string) => void;
 }>;
@@ -223,9 +250,18 @@ export const createWatcherDecisionDriver = (
   // The highest follower generation this process handled; null before the
   // first push or pull.
   let handledGeneration: number | null = null;
+  // The highest generation this process rolled the history back through
+  // (every target up to it applied); null before the first. The pull reads
+  // from it when it is above the durable marker.
+  let historyAppliedGeneration: number | null = null;
   // The last retirement reset a rewind started; the durable handled
-  // generation moves only once it succeeded.
-  let retirementReset: Promise<boolean> | null = null;
+  // generation moves only once it held.
+  type RetirementReset = {
+    outcome: "pending" | "held" | "failed";
+    detail: string;
+    settled: Promise<void>;
+  };
+  let retirementReset: RetirementReset | null = null;
 
   let resolveRecovered!: (count: number) => void;
   const recovered = new Promise<number>((resolve) => {
@@ -238,15 +274,41 @@ export const createWatcherDecisionDriver = (
   });
   const idleWaiters = new Set<() => void>();
 
+  /** Runs a pass after `retryDelayMs`, unless one is already scheduled. */
+  const scheduleRetry = (): void => {
+    if (retry !== null || closed) return;
+    retry = setTimeout(() => {
+      retry = null;
+      wake();
+    }, input.retryDelayMs);
+    retry.unref();
+  };
+
   const resetRetirement = (): void => {
-    if (input.retirement === undefined) return;
-    retirementReset = input.retirement.reset().then(
-      () => true,
-      (error: unknown) => {
-        log(`replay-transcript retirement reset failed: ${message(error)}`);
-        return false;
-      },
-    );
+    const retirement = input.retirement;
+    if (retirement === undefined) return;
+    const reset: RetirementReset = {
+      outcome: "pending",
+      detail: "",
+      settled: Promise.resolve(),
+    };
+    const failed = (error: unknown): void => {
+      reset.outcome = "failed";
+      reset.detail = message(error);
+      log(`replay-transcript retirement reset failed: ${reset.detail}`);
+      // The next pass retries it and names the failure.
+      scheduleRetry();
+    };
+    try {
+      reset.settled = retirement.reset().then(() => {
+        reset.outcome = "held";
+        // The next pass moves the marker and clears the reason.
+        wake();
+      }, failed);
+    } catch (error) {
+      failed(error);
+    }
+    retirementReset = reset;
   };
 
   /** One rewind or reset to `to` at `generation`, pushed or pulled. */
@@ -303,7 +365,12 @@ export const createWatcherDecisionDriver = (
     }>
   > => {
     const handled = await readHandledFollowerGeneration(input.store);
-    const since = await input.store.rewindsSince(handled);
+    const applied = historyAppliedGeneration;
+    const since = await input.store.rewindsSince(
+      handled === null || (applied !== null && applied > handled)
+        ? applied
+        : handled,
+    );
     if (since === null) return { handled, generation: null };
     if (since.target !== null) rewound(since.generation, since.target);
     else if (handledGeneration === null || since.generation > handledGeneration)
@@ -313,23 +380,45 @@ export const createWatcherDecisionDriver = (
 
   /**
    * Moves the durable handled generation, once the history is back at every
-   * target and the last retirement reset held.
+   * target and the last retirement reset held. Waits for a pending reset at
+   * most `retryDelayMs`. Returns why the marker waits, or null.
    */
   const recordHandled = async (
     pulled: Readonly<{ handled: number | null; generation: number | null }>,
-  ): Promise<void> => {
+  ): Promise<WatcherDecisionReadiness | null> => {
     if (pulled.generation === null || pulled.generation === pulled.handled)
-      return;
-    const pending = retirementReset;
-    if (pending !== null) {
-      if (!(await pending)) {
-        // Retried here; the next pass records the generation once it held.
-        if (retirementReset === pending) resetRetirement();
-        return;
+      return null;
+    const reset = retirementReset;
+    if (reset !== null) {
+      if (reset.outcome === "pending") {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          reset.settled,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, input.retryDelayMs);
+            timer.unref();
+          }),
+        ]);
+        clearTimeout(timer);
       }
-      if (retirementReset === pending) retirementReset = null;
+      if (reset.outcome === "pending")
+        // Its settling wakes the driver.
+        return {
+          reason: WATCHER_RETIREMENT_RESET_PENDING,
+          detail: `the replay-transcript retirement reset has not settled within ${input.retryDelayMs.toString()} ms`,
+        };
+      if (reset.outcome === "failed") {
+        // Retried here; a later pass records the generation once it held.
+        if (retirementReset === reset) resetRetirement();
+        return {
+          reason: WATCHER_RETIREMENT_RESET_FAILED,
+          detail: reset.detail,
+        };
+      }
+      if (retirementReset === reset) retirementReset = null;
     }
     await writeHandledFollowerGeneration(input.store, pulled.generation);
+    return null;
   };
 
   const pass = async (): Promise<void> => {
@@ -357,8 +446,11 @@ export const createWatcherDecisionDriver = (
       } else await rewindHistory(history);
     }
     // The history went back to every target this pass saw (or there is none).
-    if (history === undefined || (historyApplied && historyRewindTo === null))
-      await recordHandled(pulled);
+    if (history === undefined || (historyApplied && historyRewindTo === null)) {
+      historyAppliedGeneration = handledGeneration;
+      const waiting = await recordHandled(pulled);
+      if (waiting !== null) reasons.push(waiting);
+    }
     const tip = await observe(1);
     if (tip.kind === "unready") {
       held = [{ reason: tip.reason, detail: tip.detail }, ...reasons];
@@ -433,13 +525,7 @@ export const createWatcherDecisionDriver = (
         lastError = message(error);
         held = [{ reason: WATCHER_DECISION_PASS_FAILED, detail: lastError }];
         log(`decision pass failed: ${lastError}`);
-        if (retry === null && !closed) {
-          retry = setTimeout(() => {
-            retry = null;
-            wake();
-          }, input.retryDelayMs);
-          retry.unref();
-        }
+        scheduleRetry();
       },
     );
     void running.finally(() => {

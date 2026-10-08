@@ -219,15 +219,19 @@ the record (`StartResult.trackedSet`):
   class B and class C rows are kept), rewrites the record with its
   `replaying` flag set, and raises the next generation. After the commit the
   generation listeners hear it as a rewind from the old cursor to the origin
-  (`deleted` is every outref that was live), and the follow loop initializes
-  at the configured origin and replays. The loop logs the added items once.
+  (a reset marker, `reset: true`, with `deleted` empty), and the follow loop
+  initializes at the configured origin and replays. The loop logs the added
+  items once.
 
 While `replaying` is set the loop's status has `replaying: true` and the
 role is unready with `tracked_set_changed` (transient). The loop clears the
-flag in the store the first time it reports the cursor at the node tip. The
-process never exits and no operator step is needed. A role reads the flag
-with `trackedSetRecord()`, for work that must wait out the replay (the
-watcher keeps its tx-input sweep off while it is set).
+flag in the store the first time it reports the cursor at the node tip with
+the node available, once the cursor is back at the height it held before
+the reset. The process never exits and no operator step is needed. A role
+reads the flag with `trackedSetRecord()`, for work that must wait out the
+replay (the watcher keeps its tx-input sweep off while it is set). Prune
+runs no `retention` prune hook while it is set; `record` hooks run with the
+deletes they record (`PruneHook` in `store/context.ts`).
 
 ## API
 

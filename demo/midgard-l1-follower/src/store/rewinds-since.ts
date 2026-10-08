@@ -24,11 +24,12 @@ export type RewindsSince = Readonly<{
  * cursor leaves an `l1_rollbacks` row at its generation, and generations
  * after a cursor's first are consecutive.
  *
- * - `after` null (the reader never handled a generation): the lowest target
- *   of every logged row;
- * - `after` at or above nothing new: no target;
- * - a row missing from `(after, generation]` (pruned past the log's last
- *   1,000 rows, or deleted by a second reset), or `after` above the store's
+ * - `after` at the store's generation: no target;
+ * - otherwise, over `(after, generation]` (`after` null reads as 0: the
+ *   reader never handled a generation, and no row has generation 0), the
+ *   lowest target of the logged rows;
+ * - a row missing from that range (pruned past the log's last 1,000 rows,
+ *   or deleted by a second reset), or `after` above the store's
  *   generation: the origin, the lowest target there is.
  *
  * Null before the store has a cursor.
@@ -41,29 +42,24 @@ export const rewindsSinceIn = async (
   const cursor = await readCursor(tx, dialect);
   if (cursor === null) return null;
   const generation = cursor.generation;
-  if (after !== null && after === generation)
-    return { generation, target: null };
-  if (after !== null && after > generation)
-    return { generation, target: cursor.origin };
-  const rows = await tx.query(
-    after === null
-      ? "SELECT generation, to_slot, to_hash FROM l1_rollbacks WHERE generation <= ? ORDER BY to_slot LIMIT 1"
-      : "SELECT generation, to_slot, to_hash FROM l1_rollbacks WHERE generation > ? AND generation <= ? ORDER BY to_slot LIMIT 1",
-    after === null ? [generation] : [after, generation],
+  const from = after ?? 0;
+  if (from === generation) return { generation, target: null };
+  if (from > generation) return { generation, target: cursor.origin };
+  const count = asNumber(
+    (
+      await tx.query(
+        "SELECT count(*) AS n FROM l1_rollbacks WHERE generation > ? AND generation <= ?",
+        [from, generation],
+      )
+    )[0]?.n,
   );
-  if (after !== null) {
-    const count = asNumber(
-      (
-        await tx.query(
-          "SELECT count(*) AS n FROM l1_rollbacks WHERE generation > ? AND generation <= ?",
-          [after, generation],
-        )
-      )[0]?.n,
-    );
-    if (count < generation - after)
-      return { generation, target: cursor.origin };
-  }
-  const lowest = rows[0];
+  if (count < generation - from) return { generation, target: cursor.origin };
+  const lowest = (
+    await tx.query(
+      "SELECT to_slot, to_hash FROM l1_rollbacks WHERE generation > ? AND generation <= ? ORDER BY to_slot LIMIT 1",
+      [from, generation],
+    )
+  )[0];
   return {
     generation,
     target:
