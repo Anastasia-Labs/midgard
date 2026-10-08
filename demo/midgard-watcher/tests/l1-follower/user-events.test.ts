@@ -277,6 +277,44 @@ describe("watcher user events from follower facts", () => {
     await expect(authorityFor(setup, "deposit", ID.deposit)).rejects.toThrow();
   });
 
+  it("fences a header cutoff with no event read: kept across a rewind above it, retired by a rewind removing it, a reset and close", async () => {
+    const setup = await commitChain();
+    const rewound = await setup.follower.userEvents.headerFence(setup.header);
+    await setup.follower.rewindTo(setup.commitBlock.point);
+    expect(rewound.current()).toBe(true);
+    await expect(rewound.refresh()).resolves.toBeUndefined();
+    await setup.follower.rewindTo(setup.initializationBlock.point);
+    expect(rewound.current()).toBe(false);
+    await expect(rewound.refresh()).rejects.toThrow(
+      "the header cutoff was retired by an L1 rewind",
+    );
+    // A new fence at the removed header finds no commit to cut off at.
+    await unavailable(
+      setup.follower.userEvents.headerFence(setup.header),
+      /commit transaction is not stored/u,
+    );
+
+    const again = await commitChain();
+    const afterReset = await again.follower.userEvents.headerFence(
+      again.header,
+    );
+    await again.follower.reset();
+    expect(afterReset.current()).toBe(false);
+    await expect(afterReset.refresh()).rejects.toThrow(
+      "the header cutoff was retired by an L1 rewind",
+    );
+
+    const third = await commitChain();
+    const afterClose = await third.follower.userEvents.headerFence(
+      third.header,
+    );
+    third.follower.userEvents.close();
+    expect(afterClose.current()).toBe(false);
+    await expect(afterClose.refresh()).rejects.toThrow(
+      "the header cutoff was retired by an L1 rewind",
+    );
+  });
+
   it("refuses copies of a capability", async () => {
     const setup = await commitChain();
     const authority = await authorityFor(setup, "deposit", ID.deposit);

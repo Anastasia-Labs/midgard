@@ -1,4 +1,5 @@
 import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
+import { watcherDecisionHoldReason } from "../fault-proofs/watcher-decision-hold.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
 import {
   createWatcherAlertBook,
@@ -319,8 +320,8 @@ export const createWatcherOperationsObservability = (input: {
     if (supervisor.journalUnavailable !== null)
       reasons.push("journal_unavailable");
     if (supervisor.journalCapacity) reasons.push("journal_capacity");
-    if (supervisor.journalDecisionMissing.length > 0)
-      reasons.push("journal_decision_missing");
+    const holds = supervisor.journalDecisionMissing;
+    reasons.push(...new Set(holds.map(watcherDecisionHoldReason)));
     if (supervisor.journalBusy !== null) reasons.push("journal_busy");
     if (latestL1Sources.size === 0) reasons.push("l1_source_unavailable");
     else if (sources.stale > 0 || sources.disagreement > 0)

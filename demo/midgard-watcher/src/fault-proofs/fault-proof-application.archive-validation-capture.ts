@@ -8,6 +8,12 @@ import { captureWatcherValidationReplayTranscript } from "./replay-transcript-ca
  * head cannot be replayed against current authority: it is recaptured fresh
  * (same header, same coordinate) and appended on top of the v1 head. The
  * transcript digest is local to this store; the decision is not re-made.
+ *
+ * The transcript digest is bound into the challenge digest, which a started
+ * validation-trace workflow journals and binds its submissions to. While a
+ * proof started from the v1 head is open, the head is not re-keyed: the
+ * capture is held (`validation_transcript_pre_follower`) until the header
+ * leaves the finalized queue.
  */
 const PRE_FOLLOWER_TRANSCRIPT =
   "midgard-watcher-production-authenticated-replay-transcript-v1";
@@ -22,14 +28,28 @@ const isPreFollowerTranscript = (cborHex: string): boolean => {
   );
 };
 
+export type WatcherValidationCaptureArchive =
+  | Readonly<{
+      kind: "captured";
+      capture: Awaited<
+        ReturnType<typeof captureWatcherValidationReplayTranscript>
+      >;
+    }>
+  | Readonly<{
+      /** A v1 head with an open proof: not re-keyed, the decision is held. */
+      kind: "held_pre_follower";
+      preFollowerTranscriptDigest: string;
+      detail: string;
+    }>;
+
 /** The capture and its durable dependent-operation pin commit together. */
 export const archiveWatcherValidationCapture = async (
   input: Parameters<typeof captureWatcherValidationReplayTranscript>[0] & {
     readonly replayTranscriptStore: WatcherReplayTranscriptStore;
   },
-) => {
+): Promise<WatcherValidationCaptureArchive> => {
   const { header, replayTranscriptStore } = input;
-  const archived = await replayTranscriptStore.read({
+  const identity = {
     deploymentFingerprint:
       input.deploymentAuthority.deploymentIdentity.manifestId,
     headerHash: header.headerHash,
@@ -40,11 +60,20 @@ export const archiveWatcherValidationCapture = async (
       slot: header.observedSlot,
       chainPointId: header.observedChainPointId,
     },
-  });
+  };
+  const archived = await replayTranscriptStore.read(identity);
+  const preFollower =
+    archived !== null &&
+    isPreFollowerTranscript(archived.persistedTranscriptCborHex);
+  if (preFollower && (await replayTranscriptStore.proofOperationOpen(identity)))
+    return Object.freeze({
+      kind: "held_pre_follower",
+      preFollowerTranscriptDigest: archived.headTranscriptDigest,
+      detail: `validationTraceDispute/${header.headerHash}: a proof started from the pre-follower transcript ${archived.headTranscriptDigest} is open; held until the header leaves the finalized queue`,
+    });
   const capture = await captureWatcherValidationReplayTranscript({
     ...input,
-    ...(archived === null ||
-    isPreFollowerTranscript(archived.persistedTranscriptCborHex)
+    ...(archived === null || preFollower
       ? {}
       : { persistedTranscriptCborHex: archived.persistedTranscriptCborHex }),
   });
@@ -64,5 +93,5 @@ export const archiveWatcherValidationCapture = async (
       "validation transcript head changed during capture; classify again",
     );
   }
-  return capture;
+  return Object.freeze({ kind: "captured", capture });
 };

@@ -66,6 +66,18 @@ export type WatcherUserEventRequest = Readonly<{
   throughHeader: WatcherStateQueueHeaderObservation;
 }>;
 
+/**
+ * The header's cutoff itself, held as a fence: a capture that uses the
+ * header holds one whether or not it read any user event, so a capture with
+ * no events is retired by the same rewinds, resets and close as one with.
+ */
+export type WatcherUserEventHeaderFence = Readonly<{
+  /** False once a rewind removed the cutoff, the store reset, or the source closed. */
+  current(): boolean;
+  /** Re-reads the cutoff from the facts; throws when it is retired or moved. */
+  refresh(): Promise<void>;
+}>;
+
 export type WatcherUserEvents = Readonly<{
   deploymentManifestId: string;
   blueprintHash: string;
@@ -73,6 +85,10 @@ export type WatcherUserEvents = Readonly<{
   eventAuthority(
     request: WatcherUserEventRequest,
   ): Promise<WatcherUserEventAuthority>;
+  /** The fence over `header`'s cutoff, taken before the reads it covers. */
+  headerFence(
+    header: WatcherStateQueueHeaderObservation,
+  ): Promise<WatcherUserEventHeaderFence>;
   close(): void;
 }>;
 
@@ -365,6 +381,29 @@ export const createWatcherFollowerUserEvents = (
           )
             throw new Error("the event read differs from its first read");
           return first;
+        },
+      });
+    },
+    headerFence: async (header) => {
+      const since = seq;
+      const first = await cutoffAt(header);
+      const cutoffSlot = first.point.slot;
+      const current = () => standing(since, cutoffSlot);
+      if (!current())
+        return unavailable("an L1 rewind removed the cutoff during the read");
+      return Object.freeze({
+        current,
+        refresh: async () => {
+          if (!current())
+            throw new Error("the header cutoff was retired by an L1 rewind");
+          const again = await cutoffAt(header);
+          if (
+            again.point.slot !== first.point.slot ||
+            again.txIndex !== first.txIndex
+          )
+            throw new Error("the header cutoff differs from its first read");
+          if (!current())
+            throw new Error("the header cutoff was retired by an L1 rewind");
         },
       });
     },

@@ -14,7 +14,10 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import type { WatcherUserEvents } from "../l1-follower/user-events.js";
+import type {
+  WatcherUserEventHeaderFence,
+  WatcherUserEvents,
+} from "../l1-follower/user-events.js";
 import {
   assertWatcherVerifiedDeploymentAuthority,
   type VerifiedWatcherDeploymentAuthority,
@@ -32,46 +35,54 @@ import {
 } from "../verification/user-event.js";
 import { deriveWatcherUserEventReplayAuthority } from "../verification/user-event-replay-authority.js";
 
-const captureAuthorities = new WeakMap<
-  object,
-  readonly WatcherBlockReplayEventAuthority[]
->();
+/**
+ * What fences a capture: the header's cutoff, held for every capture
+ * (including one with no user events), and each event's capability.
+ */
+type CaptureFences = Readonly<{
+  header: WatcherUserEventHeaderFence;
+  authorities: readonly WatcherBlockReplayEventAuthority[];
+}>;
 
-const assertAuthoritiesCurrent = (
-  authorities: readonly WatcherBlockReplayEventAuthority[],
-): void => {
+const captureAuthorities = new WeakMap<object, CaptureFences>();
+
+const assertAuthoritiesCurrent = ({
+  header,
+  authorities,
+}: CaptureFences): void => {
+  if (!header.current())
+    throw new Error("validation capture was retired by an L1 rewind");
   for (const authority of authorities)
     assertWatcherUserEventAuthorityCurrent(authority.userEvent);
 };
 
-const refreshAuthorities = async (
-  authorities: readonly WatcherBlockReplayEventAuthority[],
-): Promise<void> => {
-  for (const authority of authorities)
+const refreshAuthorities = async (fences: CaptureFences): Promise<void> => {
+  await fences.header.refresh();
+  for (const authority of fences.authorities)
     await readWatcherUserEventAuthority(authority.userEvent);
-  assertAuthoritiesCurrent(authorities);
+  assertAuthoritiesCurrent(fences);
 };
 
 /** Refresh after archive or workflow-loader I/O; descriptive copies cannot pass. */
 export const refreshWatcherValidationReplayCapture = async (
   capture: object,
 ): Promise<void> => {
-  const authorities = captureAuthorities.get(capture);
-  if (authorities === undefined) {
+  const fences = captureAuthorities.get(capture);
+  if (fences === undefined) {
     throw new Error("Validation replay capture is not privately admitted");
   }
-  await refreshAuthorities(authorities);
+  await refreshAuthorities(fences);
 };
 
 /** Call synchronously after the last await, immediately before using a capture. */
 export const assertWatcherValidationReplayCaptureCurrent = (
   capture: object,
 ): void => {
-  const authorities = captureAuthorities.get(capture);
-  if (authorities === undefined) {
+  const fences = captureAuthorities.get(capture);
+  if (fences === undefined) {
     throw new Error("Validation replay capture is not privately admitted");
   }
-  assertAuthoritiesCurrent(authorities);
+  assertAuthoritiesCurrent(fences);
 };
 
 /**
@@ -113,6 +124,8 @@ export const captureWatcherValidationReplayTranscript = async ({
       "Validation transcript requires this deployment's selected decision",
     );
   }
+  // Taken before any read it covers, so a rewind during the capture retires it.
+  const headerFence = await userEvents.headerFence(header);
   const context = headerDecisionReplayContext(decision);
   const evidence = await headerDecisionCanonicalEvidence(decision);
   if (evidence === undefined || context?.validationTraceReplay === undefined) {
@@ -244,13 +257,17 @@ export const captureWatcherValidationReplayTranscript = async ({
   // Challenge construction independently replays validation and may yield after
   // transcript admission. Refresh all protected heads, then fence every handle
   // synchronously before making the challenge available to the application.
-  await refreshAuthorities(authorities);
-  assertAuthoritiesCurrent(authorities);
+  const fences: CaptureFences = Object.freeze({
+    header: headerFence,
+    authorities: Object.freeze(authorities),
+  });
+  await refreshAuthorities(fences);
+  assertAuthoritiesCurrent(fences);
   const capture = Object.freeze({
     decisionDigest: decision.decisionDigest,
     transcript,
     challenge,
   });
-  captureAuthorities.set(capture, Object.freeze(authorities));
+  captureAuthorities.set(capture, fences);
   return capture;
 };
