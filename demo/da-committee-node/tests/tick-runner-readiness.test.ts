@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { AvailabilityResponderAwaitingScanError } from "../src/availability/awaiting-scan-error.js";
 import {
   AvailabilityResponder,
-  AvailabilityResponderAwaitingScanError,
   availabilityResponderReportLine,
 } from "../src/availability/responder.js";
 import {

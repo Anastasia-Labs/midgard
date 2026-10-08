@@ -21,7 +21,7 @@ import type {
 import type * as SDK from "@al-ft/midgard-sdk";
 import type { ProtocolParameters } from "@lucid-evolution/lucid";
 
-import { AvailabilityResponderAwaitingScanError } from "../../availability/responder.js";
+import { AvailabilityResponderAwaitingScanError } from "../../availability/awaiting-scan-error.js";
 import type { CommitteeL1Readiness } from "./l1-follower.js";
 import { COMMITTEE_QUEUE_TABLE } from "./queue-table.js";
 import { type CommitteeL1Retention, NO_PIN_TARGETS } from "./retention-pins.js";

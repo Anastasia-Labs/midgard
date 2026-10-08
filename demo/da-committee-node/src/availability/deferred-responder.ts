@@ -1,8 +1,6 @@
 import type { CommitteeL1Source } from "../l1/follower/l1-follower.js";
-import {
-  AvailabilityResponderAwaitingScanError,
-  type AvailabilityResponderReport,
-} from "./responder.js";
+import { AvailabilityResponderAwaitingScanError } from "./awaiting-scan-error.js";
+import type { AvailabilityResponderReport } from "./responder.js";
 
 type BuiltResponder = Readonly<{
   responder: Readonly<{ drain: () => Promise<AvailabilityResponderReport> }>;

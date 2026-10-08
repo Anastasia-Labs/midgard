@@ -20,8 +20,8 @@ import { credentialToAddress, getAddressDetails } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { AvailabilityResponderAwaitingScanError as AwaitingScan } from "../../src/availability/awaiting-scan-error.js";
 import { deferredAvailabilityResponder } from "../../src/availability/deferred-responder.js";
-import { AvailabilityResponderAwaitingScanError as AwaitingScan } from "../../src/availability/responder.js";
 import { CommitteeService } from "../../src/committee-service.js";
 import type { Header } from "../../src/domain.js";
 import { committeeAvailabilityReads } from "../../src/l1/follower/availability-reads.js";

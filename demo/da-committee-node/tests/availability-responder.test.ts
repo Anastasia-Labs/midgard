@@ -2,9 +2,9 @@ import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
+import { AvailabilityResponderAwaitingScanError } from "../src/availability/awaiting-scan-error.js";
 import {
   AvailabilityResponder,
-  AvailabilityResponderAwaitingScanError,
   type AvailabilityResponderDeps,
   availabilityResponderReportLine,
 } from "../src/availability/responder.js";

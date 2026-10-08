@@ -8,7 +8,7 @@ import {
   type FollowerBoundary,
   sameBoundary,
 } from "../l1/follower/availability-reads.js";
-import { AvailabilityResponderAwaitingScanError } from "./responder.js";
+import { AvailabilityResponderAwaitingScanError } from "./awaiting-scan-error.js";
 
 /**
  * The responder's canonical boundary, operation context and reconcile step,

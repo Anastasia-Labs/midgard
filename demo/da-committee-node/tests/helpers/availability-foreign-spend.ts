@@ -15,11 +15,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 
+import { AvailabilityResponderAwaitingScanError } from "../../src/availability/awaiting-scan-error.js";
 import { availabilityResponderOperations } from "../../src/availability/factory.js";
-import {
-  AvailabilityResponder,
-  AvailabilityResponderAwaitingScanError,
-} from "../../src/availability/responder.js";
+import { AvailabilityResponder } from "../../src/availability/responder.js";
 import { followerBoundary } from "./follower-boundary.js";
 
 /**

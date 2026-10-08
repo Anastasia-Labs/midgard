@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { CommitteeStore } from "../store.js";
+import { AvailabilityResponderAwaitingScanError } from "./awaiting-scan-error.js";
 import { retainedAvailabilityPayload } from "./retained-payload.js";
 
 export type AvailabilityResponderChallenge = Readonly<{
@@ -69,23 +70,6 @@ export type AvailabilityResponderMissedDeadline = Readonly<{
 
 /** Steps one drain runs at most, so a drain always ends. */
 export const AVAILABILITY_RESPONDER_MAX_DRAIN_STEPS = 32;
-
-/**
- * The committee's L1 follower holds the committee unready (catching up,
- * waiting on its node, or a rollback it cannot follow), or its view moved
- * while a boundary was read. Every responder step is refused until the
- * follower is ready again, so this aborts the step like any error; but it is
- * the normal wait for the follower, not a failure, and the tick reports it as
- * `awaiting_scan` instead of throwing it. `/readyz` names the reason.
- */
-export class AvailabilityResponderAwaitingScanError extends Error {
-  constructor(detail?: string) {
-    super(
-      `Availability responder awaits the committee's L1 follower before acting${detail === undefined ? "" : `: ${detail}`}`,
-    );
-    this.name = "AvailabilityResponderAwaitingScanError";
-  }
-}
 
 const awaitingScanReport = (
   error: AvailabilityResponderAwaitingScanError,

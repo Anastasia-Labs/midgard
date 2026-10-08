@@ -7,11 +7,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { AvailabilityResponderAwaitingScanError } from "../src/availability/awaiting-scan-error.js";
 import { availabilityResponderOperations } from "../src/availability/factory.js";
-import {
-  AvailabilityResponder,
-  AvailabilityResponderAwaitingScanError,
-} from "../src/availability/responder.js";
+import { AvailabilityResponder } from "../src/availability/responder.js";
 import { ownWallets } from "../src/l1/follower/committee-follower-config.js";
 import {
   type EmulatorFollower,
