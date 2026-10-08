@@ -90,9 +90,15 @@ export type NothingToCommitOutput = {
   type: "NothingToCommitOutput";
 };
 
+/** The readiness reason of a commit-stage rejection that reached an
+ * acceptance receipt with an undecided member (`UndecidedBatchMember`). */
+export const COMMIT_STAGE_BATCH_UNDECIDED = "commit_stage_batch_undecided";
+
 export type FailureOutput = {
   type: "FailureOutput";
   error: string;
+  /** The named reason the failure raises instead of `commit_worker_failed`. */
+  reason?: typeof COMMIT_STAGE_BATCH_UNDECIDED;
 };
 
 export type RegisteredDueWorkOutput = {

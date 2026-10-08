@@ -1,8 +1,13 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect, Option } from "effect";
 
-import { DepositsDB, MempoolLedgerDB } from "../database/index.js";
+import {
+  DepositsDB,
+  MempoolInclusionsDB,
+  MempoolLedgerDB,
+} from "../database/index.js";
 import {
   type DatabaseError,
   sqlErrorToDatabaseError,
@@ -10,6 +15,11 @@ import {
 import * as Ledger from "../database/utils/ledger.js";
 import * as Tx from "../database/utils/tx.js";
 import type { Database } from "./database.js";
+import { Globals } from "./globals.globals.js";
+import {
+  clearLivenessIncident,
+  raiseLivenessIncident,
+} from "./liveness-halt.js";
 import {
   ancestorRow,
   depositRow,
@@ -22,6 +32,7 @@ import {
   closeRejections,
   confirmedRow,
   failure,
+  findUndecidedBatchMember,
   hex,
   insertRows,
   type LedgerRow,
@@ -32,6 +43,51 @@ import {
   table,
 } from "./working-ledger-recompute.js";
 
+/** The liveness source `correction_restore_batch_undecided` is raised under. */
+export const CORRECTION_RESTORE_BATCH_SOURCE = "correction_restore_batch";
+/**
+ * The restore's batch closure reached an acceptance receipt with a member
+ * that is neither pending, settled, recorded rejected, nor concluded, so
+ * the restore fails and its correction step retries it. The reason clears
+ * once a restore completes.
+ */
+export const CORRECTION_RESTORE_BATCH_UNDECIDED =
+  "correction_restore_batch_undecided";
+
+/**
+ * Names an `UndecidedBatchMember` failure of `restore` as
+ * `correction_restore_batch_undecided` and clears it when a restore
+ * completes; the failure itself propagates unchanged. Without `Globals`
+ * the restore runs as it is.
+ */
+const withBatchReadiness = <A, E, R>(restore: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const globals = yield* Effect.serviceOption(Globals);
+    if (Option.isNone(globals)) return yield* restore;
+    return yield* restore.pipe(
+      Effect.tapErrorCause((cause) => {
+        const undecided = findUndecidedBatchMember(cause);
+        return undecided === undefined
+          ? Effect.void
+          : raiseLivenessIncident(
+              globals.value,
+              CORRECTION_RESTORE_BATCH_SOURCE,
+              CORRECTION_RESTORE_BATCH_UNDECIDED,
+              formatUnknownError(undecided),
+            );
+      }),
+      Effect.tap(() =>
+        clearLivenessIncident(globals.value, CORRECTION_RESTORE_BATCH_SOURCE),
+      ),
+    );
+  });
+
+/**
+ * Restores the speculative ledger after a state-queue correction reopened
+ * withdrawals and deposits, and rejects the pending transactions the
+ * reopened deposits invalidate (with the batch closure; a co-member a
+ * block's inclusion mark holds is settled by that block).
+ */
 export const restoreSpeculativeLedgerAfterCorrection = (input: {
   readonly withdrawals: readonly WithdrawalLedgerRestore[];
   readonly reopenedDepositEventIds: readonly Buffer[];
@@ -109,8 +165,10 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
       });
     }
     const tainted = new Set(reopenedDepositOutRefs.keys());
+    const settled = yield* MempoolInclusionsDB.markedTxIds;
     const rejected = yield* closeRejections({
       pending,
+      settled: new Set(settled.map(hex)),
       onReject: (tx) => {
         for (const row of tx.produced)
           tainted.add(hex(row[MempoolLedgerDB.Columns.OUTREF]));
@@ -209,7 +267,7 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
     // Undo the acceptance itself: the terminal admission, its address
     // history, and the batch receipts, which no longer describe a pending
     // ledger overlay (the before-images above were read from them first).
-    yield* recordRejections(rejected, REJECTIONS);
+    yield* recordRejections(rejected, REJECTIONS, settled);
     return {
       restoredWithdrawalOutputs: withdrawalRows.length,
       rejectedTransactions: rejectedIds,
@@ -219,4 +277,5 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
       table,
       "Failed to restore the speculative ledger after a state-queue correction",
     ),
+    withBatchReadiness,
   );

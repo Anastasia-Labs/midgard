@@ -14,13 +14,18 @@
  *
  * - a receipt whose members are all decided is repaired by the next
  *   rebase: its pending members are rejected as batch members and it is
- *   reversed; a rebase rejection of a co-member reverses it too;
- * - without the record, that rejection reaches an undecided member: the
- *   rebase holds `landed_block_batch_undecided`, as it does for a member
- *   whose rejection row was pruned before the migration;
+ *   reversed; a rebase rejection of a co-member reverses it too; the
+ *   recorded member gets a rejected admission and no address history;
+ * - without the record (never written, or its rejection row pruned before
+ *   the migration), the member's terminal admission concludes it, and that
+ *   rejection reverses the receipt too;
+ * - a member out of the pending tables that a landed or folded block of
+ *   this node records is settled; one with neither an admission, a record,
+ *   nor such a block record holds `landed_block_batch_undecided` until one
+ *   of them appears;
  * - a receipt with an undecided member is left as it is, and so is a repair
  *   whose batch rejection reaches one; the rebase runs;
- * - a mutant rebuild that skips the repair fails the repaired expectations.
+ * - each rule has a mutant that fails its expectations.
  */
 
 import { SqlClient } from "@effect/sql";
@@ -36,6 +41,7 @@ import {
 import { migrationByVersion } from "../src/database/migrations/index.js";
 import { LANDED_BLOCK_BATCH_UNDECIDED } from "../src/landed-blocks/holds.js";
 import { REBASE_REJECTIONS } from "../src/landed-blocks/rebase.js";
+import * as ReceiptMembers from "../src/services/working-ledger-recompute.receipt-members.js";
 import * as RejectClosure from "../src/services/working-ledger-recompute.reject-closure.js";
 import {
   admitPending,
@@ -43,7 +49,17 @@ import {
 } from "./helpers/landed-blocks-sim.mempool.js";
 import { simDigest } from "./helpers/landed-blocks-sim.universe.js";
 import {
+  acceptedAdmission,
+  addressRow,
+  addressRows,
+  admissionOf,
+  blockRow,
+  immutableRow,
+  leavePending,
+} from "./helpers/receipt-member-rows.js";
+import {
   attempt,
+  BLOCK,
   E0,
   expectHeld,
   expectRebased,
@@ -123,9 +139,9 @@ const sorted = (pairs: (readonly string[])[]) =>
   );
 
 /**
- * A legacy receipt `[a, b]`: `a` rejected by the earlier commit stage, `b`
- * pending and spending `bSpends`, recorded by the migration unless
- * `recorded` is false.
+ * A legacy receipt `[a, b]`: `a` accepted and then rejected by the earlier
+ * commit stage (which left its admission accepted), `b` pending and
+ * spending `bSpends`, recorded by the migration unless `recorded` is false.
  */
 const legacyBatch = async (
   bSpends: readonly Buffer[],
@@ -136,6 +152,7 @@ const legacyBatch = async (
   const a = pendingTx("a", [], 1);
   const b = pendingTx("b", bSpends, 2);
   await run(globals, admitPending([a, b]));
+  await sqlRun(globals, () => acceptedAdmission(a.id));
   await receipt(globals, [a.id, b.id]);
   await legacyCommitStageRejection(globals, a);
   if (options.pruned === true) await pruneRejection(globals, a);
@@ -217,29 +234,73 @@ describe(
       expect(seen.recorded).toEqual([]);
     });
 
-    it("holds landed_block_batch_undecided for that rejection when the member is not recorded", async () => {
-      const { globals, b } = await legacyBatch([E0.outref], {
-        recorded: false,
-      });
+    it.each([
+      ["never written", { recorded: false }],
+      [
+        "missing because its rejection row was pruned before the migration",
+        { pruned: true },
+      ],
+    ] as const)(
+      "reverses the receipt for that rejection when the member's record is %s: its terminal admission concludes it",
+      async (_, options) => {
+        const { globals, a, b } = await legacyBatch([E0.outref], options);
+        const seen = await observe(globals);
+        expectRebased(seen.shown);
+        expect(seen.rejections).toEqual(
+          sorted([
+            ...("pruned" in options ? [] : [[hex(a.id), LEGACY_CODE]]),
+            [hex(b.id), REBASE_REJECTIONS.direct.code],
+          ]),
+        );
+        expect(seen.unreversed).toBe(0);
+        expect(seen.pending).toEqual([]);
+        // Nothing records `a`'s code: its admission stays as it is.
+        expect((await run(globals, admissionOf(a.id)))?.status).toBe(
+          "accepted",
+        );
+      },
+    );
+
+    it("mutant: a closure that does not take a concluded member as decided holds the pruned member's batch", async () => {
+      const { globals, b } = await legacyBatch([E0.outref], { pruned: true });
+      const spy = vi
+        .spyOn(ReceiptMembers, "concluded")
+        .mockImplementation((sql) => sql`false`);
+      const shown = await attempt(globals);
+      spy.mockRestore();
       expectHeld(
-        await attempt(globals),
+        shown,
         /batch's acceptance cannot be reversed/,
         LANDED_BLOCK_BATCH_UNDECIDED,
       );
       expect(await pendingIds(globals)).toEqual([hex(b.id)]);
     });
 
-    it("holds landed_block_batch_undecided while a member's rejection row was pruned before the migration", async () => {
-      const { globals, b } = await legacyBatch([E0.outref], { pruned: true });
-      expect(await recordedMembers(globals)).toEqual([]);
-      for (let retry = 0; retry < 2; retry += 1)
-        expectHeld(
-          await attempt(globals),
-          /batch's acceptance cannot be reversed/,
-          LANDED_BLOCK_BATCH_UNDECIDED,
-        );
-      expect(await unreversedReceipts(globals)).toBe(1);
-      expect(await pendingIds(globals)).toEqual([hex(b.id)]);
+    it("gives the recorded member a rejected admission and no address history", async () => {
+      const { globals, a, b } = await legacyBatch([]);
+      await sqlRun(globals, () =>
+        Effect.zipRight(addressRow(a.id), addressRow(b.id)),
+      );
+      expectRepaired(await observe(globals), a, b);
+      expect(await run(globals, admissionOf(a.id))).toEqual({
+        status: "rejected",
+        reject_code: LEGACY_CODE,
+      });
+      expect(await run(globals, addressRows(a.id))).toBe(0);
+      expect(await run(globals, addressRows(b.id))).toBe(0);
+    });
+
+    it("mutant: a repair that leaves the recorded member's admission and address history fails those expectations", async () => {
+      const { globals, a, b } = await legacyBatch([]);
+      await sqlRun(globals, () => addressRow(a.id));
+      const spy = vi
+        .spyOn(ReceiptMembers, "settleRecordedRejections", "get")
+        .mockReturnValue(Effect.void);
+      const seen = await observe(globals);
+      spy.mockRestore();
+      expectRepaired(seen, a, b);
+      expect((await run(globals, admissionOf(a.id)))?.status).toBe("accepted");
+      expect(await run(globals, addressRows(a.id))).toBe(1);
     });
 
     it("leaves a recorded receipt with an undecided member as it is, and the rebase runs", async () => {
@@ -248,15 +309,34 @@ describe(
       const a = pendingTx("a", [], 1);
       const b = pendingTx("b", [], 2);
       await run(globals, admitPending([a, b]));
+      await sqlRun(globals, () =>
+        Effect.all([
+          acceptedAdmission(a.id),
+          acceptedAdmission(b.id),
+          addressRow(b.id),
+        ]),
+      );
       await receipt(globals, [a.id, b.id, simDigest("rebase:tx:gone")]);
       await legacyCommitStageRejection(globals, a);
       await migrate(globals);
+      // A record of the pending `b` leaves its admission and history as
+      // they are.
+      await sqlRun(
+        globals,
+        (sql) => sql`INSERT INTO event_history_l2_ledger_receipt_rejections
+          (receipt_sequence, tx_id, reject_code)
+          SELECT sequence, ${b.id}, ${LEGACY_CODE}
+          FROM event_history_l2_ledger_receipts`,
+      );
       const seen = await observe(globals);
       expectRebased(seen.shown);
       expect(seen.rejections).toEqual([[hex(a.id), LEGACY_CODE]]);
       expect(seen.unreversed).toBe(1);
-      expect(seen.recorded).toEqual([hex(a.id)]);
+      expect(seen.recorded).toEqual([hex(a.id), hex(b.id)].sort());
       expect(seen.pending).toEqual([hex(b.id)]);
+      expect((await run(globals, admissionOf(a.id)))?.status).toBe("rejected");
+      expect((await run(globals, admissionOf(b.id)))?.status).toBe("accepted");
+      expect(await run(globals, addressRows(b.id))).toBe(1);
     });
 
     it("does not apply a repair whose batch rejection reaches an undecided member, and the rebase runs", async () => {
@@ -274,6 +354,95 @@ describe(
       expect(seen.rejections).toEqual([[hex(a.id), LEGACY_CODE]]);
       expect(seen.unreversed).toBe(2);
       expect(seen.pending).toEqual([hex(b.id)]);
+    });
+  },
+);
+
+const UNLANDED_BLOCK = "c2".repeat(28);
+
+/**
+ * A receipt `[a, b]`: `a` left the pending tables with no admission and no
+ * record, and `b` spends `E0`, which the processed block spends, so the
+ * rebase rejects it directly.
+ */
+const includedBatch = async () => {
+  const globals = await processOf(freshNative());
+  await seed(globals);
+  const a = pendingTx("a", [], 1);
+  const b = pendingTx("b", [E0.outref], 2);
+  await run(globals, admitPending([a, b]));
+  await receipt(globals, [a.id, b.id]);
+  await sqlRun(globals, () => leavePending(a.id));
+  return { globals, a, b };
+};
+
+const expectSettledByBlock = (
+  seen: Awaited<ReturnType<typeof observe>>,
+  b: SimPendingTx,
+) => {
+  expectRebased(seen.shown);
+  expect(seen.rejections).toEqual([[hex(b.id), REBASE_REJECTIONS.direct.code]]);
+  expect(seen.unreversed).toBe(0);
+  expect(seen.pending).toEqual([]);
+};
+
+describe(
+  "receipt members a block of this node includes",
+  { concurrent: false },
+  () => {
+    it("settles a member a folded block holds (an immutable row alone)", async () => {
+      const { globals, a, b } = await includedBatch();
+      await sqlRun(globals, () => immutableRow(a.id));
+      expectSettledByBlock(await observe(globals), b);
+    });
+
+    it("settles a member a processed landed block holds (a blocks row)", async () => {
+      const { globals, a, b } = await includedBatch();
+      await sqlRun(globals, () =>
+        Effect.zipRight(blockRow(BLOCK, a.id), immutableRow(a.id)),
+      );
+      expectSettledByBlock(await observe(globals), b);
+    });
+
+    it("holds landed_block_batch_undecided for a member only an unlanded block holds", async () => {
+      const { globals, a, b } = await includedBatch();
+      await sqlRun(globals, () =>
+        Effect.zipRight(blockRow(UNLANDED_BLOCK, a.id), immutableRow(a.id)),
+      );
+      expectHeld(
+        await attempt(globals),
+        /batch's acceptance cannot be reversed/,
+        LANDED_BLOCK_BATCH_UNDECIDED,
+      );
+      expect(await unreversedReceipts(globals)).toBe(1);
+      expect(await pendingIds(globals)).toEqual([hex(b.id)]);
+    });
+
+    it("holds landed_block_batch_undecided while the member has no decision, and rebases once its block folds", async () => {
+      const { globals, a, b } = await includedBatch();
+      for (let retry = 0; retry < 2; retry += 1)
+        expectHeld(
+          await attempt(globals),
+          /batch's acceptance cannot be reversed/,
+          LANDED_BLOCK_BATCH_UNDECIDED,
+        );
+      await sqlRun(globals, () => immutableRow(a.id));
+      expectSettledByBlock(await observe(globals), b);
+    });
+
+    it("mutant: a closure that ignores this node's block records holds the folded member's batch", async () => {
+      const { globals, a } = await includedBatch();
+      await sqlRun(globals, () => immutableRow(a.id));
+      const spy = vi
+        .spyOn(ReceiptMembers, "settledByBlock")
+        .mockImplementation((sql) => sql`false`);
+      const shown = await attempt(globals);
+      spy.mockRestore();
+      expectHeld(
+        shown,
+        /batch's acceptance cannot be reversed/,
+        LANDED_BLOCK_BATCH_UNDECIDED,
+      );
     });
   },
 );
