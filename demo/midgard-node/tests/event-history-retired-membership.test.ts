@@ -15,10 +15,6 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
 import { pendingHistoryLedgerDisposition } from "../src/database/eventHistoryLedgerRepair.js";
-import {
-  prepareHistoryRecoveryPlan,
-  SIGNED_HEADER_RECOVERY_DOMAIN,
-} from "../src/database/eventHistoryRecoveryPlans.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
 import {
@@ -33,7 +29,6 @@ import { NodeConfig } from "../src/services/config.js";
 import { Database } from "../src/services/database.js";
 import { makeRetainedHistoryAppender } from "../src/services/event-history-owner.retention.js";
 import { HistoryProducer } from "../src/services/event-history-producer.js";
-import { signedHeaderRecoveryCandidates } from "../src/services/history-signed-header-recovery.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import {
   followerMaterialize,
@@ -47,8 +42,8 @@ import { applyMidgardNodeTestEnv } from "./test-env.js";
 import { resetApplicationTables } from "./utils.js";
 
 // PostgreSQL schema regression only. Strict decoded history snapshots and branch
-// ancestry are modeled. Direct DELETE below runs under actual recovery ownership
-// but deliberately does not claim to authorize signed-header release/native undo.
+// ancestry are modeled. Direct writes below run under actual recovery ownership
+// and model no native undo.
 // The signed journal body is real CML construction, not an accepted L1 commitment.
 applyMidgardNodeTestEnv();
 const hash = (n: number) => n.toString(16).padStart(64, "0");
@@ -735,9 +730,10 @@ describe.each(["deposit", "withdrawal"] as const)(
   },
 );
 
-// Modeled source/native roots, real SQL recovery plan and production appender.
-// A signed orphan-funded candidate and its durable plan must not pin ancestry.
-it("advances journal pruning while a signed-header recovery plan remains prepared", async () => {
+// Modeled source/native roots and the production appender (L6). A signed
+// header whose member was orphaned pins no ancestry: the journal prunes at k
+// while the header's journal is still unfinished.
+it("prunes the journal at k while a long-lived signed header's member is orphaned", async () => {
   const f = await fixture("deposit", { start: 103n, ttl: 104n });
   for (let n = 0; n < 2; n++)
     await run(
@@ -746,46 +742,6 @@ it("advances journal pruning while a signed-header recovery plan remains prepare
         Journal.undoHead(binding, await read(), followerRewind),
       ),
     );
-  const candidates = () => run(signedHeaderRecoveryCandidates());
-  expect((await candidates()).map((row) => row.header_hash)).toEqual([
-    f.headerHash,
-  ]);
-  const checkpoint = await read();
-  const plan = await run(
-    Authority.withRecovery(
-      f.token,
-      prepareHistoryRecoveryPlan(
-        checkpoint,
-        {
-          bindingDigest: binding.digest,
-          manifestId: binding.manifestId,
-          headerHash: f.headerHash.toString("hex"),
-          signedTransactionHash: CML.hash_transaction(
-            CML.Transaction.from_cbor_bytes(f.signedCbor).body(),
-          ).to_hex(),
-          signedTransactionCborSha256: createHash("sha256")
-            .update(f.signedCbor)
-            .digest("hex"),
-          expectedRoot: hash(600),
-          targetRoot: hash(601),
-          journalDigest: hash(602),
-        },
-        hash(603),
-        SIGNED_HEADER_RECOVERY_DOMAIN,
-      ),
-    ),
-  );
-  const retainedPlan = () =>
-    run(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql`SELECT * FROM event_history_recovery_plans
-          WHERE recovery_id = ${Buffer.from(plan.recoveryId, "hex")}`;
-      }),
-    );
-  const stored = await retainedPlan();
-  expect(stored).toHaveLength(1);
-  expect(stored[0]).toMatchObject({ state: "prepared" });
   const append = makeRetainedHistoryAppender({
     binding,
     rollbackHorizon: 1,
@@ -808,10 +764,6 @@ it("advances journal pruning while a signed-header recovery plan remains prepare
   const current = await read();
   expect(current.head).toEqual({ id: hash(25), slot: 106, height: 7 });
   expect(current.anchor).toEqual({ id: hash(24), slot: 105, height: 6 });
-  expect(await retainedPlan()).toEqual(stored);
-  expect((await candidates()).map((row) => row.header_hash)).toEqual([
-    f.headerHash,
-  ]);
   const applications = await run(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -824,11 +776,12 @@ it("advances journal pruning while a signed-header recovery plan remains prepare
   expect(applications.map((row) => Number(row.block_height))).toEqual([7]);
 });
 
-// A candidate recovery cannot classify from coverage (no signed validity start)
-// bounds no retention, but it is not ignored: its orphaned member keeps the
-// history disposition pending, and the owner never publishes Ready while a
-// disposition is pending (history-source-owner-pending-recovery.test.ts).
-it("keeps an unclassifiable pinned candidate pending without holding retention", async () => {
+// An orphaned member of an unfinished journal keeps the history disposition
+// pending (the owner never publishes Ready while one is pending:
+// history-source-owner-pending-recovery.test.ts) until the journal is
+// disposed of. An abandoned journal's membership is its archived record and
+// holds nothing: the disposition clears with no operator step.
+it("keeps an orphaned member of an unfinished journal pending until the journal is abandoned", async () => {
   const f = await fixture("deposit");
   for (let n = 0; n < 2; n++)
     await run(
@@ -838,13 +791,8 @@ it("keeps an unclassifiable pinned candidate pending without holding retention",
       ),
     );
   const after = await read();
-  expect(
-    (await run(signedHeaderRecoveryCandidates())).map((row) =>
-      row.header_hash.toString("hex"),
-    ),
-  ).toEqual([f.headerHash.toString("hex")]);
-  expect(
-    await run(
+  const disposition = () =>
+    run(
       Authority.withRecovery(
         f.token,
         pendingHistoryLedgerDisposition({
@@ -853,6 +801,17 @@ it("keeps an unclassifiable pinned candidate pending without holding retention",
           after,
         }),
       ),
+    );
+  expect(await disposition()).toMatchObject({ status: "pending" });
+  await run(
+    Authority.withRecovery(
+      f.token,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE pending_block_finalizations SET status = 'abandoned'
+          WHERE header_hash = ${f.headerHash}`;
+      }),
     ),
-  ).toMatchObject({ status: "pending" });
+  );
+  expect(await disposition()).toBeUndefined();
 });

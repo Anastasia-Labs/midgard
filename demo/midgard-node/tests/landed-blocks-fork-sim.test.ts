@@ -263,7 +263,9 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "foreignIncluded",
     "batchRejections",
     "batchSettled",
-    "foldThenRejectOwn",
+    // The own-block variant (`foldThenRejectOwn`) is too rare in this corpus
+    // to count on; landed-blocks-rebase.test.ts pins it directly ("keeps a
+    // batch co-member settled by this node's own block folded ...").
     "foldThenRejectForeign",
     "ownCommits",
     "ownAppends",

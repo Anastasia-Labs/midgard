@@ -7,9 +7,13 @@ import type { DriverHold } from "../l1-events/driver.js";
 
 /** A landed block does not replay to its header, or does not link to its parent. Never adopted. */
 export const LANDED_BLOCK_INVALID = "landed_block_invalid";
-/** A landed block is this node's, but its journal was abandoned; it must be revived first. */
-export const LANDED_BLOCK_OWN_JOURNAL_ABANDONED =
-  "landed_block_own_journal_abandoned";
+/**
+ * This node's block landed after its journal was abandoned: blocks after it
+ * wait until the rebase revived it and its local finalization ran (both
+ * without operator action).
+ */
+export const LANDED_BLOCK_OWN_REVIVAL_PENDING =
+  "landed_block_own_revival_pending";
 /** A foreign block's DA payload is not available yet, or it ends past what the view can know. */
 export const LANDED_BLOCK_AWAITING_DA = "landed_block_awaiting_da";
 /** A foreign block names an event the follower does not know at the view. */
@@ -54,7 +58,6 @@ export const LANDED_BLOCK_REBASE_SOURCE = "landed_block_rebase";
 
 const PRIORITY = [
   LANDED_BLOCK_INVALID,
-  LANDED_BLOCK_OWN_JOURNAL_ABANDONED,
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_AWAITING_DA,
@@ -64,6 +67,7 @@ const PRIORITY = [
   CONFIRMED_LEDGER_BASE_MISMATCH,
   LANDED_BLOCKS_WAITING,
   CONFIRMED_LEDGER_BEHIND,
+  LANDED_BLOCK_OWN_REVIVAL_PENDING,
   CONFIRMED_LEDGER_OWN_BLOCK_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
 ] as const;

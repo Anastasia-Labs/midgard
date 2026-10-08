@@ -164,10 +164,9 @@ export const recoveryRelevantJournal = (
  * The SQL condition true when the journal whose header is `headerColumn` has
  * a deposit or withdrawal member whose follower admission identity L1 no
  * longer holds in its key set (an orphan). Such a journal is incomplete:
- * signed header recovery still classifies its header
- * (`signedHeaderRecoveryCandidates`), and ledger repair refuses to undo an
- * orphan's admission while a retained header names it as a member, so
- * deleting the journal would turn that refusal into a repair.
+ * ledger repair refuses to undo an orphan's admission while a journal not
+ * abandoned names it as a member, so deleting the journal would turn that
+ * refusal into a repair.
  */
 export const orphanMemberJournal = (
   sql: SqlClient.SqlClient,

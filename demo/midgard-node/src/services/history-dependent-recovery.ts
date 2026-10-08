@@ -1,4 +1,4 @@
-import { Cause, Effect } from "effect";
+import { Effect } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
@@ -8,14 +8,7 @@ import {
 } from "../database/eventHistoryRecoveryPlans.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
-import { Globals } from "./globals.js";
-import {
-  clearLivenessReasonIf,
-  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
-  NATIVE_MPF_RESTORE_READ_ESCALATION_MS,
-  NATIVE_MPF_RESTORE_READ_TRANSIENT,
-  raiseLivenessIncident,
-} from "./liveness-halt.js";
+import { NATIVE_MPF_RESTORE_READ_ESCALATION_MS } from "./liveness-halt.js";
 import type {
   NativeMpfFullIndexCapExceeded,
   NativeMpfOwnerService,
@@ -72,18 +65,6 @@ export const nativeRestoreHoldText = (
   }
 };
 
-/** The reason a hold on `refusal` raises under its caller's source: the
- * caller's own not-retained reason, or the shared cap and transient ones. */
-const holdReason = (
-  kind: NativeRestoreRefusal["kind"],
-  notRetainedReason: string,
-) =>
-  kind === "not_retained"
-    ? notRetainedReason
-    : kind === "index_cap"
-      ? NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED
-      : NATIVE_MPF_RESTORE_READ_TRANSIENT;
-
 /** How long a hold on `kind` stays raised before it escalates: a store that
  * lacks the root, or a cap it is over, needs the operator at once; a read
  * failure gets `NATIVE_MPF_RESTORE_READ_ESCALATION_MS` to pass. */
@@ -91,113 +72,6 @@ export const nativeRestoreHoldEscalation = (
   kind: NativeRestoreRefusal["kind"],
 ): number =>
   kind === "read_transient" ? NATIVE_MPF_RESTORE_READ_ESCALATION_MS : 0;
-
-/** The raise, under `source`, of the native restore refusal `cause` carries
- * (in any of its failures), or undefined when it carries none. */
-export const holdNativeRestoreRefusal = (input: {
-  readonly globals: Globals;
-  readonly source: string;
-  readonly notRetainedReason: string;
-  readonly subject: string;
-  readonly cause: Cause.Cause<unknown>;
-}): Effect.Effect<void> | undefined => {
-  const refusal = [...Cause.failures(input.cause)]
-    .map(nativeRestoreRefusal)
-    .find((value) => value !== undefined);
-  if (refusal === undefined) return undefined;
-  return raiseLivenessIncident(
-    input.globals,
-    input.source,
-    holdReason(refusal.kind, input.notRetainedReason),
-    `${refusal.error.message}. ${nativeRestoreHoldText(refusal.kind, input.subject)}`,
-    { escalateAfterMs: nativeRestoreHoldEscalation(refusal.kind) },
-  );
-};
-
-/** Clears, under `source`, whichever native restore refusal reason it
- * raised. */
-export const clearNativeRestoreRefusal = (
-  globals: Globals,
-  source: string,
-  notRetainedReason: string,
-) =>
-  Effect.forEach(
-    [
-      notRetainedReason,
-      NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
-      NATIVE_MPF_RESTORE_READ_TRANSIENT,
-    ],
-    (reason) => clearLivenessReasonIf(globals, source, reason),
-    { discard: true },
-  );
-
-/** What a preparation held by `heldOnNativeRestoreRefusal` returns. */
-export const NATIVE_RESTORE_HELD = "native_restore_held" as const;
-
-/**
- * One reconciliation pass of the history owner's dependent recoveries: the
- * correction rewind, the signed-header recovery, the expired-intent release
- * and the replaced-block revival run in that order, then the landed-block
- * rebase, unless one of them returned `NATIVE_RESTORE_HELD`. A recovery held
- * on its native restore still owns the native root its retained plan
- * restores, so the rebase waits for the next pass instead of moving that
- * root from where the held plan expects it.
- */
-export const historyRecoveryPass = <E1, R1, E2, R2, E3, R3, E4, R4, E5, R5>(
-  steps: Readonly<{
-    correctionRewind: Effect.Effect<unknown, E1, R1>;
-    signedHeaderRecovery: Effect.Effect<unknown, E2, R2>;
-    expiredIntentRelease: Effect.Effect<unknown, E3, R3>;
-    replacedBlockRevival: Effect.Effect<unknown, E4, R4>;
-    landedBlockRebase: Effect.Effect<void, E5, R5>;
-  }>,
-): Effect.Effect<void, E1 | E2 | E3 | E4 | E5, R1 | R2 | R3 | R4 | R5> =>
-  Effect.all([
-    steps.correctionRewind,
-    steps.signedHeaderRecovery,
-    steps.expiredIntentRelease,
-    steps.replacedBlockRevival,
-  ]).pipe(
-    Effect.flatMap((results) =>
-      results.includes(NATIVE_RESTORE_HELD)
-        ? Effect.void
-        : steps.landedBlockRebase,
-    ),
-  );
-
-/**
- * A history recovery preparation whose native restore the owner refuses
- * holds instead of failing the history owner, whose supervisor would only
- * restart it into the same store: the refusal is raised under `source` (as
- * `notRetainedReason`, `native_mpf_restore_index_cap_exceeded` or
- * `native_mpf_restore_read_transient`), which readiness reports, and the
- * preparation returns `NATIVE_RESTORE_HELD`. The owner refuses before it
- * changes its marker and before the SQL transaction opens, so the plan stays
- * retained, its disposition keeps the history gate closed, and every
- * evaluation retries the restore on the owner's backoff. A completion clears
- * whichever of the three reasons it raised. Any other failure propagates
- * unchanged.
- */
-export const heldOnNativeRestoreRefusal =
-  (source: string, notRetainedReason: string, subject: string) =>
-  <A, E, R>(work: Effect.Effect<A, E, R>) =>
-    Effect.flatMap(Globals, (globals) =>
-      work.pipe(
-        Effect.tap(() =>
-          clearNativeRestoreRefusal(globals, source, notRetainedReason),
-        ),
-        Effect.catchAllCause(
-          (cause) =>
-            holdNativeRestoreRefusal({
-              globals,
-              source,
-              notRetainedReason,
-              subject,
-              cause,
-            })?.pipe(Effect.as(NATIVE_RESTORE_HELD)) ?? Effect.failCause(cause),
-        ),
-      ),
-    );
 
 /** Production ordering for a source-authorized dependent rollback. The plan was
  * committed under recovery authority before this call; native mutation holds no

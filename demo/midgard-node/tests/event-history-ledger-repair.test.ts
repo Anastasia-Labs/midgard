@@ -855,7 +855,7 @@ describe("unpublished history-dependent ledger repair", () => {
       const checkpoint = await read();
       const message =
         mode === "signed-pending"
-          ? /pending-candidate or signed-submission disposition/
+          ? /unfinished block journal's disposition/
           : mode === "published"
             ? /left the unpublished ledger overlay/
             : mode === "missing-receipt" || mode === "immutable-baseline"

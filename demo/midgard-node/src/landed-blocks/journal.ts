@@ -9,6 +9,8 @@ import type { OwnJournal } from "./ports.js";
 import type { LandedBlockRow } from "./store.js";
 
 const Journals = PendingBlockFinalizationsDB;
+const Member = Journals.MemberColumns;
+const WithdrawalMember = Journals.WithdrawalMemberColumns;
 
 const statusOf = (
   status: PendingBlockFinalizationsDB.Status,
@@ -32,7 +34,17 @@ export const ownJournalOf = (
   produced: record.ledgerDelta.produced,
   depositIds: record.depositEventIds,
   forcedIds: record.forcedTransactionEventIds,
+  withdrawals: record.withdrawalMembers.map((member) => ({
+    id: member[Member.MEMBER_ID].toString("hex"),
+    validity: member[WithdrawalMember.VALIDITY],
+    detail: member[WithdrawalMember.VALIDITY_DETAIL],
+    settlement: member[Member.PAYLOAD_CBOR].toString("hex"),
+  })),
   txIds: record.mempoolTxIds,
+  revived:
+    record[Journals.Columns.STATUS] ===
+      Journals.Status.ObservedWaitingStability &&
+    record[Journals.Columns.CORRECTION_TRANSITION_DIGEST] != null,
 });
 
 /**

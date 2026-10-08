@@ -16,6 +16,7 @@ import confirmedLedgerMergesSql from "./sql/0014_confirmed_ledger_merges.sql";
 import settlementStatusDerivedSql from "./sql/0015_settlement_status_derived.sql";
 import receiptRejectionsSql from "./sql/0016_receipt_rejections.sql";
 import dropSettlementHoldSlotSql from "./sql/0017_drop_settlement_hold_slot.sql";
+import landedBlocksOwnRemovedSql from "./sql/0018_landed_blocks_own_removed.sql";
 
 export type Migration = {
   readonly version: number;
@@ -143,6 +144,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "drop_settlement_hold_slot",
     checksumSha256: sha256Hex(dropSettlementHoldSlotSql),
     sql: dropSettlementHoldSlotSql,
+    transactional: true,
+  },
+  {
+    version: 18,
+    name: "landed_blocks_own_removed",
+    checksumSha256: sha256Hex(landedBlocksOwnRemovedSql),
+    sql: landedBlocksOwnRemovedSql,
     transactional: true,
   },
 ] as const;

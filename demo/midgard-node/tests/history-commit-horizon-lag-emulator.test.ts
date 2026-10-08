@@ -2,6 +2,10 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { expect, it, vi } from "vitest";
 
+import {
+  assertIncludedEventsDeep,
+  COMMIT_EVENT_NOT_DEEP_MESSAGE,
+} from "../src/database/commit-event-depth.js";
 import { Database } from "../src/services/database.js";
 import {
   type CommitHorizonLag,
@@ -76,7 +80,9 @@ const followNextBlock = async (h: Lifecycle) => {
  * below the covered tip. Adversarial: an end above that lagged cap is
  * refused by the final recheck before submission
  * (`refreshCommitUserEventSourcesThroughBlockEnd`), while d = 0 accepts
- * it. Each test opens its own lifecycle: the shared emulator harness
+ * it. A commit including a deposit admitted fewer than d blocks below the
+ * view is refused by the journal-preparation depth check
+ * (`assertIncludedEventsDeep`). Each test opens its own lifecycle: the shared emulator harness
  * resets the node runtime after every test.
  */
 const withLifecycle = async (test: (h: Lifecycle) => Promise<void>) => {
@@ -188,4 +194,69 @@ it("refuses an end above the lagged cap at the final recheck", () =>
     expect((await recheck(laggedCap, 1))._tag).toBe("Right");
     // Unlagged, the same end is inside the horizon: the lag refused it.
     expect((await recheck(laggedCap + 1, 0))._tag).toBe("Right");
+  }));
+
+it("refuses to journal a commit including a deposit admitted fewer than d blocks below the view", () =>
+  withLifecycle(async (h) => {
+    const { fixture } = h;
+    const wallet = fixture.depositorLucid;
+    await advanceEmulatorPastLatestBlockEndTime(fixture);
+    await ensureSeparateCollateralUtxo(wallet);
+    await advanceHistoryAdmissionClock(fixture, "deposit");
+    await h.synchronize();
+    const built = await Effect.runPromise(
+      SDK.buildUnsignedDepositTxWithMetadataProgram(wallet, fixture.contracts, {
+        l2Address: await wallet.wallet().address(),
+        l2Datum: null,
+        lovelace: 12_000_000n,
+        additionalAssets: {},
+        referenceScripts: fixture.referenceScripts.deposit,
+      }),
+    );
+    const signed = await built.tx.sign.withWallet().complete();
+    expect(await wallet.awaitTx(await signed.submit())).toBe(true);
+    // The follower admits the deposit at the next block it follows.
+    await followNextBlock(h);
+    await followNextBlock(h);
+    const depth = await h.runWithoutSynchronizing(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const [row] = yield* sql<{
+          event_id: Buffer;
+          admitted: string;
+          view: string;
+        }>`SELECT d.event_id, e.admitted_height::text AS admitted,
+            (SELECT height::text FROM l1_follower_cursor) AS view
+          FROM deposits_utxos d JOIN node_l1_events e
+            ON e.kind = 'deposit' AND e.event_key = d.l1_event_key`;
+        return {
+          eventId: Buffer.from(row!.event_id),
+          blocks: Number(row!.view) - Number(row!.admitted),
+        };
+      }),
+    );
+    expect(depth.blocks).toBeGreaterThan(0);
+    const check = (lagBlocks: number) =>
+      h.runWithoutSynchronizing(
+        Effect.either(
+          assertIncludedEventsDeep({
+            lagBlocks,
+            depositIds: [depth.eventId],
+            forcedIds: [],
+            withdrawalIds: [],
+          }),
+        ),
+      );
+    // One block short of d deep: refused before anything is journaled.
+    const refused = await check(depth.blocks + 1);
+    expect(refused._tag).toBe("Left");
+    expect(refused._tag === "Left" && refused.left.message).toBe(
+      COMMIT_EVENT_NOT_DEEP_MESSAGE,
+    );
+    // Exactly d deep, and d = 0, are accepted.
+    expect((await check(depth.blocks))._tag).toBe("Right");
+    expect((await check(0))._tag).toBe("Right");
+    // One more block makes the refused event deep enough.
+    await followNextBlock(h);
+    expect((await check(depth.blocks + 1))._tag).toBe("Right");
   }));

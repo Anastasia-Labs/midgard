@@ -6,8 +6,10 @@
  * row. The hook then deletes the node row without a header that no
  * unfinished block journal holds; a row such a journal holds is an orphan
  * the event-history recovery counts (`l1_events_orphan_recovery`) until the
- * journal is disposed of. An order that lands again ends as exactly one
- * row, the same row.
+ * journal is disposed of. The working-ledger rebase disposes of such a
+ * journal (I3: it includes an event whose admission left the chain) with
+ * no operator step; the hook then deletes the row. An order that lands
+ * again ends as exactly one row, the same row.
  */
 import { createHash } from "node:crypto";
 
@@ -17,6 +19,12 @@ import { describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import { EVENTS_ORPHAN_RECOVERY } from "../src/l1-events/driver.js";
+import type { LandedLedger } from "../src/landed-blocks/ledger.js";
+import {
+  disposeJournals,
+  ownJournalDisposition,
+} from "../src/landed-blocks/own-journals.js";
+import { withHistoryWrite } from "../src/services/event-history-producer.js";
 import { FORCED_CONFIG } from "./helpers/forced-orders-chain.js";
 import {
   honest,
@@ -33,6 +41,7 @@ import {
   ingestionHook,
   UNCHANGED,
 } from "./helpers/forced-orders-node-store.js";
+import { provideDatabaseLayers } from "./utils.js";
 
 const follow = nodeFollowerLifecycle();
 
@@ -53,7 +62,7 @@ const journal = (txOrderId: Buffer, status: string) =>
       yield* sql`INSERT INTO pending_block_finalizations ${sql.insert({
         header_hash: HEADER,
         submitted_tx_hash: null,
-        block_end_time: at,
+        block_end_time: new Date(at.getTime() + 1_000),
         status,
         observed_confirmed_at_ms: null,
         state_queue_lease_token: "forced-rollback-test",
@@ -91,7 +100,13 @@ const journal = (txOrderId: Buffer, status: string) =>
         ledger_delta_spent: "[]",
         ledger_delta_produced: "[]",
       } as never)}`;
-      const payload = Buffer.from("forced-member");
+      const payload = ForcedTransactionsDB.encodeForcedTransactionJournalMember(
+        {
+          sourceValueCbor: Buffer.from([1]),
+          canonicalTransactionCbor: Buffer.from([2]),
+          programMaterialSidecarCbor: Buffer.from([3]),
+        },
+      );
       yield* sql`INSERT INTO pending_block_finalization_forced_transactions ${sql.insert(
         {
           header_hash: HEADER,
@@ -109,12 +124,35 @@ const journal = (txOrderId: Buffer, status: string) =>
     }),
   );
 
-const setJournalStatus = (status: string) =>
+/** No landed blocks: the journal's base is not on the processed chain. */
+const NO_LANDED: LandedLedger = {
+  frontier: { headerHash: "00".repeat(28), utxosRoot: ZERO_ROOT },
+  confirmed: [],
+  chain: [],
+};
+
+/** The working-ledger rebase's own-journal disposition, then its disposal. */
+const disposeOrphanHolders = () =>
+  Effect.runPromise(
+    provideDatabaseLayers(
+      withHistoryWrite(
+        Effect.gen(function* () {
+          const disposition = yield* ownJournalDisposition([], NO_LANDED);
+          yield* disposeJournals(disposition.dispose);
+          return disposition;
+        }),
+      ),
+    ),
+  );
+
+const journalStatus = () =>
   db(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE pending_block_finalizations SET status = ${status}
+      const [row] = yield* sql<{ status: string }>`
+        SELECT status FROM pending_block_finalizations
         WHERE header_hash = ${HEADER}`;
+      return row?.status;
     }),
   );
 
@@ -238,9 +276,19 @@ describe("forced rows across rollbacks (N10b)", () => {
       expect(kept[0]!.projected_header_hash).toBeNull();
     }
     expect(logs.join("\n")).not.toMatch(/deleted/u);
-    // The journal's disposition (here: abandoned, as expired-intent release
-    // leaves it) clears the orphan; the hook then deletes the row.
-    await setJournalStatus("abandoned");
+    // The rebase disposes of the journal for its orphaned member, which
+    // clears the orphan; the hook then deletes the row.
+    expect(await disposeOrphanHolders()).toEqual({
+      dispose: [
+        {
+          headerHash: HEADER.toString("hex"),
+          cause: "it includes an event whose admission left the chain",
+          active: true,
+        },
+      ],
+      revive: [],
+    });
+    expect(await journalStatus()).toBe("abandoned");
     expect(await orphans()).toBe(0);
     expect(await hook(UNCHANGED)).toBeUndefined();
     expect(await rows()).toEqual([]);
@@ -260,6 +308,9 @@ describe("forced rows across rollbacks (N10b)", () => {
     expect(await orphans()).toBe(1);
     await chain.forward([order]);
     expect(await orphans()).toBe(0);
+    // The rebase keeps a journal whose forced member is canonical again.
+    expect((await disposeOrphanHolders()).dispose).toEqual([]);
+    expect(await journalStatus()).toBe("submitted_unconfirmed");
     expect(await hook(UNCHANGED)).toBeUndefined();
     expect(await rows()).toEqual(before);
   });

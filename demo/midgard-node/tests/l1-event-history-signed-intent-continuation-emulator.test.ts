@@ -38,7 +38,7 @@ import { retainSignedIntentContinuationEmptyChildDa } from "./helpers/signed-int
 
 /** Real accepted commitment with a lost provider response, then an authorized
  * empty child recreating the parent outref. Synthetic transport ancestry;
- * signed-intent reconciliation observes the parent by its TTL. */
+ * block confirmation observes the parent through the recreated outref. */
 it("retains the original signed intent through an accepted queue pointer continuation before local confirmation", async () => {
   const h = await openHistoryProductionOwnerLifecycle();
   const { fixture, lucidService, globals, production } = h;
@@ -304,14 +304,14 @@ it("retains the original signed intent through an accepted queue pointer continu
         fixture.emulator.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
     await h.synchronize();
-    // At the parent's TTL its original queue node is observed; the signed intent is kept.
+    // At the parent's TTL the history owner leaves the signed intent as it
+    // is: S6 and the landed-block rebase own it (whichever lands wins), and
+    // block confirmation records the landed block below.
     const recordedAtTtl = await readIntent(accepted.txHash);
     assertIntent(recordedAtTtl, accepted.txHash, accepted.signedCbor);
-    expect(
-      recordedAtTtl[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex"),
-    ).toBe(accepted.txHash);
+    expect(recordedAtTtl[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
     expect(recordedAtTtl[Pending.Columns.STATUS]).toBe(
-      Pending.Status.ObservedWaitingStability,
+      Pending.Status.PendingSubmission,
     );
     // The child takes the latest planner end allowed by the Q61 attestation
     // fence, history horizon, submit validity and current scheduler window.
@@ -471,16 +471,13 @@ it("retains the original signed intent through an accepted queue pointer continu
     );
     const observed = await readIntent(accepted.txHash);
     assertIntent(observed, accepted.txHash, accepted.signedCbor);
-    // Confirmation through the recreated outref must not acknowledge the
-    // child as though it were the transaction that signed the parent.
-    // Confirmation may touch the row's timestamp; nothing else changes.
-    expect({ ...observed, updated_at: undefined }).toEqual({
-      ...recordedAtTtl,
-      updated_at: undefined,
-    });
-    expect(
-      observed[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex"),
-    ).not.toBe(child.submittedTxHash);
+    // Confirmation through the recreated outref records the parent observed
+    // and must not acknowledge the child as though it were the transaction
+    // that signed the parent.
+    expect(observed[Pending.Columns.STATUS]).toBe(
+      Pending.Status.ObservedWaitingStability,
+    );
+    expect(observed[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
     diagnostic.afterConfirmation = observed;
     diagnostic.stage = "local-finalization";
     const recovery = await runLocalFinalizationRecoveryWorker(
@@ -514,9 +511,9 @@ it("retains the original signed intent through an accepted queue pointer continu
 
     const finalRow = await readIntent(accepted.txHash);
     assertIntent(finalRow, accepted.txHash, accepted.signedCbor);
-    expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]?.toString("hex")).toBe(
-      accepted.txHash,
-    );
+    // The lost response never recorded the submission, and the recreated
+    // outref names the child: the journal keeps its intended hash only.
+    expect(finalRow[Pending.Columns.SUBMITTED_TX_HASH]).toBeNull();
     expect(finalRow[Pending.Columns.STATUS]).toBe(
       Pending.Status.LocallyApplied,
     );

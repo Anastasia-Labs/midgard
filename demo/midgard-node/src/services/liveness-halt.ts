@@ -22,10 +22,6 @@ export const HaltSource = {
    * rolled back below its release depth (see
    * `StateQueueCorrectionRewindIntegrityError`). */
   stateQueueCorrectionRewind: "state_queue_correction_rewind",
-  /** The confirmation worker found a replaced block of this node holding a
-   * base slot that a sibling on the same base already finalized locally or
-   * landed (see `SignedIntentReplacementIntegrityError`). */
-  blockConfirmationSignedIntent: "block_confirmation_signed_intent",
   /** This operator is removed (`operator_removed`, plan §7.5 R7): retired,
    * or in no list after having been active, in the follower's operator set
    * (see `publishOperatorMembership`). Holds every operator duty; a rollback
@@ -38,7 +34,6 @@ export type HaltSource = (typeof HaltSource)[keyof typeof HaltSource];
 /** The fibers that build or submit block commitments. */
 export const COMMIT_HALT_SOURCES: readonly HaltSource[] = [
   HaltSource.stateQueueCorrectionRewind,
-  HaltSource.blockConfirmationSignedIntent,
   HaltSource.operatorMembership,
 ];
 
@@ -72,12 +67,6 @@ export const FIBER_HALT_SOURCES = {
 } as const satisfies Record<string, readonly HaltSource[]>;
 
 export type HeldFiber = keyof typeof FIBER_HALT_SOURCES;
-
-/** The source an undecided expired-intent release raises under. It holds no
- * fiber: the history gate, which that release keeps closed, holds block
- * production. Its history runtime clears it once no release is in question. */
-export const HISTORY_SIGNED_INTENT_RELEASE_SOURCE =
-  "history_signed_intent_release";
 
 /** The source of the reasons the L1 control plane derives (see
  * `l1ControlPlaneLivenessReasons`); it raises none into `LIVENESS_REASONS`. */
@@ -322,59 +311,8 @@ export const restartedAcrossHalts = <A, E, R>(
     }
   });
 
-/** The source a replaced-block revival with no journal active raises under.
- * Like `HISTORY_SIGNED_INTENT_RELEASE_SOURCE` it holds no fiber: the history
- * gate, which the revival keeps closed, holds block production. Its
- * disposition clears it once no revival is in question. */
-export const HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE =
-  "history_replaced_block_revival";
-
-/** A signed-intent release or replaced-block revival met a
- * `SignedIntentReplacementIntegrityError`: L1 evidence shows two of this
- * node's blocks on one base landed, or a landed sibling beside the winner
- * (or the release's retained plan binds another journal). The history owner
- * holds (the intent stays, nothing is written, no winner is
- * chosen) and re-derives it at every evaluation; it clears once the evidence
- * no longer shows it. */
-export const SIGNED_INTENT_REPLACEMENT_INTEGRITY =
-  "signed_intent_replacement_integrity";
-
-/** A journal base the signed-intent release or the replaced-block revival
- * reads its target root from is bound neither by a retained parent journal
- * (none has its base tail header hash) nor by its own header (see
- * `unboundJournalReason`). The release holds under
- * `HISTORY_SIGNED_INTENT_RELEASE_SOURCE` (the active journal) and the revival
- * under `HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE` (the replaced block it would
- * revive): native MPF, the SQL root and the journal stay as they are and the
- * history gate stays closed. Every evaluation re-reads the journal; one that
- * completes clears it. The release runtime also clears it once no release is
- * in question or the active journal changes, and the revival disposition
- * once a journal is active or no revival candidate remains. */
-export const SIGNED_INTENT_JOURNAL_UNBOUND = "signed_intent_journal_unbound";
-
-/** A native restore of the signed-intent release, of the replaced-block
- * revival (its displaced-chain rewind, its displacement compensation or its
- * retained displacement's inverse), or of signed-header recovery, was refused
- * because the native MPF store does not retain the target root in full
- * (`NativeMpfRootNotRetained`): the sibling of
- * `CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED`, raised under the release
- * source (`HISTORY_SIGNED_INTENT_RELEASE_SOURCE`), the revival source
- * (`HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE`) or the signed-header recovery
- * source (`HISTORY_SIGNED_HEADER_RECOVERY_SOURCE`). The refusal changes
- * nothing: the recovery holds with its plan retained, native MPF, the SQL
- * root and the journals as they are, and the history gate closed (the
- * retained plan keeps the reconciliation pending); every evaluation retries
- * the restore. An evaluation of that source that meets no such refusal
- * clears it; so do the release runtime and the revival disposition once no
- * plan is retained and nothing is in question. The node cannot put the
- * root's closure back itself: the operator stops it, installs a native MPF
- * store that retains the root in full, and restarts it. */
-export const SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED =
-  "signed_intent_target_root_not_retained";
-
 /** The source the state-queue correction rewind raises under while it holds
- * on a removed block's journal. Like `HISTORY_SIGNED_INTENT_RELEASE_SOURCE`
- * it holds no fiber: the rewind's disposition keeps the history gate closed,
+ * on a removed block's journal. It holds no fiber: the rewind's disposition keeps the history gate closed,
  * which holds block production. (`HaltSource.stateQueueCorrectionRewind`
  * is a different, halting source.) Every rewind evaluation re-derives it;
  * it clears once the reinclusion completes, once an evaluation holds for
@@ -404,20 +342,7 @@ export const CORRECTION_REWIND_JOURNAL_UNBOUND =
 export const CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED =
   "correction_rewind_target_root_not_retained";
 
-/** The source signed-header recovery raises under while its native restore
- * is refused (`SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED`,
- * `NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED` or
- * `NATIVE_MPF_RESTORE_READ_TRANSIENT`). Like
- * `HISTORY_SIGNED_INTENT_RELEASE_SOURCE` it holds no fiber: the recovery's
- * retained plan keeps the history gate closed, which holds block
- * production. A signed-header evaluation that meets no such refusal clears
- * it. */
-export const HISTORY_SIGNED_HEADER_RECOVERY_SOURCE =
-  "history_signed_header_recovery";
-
-/** A history recovery's native restore (the correction rewind, the
- * signed-intent release, the replaced-block revival or signed-header
- * recovery) was refused because the target root's node closure is in the
+/** A history recovery's native restore (the correction rewind) was refused because the target root's node closure is in the
  * native MPF store but its full index is over a full-index cap
  * (`NativeMpfFullIndexCapExceeded`, whose message names the cap,
  * `FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`, and its value). Raised
@@ -443,8 +368,7 @@ export const NATIVE_MPF_RESTORE_READ_TRANSIENT =
   "native_mpf_restore_read_transient";
 
 /** How long `NATIVE_MPF_RESTORE_READ_TRANSIENT` stays raised before it is
- * escalated: the same ten minutes as an undecided signed intent (thirty
- * nominal L1 blocks), well past the history owner's 30 s maximum backoff,
+ * escalated: ten minutes (thirty nominal L1 blocks), well past the history owner's 30 s maximum backoff,
  * so a read that fails for that long is not a passing blip. */
 export const NATIVE_MPF_RESTORE_READ_ESCALATION_MS = 10 * 60_000;
 

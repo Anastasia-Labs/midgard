@@ -1,17 +1,21 @@
 /**
- * What the simulated node does around landed-block processing (N3): it
+ * What the simulated node does around landed-block processing (N3, I3): it
  * admits pending transactions (one acceptance receipt per accepted batch),
  * commits its own block on the processed tip (the journal, then the
- * working-ledger move onto it), finalizes its journal once the block is
+ * working-ledger move onto it), and finalizes its journal once the block is
  * merged (landed-block processing folds it into `confirmed_ledger`; the
- * transactions it included stay marked until that fold is final), and
- * resolves its active journal the way the node's journal resolution does:
- * abandoned once its base is no longer the processed tip, revived when an
- * abandoned block lands anyway. Every resolution ends with the working
- * ledger and native MPF moved onto the processed chain.
+ * transactions it included stay marked until that fold is final). The
+ * rebase disposes of and revives its journals; the node keeps its book in
+ * step with that, finalizes a revived block locally the way the commit path
+ * does, and stands in for S6 deriving an active commit dead when its base
+ * left without a rebase.
  */
 import { Effect } from "effect";
 
+import {
+  disposeJournals,
+  type OwnJournalDisposition,
+} from "../../src/landed-blocks/own-journals.js";
 import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import { rebaseTargetOf } from "../../src/landed-blocks/rebase-target.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
@@ -26,6 +30,7 @@ import {
 import {
   insertOwnJournal,
   JournalStatus,
+  journalStatuses,
   ownBlockOn,
   setJournalStatus,
 } from "./landed-blocks-sim.own.js";
@@ -53,13 +58,10 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
     return plan.target;
   };
 
-  /** Abandons the active journal (its base left the processed tip). */
-  const abandonActive = async (canonical: ReadonlySet<string>) => {
-    const active = book.active!;
-    await run(setJournalStatus(active, JournalStatus.Abandoned));
+  const resolved = (header: string, canonical: ReadonlySet<string>) => {
     book.active = undefined;
     stats.ownResolutions += 1;
-    if (!canonical.has(book.blocks.get(active)!.parentHash))
+    if (!canonical.has(book.blocks.get(header)!.parentHash))
       stats.ownOnRemovedBase += 1;
   };
 
@@ -73,19 +75,48 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
     stats.ownMerges += 1;
   };
 
-  /** Revives an abandoned own block that landed (finalized if merged). */
-  const revive = async (
-    header: string,
-    merged: boolean,
+  /**
+   * S6 derived the active commit dead (its base left the processed tip
+   * without a rebase): the node disposes of its journal.
+   */
+  const abandonActive = async (canonical: ReadonlySet<string>) => {
+    const active = book.active!;
+    await run(
+      withHistoryWrite(
+        disposeJournals([
+          {
+            headerHash: active,
+            cause: "its signed commit is dead",
+            active: true,
+          },
+        ]),
+      ),
+    );
+    resolved(active, canonical);
+  };
+
+  /** The book after a rebase that disposed of and revived `journals`. */
+  const followDisposition = (
+    journals: OwnJournalDisposition,
     canonical: ReadonlySet<string>,
   ) => {
-    if (book.active !== undefined && book.active !== header)
-      await abandonActive(canonical);
-    if (merged) await finalizeOwn(header);
-    else
-      await run(setJournalStatus(header, JournalStatus.SubmittedUnconfirmed));
-    book.active = merged ? undefined : header;
-    stats.ownRevivals += 1;
+    for (const disposal of journals.dispose)
+      if (disposal.headerHash === book.active)
+        resolved(disposal.headerHash, canonical);
+    stats.ownRevivals += journals.revive.length;
+  };
+
+  /** The commit path finalizes every revived block locally. */
+  const finalizeRevived = async () => {
+    const statuses = await run(journalStatuses);
+    let finalized = 0;
+    for (const [header, status] of statuses)
+      if (status === JournalStatus.ObservedWaitingStability) {
+        await run(setJournalStatus(header, JournalStatus.LocallyApplied));
+        if (book.active === header) book.active = undefined;
+        finalized += 1;
+      }
+    return finalized;
   };
 
   /** The active journal's block was merged: its journal finalizes. */
@@ -208,7 +239,8 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
   return {
     rebaseOnto,
     abandonActive,
-    revive,
+    followDisposition,
+    finalizeRevived,
     finalizeMerged,
     admit,
     candidateOn,

@@ -319,7 +319,8 @@ below k, or gate on k.
 Depth is also counted three different ways today:
 
 - inclusive: `demo/midgard-node/src/database/settlement.ts:100`;
-- descendants only: `demo/midgard-node/src/services/signed-intent-canonical-coverage.ts:230-231`;
+- descendants only: `demo/midgard-node/src/services/signed-intent-canonical-coverage.ts:230-231`
+  (that file was since deleted by I3, #810); <!-- doc-links:historical -->
 - head − d: `demo/midgard-node/src/fibers/operator-membership.ts:266` (that file was
   since deleted by N6, #804). <!-- doc-links:historical -->
 

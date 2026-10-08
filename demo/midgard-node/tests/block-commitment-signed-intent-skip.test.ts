@@ -82,7 +82,7 @@ const runWithNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>
     ) as Effect.Effect<A, unknown, never>,
   );
 
-/** A journal holding a signed commit intent no reconciliation resolved. */
+/** A journal holding a signed commit intent nothing has resolved yet. */
 const signedIntentJournal = (headerHash: Buffer) =>
   Effect.gen(function* () {
     const txHash = Buffer.alloc(32, 9);
@@ -156,7 +156,7 @@ describe("block commitment over an unreconciled signed intent", () => {
         const whileSigned = yield* counts;
         const workerCallsWhileSigned = buildAndSubmitMock.mock.calls.length;
 
-        // The history owner's reconciliation replaces the intent.
+        // The landed-block rebase disposes of the intent's journal.
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE pending_block_finalizations
           SET status = 'abandoned', updated_at = NOW()

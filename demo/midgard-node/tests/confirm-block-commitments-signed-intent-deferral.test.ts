@@ -67,7 +67,7 @@ const defer = (ageMs: number) =>
       return {
         output,
         deferrals: logs.filter((line) =>
-          line.message.includes("deferring to the history owner"),
+          line.message.includes("deferring to the landed-block rebase"),
         ),
       };
     }).pipe(
@@ -102,7 +102,7 @@ describe("confirmation worker over an unresolved signed commit intent", () => {
 
   it("defers the same way past the warning age, reported as a warning", async () => {
     const result = await defer(2 * WARNING_AGE_MS);
-    // Still only a deferral: the reconciliation stays the one decision.
+    // Still only a deferral: the journal disposition stays the one decision.
     expect(result.output).toEqual({ type: "NoTxForConfirmationOutput" });
     expect(result.deferrals).toHaveLength(1);
     expect(result.deferrals[0]!.level).toBe("WARN");

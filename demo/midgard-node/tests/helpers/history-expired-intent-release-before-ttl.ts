@@ -10,18 +10,14 @@ import type { EventHistorySourceBinding } from "../../src/l1-event-history-sourc
 import { signedIntentReplacementDigest } from "../../src/services/canonical-journal-recovery.js";
 import type { HistoryOwnerChange } from "../../src/services/event-history-owner.js";
 import {
-  expiredIntentReleaseDisposition,
-  type SignedIntentDeferral,
-} from "../../src/services/history-expired-intent-release.table.js";
-import {
   deterministicFixtureBytes,
   provideDatabaseLayers,
   resetApplicationTables,
 } from "../utils.js";
 
 /**
- * Shared SQL model of the pre-TTL signed-intent release suites: journals of
- * this node, and canonical block application receipts, written directly.
+ * Shared SQL model of the journal recovery suites: journals of this node,
+ * and canonical block application receipts, written directly.
  */
 
 export const bytes = (label: string, length = 32) =>
@@ -306,16 +302,5 @@ export const change = (
     after: point(to, options.slot),
     changes: [],
   }) as unknown as HistoryOwnerChange;
-
-export const dispose = (
-  deferral: SignedIntentDeferral,
-  historyChange: HistoryOwnerChange,
-) =>
-  expiredIntentReleaseDisposition({
-    binding,
-    change: historyChange,
-    deferral,
-    rewindAuthority: undefined as never,
-  });
 
 export const FOREIGN = hex("foreign-apply");

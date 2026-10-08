@@ -8,19 +8,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Deferred, Duration, Effect, Fiber, Option } from "effect";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import * as Deposits from "../src/database/deposits.js";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
-import { loadCanonicalHistoryCoverage } from "../src/database/eventHistoryCanonicalCoverage.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
 import {
   decodeJournalIncarnation,
@@ -64,26 +55,6 @@ import { retainEverything } from "./helpers/history-journal-retention.js";
 import { seedHistoryJournalFixture } from "./helpers/history-journal-start.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
-
-// Coverage's own advanced-anchor checks sit behind Journal.load, which already
-// refuses the same corruption. A test may substitute the loaded checkpoint to
-// exercise those checks in isolation; unset, load is the real one.
-const journalLoad = vi.hoisted(() => ({
-  override: undefined as undefined | ((binding: unknown) => unknown),
-}));
-vi.mock("../src/database/eventHistoryJournal.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/database/eventHistoryJournal.js")
-    >();
-  return {
-    ...actual,
-    load: (binding: EventHistorySourceBinding) =>
-      journalLoad.override === undefined
-        ? actual.load(binding)
-        : journalLoad.override(binding),
-  };
-});
 
 // Real PostgreSQL transactions and strict paired snapshot decoding. Block and
 // source admission are explicit model inputs, not applied-ledger/live evidence.
@@ -1934,7 +1905,7 @@ describe("bounded journal retention", () => {
     expect(await read()).toEqual(current);
   }, 300_000);
 
-  it("prunes replay receipts only once the anchor leaves the seed point, and coverage starts at the anchor", async () => {
+  it("prunes replay receipts only once the anchor leaves the seed point", async () => {
     const fixture = await replayFixture();
     const token = await run(acquire());
     for (const step of [fixture.first, fixture.second])
@@ -1942,32 +1913,16 @@ describe("bounded journal retention", () => {
     await run(Authority.withRecovery(token, Journal.seed(fixture.seed)));
     const seeded = await read();
     expect(seeded.anchor).toEqual(fixture.second.block.point);
-    const coverage = async () =>
-      run(
-        Authority.withRecovery(
-          token,
-          loadCanonicalHistoryCoverage(binding, await read()),
-        ),
-      );
     // Height 3 is exactly one block ahead: the seed point is not yet past a
     // horizon of 1 behind head, so the origin range is retained and checked.
     let current = await forward(token, seeded, 3, behindTip(1));
     expect(current.anchor).toEqual(seeded.anchor);
     expect(await receiptCount()).toBe(2);
-    expect((await coverage()).blocks.map((b) => b.point.height)).toEqual([
-      1, 2, 3,
-    ]);
     current = await forward(token, current, 4, behindTip(1));
     expect(current.anchor).toEqual({ id: hash(3), slot: 102, height: 3 });
     expect(await receiptCount()).toBe(0);
     expect(current.originReceipt).toBe(fixture.seed.originReceipt);
     expect(current.originReceiptDigest).toBe(seeded.originReceiptDigest);
-    const pruned = await coverage();
-    expect(pruned.start).toEqual({ id: hash(4), slot: 103, height: 4 });
-    expect(pruned.blocks.map((b) => b.parent)).toEqual([hash(3)]);
-    expect(pruned.activationTransactionHash).toBe(
-      fixture.first.block.transactions[0]!.txHash,
-    );
   });
 
   it("prunes a replay range longer than one batch newest first, so no retained receipt loses its predecessor", async () => {
@@ -2113,28 +2068,9 @@ describe("bounded journal retention", () => {
     return result._tag === "Left" ? formatDatabaseError(result.left) : "";
   };
 
-  it("refuses an advanced anchor that is not beyond the origin replay head, at load and in coverage", async () => {
-    const { token, current } = await advanced();
+  it("refuses an advanced anchor that is not beyond the origin replay head at load", async () => {
+    const { current } = await advanced();
     const tampered = aheadOfAnchor(current);
-    // Coverage in isolation, handed the tampered checkpoint.
-    journalLoad.override = () =>
-      Effect.succeed({
-        ...current,
-        originReceipt: tampered,
-        originReceiptDigest: sha(tampered),
-      });
-    try {
-      expect(
-        await refusal(
-          Authority.withRecovery(
-            token,
-            loadCanonicalHistoryCoverage(binding, current),
-          ),
-        ),
-      ).toMatch(/Retained anchor precedes the origin replay head/);
-    } finally {
-      journalLoad.override = undefined;
-    }
     // The stored receipt: the startup load refuses it.
     await run(
       Effect.gen(function* () {
@@ -2149,8 +2085,8 @@ describe("bounded journal retention", () => {
     );
   });
 
-  it("refuses coverage whose first retained block does not descend from the advanced anchor", async () => {
-    const { token, current } = await advanced();
+  it("refuses a first retained block that does not descend from the advanced anchor", async () => {
+    await advanced();
     const key = Buffer.from(binding.digest, "hex");
     const [row] = await run(
       Effect.gen(function* () {
@@ -2174,21 +2110,7 @@ describe("bounded journal retention", () => {
           WHERE binding_digest = ${key} AND canonical AND block_height = 4`;
       }),
     );
-    // Coverage in isolation, handed the checkpoint loaded before the change.
-    journalLoad.override = () => Effect.succeed(current);
-    try {
-      expect(
-        await refusal(
-          Authority.withRecovery(
-            token,
-            loadCanonicalHistoryCoverage(binding, current),
-          ),
-        ),
-      ).toMatch(/Canonical coverage endpoints or activation changed/);
-    } finally {
-      journalLoad.override = undefined;
-    }
-    // The startup chain walk and the head-only check both refuse it too.
+    // The startup chain walk and the head-only check both refuse it.
     expect(await refusal(Journal.load(binding))).toMatch(
       /Canonical application ancestry disagrees/,
     );

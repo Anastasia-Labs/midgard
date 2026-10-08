@@ -2,6 +2,8 @@
 
 > Note (deleted 2026-10-03, #752): speculative commit mode, the foreign-tip reconciliation table `foreign_tip_reconciliations`, the T2 foreign-event reconciliation workers, the foreign DA reconciliation fiber and the commit-time foreign-tip gate no longer exist. The file paths this record cites for them are kept as plain text for history.
 
+> Note (deleted 2026-10-08, #810): the expired-signed-intent release, displacement and signed-header recovery services (`history-expired-intent-release*`, `history-signed-header-recovery`, `signed-intent-canonical-coverage`) no longer exist. The landed-block rebase disposes of an own block journal that can no longer land and revives an abandoned one that lands (whichever lands wins). The file paths this record cites for them are kept as plain text for history.
+
 *Revised later the same day: both review waves finished and added five more
 (Part D), and I took eleven decisions myself rather than ask — those are listed
 at the end so you can overrule any of them.*

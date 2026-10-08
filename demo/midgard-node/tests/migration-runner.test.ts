@@ -103,6 +103,7 @@ describe("splitSqlStatements", () => {
       { version: 15, name: "settlement_status_derived", transactional: true },
       { version: 16, name: "receipt_rejections", transactional: true },
       { version: 17, name: "drop_settlement_hold_slot", transactional: true },
+      { version: 18, name: "landed_blocks_own_removed", transactional: true },
     ]);
   });
 

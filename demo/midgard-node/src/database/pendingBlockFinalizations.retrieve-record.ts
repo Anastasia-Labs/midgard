@@ -247,8 +247,8 @@ const retrieveNewestFinalizedWhere = (
 
 /**
  * This node's newest finalized block, by block window. It is not necessarily
- * the native committed point: a correction rewind or signed-header recovery
- * applied after it resets the native root to that recovery's target root,
+ * the native committed point: a correction rewind or landed-block rebase
+ * applied after it resets the native root to that move's target root,
  * which can be a foreign block's post-state rather than any journal's expected
  * root (see `recomputeCommittedTip`).
  */

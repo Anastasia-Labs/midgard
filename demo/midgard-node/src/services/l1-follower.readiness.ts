@@ -8,14 +8,15 @@
  * `forced_order_carriage_pending`, `forced_order_admission_stopped` and
  * `forced_order_ingestion_failed`; and landed-block processing's, from
  * `landed-blocks/holds.ts`: `landed_block_invalid`,
- * `landed_block_own_journal_abandoned`, `landed_block_event_unknown`,
+ * `landed_block_event_unknown`,
  * `landed_block_forced_order_pending`, `landed_block_awaiting_da`,
  * `landed_block_batch_undecided`, `landed_block_rebase_failed`,
  * `landed_block_replay_failed`, `confirmed_ledger_base_mismatch`,
  * `landed_blocks_waiting`, `confirmed_ledger_behind`,
- * `confirmed_ledger_own_block_pending` and `landed_block_rebase_pending`,
- * the first by priority named as the reason and the rest in its detail),
- * the intent stage's (`wallet_seed_pending`, `intent_reconcile_failed`,
+ * `landed_block_own_revival_pending`, `confirmed_ledger_own_block_pending`
+ * and `landed_block_rebase_pending`, the first by priority named as the
+ * reason and the rest in its detail), the intent stage's
+ * (`wallet_seed_pending`, `intent_reconcile_failed`,
  * `intent_reconcile_transient`, `intent_resubmit_rejected`, a predicate's
  * wait such as `intent_included_events_not_deep`, and `tracked_set_changed`
  * while the store replays a tracked-set reset) and the intent

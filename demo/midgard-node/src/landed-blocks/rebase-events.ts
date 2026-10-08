@@ -1,14 +1,17 @@
 /**
  * Event statuses on the rebase target (plan §7.3, N3, ruling E-N3-1):
  *
- * - an event a removed block held, or one projected to a header that is
- *   neither a processed landed block nor one of this node's journals, goes
- *   back to `awaiting` (a withdrawal also loses its classification);
- * - every event a processed foreign block holds is projected to it, a
- *   withdrawal with the classification its replay gave; a deposit is
- *   `consumed` once its output left the working ledger.
+ * - an event a removed block or a disposed-of own journal held, or one
+ *   projected to a header that is neither a processed landed block nor one
+ *   of this node's unabandoned journals, goes back to `awaiting` (a
+ *   withdrawal also loses its classification);
+ * - every event a processed foreign block, or a revived own block, holds is
+ *   projected to it, a withdrawal with the classification its replay (or
+ *   its journal) gave; a deposit is `consumed` once its output left the
+ *   working ledger.
  *
- * This node's own blocks' events are its commit and finalization paths'.
+ * This node's other own blocks' events are its commit and finalization
+ * paths'.
  */
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
@@ -30,10 +33,13 @@ const TABLES = [
   { table: "withdrawal_utxos", id: "event_id" },
 ] as const;
 
-/** Every event of a removed block, or of an unknown header, back to awaiting. */
+/**
+ * Every event of the blocks `released` (removed or disposed of), or of an
+ * unknown header, back to awaiting.
+ */
 export const resetUnheldEvents = (
   target: RebaseTarget,
-  removed: readonly LandedBlockRow[],
+  released: readonly string[],
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -44,7 +50,7 @@ export const resetUnheldEvents = (
         .map((row) => Buffer.from(row.headerHash, "hex")),
     );
     const removedHeaders = bytea(
-      removed.map((row) => Buffer.from(row.headerHash, "hex")),
+      released.map((headerHash) => Buffer.from(headerHash, "hex")),
     );
     const unheld = (alias: string) => sql`(
       ${sql(alias)}.projected_header_hash = ANY(${pg.array(removedHeaders)}::bytea[])
@@ -76,13 +82,11 @@ const requireAll = (table: (typeof TABLES)[number], ids: readonly Buffer[]) =>
       WHERE ${sql(table.id)} = ANY(${pg.array(bytea(ids))}::bytea[])`;
     if (found.length !== new Set(ids.map((id) => id.toString("hex"))).size)
       return yield* Effect.fail(
-        failure(
-          `A processed foreign block names an event ${table.table} lacks`,
-        ),
+        failure(`A processed landed block names an event ${table.table} lacks`),
       );
   });
 
-/** Projects every event a processed foreign block holds to that block. */
+/** Projects every event a processed foreign or revived own block holds to it. */
 export const assignChainEvents = (foreign: readonly LandedBlockRow[]) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;

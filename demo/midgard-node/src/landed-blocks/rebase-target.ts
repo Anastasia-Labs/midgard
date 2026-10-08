@@ -2,15 +2,17 @@
  * What the working ledger and the native MPF must hold (plan §7.3, N3): the
  * processed landed chain from the confirmed-ledger frontier to its tip `T`,
  * then this node's live own block, the active journal built on `T` that has
- * not landed yet. The rebase cannot run while the active journal is built on
- * anything else (its base left the queue, or another block took its slot):
- * that journal must be resolved first (released, replaced or revived). Nor
- * can it run while a pending-table row is marked by a block neither the
- * target nor `confirmed_ledger` holds (this node's block between its local
- * finalization and its processing): that row is neither pending nor in the
- * base until processing takes the block in or the reopening of its journal
- * clears the mark. A folded block's rows stay marked until its fold is final
- * (`final-folds.ts`); they are in the base, so they never block.
+ * not landed yet. Own journals whose block cannot be on the landed chain are
+ * disposed of, and abandoned ones whose block landed revived, by the same
+ * rebase (`own-journals.ts`). The rebase cannot run while a journal it keeps
+ * is built on anything but `T` (a base it cannot place yet): S6 derives that
+ * commit dead or landed. Nor can it run while a pending-table row is marked
+ * by a block the target neither holds nor disposes of, nor `confirmed_ledger`
+ * holds (this node's block between its local finalization and its
+ * processing): that row is neither pending nor in the base until processing
+ * takes the block in or the reopening of its journal clears the mark. A
+ * folded block's rows stay marked until its fold is final (`final-folds.ts`);
+ * they are in the base, so they never block.
  */
 import { Effect } from "effect";
 
@@ -26,8 +28,13 @@ import {
   type LedgerMap,
   ledgerMap,
 } from "./ledger.js";
+import {
+  type OwnJournalDisposition,
+  ownJournalDisposition,
+} from "./own-journals.js";
 import type { OwnJournal } from "./ports.js";
 import { rebaseNeeded } from "./process.js";
+import { type RetiredPlan, retiredPlans } from "./retired-plans.js";
 import { type HeaderRoot, type LandedBlockRow, retrieveRows } from "./store.js";
 
 /** One step of the target: a processed row, or the live own block. */
@@ -49,6 +56,10 @@ export type RebaseTarget = Readonly<{
   /** The processed tip `T`. */
   tip: HeaderRoot;
   live: (OwnJournal & { headerHash: string }) | undefined;
+  /** The own journals the rebase disposes of and revives. */
+  journals: OwnJournalDisposition;
+  /** The retained plans of retired kinds the rebase discards. */
+  retired: readonly RetiredPlan[];
 }>;
 
 /** The blocked detail while a block the target does not hold marks rows. */
@@ -59,18 +70,19 @@ export type RebasePlan =
   | Readonly<{ kind: "blocked"; detail: string }>
   | Readonly<{ kind: "ready"; target: RebaseTarget }>;
 
-/**
- * The rebase target over `rows`, due or not: what the working ledger and
- * the native MPF hold once the rebase runs, or why it cannot run.
- */
-export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
+const NO_FRONTIER = {
+  kind: "blocked",
+  detail: "confirmed_ledger has no frontier yet",
+} as const satisfies RebasePlan;
+
+/** The target over `rows` and their landed chain `landed`. */
+const targetOn = (
+  rows: readonly LandedBlockRow[],
+  landed: LandedLedger,
+  journals: OwnJournalDisposition,
+  retired: readonly RetiredPlan[],
+) =>
   Effect.gen(function* () {
-    const landed = yield* landedLedger(rows);
-    if (landed === undefined)
-      return {
-        kind: "blocked",
-        detail: "confirmed_ledger has no frontier yet",
-      } satisfies RebasePlan;
     const onChain = new Set(landed.chain.map((row) => row.headerHash));
     const stray = rows.find(
       (row) => row.state === "processed" && !onChain.has(row.headerHash),
@@ -90,10 +102,17 @@ export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
       produced: row.produced,
       row,
     }));
+    const disposed = new Set(
+      journals.dispose.map((disposal) => disposal.headerHash),
+    );
     const active = yield* activeJournal;
     const processed = new Set(rows.map((row) => row.headerHash));
     let live: RebaseTarget["live"];
-    if (active !== undefined && !processed.has(active.headerHash)) {
+    if (
+      active !== undefined &&
+      !processed.has(active.headerHash) &&
+      !disposed.has(active.headerHash)
+    ) {
       if (
         active.baseTailHeaderHash !== tip.headerHash ||
         active.baseUtxosRoot !== tip.utxosRoot
@@ -113,6 +132,7 @@ export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
     }
     const held = new Set([
       ...steps.map((step) => step.headerHash),
+      ...disposed,
       ...(yield* retrieveMergeLinks).keys(),
     ]);
     const unheld = (yield* MempoolInclusionsDB.markingHeaders).find(
@@ -125,15 +145,47 @@ export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
       } satisfies RebasePlan;
     return {
       kind: "ready",
-      target: { rows, landed, steps, tip, live },
+      target: { rows, landed, steps, tip, live, journals, retired },
     } satisfies RebasePlan;
   });
 
-/** Reads the rebase target, and whether a rebase is due and can run. */
+/**
+ * The rebase target over `rows`, due or not: what the working ledger and
+ * the native MPF hold once the rebase runs, or why it cannot run.
+ */
+export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
+  Effect.gen(function* () {
+    const landed = yield* landedLedger(rows);
+    if (landed === undefined) return NO_FRONTIER;
+    return yield* targetOn(
+      rows,
+      landed,
+      yield* ownJournalDisposition(rows, landed),
+      yield* retiredPlans,
+    );
+  });
+
+/**
+ * Reads the rebase target, and whether a rebase is due (a landed row the
+ * working ledger does not match, an own journal to dispose of, or a
+ * retained plan of a retired kind, `retired-plans.ts`) and can run.
+ */
 export const rebasePlan = Effect.gen(function* () {
   const rows = yield* retrieveRows;
-  if (!rebaseNeeded(rows)) return { kind: "none" } satisfies RebasePlan;
-  return yield* rebaseTargetOf(rows);
+  const retired = yield* retiredPlans;
+  const landed = yield* landedLedger(rows);
+  if (landed === undefined)
+    return rebaseNeeded(rows) || retired.length > 0
+      ? (NO_FRONTIER as RebasePlan)
+      : ({ kind: "none" } satisfies RebasePlan);
+  const journals = yield* ownJournalDisposition(rows, landed);
+  if (
+    !rebaseNeeded(rows) &&
+    journals.dispose.length === 0 &&
+    retired.length === 0
+  )
+    return { kind: "none" } satisfies RebasePlan;
+  return yield* targetOn(rows, landed, journals, retired);
 });
 
 /** A step's MPF mutation: its spends and replaced outputs, then its outputs. */
