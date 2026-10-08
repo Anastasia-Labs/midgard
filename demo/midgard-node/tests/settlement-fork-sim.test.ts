@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   type BlockSummary,
+  currentViewIn,
   decodeBlock,
   type FactStore,
   type FollowerProjection,
@@ -207,13 +208,14 @@ const settlementSimulation = (stats: Stats, node: () => Run) => {
     // Journal what was planned for the next block, with its attempt.
     if (!backward)
       for (const p of plans.get(forwards) ?? []) {
-        const result = await store.transaction("write", (tx) =>
+        const result = await store.transaction("write", async (tx) =>
           recordIntentIn(tx, store.dialect, {
             family: "settlement",
             workflowKey: `settlement:${p.hash}`,
             txCbor: encodeSimTx(p.tx),
             isOwnOutput: (output) =>
               output.address.equals(p.tx.outputs[0]!.address),
+            builtAt: (await currentViewIn(tx, store.dialect))!,
           }),
         );
         // A body whose input another body or the filler spent first is

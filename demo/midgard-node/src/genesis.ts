@@ -17,6 +17,7 @@ import {
 import {
   type IntentJournal,
   journaledIntent,
+  openPlan,
 } from "./services/intent-journal.js";
 import {
   buildUnsignedDepositTxWithMetadataProgram,
@@ -109,6 +110,8 @@ export const submitGenesisDeposits: Effect.Effect<
     return;
   }
 
+  // S5: the plan opens before the build's first L1 read.
+  const plan = yield* openPlan;
   yield* lucid.switchToOperatorsMainWallet;
 
   // Hard-coded 10 ADA deposit.
@@ -128,6 +131,7 @@ export const submitGenesisDeposits: Effect.Effect<
     journaledIntent(
       "list_insert",
       `list_insert:deposit:${metadata.depositAssetName}`,
+      plan,
     ),
   );
 }).pipe(Effect.tapError(Effect.logInfo));

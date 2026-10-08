@@ -53,6 +53,7 @@ import {
   IntentJournal,
   intentJournalOver,
   type IntentJournalService,
+  type IntentPlan,
 } from "../../src/services/intent-journal.js";
 import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
 import { createNodeIntentStage } from "../../src/services/l1-follower.intents.js";
@@ -286,6 +287,8 @@ export const openIntentEmulator = async (
   const record = (
     ...args: Parameters<IntentJournalService["record"]>
   ): Promise<unknown> => Effect.runPromise(journal.record(...args));
+  /** A family's plan at the follower's cursor now (`openPlan`). */
+  const plan = (): Promise<IntentPlan> => Effect.runPromise(journal.openPlan);
 
   const stage = createNodeIntentStage({
     store,
@@ -323,6 +326,7 @@ export const openIntentEmulator = async (
     sent,
     accepted,
     record,
+    plan,
     journal,
     journalLayer,
     stage,

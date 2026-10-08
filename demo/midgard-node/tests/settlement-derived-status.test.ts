@@ -19,6 +19,7 @@ import "./utils.js";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  currentViewIn,
   type FactStore,
   intentJournalProjection,
   openPostgresFactStore,
@@ -151,12 +152,13 @@ const followerOver = async (connectionString: string) => {
       outputs: [{ address: own, lovelace: 9_000_000n }],
       nonce: driver.chain.nonce(),
     };
-    const recorded = await store.transaction("write", (tx) =>
+    const recorded = await store.transaction("write", async (tx) =>
       recordIntentIn(tx, store.dialect, {
         family: "settlement",
         workflowKey: `settlement:${simTxHash(body).toString("hex")}`,
         txCbor: encodeSimTx(body),
         isOwnOutput: (output) => output.address.equals(own),
+        builtAt: (await currentViewIn(tx, store.dialect))!,
       }),
     );
     if (recorded.kind !== "recorded")

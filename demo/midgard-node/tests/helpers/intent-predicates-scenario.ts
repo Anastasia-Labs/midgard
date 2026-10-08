@@ -11,6 +11,7 @@
  *   journaled state and runs the production predicate on it.
  */
 import {
+  currentViewIn,
   deriveIntentStatusIn,
   type FactStore,
   intentJournalProjection,
@@ -155,12 +156,13 @@ export const openPredicateScenario = async (
     contentRef: Buffer | null,
   ): Promise<Buffer> => {
     const txCbor = encodeSimTx(tx);
-    const result = await store.transaction("write", (sqlTx) =>
+    const result = await store.transaction("write", async (sqlTx) =>
       recordIntentIn(sqlTx, store.dialect, {
         family,
         workflowKey,
         txCbor,
         isOwnOutput: () => false,
+        builtAt: (await currentViewIn(sqlTx, store.dialect))!,
         contentRef,
       }),
     );

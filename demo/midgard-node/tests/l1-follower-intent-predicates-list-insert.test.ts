@@ -181,7 +181,14 @@ const record = (
   const { cbor, txHash } = bytesOf(tx);
   return Effect.runPromise(
     Effect.either(
-      journal.record(journaledIntent("list_insert", workflowKey), cbor, txHash),
+      Effect.flatMap(journal.openPlan, (plan) =>
+        journal.record(
+          journaledIntent("list_insert", workflowKey, plan),
+          cbor,
+          txHash,
+          { kind: "record_only" },
+        ),
+      ),
     ),
   );
 };

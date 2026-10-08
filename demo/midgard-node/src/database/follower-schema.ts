@@ -16,9 +16,11 @@ import {
   type SqlRow,
   type SqlTx,
   type SqlValue,
+  type View,
+  viewValidIn,
 } from "@al-ft/midgard-l1-follower";
 import { eventMigrations } from "@al-ft/midgard-l1-follower/events";
-import { SqlClient } from "@effect/sql";
+import { SqlClient, SqlError } from "@effect/sql";
 import { Effect, Runtime } from "effect";
 
 import { forcedOrderMigrations } from "../forced-orders/schema.js";
@@ -71,6 +73,26 @@ export const followerSqlTx = Effect.gen(function* () {
   };
   return tx;
 });
+
+/**
+ * `viewValid(view)` (§8.1) in the caller's SQL transaction, through the
+ * follower's `viewValidIn`: on Postgres it takes the cursor row `FOR SHARE`,
+ * so no rewind commits between the check and the write it guards until that
+ * transaction ends. The node's one view check.
+ */
+export const followerViewValid = (
+  view: View,
+): Effect.Effect<boolean, SqlError.SqlError, SqlClient.SqlClient> =>
+  Effect.flatMap(followerSqlTx, (tx) =>
+    Effect.tryPromise({
+      try: () => viewValidIn(tx, postgresDialect, view),
+      catch: (cause) =>
+        new SqlError.SqlError({
+          cause,
+          message: "The follower view check failed",
+        }),
+    }),
+  );
 
 /**
  * Runs `work` over the follower's facts on one snapshot: a `REPEATABLE READ,

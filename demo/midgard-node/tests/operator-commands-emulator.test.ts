@@ -14,6 +14,7 @@ import { generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { openPlan } from "../src/services/intent-journal.js";
 import {
   type OperatorEconomics,
   OperatorExitRefusal,
@@ -65,6 +66,15 @@ const report = async (
     watchdog: WATCHDOG,
     nowMs: BigInt(fixture.emulator.now()),
   });
+
+/** A planned snapshot as the exit programs open one: the plan, then the read. */
+const plannedSnapshot = async (fixture: OperatorInactivityFixture) => {
+  const intentPlan = await runWithoutFollower(openPlan);
+  return {
+    intentPlan,
+    snapshot: await fetchInactivityDirectorySnapshot(fixture),
+  };
+};
 
 const retiredBondOf = async (
   fixture: OperatorInactivityFixture,
@@ -257,7 +267,7 @@ describe("takeover planning, strike, and forced retirement", () => {
     )!;
     const successorLucid = await fixture.lucidFor(successor.keyHash);
 
-    const early = await Effect.runPromise(
+    const early = await runWithoutFollower(
       planTakeoverProgram(successorLucid, fixture.contracts),
     );
     expect(early.plan.kind).toBe("not-yet");
@@ -267,7 +277,7 @@ describe("takeover planning, strike, and forced retirement", () => {
     expect(early.plan.currentOperator).toBe(appointed.operatorKeyHash);
 
     advanceEmulatorPastUnixTime(fixture.emulator, early.plan.thresholdMs);
-    const due = await Effect.runPromise(
+    const due = await runWithoutFollower(
       planTakeoverProgram(successorLucid, fixture.contracts),
     );
     expect(due.plan.kind).toBe("ready");
@@ -302,7 +312,7 @@ describe("takeover planning, strike, and forced retirement", () => {
           fixture.referenceScriptsAddress,
           {
             mode: "forced-inactivity",
-            snapshot: await fetchInactivityDirectorySnapshot(fixture),
+            ...(await plannedSnapshot(fixture)),
             operatorKeyHash: appointed.operatorKeyHash,
             economics: ECONOMICS,
           },
@@ -329,7 +339,7 @@ describe("takeover planning, strike, and forced retirement", () => {
         fixture.referenceScriptsAddress,
         {
           mode: "voluntary",
-          snapshot: await fetchInactivityDirectorySnapshot(fixture),
+          ...(await plannedSnapshot(fixture)),
           operatorKeyHash: appointed.operatorKeyHash,
           economics: ECONOMICS,
         },
@@ -345,7 +355,7 @@ describe("takeover planning, strike, and forced retirement", () => {
         fixture.referenceScriptsAddress,
         {
           mode: "forced-inactivity",
-          snapshot: await fetchInactivityDirectorySnapshot(fixture),
+          ...(await plannedSnapshot(fixture)),
           operatorKeyHash: appointed.operatorKeyHash,
           economics: ECONOMICS,
         },

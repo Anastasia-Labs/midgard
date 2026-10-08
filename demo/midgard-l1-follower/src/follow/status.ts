@@ -22,6 +22,16 @@ export const FOLLOWER_MIGRATION_FAILED = "l1_follower_migration_failed";
 /** The L1 node transport is not ready; the detail carries its reason. */
 export const FOLLOWER_NODE_UNAVAILABLE = "l1_node_unavailable";
 /**
+ * The local node's tip is behind wall-clock time by more than the bound
+ * (`FollowChainOptions.nodeBehind`); the detail carries the lag. The node is
+ * reachable but not producing or receiving blocks (it is syncing, or cut off
+ * from its peers), so every decision taken now would rest on a stale chain:
+ * a role does not submit while it holds. Transient: cleared by the first
+ * check (each event, and a timer while none arrive) that finds the tip
+ * within the bound. Never an exit.
+ */
+export const FOLLOWER_NODE_BEHIND = "l1_node_behind";
+/**
  * A store reset is replaying from the origin: the start reset the store
  * because the configured protocol tracked set added an item its record did
  * not hold or the store had no record, or an operator ran
@@ -44,6 +54,7 @@ export type FollowReadinessReason =
   | typeof FOLLOWER_APPLY_STUCK
   | typeof FOLLOWER_MIGRATION_FAILED
   | typeof FOLLOWER_NODE_UNAVAILABLE
+  | typeof FOLLOWER_NODE_BEHIND
   | typeof FOLLOWER_TRACKED_SET_CHANGED
   | typeof FOLLOWER_PRUNE_FAILING;
 
@@ -87,6 +98,16 @@ export type FollowStatus = Readonly<{
   node: Readonly<{ reason: TransportUnreadyReason; detail: string }> | null;
   /** The node tip the latest applied event reported. */
   tip: Readonly<{ slot: number; height: number }> | null;
+  /**
+   * Set while that tip's slot time is more than `boundMs` behind wall-clock
+   * time (`FOLLOWER_NODE_BEHIND`); null otherwise, before the first tip, and
+   * when the role passed no `nodeBehind` option.
+   */
+  nodeBehind: Readonly<{
+    tipSlot: number;
+    lagMs: number;
+    boundMs: number;
+  }> | null;
   /** The cursor equals that tip; false while `node` is set. */
   atTip: boolean;
   /** A store reset is replaying from the origin; cleared at the first `atTip` at or above the height before it. */
@@ -130,7 +151,39 @@ export type FollowChainOptions = Readonly<{
    * table per step, every 100 events.
    */
   prune?: Readonly<{ budget?: number; everyEvents?: number }>;
+  /** The `l1_node_behind` check (`NodeBehindOptions`); off when omitted. */
+  nodeBehind?: NodeBehindOptions;
 }>;
+
+/**
+ * How the loop tells that the node's tip is behind wall-clock time (plan §9
+ * Time: the wall clock may hold, never decide). Checked after every applied
+ * event and every `checkEveryMs` while none arrive.
+ */
+export type NodeBehindOptions = Readonly<{
+  /**
+   * POSIX ms at the start of `slot`, from the network's slot configuration.
+   * A failure skips that check (the last result stands) and is logged.
+   */
+  slotTime: (slot: number) => number | Promise<number>;
+  /** The largest lag that is not behind (default `DEFAULT_NODE_BEHIND_MS`). */
+  boundMs?: number;
+  /** The timer's period while no event arrives (default 10 s). */
+  checkEveryMs?: number;
+  /** Wall-clock ms (default `Date.now`). */
+  now?: () => number;
+}>;
+
+/**
+ * The default `l1_node_behind` bound: 5 minutes. With Cardano's active
+ * slot coefficient (f = 0.05, 1 s slots) a gap of 300 slots between honest
+ * blocks has probability 0.95^300 ≈ 2·10⁻⁷, about once in three years at
+ * ~4,300 blocks a day, so the reason does not flap on honest gaps; a node
+ * that far behind is not following the chain. It is small against k (2,160
+ * blocks, about 12 h).
+ */
+export const DEFAULT_NODE_BEHIND_MS = 300_000;
+export const NODE_BEHIND_CHECK_EVERY_MS = 10_000;
 
 export const DEFAULT_STUCK_AFTER = 5;
 export const LOOP_PRUNE_BUDGET = 500;
@@ -153,6 +206,12 @@ export const readinessOf = (
     reasons.push({
       reason: FOLLOWER_NODE_UNAVAILABLE,
       detail: `${status.node.reason}: ${status.node.detail}`,
+    });
+  // An unavailable node's tip is not known; that reason covers it.
+  if (status.node === null && status.nodeBehind !== null)
+    reasons.push({
+      reason: FOLLOWER_NODE_BEHIND,
+      detail: `node tip slot ${status.nodeBehind.tipSlot} is ${Math.round(status.nodeBehind.lagMs / 1000)} s behind wall-clock time (bound ${Math.round(status.nodeBehind.boundMs / 1000)} s)`,
     });
   if (status.stuck?.at === "migration")
     reasons.push({

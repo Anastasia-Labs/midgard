@@ -11,6 +11,7 @@ import { Effect } from "effect";
 import {
   type IntentJournal,
   journaledIntent,
+  openPlan,
 } from "../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import {
@@ -89,6 +90,9 @@ export const operatorLifecycleProgram = (
         }),
       );
     }
+    // S5: one plan for the lifecycle, opened before its first L1 read: the
+    // hub oracle read here feeds every step.
+    const plan = yield* openPlan;
     const operatorKeyHash =
       permissionlessActivation?.operatorKeyHash ??
       (yield* getOperatorKeyHash(lucid));
@@ -305,7 +309,11 @@ export const operatorLifecycleProgram = (
           handleSignSubmit(
             lucid,
             deregisterUnsignedTx,
-            journaledIntent("deregister", `deregister:${operatorKeyHash}`),
+            journaledIntent(
+              "deregister",
+              `deregister:${operatorKeyHash}`,
+              plan,
+            ),
           ),
         );
         if (deregisterSubmitResult._tag === "Left") {
@@ -615,7 +623,7 @@ export const operatorLifecycleProgram = (
       registerTxHash = yield* handleSignSubmit(
         lucid,
         registerUnsignedTx,
-        journaledIntent("register", `register:${operatorKeyHash}`),
+        journaledIntent("register", `register:${operatorKeyHash}`, plan),
         {
           label: "operator registration",
           requiredOutputIndexes: [
@@ -924,7 +932,7 @@ export const operatorLifecycleProgram = (
       handleSignSubmit(
         lucid,
         activationUnsignedTx,
-        journaledIntent("activate", `activate:${operatorKeyHash}`),
+        journaledIntent("activate", `activate:${operatorKeyHash}`, plan),
         {
           label: "operator activation",
           requiredOutputIndexes: [

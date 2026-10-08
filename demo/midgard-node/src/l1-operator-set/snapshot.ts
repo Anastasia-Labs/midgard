@@ -11,6 +11,7 @@ import {
   liveUtxosIn,
   type SqlTx,
   type StoredOutput,
+  type View,
 } from "@al-ft/midgard-l1-follower";
 import { toLucidUtxo } from "@al-ft/midgard-l1-follower/provider";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -128,13 +129,18 @@ export const retiredInsertionAnchorIn = async (
 /**
  * The directory snapshot the watchdog plans from: the published set's lists,
  * scheduler and hub oracle and the landed queue's tail, with no retired
- * nodes (a planned retirement reads its anchor by asset name), or why there
+ * nodes (a planned retirement reads its anchor by asset name), and the
+ * set's follower view (what a plan from it records under, S5), or why there
  * is none.
  */
 export const publishedDirectoryOf = (
   published: PublishedOperatorSet | undefined,
 ):
-  | Readonly<{ kind: "ok"; snapshot: SDK.OperatorDirectorySnapshot }>
+  | Readonly<{
+      kind: "ok";
+      snapshot: SDK.OperatorDirectorySnapshot;
+      view: View;
+    }>
   | Readonly<{ kind: "unavailable"; reason: string; detail: string }> => {
   if (published === undefined)
     return {
@@ -171,6 +177,7 @@ export const publishedDirectoryOf = (
       hubOracle: set.hubOracle,
       stateQueueTail,
     },
+    view: set.view,
   };
 };
 

@@ -12,6 +12,7 @@ import { Effect } from "effect";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
 import {
   type IntentJournal,
+  type IntentPlan,
   journaledIntent,
 } from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
@@ -149,14 +150,16 @@ export const fetchConfiguredNonceUtxo = (
  * local UPLC evaluation enforced. It creates every protocol list's root, so
  * it is journaled as a list insert keyed by the one-shot nonce it spends
  * (`list_insert:protocol_init:<nonce outref>`): S6 resends it while no live
- * output carries the state-queue policy. Before the follower starts (and in
- * a CLI process) it goes out unjournaled (`no_follower`).
+ * output carries the state-queue policy, under `plan`, opened before the
+ * initialization's first L1 read (S5). Before the follower starts (and in a
+ * CLI process) it goes out unjournaled (`no_follower`).
  */
 export const completeAndSubmit = (
   lucid: LucidEvolution,
   txBuilder: TxBuilder,
   failureMessage: string,
   nonce: Pick<UTxO, "txHash" | "outputIndex">,
+  plan: IntentPlan,
 ): Effect.Effect<
   string,
   SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError,
@@ -190,6 +193,7 @@ export const completeAndSubmit = (
       journaledIntent(
         "list_insert",
         `list_insert:protocol_init:${nonce.txHash}#${nonce.outputIndex.toString()}`,
+        plan,
       ),
     );
   });

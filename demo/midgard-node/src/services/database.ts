@@ -12,7 +12,7 @@ import {
   Schedule,
 } from "effect";
 
-import { followerCoveredTipSlot } from "../database/follower-events.js";
+import { followerCoveredTipSlot } from "../database/follower-events.covered-tip-slot.js";
 import { installL1FollowerTipReader } from "../l1-heads.js";
 import { isConnectionClassError } from "../provider-retry.js";
 import { ConfigError, NodeConfig, NodeConfigDep } from "./config.js";

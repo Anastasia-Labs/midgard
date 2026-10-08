@@ -34,7 +34,11 @@
  * The report also carries `confirmedLedger`: the confirmed-ledger frontier,
  * the slot of its merge and that merge's level (`landed`, `safe`, `final`).
  */
-import type { FactStore, FollowStatus } from "@al-ft/midgard-l1-follower";
+import {
+  type FactStore,
+  type FollowStatus,
+  readinessOf,
+} from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 
 import {
@@ -61,6 +65,34 @@ export const cursorKey = (status: FollowStatus): string | null =>
 
 /** The landed frontier's prune floor holds the follower's prune boundary back (detail, with the lag in slots). */
 export const LANDED_FRONTIER_PRUNE_FLOOR = "landed_frontier_prune_floor";
+
+const starting = {
+  state: "starting",
+  interventions: [],
+  waiting: null,
+  stuck: null,
+  protocolInit: "unknown",
+  cursor: null,
+  node: null,
+  nodeBehind: null,
+  tip: null,
+  atTip: false,
+  replaying: false,
+  events: 0,
+  lastError: null,
+  prune: {
+    steps: 0,
+    prunedThroughSlot: null,
+    lastError: null,
+    floorLagSlots: null,
+    failures: 0,
+  },
+} as const;
+/** The follower's status before its loop publishes one. */
+export const startingStatus: FollowStatus = {
+  ...starting,
+  readiness: readinessOf(starting),
+};
 
 /** The projection at the follower's current view, or why there is none. */
 export type FollowerPlanRead =
@@ -177,6 +209,7 @@ export const l1FollowerReadiness = (
       tip: status.tip,
       atTip: status.atTip,
       node: status.node,
+      nodeBehind: status.nodeBehind,
       protocolInit: status.protocolInit,
       events: status.events,
       lastError: status.lastError,

@@ -7,7 +7,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { journaledIntent } from "../services/intent-journal.js";
+import { journaledIntent, openPlan } from "../services/intent-journal.js";
 import type { WalletViewUnavailable } from "../services/intent-journal.wallet-view.js";
 import { handleSignSubmit } from "./utils.js";
 import {
@@ -46,6 +46,8 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
     for (const { withdrawalScript: script } of validators) {
       scripts.set(validatorToScriptHash(script), script);
     }
+    // S5: the plan opens before the registration reads the batches rest on.
+    const plan = yield* openPlan;
     const before = yield* Effect.forEach(
       [...scripts.values()],
       (script) => queryScriptRewardRegistrationProgram(lucid, script),
@@ -90,6 +92,7 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
         journaledIntent(
           "script_reward_registration",
           `script_reward_registration:runtime:${batch[0]!.scriptHash}+${batch.length.toString()}`,
+          plan,
         ),
       );
       for (const record of batch) {
@@ -118,6 +121,8 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
 ) =>
   Effect.gen(function* () {
     const history = Object.values(SDK.requireEventHistoryContracts(contracts));
+    // S5: the plan opens before the registration and wallet reads.
+    const plan = yield* openPlan;
     const registrations = yield* Effect.forEach(
       history.flatMap(({ list, retirement }) => [list, retirement]),
       ({ withdrawalScript }) =>
@@ -224,6 +229,7 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
       journaledIntent(
         "script_reward_registration",
         `script_reward_registration:event_history:${missing.length.toString()}`,
+        plan,
       ),
     );
     return yield* Effect.tryPromise({
@@ -275,6 +281,8 @@ export const ensureScriptRewardAccountRegisteredProgram = (
   script: Script,
 ) =>
   Effect.gen(function* () {
+    // S5: the plan opens before the registration read it is built on.
+    const plan = yield* openPlan;
     const before = yield* queryScriptRewardRegistrationProgram(lucid, script);
     if (before.registered) return { ...before, txHash: null };
     const built = yield* SDK.buildScriptRewardRegistrationTxProgram(
@@ -287,6 +295,7 @@ export const ensureScriptRewardAccountRegisteredProgram = (
       journaledIntent(
         "script_reward_registration",
         `script_reward_registration:${before.scriptHash}`,
+        plan,
       ),
     );
     const after = yield* queryScriptRewardRegistrationProgram(lucid, script);

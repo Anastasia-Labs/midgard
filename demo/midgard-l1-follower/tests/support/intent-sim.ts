@@ -1,6 +1,7 @@
 import {
   type BlockSummary,
   createIntentReconciler,
+  currentViewIn,
   decodeBlock,
   deriveIntentStatusesIn,
   type FactStore,
@@ -10,7 +11,6 @@ import {
   intentJournalProjection,
   type IntentState,
   type OutRef,
-  recordIntentIn,
 } from "../../src/index.js";
 import {
   encodeSimTx,
@@ -21,6 +21,13 @@ import {
 } from "../../src/testing/index.js";
 import type { SimChain } from "../../src/testing/sim-chain.js";
 import { SIM_K } from "./fork-sim.js";
+import {
+  lateIntents,
+  type LateStats,
+  type Planned,
+  recordPlanned,
+  refusedForPrunedParent,
+} from "./intent-sim.late.js";
 import { expectedText, modelStatuses, observedOf } from "./intent-sim.model.js";
 import {
   type Journal,
@@ -47,10 +54,11 @@ import { keptStatusesDiffer } from "./intent-sim.view-check.js";
  *   un-lands is live again with no write;
  * - runs S6 with a submit spy: only the exact journaled bytes of a live
  *   intent are ever sent, at most once per tip, and every live, wanted
- *   intent outside the mempool with its inputs live is sent.
+ *   intent outside the mempool with its inputs live is sent;
+ * - I5 (§8.1): records and send decisions taken late, across rewinds
+ *   (`intent-sim.late.ts`).
  */
-export type IntentSimStats = {
-  recorded: number;
+export type IntentSimStats = LateStats & {
   resubmitted: number;
   abandoned: number;
   /** Landed before a rollback, live right after it. */
@@ -61,11 +69,7 @@ export type IntentSimStats = {
   pruned: number;
   /** Superseded conflicts (an own intent spent the input). */
   superseded: number;
-  /** Children refused because their parent was pruned dead. */
-  refusedPrunedParent: number;
 };
-
-type Planned = Readonly<{ tx: SimTx; hash: Buffer; family: string }>;
 
 const hex = (bytes: Buffer): string => bytes.toString("hex");
 
@@ -88,6 +92,11 @@ export const intentSimulation = (): {
     pruned: 0,
     superseded: 0,
     refusedPrunedParent: 0,
+    staleAtWrite: 0,
+    recordedAcrossRewind: 0,
+    refusedAfterRewind: 0,
+    submitHeld: 0,
+    sentAcrossRewind: 0,
   };
   /** Build side: intents to journal after the n-th roll-forward. */
   const plans = new Map<number, Planned[]>();
@@ -197,6 +206,7 @@ export const intentSimulation = (): {
   const failures: string[] = [];
   /** Planned children refused because their parent was pruned dead. */
   const refused = new Set<string>();
+  const late = lateIntents(stats, refused, known);
 
   const loadReference = async (reference: FactStore): Promise<void> => {
     await reference.transaction("write", async (tx) => {
@@ -345,36 +355,31 @@ export const intentSimulation = (): {
           return `intent ${key} pruned while live on the chain`;
       stats.pruned = [...known.keys()].filter((k) => !retained.has(k)).length;
       lastStates = new Map(mine.states.map((s) => [hex(s.intent.txHash), s]));
+      // I5: the plans recorded late, then the send decisions taken late.
+      const generation = cursor?.generation ?? 0;
+      const check = { store, journal, blocks, generation, prunedThrough };
+      const lateFailure = await late.run(check);
+      if (lateFailure !== null) return lateFailure;
       // Journal what was planned for the next block.
       for (const p of plans.get(forwards) ?? []) {
         if (backward) break;
-        const result = await store.transaction("write", (tx) =>
-          recordIntentIn(tx, store.dialect, {
-            family: p.family,
-            workflowKey: `${p.family}:${hex(p.hash)}`,
-            txCbor: encodeSimTx(p.tx),
-            isOwnOutput: (output) =>
-              output.address.equals(
-                p.tx.outputs[0]?.address ?? Buffer.alloc(0),
-              ),
-          }),
+        const view = await store.transaction("read", (tx) =>
+          currentViewIn(tx, store.dialect),
         );
-        // A child of a parent pruned dead (terminal k deep), or of such a
-        // refused child, is refused: its input is neither a fact nor a
-        // journaled intent's output.
-        if (
-          result.kind === "input_untracked" &&
-          result.untracked.every(
-            (o) =>
-              refused.has(hex(o.txHash)) ||
-              (known.has(hex(o.txHash)) &&
-                !journal.intents.some((i) => i.txHash.equals(o.txHash))),
-          )
-        ) {
+        if (view === null) return "no view to plan at";
+        const due = late.dueFor(p, !coin(p.hash, 0, 3, 20));
+        if (due !== null) {
+          late.deferRecord(p, view, due, prunedThrough);
+          continue;
+        }
+        const result = await recordPlanned(store, p, view);
+        if (refusedForPrunedParent(result, journal, refused, known)) {
           refused.add(hex(p.hash));
           stats.refusedPrunedParent += 1;
           continue;
         }
+        if (result.kind === "recorded" && result.stale)
+          return `record ${hex(p.hash)} under the current view: stale`;
         if (result.kind !== "recorded")
           return `record ${hex(p.hash)}: ${result.kind}${
             result.kind === "input_untracked"
@@ -389,6 +394,7 @@ export const intentSimulation = (): {
               : ""
           }`;
         stats.recorded += 1;
+        if (coin(p.hash, 0, 4, 50)) late.deferSend(p, result.intent.built);
       }
       if (!backward) plans.delete(forwards);
       // S6 with a spy.

@@ -27,7 +27,10 @@ import { CML, Lucid } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { journaledIntent } from "../src/services/intent-journal.js";
+import {
+  type IntentPlan,
+  journaledIntent,
+} from "../src/services/intent-journal.js";
 import { completeWithLocalUplc } from "../src/transactions/da-attestation.fetch-da-attestation-reference-scripts.js";
 import { fetchConfiguredNonceUtxo } from "../src/transactions/initialization.fetch-configured-nonce-utxo.js";
 import {
@@ -39,6 +42,7 @@ import {
   requireWalletViewInputs,
   signOverWalletView,
 } from "../src/transactions/utils.wallet-view.js";
+import { RECORD_ONLY } from "./helpers/intent-journal.js";
 import {
   type IntentEmulator,
   openIntentEmulator,
@@ -65,11 +69,13 @@ const open = async () => {
   return env;
 };
 
-/** A payout funding step's intent (content: the settled event's id). */
-const intent = (label: string) =>
+/** A payout funding step's intent (content: the settled event's id), under
+ * `plan`, opened before the wallet-view reads its build rests on (S5). */
+const intent = (label: string, plan: IntentPlan) =>
   journaledIntent(
     "reserve_payout",
     `reserve_payout:${label}:add_funds`,
+    plan,
     Buffer.alloc(36, 1),
   );
 
@@ -110,9 +116,10 @@ const submitThroughSeam = (
   lucid: LucidEvolution,
   unsigned: Awaited<ReturnType<typeof buildFromView>>,
   label: string,
+  plan: IntentPlan,
 ) =>
   Effect.runPromise(
-    handleSignSubmitNoConfirmation(lucid, unsigned, intent(label)).pipe(
+    handleSignSubmitNoConfirmation(lucid, unsigned, intent(label, plan)).pipe(
       Effect.provide(env.journalLayer),
     ),
   );
@@ -140,6 +147,7 @@ describe("the node wallet view on the emulator", () => {
   it("offers a dead intent's inputs again on the next head (§15 I2 a)", async () => {
     const env = await open();
     const lucid = await env.wallet();
+    const plan = await env.plan();
     const funded = await fundOwn(env, 3_000_000n);
     const [seed, extra] = [...(await viewOf(env, lucid)).utxos].sort((a, b) =>
       refOf(a) === refOf(funded) ? 1 : refOf(b) === refOf(funded) ? -1 : 0,
@@ -157,7 +165,12 @@ describe("the node wallet view on the emulator", () => {
         signOverWalletView(lucid, both).pipe(Effect.provide(env.journalLayer)),
       )
     ).complete();
-    await env.record(intent("dead"), signed.toCBOR(), signed.toHash());
+    await env.record(
+      intent("dead", plan),
+      signed.toCBOR(),
+      signed.toHash(),
+      RECORD_ONLY,
+    );
     const live = await viewOf(env, lucid);
     expect([...live.held].sort()).toEqual([refOf(seed!), refOf(extra!)].sort());
     expect(live.utxos.map(refOf)).toEqual([`${signed.toHash()}#1`]);
@@ -195,7 +208,7 @@ describe("the node wallet view on the emulator", () => {
     const again = await buildFromView(env, lucid, 2_000_000n);
     expect(inputsOf(again.toCBOR())).toContain(refOf(seed!));
     const hash = await Effect.runPromise(
-      handleSignSubmit(lucid, again, intent("after-dead")).pipe(
+      handleSignSubmit(lucid, again, intent("after-dead", plan)).pipe(
         Effect.provide(env.journalLayer),
       ),
     );
@@ -207,6 +220,7 @@ describe("the node wallet view on the emulator", () => {
   it("after a fork drops an own transaction, the next build spends its predicted change and submits with no missing witness (§15 I2 b)", async () => {
     const env = await open();
     const lucid = await env.wallet();
+    const plan = await env.plan();
     const [seed] = (await viewOf(env, lucid)).utxos;
 
     // tx1 is journaled and lands on a branch the emulator never sees.
@@ -219,7 +233,12 @@ describe("the node wallet view on the emulator", () => {
       )
     ).complete();
     const firstHash = first.toHash();
-    await env.record(intent("fork-first"), first.toCBOR(), firstHash);
+    await env.record(
+      intent("fork-first", plan),
+      first.toCBOR(),
+      firstHash,
+      RECORD_ONLY,
+    );
     await env.applyForkBlock([Buffer.from(first.toCBOR(), "hex")]);
     expect(await env.stage.run()).toEqual([]);
     expect(statusOf(env, firstHash)).toMatchObject({ kind: "landed" });
@@ -230,6 +249,9 @@ describe("the node wallet view on the emulator", () => {
     // The fork drops it: tx1 is live again, its change predicted, and S6
     // sends its exact bytes to the mempool.
     await env.rewindTo(0);
+    // S5: the rewind moved the generation; the next build's plan opens
+    // after it, before the reads that build rests on.
+    const replanned = await env.plan();
     expect(await env.stage.run()).toEqual([]);
     expect(statusOf(env, firstHash)).toMatchObject({ kind: "live" });
     expect(env.sent.map((bytes) => bytes.toString("hex"))).toEqual([
@@ -260,6 +282,7 @@ describe("the node wallet view on the emulator", () => {
       lucid,
       second,
       "fork-second",
+      replanned,
     );
     env.emulator.awaitBlock(1);
     await env.follow();
@@ -274,6 +297,7 @@ describe("the node wallet view on the emulator", () => {
   it("chains a second build on a live intent's predicted change, and follows both through landing and rollback", async () => {
     const env = await open();
     const lucid = await env.wallet();
+    const plan = await env.plan();
     const [seed] = (await viewOf(env, lucid)).utxos;
 
     const firstHash = await submitThroughSeam(
@@ -281,6 +305,7 @@ describe("the node wallet view on the emulator", () => {
       lucid,
       await buildFromView(env, lucid, 2_000_000n),
       "chain-first",
+      plan,
     );
     const afterFirst = await viewOf(env, lucid);
     expect(afterFirst.utxos.map(refOf)).toEqual([`${firstHash}#1`]);
@@ -294,6 +319,7 @@ describe("the node wallet view on the emulator", () => {
       lucid,
       second,
       "chain-second",
+      plan,
     );
     const bothLive = await viewOf(env, lucid);
     expect(bothLive.utxos.map(refOf)).toEqual([`${secondHash}#1`]);
@@ -327,6 +353,7 @@ describe("the node wallet view on the emulator", () => {
   it("never offers a live intent's collateral to another build", async () => {
     const env = await open();
     const lucid = await env.wallet();
+    const plan = await env.plan();
     const funded = await fundOwn(env, 3_000_000n);
     const seed = (await viewOf(env, lucid)).utxos.find(
       (utxo) => refOf(utxo) !== refOf(funded),
@@ -363,7 +390,12 @@ describe("the node wallet view on the emulator", () => {
       .fromTx(withCollateral)
       .sign.withPrivateKey(paymentKey)
       .complete();
-    await env.record(intent("collateral"), signed.toCBOR(), signed.toHash());
+    await env.record(
+      intent("collateral", plan),
+      signed.toCBOR(),
+      signed.toHash(),
+      RECORD_ONLY,
+    );
 
     const view = await viewOf(env, lucid);
     expect([...view.held].sort()).toEqual([refOf(seed), refOf(funded)].sort());
@@ -380,6 +412,7 @@ describe("the node wallet view on the emulator", () => {
   it("refuses by name a build whose every own output a live intent holds, before coin selection reads the provider", async () => {
     const env = await open();
     const lucid = await env.wallet();
+    const plan = await env.plan();
     const [seed] = (await viewOf(env, lucid)).utxos;
     // A live intent that spends the whole wallet and returns nothing to it.
     const unsigned = await lucid
@@ -396,7 +429,12 @@ describe("the node wallet view on the emulator", () => {
         ),
       )
     ).complete();
-    await env.record(intent("whole"), signed.toCBOR(), signed.toHash());
+    await env.record(
+      intent("whole", plan),
+      signed.toCBOR(),
+      signed.toHash(),
+      RECORD_ONLY,
+    );
 
     const view = await viewOf(env, lucid);
     expect(view.utxos).toEqual([]);
@@ -430,6 +468,7 @@ describe("the node wallet view on the emulator", () => {
   it("finds the initialization nonce in the view, and refuses it while a live intent holds it", async () => {
     const env = await open();
     const lucid = await env.wallet();
+    const plan = await env.plan();
     const [nonce] = (await viewOf(env, lucid)).utxos;
     const fetchNonce = () =>
       Effect.runPromise(
@@ -451,6 +490,7 @@ describe("the node wallet view on the emulator", () => {
       lucid,
       await buildFromView(env, lucid, 2_000_000n),
       "spends-nonce",
+      plan,
     );
     const held = await fetchNonce();
     expect(held._tag === "Left" && held.left.message).toBe(
