@@ -28,9 +28,10 @@ import {
   depositorL2Utxos,
   submitWithdrawal,
 } from "./correction-rewind-scenario.read-acceptance-traces.js";
+import { insertForcedEntriesWithOrders } from "./emulator-l1-follower.js";
 
 /** A forced transaction spending one of the depositor's L2 outputs, as the
- * tx-order watcher records a valid order. */
+ * forced-order ingestion records a valid order: with the order's row. */
 export const insertForcedTransfer = async (
   h: ContentHandle,
   built: BuiltTransferTx,
@@ -57,34 +58,39 @@ export const insertForcedTransfer = async (
   );
   const inclusionTime = new Date(fixture.emulator.now());
   await h.command(
-    ForcedTransactionsDB.insertEntries([
-      {
-        [ForcedTransactionsDB.Columns.TX_ORDER_ID]: eventId,
-        [ForcedTransactionsDB.Columns.TX_ORDER_L1_TX_HASH]: Buffer.alloc(
-          32,
-          0x42,
-        ),
-        [ForcedTransactionsDB.Columns.TX_ORDER_L1_OUTPUT_INDEX]: 0,
-        [ForcedTransactionsDB.Columns.ASSET_NAME]: Buffer.alloc(32, 0x43),
-        [ForcedTransactionsDB.Columns.RAW_DATUM]: Buffer.from("01", "hex"),
-        [ForcedTransactionsDB.Columns.TX_ID]: encoding.txId,
-        [ForcedTransactionsDB.Columns.TX_COMPACT]: encoding.txCompact,
-        [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoding.value,
-        [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
-          consensusProfile.profileId,
-        [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
-        [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
-          encoding.transactionCommitment,
-        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
-          EMPTY_PROGRAM_MATERIAL_SIDECAR,
-        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
-          createHash("sha256").update(EMPTY_PROGRAM_MATERIAL_SIDECAR).digest(),
-        [ForcedTransactionsDB.Columns.INCLUSION_TIME]: inclusionTime,
-        [ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH]: null,
-        [ForcedTransactionsDB.Columns.STATUS]:
-          ForcedTransactionsDB.Status.Awaiting,
-      },
-    ]),
+    insertForcedEntriesWithOrders(
+      [
+        {
+          [ForcedTransactionsDB.Columns.TX_ORDER_ID]: eventId,
+          [ForcedTransactionsDB.Columns.TX_ORDER_L1_TX_HASH]: Buffer.alloc(
+            32,
+            0x42,
+          ),
+          [ForcedTransactionsDB.Columns.TX_ORDER_L1_OUTPUT_INDEX]: 0,
+          [ForcedTransactionsDB.Columns.ASSET_NAME]: Buffer.alloc(32, 0x43),
+          [ForcedTransactionsDB.Columns.RAW_DATUM]: Buffer.from("01", "hex"),
+          [ForcedTransactionsDB.Columns.TX_ID]: encoding.txId,
+          [ForcedTransactionsDB.Columns.TX_COMPACT]: encoding.txCompact,
+          [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoding.value,
+          [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
+            consensusProfile.profileId,
+          [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
+          [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
+            encoding.transactionCommitment,
+          [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
+            EMPTY_PROGRAM_MATERIAL_SIDECAR,
+          [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
+            createHash("sha256")
+              .update(EMPTY_PROGRAM_MATERIAL_SIDECAR)
+              .digest(),
+          [ForcedTransactionsDB.Columns.INCLUSION_TIME]: inclusionTime,
+          [ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH]: null,
+          [ForcedTransactionsDB.Columns.STATUS]:
+            ForcedTransactionsDB.Status.Awaiting,
+        },
+      ],
+      fixture.operatorLucid.currentSlot(),
+    ),
   );
   return {
     eventId,
