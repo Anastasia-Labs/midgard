@@ -67,7 +67,12 @@ export const AWAITING_MARKING_BLOCK = "awaiting landed-block processing";
 
 export type RebasePlan =
   | Readonly<{ kind: "none" }>
-  | Readonly<{ kind: "blocked"; detail: string }>
+  | Readonly<{
+      kind: "blocked";
+      detail: string;
+      /** The hold's reason, when not `landed_block_rebase_pending`. */
+      reason?: string;
+    }>
   | Readonly<{ kind: "ready"; target: RebaseTarget }>;
 
 const NO_FRONTIER = {
@@ -83,6 +88,12 @@ const targetOn = (
   retired: readonly RetiredPlan[],
 ) =>
   Effect.gen(function* () {
+    if (journals.held !== undefined)
+      return {
+        kind: "blocked",
+        reason: journals.held.reason,
+        detail: journals.held.detail,
+      } satisfies RebasePlan;
     const onChain = new Set(landed.chain.map((row) => row.headerHash));
     const stray = rows.find(
       (row) => row.state === "processed" && !onChain.has(row.headerHash),
@@ -180,6 +191,7 @@ export const rebasePlan = Effect.gen(function* () {
       : ({ kind: "none" } satisfies RebasePlan);
   const journals = yield* ownJournalDisposition(rows, landed);
   if (
+    journals.held === undefined &&
     !rebaseNeeded(rows) &&
     journals.dispose.length === 0 &&
     retired.length === 0

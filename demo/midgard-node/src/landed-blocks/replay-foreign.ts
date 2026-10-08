@@ -1,14 +1,16 @@
 /**
  * Replay of a foreign landed block (plan §7.3, N3): its DA payload, from
- * the node's retained copy or the public DA transport, replayed on its
+ * the node's retained copy or the public DA transport
+ * (`replay-foreign.payload.ts`), replayed on its
  * parent's ledger against the events the follower projects at the view and
  * the forced orders the forced-order projection admitted at the view (every
  * admitted order, live or spent since, whatever its resolution status: the
  * facts at the view, never the node's ingested rows). The block's event
  * sets must be exactly the in-window events known there
  * (`start < inclusion <= end`): an id the payload names that is not known
- * there is `event_unknown`; a known in-window id it leaves out, or one it
- * names twice, is `invalid`; an in-window order whose output cannot be read
+ * there at all is `event_unknown` (see `holds.ts` for why it is a wait); a
+ * known id outside the window, a known in-window id it leaves out, or one
+ * it names twice, is `invalid`; an in-window order whose output cannot be read
  * back at the view is `forced_order_pending`. A block that ends past what
  * the view can know (`view time + event wait - 1`) is `missing`, like a DA
  * payload that is not available yet.
@@ -23,13 +25,9 @@ import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 import { eventsAt } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 
-import {
-  decodeStoredPayload,
-  fetchForeignRetainedDa,
-  foreignRetainedDaInsert,
-} from "../da/foreign-retained-da.js";
+import { foreignDaFetchMemo } from "../da/foreign-retained-da.js";
 import {
   DaPayloadsDB,
   ForcedTransactionsDB,
@@ -56,33 +54,34 @@ import {
   withHistoryWrite,
 } from "../services/event-history-producer.js";
 import { Lucid } from "../services/lucid.js";
-import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
-import { sha256 } from "../sha256.js";
 import type { ReplayInput, ReplayOutcome } from "./replay.js";
+import { payloadOf, type Refetching } from "./replay-foreign.payload.js";
+import {
+  invalid,
+  missing,
+  unknownEvent,
+  Verdict,
+} from "./replay-foreign.verdict.js";
 import type { WithdrawalMembership } from "./store.js";
 
-/** A block's verdict, carried through the replay's error channel. */
-class Verdict extends Error {
-  constructor(
-    readonly kind: Exclude<ReplayOutcome["kind"], "replayed">,
-    readonly detail: string,
-  ) {
-    super(detail);
-  }
-}
-
-const missing = (detail: string) => new Verdict("missing", detail);
-const unknownEvent = (detail: string) => new Verdict("event_unknown", detail);
-const invalid = (detail: string) => new Verdict("invalid", detail);
-
+/**
+ * `known` are the in-window ids, `seen` every id the view knows: an id
+ * outside the window has a fixed inclusion time, so naming it is the
+ * block's fault; one the view does not know at all may be a gap in this
+ * node's facts, so it waits.
+ */
 const exact = (
   known: ReadonlySet<string>,
+  seen: ReadonlySet<string>,
   named: readonly SDK.DaPayloadEntry[],
   kind: string,
 ) => {
   const ids = named.map(([key]) => key);
   if (new Set(ids).size !== ids.length)
     return invalid(`the block names a ${kind} twice`);
+  const outside = ids.find((id) => !known.has(id) && seen.has(id));
+  if (outside !== undefined)
+    return invalid(`${kind} ${outside} is outside the block's window`);
   const unknown = ids.find((id) => !known.has(id));
   if (unknown !== undefined)
     return unknownEvent(`${kind} ${unknown} is not known at the view`);
@@ -91,61 +90,6 @@ const exact = (
     return invalid(`the block leaves out in-window ${kind} ${left}`);
   return undefined;
 };
-
-/** The block's DA payload, and the row to retain if it was fetched. */
-const payloadOf = (headerHash: string, header: SDK.Header) =>
-  Effect.gen(function* () {
-    const identity = yield* ContractDeploymentIdentity;
-    const stored = yield* DaPayloadsDB.retrieveByHeaderHash(
-      Buffer.from(headerHash, "hex"),
-    );
-    if (Option.isNone(stored)) {
-      const acquired = yield* fetchForeignRetainedDa(headerHash, header);
-      return {
-        payload: acquired.payload,
-        acquired: foreignRetainedDaInsert(
-          headerHash,
-          header,
-          acquired.payloadBytes,
-        ),
-      };
-    }
-    const row = stored.value;
-    if (
-      !row[DaPayloadsDB.Columns.HEADER_HASH].equals(
-        Buffer.from(headerHash, "hex"),
-      ) ||
-      row[DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID] !==
-        identity.consensusProfile.profileId ||
-      !sha256(row[DaPayloadsDB.Columns.PAYLOAD_CBOR]).equals(
-        row[DaPayloadsDB.Columns.PAYLOAD_SHA256],
-      )
-    )
-      return yield* Effect.fail(
-        invalid("the retained DA payload's identity differs from the block"),
-      );
-    const payload = yield* Effect.tryPromise({
-      try: () =>
-        decodeStoredPayload({
-          payloadCbor: row[DaPayloadsDB.Columns.PAYLOAD_CBOR],
-          schemaVersion: row[DaPayloadsDB.Columns.VERSION],
-        }),
-      catch: (cause) =>
-        invalid(`the retained DA payload does not decode: ${String(cause)}`),
-    });
-    // The body is the block's before its event lists are read, as a fetched
-    // payload's is.
-    if (
-      payload.block_body.header_hash !== headerHash ||
-      (yield* SDK.hashBlockHeader(payload.block_body.header).pipe(
-        Effect.orElseSucceed(() => undefined),
-      )) !== headerHash
-    )
-      return yield* Effect.fail(
-        invalid("the retained DA payload's identity differs from the block"),
-      );
-    return { payload, acquired: undefined };
-  });
 
 /**
  * The forced orders admitted in the block's window at the view: order id
@@ -167,7 +111,10 @@ const forcedInWindow = (
         missing(`the forced orders are unreadable: ${read.kind}`),
       );
     const forced = new Map<string, Buffer>();
+    const seen = new Set<string>();
     for (const admitted of read.orders) {
+      if (admitted.order !== null)
+        seen.add(admitted.order.idCbor.toString("hex"));
       if (!inWindow(admitted.inclusionTime)) continue;
       if (admitted.order === null)
         return yield* Effect.fail(
@@ -178,7 +125,7 @@ const forcedInWindow = (
         );
       forced.set(admitted.order.idCbor.toString("hex"), admitted.order.datum);
     }
-    return forced;
+    return { forced, seen };
   });
 
 const depositLedgerKey = (idCbor: string) => {
@@ -306,13 +253,16 @@ const material = (
 };
 
 /** The replayer over the follower's event projection at the view. */
-export const replayForeignBlock =
-  (deps: {
-    readonly store: FactStore;
-    readonly events: EventProjectionConfig;
-    readonly forcedOrders: ForcedOrderConfig;
-  }) =>
-  (input: ReplayInput) =>
+export const replayForeignBlock = (deps: {
+  readonly store: FactStore;
+  readonly events: EventProjectionConfig;
+  readonly forcedOrders: ForcedOrderConfig;
+}) => {
+  // One memo per replayer: a header whose DA fetch failed waits out its
+  // backoff across driver runs.
+  const fetchDa = foreignDaFetchMemo();
+  const refetching: Refetching = new Map();
+  return (input: ReplayInput) =>
     Effect.gen(function* () {
       const config = yield* NodeConfig;
       const lucid = yield* Lucid;
@@ -335,6 +285,7 @@ export const replayForeignBlock =
         string,
         { l2Outref: string; l2Owner: string; l2Value: string; info: string }
       >();
+      const seen = new Set<string>();
       for (const list of deps.events.lists) {
         const read = yield* Effect.promise(() =>
           eventsAt(deps.store, list, view.point),
@@ -344,6 +295,7 @@ export const replayForeignBlock =
             missing(`the ${list.kind} events are unreadable: ${read.kind}`),
           );
         for (const event of read.value) {
+          seen.add(event.idCbor);
           if (!inWindow(event.inclusionTime)) continue;
           const decoded = userEventEntry(event, config.NETWORK);
           if (decoded.kind === "deposit")
@@ -361,18 +313,33 @@ export const replayForeignBlock =
             });
         }
       }
-      const forced = yield* forcedInWindow(
+      const { forced, seen: seenForced } = yield* forcedInWindow(
         deps.store,
         deps.forcedOrders,
         view,
         inWindow,
       );
-      const { payload, acquired } = yield* payloadOf(headerHash, header);
+      const { payload, acquired } = yield* payloadOf(
+        fetchDa,
+        refetching,
+        headerHash,
+        header,
+      );
       const body = payload.block_body;
       const mismatch =
-        exact(new Set(deposits.keys()), body.deposits, "deposit") ??
-        exact(new Set(withdrawals.keys()), body.withdrawals, "withdrawal") ??
-        exact(new Set(forced.keys()), body.forced_transactions, "forced order");
+        exact(new Set(deposits.keys()), seen, body.deposits, "deposit") ??
+        exact(
+          new Set(withdrawals.keys()),
+          seen,
+          body.withdrawals,
+          "withdrawal",
+        ) ??
+        exact(
+          new Set(forced.keys()),
+          seenForced,
+          body.forced_transactions,
+          "forced order",
+        );
       if (mismatch !== undefined) return yield* Effect.fail(mismatch);
       const memberships: WithdrawalMembership[] = [];
       const imported = yield* verifyAndImportBlock({
@@ -424,3 +391,4 @@ export const replayForeignBlock =
             : Effect.fail(error),
       ),
     );
+};

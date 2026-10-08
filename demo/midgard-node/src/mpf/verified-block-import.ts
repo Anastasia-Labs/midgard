@@ -14,17 +14,40 @@ import {
   replayImportedBlockEvents,
 } from "./verified-block-import.replay-events.js";
 
+/**
+ * - `missing`: material the block needs is not available yet;
+ * - `invalid`: the block (its header, DA payload or replay) is at fault;
+ * - `incomplete`: the import failed for a reason it cannot pin on the block
+ *   (a local computation or an unclassified replay failure); retried.
+ */
+export type ForeignBlockVerificationReason =
+  | "missing"
+  | "invalid"
+  | "incomplete";
+
 export class ForeignBlockVerificationError extends Data.TaggedError(
   "ForeignBlockVerificationError",
 )<{
   readonly foreignHeaderHash: string;
-  readonly reason: "missing" | "invalid";
+  readonly reason: ForeignBlockVerificationReason;
   readonly detail: string;
 }> {}
 
+/** A caller callback's failure, passed through the import unchanged. */
+class CallbackFailure {
+  constructor(readonly cause: unknown) {}
+}
+
+const passThrough = <A>(effect: Effect.Effect<A, unknown>) =>
+  Effect.mapError(effect, (cause) => new CallbackFailure(cause));
+
 /** Full import authentication. A caller must supply the exact canonical parent
  * and deployment observation; matching ledger roots or DA signatures do not
- * substitute for replay. No successful result is cached across observations. */
+ * substitute for replay. No successful result is cached across observations.
+ *
+ * Failures: the caller's callbacks' pass through unchanged (their verdicts
+ * are the caller's); a defect (the payload checks throw) is `invalid`, a
+ * missing CEK root `missing`; any other failure is `incomplete`. */
 export const verifyAndImportBlock = (
   input: ImportedBlockReplayContext & {
     readonly headerHash: string;
@@ -34,7 +57,7 @@ export const verifyAndImportBlock = (
   },
 ) =>
   Effect.gen(function* () {
-    const fail = (reason: "missing" | "invalid", detail: string) =>
+    const fail = (reason: ForeignBlockVerificationReason, detail: string) =>
       Effect.fail(
         new ForeignBlockVerificationError({
           foreignHeaderHash: input.headerHash,
@@ -65,11 +88,13 @@ export const verifyAndImportBlock = (
     if (input.payload === undefined)
       return yield* fail("missing", "foreign DA payload is unavailable");
     const payload = input.payload;
+    // A header that does not hash is the observation's fault.
+    const hashOf = (header: SDK.Header) =>
+      SDK.hashBlockHeader(header).pipe(Effect.orDie);
     if (
-      (yield* SDK.hashBlockHeader(input.header)) !== input.headerHash ||
+      (yield* hashOf(input.header)) !== input.headerHash ||
       payload.block_body.header_hash !== input.headerHash ||
-      (yield* SDK.hashBlockHeader(payload.block_body.header)) !==
-        input.headerHash ||
+      (yield* hashOf(payload.block_body.header)) !== input.headerHash ||
       payload.version !== SDK.DA_PAYLOAD_VERSION
     )
       return yield* fail(
@@ -84,7 +109,8 @@ export const verifyAndImportBlock = (
         "invalid",
         "foreign replay parent snapshot root mismatch",
       );
-    const roots = yield* computeDaPayloadRoots(payload);
+    // Roots the payload's own entries cannot form are its fault.
+    const roots = yield* computeDaPayloadRoots(payload).pipe(Effect.orDie);
     const mismatches = [...rootMismatches(headerRoots(input.header), roots)];
     const body = payload.block_body;
     const memberCounts: SDK.DaPayloadCounts = {
@@ -119,7 +145,13 @@ export const verifyAndImportBlock = (
         "invalid",
         `foreign DA commitment mismatch: ${mismatches.join(",")}`,
       );
-    const entries = yield* replayImportedBlockEvents({ ...input, payload });
+    const entries = yield* replayImportedBlockEvents({
+      ...input,
+      payload,
+      replayUserEvent: (event) => passThrough(input.replayUserEvent(event)),
+      verifyForcedSource: (source) =>
+        passThrough(input.verifyForcedSource(source)),
+    });
     const replayRoot = yield* computeLedgerMpfRootFromLedgerEntries(entries);
     if (replayRoot !== input.header.utxosRoot)
       return yield* fail("invalid", "foreign replay UTxO root mismatch");
@@ -139,16 +171,17 @@ export const verifyAndImportBlock = (
         }),
       ),
     ),
-    Effect.catchAll((cause) =>
+    Effect.catchAll((cause: unknown) =>
+      cause instanceof CallbackFailure ||
       cause instanceof ForeignBlockVerificationError
-        ? Effect.fail(cause)
+        ? Effect.fail(cause instanceof CallbackFailure ? cause.cause : cause)
         : Effect.fail(
             new ForeignBlockVerificationError({
               foreignHeaderHash: input.headerHash,
               reason:
                 cause instanceof MidgardCekProgramMaterialMissingRootError
                   ? "missing"
-                  : "invalid",
+                  : "incomplete",
               detail: String(cause),
             }),
           ),

@@ -15,6 +15,14 @@
  *   the landed chain: its journal reverts to abandoned with no halt, and is
  *   revived when the block lands again.
  *
+ * - Reviving a journal deletes its members' rejections and every rejection
+ *   whose recorded causes are all deleted ones, transitively; a rejection
+ *   with another cause, or none, is kept.
+ *
+ * - Without the follower's admission tables the disposition is held under
+ *   a named reason, and the rebase plan is blocked under it, rather than
+ *   read as "no event left the chain".
+ *
  * Every journal is kept: disposal abandons it under its replacement digest,
  * never deletes it.
  */
@@ -26,14 +34,19 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { PendingBlockFinalizationsDB } from "../src/database/index.js";
+import {
+  PendingBlockFinalizationsDB,
+  TxRejectionsDB,
+} from "../src/database/index.js";
+import { LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING } from "../src/landed-blocks/holds.js";
 import type { LandedLedger } from "../src/landed-blocks/ledger.js";
 import {
   disposeJournals,
   ownJournalDisposition,
   reviveJournals,
 } from "../src/landed-blocks/own-journals.js";
-import type { LandedBlockRow } from "../src/landed-blocks/store.js";
+import { rebasePlan } from "../src/landed-blocks/rebase-target.js";
+import { Frontier, type LandedBlockRow } from "../src/landed-blocks/store.js";
 import { withHistoryWrite } from "../src/services/event-history-producer.js";
 import {
   insertOwnJournal,
@@ -157,6 +170,52 @@ const rewindKey = (key: Buffer) =>
       sql`DELETE FROM l1_event_keys WHERE kind = 'deposit' AND key = ${key}`,
   );
 
+/** The schema change was rolled back, carrying what ran under it. */
+class RolledBack<A> {
+  constructor(readonly value: A) {}
+}
+
+/** Runs `work` with `table` renamed away, then rolls the rename back. */
+const withoutTable = <A, E, R>(table: string, work: Effect.Effect<A, E, R>) =>
+  Effect.flatMap(SqlClient.SqlClient, (sql) =>
+    sql
+      .withTransaction(
+        Effect.gen(function* () {
+          yield* sql`ALTER TABLE ${sql(table)} RENAME TO ${sql(`${table}_hidden`)}`;
+          return yield* Effect.fail(new RolledBack(yield* work));
+        }),
+      )
+      .pipe(
+        Effect.catchIf(
+          (error): error is RolledBack<A> => error instanceof RolledBack,
+          (rolledBack) => Effect.succeed(rolledBack.value),
+        ),
+      ),
+  );
+
+/** Records a rejection of `txId` after the rejected transactions `causes`. */
+const rejection = (txId: Buffer, causes: readonly Buffer[] = []) =>
+  withHistoryWrite(
+    Effect.gen(function* () {
+      yield* TxRejectionsDB.insertMany([
+        {
+          [TxRejectionsDB.Columns.TX_ID]: txId,
+          [TxRejectionsDB.Columns.REJECT_CODE]: "test",
+          [TxRejectionsDB.Columns.REJECT_DETAIL]: null,
+        },
+      ]);
+      yield* TxRejectionsDB.insertCauses(
+        causes.map((causeTxId) => ({ txId, causeTxId })),
+      );
+    }),
+  );
+
+const rejectedIds = Effect.flatMap(SqlClient.SqlClient, (sql) =>
+  sql<{ tx_id: Buffer }>`SELECT tx_id FROM tx_rejections`.pipe(
+    Effect.map((rows) => new Set(rows.map((r) => r.tx_id.toString("hex")))),
+  ),
+);
+
 describe("own block journals under whichever-lands-wins", () => {
   it("(a) revives the old commit that landed after its disposal and disposes of its unlanded replacement", () =>
     inNode(
@@ -179,6 +238,49 @@ describe("own block journals under whichever-lands-wins", () => {
         );
         expect(yield* statusOf(REPLACEMENT)).toBe(JournalStatus.Abandoned);
         expect(yield* PendingBlockFinalizationsDB.hasActive).toBe(true);
+      }),
+    ));
+
+  it("revival deletes its members' rejections and those traced only to them, and keeps the rest", () =>
+    inNode(
+      Effect.gen(function* () {
+        yield* journal(OLD, G, JournalStatus.Abandoned, 0);
+        const member = simDigest(`own-journals:tx:${OLD}`);
+        const tx = (label: string) =>
+          simDigest(`own-journals:rejected:${label}`);
+        const other = tx("other");
+        const dependent = tx("dependent");
+        const transitive = tx("transitive");
+        const mixed = tx("mixed");
+        const unrelated = tx("unrelated");
+        const otherDependent = tx("other-dependent");
+        yield* rejection(member);
+        yield* rejection(other);
+        yield* rejection(dependent, [member]);
+        yield* rejection(transitive, [dependent]);
+        yield* rejection(mixed, [member, other]);
+        yield* rejection(unrelated);
+        yield* rejection(otherDependent, [other]);
+        const oldRow = row(OLD, G, "own", "processed", false);
+        expect((yield* rebaseJournals([oldRow], [oldRow])).revive).toEqual([
+          OLD,
+        ]);
+        expect(yield* TxRejectionsDB.retrieveByTxId(member)).toEqual([]);
+        expect(yield* rejectedIds).toEqual(
+          new Set(
+            [other, mixed, unrelated, otherDependent].map((id) =>
+              id.toString("hex"),
+            ),
+          ),
+        );
+        const causes = yield* Effect.flatMap(
+          SqlClient.SqlClient,
+          (sql) =>
+            sql<{ tx_id: Buffer }>`SELECT tx_id FROM tx_rejection_causes`,
+        );
+        expect(new Set(causes.map((r) => r.tx_id.toString("hex")))).toEqual(
+          new Set([mixed, otherDependent].map((id) => id.toString("hex"))),
+        );
       }),
     ));
 
@@ -305,6 +407,45 @@ describe("own block journals under whichever-lands-wins", () => {
         expect(yield* statusOf(OLD)).toBe(
           JournalStatus.ObservedWaitingStability,
         );
+      }),
+    ));
+
+  it("holds the disposition under a named reason while a follower admission table is missing, and reads it once present", () =>
+    inNode(
+      Effect.gen(function* () {
+        yield* journal(C, G, JournalStatus.SubmittedUnconfirmed);
+        yield* withHistoryWrite(
+          Frontier.upsert({ headerHash: G, utxosRoot: ZERO_ROOT }),
+        );
+        for (const table of ["l1_event_keys", "node_l1_forced_order_fields"]) {
+          const { disposition, plan } = yield* withoutTable(
+            table,
+            Effect.all({
+              disposition: ownJournalDisposition([], landed([])),
+              plan: rebasePlan,
+            }),
+          );
+          expect(disposition).toEqual({
+            dispose: [],
+            revive: [],
+            held: {
+              reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+              detail: `the own-journal disposition cannot read event admissions: ${table} missing`,
+            },
+          });
+          expect(plan).toEqual({
+            kind: "blocked",
+            reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+            detail: `the own-journal disposition cannot read event admissions: ${table} missing`,
+          });
+        }
+        // Both present: the disposition is read, nothing held or due.
+        expect(yield* ownJournalDisposition([], landed([]))).toEqual({
+          dispose: [],
+          revive: [],
+        });
+        expect((yield* rebasePlan).kind).toBe("none");
+        expect(yield* statusOf(C)).toBe(JournalStatus.SubmittedUnconfirmed);
       }),
     ));
 });

@@ -64,11 +64,11 @@ export type LandedBlockPorts<R> = Readonly<{
   >;
   /**
    * Asks the history owner to run the working-ledger rebase, unless it cannot
-   * run yet; then returns why (and asks nothing).
+   * run yet; then returns why, as its hold (and asks nothing).
    */
   requestRebase: (
     reason: string,
-  ) => Effect.Effect<string | undefined, unknown, R | Database>;
+  ) => Effect.Effect<DriverHold | undefined, unknown, R | Database>;
   /** Why the last rebase failed, as its hold, until one runs (the owner retries it). */
   rebaseFailure: Effect.Effect<DriverHold | undefined, unknown, R | Database>;
 }>;

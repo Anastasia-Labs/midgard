@@ -148,6 +148,8 @@ export type SimOwnBlock = Readonly<{
   parentHash: string;
   header: SDK.Header;
   txIds: readonly Buffer[];
+  /** The journal's time: a member it restores to the mempool carries it. */
+  at: Date;
 }>;
 
 /** The node's own blocks: every one it committed, and its active journal. */
@@ -205,7 +207,16 @@ export const ownBlockOn = (
       txIds.push(tx.id);
       for (const entry of tx.produced) reached.add(hex(entry.outref));
     }
-  const block: SimOwnBlock = { headerHash, parentHash: tip, header, txIds };
+  const at = new Date(
+    Date.parse("2026-10-01T00:00:00.000Z") + book.committed * 60_000,
+  );
+  const block: SimOwnBlock = {
+    headerHash,
+    parentHash: tip,
+    header,
+    txIds,
+    at,
+  };
   return {
     block,
     info: {
@@ -233,9 +244,7 @@ export const ownBlockOn = (
       ],
       produced: [universe.y(h), universe.x(h, b)],
       txIds,
-      at: new Date(
-        Date.parse("2026-10-01T00:00:00.000Z") + book.committed * 60_000,
-      ),
+      at,
     } satisfies SimOwnJournal,
   };
 };

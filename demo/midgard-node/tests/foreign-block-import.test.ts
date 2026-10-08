@@ -201,6 +201,52 @@ describe("complete foreign block import", () => {
     });
     expect(result._tag).toBe("Left");
     if (result._tag === "Left")
-      expect(result.left.detail).toContain("verified parent");
+      expect(result.left).toMatchObject({
+        reason: "invalid",
+        detail: expect.stringContaining("verified parent"),
+      });
+  });
+});
+
+describe("foreign block import failure attribution", () => {
+  it("passes a caller callback's verdict through unchanged", async () => {
+    const verdictOfCaller = new Error("the caller's own verdict");
+    const result = await verdict(await fixture(), {
+      verifyForcedSource: () => Effect.fail(verdictOfCaller),
+    });
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") expect(result.left).toBe(verdictOfCaller);
+  });
+
+  it("calls a transaction preimage that does not decode invalid (the program sidecar decodes it first)", async () => {
+    const payload = await fixture();
+    const [key] = payload.block_body.forced_transaction_preimages[0]!;
+    payload.block_body.forced_transaction_preimages[0] = [key, "00"];
+    const result = await verdict(await rebind(payload));
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(result.left).toMatchObject({ reason: "invalid" });
+  });
+
+  it("calls DA entries whose roots cannot be formed invalid", async () => {
+    const payload = await fixture();
+    payload.block_body.utxos = [["00", "00"]];
+    const result = await verdict(payload);
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(result.left).toMatchObject({ reason: "invalid" });
+  });
+
+  it("calls a failure it cannot pin on the block incomplete, never invalid", async () => {
+    // A parent ledger the local MPF cannot hash: a local computation fails.
+    const result = await verdict(await fixture(), {
+      parentEntries: [{ outref: Buffer.alloc(0), output: Buffer.alloc(0) }],
+    });
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(result.left).toMatchObject({
+        reason: "incomplete",
+        detail: expect.stringContaining("MpfError"),
+      });
   });
 });

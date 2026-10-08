@@ -183,7 +183,7 @@ export const simSettler = (
         continue;
       }
       await run(withHistoryWrite(rebaseSql(plan.target)));
-      node.followDisposition(plan.target.journals, onQueue);
+      await node.followDisposition(plan.target.journals, onQueue);
       rebuilds += 1;
     }
     return { error: "landed-block processing did not settle" };

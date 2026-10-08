@@ -9,7 +9,7 @@ import {
   fetchRetainedDaPayloadByHeaderHash,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 
 import { DaPayloadsDB } from "../database/index.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
@@ -208,3 +208,60 @@ export const fetchForeignRetainedDa = (
       ),
     );
   });
+
+/** The first wait after a failed foreign DA fetch; it doubles per failure. */
+export const FOREIGN_DA_RETRY_BASE_MS = 1_000;
+/** The longest wait between foreign DA fetches of one header. */
+export const FOREIGN_DA_RETRY_MAX_MS = 60_000;
+/** Headers the memo remembers; the oldest is forgotten past this. */
+const FOREIGN_DA_MEMO_LIMIT = 1_024;
+
+type Attempt = Readonly<{ atMs: number; failures: number }>;
+
+/**
+ * A per-header next-attempt memo for foreign DA fetches: after a failed
+ * fetch, the header is not fetched again (no peer is asked) before its next
+ * attempt time, which backs off exponentially from
+ * `FOREIGN_DA_RETRY_BASE_MS` to `FOREIGN_DA_RETRY_MAX_MS`; a fetch that
+ * succeeds forgets the header. Time is read from the Effect clock; nothing
+ * sleeps: a fetch asked for early fails `missing` at once.
+ */
+export const foreignDaFetchMemo = () => {
+  const attempts = new Map<string, Attempt>();
+  return (headerHash: string, header: SDK.Header) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const last = attempts.get(headerHash);
+      if (last !== undefined && now < last.atMs)
+        return yield* Effect.fail(
+          new ForeignBlockVerificationError({
+            foreignHeaderHash: headerHash,
+            reason: "missing",
+            detail: `foreign public DA fetch of ${headerHash} backs off ${(last.atMs - now).toString()} ms after ${last.failures.toString()} failed attempts`,
+          }),
+        );
+      const fetched = yield* Effect.either(
+        fetchForeignRetainedDa(headerHash, header),
+      );
+      if (fetched._tag === "Right") {
+        attempts.delete(headerHash);
+        return fetched.right;
+      }
+      const failures = (last?.failures ?? 0) + 1;
+      attempts.delete(headerHash);
+      attempts.set(headerHash, {
+        atMs:
+          (yield* Clock.currentTimeMillis) +
+          Math.min(
+            FOREIGN_DA_RETRY_BASE_MS * 2 ** Math.min(failures - 1, 30),
+            FOREIGN_DA_RETRY_MAX_MS,
+          ),
+        failures,
+      });
+      for (const oldest of attempts.keys()) {
+        if (attempts.size <= FOREIGN_DA_MEMO_LIMIT) break;
+        attempts.delete(oldest);
+      }
+      return yield* Effect.fail(fetched.left);
+    });
+};

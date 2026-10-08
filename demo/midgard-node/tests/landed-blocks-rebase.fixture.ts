@@ -311,6 +311,19 @@ export const rejections = (globals: Globals) =>
     ),
   ).then((rows) => rows.map((row) => [hex(row.tx_id), row.reject_code]));
 
+/** The recorded rejection causes: sorted `[rejected tx id, cause tx id]` pairs. */
+export const rejectionCauses = (globals: Globals) =>
+  run(
+    globals,
+    Effect.flatMap(
+      SqlClient.SqlClient,
+      (sql) => sql<{ tx_id: Buffer; cause_tx_id: Buffer }>`
+        SELECT tx_id, cause_tx_id FROM tx_rejection_causes`,
+    ),
+  ).then((rows) =>
+    rows.map((row) => [hex(row.tx_id), hex(row.cause_tx_id)]).sort(),
+  );
+
 /** The receipt settlements on record: `[tx id, settling header]` pairs. */
 export const settlements = (globals: Globals) =>
   run(

@@ -43,6 +43,7 @@ import {
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   StateQueueMutationLeasesDB,
+  TxRejectionsDB,
 } from "../database/index.js";
 import {
   canonicalForcedAdmission,
@@ -50,9 +51,11 @@ import {
 } from "../database/l1-admission-identity.js";
 import { ACTIVE_STATUSES } from "../database/pendingBlockFinalizations.columns.js";
 import { DatabaseError } from "../database/utils/common.js";
+import type { DriverHold } from "../l1-events/driver.js";
 import { signedIntentReplacementDigest } from "../services/canonical-journal-recovery.js";
 import { readIntentStatus } from "../services/intent-journal.js";
 import { retrieveMergeLinks } from "./confirmed-merges.js";
+import { LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING } from "./holds.js";
 import type { LandedLedger } from "./ledger.js";
 import type { LandedBlockRow } from "./store.js";
 
@@ -81,6 +84,11 @@ export type OwnJournalDisposition = Readonly<{
   dispose: readonly JournalDisposal[];
   /** Processed own rows whose abandoned journal the rebase revives. */
   revive: readonly string[];
+  /**
+   * Set when the disposition cannot be read (the follower's admission
+   * tables are missing): the rebase does not run while it is.
+   */
+  held?: DriverHold;
 }>;
 
 export const NO_DISPOSITION: OwnJournalDisposition = {
@@ -110,19 +118,26 @@ const intentDead = (txHash: string) =>
     ),
   );
 
-/** Unfinished journals holding an event whose admission left the chain. */
+/**
+ * Unfinished journals holding an event whose admission left the chain, or
+ * the follower admission tables that are missing: without them no
+ * admission can be read, so the disposition is held rather than read as
+ * "nothing left the chain".
+ */
 const orphanHolders = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const [tables] = yield* sql<{ keys: boolean; orders: boolean }>`SELECT
     to_regclass('l1_event_keys') IS NOT NULL AS keys,
     to_regclass('node_l1_forced_order_fields') IS NOT NULL AS orders`;
-  if (tables === undefined || !tables.keys) return new Set<string>();
-  const forced = tables.orders
-    ? sql`OR EXISTS (SELECT 1 FROM pending_block_finalization_forced_transactions m
+  const missing = [
+    ...(tables?.keys === true ? [] : ["l1_event_keys"]),
+    ...(tables?.orders === true ? [] : ["node_l1_forced_order_fields"]),
+  ];
+  if (missing.length > 0) return { kind: "held", missing } as const;
+  const forced = sql`OR EXISTS (SELECT 1 FROM pending_block_finalization_forced_transactions m
         JOIN forced_transaction_utxos f ON f.tx_order_id = m.member_id
         WHERE m.header_hash = p.header_hash
-          AND NOT ${canonicalForcedAdmission(sql, "f")})`
-    : sql``;
+          AND NOT ${canonicalForcedAdmission(sql, "f")})`;
   const rows = yield* sql<{ header_hash: Buffer }>`
     SELECT p.header_hash FROM pending_block_finalizations p
     WHERE p.status IN ${sql.in(ACTIVE_STATUSES)} AND (
@@ -133,7 +148,10 @@ const orphanHolders = Effect.gen(function* () {
         WHERE m.header_hash = p.header_hash
           AND ${orphanedAdmission(sql, "m", "withdrawal")})
       ${forced})`;
-  return new Set(rows.map((row) => row.header_hash.toString("hex")));
+  return {
+    kind: "read",
+    holders: new Set(rows.map((row) => row.header_hash.toString("hex"))),
+  } as const;
 });
 
 /**
@@ -202,7 +220,17 @@ export const ownJournalDisposition = (
       ...landed.chain.map((row) => row.headerHash),
     ];
     const position = new Map(chain.map((hash, index) => [hash, index]));
-    const orphans = yield* orphanHolders;
+    const orphanRead = yield* orphanHolders;
+    if (orphanRead.kind === "held")
+      return {
+        dispose: [],
+        revive,
+        held: {
+          reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+          detail: `the own-journal disposition cannot read event admissions: ${orphanRead.missing.join(", ")} missing`,
+        },
+      } satisfies OwnJournalDisposition;
+    const orphans = orphanRead.holders;
     const causes = new Map<string, string>();
     for (const candidate of candidates) {
       const { headerHash, status, intendedTxHash } = candidate;
@@ -366,7 +394,11 @@ const revivalDigest = (headerHash: Buffer) =>
 /**
  * Revives the abandoned journal of each processed own row `headers`: it is
  * observed again and waits for local finalization, its abandonment digest
- * kept (the mark of a revived block). Returns the revived records.
+ * kept (the mark of a revived block). Its members are in the landed block,
+ * so a rejection recorded for one while the journal was abandoned is
+ * deleted, with every rejection whose recorded causes are all deleted ones
+ * (`TxRejectionsDB.deleteWithTracedRejections`), in the caller's
+ * transaction. Returns the revived records.
  */
 export const reviveJournals = (headers: readonly string[]) =>
   Effect.forEach(headers, (headerHash) =>
@@ -390,8 +422,11 @@ export const reviveJournals = (headers: readonly string[]) =>
         return yield* Effect.fail(
           failure("Failed to revive a landed own block's journal", headerHash),
         );
+      const cleared = yield* TxRejectionsDB.deleteWithTracedRejections(
+        record.txMembers.map((member) => Buffer.from(member[Member.MEMBER_ID])),
+      );
       yield* Effect.logWarning(
-        `Revived own block ${headerHash}: it landed after its journal was abandoned; local finalization follows it.`,
+        `Revived own block ${headerHash}: it landed after its journal was abandoned; local finalization follows it.${cleared.length === 0 ? "" : ` Deleted ${cleared.length.toString()} rejections of its members and of transactions rejected after them.`}`,
       );
       return yield* lockedRecord(headerHash);
     }),

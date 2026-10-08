@@ -133,7 +133,14 @@ export const persistCommitStageRejectedTransactions = ({
                 id,
                 `Transaction spends L2 outref ${hex(input)}, an output of transaction ${producers.get(hex(input))!}, which was rejected at commit`,
               );
-              reject(tx, "dependent");
+              reject(tx, "dependent", [
+                ...new Set(
+                  tx.spent.flatMap((outRef) => {
+                    const producer = producers.get(hex(outRef));
+                    return producer === undefined ? [] : [producer];
+                  }),
+                ),
+              ]);
               changed = true;
             }
             return changed;

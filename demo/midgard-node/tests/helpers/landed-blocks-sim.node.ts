@@ -12,6 +12,7 @@
  */
 import { Effect } from "effect";
 
+import { MempoolTxDeltasDB } from "../../src/database/index.js";
 import {
   disposeJournals,
   type OwnJournalDisposition,
@@ -24,7 +25,9 @@ import { withHistoryWrite } from "../../src/services/event-history-producer.js";
 import { makeOutRefCbor } from "../midgard-output-helpers.js";
 import {
   admitPending,
+  clearRevivedRejections,
   insertSimReceipt,
+  restoreDisposedMembers,
   type SimPendingTx,
 } from "./landed-blocks-sim.mempool.js";
 import {
@@ -44,6 +47,40 @@ type Run = <A, E>(effect: Effect.Effect<A, E, Database>) => Promise<A>;
 export const simNode = (env: LandedSimEnv, run: Run) => {
   const { stats, mempool, book } = env;
 
+  /**
+   * A rebase that revives own blocks deletes their members' rejections. A
+   * disposal restores such a member's row from its journal bytes, which the
+   * node decodes once the rejection deleted its delta; the simulator's
+   * filler bytes do not decode, so it puts the delta back for them.
+   */
+  const reviveRejections = async (revived: readonly string[]) => {
+    const unrejected = revived.flatMap((header) =>
+      clearRevivedRejections(mempool, book.blocks.get(header)!.txIds.map(hex)),
+    );
+    stats.revivalUnrejected += unrejected.length;
+    if (unrejected.length > 0)
+      await run(
+        withHistoryWrite(
+          MempoolTxDeltasDB.upsertMany(
+            unrejected.map((id) => {
+              const tx = mempool.txs.get(id)!;
+              return { txId: tx.id, spent: tx.spent, produced: tx.produced };
+            }),
+          ),
+        ),
+      );
+  };
+
+  /** A disposed own block's members are pending again. */
+  const restoreMembers = (header: string) => {
+    const block = book.blocks.get(header)!;
+    stats.unrejectedRestored += restoreDisposedMembers(
+      mempool,
+      block.txIds.map(hex),
+      block.at,
+    );
+  };
+
   /** Moves the working ledger and native MPF onto the processed chain (and live own block). */
   const rebaseOnto = async () => {
     const plan = await run(Effect.flatMap(retrieveRows, rebaseTargetOf));
@@ -54,6 +91,9 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
       }),
     );
     await run(withHistoryWrite(rebaseSql(plan.target)));
+    for (const disposal of plan.target.journals.dispose)
+      restoreMembers(disposal.headerHash);
+    await reviveRejections(plan.target.journals.revive);
     if (plan.target.live !== undefined) stats.liveRebases += 1;
     return plan.target;
   };
@@ -92,18 +132,22 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
         ]),
       ),
     );
+    restoreMembers(active);
     resolved(active, canonical);
   };
 
   /** The book after a rebase that disposed of and revived `journals`. */
-  const followDisposition = (
+  const followDisposition = async (
     journals: OwnJournalDisposition,
     canonical: ReadonlySet<string>,
   ) => {
-    for (const disposal of journals.dispose)
+    for (const disposal of journals.dispose) {
+      restoreMembers(disposal.headerHash);
       if (disposal.headerHash === book.active)
         resolved(disposal.headerHash, canonical);
+    }
     stats.ownRevivals += journals.revive.length;
+    await reviveRejections(journals.revive);
   };
 
   /** The commit path finalizes every revived block locally. */
@@ -185,6 +229,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
       });
     }
     mempool.survivors.push(...txs);
+    for (const tx of txs) mempool.txs.set(hex(tx.id), tx);
     stats.admitted += txs.length;
   };
 

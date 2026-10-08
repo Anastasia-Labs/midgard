@@ -43,6 +43,8 @@
     "tests/cbor-root-normalization.test.ts": 2.2,
     "tests/cek-material-publication-emulator.test.ts": 3.1,
     "tests/cli-runtime.test.ts": 3.6,
+    "tests/commit-base-readiness.test.ts": 2.6,
+    "tests/commit-replacement-state-queue-emulator.test.ts": 39.4,
     "tests/commit-block-header-state-queue-tail.test.ts": 2.8,
     "tests/commit-block-header-worker-output.test.ts": 3.1,
     "tests/commit-block-planner.test.ts": 3.2,

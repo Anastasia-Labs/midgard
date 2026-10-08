@@ -18,7 +18,10 @@
  *    The working ledger is rewound by that walk plus the rebase's recompute.
  * 3. Each new node, in queue order and exactly once (the row's primary key),
  *    must link to its parent (hash, root, start time). This node's own block
- *    is adopted from its journal and never replayed; one whose journal was
+ *    is adopted from its journal and never replayed (its journal must
+ *    describe the block and its delta reach the header's root on the
+ *    parent's ledger, or it holds the local-fault
+ *    `landed_block_own_journal_mismatch`); one whose journal was
  *    abandoned (whichever lands wins) is adopted unapplied for the rebase to
  *    revive, and the blocks after it hold `landed_block_own_revival_pending`
  *    until the commit path finalized it locally. A foreign block is
@@ -49,6 +52,7 @@ import { Effect } from "effect";
 
 import type { DriverHold } from "../l1-events/driver.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
 import type { Database } from "../services/database.js";
 import { isHistoryProducerGateClosed } from "../services/event-history-producer.js";
 import type { MergePoint } from "./confirmed-merges.js";
@@ -69,12 +73,15 @@ import {
   combineHolds,
   CONFIRMED_LEDGER_BEHIND,
   LANDED_BLOCK_AWAITING_DA,
+  LANDED_BLOCK_DA_REFETCH_PENDING,
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_INVALID,
+  LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
+  LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCKS_WAITING,
 } from "./holds.js";
 import {
@@ -142,8 +149,10 @@ const linkageFault = (node: LandedNode, parent: Parent): string | undefined =>
 
 const HOLD_OF = {
   missing: LANDED_BLOCK_AWAITING_DA,
+  da_refetch_pending: LANDED_BLOCK_DA_REFETCH_PENDING,
   event_unknown: LANDED_BLOCK_EVENT_UNKNOWN,
   forced_order_pending: LANDED_BLOCK_FORCED_ORDER_PENDING,
+  incomplete: LANDED_BLOCK_REPLAY_INCOMPLETE,
   invalid: LANDED_BLOCK_INVALID,
 } as const;
 
@@ -175,6 +184,9 @@ const newRow = <R>(
     } as const;
     const journal = yield* ports.ownJournal(node.headerHash);
     if (journal !== undefined) {
+      // The block's header hash is this node's: a journal that does not
+      // describe it, or whose delta does not reach its root, is a local
+      // fault, never the block's.
       if (
         journal.baseTailHeaderHash !== parent.headerHash ||
         journal.baseUtxosRoot !== parent.utxosRoot ||
@@ -183,8 +195,19 @@ const newRow = <R>(
         return {
           kind: "held",
           hold: hold(
-            LANDED_BLOCK_INVALID,
+            LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
             `own block ${node.headerHash}'s journal does not describe the landed block (base ${journal.baseTailHeaderHash}/${journal.baseUtxosRoot}, expected ${journal.expectedUtxosRoot})`,
+          ),
+        } satisfies Step;
+      const root = yield* computeLedgerMpfRootFromLedgerEntries(
+        ledgerEntries(applyDelta(new Map(ledger), journal)),
+      );
+      if (root !== node.header.utxosRoot)
+        return {
+          kind: "held",
+          hold: hold(
+            LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
+            `own block ${node.headerHash}'s journal delta reaches root ${root} on its parent's ledger, its header commits ${node.header.utxosRoot}`,
           ),
         } satisfies Step;
       // An abandoned own block that landed anyway is revived by the rebase:
@@ -424,11 +447,11 @@ const run = <R>(
           "Landed blocks changed what the working ledger must hold",
         );
         holds.push(
-          hold(
-            LANDED_BLOCK_REBASE_PENDING,
-            blocked ??
+          blocked ??
+            hold(
+              LANDED_BLOCK_REBASE_PENDING,
               "the working ledger and native MPF wait for the rebase onto the processed landed blocks",
-          ),
+            ),
         );
       }
     }

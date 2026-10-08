@@ -11,6 +11,7 @@ import { Effect, type Runtime } from "effect";
 
 import { DepositsDB } from "../../src/database/index.js";
 import { readQueueHistory } from "../../src/landed-blocks/history.js";
+import { LANDED_BLOCK_REBASE_PENDING } from "../../src/landed-blocks/holds.js";
 import { ownJournal } from "../../src/landed-blocks/journal.js";
 import {
   ledgerEntries,
@@ -90,6 +91,10 @@ export type LandedSimStats = TrafficStats & {
   /** ...because their base was a foreign block a rollback removed. */
   ownOnRemovedBase: number;
   ownRevivals: number;
+  /** Revived members whose rejection the revival deleted. */
+  revivalUnrejected: number;
+  /** ...that a later disposal of their block restored to the mempool. */
+  unrejectedRestored: number;
   /** Checks the node missed (down), and runs that met a merged header it never processed. */
   offlineChecks: number;
   coalescedMerges: number;
@@ -143,6 +148,8 @@ export const zeroLandedSimStats = (): LandedSimStats => ({
   ownResolutions: 0,
   ownOnRemovedBase: 0,
   ownRevivals: 0,
+  revivalUnrejected: 0,
+  unrejectedRestored: 0,
   offlineChecks: 0,
   coalescedMerges: 0,
   bootstrapsPastGenesis: 0,
@@ -286,7 +293,11 @@ export const simPorts = (
   requestRebase: () =>
     rebasePlan.pipe(
       Effect.map((plan) => {
-        if (plan.kind === "blocked") return plan.detail;
+        if (plan.kind === "blocked")
+          return {
+            reason: plan.reason ?? LANDED_BLOCK_REBASE_PENDING,
+            detail: plan.detail,
+          };
         if (plan.kind === "ready") requested.value = true;
         return undefined;
       }),

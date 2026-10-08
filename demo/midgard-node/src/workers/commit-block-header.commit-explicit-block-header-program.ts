@@ -83,7 +83,7 @@ export const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
       // the transactions MPF root; rolling back would undo recovery.
       return true;
     case "FailureOutput":
-    case "AwaitingForeignDaOutput":
+    case "AwaitingCommitBaseOutput":
     case "RegisteredDueWorkOutput":
     case "NothingToCommitOutput":
       return false;

@@ -276,6 +276,8 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "ownResolutions",
     "ownOnRemovedBase",
     "ownRevivals",
+    "revivalUnrejected",
+    "unrejectedRestored",
     "offlineChecks",
     "coalescedMerges",
     "bootstrapsPastGenesis",
