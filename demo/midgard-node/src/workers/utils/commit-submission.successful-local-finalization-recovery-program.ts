@@ -198,14 +198,11 @@ export const skippedSubmissionProgram = (
       "skipped-submission-db-transfer",
       (startIndex: number, endIndex: number) =>
         Effect.gen(function* () {
-          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
-          const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
-          yield* ProcessedMempoolDB.insertTxs(batchTxs).pipe(
-            Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
-          );
-          yield* MempoolDB.clearTxs(batchHashes).pipe(
-            Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
-          );
+          // The rows move as they are now: a mark a block set after the
+          // selection moves with its row.
+          yield* ProcessedMempoolDB.moveFromMempool(
+            mempoolTxHashes.slice(startIndex, endIndex),
+          ).pipe(Effect.withSpan(`mempool-db-move-txs-${startIndex}`));
         }),
       1,
     );

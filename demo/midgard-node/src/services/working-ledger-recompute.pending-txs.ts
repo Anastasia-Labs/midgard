@@ -70,64 +70,77 @@ const producedRow = (
       }),
   });
 
+const loadPending = (undecodable: "fail" | "inert") =>
+  Effect.gen(function* () {
+    const mempool = yield* MempoolInclusionsDB.retrievePendingEntries(
+      MempoolDB.tableName,
+    );
+    const processed = yield* MempoolInclusionsDB.retrievePendingEntries(
+      ProcessedMempoolDB.tableName,
+    );
+    const seen = new Set<string>();
+    const ordered: {
+      entry: Tx.EntryWithTimeStamp;
+      source: PendingTx["source"];
+    }[] = [];
+    for (const [entries, source] of [
+      [mempool, "mempool"],
+      [processed, "processed"],
+    ] as const)
+      for (const entry of entries) {
+        const id = hex(entry[Tx.Columns.TX_ID]);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        ordered.push({ entry, source });
+      }
+    ordered.sort(
+      (left, right) =>
+        left.entry[Tx.Columns.TIMESTAMPTZ].getTime() -
+          right.entry[Tx.Columns.TIMESTAMPTZ].getTime() ||
+        Buffer.compare(
+          left.entry[Tx.Columns.TX_ID],
+          right.entry[Tx.Columns.TX_ID],
+        ),
+    );
+    const deltas = yield* MempoolTxDeltasDB.retrieveByTxIds(
+      ordered.map(({ entry }) => entry[Tx.Columns.TX_ID]),
+    );
+    const pending: PendingTx[] = [];
+    for (const { entry, source } of ordered) {
+      const txId = entry[Tx.Columns.TX_ID];
+      const resolved = yield* resolveTxDeltaForCommit(
+        entry,
+        deltas.get(hex(txId)),
+      );
+      if (resolved._tag === "Rejected") {
+        if (undecodable === "inert") {
+          pending.push({ entry, source, spent: [], produced: [] });
+          continue;
+        }
+        return yield* Effect.fail(
+          failure(
+            "A pending transaction cannot be decoded, so its dependence on reopened state cannot be decided",
+            hex(txId),
+          ),
+        );
+      }
+      const produced: LedgerRow[] = [];
+      for (const output of resolved.produced)
+        produced.push(yield* producedRow(txId, output));
+      pending.push({ entry, source, spent: resolved.spent, produced });
+    }
+    return pending;
+  });
+
 /** Every pending (unmarked) transaction whose ledger effects are in
  * `mempool_ledger`, in admission order, with its exact spends and outputs. A
- * row a block's inclusion mark holds is in that block, not pending. */
-export const loadPendingTxs = Effect.gen(function* () {
-  const mempool = yield* MempoolInclusionsDB.retrievePendingEntries(
-    MempoolDB.tableName,
-  );
-  const processed = yield* MempoolInclusionsDB.retrievePendingEntries(
-    ProcessedMempoolDB.tableName,
-  );
-  const seen = new Set<string>();
-  const ordered: {
-    entry: Tx.EntryWithTimeStamp;
-    source: PendingTx["source"];
-  }[] = [];
-  for (const [entries, source] of [
-    [mempool, "mempool"],
-    [processed, "processed"],
-  ] as const)
-    for (const entry of entries) {
-      const id = hex(entry[Tx.Columns.TX_ID]);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      ordered.push({ entry, source });
-    }
-  ordered.sort(
-    (left, right) =>
-      left.entry[Tx.Columns.TIMESTAMPTZ].getTime() -
-        right.entry[Tx.Columns.TIMESTAMPTZ].getTime() ||
-      Buffer.compare(
-        left.entry[Tx.Columns.TX_ID],
-        right.entry[Tx.Columns.TX_ID],
-      ),
-  );
-  const deltas = yield* MempoolTxDeltasDB.retrieveByTxIds(
-    ordered.map(({ entry }) => entry[Tx.Columns.TX_ID]),
-  );
-  const pending: PendingTx[] = [];
-  for (const { entry, source } of ordered) {
-    const txId = entry[Tx.Columns.TX_ID];
-    const resolved = yield* resolveTxDeltaForCommit(
-      entry,
-      deltas.get(hex(txId)),
-    );
-    if (resolved._tag === "Rejected")
-      return yield* Effect.fail(
-        failure(
-          "A pending transaction cannot be decoded, so its dependence on reopened state cannot be decided",
-          hex(txId),
-        ),
-      );
-    const produced: LedgerRow[] = [];
-    for (const output of resolved.produced)
-      produced.push(yield* producedRow(txId, output));
-    pending.push({ entry, source, spent: resolved.spent, produced });
-  }
-  return pending;
-});
+ * row a block's inclusion mark holds is in that block, not pending. Fails on
+ * a transaction that cannot be decoded. */
+export const loadPendingTxs = loadPending("fail");
+
+/** `loadPendingTxs`, with a transaction that cannot be decoded kept as one
+ * that spends and produces nothing. */
+export const loadPendingTxsKeepingUndecodable = loadPending("inert");
 
 export const presentOutRefs = (outRefs: readonly Buffer[]) =>
   Effect.gen(function* () {

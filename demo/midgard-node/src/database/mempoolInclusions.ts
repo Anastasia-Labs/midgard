@@ -181,3 +181,19 @@ export const markingHeaders: Effect.Effect<
 }).pipe(
   sqlErrorToDatabaseError("mempool", "Failed to read the inclusion marks"),
 );
+
+/** The ids of every marked row of either pending table. */
+export const markedTxIds: Effect.Effect<
+  readonly Buffer[],
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ tx_id: Buffer }>`
+    SELECT tx_id FROM mempool WHERE included_by IS NOT NULL
+    UNION
+    SELECT tx_id FROM processed_mempool WHERE included_by IS NOT NULL`;
+  return rows.map((row) => Buffer.from(row.tx_id));
+}).pipe(
+  sqlErrorToDatabaseError("mempool", "Failed to read the marked transactions"),
+);

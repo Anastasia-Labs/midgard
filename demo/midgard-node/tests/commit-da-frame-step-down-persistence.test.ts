@@ -72,7 +72,10 @@ vi.mock("@al-ft/midgard-validation", async () => {
               txs as Parameters<typeof actual.runPhaseAValidation>[0],
               config,
             )
-          : Effect.succeed({ accepted: txs, rejected: [] }),
+          : Effect.succeed({
+              accepted: txs.map((tx) => ({ ...tx, ledgerTx: tx })),
+              rejected: [],
+            }),
     ),
     runPhaseBValidationWithPatch: vi.fn(
       (
