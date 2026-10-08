@@ -13,6 +13,7 @@ import {
   type OutRef,
   type TxContentSource,
 } from "@al-ft/midgard-l1-follower";
+import { eventProjection } from "@al-ft/midgard-l1-follower/events";
 import {
   encodeTxBody,
   type SimTx,
@@ -32,7 +33,6 @@ import {
   createFollowerDriver,
   type FollowerEventSink,
 } from "../src/l1-events/driver.js";
-import { eventProjection } from "../src/l1-events/index.js";
 import {
   FORCED_CONFIG,
   nativeTransactionCbor,

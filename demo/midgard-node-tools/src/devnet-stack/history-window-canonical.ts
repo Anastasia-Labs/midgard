@@ -6,8 +6,8 @@ import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import {
   admitWatcherNativeRollForwardBlock,
   WATCHER_CARDANO_SECURITY_PARAMETER_K,
+  type WatcherNativeChainSyncRollForward,
 } from "midgard-watcher";
-import type { WatcherNativeChainSyncRollForward } from "midgard-watcher/native-chain-sync";
 
 export class HistoryWindowRefusal extends Error {
   constructor(readonly reason: string) {

@@ -94,8 +94,6 @@ const fixture = async () => {
       getUtxos: async () => [anchor],
     }),
     utxosAtWithUnit,
-    utxosAt: async () => [anchor],
-    overrideUTxOs: vi.fn(),
     newTx: () => {
       order.push("newTx");
       throw stop;

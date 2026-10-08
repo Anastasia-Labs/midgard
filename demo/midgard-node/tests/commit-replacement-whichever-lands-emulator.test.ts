@@ -20,7 +20,11 @@
 import { decodeTransaction } from "@al-ft/midgard-l1-follower";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { journaledIntent } from "../src/services/intent-journal.js";
+import {
+  type IntentPlan,
+  journaledIntent,
+} from "../src/services/intent-journal.js";
+import { RECORD_ONLY } from "./helpers/intent-journal.js";
 import {
   type IntentEmulator,
   openIntentEmulator,
@@ -48,10 +52,11 @@ const open = async () => {
   return env;
 };
 
-const intent = (label: string) =>
+const intent = (label: string, plan: IntentPlan) =>
   journaledIntent(
     "reserve_payout",
     `reserve_payout:${label}:add_funds`,
+    plan,
     Buffer.alloc(36, label.length),
   );
 
@@ -62,18 +67,25 @@ const spent = (cbor: string) =>
 
 /** The old commit and its replacement, both journaled, on one tail input. */
 const oldAndReplacement = async (env: IntentEmulator) => {
+  const oldPlan = await env.plan();
   const old = await signedPayment(
     await env.wallet(),
     env.payee.address,
     2_000_000n,
   );
-  await env.record(intent("old"), old.cbor, old.hash);
+  await env.record(intent("old", oldPlan), old.cbor, old.hash, RECORD_ONLY);
+  const replacementPlan = await env.plan();
   const replacement = await signedPayment(
     await env.wallet(),
     env.payee.address,
     3_000_000n,
   );
-  await env.record(intent("replacement"), replacement.cbor, replacement.hash);
+  await env.record(
+    intent("replacement", replacementPlan),
+    replacement.cbor,
+    replacement.hash,
+    RECORD_ONLY,
+  );
   expect(spent(replacement.cbor)).toEqual(spent(old.cbor));
   return { old, replacement };
 };

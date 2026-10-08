@@ -10,8 +10,9 @@
  *   later rebuild reads its members as pending and the batch closure
  *   rejects them with a rejected co-member;
  * - an own block that lands and folds with no rebase between leaves its
- *   receipt members recorded settled, so a later rejection of a co-member
- *   leaves them settled;
+ *   receipt members recorded settled and its rows marked until its fold is
+ *   final (`final-folds.ts`), so a later rebase is not held by them and a
+ *   rejection of a co-member leaves them settled;
  * - commit selection reads no marked row;
  * - a skipped submission moves its selected mempool rows to the processed
  *   mempool with the marks they hold at the move, not at the selection.
@@ -38,7 +39,6 @@ import {
   ProcessedMempoolDB,
   TxUtils,
 } from "../src/database/index.js";
-import type * as Ledger from "../src/database/utils/ledger.js";
 import { foldToRoot } from "../src/landed-blocks/fold.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "../src/landed-blocks/holds.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
@@ -50,9 +50,7 @@ import {
   type LandedBlockRow,
   retrieveRows,
 } from "../src/landed-blocks/store.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import { withHistoryWrite } from "../src/services/event-history-producer.js";
-import { finalizeConfirmedMergeTransaction } from "../src/transactions/state-queue/merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import { selectCommitTxCandidates } from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import {
   finalizeCommittedBlockLocally,
@@ -205,6 +203,23 @@ const finalizeOwnLocally = async (
   );
 };
 
+/** Every marked row of the pending tables: table, transaction id, marking header. */
+const markedRows = (globals: Globals) =>
+  run(
+    globals,
+    Effect.flatMap(
+      SqlClient.SqlClient,
+      (sql) => sql<{ table: string; tx_id: Buffer; included_by: Buffer }>`
+        SELECT 'mempool' AS table, tx_id, included_by FROM mempool
+        WHERE included_by IS NOT NULL
+        UNION ALL SELECT 'processed', tx_id, included_by FROM processed_mempool
+        WHERE included_by IS NOT NULL
+        ORDER BY tx_id`,
+    ),
+  ).then((rows) =>
+    rows.map((row) => [row.table, hex(row.tx_id), hex(row.included_by)]),
+  );
+
 /** The processing insert of the landed block `row`. */
 const processLanded = (globals: Globals, row: Partial<LandedBlockRow>) =>
   sqlRun(globals, () => processRow(landedRow(row)));
@@ -320,8 +335,8 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
 
   it("keeps the members of an own block that landed and folded with no rebase between settled when a later rebuild rejects a co-member", async () => {
     // frontier (E0) -> own block O (E0 -> E1, includes b); receipt {a, b},
-    // a spends E1. O lands and its merge finalizes with no rebase between;
-    // foreign Y (E1 -> E2) on O then rejects a.
+    // a spends E1. O lands and folds with no rebase between; foreign Y
+    // (E1 -> E2) on O then rejects a.
     const b = nativeTx(21, [], 1);
     const a = nativeTx(22, [E1.outref], 2);
     const native: Native = freshNative();
@@ -337,38 +352,22 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
       txIds: [b.id],
     });
 
-    // The own merge finalization, then the production fold past O.
-    const before = await run(globals, ledgerRows([E0], new Map()));
-    const after = await run(globals, ledgerRows([E1], new Map()));
-    const ledgerRoot = (entries: readonly Ledger.Entry[]) =>
-      run(globals, computeLedgerMpfRootFromLedgerEntries(entries));
-    const delta = { spent: [E0.outref], produced: after };
-    await released(globals);
-    await run(
-      globals,
-      finalizeConfirmedMergeTransaction({
-        headerHash: Buffer.from(OWN, "hex"),
-        snapshot: {
-          entries: after,
-          baseRoot: await ledgerRoot(before),
-          root: await ledgerRoot(after),
-          deltaChain: [delta],
-          delta,
-        },
-        projectedDepositEventIds: [],
-        projectedWithdrawalEventIds: [],
-        projectedForcedTransactionEventIds: [],
-        includedTxIds: [b.id],
-      }),
-    );
+    // The production fold past O: its members stay marked until it is final.
     const foldPorts = {
       confirmView: () => Effect.succeed(true),
       write: <A, E, R>(work: Effect.Effect<A, E, R>) => withHistoryWrite(work),
-      ownMergeCompleted: () => Effect.succeed(true),
+      ownJournal: () => Effect.succeed({ status: "locally_applied" }),
     } as unknown as LandedBlockPorts<never>;
+    await released(globals);
     await sqlRun(globals, () =>
-      foldToRoot(foldPorts, {} as never, { headerHash: OWN, utxosRoot: R1 }),
+      foldToRoot(
+        foldPorts,
+        {} as never,
+        { headerHash: OWN, utxosRoot: R1 },
+        () => Effect.succeed(null),
+      ),
     );
+    expect(await markedRows(globals)).toEqual([["mempool", hex(b.id), OWN]]);
     expect(await run(globals, retrieveRows)).toEqual([]);
 
     await processLanded(globals, {
@@ -394,6 +393,7 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     expect(await settlements(globals)).toEqual([[hex(b.id), OWN]]);
     expect(await unreversedReceipts(globals)).toBe(0);
     expect(await pendingPage(globals)).toEqual([]);
+    expect(await markedRows(globals)).toEqual([["mempool", hex(b.id), OWN]]);
   });
 
   it("selects no row a block marked for a new block", async () => {

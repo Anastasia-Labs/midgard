@@ -16,6 +16,7 @@ import {
   WATCHER_STARTUP_READINESS_HEADER_HASH,
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentProtocolScriptAuthority,
+  watcherDeploymentReleaseFinalityPolicy,
   type WatcherFaultProofStartupReadiness,
   watcherFollowedScripts,
   type WatcherProcessConfig,
@@ -120,8 +121,9 @@ export const verifyJourneyWorkflowBindings = async (input: {
       ).networkMagic,
     },
     origin: watcherConfig.l1.origin,
-    automaticRecoveryMaxDepth:
-      watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth,
+    automaticRecoveryMaxDepth: watcherDeploymentReleaseFinalityPolicy(
+      authority.deploymentIdentity,
+    ).policy.automaticRecoveryMaxDepth,
     storeDirectory: input.directory,
   });
   let application: ReturnType<

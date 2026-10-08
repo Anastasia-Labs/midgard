@@ -186,7 +186,7 @@ describe("scheduler refresh witness selection", () => {
     expect(
       filterLocallyConsumedUtxos(
         [stale, fresh],
-        [`${stale.txHash}#${stale.outputIndex}`],
+        new Set([`${stale.txHash}#${stale.outputIndex}`]),
       ),
     ).toEqual([fresh]);
   });

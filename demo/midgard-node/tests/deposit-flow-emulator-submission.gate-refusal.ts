@@ -12,6 +12,7 @@ import {
   INTENT_INPUT_UNTRACKED,
   intentJournalOver,
 } from "../src/services/intent-journal.js";
+import { readProviderWalletView } from "../src/services/intent-journal.wallet-view.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { alignCommitSchedulerBeforeTestWorker } from "./deposit-flow-emulator-shared.commit-worker-program.js";
 import {
@@ -58,10 +59,13 @@ export const expectGateRefusedCommitNamed = async ({
     targetEndTimeMs: Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   });
   await runNodeDatabaseEffect(ingestEmulatorEventsUnowned(fixture));
+  // Its wallet view is the provider's, as if the follower held the
+  // operator's wallet outputs, so the build reaches the gate.
   const refusing = await runNodeDatabaseEffect(
-    Effect.map(SqlClient.SqlClient, (sql) =>
-      intentJournalOver(sql, () => true),
-    ),
+    Effect.map(SqlClient.SqlClient, (sql) => ({
+      ...intentJournalOver(sql, () => true),
+      walletView: readProviderWalletView,
+    })),
   );
   const refusedOutput = await runCommitWorker(
     fixture.contracts,

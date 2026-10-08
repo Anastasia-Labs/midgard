@@ -150,13 +150,7 @@ const journalStatus = (headerHash: Buffer) =>
   );
 
 const withFreshPayloadTables = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  isolatedDb(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE TABLE da_payloads RESTART IDENTITY CASCADE`;
-      return yield* effect;
-    }).pipe(Effect.ensuring(disarmCompletionFault)),
-  );
+  isolatedDb(effect.pipe(Effect.ensuring(disarmCompletionFault)));
 
 /** The first attempt applies the block and finalizes the journal, then loses
  * its completion record. */

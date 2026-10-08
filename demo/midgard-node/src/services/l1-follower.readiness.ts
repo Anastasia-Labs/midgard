@@ -10,14 +10,16 @@
  * `landed-blocks/holds.ts`: `landed_block_invalid`,
  * `landed_block_event_unknown`,
  * `landed_block_forced_order_pending`, `landed_block_awaiting_da`,
- * `landed_block_rebase_failed`, `landed_block_replay_failed`,
+ * `landed_block_batch_undecided`, `landed_block_rebase_failed`,
+ * `landed_block_replay_failed`, `confirmed_ledger_base_mismatch`,
  * `landed_blocks_waiting`, `confirmed_ledger_behind`,
- * `landed_block_own_revival_pending` and `landed_block_rebase_pending`, the first by priority named as the reason
- * and the rest in its detail), the intent stage's (`wallet_seed_pending`,
- * `intent_reconcile_failed`, `intent_reconcile_transient`,
- * `intent_resubmit_rejected`, a predicate's wait such as
- * `intent_included_events_not_deep`, and `tracked_set_changed` while the
- * store replays a tracked-set reset) and the intent
+ * `landed_block_own_revival_pending`, `confirmed_ledger_own_block_pending`
+ * and `landed_block_rebase_pending`, the first by priority named as the
+ * reason and the rest in its detail), the intent stage's
+ * (`wallet_seed_pending`, `intent_reconcile_failed`,
+ * `intent_reconcile_transient`, `intent_resubmit_rejected`, a predicate's
+ * wait such as `intent_included_events_not_deep`, and `tracked_set_changed`
+ * while the store replays a tracked-set reset) and the intent
  * journal's refusals, the worker threads' included (`intent_journal_*`,
  * `intent_input_untracked`, `intent_bytes_mismatch`, `intent_undecodable`,
  * `intent_content_ref_missing`), and
@@ -26,18 +28,29 @@
  * readiness by name; none stops the process, and `/healthz` stays live.
  *
  * One degradation is a detail, leaving the node ready:
- * `landed_frontier_prune_floor:<slots>` while the landed frontier's prune
- * floor holds the follower's prune boundary that many slots back (the facts
- * the frontier still needs are kept; the store grows until it moves).
+ * `<floor>_prune_floor:<slots>` for each role prune floor that holds the
+ * follower's prune boundary that many slots back, named by the declaring
+ * floor (`landed_frontier_prune_floor` for the landed frontier,
+ * `intent_journal_replay_prune_floor` for the intent journal's replay,
+ * `operator_activity_record_prune_floor` for the operator-activity record).
+ * The facts the floor still needs are kept; the store grows until it moves.
+ *
+ * The report also carries `confirmedLedger`: the confirmed-ledger frontier,
+ * the slot of its merge and that merge's level (`landed`, `safe`, `final`).
  */
-import type { FactStore, FollowStatus } from "@al-ft/midgard-l1-follower";
+import {
+  type FactStore,
+  type FollowStatus,
+  readinessOf,
+} from "@al-ft/midgard-l1-follower";
+import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 
 import {
   type DriverHold,
   type IngestionPlan,
   planIngestion,
 } from "../l1-events/driver.js";
-import type { EventProjectionConfig } from "../l1-events/index.js";
+import type { ConfirmedLedgerPosition } from "../landed-blocks/position.js";
 
 /** The node has no follower: its configuration is missing a piece (named in the detail). */
 export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
@@ -48,8 +61,39 @@ export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
  */
 export const L1_NODE_CONFIG_UNREADABLE = "l1_node_config_unreadable";
 
-/** The landed frontier's prune floor holds the follower's prune boundary back (detail, with the lag in slots). */
-export const LANDED_FRONTIER_PRUNE_FLOOR = "landed_frontier_prune_floor";
+/** The follower cursor's identity, to tell a moved cursor from a repeat. */
+export const cursorKey = (status: FollowStatus): string | null =>
+  status.cursor === null
+    ? null
+    : `${status.cursor.generation.toString()}:${status.cursor.slot.toString()}`;
+
+const starting = {
+  state: "starting",
+  interventions: [],
+  waiting: null,
+  stuck: null,
+  protocolInit: "unknown",
+  cursor: null,
+  node: null,
+  nodeBehind: null,
+  tip: null,
+  atTip: false,
+  replaying: false,
+  events: 0,
+  lastError: null,
+  prune: {
+    steps: 0,
+    prunedThroughSlot: null,
+    lastError: null,
+    floorLags: [],
+    failures: 0,
+  },
+} as const;
+/** The follower's status before its loop publishes one. */
+export const startingStatus: FollowStatus = {
+  ...starting,
+  readiness: readinessOf(starting),
+};
 
 /** The projection at the follower's current view, or why there is none. */
 export type FollowerPlanRead =
@@ -79,6 +123,8 @@ export type L1FollowerHandle = Readonly<{
   holds: () => readonly DriverHold[];
   /** Reads the event projection at the follower's current view. */
   planCurrent: () => Promise<FollowerPlanRead>;
+  /** Where `confirmed_ledger` stands, with its merge's level (P10); null before the first run. */
+  confirmedLedger?: () => ConfirmedLedgerPosition | null;
 }>;
 
 export type L1FollowerState =
@@ -151,12 +197,9 @@ export const l1FollowerReadiness = (
     if (!reasons.includes(reason)) reasons.push(reason);
   return {
     reasons,
-    details:
-      status.prune.floorLagSlots === null
-        ? []
-        : [
-            `${LANDED_FRONTIER_PRUNE_FLOOR}:${status.prune.floorLagSlots.toString()}`,
-          ],
+    details: status.prune.floorLags.map(
+      ({ floor, lagSlots }) => `${floor}_prune_floor:${lagSlots.toString()}`,
+    ),
     report: {
       state: status.state,
       readiness,
@@ -164,10 +207,12 @@ export const l1FollowerReadiness = (
       tip: status.tip,
       atTip: status.atTip,
       node: status.node,
+      nodeBehind: status.nodeBehind,
       protocolInit: status.protocolInit,
       events: status.events,
       lastError: status.lastError,
       prune: status.prune,
+      confirmedLedger: state.confirmedLedger?.() ?? null,
     },
   };
 };

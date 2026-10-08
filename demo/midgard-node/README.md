@@ -518,15 +518,19 @@ execution and L1 confirmation waits stay outside L2 admission, commitment and
 merge workers. This isolates the main event loop and wallet inputs; the worker
 still consumes CPU, database and provider capacity on the same host.
 
-Signed bytes and fee inputs are persisted before submission. Restarts reconcile
-that exact transaction, including already-spent outputs, before creating another
-body. Rebuilding requires expiry and synchronized chain/indexer evidence;
-ambiguous submissions stay journaled. Pending work holds the history evidence it
-needs, and completed receipts are checked again after history recovery.
+Signed bytes and fee inputs are persisted before submission. An attempt's L1
+outcome is the intent journal's derived status, never stored before it is final:
+landed at the confirmation depth lets its job take the next phase, a rollback
+below that depth reverts it, and the follower's prune step stores `final` once it
+landed more than k blocks deep. No other body is journaled while an attempt reads
+short of the confirmation depth. Rebuilding requires expiry and synchronized
+chain/indexer evidence; ambiguous submissions stay journaled. Attempts not yet
+final hold the history evidence they need.
 
 `/readyz` includes `settlement` health separately from L2 readiness. The
 `settlement_jobs` table retains retry deadlines and last errors, and
-`settlement_attempts` retains submission/confirmation state. Fund the fee wallet
+`settlement_attempts` retains each signed attempt and whether it is final or
+expired. Fund the fee wallet
 when depleted; resolve an unhealthy provider or an ambiguous journal against the
 canonical chain rather than deleting journal rows. Previously completed manual
 settlements without a node receipt require reconciliation; missing UTxOs alone

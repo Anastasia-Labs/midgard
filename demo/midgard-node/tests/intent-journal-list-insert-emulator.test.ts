@@ -32,6 +32,10 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
+import {
+  IntentJournalWithoutFollower,
+  openPlan,
+} from "../src/services/intent-journal.js";
 import { completeAndSubmit } from "../src/transactions/initialization.fetch-configured-nonce-utxo.js";
 import {
   buildAtomicProtocolInitTxProgram,
@@ -120,10 +124,12 @@ describe("the node's list inserts on a follower of the real flow's chain", () =>
         EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
         undefined,
         initScripts,
-      ),
+      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
     );
     const initHash = await runWithoutFollower(
-      completeAndSubmit(lucid, initTx, "protocol init", nonce),
+      Effect.flatMap(openPlan, (plan) =>
+        completeAndSubmit(lucid, initTx, "protocol init", nonce, plan),
+      ),
     );
     expect(await lucid.awaitTx(initHash)).toBe(true);
 

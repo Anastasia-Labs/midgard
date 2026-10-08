@@ -15,6 +15,7 @@ import {
   IntentJournal,
   IntentJournalRefused,
   type IntentJournalService,
+  type IntentPlan,
   journaledIntent,
 } from "../services/intent-journal.js";
 import {
@@ -24,16 +25,17 @@ import {
 } from "./utils.js";
 
 /**
- * A funding step (consolidation or split), journaled and confirmed. Its
- * content reference is its target: the hashes (hex) of the scripts it
- * funds (`funds`), concatenated, so the §8.4 predicate wants it while one
- * of them is not yet published.
+ * A funding step (consolidation or split), journaled under the
+ * publication's `plan` (S5) and confirmed. Its content reference is its
+ * target: the hashes (hex) of the scripts it funds (`funds`), concatenated,
+ * so the §8.4 predicate wants it while one of them is not yet published.
  */
 export const submitPublicationFunding = (
   journal: IntentJournalService,
   lucid: LucidEvolution,
   unsigned: TxSignBuilder,
   step: "consolidate" | "split",
+  plan: IntentPlan,
   {
     funds,
     ...options
@@ -45,6 +47,7 @@ export const submitPublicationFunding = (
     journaledIntent(
       "reference_funding",
       `reference_publication:${step}`,
+      plan,
       Buffer.concat(funds.map((hash) => Buffer.from(hash, "hex"))),
     ),
     options,
@@ -63,14 +66,17 @@ const providerRejected = (error: unknown): boolean => {
 
 /**
  * Sends a chained publication tx through the node's one submit seam
- * (`submitSignedTxWithRecovery`): its exact bytes are journaled before the
- * first send, and a journal refusal rejects, so nothing is sent. The seam
+ * (`submitSignedTxWithRecovery`): its exact bytes are journaled under the
+ * publication's `plan` (S5) before the first send, and a journal refusal
+ * rejects, so nothing is sent. A send S6 holds (`IntentSubmitHeld`) is
+ * `ambiguous`: S6's reconciler decides it under the current view. The seam
  * never waits inline here; the publication loop owns retries of the same
  * bytes, and S6 resends them while they are live.
  */
 export const sendPublication = (
   journal: IntentJournalService,
   lucid: LucidEvolution,
+  plan: IntentPlan,
 ) => {
   return async (record: {
     readonly hash: string;
@@ -85,6 +91,7 @@ export const sendPublication = (
           journaledIntent(
             "reference_publication",
             `reference_publication:${record.hash}`,
+            plan,
           ),
           {
             label: "reference publication",

@@ -1,6 +1,7 @@
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import {
   FOLLOWER_CATCHING_UP,
+  FOLLOWER_NODE_BEHIND,
   FOLLOWER_NODE_UNAVAILABLE,
   WALLET_SEED_PENDING,
 } from "@al-ft/midgard-l1-follower";
@@ -116,6 +117,16 @@ export const registerReadinessTests = () => {
       ],
     });
     expect(lost.l1Source).not.toHaveProperty("intervention");
+
+    // A node behind wall-clock time holds the tick (nothing is submitted),
+    // is named with its lag, and is transient: no intervention.
+    const lag = "node tip slot 1000 is 600 s behind (bound 300 s)";
+    following = [{ reason: FOLLOWER_NODE_BEHIND, detail: lag }];
+    const held = [`${FOLLOWER_NODE_BEHIND}: ${lag}`];
+    await expect(service.tick()).resolves.toMatchObject({ held });
+    const behind = await service.readinessSnapshot();
+    expect(behind).toMatchObject({ ready: false, reasons: held });
+    expect(behind.l1Source).not.toHaveProperty("intervention");
 
     // An owed own-wallet seed is unready but holds no decision.
     following = [{ reason: WALLET_SEED_PENDING, detail: "not seeded yet" }];

@@ -335,7 +335,6 @@ export type UpOptions = {
   readonly runDir: string;
   readonly build: boolean;
   readonly readyTimeoutMs: number;
-  readonly initializeWatcherAuthority?: boolean;
 };
 
 /**
@@ -358,10 +357,6 @@ export const registerUp = (
       "--run-dir <path>",
       "Absolute run directory (created on first use)",
     )
-    .option(
-      "--initialize-watcher-authority",
-      "Explicitly initialize only a new owned watcher authority, or retry its retained pending attempt",
-    )
     .option("--no-build", "Skip the dependency, contract and runtime build")
     .option(
       "--ready-timeout <seconds>",
@@ -373,15 +368,11 @@ export const registerUp = (
         runDir: string;
         build: boolean;
         readyTimeout: string;
-        initializeWatcherAuthority?: boolean;
       }) => {
         const up: UpOptions = {
           runDir: options.runDir,
           build: options.build,
           readyTimeoutMs: Number(options.readyTimeout) * 1000,
-          ...(options.initializeWatcherAuthority
-            ? { initializeWatcherAuthority: true }
-            : {}),
         };
         const { deps, launch } = wire(up);
         exit(await runUp(up.build, deps, launch));

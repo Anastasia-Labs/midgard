@@ -10,14 +10,11 @@ import { Duration, Effect, Metric, Ref } from "effect";
 
 import { DatabaseError } from "../../database/utils/common.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
-import {
-  availableOperatorWalletUtxos,
-  fetchOperatorWalletView,
-} from "../../operator-wallet-view.js";
 import { Database, Globals, NodeConfig } from "../../services/index.js";
 import {
   type IntentJournal,
   journaledIntent,
+  openPlan,
 } from "../../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
@@ -30,6 +27,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "../utils.js";
+import { readSelectedWalletView } from "../utils.wallet-view.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeSubmitValidityEvidence,
@@ -50,6 +48,7 @@ import {
 } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 import {
   finalizeConfirmedMergeProgram,
+  landedMergeOf,
   mergeBlockCounter,
 } from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import {
@@ -94,6 +93,8 @@ export const buildAndSubmitMergeTx = (
     const mergeStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
+    // S5: the plan opens before the merge's first L1 read.
+    const plan = yield* openPlan;
     const currentStateQueueLength = yield* getStateQueueLength(fetchConfig);
     const minQueueLengthForMerging =
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
@@ -354,20 +355,21 @@ export const buildAndSubmitMergeTx = (
         "state-queue merge withdrawal",
       );
 
-      const operatorWalletView = yield* Effect.tryPromise({
-        try: () => fetchOperatorWalletView(lucid),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message: "Failed to initialize merge wallet view",
-            cause,
-          }),
-      });
+      const operatorWalletView = yield* readSelectedWalletView(lucid).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: `Failed to read the merge wallet view: ${cause.message}`,
+              cause,
+            }),
+        ),
+      );
       const presetWalletInputs = yield* SDK.requireOperatorWalletInputs(
-        availableOperatorWalletUtxos(operatorWalletView),
+        operatorWalletView.utxos,
         "state_queue merge tx",
       );
       yield* Effect.logInfo(
-        `🔸 Using ${presetWalletInputs.length.toString()} preset operator wallet input(s) for merge tx (known_wallet_utxos=${operatorWalletView.knownUtxos.length.toString()}).`,
+        `🔸 Using ${presetWalletInputs.length.toString()} operator wallet view input(s) for merge tx (source=${operatorWalletView.source}, held=${operatorWalletView.held.size.toString()}).`,
       );
 
       const builtMerge = yield* SDK.buildMergeToConfirmedStateTxProgram({
@@ -436,10 +438,9 @@ export const buildAndSubmitMergeTx = (
       if (options?.assertSubmitAuthority !== undefined) {
         yield* options.assertSubmitAuthority();
       }
-      const finalizeLocalMergeLogged = finalizeConfirmedMergeProgram({
-        headerHash,
-        headerUtxosRoot: blockHeader.utxosRoot,
-      }).pipe(
+      const finalizeLocalMergeLogged = finalizeConfirmedMergeProgram(
+        landedMergeOf(headerHash, blockHeader),
+      ).pipe(
         Effect.tapError((error) =>
           Effect.gen(function* () {
             yield* Metric.increment(mergeLocalFinalizationFailureCounter);
@@ -473,6 +474,7 @@ export const buildAndSubmitMergeTx = (
             journaledIntent(
               "merge",
               `merge:head=${headerHash.toString("hex")}`,
+              plan,
               headerHash,
             ),
             submitRecoveryOptions,

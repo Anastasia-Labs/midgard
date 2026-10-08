@@ -15,6 +15,11 @@ import type {
   OutRef,
   TrackedSet,
 } from "@al-ft/midgard-l1-follower";
+import {
+  eventProjection,
+  eventTrackedSet,
+} from "@al-ft/midgard-l1-follower/events";
+import { eventsAt } from "@al-ft/midgard-l1-follower/events";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -28,8 +33,6 @@ import {
   forcedOrderTrackedSet,
 } from "../src/forced-orders/index.js";
 import { userEventEntry } from "../src/l1-events/entries.js";
-import { eventProjection, eventTrackedSet } from "../src/l1-events/index.js";
-import { eventsAt } from "../src/l1-events/reads.js";
 import type { ReplayInput } from "../src/landed-blocks/replay.js";
 import { replayForeignBlock } from "../src/landed-blocks/replay-foreign.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";

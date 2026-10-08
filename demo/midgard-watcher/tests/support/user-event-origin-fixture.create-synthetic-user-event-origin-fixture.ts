@@ -16,16 +16,6 @@ import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar"
 import { CML } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
-import { createWatcherLocalBackfillUserEventReferenceAuthority } from "../../src/indexers/user-event-reference-authority.js";
-import {
-  admitWatcherLocalBackfillFinality,
-  type WatcherLocalBackfillFinalityReceipt,
-} from "../../src/l1/finality-engine.js";
-import {
-  admitWatcherLocalBackfillObservation,
-  type WatcherLocalBackfillObservationReceipt,
-} from "../../src/l1/l1-adapter.js";
-import { openWatcherLocalHistoricalCapture } from "../../src/l1/local-historical-capture.js";
 import {
   verifyWatcherUserEventScriptBinding,
   type WatcherUserEventScriptBinding,
@@ -130,11 +120,7 @@ export const createSyntheticUserEventOriginFixture = async (
       deploymentIdentity,
       blueprintBytes,
     });
-  const watcherConfig = makeConfig(
-    nodeConfig,
-    genesisConfig,
-    options.queryEndpoints,
-  );
+  const watcherConfig = makeConfig(nodeConfig, genesisConfig);
   const blocks: SyntheticUserEventBlock[] = [];
   const creating: Creating[] = [];
   const creatingByHash = new Map<string, Creating>();
@@ -567,7 +553,7 @@ export const createSyntheticUserEventOriginFixture = async (
   vi.stubGlobal("WebSocket", BoundarySocket);
   const originalFetch = globalThis.fetch;
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
-    // Other local services (trusted-head authority, mutation leases) retain
+    // Other local services (mutation leases) retain
     // their actual HTTP handlers when this fixture supplies chain transport.
     if (
       options.queryEndpoints !== undefined &&
@@ -950,55 +936,6 @@ export const createSyntheticUserEventOriginFixture = async (
         }),
     );
   };
-  const openFinalizedBlock = async (block: SyntheticUserEventBlock) => {
-    const args = {
-      watcherConfig,
-      deploymentIdentity,
-      l1NodeTransportBinaryPath: binaryPath,
-      point: block.point,
-      limits: { timeoutMs: 60_000 },
-    };
-    const first = await openWatcherLocalHistoricalCapture(args);
-    closed.push(first.close);
-    const firstObservation = admitWatcherLocalBackfillObservation(
-      first.receipt,
-    );
-    const pending = admitWatcherLocalBackfillFinality({
-      ...args,
-      observation: firstObservation,
-      previous: null,
-    });
-    if (
-      pending.result.action !== "observe_pending" ||
-      pending.admitted === null
-    )
-      throw new Error("Synthetic W12 first capture did not become pending");
-    await first.close();
-    const current = await openWatcherLocalHistoricalCapture(args);
-    closed.push(current.close);
-    const observation: WatcherLocalBackfillObservationReceipt =
-      admitWatcherLocalBackfillObservation(current.receipt);
-    const result = admitWatcherLocalBackfillFinality({
-      ...args,
-      observation,
-      previous: pending.admitted,
-    });
-    if (result.result.action !== "finalize" || result.admitted === null)
-      throw new Error("Synthetic W12 deeper capture did not finalize");
-    const finality: WatcherLocalBackfillFinalityReceipt = result.admitted;
-    const referenceAuthority =
-      createWatcherLocalBackfillUserEventReferenceAuthority({
-        deploymentIdentity,
-        finality,
-        observation,
-      });
-    return {
-      finality,
-      observation,
-      referenceAuthority,
-      close: current.close,
-    };
-  };
   let closing: Promise<void> | undefined;
   const close = () =>
     (closing ??= (async () => {
@@ -1043,7 +980,6 @@ export const createSyntheticUserEventOriginFixture = async (
     activationTransactionCbor: initialization.transactionCbor,
     initializationBodyCbor: initializationTransaction.body().to_cbor_hex(),
     makeBlock,
-    openFinalizedBlock,
     setNativeTip,
     appendNativeBlock,
     growNativeTip,

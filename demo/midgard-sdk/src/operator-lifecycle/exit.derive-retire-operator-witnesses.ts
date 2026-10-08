@@ -42,6 +42,7 @@ import {
   LIST_STATE_TRANSITION_VOID_REDEEMER,
   OperatorExitError,
   redeemerEncoder,
+  requireExplicitWalletInputs,
   retiredOperatorNodeUnit,
   type RetireSchedulerSync,
   safeTimeNumber,
@@ -181,6 +182,12 @@ export type RecoverOperatorBondTxConfig =
      * a negative test does that.
      */
     readonly requireOperatorSignature?: boolean;
+    /**
+     * The operator's coins, as the caller's view holds them. When given, coin
+     * selection and collateral use exactly these and the provider is never
+     * read.
+     */
+    readonly walletInputs?: readonly UTxO[];
   };
 
 const encodeRecoverBondRedeemer = (
@@ -275,12 +282,20 @@ export type RecoverOperatorBondTxResult = {
 export const buildUnsignedRecoverOperatorBondTxProgram = (
   config: RecoverOperatorBondTxConfig,
 ): Effect.Effect<RecoverOperatorBondTxResult, OperatorExitError> =>
-  completeInTwoPasses({
-    label: "operator bond recovery",
-    operatorKeyHash: config.operatorKeyHash,
-    onLayout: config.onLayout,
-    build: (layout) => buildRecoverOperatorBondTx({ ...config, ...layout }),
-    options: completeOptionsWithLocalEval(),
+  Effect.gen(function* () {
+    yield* requireExplicitWalletInputs(
+      config.walletInputs,
+      "an operator bond recovery",
+    );
+    return yield* completeInTwoPasses({
+      label: "operator bond recovery",
+      operatorKeyHash: config.operatorKeyHash,
+      onLayout: config.onLayout,
+      build: (layout) => buildRecoverOperatorBondTx({ ...config, ...layout }),
+      options: completeOptionsWithLocalEval({
+        presetWalletInputs: config.walletInputs,
+      }),
+    });
   });
 
 /**

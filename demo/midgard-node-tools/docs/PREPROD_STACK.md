@@ -2,7 +2,7 @@
 
 From the repository root, one command builds the tooling and sets up or resumes
 Cardano Preprod with local Docker providers, the node, DA committee, public
-retained DA, watcher and trusted-head authority, then runs wallet journeys:
+retained DA and watcher, then runs wallet journeys:
 
 ```sh
 pnpm --dir demo/midgard-node-tools run e2e-stack --config /absolute/path/preprod-stack.json
@@ -74,25 +74,20 @@ Setup builds and pins the host native owner, exports the local Cardano config,
 and configures the native ledger query helper for host commands and containers.
 Node and committee reward-account queries use that same local Cardano socket.
 
-Watcher inputs use the existing watcher process and authority templates. Replace
-the process template's illustrative historical script provider endpoints with
-the release's operational provider quorum. Those external history providers are
-release infrastructure inputs. Setup
-replaces the node genesis identity, local provider URLs, retained DA peer and
-finality policy with deployment-specific values. `watcher-compose.env` must
-name the existing regular secret files with `WATCHER_RECORD_KEY_FILE`,
-`WATCHER_ROLLBACK_KEY_FILE`, `WATCHER_PROVER_KEY_FILE`,
-`WATCHER_AVAILABILITY_KEY_FILE`, `WATCHER_BEARER_FILE`, and a value for
-`MIDGARD_L1_CONFIG_DIR` (replaced with the exported local node config at setup).
-Authentication keys are 32-byte lowercase hex; bearer text and wallet secrets
-must be canonical, without a trailing newline. The prover and availability
-files must hold the seeds of the corresponding funded wallets. The stack's
-watcher keeps its SQLite stores and authority records in the project-scoped
-volumes `<node project>_watcher-state` and
-`<node project>_watcher-authority-records`. It starts its own trusted-head
-chain and state, separate from any standalone `midgard-watcher` deployment.
-Use a record key file that no standalone watcher uses, or retire the
-standalone watcher first.
+Watcher inputs use the existing watcher process template. Replace the process
+template's illustrative historical script provider endpoints with the release's
+operational provider quorum. Those external history providers are release
+infrastructure inputs. Setup replaces the node genesis identity and the
+retained DA peer with deployment-specific values; the watcher follows the local
+node directly. `watcher-compose.env` must name the existing regular secret
+files with `WATCHER_ROLLBACK_KEY_FILE`, `WATCHER_PROVER_KEY_FILE`,
+`WATCHER_AVAILABILITY_KEY_FILE`, and a value for `MIDGARD_L1_CONFIG_DIR`
+(replaced with the exported local node config at setup). The rollback key is
+32-byte lowercase hex; wallet secrets must be canonical, without a trailing
+newline. The prover and availability files must hold the seeds of the
+corresponding funded wallets. The stack's watcher keeps its SQLite stores in
+the project-scoped volume `<node project>_watcher-state`, separate from any
+standalone `midgard-watcher` deployment.
 
 For an existing deployment, `releaseDirectory` holds the signed watcher release
 artifacts named by the process template; set `releaseInput` to `null` when no
@@ -127,7 +122,7 @@ of every named secret, wallet mnemonics and derived addresses, the committee
 keys and threshold, distinct persistent transport identities, readable watcher
 secret files and the release input shape. It loads the built workspace
 packages, so build them once first. The Compose version, `compose config`, the
-watcher key and bearer decoding and the prover/availability seed match run
+watcher rollback key decoding and the prover/availability seed match run
 later, after the builds, on a full run. `--setup-only` completes setup
 and readiness checks without the wallet journeys; Compose keeps the services
 running after the command exits. Run the same command again to attach or
@@ -174,10 +169,10 @@ duplicate transactions.
 
 A run is bound to its identity: network, deployment profile, node and run
 directories, wallet seeds, DA members, transports, threshold, owners and
-cosigner, the watcher record, rollback, prover and availability keys, and the
+cosigner, the watcher rollback, prover and availability keys, and the
 release signer and program commitments (or the existing signed release
 artifacts). Changing any of these stops a resume. Timeouts, journey size,
-budgets, ports, templates and the watcher bearer may change between runs. When
+budgets, ports and templates may change between runs. When
 a change reaches the generated service configuration, the rerun regenerates it,
 rewrites the node environment and runs Compose `up` again, which recreates the
 containers whose configuration changed. The deployment and local storage

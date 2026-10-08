@@ -9,7 +9,7 @@ import { Effect, Schedule } from "effect";
 
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import { NodeConfig } from "../services/config.js";
-import type { IntentJournal } from "../services/intent-journal.js";
+import { type IntentJournal, openPlan } from "../services/intent-journal.js";
 import { Lucid } from "../services/lucid.js";
 import {
   type ContractDeploymentIdentityValue,
@@ -224,7 +224,8 @@ export const buildAtomicProtocolInitTxProgram = (
   | SDK.LucidError
   | SDK.Bech32DeserializationError
   | SDK.UnspecifiedNetworkError
-  | SDK.HashingError
+  | SDK.HashingError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const validityRange = resolveDeploymentValidityBounds(lucid, validTo);
@@ -269,6 +270,8 @@ export const program: Effect.Effect<
     `Fraud proof catalogue root prepared for initialization: ${fraudProofCatalogueDeploymentInfo.root}`,
   );
 
+  // S5: the plan opens before the deployment-status read the init rests on.
+  const plan = yield* openPlan;
   const status = yield* fetchProtocolDeploymentStatus(lucid, contracts);
   if (status.complete) {
     yield* ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
@@ -316,6 +319,7 @@ export const program: Effect.Effect<
       txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
       outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
     },
+    plan,
   );
   yield* Effect.logInfo(
     `Atomic real protocol initialization submitted: txHash=${txHash}`,

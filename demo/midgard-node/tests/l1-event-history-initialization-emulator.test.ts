@@ -8,7 +8,6 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import {
   CML,
   Data,
@@ -51,7 +50,7 @@ import {
 } from "./helpers/published-workflow-deployment.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./helpers/reference-publication-chain.js";
 import { makeJournalDirectory } from "./helpers/run-journal-directory.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Deployment manifests admit only the compiled profile's network.
 const network = SELECTED_DEPLOYMENT_PROFILE.network;
@@ -72,16 +71,9 @@ const ordinary = (output: UTxO) =>
  * authority, live-chain finality, or L2 withdrawal validity is asserted. */
 it("bootstraps both histories from accepted atomic initialization and subsequent public admissions", async () => {
   // The standard test configuration supplies a disposable, migrated worker
-  // database. Reset only this fixture's history state before its fresh emulator
-  // deployment; the singleton authority must not inherit another test's owner.
-  await Effect.runPromise(
-    provideDatabaseLayers(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority`;
-      }),
-    ),
-  );
+  // database. Empty it before this fixture's fresh emulator deployment; the
+  // singleton authority must not inherit another test's owner.
+  await Effect.runPromise(provideDatabaseLayers(resetApplicationTables));
   const accounts = createPublishedWorkflowDeploymentAccounts();
   const emulator = new Emulator(
     [accounts.operator, accounts.publisher],

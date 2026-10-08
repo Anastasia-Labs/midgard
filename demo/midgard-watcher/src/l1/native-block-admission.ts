@@ -1,7 +1,7 @@
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { CML } from "@lucid-evolution/lucid";
 
-import type { WatcherNativeChainSyncRollForward } from "./native-chain-sync.js";
+import type { WatcherNativeChainSyncRollForward } from "./native-chain-sync.exact-record.js";
 
 export const WATCHER_NATIVE_BLOCK_ADMISSION_SCHEMA_VERSION =
   "midgard-watcher-native-block-admission-v1" as const;

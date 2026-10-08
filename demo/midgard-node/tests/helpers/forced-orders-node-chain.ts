@@ -4,6 +4,7 @@
  * forced-order hook tests (N10b).
  */
 import { type FactStore } from "@al-ft/midgard-l1-follower";
+import { eventProjection } from "@al-ft/midgard-l1-follower/events";
 import { type SimTx, simTxHash } from "@al-ft/midgard-l1-follower/testing";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -16,7 +17,6 @@ import {
   forcedOrderProjection,
   forcedOrderTrackedSet,
 } from "../../src/forced-orders/index.js";
-import { eventProjection } from "../../src/l1-events/index.js";
 import { resetApplicationTables } from "../utils.js";
 import {
   FORCED_CONFIG,

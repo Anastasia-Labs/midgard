@@ -6,7 +6,8 @@
  * - every failure the rebase can meet past the transient ones (the native
  *   move, the event check, the batch closure, the receipt reversal, the
  *   ledger encoding) is caught: the preparation returns, the failure is
- *   recorded and raised as `landed_block_rebase_failed`, the reconciliation
+ *   recorded and raised as `landed_block_rebase_failed` (an undecided batch
+ *   member as `landed_block_batch_undecided`), the reconciliation
  *   stays pending, and the next attempt after the cause is gone runs the
  *   rebase and clears it; a fresh process meets the same hold;
  * - a batch co-member a base block includes is settled by it, while the
@@ -22,7 +23,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { reportHistorySyncReasons } from "../src/commands/listen-startup.report-history-sync.js";
 import { foldToRoot } from "../src/landed-blocks/fold.js";
-import { LANDED_BLOCK_REBASE_FAILED } from "../src/landed-blocks/holds.js";
+import {
+  LANDED_BLOCK_BATCH_UNDECIDED,
+  LANDED_BLOCK_REBASE_FAILED,
+} from "../src/landed-blocks/holds.js";
 import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
 import { REBASE_REJECTIONS } from "../src/landed-blocks/rebase.js";
 import { rollBackRows } from "../src/landed-blocks/settlements.js";
@@ -64,6 +68,16 @@ import { makeOutRefCbor } from "./midgard-output-helpers.js";
 beforeEach(() => {
   vi.restoreAllMocks();
 });
+
+/**
+ * The production fold's ports with the view held; an own block's journal
+ * reads as locally applied.
+ */
+const foldPorts = {
+  confirmView: () => Effect.succeed(true),
+  ownJournal: () => Effect.succeed({ status: "locally_applied" }),
+  write: <A, E, R>(work: Effect.Effect<A, E, R>) => withHistoryWrite(work),
+} as unknown as LandedBlockPorts<never>;
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -141,6 +155,7 @@ describe(
       expectHeld(
         await attempt(globals),
         /batch's acceptance cannot be reversed/,
+        LANDED_BLOCK_BATCH_UNDECIDED,
       );
       await sqlRun(
         globals,
@@ -291,13 +306,13 @@ describe(
       expect(await settlements(globals)).toEqual([[hex(b.id), BLOCK]]);
 
       // The production fold of X up to the merged root, with the view held.
-      const foldPorts = {
-        confirmView: () => Effect.succeed(true),
-        write: <A, E, R>(work: Effect.Effect<A, E, R>) =>
-          withHistoryWrite(work),
-      } as unknown as LandedBlockPorts<never>;
       await sqlRun(globals, () =>
-        foldToRoot(foldPorts, {} as View, { headerHash: BLOCK, utxosRoot: R1 }),
+        foldToRoot(
+          foldPorts,
+          {} as View,
+          { headerHash: BLOCK, utxosRoot: R1 },
+          () => Effect.succeed(null),
+        ),
       );
       expect(await run(globals, retrieveRows)).toEqual([]);
       await land(globals, {
@@ -319,6 +334,71 @@ describe(
       expect(await rejections(globals)).toEqual([
         [hex(a.id), REBASE_REJECTIONS.direct.code],
       ]);
+      expect(await unreversedReceipts(globals)).toBe(0);
+    });
+
+    it("keeps a batch co-member settled by this node's own block folded before a later rebuild rejects another member", async () => {
+      // frontier -> own O (E0 -> E1, includes b) -> foreign X (E2 out of
+      // nothing); a spends E1. The first rebuild settles b by O; O folds
+      // once its journal is locally applied; Y (E1 -> E3) on X then rejects
+      // a, and b stays settled by the folded own block.
+      const E2 = entry("e2", 4_000_000n);
+      const E3 = entry("e3", 5_000_000n);
+      const R2 = root(0x12);
+      const R3 = root(0x13);
+      const X = "c2".repeat(28);
+      const b = pendingTx("b", [], 2);
+      const a = pendingTx("a", [E1.outref], 1);
+      const native: Native = { ...freshNative(), durableRoot: R1, reaches: R2 };
+      const globals = await processOf(native);
+      await seed(globals, { kind: "own", applied: true, txIds: [b.id] });
+      await land(globals, {
+        headerHash: X,
+        parentHeaderHash: BLOCK,
+        parentUtxosRoot: R1,
+        utxosRoot: R2,
+        spent: [],
+        produced: [E2],
+      });
+      await run(globals, admitPending([a, b]));
+      await receipt(globals, [a.id, b.id]);
+      const first = await attempt(globals);
+      expect(first.failure).toBeUndefined();
+      expect(await rejections(globals)).toEqual([]);
+      expect(await settlements(globals)).toEqual([[hex(b.id), BLOCK]]);
+
+      await sqlRun(globals, () =>
+        foldToRoot(
+          foldPorts,
+          {} as View,
+          { headerHash: BLOCK, utxosRoot: R1 },
+          () => Effect.succeed(null),
+        ),
+      );
+      expect(
+        (await run(globals, retrieveRows)).map((row) => row.headerHash),
+      ).toEqual([X]);
+      await land(globals, {
+        headerHash: "c3".repeat(28),
+        parentHeaderHash: X,
+        parentUtxosRoot: R2,
+        utxosRoot: R3,
+        spent: [E1.outref],
+        produced: [E3],
+      });
+      native.reaches = R3;
+      const shown = await attempt(globals);
+      expect(Exit.isSuccess(shown.exit)).toBe(true);
+      expect(shown.failure).toBeUndefined();
+      expect(shown.disposition).toBeUndefined();
+      expect(shown.applied).toEqual([true, true]);
+      expect(shown.working.sort()).toEqual(
+        [hex(E2.outref), hex(E3.outref)].sort(),
+      );
+      expect(await rejections(globals)).toEqual([
+        [hex(a.id), REBASE_REJECTIONS.direct.code],
+      ]);
+      expect(await settlements(globals)).toEqual([[hex(b.id), BLOCK]]);
       expect(await unreversedReceipts(globals)).toBe(0);
     });
 

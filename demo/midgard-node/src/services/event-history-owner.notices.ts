@@ -1,21 +1,14 @@
 import { Effect } from "effect";
 
-import type * as Journal from "../database/eventHistoryJournal.js";
-import {
-  HISTORY_READY_MAXIMUM_LAG_BLOCKS,
-  type HistoryRetentionHold,
-} from "./event-history-owner.history-owner-change.js";
+import { HISTORY_READY_MAXIMUM_LAG_BLOCKS } from "./event-history-owner.history-owner-change.js";
 
 /** The owner's visible, not silent, state transitions: each is logged once
  * when it starts and once when it ends, never on every block. */
 export const makeHistoryOwnerNotices = (input: {
   readonly run: (effect: Effect.Effect<void>) => Promise<void>;
-  readonly rollbackHorizon: number;
 }) => {
   let lagging = false;
-  let retentionHold: HistoryRetentionHold | undefined;
   return {
-    retentionHold: () => retentionHold,
     // One warning when an open gate falls too far behind the tip, one notice
     // when it catches up. The owner reports lag only from its first
     // readiness on, so a notice always follows its warning.
@@ -40,44 +33,6 @@ export const makeHistoryOwnerNotices = (input: {
           ),
         )
         .catch(() => undefined);
-    },
-    // Warn once when retained evidence starts holding the anchor more than k
-    // blocks back, and once when it lets go.
-    retention: async (hold: Journal.RetentionHold | undefined) => {
-      const heldBlocks =
-        hold === undefined ? 0 : hold.unheldAnchorHeight - hold.anchorHeight;
-      const next =
-        hold !== undefined && heldBlocks > input.rollbackHorizon
-          ? Object.freeze({
-              ...hold,
-              heldBlocks,
-              rollbackHorizon: input.rollbackHorizon,
-            })
-          : undefined;
-      const previous = retentionHold;
-      retentionHold = next;
-      if ((previous === undefined) === (next === undefined)) return;
-      const annotations = next ?? previous!;
-      await input.run(
-        (next === undefined
-          ? Effect.logInfo(
-              "History retention hold released; the journal anchor advances again",
-            )
-          : Effect.logWarning(
-              "History retention held by settlement or foreign-adoption evidence: the journal anchor is more than the rollback horizon behind",
-            )
-        ).pipe(
-          Effect.annotateLogs({
-            event: "history_retention_hold",
-            state: next === undefined ? "released" : "holding",
-            holdSlot: annotations.holdSlot,
-            anchorHeight: annotations.anchorHeight,
-            unheldAnchorHeight: annotations.unheldAnchorHeight,
-            heldBlocks: annotations.heldBlocks,
-            rollbackHorizon: input.rollbackHorizon,
-          }),
-        ),
-      );
     },
   };
 };

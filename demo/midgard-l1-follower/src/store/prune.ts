@@ -8,6 +8,14 @@ export const CHECKPOINT_INTERVAL = 1000;
 /** `l1_rollbacks` keeps its last 1,000 rows (§11). */
 export const ROLLBACK_LOG_ROWS = 1000;
 
+/** A role's prune floor holding the boundary back, named by the floor. */
+export type PruneFloorLag = Readonly<{
+  /** The declaring floor's name (`PruneFloor.name`). */
+  floor: string;
+  /** How many slots it holds the boundary below the block k below the cursor. */
+  lagSlots: number;
+}>;
+
 export type PruneResult = Readonly<{
   /** Rows deleted per table in this step. */
   deleted: Readonly<Record<string, number>>;
@@ -16,10 +24,11 @@ export type PruneResult = Readonly<{
   /** The slot facts are complete from after this step. */
   prunedThroughSlot: number;
   /**
-   * How many slots a role's floor holds the boundary below the block k
-   * below the cursor; null when no floor holds it.
+   * Every role floor that holds the boundary below the block k below the
+   * cursor, in declaration order, each with its own lag (the lowest floor's
+   * is the boundary's); empty when none does.
    */
-  floorLagSlots: number | null;
+  floorLags: readonly PruneFloorLag[];
 }>;
 
 const pinClauses = (
@@ -56,7 +65,7 @@ export const pruneIn = async (
       deleted: {},
       done: true,
       prunedThroughSlot: 0,
-      floorLagSlots: null,
+      floorLags: [],
     };
   const rowId = dialect.rowId;
   const deleted: Record<string, number> = {};
@@ -92,16 +101,19 @@ export const pruneIn = async (
       deleted,
       done,
       prunedThroughSlot: cursor.prunedThroughSlot,
-      floorLagSlots: null,
+      floorLags: [],
     };
   }
   // A role's floor holds the boundary at or below its slot: the boundary
   // block becomes the last one at or below it.
   const kSlot = asNumber(boundary.slot);
   let floor: number | null = null;
+  const floors: { name: string; slot: number }[] = [];
   for (const role of context.pruneFloors) {
     const slot = await role.floor({ tx, dialect });
-    if (slot !== null && (floor === null || slot < floor)) floor = slot;
+    if (slot === null) continue;
+    floors.push({ name: role.name, slot });
+    if (floor === null || slot < floor) floor = slot;
   }
   const held = floor !== null && floor < kSlot;
   let boundaryHeight = asNumber(boundary.height);
@@ -116,7 +128,11 @@ export const pruneIn = async (
     held ? floor! : kSlot,
     cursor.prunedThroughSlot,
   );
-  const floorLagSlots = boundarySlot < kSlot ? kSlot - boundarySlot : null;
+  // Each floor's own lag: what the boundary would be were it the only one.
+  const floorLags: PruneFloorLag[] = floors.flatMap(({ name, slot }) => {
+    const lagSlots = kSlot - Math.max(slot, cursor.prunedThroughSlot);
+    return lagSlots > 0 ? [{ floor: name, lagSlots }] : [];
+  });
   if (boundarySlot > cursor.prunedThroughSlot)
     await tx.query("UPDATE l1_follower_cursor SET pruned_through_slot = ?", [
       boundarySlot,
@@ -184,5 +200,5 @@ export const pruneIn = async (
     [],
   );
   await pruneRollbackLog();
-  return { deleted, done, prunedThroughSlot: boundarySlot, floorLagSlots };
+  return { deleted, done, prunedThroughSlot: boundarySlot, floorLags };
 };

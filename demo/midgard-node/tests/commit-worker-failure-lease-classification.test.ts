@@ -90,10 +90,6 @@ vi.mock("../src/forced-orders/horizon.js", () => ({
 vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
   reachCommitCrashCheckpoint: vi.fn(() => Effect.void),
 }));
-vi.mock("../src/operator-wallet-view.js", () => ({
-  fetchOperatorWalletView: vi.fn(),
-  isPotentiallyStaleOperatorWalletViewError: vi.fn(() => false),
-}));
 vi.mock("../src/workers/commit-block-header/build-unsigned-tx.js", () => ({
   buildUnsignedCommitTx: vi.fn(),
 }));

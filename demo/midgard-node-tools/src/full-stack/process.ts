@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
@@ -184,24 +184,12 @@ export async function poll<T>(
   );
 }
 
-export async function getJson(
-  url: string,
-  headers?: Record<string, string>,
-): Promise<unknown | undefined> {
+export async function getJson(url: string): Promise<unknown | undefined> {
   try {
-    const response = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(10_000),
-    });
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) return undefined;
     return await response.json();
   } catch {
     return undefined;
   }
-}
-export async function bearerHeaders(path: string) {
-  const bearer = (await readFile(path, "utf8")).trim();
-  if (!bearer || /\s/.test(bearer))
-    throw new Error("Invalid watcher bearer file");
-  return { authorization: `Bearer ${bearer}` };
 }

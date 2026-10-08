@@ -13,6 +13,7 @@ import { Database, Globals } from "../../services/index.js";
 import {
   fetchLandedConfirmedState,
   finalizeConfirmedMergeProgram,
+  landedMergeOf,
   type LandedUnfinalizedMerge,
   MAX_LANDED_MERGE_CATCH_UP,
 } from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
@@ -109,8 +110,8 @@ const landedUnfinalizedMerges = (
         journal.value[PendingBlockFinalizationsDB.Columns.STATUS] !==
         PendingBlockFinalizationsDB.Status.LocallyApplied
       ) {
-        // Its block rows are not local yet; clearing them now would leave the
-        // later block finalization to write them back after the merge.
+        // Its block's own local finalization (its bodies, its included
+        // rows) has not run yet; the merge finalizes after it.
         return yield* Effect.fail(
           new DatabaseError({
             table: PendingBlockFinalizationsDB.tableName,
@@ -120,7 +121,7 @@ const landedUnfinalizedMerges = (
           }),
         );
       }
-      pending.push({ headerHash, headerUtxosRoot: header.utxosRoot });
+      pending.push(landedMergeOf(headerHash, header));
       confirmedUtxosRoot = undefined;
       current = header.prevHeaderHash;
     }

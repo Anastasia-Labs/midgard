@@ -34,7 +34,7 @@ export type WatcherRuntime = Readonly<{
   availability: WatcherAvailabilityRuntime;
   /** The chain follower every L1 read goes through. */
   follower: WatcherFollowerRuntime;
-  /** Decides faults, availability and history advances from the follower's facts. */
+  /** Decides faults and availability from the follower's facts. */
   decisionDriver: WatcherDecisionDriver;
   done: Promise<void>;
   caughtUp: Promise<void>;

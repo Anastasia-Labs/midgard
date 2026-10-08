@@ -3,10 +3,6 @@ import { readFile, realpath } from "node:fs/promises";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import {
-  parseWatcherFinalityPolicy,
-  type WatcherFinalityPolicy,
-} from "../l1/finality-engine.js";
-import {
   parseWatcherConfig,
   parseWatcherStrictJsonValue,
   type WatcherWalletKeySource,
@@ -20,10 +16,8 @@ import {
   loopbackEndpoint,
   secretSource,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
-  WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
   type WatcherProcessConfig,
 } from "./process-config.historical-native-script-history.js";
-import { AUTHORITY_MAX_LIVE_RECORDS } from "./trusted-head-authority.envelope-codec.js";
 
 export const parseWatcherProcessConfig = (
   value: unknown,
@@ -38,9 +32,7 @@ export const parseWatcherProcessConfig = (
       "ruleBundlePath",
       "fundingProfileBundlePath",
       "l1NodeTransportBinaryPath",
-      "trustedHeadAuthorityEndpoint",
       "operationsEndpoint",
-      "httpBearerSecretSource",
       "workflowJournalDirectory",
       "availability",
       "faultProofInfrastructure",
@@ -54,29 +46,20 @@ export const parseWatcherProcessConfig = (
   if (
     watcherConfig.mode !== "acceptance" ||
     (watcherConfig.targetNetwork !== "Preprod" &&
-      watcherConfig.targetNetwork !== "Custom") ||
-    watcherConfig.l1.source.sourceMode !== "local_node"
+      watcherConfig.targetNetwork !== "Custom")
   ) {
     throw new Error(
-      "watcher production process requires acceptance Preprod or Custom local_node authority",
+      "watcher production process requires acceptance Preprod or Custom",
     );
   }
   // Parsed before the signed deployment is loaded, so this binds to the
   // compiled profile; startup later re-checks it against the verified release.
   const releaseDepth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
-  if (
-    watcherConfig.l1.finality.depth !== releaseDepth ||
-    watcherConfig.l1.finality.rollback.maxDepth !== releaseDepth ||
-    watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth !== 2160
-  ) {
+  if (watcherConfig.l1.finality.depth !== releaseDepth) {
     throw new Error(
-      `watcher production process requires finality depth and pre-finality rollback depth ${releaseDepth.toString()} from the deployment profile, with post-finality recovery depth 2160`,
+      `watcher production process requires finality depth ${releaseDepth.toString()} from the deployment profile`,
     );
   }
-  const httpBearerSecretSource = secretSource(
-    input.httpBearerSecretSource,
-    "watcher HTTP bearer secret source",
-  );
   const infrastructure = faultProofInfrastructure(
     input.faultProofInfrastructure,
   );
@@ -107,22 +90,12 @@ export const parseWatcherProcessConfig = (
   assertDistinctSources([
     watcherConfig.storage.rollbackAuthorityKeySource,
     watcherConfig.proverWallet.keySource,
-    httpBearerSecretSource,
     availability.keySource,
   ]);
-  const trustedHeadAuthorityEndpoint = loopbackEndpoint(
-    input.trustedHeadAuthorityEndpoint,
-    "trusted-head endpoint",
-  );
   const operationsEndpoint = loopbackEndpoint(
     input.operationsEndpoint,
     "watcher operations endpoint",
   );
-  if (operationsEndpoint === trustedHeadAuthorityEndpoint) {
-    throw new Error(
-      "watcher operations and trusted-head endpoints must be distinct",
-    );
-  }
   return Object.freeze({
     schemaVersion: WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
     watcherConfig,
@@ -146,103 +119,13 @@ export const parseWatcherProcessConfig = (
       input.l1NodeTransportBinaryPath,
       "native chain-sync binary",
     ),
-    trustedHeadAuthorityEndpoint,
     operationsEndpoint,
-    httpBearerSecretSource,
     workflowJournalDirectory: canonicalPath(
       input.workflowJournalDirectory,
       "workflow journal directory",
     ),
     faultProofInfrastructure: infrastructure,
     availability,
-  });
-};
-
-export type WatcherTrustedHeadAuthorityProcessConfig = Readonly<{
-  schemaVersion: typeof WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION;
-  policy: WatcherFinalityPolicy;
-  directory: string;
-  liveRecordLimit: number;
-  endpoint: string;
-  recordAuthenticationKeySource: WatcherWalletKeySource;
-  httpBearerSecretSource: WatcherWalletKeySource;
-}>;
-
-export const parseWatcherTrustedHeadAuthorityProcessConfig = (
-  value: unknown,
-): WatcherTrustedHeadAuthorityProcessConfig => {
-  const input = exactRecord(
-    value,
-    [
-      "schemaVersion",
-      "policy",
-      "directory",
-      "liveRecordLimit",
-      "endpoint",
-      "recordAuthenticationKeySource",
-      "httpBearerSecretSource",
-    ],
-    "trusted-head authority process config",
-  );
-  if (
-    input.schemaVersion !==
-    WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION
-  ) {
-    throw new Error("trusted-head authority process config schema changed");
-  }
-  const policy = parseWatcherFinalityPolicy(input.policy);
-  if (policy === null)
-    throw new Error("trusted-head authority policy is invalid");
-  if (
-    (policy.network !== "Preprod" && policy.network !== "Custom") ||
-    policy.sourceMode !== "local_node" ||
-    policy.authorityNodeId === null ||
-    policy.authorityGenesisIdentitySha256 === null ||
-    policy.authorityChainSyncSocketPath === null
-  ) {
-    throw new Error(
-      "trusted-head authority policy requires Preprod or Custom local_node authority",
-    );
-  }
-  const releaseDepth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
-  if (
-    policy.confirmationDepth !== releaseDepth.toString() ||
-    policy.maximumPreFinalityRollbackDepth !== releaseDepth.toString() ||
-    policy.maximumPostFinalityRecoveryDepth !== "2160"
-  ) {
-    throw new Error(
-      `trusted-head authority policy requires confirmation and pre-finality rollback depth ${releaseDepth.toString()} from the deployment profile, with post-finality recovery depth 2160`,
-    );
-  }
-  if (
-    !Number.isSafeInteger(input.liveRecordLimit) ||
-    typeof input.liveRecordLimit !== "number" ||
-    input.liveRecordLimit < 1 ||
-    input.liveRecordLimit > AUTHORITY_MAX_LIVE_RECORDS
-  )
-    throw new Error(
-      "trusted-head authority requires explicit supported liveRecordLimit",
-    );
-  const recordAuthenticationKeySource = secretSource(
-    input.recordAuthenticationKeySource,
-    "sidecar record authentication key source",
-  );
-  const httpBearerSecretSource = secretSource(
-    input.httpBearerSecretSource,
-    "sidecar HTTP bearer secret source",
-  );
-  assertDistinctSources([
-    recordAuthenticationKeySource,
-    httpBearerSecretSource,
-  ]);
-  return Object.freeze({
-    schemaVersion: WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
-    policy,
-    directory: canonicalPath(input.directory, "trusted-head durable directory"),
-    liveRecordLimit: input.liveRecordLimit,
-    endpoint: loopbackEndpoint(input.endpoint, "trusted-head endpoint"),
-    recordAuthenticationKeySource,
-    httpBearerSecretSource,
   });
 };
 
@@ -284,13 +167,6 @@ export const decodeWatcherAuthenticationKey32 = (value: string): Uint8Array => {
   return Uint8Array.from(Buffer.from(value, "hex"));
 };
 
-export const decodeWatcherHttpBearerSecret = (value: string): string => {
-  if (value.length < 32 || value.length > 256) {
-    throw new Error("production HTTP bearer secret length is invalid");
-  }
-  return value;
-};
-
 const configFile = async (path: string): Promise<unknown> => {
   const admitted = canonicalPath(path, "production process config");
   if ((await realpath(admitted)) !== admitted) {
@@ -309,8 +185,3 @@ export const loadWatcherProcessConfigFile = async (
   path: string,
 ): Promise<WatcherProcessConfig> =>
   parseWatcherProcessConfig(await configFile(path));
-
-export const loadWatcherTrustedHeadAuthorityProcessConfigFile = async (
-  path: string,
-): Promise<WatcherTrustedHeadAuthorityProcessConfig> =>
-  parseWatcherTrustedHeadAuthorityProcessConfig(await configFile(path));

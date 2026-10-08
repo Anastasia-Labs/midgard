@@ -57,7 +57,6 @@ const readyz = (frontier: HistoryOwnerFrontier | undefined) =>
             ? undefined
             : ({
                 frontier: Effect.succeed(frontier),
-                retentionHold: Effect.succeed(undefined),
               } as unknown as EventHistoryOwner),
         );
         const response = (yield* buildListenRouter().pipe(

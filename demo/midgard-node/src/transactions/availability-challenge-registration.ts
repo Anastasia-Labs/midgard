@@ -5,8 +5,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { journaledIntent } from "../services/intent-journal.js";
+import { journaledIntent, openPlan } from "../services/intent-journal.js";
 import { handleSignSubmit } from "./utils.js";
+import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
 
 /** Check ledger readiness without changing deployment or wallet state. */
 export const assertAvailabilityChallengeRewardAccountsRegisteredProgram = (
@@ -94,13 +95,27 @@ export const ensureAvailabilityChallengeRewardAccountsRegisteredProgram = (
             }),
         });
       let txHash: string | null = null;
+      // S5: the plan opens before the registration read it is built on.
+      const plan = yield* openPlan;
       if (!(yield* query()).registered) {
+        const presetWalletInputs = yield* readSelectedWalletViewInputs(
+          lucid,
+          `availability challenge ${action} reward registration`,
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new SDK.LucidError({
+                message: `Failed to fund availability challenge ${action} reward registration`,
+                cause,
+              }),
+          ),
+        );
         const tx = yield* Effect.tryPromise({
           try: () =>
             lucid
               .newTx()
               .register.Stake(rewardAddress)
-              .complete({ localUPLCEval: true }),
+              .complete({ localUPLCEval: true, presetWalletInputs }),
           catch: (cause) =>
             new SDK.LucidError({
               message: `Failed to build availability challenge ${action} reward registration`,
@@ -116,6 +131,7 @@ export const ensureAvailabilityChallengeRewardAccountsRegisteredProgram = (
             journaledIntent(
               "script_reward_registration",
               `script_reward_registration:availability_challenge:${action}`,
+              plan,
             ),
           ),
         );

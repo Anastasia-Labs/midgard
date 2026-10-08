@@ -1,18 +1,21 @@
 /**
- * In-order landed-block processing (plan §7.3, §5.5 P3, N3). On every
- * driver run, at the follower view the run applies:
+ * In-order landed-block processing (plan §7.3, §5.5 P3, P10, N3, N5). On
+ * every driver run, at the follower view the run applies:
  *
- * 1. `confirmed_ledger` is folded up to the merged queue root (`fold.ts`).
- *    A root that passed blocks this node never processed (an append and its
- *    merge in one run, or a hold that outlasted maturity) is reached by its
- *    lineage in the queue history (`history.ts`): the walk below starts at
- *    the last processed header on it and takes the merged headers first.
+ * 1. `confirmed_ledger` is rewound to the merged queue root's lineage, then
+ *    folded up to the root (`fold.ts`, `confirmed-merges.ts`). A root a
+ *    rollback moved back unfolds the retained folds down to the newest
+ *    header the root's lineage shares with them. A root that passed blocks
+ *    this node never processed (an append and its merge in one run, or a
+ *    hold that outlasted maturity) is reached by its lineage in the queue
+ *    history (`history.ts`): the walk below starts at the last processed
+ *    header on it and takes the merged headers first.
  * 2. The landed queue is walked from the root (or that header). A node already processed on
  *    the same parent is kept (a `removed` one relands); every processed row
  *    the walk did not reach left the queue: a row the working ledger took in
  *    becomes `removed` (the rebase reverts it), any other is deleted,
  *    and the receipt settlements they recorded are rewound (`settlements.ts`).
- *    Rewind is that walk plus the rebase's recompute, never an inverse.
+ *    The working ledger is rewound by that walk plus the rebase's recompute.
  * 3. Each new node, in queue order and exactly once (the row's primary key),
  *    must link to its parent (hash, root, start time). This node's own block
  *    is adopted from its journal and never replayed; one whose journal was
@@ -26,11 +29,15 @@
  * 4. A row the working ledger does not hold yet (a foreign or a revived own
  *    one), or a removed row, asks the history owner for the rebase (which
  *    also disposes of the own journals that cannot land) and holds
- *    `landed_block_rebase_pending` until it ran, or
- *    `landed_block_rebase_failed` (with the failure) while the owner
- *    retries a rebase that failed.
+ *    `landed_block_rebase_pending` until it ran, or, while the owner
+ *    retries a rebase that failed, `landed_block_batch_undecided` (the
+ *    batch closure met an undecided receipt member) or
+ *    `landed_block_rebase_failed` (any other failure), with the failure.
+ * 5. With the frontier at the root, the retained folds' merge points are
+ *    brought up to the queue history, and the folds whose merge is at or
+ *    below the follower's prune boundary are dropped.
  *
- * Every write (fold, bootstrap and re-anchor included) re-checks the
+ * Every write (fold, unfold and bootstrap included) re-checks the
  * follower view in its transaction; a view that moved ends the run with the
  * transient `landed_blocks_waiting` ("view moved"), which the next run, the
  * move's, replaces. Every hold keeps the process up and clears on a later
@@ -44,7 +51,14 @@ import type { DriverHold } from "../l1-events/driver.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
 import type { Database } from "../services/database.js";
 import { isHistoryProducerGateClosed } from "../services/event-history-producer.js";
-import { bootstrapFrontier, foldToRoot, reanchorFrontier } from "./fold.js";
+import type { MergePoint } from "./confirmed-merges.js";
+import {
+  bootstrapFrontier,
+  foldToRoot,
+  type ProcessOptions,
+  rewindToRoot,
+  settleMerges,
+} from "./fold.js";
 import {
   decodeHistory,
   type LandedNode,
@@ -53,20 +67,21 @@ import {
 } from "./history.js";
 import {
   combineHolds,
+  CONFIRMED_LEDGER_BEHIND,
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_REVIVAL_PENDING,
-  LANDED_BLOCK_REBASE_FAILED,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
   LANDED_BLOCKS_WAITING,
 } from "./holds.js";
 import {
   applyDelta,
-  landedLedger,
-  ledgerAt,
+  landedChain,
+  landedStart,
+  ledgerAfter,
   ledgerEntries,
   type LedgerMap,
   netDelta,
@@ -100,6 +115,12 @@ const decodeQueue = (queue: LandedStateQueue) =>
         utxosRoot: state.utxoRoot,
         endTime: state.endTime,
       } satisfies Parent,
+      // A seeded root output predates the follower's origin: no rollback
+      // reaches its merge.
+      point: {
+        slot: root.created?.slot ?? 0,
+        outRef: root.outRef,
+      } satisfies MergePoint,
       nodes,
     };
   });
@@ -261,11 +282,15 @@ export const rebaseNeeded = (rows: readonly LandedBlockRow[]): boolean =>
       row.state === "removed" || (row.state === "processed" && !row.applied),
   );
 
-const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
+const run = <R>(
+  ports: LandedBlockPorts<R>,
+  queue: LandedStateQueue,
+  options: ProcessOptions,
+) =>
   Effect.gen(function* () {
     const decoded = yield* decodeQueue(queue);
     if (decoded === undefined) return undefined; // P1 holds an unhealthy queue
-    const { root, nodes } = decoded;
+    const { root, nodes, point } = decoded;
     const holds: DriverHold[] = [];
     let read: QueueHistory | undefined;
     const history = Effect.suspend(() =>
@@ -277,7 +302,16 @@ const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
     );
     const booted = yield* bootstrapFrontier(ports, queue.view, root, history);
     if (booted !== undefined) return booted;
-    const folded = yield* foldToRoot(ports, queue.view, root);
+    const rewound = yield* rewindToRoot(ports, queue.view, root, history);
+    if (rewound !== undefined) return rewound;
+    const mergePoint = (headerHash: string) =>
+      headerHash === root.headerHash
+        ? Effect.succeed(point)
+        : history.pipe(
+            // The root passed it: the root's merge bounds its merge's slot.
+            Effect.map((walked) => walked.roots.get(headerHash) ?? point),
+          );
+    const folded = yield* foldToRoot(ports, queue.view, root, mergePoint);
     if (folded.kind === "held") holds.push(folded.hold);
     // The root passed blocks this node never processed: its lineage back to
     // the last processed header on it, processed in order before the nodes.
@@ -289,7 +323,7 @@ const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
         }>
       | undefined;
     if (folded.kind === "off_chain") {
-      const before = yield* landedLedger(yield* retrieveRows);
+      const before = yield* landedChain(yield* retrieveRows);
       const onChain = new Set([
         folded.frontier.headerHash,
         ...(before?.chain ?? []).map((row) => row.headerHash),
@@ -300,42 +334,30 @@ const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
       );
       const endTime =
         lineage === undefined ? undefined : walked.endTimes.get(lineage.anchor);
-      if (lineage !== undefined && endTime !== undefined)
-        missed = { anchor: lineage.anchor, endTime, headers: lineage.headers };
-      else {
-        const anchored = yield* reanchorFrontier(
-          ports,
-          queue.view,
-          folded.frontier,
-          root,
-        );
-        if (anchored !== undefined) return combineHolds([...holds, anchored]);
-      }
+      if (lineage === undefined || endTime === undefined)
+        return combineHolds([
+          ...holds,
+          hold(
+            CONFIRMED_LEDGER_BEHIND,
+            `the merged queue root ${root.headerHash} is not reachable forward from the confirmed-ledger frontier ${folded.frontier.headerHash} through the retained queue history`,
+          ),
+        ]);
+      missed = { anchor: lineage.anchor, endTime, headers: lineage.headers };
     }
     const rows = yield* retrieveRows;
-    const landed = yield* landedLedger(rows);
     const startHash = missed?.anchor ?? root.headerHash;
-    const anchor =
-      landed === undefined ? undefined : ledgerAt(landed, startHash);
-    if (landed === undefined || anchor === undefined)
-      return combineHolds(holds);
+    const start = yield* landedStart(rows, startHash);
+    if (start === undefined) return combineHolds(holds);
     const sequence =
       missed === undefined ? nodes : [...missed.headers, ...nodes];
     // The walk: rows kept, relanded, and where new processing starts.
-    const visited = new Set(
-      landed.chain
-        .slice(
-          0,
-          landed.chain.findIndex((row) => row.headerHash === startHash) + 1,
-        )
-        .map((row) => row.headerHash),
-    );
+    const walked = [...start.through];
+    const visited = new Set(walked.map((row) => row.headerHash));
     const byHash = new Map(rows.map((row) => [row.headerHash, row] as const));
-    const ledger = anchor.ledger;
     const relands: LandedBlockRow[] = [];
     let parent: Parent = {
       headerHash: startHash,
-      utxosRoot: anchor.root,
+      utxosRoot: start.root,
       endTime: missed?.endTime ?? root.endTime,
     };
     let next = 0;
@@ -350,7 +372,7 @@ const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
         break;
       visited.add(row.headerHash);
       if (row.state === "removed") relands.push(row);
-      applyDelta(ledger, row);
+      walked.push(row);
       parent = {
         headerHash: row.headerHash,
         utxosRoot: row.utxosRoot,
@@ -362,36 +384,41 @@ const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
     );
     if (left.length > 0 || relands.length > 0)
       yield* viewChecked(ports, queue.view, rollBackRows(left, relands));
-    for (; next < sequence.length; next++) {
-      const node = sequence[next]!;
-      const revival = yield* revivalHold(ports, parent);
-      if (revival !== undefined) {
-        holds.push(revival);
-        break;
+    // Only new processing reads the ledger, so a run that only folds or
+    // unfolds stays O(delta) in `confirmed_ledger`'s size.
+    if (next < sequence.length) {
+      const ledger = yield* ledgerAfter(walked);
+      for (; next < sequence.length; next++) {
+        const node = sequence[next]!;
+        const revival = yield* revivalHold(ports, parent);
+        if (revival !== undefined) {
+          holds.push(revival);
+          break;
+        }
+        const step = yield* newRow(ports, queue.view, node, parent, ledger);
+        if (step.kind === "held") {
+          holds.push(step.hold);
+          break;
+        }
+        yield* viewChecked(ports, queue.view, processRow(step.row));
+        applyDelta(ledger, step.row);
+        parent = {
+          headerHash: step.row.headerHash,
+          utxosRoot: step.row.utxosRoot,
+          endTime: node.header.endTime,
+        };
       }
-      const step = yield* newRow(ports, queue.view, node, parent, ledger);
-      if (step.kind === "held") {
-        holds.push(step.hold);
-        break;
-      }
-      yield* viewChecked(ports, queue.view, processRow(step.row));
-      applyDelta(ledger, step.row);
-      parent = {
-        headerHash: step.row.headerHash,
-        utxosRoot: step.row.utxosRoot,
-        endTime: node.header.endTime,
-      };
     }
     if (missed !== undefined) {
       // The rows just processed may fold already (an own merged block).
-      const refolded = yield* foldToRoot(ports, queue.view, root);
+      const refolded = yield* foldToRoot(ports, queue.view, root, mergePoint);
       if (refolded.kind === "held") holds.push(refolded.hold);
     }
+    yield* settleMerges(ports, queue.view, root, point, history, options);
     if (rebaseNeeded(yield* retrieveRows)) {
       // A failed rebase is already pending on the owner's backoff.
       const failure = yield* ports.rebaseFailure;
-      if (failure !== undefined)
-        holds.push(hold(LANDED_BLOCK_REBASE_FAILED, failure));
+      if (failure !== undefined) holds.push(failure);
       else {
         const blocked = yield* ports.requestRebase(
           "Landed blocks changed what the working ledger must hold",
@@ -415,8 +442,9 @@ const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
 export const processLandedQueue = <R>(
   ports: LandedBlockPorts<R>,
   queue: LandedStateQueue,
+  options: ProcessOptions = {},
 ): Effect.Effect<DriverHold | undefined, never, R | Database> =>
-  run(ports, queue).pipe(
+  run(ports, queue, options).pipe(
     Effect.catchAll((error) =>
       error instanceof ViewMoved
         ? Effect.succeed(hold(LANDED_BLOCKS_WAITING, "view moved"))
@@ -429,7 +457,7 @@ export const processLandedQueue = <R>(
                       LANDED_BLOCKS_WAITING,
                       "the history owner is recovering",
                     )
-                  : hold(LANDED_BLOCK_REBASE_FAILED, failure),
+                  : failure,
               ),
             )
           : Effect.succeed(hold(LANDED_BLOCK_REPLAY_FAILED, String(error))),

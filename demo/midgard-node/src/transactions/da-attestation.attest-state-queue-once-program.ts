@@ -15,7 +15,7 @@ import {
   Lucid,
   MidgardContracts,
 } from "../services/index.js";
-import type { IntentJournal } from "../services/intent-journal.js";
+import { type IntentJournal, openPlan } from "../services/intent-journal.js";
 import { attestHeader } from "./da-attestation.attest-header.js";
 import {
   type AttestStateQueueHeaderResult,
@@ -57,6 +57,8 @@ export const attestStateQueueOnceProgram = (
     const contracts = yield* MidgardContracts;
     const nodeConfig = yield* NodeConfig;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
+    // S5: one plan for the round, opened before its first L1 read.
+    const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const lucid = lucidService.api;
     const daParams = yield* fetchDaParamsUtxo(lucid, contracts);
@@ -155,6 +157,7 @@ export const attestStateQueueOnceProgram = (
               referenceScripts,
               availabilityCommitment,
               availabilityParameters,
+              plan,
             }),
           ),
         ),

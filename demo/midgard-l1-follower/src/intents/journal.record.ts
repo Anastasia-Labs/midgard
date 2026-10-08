@@ -17,7 +17,8 @@ import {
   type SqlValue,
 } from "../sql/backend.js";
 import { insertRows, readCursor } from "../store/rows.js";
-import type { OutRef, View } from "../types.js";
+import { viewValidIn } from "../store/view.js";
+import type { OutRef } from "../types.js";
 import {
   appendIntentEventIn,
   chunks,
@@ -74,6 +75,9 @@ const slotBound = (bound: bigint | null): number | null | undefined =>
 /**
  * S5: journals a newly signed transaction before its first submission
  * (§8.2), in the caller's write transaction. Idempotent per tx hash.
+ * `viewValid(builtAt)` runs here, under the cursor share lock: a stale view
+ * still records the row, with a `stale_at_write` event (§8.1), and the
+ * result says so; the caller must not send it on this write.
  */
 export const recordIntentIn = async (
   tx: SqlTx,
@@ -111,17 +115,11 @@ export const recordIntentIn = async (
       intent: first,
       identical: first.txCbor.equals(input.txCbor),
     };
-  const cursor = await readCursor(tx, dialect);
-  const view: View | null =
-    input.builtAt ??
-    (cursor === null
-      ? null
-      : {
-          generation: cursor.generation,
-          point: cursor.point,
-          height: cursor.height,
-        });
-  if (view === null) return { kind: "no_view", txHash };
+  // The share lock holds a rewind off until this transaction ends, so the
+  // view check below and the rows written agree.
+  const cursor = await readCursor(tx, dialect, "share");
+  if (cursor === null) return { kind: "no_view", txHash };
+  const view = input.builtAt;
   const spends = [
     ...decoded.inputs,
     ...decoded.referenceInputs,
@@ -180,11 +178,23 @@ export const recordIntentIn = async (
     built: view,
     contentRef: input.contentRef ?? null,
   };
+  const stale =
+    input.staleBecause !== undefined || !(await viewValidIn(tx, dialect, view));
   await insertIntentIn(tx, dialect, intent);
   await appendIntentEventIn(tx, dialect, txHash, "signed", {
-    tipSlot: cursor === null ? null : cursor.point.slot,
+    tipSlot: cursor.point.slot,
   });
-  return { kind: "recorded", intent };
+  if (stale)
+    await appendIntentEventIn(tx, dialect, txHash, "stale_at_write", {
+      detail: {
+        reason: input.staleBecause ?? "view_invalid",
+        builtGeneration: view.generation,
+        builtSlot: view.point.slot,
+        cursorGeneration: cursor.generation,
+      },
+      tipSlot: cursor.point.slot,
+    });
+  return { kind: "recorded", intent, stale };
 };
 
 /**

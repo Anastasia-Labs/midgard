@@ -71,7 +71,7 @@ export const createEmulatorInitialization = async () => {
       "00".repeat(32),
       undefined,
       references,
-    ),
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
   const signed = await (await builder.complete({ localUPLCEval: true })).sign
     .withWallet()

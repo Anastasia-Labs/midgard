@@ -19,7 +19,7 @@
  *
  * Decoding (`userEventEntry`) runs only for events the node has no row for.
  */
-import { postgresDialect, viewValidQuery } from "@al-ft/midgard-l1-follower";
+import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
 import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
 import { SqlClient, type Statement } from "@effect/sql";
 import type { Network } from "@lucid-evolution/lucid";
@@ -27,9 +27,8 @@ import { Effect } from "effect";
 
 import type { IngestionPlan } from "../l1-events/driver.js";
 import { userEventEntry } from "../l1-events/entries.js";
-import type { ProjectedEvent } from "../l1-events/reads.js";
 import * as Deposits from "./deposits.js";
-import { numbered } from "./follower-schema.js";
+import { followerViewValid } from "./follower-schema.js";
 import {
   type AdmissionKind,
   canonicalAdmission,
@@ -394,12 +393,7 @@ export const reconcileFollowerEvents = (
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const check = viewValidQuery(postgresDialect, plan.view);
-    const valid = yield* sql.unsafe<{ valid: boolean }>(
-      numbered(check.sql),
-      check.params as never,
-    );
-    if (valid[0]?.valid !== true)
+    if (!(yield* followerViewValid(plan.view)))
       return { kind: "stale" } as FollowerIngestionOutcome;
     const deposits = yield* ingestKind(
       "deposit",
@@ -455,14 +449,29 @@ export const reconcileFollowerEvents = (
  */
 export const followerEligibilityHorizon = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{ ingested_through_ms: string }>`SELECT
-      i.ingested_through_ms::text AS ingested_through_ms
-    FROM follower_event_ingestion i
-    JOIN l1_follower_cursor c ON true
-    WHERE c.generation = i.generation
-      OR EXISTS (SELECT 1 FROM l1_blocks b WHERE b.hash = i.block_hash AND b.slot = i.slot)`;
-  const through = rows[0]?.ingested_through_ms;
-  if (through === undefined) return null;
+  // The ingestion row and its view check read one cursor state.
+  const through = yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const rows = yield* sql<{
+        generation: string;
+        slot: string;
+        block_hash: Buffer;
+        height: string;
+        ingested_through_ms: string;
+      }>`SELECT generation::text AS generation, slot::text AS slot, block_hash,
+          height::text AS height, ingested_through_ms::text AS ingested_through_ms
+        FROM follower_event_ingestion`;
+      const row = rows[0];
+      if (row === undefined) return null;
+      const valid = yield* followerViewValid({
+        generation: Number(row.generation),
+        point: { slot: Number(row.slot), hash: Buffer.from(row.block_hash) },
+        height: Number(row.height),
+      });
+      return valid ? row.ingested_through_ms : null;
+    }),
+  );
+  if (through === null) return null;
   const end = Number(through) + EVENT_WAIT_DURATION_MS - 1;
   if (!Number.isSafeInteger(end))
     return yield* fail(
@@ -473,27 +482,4 @@ export const followerEligibilityHorizon = Effect.gen(function* () {
   return end;
 }).pipe(
   sqlErrorToDatabaseError(table, "Failed to read the follower commit horizon"),
-);
-
-/**
- * The follower's covered tip slot (its store cursor), the node's L1 tip for
- * `l1SlotNow` (see `l1-heads.ts`). Fails while the follower has no cursor.
- */
-export const followerCoveredTipSlot = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{
-    slot: string;
-  }>`SELECT slot::text AS slot FROM l1_follower_cursor`;
-  const slot = rows[0]?.slot;
-  if (slot === undefined)
-    return yield* fail(
-      "l1_follower_cursor",
-      "The L1 follower has no covered tip yet",
-    );
-  return Number(slot);
-}).pipe(
-  sqlErrorToDatabaseError(
-    "l1_follower_cursor",
-    "Failed to read the L1 follower's covered tip",
-  ),
 );

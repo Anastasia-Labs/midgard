@@ -3,7 +3,6 @@ import type { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import type { OperatorWalletView } from "../../operator-wallet-view.js";
 import { HistoryProducer } from "../../services/event-history-producer.js";
 import {
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
@@ -105,7 +104,6 @@ export const buildUnsignedCommitTx = (
   transitionCommitments: SDK.HeaderTransitionCommitments,
   _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
   endDate: Date,
-  initialOperatorWalletView?: OperatorWalletView,
   maximumEndTimeMs?: number,
 ): Effect.Effect<
   CommitBuildResult,
@@ -121,6 +119,10 @@ export const buildUnsignedCommitTx = (
 > =>
   Effect.gen(function* () {
     const journal = yield* IntentJournal;
+    // S5: the plan opens before this build's first L1 read. The caller's
+    // read of `latestBlock` precedes it; that tail is the commit's input, so
+    // the commit lands only on a chain that holds it.
+    const plan = yield* journal.openPlan;
     const history = yield* Effect.serviceOption(HistoryProducer);
     const ownedWindow = Option.isSome(history);
     const checkTimingBudget = ownedWindow
@@ -236,7 +238,6 @@ export const buildUnsignedCommitTx = (
         lucid.api,
         contracts,
         witnessEndTime,
-        witnessContext?.operatorWalletView ?? initialOperatorWalletView,
         lucid.referenceScriptsAddress,
         submitSlotSnapshot,
         false,
@@ -385,6 +386,7 @@ export const buildUnsignedCommitTx = (
         journaledIntent(
           "commit",
           `commit:tail=${latestBlock.utxo.txHash}#${latestBlock.utxo.outputIndex.toString()}`,
+          plan,
           Buffer.from(newHeaderHash, "hex"),
         ),
         submitRecoveryOptions,

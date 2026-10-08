@@ -7,6 +7,9 @@
  * - Every transaction the emulator accepts is captured as its exact bytes;
  *   `follow` applies the ones confirmed since the last call, one block per
  *   emulator block height, with synthetic block hashes.
+ * - A fork is simulated on the follower side: `applyForkBlock` applies a
+ *   block the emulator never sees, and `rewindTo` rolls the follower back
+ *   (what the emulator confirmed is followed again).
  * - The journal records through the production `recordSignedIntent`, on a
  *   node SQL client over the same database, as `IntentJournalLive` does.
  * - The wallet seed is the production seeder's, answered from the
@@ -30,6 +33,7 @@ import {
   type TxSummary,
 } from "@al-ft/midgard-l1-follower";
 import { encodeUtxoAnswer } from "@al-ft/midgard-l1-follower/testing";
+import type * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import {
@@ -40,7 +44,6 @@ import {
   getAddressDetails,
   Lucid,
   type LucidEvolution,
-  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 
@@ -50,9 +53,13 @@ import {
   IntentJournal,
   intentJournalOver,
   type IntentJournalService,
+  type IntentPlan,
 } from "../../src/services/intent-journal.js";
+import { protocolPaymentCredentials } from "../../src/services/intent-journal.tracked-set.js";
 import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
 import { createNodeIntentStage } from "../../src/services/l1-follower.intents.js";
+import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
+import { ledgerOutput } from "./intent-journal-replay.chain.js";
 import type { testDatabases } from "./l1-events-store.js";
 import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
 
@@ -91,15 +98,7 @@ const txSummary = (cbor: Buffer, index: number): TxSummary => {
   };
 };
 
-const simOutputOf = (utxo: UTxO) => ({
-  outRef: { txHash: Buffer.from(utxo.txHash, "hex"), index: utxo.outputIndex },
-  output: {
-    address: addressBytes(utxo.address),
-    lovelace: utxo.assets.lovelace ?? 0n,
-  },
-});
-
-export type IntentEmulator = Awaited<ReturnType<typeof openIntentEmulator>>;
+export type IntentEmulator = Awaited<ReturnType<typeof attachIntentFollower>>;
 
 /**
  * An emulator with the node's own wallet (`own`) and a wallet that only
@@ -119,7 +118,65 @@ export const openIntentEmulator = async (
     lovelace: 50_000_000n,
   });
   const payee = generateEmulatorAccount({ lovelace: 5_000_000n });
-  const emulator = new Emulator([own, payee]);
+  return attachIntentFollower(databases, {
+    emulator: new Emulator([own, payee]),
+    own,
+    payee,
+    nodeSchema: options.nodeSchema,
+  });
+};
+
+/**
+ * The node's follower store and intent journal attached to `emulator` as it
+ * stands (a fixture's deployment, say), tracking `own`'s wallet: the
+ * follower's origin is the emulator's current slot, what the emulator
+ * confirmed before it is history the follower never applies, and the first
+ * `stage.run()` seeds the own wallet from the emulator's ledger. Its
+ * outputs are seeded with their value and datum but no reference script,
+ * so the own wallet must hold none; `payee` only receives.
+ */
+export const attachIntentFollower = async (
+  databases: ReturnType<typeof testDatabases>,
+  options: Readonly<{
+    emulator: Emulator;
+    own: Readonly<{ seedPhrase: string; address: string }>;
+    payee: Readonly<{ seedPhrase: string; address: string }>;
+    nodeSchema?: boolean;
+    /**
+     * The deployed protocol, tracked as the node tracks it (§8.2): its
+     * validators' payment credentials and the hub oracle policy, with the
+     * reference-script addresses seeded beside the own wallet. Its outputs
+     * already on the emulator's ledger are seeded too, standing in for the
+     * history a node following from before protocol init would hold.
+     */
+    protocol?: Readonly<{
+      contracts: SDK.MidgardValidators;
+      referenceScriptAddresses: readonly string[];
+    }>;
+  }>,
+) => {
+  const { emulator, own, payee, protocol } = options;
+  const protocolCredentials = new Set(
+    protocol === undefined
+      ? []
+      : protocolPaymentCredentials(protocol.contracts),
+  );
+  const seededAddresses = [
+    ...new Map(
+      [
+        own.address,
+        ...(protocol?.referenceScriptAddresses ?? []),
+        ...Object.values(emulator.ledger)
+          .filter(({ spent }) => !spent)
+          .map(({ utxo }) => utxo.address)
+          .filter((address) =>
+            protocolCredentials.has(
+              getAddressDetails(address).paymentCredential?.hash ?? "",
+            ),
+          ),
+      ].map((address) => [address, addressBytes(address)]),
+    ).values(),
+  ];
   const accepted = new Map<string, Buffer>();
   const submitTx = emulator.submitTx.bind(emulator);
   emulator.submitTx = async (tx) => {
@@ -127,9 +184,21 @@ export const openIntentEmulator = async (
     accepted.set(hash, Buffer.from(tx, "hex"));
     return hash;
   };
+  /**
+   * The node's wallet. Its slot mapping starts at the emulator's slot 0, as
+   * the fixture's own instances do (an instance made later would start at the
+   * then-current slot, and a validity bound before it is out of range for
+   * local script evaluation).
+   */
   const wallet = async (): Promise<LucidEvolution> => {
-    const lucid = await Lucid(emulator, "Custom");
-    lucid.selectWallet.fromSeed(own.seedPhrase);
+    const lucid = await Lucid(emulator, "Custom", {
+      slotConfig: {
+        zeroTime: emulator.now() - emulator.slot * 1000,
+        zeroSlot: 0,
+        slotLength: 1000,
+      },
+    });
+    selectNodeWallet(lucid, own.seedPhrase);
     return lucid;
   };
   const ownAddress = addressBytes(own.address);
@@ -149,8 +218,12 @@ export const openIntentEmulator = async (
         securityParameter: EMULATOR_K,
         trackedSet: {
           addresses: new Set([ownAddress.toString("hex")]),
-          paymentCredentials: new Set(),
-          policies: new Set(),
+          paymentCredentials: protocolCredentials,
+          policies: new Set(
+            protocol === undefined
+              ? []
+              : [protocol.contracts.hubOracle.policyId],
+          ),
         },
       },
       "postgres",
@@ -165,7 +238,30 @@ export const openIntentEmulator = async (
   if (init.kind !== "initialized") throw new Error(`initialize: ${init.kind}`);
 
   let tip = { hash: origin.hash, height: 0 };
-  const applied = new Set<string>();
+  /** The point of every block applied so far, by height (0: the origin). */
+  const points = new Map([[0, origin]]);
+  /**
+   * Emulator-confirmed hashes applied, and the height each was applied at;
+   * those confirmed before the origin count as applied at it.
+   */
+  const applied = new Map<string, number>(
+    Object.entries(emulator.transactionHistory)
+      .filter(([, status]) => status.status === "confirmed")
+      .map(([hash]) => [hash, 0]),
+  );
+  const applyNext = async (slot: number, txs: readonly Buffer[]) => {
+    const blockHeight = tip.height + 1;
+    const block: BlockSummary = {
+      point: { slot, hash: blockHash(blockHeight) },
+      height: blockHeight,
+      parentHash: tip.hash,
+      txs: txs.map((cbor, index) => txSummary(cbor, index)),
+    };
+    const result = await store.applyBlock(block);
+    if (result.kind !== "applied") throw new Error(`apply: ${result.kind}`);
+    tip = { hash: block.point.hash, height: blockHeight };
+    points.set(blockHeight, block.point);
+  };
   /** Applies the transactions the emulator confirmed since the last call. */
   const follow = async (): Promise<void> => {
     const byHeight = new Map<number, { slot: number; hashes: string[] }>();
@@ -180,23 +276,40 @@ export const openIntentEmulator = async (
       }
     for (const height of [...byHeight.keys()].sort((a, b) => a - b)) {
       const { slot, hashes } = byHeight.get(height)!;
-      const blockHeight = tip.height + 1;
-      const block: BlockSummary = {
-        point: { slot, hash: blockHash(blockHeight) },
-        height: blockHeight,
-        parentHash: tip.hash,
-        txs: hashes.sort().map((hash, index) => {
+      // In the order the emulator accepted them, so a transaction spending
+      // another's output in the same block comes after it.
+      const order = [...accepted.keys()];
+      hashes.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      await applyNext(
+        slot,
+        hashes.map((hash) => {
           const cbor = accepted.get(hash);
           if (cbor === undefined)
             throw new Error(`the emulator confirmed ${hash} unseen`);
-          return txSummary(cbor, index);
+          return cbor;
         }),
-      };
-      const result = await store.applyBlock(block);
-      if (result.kind !== "applied") throw new Error(`apply: ${result.kind}`);
-      for (const hash of hashes) applied.add(hash);
-      tip = { hash: block.point.hash, height: blockHeight };
+      );
+      for (const hash of hashes) applied.set(hash, tip.height);
     }
+  };
+  /**
+   * A fork's block the emulator never sees: `txs` applied to the follower
+   * only, one slot after the emulator's, as the next block.
+   */
+  const applyForkBlock = (txs: readonly Buffer[]) =>
+    applyNext(emulator.slot + 1, txs);
+  /** Rolls the follower back to the block at `height` (0: the origin). */
+  const rewindTo = async (height: number): Promise<void> => {
+    const target = points.get(height);
+    if (target === undefined) throw new Error(`no block at height ${height}`);
+    const result = await store.rewind(target);
+    if (result.kind !== "rewound")
+      throw new Error(`rewind: ${JSON.stringify(result)}`);
+    for (const above of [...points.keys()].filter((h) => h > height))
+      points.delete(above);
+    // The emulator still holds what was rolled back: `follow` applies it again.
+    for (const [hash, at] of applied) if (at > height) applied.delete(hash);
+    tip = { hash: target.hash, height };
   };
 
   const sent: Buffer[] = [];
@@ -230,7 +343,7 @@ export const openIntentEmulator = async (
             .filter((utxo) =>
               wanted.has(addressBytes(utxo.address).toString("hex")),
             );
-          return encodeUtxoAnswer(utxos.map(simOutputOf));
+          return encodeUtxoAnswer(utxos.map(ledgerOutput));
         },
       }),
   };
@@ -249,12 +362,14 @@ export const openIntentEmulator = async (
   const record = (
     ...args: Parameters<IntentJournalService["record"]>
   ): Promise<unknown> => Effect.runPromise(journal.record(...args));
+  /** A family's plan at the follower's cursor now (`openPlan`). */
+  const plan = (): Promise<IntentPlan> => Effect.runPromise(journal.openPlan);
 
   const stage = createNodeIntentStage({
     store,
     transport: transport as never,
     securityParameter: EMULATOR_K,
-    seededAddresses: [ownAddress],
+    seededAddresses,
     wanted: nodeFamilyPredicate({
       store,
       stateQueue: SIM_QUEUE_CONFIG,
@@ -281,9 +396,12 @@ export const openIntentEmulator = async (
     wallet,
     store,
     follow,
+    applyForkBlock,
+    rewindTo,
     sent,
     accepted,
     record,
+    plan,
     journal,
     journalLayer,
     stage,

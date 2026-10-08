@@ -241,8 +241,12 @@ export const collectSqlStateSnapshot = ({
               ),
             ),
         );
+        // An own block's rows stay until its fold is final
+        // (`releaseFinalFolds`): rows a retained fold holds are expected.
         const blockRows = yield* sql<{ readonly header_hash: Buffer }>`
-          SELECT DISTINCT header_hash FROM blocks`;
+          SELECT DISTINCT b.header_hash FROM blocks b
+          WHERE NOT EXISTS (SELECT 1 FROM node_confirmed_merges m
+            WHERE m.header_hash = b.header_hash)`;
         const observerRows = yield* sql<{ readonly state_record: unknown }>`
           SELECT state_record FROM state_queue_terminal_observer_states
           WHERE state_queue_policy_id = ${Buffer.from(stateQueuePolicyId, "hex")}`;

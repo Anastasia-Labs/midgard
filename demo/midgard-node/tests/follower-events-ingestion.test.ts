@@ -10,6 +10,12 @@ import {
   type FactStore,
   type OutRef,
 } from "@al-ft/midgard-l1-follower";
+import {
+  eventProjection,
+  eventsAt,
+  eventTrackedSet,
+  type ProjectedEvent,
+} from "@al-ft/midgard-l1-follower/events";
 import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -21,12 +27,6 @@ import {
   reconcileFollowerEvents,
 } from "../src/database/follower-events.js";
 import type { IngestionPlan } from "../src/l1-events/driver.js";
-import {
-  eventProjection,
-  eventsAt,
-  eventTrackedSet,
-  type ProjectedEvent,
-} from "../src/l1-events/index.js";
 import type { HistoryOwnerChange } from "../src/services/event-history-owner.js";
 import {
   UnownedHistoryFixture,

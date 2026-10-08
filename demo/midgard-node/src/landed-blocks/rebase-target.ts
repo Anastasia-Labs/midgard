@@ -7,16 +7,19 @@
  * rebase (`own-journals.ts`). The rebase cannot run while a journal it keeps
  * is built on anything but `T` (a base it cannot place yet): S6 derives that
  * commit dead or landed. Nor can it run while a pending-table row is marked
- * by a block the target neither holds nor disposes of (this node's block
- * between its local finalization and its processing): that row is neither
- * pending nor in the base until processing takes the block in, or its merge
- * finalization deletes the row.
+ * by a block the target neither holds nor disposes of, nor `confirmed_ledger`
+ * holds (this node's block between its local finalization and its
+ * processing): that row is neither pending nor in the base until processing
+ * takes the block in or the reopening of its journal clears the mark. A
+ * folded block's rows stay marked until its fold is final (`final-folds.ts`);
+ * they are in the base, so they never block.
  */
 import { Effect } from "effect";
 
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
 import type { NativeMpfEventOp } from "../services/mpf-native-owner/service.normalize-owner-options.js";
+import { retrieveMergeLinks } from "./confirmed-merges.js";
 import { activeJournal } from "./journal.js";
 import {
   applyDelta,
@@ -31,6 +34,7 @@ import {
 } from "./own-journals.js";
 import type { OwnJournal } from "./ports.js";
 import { rebaseNeeded } from "./process.js";
+import { type RetiredPlan, retiredPlans } from "./retired-plans.js";
 import { type HeaderRoot, type LandedBlockRow, retrieveRows } from "./store.js";
 
 /** One step of the target: a processed row, or the live own block. */
@@ -54,6 +58,8 @@ export type RebaseTarget = Readonly<{
   live: (OwnJournal & { headerHash: string }) | undefined;
   /** The own journals the rebase disposes of and revives. */
   journals: OwnJournalDisposition;
+  /** The retained plans of retired kinds the rebase discards. */
+  retired: readonly RetiredPlan[];
 }>;
 
 /** The blocked detail while a block the target does not hold marks rows. */
@@ -74,6 +80,7 @@ const targetOn = (
   rows: readonly LandedBlockRow[],
   landed: LandedLedger,
   journals: OwnJournalDisposition,
+  retired: readonly RetiredPlan[],
 ) =>
   Effect.gen(function* () {
     const onChain = new Set(landed.chain.map((row) => row.headerHash));
@@ -126,6 +133,7 @@ const targetOn = (
     const held = new Set([
       ...steps.map((step) => step.headerHash),
       ...disposed,
+      ...(yield* retrieveMergeLinks).keys(),
     ]);
     const unheld = (yield* MempoolInclusionsDB.markingHeaders).find(
       (headerHash) => !held.has(headerHash),
@@ -137,7 +145,7 @@ const targetOn = (
       } satisfies RebasePlan;
     return {
       kind: "ready",
-      target: { rows, landed, steps, tip, live, journals },
+      target: { rows, landed, steps, tip, live, journals, retired },
     } satisfies RebasePlan;
   });
 
@@ -153,25 +161,31 @@ export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
       rows,
       landed,
       yield* ownJournalDisposition(rows, landed),
+      yield* retiredPlans,
     );
   });
 
 /**
  * Reads the rebase target, and whether a rebase is due (a landed row the
- * working ledger does not match, or an own journal to dispose of) and can
- * run.
+ * working ledger does not match, an own journal to dispose of, or a
+ * retained plan of a retired kind, `retired-plans.ts`) and can run.
  */
 export const rebasePlan = Effect.gen(function* () {
   const rows = yield* retrieveRows;
+  const retired = yield* retiredPlans;
   const landed = yield* landedLedger(rows);
   if (landed === undefined)
-    return rebaseNeeded(rows)
+    return rebaseNeeded(rows) || retired.length > 0
       ? (NO_FRONTIER as RebasePlan)
       : ({ kind: "none" } satisfies RebasePlan);
   const journals = yield* ownJournalDisposition(rows, landed);
-  if (!rebaseNeeded(rows) && journals.dispose.length === 0)
+  if (
+    !rebaseNeeded(rows) &&
+    journals.dispose.length === 0 &&
+    retired.length === 0
+  )
     return { kind: "none" } satisfies RebasePlan;
-  return yield* targetOn(rows, landed, journals);
+  return yield* targetOn(rows, landed, journals, retired);
 });
 
 /** A step's MPF mutation: its spends and replaced outputs, then its outputs. */

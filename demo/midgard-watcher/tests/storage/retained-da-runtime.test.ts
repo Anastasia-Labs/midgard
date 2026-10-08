@@ -277,18 +277,6 @@ describe("explicit Custom DA transport", () => {
             genesisConfigPath: "/etc/cardano/shelley-genesis.json",
             genesisIdentitySha256: "33".repeat(32),
           },
-          queryServices: [
-            {
-              kind: "ogmios",
-              identity: "local-ogmios",
-              endpoint: "ws://127.0.0.1:1337",
-            },
-            {
-              kind: "kupo",
-              identity: "local-kupo",
-              endpoint: "http://127.0.0.1:1442",
-            },
-          ],
         },
       },
     });

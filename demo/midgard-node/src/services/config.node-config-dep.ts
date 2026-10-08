@@ -197,6 +197,9 @@ export type NodeConfigDep = {
    * due event comes from the last d blocks. Operator config, not a deployment
    * profile field; 0 reads nothing and keeps the unlagged horizon. */
   HISTORY_COMMIT_HORIZON_LAG_BLOCKS: number;
+  /** The node-behind bound in ms (`config.node-behind.ts`): the follower's
+   * `l1_node_behind` reason and the hold on the node's own sends. */
+  L1_NODE_BEHIND_MAX_MS: number;
   /** Explicit housekeeping window in days; undefined when unset, which means
    * the verified deployment manifest's window (`resolveHousekeepingRetentionDays`). */
   RETENTION_DAYS: number | undefined;

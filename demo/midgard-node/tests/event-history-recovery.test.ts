@@ -13,7 +13,7 @@ import {
   makeMempoolLedgerCacheService,
   type MempoolLedgerCacheService,
 } from "../src/services/mempool-ledger-cache.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const deploymentIdentity = "a1".repeat(32);
 const capture = {
@@ -76,14 +76,7 @@ beforeAll(async () =>
     }),
   ),
 );
-beforeEach(async () =>
-  run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE event_history_authority, history_recovery_probe`;
-    }),
-  ),
-);
+beforeEach(async () => run(resetApplicationTables));
 afterAll(async () =>
   run(
     Effect.gen(function* () {

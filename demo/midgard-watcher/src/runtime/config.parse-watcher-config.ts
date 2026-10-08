@@ -13,7 +13,6 @@ import {
   fail,
   HEX_32_PATTERN,
   plainRecord,
-  WATCHER_CARDANO_SECURITY_PARAMETER_K,
   WATCHER_CONFIG_BOUNDS,
   WATCHER_CONFIG_SCHEMA_VERSION,
   type WatcherConfig,
@@ -83,28 +82,12 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     ...(hasL1Origin ? ["origin"] : []),
   ]);
   const origin = hasL1Origin ? parseWatcherL1Origin(l1.origin) : undefined;
-  const finality = exactRecord(l1.finality, "$.l1.finality", [
-    "depth",
-    "rollback",
-  ]);
-  const rollback = exactRecord(finality.rollback, "$.l1.finality.rollback", [
-    "beforeFinality",
-    "afterFinality",
-    "maxDepth",
-  ]);
+  const finality = exactRecord(l1.finality, "$.l1.finality", ["depth"]);
   const finalityDepth = boundedInteger(
     finality.depth,
     "$.l1.finality.depth",
     WATCHER_CONFIG_BOUNDS.finalityDepth,
   );
-  const rollbackMaxDepth = boundedInteger(
-    rollback.maxDepth,
-    "$.l1.finality.rollback.maxDepth",
-    WATCHER_CONFIG_BOUNDS.rollbackDepth,
-  );
-  if (rollbackMaxDepth > finalityDepth) {
-    fail("out_of_bounds", "$.l1.finality.rollback.maxDepth");
-  }
   const l1RequestTimeoutMs = boundedInteger(
     l1.requestTimeoutMs,
     "$.l1.requestTimeoutMs",
@@ -199,13 +182,11 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     fail("secret_source_alias", "$.storage.rollbackAuthorityKeySource");
   }
 
-  const source = parseL1Source(l1.source, mode);
+  const source = parseL1Source(l1.source);
   const customNetwork =
     targetNetwork === "Custom"
       ? parseWatcherCustomNetwork(root.customNetwork)
       : undefined;
-  if (customNetwork !== undefined && source.sourceMode !== "local_node")
-    fail("invalid_configuration", "$.l1.source");
   const admitted = Object.freeze({
     schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
     mode,
@@ -220,23 +201,7 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
         "$.l1.maxConcurrency",
         WATCHER_CONFIG_BOUNDS.concurrency,
       ),
-      finality: Object.freeze({
-        depth: finalityDepth,
-        rollback: Object.freeze({
-          beforeFinality: enumValue(
-            rollback.beforeFinality,
-            "$.l1.finality.rollback.beforeFinality",
-            ["rewind"] as const,
-          ),
-          afterFinality: enumValue(
-            rollback.afterFinality,
-            "$.l1.finality.rollback.afterFinality",
-            ["quarantine"] as const,
-          ),
-          maxDepth: rollbackMaxDepth,
-          postFinalityRecoveryMaxDepth: WATCHER_CARDANO_SECURITY_PARAMETER_K,
-        }),
-      }),
+      finality: Object.freeze({ depth: finalityDepth }),
     }),
     da: Object.freeze({
       peers: parseDaPeers(da.peers, targetNetwork),

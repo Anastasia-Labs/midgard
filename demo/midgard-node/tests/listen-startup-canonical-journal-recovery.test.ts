@@ -199,10 +199,11 @@ describe("startup over a replaced block reported on the queue", () => {
       Effect.gen(function* () {
         yield* seedReplacedPair(Pending.Status.Abandoned);
         const canonicalHeaders = yield* queueOf(E_HEADER);
-        // A transient: the siblings read is refused.
+        // A transient: the tip journal's read is refused (the replaced
+        // block itself is left to the landed-block rebase without a read).
         const sql = yield* SqlClient.SqlClient;
         yield* sql`ALTER TABLE pending_block_finalizations RENAME TO lf_job_hidden`;
-        const outcome = yield* recover(canonicalHeaders, Option.none());
+        const outcome = yield* recover(canonicalHeaders, Option.some(E_HEADER));
         yield* sql`ALTER TABLE lf_job_hidden RENAME TO pending_block_finalizations`;
         return outcome;
       }),

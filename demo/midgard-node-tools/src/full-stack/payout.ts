@@ -1,18 +1,18 @@
-import {
-  createLocalKupmiosHttpOgmiosRawSource,
-  readAdmittedLocalKupmiosSignedTransactionRecovery,
-} from "@al-ft/midgard-fault-proofs";
-import { watcherDeploymentReleaseFinalityAuthority } from "midgard-watcher";
+import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import JSONBig from "json-bigint";
 
+import { openAcceptanceNativeSession } from "../devnet-stack/acceptance-native-session.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
 import {
   includedPayout,
   payoutConclusion,
+  payoutOutRef,
   type SettlementObservation,
 } from "./payout-body.js";
 import { poll, type StackProcesses } from "./process.js";
-import { verifyStackRelease } from "./release.js";
+
+const json = JSONBig({ useNativeBigInt: true, strict: true });
 
 export async function settlementEvidence(
   processes: StackProcesses,
@@ -42,25 +42,49 @@ export async function settlementEvidence(
   ])) as SettlementObservation;
 }
 
+/** One bounded Ogmios read of the payout output reference at the local node's tip. */
+async function queryPayoutOutput(
+  endpoint: string,
+  outRef: { txHash: string; outputIndex: number },
+) {
+  const scope = createDaAvailabilityReadScope({
+    deadlineEpochMs: Date.now() + 30_000,
+    attemptTimeoutMs: 30_000,
+  });
+  try {
+    const session = await openAcceptanceNativeSession({
+      endpoint,
+      scope,
+      parseJson: (text) => json.parse(text),
+    });
+    try {
+      return await session.request("queryLedgerState/utxo", {
+        outputReferences: [
+          { transaction: { id: outRef.txHash }, index: outRef.outputIndex },
+        ],
+      });
+    } finally {
+      await session.close();
+    }
+  } finally {
+    scope.close();
+  }
+}
+
+/**
+ * Waits until the withdrawal's single confirmed conclusion is on L1 with the
+ * exact payout output. A provider that cannot answer yet is waited out, never
+ * a failure; a conclusion that is not the exact payout is refused.
+ */
 export async function awaitExactPayout(
   processes: StackProcesses,
   eventId: string,
   address: string,
   assets: Record<string, string>,
 ) {
-  const authority = await verifyStackRelease(processes);
-  const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
-    authority.deploymentIdentity,
-  ).verifyForWorkflow({
-    deploymentFingerprint: authority.deploymentIdentity.manifestId,
-  });
-  const source = createLocalKupmiosHttpOgmiosRawSource({
-    sourceId: "full-stack-payout-verification",
-    kupoHttpUrl: processes.env.L1_KUPO_KEY!,
-    ogmiosUrl: processes.env.L1_OGMIOS_KEY!,
-    releaseFinality,
-    timeoutMs: 30_000,
-  });
+  // The session dials loopback addresses only; the configured URL is already local.
+  const endpoint = new URL(processes.env.L1_OGMIOS_KEY!);
+  if (endpoint.hostname === "localhost") endpoint.hostname = "127.0.0.1";
   return poll(
     "exact canonical withdrawal payout",
     processes.config.timeoutMs,
@@ -68,18 +92,12 @@ export async function awaitExactPayout(
       const status = await settlementEvidence(processes, "withdrawal", eventId);
       const attempt = payoutConclusion(status);
       if (attempt === undefined) return undefined;
-      const observation =
-        await readAdmittedLocalKupmiosSignedTransactionRecovery({
-          source,
-          transactionHash: attempt.txHash,
-          signedTransactionCborHex: attempt.signedCbor,
-        });
-      const output = includedPayout(
-        attempt,
-        observation.status,
-        address,
-        assets,
+      const outRef = payoutOutRef(attempt, address, assets);
+      const frame = await queryPayoutOutput(endpoint.href, outRef).catch(
+        () => undefined,
       );
+      if (frame === undefined) return undefined;
+      const output = includedPayout(outRef, address, frame);
       if (output === undefined) return undefined;
       return {
         eventId,
@@ -87,7 +105,6 @@ export async function awaitExactPayout(
         outputIndex: output.outputIndex,
         address,
         assets,
-        observation,
       };
     },
   );

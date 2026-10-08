@@ -235,6 +235,31 @@ export const listWatcherProofObjectives = (
   );
 };
 
+/** The objective's completion marker when its row holds one that matches
+ * this exact execution under the current k (`watcherProofMarkerMatches`),
+ * else null. A row that does not parse refuses the journals. */
+export const matchingWatcherProofMarker = (
+  database: WatcherJournalDatabase,
+  objective: WatcherProofObjective,
+  execution: WatcherProofExecution,
+  securityParameter: number | undefined,
+  categories: readonly WatcherInstalledWorkflowCategory[],
+): WatcherProofCompletionMarker | null => {
+  const scope = watcherObjectiveScope(objective.category, objective.headerHash);
+  const row = database.row(JOURNAL, scope);
+  if (row?.state !== "marked") return null;
+  const { marker } = parseRow(
+    row.body,
+    row.state,
+    new Set<string>(categories),
+    (detail) => database.refuse(JOURNAL, detail),
+  );
+  return marker !== null &&
+    watcherProofMarkerMatches(marker, execution, securityParameter)
+    ? marker
+    : null;
+};
+
 /**
  * Deletes the objective's row and its queued jobs in one commit; a prune
  * also deletes its fault decisions. The caller removes the workflow

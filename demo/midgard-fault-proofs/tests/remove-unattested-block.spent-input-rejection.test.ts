@@ -5,9 +5,9 @@
  * spent-or-unknown-input refusals (the emulator's, Ogmios 3117, the ledger's
  * `BadInputsUTxO`) and nothing else.
  */
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { expect, it } from "vitest";
 
-import { isSpentInputSubmitRejection } from "../src/remove-unattested-block.js";
 import { emulatorDoubleSpendRefusal } from "./support/emulator/double-spend-refusal.js";
 
 const OGMIOS_3117 =

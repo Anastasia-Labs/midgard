@@ -35,9 +35,9 @@ import { classifyForcedTransactions } from "midgard-node/mpf/event-window.classi
 import { evaluateNormalBlockCandidates } from "midgard-node/mpf/process.evaluate-normal-block-candidates";
 import { buildDeterministicValidationTraceMembers } from "midgard-node/mpf/validation-trace";
 
-import { watcherForcedOperatorVerdict } from "../../src/indexers/user-event-indexer.js";
 import { replayForcedTransitionEffect } from "../../src/verification/block-replay.replay-forced-transition-effect.js";
 import { type ValidatedEventAuthority } from "../../src/verification/block-replay.watcher-block-replay-prior-state.js";
+import { watcherForcedOperatorVerdict } from "../../src/verification/user-event.js";
 
 export const context = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,

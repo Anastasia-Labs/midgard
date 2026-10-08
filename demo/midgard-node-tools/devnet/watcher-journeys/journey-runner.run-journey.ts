@@ -88,13 +88,12 @@ export const runJourney = async (
         await pause(1000);
       }
     });
-  // A stage that waits on the watcher's authenticated replay is budgeted by
-  // progress, not by wall clock. The watcher resumes from its last persisted
-  // state-queue observation and walks every later L1 block through the
-  // trusted-head authority before it can classify a header, so a long L1 gap
-  // (a node outage, a frozen devnet) legitimately takes hours. The stage fails
-  // only when the authority head stops advancing for the whole allowance; the
-  // journey timeout still bounds the total.
+  // A stage that waits on the watcher's L1 catch-up is budgeted by progress,
+  // not by wall clock. The watcher's follower walks every L1 block it missed
+  // before it can classify a header, so a long L1 gap (a node outage, a frozen
+  // devnet) legitimately takes hours. The stage fails only when the watcher's
+  // progress stops for the whole allowance; the journey timeout still bounds
+  // the total.
   const pollWhileReplaying = async <T>(
     name: string,
     action: () => Promise<T | undefined>,
@@ -232,14 +231,13 @@ export const runJourney = async (
       }),
     );
     const running = await session.ensureWatcher();
-    const { config, requireLive, operations, trustedHeadRevision } = running;
+    const { config, requireLive, operations, watcherProgress } = running;
     diagnostics = running.diagnostics;
     const verifiedHeaders = createJourneyVerifiedHeaders(running, directory);
     const workflowBaseline = baseline?.get(staged.current.headerHash) ?? [];
     await writeJourneyArtifact(join(directory, "session.json"), {
       sessionDirectory: session.directory,
       watcherUse: reusedWatcher ? "reused" : "started",
-      authorityProcess: session.authorityObserve(),
       configPath: running.configPath,
       bindingPreflightPath: join(
         session.directory,
@@ -283,10 +281,9 @@ export const runJourney = async (
         }
         return status;
       },
-      // A watcher resuming after a long L1 outage replays every block it
-      // missed during user-event catch-up before it serves its operations
-      // endpoint, so the launcher is budgeted by trusted-head progress.
-      trustedHeadRevision,
+      // A watcher resuming after a long L1 outage catches up on every block it
+      // missed, so the launcher is budgeted by its progress.
+      watcherProgress,
       WATCHER_LAUNCH_TIMEOUT_MS,
     );
     // The watcher holds the journal key; its rows are read as evidence.
@@ -394,7 +391,7 @@ export const runJourney = async (
         });
         return decision;
       },
-      trustedHeadRevision,
+      watcherProgress,
       timing?.allowances.healthySuccessorObservationMs ?? 1_800_000,
     );
     await verifiedHeaders.retain();

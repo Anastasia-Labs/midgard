@@ -18,7 +18,7 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import { WATCHER_ROLLBACK_BOUNDS } from "../l1/rollback-engine/types.js";
+import { WATCHER_CARDANO_SECURITY_PARAMETER_K } from "../runtime/config.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
@@ -302,6 +302,21 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
       writeSummary(key, unresolvedLegacy);
     },
     ...operationDoors,
+    /**
+     * Whether a proof was handed a challenge built from this identity's
+     * transcript and has not finished: a workflow may have journaled that
+     * challenge's digest.
+     */
+    proofOperationOpen: async (
+      identity: WatcherReplayTranscriptIdentity,
+    ): Promise<boolean> =>
+      transaction("BEGIN", () => {
+        const key = identityKey(identity);
+        audit(key);
+        return check(key).some(
+          (pin) => pin.proof_started === 1 && pin.completed_slot === null,
+        );
+      }),
     resetRetirementWitnesses: async (): Promise<void> =>
       transaction("BEGIN IMMEDIATE", () => absence.clear()),
     retireExpired: async (
@@ -354,7 +369,7 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
               (node) => node.headerHash === fields[1],
             ) ||
             BigInt(observation.nativePoint.blockNo) - BigInt(fields[4]!) <=
-              WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth
+              BigInt(WATCHER_CARDANO_SECURITY_PARAMETER_K)
           ) {
             absence.clear(key);
             continue;

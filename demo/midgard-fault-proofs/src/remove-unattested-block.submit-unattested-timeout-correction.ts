@@ -1,3 +1,4 @@
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import {
   DA_ATTESTATION_TIMEOUT_MS,
   fetchCorrectionLockUTxOProgram,
@@ -35,11 +36,11 @@ import {
   type SubmitUnattestedTimeoutCorrectionResult,
 } from "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
 import {
-  isSpentInputSubmitRejection,
   recoverTimeoutCorrectionAttempt,
   resolveTimeoutCorrectionValidityRange,
   type SubmitUnattestedTimeoutCorrectionParams,
   TimeoutCorrectionAttemptInFlightError,
+  timeoutCorrectionWallet,
   unjournaledTimeoutCorrectionObserver,
 } from "./remove-unattested-block.recover-timeout-correction-attempt.js";
 import {
@@ -71,6 +72,7 @@ export const submitUnattestedTimeoutCorrection = async ({
   stateQueueMutationLeaseCoordinator,
   recovery,
   attemptReadSchedule,
+  wallet,
 }: SubmitUnattestedTimeoutCorrectionParams): Promise<SubmitUnattestedTimeoutCorrectionResult> => {
   signer.selectWallet(lucid);
   const deploymentInfo = parseContractDeploymentInfo(rawDeploymentInfo);
@@ -361,8 +363,8 @@ export const submitUnattestedTimeoutCorrection = async ({
         throw new Error(
           "Timeout target attestation or immutable deadline changed before signing.",
         );
-      lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
-      const walletUtxos = await lucid.wallet().getUtxos();
+      const funding = timeoutCorrectionWallet(lucid, wallet);
+      const walletUtxos = await funding.utxos();
       const feeInput = selectFeeInput(walletUtxos);
       const correctionLockInput = await loadCorrectionLock();
       if (
@@ -429,8 +431,8 @@ export const submitUnattestedTimeoutCorrection = async ({
             );
       const unsigned = await tx
         .addSignerKey(signer.paymentKeyHash)
-        .complete({ localUPLCEval: true });
-      const signed = await unsigned.sign.withWallet().complete();
+        .complete({ localUPLCEval: true, presetWalletInputs: walletUtxos });
+      const signed = await funding.sign(unsigned);
       const txHash = signed.toHash();
       const signedCbor = signed.toCBOR();
       const inspected = inspectSignedWorkflowTransaction({

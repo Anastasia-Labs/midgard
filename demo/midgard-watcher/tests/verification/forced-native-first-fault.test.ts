@@ -5,9 +5,9 @@ import {
 } from "@al-ft/midgard-validation/tests/forced-native-first-fault-fixture";
 import { expect, it } from "vitest";
 
-import { watcherForcedOperatorVerdict } from "../../src/indexers/user-event-indexer.js";
 import { replayForcedTransitionEffect } from "../../src/verification/block-replay.replay-forced-transition-effect.js";
 import type { ValidatedEventAuthority } from "../../src/verification/block-replay.watcher-block-replay-prior-state.js";
+import { watcherForcedOperatorVerdict } from "../../src/verification/user-event.js";
 
 it.each([
   "present",

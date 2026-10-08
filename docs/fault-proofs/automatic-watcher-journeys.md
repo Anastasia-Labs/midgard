@@ -967,32 +967,30 @@ stream budget resets heartbeats before negotiation and makes the monitor abort
 otherwise healthy connections. The retained listener keeps its DA protocol
 allowlist, aggregate admission bounds and outbound dialing restrictions.
 
-The read-only `reference-acquisition-live.test.ts` checks every retained
-reference output against its canonical bytes through the actual Kupo/Ogmios
-configuration. Ogmios acquisition allows four physical sessions per endpoint;
-closing connections retain their capacity until closure is observed.
-`l1-events-live.test.ts` also captures the real trace event history across an
+Three journeys were deleted with the watcher's trusted-head authority and
+Kupo/Ogmios query services: `reference-acquisition-live.test.ts`,
+`observation-lifecycle-live.test.ts` and `transaction-recovery-live.test.ts`
+(since deleted). <!-- doc-links:historical --> They checked retained reference
+bytes, long-lived query-service connections and the signed-intent reader
+against Kupo and Ogmios. The watcher now reads L1 only through its own node's
+follower, and `signed-transaction-recovery.test.ts` covers the journeys' local
+signed-transaction classification.
+
+`l1-events-live.test.ts` captures the real trace event history across an
 actual producer head advance. A typed Kupo head change discards the entire
 unpublished snapshot and retries from a fresh release-final boundary, at most
 three attempts. Partial reads never carry into another attempt. Explicit
 canonical disagreement and other acquisition errors remain distinct failures.
 
-`observation-lifecycle-live.test.ts` holds a real finalized observation for 330
-seconds before resolving its block. It records native, Kupo and Ogmios transport
-liveness separately, covering the connection age that short backfill tests miss.
-It does not submit transactions or change the retained watcher database.
-Local query authority renews its endpoint connections every 30 seconds while the
-old connection and native authority are still live. Each service owns at most
-one current connection and one renewal candidate; it waits for physical closure
-before another renewal. Lost or revoked authority is never revived. A closed
-transport and an endpoint mismatch have separate diagnostics.
-
-`transaction-recovery-live.test.ts` uses the production signed-intent reader to
-check a never-submitted expired transaction, a valid transaction absent from the
-real mempool, and a recorded transaction already included on chain. It signs
-with an independent plain-Ada publisher input but submits nothing. The recorded
-inclusion case remains reusable after the workflow clears its pending funding
-state. These source checks do not replace full workflow recovery acceptance.
+Signed journey transactions are recovered from the run's own node. One bounded
+Ogmios read takes the tip, the transaction's inputs and outputs, and the tip
+again. An output in the ledger, or the session's native recorder having seen
+the transaction, means it was included. Every input unspent with the TTL
+reached means it expired; every input unspent with the TTL ahead allows
+rebroadcast of the same bytes. A spent input is invalidation only when the
+recorder proves the transaction was not included through the read; otherwise
+the attempt stays pending. A node that cannot answer leaves the attempt
+unsettled.
 
 The CLI emits structured startup phase records before its operations endpoint is
 available. Pending records report elapsed time every 30 seconds; completed and
@@ -1012,7 +1010,11 @@ diagnostics never assert whole-watcher readiness.
 `journey.test.ts` lazily opens one `JourneySession` from `journey-session.ts` for
 the selected sequential families and closes it in the suite's `afterAll` hook.
 The session owns the deployment context, independent native recorder, retained
-DA server, authenticated history archives, trusted-head authority and installed watcher. Later families reuse these running services.
+DA server, authenticated history archives and installed watcher. Later families
+reuse these running services. The session creates the watcher's rollback,
+prover and availability secrets under the run's `secrets/` directory only while
+the shared runtime is fresh; once the runtime exists, a missing secret is
+refused rather than regenerated.
 The native recorder replays from origin once per session; a new process still
 authenticates its history and resumes the existing durable runtime. A standalone
 runner call owns and closes its own session.
@@ -1028,9 +1030,9 @@ Enterprise addresses. Address-scoped selection isolates their UTxOs even where
 they share a payment key; the session requires no wallet pause API.
 
 New session artifacts live under `work/journeys/sessions/session-*`: process
-configuration, binding preflight, `authority.log`, `start.log`, restart records,
-session `timings.ndjson`, and the shared `native-chain.ndjson`. Persistent watcher,
-availability, trusted-head and workflow state remains in `work/journeys/runtime`.
+configuration, binding preflight, `start.log`, restart records, session
+`timings.ndjson`, and the shared `native-chain.ndjson`. Persistent watcher,
+availability and workflow state remains in `work/journeys/runtime`.
 Each family keeps its own staging, correction, successor, result and timing
 artifacts. Its `session.json` identifies the session, process, configuration,
 binding receipt and native evidence path; `workflow-baseline.json` records the
@@ -1603,13 +1605,11 @@ terminal result with the funding release, so recovery cannot reopen released
 inputs. An expiry/absence result needs the same interruption analysis before
 discarding pending transaction context.
 
-The real-node `transaction-recovery-live.test.ts` gate reads a never-submitted
-expired transaction, valid transactions with and without expiry absent from the
-node's mempool, and an already included recorded workflow transaction. It retains
-the exact signed transaction for rechecking after workflow completion and uses the runtime's admitted
-source and signs diagnostic intents without submitting them. This establishes
-the adapter's expiry and rebroadcast eligibility decisions; actual rebroadcast,
-crash recovery and complete proof evidence remain separate gates.
+The real-node `transaction-recovery-live.test.ts` gate (since deleted) read a
+never-submitted expired transaction, valid transactions absent from the node's
+mempool, and an already included recorded workflow transaction. <!-- doc-links:historical -->
+It went with the Kupo/Ogmios query services. Actual rebroadcast, crash recovery
+and complete proof evidence remain separate gates.
 
 A frozen standalone producer has the actual consensus forecast horizon derived
 from `3*k/f` (129,600 one-second slots for this profile). Phase 4 refuses a restore

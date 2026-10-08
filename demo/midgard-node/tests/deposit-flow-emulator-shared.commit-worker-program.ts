@@ -147,17 +147,14 @@ export const alignCommitSchedulerBeforeTestWorker = async ({
 }) => {
   let lastDueWork: SlotAwareDueWork | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    // Production selects a fresh operator wallet before every pre-lease
-    // alignment (planPreLeaseCommitSchedulerDueWork), which drops the wallet
-    // view a confirmed submission pinned. Without it, a later refresh reads a
-    // pin that an earlier no-confirmation refresh already spent.
+    // Production selects the operator wallet before every pre-lease
+    // alignment (planPreLeaseCommitSchedulerDueWork).
     await Effect.runPromise(lucidService.switchToOperatorsMainWallet);
     const alignment = await runWithoutFollower(
       fetchRealStateQueueWitnessContext(
         lucidService.api,
         fixture.contracts,
         targetEndTimeMs,
-        undefined,
         lucidService.referenceScriptsAddress,
         lucidService.submitSlotSnapshot,
         true,

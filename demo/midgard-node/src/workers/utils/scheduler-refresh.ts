@@ -9,7 +9,6 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../lucid-time.js";
-import "../../operator-wallet-view.js";
 import "../../transactions/reference-scripts.js";
 import "../../transactions/submit-timing.js";
 import "../../transactions/submit-timing-due-work.js";

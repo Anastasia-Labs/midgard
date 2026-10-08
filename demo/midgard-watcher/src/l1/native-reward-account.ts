@@ -11,7 +11,7 @@ import {
 import {
   deriveWatcherNativeGenesisIdentity,
   type WatcherNativeNodeConfig,
-} from "./native-chain-sync.js";
+} from "./native-chain-sync.derive-watcher-native-genesis-identity.js";
 
 export type WatcherNativeRewardAccountQuery = Readonly<{
   watcherConfig: WatcherNativeNodeConfig;
@@ -33,10 +33,6 @@ const watcherNativeLedgerAuthority = async (
   input: WatcherNativeRewardAccountQuery,
 ): Promise<NativeLedgerAuthority> => {
   const source = input.watcherConfig.l1.source;
-  if (source.sourceMode !== "local_node")
-    throw new Error(
-      "Native reward-account query requires local-node authority",
-    );
   const identity = await deriveWatcherNativeGenesisIdentity(input);
   return {
     authorityNodeId: source.authorityNodeId,

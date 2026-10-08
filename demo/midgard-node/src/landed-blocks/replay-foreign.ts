@@ -19,6 +19,8 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { reconstructMidgardTransaction } from "@al-ft/midgard-core/consensus-validation";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import type { FactStore, View } from "@al-ft/midgard-l1-follower";
+import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
+import { eventsAt } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
@@ -38,9 +40,7 @@ import {
   forcedOrdersAdmittedAt,
   outRefLabel,
 } from "../forced-orders/index.js";
-import type { EventProjectionConfig } from "../l1-events/config.js";
 import { userEventEntry } from "../l1-events/entries.js";
-import { eventsAt } from "../l1-events/reads.js";
 import {
   canonicalSlotConfigForLucid,
   unixTimeToSlotForConfig,

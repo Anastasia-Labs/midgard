@@ -98,6 +98,7 @@ const following: FollowStatus = {
   tip: null,
   atTip: true,
   node: null,
+  nodeBehind: null,
   replaying: false,
   events: 0,
   lastError: null,
@@ -106,7 +107,7 @@ const following: FollowStatus = {
     prunedThroughSlot: null,
     lastError: null,
     failures: 0,
-    floorLagSlots: null,
+    floorLags: [],
   },
   readiness: [],
 };

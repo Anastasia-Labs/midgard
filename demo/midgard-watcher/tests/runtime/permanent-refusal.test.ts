@@ -36,10 +36,7 @@ const processConfig = async (): Promise<WatcherProcessConfig> => {
 type RawWatcherConfig = Readonly<{
   l1: Readonly<{
     requestTimeoutMs: number;
-    finality: Readonly<{
-      depth: number;
-      rollback: Readonly<{ maxDepth: number }>;
-    }>;
+    finality: Readonly<{ depth: number }>;
   }>;
 }>;
 
@@ -121,14 +118,7 @@ describe("permanent refusal exit code", () => {
       ...raw,
       l1: {
         ...raw.l1,
-        finality: {
-          ...finality,
-          depth: finality.depth + 1,
-          rollback: {
-            ...finality.rollback,
-            maxDepth: finality.rollback.maxDepth + 1,
-          },
-        },
+        finality: { ...finality, depth: finality.depth + 1 },
       },
     });
     await writeFile(config.watcherRuntimeConfigPath, text);

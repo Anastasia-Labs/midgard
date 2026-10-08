@@ -49,19 +49,6 @@ const observation = (
   signedTransactionCborHex: attempt.signedCbor,
   status,
   reason: `authenticated ${status}`,
-  canonicalPoint: {
-    pointId: "aa".repeat(32),
-    blockHash: "aa".repeat(32),
-    blockNo: "100",
-    slot: "1000",
-  },
-  releaseFinalPoint: {
-    pointId: "bb".repeat(32),
-    blockHash: "bb".repeat(32),
-    blockNo: "70",
-    slot: "700",
-  },
-  inputs: [],
 });
 const fixture = async (confirmed = false) => {
   const directory = await mkdtemp(join(tmpdir(), "forced-order-recovery-"));
@@ -194,7 +181,7 @@ it.each(["expired", "invalidated"] as const)(
   },
 );
 
-it.each(["pending", "unknown"] as const)(
+it.each(["pending"] as const)(
   "retains %s bytes without constructing another order",
   async (status) => {
     const f = await fixture();

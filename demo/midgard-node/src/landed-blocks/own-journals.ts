@@ -8,7 +8,7 @@
  * exclusive on chain.
  *
  * A journal neither abandoned nor taken in by a processed landed row (nor
- * the frontier, nor merged and finalized here) is disposed of when
+ * the frontier, nor folded into `confirmed_ledger` here) is disposed of when
  *
  * - (i) a rollback took its block off the landed chain (a `removed` row);
  * - (ii) S6 derives its signed commit dead (`isDeadStatus`) at the
@@ -52,6 +52,7 @@ import { ACTIVE_STATUSES } from "../database/pendingBlockFinalizations.columns.j
 import { DatabaseError } from "../database/utils/common.js";
 import { signedIntentReplacementDigest } from "../services/canonical-journal-recovery.js";
 import { readIntentStatus } from "../services/intent-journal.js";
+import { retrieveMergeLinks } from "./confirmed-merges.js";
 import type { LandedLedger } from "./ledger.js";
 import type { LandedBlockRow } from "./store.js";
 
@@ -169,11 +170,15 @@ export const ownJournalDisposition = (
     }>`SELECT header_hash, base_tail_header_hash, status, intended_tx_hash
       FROM pending_block_finalizations WHERE status <> ${Status.Abandoned}
       ORDER BY created_at, header_hash`;
+    const folded = yield* retrieveMergeLinks;
     const candidates: Candidate[] = [];
     for (const row of raw) {
       const headerHash = row.header_hash.toString("hex");
       if (processed.has(headerHash)) continue;
       if (headerHash === landed.frontier.headerHash) continue;
+      // Folded into `confirmed_ledger` here: a retained fold (an unfold
+      // makes its row processed again), or the merge fiber's finalization.
+      if (folded.has(headerHash)) continue;
       if (row.status === Status.LocallyApplied) {
         const merged = yield* MutationJobsDB.retrieveByJobId(
           MutationJobsDB.confirmedMergeFinalizationJobId(headerHash),

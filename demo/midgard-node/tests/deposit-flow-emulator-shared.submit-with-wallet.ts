@@ -108,7 +108,6 @@ export const isPlainPureAdaUtxo = (utxo: UTxO): boolean =>
 export const ensureSeparateCollateralUtxo = async (
   lucid: LucidEvolution,
 ): Promise<void> => {
-  await refreshWalletUtxosFromProvider(lucid);
   const walletAddress = await lucid.wallet().address();
   const pureAdaUtxos = (await providerVisibleWalletUtxos(lucid))
     .filter(isPlainPureAdaUtxo)
@@ -128,23 +127,37 @@ export const ensureSeparateCollateralUtxo = async (
   if (source === undefined) {
     throw new Error("Operator wallet has no pure ADA UTxO to split");
   }
-  const splitTx = await lucid
-    .newTx()
-    .collectFrom([source])
-    .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
-    .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
-    .addSigner(walletAddress)
-    .complete({ localUPLCEval: true });
-  await submitWithWallet(lucid, splitTx);
+  // Node programs read the wallet afresh and maintain no pin, so a pin left
+  // here would go stale at their next spend; it lasts for this build only.
   await refreshWalletUtxosFromProvider(lucid);
+  let splitTx: TxSignBuilder;
+  try {
+    splitTx = await lucid
+      .newTx()
+      .collectFrom([source])
+      .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
+      .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
+      .addSigner(walletAddress)
+      .complete({ localUPLCEval: true });
+  } finally {
+    lucid.clearUTxOOverride();
+  }
+  await submitWithWallet(lucid, splitTx);
 };
 
 export const submitWithWallet = async (
   lucid: LucidEvolution,
   tx: TxSignBuilder,
 ): Promise<string> => {
+  // The wallet signs for the inputs its view holds; the pin lasts for the
+  // signature only (see ensureSeparateCollateralUtxo).
   await refreshWalletUtxosFromProvider(lucid);
-  const signed = await tx.sign.withWallet().complete();
+  let signed: Awaited<ReturnType<TxSignBuilder["complete"]>>;
+  try {
+    signed = await tx.sign.withWallet().complete();
+  } finally {
+    lucid.clearUTxOOverride();
+  }
   const txHash = signed.toHash();
   const signedTx = CML.Transaction.from_cbor_hex(signed.toCBOR());
   const signedInputs = collectSortedInputOutRefs(signedTx.body().inputs()).map(

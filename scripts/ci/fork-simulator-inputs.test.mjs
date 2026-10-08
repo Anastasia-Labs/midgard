@@ -47,6 +47,7 @@ test("the follower is a runner, and its workspace dependencies are inputs", () =
     "demo/midgard-l1-follower/tests/fork-sim/protects.test.ts",
     "demo/l1-node-transport/testing/fake-sidecar.mjs",
     "demo/midgard-test-support/vitest.js",
+    "demo/midgard-sdk/src/index.ts",
     "demo/pnpm-lock.yaml",
     ".github/workflows/midgard-node-ci.yml",
     "scripts/ci/fork-simulator-inputs.mjs",
@@ -62,7 +63,7 @@ test("a pull request touching only non-inputs skips the suites", () => {
       changed: [
         "onchain/aiken/validators/state_queue.ak",
         "demo/midgard-fault-proofs/src/index.ts",
-        "demo/midgard-sdk/src/index.ts",
+        "demo/midgard-watcher/src/index.ts",
         "docs/agents/contracts.md",
         "scripts/ci/lint-workflows.mjs",
       ],

@@ -19,7 +19,10 @@ import {
   type IntentJournalService,
   type RecordOutcome,
 } from "../src/services/intent-journal.js";
+import { readProviderWalletView } from "../src/services/intent-journal.wallet-view.js";
 import { publishReferenceScripts } from "../src/transactions/reference-publication.js";
+import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
+import { TEST_PLAN } from "./helpers/intent-journal.js";
 
 type Event =
   | Readonly<{ kind: "record"; family: string; cbor: string }>
@@ -29,7 +32,7 @@ const scenario = async (refusePublication: boolean) => {
   const account = generateEmulatorAccount({ lovelace: 10_000_000_000n });
   const provider = new Emulator([account]);
   const lucid = await Lucid(provider, "Custom");
-  lucid.selectWallet.fromSeed(account.seedPhrase);
+  selectNodeWallet(lucid, account.seedPhrase);
   const authPolicy = await SDK.createReferenceScriptAuthPolicy(lucid);
   const targets = Object.keys(SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)
     .slice(0, 6)
@@ -45,7 +48,8 @@ const scenario = async (refusePublication: boolean) => {
     return true;
   };
   const journal: IntentJournalService = {
-    record: (intent, signedTxCbor, txHash, gate) =>
+    openPlan: Effect.succeed(TEST_PLAN),
+    record: (intent, signedTxCbor, txHash, _purpose, gate) =>
       intent.kind === "journaled" &&
       intent.family === "reference_publication" &&
       refusePublication
@@ -72,6 +76,8 @@ const scenario = async (refusePublication: boolean) => {
     handOff: () => [],
     adopt: () => undefined,
     refresh: () => Effect.void,
+    // No follower here: the view is the provider's UTxOs, read afresh.
+    walletView: readProviderWalletView,
   };
   const address = await lucid.wallet().address();
   const run = () =>

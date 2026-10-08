@@ -17,17 +17,17 @@ import {
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
-import { parseWatcherConfig } from "midgard-watcher";
 import {
-  startWatcherNativeChainSync,
+  parseWatcherConfig,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncRollForward,
   type WatcherNativeChainSyncRuntime,
-} from "midgard-watcher/native-chain-sync";
-import { config as baseConfig } from "midgard-watcher/tests/l1/native-chain-sync.config";
+} from "midgard-watcher";
 
 import type { HistoryWindowPoint } from "../../src/devnet-stack/history-native-window-proof.js";
+import { startWatcherNativeChainSync } from "../../src/devnet-stack/native-chain-sync.js";
+import { config as baseConfig } from "./native-chain-sync.config.js";
 
 /**
  * The node behind the fixture's fake node transport, written into the fixture
@@ -239,14 +239,6 @@ export const windowFixture = async (last: number) => {
     },
     l1: {
       ...base.l1,
-      finality: {
-        ...base.l1.finality,
-        rollback: {
-          beforeFinality: base.l1.finality.rollback.beforeFinality,
-          afterFinality: base.l1.finality.rollback.afterFinality,
-          maxDepth: base.l1.finality.rollback.maxDepth,
-        },
-      },
       source: {
         ...base.l1.source,
         chainSync: {

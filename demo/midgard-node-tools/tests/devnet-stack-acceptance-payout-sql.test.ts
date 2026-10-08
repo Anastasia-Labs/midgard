@@ -63,12 +63,23 @@ beforeAll(async () => {
        OR current_setting('statement_timeout') <> '5s' THEN RAISE EXCEPTION 'read flags refused'; END IF;
     RETURN true; END $$`);
   await sql`CREATE VIEW event_history_authority AS SELECT * FROM authority_fixture WHERE assert_read_only()`;
+  await sql`CREATE TABLE settlement_jobs (deployment_id text, kind text, event_id text, phase text)`;
   await sql`CREATE TABLE settlement_attempts (deployment_id text, kind text, event_id text,
     tx_hash text, phase text, signed_cbor text, required_outputs integer[], status text)`;
-  for (const row of collectorFixture().snapshot.attempts)
+  const { attempts } = collectorFixture().snapshot;
+  for (const event of new Set(attempts.map((row) => row.event_id)))
+    await sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
+    VALUES (${deployment}, 'withdrawal', ${event}, 'complete')`;
+  // A complete job's attempts are its receipts, final or not yet (their
+  // L1 outcome is the intent journal's); an expired one never is.
+  for (const [index, row] of attempts.entries())
     await sql`INSERT INTO settlement_attempts
     (deployment_id,kind,event_id,tx_hash,phase,signed_cbor,required_outputs,status)
-    VALUES (${deployment}, 'withdrawal', ${row.event_id}, ${row.tx_hash}, ${row.phase}, ${row.signed_cbor}, ${row.required_outputs}, 'confirmed')`;
+    VALUES (${deployment}, 'withdrawal', ${row.event_id}, ${row.tx_hash}, ${row.phase}, ${row.signed_cbor}, ${row.required_outputs}, ${index % 2 === 0 ? "final" : "pending"})`;
+  const first = attempts[0]!;
+  await sql`INSERT INTO settlement_attempts
+    (deployment_id,kind,event_id,tx_hash,phase,signed_cbor,required_outputs,status)
+    VALUES (${deployment}, 'withdrawal', ${first.event_id}, ${"ee".repeat(32)}, ${first.phase}, ${first.signed_cbor}, ${first.required_outputs}, 'expired')`;
 });
 afterAll(async () => {
   await sql.end();
@@ -98,9 +109,12 @@ it.skipIf(process.env.MIDGARD_SKIP_DB_TESTS === "1")(
     const result = await read(collectorFixture());
     expect(result.generation).toBe("9");
     expect(result.attempts).toHaveLength(16);
+    expect(result.attempts.map((row) => row.tx_hash)).not.toContain(
+      "ee".repeat(32),
+    );
     expect(
       (await sql`SELECT count(*)::text AS n FROM settlement_attempts`)[0]!.n,
-    ).toBe("16");
+    ).toBe("17");
     await noReaders();
     expect(
       (

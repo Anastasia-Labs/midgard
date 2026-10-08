@@ -25,9 +25,9 @@
  *   with the landed queue's tail for the watchdog, and derives this
  *   operator's membership: a removed operator is unready `operator_removed`
  *   with its duties held, and stays up.
- * - The driver's landed-block hook (N3, `landed-blocks/`) processes each
- *   landed block once, in queue order: an own block from its journal, a
- *   foreign one by replay; what it cannot do yet is a named hold.
+ * - The driver's landed-block hook (N3, N5, `landed-blocks/`) processes each
+ *   landed block once, in queue order, folding merges into `confirmed_ledger`
+ *   (its position joins the handle, P10); what it cannot do is a named hold.
  * - The driver's forced-order hook (N10, plan §12.3) ingests the forced
  *   orders the follower projects, resolving carriage its blocks did not
  *   carry through the local node's ledger and the configured content
@@ -47,20 +47,15 @@ import {
   followChain,
   type FollowStatus,
   httpTxContentSource,
-  intentJournalProjection,
   openPostgresFactStore,
   projectionStoreOptions,
-  readinessOf,
   storeTxContentSource,
   transportLedgerOutputs,
 } from "@al-ft/midgard-l1-follower";
 import { Data, Effect, Option, Ref, Runtime } from "effect";
 
 import { reconcileFollowerEvents } from "../database/follower-events.js";
-import {
-  forcedOrderIngestionHook,
-  forcedOrderProjection,
-} from "../forced-orders/index.js";
+import { forcedOrderIngestionHook } from "../forced-orders/index.js";
 import {
   createFollowerDriver,
   EVENTS_INGESTION_FAILED,
@@ -69,16 +64,12 @@ import {
   type FollowerEventSink,
   type IngestionPlan,
 } from "../l1-events/driver.js";
-import { eventProjection } from "../l1-events/projection.js";
-import {
-  operatorSetProjection,
-  stateQueueTailOf,
-} from "../l1-operator-set/index.js";
+import { stateQueueTailOf } from "../l1-operator-set/index.js";
 import { landedStateQueueHook } from "../l1-state-queue/index.js";
 import {
+  type ConfirmedLedgerPosition,
   disposeDeadOwnCommits,
   landedBlockHook,
-  landedStateQueueProjection,
   nodeLandedBlockPorts,
 } from "../landed-blocks/index.js";
 import { NodeConfig } from "./config.js";
@@ -103,15 +94,19 @@ import {
   nodeIntentTrackedSet,
 } from "./l1-follower.intents.js";
 import {
+  message,
   recordUnconfigured,
   withNodeNetworkMagic,
 } from "./l1-follower.network-magic.js";
 import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { type L1FollowerPlan, l1FollowerPlan } from "./l1-follower.plan.js";
+import { nodeFollowerProjections } from "./l1-follower.projections.js";
 import {
+  cursorKey,
   followerCaughtUp,
   type L1FollowerHandle,
   planCurrentView,
+  startingStatus,
 } from "./l1-follower.readiness.js";
 import { publishL1HeadChange } from "./l1-head-trigger.js";
 import { Lucid } from "./lucid.js";
@@ -124,9 +119,6 @@ import {
 class FollowerRecoveryRequired extends Data.TaggedError(
   "FollowerRecoveryRequired",
 )<{ readonly reason: string }> {}
-
-const message = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 /**
  * The driver's sink: ingests a plan under a Ready history producer, with
@@ -229,11 +221,6 @@ export const readyProducerSink = Effect.gen(function* () {
   return sink;
 });
 
-const cursorKey = (status: FollowStatus): string | null =>
-  status.cursor === null
-    ? null
-    : `${status.cursor.generation.toString()}:${status.cursor.slot.toString()}`;
-
 /** The follower over `plan`, once the node's network magic is known. */
 const followL1 = Effect.fnUntraced(function* (
   plan: Extract<L1FollowerPlan, { kind: "run" }>,
@@ -255,6 +242,10 @@ const followL1 = Effect.fnUntraced(function* (
   const dbRuntime = yield* Effect.runtime<
     Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
   >();
+  const projections = nodeFollowerProjections(
+    plan,
+    Runtime.runPromise(dbRuntime),
+  );
   const opened = yield* Effect.acquireRelease(
     Effect.try(() => {
       const transport = new L1NodeTransport({
@@ -267,16 +258,7 @@ const followL1 = Effect.fnUntraced(function* (
       try {
         store = openPostgresFactStore({
           ...projectionStoreOptions(
-            [
-              eventProjection(plan.projection),
-              landedStateQueueProjection(
-                plan.stateQueue,
-                Runtime.runPromise(dbRuntime),
-              ),
-              operatorSetProjection(plan.operatorSet),
-              forcedOrderProjection(plan.forcedOrders),
-              intentJournalProjection,
-            ],
+            projections.projections,
             {
               securityParameter: plan.securityParameter,
               // The protocol-init tx qualifies through the hub oracle mint;
@@ -316,14 +298,17 @@ const followL1 = Effect.fnUntraced(function* (
       `the follower store or transport did not open: ${message(opened.left.error)}`,
     );
   const { transport, store, abort } = opened.right;
+  const depth = {
+    confirmationDepth: finality.confirmationDepth,
+    securityParameter: plan.securityParameter,
+  };
   const operatorSet = yield* followerOperatorSet({
     store,
     config: plan.operatorSet,
-    depth: {
-      confirmationDepth: finality.confirmationDepth,
-      securityParameter: plan.securityParameter,
-    },
+    depth,
   });
+  projections.bindActivity(operatorSet.activity);
+  let confirmedLedger: ConfirmedLedgerPosition | null = null;
   const driver = createFollowerDriver({
     store,
     config: plan.projection,
@@ -356,6 +341,7 @@ const followL1 = Effect.fnUntraced(function* (
         config: plan.stateQueue,
         ports: nodeLandedBlockPorts(store, plan),
         run: (effect) => Runtime.runPromise(dbRuntime)(effect),
+        publish: { depth, position: (next) => (confirmedLedger = next) },
       }),
       forcedOrderIngestion: forcedOrderIngestionHook({
         store,
@@ -393,45 +379,30 @@ const followL1 = Effect.fnUntraced(function* (
     }),
     log: (line) => log(`intents: ${line}`),
   });
-  // S6, own-commit disposal and the journal follow each driver run (§8.3).
+  // S6 follows the driver in the same coalesced run (§8.3: every head and
+  // generation change), then the own commits it derived dead are disposed
+  // of, and the journal re-reads its refusal holds: the commit and
+  // settlement workers raise theirs in the node database. While the node is
+  // behind wall-clock time (`l1_node_behind`) S6 sends nothing; the next
+  // head change after it catches up runs it.
   const trigger = coalescedRunner(
     () =>
       driver
         .run()
-        .then(() => intents.run())
+        .then(() => (status.nodeBehind === null ? intents.run() : undefined))
         .then(() => Runtime.runPromise(dbRuntime)(disposeDeadOwnCommits))
         .then(() => Runtime.runPromise(runtime)(journal.refresh()))
         .then(() => [...driver.holds(), ...intents.holds()]),
     abort.signal,
   );
-  const initial = {
-    state: "starting",
-    interventions: [],
-    waiting: null,
-    stuck: null,
-    protocolInit: "unknown",
-    cursor: null,
-    node: null,
-    tip: null,
-    atTip: false,
-    replaying: false,
-    events: 0,
-    lastError: null,
-    prune: {
-      steps: 0,
-      prunedThroughSlot: null,
-      lastError: null,
-      floorLagSlots: null,
-      failures: 0,
-    },
-  } as const;
-  let status: FollowStatus = { ...initial, readiness: readinessOf(initial) };
+  let status: FollowStatus = startingStatus;
   let lastCursor: string | null = null;
   const handle: L1FollowerHandle = {
     kind: "running",
     status: () => status,
     holds: () => [...driver.holds(), ...intents.holds(), ...journal.holds()],
     planCurrent: () => planCurrentView(store, plan.projection),
+    confirmedLedger: () => confirmedLedger,
   };
   yield* Ref.set(globals.L1_FOLLOWER, handle);
   const running = followChain({
@@ -440,6 +411,10 @@ const followL1 = Effect.fnUntraced(function* (
     origin: plan.origin,
     signal: abort.signal,
     log,
+    nodeBehind: {
+      slotTime: (slot) => slotClock.slotToUnixTime(slot),
+      boundMs: config.L1_NODE_BEHIND_MAX_MS,
+    },
     onStatus: (next) => {
       status = next;
       // The driver applies only views at the node's tip: until then a key

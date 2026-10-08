@@ -39,7 +39,7 @@ import {
   commitDaFrameNoticeForOutcome,
 } from "../src/workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import { seedCaughtUpL1Follower } from "./readiness-l1-follower.fixture.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /**
  * A raised liveness reason holds block production while the node keeps
@@ -93,18 +93,15 @@ type Node = {
 };
 
 /** Runs `scenario` against one node's globals, which every `readyz` of it
- * reads. The tables /readyz reads are cleared before and after, so a row
- * another file left cannot turn a ready answer unready, and none leaks on. */
+ * reads. The database is reset before and after, so a row another file
+ * left cannot turn a ready answer unready, and none leaks on. */
 const onNode = <A, E>(
   scenario: (node: Node) => Effect.Effect<A, E, SqlClient.SqlClient>,
 ): Promise<A> =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const clear = sql`TRUNCATE TABLE pending_block_finalizations,
-          state_queue_mutation_leases, event_history_authority,
-          local_mutation_jobs RESTART IDENTITY CASCADE`;
+        const clear = resetApplicationTables;
         return yield* Effect.gen(function* () {
           yield* clear;
           const globals = yield* Globals;

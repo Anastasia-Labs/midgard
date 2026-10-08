@@ -113,7 +113,12 @@ const submitUnderGate = async (
     handleSignSubmitNoConfirmation(
       lucid,
       unsigned,
-      journaledIntent("commit", "commit:gate", Buffer.alloc(32, 7)),
+      journaledIntent(
+        "commit",
+        "commit:gate",
+        await env.plan(),
+        Buffer.alloc(32, 7),
+      ),
     ).pipe(
       Effect.provideService(BeforeSignedTransactionSubmission, { persist }),
       Effect.provide(Layer.succeed(IntentJournal, env.journal)),

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
-import { WATCHER_ROLLBACK_BOUNDS } from "../l1/rollback-engine/types.js";
+import { WATCHER_CARDANO_SECURITY_PARAMETER_K } from "../runtime/config.js";
 
 /** Absence age is usable only within uninterrupted admitted runtime history. */
 export const createWatcherReplayTranscriptAbsence = (
@@ -92,7 +92,7 @@ export const createWatcherReplayTranscriptAbsence = (
       }
       return (
         BigInt(point.blockNo) - BigInt(prior.block_no) >
-        WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth
+        BigInt(WATCHER_CARDANO_SECURITY_PARAMETER_K)
       );
     },
   };

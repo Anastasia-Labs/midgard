@@ -20,14 +20,13 @@ import {
   seedPublished,
 } from "./retention-enforcement.terminal-merge.js";
 import { terminalRemoval } from "./retention-enforcement.terminal-removal.js";
-import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
+import {
+  deterministicFixtureBytes,
+  provideDatabaseLayers,
+  resetApplicationTables,
+} from "./utils.js";
 
-const clear = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  yield* sql`DELETE FROM state_queue_terminal_observer_states`;
-  yield* DaPayloadTerminalOutcomesDB.clear;
-  yield* DaPayloadsDB.clear;
-});
+const clear = resetApplicationTables;
 
 const run = <A>(work: Effect.Effect<A, unknown, SqlClient.SqlClient>) =>
   Effect.runPromise(

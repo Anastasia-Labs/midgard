@@ -12,7 +12,7 @@ import "./utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { credentialToAddress, toUnit, type UTxO } from "@lucid-evolution/lucid";
-import { Effect, Either, Fiber, Option, Ref } from "effect";
+import { Effect, Either, Fiber, Option, Ref, Schedule } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -175,6 +175,15 @@ describe("the landed state queue's liveness", () => {
             (reasons) => Effect.sync(() => reported.push(reasons)),
             "5 millis",
           ),
+        );
+        // Wait for the first report rather than a fixed delay: a loaded
+        // runner can take longer than any fixed sleep to reach it. Then
+        // keep waiting a while so a repeated report would show.
+        yield* Effect.sync(() => reported.length).pipe(
+          Effect.repeat({
+            schedule: Schedule.spaced("5 millis"),
+            until: (length) => length > 0,
+          }),
         );
         yield* Effect.sleep("100 millis");
         expect(reported).toEqual([[STATE_QUEUE_UNHEALTHY]]);

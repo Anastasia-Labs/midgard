@@ -159,7 +159,7 @@ export type WatcherL1SourceDiagnostic = Sequenced &
   Readonly<{
     kind: "l1_source";
     sourceIdentityDigest: string;
-    sourceMode: "local_node" | "external_provider";
+    sourceMode: "local_node";
     status: "consistent" | "stale" | "disagreement";
     blockHash: string;
     blockNo: string;
@@ -205,6 +205,12 @@ export type WatcherOperationsReadinessReason =
    * not hold; `supervisor.journalDecisionMissing` lists each. Held, never
    * run again; each clears once L1 facts resolve it. */
   | "journal_decision_missing"
+  /** A validation-trace dispute started from a transcript recorded before
+   * user events were read from follower facts is open; it is listed in
+   * `supervisor.journalDecisionMissing` with this `readiness`. Held, never
+   * run again, the process up; clears once its header leaves the finalized
+   * queue. */
+  | "validation_transcript_pre_follower"
   /** A journal database was busy or locked past its timeout;
    * `supervisor.journalBusy` names the failure. The work is requeued in
    * process from durable state after a 1-30 s backoff; clears then. */

@@ -44,7 +44,8 @@ Keep only the parts that do not depend on the evaluators:
   `demo/midgard-watcher/src/indexers/state-queue-snapshot.ts`. They are used by
   W22 header-root reconstruction and attestation-timeout observation.
 - User-event decoding and the local user-event history in
-  `demo/midgard-watcher/src/indexers/user-event-indexer.ts`.
+  `demo/midgard-watcher/src/indexers/user-event-indexer.ts`, since deleted
+  when the watcher moved onto its L1 follower. <!-- doc-links:historical -->
 - Configuration and runtime support for `external_providers`: config
   parsing, the finality policy, multi-provider consistency and the
   external-provider transport.

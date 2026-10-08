@@ -1,19 +1,19 @@
 import { randomUUID } from "node:crypto";
 
-import { depth } from "@al-ft/midgard-l1-follower/heads";
+import type { IntentStatus } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/settlement.js";
 import { NodeConfig } from "../src/services/config.js";
+import * as IntentJournal from "../src/services/intent-journal.js";
 import {
-  reconcileRestoredSettlementFees,
-  reconcileSettlementReceipts,
-} from "../src/services/settlement.js";
-import * as publicationProvider from "../src/transactions/reference-publication-provider.js";
-import { provideDatabaseLayers } from "./utils.js";
+  noOpenAttempt,
+  settleAttempts,
+} from "../src/services/settlement.status.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
@@ -55,16 +55,47 @@ const attempt = (
   required_outputs: [1, 2],
   fee_inputs: [`${hash === "d1".repeat(32) ? "e1".repeat(32) : hash}#0`],
   status: "pending",
-  recovery: false,
 });
-beforeEach(() =>
-  run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority, deposits_utxos, withdrawal_utxos CASCADE`;
-    }),
-  ),
-);
+const depths = { confirmationDepth: 3, securityParameter: 10 };
+/**
+ * The intent journal's derived status per tx hash (absent: not journaled,
+ * or pruned), as `readIntentStatus` answers it; the follower's own
+ * derivation is covered in `settlement-derived-status.test.ts`.
+ */
+const statuses = new Map<string, IntentStatus>();
+const landed = (depth: number): IntentStatus => ({
+  kind: "landed",
+  slot: 100,
+  height: 50,
+  depth,
+});
+const live: IntentStatus = { kind: "live", inputsAvailable: true };
+const jobPhase = (eventId = "01") =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{
+      phase: string;
+    }>`SELECT phase FROM settlement_jobs WHERE event_id = ${eventId}`;
+    return rows[0]?.phase;
+  });
+const attemptStatus = (hash = "d1".repeat(32)) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{
+      status: string;
+    }>`SELECT status FROM settlement_attempts WHERE tx_hash = ${hash}`;
+    return rows[0]?.status;
+  });
+beforeEach(() => {
+  statuses.clear();
+  vi.spyOn(IntentJournal, "readIntentStatus").mockImplementation((hash) =>
+    Effect.succeed(statuses.get(hash) ?? null),
+  );
+  return run(resetApplicationTables);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("settlement durable submission journal", () => {
   it("enqueues finalized events transactionally and excludes invalid withdrawals", async () => {
@@ -78,9 +109,9 @@ describe("settlement durable submission journal", () => {
           ownerHash = Buffer.alloc(28);
         yield* sql`INSERT INTO deposits_utxos (event_id, event_info, inclusion_time, deposit_l1_tx_hash, ledger_tx_id, ledger_output, ledger_address, status)
         VALUES (${id}, ${empty}, clock_timestamp(), ${hash}, ${hash}, ${empty}, 'test-address', 'awaiting')`;
-        expect(yield* Journal.nextJob(owner(), "0")).toBeUndefined();
+        expect(yield* Journal.nextJob(owner())).toBeUndefined();
         yield* sql`UPDATE deposits_utxos SET status = 'consumed'`;
-        expect((yield* Journal.nextJob(owner(), "0"))?.kind).toBe("deposit");
+        expect((yield* Journal.nextJob(owner()))?.kind).toBe("deposit");
         for (const [event, validity] of [
           ["02", "WithdrawalIsValid"],
           ["03", "IncorrectWithdrawalSignature"],
@@ -99,205 +130,81 @@ describe("settlement durable submission journal", () => {
       }),
     );
   });
-  it("waits for a restored indexer before reactivating an old confirmed receipt", async () => {
+  it("takes the next phase once the attempt is cd deep, and a rollback below cd reverts it", async () => {
     const actor = owner();
     await run(
       Effect.gen(function* () {
         yield* ready;
         yield* Journal.renew(actor);
         yield* insertJob();
-        yield* Journal.saveAttempt(actor, attempt());
-        yield* Journal.finishAttempt(
-          actor,
-          attempt(),
-          "confirmed",
-          "complete",
-          "0",
+        yield* Journal.saveAttempt(actor, attempt(), Effect.void);
+        // Live, then landed short of cd: not confirmed, and it blocks.
+        statuses.set(attempt().tx_hash, live);
+        expect((yield* settleAttempts(actor, depths))?.attempt.tx_hash).toBe(
+          attempt().tx_hash,
         );
-      }),
-    );
-    let caughtUp = false;
-    const barrier = vi
-      .spyOn(publicationProvider, "synchronizePublicationIndexerPoint")
-      .mockImplementation(async () => {
-        caughtUp = true;
-        return { slot: 1000, id: "ee".repeat(32) };
-      });
-    const transactionStatus = vi.fn(async (txHash: string) =>
-      caughtUp
-        ? {
-            status: "confirmed" as const,
-            txHash,
-            confirmation: { txHash, blockHash: "ee".repeat(32), slot: 11 },
-          }
-        : { status: "not_found" as const, txHash },
-    );
-    try {
-      expect(
-        await run(
-          reconcileSettlementReceipts(
-            actor,
-            {
-              deployment_id: deploymentId,
-              kind: "deposit",
-              event_id: "01",
-              phase: "complete",
-              failures: 0,
-              verified_generation: "0",
-            },
-            { transactionStatus },
-          ),
-        ),
-      ).toBe(true);
-      expect(barrier).toHaveBeenCalledOnce();
-      expect(transactionStatus).toHaveBeenCalledOnce();
-      expect(await run(Journal.pending(deploymentId))).toBeUndefined();
-    } finally {
-      barrier.mockRestore();
-    }
-  });
-  it("does not trust an old-fork confirmation while the indexer catches up after rollback", async () => {
-    const actor = owner();
-    await run(
-      Effect.gen(function* () {
-        yield* ready;
-        yield* Journal.renew(actor);
-        yield* insertJob();
-        yield* Journal.saveAttempt(actor, attempt());
-        yield* Journal.finishAttempt(
-          actor,
-          attempt(),
-          "confirmed",
-          "complete",
-          "0",
+        statuses.set(attempt().tx_hash, landed(2));
+        expect((yield* settleAttempts(actor, depths))?.level).toBe("open");
+        expect(yield* jobPhase()).toBe("absorb");
+        // cd deep: safe; the job takes the next phase, nothing blocks.
+        statuses.set(attempt().tx_hash, landed(3));
+        expect(yield* settleAttempts(actor, depths)).toBeUndefined();
+        expect(yield* jobPhase()).toBe("complete");
+        // A rollback deeper than cd: it is live again, so the job
+        // returns to the attempt's phase and the attempt blocks again.
+        statuses.set(attempt().tx_hash, live);
+        expect((yield* settleAttempts(actor, depths))?.attempt.tx_hash).toBe(
+          attempt().tx_hash,
         );
-      }),
-    );
-    let caughtUp = false;
-    const barrier = vi
-      .spyOn(publicationProvider, "synchronizePublicationIndexerPoint")
-      .mockImplementation(async () => {
-        caughtUp = true;
-        return { slot: 1000, id: "ee".repeat(32) };
-      });
-    const transactionStatus = vi.fn(async (txHash: string) =>
-      caughtUp
-        ? { status: "not_found" as const, txHash }
-        : {
-            status: "confirmed" as const,
-            txHash,
-            confirmation: { txHash, blockHash: "bb".repeat(32), slot: 11 },
-          },
-    );
-    try {
-      expect(
-        await run(
-          reconcileSettlementReceipts(
-            actor,
-            {
-              deployment_id: deploymentId,
-              kind: "deposit",
-              event_id: "01",
-              phase: "complete",
-              failures: 0,
-              verified_generation: "0",
-            },
-            { transactionStatus },
-          ),
-        ),
-      ).toBe(false);
-      expect(barrier).toHaveBeenCalledOnce();
-      expect((await run(Journal.pending(deploymentId)))?.recovery).toBe(true);
-    } finally {
-      barrier.mockRestore();
-    }
-  });
-  it("gives new work a turn ahead of old completed-history recovery without starving either queue", async () => {
-    await run(
-      Effect.gen(function* () {
-        yield* ready;
-        yield* insertJob("01");
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE settlement_jobs SET phase = 'complete', due_at = clock_timestamp() - interval '1 day', verified_generation = 0`;
-        yield* insertJob("02");
-        expect((yield* Journal.nextJob(owner(), "1", false))?.event_id).toBe(
-          "02",
-        );
-        expect((yield* Journal.nextJob(owner(), "1", true))?.event_id).toBe(
-          "01",
-        );
-        yield* sql`UPDATE settlement_jobs SET verified_generation = 1 WHERE event_id = '01'`;
-        expect((yield* Journal.nextJob(owner(), "1", true))?.event_id).toBe(
-          "02",
-        );
+        expect(yield* jobPhase()).toBe("absorb");
+        // Relanded past k: final by derivation, still not stored final
+        // (only the follower's prune step stores it).
+        statuses.set(attempt().tx_hash, landed(11));
+        expect(yield* settleAttempts(actor, depths)).toBeUndefined();
+        expect(yield* jobPhase()).toBe("complete");
+        expect(yield* attemptStatus()).toBe("pending");
       }),
     );
   });
-  it("recovers a rolled-back receipt before fresh work can reuse its restored fee coin", async () => {
+  it("refuses new work while an attempt reads short of cd, so a fee coin a rollback restored is never reused", async () => {
     const actor = owner();
     await run(
       Effect.gen(function* () {
         yield* ready;
         yield* Journal.renew(actor);
         yield* insertJob("01");
-        yield* Journal.saveAttempt(actor, attempt());
-        yield* Journal.finishAttempt(
+        yield* insertJob("02");
+        yield* Journal.saveAttempt(
           actor,
           attempt(),
-          "confirmed",
-          "complete",
-          "0",
+          noOpenAttempt(actor, depths),
         );
-        yield* insertJob("02");
-        // Refuse a fresh body even if the rollback occurs during its build.
-        expect(
-          (yield* Effect.either(
-            Journal.saveAttempt(actor, {
-              ...attempt("02", "d2".repeat(32)),
-              fee_inputs: attempt().fee_inputs,
-            }),
-          ))._tag,
-        ).toBe("Left");
-        expect(yield* Journal.pending(deploymentId)).toBeUndefined();
-        expect((yield* Journal.nextJob(actor, "1", false))?.event_id).toBe(
-          "02",
+        statuses.set(attempt().tx_hash, landed(3));
+        yield* settleAttempts(actor, depths);
+        // A rollback restores the first attempt's fee coin before the next
+        // body is journaled: the check under the owner-row lock refuses it.
+        statuses.set(attempt().tx_hash, landed(2));
+        const reusing = {
+          ...attempt("02", "d2".repeat(32)),
+          fee_inputs: attempt().fee_inputs,
+        };
+        const refused = yield* Effect.either(
+          Journal.saveAttempt(actor, reusing, noOpenAttempt(actor, depths)),
         );
+        expect(refused._tag).toBe("Left");
+        expect(yield* attemptStatus("d2".repeat(32))).toBeUndefined();
+        // Relanded cd deep: the next body is journaled.
+        statuses.set(attempt().tx_hash, landed(4));
+        yield* Journal.saveAttempt(
+          actor,
+          reusing,
+          noOpenAttempt(actor, depths),
+        );
+        expect(yield* attemptStatus("d2".repeat(32))).toBe("pending");
       }),
     );
-    const barrier = vi
-      .spyOn(publicationProvider, "synchronizePublicationIndexerPoint")
-      .mockResolvedValue({ slot: 1000, id: "ee".repeat(32) });
-    const utxosAt = vi.fn(async () => [
-      {
-        txHash: "e1".repeat(32),
-        outputIndex: 0,
-        address: actor.walletAddress,
-        assets: { lovelace: 10_000_000n },
-      },
-    ]);
-    const transactionStatus = vi.fn(async (txHash: string) => ({
-      status: "not_found" as const,
-      txHash,
-    }));
-    try {
-      expect(
-        await run(
-          reconcileRestoredSettlementFees(actor, {
-            utxosAt,
-            transactionStatus,
-          }),
-        ),
-      ).toBe(false);
-      expect(barrier).toHaveBeenCalledOnce();
-      expect((await run(Journal.pending(deploymentId)))?.tx_hash).toBe(
-        attempt().tx_hash,
-      );
-      expect((await run(Journal.pending(deploymentId)))?.recovery).toBe(true);
-    } finally {
-      barrier.mockRestore();
-    }
   });
-  it("preserves a signed attempt across database scopes and excludes another job until reconciliation", async () => {
+  it("preserves a signed attempt across database scopes until it is final", async () => {
     const actor = owner();
     await run(
       Effect.gen(function* () {
@@ -305,68 +212,79 @@ describe("settlement durable submission journal", () => {
         yield* Journal.renew(actor);
         yield* insertJob();
         yield* insertJob("02");
-        yield* Journal.saveAttempt(actor, attempt());
+        yield* Journal.saveAttempt(actor, attempt(), Effect.void);
       }),
     );
-    const stored = await run(Journal.pending(deploymentId));
-    expect(stored).toMatchObject(attempt());
-    expect(await run(Journal.settlementRetentionHoldSlot(deploymentId))).toBe(
-      10,
-    );
+    const [stored] = await run(Journal.openAttempts(deploymentId));
+    expect(stored).toMatchObject({
+      ...attempt(),
+      job_phase: "absorb",
+      latest: true,
+    });
     await run(
       Effect.gen(function* () {
-        expect(
-          (yield* Effect.either(
-            Journal.saveAttempt(actor, attempt("02", "d2".repeat(32))),
-          ))._tag,
-        ).toBe("Left");
-        yield* Journal.finishAttempt(
-          actor,
-          attempt(),
-          "confirmed",
-          "complete",
-          "0",
-        );
-        expect(
-          yield* Journal.settlementRetentionHoldSlot(deploymentId),
-        ).toBeUndefined();
-        yield* Journal.saveAttempt(actor, attempt("02", "d2".repeat(32)));
+        // Safe is not final: the attempt stays open while it may still revert.
+        statuses.set(attempt().tx_hash, landed(3));
+        yield* settleAttempts(actor, depths);
+        expect(yield* Journal.openAttempts(deploymentId)).toHaveLength(1);
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE settlement_attempts SET status = 'final'`;
+        // A final attempt of a complete job is no longer read.
+        expect(yield* Journal.openAttempts(deploymentId)).toEqual([]);
       }),
     );
-    expect((await run(Journal.pending(deploymentId)))?.event_id).toBe("02");
   });
-  it("reads the confirmation heights for the heads module's depth, canonical blocks only", async () => {
+  it("advances a job whose attempt was stored final while the tick did not run", async () => {
     const actor = owner();
-    const digest = (byte: string) => Buffer.from(byte.repeat(32), "hex");
     await run(
       Effect.gen(function* () {
         yield* ready;
         yield* Journal.renew(actor);
+        yield* insertJob();
+        yield* Journal.saveAttempt(actor, attempt(), Effect.void);
+        // Pruned from the journal past k: it derives nothing any more.
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`TRUNCATE event_history_block_applications, event_history_cursor CASCADE`;
-        yield* sql`INSERT INTO event_history_cursor (binding_digest, manifest_id, origin_receipt, origin_receipt_digest, anchor_hash, anchor_slot, anchor_height, anchor_snapshot_digest, head_hash, head_slot, head_height, head_application_revision, snapshot_digest, revision, addresses)
-        VALUES (${digest("f1")}, ${Buffer.from(deploymentId, "hex")}, 'origin', ${digest("f2")}, ${digest("f3")}, 0, 10, ${digest("f4")}, ${digest("f5")}, 200, 20, 2, ${digest("f6")}, 2, '[]'::jsonb)`;
-        const application = (
-          block: string,
-          revision: number,
-          height: number,
-          canonical: boolean,
-        ) =>
-          sql`INSERT INTO event_history_block_applications (binding_digest, block_hash, application_revision, parent_hash, block_slot, block_height, before_snapshot_digest, after_snapshot_digest, ledger_receipt, ledger_receipt_digest, undo_record, undo_digest, canonical)
-          VALUES (${digest("f1")}, ${digest(block)}, ${revision}, ${digest("f7")}, ${height * 10}, ${height}, ${digest("f8")}, ${digest("f9")}, 'receipt', ${digest("fa")}, 'undo', ${digest("fb")}, ${canonical})`;
-        yield* application("e1", 1, 18, true);
-        yield* application("e2", 2, 17, false);
-        const heights = yield* Journal.confirmationHeights(
-          actor,
-          "e1".repeat(32),
+        yield* sql`UPDATE settlement_attempts SET status = 'final'`;
+        expect(yield* settleAttempts(actor, depths)).toBeUndefined();
+        expect(yield* jobPhase()).toBe("complete");
+        expect(yield* Journal.openAttempts(deploymentId)).toEqual([]);
+      }),
+    );
+  });
+  it("expires an attempt back to its phase, and keys the job's phase to its latest attempt only", async () => {
+    const actor = owner();
+    await run(
+      Effect.gen(function* () {
+        yield* ready;
+        yield* Journal.renew(actor);
+        yield* insertJob();
+        const first = attempt();
+        const second = attempt("01", "d2".repeat(32));
+        yield* Journal.saveAttempt(actor, first, Effect.void);
+        yield* Journal.saveAttempt(actor, second, Effect.void);
+        const open = yield* Journal.openAttempts(deploymentId);
+        expect(open.map((a) => [a.tx_hash, a.latest])).toEqual([
+          [first.tx_hash, false],
+          [second.tx_hash, true],
+        ]);
+        // The older attempt settling does not move the job; it is not latest.
+        statuses.set(first.tx_hash, landed(3));
+        statuses.set(second.tx_hash, live);
+        expect((yield* settleAttempts(actor, depths))?.attempt.tx_hash).toBe(
+          second.tx_hash,
         );
-        expect(heights).toEqual({ tipHeight: 20, blockHeight: 18 });
-        // The tip is depth 1, so a block two below it is at depth 3.
-        expect(depth(heights!.tipHeight, heights!.blockHeight)).toBe(3);
+        expect(yield* jobPhase()).toBe("absorb");
+        yield* Journal.expireAttempt(actor, second);
+        expect(yield* attemptStatus(second.tx_hash)).toBe("expired");
+        // The expired attempt leaves the set; the first is latest again.
         expect(
-          yield* Journal.confirmationHeights(actor, "e2".repeat(32)),
-        ).toBeNull();
-        yield* sql`TRUNCATE event_history_block_applications, event_history_cursor CASCADE`;
+          (yield* Journal.openAttempts(deploymentId)).map((a) => [
+            a.tx_hash,
+            a.latest,
+          ]),
+        ).toEqual([[first.tx_hash, true]]);
+        expect(yield* settleAttempts(actor, depths)).toBeUndefined();
+        expect(yield* jobPhase()).toBe("complete");
       }),
     );
   });
@@ -383,14 +301,16 @@ describe("settlement durable submission journal", () => {
         yield* sql`UPDATE settlement_owners SET lease_until = clock_timestamp() - interval '1 second'`;
         yield* Journal.renew(second);
         expect(
-          (yield* Effect.either(Journal.saveAttempt(first, attempt())))._tag,
+          (yield* Effect.either(
+            Journal.saveAttempt(first, attempt(), Effect.void),
+          ))._tag,
         ).toBe("Left");
         expect(
           (yield* Effect.either(
             Journal.renew({ ...second, walletAddress: "different-wallet" }),
           ))._tag,
         ).toBe("Left");
-        yield* Journal.saveAttempt(second, attempt());
+        yield* Journal.saveAttempt(second, attempt(), Effect.void);
       }),
     );
   });
@@ -403,39 +323,11 @@ describe("settlement durable submission journal", () => {
         yield* insertJob();
         yield* Authority.beginRecovery(history, "test rollback");
         expect(
-          (yield* Effect.either(Journal.saveAttempt(actor, attempt())))._tag,
+          (yield* Effect.either(
+            Journal.saveAttempt(actor, attempt(), Effect.void),
+          ))._tag,
         ).toBe("Left");
-        expect(yield* Journal.pending(deploymentId)).toBeUndefined();
-      }),
-    );
-  });
-  it("queues a rolled-back receipt without losing the body or trusting the new generation", async () => {
-    const actor = owner();
-    await run(
-      Effect.gen(function* () {
-        yield* ready;
-        yield* Journal.renew(actor);
-        yield* insertJob();
-        yield* Journal.saveAttempt(actor, attempt());
-        yield* Journal.finishAttempt(
-          actor,
-          attempt(),
-          "confirmed",
-          "complete",
-          "0",
-        );
-        expect(
-          yield* Journal.settlementRetentionHoldSlot(deploymentId),
-        ).toBeUndefined();
-        yield* Journal.resumeReceipt(actor, attempt());
-        const pending = yield* Journal.pending(deploymentId);
-        expect(pending?.recovery).toBe(true);
-        expect(pending?.signed_cbor).toBe(attempt().signed_cbor);
-        if (pending === undefined) throw new Error("Missing recovered attempt");
-        yield* Journal.finishAttempt(actor, pending, "expired", "absorb", "1");
-        expect((yield* Journal.nextJob(actor, "1"))?.verified_generation).toBe(
-          "-1",
-        );
+        expect(yield* Journal.openAttempts(deploymentId)).toEqual([]);
       }),
     );
   });

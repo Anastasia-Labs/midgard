@@ -16,7 +16,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
-import type { IntentJournal } from "../services/intent-journal.js";
+import { type IntentJournal, openPlan } from "../services/intent-journal.js";
 import {
   ReservePayoutTransport,
   submitAddReserveFundsToPayoutProgram,
@@ -48,6 +48,8 @@ export const initializePayoutProgram = (
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
+    // S5: the plan opens before the command's first L1 read.
+    const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const resolution = requireResolution(
       yield* resolveEventSettlementProofProgram({
@@ -85,6 +87,7 @@ export const initializePayoutProgram = (
         membershipProof: resolution.proof,
         referenceScripts: refs,
       },
+      plan,
     );
     const payoutUnit = toUnit(contracts.payout.policyId, withdrawal.assetName);
     return {
@@ -169,6 +172,8 @@ export const addReserveFundsToPayoutProgram = (
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
+    // S5: the plan opens before the command's first L1 read.
+    const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const { payout, payoutUnit } = yield* fetchPayoutByWithdrawalEvent(eventId);
     const payoutDatum = decodePayoutDatum(payout);
@@ -247,6 +252,7 @@ export const addReserveFundsToPayoutProgram = (
           : {}),
       },
       eventId,
+      plan,
     );
     return {
       txHash,
@@ -273,6 +279,8 @@ export const concludePayoutProgram = (
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const nodeConfig = yield* NodeConfig;
+    // S5: the plan opens before the command's first L1 read.
+    const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const { payout, payoutUnit } = yield* fetchPayoutByWithdrawalEvent(eventId);
     const payoutDatum = decodePayoutDatum(payout);
@@ -300,6 +308,7 @@ export const concludePayoutProgram = (
           : {}),
       },
       eventId,
+      plan,
     );
     return {
       txHash,

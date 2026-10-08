@@ -10,6 +10,17 @@
  *
  * - The submit seam (`submitSignedTxWithRecovery`) takes a `SubmissionIntent`
  *   and requires this service, so no node submission can skip it.
+ * - S5 (§8.1): every journaled intent carries its family's plan, opened
+ *   (`openPlan`) before the family's first L1 read. The record compares the
+ *   plan's generation with the cursor in its own transaction: a rewind
+ *   between the two records the row with `stale_at_write`, never sent from
+ *   that write. Otherwise the view recorded is the cursor there, at or above
+ *   every read the plan made.
+ * - S6 (§8.1): a role's own send is decided in the record's transaction
+ *   (`decideSubmitIn`, with the view check), and held while the follower's
+ *   view is more than the node-behind bound behind wall-clock time. A held
+ *   send fails with `IntentSubmitHeld`, not a refusal; S6's reconciler
+ *   decides it under the current view. The network send follows the commit.
  * - A refusal (§8.2's tracked-input invariant, no follower view, bytes that
  *   differ from the journaled ones) stops that submission and is held as a
  *   named `/readyz` reason until the family's next recording succeeds, or a
@@ -24,13 +35,14 @@
  *   (`no_follower`) itself.
  */
 import {
+  DEFAULT_NODE_BEHIND_MS,
   deriveIntentStatusIn,
   type IntentStatus,
   type OutputSummary,
   postgresDialect,
-  recordIntentIn,
 } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Context, Effect, Layer, Option } from "effect";
 
 import { followerSqlTx } from "../database/follower-schema.js";
@@ -40,101 +52,49 @@ import {
   refusalHoldsOver,
   type UnwrittenHold,
 } from "./intent-journal.holds.js";
+import type {
+  IntentPlan,
+  RecordOutcome,
+  RecordPurpose,
+  SubmissionIntent,
+  UnjournaledReason,
+} from "./intent-journal.intent.js";
 import {
-  causeText,
-  INTENT_BYTES_MISMATCH,
-  INTENT_CONTENT_REF_MISSING,
+  type InsertOutcome,
+  openIntentPlan,
+  recordSignedIntent,
+} from "./intent-journal.record.js";
+import {
   INTENT_GATE_UNJOURNALED,
-  INTENT_JOURNAL_UNAVAILABLE,
-  INTENT_UNDECODABLE,
+  INTENT_JOURNAL_NO_VIEW,
   IntentJournalRefused,
+  IntentSubmitHeld,
   refusal,
-  refusalOf,
   unavailable,
 } from "./intent-journal.refusals.js";
 import { nodeOwnWallets } from "./intent-journal.tracked-set.js";
+import {
+  type NodeWalletView,
+  readFollowerWalletView,
+  readProviderWalletView,
+  type WalletViewUnavailable,
+} from "./intent-journal.wallet-view.js";
 
-/** The node's L1 families (§8.4, Node rows). */
-export const NODE_INTENT_FAMILIES = [
-  "commit",
-  "scheduler_refresh",
-  "merge",
-  "attest",
-  "correction",
-  "register",
-  "activate",
-  "deregister",
-  "exit",
-  "takeover",
-  "retire",
-  "recover_bond",
-  "reserve_payout",
-  "settlement",
-  "reference_publication",
-  "reference_sweep",
-  "reference_funding",
-  "script_reward_registration",
-  "phas_membership",
-  "list_insert",
-] as const;
-
-export type NodeIntentFamily = (typeof NODE_INTENT_FAMILIES)[number];
-
-/** The families whose intent names its content: the header, or the event settled. */
-export const CONTENT_REF_FAMILIES: ReadonlySet<NodeIntentFamily> = new Set([
-  "commit",
-  "merge",
-  "attest",
-  "correction",
-  "reserve_payout",
-  "settlement",
-]);
-
-/**
- * Why a submission is not journaled: no follower runs in this phase or
- * process (protocol initialization before the follower starts, a one-shot
- * CLI command), so nothing would reconcile the intent and the submission
- * awaits its own confirmation.
- */
-export type UnjournaledReason = "no_follower";
-
-export type SubmissionIntent =
-  | Readonly<{
-      kind: "journaled";
-      family: NodeIntentFamily;
-      /** The workflow the tx belongs to, e.g. `commit:tail=<outref>`. */
-      workflowKey: string;
-      /** Class B content the tx commits to (an own block's header hash). */
-      contentRef?: Buffer;
-    }>
-  | Readonly<{
-      kind: "unjournaled";
-      reason: UnjournaledReason;
-      workflowKey: string;
-    }>;
-
-export const journaledIntent = (
-  family: NodeIntentFamily,
-  workflowKey: string,
-  contentRef?: Buffer,
-): SubmissionIntent => ({
-  kind: "journaled",
-  family,
-  workflowKey,
-  ...(contentRef === undefined ? {} : { contentRef }),
-});
-
-export const unjournaledSubmission = (
-  reason: UnjournaledReason,
-  workflowKey: string,
-): SubmissionIntent => ({ kind: "unjournaled", reason, workflowKey });
-
-/** A short label for logs. */
-export const intentLabel = (intent: SubmissionIntent): string =>
-  intent.kind === "journaled"
-    ? `${intent.family} ${intent.workflowKey}`
-    : `unjournaled (${intent.reason}) ${intent.workflowKey}`;
-
+export {
+  CONTENT_REF_FAMILIES,
+  intentLabel,
+  type IntentPlan,
+  intentPlanAt,
+  journaledIntent,
+  NODE_INTENT_FAMILIES,
+  type NodeIntentFamily,
+  type RecordOutcome,
+  type RecordPurpose,
+  type SubmissionIntent,
+  type UnjournaledReason,
+  unjournaledSubmission,
+} from "./intent-journal.intent.js";
+export { openIntentPlan, recordSignedIntent } from "./intent-journal.record.js";
 export {
   INTENT_BYTES_MISMATCH,
   INTENT_CONTENT_REF_MISSING,
@@ -144,11 +104,8 @@ export {
   INTENT_JOURNAL_UNAVAILABLE,
   INTENT_UNDECODABLE,
   IntentJournalRefused,
+  IntentSubmitHeld,
 } from "./intent-journal.refusals.js";
-
-export type RecordOutcome =
-  | Readonly<{ kind: "recorded" | "already_recorded" }>
-  | Readonly<{ kind: "unjournaled"; reason: UnjournaledReason }>;
 
 /**
  * The journal's insert of one intent, recorded in the caller's transaction:
@@ -189,13 +146,26 @@ export type IntentJournalService = Readonly<{
    * refused inside it, in which case the refusal is returned (and held). A
    * gate that passes without the insert having succeeded inside a
    * transaction is refused (`INTENT_GATE_UNJOURNALED`).
+   *
+   * With `purpose` `send`, the send decision (S6) is taken inside the same
+   * transaction; a held one fails with `IntentSubmitHeld` once that
+   * transaction committed (the row, and the gate's write, stand).
    */
   record: <E = never>(
     intent: SubmissionIntent,
     signedTxCbor: string,
     txHash: string,
+    purpose: RecordPurpose,
     gate?: PreBroadcastGate<E>,
-  ) => Effect.Effect<RecordOutcome, IntentJournalRefused | E>;
+  ) => Effect.Effect<
+    RecordOutcome,
+    IntentJournalRefused | IntentSubmitHeld | E
+  >;
+  /**
+   * Opens a family's plan (S5): the follower generation now. Call it
+   * before the family's first L1 read. Never fails: no view is `none`.
+   */
+  openPlan: Effect.Effect<IntentPlan>;
   /** The refusals still standing, one per family: each fails `/readyz`. */
   holds: () => readonly DriverHold[];
   /**
@@ -219,78 +189,21 @@ export type IntentJournalService = Readonly<{
    * failed read keeps the last one.
    */
   refresh: () => Effect.Effect<void>;
+  /**
+   * The wallet view (§8.5) of one own address, read now
+   * (`intent-journal.wallet-view.ts`): the facts and live intents under a
+   * follower, the provider's UTxOs where none runs.
+   */
+  walletView: (
+    lucid: LucidEvolution,
+    address: string,
+  ) => Effect.Effect<NodeWalletView, WalletViewUnavailable>;
 }>;
 
 export class IntentJournal extends Context.Tag("midgard/IntentJournal")<
   IntentJournal,
   IntentJournalService
 >() {}
-
-/**
- * Records `signedTxCbor` in the caller's database, refusing what §8.2
- * refuses. `isOwnOutput` marks the predicted change the wallet view reads.
- */
-export const recordSignedIntent = (
-  intent: Extract<SubmissionIntent, { kind: "journaled" }>,
-  signedTxCbor: string,
-  txHash: string,
-  isOwnOutput: (output: OutputSummary) => boolean,
-): Effect.Effect<RecordOutcome, IntentJournalRefused, SqlClient.SqlClient> =>
-  Effect.gen(function* () {
-    if (
-      CONTENT_REF_FAMILIES.has(intent.family) &&
-      intent.contentRef === undefined
-    )
-      return yield* refusal(
-        INTENT_CONTENT_REF_MISSING,
-        txHash,
-        `tx ${txHash} not submitted: a ${intent.family} intent must name its content (§8.2), and ${intent.workflowKey} names none`,
-      );
-    const sql = yield* SqlClient.SqlClient;
-    const bytes = Buffer.from(signedTxCbor, "hex");
-    const result = yield* sql
-      .withTransaction(
-        Effect.flatMap(followerSqlTx, (tx) =>
-          Effect.tryPromise({
-            try: () =>
-              recordIntentIn(tx, postgresDialect, {
-                family: intent.family,
-                workflowKey: intent.workflowKey,
-                txCbor: bytes,
-                isOwnOutput,
-                contentRef: intent.contentRef ?? null,
-              }),
-            catch: (cause) => cause,
-          }),
-        ),
-      )
-      .pipe(
-        Effect.mapError((cause) =>
-          refusal(
-            INTENT_JOURNAL_UNAVAILABLE,
-            txHash,
-            `tx ${txHash} not submitted: the intent journal write failed: ${causeText(cause)}`,
-          ),
-        ),
-      );
-    if (result.kind === "recorded" || result.kind === "already_recorded") {
-      const journaledHash = result.intent.txHash.toString("hex");
-      if (journaledHash !== txHash)
-        return yield* refusal(
-          INTENT_UNDECODABLE,
-          txHash,
-          `tx ${txHash} not submitted: its signed bytes hash to ${journaledHash}`,
-        );
-      if (result.kind === "already_recorded" && !result.identical)
-        return yield* refusal(
-          INTENT_BYTES_MISMATCH,
-          txHash,
-          `tx ${txHash} not submitted: it was journaled with other signed bytes; only those are ever sent (S6 resubmits them)`,
-        );
-      return { kind: result.kind };
-    }
-    return yield* refusalOf(result, txHash);
-  });
 
 const submitUnjournaled = (
   reason: UnjournaledReason,
@@ -327,23 +240,35 @@ export const readIntentStatus = (
     return state?.status ?? null;
   });
 
+/** Opens a plan with the journal in context (`IntentJournalService.openPlan`). */
+export const openPlan: Effect.Effect<IntentPlan, never, IntentJournal> =
+  Effect.flatMap(IntentJournal, (journal) => journal.openPlan);
+
 /**
  * The journal over one node SQL client. A refusal is held for its family
  * (`refusalHoldsOver`) until that family's next success clears it, in the
- * record's transaction.
+ * record's transaction. `nodeBehindMs` bounds how far behind wall-clock time
+ * the follower's view may be for a send (default `DEFAULT_NODE_BEHIND_MS`).
  */
 export const intentJournalOver = (
   sql: SqlClient.SqlClient,
   isOwnOutput: (output: OutputSummary) => boolean,
+  options: Readonly<{ nodeBehindMs?: number }> = {},
 ): IntentJournalService => {
   const held = refusalHoldsOver(sql);
+  const nodeBehindMs = options.nodeBehindMs ?? DEFAULT_NODE_BEHIND_MS;
   return {
+    openPlan: openIntentPlan(sql),
     record: <E>(
       intent: SubmissionIntent,
       signedTxCbor: string,
       txHash: string,
+      purpose: RecordPurpose,
       gate?: PreBroadcastGate<E>,
-    ): Effect.Effect<RecordOutcome, IntentJournalRefused | E> => {
+    ): Effect.Effect<
+      RecordOutcome,
+      IntentJournalRefused | IntentSubmitHeld | E
+    > => {
       if (intent.kind === "unjournaled")
         return submitUnjournaled(
           intent.reason,
@@ -356,7 +281,7 @@ export const intentJournalOver = (
         // What the insert did, in the transaction that ran it last. A gate
         // may wrap the insert's refusal in its own error (a history write
         // maps every failure), so the journal keeps it here.
-        let inserted: RecordOutcome | undefined;
+        let inserted: InsertOutcome | undefined;
         let refused: IntentJournalRefused | undefined;
         const insert: JournalInsert = Effect.gen(function* () {
           inserted = undefined;
@@ -377,6 +302,9 @@ export const intentJournalOver = (
             signedTxCbor,
             txHash,
             isOwnOutput,
+            purpose.kind === "send"
+              ? { slotTime: purpose.slotTime, nodeBehindMs }
+              : undefined,
           ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
           yield* held
             .clearIn(intent.family)
@@ -391,7 +319,7 @@ export const intentJournalOver = (
         );
         /** The insert's outcome once its transaction committed. */
         const outcome = (): Effect.Effect<
-          RecordOutcome,
+          InsertOutcome,
           IntentJournalRefused
         > =>
           inserted !== undefined
@@ -435,12 +363,23 @@ export const intentJournalOver = (
               )
             : Effect.void,
         ),
+        // A held send recorded the row (and the gate's write) and committed;
+        // only the send is held.
+        Effect.flatMap(({ held: hold, ...outcome }) =>
+          hold === undefined
+            ? Effect.succeed<RecordOutcome>(outcome)
+            : Effect.fail(hold),
+        ),
       );
     },
     holds: held.holds,
     handOff: held.handOff,
     adopt: held.adopt,
     refresh: held.refresh,
+    walletView: (_lucid, address) =>
+      readFollowerWalletView(address).pipe(
+        Effect.provideService(SqlClient.SqlClient, sql),
+      ),
   };
 };
 
@@ -449,8 +388,10 @@ export const makeIntentJournal = Effect.gen(function* () {
   const config = yield* NodeConfig;
   const sql = yield* SqlClient.SqlClient;
   const own = new Set(nodeOwnWallets(config).map((a) => a.toString("hex")));
-  return intentJournalOver(sql, (output) =>
-    own.has(output.address.toString("hex")),
+  return intentJournalOver(
+    sql,
+    (output) => own.has(output.address.toString("hex")),
+    { nodeBehindMs: config.L1_NODE_BEHIND_MAX_MS },
   );
 });
 
@@ -461,7 +402,12 @@ export const IntentJournalLive = Layer.effect(IntentJournal, makeIntentJournal);
  * goes out unjournaled and nothing is held.
  */
 export const IntentJournalWithoutFollower = Layer.succeed(IntentJournal, {
-  record: (intent, _signedTxCbor, txHash, gate) =>
+  openPlan: Effect.succeed<IntentPlan>({
+    kind: "none",
+    reason: INTENT_JOURNAL_NO_VIEW,
+    detail: "no L1 follower runs in this phase or process",
+  }),
+  record: (intent, _signedTxCbor, txHash, _purpose, gate) =>
     submitUnjournaled(
       intent.kind === "unjournaled" ? intent.reason : "no_follower",
       intent.kind === "unjournaled"
@@ -476,4 +422,5 @@ export const IntentJournalWithoutFollower = Layer.succeed(IntentJournal, {
   // No worker journals in a phase without a follower.
   adopt: () => undefined,
   refresh: () => Effect.void,
+  walletView: readProviderWalletView,
 });

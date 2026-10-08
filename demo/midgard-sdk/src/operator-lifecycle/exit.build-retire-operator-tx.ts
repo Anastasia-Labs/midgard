@@ -28,6 +28,7 @@ import {
   payContractOutputs,
   planExactFee,
   redeemerEncoder,
+  requireExplicitWalletInputs,
   type RetireSchedulerSync,
   safeTimeNumber,
 } from "./exit.complete-in-two-passes.js";
@@ -167,6 +168,10 @@ export const buildUnsignedRetireOperatorTxProgram = (
         `validFrom=${config.validFrom.toString()},validTo=${config.validTo.toString()}`,
       );
     }
+    yield* requireExplicitWalletInputs(
+      config.walletInputs,
+      "an operator retirement",
+    );
     let exactFee: Parameters<typeof completeInTwoPasses>[0]["exactFee"];
     if (config.mode === "forced-inactivity") {
       const penalty = yield* Effect.try({
@@ -192,6 +197,7 @@ export const buildUnsignedRetireOperatorTxProgram = (
               : []),
           ],
           declaredOutputs: retireDeclaredOutputs(config, retirePlan(config)),
+          walletInputs: config.walletInputs,
         }));
       exactFee = {
         plan,
@@ -211,7 +217,9 @@ export const buildUnsignedRetireOperatorTxProgram = (
         }),
       options:
         exactFee === undefined
-          ? completeOptionsWithLocalEval()
+          ? completeOptionsWithLocalEval({
+              presetWalletInputs: config.walletInputs,
+            })
           : exactFeeCompleteOptions(exactFee.plan),
       exactFee,
     });

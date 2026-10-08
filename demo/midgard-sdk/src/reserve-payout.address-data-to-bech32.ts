@@ -33,6 +33,12 @@ import { type EventHistoryRetirementWitness } from "./user-events/history.js";
 type CommonBuilderConfig = {
   readonly hubOracleRefInput?: UTxO;
   readonly feeInput?: UTxO;
+  /**
+   * The submitting wallet's coins, as the caller's view holds them. When
+   * given, the fee input, coin selection and collateral come from exactly
+   * these and the provider is never read.
+   */
+  readonly walletInputs?: readonly UTxO[];
   readonly referenceScripts?: ReservePayoutReferenceScripts;
   readonly referenceScriptsAddress?: string;
 };

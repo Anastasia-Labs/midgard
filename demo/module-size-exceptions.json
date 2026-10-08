@@ -211,8 +211,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts",
-    "max": 558,
-    "reason": "submitUnattestedTimeoutCorrection is the dominant indivisible declaration (496 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. TC (-15): recovery is one observation (the node's intent-journal read, or a CLI run's provider status) and resubmission is the node's intent reconciler's alone, so the resubmission authorization and the CLI observer left this module."
+    "max": 560,
+    "reason": "submitUnattestedTimeoutCorrection is the dominant indivisible declaration (496 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. TC (-15): recovery is one observation (the node's intent-journal read, or a CLI run's provider status) and resubmission is the node's intent reconciler's alone, so the resubmission authorization and the CLI observer left this module. I2 (+2): the correction is funded and signed from an injected wallet (the node's wallet view and its signing seam) instead of a pinned UTxO set on the shared Lucid instance; the CLI default lives with the wallet type."
   },
   {
     "file": "midgard-fault-proofs/src/resolved-output-non-canonical/central-journal.create-resolved-output-non-canonical-central-journal-adapter.ts",
@@ -266,7 +266,7 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/adapters.workflow-adapter-registration-rows.ts",
-    "max": 681,
+    "max": 679,
     "reason": "workflowAdapterRegistrationRows: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
   },
   {
@@ -288,11 +288,6 @@
     "file": "midgard-fault-proofs/src/workflow/journal.create-fraud-proof-workflow-journal-fold.ts",
     "max": 653,
     "reason": "createFraudProofWorkflowJournalFold is the dominant indivisible declaration (636 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.create-local-kupmios-http-ogmios-raw-source.ts",
-    "max": 1350,
-    "reason": "createLocalKupmiosHttpOgmiosRawSource is the dominant indivisible declaration (1448 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/workflow/orchestrator.run-admitted-fraud-proof-workflow.ts",
@@ -720,11 +715,6 @@
     "reason": "Retained test registration “witnessScriptDecoding registered-chain lifecycle” (910 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-fault-proofs/tests/workflow-kupmios-source.production-local-kupmios-raw-source-v1.ts",
-    "max": 986,
-    "reason": "Retained test registration “production local Kupmios raw source V1” (946 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-fault-proofs/tests/workflow-raw-l1-family-derivation.raw-l1-family-terminal-economics.ts",
     "max": 583,
     "reason": "Retained test registration “raw L1 family terminal economics” (546 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
@@ -811,22 +801,17 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/journey-runner.run-journey.ts",
-    "max": 509,
-    "reason": "runJourney is the dominant indivisible declaration (464 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-node-tools/devnet/watcher-journeys/journey-session.open-journey-session.ts",
-    "max": 568,
-    "reason": "openJourneySession is the dominant indivisible declaration (537 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 506,
+    "reason": "runJourney is the dominant indivisible declaration (461 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/journey-session.test.ts",
-    "max": 614,
+    "max": 595,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts",
-    "max": 863,
+    "max": 852,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -956,12 +941,12 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1074,
-    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3): reads the horizon lag d from config.history-commit-horizon-lag.ts, which refuses a negative, fractional or deeper-than-k value at startup."
+    "max": 1077,
+    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3): reads the horizon lag d from config.history-commit-horizon-lag.ts, which refuses a negative, fractional or deeper-than-k value at startup. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup."
   },
   {
     "file": "midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
-    "max": 963,
+    "max": 957,
     "reason": "makeEventHistoryOwner is the dominant indivisible declaration (952 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -971,23 +956,23 @@
   },
   {
     "file": "midgard-node/src/services/mpf-native-owner/service.production-native-mpf-owner-service.ts",
-    "max": 928,
-    "reason": "ProductionNativeMpfOwnerService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+    "max": 966,
+    "reason": "ProductionNativeMpfOwnerService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. The live root's full-index size and the last cap refusal are owner state every promotion, restore and restart updates; the accounting itself lives in service.full-index-accounting.ts."
   },
   {
     "file": "midgard-node/src/transactions/reference-publication.publish-reference-scripts.ts",
-    "max": 687,
-    "reason": "publishReferenceScripts is the dominant indivisible declaration (659 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+10): each publication and funding transaction's exact bytes are recorded in the intent journal before the first send. I1-fix (-11): every publication transaction goes through the node's one submit seam, which journals it. I1c (+3): each funding step journals the scripts it funds as its target, which its §8.4 predicate reads."
+    "max": 686,
+    "reason": "publishReferenceScripts is the dominant indivisible declaration (659 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+10): each publication and funding transaction's exact bytes are recorded in the intent journal before the first send. I1-fix (-11): every publication transaction goes through the node's one submit seam, which journals it. I1c (+3): each funding step journals the scripts it funds as its target, which its §8.4 predicate reads. I2 (-4): lanes fund from the wallet view; no wallet pin. I5 (+3): the run opens one intent plan before its first L1 read and records every publication and funding transaction under it, so a rewind between plan and record is recorded stale_at_write and never sent from that write."
   },
   {
     "file": "midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts",
-    "max": 960,
-    "reason": "operatorLifecycleProgram is the dominant indivisible declaration (881 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+21): the deregister, register and activate submissions each name their journaled intent."
+    "max": 968,
+    "reason": "operatorLifecycleProgram is the dominant indivisible declaration (881 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+21): the deregister, register and activate submissions each name their journaled intent. I5 (+8): the lifecycle opens one intent plan before its first L1 read and records the deregister, register and activate submissions under it."
   },
   {
     "file": "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
-    "max": 560,
-    "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+13): the merge submission names its journaled intent and the header it merges."
+    "max": 562,
+    "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+13): the merge submission names its journaled intent and the header it merges. I2 (-2): merge funding reads the wallet view; no wallet pin. I5 (+4): the merge opens its intent plan before its L1 reads and records under it."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
@@ -996,13 +981,13 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
-    "max": 547,
-    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1)."
+    "max": 517,
+    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-30): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1)."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",
-    "max": 669,
-    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1)."
+    "max": 640,
+    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-29): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1)."
   },
   {
     "file": "midgard-node/src/workers/mpf-engine-probe.ts",
@@ -1071,8 +1056,8 @@
   },
   {
     "file": "midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
-    "max": 513,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. U3 (+5): the commit submissions run under a d = 0 NodeConfig, which their final recheck now reads."
+    "max": 509,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. U3 (+5): the commit submissions run under a d = 0 NodeConfig, which their final recheck now reads. I2 (-4): no stale-wallet retry to classify."
   },
   {
     "file": "midgard-node/tests/contract-deployment-info.contract-deployment-info.ts",
@@ -1116,8 +1101,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/mpf.ts",
-    "max": 716,
-    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 672,
+    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts. N5b (-2): the merge finalization no longer clears the block rows, so the refusal case needs no rows of its own."
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-commit-selection.test.ts",
@@ -1131,27 +1116,27 @@
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-shared.ts",
-    "max": 1879,
+    "max": 1839,
     "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API. N2 (+21): the harness mirrors the emulator's state queue into the node's follower facts (P1) before it opens an owner and after each block, since the node reads its queue only from P1. N6 (+9): node commands run after the emulator's events are mirrored into the follower's event rows, since settlement opens an event by id from those rows (NC13). I1 (+3): the submissions and the node commands run under the journal of a process with no follower. I1-fix (+2): that journal keeps what it journals, so a flow's intents can be replayed onto a follower of its chain. I1-fix2 (+9): a commit worker run can take another journal, so a test runs the real worker under a follower-backed journal that refuses inside the commit's gate."
   },
   {
     "file": "midgard-node/tests/event-history-journal.test.ts",
-    "max": 2130,
+    "max": 2121,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
     "file": "midgard-node/tests/event-history-ledger-receipts.test.ts",
-    "max": 717,
+    "max": 709,
     "reason": "Retained test registration “owned accepted-ledger inverse receipts” (223 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/event-history-ledger-repair.test.ts",
-    "max": 1048,
+    "max": 1040,
     "reason": "Retained test registration “unpublished history-dependent ledger repair” (276 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/event-history-ready-append.test.ts",
-    "max": 906,
+    "max": 901,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1166,12 +1151,12 @@
   },
   {
     "file": "midgard-node/tests/event-history-recovery.test.ts",
-    "max": 603,
+    "max": 596,
     "reason": "Retained test registration “canonical history recovery composition” (457 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/event-history-retired-membership.test.ts",
-    "max": 826,
+    "max": 817,
     "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1191,7 +1176,7 @@
   },
   {
     "file": "midgard-node/tests/history-source-owner-retention.test.ts",
-    "max": 600,
+    "max": 540,
     "reason": "Retained production-owner lifecycle registration shares its emulator, follower gates and restart state across retention, readiness and rollback assertions. Independent fixture helpers are extracted; dividing the registration requires a separately verified harness refactor."
   },
   {
@@ -1206,12 +1191,12 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts",
-    "max": 894,
+    "max": 887,
     "reason": "Retained test registration “replays actual initialized lists and joins current external orders whose retained bodies predate activation” (818 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/l1-event-history-initialization-emulator.test.ts",
-    "max": 681,
+    "max": 673,
     "reason": "Retained test registration “bootstraps both histories from accepted atomic initialization and subsequent public admissions” (614 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1246,7 +1231,7 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-source-owner-emulator.test.ts",
-    "max": 807,
+    "max": 806,
     "reason": "Retained test registration “runs the default history owner through actual bootstrap, continuation, retirement and fresh restart intersection” (742 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1266,8 +1251,8 @@
   },
   {
     "file": "midgard-node/tests/merge-landed-finalization-emulator.test.ts",
-    "max": 729,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. N2 (+11): the race seam moved from a Lucid read to the landed-queue (P1) read, a hoisted mock of that read. I1 (+2): its node programs run under the journal of a process with no follower."
+    "max": 726,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. N2 (+11): the race seam moved from a Lucid read to the landed-queue (P1) read, a hoisted mock of that read. I1 (+2): its node programs run under the journal of a process with no follower. N5 (-3): the parent-refusal case passes its hooks and the finalization check whole."
   },
   {
     "file": "midgard-node/tests/merge-maturity-preflight.test.ts",
@@ -1276,7 +1261,7 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 540,
+    "max": 538,
     "reason": "Retained test registration “midgard contracts registry” (486 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1286,8 +1271,8 @@
   },
   {
     "file": "midgard-node/tests/mpf-audit-merge-permit-emulator.test.ts",
-    "max": 1018,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. I1 (+2): its node programs run under the journal of a process with no follower."
+    "max": 1020,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. I1 (+2): its node programs run under the journal of a process with no follower. N5 (+2): a merge folds only a journal bound to its landed header's parent, so the second block's journal is bound again before its merge."
   },
   {
     "file": "midgard-node/tests/mpf-commit-candidate-probe-artifacts.test.ts",
@@ -1311,8 +1296,8 @@
   },
   {
     "file": "midgard-node/tests/operator-lifecycle-emulator.test.ts",
-    "max": 947,
-    "reason": "Retained test registration “operator lifecycle emulator” (895 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1 (+1): the submissions run under the journal of a process with no follower."
+    "max": 950,
+    "reason": "Retained test registration “operator lifecycle emulator” (895 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1 (+1): the submissions run under the journal of a process with no follower. I2 (+3): the reference-script wallet is selected as a node wallet, and the test asserts the node leaves a test-made pin untouched."
   },
   {
     "file": "midgard-node/tests/phase2-benchmark-report.test.ts",
@@ -1326,8 +1311,8 @@
   },
   {
     "file": "midgard-node/tests/reserve-payout-builders.test.ts",
-    "max": 1187,
-    "reason": "Retained test registration “reserve/payout transaction builder primitives” (1082 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1 (+1): the submissions run under the journal of a process with no follower."
+    "max": 1200,
+    "reason": "Retained test registration “reserve/payout transaction builder primitives” (1082 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1 (+1): the submissions run under the journal of a process with no follower. I5 (+13): the submissions open their intent plan and pass it to the record."
   },
   {
     "file": "midgard-node/tests/reserve-payout-economic-acceptance-emulator.test.ts",
@@ -1386,8 +1371,8 @@
   },
   {
     "file": "midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
-    "max": 560,
-    "reason": "buildHistoryRetirementProgram is the dominant indivisible declaration (480 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 562,
+    "reason": "buildHistoryRetirementProgram is the dominant indivisible declaration (482 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Passes the node's explicit wallet-view inputs to fee-input selection and completion."
   },
   {
     "file": "midgard-sdk/tests/availability-challenge.q58-canonical-da-availability-commitment-v1.ts",
@@ -1501,23 +1486,23 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-decision-bridge.create-bridge.ts",
-    "max": 610,
+    "max": 600,
     "reason": "createBridge is the dominant indivisible declaration (575 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
-    "max": 792,
-    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 817,
+    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W3V (+32): a validationTraceDispute decision whose pre-follower transcript already started a proof is held by name (validation_transcript_pre_follower) instead of re-keyed; the held decisions share the capture map's lifetime, generation checks and pruning in this closure."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-progress-authority.ts",
-    "max": 624,
-    "reason": "createWatcherFaultProofProgressAuthority is one state owner: admission, execution updates, reconciliation and completion close over one objective index, decision cache and authority epoch, and share their revision checks; splitting it would redesign that ownership rather than separate independent declarations. W1 (+15): the authority pins each open objective's L1 history in the follower and releases it once the objective's completion marker holds (E1 ruling). F-fix (+1): completion markers are made and matched at the follower's k (the deployment's security parameter), read once from the retention. F-fix (+17): a pin that pruning beat is remembered per objective and retried on each later new observation, so the objective stays open and named rather than silently unheld. W2b-fix (+10): the authority opens its decision journal and initializes through the journals' shared opener, so a journal that could not be opened, or one that failed integrity, is retried by the next use instead of being cached. W2b-fix R2 (+91): an objective whose workflow names a decision the journal does not hold is held by name (journal_decision_missing) at startup, admission and execution update instead of failing the process, takes no new work while held, and clears once its header leaves the finalized queue; the holds share the objective index, retention pins and table rows this owner keeps."
+    "max": 640,
+    "reason": "createWatcherFaultProofProgressAuthority is one state owner: admission, execution updates, reconciliation and completion close over one objective index, decision cache and authority epoch, and share their revision checks; splitting it would redesign that ownership rather than separate independent declarations. W1 (+15): the authority pins each open objective's L1 history in the follower and releases it once the objective's completion marker holds (E1 ruling). F-fix (+1): completion markers are made and matched at the follower's k (the deployment's security parameter), read once from the retention. F-fix (+17): a pin that pruning beat is remembered per objective and retried on each later new observation, so the objective stays open and named rather than silently unheld. W2b-fix (+10): the authority opens its decision journal and initializes through the journals' shared opener, so a journal that could not be opened, or one that failed integrity, is retried by the next use instead of being cached. W2b-fix R2 (+91): an objective whose workflow names a decision the journal does not hold is held by name (journal_decision_missing) at startup, admission and execution update instead of failing the process, takes no new work while held, and clears once its header leaves the finalized queue; the holds share the objective index, retention pins and table rows this owner keeps. W3 (+16): the authority answers whether an execution's completion is already marked beyond rollback recovery, so the supervisor neither holds that released history again nor verifies it again."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",
-    "max": 1019,
-    "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W1 (+6): the supervisor hands the follower's proof retention to its progress authority, which holds each open objective's L1 history past k (E1 ruling). W2b (+11): a refused journal holds the supervisor unready instead of blocking it, and its status names the refusal (journal_integrity). W2b-fix (+27): the queue journal opens through the shared opener with a background reopen, a journal that could not be opened holds the supervisor unready (journal_unavailable) instead of blocking it, and a capacity read that meets corruption is reported as journal_integrity. W2b-fix R2 (+20): a run or startup read that meets a missing recorded decision holds the objective by name instead of blocking the supervisor, and status names every held objective and funding reservation (journal_decision_missing). W2b-R3 (+74): a busy or locked journal database holds the supervisor unready (journal_busy) instead of blocking it, and after the backoff the supervisor resets its in-memory work, reopens its queue and progress authority, and reruns the startup funding sweep, requeueing from durable state in process as a restart does; the reset shares the supervisor's local state, so it cannot move out with the hold timer (watcher-journal-busy.ts)."
+    "max": 1031,
+    "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W1 (+6): the supervisor hands the follower's proof retention to its progress authority, which holds each open objective's L1 history past k (E1 ruling). W2b (+11): a refused journal holds the supervisor unready instead of blocking it, and its status names the refusal (journal_integrity). W2b-fix (+27): the queue journal opens through the shared opener with a background reopen, a journal that could not be opened holds the supervisor unready (journal_unavailable) instead of blocking it, and a capacity read that meets corruption is reported as journal_integrity. W2b-fix R2 (+20): a run or startup read that meets a missing recorded decision holds the objective by name instead of blocking the supervisor, and status names every held objective and funding reservation (journal_decision_missing). W2b-R3 (+74): a busy or locked journal database holds the supervisor unready (journal_busy) instead of blocking it, and after the backoff the supervisor resets its in-memory work, reopens its queue and progress authority, and reruns the startup funding sweep, requeueing from durable state in process as a restart does; the reset shares the supervisor's local state, so it cannot move out with the hold timer (watcher-journal-busy.ts). W3 (+12): a job queued at a later rollback generation whose completion is already marked beyond rollback recovery takes the marker as final instead of holding the released L1 history again and verifying it again, which the follower has pruned."
   },
   {
     "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
@@ -1528,31 +1513,6 @@
     "file": "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",
     "max": 1468,
     "reason": "openInternal is the dominant indivisible declaration (1404 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W2b-fix R2 (+7): an unused reservation whose recorded decision is missing and whose inputs are spent at a final view is dropped through the same guarded clear as a release, without the signed-history refusal."
-  },
-  {
-    "file": "midgard-watcher/src/index.ts",
-    "max": 709,
-    "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation. Integrated recovered DA branch source; exact measured line count. SI-fix2 (+2): exports the decision driver's two retirement-reset readiness reasons."
-  },
-  {
-    "file": "midgard-watcher/src/indexers/user-event-indexer/local-history.prepare-watcher-local-user-event-readmission.ts",
-    "max": 889,
-    "reason": "prepareWatcherLocalUserEventReadmission is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-watcher/src/l1/multi-provider-consistency.evaluate-admitted-consistency.ts",
-    "max": 567,
-    "reason": "evaluateAdmittedConsistency is the dominant indivisible declaration (538 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts",
-    "max": 1564,
-    "reason": "createWatcherUserEventRuntime is the dominant indivisible declaration (1488 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-watcher/src/runtime/watcher-runtime.decision-driver.ts",
-    "max": 576,
-    "reason": "createWatcherDecisionDriver is one state owner: the pass, the push and pull rewind handler, the history rollback target, the handled-generation marker and the retirement reset it waits on share private state and ordering invariants (the target merges before the generation dedupe; the marker moves only after the history rollback and a held reset). Splitting them apart would expose that state across modules rather than separate independent declarations. SI-fix2 (+86): the marker waits on the retirement reset, bounded by the retry delay, with named readiness reasons, and the pull reads from the generation this process already rolled the history back through."
   },
   {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",
@@ -1566,13 +1526,13 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-decision-bridge.test.ts",
-    "max": 1279,
+    "max": 1256,
     "reason": "Retained test registration “production fault decision bridge” (1248 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts",
-    "max": 739,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+2): the application is built over the follower-backed L1 source."
+    "max": 722,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+2): the application is built over the follower-backed L1 source. W3 (-17): the runtime config drops the deleted Kupmios query services and rollback policy."
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-application.test.ts",
@@ -1581,8 +1541,8 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-objective-progress.test.ts",
-    "max": 738,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+2): the supervisor takes the follower's proof retention (a storeless one here). W2b-fix R2 (+1): the supervisor takes the funding runtime's reservation holds (none here)."
+    "max": 785,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+2): the supervisor takes the follower's proof retention (a storeless one here). W2b-fix R2 (+1): the supervisor takes the funding runtime's reservation holds (none here). W3 (+47): the user-event runtime and its history driver are gone (-2), and both polarities pin that a completion marked beyond k is final for a job queued at a later generation while one not yet k deep is verified again (+49)."
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-supervisor.test.ts",
@@ -1590,14 +1550,9 @@
     "reason": "Retained test registration “production fault-proof supervisor” (514 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. W1 (+2): the supervisor takes the follower's proof retention (a storeless one here). W2b-fix R2 (+54): a run whose recorded decision is missing is held by name and later targets keep running."
   },
   {
-    "file": "midgard-watcher/tests/fault-proofs/replay-transcript-capture.test.ts",
-    "max": 656,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
-  },
-  {
     "file": "midgard-watcher/tests/fault-proofs/watcher-installed-journey.test.ts",
-    "max": 967,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+47): the installed journey runs the watcher on its chain follower over the synthetic node (deployment follower, followed scripts, ledger-state queries). W2b (+15): the installed journey seeds a legacy fault-decisions journal and asserts the watcher starts past it with one legacy_journal_ignored warning. W2b-fix (+76): the installed journey restarts the watcher over a decision journal whose head fails integrity, asserts the operations server binds and answers /readyz and /v1/metrics 503 journal_integrity, then repairs the journal and completes startup."
+    "max": 943,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+47): the installed journey runs the watcher on its chain follower over the synthetic node (deployment follower, followed scripts, ledger-state queries). W2b (+15): the installed journey seeds a legacy fault-decisions journal and asserts the watcher starts past it with one legacy_journal_ignored warning. W2b-fix (+76): the installed journey restarts the watcher over a decision journal whose head fails integrity, asserts the operations server binds and answers /readyz and /v1/metrics 503 journal_integrity, then repairs the journal and completes startup. W3 (-24): the trusted-head authority fixture and its finality policy are gone; the rollback key is read directly."
   },
   {
     "file": "midgard-watcher/tests/funding/prover-funding-calculation.test.ts",
@@ -1615,54 +1570,9 @@
     "reason": "Retained test registration “SQLite prover funding reservation store V1” (1280 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-watcher/tests/indexers/user-event-history.bounded-local-user-event-semantic-publication-synthetic-local-blocks.ts",
-    "max": 693,
-    "reason": "Retained test registration “bounded local user-event semantic publication (synthetic local blocks)” (652 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-watcher/tests/indexers/user-event-origin.test.ts",
-    "max": 846,
-    "reason": "fixture is the dominant indivisible declaration (358 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-watcher/tests/l1/crash-rollback-matrix.test.ts",
-    "max": 1476,
-    "reason": "Retained test registration “W44 watcher crash and rollback matrix” (518 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-watcher/tests/l1/finality-engine.canonical-release-bound-watcher-finality.ts",
-    "max": 1075,
-    "reason": "Retained test registration “canonical release-bound watcher finality” (1040 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-watcher/tests/l1/l1-adapter.test.ts",
-    "max": 1013,
-    "reason": "Retained test registration “provider-neutral authenticated L1 adapter” (870 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-watcher/tests/l1/local-historical-capture.test.ts",
-    "max": 1516,
-    "reason": "Retained test registration “receipt-only local backfill admission” (501 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-watcher/tests/l1/multi-provider-consistency.test.ts",
-    "max": 787,
-    "reason": "Retained test registration “fail-closed multi-provider consistency” (621 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-watcher/tests/l1/resolved-block-observation.test.ts",
-    "max": 548,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
-  },
-  {
-    "file": "midgard-watcher/tests/l1/rollback-engine.test.ts",
-    "max": 3603,
-    "reason": "Retained test registration “canonical watcher rollback engine” (3050 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-watcher/tests/runtime/config.strict-watcher-configuration.ts",
-    "max": 746,
-    "reason": "Retained test registration “strict watcher configuration” (729 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 570,
+    "reason": "Retained test registration “strict watcher configuration” (729 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. W3 (-176): the external-provider, Kupmios topology and rollback-policy cases went with the config keys they pinned."
   },
   {
     "file": "midgard-watcher/tests/runtime/deployment-identity.test.ts",
@@ -1671,8 +1581,8 @@
   },
   {
     "file": "midgard-watcher/tests/storage/retained-da-runtime.test.ts",
-    "max": 1131,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 1119,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W3 (-12): the custom-network config drops the deleted Kupmios query services."
   },
   {
     "file": "midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts",
@@ -1680,28 +1590,23 @@
     "reason": "setupFundingRecoveryFixture is the dominant indivisible declaration (604 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-watcher/tests/support/local-user-event-authority-fixture.history-lifecycle.ts",
-    "max": 651,
-    "reason": "historyLifecycle is the dominant indivisible declaration (616 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts",
-    "max": 858,
-    "reason": "createPublishedWatcherBlockActor is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+1): its operator activation runs without a follower, so it is given the journal that records nothing."
+    "max": 848,
+    "reason": "createPublishedWatcherBlockActor is the dominant indivisible declaration (799 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+1): its operator activation runs without a follower, so it is given the journal that records nothing."
   },
   {
     "file": "midgard-watcher/tests/support/published-deposit-trace.stage-published-deposit-trace.ts",
-    "max": 819,
-    "reason": "stagePublishedDepositTrace is the dominant indivisible declaration (780 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+1): its operator activation runs without a follower, so it is given the journal that records nothing."
+    "max": 813,
+    "reason": "stagePublishedDepositTrace is the dominant indivisible declaration (774 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+1): its operator activation runs without a follower, so it is given the journal that records nothing."
   },
   {
     "file": "midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",
-    "max": 1057,
-    "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (996 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. F1 (+10): the synthetic node is served through the node transport's fake sidecar (writeFakeSidecar over the fixture's handler module, in a realpath'd directory), and cleanup closes the shared transports. W1 (+59): the synthetic node answers the follower's chain-sync and ledger-state queries (utxo by address and by outref) from the fixture's ledger."
+    "max": 993,
+    "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (996 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. F1 (+10): the synthetic node is served through the node transport's fake sidecar (writeFakeSidecar over the fixture's handler module, in a realpath'd directory), and cleanup closes the shared transports. W1 (+59): the synthetic node answers the follower's chain-sync and ledger-state queries (utxo by address and by outref) from the fixture's ledger. W3 (-64): the local historical-capture finality admission (openFinalizedBlock) and the query endpoints are gone."
   },
   {
     "file": "midgard-watcher/tests/verification/block-replay.w25-roots-and-deterministic-replay.ts",
-    "max": 1414,
+    "max": 1408,
     "reason": "Retained test registration “W25 roots and deterministic replay” (1341 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

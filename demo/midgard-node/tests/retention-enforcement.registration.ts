@@ -50,7 +50,11 @@ import {
   terminalMerge,
   withSweepServices,
 } from "./retention-enforcement.terminal-merge.js";
-import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
+import {
+  deterministicFixtureBytes,
+  provideDatabaseLayers,
+  resetApplicationTables,
+} from "./utils.js";
 
 describe.skipIf(!dbEnabled)(
   "Q54 challengeability-aware DA payload pruning",
@@ -78,8 +82,7 @@ describe.skipIf(!dbEnabled)(
       Effect.runPromise(
         provideDatabaseLayers(
           Effect.gen(function* () {
-            yield* DaPayloadTerminalOutcomesDB.clear;
-            yield* DaPayloadsDB.clear;
+            yield* resetApplicationTables;
             const result = yield* effect;
             return result;
           }),

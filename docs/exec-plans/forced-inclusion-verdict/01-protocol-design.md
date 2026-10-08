@@ -566,6 +566,8 @@ for that work. Task 3 remains unable to claim full capacity until it is resolved
   `docs/fault-proofs/automatic-watcher-journeys.md`. Those edits were preserved;
   they do not change the source encoding decisions or the codec baseline result.
   Task 2 must capture its own start state and retain these ongoing changes.
+  The first three files were since deleted when the watcher moved onto its L1
+  follower. <!-- doc-links:historical -->
 - ADR, resolved wire design, impact inventory, proof-family coverage, adversarial
   review, and exact test matrix are complete. Document checks verified local
   links/anchors, 47 existing test references and Aiken selectors, all 55 catalogue

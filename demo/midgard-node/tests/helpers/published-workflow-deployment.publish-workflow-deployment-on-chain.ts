@@ -27,6 +27,7 @@ import {
   buildContractDeploymentInfoFromContracts,
   buildDeploymentManifest,
 } from "../../src/commands/contract-deployment-info.js";
+import { IntentJournalWithoutFollower } from "../../src/services/intent-journal.js";
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../../src/transactions/availability-challenge-registration.js";
 import {
   atomicProtocolInitReferenceScriptsFromPublications,
@@ -292,7 +293,7 @@ export const publishWorkflowDeploymentOnChain = async ({
         catalogue.root,
         undefined,
         atomicProtocolInitReferenceScriptsFromPublications(publications),
-      ),
+      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
     );
     const init = await initBuilder.complete({ localUPLCEval: true });
     const initSigned = await init.sign.withWallet().complete();

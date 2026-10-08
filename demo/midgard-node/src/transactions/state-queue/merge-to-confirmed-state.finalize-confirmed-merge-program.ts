@@ -4,20 +4,23 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Metric, Option, Ref } from "effect";
 
 import {
-  BlocksDB,
-  DepositsDB,
-  ForcedTransactionsDB,
+  ConfirmedLedgerDB,
   MutationJobsDB,
   PendingBlockFinalizationsDB,
-  WithdrawalsDB,
 } from "../../database/index.js";
-import * as MempoolInclusionsDB from "../../database/mempoolInclusions.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
 import { formatLandedStateQueue } from "../../l1-state-queue/index.js";
+import {
+  foldMerge,
+  retrieveMergeLinks,
+} from "../../landed-blocks/confirmed-merges.js";
+import { ownFoldRow, ownJournalOf } from "../../landed-blocks/journal.js";
 import { recordSettlements } from "../../landed-blocks/settlements.js";
+import { Frontier } from "../../landed-blocks/store.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../../mpf/ledger-hydration.js";
 import { withHistoryWrite } from "../../services/event-history-producer.js";
 import { Database, Globals } from "../../services/index.js";
 import {
@@ -28,11 +31,6 @@ import {
   assertNativeMpfHashHex,
   type NativeMpfOwnerService,
 } from "../../services/mpf-native-owner/index.js";
-import {
-  applyConfirmedLedgerDeltaChainTransaction,
-  type ConfirmedLedgerSnapshot,
-  materializeConfirmedMergeLedgerSnapshot,
-} from "./confirmed-ledger-snapshot.js";
 
 export const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merged blocks",
@@ -41,65 +39,111 @@ export const mergeBlockCounter = Metric.counter("merge_block_count", {
 });
 
 export type ConfirmedMergeNativeOwnerObservation = {
-  readonly confirmedLedgerEntryCount: number;
+  readonly confirmedLedgerEntryCount?: number;
   readonly confirmedLedgerRoot: string;
   readonly durableLedgerRoot: string;
   readonly activeGenerations: number;
 };
 
 /**
- * Folds an own merged block into `confirmed_ledger` in one transaction. The
- * block's transactions (`includedTxIds`, its journal members) settle their
- * receipt members for good (recorded here too, so a block that folds with
- * no rebase between still records them), and the pending-table rows the
- * block marked are deleted.
+ * What a confirmed-merge finalization did to `confirmed_ledger` (N5):
+ * - `folded`: it folded the journal's delta at the frontier, through the
+ *   stored-delta fold landed-block processing uses (`confirmed-merges.ts`);
+ * - `already_folded`: the frontier is at the block, or a retained fold holds
+ *   it (landed-block processing folded it first);
+ * - `deferred`: the frontier is elsewhere (behind, waiting on a foreign
+ *   block, or past it), so landed-block processing folds it in order.
+ */
+export type ConfirmedMergeLedgerStep = "folded" | "already_folded" | "deferred";
+
+/**
+ * Folds this node's own merged block at the frontier, from its journal, in
+ * the caller's transaction. With no frontier yet (no landed-block run has
+ * set one), it is set once from the journal's identity: at the block when
+ * `confirmed_ledger` is at its root already, at its base when it is at the
+ * base's. The only whole-ledger read is that one-time bootstrap.
+ */
+const foldOwnMergeAtFrontier = (journal: PendingBlockFinalizationsDB.Record) =>
+  Effect.gen(function* () {
+    const own = ownJournalOf(journal);
+    const base = {
+      headerHash: own.baseTailHeaderHash,
+      utxosRoot: own.baseUtxosRoot,
+    };
+    let frontier = yield* Frontier.retrieve;
+    if (frontier === undefined) {
+      const root = yield* computeLedgerMpfRootFromLedgerEntries(
+        yield* ConfirmedLedgerDB.retrieve,
+      );
+      if (root === own.expectedUtxosRoot) {
+        yield* Frontier.upsert({
+          headerHash: own.headerHash,
+          utxosRoot: own.expectedUtxosRoot,
+        });
+        return "already_folded" satisfies ConfirmedMergeLedgerStep;
+      }
+      if (root !== own.baseUtxosRoot)
+        return "deferred" satisfies ConfirmedMergeLedgerStep;
+      yield* Frontier.upsert(base);
+      frontier = base;
+    }
+    if (
+      frontier.headerHash === own.headerHash ||
+      (yield* retrieveMergeLinks).has(own.headerHash)
+    )
+      return "already_folded" satisfies ConfirmedMergeLedgerStep;
+    if (frontier.headerHash !== base.headerHash)
+      return "deferred" satisfies ConfirmedMergeLedgerStep;
+    // A frontier at the base header with another root is refused here.
+    yield* foldMerge(ownFoldRow(journal), null);
+    return "folded" satisfies ConfirmedMergeLedgerStep;
+  });
+
+/**
+ * The confirmed-merge finalization's one transaction: the own block's fold
+ * at the frontier (when the frontier is its base), then the receipt members
+ * its transactions settle recorded (so a block that folds with no rebase
+ * between still records them). The block's bodies (`blocks` rows) and the
+ * pending-table rows it marked stay until its fold is final
+ * (`releaseFinalFolds`): a rollback of this merge leaves the block queued,
+ * and merging it again reads them. O(delta): no whole-ledger read, root or
+ * table lock.
  */
 export const finalizeConfirmedMergeTransaction = ({
   headerHash,
-  snapshot,
-  projectedDepositEventIds,
-  projectedWithdrawalEventIds,
-  projectedForcedTransactionEventIds,
-  includedTxIds,
+  journal,
 }: {
   readonly headerHash: Buffer;
-  readonly snapshot: ConfirmedLedgerSnapshot;
-  readonly projectedDepositEventIds: readonly Buffer[];
-  readonly projectedWithdrawalEventIds: readonly Buffer[];
-  readonly projectedForcedTransactionEventIds: readonly Buffer[];
-  readonly includedTxIds: readonly Buffer[];
-}): Effect.Effect<void, DatabaseError, Database> =>
+  readonly journal: PendingBlockFinalizationsDB.Record;
+}): Effect.Effect<ConfirmedMergeLedgerStep, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
+    return yield* sql.withTransaction(
       Effect.gen(function* () {
+        const step = yield* foldOwnMergeAtFrontier(journal);
         yield* Effect.logInfo(
-          `🔸 Apply finalized confirmed-ledger V1 delta chain (deltas=${snapshot.deltaChain.length.toString()},root=${snapshot.root})...`,
+          `🔸 Confirmed-ledger step of the merge finalization: ${step}.`,
         );
-        yield* applyConfirmedLedgerDeltaChainTransaction(snapshot);
-        yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
-        yield* BlocksDB.clearBlock(headerHash).pipe(
-          Effect.withSpan("clear-block-from-BlocksDB"),
-        );
-        yield* DepositsDB.markConsumedByEventIds(projectedDepositEventIds).pipe(
-          Effect.withSpan("mark-merged-deposits-consumed"),
-        );
-        yield* WithdrawalsDB.markFinalizedByEventIds(
-          projectedWithdrawalEventIds,
-          headerHash,
-        ).pipe(Effect.withSpan("mark-merged-withdrawals-finalized"));
-        yield* ForcedTransactionsDB.markFinalizedByEventIds(
-          projectedForcedTransactionEventIds,
-          headerHash,
-        ).pipe(Effect.withSpan("mark-merged-forced-transactions-finalized"));
         yield* recordSettlements([
-          { headerHash: headerHash.toString("hex"), txIds: includedTxIds },
+          {
+            headerHash: headerHash.toString("hex"),
+            txIds: journal.mempoolTxIds,
+          },
         ]);
-        yield* MempoolInclusionsDB.deleteIncluded(headerHash);
+        return step;
       }),
     );
   }).pipe(
     withHistoryWrite,
+    Effect.mapError((error) =>
+      error instanceof DatabaseError
+        ? error
+        : new DatabaseError({
+            table: "confirmed_merge_finalization",
+            message: "Failed to finalize confirmed-state merge locally",
+            cause: error,
+          }),
+    ),
     sqlErrorToDatabaseError(
       "confirmed_merge_finalization",
       "Failed to finalize confirmed-state merge locally",
@@ -120,7 +164,7 @@ export const observeNativeOwnerAfterConfirmedMerge = ({
   readonly nativeMpfOwner:
     | Pick<NativeMpfOwnerService, "diagnostics">
     | undefined;
-  readonly confirmedLedgerEntryCount: number;
+  readonly confirmedLedgerEntryCount?: number;
   readonly confirmedLedgerRoot: string;
 }): Effect.Effect<ConfirmedMergeNativeOwnerObservation, Error> =>
   Effect.tryPromise({
@@ -150,44 +194,34 @@ export const observeNativeOwnerAfterConfirmedMerge = ({
 
 /**
  * Finalizes one L1-confirmed merge into the local database under its
- * confirmed-merge job: folds the header's ledger delta chain into the
- * confirmed ledger, clears its block rows, marks its projected events, then
+ * confirmed-merge job: folds the block's journal delta into
+ * `confirmed_ledger` at the frontier (marking its events terminal), then
  * confirms the native MPF owner is live (see
- * observeNativeOwnerAfterConfirmedMerge). `headerUtxosRoot` is the header's committed
- * UTxO root, which the folded ledger must reach.
+ * observeNativeOwnerAfterConfirmedMerge). `headerUtxosRoot` is the header's
+ * committed UTxO root, which the journal's expected root must be.
  *
  * Idempotent, so a failed or interrupted attempt can simply run again: a
- * ledger already at the journal's expected root is not folded twice, and every
- * other step converges. A failure records the job as failed.
+ * block already folded is not folded twice, and its settlements are
+ * recorded once. A frontier elsewhere leaves the fold to landed-block
+ * processing, which folds every merged block in queue order. The block's
+ * bodies stay until its fold is final (`releaseFinalFolds`). A failure
+ * records the job as failed.
  */
 export const finalizeConfirmedMergeProgram = ({
   headerHash,
   headerUtxosRoot,
-}: {
-  readonly headerHash: Buffer;
-  readonly headerUtxosRoot: string;
-}): Effect.Effect<void, DatabaseError, Database | Globals> =>
+  parentHeaderHash,
+  parentUtxosRoot,
+}: LandedUnfinalizedMerge): Effect.Effect<
+  void,
+  DatabaseError,
+  Database | Globals
+> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(
       headerHash.toString("hex"),
     );
-    const projectedDepositEntries =
-      yield* DepositsDB.retrieveByProjectedHeaderHash(headerHash);
-    const projectedForcedTransactionEntries =
-      yield* ForcedTransactionsDB.retrieveByProjectedHeaderHash(headerHash);
-    const projectedWithdrawalEntries =
-      yield* WithdrawalsDB.retrieveByProjectedHeaderHash(headerHash);
-    const projectedDepositEventIds = projectedDepositEntries.map(
-      (entry) => entry[DepositsDB.Columns.ID],
-    );
-    const projectedWithdrawalEventIds = projectedWithdrawalEntries.map(
-      (entry) => entry[WithdrawalsDB.Columns.ID],
-    );
-    const projectedForcedTransactionEventIds =
-      projectedForcedTransactionEntries.map(
-        (entry) => entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
-      );
     const finalizedJournal =
       yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
     if (Option.isNone(finalizedJournal)) {
@@ -200,25 +234,21 @@ export const finalizeConfirmedMergeProgram = ({
         }),
       );
     }
-    const confirmedLedgerSnapshot =
-      yield* materializeConfirmedMergeLedgerSnapshot(finalizedJournal.value);
-    const confirmedLedgerSnapshotRoot = confirmedLedgerSnapshot.root;
-    const expectedSnapshotRoot =
-      finalizedJournal.value[
-        PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
-      ];
+    const journal = finalizedJournal.value;
+    // The fold's base is the journal's: it must be the authenticated
+    // header's own parent and roots, or the fold (and a first frontier)
+    // would bind the confirmed ledger to a header the chain never had.
+    const own = ownJournalOf(journal);
     if (
-      confirmedLedgerSnapshotRoot !== expectedSnapshotRoot ||
-      confirmedLedgerSnapshotRoot !== headerUtxosRoot
+      own.expectedUtxosRoot !== headerUtxosRoot ||
+      own.baseTailHeaderHash !== parentHeaderHash ||
+      own.baseUtxosRoot !== parentUtxosRoot
     ) {
       return yield* Effect.fail(
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Failed to finalize confirmed-state merge locally because the durable UTxO snapshot root does not match the confirmed block",
-          cause: `header_hash=${headerHash.toString(
-            "hex",
-          )},snapshot_root=${confirmedLedgerSnapshotRoot},journal_expected_root=${expectedSnapshotRoot},confirmed_header_root=${headerUtxosRoot}`,
+          message: CONFIRMED_MERGE_JOURNAL_UNBOUND,
+          cause: `header_hash=${headerHash.toString("hex")},journal_base=${own.baseTailHeaderHash}/${own.baseUtxosRoot},journal_expected_root=${own.expectedUtxosRoot},header_parent=${parentHeaderHash}/${parentUtxosRoot},header_root=${headerUtxosRoot}`,
         }),
       );
     }
@@ -227,26 +257,18 @@ export const finalizeConfirmedMergeProgram = ({
       kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
       payload: {
         headerHash: headerHash.toString("hex"),
-        depositEventCount: projectedDepositEventIds.length,
-        forcedTransactionEventCount: projectedForcedTransactionEventIds.length,
-        withdrawalEventCount: projectedWithdrawalEventIds.length,
-        confirmedLedgerSnapshotRoot,
-        ledgerDeltaSpentCount: confirmedLedgerSnapshot.delta.spent.length,
-        ledgerDeltaProducedCount: confirmedLedgerSnapshot.delta.produced.length,
+        confirmedHeaderUtxosRoot: headerUtxosRoot,
+        ledgerDeltaSpentCount: journal.ledgerDelta.spent.length,
+        ledgerDeltaProducedCount: journal.ledgerDelta.produced.length,
       },
     });
-    yield* finalizeConfirmedMergeTransaction({
+    const step = yield* finalizeConfirmedMergeTransaction({
       headerHash,
-      snapshot: confirmedLedgerSnapshot,
-      projectedDepositEventIds,
-      projectedWithdrawalEventIds,
-      projectedForcedTransactionEventIds,
-      includedTxIds: finalizedJournal.value.mempoolTxIds,
+      journal,
     });
     const ownerObservation = yield* observeNativeOwnerAfterConfirmedMerge({
       nativeMpfOwner: yield* Ref.get(globals.NATIVE_MPF_OWNER),
-      confirmedLedgerEntryCount: confirmedLedgerSnapshot.entries.length,
-      confirmedLedgerRoot: confirmedLedgerSnapshotRoot,
+      confirmedLedgerRoot: headerUtxosRoot,
     }).pipe(
       Effect.mapError(
         (error) =>
@@ -261,7 +283,7 @@ export const finalizeConfirmedMergeProgram = ({
     yield* Effect.logInfo(
       `🔸 Retained Architecture G owner after merge local finalization (header=${headerHash.toString(
         "hex",
-      )},confirmed_ledger_entries=${ownerObservation.confirmedLedgerEntryCount.toString()},confirmed_ledger_root=${ownerObservation.confirmedLedgerRoot},durable_tail_root=${ownerObservation.durableLedgerRoot},active_generations=${ownerObservation.activeGenerations.toString()}).`,
+      )},confirmed_ledger=${step},confirmed_header_root=${ownerObservation.confirmedLedgerRoot},durable_tail_root=${ownerObservation.durableLedgerRoot},active_generations=${ownerObservation.activeGenerations.toString()}).`,
     );
     yield* MutationJobsDB.markCompleted(jobId);
   }).pipe(
@@ -275,11 +297,31 @@ export const finalizeConfirmedMergeProgram = ({
     ),
   );
 
-/** A landed merge whose local finalization the catch-up has to run. */
+/**
+ * A landed merge whose local finalization has to run, with its
+ * authenticated header's root and parent.
+ */
 export type LandedUnfinalizedMerge = {
   readonly headerHash: Buffer;
   readonly headerUtxosRoot: string;
+  readonly parentHeaderHash: string;
+  readonly parentUtxosRoot: string;
 };
+
+/** The landed merge of `header`, whose hash is `headerHash`. */
+export const landedMergeOf = (
+  headerHash: Buffer,
+  header: SDK.Header,
+): LandedUnfinalizedMerge => ({
+  headerHash,
+  headerUtxosRoot: header.utxosRoot,
+  parentHeaderHash: header.prevHeaderHash,
+  parentUtxosRoot: header.prevUtxosRoot,
+});
+
+/** The refusal of a merge's journal that is not its header's own. */
+export const CONFIRMED_MERGE_JOURNAL_UNBOUND =
+  "Confirmed-merge journal differs from its canonical header/parent/root";
 
 /**
  * Upper bound on the headers one catch-up walks back through. Every merge

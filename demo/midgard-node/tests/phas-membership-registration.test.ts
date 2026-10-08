@@ -9,9 +9,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
-  type CapturedPhasMembershipRegistrationTransaction,
   decodePhasMembershipRegistrationTransactionBodyEvidence,
   decodePhasMembershipRewardRegistrationResult,
+} from "../src/transactions/phas-membership-registration.decode.js";
+import {
+  type CapturedPhasMembershipRegistrationTransaction,
   ensurePhasMembershipRewardAccountRegisteredProgram,
   inspectPhasMembershipRegistrationTransaction,
   isPhasMembershipAlreadyRegisteredError,
@@ -266,7 +268,14 @@ describe("PHAS membership reward registration", () => {
       transactionBody: capturedTransaction("aa".repeat(32)).evidence,
     });
     expect(buildRegistrationTx).toHaveBeenCalledOnce();
-    expect(submitRegistrationTx).toHaveBeenCalledWith(lucid, built);
+    expect(submitRegistrationTx).toHaveBeenCalledWith(
+      lucid,
+      built,
+      expect.objectContaining({
+        kind: "none",
+        reason: "intent_journal_no_view",
+      }),
+    );
   });
 
   it("keeps the typed submit-error race fallback after an unregistered preflight", async () => {
