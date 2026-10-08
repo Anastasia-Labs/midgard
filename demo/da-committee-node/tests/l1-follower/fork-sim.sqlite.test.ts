@@ -9,7 +9,6 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
-  COMMITTEE_PRUNE,
   committeeForkCorpus,
   committeeSimProjection,
   SIM_K,
@@ -23,10 +22,7 @@ const openSqlite: ForkRunOptions["open"] = (optionsFor) =>
     openSqliteFactStore({ ...optionsFor("sqlite"), path: ":memory:" }),
   );
 
-const corpus = [
-  ...forkCorpus(SIM_K, COMMITTEE_PRUNE),
-  ...committeeForkCorpus(),
-];
+const corpus = [...forkCorpus(SIM_K), ...committeeForkCorpus()];
 
 describe("committee projections in the fork simulator (SQLite)", () => {
   const totals = zeroStats();
@@ -40,7 +36,11 @@ describe("committee projections in the fork simulator (SQLite)", () => {
         k: SIM_K,
         projections: [committeeSimProjection(stats, { expectHealthy: true })],
       });
-      expect(outcome).toMatchObject({ ok: true });
+      expect(
+        outcome.ok
+          ? "ok"
+          : `step ${outcome.step.toString()}: ${outcome.reason}`,
+      ).toBe("ok");
       expect(stats.steps).toBe(outcome.stats.events);
       for (const key of Object.keys(totals) as (keyof typeof totals)[])
         totals[key] += stats[key];
@@ -49,8 +49,12 @@ describe("committee projections in the fork simulator (SQLite)", () => {
 
   // The corpus must reach every case the checks guard, or a green run
   // proves nothing about them.
-  it("the corpus signs siblings, loses signed headers, finalizes and proves headers unable to land", () => {
+  it("the corpus signs siblings, loses signed headers, finalizes, re-lands commits, prunes and proves headers unable to land at the exact boundary", () => {
     expect(totals.signed).toBeGreaterThan(0);
+    expect(totals.relanded).toBeGreaterThan(0);
+    expect(totals.boundary).toBeGreaterThan(0);
+    expect(totals.prunedViews).toBeGreaterThan(0);
+    expect(totals.beyondRetention).toBeGreaterThan(0);
     expect(totals.siblingPairs).toBeGreaterThan(0);
     expect(totals.disappeared).toBeGreaterThan(0);
     expect(totals.cannotLand).toBeGreaterThan(0);
@@ -61,22 +65,17 @@ describe("committee projections in the fork simulator (SQLite)", () => {
 
   it(`holds for ${RUNS.toString()} random scenarios (fast-check)`, async () => {
     await fc.assert(
-      fc.asyncProperty(
-        forkScenarioArbitrary(SIM_K, undefined, COMMITTEE_PRUNE),
-        async (scenario) => {
-          const outcome = await runForkScenario(scenario, {
-            open: openSqlite,
-            k: SIM_K,
-            projections: [
-              committeeSimProjection(zeroStats(), { expectHealthy: true }),
-            ],
-          });
-          if (!outcome.ok)
-            throw new Error(
-              `step ${outcome.step.toString()}: ${outcome.reason}`,
-            );
-        },
-      ),
+      fc.asyncProperty(forkScenarioArbitrary(SIM_K), async (scenario) => {
+        const outcome = await runForkScenario(scenario, {
+          open: openSqlite,
+          k: SIM_K,
+          projections: [
+            committeeSimProjection(zeroStats(), { expectHealthy: true }),
+          ],
+        });
+        if (!outcome.ok)
+          throw new Error(`step ${outcome.step.toString()}: ${outcome.reason}`);
+      }),
       { numRuns: RUNS, seed: 0xc1_5eed },
     );
     // Sixty whole scenarios, each replayed fresh after every event: about
@@ -92,7 +91,11 @@ describe("committee projections in the fork simulator (SQLite)", () => {
         k: SIM_K,
         projections: [committeeSimProjection(stats, { orphanChance: 0.2 })],
       });
-      expect(outcome).toMatchObject({ ok: true });
+      expect(
+        outcome.ok
+          ? "ok"
+          : `step ${outcome.step.toString()}: ${outcome.reason}`,
+      ).toBe("ok");
       unhealthy += stats.unhealthy;
     }
     expect(unhealthy).toBeGreaterThan(0);

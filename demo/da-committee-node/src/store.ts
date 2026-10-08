@@ -23,12 +23,8 @@ export {
   type L1ObservedStatus,
   type L1SourceState,
   type RetainedPayloadPruneRequest,
-  UNKNOWN_STATE_QUEUE_STATUS,
 } from "./store.committee-store.js";
-export {
-  libp2pSubmittedDaPayloadRecord,
-  withObservedStatus,
-} from "./store.libp2p-submitted-da-payload-record.js";
+export { libp2pSubmittedDaPayloadRecord } from "./store.libp2p-submitted-da-payload-record.js";
 export {
   decisionEffectId,
   parseDecisionOutboxRecord,
@@ -39,11 +35,7 @@ export {
   jsonReviver,
   parseStoredJson,
 } from "./store.parse-stored-record-map.js";
-export {
-  mergeL1SourceState,
-  mergeQuarantinedL1SourceState,
-  persistedDecisionTransition,
-} from "./store.persisted-decision-transition.js";
+export { mergeL1SourceState } from "./store.persisted-decision-transition.js";
 export { resolveDaPayloadSave } from "./store/resolve-da-payload-save.js";
 export type { CommitteeRetirementCertificate } from "./store/retirement-certificate.js";
 export type {

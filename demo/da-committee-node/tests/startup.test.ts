@@ -56,14 +56,11 @@ describe("committee node startup retry", () => {
   it("exits at once on a configuration that contradicts the deployment or the chain", async () => {
     const fatal = [
       new L1SourceIntegrityError(
-        "on-chain DA committee does not match committee node config",
+        "availability query surface reports another network",
       ),
       new L1NetworkMagicUnconfiguredError("no network magic"),
       new Error(
         "stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=aa",
-      ),
-      new Error(
-        "persisted L1 source state does not match configured source mode/network",
       ),
     ];
     for (const error of fatal) {
@@ -83,6 +80,15 @@ describe("committee node startup retry", () => {
       expect(attempts).toBe(1);
     }
     expect(isFatalStartupError(new Error("fetch failed"))).toBe(false);
+    // The L1 source's state is the follower's to hold unready, never a
+    // reason to exit.
+    expect(
+      isFatalStartupError(
+        new Error(
+          "persisted L1 source state does not match configured source mode/network",
+        ),
+      ),
+    ).toBe(false);
   });
 });
 

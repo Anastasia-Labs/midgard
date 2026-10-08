@@ -8,7 +8,6 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { postgresTestDatabases } from "../helpers/postgres-database.js";
 import {
-  COMMITTEE_PRUNE,
   committeeForkCorpus,
   committeeSimProjection,
   SIM_K,
@@ -36,7 +35,7 @@ const openPostgres: ForkRunOptions["open"] = async (optionsFor) => {
 // derivation and the reads is held to the same oracle.
 describe("committee projections in the fork simulator (Postgres)", () => {
   it.each(
-    [...forkCorpus(SIM_K, COMMITTEE_PRUNE), ...committeeForkCorpus()].map(
+    [...forkCorpus(SIM_K), ...committeeForkCorpus()].map(
       (entry) => [entry.name, entry.scenario] as const,
     ),
   )("corpus: %s", async (_, scenario) => {
@@ -46,7 +45,9 @@ describe("committee projections in the fork simulator (Postgres)", () => {
       k: SIM_K,
       projections: [committeeSimProjection(stats, { expectHealthy: true })],
     });
-    expect(outcome).toMatchObject({ ok: true });
+    expect(
+      outcome.ok ? "ok" : `step ${outcome.step.toString()}: ${outcome.reason}`,
+    ).toBe("ok");
     expect(stats.steps).toBe(outcome.stats.events);
   });
 });

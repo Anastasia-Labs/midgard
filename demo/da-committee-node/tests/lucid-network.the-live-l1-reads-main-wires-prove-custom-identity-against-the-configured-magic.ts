@@ -7,12 +7,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { availabilityResponderL1ReadersFromConfig } from "../src/availability/factory.js";
 import type { LoadedCommitteeConfig } from "../src/config.js";
-import { daAttestationReaderFromConfig } from "../src/l1/da-attestation-reader.js";
 import { localNodeChainAuthorityFromConfig } from "../src/l1/provider.js";
 import { tempDir } from "./helpers.js";
 import {
   CUSTOM_MAGIC,
-  kupmiosUrl,
   lucidOf,
   startFakeOgmios,
   stateQueueProvider,
@@ -159,37 +157,6 @@ describe("the live L1 reads main() wires prove Custom identity against the confi
       blockHash: tip.id,
       depth: 0,
     });
-  });
-
-  it("the DA attestation reader's query point", async () => {
-    const ogmios = await startFakeOgmios({ networkMagic: CUSTOM_MAGIC });
-    const dir = await tempDir();
-    const built = await daAttestationReaderFromConfig({
-      network: "Custom",
-      cardanoL1Source: {
-        sourceMode: "local_node",
-        authorityNodeId: "local-cardano-node",
-        authorityDigest: "ab".repeat(32),
-        networkMagic: CUSTOM_MAGIC,
-      },
-      l1Source: {
-        sourceMode: "local_node",
-        authorityNodeId: "local-cardano-node",
-        chainSyncProviderUrl: `chain-sync:ogmios:${ogmios.url}`,
-        chainSyncCursorPath: join(dir, "chain-sync-cursor.json"),
-        queryProviderUrls: [kupmiosUrl(ogmios)],
-      },
-      localState: {
-        kind: "database",
-        url: "postgresql://unused.invalid/committee",
-      },
-    } as unknown as LoadedCommitteeConfig);
-    const queryPoint = (
-      built as unknown as {
-        readonly queryPointResolver: () => Promise<unknown>;
-      }
-    ).queryPointResolver;
-    await expect(onLiveCustomChain(queryPoint)).resolves.toMatchObject(atTip);
   });
 
   it.each([

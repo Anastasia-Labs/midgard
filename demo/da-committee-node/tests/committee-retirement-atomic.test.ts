@@ -3,10 +3,12 @@ import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
-import { checkL1RollbackFeed } from "../src/committee-service.check-l1-rollback-feed.js";
 import { CommitteeService } from "../src/committee-service.js";
+import {
+  RETIREMENT_FLOOR_BREACHED,
+  retirementFloorHold,
+} from "../src/committee-service.l1-tick.js";
 import { signVerifiedCommitteePayload } from "../src/committee-service.sign-verified-payload.js";
-import type { StateQueueProvider } from "../src/l1/state-queue-scanner.js";
 import { validateDaSignerMembership } from "../src/signer.js";
 import {
   type CommitteeStore,
@@ -19,6 +21,7 @@ import {
   expiryPoint,
   retentionFixture,
 } from "./helpers/committee-retirement.js";
+import { fakeL1Source } from "./helpers/fake-l1-source.js";
 import { postgresTestDatabases } from "./helpers/postgres-database.js";
 
 const databases = postgresTestDatabases(
@@ -72,7 +75,7 @@ describe("retirement atomic authority", () => {
     const service = new CommitteeService({
       config,
       store: f.store,
-      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      l1: fakeL1Source({ fetchStateQueueNodes: async () => [] }),
       payloadSource: {
         fetchPayloadCandidates: async () => ({ ok: false, attempts: [] }),
       },
@@ -118,7 +121,7 @@ describe("retirement atomic authority", () => {
     const deps = {
       config,
       store: f.store,
-      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      l1: fakeL1Source({ fetchStateQueueNodes: async () => [] }),
       payloadSource: {
         fetchPayloadCandidates: async () => ({
           ok: false as const,
@@ -253,45 +256,41 @@ describe("retirement atomic authority", () => {
       await f.store.getDaPayload(f.seeded.header.headerHash),
     ).toBeUndefined();
   });
-  it("detects below-P rollback even with no retained header or decision, and durably holds the exact native point", async () => {
+  it("holds on a floor point the follower no longer has canonical, even with no retained header or decision, and durably records it", async () => {
     const f = await setup();
     await f.compact();
-    const point = (slot: number, blockHash: string) => ({
-      slot,
-      blockHash,
-      network: "Preprod",
-      providerSource: "chain-sync:test",
-      observedAt: "2026-10-02T00:00:00.000Z",
-    });
-    const consumed = {
-      sequence: 0,
-      point: point(expiryPoint.slot, expiryPoint.blockHash),
-      rollbackGeneration: 0,
-    };
-    const rollback = point(expiryPoint.slot - 1, "dd".repeat(32)),
-      current = { sequence: 1, point: rollback, rollbackGeneration: 1 };
-    const provider = {
-      fetchStateQueueNodes: async () => [],
-      currentChainSyncCursor: async () => current,
-      loadConsumedChainSyncCursor: async () => consumed,
-      replayChainSyncEvents: async () => [
-        { direction: "roll_backward", point: rollback },
-      ],
-      acknowledgeChainSyncCursor: async () => ({
-        rollbackSinceCapture: false,
-      }),
-    } as unknown as StateQueueProvider;
+    expect((await f.store.getRetirementFloor())?.point).toEqual(expiryPoint);
     const source = await f.store.getL1SourceState();
     expect(source?.observations).toEqual([]);
-    const check = await checkL1RollbackFeed(source, provider, current, f.store);
-    expect(check.failure).toBe(
-      `l1_source_retirement_floor_crossed:${rollback.slot}:${rollback.blockHash}`,
-    );
+    const l1 = (kind: string, cursorSlot: number | null) => ({
+      cursorSlot: () => cursorSlot,
+      pointStatus: async () => ({ kind }),
+    });
+    // A canonical floor, or one past the follower's cursor, holds nothing.
+    await expect(
+      retirementFloorHold(f.store, l1("canonical", expiryPoint.slot)),
+    ).resolves.toBeUndefined();
+    await expect(
+      retirementFloorHold(
+        f.store,
+        l1("point_not_canonical", expiryPoint.slot - 1),
+      ),
+    ).resolves.toBeUndefined();
+    expect((await f.store.getRetirementFloor())?.breach).toBeUndefined();
+
+    const reason = `l1_source_retirement_floor_crossed:${expiryPoint.slot}:${expiryPoint.blockHash}`;
+    await expect(
+      retirementFloorHold(f.store, l1("point_not_canonical", expiryPoint.slot)),
+    ).resolves.toBe(`${RETIREMENT_FLOOR_BREACHED}: ${reason}`);
     expect((await f.store.getRetirementFloor())?.breach?.observedAt).toEqual({
-      slot: rollback.slot,
-      blockHash: rollback.blockHash,
+      slot: expiryPoint.slot,
+      blockHash: expiryPoint.blockHash,
     });
     expect(() => f.store.captureRetirementGuard()).toThrow("held");
+    // The breach is durable: a canonical floor later still holds.
+    await expect(
+      retirementFloorHold(f.store, l1("canonical", expiryPoint.slot)),
+    ).resolves.toBe(`${RETIREMENT_FLOOR_BREACHED}: ${reason}`);
   });
 });
 

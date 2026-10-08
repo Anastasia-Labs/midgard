@@ -25,7 +25,6 @@ import {
 } from "../src/domain.js";
 import {
   assertOgmiosNetworkMagic,
-  blockfrostCurrentChainPointResolver,
   type CanonicalChainPoint,
   CHAIN_SYNC_INTERSECTION_POINTS,
   CHAIN_SYNC_JOURNAL_PRUNE_SLACK,
@@ -47,7 +46,6 @@ import {
   LocalNodeChainAuthority,
   LocalNodeStateQueueProvider,
   lucidChainPointResolver,
-  MultiStateQueueProvider,
   OgmiosChainSyncEventSource,
   providerFromUrl,
   requireStateQueueReplaySource,
@@ -83,19 +81,6 @@ describe("L1 provider adapters", () => {
       stateQueuePolicyId: "11".repeat(28),
     });
     await expect(provider.fetchStateQueueNodes()).resolves.toEqual([]);
-  });
-
-  it("refuses a Blockfrost state-queue provider at startup: it has no replay source", async () => {
-    await expect(
-      providerFromUrl("blockfrost:https://preview.example/api#project", {
-        network: "Preview",
-        cardanoL1Source: localNodeSource,
-        stateQueueAddress: "addr_test1statequeue",
-        stateQueuePolicyId: "11".repeat(28),
-      }),
-    ).rejects.toThrow(
-      "blockfrost: cannot serve the state queue: it has no authenticated ordered history source; use kupmios:<kupo-url>|<ogmios-url>",
-    );
   });
 
   it("normalizes SDK StateQueueUTxOs into scanner observations", async () => {
@@ -138,88 +123,6 @@ describe("L1 provider adapters", () => {
       daAttestation: SDK.NO_DA_ATTESTATION,
       chainPoint: { providerSource: "test-provider", depth: 7 },
     });
-  });
-
-  it("requires multiple L1 providers to agree before returning state-queue nodes", async () => {
-    const { header, headerHash } = await makePayloadFixture();
-    const first = {
-      fetchStateQueueNodes: async () => [
-        {
-          ...makeObservedNode({ header, headerHash, depth: 10 }),
-          chainPoint: {
-            ...makeObservedNode({ header, headerHash, depth: 10 }).chainPoint,
-            providerSource: "provider-a",
-          },
-        },
-      ],
-      currentChainPoint: async () => externalPoint("provider-a"),
-    };
-    const secondNode = makeObservedNode({ header, headerHash, depth: 3 });
-    const second = {
-      fetchStateQueueNodes: async () => [
-        {
-          ...secondNode,
-          chainPoint: {
-            ...secondNode.chainPoint,
-            providerSource: "provider-b",
-          },
-        },
-      ],
-      currentChainPoint: async () => externalPoint("provider-b"),
-    };
-    const provider = new MultiStateQueueProvider([first, second], {
-      sourceMode: "external_providers",
-    });
-
-    await expect(provider.fetchStateQueueNodes()).resolves.toMatchObject([
-      {
-        outRef: "ab".repeat(32) + "#0",
-        chainPoint: {
-          depth: 3,
-          providerSource: "provider-a,provider-b",
-        },
-      },
-    ]);
-  });
-
-  it("accepts one local chain authority plus aligned query surfaces without treating them as independent providers", async () => {
-    const { header, headerHash } = await makePayloadFixture();
-    const node = makeObservedNode({ header, headerHash, depth: 10 });
-    let authorityNodes = [node];
-    const provider = new MultiStateQueueProvider(
-      [
-        { fetchStateQueueNodes: async () => authorityNodes },
-        {
-          fetchStateQueueNodes: async () => [
-            {
-              ...node,
-              chainPoint: {
-                ...node.chainPoint,
-                depth: 8,
-                providerSource: "kupo",
-              },
-            },
-          ],
-        },
-      ],
-      {
-        sourceMode: "local_node",
-        identities: ["chain-sync:node-a", "query:kupo"],
-      },
-    );
-
-    await expect(provider.fetchStateQueueNodes()).resolves.toMatchObject([
-      {
-        chainPoint: {
-          depth: 8,
-          providerSource: "chain-sync:node-a,query:kupo",
-        },
-      },
-    ]);
-    authorityNodes = [];
-    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
-      /local_node.*chain-sync:node-a.*query:kupo/u,
-    );
   });
 
   it("durably replays roll-forward and rollback chain-sync events", async () => {
@@ -1563,77 +1466,6 @@ describe("L1 provider adapters", () => {
     ]);
   });
 
-  it("keeps agreed state-queue nodes in the surfaces' linked-list order, not asset-name order", async () => {
-    const dir = await tempDir();
-    const canonical = externalPoint("chain-sync:node-a", 20, "ab");
-    const authority = new LocalNodeChainAuthority(
-      "node-a",
-      "Preview",
-      {
-        next: async () => ({
-          event: { direction: "roll_forward", point: canonical },
-          tip: canonical,
-        }),
-      },
-      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
-    );
-    const { header } = await makePayloadFixture();
-    // The list runs B2 then B3, but B3's header hash sorts first.
-    const listOrder = [
-      makeObservedNode({
-        header,
-        headerHash: "f9".repeat(28),
-        outRef: `${"a1".repeat(32)}#1`,
-      }),
-      makeObservedNode({
-        header,
-        headerHash: "bd".repeat(28),
-        outRef: `${"a2".repeat(32)}#0`,
-      }),
-    ];
-    const queryPoint = (providerSource: string): CanonicalChainPoint => ({
-      ...canonical,
-      providerSource,
-    });
-    const surface = (providerSource: string) => ({
-      fetchStateQueueNodes: async () => listOrder,
-      fetchStateQueueSnapshot: async () => ({
-        nodes: listOrder,
-        confirmedHeaderHash: "00".repeat(28),
-        confirmedStateOutRef: `${"00".repeat(32)}#0`,
-        observedChainPoint: queryPoint(providerSource),
-      }),
-      currentChainPoint: async () => queryPoint(providerSource),
-    });
-    const expected = listOrder.map(({ outRef }) => outRef);
-
-    const local = new LocalNodeStateQueueProvider(
-      authority,
-      [surface("query:kupo-a"), surface("query:db-sync-a")],
-      ["query:kupo-a", "query:db-sync-a"],
-      new FileChainSyncConsumerCursorStore(
-        `${dir}/consumer.json`,
-        "11".repeat(32),
-      ),
-    );
-    expect(
-      (await local.fetchStateQueueSnapshot()).nodes.map(({ outRef }) => outRef),
-    ).toEqual(expected);
-
-    const external = new MultiStateQueueProvider(
-      [surface("provider-a"), surface("provider-b")],
-      { sourceMode: "external_providers" },
-    );
-    expect(
-      (await external.fetchStateQueueSnapshot()).nodes.map(
-        ({ outRef }) => outRef,
-      ),
-    ).toEqual(expected);
-    expect(
-      (await external.fetchStateQueueNodes()).map(({ outRef }) => outRef),
-    ).toEqual(expected);
-  });
-
   it("hands a signature record a chain point from a recorded preprod chain-sync session that the strict parser accepts", async () => {
     const dir = await tempDir();
     // The authority's point is what `parseOgmiosPoint` made of a live Ogmios
@@ -1721,46 +1553,6 @@ describe("L1 provider adapters", () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it("rejects one external provider and incompatible provider chain points", async () => {
-    const one = { fetchStateQueueNodes: async () => [] };
-    expect(() => new MultiStateQueueProvider([one, one], {} as never)).toThrow(
-      /sourceMode must be local_node or external_providers/u,
-    );
-    expect(
-      () =>
-        new MultiStateQueueProvider([one], {
-          sourceMode: "external_providers",
-          identities: ["operator-a"],
-        }),
-    ).toThrow(/at least two/u);
-
-    const { header, headerHash } = await makePayloadFixture();
-    const canonical = makeObservedNode({ header, headerHash, depth: 10 });
-    const forked = {
-      ...canonical,
-      chainPoint: { ...canonical.chainPoint, blockHash: "ef".repeat(32) },
-    };
-    const provider = new MultiStateQueueProvider(
-      [
-        {
-          fetchStateQueueNodes: async () => [canonical],
-          currentChainPoint: async () => externalPoint("operator-a"),
-        },
-        {
-          fetchStateQueueNodes: async () => [forked],
-          currentChainPoint: async () => externalPoint("operator-b"),
-        },
-      ],
-      {
-        sourceMode: "external_providers",
-        identities: ["operator-a", "operator-b"],
-      },
-    );
-    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
-      /operator-a.*operator-b/u,
-    );
   });
 
   it("resolves chain points from provider-neutral transaction status", async () => {
@@ -1978,27 +1770,6 @@ describe("L1 provider adapters", () => {
     try {
       await expect(
         fetchKupoCheckpoint(`http://127.0.0.1:${port.toString()}`, fetch, 200),
-      ).rejects.toMatchObject({ name: "TimeoutError" });
-    } finally {
-      server.closeAllConnections();
-      await new Promise((resolve) => server.close(resolve));
-    }
-  }, 5_000);
-
-  it("fails a Blockfrost tip read that is accepted and never answered", async () => {
-    const server = createServer(() => {});
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    const { port } = server.address() as AddressInfo;
-    try {
-      await expect(
-        blockfrostCurrentChainPointResolver(
-          "Preprod",
-          `http://127.0.0.1:${port.toString()}`,
-          "project",
-          200,
-        )(),
       ).rejects.toMatchObject({ name: "TimeoutError" });
     } finally {
       server.closeAllConnections();
@@ -2338,27 +2109,10 @@ describe("L1 provider adapters", () => {
     expect(
       l1AuthorityProviderSource(
         { cardanoL1Source: localNodeSource },
-        0,
         "kupmios:http://kupo|http://ogmios",
       ),
     ).toBe(
       `local_node:phase4-cardano-node:${"aa".repeat(32)}:${sha256("kupmios:http://kupo|http://ogmios")}`,
-    );
-    expect(
-      l1AuthorityProviderSource(
-        {
-          cardanoL1Source: {
-            sourceMode: "external_providers",
-            providerAuthorityIds: ["11".repeat(32), "22".repeat(32)],
-            authorityDigest: "bb".repeat(32),
-            networkMagic: 2,
-          },
-        },
-        1,
-        "blockfrost:https://provider.example",
-      ),
-    ).toBe(
-      `external_providers:${"22".repeat(32)}:${"bb".repeat(32)}:${sha256("blockfrost:https://provider.example")}`,
     );
   });
 
@@ -2376,65 +2130,6 @@ describe("L1 provider adapters", () => {
     ).rejects.toThrow(/is not confirmed: not_found/);
   });
 
-  it("fails closed on L1 provider state-queue disagreement", async () => {
-    const { header, headerHash } = await makePayloadFixture();
-    const first = {
-      fetchStateQueueNodes: async () => [
-        makeObservedNode({ header, headerHash, depth: 10 }),
-      ],
-      currentChainPoint: async () => externalPoint("provider-a"),
-    };
-    const second = {
-      fetchStateQueueNodes: async () => [
-        makeObservedNode({
-          header,
-          headerHash,
-          assetName: `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${"99".repeat(28)}`,
-          depth: 10,
-        }),
-      ],
-      currentChainPoint: async () => externalPoint("provider-b"),
-    };
-    const provider = new MultiStateQueueProvider([first, second], {
-      sourceMode: "external_providers",
-    });
-
-    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
-      /provider disagreement/,
-    );
-  });
-
-  it("fails closed on provider chain-point disagreement", async () => {
-    const { header, headerHash } = await makePayloadFixture();
-    const node = makeObservedNode({ header, headerHash, depth: 10 });
-    const provider = new MultiStateQueueProvider(
-      [
-        {
-          fetchStateQueueNodes: async () => [node],
-          currentChainPoint: async () => externalPoint("provider-a"),
-        },
-        {
-          fetchStateQueueNodes: async () => [
-            {
-              ...node,
-              chainPoint: {
-                ...node.chainPoint,
-                blockHash: "ef".repeat(32),
-                providerSource: "other-authority",
-              },
-            },
-          ],
-          currentChainPoint: async () => externalPoint("provider-b"),
-        },
-      ],
-      { sourceMode: "external_providers" },
-    );
-
-    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
-      /disagreement/,
-    );
-  });
-
   it("rejects unsupported provider URL schemes", async () => {
     await expect(
       providerFromUrl("http://plain-url.example", {
@@ -2444,29 +2139,6 @@ describe("L1 provider adapters", () => {
         stateQueuePolicyId: "11".repeat(28),
       }),
     ).rejects.toThrow(/unsupported CARDANO_PROVIDER_URLS/);
-  });
-
-  it("rejects external provider disagreement even when both result sets are empty", async () => {
-    const provider = new MultiStateQueueProvider(
-      [
-        {
-          fetchStateQueueNodes: async () => [],
-          currentChainPoint: async () => externalPoint("provider-a", 100, "ab"),
-        },
-        {
-          fetchStateQueueNodes: async () => [],
-          currentChainPoint: async () => externalPoint("provider-b", 99, "cd"),
-        },
-      ],
-      {
-        sourceMode: "external_providers",
-        identities: ["provider-a", "provider-b"],
-      },
-    );
-
-    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
-      /current chain-point disagreement/u,
-    );
   });
 
   describe("L1 observation versus integrity failures", () => {
@@ -2861,129 +2533,6 @@ describe("L1 provider adapters", () => {
       expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
     });
 
-    it.each([
-      ["still holds", true, "integrity", 2],
-      ["no longer holds", false, "observation", STATE_QUEUE_REPLAY_ATTEMPTS],
-      [
-        "cannot tell whether it holds",
-        undefined,
-        "observation",
-        STATE_QUEUE_REPLAY_ATTEMPTS,
-      ],
-    ] as const)(
-      "retakes an external replay from the new points only when the chain %s the snapshot's",
-      async (_label, holds, outcome, expectedReplays) => {
-        // A block lands during the first attempt only; every attempt
-        // disagrees.
-        let slot = 100;
-        let replays = 0;
-        const held: CanonicalChainPoint[] = [];
-        const provider = new MultiStateQueueProvider(
-          (["provider-a", "provider-b"] as const).map((identity, index) => ({
-            fetchStateQueueNodes: async () => [],
-            fetchStateQueueSnapshot: async () =>
-              emptySnapshot(externalPoint(identity)),
-            currentChainPoint: async () =>
-              externalPoint(identity, slot, slot === 100 ? "ab" : "cd"),
-            ...(holds === undefined
-              ? {}
-              : {
-                  holdsChainPoint: async (point: CanonicalChainPoint) => {
-                    held.push(point);
-                    return holds;
-                  },
-                }),
-            fetchStateQueueReplayCheckpoints: async (
-              _anchor: unknown,
-              _current: unknown,
-              _tipBlockNo: number,
-              limit: number,
-            ) => {
-              expect(limit).toBe(64);
-              if (index === 0) {
-                replays += 1;
-                if (replays === 1) slot = 101;
-              }
-              return disagreeingHistories[index]!();
-            },
-          })),
-          {
-            sourceMode: "external_providers",
-            identities: ["provider-a", "provider-b"],
-          },
-        );
-        await provider.fetchStateQueueSnapshot();
-
-        const failure = await provider
-          .fetchStateQueueReplayCheckpoints([], [], 7, 64)
-          .then(
-            () => undefined,
-            (error: unknown) => error,
-          );
-        expect((failure as Error).message).toMatch(
-          /state-queue replay disagreement between provider-a and provider-b/u,
-        );
-        expect(replays).toBe(expectedReplays);
-        if (holds !== undefined) {
-          // Each provider was asked about its own snapshot point.
-          expect(
-            held
-              .slice(0, 2)
-              .map(({ providerSource, slot: at }) => [providerSource, at]),
-          ).toEqual([
-            ["provider-a", 100],
-            ["provider-b", 100],
-          ]);
-        }
-        if (outcome === "integrity") {
-          expect(failure).toBeInstanceOf(L1SourceIntegrityError);
-        } else {
-          expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
-        }
-      },
-    );
-
-    it("retakes an external replay from the snapshot's points when any provider no longer holds its snapshot point", async () => {
-      // A block lands during the first attempt only; every attempt
-      // disagrees. Provider-b no longer holds its snapshot's point, so no
-      // retake may be watched from the new points.
-      let slot = 100;
-      let replays = 0;
-      const provider = new MultiStateQueueProvider(
-        (["provider-a", "provider-b"] as const).map((identity, index) => ({
-          fetchStateQueueNodes: async () => [],
-          fetchStateQueueSnapshot: async () =>
-            emptySnapshot(externalPoint(identity)),
-          currentChainPoint: async () =>
-            externalPoint(identity, slot, slot === 100 ? "ab" : "cd"),
-          holdsChainPoint: async () => index === 0,
-          fetchStateQueueReplayCheckpoints: async () => {
-            if (index === 0) {
-              replays += 1;
-              if (replays === 1) slot = 101;
-            }
-            return disagreeingHistories[index]!();
-          },
-        })),
-        {
-          sourceMode: "external_providers",
-          identities: ["provider-a", "provider-b"],
-        },
-      );
-      await provider.fetchStateQueueSnapshot();
-      const failure = await provider
-        .fetchStateQueueReplayCheckpoints([], [], 7, 64)
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        );
-      expect((failure as Error).message).toMatch(
-        /state-queue replay disagreement between provider-a and provider-b/u,
-      );
-      expect(replays).toBe(STATE_QUEUE_REPLAY_ATTEMPTS);
-      expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
-    });
-
     it("refuses at startup a live provider without a snapshot and replay source, but not a fixture", () => {
       const snapshotOnly: StateQueueProvider = {
         fetchStateQueueNodes: async () => [],
@@ -3013,147 +2562,6 @@ describe("L1 provider adapters", () => {
           snapshotOnly,
         );
       }
-    });
-
-    it("treats an external provider without a replay source as an observation failure", async () => {
-      const provider = new MultiStateQueueProvider(
-        (["provider-a", "provider-b"] as const).map((identity, index) => ({
-          fetchStateQueueNodes: async () => [],
-          fetchStateQueueSnapshot: async () =>
-            emptySnapshot(externalPoint(identity)),
-          currentChainPoint: async () => externalPoint(identity),
-          ...(index === 0
-            ? { fetchStateQueueReplayCheckpoints: async () => [] }
-            : {}),
-        })),
-        {
-          sourceMode: "external_providers",
-          identities: ["provider-a", "provider-b"],
-        },
-      );
-      await provider.fetchStateQueueSnapshot();
-      const failure = await provider
-        .fetchStateQueueReplayCheckpoints([], [], 7, 64)
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        );
-      expect((failure as Error).message).toBe(
-        "state-queue provider provider-b has no authenticated ordered history source",
-      );
-      expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
-    });
-
-    it.each([
-      ["held", false],
-      ["moved", true],
-    ] as const)(
-      "keeps an external replay disagreement as integrity only while the chain %s",
-      async (_label, chainMoves) => {
-        let slot = 100;
-        let replays = 0;
-        const provider = new MultiStateQueueProvider(
-          (["provider-a", "provider-b"] as const).map((identity, index) => ({
-            fetchStateQueueNodes: async () => [],
-            fetchStateQueueSnapshot: async () =>
-              emptySnapshot(externalPoint(identity)),
-            currentChainPoint: async () =>
-              externalPoint(identity, slot, slot === 100 ? "ab" : "cd"),
-            fetchStateQueueReplayCheckpoints: async (
-              _anchor: unknown,
-              _current: unknown,
-              tipBlockNo: number,
-              limit: number,
-            ) => {
-              expect(tipBlockNo).toBe(7);
-              expect(limit).toBe(64);
-              if (index === 0) replays += 1;
-              if (chainMoves) slot = 101;
-              return disagreeingHistories[index]!();
-            },
-          })),
-          {
-            sourceMode: "external_providers",
-            identities: ["provider-a", "provider-b"],
-          },
-        );
-        await provider.fetchStateQueueSnapshot();
-
-        const failure = await provider
-          .fetchStateQueueReplayCheckpoints([], [], 7, 64)
-          .then(
-            () => undefined,
-            (error: unknown) => error,
-          );
-        expect((failure as Error).message).toMatch(
-          /state-queue replay disagreement between provider-a and provider-b/u,
-        );
-        if (chainMoves) {
-          // These providers cannot show the snapshot survived, so every
-          // retake is watched from it and the moved chain excuses them all.
-          expect(replays).toBe(STATE_QUEUE_REPLAY_ATTEMPTS);
-          expect(failure).not.toBeInstanceOf(L1SourceIntegrityError);
-        } else {
-          expect(replays).toBe(1);
-          expect(failure).toBeInstanceOf(L1SourceIntegrityError);
-        }
-      },
-    );
-
-    it.each([
-      ["one tip height", [42, 42], 42],
-      ["different tip heights", [42, 43], undefined],
-    ] as const)(
-      "merges external snapshots read at %s",
-      async (_label, heights, merged) => {
-        const provider = new MultiStateQueueProvider(
-          (["provider-a", "provider-b"] as const).map((identity, index) => ({
-            fetchStateQueueNodes: async () => [],
-            fetchStateQueueSnapshot: async () => ({
-              ...emptySnapshot(externalPoint(identity)),
-              tipBlockNo: heights[index]!,
-            }),
-            currentChainPoint: async () => externalPoint(identity),
-          })),
-          {
-            sourceMode: "external_providers",
-            identities: ["provider-a", "provider-b"],
-          },
-        );
-        const snapshot = provider.fetchStateQueueSnapshot();
-        if (merged === undefined) {
-          await expect(snapshot).rejects.toThrow(
-            /read their state-queue snapshots at different tip heights/u,
-          );
-          await expect(snapshot).rejects.not.toBeInstanceOf(
-            L1SourceIntegrityError,
-          );
-        } else {
-          await expect(snapshot).resolves.toMatchObject({ tipBlockNo: merged });
-        }
-      },
-    );
-
-    it("classifies surface disagreement at one proven chain point as integrity", async () => {
-      const { header, headerHash } = await makePayloadFixture();
-      const provider = new MultiStateQueueProvider(
-        [
-          {
-            fetchStateQueueNodes: async () => [
-              makeObservedNode({ header, headerHash, depth: 10 }),
-            ],
-            currentChainPoint: async () => externalPoint("provider-a"),
-          },
-          {
-            fetchStateQueueNodes: async () => [],
-            currentChainPoint: async () => externalPoint("provider-b"),
-          },
-        ],
-        { sourceMode: "external_providers" },
-      );
-      await expect(provider.fetchStateQueueNodes()).rejects.toBeInstanceOf(
-        L1SourceIntegrityError,
-      );
     });
   });
 });

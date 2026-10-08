@@ -1,6 +1,10 @@
 // The committee's simulator traffic: the queue's datums, outputs and the
 // honest state-queue transactions the fork simulator interleaves.
-import { type DepthParameters, type OutRef } from "@al-ft/midgard-l1-follower";
+import {
+  type DepthParameters,
+  type OutRef,
+  outRefKey,
+} from "@al-ft/midgard-l1-follower";
 import {
   type ScenarioTraffic,
   type SimChain,
@@ -38,6 +42,18 @@ export const SIM_QUEUE: CommitteeQueueParameters = {
   stateQueueAddress: simUniverse().trackedAddress,
   stateQueuePolicyId: "71".repeat(28),
 };
+
+/**
+ * The end time of a header whose commit is valid before slot `invalidAfter`:
+ * one millisecond before that slot starts.
+ */
+export const commitEndTimeMs = (invalidAfter: number): number =>
+  slotTimeMs(invalidAfter, SIM_SLOT_TIME) - 1;
+
+/** The `invalidAfter` slot of a commit for a header ending at `endTimeMs`. */
+export const commitInvalidAfter = (endTimeMs: number): number =>
+  (endTimeMs + 1 - SIM_SLOT_TIME.zeroTime) / SIM_SLOT_TIME.slotLength +
+  SIM_SLOT_TIME.zeroSlot;
 
 const ROOT_ASSET = SDK.STATE_QUEUE_ROOT_ASSET_NAME;
 const GENESIS_HASH = "00".repeat(28);
@@ -230,17 +246,24 @@ export type QueueTrafficOptions = Readonly<{
 /**
  * Honest state-queue traffic: at most one queue transaction per block (the
  * simulator's ledger view is the state before the block). It initializes the
- * root, appends headers (the end time a little after the block, as the
- * validator requires of a commit), attests, merges an attested head and
- * removes the tail. After a rollback a new append is a sibling of the header
- * the rollback removed.
+ * root, appends headers, attests, merges an attested head and removes the
+ * tail. A commit is valid before slot `invalidAfter`, two or three slots
+ * past the block it is built for, and its header ends one millisecond before
+ * that slot starts (the state-queue validator pins the header end time to
+ * the commit's inclusive validity upper bound). After a rollback a new
+ * append is a sibling of the header the rollback removed, or the removed
+ * commit itself lands again while its interval still admits the next block.
  */
-export const queueTraffic =
-  (options: QueueTrafficOptions = {}): ScenarioTraffic =>
-  ({ chain, rng, claim }): SimTx[] => {
+export const queueTraffic = (
+  options: QueueTrafficOptions = {},
+): ScenarioTraffic => {
+  /** Every commit built, by its spent tail outref, to land it again. */
+  const commits = new Map<string, SimTx>();
+  return ({ chain, rng, claim }): SimTx[] => {
     const list = liveList(chain);
     const nonce = chain.nonce();
-    const endTimeMs = slotTimeMs(chain.tip.point.slot + 3, SIM_SLOT_TIME);
+    const invalidAfter = chain.tip.point.slot + 3;
+    const endTimeMs = commitEndTimeMs(invalidAfter);
     if (list === null) {
       return [
         {
@@ -272,11 +295,18 @@ export const queueTraffic =
     const spend = (elements: readonly Element[], tx: SimTx): SimTx[] =>
       elements.every((element) => claim(element.outRef)) ? [tx] : [];
     const tail = list.nodes.at(-1) ?? list.root;
+    const removed = commits.get(outRefKey(tail.outRef));
+    if (
+      removed !== undefined &&
+      chain.nextSlot() < (removed.invalidAfter ?? 0) &&
+      rng.chance(0.5)
+    )
+      return spend([tail], removed);
     const roll = rng.next();
     if (roll < 0.5 || list.nodes.length === 0) {
       const header = simHeader(nonce, tail.headerHash, endTimeMs);
       const hash = headerHashOf(header);
-      return spend([tail], {
+      const commit: SimTx = {
         inputs: [tail.outRef],
         outputs: [
           relinked(tail, hash),
@@ -285,8 +315,12 @@ export const queueTraffic =
             nodeDatum(header, "Unattested", null),
           ),
         ],
+        invalidAfter,
         nonce,
-      });
+      };
+      const built = spend([tail], commit);
+      if (built.length > 0) commits.set(outRefKey(tail.outRef), commit);
+      return built;
     }
     const unattested = list.nodes.filter(
       (node) => node.status === "Unattested",
@@ -332,3 +366,4 @@ export const queueTraffic =
       nonce,
     });
   };
+};

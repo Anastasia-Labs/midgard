@@ -67,18 +67,13 @@ describe("availability responder production factory", () => {
     ).rejects.toThrow(/dedicated DA_AVAILABILITY_SUBMITTER_KEY_SOURCE/);
   });
 
-  it("requires a canonical local node before any signing work", async () => {
+  it("requires a canonical chain-sync cursor before any signing work", async () => {
     const dir = await tempDir();
     const store = await openTestCommitteeStore();
     await expect(
-      availabilityResponderFromConfig(
-        {
-          ...configFor(dir),
-          l1Source: { sourceMode: "external_providers", providers: [] },
-        },
-        store,
-        chainProvider,
-      ),
+      availabilityResponderFromConfig(configFor(dir), store, {
+        fetchStateQueueNodes: async () => [],
+      }),
     ).rejects.toThrow(/local_node canonical/);
   });
 

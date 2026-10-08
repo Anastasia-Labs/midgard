@@ -91,28 +91,6 @@ export const assertRetirementWrite = (
   if (!floor) return;
   if (floor.breach || after.retirementFloor?.digest !== floor.digest)
     throw new Error("Retirement floor is held or changed outside retirement");
-  if (after.chainCursor?.status === "quarantined") {
-    if (before.chainCursor?.status !== "healthy")
-      throw new Error("Retirement source remains quarantined");
-    for (const family of [
-      "stateQueueHeaders",
-      ...byHeaderFamilies,
-      "peerHealth",
-      "peerNonces",
-    ] as const)
-      if (
-        Object.keys(after[family]).some((k) => before[family][k] === undefined)
-      )
-        throw new Error("Quarantine cannot introduce a new retained liability");
-    if (
-      after.chainCursor.authoritySha256 !==
-        floor.binding.sourceAuthoritySha256 ||
-      retirementDigest(after.deployment) !== retirementDigest(before.deployment)
-    )
-      throw new Error("Quarantine changed retirement binding");
-    assertRetirementResources(after);
-    return;
-  }
   assertRetirementBinding(after, floor.binding);
   const check = (headerHash: string) => {
     const header = after.stateQueueHeaders[headerHash];
@@ -221,8 +199,6 @@ export const planRetirement = (
     ...localPins,
     ...finalityHeldHeaderHashes([], Object.values(data.stateQueueHeaders)),
   ]);
-  for (const q of data.chainCursor?.stateQueueReplayAnchor?.queue ?? [])
-    if (q.headerHash !== null) pins.add(q.headerHash);
   const groups = new Map<number, StateQueueHeaderRecord[]>();
   for (const header of Object.values(data.stateQueueHeaders)) {
     const end = authenticatedHeaderEnd(header);
@@ -263,8 +239,6 @@ export const planRetirement = (
           break;
         }
         cohortPoints.push(requirePoint(observation, facts));
-        for (const step of observation.authenticatedSteps ?? [])
-          cohortPoints.push(requirePoint(step, facts));
       }
       for (const signature of Object.values(data.daSignatures).filter(
         (s) => s.headerHash === h,
@@ -305,7 +279,6 @@ export const planRetirement = (
       )) {
         if (
           inFlight(effect.effectId) ||
-          effect.quarantineReason ||
           (effect.effectKind === "l1_reconcile" &&
             effect.status !== "reconciled")
         ) {

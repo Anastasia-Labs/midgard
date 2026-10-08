@@ -7,8 +7,7 @@ import type { CommitteeStore } from "../store.js";
 /**
  * The chain authority every responder transaction needs: this committee
  * node's own local-node L1 source, healthy and bound to the configured
- * authority. Answering a challenge spends, so it is a new decision, and a
- * quarantined source refuses it here until recovery clears the quarantine.
+ * authority. Answering a challenge spends, so it is a new decision.
  * Reading the retained bytes that answer is not gated on this: those stay
  * servable to any holder that can act (see `retainedAvailabilityPayload`).
  */

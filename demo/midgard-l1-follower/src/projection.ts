@@ -29,9 +29,18 @@ export type FollowerProjection = Readonly<{
    * third party can spend on chain). Referencing them stays allowed.
    */
   protects?: (output: SimOutput) => boolean;
-  /** Returns a failure text, or null when the projection holds at this step. */
+  /**
+   * Returns a failure text, or null when the projection holds at this step.
+   * `reference` is a fresh forward-only replay of the current chain, never
+   * pruned, for comparing the projection's reads with.
+   */
   check?: (
-    context: Readonly<{ store: FactStore; step: ForkStep; chain: SimChain }>,
+    context: Readonly<{
+      store: FactStore;
+      reference: FactStore;
+      step: ForkStep;
+      chain: SimChain;
+    }>,
   ) => Promise<string | null>;
 }>;
 

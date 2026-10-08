@@ -42,7 +42,6 @@ import {
 } from "./config.operational-provider-identity.js";
 import {
   cardanoL1SourceConfig,
-  isLiveLucidProviderUrl,
   parseL1SourceConfig,
 } from "./config.parse-l1-source-config.js";
 import {
@@ -184,13 +183,6 @@ export const loadCommitteeConfig = async (
     throw new Error(
       "L1_SUBMITTER_KEY_SOURCE is required when DA_L1_SUBMISSION_ENABLED=true",
     );
-  }
-  if (l1SubmissionEnabled) {
-    if (!isLiveLucidProviderUrl(cardanoProviderUrls[0]!)) {
-      throw new Error(
-        "L1 submission requires a blockfrost: or kupmios: CARDANO_PROVIDER_URLS entry",
-      );
-    }
   }
   const l1SubmitterPreflight = l1SubmitterPreflightConfig({
     env,

@@ -64,7 +64,7 @@ describe("prospective signature storage reserve", () => {
     const service = new CommitteeService({
       config: f.config,
       store: f.store,
-      stateQueueProvider: f.provider,
+      l1: f.provider,
       payloadSource: f.payloadSource,
       signer: await loadDaSigner(`hex:${"00".repeat(31)}01`),
       signerValidation: f.signerValidation,

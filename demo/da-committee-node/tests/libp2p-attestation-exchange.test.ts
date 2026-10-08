@@ -17,7 +17,6 @@ import "../src/signer.js";
 import "../src/store.js";
 import "../src/utils/hex.js";
 import "./helpers.js";
-import "./helpers/final-snapshot.js";
 import "./libp2p-attestation-exchange.state-queue-record.js";
 import "./libp2p-attestation-exchange.da-attestation-exchange-over-real-libp2p.js";
 

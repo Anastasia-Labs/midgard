@@ -2,7 +2,7 @@ import {
   nativeLedgerAuthoritySource,
   NativeLedgerKupmios,
 } from "@al-ft/midgard-core/native-reward-account";
-import { Blockfrost, Lucid, type LucidEvolution } from "@lucid-evolution/lucid";
+import { Lucid, type LucidEvolution } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
 import type { NativeLedgerConfig } from "../config.js";
@@ -33,22 +33,6 @@ export const lucidFromProviderUrl = async (
   readonly lucid: LucidEvolution;
   readonly providerSource: string;
 }> => {
-  if (url.startsWith("blockfrost:")) {
-    const { apiUrl, projectId } = parseBlockfrostUrl(url);
-    const cardanoNetwork = normalizeNetwork(network);
-    const slotOptions = await committeeLucidSlotOptions({
-      network: cardanoNetwork,
-      route: { provider: "blockfrost", apiUrl },
-      networkMagic,
-    });
-    return {
-      lucid: await Lucid(new Blockfrost(apiUrl, projectId), cardanoNetwork, {
-        ...lucidOptions,
-        ...slotOptions,
-      }),
-      providerSource: `blockfrost:${apiUrl}`,
-    };
-  }
   if (url.startsWith("kupmios:")) {
     const { kupoUrl, ogmiosUrl, headers } = parseKupmiosUrl(url);
     const cardanoNetwork = normalizeNetwork(network);
@@ -80,22 +64,6 @@ export const lucidFromProviderUrl = async (
     };
   }
   throw new Error(`unsupported Cardano provider for Lucid: ${url}`);
-};
-
-const parseBlockfrostUrl = (
-  value: string,
-): { readonly apiUrl: string; readonly projectId: string } => {
-  const raw = value.slice("blockfrost:".length);
-  const hashIndex = raw.lastIndexOf("#");
-  if (hashIndex <= 0 || hashIndex === raw.length - 1) {
-    throw new Error(
-      "blockfrost provider URL must be blockfrost:<api-url>#<project-id>",
-    );
-  }
-  return {
-    apiUrl: raw.slice(0, hashIndex),
-    projectId: raw.slice(hashIndex + 1),
-  };
 };
 
 const parseKupmiosUrl = (

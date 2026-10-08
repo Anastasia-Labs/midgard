@@ -115,6 +115,16 @@ const decodeNode = (data: unknown): SDK.StateQueueNode | null => {
   }
 };
 
+/** The state-queue node a node output's datum carries, or null if it is not one. */
+export const stateQueueNodeOf = (
+  datumHex: string,
+): SDK.StateQueueNode | null => {
+  const datum = decodeLinkedList(Buffer.from(datumHex, "hex"));
+  return datum === null || !("Node" in datum.data)
+    ? null
+    : decodeNode(datum.data.Node.data);
+};
+
 /** blake2b-224 of the header's canonical Plutus Data, as the scanner hashes it. */
 export const headerHashOf = (header: SDK.Header): string =>
   blake2b224(SDK.encodeHeaderCbor(header)).toString("hex");

@@ -1,10 +1,4 @@
 import type { DaStoredPayloadRecord } from "./domain.js";
-import {
-  type L1ObservedDecision,
-  type L1ObservedStatus,
-  UNKNOWN_STATE_QUEUE_STATUS,
-} from "./store.committee-store.js";
-import { knownStatus } from "./store.parse-decision-outbox-record.js";
 
 export const libp2pSubmittedDaPayloadRecord = (args: {
   readonly deploymentFingerprint: string;
@@ -26,18 +20,3 @@ export const libp2pSubmittedDaPayloadRecord = (args: {
   // this to "verified" after strict inner payload/header validation.
   validationStatus: "fetched",
 });
-
-/**
- * `observation` with `status`, which for an unknown status carries the status
- * `observation` was last known by.
- */
-export const withObservedStatus = (
-  observation: L1ObservedDecision,
-  status: L1ObservedStatus,
-): L1ObservedDecision => {
-  const { lastKnownStatus: _lastKnownStatus, ...rest } = observation;
-  const lastKnownStatus = knownStatus(observation);
-  return status === UNKNOWN_STATE_QUEUE_STATUS && lastKnownStatus !== undefined
-    ? { ...rest, stateQueueStatus: status, lastKnownStatus }
-    : { ...rest, stateQueueStatus: status };
-};

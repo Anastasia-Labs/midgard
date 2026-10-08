@@ -17,7 +17,6 @@ import "./provider.ogmios-rpc-session.js";
 import "./provider.create-ogmios-chain-sync-request.js";
 import "./provider.parse-fixture-chain-sync-events.js";
 import "./provider.lucid-state-queue-provider.js";
-import "./provider.multi-state-queue-provider.js";
 import "./provider.local-node-state-queue-provider.js";
 import "./provider.local-node-chain-authority-from-config.js";
 import "./provider.run-ogmios-session.js";
@@ -45,7 +44,6 @@ export {
   requireStateQueueReplaySource,
 } from "./provider.local-node-state-queue-provider.js";
 export { LucidStateQueueProvider } from "./provider.lucid-state-queue-provider.js";
-export { MultiStateQueueProvider } from "./provider.multi-state-queue-provider.js";
 export {
   KUPMIOS_TIP_ALIGNMENT_ATTEMPTS,
   KUPMIOS_TIP_ALIGNMENT_RETRY_MS,
@@ -75,8 +73,6 @@ export {
   type ChainSyncReplayProvider,
 } from "./provider.parse-persisted-chain-sync-state.js";
 export {
-  blockfrostCurrentChainPointResolver,
-  parseBlockfrostUrl,
   providerFromConfig,
   providerFromUrl,
 } from "./provider.provider-from-url.js";

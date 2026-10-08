@@ -12,6 +12,10 @@ import {
 import { loadCommitteeConfig, type LoadedCommitteeConfig } from "./config.js";
 import { l1SubmitterWalletPreflightFromConfig } from "./coordinator/factory.js";
 import { DaPeerRegistry } from "./da/libp2p/index.js";
+import {
+  openCommitteeL1Reader,
+  untilCommitteeL1SourceReady,
+} from "./l1/follower/l1-follower.js";
 import { l1SubmitterPreflightResultToJson } from "./l1/submitter.js";
 import { createL1SubmitterPreflightMonitor } from "./l1-submitter-preflight-monitor.js";
 import {
@@ -118,6 +122,7 @@ const main = async (): Promise<void> => {
         evaluate: ({ autoFund }) =>
           l1SubmitterWalletPreflightFromConfig(
             autoFund ? config : withoutAutoFund(config),
+            runtime.l1Lucid,
           ),
         write,
       })
@@ -201,6 +206,7 @@ const main = async (): Promise<void> => {
   if (once) {
     try {
       await preflight?.start();
+      await untilCommitteeL1SourceReady(runtime.l1);
       const viewBeforeTick = service.latestL1View();
       const result = await service.tick();
       await responseLoop.run();
@@ -354,7 +360,15 @@ const runL1WalletPreflightCommand = async (
     );
   }
   const config = await loadCommitteeConfig();
-  const result = await l1SubmitterWalletPreflightFromConfig(config);
+  const reader = await openCommitteeL1Reader(config, (line) =>
+    process.stderr.write(`${line}\n`),
+  );
+  let result: Awaited<ReturnType<typeof l1SubmitterWalletPreflightFromConfig>>;
+  try {
+    result = await l1SubmitterWalletPreflightFromConfig(config, reader.lucid);
+  } finally {
+    await reader.close();
+  }
   process.stdout.write(
     `${JSON.stringify(l1SubmitterPreflightResultToJson(result), null, 2)}\n`,
   );
@@ -367,28 +381,24 @@ const printHelp = (): void => {
   process.stdout.write(`da-committee-node
 
 Usage:
-  da-committee-node --once                       scan once, verify finalized unattested headers, sign
+  da-committee-node --once                       once the L1 follower caught up, tick once: verify signable unattested headers, sign
   da-committee-node l1-wallet-preflight --json   print L1 submitter wallet readiness
   da-committee-node                              run API and polling loop
 
 Required configuration follows demo/da-committee-node/docs/da-committee-node-architecture.md in the repository.
 L1 submission requires L1_SUBMITTER_KEY_SOURCE for a funded Cardano wallet.
-Supported CARDANO_PROVIDER_URLS forms (Blockfrost cannot serve the state
-queue: it has no authenticated ordered history source):
+The committee reads L1 through its own chain follower on the local node:
+L1_ORIGIN, the native ledger (CARDANO_LOCAL_NODE_SOCKET_PATH,
+CARDANO_LOCAL_NODE_CONFIG_PATH and CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH) and
+the deployment's hubOracleOneShot. Until all are set it stays unready with
+l1_follower_not_configured.
+Supported CARDANO_PROVIDER_URLS forms (availability responder only):
   kupmios:http://kupo:1442|http://ogmios:1337
   fixture:/path/to/state-queue.json (tests only; requires
     CARDANO_L1_TEST_MODE=true)
-
-L1 source modes:
-  CARDANO_L1_SOURCE_MODE=local_node
-    requires CARDANO_LOCAL_NODE_AUTHORITY_ID and
-    CARDANO_LOCAL_NODE_CHAIN_SYNC_URL=chain-sync:<provider> and
-    CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH=/durable/path/cursor.jsonl;
-    CARDANO_PROVIDER_URLS are aligned query surfaces for that node and are not
-    counted as independent providers.
-  CARDANO_L1_SOURCE_MODE=external_providers
-    requires at least two CARDANO_PROVIDER_URLS and one distinct operational
-    identity per URL in CARDANO_EXTERNAL_PROVIDER_IDENTITIES.
+CARDANO_L1_SOURCE_MODE=local_node requires CARDANO_LOCAL_NODE_AUTHORITY_ID,
+CARDANO_LOCAL_NODE_CHAIN_SYNC_URL=chain-sync:<provider> and
+CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH=/durable/path/cursor.jsonl.
 `);
 };
 
@@ -396,7 +406,9 @@ const printL1WalletPreflightHelp = (): void => {
   process.stdout.write(`da-committee-node l1-wallet-preflight --json
 
 Prints DA L1 submitter wallet readiness as JSON using the normal environment
-configuration. Exits non-zero when readiness fails.
+configuration. Reads the wallet from the committee's L1 follower facts, as
+current as the running committee made them. Exits non-zero when readiness
+fails.
 `);
 };
 

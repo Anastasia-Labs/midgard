@@ -58,8 +58,9 @@ cross-header pair, and the core golden vector used two header hashes. No
 honest local caller produced such a pair, but a peer could relay one. The
 stored record then blocked the recovery CLI
 (`prior_da_conflict_evidence_requires_reconciliation`,
-`demo/da-committee-node/src/l1/recovery-incident.ts:58`). It also blocked
-bounded retention when the pair straddled the retired set.
+`demo/da-committee-node/src/l1/recovery-incident.ts:58`, since deleted with
+the recovery CLI in ticket C1, #793). It also blocked bounded retention when
+the pair straddled the retired set. <!-- doc-links:historical -->
 
 **The change:**
 

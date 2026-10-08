@@ -644,7 +644,6 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       availabilityCommitmentAuthority,
       store: {
         getDaPayload: async () => undefined,
-        getL1SourceState: async () => undefined,
         saveDaSignature: async () => undefined,
         listDaSignatures: async () => [{} as never],
         saveDaConflictEvidence: async () => true,

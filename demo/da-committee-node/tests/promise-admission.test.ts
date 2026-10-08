@@ -74,7 +74,7 @@ describe("committee fresh promise admission", () => {
         },
       },
       store: f.store,
-      stateQueueProvider: f.provider,
+      l1: f.provider,
       payloadSource: f.payloadSource,
       signer: {
         publicKeyHex: f.signerValidation.signerPublicKeyHex,

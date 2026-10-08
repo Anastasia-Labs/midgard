@@ -22,7 +22,7 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from ".././helpers.js";
-import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
+import { fakeL1Source } from ".././helpers/fake-l1-source.js";
 import {
   attestedDaStatus,
   candidateRecord,
@@ -77,7 +77,7 @@ export const registerLifecycleTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => {
           scans += 1;
           return [makeObservedNode({ header, headerHash, depth: 10 })];
@@ -145,7 +145,7 @@ export const registerLifecycleTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -205,7 +205,7 @@ export const registerLifecycleTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -329,7 +329,7 @@ export const registerLifecycleTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({
             header,
@@ -432,7 +432,7 @@ export const registerLifecycleTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -541,7 +541,7 @@ export const registerLifecycleTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -654,7 +654,7 @@ export const registerLifecycleTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -919,7 +919,7 @@ export const registerLifecycleTests = () => {
     const service = new CommitteeService({
       config,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -1028,7 +1028,7 @@ export const registerLifecycleTests = () => {
     const firstService = new CommitteeService({
       config: configWithDaHash,
       store: firstStore,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -1085,7 +1085,7 @@ export const registerLifecycleTests = () => {
     const restartedService = new CommitteeService({
       config: configWithDaHash,
       store: restartedStore,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],

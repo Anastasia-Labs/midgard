@@ -38,9 +38,10 @@ export type CommitteeLucidNetwork =
   | "Custom";
 
 /** The L1 route a committee Lucid client is built on. */
-export type CommitteeLucidRoute =
-  | { readonly provider: "kupmios"; readonly ogmiosUrl: string }
-  | { readonly provider: "blockfrost"; readonly apiUrl: string };
+export type CommitteeLucidRoute = {
+  readonly provider: "kupmios";
+  readonly ogmiosUrl: string;
+};
 
 /**
  * A `Custom` Lucid client refused before it was built: no slot mapping could
@@ -78,11 +79,6 @@ export const committeeLucidSlotOptions = async (
     return {};
   }
   const { route } = input;
-  if (route.provider === "blockfrost") {
-    throw new DaCommitteeCustomSlotMappingError(
-      `Refusing the Custom Lucid client on Blockfrost at ${route.apiUrl}: Blockfrost serves no Custom network, so no slot mapping can be read from it; use kupmios:<kupo-url>|<ogmios-url>`,
-    );
-  }
   const key = `${normalizeOgmiosHttpUrl(route.ogmiosUrl)}#${input.networkMagic.toString()}`;
   const cached = confirmedMappings.get(key);
   if (cached !== undefined) {

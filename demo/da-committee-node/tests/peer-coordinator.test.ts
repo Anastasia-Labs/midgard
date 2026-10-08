@@ -53,84 +53,6 @@ import {
 } from "./peer-coordinator.signature-record.js";
 
 describe("PeerSignatureCoordinator", () => {
-  it("does not rebroadcast or submit signatures while durable L1 state is quarantined", async () => {
-    const store = await openTestCommitteeStore();
-    await store.saveL1SourceState({
-      schemaVersion: 1,
-      sourceMode: "local_node",
-      network: "Preprod",
-      authoritySha256: "91".repeat(32),
-      status: "quarantined",
-      observations: [],
-      observedAt: "2026-07-28T00:00:00.000Z",
-      quarantineReason: "rollback_not_propagated",
-      quarantinedAt: "2026-07-28T00:00:01.000Z",
-    });
-    const signer = await loadDaSigner(`hex:${"00".repeat(31)}41`);
-    const committeeSignersHash = bytesToHex(
-      blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
-    );
-    const signerValidation = validateDaSignerMembership({
-      daParams: {
-        committeeHex: signer.publicKeyHex,
-        committeeSignersHash,
-        threshold: 1,
-      },
-      signer,
-      signerIndex: 0,
-    });
-    let peerCalls = 0;
-    let l1Calls = 0;
-    const coordinator = new PeerSignatureCoordinator({
-      deploymentFingerprint: "dep",
-      peers: [{ peerId: "remote-peer", signerIndex: 1 }],
-      attestationExchange: {
-        publishAttestation: async () => {
-          peerCalls += 1;
-          return { status: "accepted" };
-        },
-        attestationsByHeader: async () => [],
-        publishConflictEvidence: async () => undefined,
-      },
-      signer,
-      signerIndex: 0,
-      signerValidation,
-      availabilityCommitmentAuthority,
-      store,
-      retryInitialDelayMs: 1,
-      retryMaxDelayMs: 2,
-      retryMaxAttempts: 1,
-      onChainCoordinator: {
-        publishSignature: async () => {
-          l1Calls += 1;
-          return "posted";
-        },
-      },
-    });
-    const quarantinedCommitment = commitmentFor("42".repeat(28));
-    const record = signatureRecord({
-      deploymentFingerprint: "dep",
-      headerHash: "42".repeat(28),
-      signerIndex: 0,
-      committeeSignersHash,
-      commitment: quarantinedCommitment,
-      signatureWitness: signDaAttestation({
-        signer,
-        signerIndex: 0,
-        availabilityCommitment: quarantinedCommitment.commitment,
-      }),
-    });
-
-    await expect(coordinator.publishSignature(record)).resolves.toBe(
-      "post_failed",
-    );
-    expect(peerCalls).toBe(0);
-    expect(l1Calls).toBe(0);
-    expect(coordinator.lastPublishError(record)).toContain(
-      "rollback_not_propagated",
-    );
-  });
-
   it("filters the local DA peer out of remote attestation targets", () => {
     const targets = resolveRemoteDaAttestationTargets({
       localPeerId: "local-peer",
@@ -618,24 +540,13 @@ describe("PeerSignatureCoordinator", () => {
     ).resolves.toEqual([]);
 
     await receiverStore.saveDaSignature(receiverRecord);
-    await receiverStore.saveL1SourceState({
-      schemaVersion: 1,
-      sourceMode: "local_node",
-      network: "Preprod",
-      authoritySha256: "92".repeat(32),
-      status: "quarantined",
-      observations: [],
-      observedAt: "2026-07-28T00:00:00.000Z",
-      quarantineReason: "rollback_not_propagated",
-      quarantinedAt: "2026-07-28T00:00:01.000Z",
-    });
     await expect(
       exchange.attestationsByHeader({
         peer: { peerId: "receiver-peer", signerIndex: 0 },
         deploymentFingerprint,
         headerHash,
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toHaveLength(1);
   });
 
   it("builds canonical attestation gossip messages without changing the on-chain witness", async () => {
