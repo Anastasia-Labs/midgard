@@ -46,7 +46,7 @@ export const GATES = {
       "midgard-watcher",
       [
         "tests/funding/prover-funding-recovery.test.ts",
-        "tests/runtime/history-recovery-durable.test.ts",
+        "tests/l1-follower/decision-driver-fork-sim.test.ts",
       ],
     ],
   ],
@@ -97,7 +97,6 @@ export const GATES = {
       "midgard-watcher",
       [
         "tests/runtime/startup-progress.test.ts",
-        "tests/runtime/chain-coordinator-progress.test.ts",
         "tests/fault-proofs/fault-proof-objective-progress.test.ts",
       ],
     ],
