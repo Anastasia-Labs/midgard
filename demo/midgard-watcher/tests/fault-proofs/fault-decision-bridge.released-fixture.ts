@@ -33,6 +33,8 @@ export const operations = () =>
         deadlineHealth: "safe",
         earliestDeadlineJob: null,
         remainingSafeStartMs: "1000",
+        journalDecisionMissing: [],
+        journalBusy: null,
       }),
     } as unknown as WatcherFaultProofSupervisor,
     launchScopeStatus: () => ({

@@ -46,8 +46,9 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
 - **Symptom:** the wrong failure classification under full-suite load
   (`all_peers_failed` where `deadline_exceeded` was expected), never alone.
 - **Evidence:** `15b30754d` added a `clock` seam (`now`, `setTimeout`,
-  `clearTimeout`) to `WatcherPublicDaClientV1` so the test drives time
-  instead of racing the global timer queue.
+  `clearTimeout`) to `WatcherPublicDaClientV1` so the test drove time
+  instead of racing the global timer queue. That client was deleted in W2b
+  (#797); the lesson stands for any budgeted retry loop.
 - **Fix:** inject the clock and decide by state, not by which timer fires
   first. `[review]`
 

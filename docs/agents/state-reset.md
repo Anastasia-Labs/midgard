@@ -34,3 +34,6 @@ reason. [review]
 The only exception is a clearly labeled, read-only forensic diagnostic where no
 new deposits, L2 transactions, commitments, merges, or state-changing operations
 are submitted.
+
+The watcher's journal repair moves `watcher-journals.sqlite` aside and never
+deletes it; see the [watcher README](../../demo/midgard-watcher/README.md). [review]

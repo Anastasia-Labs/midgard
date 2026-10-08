@@ -1,3 +1,7 @@
+import {
+  isWatcherJournalIntegrityError,
+  isWatcherJournalUnavailableError,
+} from "../fault-proofs/watcher-journal-database.js";
 import { jsonResponse } from "./operations-observability.http-response.js";
 import type {
   WatcherOperationsApi,
@@ -61,7 +65,12 @@ export const handleWatcherOperationsHttpRequest = async (
       );
     }
     return jsonResponse(404, { error: "not_found" });
-  } catch {
+  } catch (error) {
+    // A journal failure is the watcher's state, never the request's fault.
+    if (isWatcherJournalIntegrityError(error))
+      return jsonResponse(503, { error: "journal_integrity" });
+    if (isWatcherJournalUnavailableError(error))
+      return jsonResponse(503, { error: "journal_unavailable" });
     return jsonResponse(400, { error: "invalid_request" });
   }
 };

@@ -9,7 +9,11 @@ import {
 } from "../../src/fault-proofs/fault-proof-queue-journal.js";
 import {
   closeWatcherJournalDatabase,
+  isWatcherJournalConfigurationError,
+  isWatcherJournalIntegrityError,
+  openWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
+  watcherJournalIntegrityFailure,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import {
   journalDirectory,
@@ -177,27 +181,41 @@ describe("production fault-proof queue journal", () => {
     );
   });
 
-  it("refuses a wrong authentication key on restart", async () => {
+  it("refuses a wrong authentication key on restart as configuration", async () => {
     const { input, journal } = await opened();
     await journal.register(identity, "1000");
     closeWatcherJournalDatabase(input.journalRoot);
-    await expect(
-      openWatcherFaultProofQueueJournal({
-        ...input,
-        authenticationKey: Uint8Array.from({ length: 32 }, () => 0x43),
-      }),
-    ).rejects.toThrow("head is authenticated by another key");
+    const failure = await openWatcherFaultProofQueueJournal({
+      ...input,
+      authenticationKey: Uint8Array.from({ length: 32 }, () => 0x43),
+    }).catch((error: unknown) => error);
+    expect(isWatcherJournalConfigurationError(failure)).toBe(true);
+    expect(String(failure)).toContain(
+      "the journals were written under another authentication key",
+    );
+    // Configuration is not corruption: nothing is latched.
+    expect(watcherJournalIntegrityFailure(input.journalRoot)).toBeNull();
   });
 
   it("refuses a row written for another deployment on restart", async () => {
     const { input, journal } = await opened();
     await journal.register(identity, "1000");
     closeWatcherJournalDatabase(input.journalRoot);
-    await expect(
-      openWatcherFaultProofQueueJournal({
-        ...input,
-        deploymentFingerprint: "12".repeat(32),
-      }),
-    ).rejects.toThrow("differs from its job identity");
+    const failure = await openWatcherFaultProofQueueJournal({
+      ...input,
+      deploymentFingerprint: "12".repeat(32),
+    }).catch((error: unknown) => error);
+    expect(isWatcherJournalIntegrityError(failure)).toBe(true);
+    expect(String(failure)).toContain("differs from its job identity");
+    // The refusal is latched: every later use of the journals throws it.
+    expect(watcherJournalIntegrityFailure(input.journalRoot)).toContain(
+      "differs from its job identity",
+    );
+    expect(() =>
+      openWatcherJournalDatabase({
+        journalRoot: input.journalRoot,
+        authenticationKey,
+      }).head("fault_proof_queue"),
+    ).toThrow("differs from its job identity");
   });
 });

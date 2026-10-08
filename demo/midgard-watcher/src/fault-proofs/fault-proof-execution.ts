@@ -30,6 +30,8 @@ import type {
 } from "./fault-proof-application.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
+import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
+import { isWatcherSqliteBusyError } from "./watcher-journal-busy.js";
 
 /** Chosen by the supervisor after reloading and validating the durable journal. */
 export type WatcherFaultProofExecutionAdmission = Readonly<{
@@ -362,6 +364,15 @@ export const createWatcherFaultProofExecution = (dependencies: {
         if (isWorkflowActuationRevokedError(error)) {
           record("cancelled");
           return { kind: "authority_revoked", error };
+        }
+        // The supervisor holds the objective (journal_decision_missing), or
+        // holds on a busy database and requeues it (journal_busy).
+        if (
+          isWatcherProofDecisionMissingError(error) ||
+          isWatcherSqliteBusyError(error)
+        ) {
+          record("reconciling");
+          throw error;
         }
         if (
           error instanceof FraudProofL1CheckpointChangedError ||

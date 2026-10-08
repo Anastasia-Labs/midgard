@@ -11,6 +11,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { WatcherInstalledWorkflowCategory } from "../fault-proofs/fault-proof-application.js";
+import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
@@ -34,6 +35,7 @@ import {
 } from "./prover-funding-authority.watcher-prover-funding-authority-factory.js";
 import type { WatcherRuntimeProverFundingCalculation } from "./prover-funding-calculation.js";
 import { calculateWatcherRuntimeProverFunding } from "./prover-funding-calculation.js";
+import type { WatcherFundingInputFacts } from "./prover-funding-input-facts.js";
 import {
   authorizeWatcherProverFundingRecovery,
   releaseUnusedWatcherProverFundingReservations,
@@ -58,6 +60,8 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
   readonly store: WatcherProverFundingReservationStore;
   readonly protocolParameterHistory?: WatcherProtocolParameterHistory;
+  /** The follower's facts that alone reclaim a reservation whose decision is missing. */
+  readonly fundingInputFacts?: WatcherFundingInputFacts;
 }): WatcherProverFundingAuthorityFactory => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
@@ -77,19 +81,63 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
     WorkflowActuationPermit,
     WatcherProverFundingReservationRecord
   >();
+  // Reservations held because their recorded decision is missing, by id.
+  const decisionHolds = new Map<string, WatcherDecisionHold>();
+  const recordHolds = (
+    checked: readonly string[] | null,
+    holds: readonly WatcherDecisionHold[],
+  ): void => {
+    if (checked === null) decisionHolds.clear();
+    else
+      for (const reservationId of checked) decisionHolds.delete(reservationId);
+    for (const hold of holds)
+      if (hold.kind === "reservation")
+        decisionHolds.set(hold.reservationId, hold);
+  };
+  // A sweep, a per-run release and a hold recheck each read the store and
+  // then record holds; one at a time, none records over another's newer read.
+  let releasing = Promise.resolve();
+  const serialize = (operation: () => Promise<void>): Promise<void> => {
+    const result = releasing.then(operation);
+    releasing = result.catch(() => undefined);
+    return result;
+  };
   const factory: WatcherProverFundingAuthorityFactory = Object.freeze({
     schemaVersion: WATCHER_PROVER_FUNDING_AUTHORITY,
-    releaseUnused: async (scope) => {
-      const reservation =
-        scope === undefined
-          ? undefined
-          : reservationByPermit.get(scope.actuationPermit);
-      if (scope !== undefined && reservation === undefined) return;
-      await releaseUnusedWatcherProverFundingReservations({
-        ...input,
-        reservation,
-      });
-    },
+    releaseUnused: (scope) =>
+      serialize(async () => {
+        const reservation =
+          scope === undefined
+            ? undefined
+            : reservationByPermit.get(scope.actuationPermit);
+        if (scope !== undefined && reservation === undefined) return;
+        recordHolds(
+          reservation === undefined ? null : [reservation.reservationId],
+          await releaseUnusedWatcherProverFundingReservations({
+            ...input,
+            ...(reservation === undefined
+              ? {}
+              : { reservations: [reservation] }),
+          }),
+        );
+      }),
+    recheckDecisionHolds: () =>
+      serialize(async () => {
+        if (decisionHolds.size === 0) return;
+        const checked = [...decisionHolds.keys()];
+        const reservations = (await input.store.readAll())
+          .map(parseWatcherProverFundingReservationRecord)
+          .filter(({ reservationId }) => checked.includes(reservationId));
+        recordHolds(
+          checked,
+          await releaseUnusedWatcherProverFundingReservations({
+            ...input,
+            reservations,
+            decisionMissingOnly: true,
+          }),
+        );
+      }),
+    decisionHolds: () => Object.freeze([...decisionHolds.values()]),
     create: async (request) => {
       assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
       let protocolParameters =

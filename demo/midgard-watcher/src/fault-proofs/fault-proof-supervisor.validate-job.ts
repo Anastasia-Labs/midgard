@@ -17,6 +17,7 @@ import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-executio
 import { type WatcherProofExecution } from "./fault-proof-objective-journal.js";
 import { listWatcherProofObjectives } from "./fault-proof-objective-table.js";
 import { type WatcherFaultProofProgressRequest } from "./fault-proof-progress-authority.js";
+import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
 import type { WatcherJournalDatabase } from "./watcher-journal-database.js";
 
 export const WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION =
@@ -104,9 +105,28 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
   /** The journals' first integrity failure in this process, or null:
    * readiness reports journal_integrity until an operator repairs them. */
   journalIntegrity: string | null;
+  /** Why the journals could not be opened, or null: readiness reports
+   * journal_unavailable while the open is retried. */
+  journalUnavailable: string | null;
   /** A fault-proof journal holds its cap of live rows: readiness reports
    * journal_capacity until rows complete or are pruned. */
   journalCapacity: boolean;
+  /** Objectives and funding reservations whose recorded decision is
+   * missing: readiness reports journal_decision_missing until each one
+   * resolves from L1 facts. */
+  journalDecisionMissing: readonly WatcherDecisionHold[];
+  /** A busy or locked database the supervisor holds on, or null: readiness
+   * reports journal_busy until the in-process requeue after its backoff. */
+  journalBusy: string | null;
+}>;
+
+/** What the runtime does around the in-process requeue after journal_busy,
+ * as a fresh process does at startup. */
+export type WatcherJournalBusyRequeue = Readonly<{
+  /** The startup funding sweep; runs while no supervisor job runs. */
+  releaseUnusedFunding(): Promise<void>;
+  /** Asks the decision driver for a pass, which dispatches the work again. */
+  wake(): void;
 }>;
 
 export type WatcherFaultProofSupervisor = Readonly<{

@@ -45,10 +45,8 @@ export const createWatcherOperationsObservability = (input: {
   }>;
   /** Live state of the application's shared retained-DA transport. */
   readonly retainedDaTransportStatus: () => WatcherRetainedDaTransportStatus;
-  /**
-   * The L1 follower's and decision driver's named reasons, read
-   * synchronously (the runtime caches them on every follower change).
-   */
+  /** The L1 follower's and decision driver's named reasons, read
+   * synchronously (the runtime caches them on every follower change). */
   readonly l1Readiness?: () => readonly Readonly<{
     reason: string;
     detail: string;
@@ -146,7 +144,6 @@ export const createWatcherOperationsObservability = (input: {
     values.push(value);
     if (values.length > maximumRetainedDiagnostics) values.shift();
   };
-
   const alerts = createWatcherAlertBook({
     append: (record) => append<WatcherAlertDiagnostic>(record),
     daFetchMaximumAgeMs:
@@ -319,7 +316,12 @@ export const createWatcherOperationsObservability = (input: {
       reasons.push("deadline_at_risk");
     if (supervisor.deadlineHealth === "unsafe") reasons.push("deadline_unsafe");
     if (supervisor.journalIntegrity !== null) reasons.push("journal_integrity");
+    if (supervisor.journalUnavailable !== null)
+      reasons.push("journal_unavailable");
     if (supervisor.journalCapacity) reasons.push("journal_capacity");
+    if (supervisor.journalDecisionMissing.length > 0)
+      reasons.push("journal_decision_missing");
+    if (supervisor.journalBusy !== null) reasons.push("journal_busy");
     if (latestL1Sources.size === 0) reasons.push("l1_source_unavailable");
     else if (sources.stale > 0 || sources.disagreement > 0)
       reasons.push("l1_source_stale");
@@ -487,13 +489,11 @@ export const createWatcherOperationsObservability = (input: {
     },
   });
 
-  const handleHttpRequest = (request: Request): Promise<Response> =>
-    handleWatcherOperationsHttpRequest(request, api);
-
   return Object.freeze({
     schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,
     api,
     sink,
-    handleHttpRequest,
+    handleHttpRequest: (request: Request): Promise<Response> =>
+      handleWatcherOperationsHttpRequest(request, api),
   });
 };

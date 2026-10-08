@@ -10,6 +10,7 @@ import { KupmiosError } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
+import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
@@ -300,6 +301,22 @@ describe("supervisor execution adapter with durable funding", () => {
       expect(await test.fixture.records()).toEqual(before);
     },
   );
+
+  it("passes a missing recorded decision to the supervisor's hold without a failure alert", async () => {
+    const test = await setup();
+    const before = await test.fixture.records();
+    const missing = new WatcherProofDecisionMissingError({
+      kind: "objective",
+      category: "doubleSpend",
+      headerHash: test.fixture.old.headerHash,
+      decisionDigest: test.fixture.old.decisionDigest,
+      detail: "workflow recovery has no unique original fault decision",
+    });
+    test.runOrResume.mockRejectedValueOnce(missing);
+    await expect(test.execution.execute(test.input)).rejects.toBe(missing);
+    expect(test.setAlert).not.toHaveBeenCalled();
+    expect(await test.fixture.records()).toEqual(before);
+  });
 
   it("keeps a provider error the provider does not mark retryable hard", async () => {
     const test = await setup();

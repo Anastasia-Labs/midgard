@@ -11,6 +11,7 @@ import {
   createWatcherFaultDecisionBridge,
   type WatcherFaultDecisionBridge,
 } from "../fault-proofs/fault-decision-bridge.js";
+import { validateWatcherFaultDecisionJournalConfiguration } from "../fault-proofs/fault-decision-journal.js";
 import { type WatcherFaultProofApplication } from "../fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofExecution } from "../fault-proofs/fault-proof-execution.js";
 import {
@@ -46,6 +47,7 @@ import {
   watcherDaBondPoolReadFailureReporter,
   watcherDaBondPoolReporter,
 } from "./operations-observability.js";
+import { refusePermanently } from "./permanent-refusal.js";
 import {
   loadWatcherSecretText,
   type WatcherProcessConfig,
@@ -58,7 +60,10 @@ import {
   createWatcherUserEventRuntime,
   type WatcherUserEventRuntime,
 } from "./user-event-runtime.js";
-import { openWatcherProverFundingRuntime } from "./watcher-prover-funding-runtime.js";
+import {
+  openWatcherProverFundingRuntime,
+  recheckFundingDecisionHolds,
+} from "./watcher-prover-funding-runtime.js";
 import { closeWatcherAllocatedResources } from "./watcher-runtime.close-allocated-resources.js";
 import { createWatcherRuntimeLifecycle } from "./watcher-runtime.create-lifecycle.js";
 import {
@@ -97,9 +102,12 @@ const L1_READINESS_REFRESH_MS = 5_000;
  * release depth.
  *
  * Liveness: the operations server binds before the first decision pass, so
- * `/healthz` answers while the follower syncs; until the first pass
- * completes, and whenever the follower or a pass holds decisions, `/readyz`
- * names the reason. No L1 condition ends startup or the process.
+ * `/v1/status` (the liveness probe) answers while the follower syncs; there
+ * is no `/healthz` route. Until the first pass completes, and whenever the
+ * follower, a pass or the journals hold decisions, `/readyz` names the
+ * reason. No L1 condition, journal integrity failure or failed journal open
+ * ends the process after the server binds; bad configuration, the journals'
+ * directory and key included, exits before it binds.
  */
 export const createWatcherRuntime = async (input: {
   readonly config: WatcherProcessConfig;
@@ -240,6 +248,15 @@ export const createWatcherRuntime = async (input: {
         },
       });
 
+    // A bad journal directory or key exits before the operations server binds.
+    await refusePermanently("journal_configuration", () =>
+      validateWatcherFaultDecisionJournalConfiguration({
+        directory: input.config.workflowJournalDirectory,
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        launchScope: faultProofApplication.installedCategories,
+        authenticationKey: trusted.rollbackAuthenticationKey,
+      }),
+    );
     const fundingRuntime = await openWatcherProverFundingRuntime({
       path: watcherConfig.storage.path,
       authenticationKey: trusted.rollbackAuthenticationKey,
@@ -255,6 +272,7 @@ export const createWatcherRuntime = async (input: {
         ),
       launchScope: faultProofApplication.installedCategories,
       journalRoot: input.config.workflowJournalDirectory,
+      fundingInputFacts: activeFollower.fundingInputFacts,
     });
     proverFundingStore = fundingRuntime.store;
 
@@ -279,6 +297,11 @@ export const createWatcherRuntime = async (input: {
         operationsSink: () => operations.sink,
       }),
       proofRetention: activeFollower.proofRetention,
+      reservationDecisionHolds: fundingRuntime.factory.decisionHolds,
+      journalBusyRequeue: {
+        releaseUnusedFunding: () => fundingRuntime.factory.releaseUnused(),
+        wake: () => decisionDriver?.wake(),
+      },
     });
     faultProofSupervisor = activeSupervisor;
 
@@ -413,6 +436,10 @@ export const createWatcherRuntime = async (input: {
     decisionDriver = activeDriver;
     unsubscribeL1 = [
       activeFollower.onChange(refreshFollowerReadiness),
+      recheckFundingDecisionHolds(
+        fundingRuntime.factory,
+        activeFollower.onChange,
+      ),
       store.onGeneration(() => {
         operations.sink.setAlert({
           code: "chain_rollback",

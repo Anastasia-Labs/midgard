@@ -39,7 +39,8 @@ const LINTED = lintDeterminismModules({
   include: ["src/l1-follower/*.ts"],
   exclude: [
     "src/l1-follower/deployment-follower.ts",
-    "src/l1-follower/fault-proof-l1-source*.ts",
+    "src/l1-follower/fault-proof-l1-source.ts",
+    "src/l1-follower/fault-proof-l1-source.signed.ts",
     "src/l1-follower/follower-runtime.ts",
     "src/l1-follower/raw-reads.ledger.ts",
   ],

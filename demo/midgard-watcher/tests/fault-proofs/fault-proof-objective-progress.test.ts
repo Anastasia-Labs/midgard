@@ -244,6 +244,7 @@ const setup = async (
     });
   const createSupervisor = () => {
     const supervisor = createWatcherFaultProofSupervisor({
+      reservationDecisionHolds: () => [],
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
       deploymentFingerprint: deploymentIdentity.manifestId,

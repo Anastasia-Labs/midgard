@@ -197,7 +197,18 @@ export type WatcherOperationsReadinessReason =
   | "journal_capacity"
   /** A fault-proof journal failed integrity; `supervisor.journalIntegrity`
    * names the failure. Held until an operator repairs the journals. */
-  | "journal_integrity";
+  | "journal_integrity"
+  /** The journals could not be opened; `supervisor.journalUnavailable` names
+   * the failure. Held while the open is retried; clears once it succeeds. */
+  | "journal_unavailable"
+  /** Proof work or a funding reservation names a decision the journal does
+   * not hold; `supervisor.journalDecisionMissing` lists each. Held, never
+   * run again; each clears once L1 facts resolve it. */
+  | "journal_decision_missing"
+  /** A journal database was busy or locked past its timeout;
+   * `supervisor.journalBusy` names the failure. The work is requeued in
+   * process from durable state after a 1-30 s backoff; clears then. */
+  | "journal_busy";
 
 export type WatcherOperationsL1Degradation = Readonly<{
   reason: string;

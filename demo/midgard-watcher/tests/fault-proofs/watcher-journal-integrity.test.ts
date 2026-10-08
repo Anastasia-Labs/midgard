@@ -1,3 +1,4 @@
+import { mkdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
@@ -12,6 +13,7 @@ import {
   WATCHER_JOURNAL_DATABASE_FILE,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
+import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
@@ -23,21 +25,21 @@ import {
   TEST_JOURNAL_KEY,
 } from "../support/watcher-journal-fixture.js";
 
+/** The fields of an operations response these probes read. */
+type ProbeBody = {
+  ready?: boolean;
+  reasons?: string[];
+  error?: string;
+  supervisor?: { journalIntegrity: string | null };
+};
+
 afterEach(removeJournalDirectories);
 
 const DEPLOYMENT = "dd".repeat(32);
 
-/**
- * Starts the production supervisor over a corrupted journal and drives two
- * progress passes, as the decision driver's retries would. Each pass must
- * fail on the refused journal, and the watcher must stay live and report
- * `journal_integrity` with the failure named, never block or fail `done`.
- */
-const expectHeldUnready = async (
-  journalRoot: string,
-  detail: string,
-): Promise<void> => {
+const startSupervisor = (journalRoot: string) => {
   const supervisor = createWatcherFaultProofSupervisor({
+    reservationDecisionHolds: () => [],
     journalRoot,
     deploymentFingerprint: DEPLOYMENT,
     deadlineAlertHeadroomMs: MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
@@ -69,6 +71,30 @@ const expectHeldUnready = async (
     monotonicNowMs: () => 1_000,
     l1FreshnessMaximumAgeMs: 10_000,
   });
+  const get = async (path: string) => {
+    const response = await handleWatcherOperationsHttpRequest(
+      new Request(`http://127.0.0.1${path}`),
+      operations.api,
+    );
+    return {
+      status: response.status,
+      body: (await response.json()) as ProbeBody,
+    };
+  };
+  return { supervisor, operations, get, failure: () => failure };
+};
+
+/**
+ * Starts the production supervisor over a corrupted journal and drives two
+ * progress passes, as the decision driver's retries would. Each pass must
+ * fail on the refused journal, and the watcher must stay live and report
+ * `journal_integrity` with the failure named, never block or fail `done`.
+ */
+const expectHeldUnready = async (
+  journalRoot: string,
+  detail: string,
+): Promise<void> => {
+  const { supervisor, operations, get, failure } = startSupervisor(journalRoot);
   for (let pass = 0; pass < 2; pass += 1)
     await expect(
       supervisor.requestProgress({
@@ -85,11 +111,35 @@ const expectHeldUnready = async (
   expect(reported.readinessReasons).toContain("journal_integrity");
   expect(reported.readiness).toBe("not_ready");
   expect(reported.liveness).toBe("live");
-  expect(failure).toBeUndefined();
+  expect(failure()).toBeUndefined();
+  // Probes see the refusal as the watcher's state, never a bad request.
+  expect(await get("/readyz")).toMatchObject({
+    status: 503,
+    body: {
+      ready: false,
+      reasons: expect.arrayContaining(["journal_integrity"]),
+    },
+  });
+  expect(await get("/v1/metrics")).toEqual({
+    status: 503,
+    body: { error: "journal_integrity" },
+  });
+  const live = await get("/v1/status");
+  expect(live.status).toBe(200);
+  expect(live.body.supervisor?.journalIntegrity).toContain(detail);
   await supervisor.close();
 };
 
 describe("watcher journal integrity (W2-E2)", () => {
+  it("holds the watcher live and unready on a journal file that is not a database", async () => {
+    const journalRoot = await journalDirectory("midgard-journal-integrity");
+    writeFileSync(
+      join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE),
+      Buffer.alloc(8_192, 0x5a),
+    );
+    await expectHeldUnready(journalRoot, "file is not a database");
+  });
+
   it("holds the watcher live and unready on an objective row whose MAC differs", async () => {
     const journalRoot = await journalDirectory("midgard-journal-integrity");
     const objective = { category: "doubleSpend" as const, headerHash: h28(1) };
@@ -136,5 +186,87 @@ describe("watcher journal integrity (W2-E2)", () => {
       journalRoot,
       "proof objective row differs from its key",
     );
+  });
+});
+
+describe("watcher journal open failures (R6)", () => {
+  it("reports journal_unavailable while the journals cannot be opened and recovers without a restart", async () => {
+    const journalRoot = await journalDirectory("midgard-journal-unavailable");
+    // A directory where the database file belongs: SQLite cannot open it.
+    const path = join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE);
+    mkdirSync(path);
+    const { supervisor, operations, get, failure } =
+      startSupervisor(journalRoot);
+    await expect(
+      supervisor.requestProgress({
+        observation: progressObservation({ deploymentFingerprint: DEPLOYMENT }),
+        rollbackGeneration: "0",
+      }),
+    ).rejects.toThrow("watcher journals are unavailable");
+    await pause(10);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      journalIntegrity: null,
+      journalUnavailable: expect.stringContaining(
+        "unable to open database file",
+      ),
+    });
+    expect(operations.api.status().readinessReasons).toContain(
+      "journal_unavailable",
+    );
+    expect(await get("/v1/metrics")).toEqual({
+      status: 503,
+      body: { error: "journal_unavailable" },
+    });
+
+    // The cause clears; the background reopen (first retry after 1 s)
+    // recovers the journals in this same process.
+    rmdirSync(path);
+    for (
+      let waited = 0;
+      supervisor.status().journalUnavailable !== null && waited < 5_000;
+      waited += 50
+    )
+      await pause(50);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      journalIntegrity: null,
+      journalUnavailable: null,
+    });
+    expect(operations.api.status().readinessReasons).not.toContain(
+      "journal_unavailable",
+    );
+    expect(supervisor.durableQueueStatus()).toEqual({
+      queuedJobCount: 0,
+      oldestQueuedAtMs: null,
+    });
+    expect(failure()).toBeUndefined();
+    await supervisor.close();
+  });
+
+  it("keeps an integrity failure latched: no retry clears it", async () => {
+    const journalRoot = await journalDirectory("midgard-journal-integrity");
+    const path = join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE);
+    writeFileSync(path, Buffer.alloc(8_192, 0x5a));
+    const { supervisor, failure } = startSupervisor(journalRoot);
+    await pause(10);
+    expect(supervisor.status().journalIntegrity).toContain(
+      "file is not a database",
+    );
+    // Even a repaired file stays refused until the process restarts.
+    rmSync(path);
+    await expect(
+      supervisor.requestProgress({
+        observation: progressObservation({ deploymentFingerprint: DEPLOYMENT }),
+        rollbackGeneration: "0",
+      }),
+    ).rejects.toThrow("file is not a database");
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      journalIntegrity: expect.stringContaining("file is not a database"),
+      journalUnavailable: null,
+    });
+    expect(failure()).toBeUndefined();
+    await supervisor.close();
   });
 });

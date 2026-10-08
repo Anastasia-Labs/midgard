@@ -1,3 +1,4 @@
+import { mkdirSync, readFileSync, rmdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -9,9 +10,14 @@ import {
 } from "../../src/fault-proofs/fault-proof-queue-journal.js";
 import {
   closeWatcherJournalDatabase,
+  isWatcherJournalConfigurationError,
+  isWatcherJournalIntegrityError,
+  isWatcherJournalUnavailableError,
   openWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
   type WatcherJournalDatabase,
+  watcherJournalIntegrityFailure,
+  watcherJournalUnavailable,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import {
   WATCHER_JOURNAL_RETAINED_REVISIONS,
@@ -81,6 +87,15 @@ const rawRow = (root: string, key: string) => {
 };
 
 const restart = (root: string) => () => open(root);
+
+const thrown = (run: () => unknown): unknown => {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  throw new Error("expected a failure");
+};
 
 describe("watcher journal database integrity at startup", () => {
   it("opens an untouched journal and serves its rows", async () => {
@@ -169,14 +184,136 @@ describe("watcher journal database integrity at startup", () => {
     expect(restart(root)).toThrow("head MAC differs");
   });
 
-  it("refuses a journal authenticated under another key", async () => {
+  it("refuses a key the journals were not written under as configuration, not corruption", async () => {
     const root = await seeded();
-    expect(() =>
+    const failure = thrown(() =>
       openWatcherJournalDatabase({
         journalRoot: root,
         authenticationKey: Uint8Array.from({ length: 32 }, () => 0x5a),
       }),
-    ).toThrow("head is authenticated by another key");
+    );
+    expect(isWatcherJournalConfigurationError(failure)).toBe(true);
+    expect(String(failure)).toContain(
+      "the journals were written under another authentication key",
+    );
+    expect(watcherJournalIntegrityFailure(root)).toBeNull();
+    // The right key still opens them.
+    expect(open(root).head("fault_proof_queue").liveRows).toBe(3);
+  });
+
+  it("refuses one head naming another key as corruption", async () => {
+    const root = await seeded();
+    edit(
+      root,
+      "UPDATE watcher_journal_heads SET key_id = ? WHERE journal = 'fault_proof_queue'",
+      "ab".repeat(32),
+    );
+    const failure = thrown(restart(root));
+    expect(isWatcherJournalIntegrityError(failure)).toBe(true);
+    expect(String(failure)).toContain("head is authenticated by another key");
+  });
+
+  it("refuses a malformed key and a second key for an open root as configuration", async () => {
+    const root = await seeded();
+    expect(
+      isWatcherJournalConfigurationError(
+        thrown(() =>
+          openWatcherJournalDatabase({
+            journalRoot: root,
+            authenticationKey: new Uint8Array(31),
+          }),
+        ),
+      ),
+    ).toBe(true);
+    open(root);
+    const second = thrown(() =>
+      openWatcherJournalDatabase({
+        journalRoot: root,
+        authenticationKey: Uint8Array.from({ length: 32 }, () => 0x5a),
+      }),
+    );
+    expect(isWatcherJournalConfigurationError(second)).toBe(true);
+    expect(String(second)).toContain("already open under another key");
+  });
+
+  it("refuses a journal directory that is not canonical and durable as configuration", () => {
+    for (const journalRoot of ["relative/journals", "/tmp/journals", "/"])
+      expect(
+        isWatcherJournalConfigurationError(
+          thrown(() =>
+            openWatcherJournalDatabase({
+              journalRoot,
+              authenticationKey: TEST_JOURNAL_KEY,
+            }),
+          ),
+        ),
+      ).toBe(true);
+  });
+
+  it("latches a file that is not a database (SQLITE_NOTADB)", async () => {
+    const root = await journalDirectory("midgard-journal-integrity");
+    writeFileSync(
+      join(root, WATCHER_JOURNAL_DATABASE_FILE),
+      Buffer.alloc(8_192, 0x5a),
+    );
+    const failure = thrown(restart(root));
+    expect(isWatcherJournalIntegrityError(failure)).toBe(true);
+    expect(String(failure)).toContain("file is not a database");
+    expect(watcherJournalIntegrityFailure(root)).toContain(
+      "file is not a database",
+    );
+  });
+
+  it("latches a database whose pages are damaged (SQLITE_CORRUPT)", async () => {
+    const root = await seeded();
+    const path = join(root, WATCHER_JOURNAL_DATABASE_FILE);
+    const bytes = readFileSync(path);
+    // Keep the header page; overwrite every later page.
+    writeFileSync(
+      path,
+      Buffer.concat([
+        bytes.subarray(0, 4_096),
+        Buffer.alloc(bytes.length - 4_096, 0xff),
+      ]),
+    );
+    const failure = thrown(restart(root));
+    expect(isWatcherJournalIntegrityError(failure)).toBe(true);
+    expect(String(failure)).toContain("malformed");
+    expect(watcherJournalIntegrityFailure(root)).toContain("malformed");
+  });
+
+  it("throws the latched failure from every later call, even one that would succeed", async () => {
+    const root = await seeded();
+    const database = open(root);
+    // A row edited under the open connection fails its MAC when read.
+    edit(root, `UPDATE ${QUEUE} SET state = 'finished' WHERE row_key = 'b'`);
+    expect(() => database.row("fault_proof_queue", "b")).toThrow(
+      "row b MAC differs",
+    );
+    // Row a is untouched, yet the refused journals throw the first failure.
+    expect(() => database.row("fault_proof_queue", "a")).toThrow(
+      "row b MAC differs",
+    );
+    expect(() => open(root)).toThrow("row b MAC differs");
+  });
+});
+
+describe("watcher journal database open failures", () => {
+  it("retries an open that could not complete, without latching it", async () => {
+    const root = await journalDirectory("midgard-journal-unavailable");
+    // A directory where the database file belongs: SQLite cannot open it.
+    const path = join(root, WATCHER_JOURNAL_DATABASE_FILE);
+    mkdirSync(path);
+    const failure = thrown(() => open(root));
+    expect(isWatcherJournalUnavailableError(failure)).toBe(true);
+    expect(watcherJournalUnavailable(root)).toContain(
+      "unable to open database file",
+    );
+    expect(watcherJournalIntegrityFailure(root)).toBeNull();
+    // Once the cause clears, the next open succeeds: no restart.
+    rmdirSync(path);
+    expect(open(root).head("fault_proof_queue").revision).toBe(0);
+    expect(watcherJournalUnavailable(root)).toBeNull();
   });
 });
 

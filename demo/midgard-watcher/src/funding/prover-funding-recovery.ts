@@ -25,9 +25,14 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { openWatcherFaultDecisionJournal } from "../fault-proofs/fault-decision-journal.js";
 import type { WatcherInstalledWorkflowCategory } from "../fault-proofs/fault-proof-application.js";
 import {
+  type WatcherDecisionHold,
+  WatcherProofDecisionMissingError,
+} from "../fault-proofs/watcher-decision-hold.js";
+import {
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
+import type { WatcherFundingInputFacts } from "./prover-funding-input-facts.js";
 import {
   parseWatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationRecord,
@@ -165,7 +170,13 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
     matches.length !== 1 ||
     matches[0]!.decision.decision !== "fault_detected"
   )
-    throw new Error("workflow recovery has no unique original fault decision");
+    throw new WatcherProofDecisionMissingError({
+      kind: "objective",
+      category: input.category as WatcherInstalledWorkflowCategory,
+      headerHash: authority.headerHash,
+      decisionDigest: identity.decisionDigest,
+      detail: `${input.category}/${authority.headerHash}: workflow recovery has no unique original fault decision (${identity.decisionDigest})`,
+    });
   const originalDecision = matches[0]!.decision;
   const { decisionDigest, ...unsealed } = originalDecision;
   if (
@@ -317,20 +328,68 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
   });
 };
 
-/** Reclaim unsubmitted work after its runner exits, or before startup dispatch. */
+type ReservationHold = WatcherDecisionHold & Readonly<{ kind: "reservation" }>;
+
+/**
+ * A reservation whose recorded decision is missing, so no journal can say
+ * whether its work was submitted. Only L1 facts reclaim it: inputs all spent
+ * at a final view drop it (its transaction or another landed); inputs
+ * unspent at a final view and at the tip return to the wallet, and only
+ * when the store holds no signed attempt for it, since every signed
+ * transaction is persisted before it can be submitted. Anything else keeps
+ * it held, read again on the next tick.
+ */
+const reclaimWithoutDecision = async (
+  store: WatcherProverFundingReservationStore,
+  facts: WatcherFundingInputFacts | undefined,
+  record: WatcherProverFundingReservationRecord,
+): Promise<ReservationHold | null> => {
+  const hold = (detail: string): ReservationHold =>
+    Object.freeze({
+      kind: "reservation",
+      reservationId: record.reservationId,
+      decisionDigest: record.decisionDigest,
+      detail: `reservation ${record.reservationId} has no unique recorded fault decision ${record.decisionDigest}: ${detail}`,
+    });
+  if (facts === undefined) return hold("no L1 facts can show its inputs");
+  const outRefs = record.activeInputs.map(({ outRef }) => outRef);
+  const standing = await facts.standing(outRefs);
+  if (standing.undetermined !== null)
+    return hold(`its inputs are not final yet: ${standing.undetermined}`);
+  if (standing.spent.length === outRefs.length) {
+    if (store.dropSpentUnused === undefined)
+      return hold("the store cannot drop a spent reservation");
+    return (await store.dropSpentUnused(record))
+      ? null
+      : hold("the store refused to drop it after its inputs were spent");
+  }
+  if (store.releaseUnused === undefined)
+    return hold("the store cannot release unused reservations");
+  return (await store.releaseUnused(record))
+    ? null
+    : hold(
+        "its inputs are unspent at a final view but it has signed history or changed",
+      );
+};
+
+/**
+ * Reclaim unsubmitted work after its runner exits, or before startup
+ * dispatch. Returns the reservations held because their decision is
+ * missing (journal_decision_missing). With `decisionMissingOnly`, a
+ * reservation whose decision is recorded again is left alone: that re-check
+ * runs beside live dispatch, which owns such reservations.
+ */
 export const releaseUnusedWatcherProverFundingReservations = async (input: {
   readonly journalRoot: string;
   readonly journalAuthenticationKey: Uint8Array;
   readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly store: WatcherProverFundingReservationStore;
-  readonly reservation?: WatcherProverFundingReservationRecord;
-}): Promise<void> => {
-  const records = (
-    input.reservation === undefined
-      ? await input.store.readAll()
-      : [input.reservation]
-  )
+  readonly reservations?: readonly WatcherProverFundingReservationRecord[];
+  readonly fundingInputFacts?: WatcherFundingInputFacts;
+  readonly decisionMissingOnly?: boolean;
+}): Promise<readonly ReservationHold[]> => {
+  const records = (input.reservations ?? (await input.store.readAll()))
     .map(parseWatcherProverFundingReservationRecord)
     .filter(
       (record) =>
@@ -340,7 +399,7 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
         record.pendingTransition === null &&
         record.lastConfirmedTransitionDigest === null,
     );
-  if (records.length === 0) return;
+  if (records.length === 0) return [];
   if (input.store.releaseUnused === undefined)
     throw new Error("prover funding store cannot release unused reservations");
   const decisions = await openWatcherFaultDecisionJournal({
@@ -350,15 +409,22 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
     authenticationKey: input.journalAuthenticationKey,
   });
   const saved = await decisions.readAll();
+  const holds: ReservationHold[] = [];
   for (const record of records) {
     const matches = saved.filter(
       ({ decision }) => decision.decisionDigest === record.decisionDigest,
     );
     const decision = matches[0]?.decision;
-    if (matches.length !== 1 || decision?.decision !== "fault_detected")
-      throw new Error(
-        "unused prover reservation has no unique original fault decision",
+    if (matches.length !== 1 || decision?.decision !== "fault_detected") {
+      const held = await reclaimWithoutDecision(
+        input.store,
+        input.fundingInputFacts,
+        record,
       );
+      if (held !== null) holds.push(held);
+      continue;
+    }
+    if (input.decisionMissingOnly === true) continue;
     const directory = join(
       input.journalRoot,
       "fault-proofs",
@@ -409,4 +475,5 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
     }
     if (!submitted) await input.store.releaseUnused(record);
   }
+  return Object.freeze(holds);
 };

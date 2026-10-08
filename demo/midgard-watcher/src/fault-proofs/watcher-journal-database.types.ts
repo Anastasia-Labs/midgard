@@ -17,6 +17,39 @@ export const isWatcherJournalIntegrityError = (
 ): error is WatcherJournalIntegrityError =>
   error instanceof WatcherJournalIntegrityError;
 
+/** The journals' directory or key is wrong: bad configuration, which
+ * startup refuses before the operations server binds. */
+export class WatcherJournalConfigurationError extends Error {
+  constructor(detail: string) {
+    super(`watcher journal configuration is invalid: ${detail}`);
+    this.name = "WatcherJournalConfigurationError";
+  }
+}
+
+export const isWatcherJournalConfigurationError = (
+  error: unknown,
+): error is WatcherJournalConfigurationError =>
+  error instanceof WatcherJournalConfigurationError;
+
+/** The journals could not be opened this time (a busy, locked or unreadable
+ * file). Never latched and never fatal: the next use opens them again. */
+export class WatcherJournalUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `watcher journals are unavailable: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+      { cause },
+    );
+    this.name = "WatcherJournalUnavailableError";
+  }
+}
+
+export const isWatcherJournalUnavailableError = (
+  error: unknown,
+): error is WatcherJournalUnavailableError =>
+  error instanceof WatcherJournalUnavailableError;
+
 /** A journal at its live-row cap refuses new live rows; never fatal. */
 export class WatcherJournalCapacityError extends Error {
   readonly journal: WatcherJournalName;
