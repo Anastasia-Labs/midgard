@@ -31,6 +31,10 @@ import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-pr
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import {
+  recordObjectives,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 
 const DEPLOYMENT = "dd".repeat(32),
   HEADER = "aa".repeat(28),
@@ -128,10 +132,15 @@ describe("existing signed workflow recovery authority", () => {
   it("schedules an exact target-absent journal without a new-start deadline and refuses every spend", async () => {
     const root = await mkdtemp("/var/tmp/midgard-reconciliation-test-");
     const { decision, entries } = fixture();
+    // The queue records the objective before its workflow journal exists.
+    recordObjectives(root, [
+      { category: "transitionTrace", headerHash: HEADER },
+    ]);
     const decisionJournal = await unsafeOpenWatcherFaultDecisionJournalForTest({
       directory: root,
       deploymentFingerprint: DEPLOYMENT,
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+      authenticationKey: TEST_JOURNAL_KEY,
     });
     await decisionJournal.unsafeAppendDecisionEnvelopeForTest(decision);
     const journal = new DirectoryFraudProofWorkflowJournalStore(

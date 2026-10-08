@@ -1,4 +1,4 @@
-import { readFile, rename, rmdir } from "node:fs/promises";
+import { readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
@@ -32,6 +32,7 @@ import {
   createWatcherFaultProofSupervisor,
   watcherFaultProofDeadline,
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
 import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.js";
 import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
@@ -45,6 +46,7 @@ import {
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
   beforeDecisionRead: async (): Promise<void> => undefined,
@@ -382,13 +384,15 @@ describe("proof objective progress with durable funding and journals", () => {
     // Stage the real signed fixture outside discovery, then publish its
     // evidence only after the supervisor has opened an empty decision reader.
     const proofs = join(test.fixture.journalRoot, "fault-proofs");
-    const decisions = join(test.fixture.journalRoot, "fault-decisions");
     const stagedProofs = join(test.fixture.journalRoot, "staged-proof-fixture");
     await rename(proofs, stagedProofs);
-    await rename(
-      decisions,
-      join(test.fixture.journalRoot, "staged-decision-fixture"),
-    );
+    openWatcherJournalDatabase({
+      journalRoot: test.fixture.journalRoot,
+      authenticationKey: TEST_JOURNAL_KEY,
+    }).transaction((tx) => {
+      for (const row of tx.rows("fault_decisions"))
+        tx.delete("fault_decisions", row.key);
+    });
     const initializedReader = vi.fn(async () => undefined);
     finishControl.beforeDecisionRead = initializedReader;
     const supervisor = test.createSupervisor();
@@ -404,10 +408,10 @@ describe("proof objective progress with durable funding and journals", () => {
       directory: test.fixture.journalRoot,
       deploymentFingerprint: deploymentIdentity.manifestId,
       launchScope: test.fixture.old.launchScope,
+      authenticationKey: TEST_JOURNAL_KEY,
     });
     await writer.appendLiveDecision(test.fixture.old);
     await writer.appendLiveDecision(test.fixture.fresh);
-    await rmdir(proofs);
     await rename(stagedProofs, proofs);
     const entered = deferred(),
       release = deferred();

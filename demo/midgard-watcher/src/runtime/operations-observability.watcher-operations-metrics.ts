@@ -202,6 +202,7 @@ export type WatcherOperationsStatus = Readonly<{
     | "retained_da_transport_failed"
     | "active_alert"
     | "coordinator_recovery_hold"
+    | "journal_capacity"
   )[];
   retainedDaTransport: WatcherRetainedDaTransportStatus;
   coordinator: ReturnType<WatcherChainCoordinator["status"]> | null;

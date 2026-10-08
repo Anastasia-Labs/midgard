@@ -16,6 +16,7 @@ import {
   setupFundingRecoveryFixture,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { ogmiosParameters } from "./prover-funding-calculation.transaction-cbor.js";
 
 afterEach(async () => {
@@ -46,6 +47,7 @@ const setup = async (priorRoster = false) => {
   });
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: fixture.old.launchScope,
     deploymentIdentity,
     protocolParameters: fixture.protocolParameters,
@@ -153,6 +155,7 @@ it("resumes an exact deployed reservation after a live fee update and restart", 
   const before = await fixture.records();
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: fixture.old.launchScope,
     deploymentIdentity,
     protocolParameters: current,
@@ -202,6 +205,7 @@ it("uses updated live parameters for new decisions instead of its cached startup
   const readAll = vi.fn(async () => []);
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot + "/new",
+    journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: fixture.old.launchScope,
     deploymentIdentity,
     protocolParameters: fixture.protocolParameters,
@@ -251,6 +255,7 @@ it("authenticates and resumes a nondeployment parameter basis after restart", as
   // reservation still requires the 45-coefficient snapshot it was born under.
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: fixture.old.launchScope,
     deploymentIdentity,
     protocolParameters:
@@ -327,6 +332,7 @@ it("reprices the next installed step's idle collateral after reconciling its ori
   const before = await fixture.records();
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: fixture.old.launchScope,
     deploymentIdentity,
     protocolParameters: current,

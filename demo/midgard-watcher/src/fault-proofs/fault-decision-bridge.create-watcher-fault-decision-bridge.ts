@@ -44,6 +44,8 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly supervisor: WatcherFaultProofSupervisor;
   readonly stateQueueSource: WatcherStateQueueObservationSource;
   readonly journalDirectory: string;
+  /** The 32-byte key the fault-proof journals' rows are authenticated with. */
+  readonly authenticationKey: Uint8Array;
   readonly runtimeConfigPath: string;
   readonly maximumClassificationConcurrency: number;
   readonly operationsSink?: WatcherOperationsSink;
@@ -57,6 +59,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
     directory: input.journalDirectory,
     deploymentFingerprint: input.application.deploymentFingerprint,
     launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    authenticationKey: input.authenticationKey,
   });
   return createBridge({
     application: input.application,

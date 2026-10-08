@@ -1,5 +1,5 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -7,8 +7,15 @@ import {
   openWatcherFaultProofQueueJournal,
   watcherFaultProofQueueIdentityDigest,
 } from "../../src/fault-proofs/fault-proof-queue-journal.js";
+import {
+  closeWatcherJournalDatabase,
+  WATCHER_JOURNAL_DATABASE_FILE,
+} from "../../src/fault-proofs/watcher-journal-database.js";
+import {
+  journalDirectory,
+  removeJournalDirectories,
+} from "../support/watcher-journal-fixture.js";
 
-const directories: string[] = [];
 const deploymentFingerprint = "11".repeat(32);
 const authenticationKey = Uint8Array.from({ length: 32 }, () => 0x42);
 const identity = Object.freeze({
@@ -17,205 +24,131 @@ const identity = Object.freeze({
   decisionDigest: "33".repeat(32),
   rollbackGeneration: "7",
 });
-
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map(async (path) => rm(path, { recursive: true, force: true })),
-  );
+const digest = watcherFaultProofQueueIdentityDigest({
+  deploymentFingerprint,
+  identity,
 });
 
-describe("production fault-proof queue journal V1", () => {
-  it("durably reopens an explicitly authorized finished job and deduplicates retries", async () => {
-    const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
-    directories.push(journalRoot);
-    const input = { journalRoot, deploymentFingerprint, authenticationKey };
-    const journal = await openWatcherFaultProofQueueJournal(input);
-    const digest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint,
-      identity,
-    });
+afterEach(removeJournalDirectories);
+
+const opened = async () => {
+  const journalRoot = await journalDirectory("midgard-proof-queue");
+  const input = { journalRoot, deploymentFingerprint, authenticationKey };
+  return {
+    journalRoot,
+    input,
+    journal: await openWatcherFaultProofQueueJournal(input),
+  };
+};
+
+/** A process exit and restart: the shared connection is closed first. */
+const restart = async (input: {
+  journalRoot: string;
+  deploymentFingerprint: string;
+  authenticationKey: Uint8Array;
+}) => {
+  closeWatcherJournalDatabase(input.journalRoot);
+  return await openWatcherFaultProofQueueJournal(input);
+};
+
+const queueRows = (journalRoot: string) => {
+  const database = new DatabaseSync(
+    join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE),
+    { readOnly: true },
+  );
+  try {
+    return database
+      .prepare(
+        "SELECT row_key, state, body FROM watcher_fault_proof_queue ORDER BY row_key",
+      )
+      .all() as { row_key: string; state: string; body: string }[];
+  } finally {
+    database.close();
+  }
+};
+
+describe("production fault-proof queue journal", () => {
+  it("requeues a finished job in place, keeping its original queue time", async () => {
+    const { journalRoot, input, journal } = await opened();
     await journal.register(identity, "1000");
     await journal.markStarted(digest, "1001");
     await journal.markFinished(digest, "1002");
-    const directory = join(journalRoot, "fault-proof-queue-v1");
-    const original = await Promise.all(
-      (await readdir(directory))
-        .sort()
-        .map(async (file) => readFile(join(directory, file), "utf8")),
+    const restarted = await restart(input);
+    await expect(restarted.register(identity, "-1")).rejects.toThrow(
+      "enqueue time is invalid",
     );
-    const restarted = await openWatcherFaultProofQueueJournal(input);
-    await expect(restarted.register(identity, "1003")).resolves.toEqual({
-      queuedAtMs: "1000",
-      finished: true,
-    });
-    await expect(
-      restarted.register(identity, "-1", { reopenFinished: true }),
-    ).rejects.toThrow("enqueue time is invalid");
     const registrations = await Promise.all([
-      restarted.register(identity, "1004", { reopenFinished: true }),
-      restarted.register(identity, "1005", { reopenFinished: true }),
+      restarted.register(identity, "1004"),
+      restarted.register(identity, "1005"),
     ]);
     expect(registrations).toEqual([
-      { queuedAtMs: "1000", finished: false },
-      { queuedAtMs: "1000", finished: false },
+      { queuedAtMs: "1000" },
+      { queuedAtMs: "1000" },
     ]);
-    const records = await Promise.all(
-      (await readdir(directory))
-        .sort()
-        .map(async (file) => readFile(join(directory, file), "utf8")),
-    );
-    expect(records.slice(0, original.length)).toEqual(original);
-    expect(records).toHaveLength(4);
-    expect(JSON.parse(records[3]!).event.kind).toBe("reopened");
-    const recovered = await openWatcherFaultProofQueueJournal(input);
+    expect(queueRows(journalRoot).map(({ state }) => state)).toEqual([
+      "queued",
+    ]);
+    const recovered = await restart(input);
     expect(recovered.status()).toEqual({
       queuedJobCount: 1,
       oldestQueuedAtMs: "1000",
     });
     await recovered.markStarted(digest, "1006");
     await recovered.markFinished(digest, "1007");
-    expect(await recovered.register(identity, "1008")).toEqual({
-      queuedAtMs: "1000",
-      finished: true,
-    });
+    expect(queueRows(journalRoot)).toHaveLength(1);
   });
 
-  it("keeps a completed job finished when a retry arrives during its durable finish", async () => {
-    const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
-    directories.push(journalRoot);
-    const input = { journalRoot, deploymentFingerprint, authenticationKey };
-    const journal = await openWatcherFaultProofQueueJournal(input);
+  it("replaces an older identity of the same objective instead of growing the table", async () => {
+    const { journalRoot, input, journal } = await opened();
     await journal.register(identity, "1000");
-    const digest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint,
-      identity,
-    });
     await journal.markStarted(digest, "1001");
-
-    // The runner has finished while the coordinator still sees the same fault.
-    // Its next enqueue races the finish record's asynchronous fsync.
-    const finishing = journal.markFinished(digest, "1002");
-    const retry = journal.register(identity, "1003");
-    await finishing;
-    await expect(retry).resolves.toEqual({
-      queuedAtMs: "1000",
-      finished: true,
-    });
-    expect(journal.status().queuedJobCount).toBe(0);
-    const restarted = await openWatcherFaultProofQueueJournal(input);
-    await expect(restarted.register(identity, "1004")).resolves.toEqual({
-      queuedAtMs: "1000",
-      finished: true,
-    });
-  });
-
-  it("preserves original queued time through authenticated restart and retry", async () => {
-    const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
-    directories.push(journalRoot);
-    const first = await openWatcherFaultProofQueueJournal({
-      journalRoot,
+    const next = { ...identity, rollbackGeneration: "8" };
+    const nextDigest = watcherFaultProofQueueIdentityDigest({
       deploymentFingerprint,
-      authenticationKey,
+      identity: next,
     });
-    await expect(first.register(identity, "1000")).resolves.toEqual({
-      queuedAtMs: "1000",
-      finished: false,
+    await expect(journal.register(next, "1002")).resolves.toEqual({
+      queuedAtMs: "1002",
     });
-    const digest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint,
-      identity,
-    });
-    await first.markStarted(digest, "1001");
-
-    const recovered = await openWatcherFaultProofQueueJournal({
-      journalRoot,
-      deploymentFingerprint,
-      authenticationKey,
-    });
-    await expect(recovered.register(identity, "9000")).resolves.toEqual({
-      queuedAtMs: "1000",
-      finished: false,
-    });
-    expect(recovered.status()).toEqual({
+    expect(queueRows(journalRoot).map(({ row_key }) => row_key)).toEqual([
+      nextDigest,
+    ]);
+    await expect(journal.markFinished(digest, "1003")).rejects.toThrow(
+      "has no admitted predecessor",
+    );
+    const restarted = await restart(input);
+    expect(restarted.status()).toEqual({
       queuedJobCount: 1,
-      oldestQueuedAtMs: "1000",
-    });
-    await recovered.markStarted(digest, "9001");
-    await recovered.markFinished(digest, "9002");
-    expect(recovered.status()).toEqual({
-      queuedJobCount: 0,
-      oldestQueuedAtMs: null,
-    });
-    await expect(recovered.register(identity, "10000")).resolves.toEqual({
-      queuedAtMs: "1000",
-      finished: true,
+      oldestQueuedAtMs: "1002",
     });
   });
 
-  it("preserves backward wall-clock observations through completion, recovery, and explicit reopening", async () => {
-    const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
-    directories.push(journalRoot);
-    const input = { journalRoot, deploymentFingerprint, authenticationKey };
-    const digest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint,
-      identity,
-    });
-    const first = await openWatcherFaultProofQueueJournal(input);
-    await first.register(identity, "1000");
-    await first.markStarted(digest, "999");
-    // Restart after a clock adjustment while the durable job remains active.
-    const recovered = await openWatcherFaultProofQueueJournal(input);
+  it("preserves backward wall-clock observations through completion and recovery", async () => {
+    const { journalRoot, input, journal } = await opened();
+    await journal.register(identity, "1000");
+    await journal.markStarted(digest, "999");
+    const recovered = await restart(input);
     await expect(recovered.register(identity, "998")).resolves.toEqual({
       queuedAtMs: "1000",
-      finished: false,
     });
     await recovered.markStarted(digest, "997");
     await recovered.markFinished(digest, "996");
-    await expect(recovered.register(identity, "995")).resolves.toEqual({
+    const [row] = queueRows(journalRoot);
+    expect(row?.state).toBe("finished");
+    expect(JSON.parse(row!.body)).toMatchObject({
       queuedAtMs: "1000",
-      finished: true,
-    });
-    await recovered.register(identity, "994", { reopenFinished: true });
-    await recovered.markStarted(digest, "993");
-    await recovered.markFinished(digest, "992");
-
-    const directory = join(journalRoot, "fault-proof-queue-v1");
-    const records = await Promise.all(
-      (await readdir(directory))
-        .sort()
-        .map(async (file) =>
-          JSON.parse(await readFile(join(directory, file), "utf8")),
-        ),
-    );
-    expect(
-      records.map(({ event }) => event.observedAtMs ?? event.queuedAtMs),
-    ).toEqual(["1000", "999", "998", "997", "996", "994", "993", "992"]);
-    const restarted = await openWatcherFaultProofQueueJournal(input);
-    await expect(restarted.register(identity, "991")).resolves.toEqual({
-      queuedAtMs: "1000",
-      finished: true,
+      observedAtMs: "996",
     });
   });
 
-  it("rejects malformed times, unadmitted identities, and illegal state transitions without appending", async () => {
-    const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
-    directories.push(journalRoot);
-    const journal = await openWatcherFaultProofQueueJournal({
-      journalRoot,
-      deploymentFingerprint,
-      authenticationKey,
-    });
-    const digest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint,
-      identity,
-    });
+  it("rejects malformed times, unadmitted identities and illegal transitions without writing", async () => {
+    const { journalRoot, journal } = await opened();
     const otherGeneration = watcherFaultProofQueueIdentityDigest({
       deploymentFingerprint,
       identity: { ...identity, rollbackGeneration: "8" },
     });
     await journal.register(identity, "1000");
+    const before = queueRows(journalRoot);
     await expect(journal.markStarted("invalid", "999")).rejects.toThrow(
       "identity digest is invalid",
     );
@@ -230,6 +163,7 @@ describe("production fault-proof queue journal V1", () => {
     await expect(journal.markFinished(digest, "999")).rejects.toThrow(
       "requires active predecessor, found queued",
     );
+    expect(queueRows(journalRoot)).toEqual(before);
     await journal.markStarted(digest, "999");
     await expect(journal.markStarted(digest, "998")).rejects.toThrow(
       "requires queued predecessor, found active",
@@ -241,26 +175,29 @@ describe("production fault-proof queue journal V1", () => {
     await expect(journal.markStarted(digest, "997")).rejects.toThrow(
       "requires queued predecessor, found finished",
     );
-    expect(
-      await readdir(join(journalRoot, "fault-proof-queue-v1")),
-    ).toHaveLength(3);
   });
 
-  it("rejects a wrong queue authentication key on restart", async () => {
-    const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
-    directories.push(journalRoot);
-    const first = await openWatcherFaultProofQueueJournal({
-      journalRoot,
-      deploymentFingerprint,
-      authenticationKey,
-    });
-    await first.register(identity, "1000");
+  it("refuses a wrong authentication key on restart", async () => {
+    const { input, journal } = await opened();
+    await journal.register(identity, "1000");
+    closeWatcherJournalDatabase(input.journalRoot);
     await expect(
       openWatcherFaultProofQueueJournal({
-        journalRoot,
-        deploymentFingerprint,
+        ...input,
         authenticationKey: Uint8Array.from({ length: 32 }, () => 0x43),
       }),
-    ).rejects.toThrow("authentication failed");
+    ).rejects.toThrow("head is authenticated by another key");
+  });
+
+  it("refuses a row written for another deployment on restart", async () => {
+    const { input, journal } = await opened();
+    await journal.register(identity, "1000");
+    closeWatcherJournalDatabase(input.journalRoot);
+    await expect(
+      openWatcherFaultProofQueueJournal({
+        ...input,
+        deploymentFingerprint: "12".repeat(32),
+      }),
+    ).rejects.toThrow("differs from its job identity");
   });
 });

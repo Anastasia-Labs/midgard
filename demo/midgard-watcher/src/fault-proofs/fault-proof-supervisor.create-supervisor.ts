@@ -13,6 +13,7 @@ import {
 } from "./fault-proof-application.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
 import { readWatcherProofExecution } from "./fault-proof-objective-journal.js";
+import { watcherJournalCapacityReached } from "./fault-proof-objective-table.js";
 import { createWatcherFaultProofProgressAuthority } from "./fault-proof-progress-authority.js";
 import {
   openWatcherFaultProofQueueJournal,
@@ -23,8 +24,8 @@ import { admitWatcherProofRunnerCompletion } from "./fault-proof-supervisor.admi
 import {
   CANONICAL_NATURAL,
   DEPLOYMENT_FINGERPRINT,
-  exactWorkflowDirectories,
   MAX_RECOVERABLE_WORKFLOWS,
+  recordedWorkflowObjectives,
   type SupervisorDependencies,
   type UnsafeWatcherFaultProofJobForTest,
   type UnsafeWatcherFaultProofSupervisorForTest,
@@ -34,6 +35,10 @@ import {
   type WatcherFaultProofSupervisor,
   type WatcherFaultProofSupervisorStatus,
 } from "./fault-proof-supervisor.validate-job.js";
+import {
+  isWatcherJournalCapacityError,
+  openWatcherJournalDatabase,
+} from "./watcher-journal-database.js";
 
 export const createSupervisor = (input: {
   readonly journalRoot: string;
@@ -75,10 +80,16 @@ export const createSupervisor = (input: {
       return journal;
     });
   const categories = Object.freeze([...input.dependencies.categories]);
+  const journals = () =>
+    openWatcherJournalDatabase({
+      journalRoot: input.journalRoot,
+      authenticationKey: input.queueAuthenticationKey,
+    });
   const progressAuthority = createWatcherFaultProofProgressAuthority({
     journalRoot: input.journalRoot,
     deploymentFingerprint: input.deploymentFingerprint,
     categories,
+    authenticationKey: input.queueAuthenticationKey,
   });
   let progressSerial = Promise.resolve();
   let authorityEpoch = 0;
@@ -549,9 +560,16 @@ export const createSupervisor = (input: {
     });
     // Queue completion records scheduling only. The execution journal is
     // admitted inside the worker, after it acquires ownership of this objective.
-    const registration = await (
-      await queueJournal
-    ).register(identity, now().toString(), { reopenFinished: true });
+    // At its cap of open objectives the journal refuses a new one: status
+    // reports journal_capacity and a later observation retries.
+    const registration = await (await queueJournal)
+      .register(identity, now().toString())
+      .catch((error: unknown) => {
+        if (isWatcherJournalCapacityError(error)) return null;
+        throw error;
+      });
+    if (registration === null)
+      return { completion: Promise.resolve(undefined) };
     queuedJobCount += 1;
     let resolve!: (value: unknown) => void;
     let reject!: (error: Error) => void;
@@ -622,10 +640,7 @@ export const createSupervisor = (input: {
       if (recovery !== undefined) return await recovery;
       recovery = (async () => {
         try {
-          const existing = await exactWorkflowDirectories(
-            input.journalRoot,
-            categories,
-          );
+          const existing = recordedWorkflowObjectives(journals(), categories);
           if (!CANONICAL_NATURAL.test(rollbackGeneration)) {
             throw new Error(
               "fault-proof recovery rollback generation is malformed",
@@ -698,7 +713,7 @@ export const createSupervisor = (input: {
               )
             )
               throw new Error(
-                "reconciliation intake has no existing workflow directory",
+                "reconciliation intake has no recorded proof objective",
               );
             const scheduled = await schedule(
               {
@@ -825,6 +840,9 @@ export const createSupervisor = (input: {
         deadlineHealth,
         earliestDeadlineJob,
         remainingSafeStartMs: remaining?.toString() ?? null,
+        journalCapacity:
+          openedQueueJournal !== null &&
+          watcherJournalCapacityReached(journals()),
       });
     },
     durableQueueStatus: () => {

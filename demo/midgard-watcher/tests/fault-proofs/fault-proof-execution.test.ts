@@ -19,6 +19,7 @@ import {
   setupFundingRecoveryFixture,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 afterEach(cleanupFundingRecoveryFixtures);
 
@@ -34,6 +35,7 @@ const setup = async (newReservation = false) => {
   const fundingFactory = newReservation
     ? createWatcherProverFundingAuthorityFactory({
         journalRoot,
+        journalAuthenticationKey: TEST_JOURNAL_KEY,
         launchScope: fixture.fresh.launchScope,
         deploymentIdentity,
         protocolParameters: fixture.protocolParameters,

@@ -31,6 +31,7 @@
   ],
   "scripts": {
     "authority": "node dist/cli.js authority",
+    "bench": "vitest run --config vitest.bench.config.ts",
     "build": "node ../../scripts/contrib.mjs build --package midgard-watcher",
     "clean": "rimraf dist",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" vitest.config.ts tsup.config.ts package.json tsconfig.json README.md",
@@ -46,6 +47,7 @@
     "@al-ft/l1-node-transport": "workspace:*",
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-fault-proofs": "workspace:*",
+    "@al-ft/midgard-l1-follower": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
     "@chainsafe/libp2p-noise": "17.0.0",

@@ -29,6 +29,7 @@ export const openWatcherProverFundingRuntime = async (input: {
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: input.launchScope,
       journalRoot: input.journalRoot,
+      journalAuthenticationKey: input.authenticationKey,
       deploymentIdentity: input.deploymentIdentity,
       protocolParameters,
       protocolParameterHistory: store.protocolParameterHistory,

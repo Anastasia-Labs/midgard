@@ -144,10 +144,13 @@ describe("fault-proof supervisor over a run that failed before its journal", () 
       modes.push(mode);
       return mode;
     });
-    await next.recoverExisting(null);
+    // The queue recorded the objective before the run failed, so the next
+    // process recovers it as a fresh run: it has no journal to resume.
+    await expect(next.recoverExisting(null)).resolves.toBe(1);
+    await vi.waitFor(() => expect(modes).toEqual(["run"]));
     await expect(next.unsafeRunOrResumeForTest(job)).resolves.toBe("run");
     await next.close();
-    expect(modes).toEqual(["run"]);
+    expect(modes).toEqual(["run", "run"]);
   }, 60_000);
 
   it("reopens a finished registration whose workflow directory has no execution", async () => {

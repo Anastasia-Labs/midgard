@@ -80,7 +80,10 @@ services:
       # deploymentAuthorityPath, ruleBundlePath, fundingProfileBundlePath and
       # the fault-proof manifest, blueprint and deployment info.
       - ./bundles:/etc/midgard/bundles:ro
-      # SQLite store, workflow journal, availability journal.
+      # SQLite store, workflow journal, availability journal and the
+      # fault-proof journals (watcher-journals.sqlite). A local volume: never
+      # back it with a network filesystem (NFS, SMB), which breaks SQLite's
+      # locking and its write-ahead log.
       - watcher-state:/var/lib/midgard-watcher
       # The L1 stack's node socket (`socketPath`) and config directory
       # (`nodeConfigPath`, `genesisConfigPath`). The IPC default moves to

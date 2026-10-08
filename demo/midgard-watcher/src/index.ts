@@ -13,6 +13,7 @@ export {
 } from "./fault-proofs/fault-decision-bridge.js";
 export {
   openWatcherFaultDecisionJournal,
+  readWatcherFaultDecisionEvidence,
   unsafeOpenWatcherFaultDecisionJournalForTest,
   type UnsafeWatcherFaultDecisionJournalForTest,
   WATCHER_FAULT_DECISION_JOURNAL_SCHEMA_VERSION,

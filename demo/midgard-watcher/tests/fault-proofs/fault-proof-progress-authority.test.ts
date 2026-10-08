@@ -1,5 +1,6 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import {
   assertWorkflowActuationPermitIdentity,
@@ -11,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { WATCHER_JOURNAL_DATABASE_FILE } from "../../src/fault-proofs/watcher-journal-database.js";
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
 import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.js";
@@ -21,6 +23,7 @@ import {
   setupFundingRecoveryFixture,
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -32,6 +35,7 @@ const setup = async (unsigned = false) => {
     journalRoot: fixture.journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
     categories: fixture.old.launchScope,
+    authenticationKey: TEST_JOURNAL_KEY,
   });
   const observation = progressObservation({
     deploymentFingerprint: deploymentIdentity.manifestId,
@@ -182,6 +186,7 @@ describe("supervisor historical progress authority", () => {
         directory: journalRoot,
         deploymentFingerprint: deploymentIdentity.manifestId,
         launchScope: fixture.old.launchScope,
+        authenticationKey: TEST_JOURNAL_KEY,
       };
       const writer =
         await DecisionJournal.openWatcherFaultDecisionJournal(journalInput);
@@ -189,6 +194,7 @@ describe("supervisor historical progress authority", () => {
         journalRoot,
         deploymentFingerprint: deploymentIdentity.manifestId,
         categories: fixture.old.launchScope,
+        authenticationKey: TEST_JOURNAL_KEY,
       });
       const observation = progressObservation({
         deploymentFingerprint: deploymentIdentity.manifestId,
@@ -257,11 +263,13 @@ describe("supervisor historical progress authority", () => {
           directory: journalRoot,
           deploymentFingerprint: deploymentIdentity.manifestId,
           launchScope: fixture.old.launchScope,
+          authenticationKey: TEST_JOURNAL_KEY,
         });
         const authority = createWatcherFaultProofProgressAuthority({
           journalRoot,
           deploymentFingerprint: deploymentIdentity.manifestId,
           categories: fixture.old.launchScope,
+          authenticationKey: TEST_JOURNAL_KEY,
         });
         await authority.admit({
           observation: progressObservation({
@@ -272,11 +280,18 @@ describe("supervisor historical progress authority", () => {
         if (availability !== "missing")
           await writer.appendLiveDecision(fixture.old);
         await writer.appendLiveDecision(fixture.fresh);
-        if (availability === "corrupt")
-          await writeFile(
-            join(journalRoot, "fault-decisions", "00000000000000000000.json"),
-            "{}\n",
+        if (availability === "corrupt") {
+          // Another writer alters the committed row behind the journal.
+          const raw = new DatabaseSync(
+            join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE),
           );
+          raw
+            .prepare(
+              "UPDATE watcher_fault_decisions SET body = '{}' WHERE row_key = ?",
+            )
+            .run(fixture.old.decisionDigest);
+          raw.close();
+        }
         const refresh = vi.spyOn(
           DecisionJournal,
           "openWatcherFaultDecisionJournal",
@@ -300,10 +315,12 @@ describe("supervisor historical progress authority", () => {
           await expect(authority.updateExecution(update)).rejects.toThrow(
             availability === "missing"
               ? "omitted its exact recorded decision"
-              : "unknown or missing fields",
+              : `row ${fixture.old.decisionDigest} MAC differs`,
           );
         }
-        expect(refresh).toHaveBeenCalledOnce();
+        // The miss reads the writer's commits through the open journal; it
+        // never reopens it.
+        expect(refresh).not.toHaveBeenCalled();
       } finally {
         await rm(journalRoot, { recursive: true, force: true });
       }

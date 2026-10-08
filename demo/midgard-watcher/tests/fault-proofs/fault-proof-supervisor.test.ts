@@ -12,6 +12,11 @@ import {
   type WatcherFaultProofJob,
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import {
+  recordObjectives,
+  recordRawObjectiveRow,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 
 const directories: string[] = [];
 const DEPLOYMENT_FINGERPRINT = "dd".repeat(32);
@@ -98,19 +103,17 @@ describe("production fault-proof supervisor", () => {
     await supervisor.close();
   });
 
-  it("recovers canonical journals in installed category and header order", async () => {
+  it("recovers recorded objectives in installed category and header order, never scanning directories", async () => {
     const root = await directory();
-    await Promise.all([
-      mkdir(join(root, "fault-proofs", "networkId", h28(0xbb)), {
-        recursive: true,
-      }),
-      mkdir(join(root, "fault-proofs", "doubleSpend", h28(0xcc)), {
-        recursive: true,
-      }),
-      mkdir(join(root, "fault-proofs", "doubleSpend", h28(0xaa)), {
-        recursive: true,
-      }),
+    recordObjectives(root, [
+      { category: "networkId", headerHash: h28(0xbb) },
+      { category: "doubleSpend", headerHash: h28(0xcc) },
+      { category: "doubleSpend", headerHash: h28(0xaa) },
     ]);
+    // A workflow directory without an objective row is not recovered.
+    await mkdir(join(root, "fault-proofs", "doubleSpend", h28(0xdd)), {
+      recursive: true,
+    });
     const observed: string[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
@@ -136,10 +139,11 @@ describe("production fault-proof supervisor", () => {
     });
   });
 
-  it("rejects unknown, malformed, and symlinked journal targets", async () => {
+  it("rejects unknown, malformed, and symlinked objectives", async () => {
     const unknownRoot = await directory();
-    await mkdir(join(unknownRoot, "fault-proofs", "forgedFamily"), {
-      recursive: true,
+    recordRawObjectiveRow(unknownRoot, {
+      category: "forgedFamily",
+      headerHash: h28(0xaa),
     });
     const unknown = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: unknownRoot,
@@ -147,25 +151,28 @@ describe("production fault-proof supervisor", () => {
       run: async () => undefined,
     });
     await expect(unknown.recoverExisting(null)).rejects.toThrow(
-      "unknown category forgedFamily",
+      "proof objective row is malformed",
     );
 
     const malformedRoot = await directory();
-    await mkdir(join(malformedRoot, "fault-proofs", "doubleSpend", h28(0xaa)), {
-      recursive: true,
+    recordRawObjectiveRow(malformedRoot, {
+      category: "doubleSpend",
+      headerHash: "not-hex",
     });
-    await mkdir(join(malformedRoot, "fault-proofs", "doubleSpend", "not-hex"));
     const malformed = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: malformedRoot,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       run: async () => undefined,
     });
     await expect(malformed.recoverExisting(null)).rejects.toThrow(
-      "invalid doubleSpend target not-hex",
+      "proof objective row is malformed",
     );
 
     const symlinkRoot = await directory();
     const outside = await directory();
+    recordObjectives(symlinkRoot, [
+      { category: "doubleSpend", headerHash: h28(0xbb) },
+    ]);
     await mkdir(join(symlinkRoot, "fault-proofs", "doubleSpend"), {
       recursive: true,
     });
@@ -173,14 +180,30 @@ describe("production fault-proof supervisor", () => {
       outside,
       join(symlinkRoot, "fault-proofs", "doubleSpend", h28(0xbb)),
     );
-    const linked = unsafeCreateWatcherFaultProofSupervisorForTest({
+    const linked = createWatcherFaultProofSupervisor({
       journalRoot: symlinkRoot,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      run: async () => undefined,
+      deadlineAlertHeadroomMs:
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
+      queueAuthenticationKey: TEST_JOURNAL_KEY,
+      execution: {
+        verifyCompleted: async () => {
+          throw new Error("unexpected completed execution");
+        },
+        execute: async () => {
+          throw new Error("unexpected execution");
+        },
+      },
     });
-    await expect(linked.recoverExisting(null)).rejects.toThrow(
-      `invalid doubleSpend target ${h28(0xbb)}`,
-    );
+    await expect(
+      linked.requestProgress({
+        observation: progressObservation({
+          deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        }),
+        rollbackGeneration: "0",
+      }),
+    ).rejects.toThrow("proof objective journal traverses a symlink");
+    await linked.close().catch(() => undefined);
   });
 
   it("keeps one pending update per objective and serializes other targets", async () => {

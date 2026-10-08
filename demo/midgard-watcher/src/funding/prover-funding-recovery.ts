@@ -38,6 +38,7 @@ import {
  * remains bound to the fresh decision; journals and leases retain their identity. */
 export const authorizeWatcherProverFundingRecovery = async (input: {
   readonly journalRoot: string;
+  readonly journalAuthenticationKey: Uint8Array;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly actuationPermit: WorkflowActuationPermit;
   readonly category: FraudProofCatalogueCategoryName;
@@ -155,6 +156,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
     directory: input.journalRoot,
     deploymentFingerprint: authority.deploymentFingerprint,
     launchScope: authority.launchScope,
+    authenticationKey: input.journalAuthenticationKey,
   });
   const matches = (await decisions.readAll()).filter(
     ({ decision }) => decision.decisionDigest === identity.decisionDigest,
@@ -318,6 +320,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
 /** Reclaim unsubmitted work after its runner exits, or before startup dispatch. */
 export const releaseUnusedWatcherProverFundingReservations = async (input: {
   readonly journalRoot: string;
+  readonly journalAuthenticationKey: Uint8Array;
   readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly store: WatcherProverFundingReservationStore;
@@ -344,6 +347,7 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
     directory: input.journalRoot,
     deploymentFingerprint: input.deploymentIdentity.manifestId,
     launchScope: input.launchScope,
+    authenticationKey: input.journalAuthenticationKey,
   });
   const saved = await decisions.readAll();
   for (const record of records) {
