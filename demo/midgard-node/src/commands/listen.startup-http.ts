@@ -24,6 +24,7 @@ import {
 export type NodeStartupStage =
   | "runtime_services"
   | "local_preflight"
+  | "instance_lock"
   | "database_initialization"
   | "protocol_initialization"
   | "provider_assertions"

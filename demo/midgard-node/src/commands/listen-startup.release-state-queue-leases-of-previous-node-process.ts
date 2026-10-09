@@ -10,7 +10,7 @@ import { NODE_PROCESS_MPF_AUDIT_LEASES } from "./mpf-audit-leases.js";
  * start after startup preparation: block commitment, merge,
  * attestation-timeout removal and the node's own payload audit.
  * `mpf-payload-audit` is deliberately absent: the offline `mpf-audit` command
- * takes it without the history authority, so a live one may exist beside this
+ * takes it without the node instance lock, so a live one may exist beside this
  * node.
  */
 export const NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS: readonly string[] = [
@@ -28,14 +28,12 @@ const RETIRED_AT_STARTUP =
  * was killed, instead of letting commitment and merge report Busy until the
  * TTL runs out.
  *
- * Startup preparation runs under this process's acquired history authority,
- * which refuses while any other owner's lease is live, and before any fiber
- * that takes these holders starts. So every active lease of a node-only
- * holder belongs to a process that is dead, or whose authority lapsed and
- * whose history writes are therefore refused; retiring the lease also fails
- * that process's next revalidate or renewal. The update runs through
- * withFollowerWrite, so it commits only while this process still owns the
- * authority.
+ * Startup preparation runs while this process holds the node instance lock
+ * (`acquireNodeInstanceLock`), which Postgres grants to one live session per
+ * database schema, and before any fiber that takes these holders starts. So
+ * no other node process is live on this database, and every active lease of
+ * a node-only holder belongs to a process that ended. The update runs
+ * through withFollowerWrite, like every write that derives from the L1 view.
  */
 export const releaseStateQueueLeasesOfPreviousNodeProcess = Effect.gen(
   function* () {

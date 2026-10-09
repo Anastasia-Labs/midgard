@@ -386,10 +386,10 @@ export const unfinishedLocalFinalizationHeader = (
 };
 
 /**
- * What startup does with an unfinished job. It runs under this process's
- * acquired history authority, so no other node process is mid-way through
- * any job: a running row is a process that died (SIGKILL, OOM, power loss)
- * before recording the outcome.
+ * What startup does with an unfinished job. It runs while this process
+ * holds the node instance lock, so no other node process is live on this
+ * database or mid-way through any job: a running row is a process that died
+ * (SIGKILL, OOM, power loss) before recording the outcome.
  *
  * "runtime" hands the job over:
  * - a confirmed-merge finalization, failed or running: it is idempotent, and

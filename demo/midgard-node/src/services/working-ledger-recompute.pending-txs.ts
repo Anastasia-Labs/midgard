@@ -3,7 +3,6 @@ import {
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
 import { SqlClient } from "@effect/sql";
-import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
 
 import {
@@ -70,6 +69,94 @@ const producedRow = (
       }),
   });
 
+/** Each pending transaction's admission sequence (`tx_admissions.arrival_seq`,
+ * taken from a sequence as each submission arrives), by tx id. A pending
+ * transaction with no admission row has none. */
+const arrivalSeqs = (txIds: readonly Buffer[]) =>
+  Effect.gen(function* () {
+    if (txIds.length === 0) return new Map<string, bigint>();
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ tx_id: Buffer; arrival_seq: string | bigint }>`
+      SELECT tx_id, arrival_seq FROM tx_admissions
+      WHERE tx_id IN ${sql.in(txIds)}`.pipe(
+      Effect.mapError((cause) =>
+        failure("Pending transactions' admission order cannot be read", cause),
+      ),
+    );
+    return new Map(
+      rows.map((row) => [hex(row.tx_id), BigInt(row.arrival_seq)] as const),
+    );
+  });
+
+/**
+ * `pending` in replay order. A transaction never comes before a pending
+ * transaction whose output it spends; beyond that, the order is the time
+ * stamp, then admission order (`arrival_seq`, a transaction with none
+ * after those with one), then tx id. Each transaction, in that base order,
+ * is placed after every pending producer of an output it spends that is
+ * not placed yet.
+ */
+export const replayOrder = (
+  pending: readonly PendingTx[],
+  arrival: ReadonlyMap<string, bigint>,
+): PendingTx[] => {
+  const seqOf = (tx: PendingTx) => arrival.get(hex(tx.entry[Tx.Columns.TX_ID]));
+  const base = [...pending].sort((left, right) => {
+    const byTime =
+      left.entry[Tx.Columns.TIMESTAMPTZ].getTime() -
+      right.entry[Tx.Columns.TIMESTAMPTZ].getTime();
+    if (byTime !== 0) return byTime;
+    const l = seqOf(left);
+    const r = seqOf(right);
+    if (l !== r) {
+      if (l === undefined) return 1;
+      if (r === undefined) return -1;
+      return l < r ? -1 : 1;
+    }
+    return Buffer.compare(
+      left.entry[Tx.Columns.TX_ID],
+      right.entry[Tx.Columns.TX_ID],
+    );
+  });
+  const producerOf = new Map<string, PendingTx>();
+  for (const tx of base)
+    for (const row of tx.produced)
+      producerOf.set(hex(row[MempoolLedgerDB.Columns.OUTREF]), tx);
+  const placed = new Set<PendingTx>();
+  const visiting = new Set<PendingTx>();
+  const ordered: PendingTx[] = [];
+  const place = (root: PendingTx) => {
+    // Iterative depth-first: a transaction is placed once every pending
+    // producer of what it spends is. A cycle cannot occur between valid
+    // transactions (an output names its producer's id); `visiting` only
+    // keeps the walk finite if one did.
+    const stack: { tx: PendingTx; next: number }[] = [{ tx: root, next: 0 }];
+    visiting.add(root);
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1]!;
+      if (top.next < top.tx.spent.length) {
+        const producer = producerOf.get(hex(top.tx.spent[top.next]!));
+        top.next += 1;
+        if (
+          producer !== undefined &&
+          !placed.has(producer) &&
+          !visiting.has(producer)
+        ) {
+          visiting.add(producer);
+          stack.push({ tx: producer, next: 0 });
+        }
+        continue;
+      }
+      stack.pop();
+      visiting.delete(top.tx);
+      placed.add(top.tx);
+      ordered.push(top.tx);
+    }
+  };
+  for (const tx of base) if (!placed.has(tx)) place(tx);
+  return ordered;
+};
+
 const loadPending = (undecodable: "fail" | "inert") =>
   Effect.gen(function* () {
     const mempool = yield* MempoolInclusionsDB.retrievePendingEntries(
@@ -79,34 +166,24 @@ const loadPending = (undecodable: "fail" | "inert") =>
       ProcessedMempoolDB.tableName,
     );
     const seen = new Set<string>();
-    const ordered: {
+    const entries: {
       entry: Tx.EntryWithTimeStamp;
       source: PendingTx["source"];
     }[] = [];
-    for (const [entries, source] of [
+    for (const [rows, source] of [
       [mempool, "mempool"],
       [processed, "processed"],
     ] as const)
-      for (const entry of entries) {
+      for (const entry of rows) {
         const id = hex(entry[Tx.Columns.TX_ID]);
         if (seen.has(id)) continue;
         seen.add(id);
-        ordered.push({ entry, source });
+        entries.push({ entry, source });
       }
-    ordered.sort(
-      (left, right) =>
-        left.entry[Tx.Columns.TIMESTAMPTZ].getTime() -
-          right.entry[Tx.Columns.TIMESTAMPTZ].getTime() ||
-        Buffer.compare(
-          left.entry[Tx.Columns.TX_ID],
-          right.entry[Tx.Columns.TX_ID],
-        ),
-    );
-    const deltas = yield* MempoolTxDeltasDB.retrieveByTxIds(
-      ordered.map(({ entry }) => entry[Tx.Columns.TX_ID]),
-    );
+    const txIds = entries.map(({ entry }) => entry[Tx.Columns.TX_ID]);
+    const deltas = yield* MempoolTxDeltasDB.retrieveByTxIds(txIds);
     const pending: PendingTx[] = [];
-    for (const { entry, source } of ordered) {
+    for (const { entry, source } of entries) {
       const txId = entry[Tx.Columns.TX_ID];
       const resolved = yield* resolveTxDeltaForCommit(
         entry,
@@ -129,11 +206,12 @@ const loadPending = (undecodable: "fail" | "inert") =>
         produced.push(yield* producedRow(txId, output));
       pending.push({ entry, source, spent: resolved.spent, produced });
     }
-    return pending;
+    return replayOrder(pending, yield* arrivalSeqs(txIds));
   });
 
 /** Every pending (unmarked) transaction whose ledger effects are in
- * `mempool_ledger`, in admission order, with its exact spends and outputs. A
+ * `mempool_ledger`, in replay order (`replayOrder`), with its exact spends
+ * and outputs. A
  * row a block's inclusion mark holds is in that block, not pending. Fails on
  * a transaction that cannot be decoded. */
 export const loadPendingTxs = loadPending("fail");
@@ -141,46 +219,3 @@ export const loadPendingTxs = loadPending("fail");
 /** `loadPendingTxs`, with a transaction that cannot be decoded kept as one
  * that spends and produces nothing. */
 export const loadPendingTxsKeepingUndecodable = loadPending("inert");
-
-export const presentOutRefs = (outRefs: readonly Buffer[]) =>
-  Effect.gen(function* () {
-    if (outRefs.length === 0) return new Set<string>();
-    const sql = yield* SqlClient.SqlClient;
-    const pg = sql as PgClient;
-    const rows = yield* sql<{ outref: Buffer }>`
-      SELECT outref FROM mempool_ledger
-      WHERE outref = ANY(${pg.array(byteaArray(outRefs))}::bytea[])`;
-    return new Set(rows.map((row) => hex(row.outref)));
-  });
-
-/** A merged output: the confirmed ledger holds every merged block's state. */
-export const confirmedRow = (outRef: Buffer) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<Ledger.EntryNoTimeStamp>`
-      SELECT tx_id, outref, output, address FROM confirmed_ledger
-      WHERE outref = ${outRef}`;
-    const row = rows[0];
-    return row === undefined
-      ? undefined
-      : ({
-          [MempoolLedgerDB.Columns.TX_ID]: row[Ledger.Columns.TX_ID],
-          [MempoolLedgerDB.Columns.OUTREF]: row[Ledger.Columns.OUTREF],
-          [MempoolLedgerDB.Columns.OUTPUT]: row[Ledger.Columns.OUTPUT],
-          [MempoolLedgerDB.Columns.ADDRESS]: row[Ledger.Columns.ADDRESS],
-          [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
-        } satisfies LedgerRow);
-  });
-
-export const insertRows = (rows: readonly LedgerRow[]) =>
-  Effect.gen(function* () {
-    if (rows.length === 0) return;
-    const sql = yield* SqlClient.SqlClient;
-    const inserted = yield* sql<{ outref: Buffer }>`
-      INSERT INTO mempool_ledger ${sql.insert([...rows])}
-      ON CONFLICT (outref) DO NOTHING RETURNING outref`;
-    if (inserted.length !== rows.length)
-      return yield* Effect.fail(
-        failure("A restored ledger output is already present"),
-      );
-  });

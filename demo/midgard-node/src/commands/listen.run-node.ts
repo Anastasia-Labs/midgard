@@ -38,7 +38,9 @@ import {
   makeIntentJournal,
 } from "../services/intent-journal.js";
 import { startL1Follower } from "../services/l1-follower.js";
+import { nodeDatabaseConnectionString } from "../services/l1-provider.js";
 import { requirePinnedNativeOwnerBinary } from "../services/native-mpf-startup.js";
+import { acquireNodeInstanceLock } from "../services/node-instance-lock.js";
 import { settlementWalletAddress } from "../services/settlement.js";
 import { runNodeFiberSet } from "./listen.node-fibers.js";
 import {
@@ -118,6 +120,18 @@ export const runNode = (
           }),
       ),
     );
+    // The single-process exclusion: every startup step after this one, the
+    // follower's lease release, mutation-job classification and driver
+    // included, runs in the one process holding the lock. A second process
+    // waits here, unready under a named reason.
+    yield* startup.setStage("instance_lock");
+    const instanceLock = yield* acquireNodeInstanceLock({
+      connectionString: nodeDatabaseConnectionString(nodeConfig),
+      globals,
+      waiting: (reasons) => startup.setStage("instance_lock", reasons),
+    });
+    // The DA identity preflight below is local, too.
+    yield* startup.setStage("local_preflight");
     const startupProviderRetry = {
       maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
       retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
@@ -178,9 +192,10 @@ export const runNode = (
     // The L1 follower (N1): its driver writes the event rows, and its first
     // recompute runs the startup preparation, starts the native MPF owner
     // and recomputes the node's derived state from the follower's view.
-    yield* startL1Follower({ startupPreparation: prepareNodeOnStartup }).pipe(
-      Effect.provideService(IntentJournal, intentJournal),
-    );
+    yield* startL1Follower({
+      startupPreparation: prepareNodeOnStartup,
+      writerLease: instanceLock.followerWriterLease,
+    }).pipe(Effect.provideService(IntentJournal, intentJournal));
     // Startup recovery seeds the commit base from the landed state queue
     // (P1, N2): wait, unready and never exiting, until the follower is at
     // the tip and P1 is healthy there.

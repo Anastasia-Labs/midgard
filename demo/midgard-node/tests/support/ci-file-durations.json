@@ -269,6 +269,7 @@
     "tests/operator-watchdog-manifest-gate-idle.test.ts": 22.9,
     "tests/operator-watchdog-manifest-gate.test.ts": 2.4,
     "tests/operator-watchdog.test.ts": 0,
+    "tests/orphan-funded-transfer-repair-emulator.test.ts": 40,
     "tests/pending-finalization.test.ts": 2.4,
     "tests/phas-membership-registration.test.ts": 3.1,
     "tests/phas-terminal-neighbour.test.ts": 2.7,

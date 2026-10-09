@@ -59,6 +59,7 @@ import {
   projectionStoreOptions,
   storeTxContentSource,
   transportLedgerOutputs,
+  type WriterLease,
 } from "@al-ft/midgard-l1-follower";
 import { Effect, Option, Ref, Runtime } from "effect";
 
@@ -118,6 +119,7 @@ const followL1 = <R>(
   plan: Extract<L1FollowerPlan, { kind: "run" }>,
   networkMagic: number,
   startupPreparation: Effect.Effect<void, unknown, R> | undefined,
+  writerLease: (() => Promise<WriterLease | null>) | undefined,
 ) =>
   Effect.gen(function* () {
     const config = yield* NodeConfig;
@@ -175,6 +177,7 @@ const followL1 = <R>(
               onConnectionError: (error) =>
                 log(`database connection lost: ${error.message}`),
             },
+            ...(writerLease === undefined ? {} : { writerLease }),
           });
         } catch (error) {
           void transport.close();
@@ -380,6 +383,12 @@ export const startL1Follower = <R = never>(
   options: Readonly<{
     /** Runs once, in the driver's first recompute (see `makeDriverRecompute`). */
     startupPreparation?: Effect.Effect<void, unknown, R>;
+    /**
+     * The follower's writer lease, held by the node's instance lock
+     * (`node-instance-lock.ts`); without it the store takes one on a
+     * session of its own.
+     */
+    writerLease?: () => Promise<WriterLease | null>;
   }> = {},
 ) =>
   Effect.gen(function* () {
@@ -399,7 +408,12 @@ export const startL1Follower = <R = never>(
     return yield* withNodeNetworkMagic(
       { globals, nodeConfigPath: plan.nodeConfigPath, network: config.NETWORK },
       (networkMagic) =>
-        followL1(plan, networkMagic, options.startupPreparation),
+        followL1(
+          plan,
+          networkMagic,
+          options.startupPreparation,
+          options.writerLease,
+        ),
     );
   });
 

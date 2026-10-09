@@ -244,6 +244,15 @@ export {
   postgresDialect,
 } from "./sql/postgres-backend.js";
 export {
+  INSTANCE_LOCK_RECONNECT_INITIAL_MS,
+  INSTANCE_LOCK_RECONNECT_MAX_MS,
+  isInstanceLockHeldElsewhere,
+  PostgresInstanceLock,
+  type PostgresInstanceLockEvents,
+  type PostgresInstanceLockIdentity,
+  type PostgresInstanceLockTimers,
+} from "./sql/postgres-instance-lock.js";
+export {
   openSqliteBackend,
   sqliteDialect,
   writerLeasePath,
