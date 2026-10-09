@@ -19,19 +19,31 @@ import {
   sha256,
   workspacePackages,
 } from "../contrib/files.mjs";
-import { buildRegistry } from "./registry.mjs";
+import { buildRegistry, formatCommand } from "./registry.mjs";
+import { planNamedChecks } from "./run.mjs";
 
 const REPO = "Anastasia-Labs/midgard";
 const WORKFLOW = ".github/workflows/repo-tools-ci.yml";
+// Each audited validator's Repo Tools step. The step runs the check by id
+// (ciStepCommand), so CI executes the registry's own command for it.
 export const CI_VALIDATORS = {
-  "required-checks-doc": [
-    "Check the generated required-checks list",
-    "node scripts/preflight.mjs --check-docs",
-  ],
-  "contributor-build-guards": [
-    "Check deterministic contributor build guards",
-    "node scripts/contrib/enroll-builds.mjs",
-  ],
+  "required-checks-doc": "Check the generated required-checks list",
+  "contributor-build-guards": "Check deterministic contributor build guards",
+};
+export const ciStepCommand = (id) => `node scripts/preflight.mjs --run ${id}`;
+// The local command each validator's evidence stands for: the full-scope
+// registry steps `--run` executed, as preflight formats a planned check.
+export const validatorCommands = (root) => {
+  const { planned } = planNamedChecks(
+    buildRegistry(root),
+    Object.keys(CI_VALIDATORS),
+  );
+  return Object.fromEntries(
+    planned.map(({ check, steps }) => [
+      check.id,
+      steps.map(formatCommand).join(" && "),
+    ]),
+  );
 };
 const git = (root, ...args) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -99,6 +111,7 @@ export const validateCiEvidence = ({
   tree,
   profile,
   inputs,
+  commands,
 }) => {
   if (base !== remoteBase)
     throw new Error(
@@ -135,8 +148,8 @@ export const validateCiEvidence = ({
   )
     throw new Error("repository validator job did not complete successfully");
   const sourceJob = workflow.jobs?.["repo-tools"];
-  // These two commands are audited only in the checkout root with the common
-  // Node profile. A later identity step cannot attest per-step overrides.
+  // These steps are audited only in the checkout root with the common Node
+  // profile. A later identity step cannot attest per-step overrides.
   if (
     workflow.defaults?.run ||
     workflow.env ||
@@ -148,12 +161,15 @@ export const validateCiEvidence = ({
     );
   const sourceSteps = sourceJob?.steps ?? [];
   const evidence = new Map();
-  for (const [id, [name, command]] of Object.entries(CI_VALIDATORS)) {
+  for (const [id, name] of Object.entries(CI_VALIDATORS)) {
+    const command = commands?.[id];
     const definitions = sourceSteps.filter((step) => step.name === name);
     const executions = job.steps.filter((step) => step.name === name);
     if (
+      typeof command !== "string" ||
+      command === "" ||
       definitions.length !== 1 ||
-      definitions[0].run !== command ||
+      definitions[0].run !== ciStepCommand(id) ||
       definitions[0]["continue-on-error"] ||
       definitions[0]["working-directory"] !== undefined ||
       definitions[0].shell !== undefined ||
@@ -237,6 +253,7 @@ export const readCiEvidence = (root, runId, base, tree) => {
       tree,
       profile: nodeProfile(),
       inputs: validatorInputs(root),
+      commands: validatorCommands(root),
     });
   } finally {
     rmSync(directory, { recursive: true, force: true });

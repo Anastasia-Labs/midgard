@@ -258,6 +258,46 @@ export const planPreflight = (registry, changed, options = {}) => {
   return { ...selection, planned, hosted, advisories };
 };
 
+// `--run <id>`: the named checks at full scope, in registry order, with no
+// diff, selection or hosted hand-off. This is how a CI step runs a check, so
+// the workflow names the check and never restates its command. A failure
+// always fails: warn-only describes local selection of a check no workflow
+// runs, and a workflow that names a check runs it to block.
+export const planNamedChecks = (registry, ids) => {
+  if (ids.length === 0) throw new UsageError("--run needs a check id");
+  const repeated = ids.find((id, index) => ids.indexOf(id) !== index);
+  if (repeated !== undefined)
+    throw new UsageError(`--run names ${repeated} more than once`);
+  for (const id of ids) {
+    const check = registry.checks.find((candidate) => candidate.id === id);
+    if (check === undefined)
+      throw new UsageError(
+        `--run ${id}: no such check; node scripts/preflight.mjs --full --list names them`,
+      );
+    if (check.internal !== undefined)
+      throw new UsageError(
+        `--run ${id}: this check compares against a base branch; run preflight without --run`,
+      );
+  }
+  const planned = registry.checks
+    .filter((check) => ids.includes(check.id))
+    .map((check) => {
+      const steps = check.plan({ matched: [], full: true, advise: () => {} });
+      if (steps === null || steps.length === 0)
+        throw new UsageError(`--run ${check.id}: nothing to run at full scope`);
+      return { check: { ...check, warnOnly: false }, matched: [], steps };
+    });
+  return {
+    full: true,
+    fullReasons: ids.map((id) => `--run ${id}`),
+    selected: planned.map(({ check }) => ({ check, matched: [] })),
+    uncovered: [],
+    planned,
+    hosted: [],
+    advisories: [],
+  };
+};
+
 // Runs one step, teeing its output to `log` and keeping it for the verdict.
 export const spawnStep = async (root, step, env, log, signal) =>
   withResource(
