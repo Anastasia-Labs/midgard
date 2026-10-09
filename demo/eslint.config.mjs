@@ -329,8 +329,13 @@ export default tseslint.config(
   },
   // Individually reviewed cohesive declarations/suites are capped at their
   // recorded size. New files and all unlisted files retain the 500-line limit.
-  ...moduleSizeExceptions.map(({ file, max }) => ({
-    files: [file],
-    rules: { "max-lines": ["error", { max }] },
-  })),
+  // Only demo's TS/JS entries are ESLint's: a `files` pattern for a native,
+  // SQL or out-of-demo file would make ESLint try to lint it, and
+  // scripts/check-module-size-exceptions.mjs holds those to their count.
+  ...moduleSizeExceptions
+    .filter(({ file }) => /^(?!\.\.\/).*\.[cm]?[jt]sx?$/u.test(file))
+    .map(({ file, max }) => ({
+      files: [file],
+      rules: { "max-lines": ["error", { max }] },
+    })),
 );

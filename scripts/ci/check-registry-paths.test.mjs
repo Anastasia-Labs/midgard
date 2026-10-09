@@ -80,7 +80,6 @@ test("deleting a file any registry names fails the check", () => {
     "contrib gates",
     "preflight triggers",
     "traced-refusal inputs",
-    "retained modules",
     "CI file durations",
     "validator scenario registry",
   ]);

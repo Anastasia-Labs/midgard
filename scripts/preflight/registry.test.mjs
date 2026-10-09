@@ -218,9 +218,13 @@ test("a file with a recorded module-size cap selects the cap's check", () => {
   const caps = JSON.parse(
     readFileSync(resolve(root, "demo/module-size-exceptions.json"), "utf8"),
   );
+  const outside = caps.find(({ file }) => file.startsWith("../"));
+  assert.ok(outside, "a cap outside demo/");
   for (const path of [
     "demo/module-size-exceptions.json",
     `demo/${caps[0].file}`,
+    // `../<path>` names a repository file outside demo/.
+    outside.file.slice("../".length),
   ])
     assert.ok(selectedIds([path]).includes("demo-script-tests"), path);
 });

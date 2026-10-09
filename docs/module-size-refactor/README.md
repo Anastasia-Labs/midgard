@@ -49,11 +49,13 @@ existing untracked working-tree blueprint was preserved.
 
 ## Retained modules and reasons
 
-[retained-modules.json](retained-modules.json) is the complete file-by-file
-inventory, including the exceptions outside demo's ESLint scope. It includes
-303 exact TS/JS caps, four agent-tooling JS modules, one Rust ownership module
-and one SQL migration. Repeated reason patterns describe the actual retained
-boundary, rather than exempting an entire directory:
+[module-size-exceptions.json](../../demo/module-size-exceptions.json) is the
+complete file-by-file inventory, including the exceptions outside demo's ESLint
+scope: four agent-tooling JS modules (spelled `../<path>`), one Rust ownership
+module and one SQL migration. Its validator holds every entry to its exact line
+count; ESLint also caps the demo TS/JS entries. Repeated reason patterns
+describe the actual retained boundary, rather than exempting an entire
+directory:
 
 - A single state owner retains private lifecycle, fencing, database or cache
   invariants. Independent helpers have been moved; separating its methods

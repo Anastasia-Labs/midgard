@@ -119,14 +119,6 @@ export const REGISTRIES = [
     entries: () => tracedRefusalInputs.map((path) => entry(path)),
   },
   {
-    name: "retained modules",
-    source: "docs/module-size-refactor/retained-modules.json",
-    entries: (root) =>
-      json(root, "docs/module-size-refactor/retained-modules.json").modules.map(
-        ({ file }) => entry(file),
-      ),
-  },
-  {
     name: "CI file durations",
     sources: DURATION_TABLE,
     entries: (root, source) => {

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 
 import {
   AIKEN_PROJECT,
@@ -179,12 +179,13 @@ export const independentChecks = () => [
 const E2E_SKILL = ".agents/skills/midgard-e2e-acceptance";
 
 // demo/scripts/check-module-size-exceptions.mjs holds each listed file to its
-// recorded line count, so an edit of one of them can fail it.
+// recorded line count, so an edit of one of them can fail it. Entries are
+// relative to demo/; those outside it are spelled `../<path>`.
 const MODULE_SIZE_CAPS = `${DEMO}/module-size-exceptions.json`;
 const moduleSizeCapped = (root) => [
   MODULE_SIZE_CAPS,
   ...JSON.parse(readFileSync(resolve(root, MODULE_SIZE_CAPS), "utf8")).map(
-    ({ file }) => `${DEMO}/${file}`,
+    ({ file }) => posix.normalize(`${DEMO}/${file}`),
   ),
 ];
 
