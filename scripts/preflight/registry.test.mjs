@@ -37,7 +37,7 @@ test("SDK obligation follows completed full suites without changing the other la
   assert.ok(position("tx-preparation:sdk") > position("demo-test-db"));
   const steps = byId.get("demo-test").plan({
     matched: ["demo/lucid-midgard/src/x.ts", "demo/midgard-sdk/src/x.ts"],
-    full: false,
+    full: true,
   });
   for (const name of ["@al-ft/lucid-midgard", "@al-ft/midgard-sdk"]) {
     assert.deepEqual(steps.find((step) => step.sdkSuite === name)?.argv, [
@@ -150,11 +150,79 @@ test("an Aiken library edit selects format, focused tests, blueprint, ledgers an
     assert.ok(ids.includes(id), id);
   }
   assert.ok(ids.includes("exec-ledger:carriage"));
-  assert.ok(!ids.some((id) => id.startsWith("demo-")));
+  // The suites that read the compiled blueprint are reached; nothing builds.
+  assert.deepEqual(
+    ids.filter((id) => id.startsWith("demo-")),
+    ["demo-test", "demo-test-db"],
+  );
+  const steps = byId.get("demo-test-db").plan({ matched: [module] });
+  assert.ok(
+    steps.some(
+      ({ argv }) =>
+        argv.join(" ") ===
+        `node scripts/contrib.mjs test --package midgard-node --related ${module}`,
+    ),
+    steps.map(({ argv }) => argv.join(" ")).join("\n"),
+  );
 
   const golden =
     "onchain/aiken/lib/midgard/cek-core-step-goldens/identity.test.ak";
   assert.ok(selectedIds([golden]).includes("golden:cek-core-step-v1"));
+});
+
+test("a package change runs the tests it reaches in each package it can reach, as contrib test runs them", () => {
+  const changed = "demo/midgard-core/src/canonical-json.ts";
+  const ids = selectedIds([changed]);
+  assert.ok(ids.includes("demo-test") && ids.includes("demo-test-db"));
+  const steps = ["demo-test", "demo-test-db"].flatMap((id) =>
+    byId.get(id).plan({ matched: [changed], full: false }),
+  );
+  // contrib runs Vitest suites; the plain node --test package runs its
+  // script.
+  const plain = steps.filter(({ argv }) => argv[0] === "pnpm");
+  assert.deepEqual(
+    plain.map(({ argv }) => argv.join(" ")),
+    plain.length
+      ? [
+          "pnpm --dir demo --filter @al-ft/midgard-test-support run --if-present test",
+        ]
+      : [],
+  );
+  const packages = new Set(
+    steps
+      .filter(({ argv }) => argv[0] !== "pnpm")
+      .map(({ argv }) => {
+        assert.deepEqual(argv.slice(0, 4), [
+          "node",
+          "scripts/contrib.mjs",
+          "test",
+          "--package",
+        ]);
+        assert.deepEqual(argv.slice(5), ["--related", changed]);
+        return argv[4];
+      }),
+  );
+  // Its own package and every package that depends on it, at least.
+  for (const name of [
+    "@al-ft/midgard-core",
+    "@al-ft/midgard-sdk",
+    "midgard-node",
+  ])
+    assert.ok(packages.has(name), name);
+  // A path neither in a package nor one Node CI runs the suites for does not
+  // select them.
+  assert.ok(!selectedIds(["docs/agents/domain.md"]).includes("demo-test"));
+});
+
+test("a file with a recorded module-size cap selects the cap's check", () => {
+  const caps = JSON.parse(
+    readFileSync(resolve(root, "demo/module-size-exceptions.json"), "utf8"),
+  );
+  for (const path of [
+    "demo/module-size-exceptions.json",
+    `demo/${caps[0].file}`,
+  ])
+    assert.ok(selectedIds([path]).includes("demo-script-tests"), path);
 });
 
 test("workflow, agent-doc and tooling edits select their owners' checks", () => {

@@ -10,7 +10,7 @@ runs local checks and lists covered runtime work as pending in Node CI:
 node scripts/preflight.mjs            # working tree against the base
 node scripts/preflight.mjs --list     # what would run, without running it
 node scripts/preflight.mjs --strict   # committed changes only (what a push sends)
-node scripts/preflight.mjs --full-local # selected matrix locally, for offline/debug work
+node scripts/preflight.mjs --full-local # selected matrix locally: the gate before a merge
 node scripts/preflight.mjs --full     # every check locally at full scope
 node scripts/preflight.mjs --json     # machine-readable verdict on stdout
 node scripts/doctor.mjs               # environment problems, each with its fix
@@ -62,6 +62,19 @@ lanes remain mandatory. Prepare fresh local prerequisites for the checks
 you run: hosted scheduling supplies no dist, native binary or blueprint.
 Read the [merge checklist](verification.md#merge-checklist) before merging:
 workflow census, exact head, successful conclusions and reviews remain required.
+
+## Gate before a merge
+
+Gate a lane before merging it with `node scripts/preflight.mjs --full-local
+--base <target-ref>`, not a hand-written list of commands: it runs every
+check the change selects, each from the command CI runs, the package suites
+included. Those run as `node scripts/contrib.mjs test --package <name>
+--related <changed paths>` for each package the change can reach: only the
+tests the change reaches, widening to the whole package wherever the reach
+is unsure (see [focused tests and builds](contrib/tests-and-builds.md)). A
+full run (`--full`, a full-run path) runs every whole suite instead. Tests a
+suite skips by its own conditions pass, as under CI. Node CI still runs the
+whole suites; the local gate never waives them.
 
 ## Pre-push hook
 
@@ -220,10 +233,7 @@ Workspace ESLint rules and their reasoned baseline.
 Workspace helper and ESLint plugin self-tests.
 
 - Command: `node --test "demo/scripts/lib/*.test.mjs"`
-- Runs on:
-  - `demo/scripts/**`
-  - `demo/eslint.config.mjs`
-  - `.github/workflows/repo-tools-ci.yml`
+- Runs on: `demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `demo/module-size-exceptions.json` and every file it caps
 - Needs: `node-modules`
 
 ### `aiken-script-tests`
@@ -1015,19 +1025,19 @@ Execution ledger tx-order-mint-exec-ledger-v1.json.
 
 ### `demo-test`
 
-Test suites of the touched packages and their dependents that need no database.
+Test suites of the reached packages that need no database.
 
-- Command: `pnpm --dir demo --filter '<touched package and its dependents>' --workspace-concurrency=1 run --if-present test`
-- Runs on: any file of a workspace package; runs for it and every package that depends on it
+- Command: `node scripts/contrib.mjs test --package <each package the change can reach> --related <changed paths>`
+- Runs on: any file of a workspace package, or any path Node CI runs the package suites for; runs the tests those files reach in every package they can reach
 - Needs: `node-modules`, `blueprint`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
 
 ### `demo-test-db`
 
-Postgres-backed test suites (midgard-node, midgard-node-tools, midgard-watcher, da-committee-node, @al-ft/midgard-l1-follower) of the touched packages and their dependents.
+Postgres-backed test suites (midgard-node, midgard-node-tools, midgard-watcher, da-committee-node, @al-ft/midgard-l1-follower) of the reached packages.
 
-- Command: `pnpm --dir demo --filter '<touched package and its dependents>' --workspace-concurrency=1 run --if-present test`
-- Runs on: any file of a workspace package; runs for it and every package that depends on it
+- Command: `node scripts/contrib.mjs test --package <each package the change can reach> --related <changed paths>`
+- Runs on: any file of a workspace package, or any path Node CI runs the package suites for; runs the tests those files reach in every package they can reach
 - Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
 

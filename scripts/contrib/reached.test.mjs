@@ -17,6 +17,7 @@ import { packageByName } from "./files.mjs";
 import {
   candidatePackages,
   probeGraph,
+  reachablePackages,
   reachedTests,
   reachIn,
   wholePackageReasons,
@@ -264,6 +265,18 @@ test("a manifest, workspace configuration or the shared harness selects whole pa
     assert.equal(wholePackageReasons(root, app, [path]).length, 1, path);
   for (const path of ["demo/other/package.json", "demo/app/README.md"])
     assert.deepEqual(wholePackageReasons(root, app, [path]), [], path);
+});
+
+test("the packages a change can reach: a test fixture its owner, a manifest every package, a note none", (t) => {
+  const root = workspace(t);
+  const reachable = (path) => [...reachablePackages(root, [path])].sort();
+  assert.deepEqual(reachable("demo/app/tests/fixtures/data.json"), ["app"]);
+  // core's users; `other` too, as its text contains `x`: a cheap text
+  // search errs toward more.
+  for (const name of ["app", "core"])
+    assert.ok(reachable("demo/core/src/x.ts").includes(name), name);
+  assert.deepEqual(reachable("demo/pnpm-lock.yaml"), ["app", "core", "other"]);
+  assert.deepEqual(reachable("docs/notes.md"), []);
 });
 
 test("the pre-filter skips the probe when no text can reach a package, and a failed probe widens", async (t) => {

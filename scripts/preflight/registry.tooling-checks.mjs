@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import {
   AIKEN_PROJECT,
   DEMO,
@@ -176,7 +179,17 @@ export const independentChecks = () => [
 
 const E2E_SKILL = ".agents/skills/midgard-e2e-acceptance";
 
-export const toolingChecks = () => [
+// demo/scripts/check-module-size-exceptions.mjs holds each listed file to its
+// recorded line count, so an edit of one of them can fail it.
+const MODULE_SIZE_CAPS = `${DEMO}/module-size-exceptions.json`;
+const moduleSizeCapped = (root) => [
+  MODULE_SIZE_CAPS,
+  ...JSON.parse(readFileSync(resolve(root, MODULE_SIZE_CAPS), "utf8")).map(
+    ({ file }) => `${DEMO}/${file}`,
+  ),
+];
+
+export const toolingChecks = (root) => [
   {
     id: "contributor-build-guards",
     title: "Workspace builds use the resource and provenance guard",
@@ -248,7 +261,10 @@ export const toolingChecks = () => [
       "demo/scripts/**",
       "demo/eslint.config.mjs",
       ".github/workflows/repo-tools-ci.yml",
+      ...moduleSizeCapped(root),
     ],
+    triggerNote:
+      "`demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `demo/module-size-exceptions.json` and every file it caps",
     capabilities: ["node-modules"],
     display: 'node --test "demo/scripts/lib/*.test.mjs"',
     plan: () => [step(["node", "--test", "demo/scripts/lib/*.test.mjs"])],

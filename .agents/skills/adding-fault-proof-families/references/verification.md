@@ -44,36 +44,23 @@ does in "Build testnet Aiken blueprint"), or copies a matching one from
 another checkout; the suites' global setup refuses a stale one. Never commit
 it.
 
-## 4. Focused package tests
+## 4. Package tests and typechecks
 
-Run the files your change reaches (`--related <changed path>...` finds them),
-not whole suites. The fault-proofs suite
-took 20.5 minutes at eight forks on 2026-09-21 (its `vitest.config.ts`).
+While iterating, run the tests your change reaches, never a whole package
+by hand: the fault-proofs suite took 20.5 minutes at eight forks on
+2026-09-21 (its `vitest.config.ts`).
 
 ```bash
-node scripts/contrib.mjs test --package midgard-sdk --file tests/fraud-proof-catalogue-registration.test.ts --file tests/reference-scripts.test.ts
-node scripts/contrib.mjs test --package midgard-core --file tests/deployment-manifest-identity.test.ts
-node scripts/contrib.mjs test --package midgard-fault-proofs --file tests/workflow.test.ts --file tests/family-application-registry.test.ts --file tests/typed-reason-disposition.test.ts
-node scripts/contrib.mjs test --package midgard-fault-proofs --file tests/<kebab>-lifecycle.test.ts
-node scripts/contrib.mjs test --package midgard-watcher --file tests/runtime/deployment-identity.test.ts
+node scripts/contrib.mjs test --package midgard-fault-proofs --related <changed path>...
 ```
 
 Each run builds the stale dists its package needs (the SDK among them) first.
 
-Then each package's typecheck, which is where most tables in
-[touch-points.md](touch-points.md) are enforced:
-
-```bash
-pnpm --dir demo/midgard-sdk run typecheck
-pnpm --dir demo/midgard-fault-proofs run typecheck
-pnpm --dir demo/midgard-node run typecheck
-pnpm --dir demo/midgard-watcher run typecheck
-pnpm --dir demo/da-committee-node run typecheck
-pnpm --dir demo/midgard-node-tools run typecheck
-```
-
-CI builds the SDK before the packages that import it; do the same
-(`node scripts/contrib.mjs build --package midgard-sdk`).
+Then gate the change with `node scripts/preflight.mjs --full-local --base
+<target-ref>`. It builds and typechecks every package that depends on what
+changed (the typechecks enforce most tables in
+[touch-points.md](touch-points.md)), and runs lint, format, the goldens and
+the tests the change reaches in each package, each as CI runs it.
 
 ## 5. Node tests and the DA fixture
 

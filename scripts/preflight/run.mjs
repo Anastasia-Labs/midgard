@@ -540,6 +540,18 @@ export const runPreflight = async ({
           outcome = { status: "failed", reason: empty.reason };
           break;
         }
+        // contrib test exits 3 when tests ran, none failed, and some were
+        // skipped by their own conditions; the package script under CI
+        // passes on that, and so does this step.
+        if (
+          run.error === undefined &&
+          run.status === 3 &&
+          step.skippedTestsPass
+        ) {
+          outcome.reason =
+            "some tests were skipped by their own conditions (see the receipts)";
+          continue;
+        }
         if (run.error !== undefined || run.status !== 0) {
           outcome = {
             status: "failed",

@@ -528,6 +528,23 @@ export const wholePackageReasons = (root, pkg, changed) => {
 };
 
 /**
+ * The workspace packages a set of changed files can reach: those
+ * `reachedTests` would not answer "nothing reached" for without probing.
+ */
+export const reachablePackages = (root, changed) => {
+  const candidates = changed.map((path) => candidatePackages(root, path));
+  return new Set(
+    workspacePackages(root)
+      .filter(
+        (pkg) =>
+          wholePackageReasons(root, pkg, changed).length > 0 ||
+          candidates.some((names) => names.has(pkg.name)),
+      )
+      .map((pkg) => pkg.name),
+  );
+};
+
+/**
  * The script files the probe roots the graph at: the package's own and those
  * outside every package (repository and workspace scripts). Another
  * package's files are graphed through imports with their own resolution;
