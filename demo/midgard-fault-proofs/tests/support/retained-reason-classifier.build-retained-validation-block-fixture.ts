@@ -319,6 +319,8 @@ export type RetainedPlutusFixtureOptions = Readonly<{
   blockStartTimeMs?: number;
   blockEndTimeMs?: number;
   blockSlot?: bigint;
+  /** The disputed transaction's native validity interval, in slots. */
+  validityInterval?: Readonly<{ start: bigint; end: bigint }>;
   /**
    * The default predecessor's header operator and times, so it can be
    * committed as an ordinary first block on an emulator state queue.

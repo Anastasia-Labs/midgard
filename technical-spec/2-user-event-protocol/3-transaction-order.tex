@@ -35,9 +35,9 @@ According to Midgard's ledger rules:
     \item[Transaction order inclusion.] A block header must include transaction orders with inclusion times falling within the block header's event interval, and it must \emph{not} include any other transaction orders.
 \end{description}
 
-The current due-event predicates also test overlap with the transaction validity interval.
-The original inclusion-only rule and this extra predicate must be reconciled together with the time-domain issue in \cref{h:deviations-from-cardano-transaction-types}.
-Neither the operator's later verdict nor a comment in a builder establishes that an order's inclusion time was inside its interval.
+Whether a transaction order is due in a block depends on its inclusion time alone.
+Its transaction validity interval plays no part in that choice: the validation machine checks the interval against the block's \code{block\_slot} and, when the slot falls outside it, records the exact rejection verdict for the included order.
+Every transaction order is therefore included exactly once, and the refund described below stays reachable.
 
 Analogously to deposits and withdrawals, transaction orders will eventually be included in the state queue, as long as operators continue committing valid block headers.
 Furthermore, if any blocks are removed from the state queue, any new committed block must include the transaction orders that should have been included in the removed blocks.

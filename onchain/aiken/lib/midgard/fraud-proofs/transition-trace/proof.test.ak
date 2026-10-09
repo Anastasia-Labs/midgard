@@ -566,7 +566,34 @@ fn empty_native_transaction() -> native_types.MidgardTransaction {
 fn authenticated_forced_tx(
   verdict: rejection_reason_v1.OperatorVerdictV1,
 ) -> ledger_state.ForcedInclusionTxV1 {
-  let tx = empty_native_transaction()
+  authenticated_forced_tx_of(empty_native_transaction(), verdict)
+}
+
+/// The authenticated empty forced transaction, carrying the given native
+/// validity interval scalars (slots; a negative scalar is open).
+fn authenticated_forced_tx_with_interval(
+  verdict: rejection_reason_v1.OperatorVerdictV1,
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+) -> ledger_state.ForcedInclusionTxV1 {
+  let empty = empty_native_transaction()
+  authenticated_forced_tx_of(
+    native_types.MidgardTransaction {
+      ..empty,
+      body: native_types.MidgardTransactionBody {
+        ..empty.body,
+        validity_interval_start,
+        validity_interval_end,
+      },
+    },
+    verdict,
+  )
+}
+
+fn authenticated_forced_tx_of(
+  tx: native_types.MidgardTransaction,
+  verdict: rejection_reason_v1.OperatorVerdictV1,
+) -> ledger_state.ForcedInclusionTxV1 {
   let compact = native_transaction.midgard_transaction_to_compact(tx)
   let proof_source = native_transaction.midgard_transaction_proof_source_v1(tx)
   let tx_id = native_compact.native_tx_id_for_version(
@@ -587,7 +614,27 @@ fn authenticated_forced_tx(
 }
 
 fn authenticated_tx_order_payload() -> ledger_state.TxOrderPayloadV1 {
-  let leaf = authenticated_forced_tx(rejection_reason_v1.ForcedTxValid)
+  tx_order_payload_of(
+    authenticated_forced_tx(rejection_reason_v1.ForcedTxValid),
+  )
+}
+
+fn authenticated_tx_order_payload_with_interval(
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+) -> ledger_state.TxOrderPayloadV1 {
+  tx_order_payload_of(
+    authenticated_forced_tx_with_interval(
+      rejection_reason_v1.ForcedTxValid,
+      validity_interval_start,
+      validity_interval_end,
+    ),
+  )
+}
+
+fn tx_order_payload_of(
+  leaf: ledger_state.ForcedInclusionTxV1,
+) -> ledger_state.TxOrderPayloadV1 {
   ledger_state.TxOrderPayloadV1 {
     tx_id: leaf.tx_id,
     transaction_commitment: native_compact.forced_tx_proof_commitment_v1(
@@ -603,11 +650,20 @@ fn tx_order_reference_input(
   inclusion_time: Int,
   event_asset_name: ByteArray,
 ) -> Input {
+  tx_order_reference_input_for(
+    inclusion_time,
+    event_asset_name,
+    authenticated_tx_order_payload(),
+  )
+}
+
+fn tx_order_reference_input_for(
+  inclusion_time: Int,
+  event_asset_name: ByteArray,
+  payload: ledger_state.TxOrderPayloadV1,
+) -> Input {
   let datum: tx_order.Datum = user_events.OptimisticDatum {
-    event: ledger_state.TxOrderEventV1 {
-      id: out_ref(0),
-      tx: authenticated_tx_order_payload(),
-    },
+    event: ledger_state.TxOrderEventV1 { id: out_ref(0), tx: payload },
     inclusion_time,
     witness: h28_a,
     refund_address: dummy_address(),
@@ -3426,6 +3482,200 @@ test accepts_late_forced_order_as_out_of_window_source_event() {
       header,
       [tx_order_reference_input(header.end_time + 1, event_asset_name)],
     ),
+  )
+}
+
+// Forced-order due-ness in the real time domains: header event times are
+// POSIX milliseconds, native validity scalars are slots, and `block_slot` is
+// the slot the validation machine checks the interval against. Due-ness is the
+// inclusion window alone; the interval decides only the machine verdict, so an
+// order whose interval excludes `block_slot` is still due, and the honest
+// block includes it with a `ValidityIntervalExcludesBlockSlot` verdict.
+const slot_domain_block_slot: Int = 70_000_000
+
+fn slot_domain_header() -> ledger_state.HeaderV1 {
+  ledger_state.HeaderV1 {
+    ..base_header(),
+    start_time: 1_700_000_000_000,
+    end_time: 1_700_000_020_000,
+    block_slot: slot_domain_block_slot,
+  }
+}
+
+/// `OmittedDueForcedTransaction` against an empty forced root, for an order
+/// with the given interval and inclusion time.
+fn omitted_interval_forced_order_is_valid(
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+  inclusion_time: Int,
+) -> Bool {
+  let header = slot_domain_header()
+  proof.validate_l1_event_fault_proof(
+    prove(
+      header,
+      proof.OmittedDueL1Event {
+        witness: proof.OmittedDueForcedTransaction {
+          event_ref_input_index: 0,
+          event_asset_name: #"01",
+          validity_override: rejection_reason_v1.ForcedTxValid,
+          source_non_membership: empty_non_membership(
+            transition_trace.ForcedTransactionsV1RootDomain,
+            out_ref(0),
+          ),
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    timing_fixture.evidence(
+      header,
+      [
+        tx_order_reference_input_for(
+          inclusion_time,
+          #"01",
+          authenticated_tx_order_payload_with_interval(
+            validity_interval_start,
+            validity_interval_end,
+          ),
+        ),
+      ],
+    ),
+  )
+}
+
+/// `OutOfWindowForcedTransaction` against a block that includes the order with
+/// the given interval and inclusion time.
+fn included_interval_forced_order_is_out_of_window(
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+  inclusion_time: Int,
+) -> Bool {
+  let source_membership = forced_source_membership(
+    out_ref(0),
+    authenticated_forced_tx_with_interval(
+      rejection_reason_v1.ForcedTxValid,
+      validity_interval_start,
+      validity_interval_end,
+    ),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..slot_domain_header(),
+    forced_transactions_root: source_membership.root,
+    forced_transaction_count: 1,
+  }
+  proof.validate_l1_event_fault_proof(
+    prove(
+      header,
+      proof.OutOfWindowSourceEvent {
+        witness: proof.OutOfWindowForcedTransaction {
+          event_ref_input_index: 0,
+          event_asset_name: #"01",
+          validity_override: rejection_reason_v1.ForcedTxValid,
+          source_membership,
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    timing_fixture.evidence(
+      header,
+      [
+        tx_order_reference_input_for(
+          inclusion_time,
+          #"01",
+          authenticated_tx_order_payload_with_interval(
+            validity_interval_start,
+            validity_interval_end,
+          ),
+        ),
+      ],
+    ),
+  )
+}
+
+/// Both polarities for one interval: inside the inclusion window the order is
+/// due (omission convicts, inclusion does not); one millisecond past the window
+/// it is not (inclusion convicts, omission does not).
+fn interval_forced_order_due_by_inclusion_time_only(
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+) -> Bool {
+  let header = slot_domain_header()
+  let inside = header.end_time
+  let after = header.end_time + 1
+  and {
+    omitted_interval_forced_order_is_valid(
+      validity_interval_start,
+      validity_interval_end,
+      inside,
+    ),
+    !included_interval_forced_order_is_out_of_window(
+      validity_interval_start,
+      validity_interval_end,
+      inside,
+    ),
+    !omitted_interval_forced_order_is_valid(
+      validity_interval_start,
+      validity_interval_end,
+      after,
+    ),
+    included_interval_forced_order_is_out_of_window(
+      validity_interval_start,
+      validity_interval_end,
+      after,
+    ),
+  }
+}
+
+test forced_order_with_bounded_interval_containing_block_slot_is_due_by_inclusion_time() {
+  interval_forced_order_due_by_inclusion_time_only(
+    slot_domain_block_slot - 100,
+    slot_domain_block_slot + 100,
+  )
+}
+
+test forced_order_with_bounded_interval_ending_before_block_slot_is_due_by_inclusion_time() {
+  interval_forced_order_due_by_inclusion_time_only(
+    slot_domain_block_slot - 200,
+    slot_domain_block_slot - 100,
+  )
+}
+
+test forced_order_with_bounded_interval_starting_after_block_slot_is_due_by_inclusion_time() {
+  interval_forced_order_due_by_inclusion_time_only(
+    slot_domain_block_slot + 100,
+    slot_domain_block_slot + 200,
+  )
+}
+
+test forced_order_with_open_start_interval_is_due_by_inclusion_time() {
+  interval_forced_order_due_by_inclusion_time_only(
+    -1,
+    slot_domain_block_slot - 100,
+  )
+}
+
+test forced_order_with_open_end_interval_is_due_by_inclusion_time() {
+  interval_forced_order_due_by_inclusion_time_only(
+    slot_domain_block_slot + 100,
+    -1,
+  )
+}
+
+test forced_order_with_unbounded_interval_is_due_by_inclusion_time() {
+  interval_forced_order_due_by_inclusion_time_only(-1, -1)
+}
+
+// A scalar below -1 decodes and authenticates at order mint; the machine
+// rejects it as `ValidityIntervalMalformed`, so the order is still due.
+test forced_order_with_malformed_negative_interval_is_due_by_inclusion_time() {
+  interval_forced_order_due_by_inclusion_time_only(-2, 5)
+}
+
+test forced_order_with_inverted_interval_is_due_by_inclusion_time() {
+  interval_forced_order_due_by_inclusion_time_only(
+    slot_domain_block_slot + 100,
+    slot_domain_block_slot - 100,
   )
 }
 

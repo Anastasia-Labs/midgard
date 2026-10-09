@@ -89,13 +89,7 @@ const parseEventFacts = (
       throw new Error(
         "Transition forced L1 source has a false compact transaction id",
       );
-    return {
-      kind: "forcedTransaction" as const,
-      entry,
-      datum,
-      start: compact.transactionBody.validityIntervalStart,
-      end: compact.transactionBody.validityIntervalEnd,
-    };
+    return { kind: "forcedTransaction" as const, entry, datum };
   }),
 });
 const parsedEventFacts = new WeakMap<
@@ -161,17 +155,12 @@ const readTransitionTraceEventCoverage = ({
       };
       outsideItem = omittedItem;
     } else {
-      const { datum, start, end } = fact;
+      // Due by inclusion time alone, as on chain; the validity interval only
+      // decides the machine verdict at the block slot.
+      const { datum } = fact;
       due =
         current.header.startTime < datum.inclusion_time &&
-        datum.inclusion_time <= current.header.endTime &&
-        (start === -1n
-          ? end === -1n || current.header.startTime <= end
-          : end === -1n
-            ? start <= current.header.endTime
-            : start <= end &&
-              start <= current.header.endTime &&
-              current.header.startTime <= end);
+        datum.inclusion_time <= current.header.endTime;
       eventKey = { ForcedTransactionEventKey: { tx_order_id: datum.event.id } };
       const source = current.sourceEventsByFingerprint.get(
         eventKeyFingerprint(eventKey),

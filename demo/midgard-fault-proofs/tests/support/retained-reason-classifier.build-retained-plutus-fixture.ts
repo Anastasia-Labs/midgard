@@ -117,6 +117,12 @@ const buildRetainedPlutusFixture = async (
     outputs: [output],
     fee: 0n,
     networkId: 0n,
+    ...(options.validityInterval === undefined
+      ? {}
+      : {
+          validityIntervalStart: options.validityInterval.start,
+          validityIntervalEnd: options.validityInterval.end,
+        }),
     scriptWitnesses: [encodeMidgardVersionedScript(script)],
     redeemerWitnesses: [redeemer],
     scriptIntegrityHash: computeScriptIntegrityHashForLanguages(

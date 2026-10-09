@@ -9,9 +9,9 @@
  * proof-source idiom and onto the §8.8 door:
  * `validate_l2_transaction_transition` opens field 0 and field 2 through the
  * #575 `FieldOpening` bridge instead of decoding each preimage and re-hashing
- * the reproduced item list, and `tx_order_compact_body` re-derives the compact
- * body from the transaction id instead of verifying a proof-source triple.
- * Neither introduces a walk whose cost grows faster than the one it replaced,
+ * the reproduced item list, and the forced-order path reads the order datum the
+ * tx-order mint bound to the transaction id instead of verifying a proof-source
+ * triple. Neither introduces a walk whose cost grows faster than the one it replaced,
  * so the ledger carries no `basisFit:"exceeds"` row.
  *
  * Both call sites are pinned, and the reason is historical rather than
