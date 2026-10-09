@@ -147,7 +147,7 @@ port or `COMPOSE_PROJECT_NAME` already set in the environment or `.env` wins.
 
 | Step                    | Command                                                                      |
 | ----------------------- | ---------------------------------------------------------------------------- |
-| L1 and Postgres first   | `docker compose $F up -d postgres cardano-node-ogmios kupo`                  |
+| L1 and Postgres first   | `docker compose $F up -d postgres cardano-node cardano-config-export`        |
 | Check health            | `docker compose $F ps`                                                       |
 | Schema                  | `docker compose $F run --rm midgard-node-migrate`                            |
 | Full stack              | `docker compose $F up -d`                                                    |
@@ -155,10 +155,9 @@ port or `COMPOSE_PROJECT_NAME` already set in the environment or `.env` wins.
 
 - `up` runs `midgard-node-migrate` first and starts `midgard-node` only after
   it exits successfully (`depends_on: service_completed_successfully`).
-- `midgard-node` waits for healthy Postgres, Ogmios and Kupo, and its own
-  healthcheck is `/readyz` (5 s interval, 60 retries, 30 s start period).
-- Kupo's healthcheck passes only on HTTP 200, not 202, so the node does not
-  start against an index that is still replaying.
+- `midgard-node` waits for healthy Postgres and cardano-node and the finished
+  config export, and its own healthcheck is `/readyz` (5 s interval, 60
+  retries, 30 s start period).
 - `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
   and the DA producer manifest (README step 6).
 - `midgard-node` and Postgres have `restart: always`. A node that crashes on

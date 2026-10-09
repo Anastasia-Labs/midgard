@@ -1,6 +1,6 @@
 /**
  * The follower-change driver's write gate and recompute (plan §7.3, §8.1,
- * N1, N3) on the node database, with no event-history owner:
+ * N1, N3) on the node database:
  *
  * - a producer's write at a view the follower left, under an epoch a later
  *   recompute superseded, or while a recompute is pending, is refused by

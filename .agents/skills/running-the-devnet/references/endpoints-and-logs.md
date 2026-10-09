@@ -72,8 +72,10 @@ Every reason the node can put in `reasons`, what it means and what to do. A
 `/healthz` stays live and the node keeps retrying, so "wait" means the node
 clears the reason itself once the cause is gone. Entries under `details` are
 degradations that leave the node ready. The list is derived from
-`demo/midgard-node/src` by `scripts/ci/check-readiness-reasons-doc.mjs`,
-which fails when a reason here has no text.
+`demo/midgard-node/src` and the follower readiness reasons of
+`demo/midgard-l1-follower/src` by
+`scripts/ci/check-readiness-reasons-doc.mjs`, which fails when a reason here
+has no text.
 
 Core checks (`src/commands/readiness.ts`, the readiness handler):
 
@@ -206,6 +208,19 @@ L1 follower and follower-change driver
   explained in `demo/midgard-l1-follower/README.md`. An intervention stops
   the follow loop until an operator investigates and runs
   `midgard-l1-follower reset --to-origin`.
+- `origin_after_protocol_init`: the follower reached the node tip without
+  seeing the transaction that spends `hubOracleOneShot`, so `l1Origin` is
+  after protocol init. The loop keeps following. Correct `l1Origin` to a
+  point before the `prepareHubOracleNonce` block and reset the follower to
+  its origin.
+- `l1_follower_migration_failed`: the follower store refused its migrations
+  at start (a recorded migration whose text changed, a duplicate id, or one
+  the schema lint refuses). The node keeps retrying the start. Fix the
+  migration set in the deployed build; a start whose migrations apply clears
+  it.
+- `l1_follower_prune_failing`: three prune passes in a row failed, so facts
+  past retention stay and the store grows. Read the follower's prune error
+  in the log; the next successful pass clears it.
 - `l1_follower_unconfigured`: the node has no follower; the detail names the
   missing configuration. Set it and restart.
 - `l1_node_config_unreadable`: the cardano-node config files do not yield

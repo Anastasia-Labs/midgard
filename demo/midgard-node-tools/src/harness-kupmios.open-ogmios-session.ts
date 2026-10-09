@@ -9,7 +9,6 @@ import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 
 import { type OgmiosSession } from "./harness-kupmios.fetch-kupo-spend.js";
 import {
-  HEX_28,
   HEX_32,
   type ObservedL1Transaction,
   type WebSocketFactory,
@@ -255,15 +254,11 @@ const exactOutRef = (value: unknown, label: string): OutRefLike => {
 };
 
 /**
- * Ogmios's JSON transaction view, narrowed to what the Kupmios readers need.
- *
- * The raw transaction CBOR is deliberately not used: Ogmios only emits a
- * transaction's `cbor` when the *server* was started with
- * `--include-transaction-cbor`; the in-repo stack passes it (`scripts/run-ogmios.sh`)
- * but no node can require it of an operator's endpoint. `redeemers` and
- * `references` are unconditional, so the read stands on fields that are always
- * there. (`midgard-watcher` takes the other route — its `l1-adapter.ts`
- * re-derives everything from raw bytes — because it is given the bytes.)
+ * Ogmios's JSON transaction view, narrowed to what the harness readers use:
+ * the id, the spent inputs in ledger order and the reference inputs. These
+ * fields are always there; the raw transaction CBOR is not, since Ogmios
+ * emits a transaction's `cbor` only when the server was started with
+ * `--include-transaction-cbor`.
  */
 export const parseObservedTransaction = (
   value: unknown,
@@ -273,8 +268,6 @@ export const parseObservedTransaction = (
     id?: unknown;
     inputs?: unknown;
     references?: unknown;
-    mint?: unknown;
-    redeemers?: unknown;
   };
   const txHash = record.id;
   if (typeof txHash !== "string" || !HEX_32.test(txHash)) {
@@ -300,57 +293,9 @@ export const parseObservedTransaction = (
         : (() => {
             throw new Error(`${label}.references is not an array`);
           })();
-  // A mint redeemer's `index` is positional over the mint's policy ids as the
-  // ledger orders them — ascending by policy id — so the domain is rebuilt by
-  // sorting rather than by trusting the order a JSON object happens to enumerate.
-  const mint = record.mint;
-  const mintPolicyIds =
-    mint === undefined || mint === null
-      ? []
-      : Object.keys(mint as Record<string, unknown>)
-          .filter((policyId) => HEX_28.test(policyId))
-          .sort();
-  const redeemers =
-    record.redeemers === undefined
-      ? []
-      : Array.isArray(record.redeemers)
-        ? record.redeemers.map((entry, index) => {
-            const redeemer = entry as {
-              redeemer?: unknown;
-              validator?: { purpose?: unknown; index?: unknown };
-            };
-            const payload = redeemer.redeemer;
-            const purpose = redeemer.validator?.purpose;
-            const pointer = redeemer.validator?.index;
-            if (typeof payload !== "string") {
-              throw new Error(
-                `${label}.redeemers[${index.toString()}].redeemer is not base16 data`,
-              );
-            }
-            if (typeof purpose !== "string") {
-              throw new Error(
-                `${label}.redeemers[${index.toString()}].validator.purpose is missing`,
-              );
-            }
-            if (
-              typeof pointer !== "number" ||
-              !Number.isSafeInteger(pointer) ||
-              pointer < 0
-            ) {
-              throw new Error(
-                `${label}.redeemers[${index.toString()}].validator.index is not an index`,
-              );
-            }
-            return { purpose, index: pointer, redeemer: payload };
-          })
-        : (() => {
-            throw new Error(`${label}.redeemers is not an array`);
-          })();
   return {
     txHash,
     spentInputs,
     referenceInputs: references,
-    mintPolicyIds,
-    redeemers,
   };
 };

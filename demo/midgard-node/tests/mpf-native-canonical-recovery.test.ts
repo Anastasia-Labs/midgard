@@ -21,7 +21,6 @@ import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-dige
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
 
 // This suite checks the native durable boundary with the actual pinned child.
-// Plan authorization belongs to the production history owner, not these hashes.
 describe("native canonical root recovery", () => {
   const paths: string[] = [];
   const services = new Set<ProductionNativeMpfOwnerService>();

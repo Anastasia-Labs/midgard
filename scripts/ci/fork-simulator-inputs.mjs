@@ -9,7 +9,7 @@
 // its projection into the simulator is covered the moment it declares the
 // script:
 //   - every workspace package whose package.json defines `test:fork-sim`
-//     (today midgard-l1-follower; C1, W1 and N1 add theirs), and every
+//     (only midgard-l1-follower defines it), and every
 //     workspace package those depend on, transitively, through a
 //     `workspace:` dependency or devDependency;
 //   - the follower and the node transport whatever they declare (the

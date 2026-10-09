@@ -1,13 +1,13 @@
-# In-stack Cardano L1 for midgard-node: cardano-node (Mithril-bootstrapped),
-# Ogmios and Kupo. This is the canonical L1 stack for every Midgard role; hosts
-# that run only a watcher or a DA committee node start just the L1 services:
+# In-stack Cardano L1 for midgard-node: cardano-node (Mithril-bootstrapped)
+# and its exported config, plus Ogmios and Kupo. Every Midgard role (node,
+# watcher, DA committee) reads and submits L1 only through the cardano-node
+# socket, with its own ChainSync follower and the node transport; hosts that
+# run only a watcher or a DA committee node start just the L1 node:
 #
 #   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
-#     up -d cardano-node-ogmios kupo
+#     up -d cardano-node cardano-config-export
 #
-# The node reads and submits L1 only through the cardano-node socket (its
-# follower and node transport); it reads neither Ogmios nor Kupo. Ogmios and
-# Kupo stay for the tools that still read them: the node-tools devnet harness
+# No role reads Ogmios or Kupo. They stay for the node-tools devnet harness
 # and its stop-kupo/stop-ogmios drills, and the fault-proofs prover CLI
 # (--ogmios-url, --kupo-url). Kupo follows Ogmios's ChainSync.
 #

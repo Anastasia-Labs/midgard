@@ -127,7 +127,7 @@ The canonical stack is `docker-compose.yaml` plus the `docker-compose.kupmios.ya
 overlay: PostgreSQL, the node, a one-shot schema migration, and an in-stack
 Cardano L1 (cardano-node bootstrapped from a certified Mithril snapshot, Ogmios,
 Kupo). The base file alone starts no L1, and the node reads L1 only through the
-overlay's cardano-node (its socket and config; note 8 below), so every command
+overlay's cardano-node (its socket and config; note 5 below), so every command
 below uses both files. Ogmios and Kupo stay in the overlay for the node-tools
 devnet harness and the fault-proofs prover CLI; the node reads neither.
 
@@ -185,7 +185,7 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
 
    ```sh
    docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
-     up -d postgres cardano-node-ogmios kupo
+     up -d postgres cardano-node cardano-config-export
    docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml ps
    ```
 
@@ -200,28 +200,11 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
       before the local Cardano stack is allowed to start.
    3. Changing networks requires explicit cleanup of `./cardano/db` and
       `./cardano/kupo` before restarting the stack.
-   4. The local stack restores an official Kupo SQLite snapshot into
-      `./cardano/kupo` when that directory is empty, then continues syncing
-      with `--match * --since origin` and **without** `--prune-utxo`. The
-      Kupo readers named at the top of `docker-compose.kupmios.yaml` need
-      spent outputs to stay readable, and a pruning index deletes them. The official snapshot was
-      built pruned, so outputs spent before its snapshot point are absent.
-      That is harmless for a deployment you initialise after this bring-up
-      (the snapshot predates `init` by construction). To join a deployment
-      whose L1 history starts before the snapshot was taken, set
-      `KUPO_BOOTSTRAP_MODE=origin` before the first start (or clear
-      `./cardano/kupo` and restart with it) so Kupo syncs from origin instead.
-   5. Kupo is considered healthy only once its `/health` endpoint returns
-      `200`, not while it is still returning `202 Accepted` during replay.
-      `midgard-node` does not wait on it.
-   6. The local stack intentionally runs standalone `cardano-node` and Ogmios
+   4. The local stack intentionally runs standalone `cardano-node` and Ogmios
       containers instead of the combined `cardano-node-ogmios` image, because
       the certified Mithril snapshot can move ahead of that combined image's
       bundled Cardano node version.
-   7. A host that runs only a watcher or a DA committee node uses the same two
-      files and the same `up -d cardano-node-ogmios kupo` command; nothing else
-      in the base file starts.
-   8. `midgard-node` reads the in-stack node directly for its L1 follower: the
+   5. `midgard-node` reads the in-stack node directly for its L1 follower: the
       overlay mounts `./cardano/ipc` and `./cardano/config` and sets
       `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
       `L1_NODE_TRANSPORT_BINARY_PATH` (the `midgard-l1-node-transport`

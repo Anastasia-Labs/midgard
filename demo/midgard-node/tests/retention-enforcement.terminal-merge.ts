@@ -129,8 +129,8 @@ export const remainingHashes = Effect.gen(function* () {
 });
 
 /** Runs a sweep with RETENTION_DAYS overridden (undefined: unset) under this
- * deployment's verified manifest, on fresh node globals (no history owner, so
- * the history prunes run under the database fixture capability). */
+ * deployment's verified manifest, on fresh node globals (the history prunes
+ * run under the database fixture capability). */
 export const withSweepServices = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   retentionDays: number | undefined,
@@ -151,7 +151,6 @@ export const withSweepServices = <A, E, R>(
           manifest: deploymentManifest,
         }),
       ),
-      // No history owner.
       Effect.provide(Globals.Default),
     );
   });

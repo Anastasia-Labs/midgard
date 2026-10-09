@@ -91,9 +91,7 @@ not obviously one row, or when a node refuses to attach.
    looks at the chain or the database.
 3. **Ready**: `/readyz` answers 200 with `"ready": true`; otherwise 503 with
    `reasons`. The node's check covers workers, admission backlog, database,
-   its L1 follower and node transport, and the MPF owner. The harness's Kupo
-   `/health` is 200 only once it has caught up; it answers 202 while
-   replaying.
+   its L1 follower and node transport, and the MPF owner.
 4. **Working**: ready, and the thing you care about is advancing. Blocks
    committing, DA members attesting and merges landing are absent from
    `/readyz`. Watch the node's `/pipeline-status` and the DA committee's

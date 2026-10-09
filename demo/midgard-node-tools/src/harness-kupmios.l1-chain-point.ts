@@ -16,17 +16,13 @@ export type L1ChainPoint = {
   readonly headerHash: string;
 };
 
-/** One transaction, as much of it as the Kupmios readers need. */
+/** One transaction, as much of it as the harness readers use. */
 export type ObservedL1Transaction = {
   readonly txHash: string;
   /** Spending inputs in the ledger order presented by Ogmios. */
   readonly spentInputs?: readonly OutRefLike[];
   /** Reference inputs in the order the observation presented them. */
   readonly referenceInputs: readonly OutRefLike[];
-  /** Minting policy ids, ascending — the domain of a mint redeemer's index. */
-  readonly mintPolicyIds: readonly string[];
-  /** Redeemer payloads by `(purpose, index)`, base16 Plutus data. */
-  readonly redeemers: readonly ObservedL1Redeemer[];
 };
 
 /** The canonical block which carried an observed transaction. */
@@ -41,12 +37,6 @@ export type ObservedL1TransactionAtPoint = ObservedL1Transaction & {
   };
   /** The raw transaction, when Ogmios serves it (`--include-transaction-cbor`). */
   readonly transactionCbor?: string;
-};
-
-export type ObservedL1Redeemer = {
-  readonly purpose: string;
-  readonly index: number;
-  readonly redeemer: string;
 };
 
 export type FetchLike = (
@@ -74,8 +64,6 @@ export const DEFAULT_L1_BLOCK_SCAN_LIMIT = 1_000;
 export const DEFAULT_L1_READ_TIMEOUT_MS = 20_000;
 
 export const HEX_32 = /^[0-9a-f]{64}$/u;
-
-export const HEX_28 = /^[0-9a-f]{56}$/u;
 
 export const joinUrl = (base: string, path: string): string =>
   `${base.replace(/\/+$/u, "")}/${path.replace(/^\/+/u, "")}`;

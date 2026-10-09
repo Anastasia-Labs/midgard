@@ -613,10 +613,9 @@ export const cleanupRuntimePaths = async ({
 };
 
 /**
- * Fixtures without a production history owner still commit through the
- * native Architecture G owner, the node's only MPF engine: one owner per
- * fixture ledger store, started on first use and closed with the store by
- * `cleanupRuntimePaths`.
+ * Fixtures commit through the native Architecture G owner, the node's only
+ * MPF engine: one owner per fixture ledger store, started on first use and
+ * closed with the store by `cleanupRuntimePaths`.
  */
 const unownedNativeOwners = new Map<string, NativeMpfOwnerService>();
 

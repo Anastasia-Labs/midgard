@@ -10,8 +10,8 @@ protocol forward. The worker modules documented here are defined in
 `src/commands/listen.ts`.
 
 The long-running fibers that `listen` starts are listed below. The listener
-also starts the history owner (event-history runtime), the write-behind service,
-HTTP server and configured retained-payload server; this table is not a count of
+also starts the L1 follower and its follower-change driver, the write-behind
+service, HTTP server and configured retained-payload server; this table is not a count of
 every running fiber. `monitor-mempool` runs only when the node is started
 with `-m` / `--with-monitoring`. The barrel also exports modules that are not running
 fibers: `operator-watchdog-policy` supplies pure watchdog decisions and status
@@ -82,10 +82,10 @@ configured block-or-time threshold is due.
   C --> SQ["state queue (L1)"]
   SQ --> CF["block-confirmation"]
   CF --> MG["merge"]
-  D["L1 deposit and withdrawal events"] --> HO["history owner (event-history runtime)"]
-  HO --> PL["projected ledger (hidden until header confirmation)"]
+  D["L1 deposit and withdrawal events"] --> FO["L1 follower driver"]
+  T["L1 tx orders"] --> FO
+  FO --> PL["projected ledger (hidden until header confirmation)"]
   PL --> C
-  T["L1 tx orders"] --> FO["L1 follower driver (forced orders)"]
   FO --> C
   RS["retention-sweeper"] --> PG[("PostgreSQL")]`}
 />

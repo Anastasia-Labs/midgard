@@ -144,10 +144,6 @@ export const transaction = (
         txHash,
         spentInputs: inputs,
         referenceInputs,
-        mintPolicyIds: [
-          ...new Set(Object.keys(mint).map((unit) => unit.slice(0, 56))),
-        ].sort(),
-        redeemers: [],
         transactionIndex: 0,
         transactionCbor: tx.to_cbor_hex(),
         blockPoint: { headerHash: hash("77"), slot: 100, blockNo: 100 },

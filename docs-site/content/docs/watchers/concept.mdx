@@ -15,10 +15,9 @@ complete the challenge before the applicable deadline.
 
 ## Runtime
 
-The package exposes `authority`, `start`, and `replay`. `start` runs the watcher
-until shutdown; `replay` catches up durable state through the same runtime and
-then closes it. Replay can drive proof workflows and is not an offline command.
-The separate authority protects the monotonic trusted head used for recovery.
+The package exposes `start` and `replay`. `start` runs the watcher until
+shutdown; `replay` catches up durable state through the same runtime and then
+closes it. Replay can drive proof workflows and is not an offline command.
 
 Use the
 [package README](https://github.com/Anastasia-Labs/midgard/blob/main/demo/midgard-watcher/README.md)
@@ -28,17 +27,16 @@ for proof workflow operation.
 
 ## Trust and recovery
 
-- The executable requires `acceptance` mode, `Preprod`, and `local_node` L1
-  authority, using the native chain-sync bridge. It pins finality depth and
-  pre-finality rollback depth to 30, and post-finality recovery depth to 2160.
-  The generic configuration parser also represents external providers, but the
-  current process launcher rejects that source mode.
+- The executable requires `acceptance` mode, `Preprod` (or `Custom` for an
+  isolated devnet) and the `local_node` L1 source: the watcher reads L1 only
+  through its own ChainSync follower on the Cardano node's socket, with the
+  node transport. Its finality depth equals the deployment profile's
+  confirmation depth.
 - Operator-local databases, MPF stores, and admin endpoints do not replace
   authenticated L1 and DA evidence.
-- Recovery authenticates durable state and checks freshness against an
-  independently protected trusted head before producing actionable results.
-- Transient provider disagreement quarantines observations; authenticated
-  canonical replacement follows bounded rollback and replay.
+- A rollback rewinds the follower's facts to the intersection and every
+  projection recomputes. A rollback deeper than k leaves the watcher up and
+  unready, with the `/readyz` reason `rollback_beyond_k`.
 - Verification binds the deployed transaction format, source roots, event
   placement, transition trace, and validation material. Deposits follow
   transactions in phase order, so same-block deposit spending is invalid.

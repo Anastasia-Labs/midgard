@@ -73,9 +73,9 @@ example `NonExistentWithdrawalUtxo` or `IncorrectWithdrawalOwner`. Payment happe
 separately, through [reserve and payout](/docs/operators/node/reserve-payout).
 
 Deposit and withdrawal discovery and deposit projection are not background
-fibers. The node's history owner (event-history runtime) materializes L1
-deposit and withdrawal events and projects each deposit once its inclusion time
-is due; see [background fibers](/docs/operators/node/background-fibers). The
+fibers. The node's L1 follower and its follower-change driver write L1 deposit
+and withdrawal events and project each deposit once its inclusion time is due;
+see [background fibers](/docs/operators/node/background-fibers). The
 `reconcile deposit-projected` command inspects the projection read-only.
 
 ## HTTP endpoints

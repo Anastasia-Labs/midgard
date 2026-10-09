@@ -179,12 +179,8 @@ it("permits measured profiles to be corrected before signing while binding the s
     first.intentDigest,
   );
 });
-it("rejects failover and invalid wallet seeds before spending", async () => {
+it("rejects invalid wallet seeds before spending", async () => {
   const value = await fixture();
-  value.env.L1_PROVIDER_FAILOVER = "remote";
-  await writeFile(value.config.envFile, value.envText());
-  await expect(loadStackConfig(value.path)).rejects.toThrow("no failover");
-  delete value.env.L1_PROVIDER_FAILOVER;
   value.env[value.config.wallets.user!.seedEnv] = "invalid wallet words";
   await writeFile(value.config.envFile, value.envText());
   await expect(loadStackConfig(value.path)).rejects.toThrow(
@@ -222,17 +218,6 @@ it("refuses duplicate committee keys, governed threshold violations and malforme
   await expect(
     configureStackCommittee(value.config, value.env),
   ).rejects.toThrow("Invalid DA owner configuration");
-});
-
-it("accepts L1_PROVIDER_FAILOVER written as off", async () => {
-  for (const off of ["false", "", " FALSE "]) {
-    const value = await fixture();
-    value.env.L1_PROVIDER_FAILOVER = off;
-    await writeFile(value.config.envFile, value.envText());
-    await expect(loadStackConfig(value.path)).resolves.toHaveProperty(
-      "intentDigest",
-    );
-  }
 });
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
