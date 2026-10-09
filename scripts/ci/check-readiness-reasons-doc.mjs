@@ -52,6 +52,8 @@ export const READINESS_MODULES = [
   "services/l1-follower.readiness.ts",
   "services/liveness-halt.ts",
   "services/intent-journal.refusals.ts",
+  "services/startup-waiting.ts",
+  "services/node-instance-lock.ts",
   "l1-operator-set/snapshot.ts",
 ];
 
