@@ -6,7 +6,6 @@ import { promisify } from "node:util";
 
 import { parse } from "dotenv";
 
-import { l1ProviderFailoverEnabled } from "../environment.js";
 import { checkStackEnvironment, stackIntentDigest } from "./preflight.js";
 
 export type StackConfig = {
@@ -275,11 +274,10 @@ export async function loadStackConfig(path: string) {
   if (
     env.NETWORK !== "Preprod" ||
     env.MIDGARD_DEPLOYMENT_PROFILE !== "preprod-testing" ||
-    l1ProviderFailoverEnabled(env.L1_PROVIDER_FAILOVER) ||
     env.RUN_GENESIS_ON_STARTUP !== "false"
   )
     throw new Error(
-      "Require Preprod with preprod-testing profile, no failover, and RUN_GENESIS_ON_STARTUP=false",
+      "Require Preprod with preprod-testing profile and RUN_GENESIS_ON_STARTUP=false",
     );
   for (const key of ["MIN_FEE_A", "MIN_FEE_B"])
     if (!/^[0-9]+$/.test(env[key] ?? ""))

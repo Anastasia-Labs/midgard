@@ -1,7 +1,7 @@
 /**
  * The working-ledger rebase run by the follower-change driver (its
  * recompute's `rebaseIfDue`, plan §7.3, N1, N3) on the node database, with
- * a modelled native MPF owner and no history owner:
+ * a modelled native MPF owner:
  *
  * - every failure the rebase can meet past the transient ones (the native
  *   move, the event check, the rejection record, the ledger encoding) is

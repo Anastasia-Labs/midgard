@@ -174,7 +174,8 @@ export const daBondAfterSubmitError = (
 
 /**
  * The production `submit`: send, then wait for exact confirmation. A failed
- * wait (a Kupo poll error aborts it) still names the submitted transaction.
+ * wait (a provider status error aborts it) still names the submitted
+ * transaction.
  */
 export const daBondSubmitAndConfirm =
   (

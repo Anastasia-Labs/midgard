@@ -957,11 +957,11 @@ jobs:
   # sequential writer, on SQLite and Postgres and once through the node
   # transport's frame client. After every operation the store and every
   # plugged projection must equal a fresh replay of the canonical chain.
-  # Every package that defines `test:fork-sim` runs here; role packages
-  # (C1, W1, N1) add their cases by declaring the script. A pull request runs it only when it touches one of
-  # its inputs (scripts/ci/fork-simulator-inputs.mjs derives them from the
-  # workspace); any other event always runs it. A skipped run leaves the job
-  # successful.
+  # Every package that defines `test:fork-sim` runs here; only
+  # midgard-l1-follower defines it. A pull request runs it only when it
+  # touches one of its inputs (scripts/ci/fork-simulator-inputs.mjs derives
+  # them from the workspace); any other event always runs it. A skipped run
+  # leaves the job successful.
   l1-fork-simulator:
     name: l1-fork-simulator
     runs-on: ubuntu-latest

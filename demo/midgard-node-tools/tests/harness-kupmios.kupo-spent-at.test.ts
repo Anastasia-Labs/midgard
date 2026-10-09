@@ -37,9 +37,9 @@ import {
  * - `e1e70271`, a five-input key-wallet sweep with no redeemers, where Kupo's
  *   input numbering shows with nothing else in the way.
  *
- * The read must accept those answers, surface neither Kupo value, and leave the
- * redeemer to the transaction itself; and it must still refuse a `spent_at` that
- * is not Kupo's schema, at the check that names it. The refusals mutate a
+ * The read must accept those answers and surface neither Kupo value; and it
+ * must still refuse a `spent_at` that is not Kupo's schema, at the check that
+ * names it. The refusals mutate a
  * recording rather than invent an answer: each changes one field of what Kupo
  * really sent.
  */
@@ -196,7 +196,7 @@ describe("Kupo spent_at, read off recorded preprod spends", () => {
     ).resolves.toBeNull();
   });
 
-  it("finds every spend redeemer on the spending transaction, at the ledger's pointer", async () => {
+  it("finds the spending transaction and its inputs in the ledger's order", async () => {
     const fetchImpl = recordedFetch(removal);
     const spend = await fetchKupoSpend({
       kupoUrl: KUPO_URL,
@@ -221,23 +221,6 @@ describe("Kupo spent_at, read off recorded preprod spends", () => {
       blockNo: 5_220_548,
     });
     expect(observed.spentInputs).toStrictEqual(ledgerInputs(removal));
-    const spendRedeemers = observed.redeemers.filter(
-      ({ purpose }) => purpose === "spend",
-    );
-    expect(spendRedeemers).toStrictEqual(
-      [...ledgerSpendRedeemers(removal)].map(([index, redeemer]) => ({
-        purpose: "spend",
-        index,
-        redeemer,
-      })),
-    );
-    // And on no spent input does the transaction agree with Kupo.
-    observed.spentInputs!.forEach((input, ledgerIndex) => {
-      const onTransaction =
-        spendRedeemers.find(({ index }) => index === ledgerIndex)?.redeemer ??
-        null;
-      expect(spentAtOf(removal, input).redeemer).not.toBe(onTransaction);
-    });
   });
 
   it.each<[string, (spentAt: Record<string, unknown>) => unknown]>([

@@ -27,8 +27,8 @@ need several hours to download and synchronize the Preprod snapshots.
 Copy `config/preprod-stack.example.json` and replace its absolute paths. This
 file contains names of secret environment variables, never their values. It
 uses the existing operator stack's `.env`, provider data, deployment directory
-and Docker volumes. Set `NETWORK=Preprod`, `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing`, loopback Kupo
-and Ogmios URLs for the history owner, no failover, `RUN_GENESIS_ON_STARTUP=false`, and the exact L2
+and Docker volumes. Set `NETWORK=Preprod`, `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing`,
+`RUN_GENESIS_ON_STARTUP=false`, and the exact L2
 `MIN_FEE_A`/`MIN_FEE_B`. Keep the operator deployment profile settings from
 `demo/midgard-node/.env.example`. Define all wallet and DA secret variables named
 by the stack configuration in that `.env`. The stack-only secrets (user,
@@ -116,7 +116,7 @@ replace its illustrative values with release artifacts before running.
 
 `--check` runs every check that needs no build, network or service, and
 starts nothing and spends nothing: the configuration fields and absolute paths,
-the node environment (network, profile, Kupmios, failover, genesis, exact fees,
+the node environment (network, profile, genesis, exact fees,
 the Postgres host port and the operator and DA port collisions), the presence
 of every named secret, wallet mnemonics and derived addresses, the committee
 keys and threshold, distinct persistent transport identities, readable watcher

@@ -17,7 +17,6 @@ export {
   type L1ChainPoint,
   normalizeKupoHttpUrl,
   normalizeOgmiosWebSocketUrl,
-  type ObservedL1Redeemer,
   type ObservedL1Transaction,
   type ObservedL1TransactionAtPoint,
   type WebSocketFactory,

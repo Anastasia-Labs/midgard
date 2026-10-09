@@ -2,8 +2,8 @@
  * The landed-block rebase test's fixture (plan §7.3, N3): a frontier
  * ledger and one processed foreign block on it, a modelled native MPF owner
  * and its faults, one node process's globals, one rebase attempt as the
- * follower-change driver runs it (`rebaseIfDue` of its recompute, with no
- * history owner) and what the node shows after it.
+ * follower-change driver runs it (`rebaseIfDue` of its recompute) and what
+ * the node shows after it.
  */
 import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";

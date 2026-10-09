@@ -15,8 +15,7 @@ no node starts only the L1 services from it.
 
 The overlay still starts Ogmios and Kupo. They serve the node-tools devnet
 harness (and its stop-Kupo and stop-Ogmios drills) and the fault-proofs prover
-CLI (`--ogmios-url`, `--kupo-url`); the node reads and submits only through the
-cardano-node socket.
+CLI (`--ogmios-url`, `--kupo-url`); no role reads them.
 
 ## Services
 
@@ -29,16 +28,6 @@ cardano-node socket.
 | `cardano-node-ogmios`   | `cardanosolutions/ogmios:v7.0.0` (digest-pinned)           | Harness and prover only. WebSocket/HTTP bridge to the node, started with `--include-transaction-cbor`. Listens on `1337`; healthy via `ogmios health-check`.                          |
 | `kupo`                  | `cardanosolutions/kupo:v2.11.0` (digest-pinned)            | Harness and prover only. Chain indexer over Ogmios with `--match "*" --since origin`, **no** `--prune-utxo`. Listens on `1442`; healthy only once `/health` returns `200`.            |
 
-<Callout type="warn" title="Kupo must not prune">
-  The event-history owner reads where outputs were created and spent, which a
-  pruning index deletes. The official Kupo snapshot the bootstrap restores was
-  itself built pruned, so outputs spent before its snapshot point are absent.
-  That is harmless for a deployment you initialise after bring-up. To join a
-  deployment whose L1 history predates the snapshot, set
-  `KUPO_BOOTSTRAP_MODE=origin` before the first start so Kupo syncs from origin
-  instead.
-</Callout>
-
 ## Startup order
 
 <Mermaid
@@ -49,7 +38,6 @@ cardano-node socket.
   C -->|healthy: socket present| F[midgard-node]
   C -->|healthy: socket present| D[cardano-node-ogmios: port 1337]
   D -->|healthy| E[kupo: port 1442]
-  E -->|healthy: /health 200, event-history owner| F
 `}
 />
 
@@ -76,8 +64,8 @@ Before starting, have a [checkout of the repository](/docs/getting-started/local
 and Docker with the Compose v2 plugin. Plan for tens of gigabytes of disk under
 `demo/midgard-node/cardano` and expect the first start to spend a while
 downloading; later starts skip both bootstraps when data is already present. A
-socket or reachable indexer does not prove synchronization; verify that node
-and indexers have caught up before initializing Midgard.
+socket does not prove synchronization; verify that the node has caught up
+before initializing Midgard.
 
 <Steps>
 
@@ -92,20 +80,19 @@ cp .env.example .env
 </Step>
 
 <Step>
-Start only the L1 services. The bootstraps run to completion first, then the
-long-running services start in dependency order:
+Start only the L1 node. The bootstrap and the config export run to completion
+first, then the node starts:
 
 ```sh
 docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
-  up -d cardano-node-ogmios kupo
+  up -d cardano-node cardano-config-export
 ```
 
 </Step>
 
 <Step>
-Wait for `cardano-node`, `kupo` and `cardano-node-ogmios` to report healthy,
-then confirm the node's L1 route: the transport's readiness and the ledger
-tip against wall time.
+Wait for `cardano-node` to report healthy, then confirm the node's L1 route:
+the transport's readiness and the ledger tip against wall time.
 
 ```sh
 docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml ps
@@ -115,9 +102,7 @@ node dist/index.js l1-provider-preflight --json
 The node reads `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
 `L1_NODE_TRANSPORT_BINARY_PATH`; the overlay sets them for the node container
 (`/ipc/node.socket`, `/cardano-config/config.json` and the image's transport
-binary). Ogmios is reachable on `127.0.0.1:1337` and Kupo on `127.0.0.1:1442`
-from the host; inside the compose network they are `cardano-node-ogmios:1337`
-and `kupo:1442`.
+binary).
 
 </Step>
 

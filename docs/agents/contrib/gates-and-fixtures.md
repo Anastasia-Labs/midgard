@@ -36,8 +36,7 @@ It is a reference fixture, not the production finality policy.
 
 Node database cleanup uses the migration table inventory, restores migration
 seed rows, attests the exact disposable shard and refuses uncatalogued public
-tables. Test names are validated before identifier interpolation. The shared
-history-owner fixture uses this reset instead of its former table list.
+tables. Test names are validated before identifier interpolation.
 Reset only this invocation's disposable database. [runtime: resetApplicationTables]
 
 For large witnesses, use `measure --file FILE --file FILE --maximum-bytes N`.

@@ -47,7 +47,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
     await runConfirmationJournalInsertionRace("after_snapshot_guard");
   }, 240_000);
 
-  it("leaves a signed commit intent to the history owner when confirmation reports stale unconfirmed recovery", async () => {
+  it("leaves a signed commit intent untouched when confirmation reports stale unconfirmed recovery", async () => {
     await resetActiveRuntimePaths();
     await initializeNodeRuntime();
     const fixture = await makeFixture();

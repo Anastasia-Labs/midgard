@@ -2,16 +2,23 @@
 // Every reason the node can put in `/readyz` must have operator text in the
 // reasons doc.
 //
-// The reasons are derived from the node's source rather than kept in a list
-// here. A readiness module is one that declares or reports a hold
-// (`DriverHold`, `IntentPredicateWait`), raises a liveness reason (`raiseLivenessIncident(`), or is
-// one of the modules that assemble `/readyz` (READINESS_MODULES). In those
-// modules a reason is:
+// The reasons are derived from the node's and the L1 follower package's
+// source rather than kept in a list here. A readiness module is one that
+// declares or reports a hold (`DriverHold`, `IntentPredicateWait`), raises a
+// liveness reason (`raiseLivenessIncident(`), or is one of the modules that
+// assemble `/readyz` (READINESS_MODULES). In those modules a reason is:
 //   - a constant whose value is a snake_case name, `const NAME = "a_b"`, unless
 //     the constant names something other than a reason (NON_REASON_CONSTANT:
 //     a liveness source, a due-work kind, a table, a key);
 //   - the leading snake_case name of a string pushed onto `reasons`, returned
-//     or set as `reason:` (`reasons.push(\`queue_depth_exceeded:${n}\`)`).
+//     or set as `reason:` (`reasons.push(\`queue_depth_exceeded:${n}\`)`);
+//   - an imported constant whose value is a snake_case name, resolved in the
+//     node module or, for `@al-ft/midgard-l1-follower` imports, in the
+//     follower package (`wallet_seed_pending` reaches a hold this way).
+// The node also forwards the follower's `FollowStatus.readiness`: every member
+// of the follower's FOLLOWER_READINESS_TYPE union is a reason, whether a
+// `typeof NAME` constant, a string literal or another string-literal union
+// (the interventions).
 // NOT_READINESS lists the names this finds that are not reasons.
 // A reason is documented when the reasons section of the doc names it in
 // backticks, alone or as the prefix of a parameterised form (`name:<n>`).
@@ -19,12 +26,16 @@
 // Run from anywhere: `node scripts/ci/check-readiness-reasons-doc.mjs`.
 // Exit 0 when every reason is documented, 1 otherwise.
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const NODE_SRC = "demo/midgard-node/src";
+export const FOLLOWER_SRC = "demo/midgard-l1-follower/src";
+/** The follower's type of every reason `FollowStatus.readiness` can carry. */
+export const FOLLOWER_READINESS_TYPE = "FollowReadinessReason";
+const FOLLOWER_PACKAGE = /^@al-ft\/midgard-l1-follower(?:\/|$)/u;
 export const DOC =
   ".agents/skills/running-the-devnet/references/endpoints-and-logs.md";
 export const DOC_SECTION = "## Node `/readyz` reasons";
@@ -66,6 +77,9 @@ const REPORTED = new RegExp(
   "gu",
 );
 
+const IMPORT = /\bimport\s+(?:type\s+)?\{([^}]*)\}\s*from\s*"([^"]+)"/gu;
+const IMPORTED_CONSTANT = /^(?:type\s+)?([A-Z][A-Z0-9_]*)(?:\s+as\s+\w+)?$/u;
+
 const tsFiles = (dir) =>
   readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -77,11 +91,88 @@ const isReadinessModule = (rel, text) =>
   READINESS_MODULES.includes(rel) ||
   /\bDriverHold\b|\bIntentPredicateWait\b|raiseLivenessIncident\(/u.test(text);
 
-/** The reasons the node source can report, each with the modules naming it. */
+/** The snake_case constants a module declares, by name. */
+const constantsOf = (text) =>
+  new Map([...text.matchAll(CONSTANT)].map(([, name, value]) => [name, value]));
+
+/** The snake_case constants of every module under `dir`, by name. */
+const constantsUnder = (dir) => {
+  const constants = new Map();
+  for (const path of tsFiles(dir))
+    for (const [name, value] of constantsOf(readFileSync(path, "utf8"))) {
+      if (constants.has(name) && constants.get(name) !== value)
+        throw new Error(`${dir}: constant ${name} has two values`);
+      constants.set(name, value);
+    }
+  return constants;
+};
+
+/** The members of `type NAME = A | B | ...;` in `text`, or undefined. */
+const unionMembers = (text, name) => {
+  const match = new RegExp(`\\btype\\s+${name}\\s*=([^;]*);`, "u").exec(text);
+  if (match === null) return undefined;
+  return match[1]
+    .split("|")
+    .map((member) => member.trim())
+    .filter((member) => member !== "" && member !== "never");
+};
+
+/**
+ * The reasons the follower's FOLLOWER_READINESS_TYPE admits: each member is
+ * a `typeof NAME` constant, a string literal, or another union declared in
+ * the follower package. A member that resolves to none of these fails, by
+ * name.
+ */
+export const followerReadinessReasons = (root = ROOT) => {
+  const src = join(root, FOLLOWER_SRC);
+  const texts = tsFiles(src).map((path) => [
+    relative(src, path),
+    readFileSync(path, "utf8"),
+  ]);
+  const constants = constantsUnder(src);
+  const reasons = new Map();
+  const add = (reason, rel) =>
+    reasons.set(reason, [
+      ...(reasons.get(reason) ?? []),
+      `${FOLLOWER_SRC}/${rel}`,
+    ]);
+  const resolve = (type, seen) => {
+    if (seen.has(type)) return;
+    seen.add(type);
+    for (const [rel, text] of texts) {
+      const members = unionMembers(text, type);
+      if (members === undefined) continue;
+      for (const member of members) {
+        const literal = /^"([^"]*)"$/u.exec(member);
+        const typeOf = /^typeof\s+([A-Z][A-Z0-9_]*)$/u.exec(member);
+        if (literal !== null) add(literal[1], rel);
+        else if (typeOf !== null && constants.has(typeOf[1]))
+          add(constants.get(typeOf[1]), rel);
+        else if (/^[A-Z]\w*$/u.test(member)) resolve(member, seen);
+        else throw new Error(`${FOLLOWER_SRC}: ${type} member ${member}`);
+      }
+      return;
+    }
+    throw new Error(`${FOLLOWER_SRC}: no type ${type}`);
+  };
+  resolve(FOLLOWER_READINESS_TYPE, new Set()); // a renamed type fails here, by name
+  return reasons;
+};
+
+/** The reasons the node can report, each with the modules naming it. */
 export const nodeReadinessReasons = (root = ROOT) => {
   const src = join(root, NODE_SRC);
   for (const rel of READINESS_MODULES) statSync(join(src, rel)); // a moved readiness module fails here, by name
-  const reasons = new Map();
+  const followerConstants = constantsUnder(join(root, FOLLOWER_SRC));
+  const importedConstant = (rel, spec, name) => {
+    if (FOLLOWER_PACKAGE.test(spec)) return followerConstants.get(name);
+    if (!spec.startsWith(".")) return undefined;
+    const target = join(dirname(join(src, rel)), spec.replace(/\.js$/u, ".ts"));
+    return existsSync(target)
+      ? constantsOf(readFileSync(target, "utf8")).get(name)
+      : undefined;
+  };
+  const reasons = followerReadinessReasons(root);
   for (const path of tsFiles(src)) {
     const rel = relative(src, path);
     const text = readFileSync(path, "utf8");
@@ -89,9 +180,16 @@ export const nodeReadinessReasons = (root = ROOT) => {
     const add = (reason) =>
       NOT_READINESS.has(reason) ||
       reasons.set(reason, [...(reasons.get(reason) ?? []), rel]);
-    for (const [, name, value] of text.matchAll(CONSTANT))
+    for (const [name, value] of constantsOf(text))
       if (!NON_REASON_CONSTANT.test(name)) add(value);
     for (const [, value] of text.matchAll(REPORTED)) add(value);
+    for (const [, names, spec] of text.matchAll(IMPORT))
+      for (const entry of names.split(",")) {
+        const name = IMPORTED_CONSTANT.exec(entry.trim())?.[1];
+        if (name === undefined || NON_REASON_CONSTANT.test(name)) continue;
+        const value = importedConstant(rel, spec, name);
+        if (value !== undefined) add(value);
+      }
   }
   return reasons;
 };

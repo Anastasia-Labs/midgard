@@ -41,12 +41,12 @@ immutable across these explicit recovery paths.
 
 The L1 follower's change driver ingests the follower's event projection at one
 follower view: it inserts new events into `deposits_utxos` (and
-`withdrawal_utxos`), each with the follower admission identity, under the
-history owner's producer permit. A row is canonical while the follower's
-never-reuse key set `l1_event_keys` holds its identity; a follower rewind past
-the admission deletes the key, which orphans the row, and the driver holds the
-node unready (`l1_events_orphan_recovery`) until the history owner's recovery
-repairs it and re-ingests. Ingestion never writes a row whose identity differs
+`withdrawal_utxos`), each with the follower admission identity, in the
+transaction that re-checks the follower view. A row is canonical while the
+follower's never-reuse key set `l1_event_keys` holds its identity; a follower
+rewind past the admission deletes the key, which orphans the row, and the
+driver holds the node unready (`l1_events_orphan_recovery`) until its
+recompute repairs it and re-ingests. Ingestion never writes a row whose identity differs
 from the live row with the same `event_id`.
 
 The commit end time is bounded by min(journal coverage, follower ingestion):
