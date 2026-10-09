@@ -1,27 +1,25 @@
 import { computeHash32, decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 
 import {
-  advanceMissingNativeScriptTxGrammarCheckpoint,
-  advanceMissingNativeScriptTxSemanticCheckpoint,
-  encodeMissingNativeScriptTxGrammarCheckpoint,
-  encodeMissingNativeScriptTxSemanticCheckpoint,
-  initialMissingNativeScriptTxGrammarCheckpoint,
-  initialMissingNativeScriptTxSemanticCheckpoint,
-  type MissingNativeScriptTxGrammarCheckpoint,
-  type MissingNativeScriptTxSemanticCheckpoint,
-} from "../missing-native-script-tx/staged-walk.js";
+  advanceFieldGrammarCheckpoint,
+  advanceFieldSemanticCheckpoint,
+  encodeFieldGrammarCheckpoint,
+  encodeFieldSemanticCheckpoint,
+  type FieldGrammarCheckpoint,
+  type FieldSemanticCheckpoint,
+  initialFieldGrammarCheckpoint,
+  initialFieldSemanticCheckpoint,
+} from "../staged-field-walk/index.js";
 
 const GRAMMAR_DOMAIN = Buffer.from("MidgardFieldGrammarCheckpointV1", "ascii");
 const WALK_DOMAIN = Buffer.from("MidgardFieldWalkCheckpointV1", "ascii");
-export type MissingRedeemerGrammarCheckpoint =
-  MissingNativeScriptTxGrammarCheckpoint & { readonly fieldIndex: 8 };
-export type MissingRedeemerWalkCheckpoint =
-  MissingNativeScriptTxSemanticCheckpoint & { readonly fieldIndex: 8 };
-const to8 = <
-  T extends
-    | MissingNativeScriptTxGrammarCheckpoint
-    | MissingNativeScriptTxSemanticCheckpoint,
->(
+export type MissingRedeemerGrammarCheckpoint = FieldGrammarCheckpoint & {
+  readonly fieldIndex: 8;
+};
+export type MissingRedeemerWalkCheckpoint = FieldSemanticCheckpoint & {
+  readonly fieldIndex: 8;
+};
+const to8 = <T extends FieldGrammarCheckpoint | FieldSemanticCheckpoint>(
   value: T,
 ) => ({ ...value, fieldIndex: 8 }) as T & { fieldIndex: 8 };
 const to6 = <
@@ -35,10 +33,10 @@ const rewrite = (encoded: Buffer): Buffer => {
 };
 export const encodeMissingRedeemerGrammarCheckpoint = (
   value: MissingRedeemerGrammarCheckpoint,
-): Buffer => rewrite(encodeMissingNativeScriptTxGrammarCheckpoint(to6(value)));
+): Buffer => rewrite(encodeFieldGrammarCheckpoint(to6(value)));
 export const encodeMissingRedeemerWalkCheckpoint = (
   value: MissingRedeemerWalkCheckpoint,
-): Buffer => rewrite(encodeMissingNativeScriptTxSemanticCheckpoint(to6(value)));
+): Buffer => rewrite(encodeFieldSemanticCheckpoint(to6(value)));
 export const hashMissingRedeemerGrammarCheckpoint = (
   value: MissingRedeemerGrammarCheckpoint,
 ): string =>
@@ -78,7 +76,7 @@ export const planMissingRedeemerStagedWalk = ({
     Buffer.from(fieldPreimageCbor, "hex"),
   ).map(Buffer.from);
   let grammarCursor = to8(
-    initialMissingNativeScriptTxGrammarCheckpoint({
+    initialFieldGrammarCheckpoint({
       txId: transactionId,
       items,
     }),
@@ -87,7 +85,7 @@ export const planMissingRedeemerStagedWalk = ({
   const grammar: MissingRedeemerGrammarCheckpoint[] = [];
   do {
     grammarCursor = to8(
-      advanceMissingNativeScriptTxGrammarCheckpoint({
+      advanceFieldGrammarCheckpoint({
         checkpoint: to6(grammarCursor),
         items,
         budget: itemBudget,
@@ -96,7 +94,7 @@ export const planMissingRedeemerStagedWalk = ({
     grammar.push(grammarCursor);
   } while (grammarCursor.nextItemIndex < items.length);
   const initialWalk = to8(
-    initialMissingNativeScriptTxSemanticCheckpoint({
+    initialFieldSemanticCheckpoint({
       grammar: to6(grammarCursor),
       items,
     }),
@@ -105,7 +103,7 @@ export const planMissingRedeemerStagedWalk = ({
   let walkCursor = initialWalk;
   while (walkCursor.nextItemIndex < items.length) {
     walkCursor = to8(
-      advanceMissingNativeScriptTxSemanticCheckpoint({
+      advanceFieldSemanticCheckpoint({
         checkpoint: to6(walkCursor),
         txId: transactionId,
         items,

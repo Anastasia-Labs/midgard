@@ -10,7 +10,6 @@ import "../transition-trace/fetch.js";
 import "../transition-trace/l1-events.js";
 import "./classification.js";
 import "./complete-replay.js";
-import "./historical-native-script-corpus.js";
 import "./release-finality-policy.js";
 import "./replay-requirements.js";
 import "./header-classifier.authenticated-state-queue-observation-digest.js";

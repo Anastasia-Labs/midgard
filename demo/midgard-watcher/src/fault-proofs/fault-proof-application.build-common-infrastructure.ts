@@ -30,7 +30,6 @@ import {
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofInfrastructureAuthority,
   type WatcherFaultProofL1,
-  type WatcherHistoricalNativeScriptAuthority,
 } from "./fault-proof-application.production-dependencies.js";
 
 /**
@@ -72,7 +71,6 @@ export const buildCommonInfrastructure = async ({
   invocation,
   infrastructure,
   deploymentIdentity,
-  historicalNativeScriptAuthority,
   replayContexts,
   validationChallenge,
   l1,
@@ -84,7 +82,6 @@ export const buildCommonInfrastructure = async ({
   readonly l1: WatcherFaultProofL1;
   readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  readonly historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthority;
   readonly replayContexts: ReadonlyMap<string, CompleteCanonicalReplayContext>;
   readonly validationChallenge: FamilyValidationChallengePort;
   readonly dependencies: WatcherFaultProofApplicationDependencies;
@@ -140,10 +137,6 @@ export const buildCommonInfrastructure = async ({
         }),
       ),
       stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator(),
-      historicalNativeScriptAuthority: Object.freeze({
-        ...historicalNativeScriptAuthority,
-        l1SourceRoster: await historicalNativeScriptAuthority.l1SourceRoster,
-      }),
       ...(replayContext === undefined ? {} : { replayContext }),
       validationChallenge,
     }),

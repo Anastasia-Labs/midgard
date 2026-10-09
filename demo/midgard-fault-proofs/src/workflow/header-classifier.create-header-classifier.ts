@@ -31,25 +31,15 @@ import {
   type UnsealedHeaderDecision,
 } from "./header-classifier.authenticated-state-queue-observation-digest.js";
 import {
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptHistorySource,
-  requireHistoricalNativeScriptHistoryAuthority,
-} from "./historical-native-script-corpus.js";
-import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   type FraudProofReleaseFinalityAuthority,
   validateVerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy.js";
-import {
-  HISTORICAL_CORPUS_REPLAY_CATEGORIES,
-  launchScopeRequires,
-} from "./replay-requirements.js";
 
 export const createHeaderClassifier = async ({
   deploymentFingerprint,
   replayer,
   releaseFinalityAuthority,
-  historicalReplayAuthority,
   settlementAuthority,
   transitionTraceEventAuthority,
 }: {
@@ -58,10 +48,6 @@ export const createHeaderClassifier = async ({
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly settlementAuthority?: CrossBlockSettlementAuthority;
   readonly transitionTraceEventAuthority?: TransitionTraceEventAuthority;
-  readonly historicalReplayAuthority?: Readonly<{
-    checkpointStore: HistoricalNativeScriptCheckpointStore;
-    historySource: HistoricalNativeScriptHistorySource;
-  }>;
 }): Promise<HeaderClassifier> => {
   const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
@@ -96,21 +82,6 @@ export const createHeaderClassifier = async ({
       normalizedDeploymentFingerprint
     )
       throw new Error("cross-block settlement authority changed deployment");
-  }
-  const requiresHistoricalReplay = launchScopeRequires(
-    replayer.launchScope,
-    HISTORICAL_CORPUS_REPLAY_CATEGORIES,
-  );
-  if (requiresHistoricalReplay && historicalReplayAuthority === undefined) {
-    throw new Error(
-      "complete replay requires an admitted historical replay authority",
-    );
-  }
-  if (historicalReplayAuthority !== undefined) {
-    requireHistoricalNativeScriptHistoryAuthority({
-      deploymentFingerprint: normalizedDeploymentFingerprint,
-      ...historicalReplayAuthority,
-    });
   }
   if (
     releaseFinalityAuthority.authorityVersion !==
@@ -147,9 +118,6 @@ export const createHeaderClassifier = async ({
       // Classification authorizes reversible fault-proof actions on inclusion.
       confirmationDepth: 1,
       ...(settlementAuthority === undefined ? {} : { settlementAuthority }),
-      ...(historicalReplayAuthority === undefined
-        ? {}
-        : { historicalReplayAuthority }),
     }),
   );
   return classifier;

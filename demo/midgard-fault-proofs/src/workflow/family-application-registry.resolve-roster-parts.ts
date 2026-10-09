@@ -4,13 +4,11 @@ import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
 import {
   type FamilyApplicationRequirement,
   type FamilyCommonInfrastructure,
-  type FamilyHistoricalNativeScriptAuthority,
   type FamilyResolvedReferenceScripts,
   type FamilyRosterDefinition,
   familyStepRole,
 } from "./family-application.js";
 import {
-  type FamilyCategory,
   familyStepContractNames,
   type FaultProofWitnessRole,
   type ManifestBoundFamilyWorkflow,
@@ -119,74 +117,32 @@ export const suppliedReplayContext = (
     : { replayContext: infrastructure.replayContext };
 
 /**
- * The historical native-script authority, or a refusal naming the family
- * without one. The shared loop refuses first; this is the guard `bindConfig`
- * keeps for a caller that reaches it another way.
- */
-const requiredHistoricalNativeScriptAuthority = (
-  category: FamilyCategory,
-  infrastructure: FamilyCommonInfrastructure,
-): FamilyHistoricalNativeScriptAuthority => {
-  if (infrastructure.historicalNativeScriptAuthority === undefined) {
-    throw new Error(
-      `${category} reconstructs historical native scripts, which this invocation carries no authority for`,
-    );
-  }
-  return infrastructure.historicalNativeScriptAuthority;
-};
-
-/**
- * The two historical authority fields shared by all historical families.
- */
-const historicalNativeScriptFields = (
-  authority: FamilyHistoricalNativeScriptAuthority,
-) =>
-  ({
-    historicalNativeScriptCheckpointStore: authority.checkpointStore,
-    historicalNativeScriptHistorySource: authority.historySource,
-  }) as const;
-
-/**
- * The infrastructure a cursor family requires, with the missing-native-script
- * transaction family's additional L1 source roster explicitly named.
+ * The infrastructure a cursor family requires.
  */
 export type CursorFamilyRequirements = Readonly<{
   requires: readonly FamilyApplicationRequirement[];
-  /**
-   * Only missingNativeScriptTx reads the authority's L1 source roster.
-   */
-  includeMissingNativeScriptTxL1Roster?: true;
 }>;
 
 /**
  * The config fields a cursor family reads from the infrastructure its record
- * requires. Every historical family reads the same two authority fields.
+ * requires: the replay context, and the retained-DA sources a family that
+ * fetches further blocks' payloads reads. The shared loop refuses a required
+ * part that is absent before `bindConfig` runs, except on a
+ * reconciliation-only invocation, which never reaches the evidence pipeline.
  */
 export const requiredInfrastructureFields = (
-  category: FamilyCategory,
   family: CursorFamilyRequirements,
 ): ((
   infrastructure: FamilyCommonInfrastructure,
 ) => Readonly<Record<string, unknown>>) => {
-  const requiresAuthority = family.requires.includes(
-    "historicalNativeScriptAuthority",
-  );
-  return (infrastructure) => {
-    const authority = requiresAuthority
-      ? requiredHistoricalNativeScriptAuthority(category, infrastructure)
-      : undefined;
-    return Object.freeze({
+  const requiresSources = family.requires.includes("retainedDaSources");
+  return (infrastructure) =>
+    Object.freeze({
       ...optionalReplayContext(family.requires, infrastructure),
-      ...(authority === undefined
-        ? {}
-        : {
-            ...historicalNativeScriptFields(authority),
-            ...(family.includeMissingNativeScriptTxL1Roster
-              ? { historicalNativeScriptL1Roster: authority.l1SourceRoster }
-              : {}),
-          }),
+      ...(requiresSources && infrastructure.retainedDaSources !== undefined
+        ? { retainedDaSources: infrastructure.retainedDaSources }
+        : {}),
     });
-  };
 };
 
 /**

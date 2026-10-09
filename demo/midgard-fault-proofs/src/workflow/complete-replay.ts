@@ -59,11 +59,10 @@ import "./classification.js";
 import "./detection-subject.js";
 import "./fabricated-deposit-evidence.js";
 import "./fabricated-withdrawal-evidence.js";
-import "./historical-native-script-corpus.js";
 import "./replay-prerequisite.js";
 import "./complete-replay.replay-context-identity.js";
 import "./complete-replay.admit-complete-canonical-replay-predecessor.js";
-import "./complete-replay.detect-missing-native-script-transactions.js";
+import "./complete-replay.detect-accepted-transaction-faults.js";
 import "./complete-replay.detect-min-ada.js";
 import "./complete-replay.detect-double-withdraws.js";
 import "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
@@ -105,11 +104,9 @@ export {
 export {
   CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
-  createMissingNativeScriptUtxoCompleteCanonicalReplay,
   DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
   INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
-  MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY,
   MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
   NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
@@ -119,21 +116,17 @@ export {
   ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "./complete-replay.detect-double-withdraws.js";
 export {
-  admitCompleteCanonicalReplayHistoricalCorpus,
   COMPLETE_CANONICAL_REPLAY,
-  COMPLETE_CANONICAL_REPLAY_HISTORICAL_CORPUS,
   COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
   type CompleteCanonicalReplay,
   type CompleteCanonicalReplayContext,
   type CompleteCanonicalReplayContextIdentity,
   type CompleteCanonicalReplayDecision,
-  type CompleteCanonicalReplayHistoricalCorpus,
   type CompleteCanonicalReplayPredecessor,
 } from "./complete-replay.replay-context-identity.js";
 export {
   createFabricatedDepositCompleteCanonicalReplay,
   createFabricatedWithdrawalCompleteCanonicalReplay,
-  createMinAdaCompleteCanonicalReplayFromHistoricalCorpus,
   CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
   EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
@@ -146,7 +139,6 @@ export {
   MIN_ADA_COMPLETE_CANONICAL_REPLAY,
   MIN_FEE_COMPLETE_CANONICAL_REPLAY,
   MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
-  MISSING_NATIVE_SCRIPT_UTXO_COMPLETE_CANONICAL_REPLAY,
   NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,

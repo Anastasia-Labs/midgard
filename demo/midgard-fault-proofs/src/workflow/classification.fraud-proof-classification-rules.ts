@@ -12,8 +12,6 @@ import {
   MIN_ADA_VIOLATION_ID,
   MIN_FEE_VIOLATION_ID,
   MINT_AUTHORIZATION_VIOLATION_ID,
-  MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID,
-  MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID,
   MISSING_SIGNATURE_VIOLATION_ID,
   NATIVE_SCRIPT_DECODING_VIOLATION_ID,
   NATIVE_SCRIPT_INVALID_VIOLATION_ID,
@@ -127,10 +125,6 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
     ],
   },
   {
-    category: "missingNativeScriptTx",
-    violationIds: [MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID],
-  },
-  {
     category: "withdrawnReferenceInput",
     violationIds: [WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID],
   },
@@ -191,10 +185,6 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   {
     category: "networkId",
     violationIds: [NETWORK_ID_VIOLATION_ID, "network-id-wrongful-rejection"],
-  },
-  {
-    category: "missingNativeScriptUtxo",
-    violationIds: [MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID],
   },
   {
     category: "nativeScriptInvalid",

@@ -1,5 +1,5 @@
 import { encodeProofThreadForcedSourceKey } from "@al-ft/midgard-sdk";
-import { MIN_ADA_VIOLATION_ID, type VerdictSubject } from "@al-ft/midgard-sdk";
+import { type VerdictSubject } from "@al-ft/midgard-sdk";
 
 import { detectCrossBlockDuplicateEvents } from "../cross-block-duplicate-event/replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -17,7 +17,7 @@ import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../outpu
 import { detectProtectedOutputSignerMissingCompleteReplay } from "../protected-output-signer-missing/protected-output-signer-missing.js";
 import { protectedOutputSignerEvidenceIdentity } from "../protected-output-signer-missing/workflow.js";
 import {
-  deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus,
+  deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
   resolvedOutputEvidenceIdentity,
 } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
@@ -27,6 +27,10 @@ import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
 import { completeCanonicalReplayPredecessorEvidence } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import {
+  detectL2TxMistags,
+  detectMinFees,
+} from "./complete-replay.detect-accepted-transaction-faults.js";
 import {
   completeReplayer,
   detectDoubleWithdraws,
@@ -39,14 +43,7 @@ import {
   detectMinAda,
   detectNativeScriptInvalid,
 } from "./complete-replay.detect-min-ada.js";
-import {
-  detectL2TxMistags,
-  detectMinFees,
-} from "./complete-replay.detect-missing-native-script-transactions.js";
-import {
-  type CompleteCanonicalReplay,
-  requireReplayHistoricalCorpus,
-} from "./complete-replay.replay-context-identity.js";
+import { type CompleteCanonicalReplay } from "./complete-replay.replay-context-identity.js";
 import { subjectOf, verdictDetectionSubject } from "./detection-subject.js";
 import {
   type FabricatedDepositEvidenceAuthority,
@@ -56,22 +53,6 @@ import {
   type FabricatedWithdrawalEvidenceAuthority,
   requireFabricatedWithdrawalEvidenceAuthority,
 } from "./fabricated-withdrawal-evidence.js";
-import {
-  detectMinAdaUtxoFromHistoricalCorpus,
-  detectMissingNativeScriptUtxoFromHistoricalCorpus,
-  type HistoricalNativeScriptCorpus,
-} from "./historical-native-script-corpus.js";
-
-/** Resolves the admitted history for each challenged header independently. */
-export const MISSING_NATIVE_SCRIPT_UTXO_COMPLETE_CANONICAL_REPLAY =
-  completeReplayer(
-    ["missingNativeScriptUtxo"],
-    async (evidence, context) =>
-      await detectMissingNativeScriptUtxoFromHistoricalCorpus({
-        evidence,
-        corpus: requireReplayHistoricalCorpus({ evidence, context }),
-      }),
-  );
 
 /** Complete Ed25519 verification of every committed address witness. */
 export const INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
@@ -166,21 +147,6 @@ export const MIN_ADA_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ],
 );
 
-/** Complete Q27 replay backed by the same checkpointed predecessor authority as Q33. */
-export const createMinAdaCompleteCanonicalReplayFromHistoricalCorpus = (
-  corpus: HistoricalNativeScriptCorpus | (() => HistoricalNativeScriptCorpus),
-): CompleteCanonicalReplay =>
-  completeReplayer(["minAda"], async (evidence) => [
-    ...(await detectMinAda(evidence, undefined)).filter(
-      (detection) => detection.violationId === MIN_ADA_VIOLATION_ID,
-    ),
-    ...detectMinAdaUtxoFromHistoricalCorpus({
-      evidence,
-      corpus: typeof corpus === "function" ? corpus() : corpus,
-    }),
-    ...detectMinAdaForcedReplay(evidence),
-  ]);
-
 /** Complete same-block input/producer output-count scan. */
 export const INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nonExistentInputNoIndex"],
@@ -250,17 +216,18 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
     detectTransactionOutputNonCanonicalCompleteReplay(evidence),
   );
 
-/** Complete resolved-input scan backed by opaque authenticated retained history. */
+/** Complete resolved-input scan against the classifier-admitted predecessor ledger. */
 export const RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(
     ["resolvedOutputNonCanonical"],
     async (evidence, context) => {
-      const corpus = requireReplayHistoricalCorpus({ evidence, context });
-      const priorLedger =
-        await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
-          block: evidence,
-          corpus,
-        });
+      const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorEvidence({
+          evidence,
+          context,
+        }),
+      });
       return detectResolvedOutputNonCanonicalCompleteReplay({
         block: evidence,
         priorLedger,
@@ -305,15 +272,16 @@ const verdictSubjectReplayPosition = (
   return BigInt(index);
 };
 
-/** Complete spend-signature scan backed by opaque authenticated retained history. */
+/** Complete spend-signature scan against the classifier-admitted predecessor ledger. */
 export const SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["spendInputSignerMissing"], async (evidence, context) => {
-    const corpus = requireReplayHistoricalCorpus({ evidence, context });
-    const priorLedger =
-      await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
-        block: evidence,
-        corpus,
-      });
+    const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence,
+        context,
+      }),
+    });
     return detectSpendInputSignerMissingCompleteReplay({
       block: evidence,
       priorLedger,

@@ -22,9 +22,6 @@ export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY =
 export const MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofMissingSignature";
 
-export const MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY =
-  "fraudProofMissingNativeScriptTx";
-
 export const WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofWithdrawnReferenceInput";
 

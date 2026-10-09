@@ -17,12 +17,10 @@ import {
   authenticateTransactionsInclusionRoots,
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/index.js";
-import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { encodeData } from "../src/transition-trace/reconstruct.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
-  type CanonicalBlockFixture,
   type FixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
@@ -134,42 +132,3 @@ export const evidenceFromFixture = async (
       grade: "security",
     },
   });
-
-export const retainedSource = (
-  fixtures: readonly Awaited<ReturnType<typeof buildCanonicalBlockFixture>>[],
-): RetainedDaPayloadSource => ({
-  sourceId: "native-script-family-retained-da",
-  fetchPayloadByHeaderHash: async (headerHash) => {
-    const fixture = fixtures.find(
-      (candidate) => candidate.headerHash === headerHash,
-    );
-    return fixture === undefined
-      ? {
-          ok: false,
-          sourceId: "native-script-family-retained-da",
-          attempts: [
-            {
-              sourceId: "native-script-family-retained-da",
-              sourcePeerId: "peer-1",
-              protocol: "payload-by-header",
-              status: "not_found",
-              detail: "fixture intentionally pruned",
-            },
-          ],
-        }
-      : {
-          ok: true,
-          sourceId: "native-script-family-retained-da",
-          sourcePeerId: "peer-1",
-          provenance: {
-            trustClass: "public_or_permissionless_da",
-            sourceId: "native-script-family-retained-da/peer-1",
-            grade: "security",
-          },
-          payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
-          attempts: [],
-        };
-  },
-});
-
-export const archivedFixtures = new Map<string, CanonicalBlockFixture>();

@@ -27,7 +27,6 @@ import {
 } from "../src/transition-trace/phas.js";
 import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
 import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import type { HistoricalNativeScriptCorpus } from "../src/workflow/historical-native-script-corpus.js";
 import { rows } from "./min-ada-wrongful-rejection-lifecycle.rows.js";
 import {
   captureEmulatorSubmission,
@@ -365,7 +364,7 @@ export const setup = async ({
     if (depth > 0) return artifact;
     return prepareMinAdaWorkflowArtifact({
       evidence: block,
-      historicalNativeScriptCorpus: {} as HistoricalNativeScriptCorpus,
+      predecessor: undefined,
       classification: {
         schemaVersion: "midgard-fraud-proof-classification-v1",
         decision: "fault_detected",

@@ -433,7 +433,25 @@ Fraud proof construction:
 
 \subsection{Rule: Native scripts are available}
 \label{rule:native-scripts-are-available}
-All native scripts required by spent inputs are provided.
+All native scripts required by spent inputs are provided, either inline in the
+transaction's script witnesses or as the reference script of an output the
+transaction's reference inputs resolve to.
+
+A transaction's script sources are the hashes of its inline script witnesses
+followed by the hashes of the reference scripts carried by the outputs its
+reference inputs resolve to, where $ref\_script(u)$ is the reference script
+output $u$ carries, or $\bot$ when it carries none. A reference script carried
+by a spent input's output is not a source.
+\begin{equation*}
+\begin{split}
+  sources(t) := \;
+    & \{\, h \mid (h, s) \in script\_tx\_wits(t) \,\} \;\cup \\
+    & \{\, script\_hash(ref\_script(u)) \mid
+        (r, u) \in utxos,\; r \in reference\_inputs(t), \\
+    & \qquad ref\_script(u) \neq \bot \,\}
+\end{split}
+\end{equation*}
+
 Formal specification:
 \begin{empheq}[box=\ledgerRuleBox]{equation*}
 \begin{split}
@@ -442,74 +460,67 @@ Formal specification:
       \bigl(
       r \in spend\_inputs(t) \;\land\;
       addr(u) \in Addr^{native}_{v2}
-      \bigr) \implies \bigl(
-        \exists (h, s) \in script\_tx\_wits(t),\; script\_hash(addr(u)) = h 
-      \bigr)
+      \bigr) \implies
+        script\_hash(addr(u)) \in sources(t)
 \end{split}
 \end{empheq}
 
 This ledger rule is violated if any of the following violations occur:
 \begin{itemize-multi}
-  \item \hyperref[violation:MISSING-NATIVE-SCRIPT-TX]{MISSING-NATIVE-SCRIPT-TX}
-  \item \hyperref[violation:MISSING-NATIVE-SCRIPT-UTXO]{MISSING-NATIVE-SCRIPT-UTXO}
+  \item \hyperref[violation:MISSING-SCRIPT-SOURCE]{MISSING-SCRIPT-SOURCE}
 \end{itemize-multi}
 
-\subsubsection{MISSING-NATIVE-SCRIPT-TX violation}
-\label{violation:MISSING-NATIVE-SCRIPT-TX}
-A transaction $t_1$ spends a utxo $u$, produced in the block by transaction $t_2$ at a native script address, without providing the required script as a witness.
+\subsubsection{MISSING-SCRIPT-SOURCE violation}
+\label{violation:MISSING-SCRIPT-SOURCE}
+A script purpose of transaction $t$ requires a script hash that is in none of
+$t$'s script sources. The violation is not specific to native scripts: it
+covers every script purpose the validation machine discovers, namely a spent
+input with a script payment credential, a minting policy, a withdrawal, and a
+receive purpose (\code{purpose\_kind} $0$, $1$, $2$ and $3$). A native-script
+spend is the spend case. Let $purposes(t)$ be the set of
+$(\code{purpose\_kind}, \code{purpose\_index}, \code{required\_script\_hash})$
+triples the validation machine discovers for $t$, and resolve $sources(t)$
+against $utxos_t$, the utxo set at $t$'s ordered transition.
 Formal specification:
 \begin{equation*}
 \begin{split}
-  &\exists t_1, t_2 \in txs,\; \exists i \in spend\_inputs(t_1),\; \exists u \in outputs(t_2):\\
-    &\quad tx\_hash(i) = tx\_hash(t_2) \;\land\\
-    &\quad u = elem\_at(outputs(t_2), i.index) \;\land\\
-    &\quad addr(u) \in Addr^{native}_{v2} \;\land\\
-    &\quad \bigl(
-        \nexists (h, s) \in script\_tx\_wits(t_1),\; script\_hash(addr(u)) = h
-      \bigr)
+  &\exists t \in txs,\; \exists (k, j, h) \in purposes(t):\\
+    &\quad h \notin sources(t)
 \end{split}
 \end{equation*}
 
-Fraud proof construction:
-\begin{enumerate}
-  \item Let $t_1$ be the transaction alleged to violate the ledger rule.
-  \item A membership proof must be provided that shows that $t_1$ is included in the block.
-  \item Let $t_2$ be another transaction in the block.
-  \item A membership proof must be provided that shows that $t_2$ is included in the block.
-  \item Verify that $i \in spend\_inputs(t_1)$.
-  \item Verify that $i$ matches $t_2$ on transaction hash.
-  \item Let $u$ be the $t_2$ output indexed by $i$.
-  \item Verify that the payment credential of $u$ is a native script hash.
-  \item A DA layer proof must be shown that certifies that there is no $(h, s)$ corresponding to \break
-        $script\_hash(addr(u)) = h$ in $script\_tx\_wits(t_1)$.
-\end{enumerate}
+A spend whose native script is supplied inline, or by the reference script of
+an output that one of the transaction's reference inputs resolves to, is not a
+violation: in either case the required script hash is in $sources(t)$.
 
-\subsubsection{MISSING-NATIVE-SCRIPT-UTXO violation}
-\label{violation:MISSING-NATIVE-SCRIPT-UTXO}
-A transaction $t_1$ spends a utxo $u$ from the previous block's utxo set at a native script address without providing the required script as a witness.
-Formal specification:
-\begin{equation*}
-\begin{split}
-  &\exists t_1 \in txs,\; \exists i \in spend\_inputs(t_1),\; \exists (j, u) \in utxos_{pre}:\\
-    &\quad i = j \;\land\\
-    &\quad addr(u) \in Addr^{native}_{v2} \;\land\\
-    &\quad \bigl(
-        \nexists (h, s) \in script\_tx\_wits(t_1),\; script\_hash(addr(u)) = h
-      \bigr)
-\end{split}
-\end{equation*}
-
-Fraud proof construction:
+Fraud proof construction (catalogue category \code{missingScriptSource},
+\code{0000002d}):
 \begin{enumerate}
-  \item Let $t_1$ be the transaction alleged to violate the ledger rule.
-  \item A membership proof must be provided that shows that $t_1$ is included in the block.
-  \item Verify that $i \in spend\_inputs(t_1)$.
-  \item Let $u$ be a utxo and $j$ be an output reference.
-  \item A membership proof must be generated that proves that $(j, u)$ is in $utxos_{pre} = prev\_utxos(b)$ for the same block.
-  \item Verify that $i = j$.
-  \item Verify that the payment credential of $u$ is a native script hash.
-  \item A DA layer proof must be shown that certifies that there is no $(h, s)$ corresponding to \break
-        $script\_hash(addr(u)) = h$ in $script\_tx\_wits(t_1)$.
+  \item Let $t$ be the transaction alleged to violate the ledger rule.
+  \item A membership proof must be provided that shows that $t$ is included in
+        the block, either as a leaf of the normal transaction root (an accepted
+        transaction) or as a leaf of the forced transaction root carrying the
+        operator's verdict. The proof binds one purpose
+        (\code{purpose\_kind}, \code{purpose\_index}).
+  \item A membership proof must be provided that shows that $t$'s validation
+        trace descriptor is in the header's \code{validation\_traces\_root}, and
+        that the committed validation-machine state for $t$ is in its
+        script-sources phase with no verdict yet.
+  \item Open the script-sources control of that state and prove that the
+        purpose leaf (\code{purpose\_kind}, \code{purpose\_index},
+        \code{required\_script\_hash}) is a member of its purpose frontier.
+  \item Split the source frontier into the \code{transaction\_source\_count}
+        inline witness sources followed by the
+        \code{resolved\_reference\_source\_count} resolved reference sources.
+  \item Scan the sources in frontier order. Each source descriptor is proved a
+        member of the source frontier at its index, and the scan records whether
+        any source's \code{script\_hash} equals \code{required\_script\_hash}.
+  \item If $t$ was accepted, the scan covers the whole source frontier and the
+        proof succeeds only if no source matched.
+  \item If $t$ was force-rejected with the reason that this purpose's script
+        source is missing, the scan ends at the source the machine's discovery
+        cursor points to, and the proof succeeds only if a source matched: the
+        rejection was wrongful.
 \end{enumerate}
 
 \subsection{Rule: Native scripts validated}

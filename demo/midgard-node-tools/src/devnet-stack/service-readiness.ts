@@ -19,9 +19,7 @@ export const probe = async (url: string, timeoutMs: number) => {
 };
 
 export const hasReadinessProbe = (service: ServiceSpec): boolean =>
-  service.readyUrl !== undefined ||
-  service.readyProbe !== undefined ||
-  service.historyReadiness !== undefined;
+  service.readyUrl !== undefined || service.readyProbe !== undefined;
 
 export const probeServiceReadiness = async (
   service: ServiceSpec,

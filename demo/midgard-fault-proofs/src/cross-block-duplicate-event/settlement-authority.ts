@@ -11,15 +11,14 @@ import {
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
+  fetchRetainedDaPayloadByHeaderHash,
+  type RetainedDaPayloadSource,
+} from "../transition-trace/fetch.js";
+import {
   reconstructDaPayload,
   type TransitionTraceReconstruction,
 } from "../transition-trace/reconstruct.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import {
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptHistorySource,
-  requireHistoricalNativeScriptHistoryAuthority,
-} from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   admitFraudProofRawL1Snapshot,
@@ -46,8 +45,18 @@ export type CrossBlockSettlementContext = Readonly<{
   /** Complete settlement evidence without the moving capture boundary. */
   evidenceDigest: string;
 }>;
+/**
+ * The public retained-DA sources every settled block's payload is fetched
+ * from: the same sources, through the same fetcher, as the challenged block
+ * and its predecessor.
+ */
+export type CrossBlockSettlementRetainedDa = Readonly<{
+  sources: readonly RetainedDaPayloadSource[];
+  retries?: number;
+}>;
 type ContextData = Readonly<{
   authority: CrossBlockSettlementAuthority;
+  retainedDa: CrossBlockSettlementRetainedDa;
   records: readonly CrossBlockSettlementRecord[];
 }>;
 const contextData = new WeakMap<CrossBlockSettlementContext, ContextData>();
@@ -56,6 +65,7 @@ export type CrossBlockSettlementAuthority = Readonly<{
   deploymentFingerprint: string;
   capture(
     evidence: Pick<CanonicalBlockEvidence, "headerHash">,
+    retainedDa: CrossBlockSettlementRetainedDa,
   ): Promise<CrossBlockSettlementContext>;
 }>;
 export const requireCrossBlockSettlementAuthority = (
@@ -88,7 +98,7 @@ export const refreshCrossBlockSettlementContext = async (
     throw new Error(
       "cross-block settlement context cannot be structurally revived",
     );
-  return await data.authority.capture(evidence);
+  return await data.authority.capture(evidence, data.retainedDa);
 };
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 type Binding = FraudProofWorkflowDeploymentBinding<"crossBlockDuplicateEvent">;
@@ -132,15 +142,16 @@ const hubFrom = (snapshot: FraudProofRawL1Snapshot, policyId: string) => {
 const construct = ({
   binding,
   raw,
-  historySource,
 }: {
   binding: Binding;
   raw: FraudProofRawL1SnapshotAuthority;
-  historySource: HistoricalNativeScriptHistorySource;
 }): CrossBlockSettlementAuthority => {
   const authority: CrossBlockSettlementAuthority = Object.freeze({
     deploymentFingerprint: binding.deploymentFingerprint,
-    capture: async (evidence: Pick<CanonicalBlockEvidence, "headerHash">) => {
+    capture: async (
+      evidence: Pick<CanonicalBlockEvidence, "headerHash">,
+      retainedDa: CrossBlockSettlementRetainedDa,
+    ) => {
       const hubPolicyId = binding.resolvedContracts.hubOraclePolicyId;
       const base: FraudProofRawL1SnapshotRequest = {
         deploymentIdentityDigest: binding.deploymentFingerprint,
@@ -224,8 +235,15 @@ const construct = ({
         if (!/^[0-9a-f]{56}$/u.test(headerHash))
           throw new Error("cross-block settlement NFT has invalid header hash");
         if (headerHash === evidence.headerHash) continue;
-        const payload = await historySource.fetchPayloadByHeaderHash({
+        // The settled block's bytes are fetched from public retained DA;
+        // the reconstruction below binds them to the settled header hash and
+        // the authenticated settlement datum's counted roots.
+        const payload = await fetchRetainedDaPayloadByHeaderHash({
           headerHash,
+          sources: retainedDa.sources,
+          ...(retainedDa.retries === undefined
+            ? {}
+            : { retries: retainedDa.retries }),
         });
         const reconstruction = await reconstructDaPayload({
           payloadEnvelopeCbor: payload.payloadEnvelopeCbor,
@@ -240,7 +258,7 @@ const construct = ({
           datum.transactions_root !== reconstruction.header.transactionsRoot
         )
           throw new Error(
-            "cross-block historical payload changed settlement counted roots",
+            "cross-block settled payload changed settlement counted roots",
           );
         records.push(
           Object.freeze({
@@ -322,7 +340,16 @@ const construct = ({
           }),
         ),
       });
-      contextData.set(context, { authority, records: Object.freeze(records) });
+      contextData.set(context, {
+        authority,
+        retainedDa: Object.freeze({
+          sources: Object.freeze([...retainedDa.sources]),
+          ...(retainedDa.retries === undefined
+            ? {}
+            : { retries: retainedDa.retries }),
+        }),
+        records: Object.freeze(records),
+      });
       return context;
     },
   });
@@ -332,31 +359,20 @@ const construct = ({
 export const createCrossBlockSettlementAuthority = ({
   binding,
   l1,
-  historySource,
-  checkpointStore,
 }: {
   binding: Binding;
   l1: FraudProofL1Source;
-  historySource: HistoricalNativeScriptHistorySource;
-  checkpointStore: HistoricalNativeScriptCheckpointStore;
-}) => {
-  requireHistoricalNativeScriptHistoryAuthority({
-    deploymentFingerprint: binding.deploymentFingerprint,
-    historySource,
-    checkpointStore,
-  });
-  return construct({
+}) =>
+  construct({
     binding,
-    historySource,
     raw: l1.snapshotAuthority({
       releaseFinality: binding.releaseFinality,
       observationDepth: "release_finality",
     }),
   });
-};
 
 /** Test-only raw Cardano transport seam. Production constructs the
- * fault-proof L1 source and retained-history quorum above. All snapshot and
+ * fault-proof L1 source above; settled payloads come from retained DA. All snapshot and
  * root admission runs identically; this seam supplies no verdict callback. */
 export const unsafeCreateCrossBlockSettlementAuthorityFromRawForTest =
   construct;

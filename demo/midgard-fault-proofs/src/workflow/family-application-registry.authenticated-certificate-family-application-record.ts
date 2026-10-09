@@ -149,10 +149,7 @@ export const authenticatedCertificateFamilyApplicationRecord = <
 ): FamilyApplicationRecord<Category, Config, Workflow> => {
   const { category } = definition;
   const requires = family.requires ?? [];
-  const infrastructureFields = requiredInfrastructureFields(category, {
-    ...family,
-    requires,
-  });
+  const infrastructureFields = requiredInfrastructureFields({ requires });
   if (!definition.fieldPreimageCertificate) {
     throw new Error(
       `${category} is on the authenticated certificate shape but its definition does not bind the certificate`,
@@ -303,7 +300,7 @@ export const cursorFamilyApplicationRecord = <
   const { category } = definition;
   const roster = familyDefinitionRoster(definition);
   assertFamilyDefinitionRoster(definition, roster);
-  const infrastructureFields = requiredInfrastructureFields(category, family);
+  const infrastructureFields = requiredInfrastructureFields(family);
   return defineFamilyApplication<Category, Config, Workflow>({
     category,
     roster,
@@ -326,8 +323,8 @@ export const cursorFamilyApplicationRecord = <
 
 /**
  * The config shape the cursor families without a decision digest share: the
- * common infrastructure, the replay context when required, the fields read
- * from the historical authority when required, and a reference-script bundle
+ * common infrastructure, the replay context and the retained-DA sources when
+ * required, and a reference-script bundle
  * of the chain steps, the witness roster, the certificate when the definition
  * binds it, and the definition's auxiliary scripts under the family's own key.
  * Each family's own config type narrows the step tuple, the witness roster and

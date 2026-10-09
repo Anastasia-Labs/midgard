@@ -8,8 +8,9 @@ use midgard/fraud_proofs/structured_data_carriage as carriage
 use midgard/ledger_state
 use midgard/transition_trace
 
-/// Reserved only by the pre-registration Q41 harness. Production registration
-/// must allocate again from the append-only catalogue.
+/// The `withdrawalMistag` category id: the byte twin of
+/// `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag` in
+/// `demo/midgard-sdk/src/fraud-proof/catalogue.ts`.
 pub const withdrawal_mistag_test_category_id_v1: ByteArray = #"00000014"
 
 pub fn category_is_withdrawal_mistag_v1(asset_name: AssetName) -> Bool {

@@ -10,10 +10,7 @@ import {
   type CompleteCanonicalReplayContext,
   createCatalogueCompleteCanonicalReplay,
   createCrossBlockSettlementAuthority,
-  createExternalHistoricalNativeScriptSourceRoster,
   createHeaderClassifier,
-  createHistoricalNativeScriptHistorySource,
-  createHistoricalNativeScriptProviderRoster,
   FAMILY_APPLICATION_REGISTRY,
   type FamilyValidationChallengePort,
   FraudProofL1CheckpointChangedError,
@@ -22,7 +19,6 @@ import {
   installWorkflowApplicationRegistry,
   journalJsonDigest,
   normalizeJournalJson,
-  requireHistoricalNativeScriptHistoryAuthority,
   resolveFamilyApplicationReferences,
   runFraudProofWorkflowCli,
   type WorkflowAdapterRunner,
@@ -85,7 +81,6 @@ import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES,
   type WatcherFaultProofApplication,
-  type WatcherHistoricalNativeScriptAuthority,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.production-dependencies.js";
 import {
@@ -147,11 +142,6 @@ export function createApplication({
     }
   }
   const infrastructure = admitInfrastructure(options.infrastructure);
-  if (options.historicalNativeScriptCheckpointStore === undefined) {
-    throw new Error(
-      "watcher application requires its historical native-script checkpoint store",
-    );
-  }
   if (allowExecution && options.fundingProfileOverlay === undefined) {
     throw new Error(
       "watcher application requires its signed funding-profile overlay",
@@ -179,38 +169,6 @@ export function createApplication({
     }
     return workflowFundingProfileFromOverlay({ overlay, category });
   };
-  const providerRoster = createHistoricalNativeScriptProviderRoster({
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    providers: infrastructure.historicalNativeScriptHistory.providers,
-  });
-  const historySource = createHistoricalNativeScriptHistorySource({
-    providerRoster,
-  });
-  if (allowExecution) {
-    requireHistoricalNativeScriptHistoryAuthority({
-      deploymentFingerprint: deploymentIdentity.manifestId,
-      checkpointStore: options.historicalNativeScriptCheckpointStore,
-      historySource,
-    });
-  }
-  const historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthority =
-    Object.freeze({
-      checkpointStore: options.historicalNativeScriptCheckpointStore,
-      providerRoster,
-      historySource,
-      l1SourceRoster: watcherDeploymentReleaseFinalityAuthority(
-        deploymentIdentity,
-      )
-        .verifyForWorkflow({
-          deploymentFingerprint: deploymentIdentity.manifestId,
-        })
-        .then((releaseFinality) =>
-          createExternalHistoricalNativeScriptSourceRoster({
-            providerRoster,
-            releaseFinality,
-          }),
-        ),
-    });
   const environmentSnapshot = Object.freeze({ ...environment });
   const replayContexts = new Map<string, CompleteCanonicalReplayContext>();
   let authorityGeneration = 0;
@@ -291,7 +249,6 @@ export function createApplication({
         invocation,
         infrastructure,
         deploymentIdentity,
-        historicalNativeScriptAuthority,
         replayContexts,
         validationChallenge,
         l1,
@@ -362,8 +319,6 @@ export function createApplication({
         l1: l1.source(
           `watcher-settlement-history/${deploymentIdentity.manifestId}`,
         ),
-        historySource: historicalNativeScriptAuthority.historySource,
-        checkpointStore: historicalNativeScriptAuthority.checkpointStore,
       });
       const transitionBinding = await bindFraudProofWorkflowDeployment({
         manifest: JSON.parse(manifestJson!),
@@ -481,10 +436,6 @@ export function createApplication({
         releaseFinalityAuthority:
           watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
         settlementAuthority,
-        historicalReplayAuthority: Object.freeze({
-          checkpointStore: historicalNativeScriptAuthority.checkpointStore,
-          historySource: historicalNativeScriptAuthority.historySource,
-        }),
       });
     })();
     return classifierPromise;

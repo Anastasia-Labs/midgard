@@ -22,11 +22,6 @@ import {
   JOURNEY_SCRIPT_FORCED_CATEGORIES,
 } from "./script-cases.js";
 import { prepareJourneyNativeExecutionEvidence } from "./script-execution-evidence.js";
-import {
-  buildJourneyScriptHistoryFault,
-  JOURNEY_SCRIPT_HISTORY_CATEGORIES,
-} from "./script-history-cases.js";
-import { prepareJourneyMissingNativeScriptTxEvidence } from "./script-history-evidence.js";
 const replayers = {
   nativeScriptDecoding: FP.NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   nativeScriptInvalid: FP.NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
@@ -245,16 +240,13 @@ it
         (await prepareJourneyNativeExecutionEvidence(evidence, predecessor))
           .evidence.contradiction,
       ).toBe(true);
-      if (
-        full.evidence === undefined ||
-        full.historicalNativeScriptCorpus === undefined
-      )
+      if (full.evidence === undefined || full.predecessor === undefined)
         throw new Error(
-          "Native recovery fixture omitted authenticated history",
+          "Native recovery fixture omitted the admitted predecessor",
         );
       const detections =
         FP.executionNativeScriptInvalid.detectExecutionNativeScriptInvalidCanonicalViolations(
-          { block: full.evidence, corpus: full.historicalNativeScriptCorpus },
+          { block: full.evidence, predecessor: full.predecessor },
         );
       expect(detections).toHaveLength(1);
       await recoveryMaterial(
@@ -262,7 +254,7 @@ it
           header: full.evidence.header,
           headerHash: full.evidence.headerHash,
           detection: detections[0]!,
-          corpus: full.historicalNativeScriptCorpus,
+          predecessor: full.predecessor,
         }),
       );
     }
@@ -356,89 +348,6 @@ it
       block: block.control,
       predecessor,
       history: [staged.predecessor],
-      expected: "healthy",
-    });
-  },
-  60000,
-);
-
-it
-  .skipIf(stagedPath === undefined || !existsSync(stagedPath))
-  .each(JOURNEY_SCRIPT_HISTORY_CATEGORIES)(
-  "retains authenticated native script producer history for %s",
-  async (category) => {
-    const { staged, predecessor, accounts } = await loadRetainedDeposit();
-    const { fault, control, preparedPredecessor } =
-      await buildJourneyScriptHistoryFault({
-        category,
-        predecessor,
-        ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
-        operatorVkey: predecessor.header.operatorVkey,
-        endTime: predecessor.header.endTime + 40000n,
-        blockSlot: predecessor.header.blockSlot + 40n,
-      });
-    expect(
-      control.replays.every((replay) => replay.trace.verdict === "accepted"),
-    ).toBe(true);
-    expect(fault.replays.at(-1)?.trace.verdict).toBe("rejected");
-    const replayer =
-      category === "missingNativeScriptTx"
-        ? FP.MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY
-        : FP.MISSING_NATIVE_SCRIPT_UTXO_COMPLETE_CANONICAL_REPLAY;
-    const classification = await verifyJourneyFixture({
-      category,
-      replayer,
-      block: fault,
-      predecessor: preparedPredecessor ?? predecessor,
-      history: [predecessor, staged.predecessor],
-    });
-    if (classification.evidence === undefined)
-      throw new Error("Missing canonical history fixture evidence");
-    if (category === "missingNativeScriptTx")
-      expect(
-        (
-          await prepareJourneyMissingNativeScriptTxEvidence(
-            classification.evidence,
-          )
-        ).missingNativeScriptBytes,
-      ).toEqual(Buffer.from("820180", "hex"));
-    const full = await classifyFullCatalogueTransactionFixture({
-      block: fault,
-      predecessor: preparedPredecessor ?? predecessor,
-      history: [predecessor, staged.predecessor],
-    });
-    expect(full.decision).toMatchObject({
-      decision: "fault_detected",
-      category,
-    });
-    if (category === "missingNativeScriptUtxo") {
-      if (
-        full.evidence === undefined ||
-        full.historicalNativeScriptCorpus === undefined
-      )
-        throw new Error("Missing authenticated history material");
-      const prepared =
-        await FP.prepareMissingNativeScriptUtxoFromCanonicalEvidence({
-          evidence: full.evidence,
-          historicalNativeScriptCorpus: full.historicalNativeScriptCorpus,
-        });
-      expect(prepared.headerHash).toBe(fault.headerHash);
-      expect(prepared.missingNativeScriptBytes).toBe("820180");
-    }
-
-    const healthy = await classifyFullCatalogueTransactionFixture({
-      block: control,
-      predecessor: preparedPredecessor ?? predecessor,
-      history: [predecessor, staged.predecessor],
-    });
-    expect(healthy.decision).toMatchObject({ decision: "healthy" });
-
-    await verifyJourneyFixture({
-      category,
-      replayer,
-      block: control,
-      predecessor: preparedPredecessor ?? predecessor,
-      history: [predecessor, staged.predecessor],
       expected: "healthy",
     });
   },

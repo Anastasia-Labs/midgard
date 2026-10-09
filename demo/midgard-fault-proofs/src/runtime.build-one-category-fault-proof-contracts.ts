@@ -22,8 +22,6 @@ import {
   buildMintAuthorizationFaultProofContracts,
   buildMintDeclaredAssetLimitFaultProofContracts,
   buildMintItemNonCanonicalFaultProofContracts,
-  buildMissingNativeScriptTxFaultProofContracts,
-  buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingRedeemerFaultProofContracts,
   buildMissingScriptSourceFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
@@ -167,10 +165,6 @@ export const buildOneCategoryFaultProofContracts = async ({
       return await Effect.runPromise(
         buildMissingSignatureFaultProofContracts(params),
       );
-    case "missingNativeScriptTx":
-      return await Effect.runPromise(
-        buildMissingNativeScriptTxFaultProofContracts(params),
-      );
     case "withdrawnReferenceInput":
       return await Effect.runPromise(
         buildWithdrawnReferenceInputFaultProofContracts(params),
@@ -219,10 +213,6 @@ export const buildOneCategoryFaultProofContracts = async ({
       );
     case "networkId":
       return await Effect.runPromise(buildNetworkIdFaultProofContracts(params));
-    case "missingNativeScriptUtxo":
-      return await Effect.runPromise(
-        buildMissingNativeScriptUtxoFaultProofContracts(params),
-      );
     case "nativeScriptInvalid":
       return await Effect.runPromise(
         buildNativeScriptInvalidFaultProofContracts(params),

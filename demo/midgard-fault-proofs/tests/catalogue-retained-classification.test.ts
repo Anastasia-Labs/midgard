@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-
 import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardForcedTxCanonical,
@@ -52,11 +49,6 @@ import {
   headerDecisionReplayContext,
 } from "../src/workflow/header-classifier.js";
 import {
-  createHistoricalNativeScriptHistorySource,
-  createHistoricalNativeScriptProviderRoster,
-  createSqliteHistoricalNativeScriptCheckpointStore,
-} from "../src/workflow/historical-native-script-corpus.js";
-import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
 } from "../src/workflow/raw-l1-snapshot.js";
@@ -91,10 +83,7 @@ const releaseFinalityAuthority = {
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => releaseFinality,
 };
-const directories: string[] = [];
 afterEach(() => {
-  for (const directory of directories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
   transport.raw = undefined;
 });
 
@@ -153,29 +142,6 @@ const setup = async (
     }),
   };
   transport.raw = raw;
-  const historySource = createHistoricalNativeScriptHistorySource({
-    providerRoster: createHistoricalNativeScriptProviderRoster({
-      deploymentFingerprint: DEPLOYMENT,
-      providers: [
-        {
-          sourceId: "archive-a",
-          authorityEndpoint: "https://archive-a.example.test",
-          operatorIdentitySha256: "aa".repeat(32),
-        },
-        {
-          sourceId: "archive-b",
-          authorityEndpoint: "https://archive-b.example.test",
-          operatorIdentitySha256: "bb".repeat(32),
-        },
-      ],
-    }),
-  });
-  const directory = mkdtempSync("/var/tmp/midgard-catalogue-retained-");
-  directories.push(directory);
-  const checkpointStore = createSqliteHistoricalNativeScriptCheckpointStore({
-    path: join(directory, "history.sqlite"),
-    rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
-  });
   const bindingFields = {
     deploymentFingerprint: DEPLOYMENT,
     blueprintHash: RELEASE,
@@ -204,7 +170,6 @@ const setup = async (
         typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
       >[0]["binding"],
       raw,
-      historySource,
     });
   const history = {
     inlineLimitBytes: 512n,
@@ -227,7 +192,6 @@ const setup = async (
     deploymentFingerprint: DEPLOYMENT,
     replayer,
     releaseFinalityAuthority,
-    historicalReplayAuthority: { checkpointStore, historySource },
     settlementAuthority,
     transitionTraceEventAuthority,
   };
@@ -304,7 +268,7 @@ describe("installed catalogue retained classification", replayBudget, () => {
     expect(context?.validationTraceReplay?.eventSnapshotDigest).toBe(
       context?.transitionTraceEvents?.snapshotDigest,
     );
-    expect(context?.historicalCorpus).toBeDefined();
+    expect(context?.predecessor).toBeDefined();
     expect(context?.settlements).toBeDefined();
     const copy = await headerDecisionCanonicalEvidence(decision);
     expect(copy?.headerHash).toBe(fixture.block.headerHash);

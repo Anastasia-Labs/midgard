@@ -26,8 +26,6 @@ import {
   buildMintAuthorizationFaultProofContracts,
   buildMintDeclaredAssetLimitFaultProofContracts,
   buildMintItemNonCanonicalFaultProofContracts,
-  buildMissingNativeScriptTxFaultProofContracts,
-  buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
   buildNativeScriptDecodingFaultProofContracts,
   buildNativeScriptInvalidFaultProofContracts,
@@ -86,8 +84,6 @@ import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js
 import { type MinAdaContracts } from "../../../src/min-ada/contracts.js";
 import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
 import { type MintAuthorizationContracts } from "../../../src/mint-authorization/contracts.js";
-import { type MissingNativeScriptTxContracts } from "../../../src/missing-native-script-tx/contracts.js";
-import { type MissingNativeScriptUtxoContracts } from "../../../src/missing-native-script-utxo/contracts.js";
 import { type MissingSignatureContracts } from "../../../src/missing-signature/contracts.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/contracts.js";
 import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts.js";
@@ -138,8 +134,6 @@ export const buildMinimalFaultProofContracts = async (
     realValidationTraceDispute = false,
     realNativeScriptDecoding = false,
     realMissingSignature = false,
-    realMissingNativeScriptTx = false,
-    realMissingNativeScriptUtxo = false,
     realNativeScriptInvalid = false,
     realMinAda = false,
     realCanonicalDecodability = false,
@@ -196,8 +190,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly realValidationTraceDispute?: boolean;
     readonly realNativeScriptDecoding?: boolean;
     readonly realMissingSignature?: boolean;
-    readonly realMissingNativeScriptTx?: boolean;
-    readonly realMissingNativeScriptUtxo?: boolean;
     readonly realNativeScriptInvalid?: boolean;
     readonly realMinAda?: boolean;
     readonly realCanonicalDecodability?: boolean;
@@ -248,8 +240,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly fabricatedWithdrawal?: FabricatedWithdrawalContracts;
     readonly nativeScriptDecoding?: NativeScriptDecodingContracts;
     readonly missingSignature?: MissingSignatureContracts;
-    readonly missingNativeScriptTx?: MissingNativeScriptTxContracts;
-    readonly missingNativeScriptUtxo?: MissingNativeScriptUtxoContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
     readonly minAda?: MinAdaContracts;
     readonly canonicalDecodability?: CanonicalDecodabilityContracts;
@@ -507,14 +497,6 @@ export const buildMinimalFaultProofContracts = async (
     realMissingSignature,
     buildMissingSignatureFaultProofContracts,
   );
-  const missingNativeScriptTxContracts = await buildFamilyContracts(
-    realMissingNativeScriptTx,
-    buildMissingNativeScriptTxFaultProofContracts,
-  );
-  const missingNativeScriptUtxoContracts = await buildFamilyContracts(
-    realMissingNativeScriptUtxo,
-    buildMissingNativeScriptUtxoFaultProofContracts,
-  );
   const nativeScriptInvalidContracts = await buildFamilyContracts(
     realNativeScriptInvalid,
     buildNativeScriptInvalidFaultProofContracts,
@@ -765,28 +747,6 @@ export const buildMinimalFaultProofContracts = async (
           steps: missingSignatureContracts.missingSignature.steps,
           computationThread: missingSignatureContracts.computationThread,
           fraudProof: missingSignatureContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: productionStateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
-  const missingNativeScriptTx: MissingNativeScriptTxContracts | undefined =
-    missingNativeScriptTxContracts === undefined
-      ? undefined
-      : {
-          steps: missingNativeScriptTxContracts.missingNativeScriptTx.steps,
-          computationThread: missingNativeScriptTxContracts.computationThread,
-          fraudProof: missingNativeScriptTxContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: productionStateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
-  const missingNativeScriptUtxo: MissingNativeScriptUtxoContracts | undefined =
-    missingNativeScriptUtxoContracts === undefined
-      ? undefined
-      : {
-          steps: missingNativeScriptUtxoContracts.missingNativeScriptUtxo.steps,
-          computationThread: missingNativeScriptUtxoContracts.computationThread,
-          fraudProof: missingNativeScriptUtxoContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: productionStateQueue.policyId,
           fieldPreimageCertificatePolicyId,
@@ -1045,14 +1005,6 @@ export const buildMinimalFaultProofContracts = async (
               missingSignature.forcedWitness.spendingScript.script,
             ),
           },
-    missingNativeScriptTx:
-      missingNativeScriptTx === undefined
-        ? withActiveOperators.fraudProofContracts.missingNativeScriptTx
-        : chainFromSteps(missingNativeScriptTx.steps),
-    missingNativeScriptUtxo:
-      missingNativeScriptUtxo === undefined
-        ? withActiveOperators.fraudProofContracts.missingNativeScriptUtxo
-        : chainFromSteps(missingNativeScriptUtxo.steps),
     nativeScriptInvalid:
       nativeScriptInvalid === undefined
         ? withActiveOperators.fraudProofContracts.nativeScriptInvalid
@@ -1170,10 +1122,6 @@ export const buildMinimalFaultProofContracts = async (
     ...(fabricatedWithdrawal === undefined ? {} : { fabricatedWithdrawal }),
     ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
-    ...(missingNativeScriptTx === undefined ? {} : { missingNativeScriptTx }),
-    ...(missingNativeScriptUtxo === undefined
-      ? {}
-      : { missingNativeScriptUtxo }),
     ...(nativeScriptInvalid === undefined ? {} : { nativeScriptInvalid }),
     ...(minAda === undefined ? {} : { minAda }),
     ...(canonicalDecodability === undefined ? {} : { canonicalDecodability }),

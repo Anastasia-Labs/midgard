@@ -326,7 +326,6 @@ export const makeAlwaysSucceedsContracts = (
       forcedSigner: appendedFamilyFallback,
       forcedWitness: appendedFamilyFallback,
     },
-    missingNativeScriptTx: scaffoldChain(appendedFamilyFallback, 8),
     withdrawnReferenceInput: scaffoldChain(appendedFamilyFallback, 3),
     canonicalDecodability: scaffoldChain(appendedFamilyFallback, 2),
     committedFieldShape: scaffoldChain(appendedFamilyFallback, 2),
@@ -359,7 +358,6 @@ export const makeAlwaysSucceedsContracts = (
       forcedStep: appendedFamilyFallback,
       forcedScan: appendedFamilyFallback,
     },
-    missingNativeScriptUtxo: scaffoldChain(appendedFamilyFallback, 7),
     nativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 5),
     minAda: {
       ...scaffoldChain(appendedFamilyFallback, 5),

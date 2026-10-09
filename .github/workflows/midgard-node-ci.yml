@@ -1120,7 +1120,6 @@ jobs:
             watcher-journeys/forced-order-recovery.test.ts \
             watcher-journeys/forced-order.test.ts \
             watcher-journeys/forced-submission.test.ts \
-            watcher-journeys/history-archive-transport.test.ts \
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-events.test.ts \
             watcher-journeys/history-settlement.test.ts \
@@ -1131,7 +1130,6 @@ jobs:
             watcher-journeys/live-chain.test.ts \
             watcher-journeys/local-kupmios.test.ts \
             watcher-journeys/native-recorder.test.ts \
-            watcher-journeys/native-script-publication.test.ts \
             watcher-journeys/operations.test.ts \
             watcher-journeys/process.test.ts \
             watcher-journeys/prover-address-isolation.test.ts \
@@ -1144,8 +1142,6 @@ jobs:
             watcher-journeys/staged-checkpoint.test.ts \
             watcher-journeys/staging-recovery.test.ts \
             watcher-journeys/verified-headers.test.ts
-          node --test \
-            demo/midgard-node-tools/devnet/watcher-journeys/history-archive-server.test.mjs
 
   da-e2e:
     name: Canonical V1 retained multi-peer DA paths

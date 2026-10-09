@@ -32,6 +32,7 @@ import {
 } from "../src/cross-block-duplicate-event/replay.js";
 import { crossBlockSettlementRecords } from "../src/cross-block-duplicate-event/settlement-authority.js";
 import { unsafeCreateCrossBlockSettlementAuthorityFromRawForTest } from "../src/cross-block-duplicate-event/settlement-authority.js";
+import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import type { FraudProofRawL1Snapshot } from "../src/workflow/raw-l1-snapshot.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
@@ -278,21 +279,42 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
               : snapshot;
           },
         };
+        const retainedSource = (
+          payloads: ReadonlyMap<string, Buffer>,
+        ): RetainedDaPayloadSource => ({
+          sourceId: "public-retained",
+          fetchPayloadByHeaderHash: async (headerHash) => {
+            const payloadEnvelopeCbor = payloads.get(headerHash);
+            if (payloadEnvelopeCbor === undefined)
+              throw new Error("unexpected retained header");
+            return {
+              ok: true,
+              sourceId: "public-retained",
+              sourcePeerId: "retained-peer",
+              payloadEnvelopeCbor,
+              attempts: [],
+              provenance: {
+                trustClass: "public_or_permissionless_da",
+                sourceId: "public-retained/retained-peer",
+                grade: "security",
+              },
+            };
+          },
+        });
+        const retainedDa = {
+          sources: [
+            retainedSource(
+              new Map([
+                [fixture.headerHash, fixture.payloadEnvelopeCbor],
+                [settled.headerHash, settled.payloadEnvelopeCbor],
+              ]),
+            ),
+          ],
+        };
         const authority =
           unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
             binding: binding as never,
             raw,
-            historySource: {
-              fetchPayloadByHeaderHash: async ({
-                headerHash,
-              }: {
-                headerHash: string;
-              }) => {
-                if (headerHash !== settled.headerHash)
-                  throw new Error("unexpected historical header");
-                return { payloadEnvelopeCbor: settled.payloadEnvelopeCbor };
-              },
-            } as never,
           });
         const classifier = await createHeaderClassifier({
           deploymentFingerprint: binding.deploymentFingerprint,
@@ -313,23 +335,7 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
               minimumConfirmationDepth:
                 DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
             }),
-          sources: [
-            {
-              sourceId: "public-retained",
-              fetchPayloadByHeaderHash: async () => ({
-                ok: true,
-                sourceId: "public-retained",
-                sourcePeerId: "retained-peer",
-                payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
-                attempts: [],
-                provenance: {
-                  trustClass: "public_or_permissionless_da",
-                  sourceId: "public-retained/retained-peer",
-                  grade: "security",
-                },
-              }),
-            },
-          ],
+          sources: retainedDa.sources,
         });
         expect(decision).toMatchObject({
           decision: "fault_detected",
@@ -337,7 +343,7 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
           headerHash: fixture.headerHash,
         });
         const replayContext = {
-          settlements: await authority.capture(fixture.evidence),
+          settlements: await authority.capture(fixture.evidence, retainedDa),
         };
         const port = createCrossBlockDuplicateEventTransactionPort({
           binding: binding as never,
@@ -351,6 +357,7 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
             >,
           },
           settlementAuthority: authority,
+          retainedDaSources: retainedDa.sources,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
         });
         const replayed =
@@ -380,18 +387,16 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
             ...replayContext.settlements,
           }),
         ).toThrow(/not admitted/u);
-        const alteredHistory =
-          unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
-            binding: binding as never,
-            raw: recorder.authority,
-            historySource: {
-              fetchPayloadByHeaderHash: async () => ({
-                payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
-              }),
-            } as never,
-          });
+        // A retained source serving other bytes under the settled header hash
+        // fails reconstruction against that hash.
         await expect(
-          alteredHistory.capture(fixture.evidence),
+          authority.capture(fixture.evidence, {
+            sources: [
+              retainedSource(
+                new Map([[settled.headerHash, fixture.payloadEnvelopeCbor]]),
+              ),
+            ],
+          }),
         ).rejects.toThrow();
         const honest = await crossBlockRetainedFixture({
           operatorVkey: operator.hash,
@@ -401,7 +406,7 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
         expect(
           detectCrossBlockDuplicateEvents({
             evidence: honest.evidence,
-            context: await authority.capture(honest.evidence),
+            context: await authority.capture(honest.evidence, retainedDa),
           }),
         ).toEqual([]);
         const wrongKey = JSON.parse(JSON.stringify(artifact));

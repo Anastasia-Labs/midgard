@@ -82,7 +82,6 @@ describe("DA deployment fixture", () => {
       ["fabricatedWithdrawal", "0000000c", "fraudProofFabricatedWithdrawal"],
       ["nativeScriptDecoding", "0000000d", "fraudProofNativeScriptDecoding"],
       ["missingSignature", "0000000e", "fraudProofMissingSignature"],
-      ["missingNativeScriptTx", "0000000f", "fraudProofMissingNativeScriptTx"],
       [
         "withdrawnReferenceInput",
         "00000010",

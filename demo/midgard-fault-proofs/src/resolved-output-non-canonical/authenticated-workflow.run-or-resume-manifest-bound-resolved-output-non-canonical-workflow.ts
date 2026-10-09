@@ -2,14 +2,16 @@ import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import {
+  completeCanonicalReplayPredecessorEvidence,
+  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+} from "../workflow/complete-replay.js";
 import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import {
   defineFamily,
   type FamilyAssemblyContext,
 } from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { resolveHistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
@@ -35,7 +37,7 @@ import {
   resolvedOutputNonCanonicalConfigFromBinding,
 } from "./authenticated-workflow.resolved-output-non-canonical-config-from-binding.js";
 import {
-  deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus,
+  deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
 } from "./resolved-output-non-canonical.js";
 import {
@@ -96,10 +98,9 @@ export const createManifestBoundResolvedOutputNonCanonicalWorkflow = async (
     stateQueueMutationLeaseCoordinator:
       input.stateQueueMutationLeaseCoordinator,
     decisionDigest: input.decisionDigest,
-    historicalNativeScriptCheckpointStore:
-      input.historicalNativeScriptCheckpointStore,
-    historicalNativeScriptHistorySource:
-      input.historicalNativeScriptHistorySource,
+    ...(input.replayContext === undefined
+      ? {}
+      : { replayContext: input.replayContext }),
   });
 };
 
@@ -127,18 +128,13 @@ export const runOrResumeManifestBoundResolvedOutputNonCanonicalWorkflow =
       observation,
       sources: input.sources,
     });
-    const corpus = await resolveHistoricalNativeScriptCorpus({
-      deploymentFingerprint: input.workflow.binding.deploymentFingerprint,
-      checkpointStore: input.workflow.historicalNativeScriptCheckpointStore,
-      historySource: input.workflow.historicalNativeScriptHistorySource,
-      currentEvidence: canonical,
-      sources: input.sources,
+    const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+      block: canonical,
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence: canonical,
+        context: input.workflow.replayContext,
+      }),
     });
-    const priorLedger =
-      await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
-        block: canonical,
-        corpus,
-      });
     const findings = detectResolvedOutputNonCanonicalCompleteReplay({
       block: canonical,
       priorLedger,
@@ -186,7 +182,6 @@ const runFor = (context: BoundContext) => {
   if (existing !== undefined) return existing;
   const created = createResolvedOutputNonCanonicalRecoveryPorts(
     context.runtime.workflow,
-    context.runtime.sources,
   );
   runs.set(context, created);
   return created;
@@ -228,9 +223,6 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
         runFor(context).requirementForAction(input),
     },
   ],
-  extend: (context) => ({
-    resolveReplayContext: runFor(context).resolveReplayContext,
-  }),
 });
 
 export const createResolvedOutputNonCanonicalRecoveryAdapter = (
@@ -246,13 +238,6 @@ export const createResolvedOutputNonCanonicalRecoveryAdapter = (
     ...assembled,
     transactions:
       assembled.transactions as CursorFamilyTransactionPort<"resolvedOutputNonCanonical">,
-    resolveReplayContext: (
-      assembled as typeof assembled &
-        Pick<
-          ReturnType<typeof createResolvedOutputNonCanonicalRecoveryPorts>,
-          "resolveReplayContext"
-        >
-    ).resolveReplayContext,
   };
 };
 

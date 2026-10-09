@@ -13,7 +13,6 @@ import {
   type HeaderDecision,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
-  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -59,11 +58,12 @@ import { testFaultProofL1 } from "./fault-proof-application.raw-config.js";
  * discipline: a decision it did not issue has no replay context to read.
  *
  * Two facts are under test and they are not the same set. The decision-time
- * check guards the four families whose proof opens `prev_utxos_root`: a
- * fault decision for one of them on a header with a non-empty previous ledger
- * must carry the authenticated predecessor. The records' `requires.replayContext`
- * guards the five families whose artifact re-derives from the admitted
- * context, and the shared application loop enforces that at load time.
+ * check guards the families whose proof opens `prev_utxos_root`: a fault
+ * decision for one of them on a header with a non-empty previous ledger must
+ * carry the authenticated predecessor. The records' `requires.replayContext`
+ * guards the families whose artifact re-derives from the admitted context, a
+ * strict superset, and the shared application loop enforces that at load
+ * time.
  */
 const classifier = vi.hoisted(() => ({
   deploymentFingerprint: "",
@@ -501,28 +501,10 @@ describe("watcher decision-time predecessor ledger", () => {
       {
         l1: testFaultProofL1(),
         deploymentIdentity: AUTHORITY.result,
-        historicalNativeScriptCheckpointStore:
-          unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest(),
         infrastructure: {
           manifestPath: MANIFEST_PATH,
           blueprintPath: BLUEPRINT_PATH,
           deploymentInfoPath: DEPLOYMENT_INFO_PATH,
-          historicalNativeScriptHistory: {
-            sourceMode: "external_provider_quorum",
-            consistencyPolicy: "exact_bytes_all_providers_v1",
-            providers: [
-              {
-                sourceId: "history-provider-a",
-                operatorIdentitySha256: "71".repeat(32),
-                authorityEndpoint: "https://history-a.example.test",
-              },
-              {
-                sourceId: "history-provider-b",
-                operatorIdentitySha256: "72".repeat(32),
-                authorityEndpoint: "https://history-b.example.test",
-              },
-            ],
-          },
         },
         unsafeTransportFactoryForTest: transportFactory(),
       },
@@ -639,9 +621,9 @@ describe("watcher decision-time predecessor ledger", () => {
         REFUSAL(category),
       );
       expect(classifier.calls).toBe(callsBefore + 1);
-      // The refused decision left no replay context behind. Two of these
-      // families also require the context at load and refuse there; the
-      // other two are applied, which is why the decision-time check exists.
+      // The refused decision left no replay context behind. A family that
+      // also requires the context at load refuses there; one that does not
+      // is applied, which is why the decision-time check exists.
       if (REPLAY_CONTEXT_FAMILIES.includes(category)) {
         await expect(applyRecordFor(category)).rejects.toThrow(
           `${category} application requires replayContext, which the host did not supply`,

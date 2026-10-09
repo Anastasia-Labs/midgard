@@ -22,7 +22,6 @@ import {
   replayTransitionTraceFromRetainedHistory,
 } from "../src/transition-trace/replay-authority.js";
 import { VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import * as historicalCorpus from "../src/workflow/historical-native-script-corpus.js";
 import { FraudProofL1CheckpointChangedError } from "../src/workflow/l1-source.js";
 import * as rawSnapshot from "../src/workflow/raw-l1-snapshot.js";
 import {
@@ -1049,25 +1048,8 @@ describe("immutable event parsing failure and contextual outputs", () => {
         sourceEventsByFingerprint: sources,
       },
     };
-    const corpus: historicalCorpus.HistoricalNativeScriptCorpus = {
-      schemaVersion: historicalCorpus.HISTORICAL_NATIVE_SCRIPT_CORPUS,
-      throughHeaderHash: current.headerHash,
-      headerHashes: [current.headerHash],
-      payloadEnvelopeSha256s: [current.payloadEnvelopeSha256],
-      entries: [],
-      providerRosterDigest: "00".repeat(32),
-      corpusDigest: "00".repeat(32),
-      checkpointDigest: "00".repeat(32),
-      evidenceDigest: "00".repeat(32),
-    };
-    // This regression isolates the real coverage/output construction. History
-    // admission and detector correctness are outside its scope.
-    const history = vi
-      .spyOn(historicalCorpus, "requireHistoricalNativeScriptCorpus")
-      .mockReturnValue({
-        currentEvidence: current,
-        reconstructions: [current.reconstruction],
-      });
+    // This regression isolates the real coverage/output construction.
+    // Detector correctness is outside its scope.
     const stop = new Error("coverage captured before detection");
     const detection = vi
       .spyOn(transitionDetection, "detectTransitionTraceFaults")
@@ -1077,7 +1059,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
         await expect(
           replayTransitionTraceFromRetainedHistory({
             evidence: current,
-            corpus,
+            predecessor: undefined,
             l1Events: handle,
           }),
         ).rejects.toBe(stop);
@@ -1119,7 +1101,6 @@ describe("immutable event parsing failure and contextual outputs", () => {
       fallback.withdrawalId.outputIndex = 999n;
       expect((await read()).withdrawalId).toEqual(datum.event.id);
     } finally {
-      history.mockRestore();
       detection.mockRestore();
     }
   });

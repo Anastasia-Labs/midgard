@@ -181,21 +181,9 @@ describe("contract deployment info", () => {
             .spendingScriptHash,
         );
         expect(
-          manifest.contracts.fraudProofMissingNativeScriptTxStep06.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistagStep05.scriptHash,
         ).toEqual(
-          contracts.fraudProofContracts.missingNativeScriptTx.steps[5]
-            .spendingScriptHash,
-        );
-        expect(
-          manifest.contracts.fraudProofMissingNativeScriptTxStep07.scriptHash,
-        ).toEqual(
-          contracts.fraudProofContracts.missingNativeScriptTx.steps[6]
-            .spendingScriptHash,
-        );
-        expect(
-          manifest.contracts.fraudProofMissingNativeScriptTxStep08.scriptHash,
-        ).toEqual(
-          contracts.fraudProofContracts.missingNativeScriptTx.steps[7]
+          contracts.fraudProofContracts.withdrawalMistag.steps[4]
             .spendingScriptHash,
         );
         expect(
@@ -804,18 +792,15 @@ describe("contract deployment info", () => {
           reconstructed.fraudProofs.transitionTrace.spendingScriptHash,
         ).toEqual(manifest.contracts.fraudProofTransitionTrace.scriptHash);
         expect(
-          reconstructed.fraudProofContracts.missingNativeScriptTx.steps.map(
+          reconstructed.fraudProofContracts.withdrawalMistag.steps.map(
             ({ spendingScriptHash }) => spendingScriptHash,
           ),
         ).toEqual([
-          manifest.contracts.fraudProofMissingNativeScriptTx.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep02.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep03.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep04.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep05.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep06.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep07.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep08.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistag.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistagStep02.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistagStep03.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistagStep04.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistagStep05.scriptHash,
         ]);
         expect(
           reconstructed.fraudProofContracts.transitionTrace.finals.map(
@@ -1100,19 +1085,16 @@ describe("contract deployment info", () => {
       };
 
       expectOrderedDistinctWiring(
-        "missingNativeScriptTx.steps",
-        reconstructed.fraudProofContracts.missingNativeScriptTx.steps.map(
+        "withdrawalMistag.steps",
+        reconstructed.fraudProofContracts.withdrawalMistag.steps.map(
           ({ spendingScriptHash }) => spendingScriptHash,
         ),
         [
-          manifest.contracts.fraudProofMissingNativeScriptTx.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep02.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep03.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep04.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep05.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep06.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep07.scriptHash,
-          manifest.contracts.fraudProofMissingNativeScriptTxStep08.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistag.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistagStep02.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistagStep03.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistagStep04.scriptHash,
+          manifest.contracts.fraudProofWithdrawalMistagStep05.scriptHash,
         ],
       );
 

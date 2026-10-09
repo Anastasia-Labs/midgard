@@ -21,7 +21,6 @@ import {
 } from "../transition-trace/l1-events.js";
 import { classifyCanonicalBlockViolations } from "./classification.js";
 import {
-  admitCompleteCanonicalReplayHistoricalCorpus,
   admitCompleteCanonicalReplayPredecessor,
   admitValidationTraceReplayContext,
   COMPLETE_CANONICAL_REPLAY,
@@ -49,9 +48,7 @@ import {
   classifyTransitionTraceStructuralRoute,
   sealPreUnionDecision,
 } from "./header-classifier.transition-trace-structural-route.js";
-import { resolveHistoricalNativeScriptCorpus } from "./historical-native-script-corpus.js";
 import {
-  HISTORICAL_CORPUS_REPLAY_CATEGORIES,
   launchScopeRequires,
   PREDECESSOR_LEDGER_PROOF_CATEGORIES,
 } from "./replay-requirements.js";
@@ -191,12 +188,9 @@ export const classifyHeader = async ({
       "production classifier accepts either an admitted replay context or a predecessor observation, never both",
     );
   }
-  if (
-    replayContext?.historicalCorpus !== undefined ||
-    replayContext?.transitionTraceEvents !== undefined
-  ) {
+  if (replayContext?.transitionTraceEvents !== undefined) {
     throw new Error(
-      "production classifier rejects caller-supplied historical replay authority",
+      "production classifier rejects caller-supplied transition event authority",
     );
   }
   // Captured once: the structural route and the replay read the same events.
@@ -291,41 +285,27 @@ export const classifyHeader = async ({
       position: selected.position.toString(),
     });
   }
+  // A header committing the empty genesis ledger has no predecessor; the
+  // predecessor-ledger families still bind to an (empty) admitted context so
+  // their records find the replay context they require.
   if (
+    admittedReplayContext === undefined &&
     launchScopeRequires(
       classifier.launchScope,
-      HISTORICAL_CORPUS_REPLAY_CATEGORIES,
+      PREDECESSOR_LEDGER_PROOF_CATEGORIES,
     )
   ) {
-    const historicalAuthority = authority.historicalReplayAuthority;
-    if (historicalAuthority === undefined) {
-      throw new Error(
-        "historical-output complete replay lost its admitted historical authority",
-      );
-    }
-    const corpus = await resolveHistoricalNativeScriptCorpus({
-      deploymentFingerprint: classifier.deploymentFingerprint,
-      ...historicalAuthority,
-      currentEvidence: routed.evidence,
-      sources,
-      ...(retries === undefined ? {} : { retries }),
-    });
-    admittedReplayContext = Object.freeze({
-      ...(admittedReplayContext?.predecessor === undefined
-        ? {}
-        : { predecessor: admittedReplayContext.predecessor }),
-      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
-        evidence: routed.evidence,
-        corpus,
-      }),
-    });
+    admittedReplayContext = Object.freeze({});
   }
   if (classifier.launchScope.includes("crossBlockDuplicateEvent")) {
     if (authority.settlementAuthority === undefined)
       throw new Error("cross-block settlement authority was lost");
     admittedReplayContext = Object.freeze({
       ...admittedReplayContext,
-      settlements: await authority.settlementAuthority.capture(routed.evidence),
+      settlements: await authority.settlementAuthority.capture(
+        routed.evidence,
+        { sources, ...(retries === undefined ? {} : { retries }) },
+      ),
     });
   }
   if (transitionTraceEvents !== undefined) {

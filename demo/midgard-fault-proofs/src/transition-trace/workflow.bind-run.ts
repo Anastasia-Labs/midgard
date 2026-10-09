@@ -14,7 +14,6 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { requireHistoricalNativeScriptHistoryAuthority } from "../workflow/historical-native-script-corpus.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import {
@@ -49,11 +48,6 @@ export const boundRuns = new WeakMap<
 const bindRun = (context: TransitionContext) => {
   const { binding } = context;
   const { config, cell } = context.runtime;
-  requireHistoricalNativeScriptHistoryAuthority({
-    deploymentFingerprint: binding.deploymentFingerprint,
-    checkpointStore: config.historicalNativeScriptCheckpointStore,
-    historySource: config.historicalNativeScriptHistorySource,
-  });
   const references = Object.freeze({
     ...context.auxiliaryReferences,
     ...context.references.witnesses,

@@ -10,7 +10,6 @@ import "../workflow/cursor-family-adapter.js";
 import "../workflow/cursor-family-runtime.js";
 import "../workflow/family-definition.js";
 import "../workflow/family-l1-observation.js";
-import "../workflow/historical-native-script-corpus.js";
 import "../workflow/manifest-bound-family-assembly.js";
 import "../workflow/orchestrator.js";
 import "../workflow/transaction-boundary.js";

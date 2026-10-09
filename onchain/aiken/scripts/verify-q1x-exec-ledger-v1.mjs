@@ -60,10 +60,10 @@
  * **What this ledger covers, and what it deliberately does not.** It covers the
  * *shapes* the #575 rebind introduced, not the lifecycle. Concretely: the two
  * arithmetic-access steps #551 measured the defect at (Q10 step-04, Q11
- * step-02), and **both** of the wave's genuinely unbounded walks (Q17 step-06
- * over field 6, Q16 step-04 over field 7) — the second added at the round-2
- * review's request, since measuring only the steps the rebind made flat and
- * none of the steps it made linear is not a measurement of the rebind.
+ * step-02), and the wave's genuinely unbounded walk (Q16 step-04 over field 7),
+ * added at the round-2 review's request, since measuring only the steps the
+ * rebind made flat and none of the steps it made linear is not a measurement
+ * of the rebind.
  *
  * It does **not** carry a row per lifecycle step, and that is a scoping
  * decision rather than an omission. Per-step lifecycle re-measurement across
@@ -72,7 +72,7 @@
  * blueprint. Taking those numbers
  * here, against a pre-blueprint build, would produce figures Phase 7 must
  * discard and re-take; what a *lane* ledger can honestly assert is that no
- * shape the lane introduced is unmeasured, which is what the four families
+ * shape the lane introduced is unmeasured, which is what the three families
  * above establish.
  *
  * This is therefore the **provisional** signal #575 owes. Formal closure is

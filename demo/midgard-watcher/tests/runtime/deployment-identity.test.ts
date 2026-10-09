@@ -450,11 +450,6 @@ describe("watcher deployment identity", () => {
       categoryId: "0000001c",
       scriptHash: fixture.policy.appliedScriptHashes.fraudProofNetworkId,
     });
-    expect(categories.missingNativeScriptUtxo).toEqual({
-      categoryId: "0000001d",
-      scriptHash:
-        fixture.policy.appliedScriptHashes.fraudProofMissingNativeScriptUtxo,
-    });
     expect(categories.nativeScriptInvalid).toEqual({
       categoryId: "0000001e",
       scriptHash:
@@ -506,7 +501,7 @@ describe("watcher deployment identity", () => {
       scriptHash:
         fixture.policy.appliedScriptHashes.fraudProofMintItemNonCanonical,
     });
-    expect(Object.keys(categories)).toHaveLength(55);
+    expect(Object.keys(categories)).toHaveLength(53);
 
     fixture.policy = {
       ...fixture.policy,

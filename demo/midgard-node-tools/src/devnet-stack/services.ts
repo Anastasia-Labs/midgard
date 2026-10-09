@@ -35,21 +35,12 @@ import { watcherServiceSpecs } from "./watcher.js";
 export const NODE_START_GRACE_MS = 60 * 60_000;
 
 export const supervisorPaths = (
-  context: Pick<DeployContext, "layout"> & Partial<Pick<DeployContext, "run">>,
+  context: Pick<DeployContext, "layout">,
   specs?: readonly ServiceSpec[],
 ): SupervisorPaths => ({
   runDir: context.layout.runDir,
   runtimeCodeStamp: () => codeStamp(runtimeDistTargets(context.layout)),
   serviceSpecs: specs,
-  historyDaemon:
-    context.run !== undefined &&
-    specs?.some((spec) => spec.historyReadiness !== undefined)
-      ? {
-          runId: context.run.runId,
-          supervisorPid: context.layout.supervisorPid,
-          descriptorPath: context.layout.historyDaemonDescriptor,
-        }
-      : undefined,
   deploymentBinding: existsSync(context.layout.contractManifest)
     ? createHash("sha256")
         .update(readFileSync(context.layout.contractManifest))
@@ -124,7 +115,7 @@ export const serviceSpecs = (
       readyUrl: `${node}/readyz`,
       startGraceMs: NODE_START_GRACE_MS,
     },
-    ...watcherServiceSpecs(context, oneShot),
+    ...watcherServiceSpecs(context),
   ];
 };
 
