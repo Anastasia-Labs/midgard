@@ -38,16 +38,11 @@ checked until it is committed.
 ## 3. Blueprint
 
 The fault-proofs emulator tests load `onchain/aiken/plutus.json`
-(`demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts:29`, or
-`MIDGARD_REAL_BLUEPRINT_PATH`). Rebuild it after any Aiken change, as CI does
-in "Build testnet Aiken blueprint":
-
-```bash
-pnpm --dir demo deployment:build preprod-testing
-```
-
-A stale `plutus.json` makes emulator tests fail against the old validators.
-Never commit it.
+(`demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts:29`).
+`contrib test` rebuilds it after an Aiken change (`deployment:build`, as CI
+does in "Build testnet Aiken blueprint"), or copies a matching one from
+another checkout; the suites' global setup refuses a stale one. Never commit
+it.
 
 ## 4. Focused package tests
 

@@ -96,12 +96,11 @@ Each checkout has its own `onchain/aiken/plutus.json` and its own `dist/`
 directories; neither is shared through git. A fresh worktree has neither, and
 switching branches leaves both describing the old sources.
 
-- The blueprint can be copied from another checkout whose stamped inputs are
-  identical and whose blueprint was built for the profile this checkout
-  selects (`SELECTED_DEPLOYMENT_PROFILE`, with the same digest):
-  `node scripts/sync-blueprint-from.mjs <checkout> [--dry-run]`. It refuses a
-  stale source, names the first differing input or both profiles, and replaces
-  nothing here unless the copied pair is fresh.
+- `contrib prepare` copies the blueprint from another checkout whose stamped
+  inputs are identical and whose blueprint was built for the profile this
+  checkout selects, through `node scripts/sync-blueprint-from.mjs <checkout>`
+  (which re-verifies the copy and replaces nothing unless it is fresh), and
+  builds it only when no checkout has one.
 - A `dist/` is not copied. Nothing checks a copied dist against this
   checkout's sources, and only `midgard-core`'s dist carries a source digest.
   Rebuild it here:

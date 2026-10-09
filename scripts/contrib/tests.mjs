@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
-import { probeBlueprintStamp, probePostgres } from "../preflight/probes.mjs";
+import { probePostgres } from "../preflight/probes.mjs";
+import { ensureBlueprint } from "./blueprint.mjs";
 import { buildPackage, checkBuild, runDirectory } from "./build.mjs";
 import {
   atomicJson,
@@ -12,6 +13,7 @@ import {
   packageByName,
   packageClosure,
   runtimeBuildClosure,
+  workspacePackages,
   sha256,
   outputIdentity,
   hashFiles,
@@ -20,6 +22,32 @@ import { runProcess } from "./process.mjs";
 import { writeReceipt } from "./receipts.mjs";
 import { withResource } from "./resources.mjs";
 import { buildNative, checkNative } from "./native.mjs";
+
+// Whether a package's suites read the compiled blueprint: its own Vitest
+// config runs the blueprint stamp (or interactive-emulator) global setup, or
+// it depends at runtime on a package whose config does.
+const runsBlueprintSetup = (root, pkg) =>
+  ["vitest.config.ts", "vitest.config.mts", "vitest.config.js"].some(
+    (file) =>
+      existsSync(resolve(root, pkg.directory, file)) &&
+      /\b(?:blueprintStampGlobalSetup|interactiveEmulatorSetup)\b/u.test(
+        readFileSync(resolve(root, pkg.directory, file), "utf8"),
+      ),
+  );
+
+const readsBlueprint = (root, name, seen = new Set()) => {
+  const pkg = packageByName(root, name);
+  if (seen.has(pkg.name)) return false;
+  seen.add(pkg.name);
+  const workspace = new Set(workspacePackages(root).map(({ name }) => name));
+  return (
+    runsBlueprintSetup(root, pkg) ||
+    Object.keys(pkg.dependencies ?? {}).some(
+      (dependency) =>
+        workspace.has(dependency) && readsBlueprint(root, dependency, seen),
+    )
+  );
+};
 
 export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
   const pkg = packageByName(root, name);
@@ -58,13 +86,7 @@ export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
       "da-committee-node",
       "@al-ft/midgard-l1-follower",
     ].includes(pkg.name),
-    blueprint: [
-      "midgard-node",
-      "@al-ft/midgard-sdk",
-      "@al-ft/midgard-fault-proofs",
-      "midgard-watcher",
-      "da-committee-node",
-    ].includes(pkg.name),
+    blueprint: readsBlueprint(root, pkg.name),
     prerequisites: ordered.map((name) => ({ name, ...checkBuild(root, name) })),
     pretest,
     inputSha256: inputIdentity(root, pkg.name).sha256,
@@ -79,13 +101,13 @@ export const prepare = async (
   const plan = preparationPlan(root, name, { sourceOnly });
   if (env.MIDGARD_REAL_BLUEPRINT_PATH || env.MIDGARD_BLUEPRINT_STAMP === "warn")
     throw new Error(
-      "guarded runs refuse blueprint path/warning overrides; build the selected checkout profile with pnpm --dir demo deployment:build preprod-testing",
+      "guarded runs refuse MIDGARD_REAL_BLUEPRINT_PATH and MIDGARD_BLUEPRINT_STAMP=warn: they test this checkout's own blueprint, which contrib prepare copies or builds; unset both",
     );
-  if (plan.blueprint) {
-    const blueprint = await probeBlueprintStamp({ root });
-    if (blueprint.status !== "available")
-      throw new Error(`${blueprint.detail}; ${blueprint.fix}`);
-  }
+  // Copies a ready blueprint from another checkout, or builds one; never
+  // runs suites against a stale or other-profile blueprint.
+  const blueprintAction = plan.blueprint
+    ? await ensureBlueprint(root, { signal, env })
+    : undefined;
   if (plan.postgres && env.MIDGARD_SKIP_DB_TESTS !== "1") {
     if (
       env.POSTGRES_HOST &&
@@ -106,7 +128,7 @@ export const prepare = async (
         throw new Error(`prerequisite build failed: ${built.path}`);
     }
   }
-  return preparationPlan(root, name, { sourceOnly });
+  return { ...preparationPlan(root, name, { sourceOnly }), blueprintAction };
 };
 
 export const runTests = async (

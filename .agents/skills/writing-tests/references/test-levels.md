@@ -99,18 +99,12 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
   `midgard-watcher`; `submit-init-emulator*` and the lifecycle suites in
   `midgard-fault-proofs`.
 - **Prerequisite: a blueprint built from the current source.** The suites
-  read `onchain/aiken/plutus.json`, which is build output and untracked. Build
-  it the way CI does:
-
-  ```bash
-  pnpm --dir demo deployment:build preprod-testing
-  ```
-
-  This refuses any `aiken` on `PATH` but the fork pinned in
-  `.github/workflows/aiken-ci.yml`
-  (`demo/scripts/deployment-profiles.mjs:260-270`). Rebuild after any `.ak`
-  change; nothing checks that an existing `plutus.json` matches the source.
-  Some suites accept `MIDGARD_REAL_BLUEPRINT_PATH` to point elsewhere.
+  read `onchain/aiken/plutus.json`, which is build output and untracked.
+  `contrib test` makes it ready first: it copies one from a checkout with
+  identical inputs, else runs `pnpm --dir demo deployment:build <profile>`,
+  which refuses any `aiken` but the pinned fork. The suites' global setup
+  refuses a blueprint whose build record names other sources or another
+  compiler.
 
 - **Focused run:**
 

@@ -96,17 +96,17 @@ plain-Node imports. `contrib test` owns these artifacts until the run joins.
 
 ## The blueprint stamp
 
-The suites of `midgard-node`, `midgard-sdk`, `midgard-validation`,
-`midgard-fault-proofs` and `midgard-watcher` read the untracked
-`onchain/aiken/plutus.json`. Their global setup
-(`demo/midgard-test-support/blueprint-stamp-setup.js`) refuses the run with a
-`[blueprint-stamp]` error when the blueprint was built from other sources or
-by another compiler; an absent one is left to the suites that read it. Rebuild
-with `pnpm --dir demo deployment:build preprod-testing`, or copy another
-checkout's with `node scripts/sync-blueprint-from.mjs <checkout>`, which copies
-only a fresh blueprint whose stamped inputs and deployment profile match this
-tree and otherwise exits 1 naming the first difference.
+Suites that read the untracked `onchain/aiken/plutus.json` run
+`demo/midgard-test-support/blueprint-stamp-setup.js`, which refuses with a
+`[blueprint-stamp]` error a blueprint built from other sources or by another
+compiler, or one `MIDGARD_REAL_BLUEPRINT_PATH` names without a fresh build
+record. An absent default one is left to the suites that read it.
 
+- **`contrib prepare` and `contrib test` make the blueprint ready; nobody
+  chooses between copying and building.** A stale or other-profile blueprint
+  is copied from a checkout whose build record matches this tree
+  (`scripts/sync-blueprint-from.mjs` re-verifies the copy), else built with
+  `deployment:build`. [script: scripts/contrib/blueprint.mjs]
 - **`MIDGARD_BLUEPRINT_STAMP=warn` is for a deliberate run against a stale
   build only**; never report such a run as a result for the current tree.
   CI never sets it, and nothing stops a local run from setting it. [review]

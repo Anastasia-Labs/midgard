@@ -13,8 +13,9 @@ node scripts/contrib.mjs boundary --package midgard-core
 File selectors are package-relative explicit test paths. The runner resolves
 that package's Vitest, supplies emulator mode for node/node-tools and test mode
 for other packages, derives the package's pretest
-builds, requires the selected blueprint stamp and local test Postgres where
-applicable, and assigns an invocation-specific disposable database family.
+builds, makes the blueprint ready where the package reads it (copied from a
+checkout with identical inputs and profile, else built with
+`deployment:build`), requires the local test Postgres where applicable, and assigns an invocation-specific disposable database family.
 Both file and test ordering use the recorded seed. A name selector records
 filtered assertions separately from skipped selected assertions.
 
