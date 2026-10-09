@@ -1,5 +1,5 @@
 /**
- * The follower-change driver over the emulator follower stand-in
+ * The follower-change driver over the emulator follower host
  * (`emulator-l1-follower.ts`), as the production follower runs it.
  */
 import { Effect } from "effect";
@@ -52,8 +52,8 @@ export type EmulatorDriverRun = Readonly<{
 
 /**
  * The follower-change driver over the emulator follower, as the production
- * follower runs it (`l1-follower.ts`): each run brings the follower tables
- * to the emulator's tip, the driver's sink (`driverSink`) applies the plan
+ * follower runs it (`l1-follower.ts`): each run brings the follower store
+ * to the emulator's tip and plans at its current view, the driver's sink (`driverSink`) applies the plan
  * (its recompute on a first view, a rewind or orphans, with the startup
  * preparation once), the landed-block hook runs at the applied view, and
  * then the rebase the own-commit disposition makes due (`rebaseIfDue`), as

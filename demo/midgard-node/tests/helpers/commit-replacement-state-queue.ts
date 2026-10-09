@@ -1,21 +1,21 @@
 /**
  * The node services for `commit-replacement-state-queue-emulator.test.ts`:
- * the follower run's landed-block processing (at the driver's applied view,
- * under its write capability, with its recompute as the rebase), the
- * own-commit disposition (the rebase it makes due) and the S6 pass over the
- * follower stand-in.
+ * the follower run's landed-block processing (at the follower's view, as
+ * the production hook, under the driver's write capability, with its
+ * recompute as the rebase), the own-commit disposition (the rebase it makes
+ * due) and the S6 pass over the follower host's facts
+ * (`emulator-l1-follower.ts`).
  */
 import {
   appendIntentEventIn,
   createIntentReconciler,
+  currentViewIn,
   decodeTransaction,
-  encodeOutRef,
   type FactStore,
   postgresDialect,
 } from "@al-ft/midgard-l1-follower";
 import { eventProjectionConfigFromContracts } from "@al-ft/midgard-l1-follower/events";
 import { SqlClient } from "@effect/sql";
-import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect, Layer, ManagedRuntime } from "effect";
 
 import { followerSqlTx } from "../../src/database/follower-schema.js";
@@ -24,14 +24,9 @@ import { readLandedStateQueueFrom } from "../../src/l1-state-queue/hook.js";
 import { stateQueueProjectionConfig } from "../../src/l1-state-queue/index.js";
 import { nodeLandedBlockPorts } from "../../src/landed-blocks/node-ports.js";
 import { processLandedQueue } from "../../src/landed-blocks/process.js";
-import { bytea } from "../../src/landed-blocks/store.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { Database } from "../../src/services/database.js";
 import { withDriverView } from "../../src/services/follower-write-gate.driver.js";
-import {
-  followerViewOf,
-  readFollowerWriteGate,
-} from "../../src/services/follower-write-gate.js";
 import { Globals } from "../../src/services/globals.js";
 import {
   makeIntentJournal,
@@ -44,11 +39,8 @@ import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts
 import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
 import { SDK } from "../deposit-flow-emulator-shared.js";
 import type { Lifecycle } from "./correction-admission-scenario.js";
+import { syncEmulatorChain } from "./emulator-l1-follower.js";
 import { nodeFactStore } from "./emulator-operator-set.js";
-import {
-  mirrorEmulatorStateQueue,
-  writeAddressFacts,
-} from "./landed-state-queue.js";
 
 /** The node services the follower run uses, over the lifecycle's globals. */
 export const openNodeServices = async (life: Lifecycle) => {
@@ -100,29 +92,11 @@ export const openNodeServices = async (life: Lifecycle) => {
     stateQueue: stateQueueProjectionConfig(contracts.stateQueue),
   };
   /**
-   * What the commit spends or references, as follower facts (§8.2 journals
-   * only over tracked facts): the operator wallet (its wallet view), the
-   * reference-script wallet, and the protocol nodes the commit reads.
+   * The follower store at the emulator's tip: what the commit spends or
+   * references are its facts (§8.2 journals only over tracked facts).
    */
-  const trackedAddresses = [
-    operatorAddress,
-    await fixture.referenceScriptsLucid.wallet().address(),
-    contracts.activeOperators.spendingScriptAddress,
-    contracts.hubOracle.spendingScriptAddress,
-    contracts.correctionLock.spendingScriptAddress,
-    contracts.scheduler.spendingScriptAddress,
-  ];
-  const mirrorTracked = async () => {
-    const lucid = fixture.operatorLucid;
-    for (const address of trackedAddresses)
-      await runtime.runPromise(
-        writeAddressFacts(
-          address,
-          await lucid.utxosAt(address),
-          lucid.currentSlot(),
-        ),
-      );
-  };
+  const followTip = () =>
+    runtime.runPromise(syncEmulatorChain(fixture.operatorLucid));
   const query = <A>(
     program: (sql: SqlClient.SqlClient) => Effect.Effect<A, unknown>,
   ) => runtime.runPromise(Effect.flatMap(SqlClient.SqlClient, program));
@@ -134,20 +108,20 @@ export const openNodeServices = async (life: Lifecycle) => {
     processLanded: () =>
       runtime.runPromise(
         Effect.gen(function* () {
-          yield* mirrorEmulatorStateQueue(
-            fixture.operatorLucid,
-            contracts.stateQueue,
-          );
+          yield* syncEmulatorChain(fixture.operatorLucid);
           const store = yield* nodeFactStore;
+          // The production hook runs at the change's view, also when the
+          // driver's sink left that view held (orphans of a rewind).
+          const view = yield* Effect.promise(() =>
+            store.transaction("read", (tx) => currentViewIn(tx, store.dialect)),
+          );
+          if (view === null) throw new Error("The follower has no view");
           const read = yield* Effect.promise(() =>
-            readLandedStateQueueFrom(store, plan.stateQueue),
+            readLandedStateQueueFrom(store, plan.stateQueue, view),
           );
           if (read.kind !== "ok" || !read.queue.healthy)
             throw new Error(`The landed queue is unreadable: ${read.kind}`);
-          const gate = yield* readFollowerWriteGate;
-          if (gate.applied === undefined)
-            throw new Error("The driver has applied no view");
-          return yield* withDriverView(followerViewOf(gate.applied))(
+          return yield* withDriverView(view)(
             processLandedQueue(
               nodeLandedBlockPorts(store as FactStore, plan, (reason) =>
                 Effect.promise(() => life.rebaseIfDue(reason)),
@@ -157,7 +131,7 @@ export const openNodeServices = async (life: Lifecycle) => {
           );
         }),
       ),
-    mirrorTracked,
+    followTip,
     /** The follower run's own-commit disposition after S6: the driver's
      * recompute when the rebase it makes due can run. */
     disposeDead: () =>
@@ -188,30 +162,18 @@ export const openNodeServices = async (life: Lifecycle) => {
         }),
       ),
     /**
-     * The follower's landing fact for `signed` (an `l1_txs` row at the
-     * cursor's block), which the stand-in does not write: S6 derives a
-     * landed own commit `landed`, not expired, and its change live.
+     * The follower at the emulator's tip, holding `signed`'s landing (its
+     * `l1_txs` row): S6 derives a landed own commit `landed`, not expired,
+     * and its change live.
      */
     recordLanding: async (signed: Buffer) => {
-      await mirrorTracked();
-      const tx = decodeTransaction(signed);
-      const refs = (outRefs: typeof tx.inputs) =>
-        bytea(outRefs.map((outRef) => encodeOutRef(outRef)));
-      await query((sql) => {
-        const pg = sql as PgClient;
-        return sql`INSERT INTO l1_txs (tx_hash, block_slot, block_tx_index,
-            is_valid, inputs, reference_inputs, collaterals, output_count,
-            has_collateral_return, mint, withdrawals, redeemers,
-            invalid_before, invalid_after, body_cbor, witness_cbor)
-          SELECT ${tx.hash}, c.slot,
-            (SELECT count(*) FROM l1_txs t WHERE t.block_slot = c.slot), true,
-            ${pg.array(refs(tx.inputs))}::bytea[],
-            ${pg.array(refs(tx.referenceInputs))}::bytea[],
-            ${pg.array(refs(tx.collaterals))}::bytea[],
-            ${tx.outputs.length}, false, '{}'::jsonb, '{}'::jsonb, '[]'::jsonb,
-            NULL, NULL, ${tx.bodyCbor}, ${Buffer.alloc(0)}
-          FROM l1_follower_cursor c`;
-      });
+      await followTip();
+      const [landed] = await query(
+        (sql) => sql<{ n: string }>`SELECT count(*)::text AS n FROM l1_txs
+          WHERE tx_hash = ${decodeTransaction(signed).hash}`,
+      );
+      if (landed?.n !== "1")
+        throw new Error("The follower holds no landing for the commit");
     },
     landedRow: async (headerHash: string) =>
       (

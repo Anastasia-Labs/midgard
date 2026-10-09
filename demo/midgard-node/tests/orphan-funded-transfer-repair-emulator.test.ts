@@ -16,7 +16,7 @@
  * commit, carrying a deposit made on the fork, holds neither transfer nor
  * the departed deposit.
  *
- * Production pieces and stand-in limits are those of
+ * Production pieces and harness limits are those of
  * `commit-replacement-state-queue-emulator.test.ts`.
  */
 import "./helpers/follower-emulator-installed.js";
@@ -96,9 +96,12 @@ describe("an L2 transfer funded by a deposit that leaves the chain", () => {
     expect(old.deposits).toEqual([]);
     expect(old.txs).toEqual([funded.txIdHex, dependent.txIdHex].sort());
 
-    // The follower run: landed-block processing rebases off the departed
-    // block, then the own-commit disposition; then the history owner.
+    // The follower run: the driver's run at the rewound view is held on
+    // the departed deposit (its block's disposition comes first), the
+    // landed-block hook at that view rebases off the departed block, then
+    // the own-commit disposition.
     await j.rollBackTo(ancestor, { synchronize: false });
+    await j.live.driveOnce();
     expect(await j.node.processLanded()).toBeUndefined();
     await j.node.disposeDead();
     await synchronizeBounded(j.live);
@@ -170,6 +173,8 @@ describe("an L2 transfer funded by a deposit that leaves the chain", () => {
       j.h.fixture,
       j.h.fixture.operatorLucid.slotToUnixTime(ttl) + 1_000,
     );
+    // The follower's tip passes the validity window with the next block.
+    j.h.fixture.emulator.awaitBlock(1);
     await synchronizeBounded(j.live);
     expect(await j.node.intentStatus(holder.txHash)).toMatchObject({
       kind: "expired",

@@ -8,14 +8,17 @@
  * The removal is an ordinary L1 transaction from the operator's wallet; the
  * node learns of it, and of its rollback, only through the follower's facts
  * (the landed state queue). The rollback discards the removal's block and
- * the empty blocks after it (`rollBackEmulatorChain`); the follower stand-in
- * carries the queue's new outputs into those facts at the next block, which
- * is what a followed chain's rewind and replay leave there. A rollback deeper
- * than k is not hostable here: the emulator stand-in has no chain-sync, and
- * the follower refuses such a rollback before any fact changes (the fork
+ * the empty blocks after it (`rollBackEmulatorChain`); the node's follower
+ * store rewinds onto the restored chain at the next synchronization and
+ * applies the blocks after it. A rollback deeper than k is not hostable
+ * here: the emulator follower host replays a chain from its origin when the
+ * store refuses a rewind, and the follower refuses such a rollback before
+ * any fact changes (the fork
  * simulator's beyond-k rewind and the readiness route's `rollback_beyond_k`
  * case cover that polarity).
  */
+import "./helpers/follower-emulator-installed.js";
+
 import { Effect } from "effect";
 import { expect, it, vi } from "vitest";
 

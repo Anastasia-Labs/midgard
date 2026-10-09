@@ -1,13 +1,11 @@
 /**
  * The node's operator set (NC14) over an emulator, for the watchdog: the
- * emulator's live outputs at the operator lists, the scheduler, the hub
- * oracle and the state queue written as follower facts at the emulator's
- * slot (`writeAddressFacts`), then the production mirror, hook and publish
- * into `Globals.OPERATOR_SET`.
+ * follower at the emulator's tip (`syncEmulatorChain`: the operator lists,
+ * the scheduler, the hub oracle and the state queue are its facts), then the
+ * production mirror, hook and publish into `Globals.OPERATOR_SET`.
  *
- * Each call loads a fresh mirror: the facts are rewritten as seed rows, not
- * followed block by block, so the changed-rows path is exercised by the
- * follower-backed tests (`l1-operator-set.test.ts`), not here.
+ * Each call loads a fresh mirror at the follower's current view, so the
+ * changed-rows path is exercised by `l1-operator-set.test.ts`, not here.
  */
 import {
   currentViewIn,
@@ -30,10 +28,7 @@ import {
 } from "../../src/l1-operator-set/index.js";
 import { Globals } from "../../src/services/globals.js";
 import { readLandedStateQueue } from "../../src/services/landed-state-queue.js";
-import {
-  mirrorEmulatorStateQueue,
-  writeAddressFacts,
-} from "./landed-state-queue.js";
+import { syncEmulatorChain } from "./emulator-l1-follower.js";
 
 /** The fact store the hook reads, over the node's SQL connection. */
 export const nodeFactStore = Effect.map(
@@ -59,20 +54,7 @@ export const publishEmulatorOperatorSet = (
 ) =>
   Effect.gen(function* () {
     const globals = yield* Globals;
-    const slot = lucid.currentSlot();
-    for (const validator of [
-      contracts.registeredOperators,
-      contracts.activeOperators,
-      contracts.retiredOperators,
-      contracts.scheduler,
-      contracts.hubOracle,
-    ]) {
-      const utxos = yield* Effect.promise(() =>
-        lucid.utxosAt(validator.spendingScriptAddress),
-      );
-      yield* writeAddressFacts(validator.spendingScriptAddress, utxos, slot);
-    }
-    yield* mirrorEmulatorStateQueue(lucid, contracts.stateQueue);
+    yield* syncEmulatorChain(lucid);
     const queue = yield* readLandedStateQueue(contracts.stateQueue);
     const stateQueueTail =
       queue.kind === "ok" ? stateQueueTailOf(queue.queue) : null;

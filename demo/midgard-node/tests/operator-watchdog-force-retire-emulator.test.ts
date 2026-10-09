@@ -14,6 +14,8 @@
  * With a lower key already retired, the anchor is that key's node, and the
  * retired-operators mint policy refuses the root as the anchor.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";

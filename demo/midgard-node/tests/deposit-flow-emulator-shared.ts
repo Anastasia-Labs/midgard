@@ -244,15 +244,12 @@ import {
 } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 import {
-  ingestEmulatorEventsUnowned,
-  mirrorEmulatorEvents,
-  syncEmulatorFollower,
-} from "./helpers/emulator-l1-follower.js";
-import {
   emulatorStateQueueSnapshot,
-  mirrorEmulatorStateQueue,
-  withEmulatorStateQueue,
-} from "./helpers/landed-state-queue.js";
+  ingestEmulatorEventsUnowned,
+  syncEmulatorChain,
+  syncEmulatorFollower,
+  withEmulatorChain,
+} from "./helpers/emulator-l1-follower.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
@@ -633,7 +630,7 @@ const unownedNativeOwner = (
     if (running !== undefined) return running;
     const globals = yield* Globals.pipe(Effect.provide(Globals.Default));
     // Its startup reads the landed queue (P1) at the emulator's tip.
-    yield* mirrorEmulatorStateQueue(lucidService.api, contracts.stateQueue);
+    yield* syncEmulatorChain(lucidService.api);
     const owner = yield* initializeArchitectureGOwner(globals, nodeConfig).pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, contracts as any),
@@ -686,7 +683,7 @@ export const withUnownedNativeOwnerStopped = async <A>(
     const nodeConfig = await makeNodeConfigForFixture(fixture);
     await Effect.runPromise(
       unownedNativeOwner(fixture.contracts, lucidService, nodeConfig).pipe(
-        withEmulatorStateQueue(lucidService.api, fixture.contracts.stateQueue),
+        withEmulatorChain(lucidService.api),
         Effect.zipRight(attachUnownedNativeOwner(globals)),
         Effect.provide(Database.layer),
         Effect.provideService(FollowerWriteFixture, true),
@@ -764,10 +761,7 @@ const runFixtureCommitProgram = (
   production: OwnedCommitFixture | undefined,
 ) => {
   // The commit path reads the landed queue (P1): follow the emulator's.
-  const followed = withEmulatorStateQueue(
-    lucidService.api,
-    contracts.stateQueue,
-  );
+  const followed = withEmulatorChain(lucidService.api);
   if (production === undefined)
     return followed(
       Effect.gen(function* () {
@@ -966,10 +960,7 @@ export const runMergeUntilMerged = async ({
         await Effect.runPromise(attachUnownedNativeOwner(globals));
       lastResult = await runWithoutFollower(
         mergeAction(force).pipe(
-          withEmulatorStateQueue(
-            lucidService.api,
-            fixture.contracts.stateQueue,
-          ),
+          withEmulatorChain(lucidService.api),
           (program) =>
             production === undefined
               ? program.pipe(Effect.provideService(FollowerWriteFixture, true))
@@ -1231,16 +1222,10 @@ export const runNodeCommandProgram = <A>(
     const nodeConfig = await makeNodeConfigForFixture(fixture);
     await Effect.runPromise(attachUnownedNativeOwner(globals));
     return Effect.runPromise(
-      Effect.zipRight(
-        // The commands open the events they settle by id from the follower's
-        // event rows; the emulator's follower brings them to its tip first.
-        mirrorEmulatorEvents({
-          operatorLucid: lucidService.api,
-          contracts: fixture.contracts,
-        }),
-        effect,
-      ).pipe(
-        withEmulatorStateQueue(lucidService.api, fixture.contracts.stateQueue),
+      // The commands open the events they settle by id from the follower's
+      // event rows; the emulator's follower brings them to its tip first.
+      effect.pipe(
+        withEmulatorChain(lucidService.api),
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
         // The wave made the merge/settlement command paths require the

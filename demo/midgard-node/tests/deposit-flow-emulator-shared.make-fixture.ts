@@ -1,5 +1,7 @@
-// Loaded before the deployment's first submission, so its capture is complete.
+// Loaded before the deployment's first submission, so its capture and the
+// follower's record of its chain are complete.
 import "./helpers/emulator-chain-capture.js";
+import "./helpers/follower-emulator.chain.js";
 
 import { randomUUID } from "node:crypto";
 
@@ -34,6 +36,7 @@ import {
   emulatorState,
   recreateLucid,
 } from "./helpers/emulator-snapshot.js";
+import { bindNodeFollower } from "./helpers/follower-emulator.host.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { loadOrCreateRunSharedFixture } from "./helpers/run-shared-fixture-directory.js";
@@ -321,16 +324,27 @@ export const makeFixture = async (): Promise<EmulatorFixture> => {
   // found by this one. Each fixture starts from freshly migrated application
   // tables, seed rows included, as `restoreHistorySource` does.
   await runNodeDatabaseEffect(resetApplicationTables);
-  if (deployedFixture !== undefined) return restoreFixture(deployedFixture);
-  const { shared, created } = await loadOrCreateRunSharedFixture(
-    SHARED_FIXTURE_NAME,
-    async () => {
-      const { fixture, deployed } = await deployFixture();
-      return { shared: deployed, created: fixture };
-    },
-  );
-  deployedFixture = shared;
-  return created ?? restoreFixture(shared);
+  if (deployedFixture === undefined) {
+    const { shared, created } = await loadOrCreateRunSharedFixture(
+      SHARED_FIXTURE_NAME,
+      async () => {
+        const { fixture, deployed } = await deployFixture();
+        return { shared: deployed, created: fixture };
+      },
+    );
+    deployedFixture = shared;
+    if (created !== undefined) return bindFollower(created);
+  }
+  return bindFollower(await restoreFixture(deployedFixture));
+};
+
+/** The node's follower over the fixture's deployment. */
+const bindFollower = (fixture: EmulatorFixture): EmulatorFixture => {
+  bindNodeFollower(fixture.emulator, {
+    contracts: fixture.contracts,
+    network: "Custom",
+  });
+  return fixture;
 };
 
 export const runNodeDatabaseEffect = <A, E>(

@@ -4,10 +4,18 @@
  * (`dropPendingEmulatorTransaction`), or landed blocks a rollback discards
  * (`captureEmulatorChain` / `rollBackEmulatorChain`). The clock (slot, time,
  * block height) is never moved back: blocks after a rollback are the new
- * branch's, as on a followed chain.
+ * branch's, as on a followed chain. The follower's record of the chain
+ * (`follower-emulator.chain.ts`) rolls back with it, so the follower host
+ * rewinds onto the new branch.
  */
 import type { Emulator } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
+
+import {
+  type FollowedChain,
+  restoreFollowedChain,
+  snapshotFollowedChain,
+} from "./follower-emulator.chain.js";
 
 type EmulatorLedger = Record<
   string,
@@ -49,6 +57,7 @@ export const dropPendingEmulatorTransaction = (
 export type CapturedEmulatorChain = Readonly<{
   state: Omit<EmulatorChain, "mempool">;
   blockHeight: number;
+  followed: FollowedChain;
 }>;
 
 export const captureEmulatorChain = (
@@ -60,6 +69,7 @@ export const captureEmulatorChain = (
   return {
     state: structuredClone({ ledger, chain, datumTable, transactionHistory }),
     blockHeight: emulator.blockHeight,
+    followed: snapshotFollowedChain(emulator),
   };
 };
 
@@ -80,5 +90,6 @@ export const rollBackEmulatorChain = (
   state.chain = restored.chain;
   state.datumTable = restored.datumTable;
   state.transactionHistory = restored.transactionHistory;
+  restoreFollowedChain(emulator, captured.followed);
   return emulator.blockHeight - captured.blockHeight;
 };

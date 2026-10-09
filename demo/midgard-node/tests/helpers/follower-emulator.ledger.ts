@@ -211,22 +211,28 @@ export const transactionHash = (cbor: string): string => {
   }
 };
 
-/** The script payment credentials outputs pay to and the policies minted, as hex. */
+/**
+ * The payment credentials outputs pay to (script and key, as hex) and the
+ * policies minted.
+ */
 export const trackedItemsOf = (
   block: ReturnType<typeof decodeBlock>,
-): { credentials: string[]; policies: string[] } => {
-  const credentials: string[] = [];
+): { scripts: string[]; keys: string[]; policies: string[] } => {
+  const scripts: string[] = [];
+  const keys: string[] = [];
   const policies: string[] = [];
   for (const tx of block.txs) {
     for (const output of [
       ...tx.outputs,
       ...(tx.collateralReturn === null ? [] : [tx.collateralReturn]),
     ])
-      if (output.paymentCredential?.isScript === true)
-        credentials.push(output.paymentCredential.hash.toString("hex"));
+      if (output.paymentCredential !== null)
+        (output.paymentCredential.isScript ? scripts : keys).push(
+          output.paymentCredential.hash.toString("hex"),
+        );
     policies.push(...tx.mint.keys());
   }
-  return { credentials, policies };
+  return { scripts, keys, policies };
 };
 
 /** What the transport double reads and reports. */

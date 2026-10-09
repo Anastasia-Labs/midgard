@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import {
@@ -41,9 +43,9 @@ import {
   runLocalFinalizationRecoveryWorker,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
+import { syncEmulatorChain } from "./helpers/emulator-l1-follower.js";
 import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
 import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
-import { mirrorEmulatorStateQueue } from "./helpers/landed-state-queue.js";
 import { assertLandedMergeParentRefusal } from "./helpers/merge-landed-finalization-parent-refusal.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
@@ -664,10 +666,7 @@ it("finalizes a merge that lands between an attempt's catch-up and its build bef
         ).toBe(held.txHash);
         fixture.emulator.awaitBlock(1);
         expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
-        yield* mirrorEmulatorStateQueue(
-          fixture.operatorLucid,
-          fixture.contracts.stateQueue,
-        );
+        yield* syncEmulatorChain(fixture.operatorLucid);
       });
     const merged = await m.run(Effect.either(mergeAction(true)));
     expect(landings).toBe(1);

@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

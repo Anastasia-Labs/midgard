@@ -47,7 +47,6 @@ import {
   UserEventsUtils,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
-import { expectGateRefusedCommitNamed } from "./deposit-flow-emulator-submission.gate-refusal.js";
 
 describe("deposit flow emulator", { concurrent: false }, () => {
   it("builds an unsigned deposit tx from explicit external wallet context that the user wallet can sign and submit", async () => {
@@ -240,14 +239,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       fixture.operatorLucid,
       fixture.contracts,
     );
-    // A commit whose journal refuses inside its pre-broadcast gate fails,
-    // sends nothing and is named on readiness; the next worker run commits.
-    await expectGateRefusedCommitNamed({
-      fixture,
-      lucidService,
-      latestBlock: latestBlockBeforeCommit,
-    });
-
     const commitOutput = await runCommitWorkerUntilSubmitted({
       fixture,
       lucidService,

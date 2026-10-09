@@ -56,8 +56,9 @@ export const openLandedBlocks = async (args: {
     nodeConfig.NETWORK === "Mainnet" ? 1 : 0,
   );
   const forcedOrders = forcedOrderConfigFromContracts(contracts);
-  // Never started: the stand-in writes the facts, and a start would check
-  // its own tracked set against them (and reset them on a difference).
+  // Never started: the emulator follower host (`follower-emulator.host.ts`)
+  // writes the facts under the writer lease, and a start would check its
+  // own tracked set against them (and reset them on a difference).
   // Landed-block processing only reads facts and takes its own
   // transactions, neither of which needs the writer lease.
   const store = openPostgresFactStore({

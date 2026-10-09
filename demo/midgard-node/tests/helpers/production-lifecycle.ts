@@ -1,7 +1,7 @@
 /**
  * The node's production pieces over an actual deployment on the emulator
- * (N1): the follower stand-in (`emulator-l1-follower.ts`) and the
- * follower-change driver over it (`makeEmulatorDriver`): its sink, its
+ * (N1): the follower host following the emulator (`emulator-l1-follower.ts`)
+ * and the follower-change driver over it (`makeEmulatorDriver`): its sink, its
  * recompute with the node's startup preparation (`prepareNodeOnStartup`)
  * and native MPF owner, the rebase the own-commit disposition makes due
  * and, with `landedBlocks`, the landed-block hook at each applied view.
@@ -54,9 +54,10 @@ import {
 import { testDatabaseName } from "../test-env.js";
 import { resetApplicationTables } from "../utils.js";
 import { makeEmulatorDriver } from "./emulator-l1-follower.driver.js";
+import { followEmulatorChain } from "./emulator-l1-follower.js";
 import { openLandedBlocks } from "./emulator-landed-blocks.js";
 import type { emulatorState } from "./emulator-snapshot.js";
-import { followEmulatorStateQueue } from "./landed-state-queue.js";
+import { bindNodeFollower } from "./follower-emulator.host.js";
 import { nativeOwnerBinaryPath } from "./native-owner-binary.js";
 import { openPublishedLifecycle } from "./published-lifecycle.js";
 
@@ -106,6 +107,14 @@ export const openProductionLifecycle = async (
             },
           },
         };
+  const securityParameter =
+    identity.manifest?.l1Finality.automaticRecoveryMaxDepth ?? 2160;
+  // The node's follower over this deployment, with the deployment's k.
+  bindNodeFollower(fixture.emulator, {
+    contracts: fixture.contracts,
+    network: fixture.operatorLucid.config().network ?? "Custom",
+    securityParameter,
+  });
   const nodeConfig = await makeNodeConfigForFixture(fixture);
   const operatorAddress = await fixture.operatorLucid.wallet().address();
   const stoppedGenerations: unknown[] = [];
@@ -165,12 +174,12 @@ export const openProductionLifecycle = async (
       );
     }
     const scope = await runtime.runPromise(Scope.make());
-    // P1's facts (the landed state queue) follow the emulator's queue.
+    // The follower follows the emulator while the generation runs: P1 and
+    // the node's fibers read its facts.
     await runtime.runPromise(
-      followEmulatorStateQueue(
-        fixture.operatorLucid,
-        fixture.contracts.stateQueue,
-      ).pipe(Effect.provideService(Scope.Scope, scope)),
+      followEmulatorChain(fixture.operatorLucid).pipe(
+        Effect.provideService(Scope.Scope, scope),
+      ),
     );
     const cache = await runtime.runPromise(MempoolLedgerCache);
     // The landed-block hook's rebase is the driver's recompute, made below.
@@ -180,8 +189,7 @@ export const openProductionLifecycle = async (
         ? await openLandedBlocks({
             contracts: fixture.contracts,
             nodeConfig,
-            securityParameter:
-              identity.manifest?.l1Finality.automaticRecoveryMaxDepth ?? 2160,
+            securityParameter,
             run: (effect) => runtime.runPromise(effect),
             rebase: (reason) =>
               Effect.suspend(() =>
@@ -276,7 +284,7 @@ export const openProductionLifecycle = async (
         generation,
         stoppedGenerations: [...stoppedGenerations],
         scope:
-          "Actual accepted emulator transactions; the follower stand-in's synthetic block hashes and heights. Production driver sink, recompute, startup preparation, cache and Architecture G owner.",
+          "Actual accepted emulator transactions, one follower block per emulator block, applied by the node's Postgres follower store with its projections. Production driver sink, recompute, startup preparation, cache and Architecture G owner.",
         publications: [...recorded.publications],
         commitAttempts,
         gate: await runtime.runPromise(readFollowerWriteGate),
@@ -361,9 +369,9 @@ export const openProductionLifecycle = async (
     ...current.handle,
     /**
      * The chain rolls back to `state` (an `emulatorState` capture): the
-     * emulator is restored to it, and the next synchronization's follower
-     * stand-in rewinds onto it (`rewindToEmulatorChain`), so the driver's
-     * sink sees a rewind and runs its recompute. Synchronizes unless told
+     * emulator is restored to it with its followed chain, and the next
+     * synchronization's follower rewinds onto it, so the driver's sink sees
+     * a rewind and runs its recompute. Synchronizes unless told
      * not to.
      */
     rollBackTo: async (

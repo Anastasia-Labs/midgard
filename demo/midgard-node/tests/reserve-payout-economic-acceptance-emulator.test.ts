@@ -1,3 +1,4 @@
+import "./helpers/follower-emulator-installed.js";
 import "node:fs";
 import "node:path";
 import "node:util";

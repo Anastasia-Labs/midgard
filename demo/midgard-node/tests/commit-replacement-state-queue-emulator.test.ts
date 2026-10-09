@@ -5,7 +5,7 @@
  * follower-change driver's recompute runs the landed-block rebase. The
  * node's landed-block processing (`processLandedQueue` over
  * `nodeLandedBlockPorts`, the follower run's hook) reads the emulator's
- * queue through the follower stand-in.
+ * queue through the node's follower store.
  *
  * - (a) The replacement lands. The old journal is disposed of, the native
  *   root returns to the base, and the next commit builds on the winner.
@@ -37,10 +37,10 @@
  *   commit itself stays valid. The production disposition disposes of its
  *   journal, and an S6 pass with the §8.4 commit predicate abandons it.
  *
- * Stand-in limits: the follower stand-in writes no `l1_txs` landings and
- * drops spent outputs instead of marking their spender. The journey writes
- * each landing (`recordLanding`), and writes (b)'s replacement dead as S6's
- * abandoned event where the follower would read it conflicted. (c)'s old
+ * S6 does not run in the emulator driver: the journey checks each landing
+ * the follower store recorded (`recordLanding`), and writes (b)'s
+ * replacement dead as S6's abandoned event where S6 would read it
+ * conflicted. (c)'s old
  * commit also holds an L2 transfer; the driver's recompute keeps it pending
  * when the disposal rebuilds the working ledger.
  */
@@ -93,6 +93,8 @@ const replacementLands = async () => {
     j.h.fixture,
     j.h.fixture.operatorLucid.slotToUnixTime(ttl) + 1_000,
   );
+  // The follower's tip passes the validity window with the next block.
+  j.h.fixture.emulator.awaitBlock(1);
   await synchronizeBounded(j.live);
   expect(await j.node.intentStatus(old.txHash)).toMatchObject({
     kind: "expired",
@@ -172,10 +174,9 @@ const oldCommitLands = async () => {
   expect(await j.statusOf(replacement)).toBe(S.Abandoned);
   expect(await nativeRoot(j.h)).toBe(old.root);
   await j.expectWinner(old);
-  // The follower reads the replacement conflicted by the landed commit's
-  // spend of the tail both commits spend (dead, superseded). The stand-in
-  // drops spent outputs rather than marking their spender, so it would read
-  // the replacement live; S6's abandoned event writes the same dead status.
+  // S6 reads the replacement conflicted by the landed commit's spend of the
+  // tail both commits spend (dead, superseded). S6 does not run here; its
+  // abandoned event writes the same dead status.
   await j.node.abandon(replacement.txHash);
 
   // The next commit builds on the revived block. It carries the transfer the

@@ -79,6 +79,27 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/history-commit-horizon-lag-emulator.test.ts
  *   tests/intent-journal-commit-gate-emulator.test.ts
  *   tests/operator-watchdog-emulator.test.ts
+ *   tests/availability-challenge-operation.test.ts
+ *   tests/availability-challenge-responder-lifecycle.test.ts
+ *   tests/builder-wallet-view.genesis-deposit-emulator.test.ts
+ *   tests/builder-wallet-view.operator-exit-emulator.test.ts
+ *   tests/builder-wallet-view.registration-emulator.test.ts
+ *   tests/builder-wallet-view.reserve-payout-emulator.test.ts
+ *   tests/cek-material-publication-emulator.test.ts
+ *   tests/da-bond-pool-lifecycle.test.ts
+ *   tests/mpf-audit-merge-permit-emulator.test.ts
+ *   tests/native-mpf-startup-emulator.test.ts
+ *   tests/operator-commands-emulator.test.ts
+ *   tests/operator-watchdog-force-retire-emulator.test.ts
+ *   tests/operator-watchdog-manifest-gate-idle.test.ts
+ *   tests/published-initialization-recovery.test.ts
+ *   tests/reference-publication-chain.test.ts
+ *   tests/reference-publication-submit-seam.test.ts
+ *   tests/reference-publication.test.ts
+ *   tests/reference-script-sweep-emulator.test.ts
+ *   tests/reserve-payout-economic-acceptance-emulator.test.ts
+ *   tests/reserve-payout-reference-resolution-emulator.test.ts
+ *   tests/script-reward-registration.test.ts
  */
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:
