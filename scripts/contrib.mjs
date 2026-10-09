@@ -24,6 +24,7 @@ import { checkPnpm } from "./doctor.check-pnpm.mjs";
 import { pinnedPnpmVersion } from "./contrib/pnpm.mjs";
 import { listResources, reclaimResource } from "./contrib/resources.mjs";
 import { preparationPlan, prepare, runTests } from "./contrib/tests.mjs";
+import { summaryLines } from "./contrib/vitest-command.mjs";
 import {
   createWorktree,
   removeWorktree,
@@ -44,7 +45,8 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs prepare --package NAME [--plan | --execute] [--source-only]
   node scripts/contrib.mjs build --package NAME [--force]
   node scripts/contrib.mjs native --package NAME
-  node scripts/contrib.mjs test --package NAME --file PATH [--file PATH] [--name REGEX] [--seed N] [--source-only]
+  node scripts/contrib.mjs test --package NAME [--file PATH]... [--name REGEX] [--seed N] [--source-only]
+      [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
   node scripts/contrib.mjs gate NAME [--plan] [--seed N]
   node scripts/contrib.mjs artifacts list | check --channel ID | sync --channel ID
   node scripts/contrib.mjs artifacts builds
@@ -109,6 +111,28 @@ export const compact = (value) => {
   );
 };
 
+// A test receipt is long (digests of every input); the terminal gets what
+// a reader acts on, and --output keeps the whole receipt.
+const testView = (result) =>
+  result?.schema === "midgard-contrib-receipt/v1" && result.kind === "test"
+    ? {
+        status: result.status,
+        package: result.package,
+        counts: result.counts,
+        files: result.selectedFiles?.length,
+        seed: result.seed,
+        flags: result.flags,
+        reason: result.reason,
+        reportError: result.reportError,
+        failures: result.failures?.slice(0, 10),
+        blueprintAction: result.blueprintAction,
+        databaseCleanup: result.databaseCleanup,
+        logs: result.steps.map((step) => step.logPath),
+        receipt: result.path,
+        exitCode: result.exitCode,
+      }
+    : result;
+
 const valueOptions = new Set([
   "root",
   "package",
@@ -128,6 +152,8 @@ const valueOptions = new Set([
   "proof-kind",
   "run-id",
   "branch",
+  "maxWorkers",
+  "exclude",
 ]);
 const flagOptions = new Set([
   "plan",
@@ -135,9 +161,12 @@ const flagOptions = new Set([
   "source-only",
   "force",
   "help",
+  "disableConsoleIntercept",
 ]);
+// Vitest's own flags, passed through `contrib test` under Vitest's spelling.
+const vitestOptions = ["maxWorkers", "exclude", "disableConsoleIntercept"];
 export const parse = (argv) => {
-  const options = { files: [], words: [] };
+  const options = { files: [], excludes: [], words: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (!argument.startsWith("--")) {
@@ -155,6 +184,7 @@ export const parse = (argv) => {
     if (!value || value.startsWith("--"))
       throw new Error(`${argument} requires a value`);
     if (key === "file") options.files.push(value);
+    else if (key === "exclude") options.excludes.push(value);
     else if (options[key] !== undefined)
       throw new Error(`duplicate ${argument}`);
     else options[key] = value;
@@ -223,6 +253,11 @@ export const main = async (argv) => {
       !["prepare", "test", "gate"].includes(command)
     )
       throw new Error(`--source-only is not supported for ${command}`);
+    const vitestOption = vitestOptions.find((key) =>
+      key === "exclude" ? options.excludes.length : options[key] !== undefined,
+    );
+    if (vitestOption && command !== "test")
+      throw new Error(`--${vitestOption} is supported only for test`);
     if (
       options.force &&
       command !== "build" &&
@@ -290,6 +325,11 @@ export const main = async (argv) => {
         ...execution,
         files: options.files,
         testName: options.name,
+        flags: {
+          maxWorkers: options.maxWorkers,
+          exclude: options.excludes,
+          disableConsoleIntercept: options.disableConsoleIntercept,
+        },
       });
     else if (command === "gate")
       result =
@@ -383,10 +423,19 @@ export const main = async (argv) => {
       throw new Error(`unknown command ${options.words.join(" ")}; use --help`);
     if (options.output && !(command === "packet" && action === "create"))
       atomicJson(resolve(options.output), result);
+    if (
+      result?.schema === "midgard-contrib-receipt/v1" &&
+      result.kind === "test"
+    )
+      console.error(
+        summaryLines(result, {
+          limit: result.status === "passed" ? 0 : 10,
+        }).join("\n"),
+      );
     console.log(
       typeof result === "string"
         ? result
-        : JSON.stringify(compact(result), null, 2),
+        : JSON.stringify(compact(testView(result)), null, 2),
     );
     return result?.exitCode ?? 0;
   } catch (error) {

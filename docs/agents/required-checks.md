@@ -1024,7 +1024,7 @@ Test suites of the touched packages and their dependents that need no database.
 
 ### `demo-test-db`
 
-Postgres-backed test suites (midgard-node, midgard-node-tools) of the touched packages and their dependents.
+Postgres-backed test suites (midgard-node, midgard-node-tools, midgard-watcher, da-committee-node, @al-ft/midgard-l1-follower) of the touched packages and their dependents.
 
 - Command: `pnpm --dir demo --filter '<touched package and its dependents>' --workspace-concurrency=1 run --if-present test`
 - Runs on: any file of a workspace package; runs for it and every package that depends on it

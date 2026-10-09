@@ -45,15 +45,15 @@ tabulated in
 - **Focused run:**
 
   ```bash
-  pnpm --dir demo/<package> exec vitest run tests/<file>.test.ts -t "<test name>"
+  node scripts/contrib.mjs test --package <package> --file tests/<file>.test.ts --name "<test name>"
   ```
 
-  One `midgard-core` case ran in 0.4 s on 2026-09-25. For the watcher use
-  `pnpm --dir demo/midgard-watcher test tests/<file>.test.ts`, which keeps the
-  package's `MALLOC_MMAP_THRESHOLD_` setting.
+  It runs the package's `test` script (the watcher's `MALLOC_MMAP_THRESHOLD_`
+  included) on that file.
 
-- **Check the count.** A `-t` pattern that matches nothing exits 0 with every
-  test skipped. A file path that matches nothing exits 1.
+- **Check the count.** `contrib test` fails a `--name` that matches nothing
+  (0 executed) and refuses a path Vitest would not collect. Raw
+  `vitest run -t` exits 0 with every test skipped.
 - **CI:** one step per package in `Midgard Node CI`, for example
   `Build, typecheck, and test Midgard SDK`, `Test lucid-midgard` and
   `Build and test Midgard core DA transport` (which runs the whole
@@ -109,8 +109,8 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
 - **Focused run:**
 
   ```bash
-  NODE_ENV=emulator pnpm --dir demo/midgard-node exec vitest run tests/<file>-emulator.test.ts
-  pnpm --dir demo/midgard-fault-proofs exec vitest run tests/<file>.test.ts
+  node scripts/contrib.mjs test --package midgard-node --file tests/<file>-emulator.test.ts
+  node scripts/contrib.mjs test --package midgard-fault-proofs --file tests/<file>.test.ts
   ```
 
   Several node emulator files also touch Postgres (level 5 prerequisites
@@ -143,12 +143,12 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
     with other checkouts, so leave a running one alone.
   - Built `dist/` for files that spawn plain `node` children or load
     `dist/` (crash probes, `tests/validation-worker-pool.test.ts:41`).
-    `pnpm --dir demo/midgard-node run pretest` builds `lucid-midgard`,
-    `midgard-sdk` and the node; `pnpm test` runs it for you.
+    `contrib test` builds `lucid-midgard`, `midgard-sdk` and the node first
+    when they are stale.
 - **Focused run:**
 
   ```bash
-  NODE_ENV=emulator pnpm --dir demo/midgard-node exec vitest run tests/<file>.test.ts
+  node scripts/contrib.mjs test --package midgard-node --file tests/<file>.test.ts
   ```
 
   Global setup creates and migrates one database per worker

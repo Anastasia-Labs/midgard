@@ -1,8 +1,9 @@
 import { existsSync, realpathSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
+import { packageNeedsPostgres } from "../preflight/derive.mjs";
 import { probePostgres } from "../preflight/probes.mjs";
 import { ensureBlueprint } from "./blueprint.mjs";
 import { dropTestDatabases, invocationDatabasePrefix } from "./databases.mjs";
@@ -23,6 +24,13 @@ import { runProcess } from "./process.mjs";
 import { writeReceipt } from "./receipts.mjs";
 import { withResource } from "./resources.mjs";
 import { buildNative, checkNative } from "./native.mjs";
+import { pinnedPnpm } from "./pnpm.mjs";
+import {
+  failures,
+  parseTestScript,
+  vitestFlags,
+  withCallerFlags,
+} from "./vitest-command.mjs";
 
 // Whether a package's suites read the compiled blueprint: its own Vitest
 // config runs the blueprint stamp (or interactive-emulator) global setup, or
@@ -81,12 +89,7 @@ export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
     package: pkg.name,
     directory: pkg.directory,
     sourceOnly,
-    postgres: [
-      "midgard-node",
-      "midgard-node-tools",
-      "da-committee-node",
-      "@al-ft/midgard-l1-follower",
-    ].includes(pkg.name),
+    postgres: packageNeedsPostgres(root, pkg),
     blueprint: readsBlueprint(root, pkg.name),
     prerequisites: ordered.map((name) => ({ name, ...checkBuild(root, name) })),
     pretest,
@@ -156,26 +159,55 @@ export const prepare = async (
   return { ...preparationPlan(root, name, { sourceOnly }), blueprintAction };
 };
 
+/** The package's own `test` script, read as one Vitest command. */
+export const testCommand = (pkg) => {
+  if (!pkg.scripts?.test) throw new Error(`${pkg.name} has no test script`);
+  try {
+    return parseTestScript(pkg.scripts.test);
+  } catch (error) {
+    if (!/\bvitest\b/u.test(pkg.scripts.test))
+      throw new Error(
+        `${pkg.name} has no Vitest suites; its test script is: ${pkg.scripts.test}`,
+      );
+    throw error;
+  }
+};
+
+const blueprintHash = (root) => {
+  const path = resolve(root, "onchain/aiken/plutus.json");
+  return existsSync(path) ? sha256(readFileSync(path)) : undefined;
+};
+
+/**
+ * Run a package's Vitest suites as its `test` script does (environment,
+ * Vitest flags, and for a whole-package run its plain-Node preludes), plus
+ * the caller's allowed flags. `files` narrows the run to those test files;
+ * without them it is the whole package, as CI runs it.
+ *
+ * The workspace lease is held only while prerequisites (blueprint, dist,
+ * native) are written; the suites themselves run beside other runs, each
+ * with its own database prefix. Anything those writes would change under a
+ * running suite is caught afterwards and fails the receipt.
+ */
 export const runTests = async (
   root,
   name,
   {
-    files,
+    files = [],
     testName,
     seed = 1,
     signal,
     env = process.env,
     sourceOnly = false,
     proofKind,
+    flags = {},
   } = {},
 ) => {
   const pkg = packageByName(root, name);
-  if (!files?.length)
-    throw new Error(
-      "focused tests require at least one --file, relative to the package; use contrib gate for named complete lanes",
-    );
+  const command = withCallerFlags(testCommand(pkg), flags);
+  const cwd = resolve(root, pkg.directory);
   for (const file of files) {
-    const absolute = inside(resolve(root, pkg.directory), file);
+    const absolute = inside(cwd, file);
     if (!existsSync(absolute) || !/\.test\.[cm]?[jt]sx?$/u.test(file))
       throw new Error(`not a test file: ${file}`);
   }
@@ -189,184 +221,284 @@ export const runTests = async (
     throw new Error(
       "unset non-test Postgres destination overrides before guarded tests",
     );
+  // Refuse ambient destructive destinations even though we choose our own.
+  if (
+    env.POSTGRES_DB &&
+    !/^midgard_(?:test|tools_test|contrib)_/u.test(env.POSTGRES_DB)
+  )
+    throw new Error(
+      `refusing ambient POSTGRES_DB=${env.POSTGRES_DB}; unset it before tests`,
+    );
   if (proofKind === "live-acceptance")
     throw new Error("synthetic tests cannot be labeled live acceptance");
-  return withResource(
+  const directory = runDirectory();
+  const overrides = {
+    // The script's own environment, as `pnpm test` would set it; suites
+    // that set none need Vitest's test runtime for test-only constructors.
+    NODE_ENV: "test",
+    ...command.env,
+    MIDGARD_TEST_DATABASE_PREFIX: invocationDatabasePrefix(
+      root,
+      randomUUID().replaceAll("-", "").slice(0, 8),
+    ),
+    POSTGRES_HOST: "127.0.0.1",
+    POSTGRES_PORT: "5433",
+  };
+  if (files.includes("tests/scratch-cg1-publication-fit.test.ts"))
+    overrides.MIDGARD_CG1_EMIT = resolve(
+      directory,
+      "signed-publication-fit.json",
+    );
+  if (files.includes("tests/published-workflow-deployment.test.ts"))
+    overrides.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH = resolve(
+      directory,
+      "published-workflow.json",
+    );
+  const runEnv = { ...env, ...overrides };
+  const { prepared, native } = await withResource(
     `workspace:${realpathSync(root)}`,
     async (ownedEnv) => {
-      const directory = runDirectory();
-      const runEnv = {
-        ...ownedEnv,
-        // Match package test recipes: node suites use emulator configuration;
-        // other suites require Vitest's test runtime for test-only constructors.
-        NODE_ENV: ["midgard-node", "midgard-node-tools"].includes(pkg.name)
-          ? "emulator"
-          : "test",
-        MIDGARD_TEST_DATABASE_PREFIX: invocationDatabasePrefix(
-          root,
-          randomUUID().replaceAll("-", "").slice(0, 8),
-        ),
-        POSTGRES_HOST: "127.0.0.1",
-        POSTGRES_PORT: "5433",
-      };
-      if (files.includes("tests/scratch-cg1-publication-fit.test.ts"))
-        runEnv.MIDGARD_CG1_EMIT = resolve(
-          directory,
-          "signed-publication-fit.json",
-        );
-      if (files.includes("tests/published-workflow-deployment.test.ts"))
-        runEnv.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH = resolve(
-          directory,
-          "published-workflow.json",
-        );
-      // Refuse ambient destructive destinations even though we choose our own.
-      if (
-        env.POSTGRES_DB &&
-        !/^midgard_(?:test|tools_test|contrib)_/u.test(env.POSTGRES_DB)
-      )
-        throw new Error(
-          `refusing ambient POSTGRES_DB=${env.POSTGRES_DB}; unset it before tests`,
-        );
+      const leased = { ...ownedEnv, ...overrides };
       const prepared = await prepare(root, pkg.name, {
         signal,
-        env: runEnv,
+        env: leased,
         sourceOnly,
       });
-      let native;
       if (
-        ["midgard-node", "midgard-node-tools"].includes(pkg.name) &&
-        runEnv.MIDGARD_SKIP_NATIVE_BUILD !== "1"
-      ) {
-        if (checkNative(root, "midgard-node").status !== "fresh") {
-          const built = await buildNative(root, "midgard-node", {
-            signal,
-            env: runEnv,
-          });
-          if (built.exitCode)
-            throw new Error(`native prerequisite failed: ${built.path}`);
-        }
-        native = {
+        !["midgard-node", "midgard-node-tools"].includes(pkg.name) ||
+        runEnv.MIDGARD_SKIP_NATIVE_BUILD === "1"
+      )
+        return { prepared };
+      if (checkNative(root, "midgard-node").status !== "fresh") {
+        const built = await buildNative(root, "midgard-node", {
+          signal,
+          env: leased,
+        });
+        if (built.exitCode)
+          throw new Error(`native prerequisite failed: ${built.path}`);
+      }
+      return {
+        prepared,
+        native: {
           name: "midgard-node",
           outputs: checkNative(root, "midgard-node").stamp.outputs,
-        };
-      }
-      const cwd = resolve(root, pkg.directory);
-      const require = createRequire(resolve(cwd, "package.json"));
-      const runner = resolve(
-        require.resolve("vitest/package.json"),
-        "../vitest.mjs",
-      );
-      if (
-        !realpathSync(runner).startsWith(
-          `${realpathSync(resolve(root, "demo/node_modules"))}/`,
-        )
-      )
-        throw new Error(
-          "vitest resolves outside this checkout; install its locked workspace dependencies",
-        );
-      const before = inputIdentity(root, pkg.name);
-      const reportPath = resolve(directory, "vitest.json");
-      const argv = [
-        process.execPath,
-        runner,
-        "run",
-        ...files,
-        "--reporter=default",
-        "--reporter=json",
-        `--outputFile=${reportPath}`,
-        `--sequence.seed=${seed}`,
-        "--sequence.shuffle.files",
-        "--sequence.shuffle.tests",
-        ...(testName ? ["--testNamePattern", testName] : []),
-      ];
-      let step;
-      let databaseCleanup;
-      try {
-        step = await runProcess({
-          argv,
-          cwd,
-          env: runEnv,
-          signal,
-          logPath: resolve(directory, "test.log"),
-          echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
-        });
-      } finally {
-        // The invocation's databases and schemas die with it; the prefix is
-        // fresh, so nothing else can be using them.
-        databaseCleanup = await dropTestDatabases(
-          root,
-          [runEnv.MIDGARD_TEST_DATABASE_PREFIX],
-          { env: runEnv },
-        ).catch((error) => ({ status: "failed", detail: error.message }));
-      }
-      const after = inputIdentity(root, pkg.name);
-      const receipt = writeReceipt({
-        root,
-        pkg,
-        directory,
-        kind: "test",
-        before,
-        after,
-        steps: [step],
-        reportPath,
-        proofKind,
-        testName,
-        selectedFiles: files.map((file) => resolve(cwd, file)),
-      });
-      // Stamp validation catches dist replacement even with identical sources.
-      const changedArtifacts = prepared.prerequisites.filter(
-        ({ name, stamp }) =>
-          checkBuild(root, name).status !== "fresh" ||
-          stamp.outputs.sha256 !==
-            outputIdentity(root, `${packageByName(root, name).directory}/dist`)
-              .sha256,
-      );
-      if (changedArtifacts.length) {
-        receipt.status = "failed";
-        receipt.exitCode = 1;
-        receipt.reason = `artifacts changed during test: ${changedArtifacts.map(({ name }) => name).join(", ")}`;
-      }
-      if (
-        native &&
-        (checkNative(root, native.name).status !== "fresh" ||
-          native.outputs.sha256 !==
-            hashFiles(root, Object.keys(native.outputs.files)).sha256)
-      ) {
-        receipt.status = "failed";
-        receipt.exitCode = 1;
-        receipt.reason = "native artifact changed during test";
-      }
-      const final = {
-        ...receipt,
-        seed,
-        databasePrefix: runEnv.MIDGARD_TEST_DATABASE_PREFIX,
-        databaseCleanup,
-        sourceOnly,
-        nativeArtifacts: native ? [native] : [],
-        evidenceFiles: [
-          runEnv.MIDGARD_CG1_EMIT,
-          runEnv.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH,
-        ]
-          .filter(Boolean)
-          .map((path) => ({
-            path,
-            sha256: existsSync(path) ? sha256(readFileSync(path)) : undefined,
-          })),
-        artifacts: prepared.prerequisites.map(({ name, stamp }) => ({
-          name,
-          outputs: stamp?.outputs,
-          inputs: stamp?.inputs.sha256,
-        })),
+        },
       };
-      if (final.evidenceFiles.some((entry) => !entry.sha256)) {
-        final.status = "failed";
-        final.exitCode = 1;
-        final.reason =
-          "selected publication driver did not emit its measurement evidence";
-      }
-      atomicJson(receipt.path, final);
-      return final;
     },
     { signal, env },
   );
+  const require = createRequire(resolve(cwd, "package.json"));
+  const runner = resolve(
+    require.resolve("vitest/package.json"),
+    "../vitest.mjs",
+  );
+  if (
+    !realpathSync(runner).startsWith(
+      `${realpathSync(resolve(root, "demo/node_modules"))}/`,
+    )
+  )
+    throw new Error(
+      "vitest resolves outside this checkout; install its locked workspace dependencies",
+    );
+  const selectedFiles = await collect({
+    runner,
+    cwd,
+    env: runEnv,
+    files,
+    command,
+    directory,
+    signal,
+  });
+  const whole = files.length === 0;
+  const blueprintBefore = prepared.blueprint ? blueprintHash(root) : undefined;
+  const before = inputIdentity(root, pkg.name);
+  const reportPath = resolve(directory, "vitest.json");
+  const steps = [];
+  let databaseCleanup;
+  try {
+    // A focused run is the package's Vitest suites only; the plain-Node
+    // preludes belong to the whole-package run CI makes.
+    if (whole && !testName)
+      for (const [index, prelude] of command.preludes.entries()) {
+        const [tool, ...args] = prelude.split(/\s+/u);
+        if (tool !== "pnpm")
+          throw new Error(`cannot run test script step: ${prelude}`);
+        steps.push(
+          await runProcess({
+            ...pinnedPnpm(cwd, args),
+            env: runEnv,
+            signal,
+            logPath: resolve(directory, `prelude-${index}.log`),
+          }),
+        );
+      }
+    steps.push(
+      await runProcess({
+        argv: [
+          process.execPath,
+          runner,
+          "run",
+          ...files,
+          ...vitestFlags(command),
+          "--reporter=default",
+          "--reporter=json",
+          `--outputFile=${reportPath}`,
+          `--sequence.seed=${seed}`,
+          "--sequence.shuffle.files",
+          "--sequence.shuffle.tests",
+          ...(testName ? ["--testNamePattern", testName] : []),
+        ],
+        cwd,
+        env: runEnv,
+        signal,
+        logPath: resolve(directory, "test.log"),
+        echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
+        // A whole package is what CI shards; give it room to finish.
+        ...(whole ? { timeoutMs: 3 * 3_600_000, maxBytes: 256 << 20 } : {}),
+      }),
+    );
+  } finally {
+    // The invocation's databases and schemas die with it; the prefix is
+    // fresh, so nothing else can be using them.
+    databaseCleanup = await dropTestDatabases(
+      root,
+      [runEnv.MIDGARD_TEST_DATABASE_PREFIX],
+      { env: runEnv },
+    ).catch((error) => ({ status: "failed", detail: error.message }));
+  }
+  const after = inputIdentity(root, pkg.name);
+  const receipt = writeReceipt({
+    root,
+    pkg,
+    directory,
+    kind: "test",
+    before,
+    after,
+    steps,
+    reportPath,
+    proofKind,
+    testName,
+    selectedFiles,
+  });
+  const fail = (reason) => {
+    receipt.status = "failed";
+    receipt.exitCode = 1;
+    receipt.reason = reason;
+  };
+  // Stamp validation catches dist replacement even with identical sources.
+  const changedArtifacts = prepared.prerequisites.filter(
+    ({ name, stamp }) =>
+      checkBuild(root, name).status !== "fresh" ||
+      stamp.outputs.sha256 !==
+        outputIdentity(root, `${packageByName(root, name).directory}/dist`)
+          .sha256,
+  );
+  if (changedArtifacts.length)
+    fail(
+      `artifacts changed during test: ${changedArtifacts.map(({ name }) => name).join(", ")}`,
+    );
+  if (
+    native &&
+    (checkNative(root, native.name).status !== "fresh" ||
+      native.outputs.sha256 !==
+        hashFiles(root, Object.keys(native.outputs.files)).sha256)
+  )
+    fail("native artifact changed during test");
+  if (prepared.blueprint && blueprintHash(root) !== blueprintBefore)
+    fail("the blueprint changed during test");
+  let failed = [];
+  try {
+    failed = failures(JSON.parse(readFileSync(reportPath, "utf8")), cwd);
+  } catch {
+    // No report: the receipt's reportError and step logs say why.
+  }
+  const final = {
+    ...receipt,
+    seed,
+    flags: vitestFlags(command),
+    failures: failed,
+    blueprintAction: prepared.blueprintAction,
+    databasePrefix: runEnv.MIDGARD_TEST_DATABASE_PREFIX,
+    databaseCleanup,
+    sourceOnly,
+    nativeArtifacts: native ? [native] : [],
+    evidenceFiles: [
+      runEnv.MIDGARD_CG1_EMIT,
+      runEnv.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH,
+    ]
+      .filter(Boolean)
+      .map((path) => ({
+        path,
+        sha256: existsSync(path) ? sha256(readFileSync(path)) : undefined,
+      })),
+    artifacts: prepared.prerequisites.map(({ name, stamp }) => ({
+      name,
+      outputs: stamp?.outputs,
+      inputs: stamp?.inputs.sha256,
+    })),
+  };
+  if (final.evidenceFiles.some((entry) => !entry.sha256)) {
+    final.status = "failed";
+    final.exitCode = 1;
+    final.reason =
+      "selected publication driver did not emit its measurement evidence";
+  }
+  atomicJson(receipt.path, final);
+  return final;
+};
+
+/**
+ * The files the run will execute, as Vitest itself collects them with the
+ * same configuration, environment and flags. Named files must each be
+ * collected, and nothing else: Vitest's file arguments are substring filters,
+ * and an `--exclude` can drop a named file without a word.
+ */
+const collect = async ({
+  runner,
+  cwd,
+  env,
+  files,
+  command,
+  directory,
+  signal,
+}) => {
+  const listPath = resolve(directory, "vitest-list.json");
+  const listed = await runProcess({
+    argv: [
+      process.execPath,
+      runner,
+      "list",
+      ...files,
+      ...vitestFlags(command),
+      "--filesOnly",
+      `--json=${listPath}`,
+    ],
+    cwd,
+    env,
+    signal,
+    logPath: resolve(directory, "list.log"),
+  });
+  if (listed.exitCode !== 0 || !existsSync(listPath))
+    throw new Error(`vitest list failed; log: ${listed.logPath}`);
+  const collected = [
+    ...new Set(
+      JSON.parse(readFileSync(listPath, "utf8")).map(({ file }) => file),
+    ),
+  ].sort();
+  if (!files.length) {
+    if (!collected.length) throw new Error("vitest collected no test files");
+    return collected;
+  }
+  const named = [...new Set(files.map((file) => resolve(cwd, file)))].sort();
+  const missing = named.filter((file) => !collected.includes(file));
+  const extra = collected.filter((file) => !named.includes(file));
+  if (missing.length)
+    throw new Error(
+      `vitest does not collect ${missing.map((file) => relative(cwd, file)).join(", ")} (excluded by the package's Vitest config or an --exclude)`,
+    );
+  if (extra.length)
+    throw new Error(
+      `the file filters also select ${extra.map((file) => relative(cwd, file)).join(", ")}; name a path that selects only the intended file`,
+    );
+  return named;
 };

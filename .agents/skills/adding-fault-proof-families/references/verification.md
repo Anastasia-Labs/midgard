@@ -50,13 +50,14 @@ Run the files your change touches, not whole suites. The fault-proofs suite
 took 20.5 minutes at eight forks on 2026-09-21 (its `vitest.config.ts`).
 
 ```bash
-pnpm --dir demo/midgard-sdk run build
-pnpm --dir demo/midgard-sdk exec vitest run tests/fraud-proof-catalogue-registration.test.ts tests/reference-scripts.test.ts
-pnpm --dir demo/midgard-core exec vitest run tests/deployment-manifest-identity.test.ts
-pnpm --dir demo/midgard-fault-proofs exec vitest run tests/workflow.test.ts tests/family-application-registry.test.ts tests/typed-reason-disposition.test.ts
-pnpm --dir demo/midgard-fault-proofs exec vitest run tests/<kebab>-lifecycle.test.ts
-pnpm --dir demo/midgard-watcher exec vitest run tests/runtime/deployment-identity.test.ts
+node scripts/contrib.mjs test --package midgard-sdk --file tests/fraud-proof-catalogue-registration.test.ts --file tests/reference-scripts.test.ts
+node scripts/contrib.mjs test --package midgard-core --file tests/deployment-manifest-identity.test.ts
+node scripts/contrib.mjs test --package midgard-fault-proofs --file tests/workflow.test.ts --file tests/family-application-registry.test.ts --file tests/typed-reason-disposition.test.ts
+node scripts/contrib.mjs test --package midgard-fault-proofs --file tests/<kebab>-lifecycle.test.ts
+node scripts/contrib.mjs test --package midgard-watcher --file tests/runtime/deployment-identity.test.ts
 ```
+
+Each run builds the stale dists its package needs (the SDK among them) first.
 
 Then each package's typecheck, which is where most tables in
 [touch-points.md](touch-points.md) are enforced:
@@ -70,7 +71,8 @@ pnpm --dir demo/da-committee-node run typecheck
 pnpm --dir demo/midgard-node-tools run typecheck
 ```
 
-CI builds the SDK before the packages that import it; do the same.
+CI builds the SDK before the packages that import it; do the same
+(`node scripts/contrib.mjs build --package midgard-sdk`).
 
 ## 5. Node tests and the DA fixture
 
@@ -83,8 +85,8 @@ Regenerate the DA deployment fixture after the contract set changes, then
 rerun without the variable to confirm it matches:
 
 ```bash
-MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts
-pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts tests/deployment-manifest.test.ts
+node scripts/contrib.mjs artifacts sync --channel da-deployment-fixture
+node scripts/contrib.mjs test --package midgard-node --file tests/da-deployment-fixture-generation.test.ts --file tests/deployment-manifest.test.ts
 ```
 
 The fixture lands in

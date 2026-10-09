@@ -1,79 +1,46 @@
 # Running suites and gate runs
 
-Read this before running one test file of a package whose `test` script
-carries flags, before a gate run over several suites, and before starting a
-run that takes longer than one tool call allows.
+Read this before running one test file or a whole package, before a gate run
+over several suites, and before starting a run that takes longer than one tool
+call allows.
 
-## One file, not the whole suite
+## One file, or the whole package
 
-Measured 2026-09-28 with vitest 3.0.7 by counting `vitest list` output in
-`demo/midgard-core` (4 tests in the file, 682 in the package) and
-`vitest list --filesOnly` in `demo/midgard-node` (1 file against 270); the
-kebab-case trap below still held on vitest 5.0.3 (2026-10-06). Since Vitest 5,
-`vitest list` parses test files statically and misses generated tests; pass
-`--no-staticParse` to collect them by running each file.
+```sh
+node scripts/contrib.mjs test --package midgard-node --file tests/<file>.test.ts [--name "<regex>"]
+node scripts/contrib.mjs test --package midgard-watcher [--maxWorkers 2] [--exclude "tests/slow/**"]
+```
 
-**A multi-word boolean flag written in kebab case swallows the next
-argument.** vitest registers its options with camelCase names and hands those
-names to its argument parser as the boolean list, so
-`--disable-console-intercept` is not recognised as boolean and takes the next
-token as its value. When that token is the file, the filter is gone and the
-whole package runs.
+`contrib test` runs the package's own `test` script, the command CI runs: its
+environment, its Vitest flags and, for a whole-package run, its `node --test`
+preludes. It adds only `--maxWorkers`, `--exclude` and
+`--disableConsoleIntercept`, under Vitest's spelling, and asks `vitest list`
+first which files the run collects: a named file that the config or an
+`--exclude` drops, or a path that also selects other files, is refused before
+anything runs. A `--name` that matches nothing fails the receipt (0 tests
+executed). Failures print as `FAIL <file> > <test>` with their first message
+line, then the log and receipt paths. The workspace lease covers only the
+builds before the suites, so two runs in one checkout proceed side by side,
+each with its own database family. [script: scripts/contrib/vitest-command.mjs]
 
-| Command                                              | Runs       |
-| ---------------------------------------------------- | ---------- |
-| `vitest run --disable-console-intercept <file>`      | every file |
-| `vitest run --disable-console-intercept -- <file>`   | every file |
-| `vitest run <file> --disable-console-intercept`      | the file   |
-| `vitest run --disable-console-intercept=true <file>` | the file   |
-| `vitest run --disableConsoleIntercept <file>`        | the file   |
-
-The same holds for every multi-word boolean (`--pass-with-no-tests`,
-`--allow-only`, `--hide-skipped-tests`, `--log-heap-usage`,
-`--expand-snapshot-diff` all listed the whole package). One-word booleans
-(`--silent`, `--run`, `--update`), camelCase spellings
-(`--passWithNoTests`), `--no-` negations (`--no-file-parallelism`) and
-`--flag=value` forms are safe. An option that takes a value always takes the
-next token: `--bail <file>` swallows the file, `--bail 1 <file>` does not.
-**Put the files first**, right after `vitest run`, and every flag after them.
-
-The package scripts use the camelCase spelling, so
-`pnpm --dir demo/midgard-node test <file>` runs that one file (after
-`pretest`, which rebuilds the dists). `pnpm` appends extra arguments to the end
-of the script, so a script that ended in a kebab-case boolean would run every
-file instead; `scripts/ci/vitest-script-flags.test.mjs` fails CI on one
-[ci: Repo Tools CI/Run the repository tool tests].
-`pnpm --dir demo/midgard-node-tools test <file>` runs its `node --test`
-preludes first.
-
-A `-t "<name>"` that matches nothing is a different trap: it exits 0 with
-every test skipped. See [writing-tests](../../writing-tests/SKILL.md#5-keep-it-able-to-fail).
+**Raw `vitest run` has a flag trap that `contrib test` avoids.** A
+multi-word boolean written in kebab case (`--disable-console-intercept`,
+`--pass-with-no-tests`) is not registered as boolean and swallows the next
+token: `vitest run --disable-console-intercept <file>` runs every file.
+`contrib test` passes only camelCase and `--flag=value` forms, and
+`scripts/ci/vitest-script-flags.test.mjs` keeps every package `test` script
+free of the trap [ci: Repo Tools CI/Run the repository tool tests].
 
 ## Gate runs over several suites
 
 - **One process per suite, in parallel.** Start the node, watcher,
   fault-proofs and Aiken runs as separate processes, not one after another in
-  one shell. Each checkout already has its own database prefix; two runs of the
-  same package that could overlap (a full run and a focused rerun, or two
-  agents in one checkout) each get their own
-  `MIDGARD_TEST_DATABASE_PREFIX=<prefix>_<suite>` on that command only.
-- **Keep each suite's report and log.** Delete the old report first
-  (`rm -f <dir>/<suite>.json`): vitest writes it only at the end, so a killed
-  run leaves the previous one. Then run
-  `<env> pnpm --dir demo/<package> exec vitest run <files> <flags> --reporter=default --reporter=json --outputFile=<dir>/<suite>.json 2>&1 | tee <dir>/<suite>.log`,
-  so the failures can be diffed against the program's accepted list instead of
-  re-triaged by hand. Pass the log too: the JSON report leaves out errors
-  raised outside any test. The diff tool is described in
-  [fixing-flaky-tests](../../fixing-flaky-tests/SKILL.md#known-failures-in-a-gate-run).
-  `<env>` and `<flags>` are what the package's `test` script sets, which is
-  how CI runs it; `exec vitest` does not apply them:
-  - `midgard-watcher`: `env MALLOC_MMAP_THRESHOLD_=131072`, no flags.
-  - `midgard-node`: `NODE_ENV=emulator`, flag `--disableConsoleIntercept`.
-  - `midgard-node-tools`: the same as `midgard-node`, after its `node --test`
-    preludes, run as
-    `pnpm --dir demo/midgard-node-tools run test:phase4:journal-kill-recovery-summary-verifier`
-    and `pnpm --dir demo/midgard-node-tools run test:phase4:devnet-assets`.
-  - Every other package: nothing (its `test` script is a plain `vitest run`).
+  one shell. Every `contrib test` invocation has its own database prefix.
+- **Keep each suite's receipt.** `--output <dir>/<suite>.json` writes it; its
+  `report.path` is Vitest's JSON report and its `steps[].logPath` the logs, the
+  inputs of the [accepted-failures diff](../../fixing-flaky-tests/SKILL.md#known-failures-in-a-gate-run).
+  Both live in a fresh run directory, so a killed run never leaves an older
+  report in their place.
 - **A fix loop reruns only the suites that failed**, and within a suite only
   the files that failed, before one final full pass.
 - **Run in the foreground, in chunks under the tool's time limit.** A job an
@@ -102,15 +69,11 @@ switching branches leaves both describing the old sources.
   (which re-verifies the copy and replaces nothing unless it is fresh), and
   builds it only when no checkout has one.
 - A `dist/` is not copied. Nothing checks a copied dist against this
-  checkout's sources, and only `midgard-core`'s dist carries a source digest.
-  Rebuild it here:
-
-  | Needed for                                  | Command                                               |
-  | ------------------------------------------- | ----------------------------------------------------- |
-  | `midgard-node` suites (runs outside vitest) | `pnpm --dir demo/midgard-node run pretest`            |
-  | `midgard-node-tools` suites                 | `pnpm --dir demo/midgard-node-tools run pretest`      |
-  | what `doctor` reports as a missing dist     | `pnpm --dir demo --filter <package name> run build`   |
-  | every package                               | `pnpm --dir demo build` (checks profiles, builds all) |
+  checkout's sources. `contrib test` rebuilds every stale prerequisite dist of
+  the package before its suites start;
+  `node scripts/contrib.mjs prepare --package <name> --execute` does the same
+  without running them, and `node scripts/contrib.mjs worktree setup` does it
+  for every tested package.
 
 ## The workspace bundle
 

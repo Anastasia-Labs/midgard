@@ -28,8 +28,9 @@ report carries these five things. They are rules; each is `[review]`.
 
 1. **What was checked, as evidence lines.** One line per run: the exact
    command, where it ran, the collected count, the exit code, and the date.
-   `vitest run tests/foo.test.ts` in `demo/midgard-fault-proofs` —
-   `Tests 42 passed (42)`, exit 0, 2026-09-25. "Suite green" is a claim, not
+   `node scripts/contrib.mjs test --package midgard-fault-proofs --file tests/foo.test.ts`
+   — `passed (42 passed, 0 failed, 0 skipped, in 1 file(s), seed 1)`, exit 0,
+   2026-09-25. "Suite green" is a claim, not
    an evidence line.
 2. **What was not checked, and why.** Name each required or obviously
    relevant check you did not run and the reason: no devnet on this box, the

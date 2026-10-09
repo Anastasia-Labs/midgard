@@ -69,10 +69,11 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
   between files. `midgard-node-tools` uses its own family, `midgard_tools_test`,
   unless the variable is already set
   (`demo/midgard-node-tools/vitest.config.ts:20`).
-- **Fix:** give a second checkout its own prefix for a single-package run:
-  `MIDGARD_TEST_DATABASE_PREFIX=midgard_test_<worktree> pnpm --dir demo/midgard-node exec vitest run ...`.
-  Setting it for the whole lane runner gives node and node-tools the same
-  family again. `[review]` Nothing detects two runs sharing a shard.
+- **Fix:** run suites through `node scripts/contrib.mjs test`, which gives
+  every invocation its own family, `midgard_contrib_<checkout hash>_<random>`,
+  and drops it when the run ends (`scripts/contrib/databases.mjs`). A raw
+  `vitest run` still shares the checkout's family; nothing detects two raw
+  runs sharing a shard.
 
 ### `synchronous_commit` is an environment difference, not a flake
 

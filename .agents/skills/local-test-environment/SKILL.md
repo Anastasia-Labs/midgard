@@ -11,12 +11,10 @@ missing prerequisite or two checkouts touching the same resource.
 
 ## Start with `doctor`
 
-For a focused run, first read [the deterministic contributor workflow](../../../docs/agents/contrib.md#focused-tests-and-builds)
-and use `node scripts/contrib.mjs prepare --package <name> --plan`, then
-`node scripts/contrib.mjs test --package <name> --file <package-relative path>`.
-This owns preparation, compiled-input identity, invocation database naming,
-resource exclusion, selected-test counts and the execution receipt. Keep raw
-Vitest for deliberately diagnosed exceptions, with that limitation in the report.
+Run suites with `node scripts/contrib.mjs test --package <name> [--file <path>]`
+([how](references/running-suites.md#one-file-or-the-whole-package)): it runs
+the package's `test` script as CI does, after preparing the blueprint and
+dists, under its own database family, and counts what ran.
 
 `node scripts/doctor.mjs` (`--json` for machine-readable output) is
 read-only: it starts, installs and writes nothing, and prints a fix under each
@@ -32,8 +30,8 @@ stamp are unavailable. `scripts/doctor.test.mjs` covers the exit codes.
 
 ## Test Postgres on 5433
 
-The `midgard-node` and `midgard-node-tools` suites (and `da-committee-node`)
-need a server on `127.0.0.1:5433`; without one, global setup fails and vitest
+The `midgard-node`, `midgard-node-tools`, `da-committee-node`,
+`midgard-l1-follower` and `midgard-watcher` suites need a server on `127.0.0.1:5433`; without one, global setup fails and vitest
 reports "No test files found".
 
 ```bash
@@ -87,8 +85,8 @@ follows the `import` condition to `dist/`, so code run outside vitest needs it.
 closure in order. Node suites need their bundled workers; tooling also needs
 plain-Node imports. `contrib test` owns these artifacts until the run joins.
 
-- **A raw focused `vitest run` skips `pretest`.** Use `contrib test` so stale
-  compiled consumers fail or rebuild before execution. [script: scripts/contrib.mjs]
+- **A raw `vitest run` skips `pretest`.** `contrib test` rebuilds stale
+  compiled consumers before execution. [script: scripts/contrib.mjs]
 - **Build dist in each checkout; never copy it from another.** Guarded stamps
   authenticate checkout, source closure and emitted dependencies. [script: scripts/contrib/build.mjs]
 

@@ -5,19 +5,38 @@ node scripts/contrib.mjs prepare --package midgard-node --plan
 node scripts/contrib.mjs prepare --package midgard-node --execute
 node scripts/contrib.mjs test --package midgard-node --file tests/validation-worker-pool.test.ts
 node scripts/contrib.mjs test --package midgard-node --file tests/database.test.ts --seed 42
+node scripts/contrib.mjs test --package midgard-watcher --maxWorkers 2
 node scripts/contrib.mjs build --package midgard-sdk
 node scripts/contrib.mjs native --package midgard-node
 node scripts/contrib.mjs boundary --package midgard-core
 ```
 
-File selectors are package-relative explicit test paths. The runner resolves
-that package's Vitest, supplies emulator mode for node/node-tools and test mode
-for other packages, derives the package's pretest
-builds, makes the blueprint ready where the package reads it (copied from a
-checkout with identical inputs and profile, else built with
-`deployment:build`), requires the local test Postgres where applicable, and assigns an invocation-specific disposable database family.
-Both file and test ordering use the recorded seed. A name selector records
-filtered assertions separately from skipped selected assertions.
+`contrib test` is how suites run, one file or a whole package. It runs the
+package's own `test` script, the command CI runs: the environment that script
+sets (`NODE_ENV=emulator` for node and node-tools, `NODE_ENV=test` where it
+sets none), its Vitest flags and, for a whole-package run without `--name`, its
+plain-Node preludes (`scripts/contrib/vitest-command.mjs`). A script flag the
+runner does not understand is refused, not dropped. The caller may add only
+Vitest's `--maxWorkers N`, `--exclude GLOB` (repeatable) and
+`--disableConsoleIntercept`, spelled as Vitest spells them.
+
+`--file` takes package-relative test paths; without one, the run is the whole
+package. Before running, `vitest list` collects the files with the same
+configuration and flags: a named file the config or an `--exclude` drops, or a
+filter that also selects other files, is refused, and the receipt then
+requires the report to cover exactly those files. The runner derives the
+package's pretest builds, makes the blueprint ready where the package reads it
+(copied from a checkout with identical inputs and profile, else built with
+`deployment:build`), requires the local test Postgres where the package's
+tests read it, and assigns an invocation-specific disposable database family,
+dropped when the run ends. Both file and test ordering use the recorded seed.
+A name selector records filtered assertions separately from skipped selected
+assertions.
+
+The terminal gets a short verdict on stderr (counts, then each failed test or
+file that failed to load with its first message line, the log and the receipt)
+and a compact JSON summary on stdout; `--output FILE` keeps the full receipt,
+and the run directory holds the logs and Vitest's JSON report.
 
 Place watcher test checkouts on the project filesystem outside `/tmp`: its
 funding recovery suites exercise the production guard against temporary durable
@@ -136,13 +155,15 @@ the docs site pins pnpm 10; an ambient executable cannot select their version.
 Corepack must be available. Source folders named `build`, `target` or `dist`
 remain inputs; generated outputs are excluded only at their owning project.
 
-Guarded invocations hold an exclusive workspace resource while consuming or
-publishing compiled artifacts. Build steps also enter a host-wide memory-heavy
-queue. Nested guarded commands inherit ownership only when their token and
-Linux process ancestry match. This serializes guarded consumers in one
-checkout. Raw compiler/test commands and external editors can bypass the
-lease; the final digest check catches resulting changes. It does not freeze
-external processes or make mutable dist paths immutable.
+Guarded invocations hold an exclusive workspace resource while they write
+compiled artifacts (dist, native outputs, the blueprint). `contrib test` holds
+it only for that preparation and releases it before the suites start, so test
+runs in one checkout proceed side by side. Build steps also enter a host-wide
+memory-heavy queue. Nested guarded commands inherit ownership only when their
+token and Linux process ancestry match. A build, blueprint copy, raw compiler
+or editor that changes a prerequisite under a running suite is caught by the
+final digest check, which fails the receipt. It does not freeze external
+processes or make mutable dist paths immutable.
 
 Run `node scripts/contrib/enroll-builds.mjs --write` after adding a package
 build recipe. CI checks enrollment. Do not invoke a raw recipe as contributor

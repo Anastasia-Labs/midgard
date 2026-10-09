@@ -134,12 +134,12 @@ result. A wrong cause costs more than none. `[review]`
 
 ## Known failures in a gate run
 
-Diff each run against the accepted list (format: the script's header), with the `<env>` and `<flags>` the package's `test` script sets ([per package](../local-test-environment/references/running-suites.md#gate-runs-over-several-suites)):
+Diff each run against the accepted list (format: the script's header).
+`contrib test` prints `receipt: <run>/receipt.json`; `<run>` holds the rest:
 
 ```sh
-rm -f <report.json>   # a killed run leaves the previous report in place
-<env> pnpm --dir demo/<package> exec vitest run <files> <flags> --reporter=default --reporter=json --outputFile=<report.json> 2>&1 | tee <run.log>
-node .agents/skills/fixing-flaky-tests/scripts/diff-test-reds.mjs --accepted <list.json> --suite <package> --log <run.log> <report.json>
+node scripts/contrib.mjs test --package <package> [--file <path>]...
+node .agents/skills/fixing-flaky-tests/scripts/diff-test-reds.mjs --accepted <list.json> --suite <package> --log <run>/test.log <run>/vitest.json
 ```
 
 `--suite` takes the same `<package>`. It exits 1 on a failure the list does
