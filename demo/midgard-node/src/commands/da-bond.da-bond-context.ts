@@ -1,5 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   Data,
   getAddressDetails,
   type LucidEvolution,
@@ -8,6 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 
+import { findSubmitOutcomeUnknown } from "../provider-retry.js";
 import { awaitExactTransactionConfirmation } from "../transactions/utils.js";
 
 /** Everything the chain-facing `da-bond` commands read or call. */
@@ -174,7 +176,9 @@ export const daBondAfterSubmitError = (
 
 /**
  * The production `submit`: send, then wait for exact confirmation. A failed
- * wait (a Kupo poll error aborts it) still names the submitted transaction.
+ * wait (a Kupo poll error aborts it) still names the submitted transaction,
+ * and so does a send whose outcome is unknown (the provider's
+ * `L1SubmitOutcomeUnknownError`): the node may have taken it.
  */
 export const daBondSubmitAndConfirm =
   (
@@ -182,7 +186,18 @@ export const daBondSubmitAndConfirm =
     confirm: (txHash: string) => Promise<unknown>,
   ) =>
   async (txCbor: string): Promise<string> => {
-    const txHash = await send(txCbor);
+    let txHash: string;
+    try {
+      txHash = await send(txCbor);
+    } catch (error) {
+      const outcomeUnknown = findSubmitOutcomeUnknown(error);
+      if (outcomeUnknown === undefined) throw error;
+      throw daBondAfterSubmitError(
+        outcomeUnknown.txHash ?? transactionIdOf(txCbor),
+        "submitted",
+        outcomeUnknown,
+      );
+    }
     try {
       await confirm(txHash);
     } catch (error) {
@@ -190,6 +205,9 @@ export const daBondSubmitAndConfirm =
     }
     return txHash;
   };
+
+const transactionIdOf = (txCbor: string): string =>
+  CML.hash_transaction(CML.Transaction.from_cbor_hex(txCbor).body()).to_hex();
 
 /**
  * The `submit` `loadDaBondContext` installs: send through the chain provider,

@@ -1,5 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { isTransientOgmiosJsonRpcFailure } from "@al-ft/midgard-core/ogmios-json-rpc-error";
+import { L1SubmitOutcomeUnknownError } from "@al-ft/midgard-l1-follower/provider";
 import { Cause, Duration, Effect, Runtime } from "effect";
 
 export type ProviderRetryOptions = {
@@ -140,6 +141,23 @@ const hasTransientConnectionShape = (
     POSTGRES_CONNECTION_MESSAGES.some((known) => message.includes(known))
   );
 };
+
+/**
+ * The follower provider's {@link L1SubmitOutcomeUnknownError} on `error`'s
+ * cause chain, or `undefined`: a submission the node may have taken, so its
+ * id must be looked up before anything is sent or built in its place. Matched
+ * by name too, like `L1ProviderTransientError` above, so a second loaded copy
+ * of the follower package is still recognised.
+ */
+export const findSubmitOutcomeUnknown = (
+  error: unknown,
+): L1SubmitOutcomeUnknownError | undefined =>
+  causeChain(error).find(
+    (link): link is Record<string, unknown> & L1SubmitOutcomeUnknownError =>
+      link instanceof L1SubmitOutcomeUnknownError ||
+      (link.name === "L1SubmitOutcomeUnknownError" &&
+        link.outcomeUnknown === true),
+  );
 
 /** True when any error on `error`'s cause chain carries the string `code`. */
 export const hasCauseCode = (error: unknown, code: string): boolean =>

@@ -11,6 +11,7 @@ import { Effect } from "effect";
 
 import { type ReferenceScriptCommandName } from "../deployable-scripts.js";
 import {
+  findSubmitOutcomeUnknown,
   isRetryableProviderError,
   type ProviderRetryOptions,
   runProviderStepWithRetry,
@@ -94,6 +95,56 @@ const isResumablePublicationFailure = (error: unknown): boolean =>
   !hasCause(error, isAuthDeadlineFailure) &&
   !hasCause(error, isReconciliationTimeout) &&
   isRetryableProviderError(error);
+
+/** A transaction a failed pass sent with an unknown outcome, and that failure. */
+type SentWithUnknownOutcome = Readonly<{ txHash: string; failure: unknown }>;
+
+/**
+ * The transaction `failure` sent with an unknown outcome (the provider's
+ * `L1SubmitOutcomeUnknownError`), by the id the provider or the submit seam's
+ * `TxSubmitError` names; `undefined` for any other failure.
+ */
+const sentWithUnknownOutcome = (
+  failure: unknown,
+): SentWithUnknownOutcome | undefined => {
+  const outcomeUnknown = findSubmitOutcomeUnknown(failure);
+  if (outcomeUnknown === undefined) return undefined;
+  const txHash =
+    outcomeUnknown.txHash ??
+    (failure instanceof TxSubmitError ? failure.txHash : undefined);
+  return txHash === undefined ? undefined : { txHash, failure };
+};
+
+/**
+ * Settles a transaction sent with an unknown outcome before a pass resumes:
+ * by its exact id's status, the next pass runs once it landed (its re-read
+ * sees a landed top-up, so none is built again) or once it can no longer
+ * land (absent, or phase-2 invalid). While it is pending, or its status is
+ * unreadable, this fails with a resumable error and nothing is rebuilt.
+ */
+const settleSentWithUnknownOutcome = (
+  lucid: Pick<LucidEvolution, "transactionStatus">,
+  scopeName: string,
+  sent: SentWithUnknownOutcome,
+): Effect.Effect<void, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const status = yield* Effect.tryPromise({
+      try: () => lucid.transactionStatus(sent.txHash),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: `Failed to read the status of ${sent.txHash}, sent with an unknown outcome while preparing ${scopeName} reference scripts`,
+          cause: new AggregateError([cause, sent.failure]),
+        }),
+    });
+    if (status.status === "pending") {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: `Transaction ${sent.txHash}, sent with an unknown outcome while preparing ${scopeName} reference scripts, is still pending; nothing is rebuilt meanwhile`,
+          cause: sent.failure,
+        }),
+      );
+    }
+  });
 
 export const ensureReferenceScriptTargetsProgram = (
   referenceScriptsLucid: LucidEvolution,
@@ -208,9 +259,27 @@ export const ensureReferenceScriptTargetsProgram = (
           }),
       });
     });
+    let unsettled: SentWithUnknownOutcome | undefined;
+    const resumablePass = Effect.gen(function* () {
+      if (unsettled !== undefined) {
+        yield* settleSentWithUnknownOutcome(
+          referenceScriptsLucid,
+          scopeName,
+          unsettled,
+        );
+        unsettled = undefined;
+      }
+      yield* publicationPass;
+    }).pipe(
+      Effect.tapError((failure) =>
+        Effect.sync(() => {
+          unsettled ??= sentWithUnknownOutcome(failure);
+        }),
+      ),
+    );
     yield* runProviderStepWithRetry(
       `${scopeName} reference-script publication`,
-      publicationPass,
+      resumablePass,
       { ...publicationRetry, isRetryable: isResumablePublicationFailure },
     );
     return yield* fetchReferenceScriptUtxosProgram(

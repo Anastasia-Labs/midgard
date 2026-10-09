@@ -48,7 +48,8 @@ import {
 export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
 
 /**
- * The L1 node refused the node-to-client handshake: a wrong
+ * The L1 node refused the node-to-client handshake. The detail is the
+ * refusal the node returned; likely causes are a wrong
  * `CARDANO_NETWORK_MAGIC`, or no node-to-client version both sides speak.
  * The transport keeps redialing, so a node that answers again clears it, but
  * a wrong configuration does not clear by waiting: an intervention, never
@@ -164,7 +165,7 @@ export const committeeL1Source = (
           status.node?.reason === "node_handshake_failed"
             ? {
                 reason: L1_NODE_HANDSHAKE_FAILED,
-                detail: `the L1 node refused the handshake; check CARDANO_NETWORK_MAGIC and the node's network: ${entry.detail}`,
+                detail: `the L1 node refused the handshake: ${entry.detail}`,
               }
             : entry,
         );

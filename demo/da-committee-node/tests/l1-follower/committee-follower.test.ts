@@ -185,7 +185,7 @@ describe("the committee's L1 source over the follower", () => {
       {
         reason: L1_NODE_HANDSHAKE_FAILED,
         detail:
-          "the L1 node refused the handshake; check CARDANO_NETWORK_MAGIC and the node's network: node_handshake_failed: node handshake: version mismatch",
+          "the L1 node refused the handshake: node_handshake_failed: node handshake: version mismatch",
       },
     ]);
     expect(committeeL1InterventionReason(refused)).toEqual(refused[0]);

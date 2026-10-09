@@ -414,10 +414,12 @@ export const committeeStoreMigrations: MigrationSet = {
 
 /**
  * Creates or upgrades the committee store schema. One multi-statement query
- * runs as one implicit transaction: it applies whole or not at all. The L1
- * records are upgraded after it (`upgradeCommitteeL1Records`), then the
- * stored retirement floor is re-bound and the stored points are checked
- * against the L1 origin (`checks`), each write fenced on the instance lock.
+ * runs in one transaction on a connection the server confirms still holds
+ * the instance lock: it applies whole or not at all, and an instance that
+ * lost the lock runs none of it. The L1 records are upgraded after it
+ * (`upgradeCommitteeL1Records`), then the stored retirement floor is re-bound
+ * and the stored points are checked against the L1 origin (`checks`), each
+ * write fenced on the instance lock.
  * A refusal is a named readiness reason the startup retry reports, the
  * process up.
  */
@@ -427,12 +429,14 @@ export const initializeCommitteeSchema = async (
   checks: CommitteeStoreOpenChecks = {},
   write: (line: string) => void = (line) => process.stderr.write(line),
 ): Promise<void> => {
-  await pool.query(
-    [
-      COMMITTEE_STORE_TABLES_SQL,
-      COMMITTEE_STORE_UPGRADE_SQL,
-      COMMITTEE_STORE_DERIVED_SQL,
-    ].join("\n"),
+  await fencedOpenTransaction(pool, lock, (client) =>
+    client.query(
+      [
+        COMMITTEE_STORE_TABLES_SQL,
+        COMMITTEE_STORE_UPGRADE_SQL,
+        COMMITTEE_STORE_DERIVED_SQL,
+      ].join("\n"),
+    ),
   );
   await upgradeCommitteeL1Records(pool, lock, write, checks.securityParameter);
   await fencedOpenTransaction(pool, lock, async (client) => {
