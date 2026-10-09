@@ -16,6 +16,10 @@ import {
   NODE_L1_ACCESS_UNCONFIGURED,
   openNodeL1AccessFromConfig,
 } from "./l1-provider.js";
+import {
+  LUCID_INITIALIZATION_PENDING,
+  retryStartupStep,
+} from "./startup-waiting.js";
 
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause), { cause });
@@ -24,6 +28,34 @@ const asError = (cause: unknown): Error =>
 const OPEN_RETRY = Schedule.exponential(Duration.millis(500)).pipe(
   Schedule.union(Schedule.spaced(Duration.seconds(30))),
 );
+
+/**
+ * One Lucid client's construction (`construct`, which reads the provider's
+ * protocol parameters): while it fails it is retried on a capped backoff
+ * with no deadline, the startup waiting under
+ * `lucid_initialization_pending` (`retryStartupStep`).
+ */
+export const constructLucidOnStartup = (
+  key: string,
+  message: string,
+  network: LE.Network,
+  construct: () => Promise<LE.LucidEvolution>,
+): Effect.Effect<LE.LucidEvolution> =>
+  retryStartupStep(
+    Effect.tryPromise({
+      try: construct,
+      catch: (cause) =>
+        new ConfigError({
+          message,
+          cause,
+          fieldsAndValues: [["NETWORK", network]],
+        }),
+    }),
+    { key, reason: LUCID_INITIALIZATION_PENDING },
+  ).pipe(
+    // Every failure is retried above; nothing reaches here.
+    Effect.catchAll(() => Effect.never),
+  );
 
 /**
  * Builds the Lucid service bundle used by the node, including reference-script
@@ -125,28 +157,18 @@ const makeLucid: Effect.Effect<
       socket: access.endpoint,
     })}`,
   );
-  const lucid: LE.LucidEvolution = yield* Effect.tryPromise({
-    try: () => LE.Lucid(access.provider, nodeConfig.NETWORK, { slotConfig }),
-    catch: (e) =>
-      new ConfigError({
-        message: `An error occurred on lucid initialization`,
-        cause: e,
-        fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
-      }),
-  }).pipe(
-    Effect.tapError(Effect.logInfo),
-    Effect.retry(Schedule.fixed("1000 millis")),
+  const lucid = yield* constructLucidOnStartup(
+    "lucid_initialization",
+    "An error occurred on lucid initialization",
+    nodeConfig.NETWORK,
+    () => LE.Lucid(access.provider, nodeConfig.NETWORK, { slotConfig }),
   );
-  const referenceScriptsApi: LE.LucidEvolution = yield* Effect.tryPromise({
-    try: () =>
-      LE.Lucid(lucid.config().provider, nodeConfig.NETWORK, { slotConfig }),
-    catch: (e) =>
-      new ConfigError({
-        message: "An error occurred while initializing reference-scripts Lucid",
-        cause: e,
-        fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
-      }),
-  });
+  const referenceScriptsApi = yield* constructLucidOnStartup(
+    "reference_scripts_lucid_initialization",
+    "An error occurred while initializing reference-scripts Lucid",
+    nodeConfig.NETWORK,
+    () => LE.Lucid(lucid.config().provider, nodeConfig.NETWORK, { slotConfig }),
+  );
   const switchToReferenceScriptWallet = Effect.sync(() =>
     selectNodeWallet(
       referenceScriptsApi,

@@ -4,6 +4,10 @@ import * as TxAdmissionsDB from "../database/txAdmissions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { Database } from "../services/database.js";
 import { AdmissionBacklogGaugeState, Globals } from "../services/globals.js";
+import {
+  ADMISSION_BACKLOG_UNREAD,
+  retryStartupStep,
+} from "../services/startup-waiting.js";
 
 export const beginAdmissionBacklogRefresh = (
   current: AdmissionBacklogGaugeState,
@@ -189,6 +193,23 @@ export const refreshAdmissionBacklogGauge: Effect.Effect<
   );
   yield* reportGaugeMetrics(stateValue(state), refreshedAtMs);
 });
+
+/**
+ * The startup's first refresh of the gauge (`refresh`, by default
+ * `refreshAdmissionBacklogGauge`), which admission reads from then on: a
+ * failed read is logged and retried on a capped backoff with no deadline,
+ * the startup waiting under `admission_backlog_unread`. Never fails.
+ */
+export const refreshAdmissionBacklogGaugeOnStartup = <R>(
+  refresh: Effect.Effect<void, DatabaseError, R>,
+): Effect.Effect<void, never, R> =>
+  retryStartupStep(refresh, {
+    key: "admission_backlog_refresh",
+    reason: ADMISSION_BACKLOG_UNREAD,
+  }).pipe(
+    // Every failure is retried above; nothing reaches here.
+    Effect.catchAll(() => Effect.never),
+  );
 
 export const admissionBacklogGaugeFiber = (
   schedule: Schedule.Schedule<number>,

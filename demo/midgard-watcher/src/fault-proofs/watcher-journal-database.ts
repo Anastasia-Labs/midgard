@@ -43,8 +43,6 @@ export {
  *   deleted, added or replayed row is refused;
  * - the latest revisions keep their chained digest and delta, so a reordered
  *   or substituted revision is refused.
- * A whole-file rollback to an older consistent copy is not detectable without
- * an external anchor; the journals never claimed that.
  *
  * A failed check refuses the journals for the rest of the process: every
  * later call, and every later open of the same root, throws the first

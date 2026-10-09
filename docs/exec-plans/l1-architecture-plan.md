@@ -1004,11 +1004,25 @@ on an unparseable config or a port conflict.
 | R3 | `origin_after_protocol_init` | Caught up, but the `hubOracleOneShot` spend was never seen (§5.3) | Correct `l1Origin`. |
 | R4 | `origin_not_on_chain` | The origin hash is not on the node's chain | Correct `l1Origin`, or the network. |
 | R5 | `store_integrity` | Invariant INV1–INV6, or the registry check, fails at start or after a rewind | Restore from a backup, or reset. |
-| R6 | `mpf_closure_missing` | `ImportClosure` cannot find a record reachable from a root that is within k and pinned | Rebuild roots from facts with `mpf rebuild --from-ledger`. |
+| R6 | `mpf_closure_missing` | `ImportClosure` cannot find a record reachable from a root that is within k and pinned. On the node: the landed-block rebase's native restore finds no root of the processed landed chain retained in full in the native MPF store | Stop the node, install at `LEDGER_MPF_DB_PATH` a native MPF store that retains the root in full, and restart; the next rebase completes. |
 | R7 | `operator_removed` | The operator is no longer in the active set (D-N7) | Expected end state; re-register or retire. |
 | R8 | `wallet_below_floor` | Own wallet funds fall below the fee floor for pending intents | Fund the wallet. An automatic refill loop is open decision-register item DR-B3 (`public-testnet-decisions-2026-10-01/source-context.md:139`), not decided here. |
 | R9 | `manifest_mismatch` | The config does not match the finalised manifest identity | Fix the config. |
 | R10 | `origin_mismatch` | The configured `l1Origin` differs from the origin the follower store was initialised at | Restore the previous `l1Origin`, or run `follower reset --to-origin` to replay from the new one. The reset never deletes class B or class C rows: signed material stays, and foreign payloads stay while referenced. |
+
+The node's own holds that need more than waiting each belong to a class
+above or are listed here with what clears them. Each keeps the process up,
+names its reason on `/readyz`, and is re-evaluated on every driver run (a
+startup step: on every run of the step):
+
+| Reason | Class | Trigger | What clears it |
+|---|---|---|---|
+| `landed_block_own_journal_mismatch` | R5 | This node's own landed block disagrees with its journal: another base or root, or a delta that does not reach the header's root on the parent's ledger | Restore the node database from a backup that holds the block's journal; the next driver run adopts the block from it. |
+| `mpf_closure_missing` | R6 | See R6 | See R6. |
+| `landed_block_invalid` | none: the block's, not this node's | A foreign landed block does not replay to its header's root or does not link to its parent. It is never adopted and nothing after it is processed | The block leaves the landed queue: a landed correction removes it (§7.4), or a rollback does. No action on this node. |
+| `native_mpf_restore_index_cap_exceeded`, `native_mpf_promotion_index_cap_exceeded` | build limit | The root to restore or promote has a full index over `FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`, the caps fixed in the node build. Nothing is written | A promotion: one that fits (merges and withdrawals shrink the ledger), or a canonical restore of another root. Either: a node build whose caps cover the root. |
+| `landed_block_follower_schema_missing` | install | The follower's admission tables (`l1_event_keys`, `node_l1_forced_order_fields`) are missing from the node database | Run `migrate`; the next driver run clears it. |
+| `protocol_initialization_failed` | R9, or deployment | A run of the startup protocol check fails: the deployment manifest does not match the config (R9), an availability-challenge reward account is not registered, or a runtime reference script is missing or differs. The node has not started serving; the check runs again from the start on a backoff that grows to 30 s, re-reading the deployment status first | Fix what the log names (the config, the registration or the reference script); the next run passes and startup goes on. No restart. |
 
 Everything else is transient and recovers automatically with backoff, while
 `/readyz` reports a reason:
@@ -1021,14 +1035,17 @@ Everything else is transient and recovers automatically with backoff, while
 
 That matches the 2026-10-01 directive.
 
-**Accepted residual: whole-file journal rollback.** The watcher's journals
-(`watcher-journals.sqlite`) authenticate each row with the rollback key and
-chain each commit's revision to the one before, and startup verifies every
-row and the latest revisions. That detects a tampered, deleted, replayed or
-reordered record inside the file. It cannot detect the whole file replaced by
-an older copy of itself: the older copy is a consistent chain under the same
-key, and nothing outside the file records the latest revision. No case above
-fires for it. It is accepted as a residual, not an intervention.
+**Watcher journal integrity.** The watcher's journals
+(`watcher-journals.sqlite`) authenticate each row with a MAC under the
+rollback key over its journal, key, scope, state, revision and body. Each
+journal's head carries a MAC over its revision, its chained revision digest,
+its live row count and a keyed sum of its rows' MACs, and the latest
+revisions keep their chained digest and delta. Startup verifies every row's
+MAC, the row count and keyed sum against the head, and the retained
+revisions' order, MACs and chain. A failed check refuses the journals for
+the rest of the process: the watcher stays up and reports
+`journal_integrity` on `/readyz` until an operator repairs the journals and
+restarts it.
 
 ## 8. Generations, views and intents (proposals 9 and 10)
 

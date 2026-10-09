@@ -75,6 +75,40 @@ degradations that leave the node ready. The list is derived from
 `demo/midgard-node/src` by `scripts/ci/check-readiness-reasons-doc.mjs`,
 which fails when a reason here has no text.
 
+Startup (`src/commands/listen.startup-http.ts`; the step reasons are in
+`src/services/startup-waiting.ts`). Until the node serves, `/readyz` answers
+503 with the stage in `stage`, `startup_incomplete` first, then the stage's
+own reasons, then those of every startup step that is waiting. A step that
+waits retries with a backoff that grows to 30 s, with no deadline, and its
+reason goes once it succeeds:
+
+- `startup_incomplete`: the node has not finished starting. Read `stage`
+  and the reasons after it.
+- `startup_failed`: a startup stage failed with a verdict the node does not
+  retry (`failedStage` names it); the process exits with the error in its
+  log. Fix what the error names and restart.
+- `lucid_initialization_pending`: building a Lucid client (its
+  protocol-parameter read) failed. Check the L1 node and the follower.
+- `database_unreachable`: PostgreSQL does not answer or refuses
+  connections; a pool waits to open, or the schema check waits to run.
+  Restore Postgres reachability.
+- `schema_migration_in_progress`: a `db:migrate` holds the schema lock.
+  Wait for it to finish.
+- `protocol_deployment_status_unavailable`: the protocol deployment status
+  read failed on the L1 provider. Check the L1 node and the follower.
+- `protocol_initialization_failed`: a run of the startup protocol check
+  failed (the log names why: an unregistered availability-challenge reward
+  account, a reference script not yet published, a deployment-manifest
+  mismatch); the check runs again from the start, re-reading the deployment
+  status first. Fix what the log names; the node goes on by itself.
+- `da_provider_assertions_unavailable`: the DA provider assertions read
+  failed on the L1 provider. Check the L1 node.
+- `da_capability_quorum_pending`: too few DA committee peers answered
+  capably yet, and the quorum can still form. Check that the committee's
+  peers are up.
+- `admission_backlog_unread`: the first read of the durable admission
+  backlog failed. Check Postgres.
+
 Core checks (`src/commands/readiness.ts`, the readiness handler):
 
 - `operator_not_yet_active`: the operator set lists this operator as
@@ -189,11 +223,15 @@ Node instance lock (`src/services/node-instance-lock.ts`):
   check `pg_locks`/`pg_stat_activity` for the advisory holder. The node
   takes over by itself once the holder is gone.
 - `node_instance_lock_unavailable`: no Postgres session could be opened to
-  try the lock at startup. Retried on backoff up to 30 s. Restore Postgres
+  try the lock at startup. Retried with a backoff that grows to 30 s, with
+  no deadline. Restore Postgres
   reachability and credentials. No restart is needed.
 - `node_instance_lock_suspended`: the session holding the lock ended under a
-  live node. Commit, settlement, merge and watchdog are held while it
-  reconnects. Usually no action; if it persists, check Postgres stability.
+  live node, or the server-side check (every 10 s, on a session of its own)
+  found that the server no longer holds the lock for it. Commit, merge and
+  watchdog start no new tick (one already running finishes) and settlement
+  is stopped while it reconnects. Usually no action; if it persists, check
+  Postgres stability.
 
 L1 follower and follower-change driver
 (`src/services/l1-follower.readiness.ts`):
@@ -257,8 +295,9 @@ L1 follower and follower-change driver
 - `intent_included_events_not_deep`: a commit waits for the chain to bury
   its included events again after a rewind. Wait.
 - `intent_journal_no_view`, `intent_journal_unavailable`: the intent journal
-  has no follower view, or its database write failed. Wait; check Postgres
-  if it stays.
+  has no follower view, or a database record or read failed. The second
+  clears on the journal's next good read or record. Wait; check Postgres if
+  it stays.
 - `intent_input_untracked`, `intent_bytes_mismatch`, `intent_undecodable`,
   `intent_content_ref_missing`, `intent_gate_unjournaled`: the journal
   refused an intent (an input that is not a tracked fact, other bytes for
@@ -273,7 +312,8 @@ first hold by priority is the reason, the rest are in its detail):
   link to its parent; it is never adopted. Report the block.
 - `landed_block_own_journal_mismatch`: this node's own landed block
   disagrees with its journal. A local fault; processing stops until the
-  journal is repaired. Report it with the detail.
+  journal is repaired: restore the node database from a backup that holds
+  the block's journal (plan §7.5, R5). Report it with the detail.
 - `landed_block_follower_schema_missing`: the follower's admission tables
   are missing from the node database. Run `migrate`.
 - `landed_block_event_unknown`: a foreign block names an event the follower
@@ -284,9 +324,10 @@ first hold by priority is the reason, the rest are in its detail):
   block's DA payload is not available yet, or a retained one failed to
   verify and is being fetched again. Wait; check the DA committee if it
   stays.
-- `native_mpf_restore_root_not_retained`: the rebase's native restore found
-  no retained root of the landed chain. Stop the node, install a native MPF
-  store that retains the root in full, and restart.
+- `mpf_closure_missing`: the rebase's native restore found no root of the
+  processed landed chain retained in full in the native MPF store. Stop the
+  node, install at `LEDGER_MPF_DB_PATH` a native MPF store that retains the
+  root in full, and restart (plan §7.5, R6).
 - `native_mpf_restore_index_cap_exceeded`: the restore target's full index
   is over a cap; the node needs a build whose caps cover it.
 - `native_mpf_restore_read_transient`: reading the root's closure from the

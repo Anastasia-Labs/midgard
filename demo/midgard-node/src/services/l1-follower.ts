@@ -46,6 +46,7 @@
  * - After each driver run, S6 (`l1-follower.intents.ts`, I1) seeds wallets
  *   and reconciles intents, the own commits it derived dead are disposed of
  *   (I3), and the journal re-reads its refusal holds; all join the driver's.
+ *   One trigger's run is `followerTick` (`l1-follower.tick.ts`).
  * - Uncleared states are named `/readyz` reasons; nothing here exits.
  */
 import { L1NodeTransport } from "@al-ft/l1-node-transport";
@@ -107,6 +108,7 @@ import {
   startingStatus,
 } from "./l1-follower.readiness.js";
 import { makeDriverRecompute } from "./l1-follower.recompute.js";
+import { followerTick } from "./l1-follower.tick.js";
 import { publishL1HeadChange } from "./l1-head-trigger.js";
 import { Lucid } from "./lucid.js";
 import {
@@ -297,34 +299,18 @@ const followL1 = <R>(
       log: (line) => log(`intents: ${line}`),
     });
     // S6 follows the driver in the same coalesced run (§8.3: every head and
-    // generation change), then the own commits it derived dead are disposed
-    // of (the driver's recompute runs the rebase they make due), and the
-    // journal re-reads its refusal holds: the commit and
-    // settlement workers raise theirs in the node database. While the node is
-    // behind wall-clock time (`l1_node_behind`) S6 sends nothing; the next
-    // head change after it catches up runs it.
+    // generation change), then the rebase the own commits it derived dead
+    // make due, then the journal's re-read of its refusal holds
+    // (`followerTick`).
+    const tick = followerTick({
+      driver,
+      intents,
+      nodeBehind: () => status.nodeBehind !== null,
+      recompute,
+      refreshJournal: () => journal.refresh(),
+    });
     const trigger = coalescedRunner(
-      () =>
-        driver
-          .run()
-          .then(() => (status.nodeBehind === null ? intents.run() : undefined))
-          .then(() =>
-            Runtime.runPromise(runtime)(
-              recompute
-                .rebaseIfDue("S6 derived the status of this node's own commits")
-                .pipe(
-                  Effect.tap((hold) =>
-                    hold === undefined
-                      ? Effect.void
-                      : Effect.logWarning(
-                          `L1 follower: own-commit disposition held (${hold.reason}): ${hold.detail}`,
-                        ),
-                  ),
-                ),
-            ),
-          )
-          .then(() => Runtime.runPromise(runtime)(journal.refresh()))
-          .then(() => [...driver.holds(), ...intents.holds()]),
+      () => Runtime.runPromise(runtime)(tick).then((ran) => ran.holds),
       abort.signal,
     );
     let lastCursor: string | null = null;

@@ -17,10 +17,10 @@ import {
   restoreRefusalHold,
 } from "../src/landed-blocks/restore-holds.js";
 import {
+  MPF_CLOSURE_MISSING,
   NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_ESCALATION_MS,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
-  NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
 } from "../src/services/liveness-halt.js";
 import {
   type NativeMpfOwnerService,
@@ -85,7 +85,7 @@ describe("the landed-block rebase's native restore", () => {
     expect(failure).toBeInstanceOf(LandedChainRootNotRetained);
     expect(restores).toHaveLength(1);
     expect(restoreRefusalHold([new Error("rebase"), failure])).toEqual({
-      reason: NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
+      reason: MPF_CLOSURE_MISSING,
       escalateAfterMs: 0,
     });
     // The detail names both roots and the operator's clearing action.

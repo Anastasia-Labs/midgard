@@ -24,6 +24,7 @@ import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.promote-o
 import type { Globals } from "../src/services/globals.js";
 import {
   INTENT_CONTENT_REF_MISSING,
+  INTENT_JOURNAL_UNAVAILABLE,
   intentJournalOver,
 } from "../src/services/intent-journal.js";
 import {
@@ -192,7 +193,8 @@ it("a worker's refusal hold whose write fails is handed to the main process, nam
     });
     expect(reasons).toEqual([INTENT_CONTENT_REF_MISSING]);
     // The run's retries did not land it, so it reaches the parent, which
-    // takes it over the way the commit fiber does.
+    // takes it over the way the commit fiber does; the run's failed re-read
+    // of the table goes with it.
     expect(notices).toEqual([
       {
         type: "IntentRefusalHoldsNotice",
@@ -204,6 +206,11 @@ it("a worker's refusal hold whose write fails is handed to the main process, nam
             }),
             txHash: commit.txHash,
             signedTxCbor: commit.signedTxCbor,
+          }),
+          expect.objectContaining({
+            hold: expect.objectContaining({
+              reason: INTENT_JOURNAL_UNAVAILABLE,
+            }),
           }),
         ],
       },
@@ -221,18 +228,20 @@ it("a worker's refusal hold whose write fails is handed to the main process, nam
         expect(
           takeCommitWorkerOutput({} as Globals, notices[0]!, 0, main.adopt),
         ).toBeUndefined();
-        // Named at once, and still named while its write keeps failing.
-        expect(l1FollowerReadiness(handle).reasons).toEqual([
+        // Named at once, and still named while its write (and the table's
+        // read) keeps failing.
+        const unwritten = [
           INTENT_CONTENT_REF_MISSING,
-        ]);
+          INTENT_JOURNAL_UNAVAILABLE,
+        ];
+        expect(l1FollowerReadiness(handle).reasons).toEqual(unwritten);
         yield* main.refresh();
-        expect(l1FollowerReadiness(handle).reasons).toEqual([
-          INTENT_CONTENT_REF_MISSING,
-        ]);
-        expect(main.handOff()).toHaveLength(1);
+        expect(l1FollowerReadiness(handle).reasons).toEqual(unwritten);
+        expect(main.handOff()).toHaveLength(2);
         main.adopt(notices[0]!.holds);
 
-        // The table takes writes again: the next refresh writes it.
+        // The table takes writes again: the next refresh writes it, and its
+        // good read clears the unavailable reason.
         yield* putBack;
         yield* main.refresh();
         expect(l1FollowerReadiness(handle).reasons).toEqual([

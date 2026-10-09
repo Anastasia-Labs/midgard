@@ -9,17 +9,38 @@
  * A family's hold clears on that family's next successful record (in the
  * record's own SQL transaction), or once a landed transaction other than the
  * refused one spends one of the refused transaction's inputs: the work it
- * would have done is gone, so nothing is left to unblock. It never clears on
- * a timer. A refused transaction whose bytes no decoder reads names no
+ * would have done is gone, so nothing is left to unblock. An
+ * `intent_bytes_mismatch` hold also clears once the journaled intent of the
+ * same transaction (its other bytes, the only ones ever sent) is no longer
+ * live: landed, dead, or pruned from the journal. A one-shot family records
+ * no second transaction, so this is what clears its hold. A hold never clears
+ * on a timer. A refused transaction whose bytes no decoder reads names no
  * inputs (no ledger accepts it either), so only the next success clears it.
+ *
+ * `intent_journal_unavailable` (the database failed the record or the read)
+ * is never written to the table: it is named in `holds()` from memory and
+ * clears on the journal's next good read of the table or its next
+ * successful record.
  */
-import { decodeTransaction, encodeOutRef } from "@al-ft/midgard-l1-follower";
-import type { SqlClient, SqlError } from "@effect/sql";
+import {
+  decodeTransaction,
+  deriveIntentStatusIn,
+  encodeOutRef,
+  postgresDialect,
+} from "@al-ft/midgard-l1-follower";
+import { SqlClient, type SqlError } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
-import { byteaArrayLiteral } from "../database/follower-schema.js";
+import {
+  byteaArrayLiteral,
+  followerSqlTx,
+} from "../database/follower-schema.js";
 import type { DriverHold } from "../l1-events/driver.js";
+import {
+  INTENT_BYTES_MISMATCH,
+  INTENT_JOURNAL_UNAVAILABLE,
+} from "./intent-journal.refusals.js";
 
 /** The body's inputs by CML's ledger decoder, freeing every handle. */
 const ledgerDecodedInputs = (bytes: Buffer): Buffer[] => {
@@ -103,25 +124,62 @@ export const clearRefusalHold = (
   );
 
 /**
+ * Whether the journaled intent of `txHash` is still live at the follower's
+ * cursor. A pruned intent is not.
+ */
+const journaledIntentLive = (
+  sql: SqlClient.SqlClient,
+  txHash: Buffer,
+): Effect.Effect<boolean, unknown> =>
+  sql
+    .withTransaction(
+      Effect.flatMap(followerSqlTx, (tx) =>
+        Effect.tryPromise({
+          try: () => deriveIntentStatusIn(tx, postgresDialect, txHash),
+          catch: (cause) => cause,
+        }),
+      ),
+    )
+    .pipe(
+      Effect.map(({ state }) => state?.status.kind === "live"),
+      Effect.provideService(SqlClient.SqlClient, sql),
+    );
+
+/**
  * Clears every hold whose refused transaction lost an input to another
  * landed transaction (a valid one's inputs, or a phase-2-failed one's
- * collateral: either way the follower marks the output spent), then reads
- * the holds that stand, one per family. Each held input is probed by the
- * outputs' primary key, so the work is bounded by the held inputs, not by
- * the tracked transactions.
+ * collateral: either way the follower marks the output spent), every
+ * `intent_bytes_mismatch` hold whose journaled intent is no longer live, and
+ * any `intent_journal_unavailable` row (a reason read from memory, never the
+ * table), then reads the holds that stand, one per family. Each held input
+ * is probed by the outputs' primary key, and each mismatch by its own
+ * intent's status, so the work is bounded by the holds, not by the tracked
+ * transactions.
  */
 export const releaseAndReadRefusalHolds = (
   sql: SqlClient.SqlClient,
-): Effect.Effect<ReadonlyMap<string, DriverHold>, SqlError.SqlError> =>
+): Effect.Effect<ReadonlyMap<string, DriverHold>, unknown> =>
   Effect.gen(function* () {
     yield* sql`DELETE FROM intent_refusal_holds h
-      WHERE EXISTS (
+      WHERE h.reason = ${INTENT_JOURNAL_UNAVAILABLE}
+         OR EXISTS (
         SELECT 1 FROM unnest(h.inputs) AS held(outref)
         JOIN l1_outputs o
           ON o.tx_hash = substring(held.outref FROM 1 FOR 32)
          AND o.output_index = get_byte(held.outref, 32) * 256 + get_byte(held.outref, 33)
         WHERE o.spent_slot IS NOT NULL
           AND o.spent_tx IS DISTINCT FROM h.tx_hash)`;
+    const mismatches = yield* sql<{
+      readonly family: string;
+      readonly tx_hash: Buffer;
+    }>`SELECT family, tx_hash FROM intent_refusal_holds
+      WHERE reason = ${INTENT_BYTES_MISMATCH}`;
+    for (const { family, tx_hash } of mismatches)
+      if (!(yield* journaledIntentLive(sql, Buffer.from(tx_hash))))
+        // Only the row read here: a newer refusal of the family stands.
+        yield* sql`DELETE FROM intent_refusal_holds
+          WHERE family = ${family} AND reason = ${INTENT_BYTES_MISMATCH}
+            AND tx_hash = ${Buffer.from(tx_hash)}`;
     const rows = yield* sql<{
       readonly family: string;
       readonly reason: string;
@@ -159,10 +217,16 @@ export type UnwrittenHold = Readonly<{
  * hands its unwritten holds to the main process (`handOff`), whose journal
  * takes them over (`adopt`): `/readyz` names them from then on, and the
  * main process's refresh at every tip writes them until they land.
+ *
+ * `intent_journal_unavailable` is the exception: it is held in memory only
+ * (`unavailable`), raised by a refused record or a failed read, and cleared
+ * by the next good read or successful record. A worker hands it off with
+ * its unwritten holds; the main process's next read decides it.
  */
 export const refusalHoldsOver = (sql: SqlClient.SqlClient) => {
   let persisted: ReadonlyMap<string, DriverHold> = new Map();
   const unpersisted = new Map<string, Omit<UnwrittenHold, "family">>();
+  let unavailable: UnwrittenHold | undefined;
   const write = (
     family: string,
     hold: DriverHold,
@@ -202,22 +266,34 @@ export const refusalHoldsOver = (sql: SqlClient.SqlClient) => {
     ),
   );
   return {
-    /** Holds `family`'s refusal of the transaction. Never fails. */
+    /**
+     * Holds `family`'s refusal of the transaction: written to the table, or
+     * held in memory for `intent_journal_unavailable`. Never fails.
+     */
     raise: (
       family: string,
       hold: DriverHold,
       txHash: string,
       signedTxCbor: string,
-    ): Effect.Effect<void> => write(family, hold, txHash, signedTxCbor, true),
+    ): Effect.Effect<void> =>
+      hold.reason === INTENT_JOURNAL_UNAVAILABLE
+        ? Effect.sync(() => {
+            unavailable = { family, hold, txHash, signedTxCbor };
+          })
+        : write(family, hold, txHash, signedTxCbor, true),
     /** Writes the holds whose write has not landed yet. Never fails. */
     flush,
     /** The delete, for the successful record's own transaction. */
     clearIn: (family: string) => clearRefusalHold(sql, family),
-    /** `family`'s record succeeded and its transaction committed. */
+    /**
+     * `family`'s record succeeded and its transaction committed: its hold
+     * is gone, and the database answered.
+     */
     cleared: (family: string): Effect.Effect<void> =>
       Effect.sync(() => {
         unpersisted.delete(family);
         persisted = new Map([...persisted].filter(([at]) => at !== family));
+        unavailable = undefined;
       }),
     holds: (): readonly DriverHold[] => [
       ...new Map([
@@ -226,6 +302,7 @@ export const refusalHoldsOver = (sql: SqlClient.SqlClient) => {
           ([family, { hold }]) => [family, hold] as const,
         ),
       ]).values(),
+      ...(unavailable === undefined ? [] : [unavailable.hold]),
     ],
     /** Returns the unwritten holds and forgets them: the caller owns them now. */
     handOff: (): readonly UnwrittenHold[] => {
@@ -233,16 +310,27 @@ export const refusalHoldsOver = (sql: SqlClient.SqlClient) => {
         family,
         ...rest,
       }));
+      if (unavailable !== undefined) handed.push(unavailable);
       unpersisted.clear();
+      unavailable = undefined;
       return handed;
     },
     /**
      * Takes over another journal's unwritten holds: named in `holds()` at
-     * once, and written on the next record or refresh until they land.
+     * once, and written on the next record or refresh until they land (an
+     * `intent_journal_unavailable` one is held until the next good read).
      */
     adopt: (holds: readonly UnwrittenHold[]): void => {
-      for (const { family, ...rest } of holds) unpersisted.set(family, rest);
+      for (const { family, ...rest } of holds)
+        if (rest.hold.reason === INTENT_JOURNAL_UNAVAILABLE)
+          unavailable = { family, ...rest };
+        else unpersisted.set(family, rest);
     },
+    /**
+     * Writes the unwritten holds, then re-reads the table. A good read
+     * clears `intent_journal_unavailable`; a failed one keeps the last read
+     * and holds that reason, named with the failure. Never fails.
+     */
     refresh: (): Effect.Effect<void> =>
       flush.pipe(
         Effect.zipRight(releaseAndReadRefusalHolds(sql)),
@@ -250,10 +338,25 @@ export const refusalHoldsOver = (sql: SqlClient.SqlClient) => {
           onSuccess: (read) =>
             Effect.sync(() => {
               persisted = read;
+              unavailable = undefined;
             }),
           onFailure: (cause) =>
-            Effect.logWarning(
-              `Intent journal: the refusal holds were not re-read (the last read stands): ${messageOf(cause)}`,
+            Effect.sync(() => {
+              unavailable = {
+                family: "intent_journal",
+                hold: {
+                  reason: INTENT_JOURNAL_UNAVAILABLE,
+                  detail: `the refusal holds were not re-read (the last read stands): ${messageOf(cause)}`,
+                },
+                txHash: "",
+                signedTxCbor: "",
+              };
+            }).pipe(
+              Effect.zipRight(
+                Effect.logWarning(
+                  `Intent journal: the refusal holds were not re-read (the last read stands): ${messageOf(cause)}`,
+                ),
+              ),
             ),
         }),
       ),

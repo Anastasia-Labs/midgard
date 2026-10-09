@@ -19,7 +19,8 @@ import {
 } from "./working-ledger-recompute.pending-txs.js";
 
 /** Why a pending transaction left the working ledger: its own input became
- * unavailable, or it spends a rejected transaction's output. */
+ * unavailable, or it spends (in a rebuild, also reads by reference) a
+ * rejected transaction's output. */
 export type RejectionReason = "direct" | "dependent";
 
 export type RejectionCodes = Readonly<
@@ -28,7 +29,8 @@ export type RejectionCodes = Readonly<
 
 /**
  * `causes` are the hex ids of the rejected transactions a "dependent"
- * rejection follows from: the producers of the rejected outputs it spends.
+ * rejection follows from: the producers of the rejected outputs it spends
+ * or reads.
  * A rejection without them is not traced to another transaction.
  */
 export type Rejection = Readonly<{

@@ -557,16 +557,16 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         fixture.contracts,
       );
       const tipEndTimeMs = await getStateQueueDatumEndTime(latestBlock.datum);
-      // Identical arrival timestamps make "globally oldest" tie-break on the
-      // canonical txId order the assertions below expect; the shared instant
-      // still sits strictly after the confirmed tip's semantic end time.
+      // One instant after the tip's end: oldest follows admission (queued) order.
       const oldestBacklogTimeMs = Math.max(
         Date.now() - 8_000,
         tipEndTimeMs + 1,
       );
       const timestamps = processed.map(() => new Date(oldestBacklogTimeMs));
-      const processedInCanonicalBacklogOrder = [...processed].sort(
-        (left, right) => Buffer.compare(left.txId, right.txId),
+      const rank = (tx: { txId: Buffer }) =>
+        queued.findIndex((entry) => entry.txId.equals(tx.txId));
+      const processedInAdmissionOrder = [...processed].sort(
+        (left, right) => rank(left) - rank(right),
       );
       // Advance the emulator clock past the seeded arrival instant so the
       // worker's mempool retrieval window covers the whole backlog even when
@@ -643,7 +643,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       expect(Option.isSome(active)).toBe(true);
       if (Option.isSome(active)) {
         expect(active.value.mempoolTxIds).toStrictEqual(
-          processedInCanonicalBacklogOrder.slice(0, 2).map((tx) => tx.txId),
+          processedInAdmissionOrder.slice(0, 2).map((tx) => tx.txId),
         );
       }
       expect(output.blockEndTimeMs).toBeGreaterThanOrEqual(

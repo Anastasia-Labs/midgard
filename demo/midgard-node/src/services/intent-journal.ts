@@ -24,9 +24,12 @@
  * - A refusal (§8.2's tracked-input invariant, no follower view, bytes that
  *   differ from the journaled ones) stops that submission and is held as a
  *   named `/readyz` reason until the family's next recording succeeds, or a
- *   landed transaction spends the refused one's input. Holds live in the
- *   node database (`intent-journal.holds.ts`), so a worker thread's reach the
- *   main process. The process stays up.
+ *   landed transaction spends the refused one's input (for other bytes of a
+ *   journaled transaction: until that intent is no longer live). Holds live
+ *   in the node database (`intent-journal.holds.ts`), so a worker thread's
+ *   reach the main process. A failed database write or read
+ *   (`intent_journal_unavailable`) is named from memory instead, until the
+ *   next good read. The process stays up.
  * - A phase or process with no running follower (protocol initialization
  *   before `startL1Follower`, a one-shot CLI command) provides
  *   `IntentJournalWithoutFollower`: journaled families are submitted

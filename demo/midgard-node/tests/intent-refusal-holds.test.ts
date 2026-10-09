@@ -5,7 +5,11 @@
  * one's input, or a phase-2-failed one's collateral). Nothing else clears it:
  * not an unrelated landed transaction, not the passing of time. Bytes the
  * follower's decoder refuses still name their inputs (the ledger library's
- * decoder reads them); bytes no decoder reads name none.
+ * decoder reads them); bytes no decoder reads name none. Other bytes of a
+ * journaled transaction (`intent_bytes_mismatch`) are held until that
+ * intent is no longer live, since a one-shot family records no second
+ * transaction. `intent_journal_unavailable` is never written to the table:
+ * it is named from memory until the next good read.
  *
  * The journal runs over a follower store in the node's own test database, so
  * the refused inputs and the landed spends are the follower's facts. A
@@ -28,7 +32,9 @@ import {
   stateQueueTrackedSet,
 } from "../src/l1-state-queue/index.js";
 import {
+  INTENT_BYTES_MISMATCH,
   INTENT_CONTENT_REF_MISSING,
+  INTENT_JOURNAL_UNAVAILABLE,
   INTENT_UNDECODABLE,
   intentJournalOver,
   type IntentJournalService,
@@ -75,13 +81,15 @@ const open = async () => {
   ]);
   const spare = (i: number): OutRef => ({ txHash: funding!, index: i });
   const spend = (inputs: readonly OutRef[], extra: Partial<SimTx> = {}) => {
-    const cbor = encodeSimTx({
+    const sim: SimTx = {
       inputs,
       outputs: [plain],
       nonce: driver.chain.nonce(),
       ...extra,
-    });
+    };
+    const cbor = encodeSimTx(sim);
     return {
+      sim,
       cbor: Buffer.from(cbor).toString("hex"),
       txHash: decodeTransaction(cbor).hash.toString("hex"),
     };
@@ -90,7 +98,15 @@ const open = async () => {
     driver.forward([
       { inputs, outputs: [plain], nonce: driver.chain.nonce(), ...extra },
     ]);
-  return { spare, spend, land };
+  /** Lands exactly `sim` (a transaction built by `spend`). */
+  const landTx = (sim: SimTx) => driver.forward([sim]);
+  return {
+    spare,
+    spend,
+    land,
+    landTx,
+    nextSlot: () => driver.chain.nextSlot(),
+  };
 };
 
 /** Runs `body` with a recording journal and a main-process journal over the node database. */
@@ -135,6 +151,16 @@ const record = (
       ),
     ),
   );
+
+/**
+ * Other bytes of `tx`'s transaction: the same body, so the same hash, with
+ * the phase-2 flag flipped.
+ */
+const otherBytes = (tx: Readonly<{ sim: SimTx; txHash: string }>) => {
+  const cbor = encodeSimTx({ ...tx.sim, isValid: tx.sim.isValid === false });
+  expect(decodeTransaction(cbor).hash.toString("hex")).toBe(tx.txHash);
+  return { cbor: Buffer.from(cbor).toString("hex"), txHash: tx.txHash };
+};
 
 const reasons = async (main: IntentJournalService) => {
   await Effect.runPromise(main.refresh());
@@ -256,6 +282,103 @@ describe("intent-journal refusal holds", () => {
         collaterals: [s.spare(0)],
         isValid: false,
       });
+      expect(await reasons(main)).toEqual([]);
+    });
+  });
+
+  it("other bytes of a journaled tx are held while it is live, and cleared once it lands, with no second record", async () => {
+    const s = await open();
+    await withJournals(async ({ worker, main }) => {
+      const ref = Buffer.alloc(28, 7);
+      const tx = s.spend([s.spare(0)]);
+      expect(Either.isRight(await record(worker, "attest", tx, ref))).toBe(
+        true,
+      );
+      const refused = await record(worker, "attest", otherBytes(tx), ref);
+      expect(Either.isLeft(refused) && refused.left).toMatchObject({
+        reason: INTENT_BYTES_MISMATCH,
+      });
+      expect(await reasons(main)).toEqual([INTENT_BYTES_MISMATCH]);
+
+      // The journaled intent is live: an unrelated landing leaves the hold.
+      await s.land([s.spare(1)]);
+      expect(await reasons(main)).toEqual([INTENT_BYTES_MISMATCH]);
+
+      // The journaled bytes land (the refused tx's own hash spends its
+      // inputs): the intent is no longer live, so the hold clears.
+      await s.landTx(tx.sim);
+      expect(await reasons(main)).toEqual([]);
+    });
+  });
+
+  it("other bytes of a journaled tx are cleared once that intent expires unlanded", async () => {
+    const s = await open();
+    await withJournals(async ({ worker, main }) => {
+      const ref = Buffer.alloc(28, 7);
+      // Valid below the next block's slot only: that block expires it.
+      const tx = s.spend([s.spare(0)], { invalidAfter: s.nextSlot() });
+      expect(Either.isRight(await record(worker, "attest", tx, ref))).toBe(
+        true,
+      );
+      await record(worker, "attest", otherBytes(tx), ref);
+      expect(await reasons(main)).toEqual([INTENT_BYTES_MISMATCH]);
+      await s.land([s.spare(1)]);
+      expect(await reasons(main)).toEqual([]);
+    });
+  });
+
+  it("intent_journal_unavailable is named from memory, never written, and clears on the next good read", async () => {
+    const s = await open();
+    await withJournals(async ({ worker, main, sql }) => {
+      const tx = s.spend([s.spare(0)]);
+      const refused = await Effect.runPromise(
+        Effect.either(
+          worker.record(
+            journaledIntent(
+              "attest",
+              `attest:${tx.txHash}`,
+              {
+                kind: "none",
+                reason: INTENT_JOURNAL_UNAVAILABLE,
+                detail: "reading the follower cursor failed",
+              },
+              Buffer.alloc(28, 7),
+            ),
+            tx.cbor,
+            tx.txHash,
+            { kind: "record_only" },
+          ),
+        ),
+      );
+      expect(Either.isLeft(refused) && refused.left).toMatchObject({
+        reason: INTENT_JOURNAL_UNAVAILABLE,
+      });
+      expect(worker.holds().map(({ reason }) => reason)).toEqual([
+        INTENT_JOURNAL_UNAVAILABLE,
+      ]);
+      // Never written: the table holds no row, and the main process reads none.
+      const rows = await Effect.runPromise(
+        sql<{
+          readonly n: string;
+        }>`SELECT count(*)::text AS n FROM intent_refusal_holds`,
+      );
+      expect(rows[0]?.n).toBe("0");
+      expect(await reasons(main)).toEqual([]);
+      // The worker's next good read clears it.
+      expect(await reasons(worker)).toEqual([]);
+
+      // A failed read names it, with the failure; the next good read clears it.
+      await Effect.runPromise(
+        sql`ALTER TABLE intent_refusal_holds RENAME TO intent_refusal_holds_away`,
+      );
+      try {
+        expect(await reasons(main)).toEqual([INTENT_JOURNAL_UNAVAILABLE]);
+        expect(main.holds()[0]?.detail).toContain("not re-read");
+      } finally {
+        await Effect.runPromise(
+          sql`ALTER TABLE intent_refusal_holds_away RENAME TO intent_refusal_holds`,
+        );
+      }
       expect(await reasons(main)).toEqual([]);
     });
   });
