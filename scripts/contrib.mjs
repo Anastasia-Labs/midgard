@@ -25,6 +25,11 @@ import { pinnedPnpmVersion } from "./contrib/pnpm.mjs";
 import { listResources, reclaimResource } from "./contrib/resources.mjs";
 import { preparationPlan, prepare, runTests } from "./contrib/tests.mjs";
 import {
+  createWorktree,
+  removeWorktree,
+  setupWorktree,
+} from "./contrib/worktree.mjs";
+import {
   applyPacket,
   createPacket,
   inspectWorkspace,
@@ -33,6 +38,9 @@ import {
 } from "./contrib/workspace.mjs";
 
 export const HELP = `Midgard deterministic contributor tools (run from any cwd)
+  node scripts/contrib.mjs worktree create --branch NAME [--base REF] [--package NAME]
+  node scripts/contrib.mjs worktree setup [--package NAME]
+  node scripts/contrib.mjs worktree remove [--root WORKTREE] [--force]
   node scripts/contrib.mjs prepare --package NAME [--plan | --execute] [--source-only]
   node scripts/contrib.mjs build --package NAME [--force]
   node scripts/contrib.mjs native --package NAME
@@ -119,6 +127,7 @@ const valueOptions = new Set([
   "url",
   "proof-kind",
   "run-id",
+  "branch",
 ]);
 const flagOptions = new Set([
   "plan",
@@ -214,7 +223,11 @@ export const main = async (argv) => {
       !["prepare", "test", "gate"].includes(command)
     )
       throw new Error(`--source-only is not supported for ${command}`);
-    if (options.force && command !== "build")
+    if (
+      options.force &&
+      command !== "build" &&
+      !(command === "worktree" && action === "remove")
+    )
       throw new Error(`--force is not supported for ${command}`);
     if (
       [
@@ -227,7 +240,9 @@ export const main = async (argv) => {
         "gate",
         "artifacts",
         "reproduce",
+        "worktree",
       ].includes(command) &&
+      action !== "remove" &&
       !options.plan &&
       !(command === "prepare" && !options.execute) &&
       !(command === "artifacts" && ["list", "builds"].includes(action)) &&
@@ -252,6 +267,20 @@ export const main = async (argv) => {
         );
     } else if (command === "native" && !action)
       result = await buildNative(root, required("package"), execution);
+    else if (command === "worktree" && action === "create")
+      result = await createWorktree(root, {
+        ...execution,
+        branch: required("branch"),
+        base: options.base,
+        packageName: options.package,
+      });
+    else if (command === "worktree" && action === "setup")
+      result = await setupWorktree(root, {
+        ...execution,
+        packageName: options.package,
+      });
+    else if (command === "worktree" && action === "remove")
+      result = await removeWorktree(root, { force: options.force ?? false });
     else if (command === "prepare" && !action)
       result = options.execute
         ? await prepare(root, required("package"), execution)

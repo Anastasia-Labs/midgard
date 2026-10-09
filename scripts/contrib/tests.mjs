@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 
 import { probePostgres } from "../preflight/probes.mjs";
 import { ensureBlueprint } from "./blueprint.mjs";
+import { dropTestDatabases, invocationDatabasePrefix } from "./databases.mjs";
 import { buildPackage, checkBuild, runDirectory } from "./build.mjs";
 import {
   atomicJson,
@@ -93,6 +94,40 @@ export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
   };
 };
 
+/**
+ * Build what the named packages' suites need before they start: a ready
+ * blueprint where they read it (copied from a checkout with identical inputs
+ * and profile, else built; never a stale or other-profile one) and every
+ * stale prerequisite dist, in dependency order.
+ */
+export const prepareArtifacts = async (
+  root,
+  names,
+  { signal, env = process.env, sourceOnly = false } = {},
+) => {
+  const plans = names.map((name) =>
+    preparationPlan(root, name, { sourceOnly }),
+  );
+  const blueprintAction = plans.some((plan) => plan.blueprint)
+    ? await ensureBlueprint(root, { signal, env })
+    : undefined;
+  const prerequisites = [
+    ...new Set(
+      plans.flatMap((plan) => plan.prerequisites.map(({ name }) => name)),
+    ),
+  ];
+  const built = [];
+  for (const prerequisite of prerequisites) {
+    if (checkBuild(root, prerequisite).status !== "fresh") {
+      const result = await buildPackage(root, prerequisite, { signal, env });
+      if (result.exitCode !== 0)
+        throw new Error(`prerequisite build failed: ${result.path}`);
+      built.push(prerequisite);
+    }
+  }
+  return { blueprintAction, built };
+};
+
 export const prepare = async (
   root,
   name,
@@ -103,11 +138,6 @@ export const prepare = async (
     throw new Error(
       "guarded runs refuse MIDGARD_REAL_BLUEPRINT_PATH and MIDGARD_BLUEPRINT_STAMP=warn: they test this checkout's own blueprint, which contrib prepare copies or builds; unset both",
     );
-  // Copies a ready blueprint from another checkout, or builds one; never
-  // runs suites against a stale or other-profile blueprint.
-  const blueprintAction = plan.blueprint
-    ? await ensureBlueprint(root, { signal, env })
-    : undefined;
   if (plan.postgres && env.MIDGARD_SKIP_DB_TESTS !== "1") {
     if (
       env.POSTGRES_HOST &&
@@ -118,16 +148,11 @@ export const prepare = async (
     if (postgres.status !== "available")
       throw new Error(`${postgres.detail}; ${postgres.fix}`);
   }
-  for (const prerequisite of plan.prerequisites) {
-    if (checkBuild(root, prerequisite.name).status !== "fresh") {
-      const built = await buildPackage(root, prerequisite.name, {
-        signal,
-        env,
-      });
-      if (built.exitCode !== 0)
-        throw new Error(`prerequisite build failed: ${built.path}`);
-    }
-  }
+  const { blueprintAction } = await prepareArtifacts(root, [name], {
+    signal,
+    env,
+    sourceOnly,
+  });
   return { ...preparationPlan(root, name, { sourceOnly }), blueprintAction };
 };
 
@@ -170,10 +195,6 @@ export const runTests = async (
     `workspace:${realpathSync(root)}`,
     async (ownedEnv) => {
       const directory = runDirectory();
-      const suffix = sha256(`${realpathSync(root)}:${randomUUID()}`).slice(
-        0,
-        16,
-      );
       const runEnv = {
         ...ownedEnv,
         // Match package test recipes: node suites use emulator configuration;
@@ -181,7 +202,10 @@ export const runTests = async (
         NODE_ENV: ["midgard-node", "midgard-node-tools"].includes(pkg.name)
           ? "emulator"
           : "test",
-        MIDGARD_TEST_DATABASE_PREFIX: `midgard_contrib_${suffix}`,
+        MIDGARD_TEST_DATABASE_PREFIX: invocationDatabasePrefix(
+          root,
+          randomUUID().replaceAll("-", "").slice(0, 8),
+        ),
         POSTGRES_HOST: "127.0.0.1",
         POSTGRES_PORT: "5433",
       };
@@ -255,14 +279,26 @@ export const runTests = async (
         "--sequence.shuffle.tests",
         ...(testName ? ["--testNamePattern", testName] : []),
       ];
-      const step = await runProcess({
-        argv,
-        cwd,
-        env: runEnv,
-        signal,
-        logPath: resolve(directory, "test.log"),
-        echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
-      });
+      let step;
+      let databaseCleanup;
+      try {
+        step = await runProcess({
+          argv,
+          cwd,
+          env: runEnv,
+          signal,
+          logPath: resolve(directory, "test.log"),
+          echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
+        });
+      } finally {
+        // The invocation's databases and schemas die with it; the prefix is
+        // fresh, so nothing else can be using them.
+        databaseCleanup = await dropTestDatabases(
+          root,
+          [runEnv.MIDGARD_TEST_DATABASE_PREFIX],
+          { env: runEnv },
+        ).catch((error) => ({ status: "failed", detail: error.message }));
+      }
       const after = inputIdentity(root, pkg.name);
       const receipt = writeReceipt({
         root,
@@ -304,6 +340,7 @@ export const runTests = async (
         ...receipt,
         seed,
         databasePrefix: runEnv.MIDGARD_TEST_DATABASE_PREFIX,
+        databaseCleanup,
         sourceOnly,
         nativeArtifacts: native ? [native] : [],
         evidenceFiles: [

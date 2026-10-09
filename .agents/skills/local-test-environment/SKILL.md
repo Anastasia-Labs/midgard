@@ -60,20 +60,18 @@ runs `initdb` once into `~/.midgard-pg/5433` and starts the server with
 
 ## One database family per checkout
 
-Each suite creates sharded databases named `<prefix>_w<N>`, one per vitest
-worker. The prefix comes from `scripts/lib/worktree-identity.mjs` and its
-TypeScript twin `demo/midgard-node/tests/worktree-identity.ts`:
+Raw suites shard databases as `<prefix>_w<N>`. The prefix comes from
+`scripts/lib/worktree-identity.mjs` (TypeScript twin
+`demo/midgard-node/tests/worktree-identity.ts`): `midgard_test` and
+`midgard_tools_test` in the main checkout, `<family>_<path hash>` in a linked
+worktree (first 8 hex digits of the sha256 of its real path). `contrib test`
+uses `midgard_contrib_<path hash>_<random>` per run and drops it afterwards.
+An explicit `MIDGARD_TEST_DATABASE_PREFIX` wins over both.
 
-| Checkout        | `midgard-node` suites      | `midgard-node-tools` suites      |
-| --------------- | -------------------------- | -------------------------------- |
-| Main checkout   | `midgard_test`             | `midgard_tools_test`             |
-| Linked worktree | `midgard_test_<path hash>` | `midgard_tools_test_<path hash>` |
-
-The hash is the first 8 hex digits of the sha256 of the worktree's real path.
-An explicit `MIDGARD_TEST_DATABASE_PREFIX` wins over both. `da-committee-node`
-creates a randomly named database per test instead. See the identity with
-`node scripts/lib/worktree-identity.mjs`; `doctor` prints the prefix.
-
+- **Create and remove lane worktrees with `contrib worktree create|remove`.**
+  `remove` refuses unsaved work and drops the worktree's own databases;
+  see [lane worktrees](../../../docs/agents/contrib/worktrees.md).
+  [script: scripts/contrib/worktree.mjs]
 - **Do not export one fixed `MIDGARD_TEST_DATABASE_PREFIX` in a shell that
   runs suites in two checkouts.** The explicit value wins in both, and the two
   runs drop each other's shards mid-test. [review]
