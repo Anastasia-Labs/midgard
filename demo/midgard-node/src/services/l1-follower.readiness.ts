@@ -28,8 +28,9 @@
  * journal's refusals, the worker threads' included (`intent_journal_*`,
  * `intent_input_untracked`, `intent_bytes_mismatch`, `intent_undecodable`,
  * `intent_content_ref_missing`), and
- * `l1_follower_unconfigured` while the node has no follower, and
- * `l1_node_config_unreadable` while its network magic is retried. Each fails
+ * `l1_follower_unconfigured` while the node has no follower,
+ * `l1_node_config_unreadable` while its network magic is retried, and
+ * `l1_node_config_failed` once that read failed for good. Each fails
  * readiness by name; none stops the process, and `/healthz` stays live.
  *
  * The driver's `l1_event_identity_conflict` holds name an event left out of
@@ -69,11 +70,19 @@ import type { ConfirmedLedgerPosition } from "../landed-blocks/position.js";
 /** The node has no follower: its configuration is missing a piece (named in the detail). */
 export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
 /**
- * The node's config files do not yield its network magic yet (the detail says
- * why); the node reads them again with capped backoff and starts its follower
- * once they do.
+ * The node's config files are not there yet (the detail says why); the node
+ * reads them again with capped backoff, for at most `STARTUP_L1_NODE_BUDGET`,
+ * and starts its follower once they yield the network magic.
  */
 export const L1_NODE_CONFIG_UNREADABLE = "l1_node_config_unreadable";
+/**
+ * The node's config files did not yield its network magic, and the node no
+ * longer reads them: they did not appear within `STARTUP_L1_NODE_BUDGET`, or
+ * the read failed in a way waiting does not fix (unparseable, no magic,
+ * unreadable). The follower does not start; the detail names the last cause.
+ * Fixing the files and restarting the node clears it.
+ */
+export const L1_NODE_CONFIG_FAILED = "l1_node_config_failed";
 
 /** How many refused events the report names; the detail counts them all. */
 export const REFUSALS_REPORTED = 32;
@@ -153,6 +162,11 @@ export type L1FollowerState =
       reason: typeof L1_NODE_CONFIG_UNREADABLE;
       detail: string;
     }>
+  | Readonly<{
+      kind: "failed";
+      reason: typeof L1_NODE_CONFIG_FAILED;
+      detail: string;
+    }>
   | L1FollowerHandle;
 
 /**
@@ -199,12 +213,12 @@ export const l1FollowerReadiness = (
         readiness: [{ reason: L1_FOLLOWER_UNCONFIGURED, detail: state.detail }],
       },
     };
-  if (state.kind === "waiting")
+  if (state.kind === "waiting" || state.kind === "failed")
     return {
       reasons: [state.reason],
       details: [],
       report: {
-        state: "waiting",
+        state: state.kind,
         readiness: [{ reason: state.reason, detail: state.detail }],
       },
     };

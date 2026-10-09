@@ -37,6 +37,20 @@ const MAX_POINTS = 256;
 const RESUME_POINTS = 64;
 const REOPEN_DELAY_MS = 1000;
 
+/**
+ * The stream failures a resuming stream reopens from: the node connection
+ * dropped (`cs_failed` `node_connection_lost`), or a reopen the sidecar
+ * refused because it could not reach the node or was busy. Any other
+ * `cs_failed` code (a protocol violation, a block outside the size bounds,
+ * an undecodable block) or refusal fails the stream with
+ * `TransportRequestError(code)`: a reopen meets the same block or request.
+ */
+export const STREAM_REOPEN_CODES: ReadonlySet<string> = new Set([
+  "node_connection_lost",
+  "node_unavailable",
+  "busy",
+]);
+
 export type ChainSyncOptions = Readonly<{
   /**
    * Intersection candidates in preference order; include the origin to never
@@ -50,8 +64,10 @@ export type ChainSyncOptions = Readonly<{
   startSeq?: bigint;
   credit: number | CreditPolicy;
   /**
-   * Resume after a sidecar restart or a stream failure (default true). When
-   * false, such an interruption ends the stream with an error instead.
+   * Resume after a sidecar restart or a transient stream failure
+   * (`STREAM_REOPEN_CODES`; default true). When false, such an interruption
+   * ends the stream with an error instead. Any other stream failure ends it
+   * either way.
    */
   resume?: boolean;
   /**
@@ -213,6 +229,11 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
   }
 
   /** Called by the transport when the sidecar ends. */
+  /** Ends the stream with `error`: its transport failed and does not restart. */
+  failWith(error: Error): void {
+    this.#fail(error);
+  }
+
   detach(exit: SidecarExit): void {
     if (this.#sidecar === undefined) return;
     this.#sidecar = undefined;
@@ -274,6 +295,7 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
       if (error instanceof SidecarExitedError) return;
       if (
         error instanceof TransportRequestError &&
+        STREAM_REOPEN_CODES.has(error.code) &&
         this.options.resume !== false
       ) {
         this.#interrupted(`chain-sync open failed: ${error.message}`);
@@ -297,10 +319,18 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
       const header = frame.header;
       if (header.type === "cs_failed") {
         sidecar.unregisterStream(this.#streamId);
+        const code = headerText(header.code);
         const cause = new StreamInterruptedError(
-          `chain-sync stream failed: ${headerText(header.code)}: ${headerText(header.message)}`,
+          `chain-sync stream failed: ${code}: ${headerText(header.message)}`,
         );
-        if (this.options.resume === false) this.#fail(cause);
+        if (!STREAM_REOPEN_CODES.has(code))
+          this.#fail(
+            new TransportRequestError(
+              code,
+              `chain-sync stream failed: ${headerText(header.message)}`,
+            ),
+          );
+        else if (this.options.resume === false) this.#fail(cause);
         else {
           this.#interrupted(cause.message);
           this.#scheduleReopen(sidecar);

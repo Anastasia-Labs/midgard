@@ -107,19 +107,52 @@ export type RollBackward = Readonly<{
 
 export type ChainSyncEvent = RollForward | RollBackward;
 
-/** Unready reasons of the transport (never fatal: the supervisor retries). */
+/**
+ * Transient unready reasons of the transport: the supervisor restarts the
+ * sidecar with backoff until it is ready (`stopped`: closed by its owner).
+ */
 export type TransportUnreadyReason =
   | "sidecar_starting"
   | "sidecar_restarting"
   | "sidecar_unavailable"
   | "node_unreachable"
-  | "node_handshake_failed"
   | "node_connection_lost"
   | "stopped";
 
+/**
+ * The sidecar's `fatal` codes no restart repairs: the node refused the N2C
+ * handshake (`node_handshake_failed`: another network magic, or no common
+ * protocol version), or the client and the sidecar disagree on the frame
+ * protocol (a binary of another version, a client fault). The transport
+ * reports one as `failed` and does not restart the sidecar.
+ */
+export const TRANSPORT_FAILED_REASONS = [
+  "node_handshake_failed",
+  "version_unsupported",
+  "malformed_frame",
+  "client_protocol_violation",
+] as const;
+
+export type TransportFailedReason = (typeof TRANSPORT_FAILED_REASONS)[number];
+
+export const isTransportFailedReason = (
+  code: string,
+): code is TransportFailedReason =>
+  (TRANSPORT_FAILED_REASONS as readonly string[]).includes(code);
+
+/**
+ * `ready: false` with `failed: true` is terminal: the sidecar ended on a
+ * fault no restart repairs and stays down until the process restarts.
+ */
 export type TransportReadiness =
   | Readonly<{ ready: true; nodeToClientVersion: number }>
-  | Readonly<{ ready: false; reason: TransportUnreadyReason; detail: string }>;
+  | Readonly<{ ready: false; reason: TransportUnreadyReason; detail: string }>
+  | Readonly<{
+      ready: false;
+      failed: true;
+      reason: TransportFailedReason;
+      detail: string;
+    }>;
 
 /** Credentials as the ledger names them: [0, keyHash] or [1, scriptHash]. */
 export type StakeCredential = Readonly<{

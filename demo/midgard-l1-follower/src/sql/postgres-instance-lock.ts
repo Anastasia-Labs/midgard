@@ -1,11 +1,22 @@
 import pg from "pg";
 
+import { classifyFailure } from "../follow/failure.js";
 import type { WriterLease } from "./backend.js";
 import { POSTGRES_WRITER_LEASE_KEY_SQL } from "./postgres-backend.js";
 
 /** Reconnect backoff while the lock's Postgres session is gone. */
 export const INSTANCE_LOCK_RECONNECT_INITIAL_MS = 1_000;
 export const INSTANCE_LOCK_RECONNECT_MAX_MS = 30_000;
+
+/**
+ * How long a suspended lock keeps retrying consecutive transient failures
+ * (Postgres unreachable, a dropped or refused connection) before it stops:
+ * the database budget the node's startup waits for, which covers a Postgres
+ * restart or failover. A refusal by a reachable Postgres (another process
+ * holds the lock) is waiting on that process, not a failure, and restarts
+ * the count.
+ */
+export const INSTANCE_LOCK_REACQUIRE_BUDGET_MS = 15 * 60_000;
 
 /**
  * How long one attempt waits for its session to connect, and for each of
@@ -43,6 +54,11 @@ export type PostgresInstanceLockIdentity = {
     readonly passive: string;
     /** The server no longer holds the lock for this process's session. */
     readonly lostAtServer: string;
+    /**
+     * A suspended lock stopped trying: a failure that is not transient, or
+     * transient failures past the reacquire budget. Needs an operator.
+     */
+    readonly failed: string;
   };
 };
 
@@ -61,16 +77,28 @@ export type PostgresInstanceLockEvents = {
   readonly onInstanceLockSuspended?: (error: Error) => void;
   /** Called when a suspended or passive lock is held again. */
   readonly onInstanceLockRestored?: () => void;
+  /**
+   * Called once when a suspended lock stops trying (`InstanceLockFailedError`):
+   * an attempt failed in a way that is not transient (bad credentials, a
+   * missing database, an unclassified error), or transient failures lasted
+   * past the reacquire budget. The guarded work stays refused; nothing takes
+   * the lock again in this process. A host exits non-zero on an `exhausted`
+   * failure (its supervisor's restart is the backoff), else stays unready.
+   */
+  readonly onInstanceLockFailed?: (error: InstanceLockFailedError) => void;
 };
 
 export type PostgresInstanceLockTimers = {
   readonly sleep: (ms: number) => Promise<void>;
+  /** The clock the reacquire budget is measured on; default `Date.now`. */
+  readonly now?: () => number;
 };
 
-/** The bounds on one attempt; each defaults to its exported constant. */
+/** The bounds on the lock's attempts; each defaults to its exported constant. */
 export type PostgresInstanceLockBounds = {
   readonly connectTimeoutMs?: number;
   readonly statementTimeoutMs?: number;
+  readonly reacquireBudgetMs?: number;
 };
 
 const defaultTimers: PostgresInstanceLockTimers = {
@@ -79,6 +107,22 @@ const defaultTimers: PostgresInstanceLockTimers = {
       setTimeout(resolve, ms).unref?.();
     }),
 };
+
+/**
+ * A suspended lock that stopped trying. `exhausted` is true when transient
+ * failures outlasted the reacquire budget, false when one attempt failed in
+ * a way that is not transient; `cause` is the last attempt's error.
+ */
+export class InstanceLockFailedError extends Error {
+  constructor(
+    message: string,
+    readonly exhausted: boolean,
+    readonly attempts: number,
+    override readonly cause: unknown,
+  ) {
+    super(message);
+  }
+}
 
 type LockSession = {
   readonly client: pg.Client;
@@ -223,13 +267,19 @@ const trySession = async (
  * for it (`assertHeldAtServer`: the session ended at the server while this
  * side's connection stayed open), the lock is suspended: the work it guards
  * is refused, that session's connection is destroyed, and a session is
- * reopened with bounded backoff and the lock tried again. Taken again, the work resumes. Refused by a reachable
- * Postgres, another process holds it: this process becomes the passive
- * member, refuses the work, and keeps trying at the backoff ceiling until
- * the holder's session ends, then takes over. The holder can also be this
- * process's own ended session, which the server can keep after the
- * connection broke on this side only: that session is terminated and the
- * lock tried again. Nothing here ends the process.
+ * reopened with bounded backoff and the lock tried again. Taken again, the
+ * work resumes. Refused by a reachable Postgres, another process holds it:
+ * this process becomes the passive member, refuses the work, and keeps
+ * trying at the backoff ceiling until the holder's session ends, then takes
+ * over; that wait has no deadline. The holder can also be this process's own
+ * ended session, which the server can keep after the connection broke on
+ * this side only: that session is terminated and the lock tried again.
+ * Other failed attempts are classified (`classifyFailure`): transient ones
+ * (Postgres unreachable, a dropped connection) are retried for at most
+ * `INSTANCE_LOCK_REACQUIRE_BUDGET_MS` in a row; any other failure, or the
+ * budget running out, stops the retries (`onInstanceLockFailed`) and the
+ * work stays refused. Nothing here ends the process: the host does, on a
+ * budget that ran out (`InstanceLockFailedError.exhausted`).
  *
  * The same session also holds the L1 follower's writer lease key for that
  * schema, and lends it to this process's follower (`followerWriterLease`):
@@ -312,6 +362,11 @@ export class PostgresInstanceLock {
 
   private async reacquire(): Promise<void> {
     let delayMs = INSTANCE_LOCK_RECONNECT_INITIAL_MS;
+    const now = this.timers.now ?? Date.now;
+    const budgetMs =
+      this.bounds.reacquireBudgetMs ?? INSTANCE_LOCK_REACQUIRE_BUDGET_MS;
+    let failingSince: number | undefined;
+    let attempts = 0;
     while (!this.releasing) {
       await this.timers.sleep(delayMs);
       if (this.releasing) return;
@@ -334,10 +389,35 @@ export class PostgresInstanceLock {
         return;
       } catch (error) {
         if (error instanceof InstanceLockHeldElsewhereError) {
+          // Postgres answered: waiting on the holder, not a failure.
+          failingSince = undefined;
+          attempts = 0;
           if (!this.heldElsewhere) {
             this.heldElsewhere = true;
             this.refusal = new Error(this.identity.messages.passive);
             this.events.onInstanceLockHeldElsewhere?.(this.refusal);
+          }
+        } else if (error instanceof InstanceLockHeldByOwnStaleSessionError) {
+          failingSince = undefined;
+          attempts = 0;
+        } else {
+          attempts += 1;
+          const at = now();
+          failingSince ??= at;
+          const transient = classifyFailure(error) === "transient";
+          if (!transient || at - failingSince >= budgetMs) {
+            if (this.releasing) return;
+            const detail =
+              error instanceof Error ? error.message : String(error);
+            const failure = new InstanceLockFailedError(
+              `${this.identity.messages.failed}: ${transient ? `Postgres stayed unreachable for ${Math.round((at - failingSince) / 1000).toString()} s` : "a failure that is not transient"} (${detail})`,
+              transient,
+              attempts,
+              error,
+            );
+            this.refusal = failure;
+            this.events.onInstanceLockFailed?.(failure);
+            return;
           }
         }
         delayMs = Math.min(INSTANCE_LOCK_RECONNECT_MAX_MS, delayMs * 2);

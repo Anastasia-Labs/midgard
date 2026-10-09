@@ -84,7 +84,7 @@ describe("followChain: a migration the store refuses at start", () => {
     [FIXTURE_PROJECTION],
   ).steps.map((step) => step.event);
 
-  it("is stuck at once with a named reason, and the process stays up", async () => {
+  it("stops at once under a named reason, and the process stays up", async () => {
     // The store applied the fixture's migration; the next build ships the
     // same migration id with different text.
     const path = join(scratch, "changed-migration.sqlite");
@@ -120,7 +120,8 @@ describe("followChain: a migration the store refuses at start", () => {
       const { statuses } = await follow({
         store,
         script: script(events),
-        until: (status) => status.stuck !== null,
+        // The loop returns by itself once it stops.
+        until: () => false,
       });
       const stuck = statuses.find((status) => status.stuck !== null)!;
       expect(stuck.stuck).toMatchObject({ at: "migration", failures: 1 });
@@ -128,7 +129,7 @@ describe("followChain: a migration the store refuses at start", () => {
         reason: FOLLOWER_MIGRATION_FAILED,
         detail: `the store refused its migrations: migration ${fixtureMigrations("sqlite").namespace}/${id} changed after it was applied`,
       });
-      expect(stuck.state).toBe("waiting");
+      expect(stuck.state).toBe("intervention");
     } finally {
       await store.close();
     }

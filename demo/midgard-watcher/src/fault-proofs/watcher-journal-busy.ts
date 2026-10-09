@@ -1,4 +1,7 @@
-import { watcherJournalRetryDelayMs } from "./watcher-journal-database.opener.js";
+import {
+  isTransientJournalFailure,
+  watcherJournalRetryDelayMs,
+} from "./watcher-journal-database.opener.js";
 
 /** node:sqlite primary result codes: SQLITE_BUSY, SQLITE_LOCKED. */
 const BUSY_PRIMARY_CODES = new Set([5, 6]);
@@ -42,7 +45,10 @@ export type WatcherJournalBusyHold = Readonly<{
  * After the journals' retry backoff (1 s doubling to 30 s) it runs
  * `requeue`, which rebuilds the supervisor's work from durable state as a
  * fresh process would, then clears the hold and calls `resumed`. A requeue
- * that meets a busy database again throws it and holds once more.
+ * that meets a busy database again (`isTransientJournalFailure`) throws it
+ * and holds once more, on the backoff. A requeue that fails for any other
+ * reason keeps the hold, named with that failure, and is not retried on a
+ * timer: the next busy failure the supervisor meets holds it again.
  */
 export const createWatcherJournalBusyHold = (input: {
   readonly requeue: () => Promise<void>;
@@ -62,16 +68,19 @@ export const createWatcherJournalBusyHold = (input: {
   const fire = async (): Promise<void> => {
     timer = undefined;
     requeueing = true;
+    let transient = false;
     try {
       await input.requeue();
       reason = null;
     } catch (error) {
       reason = error instanceof Error ? error.message : String(error);
+      transient = isTransientJournalFailure(error);
     } finally {
       requeueing = false;
     }
-    if (reason !== null) schedule();
-    else if (!closed) input.resumed();
+    if (reason === null) {
+      if (!closed) input.resumed();
+    } else if (transient) schedule();
   };
   return Object.freeze({
     reason: () => reason,

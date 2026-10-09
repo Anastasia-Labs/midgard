@@ -1,7 +1,13 @@
 import type { FraudProofRawL1Utxo } from "@al-ft/midgard-fault-proofs";
-import type { FactStore, OutRef, SqlTx } from "@al-ft/midgard-l1-follower";
+import {
+  classifyFailure,
+  type FactStore,
+  type OutRef,
+  type SqlTx,
+} from "@al-ft/midgard-l1-follower";
 import { CML } from "@lucid-evolution/lucid";
 
+import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import type { LedgerOutputsQuery } from "./raw-reads.ledger.js";
 import { outRefLabel, rawUtxo, resolveRawUtxoIn } from "./reads.js";
 import {
@@ -23,9 +29,15 @@ import {
  * stored as exact output bytes per outref: a later proof never needs the
  * ledger once the predecessor is more than k deep.
  *
- * An input that cannot be resolved yet (node down, request error) holds the
- * named readiness reason `l1_tx_inputs_unresolved` and is retried with
- * backoff. One that can never resolve (beyond the node's window, absent from
+ * An input that cannot be resolved yet holds the named readiness reason
+ * `l1_tx_inputs_unresolved`. It is retried with backoff only while the
+ * failure is transient (the node or the store did not answer, or the
+ * follower has not rolled a fork back yet); any other failure (an answer
+ * that does not decode, a store failure the follower does not classify as
+ * transient) is not retried on a timer and is tried again only when the
+ * follower moves. The wait on a transient failure is a wait on the L1 node
+ * or the store a running watcher rides out, so it has no deadline. One
+ * that can never resolve (beyond the node's window, absent from
  * its ledger state, or no stored predecessor) is the named non-blocking
  * degradation `l1_tx_inputs_unresolvable` in status and metrics; it fails
  * readiness, under the same name, only while a proof pin holds a header
@@ -83,10 +95,13 @@ export type UnresolvedTxInputs = Readonly<{
     | "no_parent"
     | "not_on_chain"
     | "unavailable"
+    | "failed"
     | "store_error";
   detail: string;
   /** Never resolvable: reported until the tx's history is pruned. */
   permanent: boolean;
+  /** A transient failure, retried with backoff; otherwise only on the next follower move. */
+  retried: boolean;
 }>;
 
 export type TxInputsResolver = Readonly<{
@@ -166,7 +181,13 @@ export const createTxInputsResolver = (
     ) =>
       ({
         kind: "unresolved",
-        entry: { txHash: label, cause, detail, permanent: isPermanent },
+        entry: {
+          txHash: label,
+          cause,
+          detail,
+          permanent: isPermanent,
+          retried: cause === "unavailable" || cause === "not_on_chain",
+        },
       }) as const;
     const stored = await store.txByHash(txHash);
     if (stored === null) return { kind: "gone" };
@@ -299,13 +320,16 @@ export const createTxInputsResolver = (
             cause: "store_error",
             detail: message(error),
             permanent: false,
+            retried:
+              classifyFailure(error) === "transient" ||
+              isWatcherL1TransientFailure(error),
           },
         ];
         input.log?.(`tx input resolution failed: ${message(error)}`);
       } finally {
         running = null;
       }
-      schedule(last.some((entry) => !entry.permanent));
+      schedule(last.some((entry) => entry.retried));
       if (again && !closed) {
         again = false;
         trigger();
@@ -358,7 +382,13 @@ export const createTxInputsResolver = (
       if (transient.length > 0)
         readiness.push({
           reason: L1_TX_INPUTS_UNRESOLVED,
-          detail: summary(transient, "hold unresolved inputs", "retrying"),
+          detail: transient.every((entry) => entry.retried)
+            ? summary(transient, "hold unresolved inputs", "retrying")
+            : summary(
+                transient.filter((entry) => !entry.retried),
+                "hold unresolved inputs after a failure that is not transient",
+                "not retried until the follower moves",
+              ),
         });
       if (held.length > 0)
         readiness.push({

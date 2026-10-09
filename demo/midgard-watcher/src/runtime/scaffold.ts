@@ -1,4 +1,8 @@
 import type { WatcherAvailabilityStatusTransition } from "../availability/runtime.js";
+import {
+  WATCHER_STARTUP_FAILED,
+  WatcherStartupHeldError,
+} from "./startup-operations.js";
 
 export const WATCHER_PACKAGE_NAME = "midgard-watcher";
 export const WATCHER_COMMAND_FAILURE_EXIT_CODE = 70;
@@ -74,33 +78,72 @@ const productionDependencies: WatcherCommandDependencies = Object.freeze({
 const commandStatus = (input: Readonly<Record<string, unknown>>): string =>
   `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, ...input })}\n`;
 
+/**
+ * A `start` whose startup failed and holds (`WatcherStartupHeldError`):
+ * the process stays up, its operations server naming `startup_failed`,
+ * until an operator stops it; it then exits non-zero, having never served.
+ * A `replay` is one-shot and exits on it at once.
+ */
+const holdUntilShutdown = async (
+  command: WatcherCommand,
+  held: WatcherStartupHeldError,
+  io: WatcherCommandIo,
+  dependencies: WatcherCommandDependencies,
+): Promise<number> => {
+  if (command === "replay") {
+    await held.release();
+    throw held;
+  }
+  io.writeError(
+    commandStatus({
+      command,
+      state: "startup_held",
+      productionReady: false,
+      reason: WATCHER_STARTUP_FAILED,
+      error: held.message,
+    }),
+  );
+  const signal = await dependencies.waitForShutdown();
+  io.writeOutput(commandStatus({ command, state: "stopping", signal }));
+  await held.release();
+  return WATCHER_COMMAND_FAILURE_EXIT_CODE;
+};
+
 const execute = async (
   command: WatcherCommand,
   configPath: string,
   io: WatcherCommandIo,
   dependencies: WatcherCommandDependencies,
 ): Promise<number> => {
-  const runtime = await dependencies.runWatcher(
-    configPath,
-    (progress) =>
-      io.writeError(
-        commandStatus({
-          command,
-          state: "starting",
-          productionReady: false,
-          ...progress,
-        }),
-      ),
-    (event) =>
-      io.writeError(
-        commandStatus({
-          command,
-          state: "availability_status",
-          productionReady: false,
-          ...event,
-        }),
-      ),
-  );
+  const started = await dependencies
+    .runWatcher(
+      configPath,
+      (progress) =>
+        io.writeError(
+          commandStatus({
+            command,
+            state: "starting",
+            productionReady: false,
+            ...progress,
+          }),
+        ),
+      (event) =>
+        io.writeError(
+          commandStatus({
+            command,
+            state: "availability_status",
+            productionReady: false,
+            ...event,
+          }),
+        ),
+    )
+    .catch((error: unknown) => {
+      if (error instanceof WatcherStartupHeldError) return error;
+      throw error;
+    });
+  if (started instanceof WatcherStartupHeldError)
+    return await holdUntilShutdown(command, started, io, dependencies);
+  const runtime = started;
   const supervisor = runtime.faultProofSupervisor.status();
   // A proof deadline at risk or unsafe never stops the process: a restart
   // would meet the same deadline again. The record carries the health, and

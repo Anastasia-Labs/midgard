@@ -1,3 +1,5 @@
+import { classifyFailure } from "@al-ft/midgard-l1-follower";
+
 import {
   isWatcherJournalIntegrityError,
   isWatcherJournalUnavailableError,
@@ -12,6 +14,22 @@ const REOPEN_MAX_MS = 30_000;
 export const watcherJournalRetryDelayMs = (attempts: number): number =>
   Math.min(REOPEN_MAX_MS, REOPEN_BASE_MS * 2 ** Math.min(attempts, 5));
 
+/**
+ * Whether a journal failure, or one it wraps through `cause`, is one a later
+ * attempt can clear on its own: SQLite busy or locked, or an errno the
+ * follower classifies as transient (`classifyFailure`). Anything else (a
+ * file SQLite cannot open, a full disk, a permission) waits for an operator,
+ * so no timer retries it.
+ */
+export const isTransientJournalFailure = (error: unknown): boolean => {
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
+    if (classifyFailure(current) === "transient") return true;
+    current = current.cause;
+  }
+  return false;
+};
+
 export type WatcherJournalOpener<T> = Readonly<{
   /** The memoized open; a journal failure is retried by the next call. */
   open(): Promise<T>;
@@ -25,8 +43,10 @@ export type WatcherJournalOpener<T> = Readonly<{
  * (`WatcherJournalUnavailableError`) may succeed, and an integrity failure
  * stays refused through the journals' own latch, which every later open
  * throws before it reads the file. Any other failure is kept. With
- * `retryInBackground`, an open that could not complete is also retried by a
- * timer, backing off from 1 s to 30 s, so readiness recovers without traffic.
+ * `retryInBackground`, an open that could not complete for a transient
+ * reason (`isTransientJournalFailure`) is also retried by a timer, backing
+ * off from 1 s to 30 s, so readiness recovers without traffic; one that
+ * failed for any other reason is opened again only by the next use.
  */
 export const watcherJournalOpener = <T>(
   open: () => Promise<T>,
@@ -55,7 +75,7 @@ export const watcherJournalOpener = <T>(
       (error: unknown) => {
         if (isWatcherJournalUnavailableError(error)) {
           opening = undefined;
-          reopenLater();
+          if (isTransientJournalFailure(error)) reopenLater();
         } else if (isWatcherJournalIntegrityError(error)) opening = undefined;
         throw error;
       },

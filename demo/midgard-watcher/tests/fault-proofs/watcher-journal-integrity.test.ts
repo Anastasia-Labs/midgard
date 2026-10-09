@@ -208,7 +208,7 @@ describe("watcher journal open failures (R6)", () => {
     await expectHeldUnready(journalRoot, "changed after it was applied");
   });
 
-  it("reports journal_unavailable while the journals cannot be opened and recovers without a restart", async () => {
+  it("reports journal_unavailable while the journals cannot be opened and recovers on the next use, without a restart", async () => {
     const journalRoot = await journalDirectory("midgard-journal-unavailable");
     // A directory where the database file belongs: SQLite cannot open it.
     const path = join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE);
@@ -237,14 +237,24 @@ describe("watcher journal open failures (R6)", () => {
       body: { error: "journal_unavailable" },
     });
 
-    // The cause clears; the background reopen (first retry after 1 s)
-    // recovers the journals in this same process.
+    // The cause clears. SQLite could not open the file, which no wait
+    // fixes, so no timer reopens it (the first would run after 1 s); the
+    // next use does, and recovers the journals in this same process.
     rmdirSync(path);
-    for (
-      let waited = 0;
-      supervisor.status().journalUnavailable !== null && waited < 5_000;
-      waited += 50
-    )
+    await pause(1_500);
+    expect(supervisor.status().journalUnavailable).toEqual(
+      expect.stringContaining("unable to open database file"),
+    );
+    // A status read is a use: it opens the queue journal again.
+    const opened = () => {
+      try {
+        supervisor.durableQueueStatus();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    for (let waited = 0; !opened() && waited < 5_000; waited += 50)
       await pause(50);
     expect(supervisor.status()).toMatchObject({
       phase: "accepting",

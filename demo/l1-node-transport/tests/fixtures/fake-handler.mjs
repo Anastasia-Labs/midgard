@@ -35,7 +35,8 @@ export default (options, controls) => ({
     }
     if (options.rollBackAfter)
       stream.rollBackward({ point: blocks[0].point, tip });
-    if (options.failAfter) stream.fail("node_connection_lost", "fake fault");
+    if (options.failAfter)
+      stream.fail(options.failCode ?? "node_connection_lost", "fake fault");
     return { intersection: at, tip };
   },
   ledgerQuery: (query) => {

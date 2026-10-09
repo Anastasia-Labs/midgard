@@ -37,6 +37,7 @@ import {
   followerSqlTx,
 } from "../database/follower-schema.js";
 import type { DriverHold } from "../l1-events/driver.js";
+import { isConnectionClassError } from "../provider-retry.js";
 import {
   INTENT_BYTES_MISMATCH,
   INTENT_JOURNAL_UNAVAILABLE,
@@ -195,8 +196,12 @@ const messageOf = (cause: unknown): string =>
     ? `${cause.message}${cause.cause instanceof Error ? `: ${cause.cause.message}` : ""}`
     : String(cause);
 
-/** Attempts at one hold write before it is left to the next record or refresh. */
-const HOLD_WRITE_RETRIES = Schedule.exponential("100 millis").pipe(
+/**
+ * Retries of one hold write that failed transiently (`isConnectionClassError`)
+ * before it is left to the next record or refresh; any other failure is not
+ * retried here.
+ */
+export const HOLD_WRITE_RETRIES = Schedule.exponential("100 millis").pipe(
   Schedule.intersect(Schedule.recurs(3)),
 );
 
@@ -235,7 +240,12 @@ export const refusalHoldsOver = (sql: SqlClient.SqlClient) => {
     retry: boolean,
   ): Effect.Effect<void> =>
     persistRefusalHold(sql, family, hold, txHash, signedTxCbor).pipe(
-      retry ? Effect.retry(HOLD_WRITE_RETRIES) : (effect) => effect,
+      retry
+        ? Effect.retry({
+            schedule: HOLD_WRITE_RETRIES,
+            while: isConnectionClassError,
+          })
+        : (effect) => effect,
       Effect.matchEffect({
         onSuccess: () =>
           Effect.sync(() => {

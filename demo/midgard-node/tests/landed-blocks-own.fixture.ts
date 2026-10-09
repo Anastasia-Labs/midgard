@@ -22,7 +22,10 @@ import {
   type LandedBlockPorts,
   type OwnJournal,
 } from "../src/landed-blocks/ports.js";
-import type { ReplayInput } from "../src/landed-blocks/replay.js";
+import type {
+  ReplayInput,
+  ReplayOutcome,
+} from "../src/landed-blocks/replay.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import type { Database } from "../src/services/database.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
@@ -169,6 +172,8 @@ export type Harness = {
   replays: ReplayInput[];
   rebaseRequests: number;
   replayRoot: string | undefined;
+  /** When set, what every replay ends with instead of replaying. */
+  replayEnds: Effect.Effect<ReplayOutcome, unknown> | undefined;
   /** Whether the follower is still at the run's view when it writes. */
   viewHeld: boolean;
 };
@@ -179,6 +184,7 @@ export const harness = (): Harness => ({
   replays: [],
   rebaseRequests: 0,
   replayRoot: undefined,
+  replayEnds: undefined,
   viewHeld: true,
 });
 
@@ -189,6 +195,7 @@ export const ports = (state: Harness): LandedBlockPorts<never> => ({
   replay: (input) =>
     Effect.gen(function* () {
       state.replays.push(input);
+      if (state.replayEnds !== undefined) return yield* state.replayEnds;
       const entries = [
         ...input.parentEntries.filter((item) => !item.outref.equals(G1.outref)),
         F1,

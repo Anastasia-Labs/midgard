@@ -6,8 +6,14 @@
  * commit funded by an untracked operator UTxO still resolves after the
  * node's ledger window has moved past its inclusion block.
  */
+import {
+  TransportRequestError,
+  TransportUnavailableError,
+} from "@al-ft/l1-node-transport";
+import type { WalletLedger } from "@al-ft/midgard-l1-follower";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { ledgerOutputsQueryFromTransport } from "../../src/l1-follower/raw-reads.ledger.js";
 import {
   WATCHER_TX_INPUTS_TABLE,
   WATCHER_UNIT_HISTORY_TABLE,
@@ -196,6 +202,91 @@ describe("tx inputs stored at ingest (facet 2)", () => {
     expect(
       await r.count(WATCHER_TX_INPUTS_TABLE, "tx_hash", r.commitHash),
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("unresolved inputs, by failure class", () => {
+  const waitFor = async (what: string, holds: () => boolean, ms = 10_000) => {
+    const deadline = Date.now() + ms;
+    while (!holds()) {
+      if (Date.now() > deadline)
+        throw new Error(`timed out waiting for ${what}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  };
+
+  it("retries a transient ledger failure on its own with backoff, and resolves once the node answers", async () => {
+    const r = await removedHeader({ pin: false, resolveAtIngest: false });
+    r.ledger.down(true);
+    const unresolved = await r.resolver.step();
+    expect(
+      unresolved.find(({ txHash }) => txHash === r.commitHash),
+    ).toMatchObject({ cause: "unavailable", retried: true });
+    const after = r.ledger.calls();
+    await waitFor("a timer retry", () => r.ledger.calls() > after);
+    r.ledger.down(false);
+    await waitFor(
+      "the inputs resolved",
+      () => r.resolver.unresolved().length === 0,
+    );
+  });
+
+  it("does not retry a ledger failure that is not transient on a timer, names it, and tries again when the follower moves", async () => {
+    const r = await removedHeader({ pin: false, resolveAtIngest: false });
+    r.ledger.failing(true);
+    const unresolved = await r.resolver.step();
+    expect(
+      unresolved.find(({ txHash }) => txHash === r.commitHash),
+    ).toMatchObject({ cause: "failed", permanent: false, retried: false });
+    const after = r.ledger.calls();
+    // Well past the first backoff (500 ms): nothing retried it.
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    expect(r.ledger.calls()).toBe(after);
+    const held = await r.resolver.assess();
+    expect(held.readiness.map(({ reason }) => reason)).toEqual([
+      L1_TX_INPUTS_UNRESOLVED,
+    ]);
+    expect(held.readiness[0]!.detail).toContain(
+      "not retried until the follower moves",
+    );
+    r.ledger.failing(false);
+    // The follower's next move triggers a pass.
+    expect(await r.resolver.step()).toEqual([]);
+  });
+
+  it("classifies a ledger read's failure: the transport not answering is transient, anything else is not", async () => {
+    const answer = async (error: Error) =>
+      (
+        await ledgerOutputsQueryFromTransport({
+          withLedgerState: () => Promise.reject(error),
+        } as unknown as WalletLedger)({ slot: 1, hash: Buffer.alloc(32) }, [
+          { txHash: Buffer.alloc(32), index: 0 },
+        ])
+      ).kind;
+    expect(
+      await answer(
+        new TransportUnavailableError("sidecar_restarting", "restarting"),
+      ),
+    ).toBe("unavailable");
+    expect(
+      await answer(new TransportRequestError("node_unavailable", "down")),
+    ).toBe("unavailable");
+    expect(
+      await answer(
+        Object.assign(new Error("connect ECONNREFUSED"), {
+          code: "ECONNREFUSED",
+        }),
+      ),
+    ).toBe("unavailable");
+    expect(
+      await answer(new TransportRequestError("acquire_point_too_old", "old")),
+    ).toBe("too_old");
+    expect(
+      await answer(new TransportRequestError("query_failed", "refused")),
+    ).toBe("failed");
+    expect(await answer(new Error("the answer does not decode"))).toBe(
+      "failed",
+    );
   });
 });
 

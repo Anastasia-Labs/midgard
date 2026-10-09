@@ -26,7 +26,9 @@ export const HaltSource = {
   /** The node's instance lock is suspended or held by another process
    * (`node-instance-lock.ts`): another node may hold this database. Holds
    * every operator duty as `FIBER_HALT_SOURCES` holds it (a scheduled tick
-   * already running finishes); the lock taken again clears it. */
+   * already running finishes); the lock taken again clears it. A lock that
+   * stopped trying (`node_instance_lock_failed`) is never taken again in this
+   * process, so that reason stands until the node is restarted. */
   instanceLock: "node_instance_lock",
 } as const;
 

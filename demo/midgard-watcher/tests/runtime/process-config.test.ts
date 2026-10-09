@@ -22,6 +22,7 @@ import {
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
 } from "../../src/runtime/process-config.js";
 import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
+import { freeOperationsEndpoint } from "../support/free-port.js";
 import {
   directories,
   productionConfig,
@@ -293,7 +294,15 @@ describe("production process authority separation", () => {
       JSON.stringify(watcherConfigValue()),
     );
     await writeFile(config.deploymentAuthorityPath, "{}");
-    await expect(createWatcherRuntime({ config })).rejects.toMatchObject({
+    // A file not written yet is one a restart may clear: startup exits.
+    await expect(
+      createWatcherRuntime({
+        config: {
+          ...config,
+          operationsEndpoint: await freeOperationsEndpoint(),
+        },
+      }),
+    ).rejects.toMatchObject({
       code: "ENOENT",
       path: config.ruleBundlePath,
     });

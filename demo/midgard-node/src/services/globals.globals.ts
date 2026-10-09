@@ -1,5 +1,5 @@
 import { TxHash } from "@lucid-evolution/lucid";
-import { Effect, Ref, SubscriptionRef } from "effect";
+import { Deferred, Effect, Ref, SubscriptionRef } from "effect";
 
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
@@ -26,6 +26,10 @@ import {
   type L1FollowerState,
 } from "./l1-follower.readiness.js";
 import type { NativeMpfOwnerService } from "./mpf-native-owner/index.js";
+import type {
+  TransientBudgetExhaustedError,
+  TransientExhaustion,
+} from "./transient-exhaustion.js";
 
 /**
  * Process-wide mutable references shared between long-running fibers.
@@ -196,6 +200,12 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const LIVENESS_REASONS = yield* Ref.make<ReadonlyMap<string, string>>(
       new Map(),
     );
+    // Failed once a transient failure outlived its bound; the node exits
+    // non-zero on it (`transient-exhaustion.ts`).
+    const TRANSIENT_EXHAUSTION: TransientExhaustion = yield* Deferred.make<
+      never,
+      TransientBudgetExhaustedError
+    >();
     // Set by the commitment fiber each tick: true while it found no pending
     // tx or user-event work, so the confirmation fiber may back off.
     const COMMIT_PIPELINE_IDLE = yield* Ref.make<boolean>(false);
@@ -259,6 +269,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
       L1_CONTROL_PLANE_ACTIVITY,
       LIVENESS_REASONS,
+      TRANSIENT_EXHAUSTION,
       COMMIT_PIPELINE_IDLE,
       COMMIT_PIPELINE_BACKLOG,
       IDLE_BACKOFF,

@@ -22,20 +22,21 @@ import {
   stepSettled,
   storePoint,
 } from "./chain-sync.js";
-import { classifyFailure, type FailureClass } from "./failure.js";
+import { classifyFailure, classifyStreamFailure } from "./failure.js";
 import { watchNodeBehind } from "./node-behind.js";
 import { startWhenFree } from "./start.js";
 import {
   DEFAULT_STUCK_AFTER,
   FOLLOW_CREDIT_POLICY,
   type FollowChainOptions,
+  FOLLOWER_TRANSIENT_BUDGET_MS,
   type FollowStatus,
-  type FollowWaitCause,
   LOOP_PRUNE_BUDGET,
   LOOP_PRUNE_EVERY,
   readinessOf,
   STREAM_INTERRUPTED_AFTER,
 } from "./status.js";
+import { stuckRecorder } from "./stuck.js";
 
 export * from "./status.js";
 
@@ -72,10 +73,18 @@ type Handled = "continue" | "relock" | "backoff" | "intervention";
  * the writer lease), starts from the configured origin or resumes from the
  * store's own points, applies chain-sync events and acknowledges each one
  * the store settled, checks `protocolInitStatus` at every tip, and prunes.
- * It never throws and never exits the process: transient failures back off
- * (capped exponential) and start again; an intervention stops the loop and
- * stays in the status until the operator acts and the process restarts.
- * Resolves with the final status once stopped by an intervention or abort.
+ * It never throws and never exits the process. A transient failure
+ * (`classifyFailure`; for the chain-sync stream `classifyStreamFailure`; a
+ * held writer lease) backs off (capped exponential) and starts again: a
+ * stream drop and a held lease without bound (waiting on the L1 node, or on
+ * another process), a store that does not answer for at most
+ * `transientBudgetMs` with no event settled, after which the loop stops
+ * `exhausted` (`l1_follower_transient_exhausted`) and its host exits
+ * non-zero. A deterministic failure stops the loop at once, an unknown one
+ * once it repeats `stuckAfter` times in a row at one point (or one step);
+ * `stuck` names it (`l1_follower_apply_stuck`, `l1_follower_migration_failed`)
+ * until a restart. Resolves with the final status once stopped by an
+ * intervention, a stuck failure, an exhausted transient budget or abort.
  */
 export const followChain = async (
   options: FollowChainOptions,
@@ -86,6 +95,8 @@ export const followChain = async (
   const log = options.log ?? (() => undefined);
   const credit = options.credit ?? FOLLOW_CREDIT_POLICY;
   const stuckAfter = options.stuckAfter ?? DEFAULT_STUCK_AFTER;
+  const transientBudgetMs =
+    options.transientBudgetMs ?? FOLLOWER_TRANSIENT_BUDGET_MS;
   const pruneBudget = options.prune?.budget ?? LOOP_PRUNE_BUDGET;
   const pruneEvery = options.prune?.everyEvents ?? LOOP_PRUNE_EVERY;
   const initial: Omit<FollowStatus, "readiness"> = {
@@ -140,36 +151,13 @@ export const followChain = async (
     return status;
   };
 
-  let failure: { at: string; count: number } | null = null;
-  /**
-   * Records a failure and waits on it. `at` names the event point for
-   * failures that count toward `stuck`; without it only a deterministic
-   * failure escalates.
-   */
-  const failed = async (
-    cause: FollowWaitCause,
-    detail: string,
-    kind: FailureClass,
-    at?: string,
-  ): Promise<void> => {
-    let stuck = status.stuck;
-    if (kind === "deterministic" || (kind === "unknown" && at !== undefined)) {
-      const where = at ?? cause;
-      const count = failure?.at === where ? failure.count + 1 : 1;
-      failure = { at: where, count };
-      if (kind === "deterministic" || count >= stuckAfter) {
-        if (stuck?.at !== where)
-          log(`apply stuck at ${where} after ${count} failures: ${detail}`);
-        stuck = { at: where, failures: count, detail };
-      }
-    }
-    await publish({
-      state: "waiting",
-      waiting: { cause, detail },
-      stuck,
-      lastError: detail,
-    });
-  };
+  const { failed, settled } = stuckRecorder({
+    stuckAfter,
+    transientBudgetMs,
+    now: options.now ?? Date.now,
+    log,
+    publish,
+  });
   const stopOn = async (found: Intervention): Promise<void> => {
     log(`intervention ${found.reason}: ${found.detail}`);
     await publish({
@@ -257,13 +245,14 @@ export const followChain = async (
     try {
       step = await applyChainSyncEvent(store, event);
     } catch (error) {
-      await failed(
+      return (await failed(
         "apply",
         `${event.kind}: ${message(error)}`,
         classifyFailure(error),
         at,
-      );
-      return "backoff";
+      ))
+        ? "intervention"
+        : "backoff";
     }
     if (stepLocked(step)) return "relock";
     if (!stepSettled(step)) {
@@ -272,8 +261,9 @@ export const followChain = async (
         await stopOn(result);
         return "intervention";
       }
+      let stopped = false;
       if (result.kind === "error")
-        await failed(
+        stopped = await failed(
           "apply",
           `${event.kind}: ${result.error.message}`,
           classifyFailure(result.error),
@@ -281,23 +271,29 @@ export const followChain = async (
         );
       else if (result.kind === "block_undecodable")
         // The same bytes fail the same way on every retry.
-        await failed(
+        stopped = await failed(
           "apply",
           `${event.kind}: ${result.detail}`,
           "deterministic",
           at,
         );
       else if (result.kind === "rejected")
-        await failed("apply", `${event.kind}: ${result.detail}`, "unknown", at);
-      return "backoff";
+        stopped = await failed(
+          "apply",
+          `${event.kind}: ${result.detail}`,
+          "unknown",
+          at,
+        );
+      return stopped ? "intervention" : "backoff";
     }
-    failure = null;
+    settled();
     let cursor;
     try {
       cursor = await store.cursor();
     } catch (error) {
-      await failed("store", message(error), classifyFailure(error));
-      return "backoff";
+      return (await failed("store", message(error), classifyFailure(error)))
+        ? "intervention"
+        : "backoff";
     }
     const tip = event.tip.point;
     const atTip =
@@ -382,8 +378,9 @@ export const followChain = async (
         signal,
         backoffMs: backoff,
         log,
-        onLocked: (locked) =>
-          failed("store_locked", locked.detail, "transient"),
+        onLocked: async (locked) => {
+          await failed("store_locked", locked.detail, "transient");
+        },
       });
       if (started === undefined) break;
       if (started.kind !== "ready") {
@@ -405,21 +402,19 @@ export const followChain = async (
         return finish();
       }
       if (begun.kind === "store_locked" || begun.kind === "error") {
-        if (begun.kind === "error")
-          await failed(
-            "store",
-            begun.error.message,
-            classifyFailure(begun.error),
-          );
-        else await failed("store_locked", begun.detail, "transient");
+        if (begun.kind === "error") {
+          if (
+            await failed(
+              "store",
+              begun.error.message,
+              classifyFailure(begun.error),
+            )
+          )
+            return finish();
+        } else await failed("store_locked", begun.detail, "transient");
         await wait();
         continue;
       }
-      if (
-        status.stuck !== null &&
-        (status.stuck.at === "store" || status.stuck.at === "migration")
-      )
-        await publish({ stuck: null });
       let stream: ChainSyncStream;
       let first: ChainSyncEvent | undefined;
       if (begun.kind === "resume") {
@@ -470,9 +465,12 @@ export const followChain = async (
           );
           return finish();
         }
-        if (!signal.aborted)
-          await failed("stream", message(error), "transient");
-        outcome = "backoff";
+        if (
+          !signal.aborted &&
+          (await failed("stream", message(error), classifyStreamFailure(error)))
+        )
+          outcome = "intervention";
+        else outcome = "backoff";
       } finally {
         signal.removeEventListener("abort", onAbort);
         await stream.close();
@@ -484,14 +482,16 @@ export const followChain = async (
       }
       if (!signal.aborted) await wait();
     } catch (error) {
-      // A follower failure must not reach the role: record it, back off and
-      // start again.
-      log(`follower failed, starting again: ${message(error)}`);
+      // A follower failure must not reach the role: record it, and back off
+      // and start again while it is transient.
+      log(`follower failed: ${message(error)}`);
       // A migration the store refuses (a changed or unknown applied
       // migration) fails the same way on every start: stuck at once, named.
-      if (error instanceof FollowerMigrationError)
-        await failed("store", message(error), "deterministic", "migration");
-      else await failed("store", message(error), classifyFailure(error));
+      const stopped =
+        error instanceof FollowerMigrationError
+          ? await failed("store", message(error), "deterministic", "migration")
+          : await failed("store", message(error), classifyFailure(error));
+      if (stopped) return finish();
       await wait();
     }
   }

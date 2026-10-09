@@ -1,5 +1,4 @@
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { Effect, Schedule } from "effect";
+import { Duration, Effect } from "effect";
 
 import { hasCauseCode, isConnectionClassError } from "../provider-retry.js";
 // Imported from the module itself, not the services barrel: a value import
@@ -10,8 +9,9 @@ import {
   type DatabaseStartupRetryOptions,
 } from "../services/database.js";
 import {
+  DATABASE_SCHEMA_INCOMPATIBLE,
   DATABASE_UNREACHABLE,
-  reportStartupWaiting,
+  retryStartupStep,
   SCHEMA_MIGRATION_IN_PROGRESS,
 } from "../services/startup-waiting.js";
 import * as MigrationRunner from "./migrations/runner.js";
@@ -33,41 +33,36 @@ export const isTransientSchemaCheckFailure = (
 const SCHEMA_CHECK_KEY = "database_schema_check";
 
 /**
- * Runs `assertCompatible`, waiting out transient failures with backoff and
- * no deadline: it logs the unready reason and reports it to the node's
- * startup (`reportStartupWaiting`) until the check runs. A schema verdict
- * fails at once.
+ * Runs `assertCompatible`, waiting out transient failures
+ * (`isTransientSchemaCheckFailure`) with backoff for at most the database
+ * budget (15 min by default), the startup waiting under
+ * `schema_migration_in_progress` or `database_unreachable`. A schema verdict
+ * fails at once under `database_schema_incompatible`; a transient failure
+ * past the budget fails under its waiting reason. Either way the
+ * `DatabaseError` carries the step's `StartupStepFailedError`.
  */
 export const assertCompatibleWithStartupRetry = <R>(
   assertCompatible: Effect.Effect<void, MigrationRunner.MigrationError, R>,
   options: DatabaseStartupRetryOptions = DATABASE_STARTUP_RETRY,
 ): Effect.Effect<void, DatabaseError, R> =>
-  assertCompatible.pipe(
-    Effect.tapError((error) => {
-      if (!isTransientSchemaCheckFailure(error)) return Effect.void;
-      const reason =
-        error.code === SCHEMA_MIGRATION_IN_PROGRESS
-          ? SCHEMA_MIGRATION_IN_PROGRESS
-          : DATABASE_UNREACHABLE;
-      return Effect.zipRight(
-        reportStartupWaiting(SCHEMA_CHECK_KEY, [reason]),
-        Effect.logWarning(
-          `Database unready: reason=${reason}; the schema compatibility check waits and re-runs. cause=${formatUnknownError(error, { includeCause: true })}`,
-        ),
-      );
-    }),
-    Effect.retry({
-      schedule: Schedule.exponential(options.baseDelay).pipe(
-        Schedule.union(Schedule.spaced(options.maxDelay)),
-      ),
-      while: isTransientSchemaCheckFailure,
-    }),
-    Effect.tap(() => reportStartupWaiting(SCHEMA_CHECK_KEY, [])),
+  retryStartupStep(assertCompatible, {
+    key: SCHEMA_CHECK_KEY,
+    retryable: isTransientSchemaCheckFailure,
+    reason: (error) =>
+      error.code === SCHEMA_MIGRATION_IN_PROGRESS
+        ? SCHEMA_MIGRATION_IN_PROGRESS
+        : isTransientSchemaCheckFailure(error)
+          ? DATABASE_UNREACHABLE
+          : DATABASE_SCHEMA_INCOMPATIBLE,
+    budget: { maxElapsed: options.budget },
+    initialMs: Duration.toMillis(Duration.decode(options.baseDelay)),
+    maxMs: Duration.toMillis(Duration.decode(options.maxDelay)),
+  }).pipe(
     Effect.mapError(
-      (error) =>
+      (failure) =>
         new DatabaseError({
-          message: `Database schema is not compatible: ${error.message}`,
-          cause: error,
+          message: failure.message,
+          cause: failure,
           table: "<schema_migrations>",
         }),
     ),

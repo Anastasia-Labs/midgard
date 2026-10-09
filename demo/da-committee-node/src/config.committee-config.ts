@@ -117,7 +117,8 @@ export type CommitteeConfig = {
   readonly pollIntervalMs: number;
   /**
    * Longest time the committee may run without a fresh authenticated L1 view
-   * before it exits with code 70.
+   * before `/readyz` names `l1_view_unavailable`; a single tick in flight
+   * longer than it fails `/healthz` (`committee_tick_hung`).
    */
   readonly l1ViewFatalMs: number;
   /**

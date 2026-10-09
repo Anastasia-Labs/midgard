@@ -58,6 +58,10 @@ export const closeRemovedHeaders = async (): Promise<void> => {
 type Ledger = Readonly<{
   query: LedgerOutputsQuery;
   down: (on: boolean) => void;
+  /** Answers with a failure that is not transient (an undecodable answer). */
+  failing: (on: boolean) => void;
+  /** How many queries reached the ledger. */
+  calls: () => number;
 }>;
 
 /**
@@ -80,14 +84,24 @@ export const removedHeader = async (
   closers.push(() => h.store.close());
   const real = ledgerOutputsQueryFromTransport(h.node);
   let isDown = false;
+  let isFailing = false;
+  let calls = 0;
   const ledger: Ledger = {
-    query: async (point, outRefs) =>
-      isDown
-        ? { kind: "unavailable", detail: "the node is down" }
-        : await real(point, outRefs),
+    query: async (point, outRefs) => {
+      calls += 1;
+      if (calls > 200) throw new Error("retried without bound");
+      if (isDown) return { kind: "unavailable", detail: "the node is down" };
+      if (isFailing)
+        return { kind: "failed", detail: "the answer does not decode" };
+      return await real(point, outRefs);
+    },
     down: (on) => {
       isDown = on;
     },
+    failing: (on) => {
+      isFailing = on;
+    },
+    calls: () => calls,
   };
   const resolver = createTxInputsResolver({
     store: h.store,

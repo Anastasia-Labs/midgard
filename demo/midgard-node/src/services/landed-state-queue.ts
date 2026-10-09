@@ -28,6 +28,7 @@ import {
   landedTail,
   stateQueueProjectionConfig,
 } from "../l1-state-queue/index.js";
+import { isConnectionClassError } from "../provider-retry.js";
 import {
   type SerializedStateQueueUTxO,
   serializeStateQueueUTxO,
@@ -290,17 +291,37 @@ export const landedStateQueueSnapshot = (
 export const LANDED_QUEUE_VISIBILITY_DELAY = Duration.seconds(1);
 export const LANDED_QUEUE_VISIBILITY_RETRIES = 180;
 
+/** The waits `awaitLandedStateQueueSnapshot` re-reads P1 on. */
+const VISIBILITY_WAITS = new WeakSet<object>();
+
+const visibilityWait = (error: SDK.StateQueueError): SDK.StateQueueError => {
+  VISIBILITY_WAITS.add(error);
+  return error;
+};
+
 /**
  * The snapshot of the healthy landed queue once `landed` holds of it: after a
  * tx this node saw confirmed, until the follower has the block that holds
- * it. Bounded: a queue that never shows it fails with a `StateQueueError`,
- * and the next tick reads P1 again.
+ * it. It re-reads P1 every `LANDED_QUEUE_VISIBILITY_DELAY`, at most
+ * `LANDED_QUEUE_VISIBILITY_RETRIES` times, only while it waits on the
+ * follower (the queue does not show it yet, or is not readable at the
+ * follower's view) or the database read failed transiently
+ * (`isConnectionClassError`). An unhealthy queue, any other read failure,
+ * or a queue that never shows it fails with a `StateQueueError`, and the
+ * next tick reads P1 again.
  */
 export const awaitLandedStateQueueSnapshot = (
   stateQueue: StateQueueContract,
   reason: StateQueueSnapshotReason,
   landed: (queue: LandedStateQueue) => boolean,
   what: string,
+  visibility: Readonly<{
+    delay: Duration.DurationInput;
+    retries: number;
+  }> = {
+    delay: LANDED_QUEUE_VISIBILITY_DELAY,
+    retries: LANDED_QUEUE_VISIBILITY_RETRIES,
+  },
 ): Effect.Effect<
   StateQueueSnapshot,
   | SDK.StateQueueError
@@ -309,23 +330,36 @@ export const awaitLandedStateQueueSnapshot = (
   | SDK.CborSerializationError,
   SqlClient.SqlClient
 > =>
-  requireLandedStateQueue(stateQueue, reason).pipe(
-    Effect.flatMap((queue) =>
-      landed(queue)
-        ? Effect.succeed(queue)
-        : Effect.fail(
-            queueError(
-              `The landed state queue does not show ${what} yet`,
-              formatLandedStateQueue(queue),
-            ),
+  readLandedStateQueue(stateQueue).pipe(
+    Effect.flatMap((read) => {
+      if (read.kind !== "ok")
+        return Effect.fail(
+          visibilityWait(
+            unhealthyQueueError(read, reason) ??
+              queueError("The landed state queue is unavailable", reason),
           ),
-    ),
-    Effect.retry(
-      Schedule.intersect(
-        Schedule.spaced(LANDED_QUEUE_VISIBILITY_DELAY),
-        Schedule.recurs(LANDED_QUEUE_VISIBILITY_RETRIES),
+        );
+      const unhealthy = unhealthyQueueError(read, reason);
+      if (unhealthy !== null) return Effect.fail(unhealthy);
+      return landed(read.queue)
+        ? Effect.succeed(read.queue)
+        : Effect.fail(
+            visibilityWait(
+              queueError(
+                `The landed state queue does not show ${what} yet`,
+                formatLandedStateQueue(read.queue),
+              ),
+            ),
+          );
+    }),
+    Effect.retry({
+      schedule: Schedule.intersect(
+        Schedule.spaced(visibility.delay),
+        Schedule.recurs(visibility.retries),
       ),
-    ),
+      while: (error) =>
+        VISIBILITY_WAITS.has(error) || isConnectionClassError(error),
+    }),
     Effect.flatMap((queue) => snapshotOfLandedQueue(queue, reason)),
   );
 

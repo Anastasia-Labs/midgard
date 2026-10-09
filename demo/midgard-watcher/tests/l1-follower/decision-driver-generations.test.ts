@@ -8,6 +8,8 @@
  *   again;
  * - a failed or still pending retirement reset is a named readiness reason,
  *   and the pass waits for a pending one at most `retryDelayMs`;
+ * - only a transient failure (the store busy, a connection refused) is
+ *   retried on a timer; any other is named and waits for the next rewind;
  * - migration 0010 seeds the marker from the cursor of a store that has one.
  */
 import { mkdtempSync, rmSync } from "node:fs";
@@ -34,6 +36,7 @@ import { readHandledFollowerGeneration } from "../../src/l1-follower/follower-ge
 import { watcherProjection } from "../../src/l1-follower/projection.js";
 import {
   createWatcherDecisionDriver,
+  WATCHER_DECISION_PASS_FAILED,
   WATCHER_RETIREMENT_RESET_FAILED,
   WATCHER_RETIREMENT_RESET_PENDING,
   type WatcherDecisionDriver,
@@ -67,7 +70,17 @@ afterAll(async () => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-type Step = "reject" | "resolve" | "defer";
+type Step = "reject" | "fail" | "resolve" | "defer";
+
+/** node:sqlite's SQLITE_BUSY: the transient store failure. */
+const storeBusy = (): Error =>
+  Object.assign(new Error("the transcript store is locked"), {
+    code: "ERR_SQLITE_ERROR",
+    errcode: 5,
+  });
+
+/** A failure no classifier recognises: not transient. */
+const storeBroken = (): Error => new Error("the transcript row is malformed");
 
 /** Retirement whose resets follow `script` (then resolve); `settle` resolves the deferred ones. */
 const scriptedRetirement = (script: readonly Step[]) => {
@@ -84,8 +97,8 @@ const scriptedRetirement = (script: readonly Step[]) => {
       reset: (): Promise<void> => {
         const step = script[calls] ?? "resolve";
         calls += 1;
-        if (step === "reject")
-          return Promise.reject(new Error("the transcript store is locked"));
+        if (step === "reject") return Promise.reject(storeBusy());
+        if (step === "fail") return Promise.reject(storeBroken());
         if (step === "defer")
           return new Promise<void>((resolve) => deferred.push(resolve));
         return Promise.resolve();
@@ -291,6 +304,89 @@ describe("the decision driver's handled generation", () => {
     await until("readiness", () => driver.readiness().length === 0);
     expect(r.calls()).toBe(1);
     expect(driver.status().rewinds).toBe(1);
+  });
+});
+
+describe("the decision driver's failure classes", () => {
+  it("does not retry a retirement reset that failed with a non-transient failure: it names it and the marker stays until the next rewind", async () => {
+    const s = await unheardRewind("reset-fails-not-transient");
+    const r = scriptedRetirement(["fail", "fail", "fail", "fail"]);
+    const driver = driverOn(s.store, s.c, {
+      retryDelayMs: 10,
+      retirement: r.retirement,
+    });
+    driver.wake();
+    await until("the failed reset named", () =>
+      driver
+        .readiness()
+        .some(({ reason }) => reason === WATCHER_RETIREMENT_RESET_FAILED),
+    );
+    await driver.idle();
+    // Well past many retry delays: nothing retried it.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await driver.idle();
+    expect(r.calls()).toBe(1);
+    expect(await s.marker()).toBe(0);
+    expect(driver.readiness()).toEqual([
+      {
+        reason: WATCHER_RETIREMENT_RESET_FAILED,
+        detail: expect.stringContaining(
+          "the transcript row is malformed (not transient",
+        ) as unknown as string,
+      },
+    ]);
+    // The next rewind runs it again, and a reset that holds moves the marker.
+    await s.forward();
+    await s.rewind(1);
+    await until("the second reset", () => r.calls() >= 2);
+    await driver.idle();
+    expect(r.calls()).toBe(2);
+  });
+
+  it("does not retry a decision pass that failed with a non-transient failure, and retries a transient one", async () => {
+    const s = await decidedStore("pass-fails-by-class");
+    let failure: (() => Error) | undefined = storeBroken;
+    let passes = 0;
+    const store = new Proxy(s.store, {
+      get(target, key, receiver) {
+        const value = Reflect.get(target, key, receiver) as unknown;
+        if (typeof value !== "function") return value;
+        if (key !== "rewindsSince")
+          return (value as (...a: unknown[]) => unknown).bind(target);
+        return (...args: unknown[]) => {
+          passes += 1;
+          if (passes > 50) throw new Error("retried without bound");
+          const make = failure;
+          if (make !== undefined) return Promise.reject(make());
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    const driver = driverOn(store, s.c, { retryDelayMs: 10 });
+    driver.wake();
+    await until("the failed pass named", () =>
+      driver
+        .readiness()
+        .some(({ reason }) => reason === WATCHER_DECISION_PASS_FAILED),
+    );
+    await driver.idle();
+    const afterFirst = passes;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await driver.idle();
+    expect(passes).toBe(afterFirst);
+    expect(driver.readiness()[0]?.detail).toContain("(not transient");
+
+    // A transient failure is retried one delay later, and recovers.
+    failure = storeBusy;
+    driver.wake();
+    await until("the transient failure named", () =>
+      driver.readiness().some(({ detail }) => detail.includes("is locked")),
+    );
+    const transientAt = passes;
+    failure = undefined;
+    await until("readiness", () => driver.readiness().length === 0);
+    await driver.idle();
+    expect(passes).toBeGreaterThan(transientAt);
   });
 });
 

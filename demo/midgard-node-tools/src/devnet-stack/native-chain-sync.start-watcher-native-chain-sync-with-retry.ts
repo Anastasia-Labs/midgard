@@ -2,6 +2,7 @@ import {
   isWatcherNativeNodeUnavailable,
   retryWatcherL1Transient,
   WATCHER_PACKAGE_NAME,
+  WATCHER_STARTUP_L1_BUDGET_MS,
   type WatcherConfig,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncPoint,
@@ -53,13 +54,19 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
   /** Defaults to one JSON line on stderr when the node first does not answer. */
   readonly warn?: (warning: WatcherNativeNodeWait) => void;
   readonly retryDelayMs?: (retry: number) => number;
+  /**
+   * How long an unanswering node is waited out before the start fails with
+   * `WatcherL1UnavailableError`; defaults to the watcher's startup L1 budget,
+   * which covers a node that is restarting or still opening its database.
+   */
+  readonly budgetMs?: number;
 }): Promise<WatcherNativeChainSyncRuntime> => {
   const signal = input.signal;
   signal?.throwIfAborted();
   const candidates = parseIntersectionCandidates(input.intersectionCandidates);
   // One intersection over every candidate: the node takes the first one it
   // has, newest first. An unanswering node restarts the start after a capped
-  // backoff; it never ends startup.
+  // backoff, for at most `budgetMs`; any other failure ends the start at once.
   let waiting: { readonly error: unknown } | undefined;
   let runtime: WatcherNativeChainSyncRuntime;
   try {
@@ -89,6 +96,7 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
       {
         signal,
         transient: isWatcherNativeNodeUnavailable,
+        budgetMs: input.budgetMs ?? WATCHER_STARTUP_L1_BUDGET_MS,
         onRetry: (error, retry, retryAfterMs) => {
           if (retry === 1)
             (input.warn ?? writeNodeWait)({

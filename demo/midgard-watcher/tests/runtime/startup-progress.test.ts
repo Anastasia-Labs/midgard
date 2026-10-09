@@ -6,6 +6,7 @@ import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { watcherFailureCauses } from "../../src/cli.js";
+import { WatcherL1UnavailableError } from "../../src/l1/transient-retry.js";
 import { unsafeRunWatcherCommandForTest } from "../../src/runtime/scaffold.js";
 import {
   createWatcherStartupProgress,
@@ -278,4 +279,51 @@ it("waits out a sidecar exit and a node timeout on the protocol parameters read,
     "pending",
     "completed",
   ]);
+});
+
+it("fails startup under watcher_l1_unavailable once a stage's L1 read stays transient past the budget", async () => {
+  const report = vi.fn();
+  const cause = new FraudProofL1UnavailableError("the node is not answering");
+  const read = vi.fn(async (): Promise<string> => {
+    if (read.mock.calls.length > 1_000)
+      throw new Error("retried without bound");
+    throw cause;
+  });
+  // Each failure is read 20 s after the one before.
+  let now = 0;
+  const failure = await createWatcherStartupProgress(report, () => 1, {
+    l1BudgetMs: 60_000,
+    now: () => (now += 20_000),
+  })("protocol_parameters", async ({ retryL1Read }) => await retryL1Read(read))
+    .then(() => undefined)
+    .catch((error: unknown) => error);
+  expect(failure).toBeInstanceOf(WatcherL1UnavailableError);
+  expect(failure).toMatchObject({
+    reason: "watcher_l1_unavailable",
+    attempts: 4,
+    cause,
+  });
+  expect(read).toHaveBeenCalledTimes(4);
+  expect(report).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      stage: "protocol_parameters",
+      outcome: "failed",
+      error: expect.stringMatching(/^watcher_l1_unavailable: /u) as unknown,
+    }),
+  );
+});
+
+it("waits on a held stage past any L1 budget", async () => {
+  let held = 0;
+  let now = 0;
+  await expect(
+    createWatcherStartupProgress(undefined, () => 1, {
+      l1BudgetMs: 60_000,
+      now: () => (now += 60_000),
+    })("follower_ready", async () => {
+      held += 1;
+      if (held <= 5) throw new WatcherStartupStageHeld("held");
+      return "ready";
+    }),
+  ).resolves.toBe("ready");
 });

@@ -1,9 +1,18 @@
 /**
  * The `/readyz` reasons landed-block processing holds (plan §7.3, N3). Each
- * keeps the process up: the driver retries on its backoff, and the reason
- * clears once the condition does.
+ * keeps the process up, and the reason clears once the condition does. A
+ * wait (on DA peers, the follower, the rebase, this node's own commit path)
+ * is retried on the driver's backoff; a verdict on the view (an invalid
+ * block, a base or journal mismatch), a failure that is not transient, and
+ * a missing schema are `notRetried`: the next follower change re-reads them.
  */
-import type { DriverHold } from "../l1-events/driver.js";
+import {
+  type DriverHold,
+  isRetriedHold,
+  isTransientFailureHold,
+  notRetried,
+  transientFailure,
+} from "../l1-events/driver.js";
 import {
   MPF_CLOSURE_MISSING,
   NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
@@ -55,7 +64,8 @@ export const LANDED_BLOCK_FORCED_ORDER_PENDING =
 /**
  * Importing a foreign block failed for a reason it cannot pin on the block:
  * a local computation (an MPF root) or a replay failure it cannot classify.
- * Never attributed to the block; every run retries it.
+ * Never attributed to the block, and not known to be transient: the next
+ * follower change runs it again, no timer does.
  */
 export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
 /** Replaying or recording a landed block failed for a reason it could not classify. */
@@ -129,6 +139,9 @@ const cut = (detail: string) =>
 /**
  * The first hold by priority, with every other hold named in its detail.
  * Only each reason's own detail is truncated, so every reason stays named.
+ * The combined hold is retried on the driver's backoff when any hold in it
+ * is, and is `notRetried` when none is; it is a `transientFailure` when any
+ * hold in it is.
  */
 export const combineHolds = (
   holds: readonly DriverHold[],
@@ -140,11 +153,13 @@ export const combineHolds = (
   );
   const [first, ...rest] = ordered;
   if (first === undefined) return undefined;
-  return {
+  const combined: DriverHold = {
     reason: first.reason,
     detail: [
       cut(first.detail),
       ...rest.map((hold) => `also ${hold.reason}: ${cut(hold.detail)}`),
     ].join("; "),
   };
+  if (holds.some(isTransientFailureHold)) transientFailure(combined);
+  return holds.some(isRetriedHold) ? combined : notRetried(combined);
 };

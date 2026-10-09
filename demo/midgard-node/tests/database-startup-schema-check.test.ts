@@ -1,17 +1,20 @@
 /**
  * The node's startup schema compatibility check
  * (`assertCompatibleWithStartupRetry`): a dropped connection or a running
- * migration is waited out with no deadline, its reason reported to the
- * startup (`reportStartupWaiting`) until the check runs; a schema verdict
- * fails at once.
+ * migration is waited out within the database budget, its reason reported
+ * to the startup (`reportStartupWaiting`) until the check runs; one that
+ * outlives the budget fails under its reason; a schema verdict fails at
+ * once under `database_schema_incompatible`.
  */
-import { Duration, Effect, Logger } from "effect";
+import { Cause, Duration, Effect, Logger } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { assertCompatibleWithStartupRetry } from "../src/database/init.js";
 import { MigrationError } from "../src/database/migrations/runner.js";
 import {
+  DATABASE_SCHEMA_INCOMPATIBLE,
   DATABASE_UNREACHABLE,
+  findStartupStepFailure,
   SCHEMA_MIGRATION_IN_PROGRESS,
   StartupWaitingReporter,
 } from "../src/services/startup-waiting.js";
@@ -19,6 +22,7 @@ import {
 const FAST = {
   baseDelay: Duration.millis(5),
   maxDelay: Duration.millis(20),
+  budget: Duration.minutes(15),
 } as const;
 
 /** Runs `effect` for up to `ms` with its logs and startup reports recorded;
@@ -78,7 +82,7 @@ describe("the startup schema compatibility check", () => {
     expect(result._tag).toBe("Right");
     expect(check.calls()).toBe(3);
     expect(
-      logs.filter((line) => line.includes("Database unready")),
+      logs.filter((line) => line.includes("database_schema_check waits")),
     ).toHaveLength(2);
   });
 
@@ -102,7 +106,7 @@ describe("the startup schema compatibility check", () => {
     ]);
   });
 
-  it("keeps waiting while a migration holds the schema lock, with no deadline", async () => {
+  it("keeps waiting while a migration holds the schema lock, within its budget", async () => {
     const running = new MigrationError({
       code: SCHEMA_MIGRATION_IN_PROGRESS,
       message: "Could not acquire Midgard schema migration advisory lock",
@@ -117,6 +121,43 @@ describe("the startup schema compatibility check", () => {
   });
 
   it.each([
+    [
+      SCHEMA_MIGRATION_IN_PROGRESS,
+      new MigrationError({
+        code: SCHEMA_MIGRATION_IN_PROGRESS,
+        message: "Could not acquire Midgard schema migration advisory lock",
+      }),
+    ],
+    [DATABASE_UNREACHABLE, refused("schema_lock_failed")],
+  ])(
+    "fails under %s once the wait outlives the budget",
+    async (reason, failure) => {
+      const check = scripted(Array.from({ length: 10_000 }, () => failure));
+      const { result, reported } = await captureFor(
+        assertCompatibleWithStartupRetry(check.effect, {
+          ...FAST,
+          budget: Duration.millis(200),
+        }),
+        10_000,
+      );
+      expect(result._tag).toBe("Left");
+      const error = result._tag === "Left" ? result.left : undefined;
+      expect(
+        error === undefined
+          ? undefined
+          : findStartupStepFailure(Cause.fail(error)),
+      ).toMatchObject({
+        step: "database_schema_check",
+        reason,
+        exhausted: true,
+      });
+      expect(check.calls()).toBeGreaterThan(3);
+      expect(check.calls()).toBeLessThan(1_000);
+      expect(reported.at(-1)).toEqual(["database_schema_check", []]);
+    },
+  );
+
+  it.each([
     "schema_not_migrated",
     "schema_unversioned_database",
     "schema_checksum_mismatch",
@@ -129,6 +170,16 @@ describe("the startup schema compatibility check", () => {
       10_000,
     );
     expect(result._tag).toBe("Left");
+    const error = result._tag === "Left" ? result.left : undefined;
+    expect(
+      error === undefined
+        ? undefined
+        : findStartupStepFailure(Cause.fail(error)),
+    ).toMatchObject({
+      step: "database_schema_check",
+      reason: DATABASE_SCHEMA_INCOMPATIBLE,
+      exhausted: false,
+    });
     expect(check.calls()).toBe(1);
   });
 });

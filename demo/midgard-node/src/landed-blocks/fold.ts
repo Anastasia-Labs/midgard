@@ -24,7 +24,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import { ConfirmedLedgerDB } from "../database/index.js";
-import type { DriverHold } from "../l1-events/driver.js";
+import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
 import type { Database } from "../services/database.js";
 import {
@@ -47,10 +47,9 @@ import { processedChain } from "./ledger.js";
 import { type LandedBlockPorts, viewChecked } from "./ports.js";
 import { Frontier, type HeaderRoot, retrieveRows } from "./store.js";
 
-const behind = (detail: string): DriverHold => ({
-  reason: CONFIRMED_LEDGER_BEHIND,
-  detail,
-});
+/** A verdict on the view: the next follower change re-reads it, no timer. */
+const behind = (detail: string): DriverHold =>
+  notRetried({ reason: CONFIRMED_LEDGER_BEHIND, detail });
 
 const confirmedRoot = Effect.gen(function* () {
   const entries = yield* ConfirmedLedgerDB.retrieve;
@@ -155,10 +154,10 @@ const checkedFold = <R, A>(
     if (result._tag === "Right") return undefined;
     const refused = baseMismatchOf(result.left);
     if (refused === undefined) return yield* Effect.fail(result.left);
-    return {
+    return notRetried({
       reason: CONFIRMED_LEDGER_BASE_MISMATCH,
       detail: refused.detail,
-    } satisfies DriverHold;
+    });
   });
 
 export type FoldOutcome =
@@ -193,10 +192,10 @@ export const foldToRoot = <R>(
         if (frontier.utxosRoot !== root.utxosRoot)
           return {
             kind: "held",
-            hold: {
+            hold: notRetried({
               reason: CONFIRMED_LEDGER_BASE_MISMATCH,
               detail: `the confirmed-ledger frontier ${frontier.headerHash} has root ${frontier.utxosRoot}, the queue root ${root.utxosRoot}`,
-            },
+            }),
           } satisfies FoldOutcome;
         return { kind: "at_root" } satisfies FoldOutcome;
       }

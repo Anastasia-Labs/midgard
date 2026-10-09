@@ -5,6 +5,7 @@ import {
   encodeQuery,
   headerText,
   hexToBytes,
+  isTransportFailedReason,
   type LedgerQuery,
   natural,
   type TransportReadiness,
@@ -16,6 +17,10 @@ import {
   SidecarProcess,
 } from "./sidecar.js";
 import { type ChainSyncOptions, ChainSyncStream } from "./stream.js";
+import {
+  TransportFailedError,
+  transportFailureOf,
+} from "./transport-failed.js";
 
 export type L1NodeTransportOptions = Readonly<{
   /** The compiled `midgard-l1-node-transport` binary. */
@@ -84,8 +89,6 @@ const unreadyReasonOf = (exit: SidecarExit): TransportUnreadyReason => {
   switch (exit.fatal?.code) {
     case "node_unreachable":
       return "node_unreachable";
-    case "node_handshake_failed":
-      return "node_handshake_failed";
     case "node_connection_lost":
     case "node_unresponsive":
       return "node_connection_lost";
@@ -107,7 +110,10 @@ const describe = (exit: SidecarExit): string =>
 /**
  * One long-lived sidecar per process role: a supervisor that keeps it
  * running, restarts it with backoff, reports transient readiness, and never
- * ends the process. Chain-sync streams resume across restarts.
+ * ends the process. Chain-sync streams resume across restarts. A sidecar
+ * that ends on a fault no restart repairs (`TRANSPORT_FAILED_REASONS`, such
+ * as a refused N2C handshake) is not restarted: the readiness turns
+ * `failed`, and every call and stream fails with `TransportFailedError`.
  */
 export class L1NodeTransport {
   readonly #options: L1NodeTransportOptions;
@@ -194,6 +200,7 @@ export class L1NodeTransport {
       });
     } catch (error) {
       const exit = error instanceof SidecarExitedError ? error.exit : undefined;
+      if (exit !== undefined && this.#failOn(exit)) return;
       this.#scheduleRestart(
         exit === undefined || exit.fatal === null
           ? "sidecar_unavailable"
@@ -212,7 +219,7 @@ export class L1NodeTransport {
       if (this.#sidecar !== sidecar) return;
       this.#sidecar = undefined;
       for (const stream of this.#streams) stream.detach(exit);
-      if (this.#stopped) return;
+      if (this.#stopped || this.#failOn(exit)) return;
       if (Date.now() - startedAt >= STABLE_RUN_MS)
         this.#restartDelay = this.#options.restartDelayMs?.initial ?? 250;
       this.#scheduleRestart(unreadyReasonOf(exit), describe(exit));
@@ -222,6 +229,26 @@ export class L1NodeTransport {
       nodeToClientVersion: sidecar.nodeToClientVersion,
     });
     for (const stream of this.#streams) stream.attach(sidecar);
+  }
+
+  /**
+   * Ends the supervisor on an exit no restart repairs: the readiness turns
+   * `failed`, waiters wake to `TransportFailedError`, and every stream fails
+   * with it. Returns whether the exit was one.
+   */
+  #failOn(exit: SidecarExit): boolean {
+    const code = exit.fatal?.code;
+    if (code === undefined || !isTransportFailedReason(code)) return false;
+    const detail = describe(exit);
+    this.#setReadiness({ ready: false, failed: true, reason: code, detail });
+    for (const waiter of this.#readyWaiters.splice(0)) waiter();
+    const failure = new TransportFailedError(code, detail);
+    for (const stream of [...this.#streams]) stream.failWith(failure);
+    return true;
+  }
+
+  #failure(): TransportFailedError | undefined {
+    return transportFailureOf(this.#readiness);
   }
 
   #scheduleRestart(reason: TransportUnreadyReason, detail: string): void {
@@ -249,10 +276,15 @@ export class L1NodeTransport {
     else this.#restartTimer?.unref();
   }
 
-  /** Resolves once a sidecar is ready, or rejects after the bound. */
+  /**
+   * Resolves once a sidecar is ready, or rejects after the bound; rejects at
+   * once with `TransportFailedError` once the transport failed.
+   */
   async whenReady(timeoutMs = this.#readyTimeoutMs): Promise<void> {
     if (this.#stopped)
       throw new TransportUnavailableError("stopped", "the transport is closed");
+    const failedBefore = this.#failure();
+    if (failedBefore !== undefined) throw failedBefore;
     if (this.#readiness.ready && this.#sidecar !== undefined) return;
     let timer: NodeJS.Timeout | undefined;
     let waiter: (() => void) | undefined;
@@ -265,10 +297,12 @@ export class L1NodeTransport {
           reject(
             readiness.ready
               ? new TransportUnavailableError("sidecar_restarting", "")
-              : new TransportUnavailableError(
-                  readiness.reason,
-                  readiness.detail,
-                ),
+              : "failed" in readiness
+                ? new TransportFailedError(readiness.reason, readiness.detail)
+                : new TransportUnavailableError(
+                    readiness.reason,
+                    readiness.detail,
+                  ),
           );
         }, timeoutMs);
       });
@@ -278,6 +312,8 @@ export class L1NodeTransport {
     }
     if (this.#stopped)
       throw new TransportUnavailableError("stopped", "the transport is closed");
+    const failed = this.#failure();
+    if (failed !== undefined) throw failed;
   }
 
   async #readySidecar(): Promise<SidecarProcess> {
@@ -392,6 +428,8 @@ export class L1NodeTransport {
   openChainSync(options: ChainSyncOptions): ChainSyncStream {
     if (this.#stopped)
       throw new TransportUnavailableError("stopped", "the transport is closed");
+    const failed = this.#failure();
+    if (failed !== undefined) throw failed;
     const stream = new ChainSyncStream(options, {
       nextStreamId: () => this.#nextStreamId++,
       forget: (owned) => this.#streams.delete(owned),

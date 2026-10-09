@@ -10,6 +10,10 @@
  * whether the merge fiber folded it first or not; a foreign block after it
  * replays on the journal's
  * post-state, and one that misses its header's root is never adopted.
+ * The holds by retry class: the waits (DA peers, the follower's facts, a
+ * revival) are retried on the driver's backoff; a verdict on the view and a
+ * replay failure not known to be transient are `notRetried`, re-read on the
+ * next follower change.
  */
 import "./utils.js";
 
@@ -18,19 +22,30 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { isRetriedHold, notRetried } from "../src/l1-events/driver.js";
 import {
   foldMerge,
   retrieveMergeLinks,
 } from "../src/landed-blocks/confirmed-merges.js";
 import {
+  combineHolds,
   CONFIRMED_LEDGER_OWN_BLOCK_PENDING,
+  LANDED_BLOCK_AWAITING_DA,
+  LANDED_BLOCK_DA_REFETCH_PENDING,
+  LANDED_BLOCK_EVENT_UNKNOWN,
+  LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+  LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
+  LANDED_BLOCK_REPLAY_FAILED,
+  LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCKS_WAITING,
 } from "../src/landed-blocks/holds.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
+import { blockedRebaseHold } from "../src/landed-blocks/rebase-target.js";
+import type { ReplayOutcome } from "../src/landed-blocks/replay.js";
 import { Frontier, retrieveRows } from "../src/landed-blocks/store.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { hex32 } from "./helpers/state-queue-sim.fixtures.js";
@@ -153,6 +168,8 @@ describe("own landed blocks", () => {
           processLandedQueue(ports(state), queueOf(genesisState, nodes));
         const held = yield* process([a, f]);
         expect(held?.reason).toBe(LANDED_BLOCK_OWN_REVIVAL_PENDING);
+        // A wait on this node's own commit path: retried on the backoff.
+        expect(isRetriedHold(held!)).toBe(true);
         expect(held?.detail).toContain(a.hash);
         expect(held?.detail).toContain(`also ${LANDED_BLOCK_REBASE_PENDING}:`);
         const rows = yield* retrieveRows;
@@ -198,6 +215,7 @@ describe("own landed blocks", () => {
           queueOf(genesisState, [a, f]),
         );
         expect(held?.reason).toBe(LANDED_BLOCK_OWN_JOURNAL_MISMATCH);
+        expect(isRetriedHold(held!)).toBe(false);
         expect(held?.detail).toContain(a.hash);
         expect(yield* retrieveRows).toHaveLength(0);
         expect(state.replays).toHaveLength(0);
@@ -245,6 +263,8 @@ describe("own landed blocks", () => {
           queueOf(genesisState, [a, f]),
         );
         expect(held?.reason).toBe(LANDED_BLOCK_INVALID);
+        // A verdict: no timer replays it again at the same view.
+        expect(isRetriedHold(held!)).toBe(false);
         expect(held?.detail).toContain(f.hash);
         expect(held?.detail).toContain(hex32(7));
         expect((yield* retrieveRows).map((row) => row.headerHash)).toEqual([
@@ -254,6 +274,97 @@ describe("own landed blocks", () => {
       }),
     );
   }, 120_000);
+
+  it("retries the waits a foreign block's replay ends in and not its verdicts or unclassified failures", async () => {
+    const { a, f, genesisState, journalA } = await fixture();
+    const state = harness();
+    state.journals.set(a.hash, journalA);
+    const refused = Object.assign(new Error("connect ECONNREFUSED"), {
+      code: "ECONNREFUSED",
+    });
+    const cases: readonly (readonly [
+      Effect.Effect<ReplayOutcome, unknown>,
+      string,
+      boolean,
+    ])[] = [
+      [
+        Effect.succeed({ kind: "missing", detail: "x" }),
+        LANDED_BLOCK_AWAITING_DA,
+        true,
+      ],
+      [
+        Effect.succeed({ kind: "da_refetch_pending", detail: "x" }),
+        LANDED_BLOCK_DA_REFETCH_PENDING,
+        true,
+      ],
+      [
+        Effect.succeed({ kind: "event_unknown", detail: "x" }),
+        LANDED_BLOCK_EVENT_UNKNOWN,
+        true,
+      ],
+      [
+        Effect.succeed({ kind: "forced_order_pending", detail: "x" }),
+        LANDED_BLOCK_FORCED_ORDER_PENDING,
+        true,
+      ],
+      [
+        Effect.succeed({ kind: "incomplete", detail: "x" }),
+        LANDED_BLOCK_REPLAY_INCOMPLETE,
+        false,
+      ],
+      [
+        Effect.succeed({ kind: "invalid", detail: "x" }),
+        LANDED_BLOCK_INVALID,
+        false,
+      ],
+      [Effect.fail(refused), LANDED_BLOCK_REPLAY_FAILED, true],
+      [Effect.fail(new Error("boom")), LANDED_BLOCK_REPLAY_FAILED, false],
+    ];
+    await inNode(
+      Effect.gen(function* () {
+        for (const [ends, reason, retried] of cases) {
+          state.replayEnds = ends;
+          const held = yield* processLandedQueue(
+            ports(state),
+            queueOf(genesisState, [a, f]),
+          );
+          expect([held?.reason, isRetriedHold(held!)]).toEqual([
+            reason,
+            retried,
+          ]);
+        }
+        expect(state.replays.map((input) => input.headerHash)).toEqual(
+          cases.map(() => f.hash),
+        );
+      }),
+    );
+  }, 120_000);
+
+  it("retries a rebase blocked on landed processing, and not one blocked on a missing schema", () => {
+    const pending = blockedRebaseHold({ kind: "blocked", detail: "d" });
+    expect([pending.reason, isRetriedHold(pending)]).toEqual([
+      LANDED_BLOCK_REBASE_PENDING,
+      true,
+    ]);
+    const schema = blockedRebaseHold({
+      kind: "blocked",
+      detail: "d",
+      reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+    });
+    expect([schema.reason, isRetriedHold(schema)]).toEqual([
+      LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+      false,
+    ]);
+  });
+
+  it("retries a combined hold when any hold in it is retried, and not when none is", () => {
+    const wait = { reason: LANDED_BLOCK_REBASE_PENDING, detail: "w" };
+    const verdict = () =>
+      notRetried({ reason: LANDED_BLOCK_INVALID, detail: "v" });
+    expect(isRetriedHold(combineHolds([verdict(), wait])!)).toBe(true);
+    expect(isRetriedHold(combineHolds([verdict(), verdict()])!)).toBe(false);
+    expect(isRetriedHold(combineHolds([verdict()])!)).toBe(false);
+  });
 
   it("folds a merged own block into confirmed_ledger once its journal is locally applied", async () => {
     const { a, genesisState, journalA } = await fixture();

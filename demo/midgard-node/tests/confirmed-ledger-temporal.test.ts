@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 
 import { fullScanCounter } from "../src/database/confirmedLedger.js";
 import { DepositsDB } from "../src/database/index.js";
+import { isRetriedHold } from "../src/l1-events/driver.js";
 import type { LandedStateQueueElement } from "../src/l1-state-queue/index.js";
 import {
   pruneMerges,
@@ -171,6 +172,8 @@ describe("temporal confirmed_ledger on an own merged block", () => {
         });
         const wrongRoot = yield* processLandedQueue(ports(state), merged);
         expect(wrongRoot?.reason).toBe(CONFIRMED_LEDGER_BASE_MISMATCH);
+        // A verdict on the view: re-read on the next follower change only.
+        expect(isRetriedHold(wrongRoot!)).toBe(false);
         expect(wrongRoot?.detail).toContain(a.hash);
         expect((yield* Frontier.retrieve)?.headerHash).toBe(
           SDK.GENESIS_HEADER_HASH,
@@ -189,6 +192,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
         yield* sql`DELETE FROM confirmed_ledger WHERE outref = ${spent!}`;
         const missing = yield* processLandedQueue(ports(state), merged);
         expect(missing?.reason).toBe(CONFIRMED_LEDGER_BASE_MISMATCH);
+        expect(isRetriedHold(missing!)).toBe(false);
         expect(missing?.detail).toContain("spends");
         expect(yield* depositStatus(id)).toBe(DepositsDB.Status.Projected);
         expect((yield* retrieveMergeLinks).size).toBe(0);

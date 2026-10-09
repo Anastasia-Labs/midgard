@@ -11,8 +11,10 @@
  * MPF owner starts in the recompute itself.
  *
  * A failure fails the recompute as the named hold `startup_preparation_failed`
- * (with what failed); the driver retries it on its backoff and the process
- * stays up. It waits for the landed state queue the same way.
+ * (with what failed). The driver retries it on its backoff only while the
+ * failure is transient (a connection-class failure, or the landed state
+ * queue not ready yet: `StartupPreparationWaiting`); any other failure is
+ * not retried, and startup fails on it (`awaitFollowerViewOnStartup`).
  */
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect } from "effect";
@@ -34,14 +36,24 @@ import { releaseLedgerStoreLeaseOfPreviousNodeProcess } from "./listen-startup.r
 const step = <A, E, R>(label: string, effect: Effect.Effect<A, E, R>) =>
   Effect.mapError(
     effect,
-    (cause) => new Error(`${label}: ${formatUnknownError(cause)}`),
+    (cause) => new Error(`${label}: ${formatUnknownError(cause)}`, { cause }),
   );
+
+/**
+ * The landed state queue is not ready yet: a wait on the follower and the
+ * chain, which the driver retries (`retryable`).
+ */
+export class StartupPreparationWaiting extends Error {
+  readonly retryable = true;
+}
 
 export const prepareNodeOnStartup = Effect.gen(function* () {
   const waiting = yield* landedStateQueueStartupReasons;
   if (waiting.length > 0)
     return yield* Effect.fail(
-      new Error(`the landed state queue is not ready: ${waiting.join(", ")}`),
+      new StartupPreparationWaiting(
+        `the landed state queue is not ready: ${waiting.join(", ")}`,
+      ),
     );
   const { manifestId } = yield* ContractDeploymentIdentity;
   if (manifestId !== undefined)

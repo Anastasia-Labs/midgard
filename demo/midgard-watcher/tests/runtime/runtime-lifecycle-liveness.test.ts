@@ -6,7 +6,10 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { createWatcherRuntimeLifecycle } from "../../src/runtime/watcher-runtime.create-lifecycle.js";
+import {
+  createWatcherRuntimeLifecycle,
+  WatcherFollowerExhaustedError,
+} from "../../src/runtime/watcher-runtime.create-lifecycle.js";
 
 type LifecycleInput = Parameters<typeof createWatcherRuntimeLifecycle>[0];
 
@@ -97,4 +100,23 @@ describe("watcher production lifecycle liveness", () => {
       });
     },
   );
+
+  it("ends liveness, rejecting with the named reason, when the follower's transient budget ran out", async () => {
+    const handle = lifecycle({
+      done: Promise.resolve({
+        state: "exhausted",
+        waiting: { cause: "store", detail: "the database did not answer" },
+      }),
+    });
+    await expect(handle.runtime.done).rejects.toBeInstanceOf(
+      WatcherFollowerExhaustedError,
+    );
+    await expect(handle.runtime.done).rejects.toThrow(
+      "l1_follower_transient_exhausted: the database did not answer",
+    );
+    expect(handle.runtime.status()).toMatchObject({
+      phase: "failed",
+      liveness: false,
+    });
+  });
 });

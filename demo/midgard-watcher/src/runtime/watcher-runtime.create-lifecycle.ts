@@ -1,3 +1,5 @@
+import { FOLLOWER_TRANSIENT_EXHAUSTED } from "@al-ft/midgard-l1-follower";
+
 import { type WatcherAvailabilityRuntime } from "../availability/runtime.js";
 import {
   type WatcherFaultProofApplication,
@@ -13,10 +15,46 @@ import {
 } from "./watcher-runtime.launch-checks.js";
 
 /**
- * The running watcher. Liveness ends only when the proof supervisor or the
- * operations server stops; an L1 condition (the follower behind, waiting or
- * stopped on an intervention, a failed decision pass, a failed user-event
- * history) is a readiness reason and never ends the process.
+ * The follower stopped because transient store failures outlived its budget
+ * (`l1_follower_transient_exhausted`): `runtime.done` rejects with it and
+ * the process exits non-zero, its supervisor's restart being the backoff
+ * (owner ruling 2026-10-09).
+ */
+export class WatcherFollowerExhaustedError extends Error {
+  override readonly name = "WatcherFollowerExhaustedError";
+  readonly reason = FOLLOWER_TRANSIENT_EXHAUSTED;
+  constructor(detail: string) {
+    super(
+      `${FOLLOWER_TRANSIENT_EXHAUSTED}: ${detail}; a transient failure outlived its bound and the watcher exits non-zero`,
+    );
+  }
+}
+
+/** Rejects once the follower stopped on an exhausted transient budget. */
+const followerExhausted = (
+  follower: Pick<WatcherFollowerRuntime, "done">,
+): Promise<never> =>
+  new Promise<never>((_resolve, reject) => {
+    void follower.done.then(
+      (final) => {
+        if (final?.state === "exhausted")
+          reject(
+            new WatcherFollowerExhaustedError(
+              final.waiting?.detail ?? "transient budget exhausted",
+            ),
+          );
+      },
+      () => undefined,
+    );
+  });
+
+/**
+ * The running watcher. Liveness ends when the proof supervisor or the
+ * operations server stops, or when the follower's transient store failures
+ * outlived their budget (`WatcherFollowerExhaustedError`); any other L1
+ * condition (the follower behind, waiting or stopped on an intervention, a
+ * failed decision pass, a failed user-event history) is a readiness reason
+ * and never ends the process.
  */
 export const createWatcherRuntimeLifecycle = (
   input: Readonly<{
@@ -52,6 +90,7 @@ export const createWatcherRuntimeLifecycle = (
   const runtimeDone = Promise.race([
     faultProofSupervisor.done,
     operationsHttp.done,
+    followerExhausted(follower),
   ]);
   const caughtUpPromise = Promise.race([
     decisionDriver.caughtUp.then(() => {

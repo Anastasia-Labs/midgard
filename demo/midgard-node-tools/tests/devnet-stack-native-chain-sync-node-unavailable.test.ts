@@ -44,19 +44,19 @@ describe("native chain-sync startup while the node does not answer", () => {
   it("waits for a restarting node and starts exactly one stream once it answers", async () => {
     const { taken, warn, runtime } = await startWith(
       [
-        "hello:node_handshake_failed",
-        "hello:node_handshake_failed",
+        "hello:node_connection_lost",
+        "hello:node_connection_lost",
         "fail:node_unavailable",
       ],
       {},
     );
     const started = await runtime;
     try {
-      // The transport rides out the refused handshakes within the start
+      // The transport rides out the dropped handshakes within the start
       // bound; the refused open is retried as a new start.
       expect(taken()).toEqual([
-        "step hello:node_handshake_failed",
-        "step hello:node_handshake_failed",
+        "step hello:node_connection_lost",
+        "step hello:node_connection_lost",
         "step fail:node_unavailable",
         "step honest",
       ]);
@@ -109,6 +109,39 @@ describe("native chain-sync startup while the node does not answer", () => {
     } finally {
       await started.close();
     }
+  });
+
+  it("ends the start, named, once the node stays unavailable past its budget", async () => {
+    const outage = Array.from({ length: 40 }, () => "fail:node_unavailable");
+    const { taken, warn, runtime } = await startWith(outage, {
+      budgetMs: 150,
+      retryDelayMs: () => 20,
+    });
+    await expect(runtime).rejects.toMatchObject({
+      name: "WatcherL1UnavailableError",
+      reason: "watcher_l1_unavailable",
+      cause: { code: "node_unavailable" },
+    });
+    // Retried within the budget, and not past it.
+    expect(taken().length).toBeGreaterThan(1);
+    expect(taken().length).toBeLessThan(outage.length);
+    expect(taken()).not.toContain("step honest");
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("refuses startup at once when the node refuses the handshake", async () => {
+    const { taken, warn, runtime } = await startWith(
+      ["hello:node_handshake_failed", "hello:node_handshake_failed"],
+      // A short budget: were the refusal retried, the start would end on it.
+      { budgetMs: 2_000 },
+    );
+    await expect(runtime).rejects.toMatchObject({
+      name: "NativeChainSyncStartupFailure",
+      code: "node_handshake_failed",
+    });
+    // The transport does not restart its sidecar on a refused handshake.
+    expect(taken()).toEqual(["step hello:node_handshake_failed"]);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it.each([
