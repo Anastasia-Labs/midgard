@@ -120,7 +120,9 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
    * resolves from L1 facts. */
   journalDecisionMissing: readonly WatcherDecisionHold[];
   /** Released or final objectives whose workflow directory could not be
-   * removed: their rows stay and every admission retries the removal. */
+   * removed (their rows stay), and removed directories' tombstones that
+   * could not be deleted: every admission retries the removal, and readiness
+   * reports fault_proof_objective_cleanup_failed until it succeeds. */
   objectiveCleanupFailures: readonly WatcherProofCleanupFailure[];
   /** A busy or locked database the supervisor holds on, or null: readiness
    * reports journal_busy until the in-process requeue after its backoff. */

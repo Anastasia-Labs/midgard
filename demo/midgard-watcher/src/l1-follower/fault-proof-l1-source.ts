@@ -123,8 +123,13 @@ const captureOnce = async (
   for (const history of histories)
     for (const { txHash, inclusionPoint } of history.transactions) {
       const previous = inclusionByHash.get(txHash);
+      // A store that contradicts itself is a named refusal: the objective
+      // is held by it, never the process failed.
       if (previous !== undefined && !samePoint(previous, inclusionPoint))
-        throw new Error(`unit histories disagree about transaction ${txHash}`);
+        throw new WatcherFaultProofL1RefusedError(
+          "store_inconsistent",
+          `unit histories disagree about transaction ${txHash}`,
+        );
       inclusionByHash.set(txHash, inclusionPoint);
     }
   const transactions: FraudProofRawL1Transaction[] = [];

@@ -14,7 +14,10 @@ import {
 } from "./fault-proof-application.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
 import { readWatcherProofExecution } from "./fault-proof-objective-journal.js";
-import { watcherJournalCapacityReached } from "./fault-proof-objective-table.js";
+import {
+  isBeyondWatcherRollbackRecovery,
+  watcherJournalCapacityReached,
+} from "./fault-proof-objective-table.js";
 import { createWatcherFaultProofProgressAuthority } from "./fault-proof-progress-authority.js";
 import {
   openWatcherFaultProofQueueJournal,
@@ -181,16 +184,42 @@ export const createSupervisor = (input: {
   >();
   const selectedExecutions = new Map<string, string>();
   const processedContexts = new Map<string, string>();
-  const completedValidations = new Map<string, string>();
-  const rememberCompletion = (key: string, validation: string): void => {
+  const completedValidations = new Map<
+    string,
+    Readonly<{ validation: string; confirmationDepth: number }>
+  >();
+  const rememberCompletion = (
+    key: string,
+    validation: string,
+    confirmationDepth: number,
+  ): void => {
     completedValidations.delete(key);
-    completedValidations.set(key, validation);
+    completedValidations.set(key, { validation, confirmationDepth });
     if (completedValidations.size > MAX_RECOVERABLE_WORKFLOWS) {
       const oldest = completedValidations.keys().next().value!;
       completedValidations.delete(oldest);
       selectedExecutions.delete(oldest);
       processedContexts.delete(oldest);
     }
+  };
+  // One finality threshold (plan section 9: depth > k is final): a completion
+  // is applicable only once it is beyond rollback recovery, the depth its
+  // completion marker needs, so one verified at exactly k waits for the next
+  // block instead of finishing unmarked with its L1 history pinned until a
+  // restart. Without a k nothing is marked and the check is unchanged.
+  const securityParameter = input.proofRetention?.securityParameter;
+  const verifyCompleted: SupervisorDependencies["verifyCompleted"] = async (
+    request,
+  ) => {
+    const verification = await input.dependencies.verifyCompleted(request);
+    return verification.kind === "applicable" &&
+      securityParameter !== undefined &&
+      !isBeyondWatcherRollbackRecovery(
+        verification.confirmationDepth,
+        securityParameter,
+      )
+      ? Object.freeze({ kind: "pending", reason: "completion_not_final" })
+      : verification;
   };
   type Update = Readonly<{
     job: WatcherFaultProofJob;
@@ -401,15 +430,19 @@ export const createSupervisor = (input: {
       }
       if (completed !== undefined && execution !== undefined) {
         const validationKey = `${job.rollbackGeneration}:${watcherSha256CanonicalJson(execution.entries)}`;
+        const cached = completedValidations.get(key);
         const verification =
           marker !== null
             ? ({
                 kind: "applicable",
                 confirmationDepth: marker.confirmationDepth,
               } as const)
-            : completedValidations.get(key) === validationKey
-              ? ({ kind: "applicable", confirmationDepth: 0 } as const)
-              : await input.dependencies.verifyCompleted({
+            : cached?.validation === validationKey
+              ? ({
+                  kind: "applicable",
+                  confirmationDepth: cached.confirmationDepth,
+                } as const)
+              : await verifyCompleted({
                   job,
                   execution,
                   actuationPermit,
@@ -421,7 +454,11 @@ export const createSupervisor = (input: {
             rollbackGeneration: job.rollbackGeneration,
           });
         if (verification.kind === "applicable") {
-          rememberCompletion(key, validationKey);
+          rememberCompletion(
+            key,
+            validationKey,
+            verification.confirmationDepth,
+          );
           await progressAuthority.markCompleted(job, {
             execution,
             confirmationDepth: verification.confirmationDepth,
@@ -514,12 +551,13 @@ export const createSupervisor = (input: {
               job,
               execution: updated,
               actuationPermit,
-              verifyCompleted: input.dependencies.verifyCompleted,
+              verifyCompleted,
               outcome,
               onApplicable: async (verified) => {
                 rememberCompletion(
                   key,
                   `${job.rollbackGeneration}:${watcherSha256CanonicalJson(verified.execution.entries)}`,
+                  verified.confirmationDepth,
                 );
                 await progressAuthority.markCompleted(job, verified);
               },

@@ -757,56 +757,64 @@ describe("proof objective progress with durable funding and journals", () => {
   });
 
   it.each([
-    ["marked beyond k is pruned in process", 2_160, true],
-    ["not yet k deep keeps its rows and directory", 1_000_000_000, false],
-  ])(
-    "a completion %s once its job has finished",
-    async (_name, securityParameter, pruned) => {
-      const test = await setup();
-      test.setAfterRun(async () => {
-        await test.writeTerminal();
-        return { kind: "completed" };
-      });
-      const supervisor = test.createSupervisor({
-        ...storelessProofRetention,
-        securityParameter,
-      });
-      await test.request(supervisor, 1, test.fixture.old).accepted;
-      await test.idle(supervisor);
-      // Kept while an observation still queues its header.
-      await supervisor.requestProgress({
-        observation: progressObservation({
-          deploymentFingerprint: deploymentIdentity.manifestId,
-          header: test.fixture.fixture,
-          revision: 2,
-        }),
-        rollbackGeneration: "2",
-      });
-      await test.idle(supervisor);
-      expect(existsSync(test.fixture.journalDirectory)).toBe(true);
-      // The next pass that does not prunes a final completion, as the next
-      // start would.
-      await test.request(supervisor, 3, test.fixture.fresh, false).accepted;
-      await test.idle(supervisor);
-      expect(supervisor.status()).toMatchObject({
-        phase: "accepting",
-        unfinishedObjectiveCount: 0,
-        objectiveCleanupFailures: [],
-      });
-      const root = test.fixture.journalRoot;
-      expect(existsSync(test.fixture.journalDirectory)).toBe(!pruned);
-      expect(objectiveRows(root)).toEqual(
-        pruned ? [] : [`doubleSpend/${test.fixture.fresh.headerHash}`],
-      );
-      expect(journalStates(root, "fault_proof_queue")).toEqual(
-        pruned ? [] : ["finished"],
-      );
-      expect(journalStates(root, "fault_decisions")).toHaveLength(
-        pruned ? 0 : 2,
-      );
-      expect(test.runOrResume).toHaveBeenCalledOnce();
-    },
-  );
+    [
+      "marked beyond k is pruned in process once its job has finished",
+      2_160,
+      true,
+    ],
+    // Depth > k is final (plan section 9): one verified at or below k is not
+    // applicable, so it is never finished unmarked; it stays open and pinned
+    // and is verified again on each observation until it is beyond k.
+    [
+      "not yet beyond k stays open with its rows and directory",
+      1_000_000_000,
+      false,
+    ],
+  ])("a completion %s", async (_name, securityParameter, pruned) => {
+    const test = await setup();
+    test.setAfterRun(async () => {
+      await test.writeTerminal();
+      return { kind: "completed" };
+    });
+    const supervisor = test.createSupervisor({
+      ...storelessProofRetention,
+      securityParameter,
+    });
+    await test.request(supervisor, 1, test.fixture.old).accepted;
+    await test.idle(supervisor);
+    // Kept while an observation still queues its header.
+    await supervisor.requestProgress({
+      observation: progressObservation({
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        header: test.fixture.fixture,
+        revision: 2,
+      }),
+      rollbackGeneration: "2",
+    });
+    await test.idle(supervisor);
+    expect(existsSync(test.fixture.journalDirectory)).toBe(true);
+    // The next pass that does not prunes a final completion, as the next
+    // start would.
+    await test.request(supervisor, 3, test.fixture.fresh, false).accepted;
+    await test.idle(supervisor);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      unfinishedObjectiveCount: pruned ? 0 : 1,
+      objectiveCleanupFailures: [],
+    });
+    const root = test.fixture.journalRoot;
+    expect(existsSync(test.fixture.journalDirectory)).toBe(!pruned);
+    expect(objectiveRows(root)).toEqual(
+      pruned ? [] : [`doubleSpend/${test.fixture.fresh.headerHash}`],
+    );
+    expect(journalStates(root, "fault_proof_queue")).toEqual(
+      pruned ? [] : ["finished"],
+    );
+    if (!pruned)
+      expect(test.verifyCompleted.mock.calls.length).toBeGreaterThan(1);
+    expect(journalStates(root, "fault_decisions")).toHaveLength(pruned ? 0 : 2);
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+  });
 
   it("leaves a final completion's directory to the job handed over after its finish", async () => {
     const test = await setup();
@@ -961,7 +969,7 @@ describe("proof objective progress with durable funding and journals", () => {
 
   it.each([
     ["marked beyond k is final", 2_160, 1],
-    ["not yet k deep is verified again", 1_000_000_000, 2],
+    ["not yet beyond k stays open and is verified again", 1_000_000_000, 2],
   ])(
     "a completion %s for a job queued at a later generation",
     async (_name, securityParameter, verifications) => {
@@ -999,7 +1007,9 @@ describe("proof objective progress with durable funding and journals", () => {
       await Promise.race([test.completionVerified, supervisor.done]);
       await test.idle(supervisor);
       expect(supervisor.status().phase).not.toBe("blocked");
-      expect(supervisor.status().unfinishedObjectiveCount).toBe(0);
+      expect(supervisor.status().unfinishedObjectiveCount).toBe(
+        verifications === 1 ? 0 : 1,
+      );
       expect(test.verifyCompleted).toHaveBeenCalledTimes(verifications);
       expect(test.runOrResume).toHaveBeenCalledTimes(1);
       if (verifications === 1) expect(holds.at(-1)).toBe("release");

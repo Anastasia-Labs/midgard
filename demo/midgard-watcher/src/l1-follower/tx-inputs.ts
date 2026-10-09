@@ -38,6 +38,8 @@ import {
 
 export const L1_TX_INPUTS_UNRESOLVED = "l1_tx_inputs_unresolved";
 export const L1_TX_INPUTS_UNRESOLVABLE = "l1_tx_inputs_unresolvable";
+/** The tx-inputs assessment could not be read (a degradation, count 1). */
+export const L1_TX_INPUTS_UNREADABLE = "l1_tx_inputs_unreadable";
 
 /** A named condition reported in status and metrics that never fails readiness. */
 export type WatcherL1Degradation = Readonly<{

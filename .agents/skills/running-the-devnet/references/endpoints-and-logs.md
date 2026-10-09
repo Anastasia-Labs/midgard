@@ -6,19 +6,19 @@ harness environment before building a URL.
 
 ## Endpoints
 
-| Service                 | Default port                                                                      | Path                        | Bar   | Answer                                                                                                                                                                                                                                        |
-| ----------------------- | --------------------------------------------------------------------------------- | --------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| midgard-node            | `PORT`, 3000                                                                      | `/healthz`                  | Live  | 200 `{"status":"ok","now":…}` whenever the HTTP server runs                                                                                                                                                                                   |
-| midgard-node            | `PORT`, 3000                                                                      | `/readyz`                   | Ready | 200 with `ready: true`, else 503 with `ready: false` and `reasons`                                                                                                                                                                            |
-| midgard-node            | `PORT`, 3000                                                                      | `/pipeline-status`          | Work  | Commit, confirmation and merge pipeline state                                                                                                                                                                                                 |
-| midgard-node metrics    | `PROM_METRICS_PORT`, 9464                                                         | `/metrics`                  | Work  | Prometheus text; served only when `listen` runs with `--with-monitoring`                                                                                                                                                                      |
-| DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/healthz`                  | Live  | 200 `{"ok":true}`                                                                                                                                                                                                                             |
-| DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/readyz`                   | Ready | 200 or 503 with the readiness snapshot: `l1Source.status` (`uninitialized`, `healthy`, `intervention` with `l1Source.intervention` naming the follower's reason), `counts.signatures`, `counts.submittedOrConfirmedL1Attestations`, `reasons` |
-| DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/v1/manifest`              | -     | The committee's runtime manifest                                                                                                                                                                                                              |
-| Watcher operations      | `WATCHER_OPERATIONS_PORT`, 7402                                                   | `/v1/status`, `/v1/metrics` | Ready | Need a bearer; 401 without one                                                                                                                                                                                                                |
-| Kupo                    | 1442 (demo stack `KUPO_PORT`), 2442 (phase4)                                      | `/health`                   | Ready | 202 while replaying, 200 once caught up; JSON body with `connection_status` and `most_recent_checkpoint`                                                                                                                                      |
-| Ogmios                  | 1337 (demo stack `OGMIOS_PORT`), 2337 (phase4)                                    | `/health`                   | Ready | Ogmios health JSON                                                                                                                                                                                                                            |
-| Phase4 acceptance nodes | `MIDGARD_PHASE4_NODE_A_PORT` 3101, `_B_PORT` 3102; metrics `_A_METRICS_PORT` 4101 | `/readyz`, `/metrics`       | Ready | As midgard-node                                                                                                                                                                                                                               |
+| Service                 | Default port                                                                      | Path                                   | Bar   | Answer                                                                                                                                                                                                                                        |
+| ----------------------- | --------------------------------------------------------------------------------- | -------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| midgard-node            | `PORT`, 3000                                                                      | `/healthz`                             | Live  | 200 `{"status":"ok","now":…}` whenever the HTTP server runs                                                                                                                                                                                   |
+| midgard-node            | `PORT`, 3000                                                                      | `/readyz`                              | Ready | 200 with `ready: true`, else 503 with `ready: false` and `reasons`                                                                                                                                                                            |
+| midgard-node            | `PORT`, 3000                                                                      | `/pipeline-status`                     | Work  | Commit, confirmation and merge pipeline state                                                                                                                                                                                                 |
+| midgard-node metrics    | `PROM_METRICS_PORT`, 9464                                                         | `/metrics`                             | Work  | Prometheus text; served only when `listen` runs with `--with-monitoring`                                                                                                                                                                      |
+| DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/healthz`                             | Live  | 200 `{"ok":true}`                                                                                                                                                                                                                             |
+| DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/readyz`                              | Ready | 200 or 503 with the readiness snapshot: `l1Source.status` (`uninitialized`, `healthy`, `intervention` with `l1Source.intervention` naming the follower's reason), `counts.signatures`, `counts.submittedOrConfirmedL1Attestations`, `reasons` |
+| DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/v1/manifest`                         | -     | The committee's runtime manifest                                                                                                                                                                                                              |
+| Watcher operations      | `WATCHER_OPERATIONS_PORT`, 7402                                                   | `/readyz`, `/v1/status`, `/v1/metrics` | Ready | `/readyz` 200, or 503 with `reasons` (see the watcher section below); `/v1/status` 200 whenever the server runs, which is before the L1-dependent startup stages; no bearer                                                                   |
+| Kupo                    | 1442 (demo stack `KUPO_PORT`), 2442 (phase4)                                      | `/health`                              | Ready | 202 while replaying, 200 once caught up; JSON body with `connection_status` and `most_recent_checkpoint`                                                                                                                                      |
+| Ogmios                  | 1337 (demo stack `OGMIOS_PORT`), 2337 (phase4)                                    | `/health`                              | Ready | Ogmios health JSON                                                                                                                                                                                                                            |
+| Phase4 acceptance nodes | `MIDGARD_PHASE4_NODE_A_PORT` 3101, `_B_PORT` 3102; metrics `_A_METRICS_PORT` 4101 | `/readyz`, `/metrics`                  | Ready | As midgard-node                                                                                                                                                                                                                               |
 
 Sources:
 
@@ -48,8 +48,9 @@ Sources:
   for Kupo; the later snapshot step demands `connection_status: "connected"`
   (`parse_kupo_checkpoint`). `[review]`
 - Both watcher healthchecks accept 200 **or 401**, so they prove only that the
-  HTTP server answers (bar 2). Nothing without the operations bearer shows
-  watcher readiness. `[review]`
+  HTTP server answers (bar 2); `/readyz` shows watcher readiness. The server
+  checks no bearer (`demo/midgard-watcher/src/runtime/operations-http.ts`),
+  so the 401 branch never fires. `[review]`
 - The devnet journey's idle phase ends by waiting for node `/readyz` to return
   200 (`journey.waitReady()` in
   `demo/midgard-node-tools/src/devnet-stack/journey-scenario.ts`, up to the
@@ -303,6 +304,48 @@ first hold by priority is the reason, the rest are in its detail):
 - `landed_block_own_revival_pending`, `confirmed_ledger_own_block_pending`,
   `landed_block_rebase_pending`: this node's own block waits to be revived
   or applied locally, or the working ledger waits for the rebase. Wait.
+
+## Watcher `/readyz` reasons
+
+The watcher's `/readyz` answers 200 when ready, else 503 with `reasons` and
+`l1` (the L1 reasons with their detail); `/v1/status` carries the same
+`readinessReasons` and the `l1Degradations`, which never fail readiness. No
+reason below stops the process. This list covers the reasons and
+degradations added for the L1 follower; the full set is
+`WatcherOperationsReadinessReason` in
+`demo/midgard-watcher/src/runtime/operations-observability.watcher-operations-metrics.ts`.
+
+- `startup:<stage>`: the operations server binds before the L1-dependent
+  startup stages, and until the runtime's observability exists `/readyz`
+  names the stage most recently begun (`l1_node_identity`,
+  `workflow_readiness`, `protocol_parameters`). The body's `startup` field
+  holds the stage's latest report; `outcome: "pending"` with `error` and
+  `retryAfterMs` means it is waiting out an unanswering node. `/v1/status`
+  answers 200 meanwhile. Wait; check the node if it lasts.
+- `fault_proof_objective_unreadable`: at startup an objective's workflow
+  journal could not be read (a removal interrupted part way, a symlink, a
+  corrupt journal). The objective is held, never run; clears once its header
+  leaves the finalized queue, which forgets its rows. Report it with the
+  detail.
+- `fault_proof_objective_cleanup_failed`: a released or final objective's
+  workflow directory, or a removal's tombstone under
+  `<journal root>/fault-proofs/.removing`, could not be removed;
+  `supervisor.objectiveCleanupFailures` names each. Every admission retries;
+  fix the permissions or disk and wait.
+- `fault_proof_l1_refused:store_inconsistent`: the follower's stored facts
+  contradict one another (two unit histories place one transaction at
+  different points). The objective is held; report it with the detail.
+- `l1_follower_loop_failed`: the follow loop threw. It restarts after a
+  backoff (250 ms doubling to 30 s) and the reason clears once the restarted
+  loop reports a status; report the detail.
+- `deadline_at_risk`, `deadline_unsafe`: a proof deadline is near or past its
+  safe start. The watcher keeps running and keeps proving; read
+  `deadlineHealth` and `remainingSafeStartMs` in `/v1/metrics`.
+
+Degradations (`l1Degradations`, status and metrics only):
+`l1_tx_inputs_unreadable` and `l1_event_refusals_unreadable` name a failed
+read of the tx-inputs assessment or of the refusals table, with count 1 and
+the error as detail; they clear on the next good read.
 
 ## Logs
 

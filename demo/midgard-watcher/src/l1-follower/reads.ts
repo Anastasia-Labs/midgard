@@ -3,9 +3,9 @@ import type { OutRef, SqlTx } from "@al-ft/midgard-l1-follower";
 import { CML } from "@lucid-evolution/lucid";
 
 /**
- * Exact output reads over the follower's facts, in the shape the old
- * Kupmios raw source returns them (`rawUtxoFromOutput`): the output's
- * canonical CBOR as re-encoded from its creating transaction body.
+ * Exact output reads over the follower's facts, as `FraudProofRawL1Utxo`:
+ * the output's canonical CBOR as re-encoded from its creating transaction
+ * body.
  */
 
 export const outRefLabel = (outRef: OutRef): string =>
@@ -23,7 +23,7 @@ export const parseOutRefLabel = (label: string): OutRef => {
   return { txHash: Buffer.from(txHash, "hex"), index: Number(index) };
 };
 
-/** One output as the Kupmios raw source reports it. */
+/** One output as a `FraudProofRawL1Utxo`, in canonical CBOR. */
 export const rawUtxo = (
   outRef: string,
   output: CML.TransactionOutput,

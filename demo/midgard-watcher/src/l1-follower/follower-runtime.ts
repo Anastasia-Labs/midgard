@@ -19,7 +19,11 @@ import {
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
-import { eventRefusalDegradationsIn } from "./event-refusals.js";
+import { watcherL1TransientRetryDelayMs } from "../l1/transient-retry.js";
+import {
+  eventRefusalDegradationsIn,
+  L1_EVENT_REFUSALS_UNREADABLE,
+} from "./event-refusals.js";
 import {
   watcherProjection,
   type WatcherProjectionDeployment,
@@ -38,6 +42,7 @@ import type { FollowerRawReads } from "./raw-reads.types.js";
 import { WATCHER_PROOF_PIN_EVENTS_TABLE } from "./tables.js";
 import {
   createTxInputsResolver,
+  L1_TX_INPUTS_UNREADABLE,
   type WatcherL1Degradation,
 } from "./tx-inputs.js";
 import { readWatcherQueueView } from "./view.js";
@@ -55,6 +60,39 @@ import { readWatcherQueueView } from "./view.js";
 
 /** The configured L1 origin is missing: the follower has no start point. */
 export const L1_ORIGIN_NOT_CONFIGURED = "l1_origin_not_configured";
+
+/**
+ * The follow loop threw (a defect: it reports every chain and node condition
+ * as a status). It is restarted after a capped backoff (250 ms doubling to
+ * 30 s); clears once the restarted loop reports a status.
+ */
+export const L1_FOLLOWER_LOOP_FAILED = "l1_follower_loop_failed";
+
+/** A follow run this long before it throws restarts the backoff. */
+const LOOP_STABLE_MS = 30_000;
+
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+/** A degradation naming a read that failed, so it never reads as none. */
+const unreadable =
+  (reason: string) =>
+  (error: unknown): readonly WatcherL1Degradation[] => [
+    Object.freeze({ reason, count: 1, detail: messageOf(error) }),
+  ];
+
+/** Resolves after `ms`, or as soon as `signal` aborts. */
+const pause = (ms: number, signal: AbortSignal): Promise<void> =>
+  new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
 
 export type WatcherFollowerReadiness = Readonly<{
   reason: string;
@@ -286,39 +324,63 @@ export const openWatcherFollowerRuntime = (
     txInputs.trigger();
   });
 
+  // Set while the follow loop is down after a throw, until the restarted
+  // loop reports a status.
+  let loopFailure: string | null = null;
+  const follow = (origin: OriginConfig) =>
+    followChain({
+      store,
+      transport,
+      origin,
+      signal: abort.signal,
+      log: (line) => log(`L1 follower: ${line}`),
+      // `l1_node_behind` at the follower's default bound; it clears
+      // when the node catches up.
+      nodeBehind: { slotTime },
+      onStatus: (status) => {
+        latest = status;
+        loopFailure = null;
+        if (status.cursor !== null && !seeder.ready()) stepSeed();
+        if (status.cursor !== null) txInputs.trigger();
+        for (const listener of listeners) {
+          try {
+            listener(status);
+          } catch (error) {
+            log(`L1 follower listener failed: ${messageOf(error)}`);
+          }
+        }
+      },
+    });
+  // followChain settles only on abort or an intervention, reporting every
+  // other condition as a status; a throw is a defect. The loop is restarted
+  // after a capped backoff rather than left stopped, and named in readiness
+  // (`l1_follower_loop_failed`) until the restart reports a status. The
+  // backoff grows over consecutive throws, and starts again from 250 ms
+  // after a run that lasted at least the 30 s cap.
+  const followUntilStopped = async (
+    origin: OriginConfig,
+  ): Promise<FollowStatus | null> => {
+    let failures = 0;
+    for (;;) {
+      const startedAt = performance.now();
+      try {
+        return await follow(origin);
+      } catch (error) {
+        if (abort.signal.aborted) return latest;
+        failures =
+          performance.now() - startedAt >= LOOP_STABLE_MS ? 1 : failures + 1;
+        const retryAfterMs = watcherL1TransientRetryDelayMs(failures);
+        loopFailure = `${messageOf(error)}; restarting in ${retryAfterMs.toString()} ms`;
+        log(`L1 follower loop failed: ${loopFailure}`);
+        await pause(retryAfterMs, abort.signal);
+        if (abort.signal.aborted) return latest;
+      }
+    }
+  };
   const done: Promise<FollowStatus | null> =
     input.origin === null
       ? Promise.resolve(null)
-      : followChain({
-          store,
-          transport,
-          origin: input.origin,
-          signal: abort.signal,
-          log: (line) => log(`L1 follower: ${line}`),
-          // `l1_node_behind` at the follower's default bound; it clears
-          // when the node catches up.
-          nodeBehind: { slotTime },
-          onStatus: (status) => {
-            latest = status;
-            if (status.cursor !== null && !seeder.ready()) stepSeed();
-            if (status.cursor !== null) txInputs.trigger();
-            for (const listener of listeners) {
-              try {
-                listener(status);
-              } catch (error) {
-                log(
-                  `L1 follower listener failed: ${error instanceof Error ? error.message : String(error)}`,
-                );
-              }
-            }
-          },
-        }).catch((error: unknown) => {
-          // followChain never throws; a throw here is a defect, kept visible.
-          log(
-            `L1 follower loop failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          return latest;
-        });
+      : followUntilStopped(input.origin);
 
   const readiness = async (): Promise<readonly WatcherFollowerReadiness[]> => {
     if (input.origin === null)
@@ -330,6 +392,11 @@ export const openWatcherFollowerRuntime = (
         },
       ];
     const reasons: WatcherFollowerReadiness[] = [];
+    if (loopFailure !== null)
+      reasons.push({
+        reason: L1_FOLLOWER_LOOP_FAILED,
+        detail: loopFailure,
+      });
     if (latest === null)
       reasons.push({
         reason: "l1_follower_catching_up",
@@ -358,7 +425,7 @@ export const openWatcherFollowerRuntime = (
     } catch (error) {
       reasons.push({
         reason: "l1_follower_store_unreadable",
-        detail: error instanceof Error ? error.message : String(error),
+        detail: messageOf(error),
       });
     }
     return reasons;
@@ -374,18 +441,22 @@ export const openWatcherFollowerRuntime = (
     status: () => latest,
     readiness,
     degradations: async () => {
-      const inputs = await txInputs.assess().then(
-        ({ degradations }) => degradations,
-        () => [],
-      );
-      // The refusals table exists only with the event projection; a failed
-      // read of it never hides the other degradations.
+      // A failed read is named (`l1_tx_inputs_unreadable`,
+      // `l1_event_refusals_unreadable`) rather than read as nothing to
+      // report, and never hides the other degradations.
+      const inputs = await txInputs
+        .assess()
+        .then(
+          ({ degradations }) => degradations,
+          unreadable(L1_TX_INPUTS_UNREADABLE),
+        );
+      // The refusals table exists only with the event projection.
       const refusals =
         input.eventProjection === undefined
           ? []
           : await store
               .transaction("read", eventRefusalDegradationsIn)
-              .catch(() => []);
+              .catch(unreadable(L1_EVENT_REFUSALS_UNREADABLE));
       return [...inputs, ...proofRetention.degradations(), ...refusals];
     },
     onChange: (listener: (status: FollowStatus) => void) => {

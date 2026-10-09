@@ -217,6 +217,20 @@ export type WatcherOperationsReadinessReason =
    * `<category>/<headerHash>`. Held, never run again, the process up; clears
    * once its header leaves the finalized queue. */
   | "fault_proof_start_deadline_passed"
+  /** Startup could not read a fault-proof objective's workflow directory (a
+   * symlinked path, a sequence gap a partial delete left, a foreign
+   * execution, an I/O error); it is listed in
+   * `supervisor.journalDecisionMissing` with this `readiness` and the detail
+   * `<category>/<headerHash>: <failure>`. Held, never run again, the process
+   * up; clears once its header leaves the finalized queue, which forgets its
+   * rows. */
+  | "fault_proof_objective_unreadable"
+  /** A released or final objective's workflow directory could not be
+   * removed (its rows stay and keep their slot under the objective cap), or
+   * a removed directory's tombstone could not be deleted;
+   * `supervisor.objectiveCleanupFailures` lists each with its failure. Every
+   * admission retries; clears once the removal succeeds. */
+  | "fault_proof_objective_cleanup_failed"
   /** A journal database was busy or locked past its timeout;
    * `supervisor.journalBusy` names the failure. The work is requeued in
    * process from durable state after a 1-30 s backoff; clears then. */

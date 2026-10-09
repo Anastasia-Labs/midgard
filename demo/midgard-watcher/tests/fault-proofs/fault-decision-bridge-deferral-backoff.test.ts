@@ -2,7 +2,6 @@ import {
   FraudProofL1UnavailableError,
   RetainedDaPayloadUnavailableError,
 } from "@al-ft/midgard-fault-proofs";
-import { KupmiosError } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { watcherDaFetchAlertSubject } from "../../src/runtime/operations-observability.alert-book.js";
@@ -79,55 +78,6 @@ describe("fault decision bridge deferral on a transient", () => {
     expect(h.application.classifyHeader).toHaveBeenCalledTimes(4);
     expect(h.enqueuedGenerations).toHaveLength(2);
     expect(new Set(h.enqueuedGenerations).size).toBe(1);
-  });
-
-  it("waits out a retryable Lucid provider error from the classifier and targets the fault once", async () => {
-    const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
-    const [faulty] = current.finalizedHeaders;
-    const observability = operations();
-    let down = true;
-    const h = harness({
-      current,
-      categoryByHeader: { [faulty!.headerHash]: "doubleSpend" },
-      operationsSink: observability.sink,
-      nowMs: IN_WINDOW,
-      classifyOverride: (fresh) => {
-        if (down)
-          throw new KupmiosError({
-            protocol: "kupo",
-            operation: "getUtxosByOutRef",
-            status: 503,
-          });
-        return fresh;
-      },
-    });
-    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
-    expect(outcomes(observability)).toEqual(["pending_l1"]);
-    down = false;
-    await h.bridge.reconcileAndDispatch(current);
-    expect(h.enqueued.map(({ headerHash }) => headerHash)).toEqual([
-      faulty!.headerHash,
-    ]);
-    expect(h.application.classifyHeader).toHaveBeenCalledTimes(2);
-  });
-
-  it("keeps a Lucid provider error the provider does not mark retryable hard", async () => {
-    const current = observation([headerFixture("01")]);
-    const [header] = current.finalizedHeaders;
-    const failure = new KupmiosError({
-      protocol: "kupo",
-      operation: "getUtxosByOutRef",
-      status: 200,
-    });
-    const h = harness({
-      current,
-      categoryByHeader: { [header!.headerHash]: "doubleSpend" },
-      nowMs: IN_WINDOW,
-      classifyOverride: () => {
-        throw failure;
-      },
-    });
-    await expect(h.bridge.reconcileAndDispatch(current)).rejects.toBe(failure);
   });
 
   it("keeps an error that only carries the transport name hard", async () => {

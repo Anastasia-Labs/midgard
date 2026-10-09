@@ -277,6 +277,50 @@ describe("snapshot authority: refusals become named errors", () => {
     ).toHaveLength(1);
   });
 
+  it("a store whose unit histories place one transaction at two points is refused store_inconsistent", async () => {
+    const { fx, request } = await extended(1);
+    const reads = fx.reads();
+    const [unit] = request.historyUnits;
+    const other = `${unit!.slice(0, -2)}ff`;
+    // The second unit's history names the first one's transaction one block
+    // higher: the stored facts contradict one another.
+    const inconsistent: FollowerRawReads = {
+      ...reads,
+      unitHistoryAtPoint: async (read, point) => {
+        const history = await reads.unitHistoryAtPoint(unit!, point);
+        if (read !== other || history.kind !== "ok") return history;
+        return {
+          kind: "ok",
+          value: {
+            ...history.value,
+            transactions: history.value.transactions.map((transaction) => ({
+              ...transaction,
+              inclusionPoint: {
+                ...transaction.inclusionPoint,
+                blockNo: (
+                  Number(transaction.inclusionPoint.blockNo) + 1
+                ).toString(),
+              },
+            })),
+          },
+        };
+      },
+    };
+    const attempt = capture(fx, inconsistent, "inclusion", {
+      ...request,
+      historyUnits: [unit!, other],
+    });
+    await expect(attempt).rejects.toBeInstanceOf(
+      WatcherFaultProofL1RefusedError,
+    );
+    await expect(attempt).rejects.toMatchObject({
+      reason: "store_inconsistent",
+      detail: expect.stringMatching(
+        /^unit histories disagree about transaction [0-9a-f]{64}$/u,
+      ),
+    });
+  });
+
   it("the follower's own refusals surface by reason", async () => {
     const { fx, request } = await extended(1);
     const untracked = capture(fx, fx.reads(), "inclusion", {

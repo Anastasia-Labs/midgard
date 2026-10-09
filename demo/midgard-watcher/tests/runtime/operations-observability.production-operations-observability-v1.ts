@@ -381,4 +381,64 @@ describe("production operations observability V1", () => {
       });
     }
   });
+
+  it("names objective cleanup failures and unreadable objectives on readiness, and clears them once settled", () => {
+    const proofSupervisor = supervisor();
+    const observability = createWatcherOperationsObservability({
+      deploymentFingerprint: "11".repeat(32),
+      supervisor: proofSupervisor.runtime,
+      launchScopeStatus: () => ({
+        installedCategoryCount: 32,
+        requiredCategoryCount: 32,
+      }),
+      durableProofQueueStatus: () => ({
+        queuedJobCount: 0,
+        oldestQueuedAtMs: null,
+      }),
+      retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
+      nowMs: () => 100_000n,
+    });
+    observability.sink.recordL1Source({
+      sourceIdentityDigest: "22".repeat(32),
+      sourceMode: "local_node",
+      status: "consistent",
+      blockHash: "33".repeat(32),
+      blockNo: "50",
+      slot: "500",
+      observedAtMs: "100000",
+    });
+    const objective = {
+      category: "doubleSpend",
+      headerHash: "ab".repeat(28),
+    } as const;
+    proofSupervisor.setStatus({
+      objectiveCleanupFailures: [
+        { ...objective, detail: "doubleSpend/ab: EACCES" },
+      ],
+      journalDecisionMissing: [
+        {
+          kind: "objective",
+          ...objective,
+          decisionDigest: null,
+          detail: "doubleSpend/ab: journal entry sequence gap",
+          readiness: "fault_proof_objective_unreadable",
+        },
+      ],
+    });
+    expect(observability.api.status()).toMatchObject({
+      readiness: "not_ready",
+      readinessReasons: [
+        "fault_proof_objective_cleanup_failed",
+        "fault_proof_objective_unreadable",
+      ],
+    });
+    proofSupervisor.setStatus({
+      objectiveCleanupFailures: [],
+      journalDecisionMissing: [],
+    });
+    expect(observability.api.status()).toMatchObject({
+      readiness: "ready",
+      readinessReasons: [],
+    });
+  });
 });

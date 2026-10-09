@@ -75,7 +75,8 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
   /** Objectives held because their recorded decision is missing. */
   decisionHolds(): readonly WatcherDecisionHold[];
   /** Released or final objectives whose workflow directory a removal could
-   * not take: their rows stay and each admission retries them. */
+   * not take (their rows stay), and tombstones a sweep could not delete:
+   * each admission retries them. */
   cleanupFailures(): readonly WatcherProofCleanupFailure[];
   /** Holds an objective whose execution names a missing decision. */
   holdObjective(hold: WatcherDecisionHold): Promise<void>;
@@ -174,6 +175,10 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     string,
     WatcherDecisionHold & Readonly<{ kind: "objective" }>
   >();
+  // Held objectives whose workflow directory startup could not read
+  // (fault_proof_objective_unreadable), by whether their row was marked
+  // final: their release forgets them without reading the directory again.
+  const unreadable = new Map<string, boolean>();
   const decisions = new Map<string, HeaderFaultDecision>();
   // A retry is safe: initialization reads the journals before it changes any
   // state, so a latched journal throws again at its first read, and an open
@@ -268,7 +273,9 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   // observation releases it.
   const release = async (target: WatcherProofObjective): Promise<void> => {
     await input.retention?.release(target);
-    await cleanup.forget(target, { final: false, departed: true });
+    const final = unreadable.get(keyOf(target)) === true;
+    unreadable.delete(keyOf(target));
+    await cleanup.forget(target, { final, departed: true });
   };
   const clearResolvedHolds = async (
     observation: WatcherAuthenticatedStateQueueObservation,
@@ -323,18 +330,40 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     for (const { decision } of await (await openDecisions()).readAll())
       if (decision.decision === "fault_detected")
         decisions.set(decision.decisionDigest, decision);
+    // A crash during an earlier removal's delete left its tombstone.
+    await cleanup.sweep();
     // Startup lists the objective table, never the workflow directories.
     const rows = listWatcherProofObjectives(database(), input.categories);
     for (const row of rows) {
       const target = row.objective;
-      const execution = await readWatcherProofExecution({
-        journalRoot: input.journalRoot,
-        deploymentFingerprint: input.deploymentFingerprint,
-        objective: target,
-      });
       // No job of this process owns a queued or active row left by the last
       // one; a later run of the objective registers its job again.
       if (watcherProofJobPending(database(), target)) cleanup.markStale(target);
+      let execution;
+      try {
+        execution = await readWatcherProofExecution({
+          journalRoot: input.journalRoot,
+          deploymentFingerprint: input.deploymentFingerprint,
+          objective: target,
+        });
+      } catch (error) {
+        // A directory that cannot be read (a symlink, a sequence gap a
+        // partial delete left, an I/O error) never fails startup: the
+        // objective is held and takes no work, and once its header leaves
+        // the finalized queue its rows are forgotten without trusting it.
+        unreadable.set(keyOf(target), row.marker !== null);
+        await holdObjective({
+          kind: "objective",
+          category: target.category,
+          headerHash: target.headerHash,
+          decisionDigest: null,
+          detail: `${target.category}/${target.headerHash}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          readiness: "fault_proof_objective_unreadable",
+        });
+        continue;
+      }
       // Rows of an active job are left to that job's own finish.
       const settled = !watcherProofJobActive(database(), target);
       // A completion verified beyond rollback recovery holds no work.
@@ -617,6 +646,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       objectives.delete(keyOf(objective));
       unheld.delete(keyOf(objective));
       held.delete(keyOf(objective));
+      unreadable.delete(keyOf(objective));
       input.onObjectiveSettled?.(objective);
       pruneDecisions();
       // The row frees the cap slot and spares a restart one verification. A

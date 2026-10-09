@@ -5,6 +5,8 @@ import type { WatcherL1Degradation } from "./tx-inputs.js";
 
 /** A user order output the event projection refused to admit. */
 export const L1_USER_EVENT_REFUSED = "l1_user_event_refused";
+/** The refusals table could not be read (a degradation, count 1). */
+export const L1_EVENT_REFUSALS_UNREADABLE = "l1_event_refusals_unreadable";
 
 /**
  * The follower's event refusals still within k, as one degradation: their

@@ -1,5 +1,6 @@
-import { readdir, realpath, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, readdir, realpath, rename, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import {
   DirectoryFraudProofWorkflowJournalStore,
@@ -31,24 +32,107 @@ export const watcherProofObjectiveDirectory = (
 const isMissing = (error: unknown): boolean =>
   error instanceof Error && "code" in error && error.code === "ENOENT";
 
-/** Removes an objective's workflow directory. A path that resolves through a
- * symlink is refused and left in place; a missing one is already removed. */
+/**
+ * Whether a failed journal read refused what it found (a symlink, a sequence
+ * gap, a foreign or invalid execution) rather than met a filesystem error
+ * (one carrying an errno code). A refusal reads the same on every retry.
+ */
+export const isWatcherProofJournalRefusal = (error: unknown): boolean =>
+  !(
+    error instanceof Error &&
+    "code" in error &&
+    typeof error.code === "string"
+  );
+
+// Removal renames an objective's directory here first, on the same
+// filesystem, so the rename is atomic and a crash never leaves a partly
+// removed directory at the objective's path. The leading dot keeps it apart
+// from every category name.
+const TOMBSTONES = ".removing";
+
+/** Where removed objective directories wait for their recursive delete. */
+export const watcherProofTombstoneDirectory = (journalRoot: string): string =>
+  join(journalRoot, "fault-proofs", TOMBSTONES);
+
+/**
+ * Removes an objective's workflow directory: renames it to a tombstone, runs
+ * `forget` (which drops the objective's rows), then deletes the tombstone. A
+ * crash before the rename leaves the directory whole; after it, the
+ * objective's path is absent; during the delete, only the tombstone remains,
+ * which `sweepWatcherProofTombstones` removes. A missing directory is already
+ * removed and still runs `forget`. A path whose parent resolves through a
+ * symlink is refused: nothing moves and `forget` does not run. A symlinked
+ * directory itself is renamed as a link, so its target is never followed or
+ * deleted.
+ */
 export const removeWatcherProofObjectiveDirectory = async (
   journalRoot: string,
   objective: WatcherProofObjective,
-): Promise<void> => {
+  forget: () => void = () => undefined,
+): Promise<"removed" | "refused"> => {
   const directory = watcherProofObjectiveDirectory(journalRoot, objective);
+  const parent = dirname(directory);
   let resolved;
   try {
-    resolved = await realpath(directory);
+    resolved = await realpath(parent);
   } catch (error) {
-    if (isMissing(error)) return;
-    throw error;
+    if (!isMissing(error)) throw error;
+    forget();
+    return "removed";
   }
-  if (resolved !== directory)
-    throw new Error("proof objective journal traverses a symlink");
-  await rm(directory, { recursive: true, force: true });
+  if (resolved !== parent) return "refused";
+  const tombstones = watcherProofTombstoneDirectory(journalRoot);
+  await mkdir(tombstones, { recursive: true });
+  if ((await realpath(tombstones)) !== tombstones) return "refused";
+  const tombstone = join(
+    tombstones,
+    `${objective.category}.${objective.headerHash}.${randomUUID()}`,
+  );
+  try {
+    await rename(directory, tombstone);
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+    forget();
+    return "removed";
+  }
+  forget();
+  await rm(tombstone, { recursive: true, force: true });
+  return "removed";
 };
+
+/**
+ * Deletes every tombstone a removal left behind. Returns the ones it could
+ * not delete, each with the failure; the next sweep retries them.
+ */
+export const sweepWatcherProofTombstones = async (
+  journalRoot: string,
+): Promise<readonly Readonly<{ name: string; detail: string }>[]> => {
+  const tombstones = watcherProofTombstoneDirectory(journalRoot);
+  let names;
+  try {
+    names = await readdir(tombstones);
+  } catch (error) {
+    if (isMissing(error)) return [];
+    return [{ name: TOMBSTONES, detail: messageOf(error) }];
+  }
+  try {
+    if ((await realpath(tombstones)) !== tombstones)
+      throw new Error("proof objective tombstones traverse a symlink");
+  } catch (error) {
+    return [{ name: TOMBSTONES, detail: messageOf(error) }];
+  }
+  const failed: Readonly<{ name: string; detail: string }>[] = [];
+  for (const name of names)
+    try {
+      await rm(join(tombstones, name), { recursive: true, force: true });
+    } catch (error) {
+      failed.push({ name, detail: messageOf(error) });
+    }
+  return failed;
+};
+
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 /** One selected durable execution per objective; scheduling records are not
  * completion evidence. Only affected objectives are read after startup. */

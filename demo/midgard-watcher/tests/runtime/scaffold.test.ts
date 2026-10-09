@@ -198,14 +198,6 @@ describe("production watcher commands", () => {
       overrides: { phase: "closing" as const },
     },
     {
-      name: "a proof deadline is at risk",
-      overrides: { deadlineHealth: "at_risk" as const },
-    },
-    {
-      name: "a proof deadline is already unsafe",
-      overrides: { deadlineHealth: "unsafe" as const },
-    },
-    {
       name: "no fault-proof category reported readiness",
       overrides: { faultProofReadiness: [] },
     },
@@ -231,6 +223,35 @@ describe("production watcher commands", () => {
       expect(closed).toBe(true);
       // A refused start must not have advertised readiness first.
       expect(lines).toEqual([]);
+    },
+  );
+
+  it.each(["at_risk", "unsafe"] as const)(
+    "keeps running when a proof deadline is %s, and reports its health",
+    async (deadlineHealth) => {
+      let closed = false;
+      const lines: string[] = [];
+      await expect(
+        runCommand(
+          "start",
+          ready({ deadlineHealth, onClose: () => (closed = true) }),
+          {
+            writeOutput: (text: string) => lines.push(text),
+            writeError: (text: string) => lines.push(text),
+          },
+        ),
+      ).resolves.toBe(0);
+      // Started and ran until shutdown: no exit on the deadline.
+      expect(closed).toBe(true);
+      expect(
+        lines.map((line) => JSON.parse(line) as Record<string, unknown>),
+      ).toEqual([
+        expect.objectContaining({
+          state: "ready",
+          proofDeadlineHealth: deadlineHealth,
+        }),
+        expect.objectContaining({ state: "stopping", signal: "SIGTERM" }),
+      ]);
     },
   );
 

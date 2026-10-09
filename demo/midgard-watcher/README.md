@@ -36,8 +36,11 @@ and [Node.js memory guidance](https://nodejs.org/api/process.html#processmemoryu
 runtime, waits for durable catch-up, and closes it; it is not an offline or
 transport-free command. Both may drive proof and availability workflows.
 
-Startup requires admitted proof runners, recovered workflows, an accepting
-supervisor, and safe proof deadlines before emitting `productionReady: true`.
+Startup requires admitted proof runners, recovered workflows, and an accepting
+supervisor before emitting `productionReady: true`. A proof deadline at risk or
+unsafe never stops the process (a restart would meet it again): the record
+carries it as `proofDeadlineHealth`, and `/readyz` names it
+(`deadline_at_risk`, `deadline_unsafe`) while the supervisor keeps proving.
 That field describes this runtime's readiness checks, not public-testnet launch
 approval. Invalid arguments exit 64; runtime failures fail closed with exit 70.
 An L1 read during startup that fails transiently is not a runtime failure: the
@@ -48,7 +51,9 @@ repeated after a capped backoff. A transaction submission that times out stays
 a request error.
 
 Use `GET /readyz` for readiness: HTTP 200 carries `ready: true`; HTTP 503
-carries `ready: false` and current `reasons`. `GET /v1/status` remains the
+carries `ready: false` and current `reasons`. The operations server binds
+before the L1-dependent startup stages, so while they wait out an unanswering
+node `/readyz` names `startup:<stage>` and `/v1/status` answers 200. `GET /v1/status` remains the
 detailed runtime status and can return 200 while the watcher is held. Its
 `l1Degradations` are named L1 conditions that never fail readiness; among them
 `l1_user_event_refused` counts, by reason, the user orders the follower
