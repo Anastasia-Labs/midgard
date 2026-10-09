@@ -307,7 +307,7 @@ In that shape:
   `undecided` wait on every evaluation. The decision is a pure function of state
   that nothing in the system ever changes — no journal row moves, the queue
   still names the sibling, the observer does not change. The 30-L1-block
-  escalation emits one log line and nothing else.
+  escalation emits one log line and nothing else. <!-- doc-links:historical -->
 - No code can rewind a `Finalized` sibling that did not land:
   `reincludeStateQueueCorrectedBlocks` kind `unlanded` and the correction
   `UNLANDED_STATUSES` **both exclude `ObservedWaitingStability` and
@@ -327,7 +327,7 @@ question there. Two sub-points where I do want you:
   inverse"*, is **factually wrong**: the abandoned journal keeps its signed
   content and its `nativeMpfReplay`, so the block can be revived exactly the way
   a replaced block already is. If you agree, the fix is a revival rather than a
-  new rewind primitive, and it is much smaller. Do you agree?
+  new rewind primitive, and it is much smaller. Do you agree? <!-- doc-links:historical -->
 - **E0b.** `globals.liveness-reasons.ts:36` `currentLivenessReasons` **has no
   reader anywhere**. `/readyz` never surfaces `signed_intent_undecided` or any
   other liveness reason; `/healthz` stays green. Your NB-03 ruling said to

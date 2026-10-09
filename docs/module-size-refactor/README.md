@@ -53,7 +53,7 @@ existing untracked working-tree blueprint was preserved.
 
 [retained-modules.json](retained-modules.json) is the complete file-by-file
 inventory, including the exceptions outside demo's ESLint scope. It includes
-366 exact TS/JS caps, four agent-tooling JS modules, one Rust ownership module
+323 exact TS/JS caps, four agent-tooling JS modules, one Rust ownership module
 and one SQL migration. Repeated reason patterns describe the actual retained
 boundary, rather than exempting an entire directory:
 

@@ -40,10 +40,20 @@ Startup requires admitted proof runners, recovered workflows, an accepting
 supervisor, and safe proof deadlines before emitting `productionReady: true`.
 That field describes this runtime's readiness checks, not public-testnet launch
 approval. Invalid arguments exit 64; runtime failures fail closed with exit 70.
+An L1 read during startup that fails transiently is not a runtime failure: the
+node transport not ready, a sidecar exit, or a query the node did not answer
+in time (`node_timeout`), classified as the L1 follower's provider classifies
+a query's transport error. The stage reports `pending` and the read is
+repeated after a capped backoff. A transaction submission that times out stays
+a request error.
 
 Use `GET /readyz` for readiness: HTTP 200 carries `ready: true`; HTTP 503
 carries `ready: false` and current `reasons`. `GET /v1/status` remains the
-detailed runtime status and can return 200 while the watcher is held. The
+detailed runtime status and can return 200 while the watcher is held. Its
+`l1Degradations` are named L1 conditions that never fail readiness; among them
+`l1_user_event_refused` counts, by reason, the user orders the follower
+refused to admit within k (malformed or key-reusing) and names the newest, so
+no user can hold the watcher unready. The
 operations endpoint is loopback and currently has no application bearer gate;
 keep it internal. An alive process does not establish watcher readiness. A held runtime must remain visible for diagnosis
 without admitting proof or availability work. Readiness must come from a live
@@ -98,7 +108,8 @@ reordered record; so does any later read of a row that fails its MAC, does not
 parse, or differs from its key. A refusal holds for the rest of the process:
 the watcher stays up, `/readyz` reports `journal_integrity`, and `/v1/status`
 names the failure in `supervisor.journalIntegrity` until an operator repairs
-the journals (below) and restarts the watcher. If the journals cannot be opened at
+the journals (below) and restarts the watcher. A journal migration whose SQL
+changed after it was applied is such a refusal (`migrations`). If the journals cannot be opened at
 all (a busy, locked or unreadable file), the watcher stays up, `/readyz`
 reports `journal_unavailable` and `supervisor.journalUnavailable` names the
 failure, while the watcher retries the open, backing off from 1 s to 30 s; the
@@ -111,10 +122,21 @@ in-memory proof work, rebuilds it from the journals as a restart would, and
 lets the next decision pass dispatch it again; the reason clears then. A journal directory
 that cannot be used, or a rollback key the journals were not written under, is
 a configuration error: the watcher exits before the operations server binds.
-An objective whose completion was verified deeper than rollback recovery
-reaches is skipped at the next start and pruned with its workflow journal. Only open objectives count toward the cap of 2,048; at the
-cap the watcher stays up and `/readyz` reports `journal_capacity` until
-objectives complete.
+An objective that is released (its header left the finalized state queue)
+or whose completion is final is cleaned up in process: the watcher removes its
+workflow directory (`fault-proofs/<category>/<header>` in the workflow journal
+directory, refusing one that resolves through a symlink) and then forgets its
+rows, once no job of the objective is queued, running or awaiting a retry in
+this process. A final completion is cleaned up once an observation no longer
+queues its header. A released objective that holds a signed attempt keeps its
+directory, which the funding sweep reads. Queue rows a previous process left
+queued or active do not defer the cleanup, and a row a crash left with no
+execution is forgotten once its header leaves the queue. A removal that fails
+keeps the rows, is retried by every admission, and is listed in
+`supervisor.objectiveCleanupFailures` in `/v1/status`; it is not a readiness
+reason. Only open objectives count toward the cap of 2,048; at the cap the
+watcher stays up and `/readyz` reports `journal_capacity` until objectives
+complete.
 
 To repair refused journals: stop the watcher, move `watcher-journals.sqlite`
 and its `-wal` and `-shm` files aside (never delete them), and start it again.
@@ -361,7 +383,8 @@ not assume all old-fork inputs are available or hold all capital until finality.
 
 Local authority binds the Cardano node socket, node/genesis configuration, and
 genesis identity; the node transport sidecar (`demo/l1-node-transport`) provides
-ordered chain evidence. The process runs one sidecar on one node connection for
+ordered chain evidence and checks each block's body against its header's body
+hash. Every node request is bounded by `l1.requestTimeoutMs`. The process runs one sidecar on one node connection for
 its chain-sync streams and exact-point queries; a sidecar crash, hang or
 protocol violation fails every open stream and in-flight query, and the
 transport restarts it.
@@ -409,7 +432,9 @@ Prerequisites on the host:
   directory holding the node config and Shelley genesis
   (`MIDGARD_L1_CONFIG_DIR`), mounted at `/ipc` and `/cardano-config`. The
   watcher reads L1 only through its follower over the node socket; it dials
-  no Ogmios or Kupo.
+  no Ogmios or Kupo. A socket path that exists but is not a socket (a file or
+  a directory) is refused at config load; a missing one holds the watcher
+  unready until the node creates it.
 - `config/watcher-process.json` from
   [watcher-process.example.json](watcher-process.example.json) and
   `config/watcher-runtime.json` holding exactly its `watcherConfig` object
@@ -419,7 +444,9 @@ Prerequisites on the host:
   blueprint and contract deployment info.
 - The rollback key, prover key and availability key as regular files (the
   loader refuses a symlinked secret, so compose `secrets:` are not used),
-  without a trailing newline and pairwise distinct. Copy
+  without a trailing newline and pairwise distinct. Startup refuses a shared
+  value, and two secrets that resolve to one wallet, before the operations
+  server binds; no restart clears that. Copy
   [.env.example](.env.example) to `.env` and point each variable at its file.
 
 Then `docker compose up -d`. The service restarts `unless-stopped`: restarting

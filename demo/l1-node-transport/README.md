@@ -202,7 +202,12 @@ exit status 64.
   connection. Nothing else changes.
 - **Block identity.** `point`, `blockNo` and `prevHash` come from decoding
   only the block header; `prevHash` is absent at the chain's first block.
-  The body is neither decoded nor validated.
+  The body is hashed and checked against the header's body hash, so a
+  delivered block's transactions are the ones its hash names; a mismatch
+  ends the stream with `block_body_mismatch`. Shelley-to-Mary blocks hash
+  three body segments, Alonzo-to-Conway four, and a Dijkstra block its one
+  body element; Byron blocks are not checked. The body is not otherwise
+  decoded or validated.
 - **Connections.** The first open stream uses the primary connection. A
   concurrently open stream gets an auxiliary N2C connection carrying
   chain-sync only. Up to 4 idle auxiliary connections are kept for reuse.
@@ -326,6 +331,8 @@ node_connection_lost` and the supervisor restarts it.
 - `node_connection_lost`
 - `protocol_violation`
 - `block_header_undecodable`
+- `block_body_mismatch` (the block's body does not hash to its header's body
+  hash)
 - `block_bounds`
 
 `fatal` codes are:
@@ -340,6 +347,7 @@ node_connection_lost` and the supervisor restarts it.
 - `output_closed`
 - `protocol_violation`
 - `block_header_undecodable`
+- `block_body_mismatch`
 - `block_bounds`
 
 A refusal of a client frame that breaks the protocol is `fatal

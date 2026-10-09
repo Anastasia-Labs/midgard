@@ -1021,6 +1021,15 @@ Everything else is transient and recovers automatically with backoff, while
 
 That matches the 2026-10-01 directive.
 
+**Accepted residual: whole-file journal rollback.** The watcher's journals
+(`watcher-journals.sqlite`) authenticate each row with the rollback key and
+chain each commit's revision to the one before, and startup verifies every
+row and the latest revisions. That detects a tampered, deleted, replayed or
+reordered record inside the file. It cannot detect the whole file replaced by
+an older copy of itself: the older copy is a consistent chain under the same
+key, and nothing outside the file records the latest revision. No case above
+fires for it. It is accepted as a residual, not an intervention.
+
 ## 8. Generations, views and intents (proposals 9 and 10)
 
 ### 8.1 Generation and view binding

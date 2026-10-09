@@ -25,14 +25,14 @@ observes the state queue through
 user-event history. The four evaluators were never wired into the runtime.
 Their only consumers were their own tests, the W25 `parser_replay` event
 authority path, and the W26 event-classification verifier, whose only authority
-input was a W15 evaluator result.
+input was a W15 evaluator result. <!-- doc-links:historical -->
 
 ## Decision
 
 Remove the four evaluators and everything that existed only to serve them:
 
 - the W14, W16 and W17 evaluator modules;
-- the W15 evaluator section of `user-event-indexer.ts`;
+- the W15 evaluator section of `user-event-indexer.ts`; <!-- doc-links:historical -->
 - the W26 event-classification verifier;
 - the W25 `parser_replay` event-origin branch, which had no production writer;
 - their tests and test-only scenario harnesses;

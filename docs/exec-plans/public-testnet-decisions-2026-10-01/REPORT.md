@@ -507,7 +507,7 @@ The two committee clients — `provider.ogmios-rpc-session.ts:74` and
 reclassify nothing. The fix is therefore one shared typed classification across
 all three clients, not a single call site. The existing prefix match is itself the
 string-matching shim this item warns against, and should be deleted by the same
-change.
+change. <!-- doc-links:historical -->
 
 **ANSWERED — owner ruling, 1 October 2026:** "Accept as written — honor typed retryability, bounded retries at the owning operation, delete the string-prefix shim (OG-CLASS lane)."
 

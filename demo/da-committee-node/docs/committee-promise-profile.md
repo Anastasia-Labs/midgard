@@ -2,8 +2,8 @@
 
 Ordinary never-enrolled operation uses the existing verified payload, exact
 commitment, canonical replay, signer membership and financial reconciliation
-checks. PostgreSQL remains the ordinary deployment backend. Absence of the
-optional capacity configuration grants no numerical response-time claim.
+checks. PostgreSQL is the only store backend. Absence of the optional capacity
+configuration grants no numerical response-time claim.
 
 The eight `DA_PROMISE_*` artifact path and SHA256 settings explicitly select
 controlled JSON admission. Partial selection, invalid artifacts, missing
@@ -13,18 +13,22 @@ witness: removing the settings on restart cannot restore ordinary signing.
 Existing signature witnesses and retained bytes keep their existing recovery
 and serving paths.
 
-An explicitly requested profile first runs one healthy scan on the same service
-with signer, coordinator and financial reconciler capabilities withheld. That
-scan consumes its actual chain-sync cursor. Catch-up-only progress, missing
-consumption for existing decisions and unhealthy source state cannot authorize
-enrollment. The factory then binds the service's actual operational pins,
-initializes the retirement singleton outside discovery, and enables admission
-before external loops or fresh signing begin.
+An explicitly requested profile first waits until the committee's L1 follower
+reports no reason that holds decisions (an owed wallet seed holds only
+submission), then runs one tick on the same service with signer,
+coordinator and financial reconciler capabilities withheld. That tick must read
+a view from the follower's facts and finish with no error. A follower that is
+catching up, waiting for its node or held by an intervention, and a tick that
+reads no view or records an error, cannot authorize enrollment. The factory then
+binds the service's actual operational pins, initializes the retirement
+singleton outside discovery, and enables admission before external loops or
+fresh signing begin.
 
 The controlled profile binds measured artifacts to the actual runtime build,
-locked dependencies, manifest, genesis, current protocol parameters, source,
-actor and JSON backend. Successful durations and finite chain/fault behavior
-remain explicit conditional assumptions. Refusal deadlines fence results;
+locked dependencies, manifest, genesis, current protocol parameters, the L1
+source (the follower's facts and local state query), actor and store backend.
+Successful durations and finite chain/fault behavior remain explicit conditional
+assumptions. Refusal deadlines fence results;
 filesystem and library callbacks are directly awaited and joined. A late
 callback is a failed bound, whose owner remains held until completion.
 

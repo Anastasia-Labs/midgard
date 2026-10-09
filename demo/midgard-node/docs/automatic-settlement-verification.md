@@ -188,9 +188,9 @@ A base-branch execution was not performed; no baseline-pass claim is made.
 - `demo/midgard-node/src/workers/settlement.ts`
 - `demo/midgard-node/tests/settlement.test.ts`
 - `demo/midgard-node/tests/settlement-journal.test.ts`
-- `demo/midgard-node/src/services/settlement-output.ts` (deleted by N6b)
+- `demo/midgard-node/src/services/settlement-output.ts` (deleted by N6b) <!-- doc-links:historical -->
 - `demo/midgard-node/src/services/event-history-owner.ts`
-- `demo/midgard-node/src/transactions/reference-publication-provider.ts`
+- `demo/midgard-node/src/transactions/reference-publication-provider.ts` <!-- doc-links:historical -->
 - `demo/midgard-node/tests/history-source-owner-retention.test.ts`
 - `demo/midgard-node/tests/helpers/automatic-settlement-lifecycle.ts`
 - `demo/midgard-node/tests/l1-event-history-streaming-production-lifecycle-emulator.test.ts`
