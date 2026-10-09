@@ -195,9 +195,7 @@ export const rebuildWorkingLedger = (input: {
     for (const [outRef, output] of ledger)
       rows.push(yield* ledgerRow(outRef, output, known.get(outRef)));
     // A row the rebuild keeps is updated in place, so it keeps its
-    // time_stamp_tz: an unpublished acceptance's inverse receipt matches the
-    // outputs it produced on every column. A row new to the ledger takes the
-    // column default.
+    // time_stamp_tz; a row new to the ledger takes the column default.
     for (let start = 0; start < dropped.length; start += 1_000)
       yield* sql`DELETE FROM mempool_ledger
         WHERE outref IN ${sql.in(dropped.slice(start, start + 1_000))}`;
