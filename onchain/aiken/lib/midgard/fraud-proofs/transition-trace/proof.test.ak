@@ -3485,6 +3485,33 @@ test accepts_late_forced_order_as_out_of_window_source_event() {
   )
 }
 
+// The early side of the forced due rule `start_time < inclusion_time <=
+// end_time`: an order at or before `start_time` is out of window, one
+// millisecond after it is due.
+test accepts_forced_order_at_start_time_as_out_of_window_source_event() {
+  included_interval_forced_order_is_out_of_window(
+    -1,
+    -1,
+    slot_domain_header().start_time,
+  )
+}
+
+test accepts_forced_order_before_start_time_as_out_of_window_source_event() {
+  included_interval_forced_order_is_out_of_window(
+    -1,
+    -1,
+    slot_domain_header().start_time - 1,
+  )
+}
+
+test rejects_forced_order_just_after_start_time_as_out_of_window_source_event() {
+  !included_interval_forced_order_is_out_of_window(
+    -1,
+    -1,
+    slot_domain_header().start_time + 1,
+  )
+}
+
 // Forced-order due-ness in the real time domains: header event times are
 // POSIX milliseconds, native validity scalars are slots, and `block_slot` is
 // the slot the validation machine checks the interval against. Due-ness is the
