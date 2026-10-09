@@ -31,18 +31,16 @@ export const EXIT = Object.freeze({
 // the source that emits it; keep this list to messages that are only ever
 // written on the way to a process exit.
 export const DEFAULT_FATAL_PATTERNS = Object.freeze([
-  // demo/midgard-node/src/commands/listen-startup.ts: every startup
-  // deployment/initialization refusal is logged with this prefix, then dies.
+  // demo/midgard-node/src/commands/listen-startup.ensure-protocol-initialized-on-startup.ts:
+  // every startup deployment/initialization refusal is logged with this
+  // prefix, then dies.
   "Startup protocol initialization failed:",
   // demo/midgard-node/src/database/init.ts: `listen` refuses a schema that is
   // not exactly the version this binary supports.
   "Database schema is not compatible:",
-  // demo/midgard-node/src/services/midgard-contracts.ts: the configured
-  // deployment manifest does not match this build or config.
+  // demo/midgard-node/src/services/midgard-contracts.make-midgard-contract-runtime.ts:
+  // the configured deployment manifest does not match this build or config.
   "cannot be used as contract source",
-  // demo/da-committee-node/src/tick-runner.ts: the committee lost its L1 view
-  // and exits with code 70.
-  '"event":"l1_view_unavailable_exit"',
 ]);
 
 const USAGE = `usage: devnet-wait.mjs --url <url> [--url <url>]... [--timeout S]

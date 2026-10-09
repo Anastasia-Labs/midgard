@@ -91,11 +91,6 @@ export type OwnJournalDisposition = Readonly<{
   held?: DriverHold;
 }>;
 
-export const NO_DISPOSITION: OwnJournalDisposition = {
-  dispose: [],
-  revive: [],
-};
-
 type Candidate = Readonly<{
   headerHash: string;
   baseTailHeaderHash: string;

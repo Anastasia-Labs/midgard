@@ -2,7 +2,6 @@ import { type FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
 
-import { type QueueNode } from "./authenticated-state-queue-observation.parse-persisted-header.js";
 import { outputReferences } from "./authenticated-state-queue-observation.parse-persisted-observation.js";
 import { lockOutput } from "./authenticated-state-queue-observation.queue-output.js";
 import {
@@ -250,21 +249,3 @@ export const correctionLockWitness = ({
 };
 
 export const unsafeCorrectionLockWitnessForTest = correctionLockWitness;
-
-export const sameQueue = (
-  left: readonly QueueNode[],
-  right: readonly QueueNode[],
-): boolean =>
-  left.length === right.length &&
-  left.every(
-    (node, index) =>
-      node.headerHash === right[index]?.headerHash &&
-      node.outRef === right[index]?.outRef,
-  );
-
-export const sameLockDatum = (
-  left: SDK.CorrectionLockDatum,
-  right: SDK.CorrectionLockDatum,
-): boolean =>
-  Data.to(left, SDK.CorrectionLockDatum) ===
-  Data.to(right, SDK.CorrectionLockDatum);

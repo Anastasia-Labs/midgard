@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertNonInteractiveReasonsInstalled,
-  directCategoryOfTypedReason,
   INTERACTIVE_TYPED_REASON_ARMS,
   missingNonInteractiveInstallations,
   NON_INTERACTIVE_DIRECT_CATEGORIES,
@@ -63,21 +62,6 @@ describe("typed rejection-reason disposition", () => {
       }
     }
     expect(NON_INTERACTIVE_DIRECT_CATEGORIES).toHaveLength(35);
-  });
-
-  it("splits InputNotFound by source kind and refuses other coordinates", () => {
-    expect(
-      directCategoryOfTypedReason("InputNotFound", { source_kind: 0n }),
-    ).toBe("nonExistentInput");
-    expect(
-      directCategoryOfTypedReason("InputNotFound", { source_kind: 1n }),
-    ).toBe("noReferenceInput");
-    expect(() => directCategoryOfTypedReason("InputNotFound")).toThrow(
-      /source_kind 0 or 1/u,
-    );
-    expect(directCategoryOfTypedReason("ValueNotPreserved")).toBe(
-      "valueNotPreserved",
-    );
   });
 
   it("pins the runner-registry residue the program closure must empty", () => {

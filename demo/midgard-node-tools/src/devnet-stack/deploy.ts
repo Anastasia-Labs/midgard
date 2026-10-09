@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { ensureL1Origin } from "./deployment-origin.js";
 import { readJsonIfPresent, writeDurableFile } from "./durable.js";
-import { execLogged, lastJsonValue, requireSuccess } from "./exec.js";
+import { execLogged, requireSuccess } from "./exec.js";
 import type { Identities } from "./identities.js";
 import type { Layout, RunEnv } from "./layout.js";
 import {
@@ -277,19 +277,3 @@ export const ensureDeployed = async (
   await step(["register-active-operator"], "register-active-operator", oneShot);
   return oneShot;
 };
-
-export const deploymentStatus = async (
-  context: DeployContext,
-  oneShot: HubOracleOneShot,
-) =>
-  lastJsonValue(
-    requireSuccess(
-      await nodeCli(
-        context,
-        ["deployment-status"],
-        "deployment-status",
-        oneShot,
-      ),
-      "deployment-status",
-    ).stdout,
-  );

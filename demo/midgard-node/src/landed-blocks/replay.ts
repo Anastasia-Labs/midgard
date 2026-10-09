@@ -58,7 +58,3 @@ export type ReplayOutcome =
         | "invalid";
       detail: string;
     }>;
-
-export type LandedBlockReplayer = (
-  input: ReplayInput,
-) => Promise<ReplayOutcome>;

@@ -3,7 +3,8 @@
  *
  * - A second acquirer waits, under `node_instance_lock_held_elsewhere`, until
  *   the holder's session ends, then takes the lock; an unreachable Postgres
- *   is waited on under `node_instance_lock_unavailable`.
+ *   is waited on under `node_instance_lock_unavailable`, and an attempt
+ *   against a host that never answers ends at its connect bound.
  * - The lock's session lends the follower its writer lease: none while the
  *   session is gone.
  * - A session ended under a live holder raises `node_instance_lock_suspended`
@@ -234,6 +235,39 @@ describe("the node instance lock", { concurrent: false }, () => {
     ]);
     expect(exit).not.toBe("still waiting");
     expect(Exit.isInterrupted(exit as Exit.Exit<unknown, unknown>)).toBe(true);
+  });
+
+  it("ends an attempt against a host that never answers at its connect bound, under the unavailable reason", async () => {
+    const waited: string[][] = [];
+    const scope = Effect.runSync(Scope.make());
+    scopes.push(scope);
+    const startedAt = Date.now();
+    const fiber = Effect.runFork(
+      acquireNodeInstanceLock({
+        // TEST-NET-1 (RFC 5737) is never routed: the connect is neither
+        // answered nor refused.
+        connectionString: nodeDatabaseConnectionString({
+          ...database,
+          POSTGRES_HOST: "192.0.2.1",
+          POSTGRES_PORT: 5432,
+        }),
+        globals: livenessGlobals(),
+        waiting: (reasons) => Effect.sync(() => waited.push([...reasons])),
+        bounds: { connectTimeoutMs: 200 },
+        retryInitialMs: 20,
+        retryMaxMs: 50,
+      }).pipe(Scope.extend(scope)),
+    );
+    fibers.push(fiber);
+    await vi.waitFor(() => expect(waited.length).toBeGreaterThanOrEqual(1), {
+      timeout: 3_000,
+      interval: 20,
+    });
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
+    expect(new Set(waited.flat())).toEqual(
+      new Set([NODE_INSTANCE_LOCK_UNAVAILABLE]),
+    );
+    expect(fiber.unsafePoll()).toBeNull();
   });
 
   it("holds operator duties while its session is gone and clears once it is taken again", async () => {

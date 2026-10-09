@@ -25,9 +25,6 @@ import { isAbsolute, resolve } from "node:path";
 
 export type ExactArtifactRecord = Readonly<Record<string, unknown>>;
 
-/** A label-threaded parser: validates `value` and returns the typed result. */
-export type ArtifactParser<Value> = (value: unknown, label: string) => Value;
-
 const describeKeys = (keys: readonly string[]): string =>
   keys.map((key) => JSON.stringify(key)).join(", ");
 
@@ -238,9 +235,6 @@ export const jsonValue = (value: unknown, label: string): unknown => {
   return value;
 };
 
-export const nullableString = (value: unknown, label: string): string | null =>
-  nullable(value, label, stringValue);
-
 export const nullableNonEmptyString = (
   value: unknown,
   label: string,
@@ -398,62 +392,3 @@ export const nonNegativeFiniteNumber = (
   }
   return value;
 };
-
-// ---------------------------------------------------------------------------
-// Declarative layer: an exact record described as a table of field parsers.
-// Field labels thread as `<label>.<key>`, identical to the imperative
-// convention, so adopting this layer never changes an error message. Only
-// canonical-dialect artifacts (and new artifacts) should use it; families
-// with prose per-field labels keep their imperative decode bodies.
-// ---------------------------------------------------------------------------
-
-type ParsedShape<Fields extends Record<string, ArtifactParser<unknown>>> = {
-  -readonly [Key in keyof Fields]: Fields[Key] extends ArtifactParser<
-    infer Value
-  >
-    ? Value
-    : never;
-};
-
-export const objectOf =
-  <
-    Required extends Record<string, ArtifactParser<unknown>>,
-    Optional extends Record<string, ArtifactParser<unknown>> = Record<
-      never,
-      never
-    >,
-  >(
-    requiredFields: Required,
-    optionalFields?: Optional,
-  ): ArtifactParser<ParsedShape<Required> & Partial<ParsedShape<Optional>>> =>
-  (value, label) => {
-    const record = exactRecord(
-      value,
-      label,
-      Object.keys(requiredFields),
-      Object.keys(optionalFields ?? {}),
-    );
-    const result: Record<string, unknown> = {};
-    for (const [key, parseField] of Object.entries(requiredFields)) {
-      result[key] = parseField(record[key], `${label}.${key}`);
-    }
-    for (const [key, parseField] of Object.entries(optionalFields ?? {})) {
-      if (record[key] !== undefined) {
-        result[key] = parseField(record[key], `${label}.${key}`);
-      }
-    }
-    return result as ParsedShape<Required> & Partial<ParsedShape<Optional>>;
-  };
-
-export const strictObjectOf =
-  <Fields extends Record<string, ArtifactParser<unknown>>>(
-    fields: Fields,
-  ): ArtifactParser<ParsedShape<Fields>> =>
-  (value, label) => {
-    const record = exactKeysRecord(value, label, Object.keys(fields));
-    const result: Record<string, unknown> = {};
-    for (const [key, parseField] of Object.entries(fields)) {
-      result[key] = parseField(record[key], `${label}.${key}`);
-    }
-    return result as ParsedShape<Fields>;
-  };

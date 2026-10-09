@@ -26,16 +26,6 @@ let armedCheckpoint: ArmedCheckpoint | null | undefined;
 const checkpointId = (token: string): string =>
   createHash("sha256").update(token).digest("hex");
 
-export const phase1AcceptCrashCheckpointMarker = (
-  token: string,
-  expectedTxIdHex: string,
-): string =>
-  JSON.stringify({
-    event: PHASE1_ACCEPT_CRASH_CHECKPOINT_EVENT,
-    checkpoint_id: checkpointId(token),
-    expected_tx_id: expectedTxIdHex.toLowerCase(),
-  }).slice(0, -1);
-
 const resolveCheckpoint = (): ArmedCheckpoint | null => {
   const token = process.env[PHASE1_ACCEPT_CRASH_CHECKPOINT_TOKEN_ENV];
   const acknowledgement = process.env[PHASE1_ACCEPT_CRASH_CHECKPOINT_ACK_ENV];

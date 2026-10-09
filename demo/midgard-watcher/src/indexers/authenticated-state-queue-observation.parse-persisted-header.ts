@@ -15,22 +15,6 @@ export const WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION =
 export const RELEASE_FINALITY_DEPTH =
   DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 
-/**
- * A finalized block with no queue transition becomes a durable progress
- * record once the native point is this far past the persisted cursor. Restore
- * replays every live block after that cursor, so without progress records a
- * quiet queue leaves the cursor arbitrarily far behind the tip and a restart
- * after a long quiet period must replay all of it.
- */
-export const WATCHER_STATE_QUEUE_PROGRESS_INTERVAL_BLOCKS = 240;
-
-export const stateQueueProgressRecordDue = (
-  previous: Readonly<{ nativePoint: Readonly<{ blockNo: string }> }>,
-  nativeBlock: Readonly<{ blockNo: string }>,
-): boolean =>
-  BigInt(nativeBlock.blockNo) - BigInt(previous.nativePoint.blockNo) >=
-  BigInt(WATCHER_STATE_QUEUE_PROGRESS_INTERVAL_BLOCKS);
-
 export const HEX_28 = /^[0-9a-f]{56}$/u;
 
 export const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -152,8 +136,6 @@ export type WatcherReleasedHeaderProof =
 export const admittedObservations = new WeakSet<object>();
 
 export const admittedHeaders = new WeakSet<object>();
-
-export const admittedSources = new WeakSet<object>();
 
 export const assertWatcherStateQueueObservation = (
   observation: WatcherAuthenticatedStateQueueObservation,

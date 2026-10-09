@@ -1,8 +1,4 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
-import {
-  REJECT_SOURCE_KIND_REFERENCE,
-  REJECT_SOURCE_KIND_SPEND,
-} from "@al-ft/midgard-validation";
 
 /**
  * Disposition of every typed `RejectionReason` constructor onto the fault-proof
@@ -104,34 +100,6 @@ export type TypedReasonArm = keyof typeof TYPED_REASON_DISPOSITIONS;
 export const TYPED_REASON_ARMS = Object.freeze(
   Object.keys(TYPED_REASON_DISPOSITIONS) as readonly TypedReasonArm[],
 );
-
-export const isTypedReasonArm = (arm: string): arm is TypedReasonArm =>
-  Object.prototype.hasOwnProperty.call(TYPED_REASON_DISPOSITIONS, arm);
-
-/**
- * The single direct category for a typed reason at a concrete coordinate.
- * `InputNotFound` is the only arm whose family depends on the coordinate: the
- * spend source belongs to `nonExistentInput`, the reference source to
- * `noReferenceInput`.
- */
-export const directCategoryOfTypedReason = (
-  arm: TypedReasonArm,
-  coordinate: { readonly source_kind?: bigint } = {},
-): FraudProofCatalogueCategoryName => {
-  if (arm === "InputNotFound") {
-    if (coordinate.source_kind === REJECT_SOURCE_KIND_SPEND) {
-      return "nonExistentInput";
-    }
-    if (coordinate.source_kind === REJECT_SOURCE_KIND_REFERENCE) {
-      return "noReferenceInput";
-    }
-    throw new Error(
-      `directCategoryOfTypedReason: InputNotFound needs source_kind 0 or 1, got ${String(coordinate.source_kind)}`,
-    );
-  }
-  const [category] = TYPED_REASON_DISPOSITIONS[arm].categories;
-  return category;
-};
 
 /**
  * Every category that must be production-runnable for the non-interactive

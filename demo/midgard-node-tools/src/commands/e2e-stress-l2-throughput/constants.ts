@@ -1,5 +1,3 @@
-import { type E2EL2StressMeasurementPolicy } from "./types.js";
-
 export const E2E_L2_STRESS_CONFIG_SCHEMA_VERSION =
   "midgard-e2e-l2-stress-config-v1";
 export const E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION =
@@ -25,14 +23,3 @@ export const DEFAULT_OPEN_LOOP_DURATION_MS = 10_000;
 export const DEFAULT_OPEN_LOOP_MAX_IN_FLIGHT = 256;
 export const DEFAULT_NO_OP_CALIBRATION_DURATION_MS = 5_000;
 export const DEFAULT_AGGREGATE_OBSERVER_INTERVAL_MS = 1_000;
-
-export const E2E_L2_STRESS_MEASUREMENT_POLICY: E2EL2StressMeasurementPolicy = {
-  loadModel: "closed-loop-smoke",
-  workloadProfile: "production-end-user",
-  syntheticVsProduction: "production_end_user_path",
-  advanceOn: "accepted",
-  primaryStageMetric: "metrics.l2Admission.perSecond",
-  finalityObservation: "post-submit-bounded",
-  submissionWindowExcludesCommitDrain: true,
-  fullFinalityRequiresDrainProof: true,
-};

@@ -336,7 +336,3 @@ export const makeWatcherDeploymentAuthorityFixture = (
     cachedDefaultWatcherDeploymentAuthorityFixture,
   );
 };
-
-/** The default-parameter authority. */
-export const makeDeploymentAuthority = () =>
-  makeWatcherDeploymentAuthorityFixture();

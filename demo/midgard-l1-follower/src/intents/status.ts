@@ -55,8 +55,6 @@ export type IntentStatus =
       inputsAvailable: boolean;
     }>;
 
-export type IntentStatusKind = IntentStatus["kind"];
-
 /** Dead: conflicted, expired, dependency_dead, abandoned or failed_landed (§8.2, §8.3). */
 export const isDeadStatus = (status: IntentStatus): boolean =>
   status.kind === "conflicted" ||

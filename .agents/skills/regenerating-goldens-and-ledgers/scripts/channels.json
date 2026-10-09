@@ -537,21 +537,18 @@
     {
       "id": "resolver-proof-fit-sweep-v1",
       "kind": "golden",
-      "summary": "Resolver proof-fit sweep fixture. Frozen: the generator fails closed because its emulator worker was removed on 2026-09-09.",
-      "generators": [
-        "demo/midgard-validation/scripts/generate-resolver-proof-fit-sweep-v1.mjs"
-      ],
-      "writerEnv": ["MIDGARD_REGENERATE_RESOLVER_SWEEP"],
+      "summary": "Resolver proof-fit sweep fixture. Frozen: it has no generator; its emulator worker was removed on 2026-09-09 and the wrapper script that could only fail was deleted on 2026-10-08.",
+      "generators": [],
       "producers": ["demo/midgard-fault-proofs"],
       "inputs": [],
       "outputs": [
         "demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json"
       ],
       "sync": {
-        "manual": "Frozen. The generator throws before it runs anything; re-create the worker under demo/midgard-fault-proofs/scripts first."
+        "manual": "Frozen. No generator exists; write one under demo/midgard-fault-proofs/scripts before regenerating."
       },
       "check": {
-        "none": "--check also fails closed, so nothing can show the fixture is current."
+        "none": "No generator exists, so nothing can show the fixture is current."
       },
       "ci": {
         "none": "No workflow step runs this generator."

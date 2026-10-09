@@ -15,10 +15,7 @@ import "./block-confirmation.record-confirmed-pending-block.js";
 import "./block-confirmation.run-confirmation-worker-in-thread.js";
 import "./block-confirmation.build-block-confirmation-action.js";
 import "./block-confirmation.block-confirmation-fiber.js";
-export {
-  blockConfirmationAction,
-  blockConfirmationFiber,
-} from "./block-confirmation.block-confirmation-fiber.js";
+export { blockConfirmationFiber } from "./block-confirmation.block-confirmation-fiber.js";
 export { buildBlockConfirmationAction } from "./block-confirmation.build-block-confirmation-action.js";
 export {
   type ActivePendingFinalizationIdentity,

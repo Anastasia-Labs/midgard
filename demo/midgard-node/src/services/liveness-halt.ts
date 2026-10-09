@@ -164,19 +164,6 @@ export const clearLivenessIncident = (
     yield* clearLivenessReason(globals, source);
   });
 
-/** Clears `reason` under `source` only if it is the reason raised there, so
- * one evaluation never clears another's reason under a shared source. */
-export const clearLivenessReasonIf = (
-  globals: LivenessGlobals,
-  source: string,
-  reason: string,
-): Effect.Effect<void> =>
-  Effect.flatMap(Ref.get(globals.LIVENESS_REASONS), (reasons) =>
-    reasons.get(source) === reason
-      ? clearLivenessIncident(globals, source)
-      : Effect.void,
-  );
-
 /** One reason the node raises right now, as readiness reports it. */
 export type ActiveLivenessReason = Readonly<{
   source: string;

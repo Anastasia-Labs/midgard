@@ -61,7 +61,7 @@ import {
   transportLedgerOutputs,
   type WriterLease,
 } from "@al-ft/midgard-l1-follower";
-import { Effect, Option, Ref, Runtime } from "effect";
+import { Effect, Ref, Runtime } from "effect";
 
 import {
   forcedOrderIngestionHook,
@@ -416,10 +416,3 @@ export const startL1Follower = <R = never>(
         ),
     );
   });
-
-/** The follower handle, when the node's follower is running. */
-export const runningL1Follower = Effect.gen(function* () {
-  const globals = yield* Globals;
-  const state = yield* Ref.get(globals.L1_FOLLOWER);
-  return state.kind === "running" ? Option.some(state) : Option.none();
-});

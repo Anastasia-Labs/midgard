@@ -126,8 +126,10 @@ emulator regression before rerunning the full live flow.
 The canonical stack is `docker-compose.yaml` plus the `docker-compose.kupmios.yaml`
 overlay: PostgreSQL, the node, a one-shot schema migration, and an in-stack
 Cardano L1 (cardano-node bootstrapped from a certified Mithril snapshot, Ogmios,
-Kupo). The base file alone starts no L1, and the node accepts only a `Kupmios`
-provider, so every command below uses both files.
+Kupo). The base file alone starts no L1, and the node reads L1 only through the
+overlay's cardano-node (its socket and config; note 8 below), so every command
+below uses both files. Ogmios and Kupo stay in the overlay for the node-tools
+devnet harness and the fault-proofs prover CLI; the node reads neither.
 
 The stack is compose project `midgard-node` with fixed host ports. To run a
 second one from a linked git worktree, replace `docker compose` with
@@ -201,8 +203,8 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    4. The local stack restores an official Kupo SQLite snapshot into
       `./cardano/kupo` when that directory is empty, then continues syncing
       with `--match * --since origin` and **without** `--prune-utxo`. The
-      node's forced-order carriage reader needs spent carriage outputs to stay
-      readable, and a pruning index deletes them. The official snapshot was
+      Kupo readers named at the top of `docker-compose.kupmios.yaml` need
+      spent outputs to stay readable, and a pruning index deletes them. The official snapshot was
       built pruned, so outputs spent before its snapshot point are absent.
       That is harmless for a deployment you initialise after this bring-up
       (the snapshot predates `init` by construction). To join a deployment
@@ -210,8 +212,8 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
       `KUPO_BOOTSTRAP_MODE=origin` before the first start (or clear
       `./cardano/kupo` and restart with it) so Kupo syncs from origin instead.
    5. Kupo is considered healthy only once its `/health` endpoint returns
-      `200`, not while it is still returning `202 Accepted` during replay. That
-      keeps `midgard-node` from starting against a stale wildcard index.
+      `200`, not while it is still returning `202 Accepted` during replay.
+      `midgard-node` does not wait on it.
    6. The local stack intentionally runs standalone `cardano-node` and Ogmios
       containers instead of the combined `cardano-node-ogmios` image, because
       the certified Mithril snapshot can move ahead of that combined image's
@@ -235,8 +237,8 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    node dist/index.js l1-provider-preflight --json
    ```
 
-   If local Kupo or Ogmios is unhealthy, fix this stack. Remote L1 providers are
-   not supported for demo-node acceptance.
+   If the preflight fails, fix the local cardano-node (its socket, config and
+   sync). Remote L1 providers are not supported for demo-node acceptance.
 
 5. Install the schema:
 

@@ -86,9 +86,9 @@ Notes a reader needs:
 
 ## Frozen
 
-| Channel                       | Output                                                                              | Why                                                                                                                                                                                                                                                           |
-| ----------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolver-proof-fit-sweep-v1` | `demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json` | Its generator (`demo/midgard-validation/scripts/generate-resolver-proof-fit-sweep-v1.mjs:61-70`) throws in both modes because its vitest worker was removed on 2026-09-09. The fixture cannot be regenerated or checked until a worker exists again [review]. |
+| Channel                       | Output                                                                              | Why                                                                                                                                                                                                                               |
+| ----------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resolver-proof-fit-sweep-v1` | `demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json` | It has no generator: its vitest worker was removed on 2026-09-09, and the wrapper script, which could only fail, was deleted on 2026-10-08. The fixture cannot be regenerated or checked until a generator exists again [review]. |
 
 ## Documentation and configuration
 

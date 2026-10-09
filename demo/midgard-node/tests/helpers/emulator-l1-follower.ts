@@ -20,16 +20,8 @@
  * The deployment is bound once per emulator (`bindNodeFollower`), from the
  * fixture's contracts when nothing bound it earlier.
  */
-import {
-  openOrder,
-  type ProjectedEvent,
-} from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Emulator,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { Emulator, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Duration, Effect, Ref, Schedule } from "effect";
 
 import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
@@ -58,7 +50,6 @@ import {
   syncFollowerHost,
   withFollowerHost,
 } from "./follower-emulator.host.js";
-import { followerBlockHash } from "./follower-view.js";
 
 const failed = (message: string, cause?: unknown) =>
   new DatabaseError({ table: "l1_follower_cursor", message, cause });
@@ -215,46 +206,3 @@ export const ingestEmulatorEventsUnowned = (
       );
     return outcome.ingestion;
   });
-
-/**
- * `utxo`, an Order of the list minting under `policyId`, as the follower
- * opens and projects it: admitted and live at its own output.
- */
-export const projectOrderAsFollower = (
-  utxo: UTxO,
-  kind: ProjectedEvent["kind"],
-  policyId: string,
-  retained: readonly UTxO[] = [],
-): ProjectedEvent => {
-  const opened = openOrder(
-    utxo,
-    {
-      kind,
-      policyId,
-      listAddress: "",
-      retentionAddress: "",
-      retirementScriptHash: "",
-    },
-    retained,
-  );
-  if (opened === "not_an_order") throw new Error("expected an Order");
-  const { retained: _retained, ...content } = opened;
-  const location = {
-    txHash: Buffer.from(utxo.txHash, "hex"),
-    index: utxo.outputIndex,
-  };
-  return {
-    kind,
-    ...content,
-    admission: {
-      blockHash: followerBlockHash(0).toString("hex"),
-      slot: 0,
-      height: 0,
-      txHash: utxo.txHash,
-      txIndex: 0,
-      outRef: location,
-    },
-    retirement: null,
-    location,
-  };
-};

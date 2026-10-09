@@ -46,9 +46,6 @@ export const decodeOutRef = (bytes: Uint8Array): OutRef => {
 export const outRefKey = (outRef: OutRef): string =>
   encodeOutRef(outRef).toString("latin1");
 
-export const outRefKeyFromParts = (txHash: Buffer, index: number): string =>
-  outRefKey({ txHash, index });
-
 /** Ledger set order: by tx hash bytes, then index. */
 export const compareOutRefs = (left: OutRef, right: OutRef): number =>
   Buffer.compare(left.txHash, right.txHash) || left.index - right.index;

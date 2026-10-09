@@ -42,8 +42,9 @@ probe.
    It derives all three ports from checkout plus invocation and refuses occupied
    ports. The underlying generator
    (`demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh`)
-   keeps the main checkout on Ogmios 2337, Kupo 2442, Postgres 5544 and
-   project `midgard_phase4_process_<run id>`; a linked worktree gets
+   keeps the main checkout on Ogmios 2337, Kupo 2442 (harness services; the
+   node, watcher and committee do not read them), Postgres 5544 and project
+   `midgard_phase4_process_<run id>`; a linked worktree gets
    `midgard_phase4_process_<hash>_<run id>` and ports shifted by its own
    offset, and it prints both. Two runs in one checkout still collide: set
    `MIDGARD_PHASE4_RUN_ID` and all three `MIDGARD_PHASE4_*_PORT` variables. [review]
@@ -89,9 +90,10 @@ not obviously one row, or when a node refuses to attach.
    soon as its HTTP server runs, the DA committee 200 `{"ok":true}`. Neither
    looks at the chain or the database.
 3. **Ready**: `/readyz` answers 200 with `"ready": true`; otherwise 503 with
-   `reasons`. The node's check covers workers, admission backlog, database, L1
-   provider, history owner and MPF owner. Kupo's `/health` is 200 only once it
-   has caught up; it answers 202 while replaying.
+   `reasons`. The node's check covers workers, admission backlog, database,
+   its L1 follower and node transport, and the MPF owner. The harness's Kupo
+   `/health` is 200 only once it has caught up; it answers 202 while
+   replaying.
 4. **Working**: ready, and the thing you care about is advancing. Blocks
    committing, DA members attesting and merges landing are absent from
    `/readyz`. Watch the node's `/pipeline-status` and the DA committee's
@@ -113,7 +115,7 @@ It polls every `--url` until all are ready, and exits with:
 
 | Exit | Meaning                                                                                                                                                         |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Ready: every URL answered HTTP 200 and no body said `ready: false` or a disconnected Kupo                                                                       |
+| 0    | Ready: every URL answered HTTP 200 and no body said `ready: false` or a disconnected harness Kupo                                                               |
 | 1    | Crashed: a `--pid` is gone, a `--log` gained a known fatal line, or a DA committee is held on an L1 follower intervention. The tail of every `--log` is printed |
 | 2    | Timed out: every URL answered, not all became ready. The last reasons are printed                                                                               |
 | 3    | Unreachable: a URL never answered, no `--url` was given, or the arguments were unusable. Never a pass                                                           |

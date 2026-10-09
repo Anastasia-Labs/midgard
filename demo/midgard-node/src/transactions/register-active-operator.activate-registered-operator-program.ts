@@ -192,17 +192,3 @@ export const program = Effect.gen(function* () {
     lucidService.referenceScriptsAddress,
   );
 });
-
-export const activateProgram = Effect.gen(function* () {
-  const lucidService = yield* Lucid;
-  const contracts = yield* MidgardContracts;
-  const requiredBondLovelace = yield* configuredReleaseRequiredBondProgram;
-  yield* lucidService.switchToOperatorsMainWallet;
-  return yield* activateOperatorProgram(
-    lucidService.api,
-    contracts,
-    requiredBondLovelace,
-    lucidService.referenceScriptsApi,
-    lucidService.referenceScriptsAddress,
-  );
-});

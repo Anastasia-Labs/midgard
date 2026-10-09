@@ -37,7 +37,6 @@ export {
   blueprintSpeaksOptionBCompleteItemWire,
   type CapturedLifecycleStage,
   type CapturedSemanticSubmission,
-  expectExecutionWithinBand,
   printRouteFreedomCampaignTable,
   type RouteFreedomJourney,
 } from "./route-freedom-journey.print-route-freedom-campaign-table.js";

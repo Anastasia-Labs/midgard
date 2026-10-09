@@ -6,7 +6,6 @@ import {
   getAddressDetails,
   Lucid as makeLucid,
   type LucidEvolution,
-  type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Option } from "effect";
 import { Effect } from "effect";
@@ -122,22 +121,6 @@ export const reconcileDepositSubmissionAttemptProgram = (
         "Do not resubmit yet; reconcile the original transaction receipt and current event history.",
     } as const;
   });
-
-export const buildUnsignedDepositTxProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  config: SubmitDepositConfig,
-): Effect.Effect<
-  TxSignBuilder,
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.HashingError
-  | SubmitDepositError
-> =>
-  buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(
-    Effect.map(({ tx }) => tx),
-  );
 
 export const buildUnsignedDepositTxFromFundingContextProgram = (
   lucid: LucidEvolution,

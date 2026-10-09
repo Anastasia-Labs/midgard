@@ -5,25 +5,6 @@ export type RedeemerPointer = {
   readonly index: bigint;
 };
 
-const txInfoRedeemerPurposeRank = (tag: number): number => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return 0;
-    case CML.RedeemerTag.Mint:
-      return 1;
-    case CML.RedeemerTag.Cert:
-      return 2;
-    case CML.RedeemerTag.Reward:
-      return 3;
-    case CML.RedeemerTag.Voting:
-      return 4;
-    case CML.RedeemerTag.Proposing:
-      return 5;
-    default:
-      return Number.MAX_SAFE_INTEGER;
-  }
-};
-
 export const getRedeemerPointersInContextOrder = (
   tx: CML.Transaction,
 ): readonly RedeemerPointer[] => {
@@ -53,32 +34,6 @@ export const getRedeemerPointersInContextOrder = (
     pointers.push({ tag: key.tag(), index: key.index() });
   }
   return pointers;
-};
-
-export const getTxInfoRedeemerIndexes = (
-  pointers: readonly RedeemerPointer[],
-): readonly number[] => {
-  const inContextOrder = pointers.map((pointer, contextIndex) => ({
-    pointer,
-    contextIndex,
-  }));
-  const inTxInfoOrder = [...inContextOrder].sort((left, right) => {
-    const leftRank = txInfoRedeemerPurposeRank(left.pointer.tag);
-    const rightRank = txInfoRedeemerPurposeRank(right.pointer.tag);
-    if (leftRank !== rightRank) {
-      return leftRank - rightRank;
-    }
-    if (left.pointer.index !== right.pointer.index) {
-      return left.pointer.index < right.pointer.index ? -1 : 1;
-    }
-    return left.contextIndex - right.contextIndex;
-  });
-
-  const txInfoIndexes: number[] = [];
-  inTxInfoOrder.forEach(({ contextIndex }, txInfoIndex) => {
-    txInfoIndexes[contextIndex] = txInfoIndex;
-  });
-  return txInfoIndexes;
 };
 
 export const findRedeemerDataCbor = (
@@ -120,24 +75,6 @@ export const findRedeemerDataCbor = (
     return map.get(key)?.data().to_cbor_hex();
   }
   return undefined;
-};
-
-export const resolveRedeemerTxInfoIndex = ({
-  pointers,
-  target,
-  label = `tag=${target.tag.toString()},index=${target.index.toString()}`,
-}: {
-  readonly pointers: readonly RedeemerPointer[];
-  readonly target: RedeemerPointer;
-  readonly label?: string;
-}): bigint => {
-  const contextIndex = pointers.findIndex(
-    (pointer) => pointer.tag === target.tag && pointer.index === target.index,
-  );
-  if (contextIndex < 0) {
-    throw new Error(`Redeemer pointer not found for ${label}.`);
-  }
-  return BigInt(getTxInfoRedeemerIndexes(pointers)[contextIndex]);
 };
 
 export const resolveMintPolicyContextIndex = ({

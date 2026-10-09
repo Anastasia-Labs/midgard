@@ -25,7 +25,6 @@ export const hex = (label: string) => bytes(label).toString("hex");
 export const BASE_TX = hex("base-tx");
 export const BASE_OUT = `${BASE_TX}#0`;
 export const BASE_HEADER = bytes("base-header", 28);
-export const ROOT_HEADER = Buffer.alloc(28);
 export const UTXOS_ROOT = hex("utxos-root");
 export const TTL = 1_000;
 export const ZERO_ROOT = "00".repeat(32);
@@ -193,38 +192,6 @@ export const insertJournal = (input: {
       ledger_delta_produced: "[]",
     } as never)}`;
   });
-
-export const activeE = (baseHeader: Buffer = BASE_HEADER) =>
-  insertJournal({
-    header: E_HEADER,
-    status: Pending.Status.PendingSubmission,
-    commit: E,
-    baseOut: BASE_OUT,
-    baseHeader,
-    createdAt: new Date(2_000_000),
-  });
-
-/** A retained, locally applied journal of the base D (`BASE_HEADER`, on the
- * root) whose root is the fixture base root `UTXOS_ROOT`: the retained parent
- * journal that binds the replay base of a fixture block on D. */
-export const retainedBaseJournal = insertJournal({
-  header: BASE_HEADER,
-  status: Pending.Status.LocallyApplied,
-  commit: signedCommit(`${hex("root-tx")}#0`, TTL - 1),
-  baseOut: `${hex("root-tx")}#0`,
-  baseHeader: ROOT_HEADER,
-  createdAt: new Date(1_000_000),
-}).pipe(
-  Effect.zipRight(
-    Effect.flatMap(
-      SqlClient.SqlClient,
-      (sql) => sql`UPDATE pending_block_finalizations
-        SET expected_utxos_root = base_utxos_root,
-          block_end_time = block_start_time + INTERVAL '1 second'
-        WHERE header_hash = ${BASE_HEADER}`,
-    ),
-  ),
-);
 
 export const seed = Effect.gen(function* () {
   yield* MigrationRunner.migrate({

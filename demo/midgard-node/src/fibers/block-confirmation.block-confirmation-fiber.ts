@@ -13,9 +13,6 @@ import { buildBlockConfirmationAction } from "./block-confirmation.build-block-c
 import { type ConfirmationWorkerRunner } from "./block-confirmation.record-confirmed-pending-block.js";
 import { runConfirmationWorkerInThread } from "./block-confirmation.run-confirmation-worker-in-thread.js";
 
-export const blockConfirmationAction =
-  buildBlockConfirmationAction().pipe(runAtFollowerView);
-
 /** One confirmation tick. */
 export const confirmationTick = (
   runWorker: ConfirmationWorkerRunner = runConfirmationWorkerInThread,

@@ -332,27 +332,6 @@ export const buildCountedMpfRootInWorker = (
     });
 };
 
-export const buildPhasMpfRootInWorker = (
-  entries: readonly { readonly key: Buffer; readonly value: Buffer }[],
-): Promise<string> => {
-  const workerCount = configured?.workers ?? 1;
-  pool ??= new RootWorkerPool(workerCount, configured?.timeoutMs ?? 120_000);
-  const packed = packEntries(entries);
-  const { keys, values, offsets } = packed;
-  return pool
-    .run(
-      {
-        domain: SDK.ROOT_DOMAINS.transactionsV1,
-        counted: false,
-        keys,
-        values,
-        offsets,
-      },
-      [keys, values, offsets],
-    )
-    .then((result) => result.rootHex);
-};
-
 export const buildAuthenticatedMpfRootInWorker = (
   domain: SDK.RootDomain,
   entries: readonly { readonly key: Buffer; readonly value: Buffer }[],

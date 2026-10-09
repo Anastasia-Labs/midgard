@@ -302,5 +302,3 @@ export const createDaBondPoolCli = (deps: {
     },
   };
 };
-
-export type DaBondPoolCli = ReturnType<typeof createDaBondPoolCli>;

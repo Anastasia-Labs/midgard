@@ -46,7 +46,6 @@ export {
 export {
   createDaBondPoolCommitteeObserver,
   type DaBondPoolCommitteeObservation,
-  type DaBondPoolCommitteeObserver,
   DaBondPoolCommitteeProcessError,
   type DaBondPoolCommitteeRecord,
 } from "./da-bond-pool-committee-process.create-da-bond-pool-committee-observer.js";

@@ -21,8 +21,4 @@ export {
 export {
   buildMissingNativeScriptUtxoEmulatorFixture,
   buildNativeScriptInvalidEmulatorFixture,
-  type FinalFamilyHarness,
-  type FinalMinAdaFamily,
-  type FinalMissingNativeScriptUtxoFamily,
-  type FinalNativeScriptInvalidFamily,
 } from "./final-catalogue-emulator.build-missing-native-script-utxo-emulator-fixture.js";

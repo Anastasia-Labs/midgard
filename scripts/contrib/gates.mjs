@@ -78,7 +78,6 @@ export const GATES = {
       [
         "tests/process-ownership.test.ts",
         "tests/e2e-service-supervisor.test.ts",
-        "tests/phase4-process-output.test.ts",
       ],
     ],
   ],

@@ -13,9 +13,7 @@ export { unsafeCorrectionLockWitnessForTest } from "./authenticated-state-queue-
 export {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
-  stateQueueProgressRecordDue,
   WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION,
-  WATCHER_STATE_QUEUE_PROGRESS_INTERVAL_BLOCKS,
   WATCHER_STATE_QUEUE_REMOVAL_KINDS,
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherCorrectionLockObservation,
@@ -27,7 +25,3 @@ export {
 } from "./authenticated-state-queue-observation.parse-persisted-header.js";
 export { WatcherRetainedHeaderAttestationPendingError } from "./authenticated-state-queue-observation.parse-persisted-header.js";
 export { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "./authenticated-state-queue-observation.parse-persisted-observation.js";
-export {
-  unsafeAnchoredHeaderObservationForTest,
-  unsafeDeriveFraudProofCorrectionIdentityForTest,
-} from "./authenticated-state-queue-observation.reconstruct-queue.js";

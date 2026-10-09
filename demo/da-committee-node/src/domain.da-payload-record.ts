@@ -22,25 +22,6 @@ export type ObservedStateQueueNode = {
   readonly chainPoint: ChainPoint;
 };
 
-/**
- * One atomically observed state-queue view. The confirmed root is retained in
- * the observation so disappearance of a block node can only become a terminal
- * outcome when the root observation itself is final.
- */
-export type ObservedStateQueueSnapshot = {
-  readonly nodes: readonly ObservedStateQueueNode[];
-  readonly confirmedHeaderHash: string;
-  readonly confirmedStateOutRef: string;
-  readonly observedChainPoint: ChainPoint;
-  /**
-   * Block height of the chain tip the snapshot was read at, when the source
-   * can read it at that same point. The depths of the snapshot's outputs are
-   * counted from this tip, and replayed history is judged final against it
-   * too, so one tick judges all finality at one tip.
-   */
-  readonly tipBlockNo?: number;
-};
-
 export type StateQueueHeaderStatus =
   | "unattested"
   | "attesting"

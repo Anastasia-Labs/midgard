@@ -29,7 +29,6 @@ export {
 } from "./block-replay-public-fixture.build-public-replay-fixture.js";
 export {
   bufferEntries,
-  cardanoOutputAssets,
   CHAIN_POINT,
   type CommittedEffectGroup,
   committedStepsForEffects,

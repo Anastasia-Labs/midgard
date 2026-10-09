@@ -22,12 +22,14 @@
 import {
   isInstanceLockHeldElsewhere,
   PostgresInstanceLock,
+  type PostgresInstanceLockBounds,
   type PostgresInstanceLockIdentity,
   type PostgresInstanceLockTimers,
   type WriterLease,
 } from "@al-ft/midgard-l1-follower";
 import { Duration, Effect, Runtime } from "effect";
 
+import { DATABASE_CONNECT_TIMEOUT } from "./database.js";
 import type { Globals } from "./globals.globals.js";
 import {
   clearLivenessIncident,
@@ -77,6 +79,8 @@ export type AcquireNodeInstanceLockOptions = Readonly<{
   /** Reports the named reasons the startup waits on (`/readyz`). */
   waiting: (reasons: readonly string[]) => Effect.Effect<void>;
   timers?: PostgresInstanceLockTimers;
+  /** Bounds one attempt; the connect bound defaults to the node pools'. */
+  bounds?: PostgresInstanceLockBounds;
   retryInitialMs?: number;
   retryMaxMs?: number;
 }>;
@@ -120,8 +124,13 @@ export const acquireNodeInstanceLock = (
     let delayMs = options.retryInitialMs ?? NODE_INSTANCE_LOCK_RETRY_INITIAL_MS;
     let lastReason: string | undefined;
     // Each attempt alone is uninterruptible (a lock it takes is released with
-    // the scope); the wait between attempts is not, so a startup interrupted
-    // while it waits stops at once.
+    // the scope), and bounded by its connect and statement timeouts; the wait
+    // between attempts is not, so a startup interrupted while it waits stops
+    // at once.
+    const bounds: PostgresInstanceLockBounds = {
+      connectTimeoutMs: Duration.toMillis(DATABASE_CONNECT_TIMEOUT),
+      ...options.bounds,
+    };
     const attempt = Effect.either(
       Effect.acquireRelease(
         Effect.tryPromise(() =>
@@ -130,6 +139,7 @@ export const acquireNodeInstanceLock = (
             options.connectionString,
             events,
             options.timers,
+            bounds,
           ),
         ),
         (held) => Effect.promise(() => held.release().catch(() => undefined)),

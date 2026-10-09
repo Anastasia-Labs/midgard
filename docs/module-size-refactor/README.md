@@ -53,7 +53,7 @@ existing untracked working-tree blueprint was preserved.
 
 [retained-modules.json](retained-modules.json) is the complete file-by-file
 inventory, including the exceptions outside demo's ESLint scope. It includes
-306 exact TS/JS caps, four agent-tooling JS modules, one Rust ownership module
+303 exact TS/JS caps, four agent-tooling JS modules, one Rust ownership module
 and one SQL migration. Repeated reason patterns describe the actual retained
 boundary, rather than exempting an entire directory:
 
@@ -69,7 +69,7 @@ boundary, rather than exempting an entire directory:
 - Declarative catalogues and module augmentations retain one complete schema
   or role universe. Public barrels retain one export surface.
 - Entrypoint-sensitive code retains its process/loading identity. In
-  particular, the 602-line SQLite journal and 598-line auxiliary-witness fixture
+  particular, the 518-line SQLite journal and 610-line auxiliary-witness fixture
   are loaded directly as TypeScript by Node strip-types. Splitting them into
   source files referenced with `.js` breaks those existing loading contracts.
 
@@ -77,10 +77,10 @@ The four production modules above 2,000 lines deserve a separate design task:
 
 | Module                                                                 | Lines | Reason for retaining its implementation boundary                                                                                                                                                                                                                          |
 | ---------------------------------------------------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `validation-machine/trace-builder-prepare.prepare-validation-trace.ts` | 3,964 | The preparation function owns source commitments, resolution scheduling, ledger deltas and witness/CEK frontiers in one evolving local context. Helper declarations were extracted. A further split needs an explicit context/failure interface and witness-order checks. |
-| `validation-machine/trace-builder-complete.ts`                         | 2,850 | Completion appends ordered continuation witnesses and control checks over accumulated proof state. Its local state and rejection/terminal order must remain shared.                                                                                                       |
-| `cek-executor.structural-executor.ts`                                  | 2,567 | One executor owns the CEK heap, continuation/control state and execution budgets. Splitting its methods requires a separately verified machine-state interface.                                                                                                           |
-| `validation-dispute/submit/semantic-resolution.ts`                     | 2,398 | One submit workflow coordinates witness planning, UTxO carriage, funding and submission stages. Splitting the function changes cancellation/failure handoffs and needs lifecycle tests.                                                                                   |
+| `validation-machine/trace-builder-prepare.prepare-validation-trace.ts` | 4,015 | The preparation function owns source commitments, resolution scheduling, ledger deltas and witness/CEK frontiers in one evolving local context. Helper declarations were extracted. A further split needs an explicit context/failure interface and witness-order checks. |
+| `validation-machine/trace-builder-complete.ts`                         | 2,877 | Completion appends ordered continuation witnesses and control checks over accumulated proof state. Its local state and rejection/terminal order must remain shared.                                                                                                       |
+| `cek-executor.structural-executor.ts`                                  | 2,448 | One executor owns the CEK heap, continuation/control state and execution budgets. Splitting its methods requires a separately verified machine-state interface.                                                                                                           |
+| `validation-dispute/submit/semantic-resolution.ts`                     | 2,391 | One submit workflow coordinates witness planning, UTxO carriage, funding and submission stages. Splitting the function changes cancellation/failure handoffs and needs lifecycle tests.                                                                                   |
 
 The 611-line Rust `owner/compact_index.rs` retains the `FullIndex` compaction,
 authenticated closure, proof arena and child-index cache boundary. Other

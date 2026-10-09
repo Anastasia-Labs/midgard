@@ -62,7 +62,6 @@ export {
   publishValueNotPreservedReferenceScripts,
   runValueNotPreservedThread,
   setupValueNotPreservedScenario,
-  type ValueNotPreservedThreadRun,
 } from "./value-not-preserved-emulator.run-value-not-preserved-thread.js";
 export {
   publishTamperedFieldPreimagePublication,

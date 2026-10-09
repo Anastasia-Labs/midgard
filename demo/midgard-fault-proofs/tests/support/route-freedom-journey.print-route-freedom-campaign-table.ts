@@ -1,5 +1,4 @@
 import { type Emulator, type LucidEvolution } from "@lucid-evolution/lucid";
-import { expect } from "vitest";
 
 import {
   submitValidationDisputeAward,
@@ -181,38 +180,4 @@ export const printRouteFreedomCampaignTable = (
           },
   };
   console.log(`${headline} ${JSON.stringify(table)}`);
-};
-
-/**
- * #622: execution-unit band pin for stages whose bill is run-dependent. The
- * journey ledger's txids and addresses vary run to run (the emulator starts
- * at wall-clock time and the accounts are generated), and on-chain out-ref
- * lookups compare those values byte by byte, short-circuiting at the first
- * difference — so stages that walk reference inputs by out-ref bill within
- * a small band rather than exactly (measured on the reference route:
- * authenticate 163,390 vs 166,458 memory units, the by-reference observe
- * door 931,806 vs 928,938, in consecutive runs). The sweep fixture pins
- * exactly because its basis fixes `now`; journey suites pin such stages to
- * a measured anchor with 3% tolerance — wide enough for the observed <2%
- * wobble, regression-tight against Option B's 40-70% deltas.
- */
-export const expectExecutionWithinBand = (
-  label: string,
-  measurement: CompleteSignedTransactionMeasurement,
-  anchor: { readonly memoryUnits: bigint; readonly stepUnits: bigint },
-): void => {
-  const within = (actual: bigint, expected: bigint): boolean => {
-    const delta = actual > expected ? actual - expected : expected - actual;
-    return delta * 100n <= expected * 3n;
-  };
-  expect(
-    within(measurement.executionMemory, anchor.memoryUnits),
-    `${label} memory ${measurement.executionMemory.toString()} strays more ` +
-      `than 3% from the measured anchor ${anchor.memoryUnits.toString()}`,
-  ).toBe(true);
-  expect(
-    within(measurement.executionSteps, anchor.stepUnits),
-    `${label} steps ${measurement.executionSteps.toString()} strays more ` +
-      `than 3% from the measured anchor ${anchor.stepUnits.toString()}`,
-  ).toBe(true);
 };

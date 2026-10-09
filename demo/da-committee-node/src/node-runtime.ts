@@ -70,10 +70,6 @@ export type CommitteeAvailabilityRuntime = Readonly<{
 export const COMMITTEE_RETIREMENT_COMPACTION_FAILED =
   "committee_retirement_compaction_failed";
 
-export type CommitteeNodeRuntime = Awaited<
-  ReturnType<typeof openCommitteeNodeRuntime>
->;
-
 /**
  * Opens every dependency of a running committee node (store, its L1
  * follower, coordinators, libp2p) and initializes the service. One attempt of the

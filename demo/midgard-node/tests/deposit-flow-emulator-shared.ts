@@ -1689,7 +1689,6 @@ export {
   EMULATOR_PROTOCOL_PARAMETERS,
   EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
   type EmulatorFixture,
-  type HarnessSignedTx,
   isEmulatorProvider,
   isProviderVisibleUnspent,
   loadContracts,
