@@ -102,14 +102,17 @@ const execute = async (
       ),
   );
   const supervisor = runtime.faultProofSupervisor.status();
+  // A proof deadline at risk or unsafe never stops the process: a restart
+  // would meet the same deadline again. The record carries the health, and
+  // readiness names it (deadline_at_risk, deadline_unsafe) while the
+  // supervisor keeps proving.
   if (
     runtime.faultProofReadiness.length === 0 ||
     runtime.faultProofReadiness.some(({ ready }) => ready !== true) ||
     !Number.isSafeInteger(runtime.recoveredFaultProofWorkflowCount) ||
     runtime.recoveredFaultProofWorkflowCount < 0 ||
     supervisor.phase !== "accepting" ||
-    supervisor.recovered !== true ||
-    supervisor.deadlineHealth !== "safe"
+    supervisor.recovered !== true
   ) {
     await runtime.close();
     throw new Error("watcher production proof supervision is not ready");

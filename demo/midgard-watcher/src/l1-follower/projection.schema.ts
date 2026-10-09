@@ -101,8 +101,8 @@ CREATE INDEX ${WATCHER_QUEUE_OUTPUTS_TABLE}_anchor ON ${WATCHER_QUEUE_OUTPUTS_TA
 
 /**
  * Per state-queue node header, every canonical tx that created or spent one
- * of its node outputs: the unit history the old Kupmios reads return for
- * the node unit. A header's rows close when its node leaves the queue.
+ * of its node outputs: the history of the node unit. A header's rows close
+ * when its node leaves the queue.
  */
 const unitHistoryMigrationSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";

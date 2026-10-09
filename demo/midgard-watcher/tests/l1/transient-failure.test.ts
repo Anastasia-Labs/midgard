@@ -8,7 +8,6 @@ import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs";
-import { KupmiosError } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { isWatcherL1TransientFailure } from "../../src/l1/transient-failure.js";
@@ -34,14 +33,6 @@ describe("watcher L1 transient failure", () => {
     ["a refused connection", fetchFailed("ECONNREFUSED")],
     ["a reset connection", fetchFailed("ECONNRESET")],
     ["a connect timeout", fetchFailed("UND_ERR_CONNECT_TIMEOUT")],
-    [
-      "a retryable provider timeout",
-      new KupmiosError({ protocol: "kupo", operation: "x", kind: "timeout" }),
-    ],
-    [
-      "a provider HTTP 503",
-      new KupmiosError({ protocol: "kupo", operation: "x", status: 503 }),
-    ],
     [
       "a node transport whose sidecar is restarting",
       new TransportUnavailableError("sidecar_restarting", "x"),
@@ -84,18 +75,6 @@ describe("watcher L1 transient failure", () => {
       "an error that only carries a transient name",
       Object.assign(new Error("forged"), {
         name: "FraudProofL1UnavailableError",
-      }),
-    ],
-    [
-      "a provider decode failure on HTTP 200",
-      new KupmiosError({ protocol: "kupo", operation: "x", status: 200 }),
-    ],
-    [
-      "a forged retryable provider shape without its tag",
-      Object.assign(new Error("forged"), {
-        name: "KupmiosError",
-        provider: "Kupmios",
-        retryable: true,
       }),
     ],
     ["an HTTP refusal", fetchFailed("EACCES")],

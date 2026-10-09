@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -143,7 +144,7 @@ describe("production fault-proof supervisor", () => {
     });
   });
 
-  it("rejects unknown, malformed, and symlinked objectives", async () => {
+  it("rejects unknown and malformed objectives, and holds a symlinked one without failing", async () => {
     const unknownRoot = await directory();
     recordRawObjectiveRow(unknownRoot, {
       category: "forgedFamily",
@@ -201,6 +202,9 @@ describe("production fault-proof supervisor", () => {
         },
       },
     });
+    // Startup holds the unreadable objective by name rather than failing;
+    // its header is not queued, so the same admission releases it: its row
+    // goes and the link and what it points at stay.
     await expect(
       linked.requestProgress({
         observation: progressObservation({
@@ -208,7 +212,17 @@ describe("production fault-proof supervisor", () => {
         }),
         rollbackGeneration: "0",
       }),
-    ).rejects.toThrow("proof objective journal traverses a symlink");
+    ).resolves.toBeUndefined();
+    expect(linked.status()).toMatchObject({
+      phase: "accepting",
+      journalDecisionMissing: [],
+      objectiveCleanupFailures: [],
+      unfinishedObjectiveCount: 0,
+    });
+    expect(
+      existsSync(join(symlinkRoot, "fault-proofs", "doubleSpend", h28(0xbb))),
+    ).toBe(true);
+    expect(existsSync(outside)).toBe(true);
     await linked.close().catch(() => undefined);
   });
 

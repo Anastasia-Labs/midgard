@@ -12,7 +12,10 @@ import {
   type WatcherFaultDecisionBridge,
 } from "../fault-proofs/fault-decision-bridge.js";
 import { validateWatcherFaultDecisionJournalConfiguration } from "../fault-proofs/fault-decision-journal.js";
-import { type WatcherFaultProofApplication } from "../fault-proofs/fault-proof-application.js";
+import {
+  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  type WatcherFaultProofApplication,
+} from "../fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofExecution } from "../fault-proofs/fault-proof-execution.js";
 import {
   createWatcherFaultProofSupervisor,
@@ -56,6 +59,7 @@ import {
 } from "./operations-observability.js";
 import { refusePermanently } from "./permanent-refusal.js";
 import { type WatcherProcessConfig } from "./process-config.js";
+import { createWatcherStartupOperations } from "./startup-operations.js";
 import {
   createWatcherStartupProgress,
   type WatcherStartupProgress,
@@ -103,13 +107,17 @@ const L1_READINESS_REFRESH_MS = 5_000;
  * decision driver decides from its projections at the tip and at the
  * release depth.
  *
- * Liveness: the operations server binds before the first decision pass, so
- * `/v1/status` (the liveness probe) answers while the follower syncs; there
- * is no `/healthz` route. Until the first pass completes, and whenever the
- * follower, a pass or the journals hold decisions, `/readyz` names the
- * reason. No L1 condition, journal integrity failure or failed journal open
- * ends the process after the server binds; bad configuration, the journals'
- * directory and key included, exits before it binds.
+ * Liveness: the operations server binds before the node identity, workflow
+ * readiness and protocol parameters stages (the last two read L1), so
+ * `/v1/status` (the liveness probe) answers while they wait out an
+ * unanswering node and while the follower syncs; there is no
+ * `/healthz` route. Until the runtime's observability exists `/readyz` names
+ * `startup:<stage>`, the stage most recently begun; after that, until the
+ * first pass completes, and whenever the follower, a pass or the journals
+ * hold decisions, it names the reason. No L1 condition, journal integrity
+ * failure or failed journal open ends the process after the server binds;
+ * bad configuration, the journals' directory and key included, exits before
+ * it binds.
  */
 export const createWatcherRuntime = async (input: {
   readonly config: WatcherProcessConfig;
@@ -118,7 +126,11 @@ export const createWatcherRuntime = async (input: {
     event: WatcherAvailabilityStatusTransition,
   ) => void;
 }): Promise<WatcherRuntime> => {
-  const startup = createWatcherStartupProgress(input.onStartupProgress);
+  const startupOperations = createWatcherStartupOperations();
+  const startup = createWatcherStartupProgress((progress) => {
+    startupOperations.report(progress);
+    input.onStartupProgress?.(progress);
+  });
   const {
     deploymentAuthority,
     deploymentIdentity,
@@ -186,15 +198,31 @@ export const createWatcherRuntime = async (input: {
       }),
     );
 
-    const { networkMagic } = await startup("l1_node_identity", () =>
-      deriveWatcherNativeGenesisIdentity({ watcherConfig }),
-    );
     // Address derivation only; the runtime never holds a live signer. The
     // executing runner re-resolves the same secret source itself.
     const {
       prover: proverWalletAddress,
       availability: availabilityWalletAddress,
     } = await resolveWatcherRuntimeWalletAddresses(input);
+    // A bad journal directory or key exits before the operations server binds.
+    await refusePermanently("journal_configuration", () =>
+      validateWatcherFaultDecisionJournalConfiguration({
+        directory: input.config.workflowJournalDirectory,
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+        authenticationKey: rollbackAuthenticationKey,
+      }),
+    );
+    // Bound before the L1-dependent stages: while they wait out an
+    // unanswering node, `/readyz` names the stage.
+    operationsHttp = await startWatcherOperationsHttpServer({
+      endpoint: input.config.operationsEndpoint,
+      observability: startupOperations,
+    });
+
+    const { networkMagic } = await startup("l1_node_identity", () =>
+      deriveWatcherNativeGenesisIdentity({ watcherConfig }),
+    );
     const activeFollower = openWatcherDeploymentFollower({
       authority,
       storePath: `${watcherConfig.storage.path}.l1-follower.sqlite`,
@@ -250,15 +278,6 @@ export const createWatcherRuntime = async (input: {
         },
       });
 
-    // A bad journal directory or key exits before the operations server binds.
-    await refusePermanently("journal_configuration", () =>
-      validateWatcherFaultDecisionJournalConfiguration({
-        directory: input.config.workflowJournalDirectory,
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        launchScope: faultProofApplication.installedCategories,
-        authenticationKey: rollbackAuthenticationKey,
-      }),
-    );
     const fundingRuntime = await openWatcherProverFundingRuntime({
       path: watcherConfig.storage.path,
       authenticationKey: rollbackAuthenticationKey,
@@ -369,10 +388,7 @@ export const createWatcherRuntime = async (input: {
       pendingAvailabilityHeaders: activeAvailability.pendingAvailabilityHeaders,
     });
     faultDecisionBridge = activeBridge;
-    operationsHttp = await startWatcherOperationsHttpServer({
-      endpoint: input.config.operationsEndpoint,
-      observability: operations,
-    });
+    startupOperations.attach(operations);
 
     const sourceIdentityDigest = localL1Source.chainSync.genesisIdentitySha256;
     const activeDriver = createWatcherDecisionDriver(

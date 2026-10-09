@@ -30,7 +30,13 @@ export type RawReadRefusal =
   /** The transaction is stored at another point than the one expected. */
   | "not_at_point"
   /** The transaction failed phase 2: the raw reads admit valid transactions only. */
-  | "phase2_invalid";
+  | "phase2_invalid"
+  /**
+   * The stored facts contradict one another (two unit histories place one
+   * transaction at different points). Raised by the snapshot capture, never
+   * by a single read.
+   */
+  | "store_inconsistent";
 
 export type RawRead<T> =
   | Readonly<{ kind: "ok"; value: T }>

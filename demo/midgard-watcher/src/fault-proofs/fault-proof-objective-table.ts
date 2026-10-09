@@ -106,10 +106,12 @@ const completionMarker = (
       })
     : null;
 
-/** Records a verified completion; one verified beyond rollback recovery (k
- * deep, the follower's `securityParameter`) is marked with its execution, so
- * it is never run or verified again and is pruned. Without a k nothing is marked. True
- * once the row holds a marker. */
+/** Records a verified completion; one verified beyond rollback recovery
+ * (deeper than k, the follower's `securityParameter`) is marked with its
+ * execution, so it is never run or verified again and is pruned. The
+ * supervisor's completion check applies the same threshold, so every
+ * completion it finishes is marked unless the write fails. Without a k
+ * nothing is marked. True once the row holds a marker. */
 export const completeWatcherProofObjective = (
   database: WatcherJournalDatabase,
   objective: WatcherProofObjective,
@@ -260,9 +262,10 @@ export const matchingWatcherProofMarker = (
 
 /**
  * Deletes the objective's row and its queued jobs in one commit; a prune
- * also deletes its fault decisions. The caller removes the workflow
- * directory first, so a crash in between leaves a row whose execution is
- * gone, which the next start prunes again.
+ * also deletes its fault decisions. The caller first renames the workflow
+ * directory to a tombstone, so a crash before this commit leaves a row
+ * whose execution is gone, which the next start prunes again, and a crash
+ * after it leaves only the tombstone, which the next start sweeps.
  */
 export const forgetWatcherProofObjective = (
   database: WatcherJournalDatabase,

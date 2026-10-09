@@ -6,7 +6,6 @@ import {
   FraudProofL1UnavailableError,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
-import { KupmiosError } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
@@ -306,15 +305,6 @@ describe("supervisor execution adapter with durable funding", () => {
 
   it.each([
     [
-      "a retryable Lucid Kupmios error",
-      () =>
-        new KupmiosError({
-          protocol: "kupo",
-          operation: "getUtxosByOutRef",
-          status: 503,
-        }),
-    ],
-    [
       "a refused provider connection",
       () =>
         Object.assign(new TypeError("fetch failed"), {
@@ -365,23 +355,6 @@ describe("supervisor execution adapter with durable funding", () => {
     await expect(test.execution.execute(test.input)).rejects.toBe(missing);
     expect(test.setAlert).not.toHaveBeenCalled();
     expect(await test.fixture.records()).toEqual(before);
-  });
-
-  it("keeps a provider error the provider does not mark retryable hard", async () => {
-    const test = await setup();
-    const failure = new KupmiosError({
-      protocol: "kupo",
-      operation: "getUtxosByOutRef",
-      status: 200,
-    });
-    test.runOrResume.mockRejectedValueOnce(failure);
-    await expect(test.execution.execute(test.input)).rejects.toBe(failure);
-    expect(test.setAlert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        code: "proof_submission_failure",
-        active: true,
-      }),
-    );
   });
 
   it("backs off completed verification transport outages without funding or journal changes", async () => {

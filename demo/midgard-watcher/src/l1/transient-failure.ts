@@ -56,19 +56,6 @@ export const isWatcherNativeNodeUnavailable = (
 /** How far down a `cause` chain a wrapped transient is still recognised. */
 const MAXIMUM_CAUSE_DEPTH = 8;
 
-/**
- * A Lucid Kupmios provider error that the provider itself marks retryable
- * (timeout, transport loss, HTTP 408/425/429/5xx). Matched by shape: the
- * workspace holds more than one copy of the provider, so `instanceof` cannot
- * cross them. A non-retryable one (a decode failure, any other status) is not
- * a transient.
- */
-const retryableProviderError = (error: Error): boolean =>
-  (error.name === "KupmiosError" || error.name === "OgmiosJsonRpcError") &&
-  (error as { readonly _tag?: unknown })._tag === error.name &&
-  (error as { readonly provider?: unknown }).provider === "Kupmios" &&
-  (error as { readonly retryable?: unknown }).retryable === true;
-
 const transientCode = (error: Error): boolean => {
   const code = (error as { readonly code?: unknown }).code;
   return typeof code === "string" && NETWORK_FAILURE_CODES.has(code);
@@ -93,7 +80,6 @@ export const isWatcherL1TransientFailure = (error: unknown): error is Error => {
       current instanceof FraudProofL1CheckpointChangedError ||
       current instanceof L1ProviderTransientError ||
       fromTransportError(current) instanceof L1ProviderTransientError ||
-      retryableProviderError(current) ||
       transientCode(current)
     )
       return true;

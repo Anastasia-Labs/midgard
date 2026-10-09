@@ -35,6 +35,7 @@ export const operations = () =>
         remainingSafeStartMs: "1000",
         journalDecisionMissing: [],
         journalBusy: null,
+        objectiveCleanupFailures: [],
       }),
     } as unknown as WatcherFaultProofSupervisor,
     launchScopeStatus: () => ({

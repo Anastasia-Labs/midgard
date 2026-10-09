@@ -320,6 +320,8 @@ export const createWatcherOperationsObservability = (input: {
     if (supervisor.journalUnavailable !== null)
       reasons.push("journal_unavailable");
     if (supervisor.journalCapacity) reasons.push("journal_capacity");
+    if (supervisor.objectiveCleanupFailures.length > 0)
+      reasons.push("fault_proof_objective_cleanup_failed");
     const holds = supervisor.journalDecisionMissing;
     reasons.push(...new Set(holds.map(watcherDecisionHoldReason)));
     if (supervisor.journalBusy !== null) reasons.push("journal_busy");

@@ -19,10 +19,10 @@ const pause = (ms: number, signal: AbortSignal | undefined): Promise<void> =>
 
 /**
  * Runs `attempt` until it settles with anything but an L1 transient (see
- * `isWatcherL1TransientFailure`): Kupo, Ogmios or the node did not answer,
- * which says nothing about the chain, so the same read is made again after a
- * capped backoff. There is no attempt limit: an outage lasts as long as it
- * lasts, and each attempt costs at most one read every 30 s. Any other error,
+ * `isWatcherL1TransientFailure`): the follower or its node transport did not
+ * answer, which says nothing about the chain, so the same read is made again
+ * after a capped backoff. There is no attempt limit: an outage lasts as long
+ * as it lasts, and each attempt costs at most one read every 30 s. Any other error,
  * and a transient once `signal` has aborted (before or during the wait), is
  * rethrown unchanged. The attempt itself must be safe to repeat.
  */
