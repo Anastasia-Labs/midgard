@@ -25,6 +25,7 @@ import { writeReceipt } from "./receipts.mjs";
 import { withResource } from "./resources.mjs";
 import { buildNative, checkNative } from "./native.mjs";
 import { pinnedPnpm } from "./pnpm.mjs";
+import { reachedTests } from "./reached.mjs";
 import {
   failures,
   parseTestScript,
@@ -194,6 +195,7 @@ export const runTests = async (
   name,
   {
     files = [],
+    related = [],
     testName,
     seed = 1,
     signal,
@@ -201,11 +203,14 @@ export const runTests = async (
     sourceOnly = false,
     proofKind,
     flags = {},
+    reach: findReach = reachedTests,
   } = {},
 ) => {
   const pkg = packageByName(root, name);
   const command = withCallerFlags(testCommand(pkg), flags);
   const cwd = resolve(root, pkg.directory);
+  if (related.length && files.length)
+    throw new Error("--related and --file are exclusive");
   for (const file of files) {
     const absolute = inside(cwd, file);
     if (!existsSync(absolute) || !/\.test\.[cm]?[jt]sx?$/u.test(file))
@@ -232,6 +237,44 @@ export const runTests = async (
   if (proofKind === "live-acceptance")
     throw new Error("synthetic tests cannot be labeled live acceptance");
   const directory = runDirectory();
+  // The tests a set of changed files reaches (reached.mjs): none skips the
+  // run, an unsure answer runs the whole package.
+  let reach;
+  if (related.length) {
+    const base = realpathSync(root);
+    const changed = [
+      ...new Set(related.map((path) => relative(base, inside(base, path)))),
+    ].sort();
+    reach = {
+      changed,
+      ...(await findReach(root, pkg, command, changed, {
+        env,
+        signal,
+        directory,
+      })),
+    };
+    // Plain-Node preludes are not graphed: a change that can reach the
+    // package runs them, and with no Vitest file reached, the whole script.
+    if (
+      !reach.whole &&
+      !reach.files.length &&
+      command.preludes.length &&
+      reach.relevant.length
+    ) {
+      reach.whole = true;
+      reach.why.push("its plain-Node test steps are not graphed");
+    }
+    if (!reach.whole && !reach.files.length)
+      return {
+        schema: "midgard-contrib-reach/v1",
+        kind: "test",
+        package: pkg.name,
+        status: "not-reached",
+        exitCode: 0,
+        reach,
+      };
+    files = reach.whole ? [] : reach.files;
+  }
   const overrides = {
     // The script's own environment, as `pnpm test` would set it; suites
     // that set none need Vitest's test runtime for test-only constructors.
@@ -308,6 +351,9 @@ export const runTests = async (
     command,
     directory,
     signal,
+    // Reached files are Vitest's own paths; whatever else their substring
+    // filters select only widens the run.
+    widen: Boolean(reach),
   });
   const whole = files.length === 0;
   const blueprintBefore = prepared.blueprint ? blueprintHash(root) : undefined;
@@ -318,7 +364,7 @@ export const runTests = async (
   try {
     // A focused run is the package's Vitest suites only; the plain-Node
     // preludes belong to the whole-package run CI makes.
-    if (whole && !testName)
+    if ((whole || reach) && !testName)
       for (const [index, prelude] of command.preludes.entries()) {
         const [tool, ...args] = prelude.split(/\s+/u);
         if (tool !== "pnpm")
@@ -418,6 +464,7 @@ export const runTests = async (
     flags: vitestFlags(command),
     failures: failed,
     blueprintAction: prepared.blueprintAction,
+    ...(reach ? { reach } : {}),
     databasePrefix: runEnv.MIDGARD_TEST_DATABASE_PREFIX,
     databaseCleanup,
     sourceOnly,
@@ -461,6 +508,7 @@ const collect = async ({
   command,
   directory,
   signal,
+  widen = false,
 }) => {
   const listPath = resolve(directory, "vitest-list.json");
   const listed = await runProcess({
@@ -496,6 +544,7 @@ const collect = async ({
     throw new Error(
       `vitest does not collect ${missing.map((file) => relative(cwd, file)).join(", ")} (excluded by the package's Vitest config or an --exclude)`,
     );
+  if (widen) return collected;
   if (extra.length)
     throw new Error(
       `the file filters also select ${extra.map((file) => relative(cwd, file)).join(", ")}; name a path that selects only the intended file`,

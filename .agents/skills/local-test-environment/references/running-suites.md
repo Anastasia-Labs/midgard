@@ -4,12 +4,20 @@ Read this before running one test file or a whole package, before a gate run
 over several suites, and before starting a run that takes longer than one tool
 call allows.
 
-## One file, or the whole package
+## One file, the files a change reaches, or the whole package
 
 ```sh
 node scripts/contrib.mjs test --package midgard-node --file tests/<file>.test.ts [--name "<regex>"]
+node scripts/contrib.mjs test --package midgard-node --related <changed path>...
 node scripts/contrib.mjs test --package midgard-watcher [--maxWorkers 2] [--exclude "tests/slow/**"]
 ```
+
+After a change, run `--related` with the changed files for each package they
+can reach, not a whole package and not a hand-picked file list: it graphs
+imports from source across packages, plus fixtures, worker entries and
+directories named in string literals, and widens to the whole package whenever
+it cannot decide. `no test reached` means no import or name can reach that
+package's tests. [script: scripts/contrib/reached.mjs]
 
 `contrib test` runs the package's own `test` script, the command CI runs: its
 environment, its Vitest flags and, for a whole-package run, its `node --test`

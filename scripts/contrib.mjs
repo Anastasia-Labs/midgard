@@ -45,8 +45,8 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs prepare --package NAME [--plan | --execute] [--source-only]
   node scripts/contrib.mjs build --package NAME [--force]
   node scripts/contrib.mjs native --package NAME
-  node scripts/contrib.mjs test --package NAME [--file PATH]... [--name REGEX] [--seed N] [--source-only]
-      [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
+  node scripts/contrib.mjs test --package NAME [--file PATH... | --related PATH...] [--name REGEX]
+      [--seed N] [--source-only] [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
   node scripts/contrib.mjs gate NAME [--plan] [--seed N]
   node scripts/contrib.mjs artifacts list | check --channel ID | sync --channel ID
   node scripts/contrib.mjs artifacts builds
@@ -126,6 +126,11 @@ const testView = (result) =>
         reportError: result.reportError,
         failures: result.failures?.slice(0, 10),
         blueprintAction: result.blueprintAction,
+        reach: result.reach && {
+          changed: result.reach.changed.length,
+          whole: result.reach.whole,
+          why: result.reach.why.slice(0, 10),
+        },
         databaseCleanup: result.databaseCleanup,
         logs: result.steps.map((step) => step.logPath),
         receipt: result.path,
@@ -137,6 +142,7 @@ const valueOptions = new Set([
   "root",
   "package",
   "file",
+  "related",
   "name",
   "seed",
   "channel",
@@ -166,7 +172,7 @@ const flagOptions = new Set([
 // Vitest's own flags, passed through `contrib test` under Vitest's spelling.
 const vitestOptions = ["maxWorkers", "exclude", "disableConsoleIntercept"];
 export const parse = (argv) => {
-  const options = { files: [], excludes: [], words: [] };
+  const options = { files: [], related: [], excludes: [], words: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (!argument.startsWith("--")) {
@@ -184,6 +190,7 @@ export const parse = (argv) => {
     if (!value || value.startsWith("--"))
       throw new Error(`${argument} requires a value`);
     if (key === "file") options.files.push(value);
+    else if (key === "related") options.related.push(value);
     else if (key === "exclude") options.excludes.push(value);
     else if (options[key] !== undefined)
       throw new Error(`duplicate ${argument}`);
@@ -258,6 +265,8 @@ export const main = async (argv) => {
     );
     if (vitestOption && command !== "test")
       throw new Error(`--${vitestOption} is supported only for test`);
+    if (options.related.length && command !== "test")
+      throw new Error("--related is supported only for test");
     if (
       options.force &&
       command !== "build" &&
@@ -324,6 +333,7 @@ export const main = async (argv) => {
       result = await runTests(root, required("package"), {
         ...execution,
         files: options.files,
+        related: options.related,
         testName: options.name,
         flags: {
           maxWorkers: options.maxWorkers,
@@ -423,7 +433,14 @@ export const main = async (argv) => {
       throw new Error(`unknown command ${options.words.join(" ")}; use --help`);
     if (options.output && !(command === "packet" && action === "create"))
       atomicJson(resolve(options.output), result);
-    if (
+    if (result?.schema === "midgard-contrib-reach/v1")
+      console.error(
+        [
+          `contrib test ${result.package}: no test reached; nothing to run`,
+          ...result.reach.why.map((line) => `  ${line}`),
+        ].join("\n"),
+      );
+    else if (
       result?.schema === "midgard-contrib-receipt/v1" &&
       result.kind === "test"
     )

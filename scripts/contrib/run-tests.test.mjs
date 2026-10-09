@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -339,4 +340,135 @@ test("a failing run fails its receipt and names the failure", async (t) => {
     },
   ]);
   assert.match(summaryLines(receipt).join("\n"), /FAIL tests\/b\.test\.ts/u);
+});
+
+test("a related run runs what the change reaches, with the preludes, and nothing when it reaches nothing", async (t) => {
+  const { root, env, calls } = workspace(
+    t,
+    "pnpm run test:extra && vitest run",
+    { "a.test.ts": "", "b.test.ts": "" },
+  );
+  const stub = (answer) => async (_root, pkg, _command, changed) => {
+    assert.equal(pkg.name, "example");
+    assert.deepEqual(changed, ["demo/example/src/a.ts"]);
+    return { why: [], relevant: changed, ...answer };
+  };
+  const related = [resolve(root, "demo/example/src/a.ts")];
+  const reached = await runTests(root, "example", {
+    related,
+    sourceOnly: true,
+    env,
+    reach: stub({ whole: false, files: ["tests/a.test.ts"] }),
+  });
+  assert.equal(reached.status, "passed");
+  assert.deepEqual(reached.selectedFiles, [
+    resolve(root, "demo/example/tests/a.test.ts"),
+  ]);
+  assert.deepEqual(reached.reach.files, ["tests/a.test.ts"]);
+  const [prelude, run, ...rest] = calls();
+  assert.deepEqual(prelude, { prelude: "pnpm run test:extra" });
+  assert.ok(
+    run.vitest.some((arg) => arg.endsWith("a.test.ts")),
+    run.vitest,
+  );
+  assert.deepEqual(rest, []);
+
+  const nothing = await runTests(root, "example", {
+    related,
+    sourceOnly: true,
+    env,
+    reach: stub({ whole: false, files: [], relevant: [] }),
+  });
+  assert.equal(nothing.status, "not-reached");
+  assert.equal(nothing.exitCode, 0);
+  assert.equal(calls().length, 2, "a change reaching nothing runs nothing");
+
+  const whole = await runTests(root, "example", {
+    related,
+    sourceOnly: true,
+    env,
+    reach: stub({ whole: true, files: ["tests/a.test.ts"] }),
+  });
+  assert.deepEqual(
+    whole.selectedFiles,
+    ["a", "b"].map((name) =>
+      resolve(root, `demo/example/tests/${name}.test.ts`),
+    ),
+  );
+});
+
+test("a related change that reaches only the plain-Node preludes runs the whole script", async (t) => {
+  const { root, env, calls } = workspace(
+    t,
+    "pnpm run test:extra && vitest run",
+    { "a.test.ts": "", "b.test.ts": "" },
+  );
+  const receipt = await runTests(root, "example", {
+    related: ["demo/example/scripts/check.mjs"],
+    sourceOnly: true,
+    env,
+    reach: async (_root, _pkg, _command, changed) => ({
+      whole: false,
+      files: [],
+      relevant: changed,
+      why: [],
+    }),
+  });
+  assert.equal(receipt.reach.whole, true);
+  assert.match(receipt.reach.why.at(-1), /plain-Node test steps/u);
+  assert.equal(receipt.selectedFiles.length, 2);
+  assert.deepEqual(calls()[0], { prelude: "pnpm run test:extra" });
+  // Without preludes, the same answer reaches nothing.
+  const plain = workspace(t, "vitest run", { "a.test.ts": "" });
+  const skipped = await runTests(plain.root, "example", {
+    related: ["demo/example/scripts/check.mjs"],
+    sourceOnly: true,
+    env: plain.env,
+    reach: async (_root, _pkg, _command, changed) => ({
+      whole: false,
+      files: [],
+      relevant: changed,
+      why: [],
+    }),
+  });
+  assert.equal(skipped.status, "not-reached");
+  assert.deepEqual(plain.calls(), []);
+});
+
+test("--related is a test option, exclusive with --file", async (t) => {
+  const options = parse([
+    "test",
+    "--package",
+    "example",
+    "--related",
+    "a.ts",
+    "--related",
+    "b.ts",
+  ]);
+  assert.deepEqual(options.related, ["a.ts", "b.ts"]);
+  const refused = spawnSync(
+    process.execPath,
+    [
+      resolve(repository, "scripts/contrib.mjs"),
+      "build",
+      "--package",
+      "example",
+      "--related",
+      "a.ts",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /--related is supported only for test/u);
+  const { root, env, calls } = workspace(t, "vitest run", { "a.test.ts": "" });
+  await assert.rejects(
+    runTests(root, "example", {
+      related: ["a.ts"],
+      files: ["tests/a.test.ts"],
+      sourceOnly: true,
+      env,
+    }),
+    /exclusive/u,
+  );
+  assert.deepEqual(calls(), []);
 });

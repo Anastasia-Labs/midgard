@@ -46,7 +46,8 @@ it.
 
 ## 4. Focused package tests
 
-Run the files your change touches, not whole suites. The fault-proofs suite
+Run the files your change reaches (`--related <changed path>...` finds them),
+not whole suites. The fault-proofs suite
 took 20.5 minutes at eight forks on 2026-09-21 (its `vitest.config.ts`).
 
 ```bash

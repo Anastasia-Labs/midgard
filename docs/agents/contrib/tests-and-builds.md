@@ -6,6 +6,7 @@ node scripts/contrib.mjs prepare --package midgard-node --execute
 node scripts/contrib.mjs test --package midgard-node --file tests/validation-worker-pool.test.ts
 node scripts/contrib.mjs test --package midgard-node --file tests/database.test.ts --seed 42
 node scripts/contrib.mjs test --package midgard-watcher --maxWorkers 2
+node scripts/contrib.mjs test --package midgard-node --related demo/midgard-core/src/canonical-json.ts
 node scripts/contrib.mjs build --package midgard-sdk
 node scripts/contrib.mjs native --package midgard-node
 node scripts/contrib.mjs boundary --package midgard-core
@@ -32,6 +33,27 @@ tests read it, and assigns an invocation-specific disposable database family,
 dropped when the run ends. Both file and test ordering use the recorded seed.
 A name selector records filtered assertions separately from skipped selected
 assertions.
+
+`--related PATH` (repeatable, exclusive with `--file`) runs the test files a
+set of changed files reaches (`scripts/contrib/reached.mjs`). A child process
+asks the package's own Vitest for its import graph from source, rooted at every
+test, setup file and script of the package and every script outside the
+packages, so edges into other packages, worker entries and spawned scripts are
+graphed; Vitest's own `related` misses the last two, and the workspace bundles
+hide the first. On top of imports, a module reaches a file it names in a
+string literal (a fixture, a worker entry, a JSON input), the files under a
+directory it lists, and a package's `dist` when a built input of its closure
+changed. A `.ak` change also reaches every reader of
+`onchain/aiken/plutus.json`. Whatever cannot be decided widens: a module the
+probe cannot analyse always runs, a data file nothing names, a manifest, a
+lockfile, a Vitest or TypeScript configuration or the shared test harness runs
+the whole package, and so does a change reaching a package whose plain-Node
+preludes are not graphed. A failed probe runs the whole package. Nothing
+reached prints `no test reached; nothing to run` and exits 0 with a
+`midgard-contrib-reach/v1` result; otherwise the receipt carries `reach` (the
+changed files, `whole`, the reached files and why). A file named only through
+a computed path with no part of its name spelled is the one edge it cannot
+see.
 
 The terminal gets a short verdict on stderr (counts, then each failed test or
 file that failed to load with its first message line, the log and the receipt)

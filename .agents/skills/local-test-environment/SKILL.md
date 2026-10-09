@@ -11,8 +11,8 @@ missing prerequisite or two checkouts touching the same resource.
 
 ## Start with `doctor`
 
-Run suites with `node scripts/contrib.mjs test --package <name> [--file <path>]`
-([how](references/running-suites.md#one-file-or-the-whole-package)): it runs
+Run suites with `node scripts/contrib.mjs test --package <name> [--file <path> | --related <changed>]`
+([how](references/running-suites.md#one-file-the-files-a-change-reaches-or-the-whole-package)): it runs
 the package's `test` script as CI does, after preparing the blueprint and
 dists, under its own database family, and counts what ran.
 
