@@ -238,9 +238,12 @@ jobs:
       # `scripts/verify-*-exec-ledger-v1.mjs` that re-measures it, and every
       # verifier runs here; `scripts/ci/exec-ledgers-wired.test.mjs` derives
       # both halves of that sentence from the files and fails if either stops
-      # being true. Aiken tests cannot assert their own execution units (the
-      # units are the report's observation of the test, not a value in scope),
-      # so this is the level at which a published cost claim can be falsified.
+      # being true. Each step names its preflight check (`exec-ledger:<id>`)
+      # from the repository root, so CI runs the verifier exactly as the local
+      # gate does, Aiken environment included. Aiken tests cannot assert their
+      # own execution units (the units are the report's observation of the test,
+      # not a value in scope), so this is the level at which a published cost
+      # claim can be falsified.
       #
       # Issue #574. `docs/spec/midgard-tx.md` §8.10 publishes thirteen absolute
       # execution readings and nine subtractions derived from them. They were
@@ -249,9 +252,10 @@ jobs:
       # far from its own published cost with the suite still green.
       - name: Pin the §8.10 carriage execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-carriage-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:carriage
       # Issue #575, the Q1x family-rebind wave of #565: the Q1x steps'
       # execution costs at the 13,200,000-mem GOAL_SPEC §3.3 basis, and the
       # Q1X-F6 claim (#551) that a step's cost no longer scales with the
@@ -260,17 +264,19 @@ jobs:
       # trusted afterwards.
       - name: Pin the Q1x family execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-q1x-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:q1x
       # Issue #576, the Q31 reference-input-no-idx lane. Its ledger was written
       # with a verifier and no step, so nothing ran it: the lane's exit
       # criterion existed as a file.
       - name: Pin the Q31 reference-input-no-idx family execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-q31-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:q31
       # Issue #577, the Q21 transition-trace lane of the same wave. Its two
       # rebound call sites moved in opposite directions — the forced-order path
       # got cheaper, the two-field L2 path got dearer because opening two fields
@@ -279,9 +285,10 @@ jobs:
       # accepted at, and only a step that runs can do that.
       - name: Pin the Q21 transition-trace family execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-q21-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:q21
       # Issue #594, the §8.11 forced-order material carriage lane. §8.11
       # publishes a cost for the tx-order mint — the whole-materialising door's
       # full-preimage re-hash, "bounded by §5.4's 32,768-byte aggregate" — and
@@ -292,9 +299,10 @@ jobs:
       # `walk_to_end` that the published sentence does not mention.
       - name: Pin the tx-order mint material-carriage execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-tx-order-mint-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:tx-order-mint
       # Issue #596, the §12.7 canonical-decodability fault family. Its step 01
       # is the only adjudication of a field the operator committed to bytes that
       # are not a §5.1 envelope — the escape hatch every §8.8 view door aborts
@@ -306,9 +314,10 @@ jobs:
       # walk the verdict runs.
       - name: Pin the canonical-decodability committed-preimage execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-canonical-decodability-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:canonical-decodability
       # Issue #601, the §12.8 committed-field-shape sibling fault family. It is
       # the only adjudication of a committed preimage that IS a §5.1 envelope
       # and that its own slot still refuses — §7.4's stride arithmetic or §5.4's
@@ -320,9 +329,10 @@ jobs:
       # fixture-only control beside each, the per-item cost of that walk.
       - name: Pin the committed-field-shape slot-verdict execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-committed-field-shape-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:committed-field-shape
       # Issue #635, the native-script decoding-fault thread. Its design
       # published a per-node throughput and a worst-case transaction count
       # derived from the scan ledger's one-shot rates; the first measurement of
@@ -330,9 +340,10 @@ jobs:
       # is exactly the kind of fact an unpinned derivation hides.
       - name: Pin the native-script decoding-engine execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:native-script-decoding-engine
       # Issue #633, the tag-0 structural predicate, pinned as an
       # INFEASIBILITY: the largest payload the arm can see costs about 81x the
       # memory basis, and a wave item was dropped on the strength of that
@@ -340,9 +351,10 @@ jobs:
       # step exists to catch — it would bring the dropped item back.
       - name: Pin the native-script scan execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-native-script-scan-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:native-script-scan
       # Issue #628, the §5.5.3 transition-trace and §5.3 descriptor-derivation
       # ExUnits frontier. Rows come in derive / fixture-only pairs so the
       # marginal validator cost is recomputed from fresh readings rather than
@@ -350,9 +362,10 @@ jobs:
       # say the validator is.
       - name: Pin the transition-trace descriptor execution ledger
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        working-directory: .
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
-        run: node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs
+        run: node scripts/preflight.mjs --run exec-ledger:transition-trace-descriptor
       # RETIREMENT RECORD — the dual-compiler blueprint-agreement guard
       # (issue #521; `scripts/verify-dual-compiler-blueprint-agreement.mjs`),
       # retired by the owner's 2026-08-13 ruling A on #579 together with the

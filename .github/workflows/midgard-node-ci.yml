@@ -325,7 +325,7 @@ jobs:
           prebuild: lucid-midgard midgard-core midgard-sdk
       - name: Check canonical V1 profile documentation
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-core run docs:consensus-profile-v1:check
+        run: node scripts/preflight.mjs --run docs:consensus-profile-v1
       # Both artifacts of the native-V1 field-access golden channel — the JSON
       # fixture and the generated Aiken module — are regenerated from the
       # TypeScript twin, never hand-edited. Without this gate an edited
@@ -335,7 +335,7 @@ jobs:
       # runs `aiken fmt` on a temp file, so it needs the pinned fork on PATH.
       - name: Check native V1 field-access golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-core run fixtures:native-tx-field-access-v1:check
+        run: node scripts/preflight.mjs --run golden:native-tx-field-access-v1
       # The per-field half of the same channel (#569): for every field index
       # 0..8, what §5.3's `enc_i` actually is. It gates on the identical
       # footing and for the identical reason — the JSON fixture and the
@@ -344,7 +344,7 @@ jobs:
       # both language suites while no longer being what the producers emit.
       - name: Check native V1 per-field item golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-core run fixtures:native-tx-field-items-v1:check
+        run: node scripts/preflight.mjs --run golden:native-tx-field-items-v1
       # The §8.6/§8.8 **wire** channel (#574). It lives in the SDK rather than
       # midgard-core because what it pins is Plutus Data encoding and the
       # producer of that is `Data.to` against the SDK schemas, but it gates on
@@ -355,7 +355,7 @@ jobs:
       # cross-language claim is unfalsifiable.
       - name: Check native V1 carriage wire golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-sdk run fixtures:native-tx-carriage-wire-v1:check
+        run: node scripts/preflight.mjs --run golden:native-tx-carriage-wire-v1
       # The `n01`-`n09` transaction vectors (#588). Same footing as the three
       # channels above, with one difference worth naming: the eleven Aiken
       # constants this gates live inside a hand-written 1,700-line test module, so
@@ -364,14 +364,14 @@ jobs:
       # appearance reveals which of its constants are generated.
       - name: Check native V1 n01-n09 transaction vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-core run fixtures:native-tx-vector-v1:check
+        run: node scripts/preflight.mjs --run golden:native-tx-vector-v1
       # The MPF node encoding (leaf and branch node preimages disjoint), taken
       # from the MPF library alone. The vitest suites in midgard-core and
       # midgard-node and the generated Aiken module recompute it; this step keeps
       # both artifacts what the library produces.
       - name: Check MPF node-encoding golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-core run fixtures:mpf-node-encoding-v1:check
+        run: node scripts/preflight.mjs --run golden:mpf-node-encoding-v1
       # The §12.7 canonical-decodability channel (#596). It emits both artifacts
       # from one generator run on exactly the footing of the four above, and it
       # was left unwired when it landed — so an edited producer plus a `:sync`
@@ -380,7 +380,7 @@ jobs:
       # a golden channel no step runs is a gate that cannot fail (#519/#523).
       - name: Check canonical-decodability golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-sdk run fixtures:canonical-decodability-v1:check
+        run: node scripts/preflight.mjs --run golden:canonical-decodability-v1
       # The §12.8 committed-field-shape channel (#601). Same footing as the five
       # above, with the difference that makes it matter more: its verdict takes
       # **two** arguments, so a twin that transposed the slot or read §5.3's
@@ -390,7 +390,7 @@ jobs:
       # convicted by both fault kinds — and that check only runs here.
       - name: Check committed-field-shape golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-sdk run fixtures:committed-field-shape-v1:check
+        run: node scripts/preflight.mjs --run golden:committed-field-shape-v1
       # Off-chain code must serialise a DA commitment to the same bytes as the
       # validators, or a node could attest a commitment that no challenger can
       # open against. These vectors pin the on-chain encoding, commitment_hash_v1,
@@ -400,7 +400,7 @@ jobs:
       # which the midgard-sdk job's test step runs.
       - name: Check DA commitment golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-sdk run fixtures:da-commitment-v1:check
+        run: node scripts/preflight.mjs --run golden:da-commitment-v1
       # The pooled DA bond datum decides whether an Apply may attest and when a
       # withdrawal may complete, the spend redeemer's constructor picks the pool
       # transition, and ParametersV1 is applied to the attestation, pool and
@@ -408,13 +408,13 @@ jobs:
       # four StateQueueStatusV1 arms, against the Aiken types.
       - name: Check DA bond pool golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-sdk run fixtures:da-bond-pool-v1:check
+        run: node scripts/preflight.mjs --run golden:da-bond-pool-v1
       # The 256 capacity-test signatures sign attestation_message_v1 of the
       # fixture commitment, so any change to the fixture or to CommitmentV1 must
       # come with signatures regenerated by the generator, never by hand.
       - name: Check DA attestation capacity signatures
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-sdk run fixtures:da-attestation-capacity-v1:check
+        run: node scripts/preflight.mjs --run golden:da-attestation-capacity-v1
       # The C20-6, C20-7 and field-8 maximum constant families in
       # `native-tx-v1.test.ak` and `native-tx.max-redeemers.test.ak` are produced by
       # the three ordered-collection boundary suites, which is why this gate runs
@@ -423,7 +423,7 @@ jobs:
       # hand-mirrored twins again the moment the boundary moves (#588).
       - name: Check ordered-collection boundary Aiken constants
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:check
+        run: node scripts/preflight.mjs --run golden:ordered-collection-boundary-aiken
       # The three nested-maximum families — the balanced constructor/list/map
       # datum, the nested redeemer `Data` and the exact 5,000-byte `Value` — on
       # the same footing. Their Aiken terminals used to be retyped out of a
@@ -435,7 +435,7 @@ jobs:
       # red build rather than a silent cross-language drift.
       - name: Check nested boundary Aiken constants
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:check
+        run: node scripts/preflight.mjs --run golden:nested-boundary-aiken
       # The V1 CEK core-step channel. Before it the Aiken CEK and the TypeScript
       # CEK were pinned against each other by seventeen integer tags and one
       # hand-pasted CBOR vector; nothing proved that a step the TypeScript trace
@@ -448,14 +448,14 @@ jobs:
       # `:sync` re-greens both language suites unnoticed.
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-validation run fixtures:cek-core-step-v1:check
+        run: node scripts/preflight.mjs --run golden:cek-core-step-v1
       # The V1 CEK builtin channel: every builtin tag evaluated by the pinned
       # Aiken evaluator, values and failures, with the cases where the ledger
       # and that evaluator differ recorded as overrides beside both outcomes.
       # The node's builtin evaluation must reproduce every expected outcome.
       - name: Check V1 CEK builtin golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-validation run fixtures:cek-builtin-cardano-v1:check
+        run: node scripts/preflight.mjs --run golden:cek-builtin-cardano-v1
       # The V1 validation-auxiliary-witness ABI channel. Its generator emits
       # both `tests/fixtures/validation-auxiliary-witness-v1.generated.json` —
       # which `demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts`
@@ -466,7 +466,7 @@ jobs:
       # both language suites with nothing to notice (#519/#523).
       - name: Check validation-auxiliary-witness ABI golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-validation run fixtures:validation-auxiliary-witness-v1:check
+        run: node scripts/preflight.mjs --run golden:validation-auxiliary-witness-v1
       # The transition-trace ABI golden channel. The midgard-node job's test
       # step already holds tests/fixtures/transition-trace-abi.json against the
       # SDK encoder, and `aiken check` decodes every one of those fixtures into
@@ -478,7 +478,7 @@ jobs:
       # database.
       - name: Check transition-trace ABI golden vectors
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-node run fixtures:transition-trace-abi:check
+        run: node scripts/preflight.mjs --run golden:transition-trace-abi
 
   lucid-midgard:
     name: lucid-midgard
@@ -886,10 +886,10 @@ jobs:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs midgard-watcher midgard-node
       - name: Lint the demo workspace
-        run: pnpm --dir demo run lint
+        run: node scripts/preflight.mjs --run demo-lint
       - name: Format-check the demo workspace
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo run format-check
+        run: node scripts/preflight.mjs --run demo-format
 
   da-committee-node:
     name: da-committee-node

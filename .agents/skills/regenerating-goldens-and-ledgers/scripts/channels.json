@@ -820,7 +820,7 @@
       },
       "ci": {
         "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the \u00a78.10 carriage execution ledger"
+        "step": "Pin the §8.10 carriage execution ledger"
       }
     },
     {
@@ -966,7 +966,8 @@
         "run": "cd onchain/aiken && node scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs"
       },
       "ci": {
-        "none": "No workflow step runs this verifier."
+        "workflow": ".github/workflows/aiken-ci.yml",
+        "step": "Pin the native-script decoding-engine execution ledger"
       }
     },
     {
@@ -988,7 +989,8 @@
         "run": "cd onchain/aiken && node scripts/verify-native-script-scan-exec-ledger-v1.mjs"
       },
       "ci": {
-        "none": "No workflow step runs this verifier."
+        "workflow": ".github/workflows/aiken-ci.yml",
+        "step": "Pin the native-script scan execution ledger"
       }
     },
     {
@@ -1010,7 +1012,8 @@
         "run": "cd onchain/aiken && MIDGARD_AIKEN_ENV=testnet node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs"
       },
       "ci": {
-        "none": "No workflow step runs this verifier."
+        "workflow": ".github/workflows/aiken-ci.yml",
+        "step": "Pin the transition-trace descriptor execution ledger"
       }
     },
     {

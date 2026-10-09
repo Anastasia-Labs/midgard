@@ -12,7 +12,12 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { globToRegExp, matchesAny, referencedFiles } from "./derive.mjs";
+import {
+  globToRegExp,
+  matchesAny,
+  referencedFiles,
+  workflowRunsCheck,
+} from "./derive.mjs";
 import { loadYaml } from "../ci/lint-workflows.mjs";
 import {
   buildRegistry,
@@ -218,9 +223,13 @@ test("a file with a recorded module-size cap selects the cap's check", () => {
   const caps = JSON.parse(
     readFileSync(resolve(root, "demo/module-size-exceptions.json"), "utf8"),
   );
+  const outside = caps.find(({ file }) => file.startsWith("../"));
+  assert.ok(outside, "a cap outside demo/");
   for (const path of [
     "demo/module-size-exceptions.json",
     `demo/${caps[0].file}`,
+    // `../<path>` names a repository file outside demo/.
+    outside.file.slice("../".length),
   ])
     assert.ok(selectedIds([path]).includes("demo-script-tests"), path);
 });
@@ -292,10 +301,19 @@ test("verification-only exceptions retain unconditional Repo Tools CI coverage",
     "Repo Tools must cover every PR without path/branch filters",
   );
   assert.equal(workflow.jobs["repo-tools"].if, undefined);
+  // The step runs repo-tooling-tests by id, so CI runs the registry's own
+  // command for it: every scripts/ test.
   assert.ok(
     workflow.jobs["repo-tools"].steps.some((step) =>
-      step.run?.includes('node --test "scripts/**/*.test.mjs"'),
+      workflowRunsCheck(step.run ?? "", "repo-tooling-tests"),
     ),
+  );
+  assert.deepEqual(
+    byId
+      .get("repo-tooling-tests")
+      .plan({ full: true })
+      .map((s) => s.argv),
+    [["node", "--test", "scripts/**/*.test.mjs"]],
   );
   for (const path of VERIFICATION_ONLY)
     assert.ok(
@@ -465,7 +483,16 @@ test("workspace lint and its helper tests cover source, rules, and baseline move
   assert.ok(!selectedIds(["docs/agents/domain.md"]).includes("demo-lint"));
   for (const [id, argv] of [
     ["demo-lint", ["pnpm", "--dir", "demo", "run", "lint"]],
-    ["demo-script-tests", ["node", "--test", "demo/scripts/lib/*.test.mjs"]],
+    [
+      "demo-script-tests",
+      [
+        "node",
+        "--test",
+        "demo/scripts/lib/*.test.mjs",
+        "demo/scripts/deployment-profiles.test.mjs",
+        "demo/scripts/interactive-emulator.test.mjs",
+      ],
+    ],
   ]) {
     assert.deepEqual(
       byId

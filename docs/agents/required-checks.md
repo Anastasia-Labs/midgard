@@ -13,6 +13,7 @@ node scripts/preflight.mjs --strict   # committed changes only (what a push send
 node scripts/preflight.mjs --full-local # selected matrix locally: the gate before a merge
 node scripts/preflight.mjs --full     # every check locally at full scope
 node scripts/preflight.mjs --json     # machine-readable verdict on stdout
+node scripts/preflight.mjs --run <id> # one check by id at full scope (what CI runs)
 node scripts/doctor.mjs               # environment problems, each with its fix
 ```
 
@@ -76,6 +77,18 @@ full run (`--full`, a full-run path) runs every whole suite instead. Tests a
 suite skips by its own conditions pass, as under CI. Node CI still runs the
 whole suites; the local gate never waives them.
 
+## CI runs checks by id
+
+A workflow step that runs a registry check names it:
+`node scripts/preflight.mjs --run <id>` (repeatable). It runs that check's
+full-scope command from the table below, from the repository root, with the
+same capability probes and fail-closed exits; a missing capability exits 3
+and fails the step. The command lives only in the registry, so a local run
+and CI cannot drift; `scripts/preflight/ci-wiring.test.mjs` refuses a step
+that spells out a registry command instead, or names a check that is
+unknown, internal or only warns. A check a workflow runs by id counts as
+gated by CI. `--run` combines only with `--list`.
+
 ## Pre-push hook
 
 `.githooks/pre-push` runs `node scripts/preflight.mjs --pre-push`: the
@@ -128,7 +141,8 @@ preflight helpers retain full scope. `--full` still runs every check locally.
 `node scripts/preflight.mjs --strict --ci-run <Repo-Tools-run-id>` can reuse
 only `required-checks-doc` and `contributor-build-guards`. It verifies the
 actual checkout tree and merge parents, current remote target, Node profile,
-exact validator commands and successful completed steps against the retained
+steps that run each validator by id (`--run`, so the registry command) and
+their successful completion against the retained
 `repo-validator-identity` artifact. Dirty, stale, missing or different
 evidence fails closed. Other selected checks still execute. `--list` never
 verifies or claims reuse. Read the [merge checklist](verification.md#merge-checklist)
@@ -238,10 +252,10 @@ Workspace ESLint rules and their reasoned baseline.
 
 ### `demo-script-tests`
 
-Workspace helper and ESLint plugin self-tests.
+Workspace helper, ESLint plugin, deployment-profile and interactive-emulator cache self-tests.
 
-- Command: `node --test "demo/scripts/lib/*.test.mjs"`
-- Runs on: `demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `demo/module-size-exceptions.json` and every file it caps
+- Command: `node --test "demo/scripts/lib/*.test.mjs" demo/scripts/deployment-profiles.test.mjs demo/scripts/interactive-emulator.test.mjs`
+- Runs on: `demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `config/deployments/**`, `demo/midgard-test-support/interactive-emulator.js`, `demo/midgard-fault-proofs/scripts/traced-blueprint.mjs`, `demo/midgard-core/src/generated-deployment-profiles.ts`, `onchain/aiken/env/*.ak`, `onchain/aiken/scripts/pinned-compiler.mjs`, `.github/workflows/aiken-ci.yml`, `.github/workflows/midgard-node-ci.yml`, `demo/module-size-exceptions.json` and every file it caps
 - Needs: `node-modules`
 
 ### `aiken-script-tests`

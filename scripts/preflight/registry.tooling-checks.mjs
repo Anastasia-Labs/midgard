@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 
 import {
   AIKEN_PROJECT,
   DEMO,
   goldenChannels,
+  workflowRunsCheck,
   workspaceDependencyClosure,
 } from "./derive.mjs";
 import { formatCommand, node, step } from "./registry.demo-checks.mjs";
@@ -17,6 +18,23 @@ const isGeneratedArtifact = (path) =>
   /\.ak$|\.generated\.json$|\.canonical\.json$/u.test(path) ||
   /^docs\/(?!spec\/)/u.test(path) ||
   /tests\/fixtures\/[^/]+\.json$/u.test(path);
+
+// The deployment-profile and interactive-emulator cache tests, outside
+// demo/scripts/lib, and the files outside demo/scripts/** they read.
+const DEMO_SCRIPT_TESTS = [
+  "demo/scripts/deployment-profiles.test.mjs",
+  "demo/scripts/interactive-emulator.test.mjs",
+];
+const DEMO_SCRIPT_TEST_INPUTS = [
+  "config/deployments/**",
+  "demo/midgard-test-support/interactive-emulator.js",
+  "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs",
+  "demo/midgard-core/src/generated-deployment-profiles.ts",
+  "onchain/aiken/env/*.ak",
+  "onchain/aiken/scripts/pinned-compiler.mjs",
+  ".github/workflows/aiken-ci.yml",
+  ".github/workflows/midgard-node-ci.yml",
+];
 
 export const goldenChecks = (root, packages, ciText) =>
   goldenChannels(root, packages).map((channel) => {
@@ -32,7 +50,9 @@ export const goldenChecks = (root, packages, ciText) =>
     const [kind, ...rest] = channel.script
       .slice(0, -":check".length)
       .split(":");
-    const gated = ciText.includes(channel.script);
+    const id = `${kind === "docs" ? "docs" : "golden"}:${rest.join(":")}`;
+    const gated =
+      ciText.includes(channel.script) || workflowRunsCheck(ciText, id);
     const command = step([
       "pnpm",
       "--dir",
@@ -41,7 +61,7 @@ export const goldenChecks = (root, packages, ciText) =>
       channel.script,
     ]);
     return {
-      id: `${kind === "docs" ? "docs" : "golden"}:${rest.join(":")}`,
+      id,
       title:
         kind === "docs"
           ? `Generated document ${rest.join(":")} matches its producer`
@@ -179,12 +199,13 @@ export const independentChecks = () => [
 const E2E_SKILL = ".agents/skills/midgard-e2e-acceptance";
 
 // demo/scripts/check-module-size-exceptions.mjs holds each listed file to its
-// recorded line count, so an edit of one of them can fail it.
+// recorded line count, so an edit of one of them can fail it. Entries are
+// relative to demo/; those outside it are spelled `../<path>`.
 const MODULE_SIZE_CAPS = `${DEMO}/module-size-exceptions.json`;
 const moduleSizeCapped = (root) => [
   MODULE_SIZE_CAPS,
   ...JSON.parse(readFileSync(resolve(root, MODULE_SIZE_CAPS), "utf8")).map(
-    ({ file }) => `${DEMO}/${file}`,
+    ({ file }) => posix.normalize(`${DEMO}/${file}`),
   ),
 ];
 
@@ -265,18 +286,26 @@ export const toolingChecks = (root) => [
   },
   {
     id: "demo-script-tests",
-    title: "Workspace helper and ESLint plugin self-tests",
+    title:
+      "Workspace helper, ESLint plugin, deployment-profile and interactive-emulator cache self-tests",
     triggers: [
       "demo/scripts/**",
       "demo/eslint.config.mjs",
       ".github/workflows/repo-tools-ci.yml",
+      ...DEMO_SCRIPT_TEST_INPUTS,
       ...moduleSizeCapped(root),
     ],
-    triggerNote:
-      "`demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `demo/module-size-exceptions.json` and every file it caps",
+    triggerNote: `\`demo/scripts/**\`, \`demo/eslint.config.mjs\`, \`.github/workflows/repo-tools-ci.yml\`, ${DEMO_SCRIPT_TEST_INPUTS.map((path) => `\`${path}\``).join(", ")}, \`demo/module-size-exceptions.json\` and every file it caps`,
     capabilities: ["node-modules"],
-    display: 'node --test "demo/scripts/lib/*.test.mjs"',
-    plan: () => [step(["node", "--test", "demo/scripts/lib/*.test.mjs"])],
+    display: `node --test "demo/scripts/lib/*.test.mjs" ${DEMO_SCRIPT_TESTS.join(" ")}`,
+    plan: () => [
+      step([
+        "node",
+        "--test",
+        "demo/scripts/lib/*.test.mjs",
+        ...DEMO_SCRIPT_TESTS,
+      ]),
+    ],
   },
   {
     // Kept out of the pre-push slice: the focused-check tests drive a stub

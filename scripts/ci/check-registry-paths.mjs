@@ -19,9 +19,8 @@
 // - demo/module-size-exceptions.json: its own validator
 //   (demo/scripts/check-module-size-exceptions.mjs) reads every listed file to
 //   compare its cap, so a deleted file already fails it.
-// - docs/module-size-refactor/{extractions,verification,metrics,
-//   preflight-results}.json and docs/exec-plans/**: dated records of a past
-//   run at a named commit, not lists anything acts on now.
+// - docs/exec-plans/**: dated records of a past run at a named commit, not
+//   lists anything acts on now.
 // - the scenario titles in the validator scenario registry: its own Vitest
 //   test checks them; this check covers only the files, which it can read
 //   without a blueprint.
@@ -118,14 +117,6 @@ export const REGISTRIES = [
     name: "traced-refusal inputs",
     source: "scripts/ci/traced-refusal-inputs.mjs",
     entries: () => tracedRefusalInputs.map((path) => entry(path)),
-  },
-  {
-    name: "retained modules",
-    source: "docs/module-size-refactor/retained-modules.json",
-    entries: (root) =>
-      json(root, "docs/module-size-refactor/retained-modules.json").modules.map(
-        ({ file }) => entry(file),
-      ),
   },
   {
     name: "CI file durations",

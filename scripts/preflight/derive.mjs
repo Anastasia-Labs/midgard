@@ -242,6 +242,14 @@ export const workflowText = (root) => {
     .join("\n");
 };
 
+// Whether a workflow runs a check by id: `node scripts/preflight.mjs --run
+// <id>`, possibly among other --run ids on the same line.
+export const workflowRunsCheck = (text, id) =>
+  new RegExp(
+    `scripts/preflight\\.mjs(?:[ \\t]+--run[ \\t]+\\S+)*[ \\t]+--run[ \\t]+${escapeRegExp(id)}(?=\\s|$)`,
+    "mu",
+  ).test(text);
+
 // --- golden channels ---------------------------------------------------------
 
 // A channel is any package script named `<kind>:<name>:check` that runs a

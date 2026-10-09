@@ -1503,5 +1503,35 @@
     "file": "midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts",
     "max": 502,
     "reason": "One observability owner: status, metrics, readiness reasons and diagnostics share the alert book, source health and supervisor reads, so a split would pass that state across modules. FIXW (+2): a failed objective cleanup names the readiness reason fault_proof_objective_cleanup_failed."
+  },
+  {
+    "file": "../.agents/skills/adding-fault-proof-families/scripts/family-checklist.check-family.mjs",
+    "max": 561,
+    "reason": "One checkFamily routine owns the end-to-end family integration checklist and accumulates its findings in order. Independent parsing/output helpers have been extracted; splitting the remaining routine needs an explicit finding/state interface."
+  },
+  {
+    "file": "../.agents/skills/committing-safely/scripts/commit-paths.test.mjs",
+    "max": 739,
+    "reason": "A suite shares temporary Git-repository fixtures and process assertions across commit-path refusal/success cases. Preserve fixture lifetime and cleanup; dividing it needs a separately reviewed test-harness extraction."
+  },
+  {
+    "file": "../.agents/skills/fixing-flaky-tests/scripts/diff-test-reds.test.mjs",
+    "max": 729,
+    "reason": "The suite shares scratch repository creation, command execution, cleanup and red/green classification assertions. Splitting individual cases requires an explicit common fixture harness rather than moving independent top-level declarations."
+  },
+  {
+    "file": "../.agents/skills/regenerating-goldens-and-ledgers/scripts/affected-channels.test.mjs",
+    "max": 509,
+    "reason": "Channel selection tests share one channel-table/checker fixture and scratch Git histories. Preserve fixture construction and cleanup; this small overage requires a test-harness split to reduce further."
+  },
+  {
+    "file": "midgard-node/native/mpf-event-flat-wasm/src/owner/compact_index.rs",
+    "max": 611,
+    "reason": "One FullIndex ownership module couples compaction, authenticated-closure construction, proof-arena access and child-index cache invariants. CLI/RPC/runtime/record helpers were extracted; splitting this remaining state owner needs a separately verified ownership design."
+  },
+  {
+    "file": "midgard-node/src/database/migrations/sql/0001_initial_schema.sql",
+    "max": 1875,
+    "reason": "An existing durable initial migration is one ordered atomic schema change with a tracked migration identity/checksum. Splitting or reordering it changes upgrade behavior; line-count cleanup does not justify changing deployed migration semantics."
   }
 ]

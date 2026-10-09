@@ -10,6 +10,7 @@ import {
   DEMO,
   execLedgers,
   packageNeedsPostgres,
+  workflowRunsCheck,
   workspaceDependentClosure,
 } from "./derive.mjs";
 
@@ -211,7 +212,9 @@ export const ledgerChecks = (root, index, ciText) =>
       ledger.environment === undefined
         ? undefined
         : { MIDGARD_AIKEN_ENV: ledger.environment };
-    const gated = ciText.includes(basename(ledger.verifier));
+    const gated =
+      ciText.includes(basename(ledger.verifier)) ||
+      workflowRunsCheck(ciText, `exec-ledger:${ledger.id}`);
     return {
       id: `exec-ledger:${ledger.id}`,
       title: `Execution ledger ${basename(ledger.ledger)}`,
