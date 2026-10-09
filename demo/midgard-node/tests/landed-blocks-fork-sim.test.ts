@@ -65,10 +65,7 @@ import {
 } from "../src/services/mpf-native-owner/index.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { insertDeposits } from "./helpers/event-rows.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+import { testDatabases } from "./helpers/l1-events-store.js";
 import { landedBlocksSimProjection } from "./helpers/landed-blocks-sim.js";
 import { newSimMempool } from "./helpers/landed-blocks-sim.mempool.js";
 import { newSimOwnBook } from "./helpers/landed-blocks-sim.own.js";
@@ -102,7 +99,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 const openSqlite: ForkRunOptions["open"] = (optionsFor) =>
   Promise.resolve(

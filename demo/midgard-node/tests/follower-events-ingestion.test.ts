@@ -49,7 +49,6 @@ import {
 } from "./helpers/l1-events-chain.js";
 import {
   ChainDriver,
-  DROP_ALL_TIMEOUT_MS,
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
@@ -62,7 +61,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | Globals>,

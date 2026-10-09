@@ -40,11 +40,7 @@ import {
   EVENTS_CONFIG,
   retirementTx,
 } from "../helpers/l1-events-chain.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  storeOpener,
-  testDatabases,
-} from "../helpers/l1-events-store.js";
+import { storeOpener, testDatabases } from "../helpers/l1-events-store.js";
 import {
   buildBenchmarkMeta,
   quantile,
@@ -171,7 +167,7 @@ type Stage = {
 const databases = testDatabases();
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 describe("B2: per-block event apply at tip on Postgres", () => {
   it(

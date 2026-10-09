@@ -107,6 +107,9 @@ export default defineConfig({
     // The heaviest restart/rewind tests can exceed Vitest's 5s default on
     // shared runners. Headroom for slow runners, not a license for slow tests.
     testTimeout: 60_000,
+    // Suites drop their test databases in `afterAll`; each `DROP DATABASE …
+    // WITH (FORCE)` can outlast the 10 s hook default on a loaded CI runner.
+    hookTimeout: 120_000,
   },
   environments: midgardSourceEnvironments(),
 });

@@ -51,10 +51,7 @@ import {
   type IntentEmulator,
   openIntentEmulator,
 } from "./helpers/intent-journal-emulator.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+import { testDatabases } from "./helpers/l1-events-store.js";
 
 const databases = testDatabases();
 const opened: IntentEmulator[] = [];
@@ -63,7 +60,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 const INHERITED =
   "Signed intent must commit before broadcast outside an inherited transaction";

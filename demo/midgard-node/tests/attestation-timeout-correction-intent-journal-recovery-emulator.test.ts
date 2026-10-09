@@ -41,10 +41,7 @@ import {
   openIntentEmulator,
   signedPayment,
 } from "./helpers/intent-journal-emulator.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+import { testDatabases } from "./helpers/l1-events-store.js";
 
 const CONFIRMATION_DEPTH = 2;
 const depths = {
@@ -74,7 +71,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 const open = async () => {
   const env: IntentEmulator = await openIntentEmulator(databases);

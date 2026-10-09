@@ -46,10 +46,7 @@ import {
   attachIntentFollower,
   type IntentEmulator,
 } from "./helpers/intent-journal-emulator.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+import { testDatabases } from "./helpers/l1-events-store.js";
 import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
@@ -73,7 +70,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 const attach = async (
   options: Parameters<typeof attachIntentFollower>[1],

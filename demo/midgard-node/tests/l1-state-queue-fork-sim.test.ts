@@ -25,10 +25,7 @@ import {
 import fc from "fast-check";
 import { afterAll, describe, expect, it } from "vitest";
 
-import {
-  DROP_ALL_TIMEOUT_MS,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+import { testDatabases } from "./helpers/l1-events-store.js";
 import {
   stateQueueSimProjection,
   type StateQueueSimStats,
@@ -41,7 +38,7 @@ const databases = testDatabases();
 
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 const openSqlite: ForkRunOptions["open"] = (optionsFor) =>
   Promise.resolve(

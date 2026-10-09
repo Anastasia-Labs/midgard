@@ -159,6 +159,9 @@ export default defineConfig({
       { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
     ),
     testTimeout: 420_000,
+    // Suites drop their test databases in `afterAll`; each `DROP DATABASE …
+    // WITH (FORCE)` can outlast the 10 s hook default on a loaded CI runner.
+    hookTimeout: 120_000,
     ...(bail === undefined ? {} : { bail }),
     environment: "node",
   },
