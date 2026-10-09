@@ -13,14 +13,14 @@ import {
 
 /**
  * Startup gate over the mutation jobs a killed node process left unfinished.
- * It runs under this process's acquired history authority, after pending
- * history reconciliation (a correction rewind that abandons a removed block's
- * journal also removes its job) and before any fiber starts. It closes a
- * local finalization that finished all but its markCompleted, and refuses to
- * serve while any job needs operator recovery; see
- * classifyUnfinishedMutationJobOnStartup. Otherwise it only reads, so it
- * needs no history authority; the previous process's state-queue leases are
- * a separate startup step (releaseStateQueueLeasesOfPreviousNodeProcess).
+ * It runs while this process holds the node instance lock, so no other node
+ * process is live on this database; after pending history reconciliation (a
+ * correction rewind that abandons a removed block's journal also removes its
+ * job) and before any fiber starts. It closes a local finalization that
+ * finished all but its markCompleted, and refuses to serve while any job
+ * needs operator recovery; see classifyUnfinishedMutationJobOnStartup.
+ * Otherwise it only reads; the previous process's state-queue leases are a
+ * separate startup step (releaseStateQueueLeasesOfPreviousNodeProcess).
  */
 export const assertStartupMutationJobsRecoverable = Effect.gen(function* () {
   const unfinished = yield* MutationJobsDB.retrieveUnfinished;

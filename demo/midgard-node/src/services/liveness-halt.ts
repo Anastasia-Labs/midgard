@@ -23,6 +23,10 @@ export const HaltSource = {
    * (see `publishOperatorMembership`). Holds every operator duty; a rollback
    * that undoes the removal clears it. */
   operatorMembership: "operator_membership",
+  /** The node's instance lock is suspended or held by another process
+   * (`node-instance-lock.ts`): another node may hold this database. Holds
+   * every operator duty; the lock taken again clears it. */
+  instanceLock: "node_instance_lock",
 } as const;
 
 export type HaltSource = (typeof HaltSource)[keyof typeof HaltSource];
@@ -30,21 +34,25 @@ export type HaltSource = (typeof HaltSource)[keyof typeof HaltSource];
 /** The fibers that build or submit block commitments. */
 export const COMMIT_HALT_SOURCES: readonly HaltSource[] = [
   HaltSource.operatorMembership,
+  HaltSource.instanceLock,
 ];
 
 /** The settlement worker. */
 export const SETTLEMENT_HALT_SOURCES: readonly HaltSource[] = [
   HaltSource.operatorMembership,
+  HaltSource.instanceLock,
 ];
 
 /** The merge fiber, which folds the state queue into the confirmed state. */
 export const MERGE_HALT_SOURCES: readonly HaltSource[] = [
   HaltSource.operatorMembership,
+  HaltSource.instanceLock,
 ];
 
 /** The operator watchdog, which takes over other operators' slots. */
 export const WATCHDOG_HALT_SOURCES: readonly HaltSource[] = [
   HaltSource.operatorMembership,
+  HaltSource.instanceLock,
 ];
 
 /**

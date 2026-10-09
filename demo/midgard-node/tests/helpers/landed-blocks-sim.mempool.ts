@@ -4,8 +4,12 @@
  * working-ledger outputs), and the model of what a working-ledger rebuild
  * makes of them.
  *
- * The model replays the pending transactions in admission order on a base
- * ledger. One a block on the base's lineage includes is settled, not
+ * The model replays the pending transactions on a base ledger in the
+ * node's replay order: by time, then id (the model admits nothing through
+ * `tx_admissions`, so no admission sequence orders a tie), except that a
+ * transaction is never replayed before a pending transaction whose output
+ * it spends: in that order, each one is preceded by those of its pending
+ * producers not replayed yet. One a block on the base's lineage includes is settled, not
  * pending: its row stays (marked) until that block's fold is final (its
  * retained fold pruned), then leaves; a rollback that takes the block off
  * the lineage makes it pending again. Of the rest, one whose input is gone
@@ -85,13 +89,40 @@ export type SimSettlement = Readonly<{
  * transactions that cannot apply to the rejections and drops the ones a
  * block whose fold is final includes.
  */
+/** `txs` in the node's replay order (see the module comment). */
+const replayOrder = (txs: readonly SimPendingTx[]): SimPendingTx[] => {
+  const byTime = [...txs].sort(
+    (left, right) =>
+      left.at.getTime() - right.at.getTime() ||
+      Buffer.compare(left.id, right.id),
+  );
+  const producer = new Map<string, SimPendingTx>();
+  for (const tx of byTime)
+    for (const entry of tx.produced) producer.set(hex(entry.outref), tx);
+  const replayed = new Set<SimPendingTx>();
+  const order: SimPendingTx[] = [];
+  const replay = (tx: SimPendingTx) => {
+    if (replayed.has(tx)) return;
+    replayed.add(tx);
+    for (const key of tx.spent.map(hex)) {
+      const from = producer.get(key);
+      if (from !== undefined) replay(from);
+    }
+    order.push(tx);
+  };
+  for (const tx of byTime) replay(tx);
+  return order;
+};
+
 export const settleMempool = (
   mempool: SimMempool,
   base: ReadonlyMap<string, Buffer>,
   included: SimIncluded,
 ): SimSettlement => {
   const { settled } = included;
-  const pending = mempool.survivors.filter((tx) => !settled.has(hex(tx.id)));
+  const pending = replayOrder(
+    mempool.survivors.filter((tx) => !settled.has(hex(tx.id))),
+  );
   const rejected = new Map<string, SimRejection>();
   const causes = new Map<string, readonly string[]>();
   const simulate = (record: boolean) => {
@@ -164,8 +195,8 @@ export const clearRevivedRejections = (
 /**
  * A disposed own block's members (hex ids) are pending again. One with no
  * row (it was rejected, then a revival deleted its rejection) is restored
- * from the journal at the journal's time; the node orders pending rows by
- * time, then id.
+ * from the journal at the journal's time (`settleMempool` replays them in
+ * the node's replay order).
  */
 export const restoreDisposedMembers = (
   mempool: SimMempool,

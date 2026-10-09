@@ -1,13 +1,10 @@
 export {
   byteaArray,
-  confirmedRow,
   failure,
   hex,
-  insertRows,
   type LedgerRow,
   loadPendingTxs,
   type PendingTx,
-  presentOutRefs,
   table,
 } from "./working-ledger-recompute.pending-txs.js";
 export {

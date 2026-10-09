@@ -188,4 +188,18 @@ describe("liveness halts", () => {
       "settlement",
     ]);
   });
+
+  it("holds every operator duty while the instance lock is not held", () => {
+    const held = (source: HaltSource) =>
+      Object.entries(FIBER_HALT_SOURCES)
+        .filter(([, sources]) => sources.includes(source))
+        .map(([name]) => name)
+        .sort();
+    expect(held(HaltSource.instanceLock)).toEqual([
+      "blockCommitment",
+      "merge",
+      "operatorWatchdog",
+      "settlement",
+    ]);
+  });
 });
