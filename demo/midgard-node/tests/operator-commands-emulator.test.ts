@@ -44,9 +44,11 @@ import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
   fetchInactivityDirectorySnapshot,
+  fetchNeglectedUserEvent,
   initOperatorInactivityFixture,
   type OperatorInactivityFixture,
   strikeOperatorToMaxStrikes,
+  submitNeglectedDeposit,
 } from "./helpers/operator-inactivity.js";
 
 const ECONOMICS: OperatorEconomics = {
@@ -62,12 +64,15 @@ const UNKNOWN_KEY = "ab".repeat(28);
 const report = async (
   fixture: OperatorInactivityFixture,
   operatorKeyHash: string,
-) =>
-  deriveOperatorStatusReport(await fetchInactivityDirectorySnapshot(fixture), {
+) => {
+  const snapshot = await fetchInactivityDirectorySnapshot(fixture);
+  return deriveOperatorStatusReport(snapshot, {
     operatorKeyHash,
     watchdog: WATCHDOG,
     nowMs: BigInt(fixture.emulator.now()),
+    neglectedEvent: await fetchNeglectedUserEvent(fixture, snapshot),
   });
+};
 
 /** A planned snapshot as the exit programs open one: the plan, then the read. */
 const plannedSnapshot = async (fixture: OperatorInactivityFixture) => {
@@ -114,11 +119,23 @@ describe("operator status report", () => {
     expect(scheduled.scheduler.shiftStartTime).toBe(
       appointed.startTime.toString(),
     );
+    // With no user event undelivered the shift cannot be struck at all.
     expect(scheduled.inactivity).not.toBeNull();
-    expect(scheduled.inactivity!.blocked).toBeNull();
+    expect(scheduled.inactivity!.neglectedEvent).toBeNull();
+    expect(scheduled.inactivity!.thresholdTime).toBeNull();
+    expect(scheduled.inactivity!.nextTakeoverTime).toBeNull();
     expect(scheduled.inactivity!.strikesExhausted).toBe(false);
-    expect(BigInt(scheduled.inactivity!.nextTakeoverTime!)).toBe(
-      BigInt(scheduled.inactivity!.thresholdTime!) + 1n,
+
+    // A deposit the tail has not delivered gives the shift a threshold.
+    const deposit = await submitNeglectedDeposit(fixture);
+    const owed = await report(fixture, appointed.operatorKeyHash);
+    expect(owed.inactivity!.neglectedEvent).toEqual({
+      kind: "Deposit",
+      inclusionTime: deposit.inclusionTimeMs.toString(),
+    });
+    expect(owed.inactivity!.blocked).toBeNull();
+    expect(BigInt(owed.inactivity!.nextTakeoverTime!)).toBe(
+      BigInt(owed.inactivity!.thresholdTime!) + 1n,
     );
     expect(scheduled.watchdog).toMatchObject({
       enabled: true,
@@ -268,6 +285,8 @@ describe("takeover planning, strike, and forced retirement", () => {
       ({ keyHash }) => keyHash !== appointed.operatorKeyHash,
     )!;
     const successorLucid = await fixture.lucidFor(successor.keyHash);
+    // The shift owes a deposit; without one it could never be struck.
+    await submitNeglectedDeposit(fixture);
 
     const early = await runWithoutFollower(
       planTakeoverProgram(successorLucid, fixture.contracts),

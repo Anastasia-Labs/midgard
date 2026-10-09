@@ -31,6 +31,11 @@ export {
   publishOperatorMembership,
   type RemovalPoint,
 } from "./membership.js";
+export {
+  type NeglectedEventSources,
+  neglectedEventSourcesOf,
+  neglectedUserEventIn,
+} from "./neglected-event.js";
 export { operatorSetProjection } from "./projection.js";
 export {
   createOperatorSetMirror,
@@ -41,6 +46,7 @@ export {
 } from "./set.js";
 export {
   publishedDirectoryOf,
+  publishedNeglectedUserEventProgram,
   type PublishedOperatorSet,
   publishedOperatorSetOf,
   publishedRetiredAnchorProgram,

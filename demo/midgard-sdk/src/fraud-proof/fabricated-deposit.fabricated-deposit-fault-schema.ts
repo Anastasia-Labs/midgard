@@ -29,10 +29,9 @@ export const FABRICATED_DEPOSIT_VIOLATION_ID = "fabricated-deposit" as const;
 /**
  * Catalogue identifier of the `fabricatedDeposit` category.
  *
- * A category id is the 4-byte big-endian index of the category's position in the
- * append-only `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` in `./catalogue.js` — the
- * same derivation that gives `transitionTrace` (index 4) its `00000004`.
- * `fabricatedDeposit` is fixed at index 11 and is the byte twin of
+ * A category id is the explicit 4-byte big-endian value pinned in
+ * `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` in `./catalogue.js`.
+ * `fabricatedDeposit` is `0000000b` and is the byte twin of
  * `step_01.fabricated_deposit_fraud_category_id` in Aiken.
  */
 export const FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID =

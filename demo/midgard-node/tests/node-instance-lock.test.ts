@@ -3,8 +3,11 @@
  *
  * - A second acquirer waits, under `node_instance_lock_held_elsewhere`, until
  *   the holder's session ends, then takes the lock; an unreachable Postgres
- *   is waited on under `node_instance_lock_unavailable`, and an attempt
- *   against a host that never answers ends at its connect bound.
+ *   is waited on under `node_instance_lock_unavailable` for at most the
+ *   unavailable budget, then fails the startup (step `instance_lock`); a
+ *   failure that is not a connection failure (a missing database) fails it
+ *   at once; an attempt against a host that never answers ends at its
+ *   connect bound.
  * - The lock's session lends the follower its writer lease: none while the
  *   session is gone.
  * - A session ended under a live holder raises `node_instance_lock_suspended`
@@ -31,6 +34,7 @@ import {
   NODE_INSTANCE_LOCK_SUSPENDED,
   NODE_INSTANCE_LOCK_UNAVAILABLE,
 } from "../src/services/node-instance-lock.js";
+import { findStartupStepFailure } from "../src/services/startup-waiting.js";
 import {
   acquire,
   cleanUpLocks,
@@ -139,6 +143,68 @@ describe("the node instance lock", { concurrent: false }, () => {
     ]);
     expect(exit).not.toBe("still waiting");
     expect(Exit.isInterrupted(exit as Exit.Exit<unknown, unknown>)).toBe(true);
+  });
+
+  it("fails the startup under node_instance_lock_unavailable once an unreachable Postgres outlives the budget", async () => {
+    const waited: string[][] = [];
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        acquireNodeInstanceLock({
+          connectionString: nodeDatabaseConnectionString({
+            ...database,
+            POSTGRES_PORT: await closedPort(),
+          }),
+          globals: livenessGlobals(),
+          waiting: (reasons) => Effect.sync(() => waited.push([...reasons])),
+          retryInitialMs: 20,
+          retryMaxMs: 50,
+          unavailableBudget: "300 millis",
+        }),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    const failure = Exit.isFailure(exit)
+      ? findStartupStepFailure(exit.cause)
+      : undefined;
+    expect(failure).toMatchObject({
+      step: "instance_lock",
+      reason: NODE_INSTANCE_LOCK_UNAVAILABLE,
+      exhausted: true,
+    });
+    expect(failure?.attempts).toBeGreaterThan(2);
+    expect(waited.at(-1)).toEqual([]);
+    expect(new Set(waited.slice(0, -1).flat())).toEqual(
+      new Set([NODE_INSTANCE_LOCK_UNAVAILABLE]),
+    );
+  });
+
+  it("fails the startup at once on a failure that is not a connection failure", async () => {
+    const waited: string[][] = [];
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        acquireNodeInstanceLock({
+          connectionString: nodeDatabaseConnectionString({
+            ...database,
+            POSTGRES_DB: "midgard_fixrt_absent_database",
+          }),
+          globals: livenessGlobals(),
+          waiting: (reasons) => Effect.sync(() => waited.push([...reasons])),
+          retryInitialMs: 20,
+          retryMaxMs: 50,
+        }),
+      ),
+    );
+    const failure = Exit.isFailure(exit)
+      ? findStartupStepFailure(exit.cause)
+      : undefined;
+    expect(failure).toMatchObject({
+      step: "instance_lock",
+      reason: NODE_INSTANCE_LOCK_UNAVAILABLE,
+      exhausted: false,
+      attempts: 1,
+    });
+    expect(failure?.message).toMatch(/does not exist/u);
+    expect(waited).toEqual([[]]);
   });
 
   it("ends an attempt against a host that never answers at its connect bound, under the unavailable reason", async () => {

@@ -42,7 +42,13 @@ unsafe never stops the process (a restart would meet it again): the record
 carries it as `proofDeadlineHealth`, and `/readyz` names it
 (`deadline_at_risk`, `deadline_unsafe`) while the supervisor keeps proving.
 That field describes this runtime's readiness checks, not public-testnet launch
-approval. Invalid arguments exit 64; runtime failures fail closed with exit 70.
+approval. Invalid arguments exit 64. A process configuration refused before
+the operations server binds exits 78, since no `/readyz` could name it. A
+startup failure a restart may clear (L1 reads that outlasted the startup
+budget, a system error such as a port in use or a file not written yet)
+exits 70. Once the server is bound, any other startup failure holds the
+process up, unready with `startup_failed`, until the operator fixes it and
+restarts the watcher.
 An L1 read during startup that fails transiently is not a runtime failure: the
 node transport not ready, a sidecar exit, or a query the node did not answer
 in time (`node_timeout`), classified as the L1 follower's provider classifies
@@ -76,8 +82,8 @@ recovery, launch scope, proof deadlines, L1 source freshness, active alerts
 and the shared retained-DA transport, which starts on the first fault
 classification and is reported as `retained_da_transport_failed` if that start
 fails. Starting builds the local libp2p node without contacting a peer, so a
-failure is local; the classification that needed it fails closed, the process
-exits 70, and a restart owns a fresh transport. There is no in-process retry.
+failure is local; the classification that needed it defers and asks again,
+and the start is tried again after a growing delay.
 Peers are dialed per retrieval request, and a retrieval failure for an attested
 header is answered by an availability challenge, not by the transport status.
 Dependency health belongs to the live surface, not to startup readiness.
@@ -417,12 +423,7 @@ committee and the node never prune those payloads: their retention is exactly
 the L1 confirmed head, the headers live in the L1 queue, and payloads still
 inside the challengeability horizon. Merged blocks older than the horizon can no
 longer be challenged, so a late watcher needs nothing from before the confirmed
-state, with one exception: the `missing-native-script-tx` family still builds
-its historical native-script corpus by walking retained DA from genesis
-(`resolveHistoricalNativeScriptCorpus` in
-[historical-native-script-corpus.ts](../midgard-fault-proofs/src/workflow/historical-native-script-corpus.ts)),
-so that family depends on payloads outside the retained set until its redesign
-lands.
+state.
 
 ## Running with compose
 

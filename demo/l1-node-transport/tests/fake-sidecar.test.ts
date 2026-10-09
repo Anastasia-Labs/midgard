@@ -15,9 +15,10 @@ import {
   SidecarExitedError,
   StreamInterruptedError,
   type StreamInterruption,
+  TransportFailedError,
   TransportProtocolError,
   type TransportReadiness,
-  TransportUnavailableError,
+  TransportRequestError,
 } from "../src/index.js";
 import { writeFakeSidecar } from "../testing/fake-sidecar.mjs";
 
@@ -174,6 +175,30 @@ describe("fake sidecar", () => {
     expect(await stream.ended).toBeNull();
   });
 
+  it("ends a resuming stream, with no reopen, on a stream failure that is not transient", async () => {
+    const transport = await transportWith({
+      failAfter: true,
+      failCode: "block_header_undecodable",
+    });
+    const told: StreamInterruption[] = [];
+    const stream = transport.openChainSync({
+      points: [ORIGIN],
+      credit: 10,
+      onInterrupted: (interruption) => told.push(interruption),
+    });
+    await take(() => stream.next(), 3);
+    const failure = await stream.next().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(TransportRequestError);
+    expect((failure as TransportRequestError).code).toBe(
+      "block_header_undecodable",
+    );
+    expect(await stream.ended).toBe(failure);
+    expect(told).toEqual([]);
+  });
+
   it("fails a stream whose sequence skips a number", async () => {
     const transport = await transportWith({ skipSequenceAt: 1 });
     const stream = transport.openChainSync({
@@ -249,12 +274,13 @@ describe("fake sidecar", () => {
     });
   }, 15_000);
 
-  it("refuses a handshake as the node does", async () => {
+  it("refuses a handshake as the node does, and fails without a restart", async () => {
     const transport = await transportWith({}, MAGIC + 1);
     const failure = await transport.whenReady(2_000).catch((error) => error);
-    expect(failure).toBeInstanceOf(TransportUnavailableError);
-    expect((failure as TransportUnavailableError).reason).toBe(
+    expect(failure).toBeInstanceOf(TransportFailedError);
+    expect((failure as TransportFailedError).reason).toBe(
       "node_handshake_failed",
     );
+    expect(transport.readiness).toMatchObject({ ready: false, failed: true });
   });
 });

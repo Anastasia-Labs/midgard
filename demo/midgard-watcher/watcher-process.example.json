@@ -71,22 +71,6 @@
   "faultProofInfrastructure": {
     "manifestPath": "/etc/midgard/bundles/deployment-manifest.json",
     "blueprintPath": "/etc/midgard/bundles/plutus.json",
-    "deploymentInfoPath": "/etc/midgard/bundles/contract-deployment-info.json",
-    "historicalNativeScriptHistory": {
-      "sourceMode": "external_provider_quorum",
-      "consistencyPolicy": "exact_bytes_all_providers_v1",
-      "providers": [
-        {
-          "sourceId": "history-a",
-          "operatorIdentitySha256": "1111111111111111111111111111111111111111111111111111111111111111",
-          "authorityEndpoint": "https://history-a.example"
-        },
-        {
-          "sourceId": "history-b",
-          "operatorIdentitySha256": "2222222222222222222222222222222222222222222222222222222222222222",
-          "authorityEndpoint": "https://history-b.example"
-        }
-      ]
-    }
+    "deploymentInfoPath": "/etc/midgard/bundles/contract-deployment-info.json"
   }
 }

@@ -2,6 +2,7 @@ import { availableParallelism } from "node:os";
 
 import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { requireSelectedDeploymentProfile } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -16,7 +17,6 @@ import {
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
 import { validateRetentionDays } from "../database/retention-policy.js";
-import { historyCommitHorizonLagConfig } from "./config.history-commit-horizon-lag.js";
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
 import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
 import { nodeBehindConfig } from "./config.node-behind.js";
@@ -194,7 +194,6 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const historyCommitHorizonLag = yield* historyCommitHorizonLagConfig;
   const nodeBehind = yield* nodeBehindConfig;
   const blockConfirmationAwaitTimeoutMs = yield* Config.integer(
     "BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS",
@@ -380,6 +379,9 @@ const makeConfig = Effect.gen(function* () {
   const readinessMaxDurableAdmissionAgeMs = yield* Config.integer(
     "READINESS_MAX_DURABLE_ADMISSION_AGE_MS",
   ).pipe(Config.withDefault(120_000));
+  const startupProtocolStatusQueryMaxAttempts = yield* Config.integer(
+    "STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS",
+  ).pipe(Config.withDefault(120));
   const startupProtocolStatusQueryRetryDelayMs = yield* Config.integer(
     "STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS",
   ).pipe(Config.withDefault(5_000));
@@ -934,6 +936,8 @@ const makeConfig = Effect.gen(function* () {
     READINESS_MAX_DURABLE_ADMISSION_BACKLOG:
       readinessMaxDurableAdmissionBacklog,
     READINESS_MAX_DURABLE_ADMISSION_AGE_MS: readinessMaxDurableAdmissionAgeMs,
+    STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS:
+      startupProtocolStatusQueryMaxAttempts,
     STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS:
       startupProtocolStatusQueryRetryDelayMs,
     VALIDATION_LEASE_MS: validationLeaseMs,
@@ -946,7 +950,7 @@ const makeConfig = Effect.gen(function* () {
       stateQueueMutationLeaseRenewIntervalMs,
     STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS:
       stateQueueMutationLeaseStaleGraceMs,
-    ...historyCommitHorizonLag,
+    COMMIT_EVENT_DEPTH: DEPLOYMENT_MANIFEST_L1_FINALITY.commitEventDepth,
     ...nodeBehind,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,

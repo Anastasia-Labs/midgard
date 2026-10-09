@@ -21,7 +21,6 @@ import { type InputSetUniquenessContracts } from "../../../src/input-set-uniquen
 import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/index.js";
 import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
 import { type MintAuthorizationContracts } from "../../../src/mint-authorization/index.js";
-import { type MissingNativeScriptTxContracts } from "../../../src/missing-native-script-tx/index.js";
 import { type MissingSignatureContracts } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/index.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "../../../src/transition-trace/yield-references.js";
@@ -44,7 +43,6 @@ import {
   L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY,
   MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY,
   MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY,
-  MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY,
   MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY,
   NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY,
   type RemovalDeploymentReference,
@@ -59,7 +57,6 @@ export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
     readonly nativeScriptDecoding?: NativeScriptDecodingContracts;
     readonly missingSignature?: MissingSignatureContracts;
-    readonly missingNativeScriptTx?: MissingNativeScriptTxContracts;
     readonly withdrawnReferenceInput?: WithdrawnReferenceInputContracts;
     readonly canonicalDecodability?: CanonicalDecodabilityContracts;
     readonly committedFieldShape?: CommittedFieldShapeContracts;
@@ -362,14 +359,6 @@ export const buildRemovalDeploymentInfo = (
             [MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.missingSignature.steps[0].spendingScriptHash,
-            },
-          }),
-      ...(contracts.missingNativeScriptTx === undefined
-        ? {}
-        : {
-            [MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY]: {
-              scriptHash:
-                contracts.missingNativeScriptTx.steps[0].spendingScriptHash,
             },
           }),
       ...(contracts.withdrawnReferenceInput === undefined

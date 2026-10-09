@@ -16,13 +16,21 @@
  * many minutes yet costs one plan, not one per tick, and a node with nothing
  * to watch re-plans once a minute.
  *
- * Scope: the watchdog strikes on the commitment-gap threshold only, which
- * loses nothing under the shipped parameters. A neglected event's threshold is
- * its inclusion time (on chain, at or after the state-queue tail's end time)
- * plus `user_events_negligence_timeout`, and that timeout (20 min) is at
- * least `max_inactivity_between_block_commitments` (20 min), so the event
- * never yields an earlier threshold. Naming one is left to the SDK planner's
- * `neglectedEvent` option, which this fiber does not supply.
+ * Evidence: a strike needs an undelivered user event, a live deposit,
+ * withdrawal or tx order whose inclusion time is after the state-queue tail's
+ * end time. The tick reads the earliest one the chain would admit from the
+ * follower's projections (`neglectedUserEvent`) and the strike cites it; its
+ * threshold is that inclusion time plus `user_events_negligence_timeout`, but
+ * never inside the shift's grace period. With none, the shift has no due L1
+ * work: an operator below the strike cap is not struck however long it stays
+ * idle, and the tick re-plans a minute later. A forced retirement at the
+ * strike cap needs no event: the chain checks the strike count alone.
+ *
+ * A strike that fails on its citation does not wedge the tick: a script
+ * refusal passes over that citation at once, any other failure after
+ * `MAX_STRIKE_ATTEMPTS_PER_CITATION` attempts, and the next plan cites the
+ * next citable event (`recordCitationFailure`). The record is per scheduler
+ * UTxO and bounded, and each pass-over is logged and recorded by name.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref, type Schedule } from "effect";
@@ -32,13 +40,10 @@ import { verifyConfiguredDeploymentManifestProgram } from "../commands/contract-
 import { l1SlotNow } from "../l1-heads.js";
 import {
   publishedDirectoryOf,
+  publishedNeglectedUserEventProgram,
   publishedRetiredAnchorProgram,
 } from "../l1-operator-set/index.js";
-import {
-  canonicalSlotConfigForLucid,
-  slotToUnixTimeForLucidOrEmulatorFallback,
-  unixTimeToSlotForConfig,
-} from "../lucid-time.js";
+import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
 import {
   Globals,
   Lucid,
@@ -60,27 +65,32 @@ import {
   type TakeoverError,
 } from "../transactions/operators/takeover.js";
 import {
+  deferWatchdog,
+  DUE_WORK_KEY,
+  DUE_WORK_KIND,
+  toWatchdogPlan,
+} from "./operator-watchdog.defer.js";
+import {
   makeManifestStrikeGate,
   type ManifestGateDecision,
 } from "./operator-watchdog.manifest-gate.js";
 import {
+  type CitationFailures,
+  citationFailuresAt,
   decideOperatorWatchdogAction,
+  emptyCitationFailures,
+  isScriptRefusal,
+  recordCitationFailure,
   recordOperatorWatchdogSkip,
   recordOperatorWatchdogTakeover,
-  type WatchdogTakeoverPlan,
 } from "./operator-watchdog-policy.js";
-import {
-  checkSlotAwareDueWork,
-  registerSlotAwareDueWork,
-} from "./slot-aware-due-work.js";
-
-const DUE_WORK_KIND = "operator_watchdog" as const;
-const DUE_WORK_KEY = "takeover";
+import { checkSlotAwareDueWork } from "./slot-aware-due-work.js";
 
 /**
  * How long a tick with nothing to act on waits before planning again: the
  * node holds the shift itself, is not active, the scheduler names nobody,
- * the takeover is blocked, or the operator set is not available.
+ * no user event is undelivered, the takeover is blocked, or the operator set
+ * is not available.
  */
 export const OPERATOR_WATCHDOG_IDLE_RECHECK_MS = 60_000;
 
@@ -91,105 +101,15 @@ export const OPERATOR_WATCHDOG_IDLE_RECHECK_MS = 60_000;
  */
 let lastSpentSchedulerRef: string | null = null;
 
+/** The citations strikes failed on, against the current scheduler UTxO. */
+let citationFailures: CitationFailures = emptyCitationFailures;
+
+export const resetWatchdogCitationFailuresForTests = (): void => {
+  citationFailures = emptyCitationFailures;
+};
+
 const schedulerRefOf = (snapshot: SDK.OperatorDirectorySnapshot): string =>
   `${snapshot.scheduler.utxo.txHash}#${snapshot.scheduler.utxo.outputIndex.toString()}`;
-
-/**
- * Maps a wall-clock target to the slot at which it becomes current. When Lucid
- * exposes no slot configuration (emulator), one-second slots are assumed.
- */
-const unixTimeToSlotOrFallback = (
-  lucid: Parameters<typeof canonicalSlotConfigForLucid>[0],
-  unixTimeMs: number,
-  currentSlot: number,
-  waitMs: number,
-): number => {
-  try {
-    return unixTimeToSlotForConfig(
-      unixTimeMs,
-      canonicalSlotConfigForLucid(lucid),
-    );
-  } catch {
-    return currentSlot + Math.ceil(waitMs / 1000);
-  }
-};
-
-const toSafeNumber = (value: bigint): number =>
-  value > BigInt(Number.MAX_SAFE_INTEGER)
-    ? Number.MAX_SAFE_INTEGER
-    : Number(value);
-
-/** Projects the SDK planner's result onto the policy's view of it. */
-const toWatchdogPlan = (
-  plan: SDK.InactivityTakeoverPlan,
-): WatchdogTakeoverPlan => {
-  switch (plan.kind) {
-    case "no-shift":
-      return { kind: "no-shift" };
-    case "not-yet":
-      return {
-        kind: "not-yet",
-        currentOperator: plan.currentOperator,
-        thresholdMs: toSafeNumber(plan.thresholdMs),
-      };
-    case "blocked":
-      // A blocked plan (e.g. a registered operator may still activate, or
-      // the successor node is missing) is treated as "no shift to take" this
-      // tick; the next tick re-plans from a fresh snapshot.
-      return { kind: "no-shift" };
-    case "strikes-exhausted":
-      return {
-        kind: "strikes-exhausted",
-        currentOperator: plan.currentOperator,
-        thresholdMs: toSafeNumber(plan.thresholdMs),
-      };
-    case "ready":
-      return {
-        kind: "ready",
-        currentOperator: plan.currentOperator,
-        newOperatorKey: plan.newOperatorKey,
-        thresholdMs: toSafeNumber(plan.thresholdMs),
-      };
-  }
-};
-
-/**
- * Defers the next plan until `untilMs`. The registry's dependency and
- * invalidation keys are descriptive here: the check runs before the operator
- * set is read, so there is nothing yet to compare them against.
- */
-const deferWatchdog = (input: {
-  readonly lucid: Parameters<typeof canonicalSlotConfigForLucid>[0];
-  readonly currentSlot: number;
-  readonly nowMs: number;
-  readonly untilMs: number;
-  readonly reason: string;
-  readonly dependencyKey: string;
-}): Effect.Effect<void> => {
-  const waitMs = Math.max(0, input.untilMs - input.nowMs);
-  const dueSlot = unixTimeToSlotOrFallback(
-    input.lucid,
-    input.untilMs,
-    input.currentSlot,
-    waitMs,
-  );
-  registerSlotAwareDueWork({
-    kind: DUE_WORK_KIND,
-    key: DUE_WORK_KEY,
-    callerLabel: "operator-watchdog",
-    reason: input.reason,
-    observedSlot: input.currentSlot,
-    dueSlot,
-    dueAtMs: input.untilMs,
-    waitMs,
-    slotSource: "l1_slot_now",
-    dependencyKey: input.dependencyKey,
-    invalidationKey: input.reason,
-  });
-  return Effect.logInfo(
-    `🐕 Operator watchdog waiting (${input.reason}) until ${new Date(input.untilMs).toISOString()} (wait_ms=${waitMs.toString()}, due_slot=${dueSlot.toString()}).`,
-  );
-};
 
 /**
  * One watchdog tick. `beforeStrike` runs before any strike or forced
@@ -265,10 +185,24 @@ export const makeOperatorWatchdogTick = <R = never>(
       return yield* deferUnplanned(directory.reason, directory.detail);
     // S5: a plan from the published set records under the set's view.
     const intentPlan = intentPlanAt(directory.view);
+    citationFailures = citationFailuresAt(
+      citationFailures,
+      schedulerRefOf(directory.snapshot),
+    );
     const prepared = yield* Effect.either(
       Effect.all([
         resolveOwnOperatorKeyHashProgram(lucid.operatorMainAddress),
-        planTakeoverFrom(lucid.api, directory.snapshot, intentPlan),
+        publishedNeglectedUserEventProgram(
+          published,
+          directory.snapshot.stateQueueTail.endTime,
+          citationFailures.excluded,
+        ).pipe(
+          Effect.flatMap((neglectedEvent) =>
+            planTakeoverFrom(lucid.api, directory.snapshot, intentPlan, {
+              neglectedEvent,
+            }),
+          ),
+        ),
       ]),
     );
     if (prepared._tag === "Left")
@@ -428,13 +362,28 @@ export const makeOperatorWatchdogTick = <R = never>(
         const result = outcome.value;
         if (result._tag === "Left") {
           const error = result.left;
-          const reason =
-            error instanceof OperatorFundingShortfall
-              ? "insufficient_funds"
-              : "submission_failed";
+          let reason: string = "submission_failed";
+          let citation = "";
+          if (error instanceof OperatorFundingShortfall) {
+            reason = "insufficient_funds";
+          } else if (plan.kind === "ready") {
+            // The failure counts against the citation, never against the
+            // funds: a later event is no cheaper to cite.
+            const citationId = SDK.neglectedUserEventCitationId(
+              plan.neglectedEvent,
+            );
+            const recorded = recordCitationFailure(citationFailures, {
+              schedulerRef,
+              citationId,
+              refused: isScriptRefusal(error),
+            });
+            citationFailures = recorded.failures;
+            reason = recorded.reason;
+            citation = `, citing ${citationId}`;
+          }
           recordOperatorWatchdogSkip({ reason, atMs: Date.now() });
           yield* Effect.logWarning(
-            `🐕 Operator watchdog could not ${decision.action.replace("_", "-")} ${decision.skippedOperator} (${reason}): ${errorMessage(error)}`,
+            `🐕 Operator watchdog could not ${decision.action.replace("_", "-")} ${decision.skippedOperator} (${reason}${citation}): ${errorMessage(error)}`,
           );
           return;
         }

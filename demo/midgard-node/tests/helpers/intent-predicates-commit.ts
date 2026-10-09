@@ -1,10 +1,8 @@
 /**
  * Node-table fixtures for the commit predicate's tests: a block journal row
- * for `BLOCK`, its member rows, listed events, and a forced order (its
- * forced row and its order fields).
+ * for `BLOCK` with its commit anchor, the follower block an anchor names,
+ * and listed events.
  */
-import { createHash } from "node:crypto";
-
 import { currentViewIn } from "@al-ft/midgard-l1-follower";
 import { eventKeyOfId } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -12,6 +10,7 @@ import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { CommitAnchor } from "../../src/database/commit-anchor.js";
 import { db } from "./forced-orders-node-store.js";
 import type { PredicateScenario } from "./intent-predicates-scenario.js";
 
@@ -20,8 +19,8 @@ const EMPTY_MERKLE_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 export const BLOCK = Buffer.alloc(28, 0x7e);
 
-/** A block journal row for `BLOCK` in `status`. */
-export const journalRow = (status: string) =>
+/** A block journal row for `BLOCK` in `status`, with its commit anchor. */
+export const journalRow = (status: string, anchor: CommitAnchor | null) =>
   db(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -66,35 +65,9 @@ export const journalRow = (status: string) =>
         expected_validation_trace_count: 0n,
         ledger_delta_spent: "[]",
         ledger_delta_produced: "[]",
-      } as never)}`;
-    }),
-  );
-
-/** A journal member table row for `BLOCK`. */
-export const member = (
-  table:
-    | "pending_block_finalization_deposits"
-    | "pending_block_finalization_withdrawals"
-    | "pending_block_finalization_forced_transactions",
-  memberId: Buffer,
-  identity: { key: Buffer; origin: Buffer } | null,
-) =>
-  db(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const payload = Buffer.from("member");
-      yield* sql`INSERT INTO ${sql(table)} ${sql.insert({
-        header_hash: BLOCK,
-        member_id: memberId,
-        ordinal: 0,
-        payload_cbor: payload,
-        payload_sha256: createHash("sha256").update(payload).digest(),
-        source_table: "predicate_test",
-        source_id: memberId,
-        source_time_stamp_tz: new Date(1_000_000),
-        ...(identity === null
-          ? {}
-          : { l1_event_key: identity.key, l1_origin_outref: identity.origin }),
+        commit_anchor_hash: anchor?.hash ?? null,
+        commit_anchor_height: anchor?.height ?? null,
+        commit_anchor_slot: anchor?.slot ?? null,
       } as never)}`;
     }),
   );
@@ -156,39 +129,20 @@ export const viewHeight = async (s: PredicateScenario): Promise<number> => {
   return view.height;
 };
 
-/**
- * A forced order for member `memberId`: its forced row (order output
- * `orderTx#0`) and its order fields admitted at `height`.
- */
-export const forcedOrder = async (
+/** The follower block at `height`, as a commit anchor. */
+export const anchorAt = async (
   s: PredicateScenario,
-  memberId: Buffer,
-  orderTx: Buffer,
   height: number,
-) => {
-  const bytes = Buffer.from("00", "hex");
-  await s.sql(
-    `INSERT INTO forced_transaction_utxos (tx_order_id, tx_order_l1_tx_hash, tx_order_l1_output_index, asset_name, raw_datum, tx_id, tx_compact, forced_inclusion_value, consensus_profile_id, native_tx_cbor, transaction_commitment, cek_program_material_sidecar_cbor, cek_program_material_sidecar_sha256, inclusion_time, projected_header_hash, status)
-      VALUES (?, ?, 0, ?, ?, ?, ?, ?, 'midgard-consensus-v1', ?, ?, ?, ?, ?, ?, 'projected')`,
-    [
-      memberId,
-      orderTx,
-      Buffer.from([1]),
-      bytes,
-      Buffer.alloc(32, 0x01),
-      bytes,
-      bytes,
-      bytes,
-      Buffer.alloc(32, 0x02),
-      bytes,
-      Buffer.alloc(32, 0x03),
-      new Date(1_000_000),
-      BLOCK,
-    ],
+): Promise<CommitAnchor> => {
+  const [row] = await s.sql(
+    "SELECT hash, slot FROM l1_blocks WHERE height = ?",
+    [height],
   );
-  await s.sql(
-    `INSERT INTO node_l1_forced_order_fields (order_tx_hash, order_output_index, order_tx_index, block_hash, height, order_slot, parent_slot, parent_hash, inclusion_time, status, reference_inputs, block_datums)
-      VALUES (?, 0, 0, ?, ?, 0, 0, ?, 0, 'resolved', ?, '[]')`,
-    [orderTx, Buffer.alloc(32), height, Buffer.alloc(32), bytes],
-  );
+  if (row === undefined)
+    throw new Error(`no follower block at height ${height.toString()}`);
+  return {
+    hash: Buffer.from(row.hash as Uint8Array),
+    height,
+    slot: Number(row.slot),
+  };
 };

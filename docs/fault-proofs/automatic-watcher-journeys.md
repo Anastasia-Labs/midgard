@@ -4,6 +4,11 @@
 
 Status: All 52 family results accepted through preserved and recovered runs.
 
+The `missingNativeScriptTx` results below are historical: that family and
+`missingNativeScriptUtxo` have since been removed from the catalogue.
+missingScriptSource supersedes these families; it scans inline witnesses and
+resolved reference scripts.
+
 The acceptance target is a fresh, isolated Cardano devnet with real Cardano
 node, Kupo, Ogmios, native chain sync, public libp2p DA retrieval, and the normal
 watcher launcher. The source catalogue supplies the family inventory. Each
@@ -1437,8 +1442,9 @@ stopped when the journey passes. If the journey fails before that, the node gets
 SIGKILL after a bound.
 
 No operator keeps the scheduler alive during the long waits, and none needs to.
-`max_inactivity` and the scheduler shift act only through strike and advance
-transactions, and nothing in a journey devnet submits them. The state queue's
+Inactivity strikes and the scheduler shift act only through strike and advance
+transactions, a strike needs an undelivered user event, and nothing in a
+journey devnet submits either. The state queue's
 commit checks only that the scheduler's operator is the committer.
 
 ### Signers and the challenger wallet

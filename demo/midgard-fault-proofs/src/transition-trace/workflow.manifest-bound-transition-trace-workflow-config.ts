@@ -4,12 +4,8 @@ import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
+import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { type FamilyAssemblyContext } from "../workflow/family-definition.js";
-import {
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptCorpus,
-  type HistoricalNativeScriptHistorySource,
-} from "../workflow/historical-native-script-corpus.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { type TransitionDepositOpening } from "./history-opening.js";
@@ -54,7 +50,8 @@ export type Prepared = Readonly<{
 
 export type ReplayCell = {
   evidence?: CanonicalBlockEvidence;
-  corpus?: HistoricalNativeScriptCorpus;
+  /** The classifier-admitted predecessor this run replayed against. */
+  predecessor?: CanonicalBlockEvidence;
   l1Events?: Awaited<ReturnType<typeof captureTransitionTraceL1Events>>;
   prepared?: ReadonlyMap<string, Prepared>;
 };
@@ -71,8 +68,8 @@ export type ManifestBoundTransitionTraceWorkflowConfig = Readonly<{
   /** Every family step/yield and shared mint witness is published before Init. */
   referenceScripts: Readonly<Record<string, UTxO>>;
   l1Source: FraudProofL1Source;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+  /** The classifier-admitted context carrying the authenticated predecessor. */
+  replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 

@@ -22,6 +22,7 @@ import {
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
 } from "../../src/runtime/process-config.js";
 import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
+import { freeOperationsEndpoint } from "../support/free-port.js";
 import {
   directories,
   productionConfig,
@@ -139,28 +140,6 @@ describe("production process authority separation", () => {
     ).toThrow(
       "watcher funding profile bundle is not a canonical production path",
     );
-    expect(() =>
-      parseWatcherProcessConfig({
-        ...base,
-        faultProofInfrastructure: {
-          ...base.faultProofInfrastructure,
-          historicalNativeScriptHistory: {
-            ...base.faultProofInfrastructure.historicalNativeScriptHistory,
-            providers: [
-              base.faultProofInfrastructure.historicalNativeScriptHistory
-                .providers[0]!,
-              {
-                ...base.faultProofInfrastructure.historicalNativeScriptHistory
-                  .providers[1],
-                operatorIdentitySha256:
-                  base.faultProofInfrastructure.historicalNativeScriptHistory
-                    .providers[0]!.operatorIdentitySha256,
-              },
-            ],
-          },
-        },
-      }),
-    ).toThrow("not independent");
   });
 
   it("rejects the deleted Midgard node lease coordination keys as unknown fields", () => {
@@ -189,6 +168,25 @@ describe("production process authority separation", () => {
     }
   });
 
+  it("rejects the retired historical native-script history overlay as an unknown field", () => {
+    const base = productionConfig();
+    expect(() =>
+      parseWatcherProcessConfig({
+        ...base,
+        faultProofInfrastructure: {
+          ...base.faultProofInfrastructure,
+          historicalNativeScriptHistory: {
+            sourceMode: "external_provider_quorum",
+            consistencyPolicy: "exact_bytes_all_providers_v1",
+            providers: [],
+          },
+        },
+      }),
+    ).toThrow(
+      "watcher fault-proof infrastructure has unknown or missing fields",
+    );
+  });
+
   it("parses the shipped watcher-process.example.json template", async () => {
     // Parsed from its bytes rather than loaded by path: the loader refuses a
     // checkout under /tmp, and the template's location is not what is tested.
@@ -199,7 +197,6 @@ describe("production process authority separation", () => {
     expect(Object.keys(config.faultProofInfrastructure).sort()).toEqual([
       "blueprintPath",
       "deploymentInfoPath",
-      "historicalNativeScriptHistory",
       "manifestPath",
     ]);
   });
@@ -297,7 +294,15 @@ describe("production process authority separation", () => {
       JSON.stringify(watcherConfigValue()),
     );
     await writeFile(config.deploymentAuthorityPath, "{}");
-    await expect(createWatcherRuntime({ config })).rejects.toMatchObject({
+    // A file not written yet is one a restart may clear: startup exits.
+    await expect(
+      createWatcherRuntime({
+        config: {
+          ...config,
+          operationsEndpoint: await freeOperationsEndpoint(),
+        },
+      }),
+    ).rejects.toMatchObject({
       code: "ENOENT",
       path: config.ruleBundlePath,
     });

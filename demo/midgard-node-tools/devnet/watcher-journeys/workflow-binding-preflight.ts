@@ -4,13 +4,10 @@ import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createSqliteHistoricalNativeScriptCheckpointStore } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import {
   createWatcherFaultProofReadinessApplication,
-  decodeWatcherAuthenticationKey32,
   deriveWatcherNativeGenesisIdentity,
-  loadWatcherSecretText,
   loadWatcherVerifiedDeploymentAuthority,
   loadWatcherWorkflowFundingProfileOverlay,
   WATCHER_STARTUP_READINESS_HEADER_HASH,
@@ -86,15 +83,6 @@ export const verifyJourneyWorkflowBindings = async (input: {
     bundlePath: input.config.fundingProfileBundlePath,
     deploymentIdentity: authority.deploymentIdentity,
   });
-  // This production store is lazy: binding never loads or advances history.
-  const checkpointStore = createSqliteHistoricalNativeScriptCheckpointStore({
-    path: input.config.watcherConfig.storage.path,
-    rollbackAuthenticationKey: decodeWatcherAuthenticationKey32(
-      await loadWatcherSecretText(
-        input.config.watcherConfig.storage.rollbackAuthorityKeySource,
-      ),
-    ),
-  });
   const watcherConfig = input.config.watcherConfig;
   if (watcherConfig.l1.source.sourceMode !== "local_node")
     throw new Error("Workflow binding requires the local-node L1 source");
@@ -135,7 +123,6 @@ export const verifyJourneyWorkflowBindings = async (input: {
       l1: follower.l1,
       deploymentAuthority: authority,
       infrastructure: input.config.faultProofInfrastructure,
-      historicalNativeScriptCheckpointStore: checkpointStore,
       fundingProfileOverlay,
     });
   } catch (cause) {

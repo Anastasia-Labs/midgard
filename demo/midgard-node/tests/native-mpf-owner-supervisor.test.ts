@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   NATIVE_MPF_OWNER_RECOVERY_PENDING,
-  NATIVE_MPF_OWNER_RESTART_EXHAUSTED,
+  NATIVE_MPF_OWNER_STUCK,
   NATIVE_MPF_OWNER_SUPERVISOR_SOURCE,
   NATIVE_MPF_PROMOTION_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_PROMOTION_INDEX_CAP_SOURCE,
@@ -22,10 +22,10 @@ const health = (
   overrides: Partial<NativeOwnerRestartHealth> = {},
 ): NativeOwnerRestartHealth => ({
   restartsInWindow: 0,
-  failedRestartsInWindow: 0,
+  failuresInARow: 0,
   restartLimit: 3,
   restartWindowMs: 3_600_000,
-  exhausted: false,
+  held: false,
   ...overrides,
 });
 
@@ -88,13 +88,13 @@ describe("native MPF owner supervisor", () => {
   });
 
   it("surfaces an owner's refusal instead of stopping the node, and clears it once the owner serves again", async () => {
-    const exhausted = new Error("Native MPF owner restart limit exhausted");
+    const held = new Error("Native MPF owner holds: the same failure");
     const pending = new Error("Native MPF canonical recovery is not installed");
     const { exit, raised } = await supervise([
       owner(() => undefined),
       owner(
-        () => exhausted,
-        () => health({ exhausted: true, failedRestartsInWindow: 3 }),
+        () => held,
+        () => health({ held: true, failuresInARow: 3 }),
       ),
       owner(() => pending),
       owner(() => undefined),
@@ -103,7 +103,7 @@ describe("native MPF owner supervisor", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(raised).toEqual([
       undefined,
-      NATIVE_MPF_OWNER_RESTART_EXHAUSTED,
+      NATIVE_MPF_OWNER_STUCK,
       NATIVE_MPF_OWNER_RECOVERY_PENDING,
       undefined,
       undefined,

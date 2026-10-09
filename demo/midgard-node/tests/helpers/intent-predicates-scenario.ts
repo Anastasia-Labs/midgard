@@ -179,7 +179,7 @@ export const openPredicateScenario = async (
     // POSIX time counts from the simulated origin, so a shift starting at
     // 0 covers the scenario's first hour.
     slotToPosixMs: (slot) => (slot - SIM_ORIGIN.point.slot) * 1000,
-    horizonLagBlocks: 2,
+    commitEventDepth: 2,
     ...overrides,
   });
 

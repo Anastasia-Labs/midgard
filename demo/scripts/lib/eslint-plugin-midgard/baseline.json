@@ -236,19 +236,9 @@
         "assets: Object.entries(utxo.assets).sort(([a], [b]) => a.localeCompare(b)),"
       ]
     },
-    "midgard-node-tools/devnet/watcher-journeys/history-archive-server.mjs": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [") || a.publicationOutRef.localeCompare(b.publicationOutRef),"]
-    },
     "midgard-node-tools/devnet/watcher-journeys/history-cases.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": ["entries.sort(([left], [right]) => left.localeCompare(right));"]
-    },
-    "midgard-node-tools/devnet/watcher-journeys/native-script-publication.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,"
-      ]
     },
     "midgard-node-tools/src/commands/stress-corpus/wallet-set-identity.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -431,21 +421,6 @@
     "midgard-fault-proofs/src/workflow/funding-reservation-permit.read-workflow-funding-recovery.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
-    },
-    "midgard-fault-proofs/src/workflow/historical-native-script-corpus.create-sqlite-historical-native-script-checkpoint-store.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "left.headerHash.localeCompare(right.headerHash) ||",
-        "left.txId.localeCompare(right.txId) ||",
-        "left.source.localeCompare(right.source) ||"
-      ]
-    },
-    "midgard-fault-proofs/src/workflow/historical-native-script-corpus.build-corpus-entries.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort(([left], [right]) => left.localeCompare(right))",
-        ".sort(([left], [right]) => left.localeCompare(right))"
-      ]
     },
     "midgard-fault-proofs/src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -829,10 +804,6 @@
         "if (currentSlot >= tip.slot + forecastSlots)"
       ]
     },
-    "midgard-node-tools/devnet/watcher-journeys/history-archive-server.mjs": {
-      "reason": "Devnet journey archive server measures depth for journey evidence; not a role decision. U4 rewrites devnet tooling.",
-      "sites": ["BigInt(body.throughPoint.blockNo) -"]
-    },
     "midgard-node-tools/devnet/watcher-journeys/journey-timing.journey-timing-for-plan.ts": {
       "reason": "Devnet journey timing plans how many blocks to wait; not a role decision.",
       "sites": ["actionDepth > confirmationDepth ||"]
@@ -844,12 +815,6 @@
     "midgard-node-tools/src/devnet-stack/acceptance-payout-transaction.ts": {
       "reason": "Devnet acceptance check of payout depth against cd; not a role decision.",
       "sites": ["evidence.canonicalDepth >= config.confirmationDepth,"]
-    },
-    "midgard-node-tools/src/devnet-stack/watcher-history-recorder.ts": {
-      "reason": "Devnet watcher history recorder waits for an inclusive depth; not a role decision.",
-      "sites": [
-        "if (point === undefined || tip - BigInt(point.blockNo) + 1n < depth)"
-      ]
     },
     "midgard-watcher/src/availability/observation.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",

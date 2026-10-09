@@ -4,13 +4,18 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/anastasia-labs/midgard-l1-node-transport/mocknode"
 	gcbor "github.com/blinklabs-io/gouroboros/cbor"
+	"github.com/blinklabs-io/gouroboros/muxer"
+	"github.com/blinklabs-io/gouroboros/protocol/handshake"
 	"github.com/blinklabs-io/gouroboros/protocol/localtxmonitor"
 	"github.com/fxamacker/cbor/v2"
 )
@@ -258,6 +263,75 @@ func TestHelloReportsUnreachableNode(t *testing.T) {
 		t.Fatalf("status %d", status)
 	}
 	h.status <- 0
+}
+
+// A node that refuses the handshake (here, another network magic) is a
+// fault no restart repairs: node_handshake_failed.
+func TestHelloReportsARefusedHandshake(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "node.socket")
+	node, err := mocknode.Start(socket, testMagic+1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(node.Close)
+	h := startSidecar(t, node, socket)
+	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs}, nil)
+	if f := h.expect("fatal"); f.header["code"] != "node_handshake_failed" {
+		t.Fatalf("got %v", f.header)
+	}
+	if status := <-h.status; status != exitNodeAvailable {
+		t.Fatalf("status %d", status)
+	}
+	h.status <- 0
+}
+
+// A node that accepts the socket and drops it before it answers the
+// handshake (a node going down) is transient: node_connection_lost.
+func TestHelloReportsAConnectionDroppedDuringTheHandshake(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "node.socket")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+	h := startSidecar(t, nil, socket)
+	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs}, nil)
+	if f := h.expect("fatal"); f.header["code"] != "node_connection_lost" {
+		t.Fatalf("got %v", f.header)
+	}
+	if status := <-h.status; status != exitNodeAvailable {
+		t.Fatalf("status %d", status)
+	}
+	h.status <- 0
+}
+
+func TestHandshakeFailureCodeSeparatesRefusalsFromConnectionDrops(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		code string
+	}{
+		"version mismatch":   {&handshake.VersionMismatchError{SupportedVersions: []uint16{16}}, "node_handshake_failed"},
+		"refused":            {fmt.Errorf("wrapped: %w", &handshake.RefusedError{Version: 32784, Message: "magic"}), "node_handshake_failed"},
+		"decode error":       {&handshake.DecodeError{Version: 32784, Message: "bad"}, "node_handshake_failed"},
+		"out of protocol":    {errors.New("handshake: received unexpected message type 9"), "node_handshake_failed"},
+		"shutdown":           {fmt.Errorf("connection shutdown initiated: %w", io.EOF), "node_connection_lost"},
+		"closed by the peer": {&muxer.ConnectionClosedError{Context: "reading header", Err: io.EOF}, "node_connection_lost"},
+		"reset":              {&net.OpError{Op: "read", Net: "unix", Err: syscall.ECONNRESET}, "node_connection_lost"},
+		"broken pipe":        {fmt.Errorf("muxer error: %w", syscall.EPIPE), "node_connection_lost"},
+	} {
+		if got := handshakeFailureCode(tc.err); got != tc.code {
+			t.Errorf("%s: got %s, want %s", name, got, tc.code)
+		}
+	}
 }
 
 func TestIntersectsOnTheFirstKnownPointOfTheList(t *testing.T) {

@@ -76,7 +76,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/forced-order-carriage-emulator.test.ts
  *   tests/l1-state-queue-liveness.test.ts
  *   tests/l1-state-queue-fiber-tick-spy.test.ts
- *   tests/history-commit-horizon-lag-emulator.test.ts
+ *   tests/history-commit-anchor-emulator.test.ts
  *   tests/intent-journal-commit-gate-emulator.test.ts
  *   tests/operator-watchdog-emulator.test.ts
  *   tests/availability-challenge-operation.test.ts
@@ -90,6 +90,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/mpf-audit-merge-permit-emulator.test.ts
  *   tests/native-mpf-startup-emulator.test.ts
  *   tests/operator-commands-emulator.test.ts
+ *   tests/operator-watchdog-citation-emulator.test.ts
  *   tests/operator-watchdog-force-retire-emulator.test.ts
  *   tests/operator-watchdog-manifest-gate-idle.test.ts
  *   tests/published-initialization-recovery.test.ts

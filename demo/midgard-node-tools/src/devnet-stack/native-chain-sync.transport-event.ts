@@ -9,6 +9,7 @@ import {
   IntersectNotFoundError,
   ORIGIN,
   SidecarExitedError,
+  TransportFailedError,
   TransportRequestError,
   TransportTimeoutError,
   TransportUnavailableError,
@@ -89,12 +90,16 @@ export const watcherEvent = (
 };
 
 /**
- * The startup failure a transport refusal stands for. Every code but
- * intersection_failed says only that the node or its sidecar did not answer.
+ * The startup failure a transport refusal stands for, named by its code;
+ * `isWatcherNativeNodeUnavailable` says which codes only mean that the node
+ * or its sidecar did not answer. A failed transport (`TransportFailedError`)
+ * is named by its reason, such as `node_handshake_failed`, which is not one.
  */
 export const startupFailure = (error: unknown): unknown => {
   if (error instanceof IntersectNotFoundError)
     return new NativeChainSyncStartupFailure("intersection_failed");
+  if (error instanceof TransportFailedError)
+    return new NativeChainSyncStartupFailure(error.reason);
   if (error instanceof TransportUnavailableError)
     return new NativeChainSyncStartupFailure(error.reason);
   if (error instanceof TransportTimeoutError)

@@ -1,6 +1,15 @@
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import { retryWatcherL1Transient } from "../l1/transient-retry.js";
 
+/**
+ * How long a startup stage's L1 read waits out transients before startup
+ * fails (`WatcherL1UnavailableError`): the node's L1 node budget, which
+ * covers a Cardano node that is restarting or still opening its database
+ * beside the watcher. Past it the process exits non-zero, and its
+ * supervisor's restart policy is the outer retry.
+ */
+export const WATCHER_STARTUP_L1_BUDGET_MS = 10 * 60_000;
+
 export type WatcherStartupProgress = Readonly<{
   stage: string;
   outcome: "started" | "pending" | "completed" | "failed";
@@ -38,14 +47,16 @@ export type WatcherStartupStage = Readonly<{
 
 /**
  * Startup diagnostics remain available before the operations server binds. A
- * stage is run again whole only when it throws {@link WatcherStartupStageHeld};
- * an L1 transient repeats just the read passed to `retryL1Read`, and every
- * other error fails startup.
+ * stage is run again whole only when it throws {@link WatcherStartupStageHeld}
+ * (waiting on the chain or a peer: no deadline); an L1 transient repeats just
+ * the read passed to `retryL1Read`, for at most `l1BudgetMs`
+ * (`WATCHER_STARTUP_L1_BUDGET_MS`); every other error fails startup.
  */
 export const createWatcherStartupProgress =
   (
     report: ((progress: WatcherStartupProgress) => void) | undefined,
     retryDelayMs?: (retry: number) => number,
+    budget: Readonly<{ l1BudgetMs?: number; now?: () => number }> = {},
   ) =>
   async <T>(
     stage: string,
@@ -82,7 +93,11 @@ export const createWatcherStartupProgress =
       });
     const context: WatcherStartupStage = Object.freeze({
       retryL1Read: (read) =>
-        retryWatcherL1Transient(read, retrying(isWatcherL1TransientFailure)),
+        retryWatcherL1Transient(read, {
+          ...retrying(isWatcherL1TransientFailure),
+          budgetMs: budget.l1BudgetMs ?? WATCHER_STARTUP_L1_BUDGET_MS,
+          ...(budget.now === undefined ? {} : { now: budget.now }),
+        }),
     });
     const run = () =>
       retryWatcherL1Transient(() => action(context), retrying(held));

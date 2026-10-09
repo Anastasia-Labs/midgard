@@ -7,7 +7,10 @@ import {
   parseWatcherStrictJsonValue,
   type WatcherWalletKeySource,
 } from "./config.js";
-import { WatcherPermanentRefusalError } from "./permanent-refusal.js";
+import {
+  refusePermanently,
+  WatcherPermanentRefusalError,
+} from "./permanent-refusal.js";
 import {
   assertDistinctSources,
   canonicalPath,
@@ -18,7 +21,7 @@ import {
   secretSource,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
   type WatcherProcessConfig,
-} from "./process-config.historical-native-script-history.js";
+} from "./process-config.fault-proof-infrastructure.js";
 
 export const parseWatcherProcessConfig = (
   value: unknown,
@@ -210,10 +213,17 @@ const assertWatcherL1SocketPath = async (socketPath: string): Promise<void> => {
   );
 };
 
+/**
+ * Reads and checks the process configuration. Its refusals come before the
+ * operations server can bind, so they are permanent refusals (exit code 78);
+ * a system error reading the file (ENOENT, EIO, ...) is left restartable.
+ */
 export const loadWatcherProcessConfigFile = async (
   path: string,
 ): Promise<WatcherProcessConfig> => {
-  const config = parseWatcherProcessConfig(await configFile(path));
+  const config = await refusePermanently("process_configuration", async () =>
+    parseWatcherProcessConfig(await configFile(path)),
+  );
   await assertWatcherL1SocketPath(
     config.watcherConfig.l1.source.chainSync.socketPath,
   );

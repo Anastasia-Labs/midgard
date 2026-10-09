@@ -15,7 +15,18 @@ import {
 
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
-import { Effect, Exit, Fiber, Redacted, Ref, Scope } from "effect";
+import {
+  Cause,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  FiberId,
+  Option,
+  Redacted,
+  Ref,
+  Scope,
+} from "effect";
 
 import { nodeDatabaseConnectionString } from "../../src/services/l1-provider.js";
 import { HaltSource } from "../../src/services/liveness-halt.js";
@@ -24,6 +35,10 @@ import {
   type AcquireNodeInstanceLockOptions,
   type NodeInstanceLock,
 } from "../../src/services/node-instance-lock.js";
+import type {
+  TransientBudgetExhaustedError,
+  TransientExhaustion,
+} from "../../src/services/transient-exhaustion.js";
 
 const env = (name: string): string => {
   const value = process.env[name];
@@ -43,7 +58,23 @@ export const connectionString = nodeDatabaseConnectionString(database);
 
 export const livenessGlobals = () => ({
   LIVENESS_REASONS: Ref.unsafeMake<ReadonlyMap<string, string>>(new Map()),
+  TRANSIENT_EXHAUSTION: Deferred.unsafeMake<
+    never,
+    TransientBudgetExhaustedError
+  >(FiberId.none) as TransientExhaustion,
 });
+
+/** The exhaustion the lock signalled, or undefined while it signalled none. */
+export const exhaustionOf = (
+  globals: ReturnType<typeof livenessGlobals>,
+): TransientBudgetExhaustedError | undefined => {
+  const done = Effect.runSync(Deferred.poll(globals.TRANSIENT_EXHAUSTION));
+  if (Option.isNone(done)) return undefined;
+  const exit = Effect.runSync(Effect.exit(done.value));
+  return Exit.isFailure(exit)
+    ? Option.getOrUndefined(Cause.failureOption(exit.cause))
+    : undefined;
+};
 
 export const reasonOf = (globals: ReturnType<typeof livenessGlobals>) =>
   Effect.runSync(Ref.get(globals.LIVENESS_REASONS)).get(
@@ -154,6 +185,38 @@ export const freezingProxy = async () => {
       }
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
+  };
+};
+
+/**
+ * A server on `port` that answers every connection's startup message as a
+ * Postgres refusing the login for good would: a FATAL `28P01` (bad
+ * password) ErrorResponse, then the close.
+ */
+export const refusingPostgres = async (port: number) => {
+  const field = (code: string, value: string) =>
+    Buffer.concat([Buffer.from(code), Buffer.from(`${value}\0`)]);
+  const fields = Buffer.concat([
+    field("S", "FATAL"),
+    field("V", "FATAL"),
+    field("C", "28P01"),
+    field("M", "password authentication failed"),
+    Buffer.from([0]),
+  ]);
+  const length = Buffer.alloc(4);
+  length.writeInt32BE(fields.length + 4);
+  const refusal = Buffer.concat([Buffer.from("E"), length, fields]);
+  const server = createTcpServer((client) => {
+    client.on("error", () => undefined);
+    client.once("data", () => client.end(refusal));
+  });
+  server.listen(port, "127.0.0.1");
+  await once(server, "listening");
+  return {
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      }),
   };
 };
 

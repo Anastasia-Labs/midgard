@@ -287,7 +287,6 @@ const openStage = async () => {
     retain,
     onHealthyPredecessor,
     onStage,
-    historicalNativeScriptProviders: [],
     readSignedCommitRecovery: async (attempt) => {
       recoveryReads(attempt);
       if (recoveryStatus === "unreadable")

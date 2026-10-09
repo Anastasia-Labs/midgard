@@ -5,6 +5,12 @@
  * is assigned to a header, finalized, or named by a block journal that is
  * not abandoned. A canonical withdrawal is never touched. Deleting one
  * re-runs classification of the unassigned withdrawals that stay.
+ *
+ * A held orphan is of the kind of its header, finalized or not: own-landed
+ * while its header is a processed own landed block (it holds no follower
+ * write gate), foreign-landed while it is a processed foreign one, and a
+ * journal orphan otherwise. The recovery hold's detail names a foreign
+ * landed header that holds orphans.
  */
 import { createHash } from "node:crypto";
 
@@ -13,8 +19,12 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  countHeldOrphans,
+  countForeignLandedOrphans,
+  countJournalOrphans,
+  countOrphansAwaitingRecovery,
+  countOwnLandedOrphans,
   deleteUnheldOrphans,
+  describeOrphansAwaitingRecovery,
 } from "../src/database/follower-orphan-repair.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import {
@@ -24,6 +34,7 @@ import {
 import {
   BLOCK,
   freshNative,
+  land,
   processOf,
   R1,
   root,
@@ -111,6 +122,15 @@ const rowsOf = Effect.gen(function* () {
   );
 });
 
+const kinds = Effect.gen(function* () {
+  return {
+    journal: yield* countJournalOrphans,
+    ownLanded: yield* countOwnLandedOrphans,
+    foreignLanded: yield* countForeignLandedOrphans,
+    awaiting: yield* countOrphansAwaitingRecovery,
+  };
+});
+
 const arrange = async (rows: readonly Withdrawal[]) => {
   const globals = await processOf(freshNative());
   await run(globals, resetApplicationTables);
@@ -133,7 +153,8 @@ describe("the orphan repair deletes orphaned withdrawals nothing holds", () => {
       status: "awaiting",
       validity: null,
     });
-    expect(await run(globals, countHeldOrphans)).toBe(0);
+    expect(await run(globals, countJournalOrphans)).toBe(0);
+    expect(await run(globals, countOrphansAwaitingRecovery)).toBe(0);
   });
 
   it("keeps an orphaned withdrawal assigned to a header or finalized, counting it as held", async () => {
@@ -160,7 +181,64 @@ describe("the orphan repair deletes orphaned withdrawals nothing holds", () => {
     expect(rows.get(digest("headed").toString("hex"))?.status).toBe(
       "projected",
     );
-    expect(await run(globals, countHeldOrphans)).toBe(2);
+    // Its header is no landed block: journal orphans, which hold the gate.
+    expect(await run(globals, kinds)).toEqual({
+      journal: 2,
+      ownLanded: 0,
+      foreignLanded: 0,
+      awaiting: 2,
+    });
+    expect(await run(globals, describeOrphansAwaitingRecovery(2))).toBe(
+      "2 orphaned event admission(s) wait for their block journal's disposition or the landed-block rebase",
+    );
+  });
+
+  it("classifies a held orphan, finalized or not, by its header: own-landed holds no gate, foreign-landed does", async () => {
+    const orphans: Withdrawal[] = [
+      {
+        label: "headed",
+        canonical: false,
+        header: HEADER,
+        status: "projected",
+        classified: true,
+      },
+      {
+        label: "final",
+        canonical: false,
+        header: HEADER,
+        status: "finalized",
+        classified: true,
+      },
+      {
+        label: "kept",
+        canonical: true,
+        header: HEADER,
+        status: "projected",
+        classified: true,
+      },
+    ];
+    const own = await arrange(orphans);
+    await land(own, { headerHash: HEADER.toString("hex"), kind: "own" });
+    expect(await run(own, kinds)).toEqual({
+      journal: 0,
+      ownLanded: 2,
+      foreignLanded: 0,
+      awaiting: 0,
+    });
+
+    const foreign = await arrange(orphans);
+    await land(foreign, { headerHash: HEADER.toString("hex") });
+    expect(await run(foreign, kinds)).toEqual({
+      journal: 0,
+      ownLanded: 0,
+      foreignLanded: 2,
+      awaiting: 2,
+    });
+    // The hold names the foreign header: it includes events no longer on
+    // L1, so the node does not build on it until it leaves the landed queue.
+    expect(await run(foreign, describeOrphansAwaitingRecovery(2))).toBe(
+      `foreign landed block ${HEADER.toString("hex")} (2) includes 2 event(s) no longer on L1: it is fault-provable (fabricated deposit or withdrawal) and the node does not build on it; the hold clears when a fault proof or an L1 rollback removes the header from the landed queue`,
+    );
   });
 
   it("keeps an orphaned withdrawal a live block journal names, and deletes it once that journal is abandoned", async () => {
@@ -183,7 +261,7 @@ describe("the orphan repair deletes orphaned withdrawals nothing holds", () => {
     await run(globals, insertJournalMember("member"));
     expect(await run(globals, deleteUnheldOrphans)).toBe(0);
     expect((await run(globals, rowsOf)).size).toBe(1);
-    expect(await run(globals, countHeldOrphans)).toBe(1);
+    expect(await run(globals, countJournalOrphans)).toBe(1);
 
     await run(
       globals,
@@ -196,6 +274,6 @@ describe("the orphan repair deletes orphaned withdrawals nothing holds", () => {
     );
     expect(await run(globals, deleteUnheldOrphans)).toBe(1);
     expect((await run(globals, rowsOf)).size).toBe(0);
-    expect(await run(globals, countHeldOrphans)).toBe(0);
+    expect(await run(globals, countJournalOrphans)).toBe(0);
   });
 });

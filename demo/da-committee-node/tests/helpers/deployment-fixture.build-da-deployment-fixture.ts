@@ -156,8 +156,6 @@ export const buildDaDeploymentFixture = async (
         .scriptHash as string,
       missingSignature: contracts.fraudProofMissingSignature!
         .scriptHash as string,
-      missingNativeScriptTx: contracts.fraudProofMissingNativeScriptTx!
-        .scriptHash as string,
       withdrawnReferenceInput: contracts.fraudProofWithdrawnReferenceInput!
         .scriptHash as string,
       canonicalDecodability: contracts.fraudProofCanonicalDecodability!
@@ -179,8 +177,6 @@ export const buildDaDeploymentFixture = async (
       mintAuthorization: contracts.fraudProofMintAuthorization!
         .scriptHash as string,
       networkId: contracts.fraudProofNetworkId!.scriptHash as string,
-      missingNativeScriptUtxo: contracts.fraudProofMissingNativeScriptUtxo!
-        .scriptHash as string,
       nativeScriptInvalid: contracts.fraudProofNativeScriptInvalid!
         .scriptHash as string,
       minAda: contracts.fraudProofMinAda!.scriptHash as string,

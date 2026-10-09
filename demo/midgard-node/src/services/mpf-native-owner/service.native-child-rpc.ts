@@ -18,6 +18,7 @@ import {
   SELF_TEST_DOMAIN,
   ZERO_EPOCH,
 } from "./service.normalize-owner-options.js";
+import { NativeOwnerBinaryPinMismatchError } from "./service.restart-policy.js";
 
 export class NativeChildRpc {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -301,7 +302,7 @@ export const assertPinnedOwnerBinary = async (
     .update(await readFile(binaryPath))
     .digest("hex");
   if (actualSha !== binarySha256) {
-    throw new Error(
+    throw new NativeOwnerBinaryPinMismatchError(
       `Native MPF owner binary SHA-256 mismatch: expected=${binarySha256},actual=${actualSha}`,
     );
   }

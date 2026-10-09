@@ -38,6 +38,5 @@ export {
   type WatcherFaultProofInfrastructureAuthority,
   type WatcherFaultProofL1,
   type WatcherFaultProofStartupReadiness,
-  type WatcherHistoricalNativeScriptHistoryOverlay,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.production-dependencies.js";

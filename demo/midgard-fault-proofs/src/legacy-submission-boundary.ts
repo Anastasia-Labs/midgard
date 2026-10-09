@@ -32,7 +32,6 @@ const RETIRED_INIT_CATEGORIES = new Set([
   "fabricatedWithdrawal",
   "nativeScriptDecoding",
   "missingSignature",
-  "missingNativeScriptTx",
   "withdrawnReferenceInput",
   "canonicalDecodability",
   "committedFieldShape",

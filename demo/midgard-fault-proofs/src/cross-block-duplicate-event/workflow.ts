@@ -27,10 +27,6 @@ import {
 } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import type {
-  HistoricalNativeScriptCheckpointStore,
-  HistoricalNativeScriptHistorySource,
-} from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
@@ -68,6 +64,8 @@ type BoundConfig = Readonly<{
   contracts: CrossBlockDuplicateEventContracts;
   references: CrossBlockDuplicateEventWorkflowReferenceScripts;
   settlementAuthority: CrossBlockSettlementAuthority;
+  /** Public retained-DA sources the settled payloads are fetched from. */
+  retainedDaSources: readonly RetainedDaPayloadSource[];
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 export const createCrossBlockDuplicateEventTransactionPort = (
@@ -79,7 +77,9 @@ export const createCrossBlockDuplicateEventTransactionPort = (
     await prepareCrossBlockDuplicateArtifact({
       evidence,
       classification,
-      context: await config.settlementAuthority.capture(evidence),
+      context: await config.settlementAuthority.capture(evidence, {
+        sources: config.retainedDaSources,
+      }),
     }),
   capture: async ({ action, artifact }) => {
     const a = await admitCrossBlockDuplicateArtifact(artifact);
@@ -105,7 +105,9 @@ export const createCrossBlockDuplicateEventTransactionPort = (
           config.binding.releaseEconomics.policy.fraudProverRewardLovelace,
         ),
       });
-    const refreshed = await config.settlementAuthority.capture(a.current);
+    const refreshed = await config.settlementAuthority.capture(a.current, {
+      sources: config.retainedDaSources,
+    });
     const live = crossBlockSettlementRecords(a.current, refreshed).find(
       (record) => record.headerHash === a.coordinate.settledHeaderHash,
     );
@@ -188,8 +190,8 @@ export type ManifestBoundCrossBlockDuplicateEventWorkflowConfig = Readonly<{
   signer: ResolvedProverSigner;
   referenceScripts: CrossBlockDuplicateEventWorkflowReferenceScripts;
   l1Source: FraudProofL1Source;
-  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  /** Public retained-DA sources the settled payloads are fetched from. */
+  retainedDaSources: readonly RetainedDaPayloadSource[];
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 export type ManifestBoundCrossBlockDuplicateEventWorkflow = Readonly<{
@@ -203,8 +205,7 @@ export type ManifestBoundCrossBlockDuplicateEventWorkflow = Readonly<{
 }>;
 type CrossBlockRuntime = Pick<
   ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
-  | "historicalNativeScriptHistorySource"
-  | "historicalNativeScriptCheckpointStore"
+  "retainedDaSources"
 >;
 type CrossBlockContext = FamilyAssemblyContext<
   "crossBlockDuplicateEvent",
@@ -223,8 +224,6 @@ const settlementAuthorityFor = (context: CrossBlockContext) => {
   const authority = createCrossBlockSettlementAuthority({
     binding: context.binding,
     l1: context.l1Source,
-    historySource: context.runtime.historicalNativeScriptHistorySource,
-    checkpointStore: context.runtime.historicalNativeScriptCheckpointStore,
   });
   settlementAuthorities.set(context, authority);
   return authority;
@@ -277,6 +276,7 @@ export const CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION = defineFamily<
         ...context,
         contracts,
         settlementAuthority: settlementAuthorityFor(context),
+        retainedDaSources: context.runtime.retainedDaSources,
       });
     },
   },
@@ -290,12 +290,7 @@ export const createManifestBoundCrossBlockDuplicateEventWorkflow = async (
   (await assembleManifestBoundFamilyWorkflow(
     CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION,
     config,
-    {
-      historicalNativeScriptHistorySource:
-        config.historicalNativeScriptHistorySource,
-      historicalNativeScriptCheckpointStore:
-        config.historicalNativeScriptCheckpointStore,
-    },
+    { retainedDaSources: config.retainedDaSources },
   )) as unknown as ManifestBoundCrossBlockDuplicateEventWorkflow;
 export const runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow = async ({
   workflow,
@@ -310,9 +305,10 @@ export const runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow = async ({
     headerHash: workflow.binding.definition.headerHash,
   });
   const replayContext: CompleteCanonicalReplayContext = {
-    settlements: await workflow.settlementAuthority.capture({
-      headerHash: workflow.binding.definition.headerHash,
-    }),
+    settlements: await workflow.settlementAuthority.capture(
+      { headerHash: workflow.binding.definition.headerHash },
+      { sources },
+    ),
   };
   return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,

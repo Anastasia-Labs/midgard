@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import { posix, resolve } from "node:path";
+
 import {
   AIKEN_PROJECT,
   DEMO,
   goldenChannels,
+  workflowRunsCheck,
   workspaceDependencyClosure,
 } from "./derive.mjs";
 import { formatCommand, node, step } from "./registry.demo-checks.mjs";
@@ -14,6 +18,23 @@ const isGeneratedArtifact = (path) =>
   /\.ak$|\.generated\.json$|\.canonical\.json$/u.test(path) ||
   /^docs\/(?!spec\/)/u.test(path) ||
   /tests\/fixtures\/[^/]+\.json$/u.test(path);
+
+// The deployment-profile and interactive-emulator cache tests, outside
+// demo/scripts/lib, and the files outside demo/scripts/** they read.
+const DEMO_SCRIPT_TESTS = [
+  "demo/scripts/deployment-profiles.test.mjs",
+  "demo/scripts/interactive-emulator.test.mjs",
+];
+const DEMO_SCRIPT_TEST_INPUTS = [
+  "config/deployments/**",
+  "demo/midgard-test-support/interactive-emulator.js",
+  "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs",
+  "demo/midgard-core/src/generated-deployment-profiles.ts",
+  "onchain/aiken/env/*.ak",
+  "onchain/aiken/scripts/pinned-compiler.mjs",
+  ".github/workflows/aiken-ci.yml",
+  ".github/workflows/midgard-node-ci.yml",
+];
 
 export const goldenChecks = (root, packages, ciText) =>
   goldenChannels(root, packages).map((channel) => {
@@ -29,7 +50,9 @@ export const goldenChecks = (root, packages, ciText) =>
     const [kind, ...rest] = channel.script
       .slice(0, -":check".length)
       .split(":");
-    const gated = ciText.includes(channel.script);
+    const id = `${kind === "docs" ? "docs" : "golden"}:${rest.join(":")}`;
+    const gated =
+      ciText.includes(channel.script) || workflowRunsCheck(ciText, id);
     const command = step([
       "pnpm",
       "--dir",
@@ -38,7 +61,7 @@ export const goldenChecks = (root, packages, ciText) =>
       channel.script,
     ]);
     return {
-      id: `${kind === "docs" ? "docs" : "golden"}:${rest.join(":")}`,
+      id,
       title:
         kind === "docs"
           ? `Generated document ${rest.join(":")} matches its producer`
@@ -85,7 +108,6 @@ export const independentChecks = () => [
       "demo/midgard-sdk/src/**",
       "demo/midgard-node/src/fibers/**",
       "demo/midgard-node/src/workers/**",
-      "demo/midgard-node/src/utils/commit-submission*.ts",
       "demo/midgard-node-tools/src/**",
     ],
     capabilities: [
@@ -176,7 +198,18 @@ export const independentChecks = () => [
 
 const E2E_SKILL = ".agents/skills/midgard-e2e-acceptance";
 
-export const toolingChecks = () => [
+// demo/scripts/check-module-size-exceptions.mjs holds each listed file to its
+// recorded line count, so an edit of one of them can fail it. Entries are
+// relative to demo/; those outside it are spelled `../<path>`.
+const MODULE_SIZE_CAPS = `${DEMO}/module-size-exceptions.json`;
+const moduleSizeCapped = (root) => [
+  MODULE_SIZE_CAPS,
+  ...JSON.parse(readFileSync(resolve(root, MODULE_SIZE_CAPS), "utf8")).map(
+    ({ file }) => posix.normalize(`${DEMO}/${file}`),
+  ),
+];
+
+export const toolingChecks = (root) => [
   {
     id: "contributor-build-guards",
     title: "Workspace builds use the resource and provenance guard",
@@ -222,6 +255,16 @@ export const toolingChecks = () => [
     plan: () => [step(node("scripts/preflight.mjs", "--check-docs"))],
   },
   {
+    // Any deletion or rename can leave a registry naming nothing, so it runs
+    // on every push; it reads files only and takes about two seconds.
+    id: "registry-paths",
+    title: "Registries name only files that exist",
+    always: true,
+    prePush: true,
+    display: "node scripts/ci/check-registry-paths.mjs",
+    plan: () => [step(node("scripts/ci/check-registry-paths.mjs"))],
+  },
+  {
     id: "repo-tooling-tests",
     title:
       "Repository tooling self-tests (the checks that prove the other checks can fail)",
@@ -243,15 +286,26 @@ export const toolingChecks = () => [
   },
   {
     id: "demo-script-tests",
-    title: "Workspace helper and ESLint plugin self-tests",
+    title:
+      "Workspace helper, ESLint plugin, deployment-profile and interactive-emulator cache self-tests",
     triggers: [
       "demo/scripts/**",
       "demo/eslint.config.mjs",
       ".github/workflows/repo-tools-ci.yml",
+      ...DEMO_SCRIPT_TEST_INPUTS,
+      ...moduleSizeCapped(root),
     ],
+    triggerNote: `\`demo/scripts/**\`, \`demo/eslint.config.mjs\`, \`.github/workflows/repo-tools-ci.yml\`, ${DEMO_SCRIPT_TEST_INPUTS.map((path) => `\`${path}\``).join(", ")}, \`demo/module-size-exceptions.json\` and every file it caps`,
     capabilities: ["node-modules"],
-    display: 'node --test "demo/scripts/lib/*.test.mjs"',
-    plan: () => [step(["node", "--test", "demo/scripts/lib/*.test.mjs"])],
+    display: `node --test "demo/scripts/lib/*.test.mjs" ${DEMO_SCRIPT_TESTS.join(" ")}`,
+    plan: () => [
+      step([
+        "node",
+        "--test",
+        "demo/scripts/lib/*.test.mjs",
+        ...DEMO_SCRIPT_TESTS,
+      ]),
+    ],
   },
   {
     // Kept out of the pre-push slice: the focused-check tests drive a stub
@@ -276,13 +330,35 @@ export const toolingChecks = () => [
   },
   {
     id: "workflow-triggers",
-    title: "Workflow trigger table",
-    triggers: [".github/workflows/**", "scripts/ci/**"],
-    requiresFiles: ["scripts/ci/workflow-triggers.test.mjs"],
+    title: "Workflow trigger table and the by-id runner's path filters",
+    // The runner-filter test walks the by-id runner's imports, so a change
+    // to any module it could reach selects it.
+    triggers: [
+      ".github/workflows/**",
+      "scripts/ci/**",
+      "scripts/preflight.mjs",
+      "scripts/preflight/**",
+      "scripts/contrib/**",
+      "scripts/lib/**",
+      "demo/scripts/lib/blueprint-stamp.mjs",
+      "demo/scripts/assert-midgard-core-dist-current.mjs",
+      "demo/midgard-core/scripts/write-dist-source-digest.mjs",
+      "onchain/aiken/scripts/**",
+    ],
+    requiresFiles: [
+      "scripts/ci/workflow-triggers.test.mjs",
+      "scripts/ci/preflight-runner-filters.test.mjs",
+    ],
     prePush: true,
-    display: "node --test scripts/ci/workflow-triggers.test.mjs",
+    display:
+      "node --test scripts/ci/workflow-triggers.test.mjs scripts/ci/preflight-runner-filters.test.mjs",
     plan: () => [
-      step(["node", "--test", "scripts/ci/workflow-triggers.test.mjs"]),
+      step([
+        "node",
+        "--test",
+        "scripts/ci/workflow-triggers.test.mjs",
+        "scripts/ci/preflight-runner-filters.test.mjs",
+      ]),
     ],
   },
   ...[

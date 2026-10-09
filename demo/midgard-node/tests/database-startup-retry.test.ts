@@ -23,7 +23,9 @@ import {
 } from "../src/services/database.js";
 import { databaseUpstreamSocket } from "../src/services/database-upstream-socket.js";
 import {
+  DATABASE_CONNECTION_FAILED,
   DATABASE_UNREACHABLE,
+  StartupStepFailedError,
   StartupWaitingReporter,
 } from "../src/services/startup-waiting.js";
 import {
@@ -43,6 +45,7 @@ import {
 const FAST = {
   baseDelay: Duration.millis(5),
   maxDelay: Duration.millis(20),
+  budget: Duration.minutes(15),
 } as const;
 
 class PoolInitError extends Data.TaggedError("PoolInitError")<{
@@ -255,11 +258,44 @@ describe("the database pool at startup", () => {
     );
 
     expect(result._tag).toBe("Left");
+    const error = result._tag === "Left" ? result.left : undefined;
+    expect(error).toBeInstanceOf(StartupStepFailedError);
+    expect(error).toMatchObject({
+      step: "database_pool:batch",
+      reason: DATABASE_CONNECTION_FAILED,
+      exhausted: false,
+      attempts: 1,
+    });
     expect(unready(logs)).toBe(0);
     expect(proxy.accepted()).toBe(1);
   });
 
-  it("keeps waiting on an unreachable Postgres with no deadline, reporting the reason to the startup", async () => {
+  it("fails under database_unreachable once an unreachable Postgres outlives the budget", async () => {
+    const { result, logs, reported } = await captureFor(
+      selectOne.pipe(
+        Effect.provide(
+          pool(await closedPort(), {
+            retry: { ...FAST, budget: Duration.millis(300) },
+          }),
+        ),
+        Effect.scoped,
+      ),
+      10_000,
+    );
+    expect(result._tag).toBe("Left");
+    const error = result._tag === "Left" ? result.left : undefined;
+    expect(error).toBeInstanceOf(StartupStepFailedError);
+    expect(error).toMatchObject({
+      step: "database_pool:batch",
+      reason: DATABASE_UNREACHABLE,
+      exhausted: true,
+    });
+    expect(error?.message).toMatch(/ECONNREFUSED/u);
+    expect(unready(logs)).toBeGreaterThan(3);
+    expect(reported.at(-1)).toEqual(["database_pool:batch", []]);
+  });
+
+  it("keeps waiting on an unreachable Postgres within its budget, reporting the reason to the startup", async () => {
     const { result, logs, reported } = await captureFor(
       selectOne.pipe(Effect.provide(pool(await closedPort())), Effect.scoped),
       1_000,
@@ -313,6 +349,7 @@ describe("the database pool at startup", () => {
             retry: {
               baseDelay: Duration.millis(50),
               maxDelay: Duration.millis(200),
+              budget: Duration.minutes(15),
             },
           }),
         ),

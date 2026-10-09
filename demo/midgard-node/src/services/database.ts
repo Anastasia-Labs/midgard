@@ -18,8 +18,12 @@ import { isConnectionClassError } from "../provider-retry.js";
 import { ConfigError, NodeConfig, NodeConfigDep } from "./config.js";
 import { databaseUpstreamSocket } from "./database-upstream-socket.js";
 import {
+  DATABASE_CONNECTION_FAILED,
   DATABASE_UNREACHABLE,
   reportStartupWaiting,
+  STARTUP_DATABASE_BUDGET,
+  startupStepFailed,
+  type StartupStepFailedError,
 } from "./startup-waiting.js";
 
 /**
@@ -58,44 +62,66 @@ export const databaseConnectTimeout = (
 export type DatabaseStartupRetryOptions = {
   readonly baseDelay: Duration.DurationInput;
   readonly maxDelay: Duration.DurationInput;
+  /** How long a pool waits for PostgreSQL to take connections. */
+  readonly budget: Duration.DurationInput;
 };
 
 export const DATABASE_STARTUP_RETRY: DatabaseStartupRetryOptions = {
   baseDelay: Duration.millis(500),
   maxDelay: Duration.seconds(5),
+  budget: STARTUP_DATABASE_BUDGET,
 };
 
 /**
  * Rebuilds `layer` while it fails because PostgreSQL cannot be reached or
- * will not yet take a connection (restarting, in recovery, out of slots),
- * with no deadline: it logs the unready reason and reports
- * `database_unreachable` to the node's startup (`reportStartupWaiting`)
- * until the pool opens. Any other failure (bad credentials, a missing
- * database, a configuration error) fails at once.
+ * will not yet take a connection (restarting, in recovery, out of slots:
+ * `isConnectionClassError`), for at most the budget (15 min by default),
+ * logging the reason and reporting `database_unreachable` to the node's
+ * startup (`reportStartupWaiting`) until the pool opens. A failure past the
+ * budget fails the pool under `database_unreachable`; any other failure
+ * (bad credentials, a missing database) fails it at once under
+ * `database_connection_failed`. Both as a `StartupStepFailedError` naming
+ * the pool, the reason and the last cause.
  */
 export const retryDatabaseConnectionAtStartup = <A, E, R>(
   layer: Layer.Layer<A, E, R>,
   role: DatabasePoolRole,
   options: DatabaseStartupRetryOptions = DATABASE_STARTUP_RETRY,
-): Layer.Layer<A, E, R> => {
+): Layer.Layer<A, StartupStepFailedError, R> => {
   const key = `database_pool:${role}`;
+  let attempts = 0;
   return Layer.retry(
     layer,
     Schedule.exponential(options.baseDelay).pipe(
       Schedule.union(Schedule.spaced(options.maxDelay)),
       Schedule.whileInput((error: E) => isConnectionClassError(error)),
-      Schedule.tapInput((error: E) =>
-        isConnectionClassError(error)
+      Schedule.upTo(options.budget),
+      Schedule.tapInput((error: E) => {
+        attempts += 1;
+        return isConnectionClassError(error)
           ? Effect.zipRight(
               reportStartupWaiting(key, [DATABASE_UNREACHABLE]),
               Effect.logWarning(
                 `Database unready: reason=${DATABASE_UNREACHABLE}; the ${role} pool waits and reconnects. cause=${formatUnknownError(error, { includeCause: true })}`,
               ),
             )
-          : Effect.void,
-      ),
+          : Effect.void;
+      }),
     ),
-  ).pipe(Layer.tap(() => reportStartupWaiting(key, [])));
+  ).pipe(
+    Layer.tap(() => reportStartupWaiting(key, [])),
+    Layer.tapError(() => reportStartupWaiting(key, [])),
+    Layer.mapError((error) => {
+      const transient = isConnectionClassError(error);
+      return startupStepFailed({
+        step: key,
+        reason: transient ? DATABASE_UNREACHABLE : DATABASE_CONNECTION_FAILED,
+        cause: error,
+        exhausted: transient,
+        attempts: Math.max(1, attempts),
+      });
+    }),
+  );
 };
 
 /**
@@ -154,7 +180,18 @@ const createPgLayerEffect = (
           });
       }
     });
-    return retryDatabaseConnectionAtStartup(mappedLayer, role);
+    // A configuration error stays one; a pool that never opened fails as a
+    // `DatabaseInitializationError` over the step's named failure.
+    return retryDatabaseConnectionAtStartup(mappedLayer, role).pipe(
+      Layer.mapError((failure) =>
+        failure.cause instanceof ConfigError
+          ? failure.cause
+          : new DatabaseInitializationError({
+              message: failure.message,
+              cause: failure,
+            }),
+      ),
+    );
   }).pipe(Effect.orDie);
 
 /**

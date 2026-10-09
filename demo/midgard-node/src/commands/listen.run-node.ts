@@ -46,6 +46,7 @@ import { nodeDatabaseConnectionString } from "../services/l1-provider.js";
 import { requirePinnedNativeOwnerBinary } from "../services/native-mpf-startup.js";
 import { acquireNodeInstanceLock } from "../services/node-instance-lock.js";
 import { settlementWalletAddress } from "../services/settlement.js";
+import type { StartupStepFailedError } from "../services/startup-waiting.js";
 import { runNodeFiberSet } from "./listen.node-fibers.js";
 import {
   logStartupFailure,
@@ -75,6 +76,7 @@ export const runNode = (
   | ConfigError
   | DatabaseError
   | DatabaseInitializationError
+  | StartupStepFailedError
   | import("../services/validation-pool.js").ValidationWorkerError,
   | NodeConfig
   | Database
@@ -167,6 +169,8 @@ export const runNode = (
               "da_provider_assertions",
               assertDaHardeningProviderStartup(preflight),
               {
+                maxAttempts:
+                  nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
                 retryDelayMs:
                   nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
                 reason: daProviderAssertionsWaitReason,
@@ -200,15 +204,17 @@ export const runNode = (
       writerLease: instanceLock.followerWriterLease,
     }).pipe(Effect.provideService(IntentJournal, intentJournal));
     // Startup recovery seeds the commit base from the landed state queue
-    // (P1, N2): wait, unready and never exiting, until the follower is at
-    // the tip and P1 is healthy there.
+    // (P1, N2): wait, unready, until the follower is at the tip and P1 is
+    // healthy there. A transient database failure is ridden out within
+    // `STARTUP_DATABASE_BUDGET`; past it, or on any other read failure,
+    // startup fails by step and reason.
     yield* startup.setStage("l1_follower_catch_up");
     yield* awaitLandedStateQueueOnStartup((reasons) =>
       startup.setStage("l1_follower_catch_up", reasons),
     );
-    // Then until the driver published its first view: what holds it (a
-    // failed startup preparation or rebase it retries) is named, and the
-    // process stays up.
+    // Then until the driver published its first view: what holds it is
+    // named. A driver failure that is not transient fails startup at once;
+    // a transient one held past `STARTUP_DATABASE_BUDGET` fails it too.
     yield* startup.setStage("follower_view_apply");
     yield* awaitFollowerViewOnStartup((reasons) =>
       startup.setStage("follower_view_apply", reasons),

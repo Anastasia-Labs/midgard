@@ -1,99 +1,77 @@
-import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
+import { COMMIT_TTL_FUTURE_BUFFER_MS } from "@al-ft/midgard-core/deployment-profile";
 import { Effect } from "effect";
 
-import { followerBlockBelowCoveredTip } from "../database/follower-events.block-below-covered-tip.js";
-import { followerEligibilityHorizon } from "../database/follower-events.js";
-import { DatabaseError } from "../database/utils/common.js";
+import { readCommitAnchor } from "../database/commit-anchor.js";
+import { followerIngestedView } from "../database/follower-events.js";
 import { forcedOrderHorizon } from "../forced-orders/horizon.js";
 import type {
   CommitTimingBudget,
   CommitTimingCheckpoint,
 } from "../workers/utils/commit-end-time.js";
 import { NodeConfig } from "./config.js";
+import { followerViewOf, type GateView } from "./follower-write-gate.js";
 import { Lucid } from "./lucid.js";
 
-/**
- * The horizon lag d (`HISTORY_COMMIT_HORIZON_LAG_BLOCKS`) and the L1 slot
- * clock that dates the lagged block. The clock runs only when d > 0, so the
- * unlagged horizon acquires and reads nothing more than before.
- */
-export type CommitHorizonLag<E = never, R = never> = Readonly<{
-  lagBlocks: number;
-  slotToUnixTime: Effect.Effect<(slot: number) => number, E, R>;
-}>;
-
-/** The lag the node is configured with, dated by its Lucid slot clock. */
-export const configuredCommitHorizonLag = Effect.map(
-  NodeConfig,
-  (config): CommitHorizonLag<never, Lucid> => ({
-    lagBlocks: config.HISTORY_COMMIT_HORIZON_LAG_BLOCKS,
-    slotToUnixTime: Effect.map(Lucid, (lucid) => lucid.api.slotToUnixTime),
-  }),
-);
+/** The node's commit-event depth d and the L1 slot clock that dates its anchors. */
+export const configuredCommitAnchorClock = Effect.gen(function* () {
+  const config = yield* NodeConfig;
+  const lucid = yield* Lucid;
+  return {
+    depth: config.COMMIT_EVENT_DEPTH,
+    slotToUnixTime: lucid.api.slotToUnixTime,
+  };
+});
 
 /**
- * The cap the horizon lag d sets on a block's end time (U3): an event
- * admitted at or after the follower block d below its covered tip has
- * inclusion = inclusive validTo + W > that block's time + W - 1, so no due
- * event comes from the last d + 1 blocks. `undefined` at d = 0 (no cap, and
- * nothing is read). `null` while that block is unavailable (no follower
- * cursor yet, or the chain above the origin is not yet d blocks long): the
- * caller holds, as before a first ingestion. The point is the follower's
- * (`followerBlockBelowCoveredTip`), never the journal's.
+ * The commit end-time horizon (plan §8.1, N10): min(the commit anchor's cap,
+ * the forced-order bound), with the anchor the journal stores. The anchor
+ * is the follower block d below the planning view (`readCommitAnchor`): the
+ * write permit's view, or, for a model fixture without one, the view the
+ * driver last ingested through. A block never claims an end time whose due
+ * events reach the last d + 1 blocks of that view, nor reaches a forced
+ * order the node has not rebuilt yet. With no view (before the first
+ * ingestion, or after a rewind removed it) or no anchor block, nothing is
+ * eligible and the commit holds (`null`).
  */
-export const laggedEligibilityCap = <E, R>(lag: CommitHorizonLag<E, R>) =>
-  lag.lagBlocks === 0
-    ? Effect.succeed(undefined)
-    : Effect.gen(function* () {
-        const below = yield* followerBlockBelowCoveredTip(lag.lagBlocks);
-        if (below.kind === "unavailable") {
-          yield* Effect.logInfo(
-            `🔹 Commit horizon lag ${lag.lagBlocks.toString()} has no follower block yet (${below.reason}: ${below.detail}).`,
-          );
-          return null;
-        }
-        const slotToUnixTime = yield* lag.slotToUnixTime;
-        const time = slotToUnixTime(below.point.slot);
-        const cap = time + EVENT_WAIT_DURATION_MS - 1;
-        if (!Number.isSafeInteger(time) || !Number.isSafeInteger(cap))
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: "l1_blocks",
-              message: "Lagged follower block time cannot form a safe cap",
-              cause: `slot=${below.point.slot.toString()},time=${String(time)}`,
-            }),
-          );
-        return cap;
-      });
-
-/**
- * The commit end-time horizon (E-N1-2 item 3): min(the follower's ingestion
- * horizon, the forced-order bound), capped by the horizon lag d
- * (`laggedEligibilityCap`). A block never claims an end time past the
- * events the follower-change driver has ingested, nor reaches a forced
- * order the node has not rebuilt yet (N10); before its first ingestion (or
- * after a rewind removed it), or while the lagged block is unavailable,
- * nothing is eligible and the commit holds (`null`).
- */
-export const commitEventHorizon = <E, R>(lag: CommitHorizonLag<E, R>) =>
+export const commitEventHorizon = <E, R>(input: {
+  readonly view: GateView | undefined;
+  readonly depth: number;
+  readonly slotToUnixTime: Effect.Effect<(slot: number) => number, E, R>;
+}) =>
   Effect.gen(function* () {
-    const follower = yield* followerEligibilityHorizon;
-    if (follower === null) return null;
+    const view =
+      input.view === undefined
+        ? yield* followerIngestedView
+        : followerViewOf(input.view);
+    if (view === null) return null;
+    const slotToUnixTime = yield* input.slotToUnixTime;
+    const read = yield* readCommitAnchor({
+      view,
+      depth: input.depth,
+      slotToUnixTime,
+    });
+    if (read.kind === "unavailable") {
+      yield* Effect.logInfo(
+        `🔹 Commit anchor unavailable (${read.reason}: ${read.detail}).`,
+      );
+      return null;
+    }
     const forced = yield* forcedOrderHorizon;
-    const unlagged = Math.min(follower, ...(forced === null ? [] : [forced]));
-    const cap = yield* laggedEligibilityCap(lag);
-    return cap === undefined
-      ? unlagged
-      : cap === null
-        ? null
-        : Math.min(unlagged, cap);
+    return {
+      horizonMs: Math.min(read.capMs, ...(forced === null ? [] : [forced])),
+      anchor: read.anchor,
+    };
   });
 
 /** The fixed header interval cannot be extended to rescue a slow build. These
  * stage reserves apply only to a source-owned short-window attempt; expiration
  * causes a new selection/build against fresh coverage. The ordinary long-window
- * fixture policy and on-chain range/size/execution limits remain independent. */
-export const HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS = 30_000;
+ * fixture policy and on-chain range/size/execution limits remain independent.
+ * The value is the deployment profiles' commit TTL floor, which the profile
+ * build also bounds the commit-event depth with: the anchor cap must reach
+ * it, or no commit can be planned. */
+export const HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS =
+  COMMIT_TTL_FUTURE_BUFFER_MS;
 /** A source-owned commit capped to the current scheduler shift ends at that
  * shift's end, and the header end is its inclusive TTL. Several L1 block
  * intervals (~20 s each) must remain for it to land, so neither the pre-lease

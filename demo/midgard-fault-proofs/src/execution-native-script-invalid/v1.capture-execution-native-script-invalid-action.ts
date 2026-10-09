@@ -33,8 +33,11 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { requireHistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
+import {
+  replayPredecessorOutputs,
+  requireReplayPredecessorLedger,
+} from "../workflow/replay-predecessor-ledger.js";
 import {
   captureLocallyEvaluatedTransaction,
   type FraudProofPreSubmitBoundary,
@@ -180,14 +183,12 @@ export const captureExecutionNativeScriptInvalidAction = async ({
       const addressWitnessItems = decodeMidgardFieldPreimage(
         tx.witnessSet.addrTxWitsPreimageCbor,
       );
-      const history = requireHistoricalNativeScriptCorpus(prepared.corpus);
-      const predecessor = history.reconstructions.at(-2);
-      const priorOutputs = new Map(
-        (predecessor?.utxos ?? []).map(({ key, value }) => [
-          Buffer.from(key).toString("hex"),
-          Buffer.from(value),
-        ]),
-      );
+      const predecessorLedger = requireReplayPredecessorLedger({
+        block: prepared.block,
+        predecessor: prepared.predecessor,
+        label: "executionNativeScriptInvalid",
+      });
+      const priorOutputs = replayPredecessorOutputs(predecessorLedger);
       const reconstruction = reconstructExecutionNativeScriptPurposes({
         sourceKind: forcedEntry === undefined ? "normal" : "forced",
         canonicalTransactionCbor: txCbor,
@@ -401,8 +402,8 @@ export const captureExecutionNativeScriptInvalidAction = async ({
           family: "execution-native-script-invalid",
           stepIndex: acceptedStepIndex,
         });
-        const membership = async (key: Buffer, output: Buffer) => {
-          const entries = (predecessor?.utxos ?? []).map(
+        const membership = async (key: Buffer, output: Uint8Array) => {
+          const entries = (predecessorLedger?.utxos ?? []).map(
             ({ key: candidate, value }) => ({
               key: Buffer.from(candidate),
               value: buildCanonicalMidgardLedgerOutputMaterial({

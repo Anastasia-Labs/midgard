@@ -168,7 +168,10 @@ export {
 } from "./l1/native-chain-sync.exact-record.js";
 export * as watcherNativeChainSyncRecord from "./l1/native-chain-sync.exact-record.js";
 export { isWatcherNativeNodeUnavailable } from "./l1/transient-failure.js";
-export { retryWatcherL1Transient } from "./l1/transient-retry.js";
+export {
+  retryWatcherL1Transient,
+  WatcherL1UnavailableError,
+} from "./l1/transient-retry.js";
 export {
   openWatcherDeploymentFollower,
   type WatcherDeploymentFollower,
@@ -279,6 +282,7 @@ export {
   type WatcherCommand,
   type WatcherCommandIo,
 } from "./runtime/scaffold.js";
+export { WATCHER_STARTUP_L1_BUDGET_MS } from "./runtime/startup-progress.js";
 export {
   createWatcherDecisionDriver,
   createWatcherRuntime,

@@ -130,6 +130,7 @@ describe("the follower's composition", () => {
                 return ran.holds;
               }),
             abort.signal,
+            { onExhausted: () => undefined },
           );
           const reasons = (ran: FollowerTick | undefined) =>
             ran?.holds.map((hold) => hold.reason);

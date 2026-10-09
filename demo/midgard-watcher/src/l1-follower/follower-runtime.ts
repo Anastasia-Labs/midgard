@@ -19,7 +19,6 @@ import {
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
-import { watcherL1TransientRetryDelayMs } from "../l1/transient-retry.js";
 import {
   eventRefusalDegradationsIn,
   L1_EVENT_REFUSALS_UNREADABLE,
@@ -62,14 +61,12 @@ import { readWatcherQueueView } from "./view.js";
 export const L1_ORIGIN_NOT_CONFIGURED = "l1_origin_not_configured";
 
 /**
- * The follow loop threw (a defect: it reports every chain and node condition
- * as a status). It is restarted after a capped backoff (250 ms doubling to
- * 30 s); clears once the restarted loop reports a status.
+ * The follow loop threw. It reports every chain, node and store condition
+ * as a status, retrying the transient ones itself, so a throw is a defect no
+ * retry is known to repair: the loop is not restarted, and this stands until
+ * the watcher is restarted.
  */
 export const L1_FOLLOWER_LOOP_FAILED = "l1_follower_loop_failed";
-
-/** A follow run this long before it throws restarts the backoff. */
-const LOOP_STABLE_MS = 30_000;
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -80,19 +77,6 @@ const unreadable =
   (error: unknown): readonly WatcherL1Degradation[] => [
     Object.freeze({ reason, count: 1, detail: messageOf(error) }),
   ];
-
-/** Resolves after `ms`, or as soon as `signal` aborts. */
-const pause = (ms: number, signal: AbortSignal): Promise<void> =>
-  new Promise((resolve) => {
-    if (signal.aborted) return resolve();
-    const done = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", done);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    signal.addEventListener("abort", done, { once: true });
-  });
 
 export type WatcherFollowerReadiness = Readonly<{
   reason: string;
@@ -324,8 +308,7 @@ export const openWatcherFollowerRuntime = (
     txInputs.trigger();
   });
 
-  // Set while the follow loop is down after a throw, until the restarted
-  // loop reports a status.
+  // Set once the follow loop threw; it is not restarted.
   let loopFailure: string | null = null;
   const follow = (origin: OriginConfig) =>
     followChain({
@@ -339,7 +322,6 @@ export const openWatcherFollowerRuntime = (
       nodeBehind: { slotTime },
       onStatus: (status) => {
         latest = status;
-        loopFailure = null;
         if (status.cursor !== null && !seeder.ready()) stepSeed();
         if (status.cursor !== null) txInputs.trigger();
         for (const listener of listeners) {
@@ -352,29 +334,20 @@ export const openWatcherFollowerRuntime = (
       },
     });
   // followChain settles only on abort or an intervention, reporting every
-  // other condition as a status; a throw is a defect. The loop is restarted
-  // after a capped backoff rather than left stopped, and named in readiness
-  // (`l1_follower_loop_failed`) until the restart reports a status. The
-  // backoff grows over consecutive throws, and starts again from 250 ms
-  // after a run that lasted at least the 30 s cap.
+  // other condition as a status and retrying the transient ones itself; a
+  // throw is a defect. The loop is not restarted: retrying a failure nothing
+  // classifies as transient is not known to help. It is named in readiness
+  // (`l1_follower_loop_failed`) with the process up until it is restarted.
   const followUntilStopped = async (
     origin: OriginConfig,
   ): Promise<FollowStatus | null> => {
-    let failures = 0;
-    for (;;) {
-      const startedAt = performance.now();
-      try {
-        return await follow(origin);
-      } catch (error) {
-        if (abort.signal.aborted) return latest;
-        failures =
-          performance.now() - startedAt >= LOOP_STABLE_MS ? 1 : failures + 1;
-        const retryAfterMs = watcherL1TransientRetryDelayMs(failures);
-        loopFailure = `${messageOf(error)}; restarting in ${retryAfterMs.toString()} ms`;
-        log(`L1 follower loop failed: ${loopFailure}`);
-        await pause(retryAfterMs, abort.signal);
-        if (abort.signal.aborted) return latest;
-      }
+    try {
+      return await follow(origin);
+    } catch (error) {
+      if (abort.signal.aborted) return latest;
+      loopFailure = `${messageOf(error)}; the follow loop stopped and is not restarted`;
+      log(`L1 follower loop failed: ${loopFailure}`);
+      return latest;
     }
   };
   const done: Promise<FollowStatus | null> =

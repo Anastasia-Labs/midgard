@@ -186,6 +186,7 @@ describe("followChain on Postgres: an instance lock lent the writer lease", () =
           suspended: "instance lock suspended",
           passive: "instance lock passive",
           lostAtServer: "instance lock lost at server",
+          failed: "failed",
         },
       },
       proxy.url,

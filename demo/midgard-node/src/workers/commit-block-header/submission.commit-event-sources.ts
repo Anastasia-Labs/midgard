@@ -4,7 +4,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
-import { assertIncludedEventsDeep } from "../../database/commit-event-depth.js";
+import {
+  type CommitAnchor,
+  commitAnchorCanonical,
+  commitAnchorCapMs,
+  commitAnchorHeight,
+} from "../../database/commit-anchor.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
@@ -15,12 +20,9 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
+import { forcedOrderHorizon } from "../../forced-orders/horizon.js";
 import { type UtxoPayloadEntry } from "../../mpf/index.js";
-import { FollowerWrite } from "../../services/follower-write-gate.js";
-import {
-  commitEventHorizon,
-  type CommitHorizonLag,
-} from "../../services/history-commit-window.js";
+import { requireCandidateView } from "../../services/follower-write-gate.js";
 import { Database } from "../../services/index.js";
 import { type TxSubmitError } from "../../transactions/utils.js";
 
@@ -56,61 +58,104 @@ export const commitUserEventSourceIdSetsAreExact = ({
   sameSourceIdSet(pendingForcedTransactionIds, includedForcedTransactionIds) &&
   sameSourceIdSet(pendingWithdrawalIds, includedWithdrawalIds);
 
+export const COMMIT_END_ABOVE_ANCHOR_CAP_MESSAGE =
+  "Refusing to journal a commit whose end time exceeds its commit anchor's cap";
+
+export const COMMIT_END_ABOVE_FORCED_HORIZON_MESSAGE =
+  "Refusing to journal a commit whose end time reaches a forced order not yet rebuilt";
+
+export const COMMIT_ANCHOR_UNAVAILABLE_MESSAGE =
+  "Refusing to journal a commit planned without a commit anchor";
+
+export const COMMIT_ANCHOR_NOT_OF_VIEW_MESSAGE =
+  "Refusing to journal a commit whose commit anchor is not the block d below its permit's view";
+
+const refuse = (message: string, cause: string) =>
+  Effect.fail(
+    new DatabaseError({
+      table: PendingBlockFinalizationsDB.tableName,
+      message,
+      cause,
+    }),
+  );
+
 /**
- * Rechecks the final end time against the event horizon, min(follower
- * ingestion, the earliest forced order not yet rebuilt)
- * (E-N1-2 item 3, N10) capped by the horizon lag (`horizonLag`). This is the
- * check that refuses a header end above the lagged cap before submission.
- * Deposits, withdrawals and forced orders are the follower-change driver's:
- * nothing here fetches them. Every runtime commit runs with a follower
- * write permit (`FollowerWrite`); a model fixture without one needs an
- * ingestion but plans its end time past it.
+ * The end-time recheck against the commit anchor (plan §8.1), inside the
+ * gated journal transaction. The anchor was read at the permit's view when
+ * the end time was planned (`commitEventHorizon`); the gate has just checked
+ * that view is still on the follower's chain, so its ancestor at the anchor
+ * height is still the anchor. The recheck confirms the anchor is that
+ * ancestor (its height, and its block while the follower stores it), and
+ * caps the end time at its time + event_wait - 1 and at the forced-order
+ * bound. Returns the anchor the journal stores. A model fixture without a
+ * permit stores the anchor it was given and is not capped.
  */
-export const refreshCommitUserEventSourcesThroughBlockEnd = <
-  LE = never,
-  LR = never,
->(
-  blockEndTimeMs: number,
-  horizonLag: CommitHorizonLag<LE, LR>,
-) =>
+const recheckCommitAnchor = (input: {
+  readonly blockEndTimeMs: number;
+  readonly anchor: CommitAnchor | undefined;
+  readonly depth: number;
+  readonly slotToUnixTime: (slot: number) => number;
+}) =>
   Effect.gen(function* () {
-    const history = yield* Effect.serviceOption(FollowerWrite);
-    const horizon = yield* commitEventHorizon(horizonLag);
-    // The final header window may differ from the initial plan: recheck it
-    // against the horizon now. The journal write's gated transaction then
-    // rechecks the permit's view (plan §8.1).
-    if (
-      horizon === null ||
-      (Option.isSome(history) && blockEndTimeMs > horizon)
-    )
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: "follower_event_ingestion",
-          message:
-            "Final commitment end time exceeds the ingested event horizon",
-          cause: `end=${blockEndTimeMs},horizon=${String(horizon)}`,
-        }),
+    const permit = yield* requireCandidateView;
+    const { anchor } = input;
+    if (Option.isNone(permit)) return anchor;
+    if (anchor === undefined)
+      return yield* refuse(
+        COMMIT_ANCHOR_UNAVAILABLE_MESSAGE,
+        "the commit was planned without a commit anchor",
       );
+    const anchorAt = `anchor_height=${anchor.height.toString()},anchor_slot=${anchor.slot.toString()},view_height=${permit.value.view.height.toString()},d=${input.depth.toString()}`;
+    const sql = yield* SqlClient.SqlClient;
+    const [check] = yield* sql<{ canonical: boolean }>`
+      SELECT ${commitAnchorCanonical(sql, "a")} AS canonical
+      FROM (SELECT ${anchor.hash}::bytea AS commit_anchor_hash,
+          ${anchor.height}::bigint AS commit_anchor_height,
+          ${anchor.slot}::bigint AS commit_anchor_slot) a`;
+    if (
+      anchor.height !==
+        commitAnchorHeight(permit.value.view.height, input.depth) ||
+      check?.canonical !== true
+    )
+      return yield* refuse(COMMIT_ANCHOR_NOT_OF_VIEW_MESSAGE, anchorAt);
+    const capMs = commitAnchorCapMs(input.slotToUnixTime(anchor.slot));
+    if (!Number.isSafeInteger(capMs) || input.blockEndTimeMs > capMs)
+      return yield* refuse(
+        COMMIT_END_ABOVE_ANCHOR_CAP_MESSAGE,
+        `end=${input.blockEndTimeMs.toString()},cap=${String(capMs)},${anchorAt}`,
+      );
+    const forced = yield* forcedOrderHorizon;
+    if (forced !== null && input.blockEndTimeMs > forced)
+      return yield* refuse(
+        COMMIT_END_ABOVE_FORCED_HORIZON_MESSAGE,
+        `end=${input.blockEndTimeMs.toString()},forced_horizon=${forced.toString()}`,
+      );
+    return anchor;
   });
 
 /**
- * Inside the journal transaction: the commit's included events are exactly
- * the due set through its end time, and each is at least `lagBlocks` (d)
- * deep below the follower's view (plan §8.1, `assertIncludedEventsDeep`).
+ * Inside the gated journal transaction: the commit's included events are
+ * exactly the due set through its end time, and the end time is within its
+ * commit anchor's cap (`recheckCommitAnchor`). Returns the anchor the journal
+ * stores (`undefined` only for a model fixture planned without one).
  */
 export const assertCommitUserEventSourceCompleteness = ({
   blockEndTimeMs,
-  lagBlocks,
+  commitAnchor,
+  depth,
+  slotToUnixTime,
   includedDepositEntries,
   includedForcedTransactionEntries,
   includedWithdrawalEntries,
 }: {
   readonly blockEndTimeMs: number;
-  readonly lagBlocks: number;
+  readonly commitAnchor: CommitAnchor | undefined;
+  readonly depth: number;
+  readonly slotToUnixTime: (slot: number) => number;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
   readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
-}): Effect.Effect<void, DatabaseError, Database> =>
+}): Effect.Effect<CommitAnchor | undefined, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const effectiveEndTime = new Date(blockEndTimeMs);
@@ -165,17 +210,11 @@ export const assertCommitUserEventSourceCompleteness = ({
         }),
       );
     }
-    yield* assertIncludedEventsDeep({
-      lagBlocks,
-      depositIds: includedDepositEntries.map((entry) =>
-        Buffer.from(entry[DepositsDB.Columns.ID]),
-      ),
-      forcedIds: includedForcedTransactionEntries.map((entry) =>
-        Buffer.from(entry[ForcedTransactionsDB.Columns.TX_ORDER_ID]),
-      ),
-      withdrawalIds: includedWithdrawalEntries.map((entry) =>
-        Buffer.from(entry[WithdrawalsDB.Columns.ID]),
-      ),
+    return yield* recheckCommitAnchor({
+      blockEndTimeMs,
+      anchor: commitAnchor,
+      depth,
+      slotToUnixTime,
     });
   }).pipe(
     sqlErrorToDatabaseError(

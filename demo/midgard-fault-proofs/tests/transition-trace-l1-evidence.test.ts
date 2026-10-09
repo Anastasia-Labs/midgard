@@ -1,4 +1,3 @@
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -22,7 +21,6 @@ import {
   replayTransitionTraceFromRetainedHistory,
 } from "../src/transition-trace/replay-authority.js";
 import { VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import * as historicalCorpus from "../src/workflow/historical-native-script-corpus.js";
 import { FraudProofL1CheckpointChangedError } from "../src/workflow/l1-source.js";
 import * as rawSnapshot from "../src/workflow/raw-l1-snapshot.js";
 import {
@@ -35,6 +33,7 @@ import {
 import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  RELEASE_L1_FINALITY_POLICY,
 } from "../src/workflow/release-finality-policy.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
@@ -83,7 +82,7 @@ const captureInput = (snapshot: FraudProofRawL1Snapshot) => {
       deploymentIdentityDigest: snapshot.deploymentIdentityDigest,
       blueprintHash: snapshot.blueprintHash,
       policyDigest: snapshot.finalityPolicyDigest,
-      policy: { ...DEPLOYMENT_MANIFEST_L1_FINALITY },
+      policy: { ...RELEASE_L1_FINALITY_POLICY },
     },
     resolvedContracts: {
       contracts: {
@@ -402,8 +401,7 @@ describe("transition trace immutable L1 evidence", () => {
       observation,
       payloadEnvelopeCbor: retained.block.payloadEnvelopeCbor,
       daProvenance,
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const first = await capture(seed);
     const later = await capture(withLaterEvent(advance(seed)));
@@ -443,7 +441,7 @@ describe("transition trace immutable L1 evidence", () => {
               deploymentIdentityDigest: seed.deploymentIdentityDigest,
               blueprintHash: seed.blueprintHash,
               policyDigest: seed.finalityPolicyDigest,
-              policy: { ...DEPLOYMENT_MANIFEST_L1_FINALITY },
+              policy: { ...RELEASE_L1_FINALITY_POLICY },
             }),
           },
           replayer: VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
@@ -532,8 +530,7 @@ describe("transition trace immutable L1 evidence", () => {
         sourceId: "retained-fixture/emulator",
         grade: "security",
       },
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const compute = vi.spyOn(
       rawSnapshot,
@@ -727,8 +724,7 @@ describe("immutable transition event decoding reuse", () => {
         sourceId: "retained-fixture/event-facts",
         grade: "security",
       },
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const handle = await capture(seed);
     const freshHandle = await capture(advance(seed));
@@ -827,8 +823,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
         sourceId: "retained-fixture/event-facts-failure",
         grade: "security",
       },
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const raw = seed.scopes.find(
       (scope) => scope.role === "forced_transaction_event",
@@ -892,8 +887,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
         sourceId: "retained-fixture/event-facts-outputs",
         grade: "security",
       },
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const forcedScope = seed.scopes.find(
       (scope) => scope.role === "forced_transaction_event",
@@ -1049,25 +1043,8 @@ describe("immutable event parsing failure and contextual outputs", () => {
         sourceEventsByFingerprint: sources,
       },
     };
-    const corpus: historicalCorpus.HistoricalNativeScriptCorpus = {
-      schemaVersion: historicalCorpus.HISTORICAL_NATIVE_SCRIPT_CORPUS,
-      throughHeaderHash: current.headerHash,
-      headerHashes: [current.headerHash],
-      payloadEnvelopeSha256s: [current.payloadEnvelopeSha256],
-      entries: [],
-      providerRosterDigest: "00".repeat(32),
-      corpusDigest: "00".repeat(32),
-      checkpointDigest: "00".repeat(32),
-      evidenceDigest: "00".repeat(32),
-    };
-    // This regression isolates the real coverage/output construction. History
-    // admission and detector correctness are outside its scope.
-    const history = vi
-      .spyOn(historicalCorpus, "requireHistoricalNativeScriptCorpus")
-      .mockReturnValue({
-        currentEvidence: current,
-        reconstructions: [current.reconstruction],
-      });
+    // This regression isolates the real coverage/output construction.
+    // Detector correctness is outside its scope.
     const stop = new Error("coverage captured before detection");
     const detection = vi
       .spyOn(transitionDetection, "detectTransitionTraceFaults")
@@ -1077,7 +1054,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
         await expect(
           replayTransitionTraceFromRetainedHistory({
             evidence: current,
-            corpus,
+            predecessor: undefined,
             l1Events: handle,
           }),
         ).rejects.toBe(stop);
@@ -1119,7 +1096,6 @@ describe("immutable event parsing failure and contextual outputs", () => {
       fallback.withdrawalId.outputIndex = 999n;
       expect((await read()).withdrawalId).toEqual(datum.event.id);
     } finally {
-      history.mockRestore();
       detection.mockRestore();
     }
   });

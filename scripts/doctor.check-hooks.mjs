@@ -235,6 +235,44 @@ export const checkHooks = ({ root }) => {
   return rows;
 };
 
+// core.bare = true in a checkout's configuration makes git treat the main
+// checkout as a bare repository: every command there that needs a work tree
+// refuses, while linked worktrees keep working and hide it. A `git init` run
+// under a hook's GIT_DIR from a linked worktree wrote it once (fixed in
+// f87d2c3f1; scripts/tooling-git-isolation.test.mjs guards that cause). The
+// check reads and never repairs: repairing silently would hide a new cause.
+export const checkCoreBare = ({ root }) => {
+  const read = git(root, [
+    "config",
+    "--show-origin",
+    "--type=bool",
+    "--get",
+    "core.bare",
+  ]);
+  // git config exits 1 when the key is unset: a checkout's normal state.
+  if (read.status === 1 && read.stdout === "") {
+    return row("core-bare", "ok", "core.bare is not set");
+  }
+  if (read.status !== 0) {
+    return row(
+      "core-bare",
+      "unknown",
+      `could not check: git config failed (${(read.stderr || read.error?.message || "").trim()})`,
+    );
+  }
+  const [origin, value] = read.stdout.trim().split("\t");
+  if (value !== "true") {
+    return row("core-bare", "ok", `core.bare is ${value}`);
+  }
+  const file = resolve(root, origin.replace(/^file:/u, ""));
+  return row(
+    "core-bare",
+    "failed",
+    `core.bare is true in ${file}: git treats the main checkout as a bare repository, so every command there that needs a work tree refuses. A git init under a hook's GIT_DIR wrote it once (f87d2c3f1); find what wrote it this time before repairing it`,
+    `git config --file ${file} core.bare false`,
+  );
+};
+
 const readlinkSafe = (path) => {
   try {
     return readlinkSync(path);

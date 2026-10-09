@@ -65,19 +65,31 @@ export const testDatabases = () => {
  * leaves every connection open now half-open: from then on nothing is
  * forwarded either way and a close from the server is not passed on, so a
  * client sees no end while the server has ended its session.
+ * `refuseNew(true)` closes every new connection at once, as a server that
+ * is down would, until `refuseNew(false)`.
  */
 export const freezableProxy = async (
   database: TestDatabase,
 ): Promise<{
   url: string;
   freeze: () => void;
+  refuseNew: (refusing: boolean) => void;
+  /** Connections accepted so far. */
+  accepted: () => number;
   /** Sockets of either side not yet closed. */
   openSockets: () => number;
   close: () => Promise<void>;
 }> => {
   const frozen = new WeakSet<Socket>();
   const open = new Set<Socket>();
+  let refusing = false;
+  let accepted = 0;
   const server = createServer((downstream) => {
+    accepted += 1;
+    if (refusing) {
+      downstream.destroy();
+      return;
+    }
     const upstream = connect(admin.port, admin.host);
     open.add(downstream);
     open.add(upstream);
@@ -102,6 +114,10 @@ export const freezableProxy = async (
     freeze: () => {
       for (const socket of open) frozen.add(socket);
     },
+    refuseNew: (value) => {
+      refusing = value;
+    },
+    accepted: () => accepted,
     openSockets: () => open.size,
     close: async () => {
       for (const socket of open) socket.destroy();

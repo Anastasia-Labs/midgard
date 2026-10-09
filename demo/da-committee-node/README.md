@@ -78,7 +78,21 @@ lost and retaken together, and `midgard-l1-follower reset` is refused while a
 committee process holds the store.
 
 A process that starts while another live process holds the lock is refused
-with `starting:store_instance_lock_held`; startup holds unready and retries.
+with `starting:store_instance_lock_held`; startup holds unready and retries
+without a deadline. Other startup failures are classified. A dependency that
+is down or still starting (a refused, reset or timed-out connection, a
+Postgres connection-class error, a Cardano node socket not created yet) is
+retried with backoff for at most 15 minutes in a row, under
+`starting:<detail>`. Past that budget the process exits non-zero with
+`committee_startup_dependency_unavailable`, and the supervisor's restart is
+the backoff. Any other failure, such as a store holding another deployment's
+state (`stale_deployment_state_requires_fresh_redeploy`), bad credentials, a
+configuration or key-material refusal or an error it does not recognise, is
+one no restart is known to repair: the process logs `committee_startup_held`
+and stays up, `/readyz` naming `committee_startup_failed` with the failure's
+detail and `/healthz` live (`status: "held"`), until an operator restarts it.
+Only a configuration that does not load, before any port is known, and a
+`--once` run exit non-zero on such a failure.
 A process whose lock session ends (a lost connection, a restarted database)
 refuses every decision effect, logs `committee_store_instance_lock_suspended`
 and reconnects with backoff from 1 s, doubling to 30 s. If another process
@@ -87,7 +101,22 @@ took the lock meanwhile, this one becomes the passive member: it logs
 retrying, and takes over once the holder's session ends, logging
 `committee_store_instance_lock_restored`. Neither process exits: `/readyz`
 names `store_instance_lock_reacquiring` or
-`store_instance_lock_held_elsewhere`, and `/healthz` stays live.
+`store_instance_lock_held_elsewhere`, and `/healthz` stays live. The wait on
+another holder has no deadline. A reconnect that fails is classified: a
+transient failure (Postgres unreachable, a dropped connection) is retried
+for at most 15 minutes in a row; any other failure (bad credentials, a
+missing database, an unclassified error), or the 15 minutes running out,
+stops the retries. The process then logs
+`committee_store_instance_lock_failed`. When the 15 minutes ran out it then
+logs `committee_transient_budget_exhausted` (source `store_instance_lock`)
+and exits non-zero, the supervisor's restart being the backoff; on any other
+failure it keeps refusing every effect and names `store_instance_lock_failed`
+on `/readyz` until it is restarted. The committee's L1 follower bounds its
+transient store failures the same way: past 15 minutes with no event applied
+it stops `l1_follower_transient_exhausted`, and the process logs
+`committee_transient_budget_exhausted` (source `l1_follower`) and exits
+non-zero. A Cardano node outage has no bound: `/readyz` names it while it
+lasts.
 
 A decision effect the old holder began and never completed is redone by the
 new holder as the next attempt; a late completion of the old attempt is

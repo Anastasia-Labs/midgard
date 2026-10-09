@@ -1,7 +1,6 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import type { HistoricalNativeScriptSourceRoster } from "../missing-native-script-tx/historical-script.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
@@ -14,11 +13,6 @@ import type {
   ManifestBoundFamilyWorkflowConfig,
 } from "./family-definition.js";
 import { familyStepContractNames } from "./family-definition.js";
-import type {
-  HistoricalNativeScriptCheckpointStore,
-  HistoricalNativeScriptHistorySource,
-  HistoricalNativeScriptProviderRoster,
-} from "./historical-native-script-corpus.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
@@ -33,24 +27,13 @@ export const FAMILY_APPLICATION_RECORD =
 
 /**
  * Optional infrastructure a family may require beyond what every family gets.
- * Deliberately capped at what today's 55 families need: growing this set is a
+ * Deliberately capped at what today's families need: growing this set is a
  * design decision, not an implementation detail.
  */
 export type FamilyApplicationRequirement =
   | "replayContext"
   | "validationChallenge"
-  | "historicalNativeScriptAuthority";
-
-/**
- * The host's handle on the historical native-script history the families that
- * reconstruct pre-genesis scripts read through.
- */
-export type FamilyHistoricalNativeScriptAuthority = Readonly<{
-  checkpointStore: HistoricalNativeScriptCheckpointStore;
-  providerRoster: HistoricalNativeScriptProviderRoster;
-  historySource: HistoricalNativeScriptHistorySource;
-  l1SourceRoster: HistoricalNativeScriptSourceRoster;
-}>;
+  | "retainedDaSources";
 
 /**
  * How a family that disputes a validation trace reaches the freshly admitted
@@ -81,7 +64,12 @@ export type FamilyCommonInfrastructure = Readonly<{
   /** The admitted decision this invocation acts on, when there is one. */
   decisionDigest?: string;
   replayContext?: CompleteCanonicalReplayContext;
-  historicalNativeScriptAuthority?: FamilyHistoricalNativeScriptAuthority;
+  /**
+   * The admitted public retained-DA sources of this invocation, laid in by the
+   * shared runtime for a family that fetches further blocks' payloads at
+   * build time (crossBlockDuplicateEvent's settled blocks).
+   */
+  retainedDaSources?: readonly RetainedDaPayloadSource[];
   validationChallenge?: FamilyValidationChallengePort;
 }>;
 

@@ -1,10 +1,10 @@
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 
+import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../src/execution-native-script-invalid/workflow-spec.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../src/workflow/cursor-family-adapter.js";
-import { MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC } from "../src/workflow/cursor-family-spec.js";
 import { cursorFamilyObservation } from "../src/workflow/cursor-family-state.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
@@ -37,7 +37,7 @@ const provenance: EvidenceProvenance = {
 export const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
   deploymentFingerprint: hash("aa"),
-  category: "missingNativeScriptTx",
+  category: "executionNativeScriptInvalid",
   target: { kind: "state_queue_header", headerHash },
 };
 
@@ -85,7 +85,7 @@ export const transaction = (
   signed: signed(),
   referenceScripts: [
     {
-      role: "V1 missing-native-script-tx step",
+      role: "V1 execution-native-script-invalid step",
       outRef: referenceOutRef,
       scriptHash: "66".repeat(28),
     },
@@ -96,9 +96,9 @@ export const transaction = (
 export const l1 = (
   stageRef: { value: FraudProofRawL1FamilyStage },
   confirmed = async (_txHash: string) => false,
-): FraudProofFamilyL1ObservationPort<"missingNativeScriptTx"> => ({
+): FraudProofFamilyL1ObservationPort<"executionNativeScriptInvalid"> => ({
   portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
-  category: "missingNativeScriptTx",
+  category: "executionNativeScriptInvalid",
   publications: {} as never,
   observeHeader: async () => {
     throw new Error("unused in focused cursor adapter test");
@@ -109,10 +109,10 @@ export const l1 = (
 });
 
 export const port = (
-  capture: CursorFamilyTransactionPort<"missingNativeScriptTx">["capture"],
-): CursorFamilyTransactionPort<"missingNativeScriptTx"> => ({
+  capture: CursorFamilyTransactionPort<"executionNativeScriptInvalid">["capture"],
+): CursorFamilyTransactionPort<"executionNativeScriptInvalid"> => ({
   portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-  category: "missingNativeScriptTx",
+  category: "executionNativeScriptInvalid",
   prepare: async () => ({ prepared: true }),
   capture,
 });
@@ -132,7 +132,7 @@ export const context = {
 
 export const required = (stage: FraudProofRawL1FamilyStage) => {
   const observation = cursorFamilyObservation({
-    spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+    spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
     headerHash,
     provenance,
     stage,
@@ -153,7 +153,7 @@ export const terminal = ({
   readonly proofOutRef?: string;
 } = {}): FraudProofWorkflowTerminal => ({
   schemaVersion: "midgard-fraud-proof-workflow-terminal-v1",
-  category: "missingNativeScriptTx",
+  category: "executionNativeScriptInvalid",
   headerHash,
   proofToken: {
     unit: "11".repeat(28) + "22".repeat(28),

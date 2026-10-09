@@ -16,8 +16,6 @@ import {
   definedCategories,
   definitions,
   HAND_WRITTEN_REMOVAL_FAMILIES,
-  HISTORICAL_AUTHORITY,
-  HISTORICAL_AUTHORITY_FAMILIES,
   infrastructure,
   NO_DIGEST_FAMILIES,
   OPTIONAL_REPLAY_CONTEXT_FAMILIES,
@@ -26,6 +24,8 @@ import {
   referenceRoles,
   registry,
   REPLAY_CONTEXT_FAMILIES,
+  RETAINED_DA_SOURCE_FAMILIES,
+  RETAINED_DA_SOURCES,
   undecidedInfrastructure,
   VALIDATION_CHALLENGE_FAMILIES,
   WITNESS_ROLES,
@@ -240,9 +240,7 @@ describe("family application records declare the infrastructure they read", () =
       const config = await bind(record, { infrastructure, references });
       const sentinels = boundSentinels(config);
       const requiresReplay = record.requires.includes("replayContext");
-      const requiresAuthority = record.requires.includes(
-        "historicalNativeScriptAuthority",
-      );
+      const requiresSources = record.requires.includes("retainedDaSources");
       const requiresChallenge = record.requires.includes("validationChallenge");
       expect(sentinels.has("replayContext")).toBe(
         requiresReplay ||
@@ -258,30 +256,16 @@ describe("family application records declare the infrastructure they read", () =
           decisionDigest: DECISION_DIGEST,
         });
       }
-      expect(
-        sentinels.has("historySource") && sentinels.has("checkpointStore"),
-      ).toBe(requiresAuthority);
-      if (!requiresAuthority) {
-        expect(sentinels.has("l1SourceRoster")).toBe(false);
-        expect(sentinels.has("providerRoster")).toBe(false);
-      }
-      // The same record binds without the optional parts when it requires
-      // none of them; a record requiring the authority refuses without it. A
-      // record requiring the challenge port binds challenge-free without one:
-      // the shared loop refuses the missing port before binding, and the
-      // family's own execution fail-closes on a challenge-free workflow.
-      if (requiresAuthority) {
-        await expect(
-          bind(record, { infrastructure: plainInfrastructure, references }),
-        ).rejects.toThrow(`${key} reconstructs historical native scripts`);
-      } else {
-        const plain = await bind(record, {
-          infrastructure: plainInfrastructure,
-          references,
-        });
-        expect(boundSentinels(plain).size).toBe(0);
-        expect(plain.challenge).toBeUndefined();
-      }
+      expect(sentinels.has("retainedDaSources")).toBe(requiresSources);
+      // The same record binds without the optional parts: the shared loop
+      // refuses a missing required part before binding, and the family's own
+      // execution fail-closes on a workflow bound without it.
+      const plain = await bind(record, {
+        infrastructure: plainInfrastructure,
+        references,
+      });
+      expect(boundSentinels(plain).size).toBe(0);
+      expect(plain.challenge).toBeUndefined();
     },
   );
 
@@ -302,47 +286,23 @@ describe("family application records declare the infrastructure they read", () =
     ).toEqual([...REPLAY_CONTEXT_FAMILIES].sort());
   });
 
-  it("requires the historical authority on exactly the families that reconstruct native scripts", () => {
+  it("requires the retained-DA sources on exactly the families that fetch settled blocks", () => {
     expect(
       Object.values(registry)
-        .filter((record) =>
-          record.requires.includes("historicalNativeScriptAuthority"),
-        )
+        .filter((record) => record.requires.includes("retainedDaSources"))
         .map((record) => record.category)
         .sort(),
-    ).toEqual([...HISTORICAL_AUTHORITY_FAMILIES].sort());
+    ).toEqual([...RETAINED_DA_SOURCE_FAMILIES].sort());
   });
 
-  it("lays the authority's history source and checkpoint store into every historical family", async () => {
-    for (const category of HISTORICAL_AUTHORITY_FAMILIES) {
+  it("lays the host's retained-DA sources into every retained-DA family", async () => {
+    for (const category of RETAINED_DA_SOURCE_FAMILIES) {
       const record = registry[category]!;
       const config = await bind(record, {
         infrastructure,
         references: referenceRoles(record.roster),
       });
-      expect(config.historicalNativeScriptHistorySource, category).toBe(
-        HISTORICAL_AUTHORITY.historySource,
-      );
-      expect(config.historicalNativeScriptCheckpointStore, category).toBe(
-        HISTORICAL_AUTHORITY.checkpointStore,
-      );
-      for (const obsoleteField of [
-        "historicalSource",
-        "historicalCheckpointStore",
-        "historySource",
-        "checkpointStore",
-      ]) {
-        expect(config, category).not.toHaveProperty(obsoleteField);
-      }
-      if (category === "missingNativeScriptTx") {
-        expect(config.historicalNativeScriptL1Roster, category).toBe(
-          HISTORICAL_AUTHORITY.l1SourceRoster,
-        );
-      } else {
-        expect(config, category).not.toHaveProperty(
-          "historicalNativeScriptL1Roster",
-        );
-      }
+      expect(config.retainedDaSources, category).toBe(RETAINED_DA_SOURCES);
     }
   });
 });

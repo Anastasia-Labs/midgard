@@ -8,11 +8,14 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	ouroboros "github.com/blinklabs-io/gouroboros"
+	"github.com/blinklabs-io/gouroboros/muxer"
 	"github.com/blinklabs-io/gouroboros/protocol"
 	"github.com/blinklabs-io/gouroboros/protocol/chainsync"
+	"github.com/blinklabs-io/gouroboros/protocol/handshake"
 	"github.com/blinklabs-io/gouroboros/protocol/localstatequery"
 	"github.com/blinklabs-io/gouroboros/protocol/localtxmonitor"
 	"github.com/blinklabs-io/gouroboros/protocol/localtxsubmission"
@@ -137,7 +140,11 @@ func idleState(stateMap protocol.StateMap) protocol.State {
 }
 
 // dialError names why a node connection could not be opened:
-// node_unreachable (the socket) or node_handshake_failed (the N2C handshake).
+// node_unreachable (the socket did not accept), node_connection_lost (the
+// connection ended during the N2C handshake: a node that is restarting) or
+// node_handshake_failed (the node refused the handshake, or answered it out
+// of protocol: another network magic, no common version). The first two are
+// transient; a restart does not repair the last.
 type dialError struct {
 	code  string
 	cause error
@@ -145,6 +152,27 @@ type dialError struct {
 
 func (e *dialError) Error() string { return e.cause.Error() }
 func (e *dialError) Unwrap() error { return e.cause }
+
+// handshakeFailureCode classifies a failed N2C handshake. A connection that
+// ended before the node answered (gouroboros reports it as io.EOF once the
+// muxer closes, or as a connection-closed error) or a socket-level error is
+// node_connection_lost. Anything else, a refusal (handshake.RefusalError:
+// version mismatch, a refused network magic, a decode error) or an answer out
+// of protocol, is node_handshake_failed.
+func handshakeFailureCode(err error) string {
+	var refusal handshake.RefusalError
+	if errors.As(err, &refusal) {
+		return "node_handshake_failed"
+	}
+	var closed *muxer.ConnectionClosedError
+	var netErr net.Error
+	var errno syscall.Errno
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) ||
+		errors.As(err, &closed) || errors.As(err, &netErr) || errors.As(err, &errno) {
+		return "node_connection_lost"
+	}
+	return "node_handshake_failed"
+}
 
 // dialNode opens one N2C connection. primary selects the full protocol set.
 func dialNode(ctx context.Context, socketPath string, networkMagic uint32, primary bool, diagnostics io.Writer) (*nodeConn, error) {
@@ -165,7 +193,7 @@ func dialNode(ctx context.Context, socketPath string, networkMagic uint32, prima
 	)
 	if err != nil {
 		_ = socket.Close()
-		return nil, &dialError{code: "node_handshake_failed", cause: fmt.Errorf("node handshake: %w", err)}
+		return nil, &dialError{code: handshakeFailureCode(err), cause: fmt.Errorf("node handshake: %w", err)}
 	}
 	node := &nodeConn{conn: conn, socket: socket, errors: errorChan, dead: make(chan struct{})}
 	// The stock N2C state map lets RequestNext be written while the node

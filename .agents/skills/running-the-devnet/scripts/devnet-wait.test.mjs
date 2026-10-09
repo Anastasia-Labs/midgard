@@ -184,6 +184,38 @@ test("crashed: a DA committee held on an L1 follower intervention is terminal", 
   assert.match(output, /intervention: rollback_beyond_k: fork/);
 });
 
+test("crashed: a process held on a failed startup is terminal", async () => {
+  const url = await serve(() => [
+    503,
+    {
+      ready: false,
+      reasons: ["startup_failed", "database_connection_failed"],
+      stage: "fatal",
+      failedStage: "runtime_services",
+      failedStep: "database",
+      failedReason: "database_connection_failed",
+    },
+  ]);
+  const { code, output } = await run(["--url", url, "--timeout", "5"]);
+  assert.equal(code, 1, output);
+  assert.match(
+    output,
+    /startup_failed: runtime_services database database_connection_failed/,
+  );
+  assert.equal(
+    classifyResponse(
+      503,
+      '{"ready":false,"reasons":["committee_startup_failed"],"detail":"bad origin"}',
+    ).state,
+    "terminal",
+  );
+  assert.equal(
+    classifyResponse(503, '{"ready":false,"reasons":["startup_incomplete"]}')
+      .state,
+    "not_ready",
+  );
+});
+
 // Negative self-tests: answers that look healthy at a glance must not pass.
 test("negative: HTTP 200 carrying ready=false is not ready", async () => {
   const url = await serve(() => [200, { ready: false, reasons: ["x"] }]);

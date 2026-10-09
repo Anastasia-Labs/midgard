@@ -30,11 +30,10 @@ export const FABRICATED_WITHDRAWAL_VIOLATION_ID =
 /**
  * Catalogue identifier of the `fabricatedWithdrawal` category.
  *
- * A category id is the 4-byte big-endian index of the category's position in the
- * append-only `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` in `./catalogue.js` — the
- * same derivation that gives `transitionTrace` (index 4) its `00000004`.
- * `fabricatedWithdrawal` is fixed at index 12, after `fabricatedDeposit`, and
- * is the byte twin of `step_01.fabricated_withdrawal_fraud_category_id` in Aiken.
+ * A category id is the explicit 4-byte big-endian value pinned in
+ * `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` in `./catalogue.js`.
+ * `fabricatedWithdrawal` is `0000000c` and is the byte twin of
+ * `step_01.fabricated_withdrawal_fraud_category_id` in Aiken.
  */
 export const FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.fabricatedWithdrawal;

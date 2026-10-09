@@ -133,7 +133,7 @@ describe("GET /readyz native MPF owner", () => {
     const result = await readyz(() =>
       Promise.reject(
         new Error(
-          "Native MPF owner restart limit exhausted: 3 restart(s) within 3600000 ms",
+          "Native MPF owner holds: the same failure 3 time(s) in a row",
         ),
       ),
     );
@@ -142,7 +142,7 @@ describe("GET /readyz native MPF owner", () => {
     expect(result.nativeMpfOwner).toEqual({
       healthy: false,
       error:
-        "Error: Native MPF owner restart limit exhausted: 3 restart(s) within 3600000 ms",
+        "Error: Native MPF owner holds: the same failure 3 time(s) in a row",
     });
   });
 

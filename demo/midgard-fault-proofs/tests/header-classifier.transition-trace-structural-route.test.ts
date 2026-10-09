@@ -1,7 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -9,7 +5,7 @@ import {
   type LucidEvolution,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { unsafeCreateCrossBlockSettlementAuthorityFromRawForTest } from "../src/cross-block-duplicate-event/settlement-authority.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
@@ -33,11 +29,6 @@ import {
 } from "../src/workflow/header-classifier.js";
 import { TRANSITION_TRACE_STRUCTURAL_ROUTE } from "../src/workflow/header-classifier.transition-trace-structural-route.js";
 import {
-  createHistoricalNativeScriptHistorySource,
-  createHistoricalNativeScriptProviderRoster,
-  createSqliteHistoricalNativeScriptCheckpointStore,
-} from "../src/workflow/historical-native-script-corpus.js";
-import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
 } from "../src/workflow/raw-l1-snapshot.js";
@@ -45,6 +36,7 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  RELEASE_L1_FINALITY_POLICY,
 } from "../src/workflow/release-finality-policy.js";
 import {
   authenticatedHeaderObservation,
@@ -57,7 +49,7 @@ import {
 } from "./support/retained-reason-classifier.js";
 
 const DEPLOYMENT = "d1".repeat(32);
-const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
+const policy = { ...RELEASE_L1_FINALITY_POLICY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,
@@ -69,11 +61,6 @@ const releaseFinalityAuthority = {
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => releaseFinality,
 };
-const directories: string[] = [];
-afterEach(() => {
-  for (const directory of directories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
-});
 
 type Fixture = Awaited<ReturnType<typeof buildRetainedPlutusIdentityFixture>>;
 type Block = Pick<
@@ -167,18 +154,6 @@ const classify = async ({
       }),
     }),
   };
-  const historySource = createHistoricalNativeScriptHistorySource({
-    providerRoster: createHistoricalNativeScriptProviderRoster({
-      deploymentFingerprint: DEPLOYMENT,
-      providers: ["a", "b"].map((name) => ({
-        sourceId: `archive-${name}`,
-        authorityEndpoint: `https://archive-${name}.example.test`,
-        operatorIdentitySha256: name.repeat(64),
-      })),
-    }),
-  });
-  const directory = mkdtempSync("/var/tmp/midgard-structural-route-");
-  directories.push(directory);
   const bindingFields = {
     deploymentFingerprint: DEPLOYMENT,
     blueprintHash: releaseFinality.blueprintHash,
@@ -220,20 +195,12 @@ const classify = async ({
             owner: "b1".repeat(28),
           }),
           releaseFinalityAuthority,
-          historicalReplayAuthority: {
-            checkpointStore: createSqliteHistoricalNativeScriptCheckpointStore({
-              path: join(directory, "history.sqlite"),
-              rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
-            }),
-            historySource,
-          },
           settlementAuthority:
             unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
               binding: bindingFields as Parameters<
                 typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
               >[0]["binding"],
               raw,
-              historySource,
             }),
           transitionTraceEventAuthority:
             unsafeCreateTransitionTraceEventAuthorityFromRawForTest({
@@ -249,8 +216,8 @@ const classify = async ({
           releaseFinalityAuthority,
         },
   );
-  // Every retained-DA read is recorded: a predecessor fetch or a historical
-  // corpus walk would request a header other than the classified block.
+  // Every retained-DA read is recorded: a predecessor fetch would request a
+  // header other than the classified block.
   const requested: string[] = [];
   const sources: readonly RetainedDaPayloadSource[] = [
     {
@@ -351,7 +318,7 @@ describe("pre-union transition trace structural route", replayBudget, () => {
   ];
 
   for (const [name, tamper] of tampers) {
-    it(`seals ${name} before predecessor and corpus admission`, async () => {
+    it(`seals ${name} before predecessor admission`, async () => {
       const fixture = await buildRetainedPlutusIdentityFixture({
         verdict: "accepted",
       });
@@ -434,7 +401,7 @@ describe("pre-union transition trace structural route", replayBudget, () => {
     });
     expect(installed.decision.decision).toBe("healthy");
     expect(
-      headerDecisionReplayContext(installed.decision)?.historicalCorpus,
+      headerDecisionReplayContext(installed.decision)?.predecessor,
     ).toBeDefined();
     const uninstalled = await classify({
       fixture,

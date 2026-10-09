@@ -1,6 +1,7 @@
 import type {
   CreditPolicy,
   L1NodeTransport,
+  TransportFailedReason,
   TransportUnreadyReason,
 } from "@al-ft/l1-node-transport";
 
@@ -13,14 +14,28 @@ import type { InterventionReason } from "../types.js";
 export const FOLLOWER_CATCHING_UP = "l1_follower_catching_up";
 /** A transient failure is being backed off from; the detail names its cause. */
 export const FOLLOWER_WAITING = "l1_follower_waiting";
-/** One point keeps failing to apply; an operator has to look. */
+/**
+ * A failure that is not transient stopped the loop: a deterministic one
+ * (a constraint or data error, an undecodable block), or an unknown one
+ * repeated `stuckAfter` times in a row at one point or step. An operator
+ * has to look; the process stays up, unready, and the loop starts again
+ * only when the process restarts.
+ */
 export const FOLLOWER_APPLY_STUCK = "l1_follower_apply_stuck";
 /**
  * The store refused its migrations at start (an applied migration changed
- * or is unknown): every start fails the same way, so an operator has to
- * look; the process stays up and keeps retrying.
+ * or is unknown): every start fails the same way, so the loop stops at once
+ * and an operator has to look; the process stays up, unready.
  */
 export const FOLLOWER_MIGRATION_FAILED = "l1_follower_migration_failed";
+/**
+ * Transient store failures (`store`, `apply`: the store did not answer) went
+ * on for `transientBudgetMs` with no event settled between them, and the
+ * loop stopped (`state` `exhausted`). Its host logs it and exits non-zero;
+ * the supervisor's restart is the backoff from there. Seen on `/readyz` only
+ * while the host shuts down.
+ */
+export const FOLLOWER_TRANSIENT_EXHAUSTED = "l1_follower_transient_exhausted";
 /** The L1 node transport is not ready; the detail carries its reason. */
 export const FOLLOWER_NODE_UNAVAILABLE = "l1_node_unavailable";
 /**
@@ -73,6 +88,7 @@ export type FollowReadinessReason =
   | typeof FOLLOWER_WAITING
   | typeof FOLLOWER_APPLY_STUCK
   | typeof FOLLOWER_MIGRATION_FAILED
+  | typeof FOLLOWER_TRANSIENT_EXHAUSTED
   | typeof FOLLOWER_NODE_UNAVAILABLE
   | typeof FOLLOWER_NODE_BEHIND
   | typeof FOLLOWER_TRACKED_SET_CHANGED
@@ -95,9 +111,18 @@ export type FollowStatus = Readonly<{
   /**
    * `following`: applying chain-sync events. `waiting`: backing off from a
    * failure (`waiting` says which). `intervention`: stopped on a condition
-   * only an operator clears; the process stays up. `stopped`: aborted.
+   * only an operator clears (an intervention, or a `stuck` failure); the
+   * process stays up. `exhausted`: stopped on transient store failures past
+   * `transientBudgetMs` (`waiting` names the last); the host exits non-zero.
+   * `stopped`: aborted.
    */
-  state: "starting" | "following" | "waiting" | "intervention" | "stopped";
+  state:
+    | "starting"
+    | "following"
+    | "waiting"
+    | "intervention"
+    | "exhausted"
+    | "stopped";
   /** Every reason the role is not ready; empty when it is. */
   readiness: readonly FollowReadiness[];
   /** The interventions in force (R1 to R5, `origin_mismatch`). */
@@ -106,16 +131,22 @@ export type FollowStatus = Readonly<{
     detail: string;
   }>[];
   waiting: Readonly<{ cause: FollowWaitCause; detail: string }> | null;
-  /** Set once one point failed `stuckAfter` times, or once deterministically. */
+  /** Set, and the loop stopped, once one point or step failed `stuckAfter`
+   * times in a row (unknown), or once (deterministic). */
   stuck: Readonly<{ at: string; failures: number; detail: string }> | null;
   /** Whether the protocol-init tx (the hubOracleOneShot spend) is in the facts. */
   protocolInit: "seen" | "pending" | "unknown";
   cursor: Readonly<{ slot: number; height: number; generation: number }> | null;
   /**
    * The transport's unready reason and detail while it is not ready (the
-   * sidecar or the node is down or restarting); null while it is ready.
+   * sidecar or the node is down or restarting, or the transport failed on a
+   * fault no restart repairs, a `TransportFailedReason` such as a refused
+   * handshake); null while it is ready.
    */
-  node: Readonly<{ reason: TransportUnreadyReason; detail: string }> | null;
+  node: Readonly<{
+    reason: TransportUnreadyReason | TransportFailedReason;
+    detail: string;
+  }> | null;
   /** The node tip the latest applied event reported. */
   tip: Readonly<{ slot: number; height: number }> | null;
   /**
@@ -162,8 +193,16 @@ export type FollowChainOptions = Readonly<{
   log?: (line: string) => void;
   /** Hears every status change; its failure is logged, never thrown. */
   onStatus?: (status: FollowStatus) => void | Promise<void>;
-  /** Consecutive failures on one point before `l1_follower_apply_stuck` (default 5). */
+  /** Consecutive unknown failures on one point or step before the loop
+   * stops under `l1_follower_apply_stuck` (default 5). */
   stuckAfter?: number;
+  /** How long transient store failures (`store`, `apply`) may go on with no
+   * event settled before the loop stops `exhausted` (default
+   * `FOLLOWER_TRANSIENT_BUDGET_MS`). Stream failures and a held writer
+   * lease have no bound. */
+  transientBudgetMs?: number;
+  /** Wall-clock ms for that budget (default `Date.now`). */
+  now?: () => number;
   /**
    * One budgeted `store.prune(budget)` step at the tip after each applied
    * event, and every `everyEvents` applied events while catching up (then
@@ -206,6 +245,12 @@ export const DEFAULT_NODE_BEHIND_MS = 300_000;
 export const NODE_BEHIND_CHECK_EVERY_MS = 10_000;
 
 export const DEFAULT_STUCK_AFTER = 5;
+/**
+ * The default bound on transient store failures: 15 minutes, the store
+ * instance lock's reacquire budget, which covers a PostgreSQL restart or
+ * failover beside the role.
+ */
+export const FOLLOWER_TRANSIENT_BUDGET_MS = 15 * 60_000;
 export const LOOP_PRUNE_BUDGET = 500;
 export const LOOP_PRUNE_EVERY = 100;
 /**
@@ -242,6 +287,11 @@ export const readinessOf = (
     reasons.push({
       reason: FOLLOWER_APPLY_STUCK,
       detail: `${status.stuck.at} failed ${status.stuck.failures} times: ${status.stuck.detail}`,
+    });
+  else if (status.state === "exhausted" && status.waiting !== null)
+    reasons.push({
+      reason: FOLLOWER_TRANSIENT_EXHAUSTED,
+      detail: `${status.waiting.cause}: ${status.waiting.detail}`,
     });
   else if (status.state === "waiting" && status.waiting !== null)
     reasons.push({

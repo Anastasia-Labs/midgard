@@ -12,6 +12,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
+import type { CommitAnchor } from "../../src/database/commit-anchor.js";
 import {
   MempoolDB,
   PendingBlockFinalizationsDB,
@@ -42,9 +43,35 @@ export type SimOwnJournal = Readonly<{
   produced: readonly Ledger.MinimalEntry[];
   txIds: readonly Buffer[];
   at: Date;
+  /** The commit anchor; by default `simCommitAnchor`. */
+  anchor?: CommitAnchor;
 }>;
 
 export const JournalStatus = PendingBlockFinalizationsDB.Status;
+
+/**
+ * The commit anchor a journal built now stores at d = 0: the follower's top
+ * block in the node database (`commit-anchor.ts`). A simulation whose
+ * follower lives in a store of its own holds no follower block here; its
+ * journals carry no L1 event, so they anchor on a block written once at
+ * height 0 that nothing rewinds, and stay canonical as they were before.
+ */
+export const simCommitAnchor = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const [top] = yield* sql<{ hash: Buffer; height: string; slot: string }>`
+    SELECT hash, height::text AS height, slot::text AS slot FROM l1_blocks
+    ORDER BY height DESC LIMIT 1`;
+  if (top !== undefined)
+    return {
+      hash: Buffer.from(top.hash),
+      height: Number(top.height),
+      slot: Number(top.slot),
+    } satisfies CommitAnchor;
+  const hash = sha256(Buffer.from("landed-sim:commit-anchor"));
+  yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
+    VALUES (0, ${hash}, 0, NULL, 0)`;
+  return { hash, height: 0, slot: 0 } satisfies CommitAnchor;
+});
 
 /** Writes the active journal of an own block the node just committed. */
 export const insertOwnJournal = (journal: SimOwnJournal) =>
@@ -52,6 +79,7 @@ export const insertOwnJournal = (journal: SimOwnJournal) =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const header = Buffer.from(journal.headerHash, "hex");
+      const anchor = journal.anchor ?? (yield* simCommitAnchor);
       yield* sql`INSERT INTO pending_block_finalizations ${sql.insert({
         header_hash: header,
         submitted_tx_hash: null,
@@ -92,6 +120,9 @@ export const insertOwnJournal = (journal: SimOwnJournal) =>
         consensus_profile_id: "midgard-consensus-v1",
         expected_validation_traces_root: EMPTY_MERKLE_ROOT,
         expected_validation_trace_count: 0n,
+        commit_anchor_hash: anchor.hash,
+        commit_anchor_height: anchor.height,
+        commit_anchor_slot: anchor.slot,
         ledger_delta_spent: JSON.stringify(journal.spent.map(hex)),
         ledger_delta_produced: JSON.stringify(
           journal.produced.map((entry) => ({

@@ -14,6 +14,7 @@ import {
   createOperatorSetMirror,
   databaseActivityRecord,
   memoryActivityRecord,
+  type NeglectedEventSources,
   type OperatorActivityRecord,
   type OperatorSetConfig,
   operatorSetHook,
@@ -48,6 +49,8 @@ export const followerOperatorSet = (options: {
   readonly store: FactStore;
   readonly config: OperatorSetConfig;
   readonly depth: DepthParameters;
+  /** The policies the neglected-event read finds each kind's live token by. */
+  readonly neglectedEvents: NeglectedEventSources;
 }) =>
   Effect.gen(function* () {
     const { store, config } = options;
@@ -98,6 +101,7 @@ export const followerOperatorSet = (options: {
                 stateQueueTail,
                 store,
                 retired: config.retired,
+                neglectedEvents: options.neglectedEvents,
               }),
             );
             yield* publishOperatorMembership(membership).pipe(

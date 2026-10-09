@@ -44,7 +44,6 @@ import {
 } from "./devnet-stack/fresh-controller.js";
 import type { FundingRecord } from "./devnet-stack/funding.js";
 import { ensureFunded } from "./devnet-stack/funding.js";
-import { runHistoryRoleCommand } from "./devnet-stack/history-role-command.js";
 import { loadIdentities, walletInfos } from "./devnet-stack/identities.js";
 import { Journal } from "./devnet-stack/journal.js";
 import { Journey, runScenario } from "./devnet-stack/journey.js";
@@ -73,7 +72,6 @@ import {
 } from "./devnet-stack/stack.js";
 import { superviseWithMaintainers } from "./devnet-stack/supervisor.js";
 import { ensureWatcherRelease } from "./devnet-stack/watcher.js";
-import { HISTORY_ROLES } from "./devnet-stack/watcher-history.js";
 
 const layoutFor = (runDir: string) => {
   if (!isAbsolute(runDir))
@@ -318,13 +316,6 @@ const drill = async (options: DrillOptions) => {
   if (summary.failures.length > 0) process.exitCode = 1;
 };
 
-const historyArchive = (options: { runDir: string; provider: string }) =>
-  runHistoryRoleCommand({ ...options, role: "archive" });
-const historyTunnel = (options: { runDir: string }) =>
-  runHistoryRoleCommand({ ...options, role: "tunnel" });
-const historyRecorder = (options: { runDir: string }) =>
-  runHistoryRoleCommand({ ...options, role: "recorder" });
-
 const program = new Command()
   .name("midgard-devnet-stack")
   .description(
@@ -414,32 +405,6 @@ program
   .option("--pause <seconds>", "Length of a Postgres pause", "30")
   .option("--until-journey-done", "Stop once the run's journey has finished")
   .action(drill);
-
-program
-  .command("history-archive")
-  .description("Serve one watcher history provider (run by the supervisor)")
-  .requiredOption("--run-dir <path>", "Absolute run directory")
-  .requiredOption(
-    "--provider <role>",
-    `Provider role: ${HISTORY_ROLES.join(" or ")}`,
-  )
-  .action(historyArchive);
-
-program
-  .command("history-tunnel")
-  .description(
-    "Route the watcher's history-provider names to the providers (run by the supervisor)",
-  )
-  .requiredOption("--run-dir <path>", "Absolute run directory")
-  .action(historyTunnel);
-
-program
-  .command("history-recorder")
-  .description(
-    "Feed the watcher history providers from the chain and the committee (run by the supervisor)",
-  )
-  .requiredOption("--run-dir <path>", "Absolute run directory")
-  .action(historyRecorder);
 
 program
   .command("down")

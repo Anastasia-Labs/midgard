@@ -32,8 +32,6 @@ import { buildMinFeeChain } from "./families/min-fee.js";
 import { buildMintAuthorizationChain } from "./families/mint-authorization.js";
 import { buildMintDeclaredAssetLimitChain } from "./families/mint-declared-asset-limit.js";
 import { buildMintItemNonCanonicalChain } from "./families/mint-item-non-canonical.js";
-import { buildMissingNativeScriptTxChain } from "./families/missing-native-script-tx.js";
-import { buildMissingNativeScriptUtxoChain } from "./families/missing-native-script-utxo.js";
 import { buildMissingRedeemerChain } from "./families/missing-redeemer.js";
 import { buildMissingScriptSourceChain } from "./families/missing-script-source.js";
 import { buildMissingSignatureChain } from "./families/missing-signature.js";
@@ -137,10 +135,6 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
-    const missingNativeScriptTx = yield* buildMissingNativeScriptTxChain({
-      ...params,
-      ...shared,
-    });
     const withdrawnReferenceInput = yield* buildWithdrawnReferenceInputChain({
       ...params,
       ...shared,
@@ -184,10 +178,6 @@ export const buildFaultProofContracts = (
       ...shared,
     });
     const networkId = yield* buildNetworkIdChain({
-      ...params,
-      ...shared,
-    });
-    const missingNativeScriptUtxo = yield* buildMissingNativeScriptUtxoChain({
       ...params,
       ...shared,
     });
@@ -292,7 +282,6 @@ export const buildFaultProofContracts = (
       fabricatedWithdrawal,
       nativeScriptDecoding,
       missingSignature,
-      missingNativeScriptTx,
       withdrawnReferenceInput,
       canonicalDecodability,
       committedFieldShape,
@@ -306,7 +295,6 @@ export const buildFaultProofContracts = (
       inputSetUniqueness,
       mintAuthorization,
       networkId,
-      missingNativeScriptUtxo,
       nativeScriptInvalid,
       minAda,
       fieldPreimageLengthMismatch,
@@ -361,7 +349,6 @@ export const fraudProofContractsToFirstSteps = (
   fabricatedWithdrawal: contracts.fabricatedWithdrawal.firstStep,
   nativeScriptDecoding: contracts.nativeScriptDecoding.firstStep,
   missingSignature: contracts.missingSignature.firstStep,
-  missingNativeScriptTx: contracts.missingNativeScriptTx.firstStep,
   withdrawnReferenceInput: contracts.withdrawnReferenceInput.firstStep,
   canonicalDecodability: contracts.canonicalDecodability.firstStep,
   committedFieldShape: contracts.committedFieldShape.firstStep,
@@ -375,7 +362,6 @@ export const fraudProofContractsToFirstSteps = (
   inputSetUniqueness: contracts.inputSetUniqueness.firstStep,
   mintAuthorization: contracts.mintAuthorization.firstStep,
   networkId: contracts.networkId.firstStep,
-  missingNativeScriptUtxo: contracts.missingNativeScriptUtxo.firstStep,
   nativeScriptInvalid: contracts.nativeScriptInvalid.firstStep,
   minAda: contracts.minAda.firstStep,
   fieldPreimageLengthMismatch: contracts.fieldPreimageLengthMismatch.firstStep,

@@ -436,22 +436,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         manifestPath: configuration.manifestPath,
         blueprintPath: configuration.blueprintPath,
         deploymentInfoPath: configuration.deploymentInfoPath,
-        historicalNativeScriptHistory: {
-          sourceMode: "external_provider_quorum",
-          consistencyPolicy: "exact_bytes_all_providers_v1",
-          providers: [
-            {
-              sourceId: "history-a",
-              operatorIdentitySha256: "a1".repeat(32),
-              authorityEndpoint: "https://history-a.example.test",
-            },
-            {
-              sourceId: "history-b",
-              operatorIdentitySha256: "b2".repeat(32),
-              authorityEndpoint: "https://history-b.example.test",
-            },
-          ],
-        },
       },
     });
     await writeFile(

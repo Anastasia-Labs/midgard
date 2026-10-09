@@ -31,10 +31,7 @@ import "./submission.submit-deposit-only-commit.js";
 import "./submission.submit-tx-backed-commit.js";
 import "./submission.recover-local-finalization-against-confirmed-block.js";
 export { assertPreSubmitDaPayloadSize } from "./submission.assert-pre-submit-da-payload-size.js";
-export {
-  commitUserEventSourceIdSetsAreExact,
-  refreshCommitUserEventSourcesThroughBlockEnd,
-} from "./submission.commit-event-sources.js";
+export { commitUserEventSourceIdSetsAreExact } from "./submission.commit-event-sources.js";
 export {
   deferProcessedCommitPayloadUntilConfirmation,
   recoverLocalFinalizationAgainstConfirmedBlock,

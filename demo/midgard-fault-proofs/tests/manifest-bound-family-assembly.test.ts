@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as settlementAuthority from "../src/cross-block-duplicate-event/settlement-authority.js";
 import * as inspection from "../src/inspect-contracts.js";
-import * as historyRoster from "../src/missing-native-script-tx/historical-script.js";
 import * as deployment from "../src/workflow/deployment-manifest-binding.js";
 import { familyStepContractNames } from "../src/workflow/family-definition.js";
 import {
@@ -17,7 +16,6 @@ import {
 import * as observations from "../src/workflow/family-l1-observation.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
 import * as fieldCarriage from "../src/workflow/field-carriage-prerequisite.js";
-import * as historyAuthority from "../src/workflow/historical-native-script-corpus.js";
 import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
@@ -170,16 +168,9 @@ const fixture = (category: AssembledFamilyCategory) => {
     ),
     stateQueueMutationLeaseCoordinator: { acquire: vi.fn() },
   };
-  // Historical providers are external authorities, isolated alongside L1 here.
-  // Family contract mapping, transaction ports and prerequisite wiring stay real.
-  vi.spyOn(
-    historyAuthority,
-    "requireHistoricalNativeScriptHistoryAuthority",
-  ).mockReturnValue({ providerRosterDigest: "99".repeat(32) });
-  vi.spyOn(
-    historyRoster,
-    "requireHistoricalNativeScriptSourceRoster",
-  ).mockImplementation(() => undefined as never);
+  // The settlement authority is an external L1 authority, isolated alongside
+  // L1 here. Family contract mapping, transaction ports and prerequisite
+  // wiring stay real.
   vi.spyOn(
     settlementAuthority,
     "createCrossBlockSettlementAuthority",
@@ -191,31 +182,18 @@ const fixture = (category: AssembledFamilyCategory) => {
     inspection,
     "parseContractDeploymentReferenceScriptAuthPolicyId",
   ).mockReturnValue("ab".repeat(28));
-  const historical = {
-    historicalNativeScriptCheckpointStore: {},
-    historicalNativeScriptHistorySource: {
-      providerRosterDigest: "99".repeat(32),
-    },
-    historicalNativeScriptL1Roster: {
-      applicationOverlayDigest: "99".repeat(32),
-    },
-  };
   const runtime =
     createAuthenticatedFamilyAssemblyRuntimeFixture(category, {
       binding,
       config,
     }) ??
     cursorAssemblyRuntimeFixture({ category, binding, l1, config }) ??
-    (category === "minAda" || category === "missingNativeScriptTx"
-      ? { ...historical, corpusCell: {} }
+    (category === "minAda"
+      ? {}
       : category === "transitionTrace"
-        ? { config: { ...config, ...historical }, cell: {} }
+        ? { config, cell: {} }
         : category === "crossBlockDuplicateEvent"
-          ? {
-              historicalNativeScriptHistorySource:
-                historical.historicalNativeScriptHistorySource,
-              historicalNativeScriptCheckpointStore: {},
-            }
+          ? { retainedDaSources: [] }
           : undefined);
   const assemble = () =>
     assembleManifestBoundFamilyWorkflow(
@@ -242,7 +220,7 @@ const fixture = (category: AssembledFamilyCategory) => {
 
 describe("manifest-bound family assembly", () => {
   it("covers every migrated definition, linear and cursor", () => {
-    expect(categories).toHaveLength(49);
+    expect(categories).toHaveLength(47);
     expect(
       categories.filter(
         (category) => FAMILY_DEFINITIONS[category].adapter.kind === "linear",
@@ -252,7 +230,7 @@ describe("manifest-bound family assembly", () => {
       categories.filter(
         (category) => FAMILY_DEFINITIONS[category].adapter.kind === "cursor",
       ),
-    ).toHaveLength(31);
+    ).toHaveLength(29);
     for (const category of categories) {
       expect(FAMILY_DEFINITIONS[category].category).toBe(category);
     }

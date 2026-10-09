@@ -77,6 +77,7 @@ import {
   RECORD_ONLY,
   type RecordedIntent,
 } from "./intent-journal.js";
+import type { AnchorEmulatorHeight } from "./intent-journal-replay.anchor.js";
 import {
   addressBytes,
   blockOf,
@@ -131,9 +132,9 @@ export type ReplayedIntent = Readonly<{
   after: string | undefined;
 }>;
 
-/** The node configuration a replay reads: its wallets, reference-script addresses and horizon lag. */
+/** The node configuration a replay reads: its wallets, reference-script addresses and commit-event depth. */
 export type ReplayConfig = Parameters<typeof nodeSeededAddresses>[0] &
-  Pick<NodeConfigDep, "HISTORY_COMMIT_HORIZON_LAG_BLOCKS">;
+  Pick<NodeConfigDep, "COMMIT_EVENT_DEPTH">;
 
 /**
  * Replays every journaled intent of this node (one spending its wallets)
@@ -155,6 +156,8 @@ export const replayJournaledOnFollower = async (input: {
    * replay one drain each from their own wallets' view.
    */
   readonly journaled?: readonly RecordedIntent[];
+  /** The flow anchor's emulator height (`intent-journal-replay.anchor.ts`). */
+  readonly anchorEmulatorHeight?: AnchorEmulatorHeight;
 }): Promise<readonly ReplayedIntent[]> => {
   const { emulator, contracts, config } = input;
   const k = input.securityParameter ?? 2160;
@@ -303,7 +306,7 @@ export const replayJournaledOnFollower = async (input: {
         ownKey: input.operatorKeyHash,
       },
       slotToPosixMs: input.slotToPosixMs,
-      horizonLagBlocks: config.HISTORY_COMMIT_HORIZON_LAG_BLOCKS,
+      commitEventDepth: config.COMMIT_EVENT_DEPTH,
     });
     const stage = createNodeIntentStage({
       store,
@@ -445,6 +448,7 @@ export const replayJournaledOnFollower = async (input: {
               journal,
               entry,
               header,
+              emulatorHeightOf: input.anchorEmulatorHeight,
             });
       await stage.run();
       const failure = Either.isLeft(outcome)

@@ -1,8 +1,8 @@
 /**
  * The follower names what it cannot read or run: a failed refusals or
  * tx-inputs read is a degradation of its own rather than nothing to report,
- * and a follow loop that throws is named in readiness and restarted after a
- * backoff rather than left stopped.
+ * and a follow loop that throws is named in readiness and not restarted: a
+ * throw is a defect, not a transient failure.
  */
 import type { L1NodeTransport } from "@al-ft/l1-node-transport";
 import type { FollowStatus } from "@al-ft/midgard-l1-follower";
@@ -154,38 +154,27 @@ describe("follower runtime liveness", () => {
     }
   });
 
-  it("names a follow loop that throws in readiness and restarts it after a backoff", async () => {
-    faults.loopThrows = 2;
+  it("names a follow loop that throws in readiness and does not restart it", async () => {
+    faults.loopThrows = 1;
     const follower = open(true);
     try {
       await vi.waitFor(async () => {
         expect(faults.loopRuns).toBe(1);
         expect(await follower.readiness()).toContainEqual({
           reason: L1_FOLLOWER_LOOP_FAILED,
-          detail: "follow loop defect; restarting in 250 ms",
+          detail:
+            "follow loop defect; the follow loop stopped and is not restarted",
         });
       });
-      // The second throw backs off longer; the third run reports a status.
-      await vi.waitFor(async () => {
-        expect(faults.loopRuns).toBe(2);
-        expect(await follower.readiness()).toContainEqual({
-          reason: L1_FOLLOWER_LOOP_FAILED,
-          detail: "follow loop defect; restarting in 500 ms",
-        });
-      });
-      await vi.waitFor(
-        async () => {
-          expect(faults.loopRuns).toBe(3);
-          expect(
-            (await follower.readiness()).map(({ reason }) => reason),
-          ).not.toContain(L1_FOLLOWER_LOOP_FAILED);
-        },
-        { timeout: 5_000 },
-      );
+      // The loop has settled; nothing runs it again, and the reason stands.
+      await expect(follower.done).resolves.toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      expect(faults.loopRuns).toBe(1);
+      expect(
+        (await follower.readiness()).map(({ reason }) => reason),
+      ).toContain(L1_FOLLOWER_LOOP_FAILED);
     } finally {
       await follower.close();
     }
-    // Closing aborts the running loop, which settles `done`.
-    await expect(follower.done).resolves.not.toBeUndefined();
   });
 });

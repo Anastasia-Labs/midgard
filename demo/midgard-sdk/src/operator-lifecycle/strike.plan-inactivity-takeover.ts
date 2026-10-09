@@ -54,15 +54,6 @@ export const planInactivityTakeover = ({
   if (current === null) {
     return { kind: "no-shift" };
   }
-  const threshold = computeInactivityThreshold({
-    shiftStartMs: current.startTime,
-    stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
-    neglectedEvent,
-    params,
-  });
-  if (threshold.kind === "unsatisfiable") {
-    return blocked(threshold.reason, threshold.detail, current.operator);
-  }
   const skippedNode = findNodeByKey(snapshot.active, current.operator);
   if (skippedNode === undefined || skippedNode.active === null) {
     return blocked(
@@ -71,6 +62,10 @@ export const planInactivityTakeover = ({
       current.operator,
     );
   }
+  // Forced retirement (`RetireOperator` with `penalize_for_inactivity`) asks
+  // only `inactivity_strikes >= max_inactivity_strikes`: no event, no
+  // threshold. So the cap is checked before either, and an idle network still
+  // retires an operator that is already at it.
   if (skippedNode.active.inactivity_strikes >= params.maxInactivityStrikes) {
     return {
       kind: "strikes-exhausted",
@@ -78,9 +73,20 @@ export const planInactivityTakeover = ({
       skippedNode,
       inactivityStrikes: skippedNode.active.inactivity_strikes,
       maxInactivityStrikes: params.maxInactivityStrikes,
-      thresholdMs: threshold.thresholdMs,
-      shiftEndMs: threshold.shiftEndMs,
+      shiftStartMs: current.startTime,
     };
+  }
+  if (neglectedEvent === null) {
+    return { kind: "no-neglected-event", currentOperator: current.operator };
+  }
+  const threshold = computeInactivityThreshold({
+    shiftStartMs: current.startTime,
+    stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
+    neglectedEvent,
+    params,
+  });
+  if (threshold.kind === "unsatisfiable") {
+    return blocked(threshold.reason, threshold.detail, current.operator);
   }
   if (nowMs <= threshold.thresholdMs) {
     return {
@@ -238,7 +244,7 @@ export type BuildStrikeInactiveOperatorTxConfig = {
   readonly activeOperators: AuthenticatedValidator;
   readonly schedulerInput: UTxO;
   readonly hubOracleRefInput: UTxO;
-  /** The last state-queue element, proving the commitment gap. */
+  /** The last state-queue element, proving the cited event is undelivered. */
   readonly stateQueueTailRefInput: UTxO;
   readonly skippedOperatorKeyHash: string;
   readonly skippedOperatorNode: NodeWithDatum;
@@ -246,7 +252,7 @@ export type BuildStrikeInactiveOperatorTxConfig = {
   readonly newOperatorKeyHash: string;
   readonly newStartTime: bigint;
   readonly witnesses: InactivityTakeoverWitnesses;
-  readonly neglectedEvent?: StrikeNeglectedUserEvent;
+  readonly neglectedEvent: StrikeNeglectedUserEvent;
   readonly validFrom: bigint;
   readonly validTo: bigint;
   readonly presetWalletInputs?: readonly UTxO[];
@@ -269,7 +275,7 @@ export type StrikeInactiveOperatorLayout = {
   readonly activeOperatorsSpendRedeemerIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
   readonly stateQueueRefInputIndex: bigint;
-  readonly neglectedUserEventRefInputIndex: bigint | undefined;
+  readonly neglectedUserEventRefInputIndex: bigint;
 } & (
   | {
       readonly tier: "GoToNext";

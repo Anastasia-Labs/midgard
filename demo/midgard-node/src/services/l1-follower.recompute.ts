@@ -12,7 +12,8 @@
  *    running leaves the recompute pending, retried), and deferred
  *    persistence flushes.
  * 3. Once per process, the startup preparation runs (a failure is the
- *    named hold `startup_preparation_failed`, retried).
+ *    named hold `startup_preparation_failed`; startup fails on one that is
+ *    not transient, `awaitFollowerViewOnStartup`).
  * 4. When the landed-block rebase is due, or orphaned admissions wait for
  *    the working-ledger recompute: under the ledger store lease, the native
  *    MPF moves to the target's root, then step 5 runs. Otherwise the native
@@ -23,25 +24,32 @@
  *    when any were, the events are ingested again and the working ledger
  *    recomputed again, so the transactions that spent them are rejected.
  *    The cache reloads; the gate then publishes the view as applied and
- *    opens, unless held orphans remain (`l1_events_orphan_recovery`, the
- *    gate stays pending).
+ *    opens, unless journal or foreign-landed orphans remain
+ *    (`l1_events_orphan_recovery`, the gate stays pending).
  *
- * Nothing here fails: a recompute that cannot finish returns its hold, the
- * gate stays pending (producers refused by name), and the driver retries
- * on its backoff. A failed rebase also raises its liveness reason.
+ * An own-landed orphan (a deposit or withdrawal of a landed own block whose
+ * admission left the chain) neither holds the gate nor makes the rebase
+ * due: the view is published, and that block holds commits and its own
+ * merge until it leaves the landed queue (`poisoned-own-headers.ts`).
+ *
+ * Nothing here fails: a recompute that cannot finish returns its hold and
+ * the gate stays pending (producers refused by name). The driver retries
+ * the hold on its backoff, for a bounded time, only when its failure is
+ * transient (`isTransientDriverFailure`, or a native restore read that
+ * failed: a `transientFailure`); any
+ * other failure hold is `notRetried` and waits, named, for the next
+ * follower change. A failed rebase also raises its liveness reason.
  */
 import { randomUUID } from "node:crypto";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Cause, Duration, Effect, Ref } from "effect";
 
+import { reconcileFollowerEvents } from "../database/follower-events.js";
 import {
-  countOrphanedAdmissions,
-  reconcileFollowerEvents,
-} from "../database/follower-events.js";
-import {
-  countHeldOrphans,
+  countOrphansAwaitingRecovery,
   deleteUnheldOrphans,
+  describeOrphansAwaitingRecovery,
 } from "../database/follower-orphan-repair.js";
 import { MpfEngineStateDB } from "../database/index.js";
 import {
@@ -49,9 +57,15 @@ import {
   type EventRefusal,
   EVENTS_INGESTION_WAITING,
   EVENTS_ORPHAN_RECOVERY,
+  failureHold as classifiedHold,
   type IngestionPlan,
+  isL1NodeOutage,
+  isTransientDriverFailure,
+  notRetried,
+  transientFailure,
 } from "../l1-events/driver.js";
 import {
+  blockedRebaseHold,
   failureHold,
   followJournals,
   LANDED_BLOCK_REBASE_PENDING,
@@ -83,6 +97,7 @@ import { Globals } from "./globals.globals.js";
 import type { FollowerPlanRead } from "./l1-follower.readiness.js";
 import {
   clearLivenessIncident,
+  NATIVE_MPF_RESTORE_READ_TRANSIENT,
   raiseLivenessIncident,
 } from "./liveness-halt.js";
 import { Lucid } from "./lucid.js";
@@ -209,21 +224,24 @@ export const makeDriverRecompute = <R = never>(options: {
             asDriver(options.startupPreparation ?? Effect.void),
           );
           if (ran._tag === "Left")
-            return yield* keep({
-              reason: STARTUP_PREPARATION_FAILED,
-              detail: formatUnknownError(ran.left),
-            });
+            return yield* keep(
+              classifiedHold(
+                STARTUP_PREPARATION_FAILED,
+                formatUnknownError(ran.left),
+                ran.left,
+              ),
+            );
           prepared = true;
         }
         // The rebase target: a due rebase, or the target the orphan repair
-        // recomputes the working ledger on.
+        // recomputes the working ledger on (own-landed orphans need none).
         const target = yield* asDriver(
           withFollowerWrite(
             Effect.gen(function* () {
               const due = yield* rebasePlan;
               if (due.kind === "ready") return due.target;
               if (due.kind === "blocked") return undefined;
-              if ((yield* countOrphanedAdmissions) === 0) return undefined;
+              if ((yield* countOrphansAwaitingRecovery) === 0) return undefined;
               const on = yield* rebaseTargetOf(yield* retrieveRows);
               return on.kind === "ready" ? on.target : undefined;
             }),
@@ -231,6 +249,18 @@ export const makeDriverRecompute = <R = never>(options: {
         );
         const ingested = { inserted: 0, refused: [] as EventRefusal[] };
         let heldOrphans = 0;
+        let heldOrphansDetail = "";
+        // Held orphans keep the gate pending. One a foreign landed block
+        // holds is in a header that includes an event no longer on L1: the
+        // header is fault-provable and a block built on it shares the fault,
+        // so the node does not build on it until the header leaves the
+        // landed queue. That waits on another actor (a fault proof or an L1
+        // rollback), not on a retry here.
+        const describeHeld = Effect.gen(function* () {
+          if (heldOrphans > 0)
+            heldOrphansDetail =
+              yield* describeOrphansAwaitingRecovery(heldOrphans);
+        });
         const ingest = Effect.gen(function* () {
           const outcome = yield* reconcileFollowerEvents(plan, {
             network: config.NETWORK,
@@ -253,6 +283,7 @@ export const makeDriverRecompute = <R = never>(options: {
             ingested.refused = [...first.refused];
             if (on === undefined) {
               heldOrphans = first.orphans;
+              yield* describeHeld;
               return undefined;
             }
             const rebased = yield* rebaseSql(on);
@@ -270,8 +301,8 @@ export const makeDriverRecompute = <R = never>(options: {
             // The rebase released its abandoned journals' events to
             // awaiting; the due ones are projected again at once, for the
             // next block to carry.
-            yield* ingest;
-            heldOrphans = yield* countHeldOrphans;
+            heldOrphans = (yield* ingest).orphans;
+            yield* describeHeld;
             return rebased;
           });
         const complete = (on: RebaseTarget | undefined) =>
@@ -283,7 +314,7 @@ export const makeDriverRecompute = <R = never>(options: {
                 : holdDriverRecompute(
                     epoch,
                     EVENTS_ORPHAN_RECOVERY,
-                    `${heldOrphans.toString()} orphaned event admissions wait for their block journal's disposition or a landed correction`,
+                    heldOrphansDetail,
                   ),
             ),
           );
@@ -332,10 +363,13 @@ export const makeDriverRecompute = <R = never>(options: {
               detail: refused.detail,
             });
           if (target === undefined)
-            return yield* keep({
-              reason: DRIVER_RECOMPUTE_FAILED,
-              detail: formatUnknownError(failure),
-            });
+            return yield* keep(
+              classifiedHold(
+                DRIVER_RECOMPUTE_FAILED,
+                formatUnknownError(failure),
+                failure,
+              ),
+            );
           const { escalateAfterMs, ...hold } = failureHold(failure);
           yield* raiseLivenessIncident(
             globals,
@@ -344,7 +378,18 @@ export const makeDriverRecompute = <R = never>(options: {
             hold.detail,
             escalateAfterMs === undefined ? {} : { escalateAfterMs },
           );
-          return yield* keep(hold);
+          // A native restore read that failed is retried on the backoff
+          // (escalated after `NATIVE_MPF_RESTORE_READ_ESCALATION_MS`); a store
+          // that lacks the root, a cap it is over, or any other failure that
+          // is not transient waits for the next follower change.
+          return yield* keep(
+            hold.reason === NATIVE_MPF_RESTORE_READ_TRANSIENT ||
+              isTransientDriverFailure(failure)
+              ? isL1NodeOutage(failure)
+                ? hold
+                : transientFailure(hold)
+              : notRetried(hold),
+          );
         }
         if (result.right.busy)
           return yield* keep({
@@ -357,7 +402,7 @@ export const makeDriverRecompute = <R = never>(options: {
         if (heldOrphans > 0)
           return heldOutcome({
             reason: EVENTS_ORPHAN_RECOVERY,
-            detail: `${heldOrphans.toString()} orphaned event admissions wait for their block journal's disposition or a landed correction`,
+            detail: heldOrphansDetail,
           });
         return {
           published: true,
@@ -373,10 +418,13 @@ export const makeDriverRecompute = <R = never>(options: {
         .pipe(
           Effect.catchAllCause((cause) =>
             Effect.succeed(
-              heldOutcome({
-                reason: DRIVER_RECOMPUTE_FAILED,
-                detail: Cause.pretty(cause),
-              }),
+              heldOutcome(
+                classifiedHold(
+                  DRIVER_RECOMPUTE_FAILED,
+                  Cause.pretty(cause),
+                  Cause.squash(cause),
+                ),
+              ),
             ),
           ),
           Effect.provide(runtime),
@@ -386,18 +434,17 @@ export const makeDriverRecompute = <R = never>(options: {
       Effect.gen(function* () {
         const due = yield* rebasePlan;
         if (due.kind === "none") return undefined;
-        if (due.kind === "blocked")
-          return {
-            reason: due.reason ?? LANDED_BLOCK_REBASE_PENDING,
-            detail: due.detail,
-          } satisfies DriverHold;
+        if (due.kind === "blocked") return blockedRebaseHold(due);
         return (yield* run(reason)).hold;
       }).pipe(
         Effect.catchAllCause((cause) =>
-          Effect.succeed({
-            reason: DRIVER_RECOMPUTE_FAILED,
-            detail: Cause.pretty(cause),
-          } satisfies DriverHold),
+          Effect.succeed(
+            classifiedHold(
+              DRIVER_RECOMPUTE_FAILED,
+              Cause.pretty(cause),
+              Cause.squash(cause),
+            ),
+          ),
         ),
         Effect.provide(runtime),
       );

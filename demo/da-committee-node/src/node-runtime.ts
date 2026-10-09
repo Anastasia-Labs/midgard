@@ -81,11 +81,14 @@ export const COMMITTEE_RETIREMENT_COMPACTION_FAILED =
  * only an operator clears, such as `rollback_beyond_k`), the attempt waits
  * and reports the reasons to `onL1Held` on every poll, the process up. The
  * non-adopted responder is built on its first drain the follower is ready for.
+ * `onFollowerExhausted` hears the follower stop on an exhausted transient
+ * budget (`startCommitteeL1Follower`).
  */
 export const openCommitteeNodeRuntime = async (
   local: CommitteeNodeLocalSetup,
   storeLockEvents: PostgresStoreInstanceLockEvents,
   onL1Held?: (reasons: readonly CommitteeL1Readiness[]) => void,
+  onFollowerExhausted?: (detail: string) => void,
 ) => {
   const { config, signer, committeeValidation, signerValidation } = local;
   const { daIdentity, daPeerRegistry } = local;
@@ -118,6 +121,7 @@ export const openCommitteeNodeRuntime = async (
       async () => store.instanceLock.followerWriterLease(),
       (line) => process.stderr.write(`${line}\n`),
       () => store.readL1PinTargets(),
+      onFollowerExhausted,
     );
     closers.push(() => follower.stop());
     const daChainReader =

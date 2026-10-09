@@ -2,6 +2,7 @@
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
+import { FOLLOWER_TRANSIENT_EXHAUSTED } from "@al-ft/midgard-l1-follower";
 
 import { createCommitteeApiServer } from "./api/server.js";
 import { createAvailabilityResponseLoop } from "./availability-response-loop.js";
@@ -29,7 +30,7 @@ import {
   validateDaCommittee,
   validateDaSignerMembership,
 } from "./signer.js";
-import { listenStartingServer, retryStartup } from "./startup.js";
+import { listenStartingServer, retryStartup, startOrHold } from "./startup.js";
 import type { PostgresStoreInstanceLockEvents } from "./store/postgres.instance-lock.js";
 import {
   retentionCycleOptions,
@@ -41,11 +42,13 @@ import {
   l1ViewStaleMs,
   startCommitteeTickLoop,
 } from "./tick-runner.js";
+import { transientExhaustionExit } from "./transient-exhaustion.js";
 
 /** Why the store's instance lock refuses decision effects. */
 type StoreLockRefusal =
   | "store_instance_lock_reacquiring"
-  | "store_instance_lock_held_elsewhere";
+  | "store_instance_lock_held_elsewhere"
+  | "store_instance_lock_failed";
 
 const main = async (): Promise<void> => {
   loadRuntimeConfig();
@@ -57,19 +60,25 @@ const main = async (): Promise<void> => {
     printHelp();
     return;
   }
-  // Decoder-first rollout means every committee node must be capable of
-  // safely decoding zstd envelopes before any producer is flipped.
-  await runDaZstdStartupSelfTest();
+  // Before the configuration is read, no port is known to serve `/readyz`
+  // on: a configuration that does not load exits non-zero.
   const config = await loadCommitteeConfig();
   const startedAtMs = Date.now();
-  const local = await loadLocalSetup(config);
   const once = process.argv.includes("--once");
   const write = (line: string): void => {
     process.stderr.write(line);
   };
+  // eslint-disable-next-line prefer-const -- the shutdown, once it is built
+  let shutdownOnExit: (() => Promise<void>) | undefined;
+  const exhausted = transientExhaustionExit({
+    write,
+    shutdown: () => shutdownOnExit,
+    exit: (code) => process.exit(code),
+  });
 
-  // Why the store's instance lock refuses work, while it does. The process
-  // never exits on it: readiness names the reason and the lock keeps trying.
+  // Why the store's instance lock refuses work, while it does: readiness
+  // names the reason, and the lock keeps trying until it fails
+  // (`store_instance_lock_failed`), the process exiting only when exhausted.
   let storeLockRefusal: StoreLockRefusal | undefined;
   const storeLockEvents: PostgresStoreInstanceLockEvents = {
     // Postgres went away: refuse work until the lock is held again.
@@ -87,6 +96,21 @@ const main = async (): Promise<void> => {
         `${JSON.stringify({ event: "committee_store_instance_lock_passive", error: error.message })}\n`,
       );
     },
+    // Not taken again. Postgres unreachable past the reacquire budget
+    // exits non-zero; a failure that is not transient is refused, the
+    // process up, until it is restarted.
+    onInstanceLockFailed: (error) => {
+      storeLockRefusal = "store_instance_lock_failed";
+      write(
+        `${JSON.stringify({ event: "committee_store_instance_lock_failed", exhausted: error.exhausted, error: error.message })}\n`,
+      );
+      if (error.exhausted)
+        exhausted({
+          source: "store_instance_lock",
+          reason: "store_instance_lock_failed",
+          detail: error.message,
+        });
+    },
     onInstanceLockRestored: () => {
       storeLockRefusal = undefined;
       write(
@@ -95,7 +119,10 @@ const main = async (): Promise<void> => {
     },
   };
 
-  // Dependencies that are not up yet are waited for, not exited on.
+  // Dependencies that are down or not up yet are waited for, within the
+  // startup budget; past it the process exits non-zero and its supervisor
+  // restarts it. A failure no wait is known to repair holds the process up,
+  // unready (`startupFailureOutcome`); a one-shot run exits on it.
   const starting = once
     ? undefined
     : await listenStartingServer(config.apiPort, config.apiHost);
@@ -108,15 +135,34 @@ const main = async (): Promise<void> => {
       `starting:${reasons.map(({ reason, detail }) => `${reason}: ${detail}`).join("; ")}`,
     );
   };
-  const runtime = await retryStartup({
-    attempt: () => openCommitteeNodeRuntime(local, storeLockEvents, onL1Held),
-    onFailure: (reason) => starting?.setReason(reason),
-    write,
-    ...(once ? { isFatal: () => true } : {}),
-  }).catch(async (error: unknown) => {
-    await starting?.close();
-    throw error;
+  const onFollowerExhausted = (detail: string) =>
+    exhausted({
+      source: "l1_follower",
+      reason: FOLLOWER_TRANSIENT_EXHAUSTED,
+      detail,
+    });
+  const started = await startOrHold(starting, write, async () => {
+    // Decoder-first rollout means every committee node must be capable of
+    // safely decoding zstd envelopes before any producer is flipped.
+    await runDaZstdStartupSelfTest();
+    const setup = await loadLocalSetup(config);
+    const opened = await retryStartup({
+      attempt: () =>
+        openCommitteeNodeRuntime(
+          setup,
+          storeLockEvents,
+          onL1Held,
+          onFollowerExhausted,
+        ),
+      onFailure: (reason) => starting?.setReason(reason),
+      write,
+      ...(once ? { classify: () => "fatal" as const } : {}),
+    });
+    return { local: setup, runtime: opened };
   });
+  // Held: the starting server keeps the process up until it is restarted.
+  if (started === undefined) return;
+  const { local, runtime } = started;
   const { store, service, availabilityRuntime } = runtime;
 
   const responseLoop = createAvailabilityResponseLoop({
@@ -206,6 +252,7 @@ const main = async (): Promise<void> => {
     await api?.close();
     await runtime.close();
   };
+  shutdownOnExit = shutdown;
   const tickRunner = createCommitteeTickRunner({
     // No decision is attempted while the store's instance lock refuses
     // work; the tick reports why and the next one retries.
@@ -333,7 +380,8 @@ const withoutAutoFund = (
 
 /**
  * Everything checked and loaded before any dependency is touched. A failure
- * here is the configuration's or the key material's, and exits at once.
+ * here is the configuration's or the key material's: no restart repairs it,
+ * so the process holds, unready.
  */
 const loadLocalSetup = async (
   config: LoadedCommitteeConfig,

@@ -10,7 +10,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, beforeEach } from "vitest";
 
-import { countOrphanedAdmissions } from "../../src/database/follower-events.js";
+import { countOrphansAwaitingRecovery } from "../../src/database/follower-orphan-repair.js";
 import { ForcedTransactionsDB } from "../../src/database/index.js";
 import {
   forcedOrderHorizon,
@@ -100,6 +100,6 @@ export const rows = () =>
   );
 
 export const horizon = () => db(forcedOrderHorizon);
-export const orphans = () => db(countOrphanedAdmissions);
+export const orphans = () => db(countOrphansAwaitingRecovery);
 
 export const label = (order: SimTx) => `${simTxHash(order).toString("hex")}#0`;

@@ -8,6 +8,7 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import { CML } from "@lucid-evolution/lucid";
 
+import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import type { LedgerOutputsAt } from "./raw-reads.types.js";
 import { outRefLabel, rawUtxo } from "./reads.js";
 
@@ -15,13 +16,15 @@ import { outRefLabel, rawUtxo } from "./reads.js";
  * One `utxo_by_txin` answer at an acquired point, or why there is none:
  * `too_old` (the point is more than k blocks below the node's tip; it never
  * becomes acquirable again), `not_on_chain` (a fork the follower has not
- * rolled back yet) or `unavailable` (any other failure). Both of the last
- * two are transient.
+ * rolled back yet), `unavailable` (the node or its transport did not answer:
+ * `isWatcherL1TransientFailure`) or `failed` (any other failure, such as an
+ * answer that does not decode). `not_on_chain` and `unavailable` are
+ * transient; `failed` is not.
  */
 export type LedgerOutputsAnswer =
   | Readonly<{ kind: "ok"; outputs: ReadonlyMap<string, FraudProofRawL1Utxo> }>
   | Readonly<{
-      kind: "too_old" | "not_on_chain" | "unavailable";
+      kind: "too_old" | "not_on_chain" | "unavailable" | "failed";
       detail: string;
     }>;
 
@@ -39,7 +42,9 @@ const failure = (error: unknown): LedgerOutputsAnswer => {
         ? "too_old"
         : code === "acquire_point_not_on_chain"
           ? "not_on_chain"
-          : "unavailable",
+          : isWatcherL1TransientFailure(error)
+            ? "unavailable"
+            : "failed",
     detail,
   };
 };

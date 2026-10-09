@@ -170,18 +170,6 @@ export {
   type MintItemNonCanonicalFaultProofContracts,
 } from "./families/mint-item-non-canonical.js";
 export {
-  buildMissingNativeScriptTxFaultProofContracts,
-  type BuildMissingNativeScriptTxFaultProofContractsParams,
-  MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES,
-  type MissingNativeScriptTxFaultProofContracts,
-} from "./families/missing-native-script-tx.js";
-export {
-  buildMissingNativeScriptUtxoFaultProofContracts,
-  type BuildMissingNativeScriptUtxoFaultProofContractsParams,
-  MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES,
-  type MissingNativeScriptUtxoFaultProofContracts,
-} from "./families/missing-native-script-utxo.js";
-export {
   buildMissingRedeemerChain,
   buildMissingRedeemerFaultProofContracts,
   type BuildMissingRedeemerFaultProofContractsParams,

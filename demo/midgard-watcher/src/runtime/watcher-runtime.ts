@@ -28,11 +28,11 @@ import "./startup-progress.js";
 import "./watcher-runtime.decision-driver.js";
 import "./watcher-runtime.launch-checks.js";
 import "./watcher-runtime.create-watcher-runtime.js";
+import "./watcher-runtime.startup-hold.js";
 export {
   mintWatcherProverFundingReservationPermit,
   type WatcherProverFundingUtxoProvider,
 } from "../fault-proofs/fault-proof-execution.js";
-export { createWatcherRuntime } from "./watcher-runtime.create-watcher-runtime.js";
 export {
   createWatcherDecisionDriver,
   WATCHER_DECISION_PASS_FAILED,
@@ -48,3 +48,8 @@ export {
   WATCHER_RUNTIME_SCHEMA_VERSION,
   type WatcherRuntime,
 } from "./watcher-runtime.launch-checks.js";
+export {
+  createWatcherRuntime,
+  watcherStartupFailureExits,
+  WatcherStartupHeldError,
+} from "./watcher-runtime.startup-hold.js";

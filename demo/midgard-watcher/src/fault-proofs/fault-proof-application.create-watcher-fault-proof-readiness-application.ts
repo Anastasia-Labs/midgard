@@ -20,8 +20,6 @@ export const createWatcherFaultProofApplication = (
       replayTranscriptStore: options.replayTranscriptStore,
       userEvents: options.userEvents,
       infrastructure: options.infrastructure,
-      historicalNativeScriptCheckpointStore:
-        options.historicalNativeScriptCheckpointStore,
       fundingProfileOverlay: options.fundingProfileOverlay,
     }),
     dependencies: productionDependencies,
@@ -33,11 +31,7 @@ export const createWatcherFaultProofApplication = (
 export const createWatcherFaultProofReadinessApplication = (
   options: Pick<
     WatcherFaultProofApplicationOptions,
-    | "l1"
-    | "deploymentAuthority"
-    | "infrastructure"
-    | "historicalNativeScriptCheckpointStore"
-    | "fundingProfileOverlay"
+    "l1" | "deploymentAuthority" | "infrastructure" | "fundingProfileOverlay"
   >,
 ): Pick<
   WatcherFaultProofApplication,

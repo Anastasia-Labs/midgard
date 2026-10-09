@@ -53,6 +53,7 @@ import {
   initOperatorInactivityFixture,
   type OperatorInactivityFixture,
   strikeOperatorToMaxStrikes,
+  submitNeglectedDeposit,
 } from "./helpers/operator-inactivity.js";
 import { initOperatorExitFixture } from "./operator-exit-emulator.build-operator-exit-snapshot.js";
 import { forceRegisterOperator } from "./operator-exit-emulator.force-activate-operator.js";
@@ -132,6 +133,8 @@ const exhaustStrikes = async (
   struckKeyHash: string,
 ) => {
   const successorLucid = await fixture.lucidFor(successorKeyHash);
+  // The shift owes a deposit: the evidence every strike cites.
+  await submitNeglectedDeposit(fixture);
   const early = await runWithoutFollower(
     planTakeoverProgram(successorLucid, fixture.contracts),
   );

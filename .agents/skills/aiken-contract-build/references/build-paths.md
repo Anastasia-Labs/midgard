@@ -51,10 +51,12 @@ the blueprint, checks its profile and digest against
 - A traced build is never loadable by the node, because the record comes only
   from `deployment:build`, which cannot trace.
 
-Suites that read the blueprint path directly (for example the
-`demo/midgard-validation` emulator tests via `MIDGARD_REAL_BLUEPRINT_PATH`,
-`demo/midgard-validation/tests/validation-machine.test.ts:91`) do not check
-the record, so a plain or traced `--env testnet` build is fine for them.
+The test suites check the same record before any file starts
+(`demo/midgard-test-support/blueprint-stamp-setup.js`): a blueprint named by
+`MIDGARD_REAL_BLUEPRINT_PATH` without a fresh record is refused, so a plain or
+traced `aiken build` cannot stand in for one. Traced runs go through
+`demo/midgard-fault-proofs/scripts/run-traced-refusals.mjs`, which writes a
+record for its overlay.
 
 ## The environment switch
 

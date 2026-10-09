@@ -945,7 +945,6 @@ surface, and a precise matrix `N/A`; prose alone is insufficient.
 | Q14 | `zero-input`                                                                          | Q00–Q03                                                                       |
 | Q15 | `invalid-signature`                                                                   | Q00–Q03, C43                                                                  |
 | Q16 | `missing-signature`                                                                   | Q00–Q03, C43                                                                  |
-| Q17 | `missing-native-script-tx`                                                            | Q00–Q03, C44                                                                  |
 | Q18 | `no-reference-input`                                                                  | Q00–Q03, C41                                                                  |
 | Q19 | `withdrawn-reference-input`                                                           | Q00–Q03, C41                                                                  |
 | Q20 | `min-fee`                                                                             | Q00–Q03, C49; prove the canonical parameterized formula (no zero-return stub) |
@@ -961,7 +960,6 @@ surface, and a precise matrix `N/A`; prose alone is insufficient.
 | Q30 | `input-set-uniqueness` including intra-tx duplicates and spend/reference overlap      | Q00–Q03, C41                                                                  |
 | Q31 | `reference-input-no-idx`                                                              | Q00–Q03, C41                                                                  |
 | Q32 | `req-signer-set`                                                                      | Q00–Q03, C43                                                                  |
-| Q33 | `missing-native-script-utxo`                                                          | Q00–Q03, C42, C44                                                             |
 | Q34 | `native-script-invalid`                                                               | Q00–Q03, C44                                                                  |
 | Q35 | `network-id`                                                                          | Q00–Q03, C42                                                                  |
 | Q36 | `output-well-formedness`                                                              | Q00–Q03, C42                                                                  |

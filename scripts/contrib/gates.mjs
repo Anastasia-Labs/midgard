@@ -156,8 +156,8 @@ export const gatePlan = (root, name) => {
     throw new Error(
       `unknown gate ${name}; choose ${Object.keys(GATES).join(", ")}`,
     );
-  return GATES[name].map(([name, patterns]) => {
-    const pkg = packageByName(root, name);
+  return GATES[name].map(([packageName, patterns]) => {
+    const pkg = packageByName(root, packageName);
     const all = filesUnder(resolve(root, pkg.directory)).map((file) =>
       file.slice(resolve(root, pkg.directory).length + 1),
     );
@@ -165,7 +165,7 @@ export const gatePlan = (root, name) => {
       if (!pattern.includes("*")) {
         if (!existsSync(resolve(root, pkg.directory, pattern)))
           throw new Error(
-            `gate ${name} has a missing owner: ${pattern}; repair its registry`,
+            `gate ${name} names ${packageName} ${pattern}, which does not exist; repair GATES (node scripts/ci/check-registry-paths.mjs lists every such entry)`,
           );
         return [pattern];
       }
@@ -178,7 +178,9 @@ export const gatePlan = (root, name) => {
       );
       const matching = all.filter((file) => regex.test(file));
       if (!matching.length)
-        throw new Error(`gate pattern collected no files: ${pattern}`);
+        throw new Error(
+          `gate ${name} pattern ${packageName} ${pattern} collected no files`,
+        );
       return matching;
     });
     return { package: pkg.name, files: [...new Set(selected)].sort() };

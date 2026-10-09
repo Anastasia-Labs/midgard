@@ -102,7 +102,9 @@ validator's refusal. [ci: Midgard Node CI/Test fault-proof tooling]
   check is satisfied, so the changed field is the only thing left to fail.
 - **Kill the guard.** Delete or weaken the check you are covering as a
   temporary edit, run the negative, and undo the edit. The negative must go
-  red; if nothing fails, it covers something else. [review]
+  red; if nothing fails, it covers something else. In TypeScript,
+  `node scripts/contrib.mjs mutate` makes the edit, refuses one that changes
+  nothing, and restores the file. [review]
 - **Adversary against honest.** A real fault succeeds (the fraud proof mints,
   the dispute resolves). An adversary replaying an honest commitment is
   refused at the exact check.

@@ -19,6 +19,7 @@ export {
   rebaseSql,
 } from "./rebase.js";
 export {
+  blockedRebaseHold,
   rebasePlan,
   type RebaseTarget,
   rebaseTargetOf,

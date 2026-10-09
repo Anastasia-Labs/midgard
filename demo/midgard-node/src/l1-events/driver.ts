@@ -16,12 +16,29 @@
  * the rest of the change applies: an identity conflict is a hold, an
  * undecodable event a refusal `/readyz` names while the node stays ready.
  */
-import type { FactStore, View } from "@al-ft/midgard-l1-follower";
+import {
+  SidecarExitedError,
+  StreamInterruptedError,
+  TransportRequestError,
+  TransportTimeoutError,
+  TransportUnavailableError,
+} from "@al-ft/l1-node-transport";
+import {
+  classifyFailure,
+  type FactStore,
+  type View,
+} from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 import {
   eventsAt,
   type ProjectedEvent,
 } from "@al-ft/midgard-l1-follower/events";
+import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
+
+import {
+  isConnectionClassError,
+  isRetryableProviderError,
+} from "../provider-retry.js";
 
 /** The follower view the driver last applied, and the one it is applying. */
 export type FollowerChange =
@@ -52,7 +69,103 @@ export const classifyChange = (
 /** A named reason the node is not ready, with its detail, for `/readyz`. */
 export type DriverHold = Readonly<{ reason: string; detail: string }>;
 
-/** Orphaned admissions wait for the recovery that rejects their dependents. */
+/** Holds the coalesced runner does not retry on its timer (`notRetried`). */
+const NOT_RETRIED = new WeakSet<DriverHold>();
+
+/**
+ * Marks `hold` as one a timer retry cannot clear: a failure that is not
+ * transient, or a refusal only a chain change can lift. The next follower
+ * change runs the driver again; the hold stays named until then.
+ */
+export const notRetried = (hold: DriverHold): DriverHold => {
+  NOT_RETRIED.add(hold);
+  return hold;
+};
+
+/** Whether the coalesced runner retries `hold` on its backoff. */
+export const isRetriedHold = (hold: DriverHold): boolean =>
+  !NOT_RETRIED.has(hold);
+
+/** Retried holds that stand for a transient failure (`transientFailure`). */
+const TRANSIENT_FAILURE = new WeakSet<DriverHold>();
+
+/**
+ * Marks `hold` as a transient failure: retried on the coalesced runner's
+ * backoff for a bounded time (`NODE_TRANSIENT_BUDGET_MS` in a row), unlike a
+ * wait on another actor, which has no bound.
+ */
+export const transientFailure = (hold: DriverHold): DriverHold => {
+  TRANSIENT_FAILURE.add(hold);
+  return hold;
+};
+
+/** Whether `hold` stands for a transient failure (`transientFailure`). */
+export const isTransientFailureHold = (hold: DriverHold): boolean =>
+  TRANSIENT_FAILURE.has(hold);
+
+/**
+ * Whether a failure says only that a dependency did not answer: a
+ * connection-class or retryable provider failure (`isConnectionClassError`,
+ * `isRetryableProviderError`) or a store failure the follower classifies as
+ * transient (`classifyFailure`). An unrecognised failure is not transient.
+ */
+export const isTransientDriverFailure = (error: unknown): boolean => {
+  if (isConnectionClassError(error) || isRetryableProviderError(error))
+    return true;
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
+    if (classifyFailure(current) === "transient") return true;
+    current = current.cause;
+  }
+  return false;
+};
+
+/**
+ * Whether a failure comes from the L1 node: its transport or sidecar, or
+ * the follower provider's node or follower path (not its store). Waiting on
+ * the node has no bound (plan §7.5).
+ */
+export const isL1NodeOutage = (error: unknown): boolean => {
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
+    if (
+      current instanceof TransportUnavailableError ||
+      current instanceof SidecarExitedError ||
+      current instanceof TransportTimeoutError ||
+      current instanceof StreamInterruptedError ||
+      current instanceof TransportRequestError ||
+      (current instanceof L1ProviderTransientError &&
+        current.source !== "store")
+    )
+      return true;
+    current = current.cause;
+  }
+  return false;
+};
+
+/**
+ * A failure hold. A transient failure is retried: one from the L1 node
+ * (`isL1NodeOutage`) without bound, any other (the database) as a
+ * `transientFailure`, for a bounded time. A failure that is not transient
+ * is `notRetried`.
+ */
+export const failureHold = (
+  reason: string,
+  detail: string,
+  error: unknown,
+): DriverHold => {
+  const hold = { reason, detail };
+  if (!isTransientDriverFailure(error)) return notRetried(hold);
+  return isL1NodeOutage(error) ? hold : transientFailure(hold);
+};
+
+/**
+ * Orphaned admissions wait for the recovery that rejects their dependents:
+ * an orphan an unfinished block journal holds (forced ones included) until
+ * that journal's disposition, one a foreign landed block holds until the
+ * header leaves the landed queue. An own landed block's orphan does not
+ * hold here (`l1_own_block_event_orphaned`).
+ */
 export const EVENTS_ORPHAN_RECOVERY = "l1_events_orphan_recovery";
 /** The sink refused or failed to ingest; the detail names why. */
 export const EVENTS_INGESTION_FAILED = "l1_events_ingestion_failed";
@@ -219,7 +332,7 @@ export const createFollowerDriver = (options: {
     try {
       view = await options.store.currentView();
     } catch (error) {
-      holds = [{ reason: EVENTS_INGESTION_FAILED, detail: message(error) }];
+      holds = [failureHold(EVENTS_INGESTION_FAILED, message(error), error)];
       return { kind: "no_view" };
     }
     if (view === null) {
@@ -246,7 +359,7 @@ export const createFollowerDriver = (options: {
     } catch (error) {
       result = {
         kind: "held",
-        hold: { reason: EVENTS_INGESTION_FAILED, detail: message(error) },
+        hold: failureHold(EVENTS_INGESTION_FAILED, message(error), error),
       };
     }
     if (result.kind === "applied") {
@@ -263,10 +376,13 @@ export const createFollowerDriver = (options: {
       refused = all.filter((refusal) => refusal.reason === EVENT_UNDECODABLE);
       conflicts = all
         .filter((refusal) => refusal.reason === EVENT_IDENTITY_CONFLICT)
-        .map((refusal) => ({
-          reason: refusal.reason,
-          detail: refusalDetail(refusal),
-        }));
+        // Only a chain change lifts an identity conflict: no timer re-runs it.
+        .map((refusal) =>
+          notRetried({
+            reason: refusal.reason,
+            detail: refusalDetail(refusal),
+          }),
+        );
     } else if (result.kind === "held") next.push(result.hold);
     else if (result.kind === "unreadable")
       // The follower moved on (or broke) between its view and the read: the
@@ -281,10 +397,9 @@ export const createFollowerDriver = (options: {
         const hold = await hook(change);
         if (hold !== undefined) next.push(hold);
       } catch (error) {
-        next.push({
-          reason: EVENTS_HOOK_FAILED,
-          detail: `${name}: ${message(error)}`,
-        });
+        next.push(
+          failureHold(EVENTS_HOOK_FAILED, `${name}: ${message(error)}`, error),
+        );
       }
     }
     holds = next;

@@ -39,7 +39,11 @@ import {
   WALLET_SEED_PENDING,
 } from "@al-ft/midgard-l1-follower";
 
-import type { DriverHold } from "../l1-events/driver.js";
+import {
+  type DriverHold,
+  failureHold,
+  notRetried,
+} from "../l1-events/driver.js";
 
 /** An S6 pass failed as a whole (the store read); the next trigger retries. */
 export const INTENT_RECONCILE_FAILED = "intent_reconcile_failed";
@@ -177,17 +181,23 @@ export const createResubmitRejections = () => {
             ...(byFamily.get(entry.family) ?? []),
             entry,
           ]);
-      return [...byFamily]
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([family, entries]) => ({
-          reason: INTENT_RESUBMIT_REJECTED,
-          detail: `${family}: ${entries
-            .map(
-              (entry) =>
-                `${entry.workflowKey} (${entry.txHash.toString("hex")}) refused at ${entry.times.toString()} tips: ${entry.detail.slice(0, REJECTION_DETAIL_CHARS)}`,
-            )
-            .join("; ")}`,
-        }));
+      return (
+        [...byFamily]
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          // The node refuses them at every tip: a timer retry at the same tip
+          // cannot lift that, the next tip runs S6 again.
+          .map(([family, entries]) =>
+            notRetried({
+              reason: INTENT_RESUBMIT_REJECTED,
+              detail: `${family}: ${entries
+                .map(
+                  (entry) =>
+                    `${entry.workflowKey} (${entry.txHash.toString("hex")}) refused at ${entry.times.toString()} tips: ${entry.detail.slice(0, REJECTION_DETAIL_CHARS)}`,
+                )
+                .join("; ")}`,
+            }),
+          )
+      );
     },
   };
 };
@@ -256,19 +266,23 @@ export const createNodeIntentStage = (input: {
   const run = async (): Promise<readonly DriverHold[]> => {
     const left: DriverHold[] = [];
     if (!seeder.ready()) {
-      const seeded = await seeder.step().catch(
-        (error: unknown) =>
-          ({
-            kind: "pending",
-            reason: "error",
-            detail: message(error),
-          }) as const,
-      );
-      if (seeded.kind === "pending")
-        left.push({
-          reason: WALLET_SEED_PENDING,
-          detail: `${seeded.reason}: ${seeded.detail}`,
-        });
+      let failure: { error: unknown } | undefined;
+      const seeded = await seeder.step().catch((error: unknown) => {
+        failure = { error };
+        return {
+          kind: "pending",
+          reason: "error",
+          detail: message(error),
+        } as const;
+      });
+      if (seeded.kind === "pending") {
+        const detail = `${seeded.reason}: ${seeded.detail}`;
+        left.push(
+          failure === undefined
+            ? { reason: WALLET_SEED_PENDING, detail }
+            : failureHold(WALLET_SEED_PENDING, detail, failure.error),
+        );
+      }
     }
     try {
       waits.clear();
@@ -288,7 +302,7 @@ export const createNodeIntentStage = (input: {
         rejections.observe(last);
       }
     } catch (error) {
-      left.push({ reason: INTENT_RECONCILE_FAILED, detail: message(error) });
+      left.push(failureHold(INTENT_RECONCILE_FAILED, message(error), error));
     }
     left.push(...rejections.holds());
     holds = left;

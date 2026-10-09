@@ -5,7 +5,10 @@ import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { admitCompleteCanonicalReplayHistoricalCorpus } from "../workflow/complete-replay.js";
+import {
+  type CompleteCanonicalReplayContext,
+  completeCanonicalReplayPredecessorEvidence,
+} from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
@@ -22,11 +25,6 @@ import {
 } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import {
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptHistorySource,
-  resolveHistoricalNativeScriptCorpus,
-} from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import {
@@ -46,7 +44,7 @@ import {
 } from "./authenticated-workflow.resolved-output-non-canonical-config-from-binding.js";
 import { createResolvedOutputNonCanonicalCentralJournalAdapter } from "./central-journal.js";
 import {
-  deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus,
+  deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
   type ResolvedOutputEvidence,
   resolvedOutputEvidenceIdentity,
@@ -115,8 +113,8 @@ export type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig =
       l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-      historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
-      historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+      /** The classifier-admitted context carrying the authenticated predecessor. */
+      replayContext?: CompleteCanonicalReplayContext;
     }>;
 
 export type ManifestBoundResolvedOutputNonCanonicalWorkflow = Readonly<{
@@ -127,8 +125,7 @@ export type ManifestBoundResolvedOutputNonCanonicalWorkflow = Readonly<{
   l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+  replayContext?: CompleteCanonicalReplayContext;
 }>;
 
 export const resolvedOutputStageFromL1 = (
@@ -161,13 +158,12 @@ export const resolvedOutputStageFromL1 = (
 export const prepareResolvedOutputNonCanonicalRecoveryMaterial = async (
   canonical: CanonicalBlockEvidence,
   detectionId: string,
-  corpus: Awaited<ReturnType<typeof resolveHistoricalNativeScriptCorpus>>,
+  predecessor: CanonicalBlockEvidence | undefined,
 ) => {
-  const priorLedger =
-    await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
-      block: canonical,
-      corpus: corpus,
-    });
+  const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+    block: canonical,
+    predecessor,
+  });
   const findings = detectResolvedOutputNonCanonicalCompleteReplay({
     block: canonical,
     priorLedger,
@@ -192,44 +188,19 @@ export const prepareResolvedOutputNonCanonicalRecoveryMaterial = async (
 
 export const createResolvedOutputNonCanonicalRecoveryPorts = (
   workflow: ManifestBoundResolvedOutputNonCanonicalWorkflow,
-  sources: readonly RetainedDaPayloadSource[],
 ) => {
   const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
   const category = "resolvedOutputNonCanonical";
-  let currentHistory:
-    | {
-        evidence: CanonicalBlockEvidence;
-        corpus: Awaited<ReturnType<typeof resolveHistoricalNativeScriptCorpus>>;
-      }
-    | undefined;
-  const resolveReplayContext = async (canonical: CanonicalBlockEvidence) => {
-    const corpus = await resolveHistoricalNativeScriptCorpus({
-      deploymentFingerprint: binding.deploymentFingerprint,
-      checkpointStore: workflow.historicalNativeScriptCheckpointStore,
-      historySource: workflow.historicalNativeScriptHistorySource,
-      currentEvidence: canonical,
-      sources,
-    });
-    currentHistory = { evidence: canonical, corpus };
-    return {
-      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
-        evidence: canonical,
-        corpus,
-      }),
-    };
-  };
   const material = createCanonicalFamilyArtifactPort(
-    async ({ evidence: canonical, classification }) => {
-      if (currentHistory?.evidence !== canonical)
-        throw new Error(
-          "resolvedOutputNonCanonical requires its exact admitted historical replay context",
-        );
-      return await prepareResolvedOutputNonCanonicalRecoveryMaterial(
+    async ({ evidence: canonical, classification }) =>
+      await prepareResolvedOutputNonCanonicalRecoveryMaterial(
         canonical,
         classification.selected.detectionId,
-        currentHistory.corpus,
-      );
-    },
+        completeCanonicalReplayPredecessorEvidence({
+          evidence: canonical,
+          context: workflow.replayContext,
+        }),
+      ),
   );
   const transactions: CursorFamilyTransactionPort<typeof category> = {
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
@@ -334,7 +305,7 @@ export const createResolvedOutputNonCanonicalRecoveryPorts = (
       },
     };
   };
-  return { transactions, requirementForAction, resolveReplayContext };
+  return { transactions, requirementForAction };
 };
 
 export const WITNESS_ROLES = [

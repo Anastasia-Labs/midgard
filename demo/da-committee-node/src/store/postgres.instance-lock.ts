@@ -44,6 +44,8 @@ const COMMITTEE_STORE_INSTANCE_LOCK: PostgresInstanceLockIdentity = {
       "committee node Postgres store is passive: another live process (another committee node, or an L1 follower command on this store's follower tables) holds its instance lock; decision effects are refused until that process's session ends and this one takes over",
     lostAtServer:
       "committee node Postgres store lost its instance lock: the server no longer holds it for this process",
+    failed:
+      "committee node Postgres store stopped taking its instance lock again; decision effects stay refused until the process is restarted",
   },
 };
 

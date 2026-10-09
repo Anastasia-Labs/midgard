@@ -587,12 +587,11 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     }
   }
 
-  /** Why every operation refuses right now, or undefined: failed child
-   * restarts have exhausted the window (see `NativeOwnerRestartPolicy`), or a
-   * committed canonical recovery has not been installed yet. Neither is
-   * terminal: each call also starts a restart that is due, which loads the
-   * child from the durable root marker exactly as a process start does, and a
-   * restart that succeeds clears both. */
+  /** Why every operation refuses right now, or undefined: the owner holds
+   * until the node restarts (`NativeOwnerRestartPolicy`), or a committed
+   * canonical recovery is not installed yet. Each call also starts a restart
+   * that is due, which loads the child from the durable root marker as a
+   * process start does; one that succeeds clears a pending recovery. */
   public terminalFailure(): Error | undefined {
     this.resumeRestart();
     return this.refusal();
@@ -610,8 +609,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   }
 
   private refusal(): Error | undefined {
-    const exhaustion = this.restartPolicy.exhaustion();
-    if (exhaustion !== undefined) return exhaustion;
+    const held = this.restartPolicy.held();
+    if (held !== undefined) return held;
     if (this.recoveryFailure !== undefined)
       return new Error(
         "Native MPF canonical recovery is not installed yet; the owner restarts from its durable root",
@@ -622,14 +621,14 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
 
   /** Starts a child restart from the durable root when one is due: the child
    * is gone or a committed recovery was not installed, and neither a restart,
-   * a restoration nor an exhausted window is in the way. */
+   * a restoration nor a hold is in the way. */
   private resumeRestart(): void {
     if (
       this.closing ||
       this.restartPromise !== undefined ||
       this.restoration !== undefined ||
       (this.recoveryFailure === undefined && !this.rpc.isClosed) ||
-      this.restartPolicy.exhaustion() !== undefined
+      this.restartPolicy.held() !== undefined
     )
       return;
     void this.scheduleRestart().catch(() => undefined);
@@ -707,20 +706,21 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     rpc.setFailureHandler((error) => {
       this.lastChildError = error;
       this.workerGenerationLeases.clear();
+      if (this.restartPolicy.recordFailure(error, "death")) return;
       if (this.restoration === undefined && this.recoveryFailure === undefined)
         void this.scheduleRestart().catch(() => undefined);
     });
   }
 
   /** Restarts the child from the durable root marker after the policy's
-   * backoff; refused while failed restarts exhaust the window. */
+   * backoff; refused once the owner holds. */
   private scheduleRestart(): Promise<void> {
     if (this.closing) {
       return Promise.reject(new Error("Native MPF owner service is closing"));
     }
     if (this.restartPromise !== undefined) return this.restartPromise;
-    const exhaustion = this.restartPolicy.exhaustion();
-    if (exhaustion !== undefined) return Promise.reject(exhaustion);
+    const held = this.restartPolicy.held();
+    if (held !== undefined) return Promise.reject(held);
     const delayMs = this.restartPolicy.startRestart();
     // A close during the backoff ends the wait; it must not start a child.
     const restart = this.restartPolicy.wait(delayMs).then(() => {
@@ -733,7 +733,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     this.restartPromise = restart;
     void restart.then(
       () => {
-        this.restartPolicy.recordSuccess();
+        this.restartPolicy.recordStarted();
         if (this.restartPromise === restart) this.restartPromise = undefined;
       },
       (restartError: unknown) => {
@@ -741,7 +741,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           restartError instanceof Error
             ? restartError
             : new Error(String(restartError));
-        this.restartPolicy.recordFailure(this.lastChildError);
+        this.restartPolicy.recordFailure(this.lastChildError, "restart");
         if (this.restartPromise === restart) this.restartPromise = undefined;
       },
     );

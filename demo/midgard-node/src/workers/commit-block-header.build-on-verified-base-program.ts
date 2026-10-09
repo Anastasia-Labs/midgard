@@ -236,25 +236,25 @@ export const buildOnVerifiedCommitBaseProgram = (
         );
       }
     }
-    // The event horizon (E-N1-2 item 3): the follower-change driver wrote
-    // every event row, so deposits, withdrawals and forced orders are
-    // visible through min(follower ingestion, the earliest forced order not
-    // yet rebuilt), capped by the horizon lag d. Nothing
-    // ingested yet, or no follower block d below its tip: no end time is
-    // safe, so the commit holds. The Lucid clock is acquired only when d > 0.
-    const eventHorizonMs = yield* commitEventHorizon({
-      lagBlocks: nodeConfig.HISTORY_COMMIT_HORIZON_LAG_BLOCKS,
+    // The event horizon (plan §8.1): min(the commit anchor's cap, the
+    // earliest forced order not yet rebuilt), the anchor being the follower
+    // block d (the profile's commit-event depth) below the permit's view.
+    // No view yet, or no anchor block: no end time is safe; the commit holds.
+    const eventHorizon = yield* commitEventHorizon({
+      view: workerInput.history?.view,
+      depth: nodeConfig.COMMIT_EVENT_DEPTH,
       slotToUnixTime: Effect.map(
         acquireCommitLucidOnce,
         (lucid) => lucid.api.slotToUnixTime,
       ),
     });
-    if (eventHorizonMs === null) {
+    if (eventHorizon === null) {
       yield* Effect.logInfo(
-        "🔹 The L1 follower has not ingested events at its current chain, or has no block the horizon lag below its tip; holding the commit.",
+        "🔹 The L1 follower has no ingested view at its current chain, or no block the commit-event depth below it; holding the commit.",
       );
       return { type: "NothingToCommitOutput" } satisfies WorkerOutput;
     }
+    const { horizonMs: eventHorizonMs, anchor: commitAnchor } = eventHorizon;
     const historyEndTime =
       workerInput.history === undefined ? undefined : new Date(eventHorizonMs);
     const depositIngestionBarrierTime = new Date(eventHorizonMs);
@@ -832,6 +832,7 @@ export const buildOnVerifiedCommitBaseProgram = (
           includedWithdrawalEntries,
           includedWithdrawalEventIds,
           workerInput,
+          commitAnchor,
           blockEndTimeCapMs,
           utxoRoot,
           txRoot,
@@ -893,6 +894,7 @@ export const buildOnVerifiedCommitBaseProgram = (
           mempoolTxHashes,
           mempoolTxSourceTable,
           workerInput,
+          commitAnchor,
           sizeOfProcessedTxs,
           blockEndTimeCapMs,
           afterDaFrameAccepted: notifyParent?.(COMMIT_DA_FRAME_FITS_NOTICE),

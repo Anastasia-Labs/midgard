@@ -9,11 +9,14 @@
  * - the driver's recompute disposes of a live own journal that holds an
  *   orphaned deposit (a member whose admission left the chain) and, in the
  *   same run, removes that deposit with its working-ledger row, then opens
- *   the gate; an orphan a processed landed block holds keeps the gate
- *   pending as `l1_events_orphan_recovery` (producers refused, retried, no
- *   failure) until it is no longer orphaned;
+ *   the gate; an orphan a processed foreign landed block holds keeps the
+ *   gate pending as `l1_events_orphan_recovery` (producers refused, retried,
+ *   no failure) until it is no longer orphaned (one a landed own block holds
+ *   does not: `own-block-event-orphaned.test.ts`);
  * - a failed startup preparation is the driver sink's named hold, the gate
  *   stays pending, and the next run prepares and opens it; nothing fails.
+ *   The hold is retried on the driver's backoff only when the failure is
+ *   transient (`isRetriedHold`); startup fails on one that is not.
  */
 import { createHash } from "node:crypto";
 
@@ -37,6 +40,7 @@ import {
   classifyChange,
   EVENTS_ORPHAN_RECOVERY,
   type IngestionPlan,
+  isRetriedHold,
 } from "../src/l1-events/driver.js";
 import { beginDriverRecompute } from "../src/services/follower-write-gate.driver.js";
 import {
@@ -222,6 +226,11 @@ describe("the follower write gate", () => {
 
 describe("the driver's recompute repairs orphans with the rebase", () => {
   const C = "c4".repeat(28);
+  const ANCHOR = {
+    hash: Buffer.alloc(32, 0xa7),
+    height: DRIVER_TEST_SLOT - 1,
+    slot: DRIVER_TEST_SLOT - 1,
+  };
 
   /**
    * The rebase is due (processed foreign block BLOCK waits unapplied on the
@@ -249,7 +258,12 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
             slotToUnixTime: modelSlotTime,
             cutoffMs: modelSlotTime(DRIVER_TEST_SLOT),
           });
+          const sql = yield* SqlClient.SqlClient;
           if (holder === "journal") {
+            // C's commit anchor: a follower block above the deposit's, which
+            // the rewind past the deposit takes with it.
+            yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
+              VALUES (${ANCHOR.slot}, ${ANCHOR.hash}, ${ANCHOR.height}, NULL, 0)`;
             yield* insertOwnJournal({
               headerHash: C,
               baseHeaderHash: BLOCK,
@@ -259,8 +273,8 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
               produced: [],
               txIds: [],
               at: new Date(1_000),
+              anchor: ANCHOR,
             });
-            const sql = yield* SqlClient.SqlClient;
             yield* sql`UPDATE deposits_utxos SET status = 'projected',
               projected_header_hash = ${Buffer.from(C, "hex")}`;
             const payload = Buffer.from("orphan-member");
@@ -281,6 +295,8 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
           }
           view.events = [];
           yield* rewindFollowerKey(deposit);
+          if (holder === "journal")
+            yield* sql`DELETE FROM l1_blocks WHERE slot = ${ANCHOR.slot}`;
         }),
       ),
     );
@@ -334,7 +350,7 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
     expect(after.gate.applied).toMatchObject({ slot: DRIVER_TEST_SLOT });
   });
 
-  it("holds the gate by name while a landed block holds an orphan, and opens it once the admission returns", async () => {
+  it("holds the gate by name while a foreign landed block holds an orphan, and opens it once the admission returns", async () => {
     const { globals, plan, deposit, view, rows } = await arrange("landed");
     let writes = 0;
     const write = Effect.either(
@@ -348,10 +364,15 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
       globals,
       Effect.gen(function* () {
         const recompute = yield* testDriverRecompute({ plan });
-        expect(yield* recompute.run("first view")).toMatchObject({
+        const first = yield* recompute.run("first view");
+        expect(first).toMatchObject({
           published: false,
           hold: { reason: EVENTS_ORPHAN_RECOVERY },
         });
+        // The hold names the header and why the node waits on it.
+        expect(first.hold?.detail).toMatch(
+          new RegExp(`^foreign landed block ${BLOCK} \\(1\\) .*fault-provable`),
+        );
         expect(holdOf(yield* Effect.either(runAtFollowerView(write)))).toBe(
           DRIVER_RECOMPUTE_PENDING,
         );
@@ -423,6 +444,9 @@ describe("the driver's startup preparation", () => {
             detail: expect.stringContaining("the startup preparation failed"),
           },
         });
+        // An unclassified failure: no timer retry, startup fails on it.
+        if (first.kind === "held")
+          expect(isRetriedHold(first.hold)).toBe(false);
         const gate = yield* readFollowerWriteGate;
         expect(gate.pending?.reason).toBe(STARTUP_PREPARATION_FAILED);
         expect(gate.applied).toBeUndefined();
@@ -450,6 +474,38 @@ describe("the driver's startup preparation", () => {
         );
         expect(prepared).toBe(1);
         yield* runAtFollowerView(Effect.void);
+      }).pipe(Effect.provideService(Globals, globals)),
+    );
+  });
+
+  it("is a hold the driver retries on its backoff when the failure is transient", async () => {
+    const globals = await processOf(freshNative());
+    await run(
+      globals,
+      Effect.gen(function* () {
+        yield* resetApplicationTables;
+        const recompute = yield* testDriverRecompute({
+          startupPreparation: Effect.fail(
+            new Error("mutation jobs recovery check", {
+              cause: Object.assign(
+                new Error("connect ECONNREFUSED 127.0.0.1:5433"),
+                { code: "ECONNREFUSED" },
+              ),
+            }),
+          ),
+        });
+        const sink = yield* driverSink(recompute).pipe(
+          Effect.provideService(Lucid, modelSlotLucid),
+        );
+        const plan = yield* writeFollowerView(DRIVER_TEST_SLOT, []);
+        const held = yield* Effect.promise(() =>
+          sink.apply(classifyChange(null, plan.view), plan),
+        );
+        expect(held).toMatchObject({
+          kind: "held",
+          hold: { reason: STARTUP_PREPARATION_FAILED },
+        });
+        if (held.kind === "held") expect(isRetriedHold(held.hold)).toBe(true);
       }).pipe(Effect.provideService(Globals, globals)),
     );
   });

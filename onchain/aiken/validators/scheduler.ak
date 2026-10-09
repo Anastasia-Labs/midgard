@@ -23,10 +23,9 @@ use midgard/scheduler.{
   ActiveOperator, AppointFirstOperator, Deinit, GoToNextDueToEndOfShift,
   GoToNextDueToOperatorRemoval, GoToNextDueToSkippedOperator, Init, MintRedeemer,
   NeglectedDeposit, NeglectedTxOrder, NeglectedUserEvent, NeglectedWithdrawal,
-  NoActiveOperators, NoNeglectedUserEvent, OperatorRemovalReason,
-  OperatorRetirement, OperatorSlashing, RewindDueToEndOfShift,
-  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SchedDatum,
-  SpendRedeemer, asset_name, shift_end_time,
+  NoActiveOperators, OperatorRemovalReason, OperatorRetirement, OperatorSlashing,
+  RewindDueToEndOfShift, RewindDueToOperatorRemoval, RewindDueToSkippedOperator,
+  SchedDatum, SpendRedeemer, asset_name, shift_end_time,
 }
 use midgard/state_queue
 use midgard/user_events
@@ -71,7 +70,7 @@ validator spend(
     own_out_ref: OutputReference,
     self: Transaction,
   ) {
-    let
+    let  
         SpendRedeemer {
           scheduler_input_index,
           scheduler_output_index,
@@ -79,7 +78,7 @@ validator spend(
         }
       = redeemer
 
-    let
+    let  
         Transaction {
           inputs,
           outputs,
@@ -194,7 +193,7 @@ validator spend(
         neglected_user_event,
       } -> {
         // 4c. Input and output datums must both have appointed operators.
-        let
+        let  
             previous_shifts_operator,
             new_shifts_operator,
             previous_shifts_start_time,
@@ -254,7 +253,7 @@ validator spend(
         neglected_user_event,
       } -> {
         // 4d. Input and output datums must both have an appointed operators.
-        let
+        let  
             previous_shifts_operator,
             new_shifts_operator,
             previous_shifts_start_time,
@@ -335,7 +334,7 @@ validator spend(
         removal_reason,
       } -> {
         // 4e. Input and output datums must both have an appointed operators.
-        let
+        let  
             previous_shifts_operator,
             new_shifts_operator,
             _previous_shifts_start_time,
@@ -376,7 +375,7 @@ validator spend(
         registered_element_ref_input_index,
       } -> {
         // 4f. An active operator must be appointed.
-        expect
+        expect  
             ActiveOperator {
               operator: previous_shifts_operator,
               start_time: _previous_shifts_start_time,
@@ -426,7 +425,7 @@ validator spend(
             //      node points to another node as its link.
             expect !last_operator_is_removed
 
-            expect
+            expect  
                 ActiveOperator {
                   operator: new_shifts_operator,
                   start_time: new_shifts_start_time,
@@ -463,7 +462,7 @@ validator spend(
         expect NoActiveOperators = datum
 
         // 5g. An active operator must be appointed at output.
-        expect
+        expect  
             ActiveOperator {
               operator: new_shifts_operator,
               start_time: new_shifts_start_time,
@@ -514,7 +513,7 @@ fn validate_active_datums_and_get_info(
     result,
 ) -> result {
   // 1. An operator must already be appointed active.
-  expect
+  expect  
       ActiveOperator {
         operator: previous_shifts_operator,
         start_time: previous_shifts_start_time,
@@ -522,7 +521,7 @@ fn validate_active_datums_and_get_info(
     = input_datum
 
   // 2. Output datum must specify an appointed operator.
-  expect
+  expect  
       ActiveOperator {
         operator: new_shifts_operator,
         start_time: new_shifts_start_time,
@@ -544,7 +543,7 @@ fn validate_end_of_shift_and_get_operators(
   _extra_signatories: List<VerificationKeyHash>,
 ) -> (VerificationKeyHash, VerificationKeyHash) {
   // 1. Input and output datums must both have an appointed operators.
-  let
+  let  
       previous_shifts_operator,
       new_shifts_operator,
       previous_shifts_start_time,
@@ -596,7 +595,7 @@ fn validate_operator_inactivity_and_get_its_link(
 ) -> linked_list.Link {
   // 1. A matching spending redeemer of the active operators set must exist for
   //    incrementing the strike counter of the inactive operator.
-  expect
+  expect  
       active_operators.StrikeForInactivity {
         operator,
         active_node_link,
@@ -627,7 +626,7 @@ fn validate_operator_inactivity_and_get_its_link(
   // 4. The referred state queue UTxO must be authentic.
   expect
     {
-      let
+      let  
           _state_queue_address,
           _state_queue_lovelace,
           m_header_hash,
@@ -652,70 +651,64 @@ fn validate_operator_inactivity_and_get_its_link(
         }
       }
 
-      // 7. Let `inactivity_threshold` be a point in time that can be attained
-      //    from three values:
-      //    - The active operator's shift start time, plus the
-      //      `new_shift_inactivity_grace_period` protocol parameter.
-      //    - The upper bound of the latest element's event interval in state
-      //      queue, plus the `max_inactivity_between_block_commitments`
-      //      protocol parameter.
-      //    - A given user event's inclusion time, plus the
+      // 7. Let `event_inclusion_time` be the inclusion time of the cited user
+      //    event. Deposits and withdrawals are Order nodes of their
+      //    event-history lists, and each list's policy and address
+      //    authenticate its own nodes; a tx order is authenticated by the
+      //    tx-order policy.
+      let event_inclusion_time = when neglected_user_event is {
+        NeglectedDeposit { deposit_ref_input_index } -> {
+          let order_facts.Facts { inclusion_time, .. } = reference_inputs
+            |> order_facts.referenced(
+                deposit_ref_input_index,
+                hub_datum.deposit,
+                hub_datum.deposit_addr,
+              )
+          inclusion_time
+        }
+        NeglectedWithdrawal { withdrawal_ref_input_index } -> {
+          let order_facts.Facts { inclusion_time, .. } = reference_inputs
+            |> order_facts.referenced(
+                withdrawal_ref_input_index,
+                hub_datum.withdrawal,
+                hub_datum.withdrawal_addr,
+              )
+          inclusion_time
+        }
+        NeglectedTxOrder { tx_order_ref_input_index } -> {
+          let user_events.OptimisticDatum { inclusion_time, .. } = reference_inputs
+            |> tx_order.get_datum(hub_datum.tx_order, tx_order_ref_input_index)
+          inclusion_time
+        }
+      }
+
+      // 8. The event must be undelivered. A block covers the events with
+      //    `start_time < inclusion_time <= end_time`, and each block starts
+      //    where its predecessor (or the confirmed state) ends, so the events
+      //    the state queue and the confirmed state cover are exactly those
+      //    with `inclusion_time <= last_state_queue_elements_end_time`.
+      expect event_inclusion_time > last_state_queue_elements_end_time
+
+      // 9. Let `inactivity_threshold` be the later of:
+      //    - the shift's start time plus the
+      //      `new_shift_inactivity_grace_period` protocol parameter;
+      //    - the event's inclusion time plus the
       //      `user_events_negligence_timeout` protocol parameter.
       let inactivity_threshold = max(
         inactive_operators_shift_start_time + env.new_shift_inactivity_grace_period,
-        when neglected_user_event is {
-          NoNeglectedUserEvent ->
-            last_state_queue_elements_end_time + env.max_inactivity_between_block_commitments
-          // Deposits and withdrawals are Order nodes of their event-history
-          // lists; each list's policy and address authenticate its own nodes.
-          NeglectedDeposit { deposit_ref_input_index } -> {
-            let order_facts.Facts { inclusion_time, .. } = reference_inputs
-              |> order_facts.referenced(
-                  deposit_ref_input_index,
-                  hub_datum.deposit,
-                  hub_datum.deposit_addr,
-                )
-
-            inclusion_time
-              |> inactivity_threshold_from_user_event_inclusion_time(
-                  last_state_queue_elements_end_time,
-                )
-          }
-          NeglectedWithdrawal { withdrawal_ref_input_index } -> {
-            let order_facts.Facts { inclusion_time, .. } = reference_inputs
-              |> order_facts.referenced(
-                  withdrawal_ref_input_index,
-                  hub_datum.withdrawal,
-                  hub_datum.withdrawal_addr,
-                )
-
-            inclusion_time
-              |> inactivity_threshold_from_user_event_inclusion_time(
-                  last_state_queue_elements_end_time,
-                )
-          }
-          NeglectedTxOrder { tx_order_ref_input_index } -> {
-            let user_events.OptimisticDatum { inclusion_time, .. } = reference_inputs
-              |> tx_order.get_datum(
-                  hub_datum.tx_order,
-                  tx_order_ref_input_index,
-                )
-
-            inclusion_time
-              |> inactivity_threshold_from_user_event_inclusion_time(
-                  last_state_queue_elements_end_time,
-                )
-          }
-        },
+        event_inclusion_time + env.user_events_negligence_timeout,
       )
 
+      // 10. The threshold must fall inside the inactive operator's shift, so
+      //     the strike convicts the operator that held the shift when the
+      //     event became overdue.
       expect
         inactivity_threshold < shift_end_time(
           inactive_operators_shift_start_time,
         )
 
-      // 7. The validity range of the transaction must be entirely after
-      //    `inactivity_threshold`.
+      // 11. The validity range of the transaction must be entirely after
+      //     `inactivity_threshold`.
       expect
         validity_range
           |> interval.is_entirely_after(inactivity_threshold)
@@ -726,14 +719,6 @@ fn validate_operator_inactivity_and_get_its_link(
       |> state_queue.finalize_linked_list(hub_datum.state_queue)
 
   active_node_link
-}
-
-fn inactivity_threshold_from_user_event_inclusion_time(
-  inclusion_time: PosixTime,
-  last_state_queue_elements_end_time: PosixTime,
-) -> PosixTime {
-  expect inclusion_time >= last_state_queue_elements_end_time
-  inclusion_time + env.user_events_negligence_timeout
 }
 
 /// Given the index of the input in reference inputs, this function validates
@@ -750,7 +735,7 @@ fn validate_root_is_reached(
     |> list.at(active_operators_root_ref_input_index)
 
   {
-    let
+    let  
         _active_root_address,
         _active_root_lovelace,
         m_active_root_key,
@@ -782,7 +767,7 @@ fn validate_operator_is_the_last_active_node(
     |> list.at(active_operators_last_node_ref_input_index)
 
   {
-    let
+    let  
         _active_node_address,
         _active_node_lovelace,
         m_active_node_key,
@@ -818,7 +803,7 @@ fn validate_new_shifts_node_is_next(
   // matches the new shift's operator, and a link that points to the
   // previous operator.
   {
-    let
+    let  
         _active_node_address,
         _active_node_lovelace,
         m_active_node_key,
@@ -862,7 +847,7 @@ fn validate_active_operator_removal(
 
   when removal_reason is {
     OperatorRetirement -> {
-      expect
+      expect  
           active_operators.RetireOperator {
             active_operator_key,
             operator_removal_scheduler_sync: active_operators.ShowSchedulerIsAdvancing {
@@ -890,7 +875,7 @@ fn validate_active_operator_removal(
       )
     }
     OperatorSlashing -> {
-      expect
+      expect  
           active_operators.SlashOperator {
             slashing_arguments: operator_directory.SlashingArguments {
               slashed_operator,
@@ -933,7 +918,7 @@ fn validate_no_registered_operators_can_activate(
     |> list.at(registered_element_ref_input_index)
 
   {
-    let
+    let  
         _registered_element_address,
         _registered_element_lovelace,
         m_registered_element_key,

@@ -4,16 +4,20 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ForcedTransactionsDB } from "../src/database/index.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import {
   FORCED_ORDER_CARRIAGE_PENDING,
   FORCED_ORDER_INGESTION_FAILED,
 } from "../src/forced-orders/index.js";
 import { STATE_QUEUE_UNHEALTHY } from "../src/l1-state-queue/index.js";
+import { insertRow } from "../src/landed-blocks/store.js";
 import {
   L1_FOLLOWER_NOT_STARTED,
   type L1FollowerState,
 } from "../src/services/l1-follower.readiness.js";
+import { forcedProjectionEntry } from "./helpers/commit-da-frame-forced-projection.js";
+import { landedRow } from "./landed-blocks-rebase.fixture.js";
 import {
   header,
   journalFixture,
@@ -197,6 +201,32 @@ describe("GET /readyz under internal transients", () => {
     expect(signedPastBound.reasons).toEqual([]);
     expect(signedPastBound.status).toBe(200);
   });
+
+  it("reports a landed own block whose forced order left the chain as a degradation and stays ready", async () => {
+    const own = "0d".repeat(28);
+    const response = await readyz({
+      journal: asJournalSetup(
+        Effect.gen(function* () {
+          // The row's order has no follower key: it left the chain.
+          const row = yield* forcedProjectionEntry(3, new Date(3_000));
+          yield* ForcedTransactionsDB.insertEntries([row]);
+          yield* insertRow(
+            landedRow({
+              headerHash: own,
+              kind: "own",
+              forcedIds: [row.tx_order_id],
+            }),
+          );
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE forced_transaction_utxos
+            SET status = 'finalized', projected_header_hash = ${Buffer.from(own, "hex")}`;
+        }),
+      ),
+    });
+    expect(response.details).toEqual(["l1_own_block_forced_order_orphaned:1"]);
+    expect(response.reasons).toEqual([]);
+    expect(response.status).toBe(200);
+  });
 });
 
 describe("GET /readyz names the L1 follower's reasons (N1)", () => {
@@ -319,18 +349,24 @@ describe("GET /readyz names the local node transport's fault", () => {
   });
 
   it.each([
-    "node_unreachable",
-    "sidecar_restarting",
-    "node_handshake_failed",
+    { ready: false, reason: "node_unreachable", detail: "fixture" },
+    { ready: false, reason: "sidecar_restarting", detail: "fixture" },
+    // A refused handshake fails the transport for good; the process stays
+    // up and names it.
+    {
+      ready: false,
+      failed: true,
+      reason: "node_handshake_failed",
+      detail: "fixture",
+    },
   ] as const)(
-    "goes unready on a %s transport while liveness answers and the process stays up",
-    async (reason) => {
+    "goes unready on a $reason transport while liveness answers and the process stays up",
+    async (transport) => {
+      const reason = transport.reason;
       const exit = vi.spyOn(process, "exit").mockImplementation(() => {
         throw new Error("the readiness handler must never exit");
       });
-      const l1Access: L1AccessStub = {
-        transport: { ready: false, reason, detail: "fixture" },
-      };
+      const l1Access: L1AccessStub = { transport };
       const response = await readyz({ l1Access });
       expect(response.status).toBe(503);
       expect(response.ready).toBe(false);

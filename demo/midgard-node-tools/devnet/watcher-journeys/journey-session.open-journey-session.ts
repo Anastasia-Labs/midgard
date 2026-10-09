@@ -16,7 +16,6 @@ import { createPublishedWatcherDeploymentAuthority } from "midgard-watcher/tests
 
 import { sourceFacetPaths } from "../../../../scripts/lib/source-facets.mjs";
 import { writeJourneyArtifact } from "./artifacts.js";
-import { startJourneyHistoryArchives } from "./history-archives.js";
 import {
   ensureJourneyWatcherSecrets,
   journeyWatcherKeySources,
@@ -108,13 +107,6 @@ export const openJourneySession = async (runDirectory: string) => {
       deploymentFingerprint: deployment.manifest.manifestId,
     });
     cleanup.push(retainedDa.close);
-    const archives = await startJourneyHistoryArchives({
-      releaseFinality,
-      runDirectory: context.runDirectory,
-      composeProject: runEnv.MIDGARD_PHASE4_COMPOSE_PROJECT,
-      deploymentFingerprint: deployment.manifest.manifestId,
-    });
-    cleanup.push(archives.close);
     const {
       rollback: rollbackKey,
       prover: proverKey,
@@ -169,8 +161,6 @@ export const openJourneySession = async (runDirectory: string) => {
         directory,
         watcherConfig,
         binaryPath: nativeQuery.binaryPath,
-        onBlock: archives.retainNativeBlock,
-        onRollback: archives.rollbackNativeBlocks,
       }),
     );
     cleanup.push(native.close);
@@ -190,9 +180,8 @@ export const openJourneySession = async (runDirectory: string) => {
       block: { headerHash: string; payloadEnvelopeCbor: Uint8Array },
       txHash: string,
     ) => {
-      const actual = await native.transaction(txHash);
+      await native.transaction(txHash);
       await retainedDa.retain(block);
-      await archives.retain(block, actual.point);
     };
     await stage("independent actor funding", async () => {
       const fundingPath = join(runtimeDirectory, "actor-funding.txt");
@@ -251,7 +240,6 @@ export const openJourneySession = async (runDirectory: string) => {
           manifestPath: authority.manifestPath,
           blueprintPath: authority.blueprintPath,
           deploymentInfoPath: authority.deploymentInfoPath,
-          historicalNativeScriptHistory: archives.configuration,
         },
       };
       const config = parseWatcherProcessConfig(processInput);
@@ -283,7 +271,6 @@ export const openJourneySession = async (runDirectory: string) => {
           configPath,
           nativeQuery.binaryPath,
           process.execPath,
-          archives.caPath,
           rollbackKey.path,
           proverKey.path,
           availabilityKey.path,
@@ -323,8 +310,6 @@ export const openJourneySession = async (runDirectory: string) => {
         command: "start" as const,
         configPath,
         directory,
-        caPath: archives.caPath,
-        transportEnvironment: archives.transportEnvironment,
       };
       let watcher = launchJourneyWatcherProcess(watcherLaunch);
       cleanup.push(() => watcher.close());
@@ -447,7 +432,6 @@ export const openJourneySession = async (runDirectory: string) => {
       releaseFinality,
       watcherConfig,
       readSignedCommitRecovery,
-      archives,
       native,
       retain,
       retainPayload: retainedDa.retain,

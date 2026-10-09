@@ -35,7 +35,13 @@ export const loadLocalAuthorityDeployment = async (
       type: reserveSpend.contract.type,
       script: reserveSpend.contract.cborHex,
     } as SpendingValidator),
-    finalityPolicy: parseReleaseL1FinalityPolicy(manifest.l1Finality),
+    // The release policy carries the manifest's rollback fields only; the
+    // commit-event depth binds event inclusion, not release finality.
+    finalityPolicy: parseReleaseL1FinalityPolicy({
+      confirmationDepth: manifest.l1Finality.confirmationDepth,
+      automaticRecoveryMaxDepth: manifest.l1Finality.automaticRecoveryMaxDepth,
+      deepRollbackPolicy: manifest.l1Finality.deepRollbackPolicy,
+    }),
     economicsPolicy: releaseEconomicsPolicyFromDeploymentManifest(manifest),
   };
 };

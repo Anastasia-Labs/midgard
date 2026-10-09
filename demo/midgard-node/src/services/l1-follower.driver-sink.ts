@@ -3,11 +3,12 @@
  * follower change to the node's event rows under the driver's write
  * capability, or runs the driver's recompute (`l1-follower.recompute.ts`).
  */
-import { Data, Effect, Ref, Runtime } from "effect";
+import { Cause, Data, Effect, Ref, Runtime } from "effect";
 
 import { reconcileFollowerEvents } from "../database/follower-events.js";
 import {
   EVENTS_INGESTION_FAILED,
+  failureHold,
   type FollowerChange,
   type FollowerEventSink,
   type IngestionPlan,
@@ -121,10 +122,11 @@ export const driverSink = (recompute: DriverRecompute) =>
         if (exit._tag === "Failure")
           return {
             kind: "held",
-            hold: {
-              reason: EVENTS_INGESTION_FAILED,
-              detail: String(exit.cause),
-            },
+            hold: failureHold(
+              EVENTS_INGESTION_FAILED,
+              String(exit.cause),
+              Cause.squash(exit.cause),
+            ),
           };
         const result = exit.value;
         if (result._tag === "Right")
@@ -146,7 +148,7 @@ export const driverSink = (recompute: DriverRecompute) =>
         if (refused === undefined)
           return {
             kind: "held",
-            hold: { reason: EVENTS_INGESTION_FAILED, detail: message(error) },
+            hold: failureHold(EVENTS_INGESTION_FAILED, message(error), error),
           };
         // Another node process's driver took the gate (a predecessor or
         // successor on the same database): this driver takes it back.

@@ -64,8 +64,10 @@ export type LandedBlockPorts<R> = Readonly<{
   >;
   /**
    * Runs the working-ledger rebase now (the driver's recompute), unless it
-   * cannot run yet; returns why it did not finish, as its hold. A held or
-   * failed rebase is retried on the driver's backoff.
+   * cannot run yet; returns why it did not finish, as its hold. A rebase
+   * held by a wait or a transient failure is retried on the driver's
+   * backoff; any other failure (`notRetried`) waits for the next follower
+   * change.
    */
   rebase: (
     reason: string,

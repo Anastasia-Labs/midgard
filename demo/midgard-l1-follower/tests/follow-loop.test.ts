@@ -226,10 +226,12 @@ describe("followChain: transient failures and stuck applies", () => {
   ) => {
     const store = openStore();
     let left = times;
+    let attempts = 0;
     const s = script(short);
     try {
-      return await follow({
+      const run = await follow({
         store: failingAt(store, target, () => {
+          attempts += 1;
           if (left <= 0) return null;
           left -= 1;
           return error();
@@ -238,12 +240,13 @@ describe("followChain: transient failures and stuck applies", () => {
         stuckAfter,
         until: appliedAll(s),
       });
+      return { ...run, attempts };
     } finally {
       await store.close();
     }
   };
 
-  it("escalates to l1_follower_apply_stuck after exactly N failures on one point", async () => {
+  it("retries an unknown failure fewer than N times in a row, and stops under l1_follower_apply_stuck at exactly N", async () => {
     const below = await runFailing(2, () => new Error("boom"));
     expect(below.statuses.some((s) => s.stuck !== null)).toBe(false);
     expect(
@@ -251,15 +254,14 @@ describe("followChain: transient failures and stuck applies", () => {
     ).toBeGreaterThan(0);
     expect(below.final.events).toBe(short.length);
 
-    const at = await runFailing(3, () => new Error("boom"));
-    const stuck = at.statuses.filter((s) => s.stuck !== null);
-    expect(stuck.length).toBeGreaterThan(0);
-    expect(stuck[0]!.stuck!.failures).toBe(3);
-    expect(reasons(stuck[0]!)).toContain(FOLLOWER_APPLY_STUCK);
-    expect(reasons(stuck[0]!)).not.toContain(FOLLOWER_WAITING);
-    // The next applied event clears it.
-    expect(at.final.stuck).toBeNull();
-    expect(at.final.events).toBe(short.length);
+    const at = await runFailing(10, () => new Error("boom"));
+    // The third failure stops the loop: no fourth attempt.
+    expect(at.attempts).toBe(3);
+    expect(at.final.state).toBe("intervention");
+    expect(at.final.stuck?.failures).toBe(3);
+    expect(reasons(at.final)).toContain(FOLLOWER_APPLY_STUCK);
+    expect(reasons(at.final)).not.toContain(FOLLOWER_WAITING);
+    expect(at.final.events).toBe(4);
   });
 
   it("never escalates a transient failure, however often it repeats", async () => {
@@ -279,16 +281,17 @@ describe("followChain: transient failures and stuck applies", () => {
     }
   });
 
-  it("escalates a deterministic failure at once", async () => {
-    const run = await runFailing(1, () =>
+  it("stops on a deterministic failure at once, with no retry", async () => {
+    const run = await runFailing(10, () =>
       coded("duplicate key value violates unique constraint", "23505"),
     );
-    const stuck = run.statuses.find((s) => s.stuck !== null);
-    expect(stuck?.stuck?.failures).toBe(1);
-    expect(run.final.stuck).toBeNull();
+    expect(run.attempts).toBe(1);
+    expect(run.final.state).toBe("intervention");
+    expect(run.final.stuck?.failures).toBe(1);
+    expect(reasons(run.final)).toContain(FOLLOWER_APPLY_STUCK);
   });
 
-  it("escalates an undecodable block at once and stays stuck on it", async () => {
+  it("stops on an undecodable block at once", async () => {
     const store = openStore();
     try {
       const broken = {
@@ -296,15 +299,18 @@ describe("followChain: transient failures and stuck applies", () => {
         block: new Uint8Array([0xff, 0x00]),
       } as ChainSyncEvent;
       const s = script([...short.slice(0, 4), broken]);
-      const { statuses } = await follow({
+      const { statuses, final } = await follow({
         store,
         script: s,
-        until: (status) => (status.stuck?.failures ?? 0) >= 3,
+        // The loop returns by itself once it stops.
+        until: () => false,
       });
       const first = statuses.find((status) => status.stuck !== null)!;
       expect(first.stuck!.failures).toBe(1);
       expect(reasons(first)).toContain(FOLLOWER_APPLY_STUCK);
-      expect(first.state).toBe("waiting");
+      expect(first.state).toBe("intervention");
+      expect(final.stuck?.failures).toBe(1);
+      expect(s.opens).toBe(1);
     } finally {
       await store.close();
     }

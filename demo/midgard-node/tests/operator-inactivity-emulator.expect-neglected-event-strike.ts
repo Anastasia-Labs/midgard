@@ -128,14 +128,11 @@ export const expectNeglectedEventStrike = async (
       ? await submitNeglectedDeposit(fixture)
       : await submitNeglectedWithdrawal(fixture);
 
-  // Under every shipped profile a neglected event can never license an
-  // *earlier* strike than the plain commitment gap: on-chain `inclusion_time
-  // >= last_state_queue_elements_end_time` and
-  // `user_events_negligence_timeout (1_200_000) >=
-  // max_inactivity_between_block_commitments (1_200_000)`, so the neglected
-  // term dominates. This event is therefore the binding term.
+  // The event is after the tail's end time, so no committed block covers it,
+  // and its negligence timeout ends after the shift's grace period, so it is
+  // the binding term of the threshold.
   const snapshot = await fetchInactivityDirectorySnapshot(fixture);
-  expect(neglected.inclusionTimeMs).toBeGreaterThanOrEqual(
+  expect(neglected.inclusionTimeMs).toBeGreaterThan(
     snapshot.stateQueueTail.endTime,
   );
   const withEvent = SDK.computeInactivityThreshold({
@@ -143,29 +140,25 @@ export const expectNeglectedEventStrike = async (
     stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
     neglectedEvent: neglected,
   });
-  const withoutEvent = SDK.computeInactivityThreshold({
-    shiftStartMs: appointed.startTime,
-    stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
-  });
-  if (withEvent.kind !== "threshold" || withoutEvent.kind !== "threshold") {
-    throw new Error("Both thresholds should be satisfiable");
+  if (withEvent.kind !== "threshold") {
+    throw new Error("The neglected event's threshold should be satisfiable");
   }
-  expect(withEvent.thresholdMs).toBeGreaterThanOrEqual(
-    withoutEvent.thresholdMs,
-  );
   expect(withEvent.source).toBe("neglected-user-event");
 
   // Too early: dated at the last slot at or before the event's threshold.
-  // That instant is past the plain commitment gap's threshold, the shift's
-  // grace period and the event's own inclusion time, so only the negligence
-  // window added to `inclusion_time` refuses it. This must run before any
-  // step below moves the emulator past the threshold.
+  // That instant is past the shift's grace period and the event's own
+  // inclusion time, so only the negligence window added to `inclusion_time`
+  // refuses it. This must run before any step below moves the emulator past
+  // the threshold.
   const earlyValidFrom = alignedUnixTimeAtOrBefore(
     fixture.lucid,
     withEvent.thresholdMs,
   );
   expect(earlyValidFrom).toBeGreaterThan(neglected.inclusionTimeMs);
-  expect(earlyValidFrom).toBeGreaterThan(withoutEvent.thresholdMs);
+  expect(earlyValidFrom).toBeGreaterThan(
+    appointed.startTime +
+      SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS.newShiftInactivityGracePeriodMs,
+  );
   advanceEmulatorPastUnixTime(fixture.emulator, earlyValidFrom - 3_000n);
   expect(BigInt(fixture.emulator.now())).toBeLessThanOrEqual(
     withEvent.thresholdMs,
@@ -224,7 +217,7 @@ export const expectNeglectedEventStrike = async (
     neglectedEvent: neglected,
   });
   expect(submission.plan.thresholdSource).toBe("neglected-user-event");
-  expect(submission.plan.neglectedEvent?.utxo.txHash).toBe(
+  expect(submission.plan.neglectedEvent.utxo.txHash).toBe(
     neglected.utxo.txHash,
   );
   expect(submission.result.layout.neglectedUserEventRefInputIndex).not.toBe(

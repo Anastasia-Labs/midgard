@@ -48,19 +48,33 @@ The client has these behaviours:
 
 - **Supervision.** The sidecar is restarted with doubling backoff, from
   250 ms up to 30 s. The backoff resets after 30 s of stable running. The
-  supervisor never exits the host process.
-- **Readiness.** `readiness` and `onReadiness` report either
-  `{ready: true, nodeToClientVersion}` or `{ready: false, reason, detail}`.
-  The reason is one of:
+  supervisor never exits the host process. A sidecar that ends with a
+  `fatal` code no restart repairs (`TRANSPORT_FAILED_REASONS`:
+  `node_handshake_failed`, `version_unsupported`, `malformed_frame`,
+  `client_protocol_violation`) is not restarted: the transport is failed
+  until the host restarts it.
+- **Readiness.** `readiness` and `onReadiness` report
+  `{ready: true, nodeToClientVersion}`, `{ready: false, reason, detail}`
+  while the transport is unready and retrying, or
+  `{ready: false, failed: true, reason, detail}` once it has failed. The
+  unready reason is one of:
+
   - `sidecar_starting`
   - `sidecar_restarting`
   - `sidecar_unavailable`
   - `node_unreachable`
-  - `node_handshake_failed`
-  - `node_connection_lost`
+  - `node_connection_lost` (also a connection the node dropped during the
+    handshake)
   - `stopped`
+
+  The failed reason is one of `TRANSPORT_FAILED_REASONS`;
+  `node_handshake_failed` means the node refused the N2C handshake (wrong
+  network magic, no common version, or an undecodable handshake answer).
+
 - **Calls while unready.** A call made while the transport is unready
-  rejects with `TransportUnavailableError(reason)`.
+  rejects with `TransportUnavailableError(reason)`. Once the transport has
+  failed, every call, `whenReady` and every open stream rejects with
+  `TransportFailedError(reason)`.
 - **Timeouts.** The sidecar refuses a ledger-state request or a submission
   that the node has not answered within half of `requestTimeoutMs` with
   `TransportRequestError(node_timeout)`. The sidecar and its streams stay
@@ -69,7 +83,11 @@ The client has these behaviours:
   sidecar, which is then restarted.
 - **Chain-sync streams.** A stream survives sidecar restarts. It reopens
   from its last delivered point (see "Resume") unless it was opened with
-  `resume: false`.
+  `resume: false`. It reopens after a stream failure only when the failure
+  is transient (`STREAM_REOPEN_CODES`: `node_connection_lost`,
+  `node_unavailable`, `busy`). Any other `cs_failed` code or refused
+  reopen ends the stream with `TransportRequestError(code)`, since a
+  reopen would meet the same block or request.
 - **Credit.** Credit is either a fixed window or an adaptive
   `CreditPolicy`. The adaptive policy uses `catchUpWindow` while the
   stream is more than `catchUpDistance` blocks behind the tip, and
@@ -125,7 +143,10 @@ The first client frame must be `hello`:
 submission (see "Request deadline").
 
 The sidecar dials the node and runs the N2C handshake. On success it
-answers `{type: "hello_ok", version: 1, nodeToClientVersion: uint}`.
+answers `{type: "hello_ok", version: 1, nodeToClientVersion: uint}`. A
+handshake the node refuses ends the session with `fatal
+node_handshake_failed`; a connection the node drops during the handshake
+ends it with `fatal node_connection_lost`. Both exit with status 69.
 
 `midgard-l1-node-transport --protocol-version` prints the frame protocol
 version (`1`) and exits.
@@ -361,9 +382,9 @@ ack outside the delivered range, or a payload on a frame that takes none.
 
 ### Exit status
 
-| status | meaning                                                                       |
-| ------ | ----------------------------------------------------------------------------- |
-| 0      | orderly: stdin closed, or SIGINT/SIGTERM                                      |
-| 1      | fatal after the handshake                                                     |
-| 64     | client misuse: malformed frame, bad hello, unsupported version, bad arguments |
-| 69     | the node was unreachable or refused the N2C handshake                         |
+| status | meaning                                                                        |
+| ------ | ------------------------------------------------------------------------------ |
+| 0      | orderly: stdin closed, or SIGINT/SIGTERM                                       |
+| 1      | fatal after the handshake                                                      |
+| 64     | client misuse: malformed frame, bad hello, unsupported version, bad arguments  |
+| 69     | the node was unreachable, dropped the connection, or refused the N2C handshake |

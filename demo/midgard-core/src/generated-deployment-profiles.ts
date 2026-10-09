@@ -4,15 +4,18 @@ export const DEPLOYMENT_PROFILES = {
     network: "Mainnet",
     l1_finality: {
       confirmation_depth: 30,
+      commit_event_depth: 2160,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 604800000,
       dispute_response_window_ms: 300000,
       operator_shift_ms: 3600000,
       registration_ms: 30,
-      event_wait_ms: 129600000,
+      event_wait_ms: 130080000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 3600000,
@@ -48,6 +51,10 @@ export const DEPLOYMENT_PROFILES = {
     network: "Preprod",
     l1_finality: {
       confirmation_depth: 30,
+      commit_event_depth: 22,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 604800000,
@@ -56,7 +63,6 @@ export const DEPLOYMENT_PROFILES = {
       registration_ms: 30,
       event_wait_ms: 1800000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 3600000,
@@ -92,6 +98,10 @@ export const DEPLOYMENT_PROFILES = {
     network: "Preprod",
     l1_finality: {
       confirmation_depth: 10,
+      commit_event_depth: 3,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 900000,
@@ -100,7 +110,6 @@ export const DEPLOYMENT_PROFILES = {
       registration_ms: 30000,
       event_wait_ms: 300000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
@@ -136,6 +145,10 @@ export const DEPLOYMENT_PROFILES = {
     network: "Custom",
     l1_finality: {
       confirmation_depth: 10,
+      commit_event_depth: 3,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 900000,
@@ -144,7 +157,6 @@ export const DEPLOYMENT_PROFILES = {
       registration_ms: 30000,
       event_wait_ms: 300000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
@@ -180,6 +192,10 @@ export const DEPLOYMENT_PROFILES = {
     network: "Preprod",
     l1_finality: {
       confirmation_depth: 3,
+      commit_event_depth: 8,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 14400000,
@@ -188,7 +204,6 @@ export const DEPLOYMENT_PROFILES = {
       registration_ms: 30000,
       event_wait_ms: 600000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
@@ -222,15 +237,15 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "49eff45a76fa11fdc52b04eb32ba39176137b33bf2ca5666ae0d3f7a7b60f11d",
+  mainnet: "a489260b206d26cafa4cb4d6967af53078ab94e1de80095e154d23e572f2fa17",
   "preprod-public":
-    "b2660905760a27e23fdcccc7adb25a7991a1cf16caa806283fa29621622b3ea2",
+    "9bd1c1354b105ea5f01d4741abe62db7ab0d92406a0dfad4659f5da90181dad9",
   "preprod-testing":
-    "8290001b338095102b661d18b6ff56cd400662be81e69c8914c2c953e5a7f86b",
+    "bfa462a7d3218f0d626e57147653875e6914cec89e966d021e36834f098c7a4e",
   "local-devnet-testing":
-    "b0d358480e8fd36680bae8d24cbc9746409344f20eeb0adea5dfe4f31995d786",
+    "8041e1c72ab06af802564b16207ecf5d8849bd7fe95a47b1c995a258a88c1f0b",
   "preprod-emulator-testing":
-    "482c50df9e885112e61c445def8f410db4770ea7683fcea86353b067182a50f3",
+    "d6401886f7b151be49d3ed7d9a32c7fba356a5c15f62662a52fd9654ffc54943",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
@@ -251,6 +266,9 @@ export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
     proverCollateralFloorLovelace: 5000000,
   },
 } as const;
+
+/** The least span from planning a commit to its TTL (`deployment-profiles.mjs`). */
+export const COMMIT_TTL_FUTURE_BUFFER_MS = 30000;
 
 export const SELECTED_DEPLOYMENT_PROFILE =
   DEPLOYMENT_PROFILES["preprod-testing"];

@@ -227,10 +227,6 @@ export const workflowAdapterRegistrationRows = [
     requiredClosure:
       "install and exercise the manifest-bound missing-signature runner in a compiled application with the concrete public retained-DA libp2p runtime loader",
   },
-  manual("missingNativeScriptTx", [
-    "missing-native-script-tx/prepare.ts",
-    "missing-native-script-tx/submit-missing-native-script-tx-step-01.ts..step-06.ts",
-  ]),
   {
     category: "withdrawnReferenceInput",
     status: "missing",
@@ -435,10 +431,6 @@ export const workflowAdapterRegistrationRows = [
     requiredClosure:
       "install the manifest-bound runner in a compiled application with a concrete public retained-DA libp2p transport/runtime-config loader; the fault-proofs package has no libp2p runtime dependency and cannot honestly self-register it",
   },
-  manual("missingNativeScriptUtxo", [
-    "missing-native-script-utxo/prepare.ts",
-    "missing-native-script-utxo/submit-missing-native-script-utxo-step-01.ts..step-05.ts",
-  ]),
   manual("nativeScriptInvalid", [
     "native-script-invalid/prepare.ts",
     "native-script-invalid/submit-native-script-invalid-step-01.ts..step-03.ts",
@@ -646,7 +638,7 @@ export const workflowAdapterRegistrationRows = [
       "execution-native-script-invalid transaction-driving 13-script production runner surface is centrally installed",
     ],
     requiredClosure:
-      "retain the manifest-bound 13-script runner in the compiled watcher application with authenticated retained DA and historical L1 state",
+      "retain the manifest-bound 13-script runner in the compiled watcher application with authenticated retained DA and the admitted predecessor",
   },
   {
     category: "scriptIntegrityHashMismatch",

@@ -48,36 +48,40 @@ jobs:
             if [ "${#matches[@]}" -eq 0 ]; then status=1; fi
           done
           exit "$status"
+      # Every step below names a preflight check (scripts/preflight/registry.mjs)
+      # instead of restating its command, so CI runs exactly what the local
+      # gate runs and the two cannot drift. A check that cannot run here (a
+      # missing capability) exits 3 and fails its step.
       - name: Run the repository tool tests
         if: ${{ !cancelled() }}
-        run: node --test "scripts/**/*.test.mjs" "onchain/aiken/scripts/*.test.mjs" "demo/scripts/lib/*.test.mjs"
-      - name: Check deployment profiles and interactive emulator cache
-        if: ${{ !cancelled() }}
-        run: node --test demo/scripts/deployment-profiles.test.mjs demo/scripts/interactive-emulator.test.mjs
+        run: node scripts/preflight.mjs --run repo-tooling-tests --run aiken-script-tests --run demo-script-tests
       - name: Validate the e2e acceptance runbook
         if: ${{ !cancelled() }}
-        run: node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs
+        run: node scripts/preflight.mjs --run e2e-runbook
       - name: Lint the workflows
         if: ${{ !cancelled() }}
-        run: node scripts/ci/lint-workflows.mjs
+        run: node scripts/preflight.mjs --run workflow-lint
       - name: Check the generated required-checks list
         if: ${{ !cancelled() }}
-        run: node scripts/preflight.mjs --check-docs
+        run: node scripts/preflight.mjs --run required-checks-doc
+      - name: Check registries name only existing files
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run registry-paths
       - name: Check deterministic contributor build guards
         if: ${{ !cancelled() }}
-        run: node scripts/contrib/enroll-builds.mjs
+        run: node scripts/preflight.mjs --run contributor-build-guards
       - name: Exercise contributor guard causal controls
         if: ${{ !cancelled() }}
-        run: node scripts/contrib/review-controls.mjs
+        run: node scripts/preflight.mjs --run contributor-causal-controls
       - name: Check agent documentation links
         if: ${{ !cancelled() }}
-        run: node scripts/agents/check-doc-links.mjs
+        run: node scripts/preflight.mjs --run agent-doc-links
       - name: Check agent rule enforcement tags
         if: ${{ !cancelled() }}
-        run: node scripts/agents/check-enforcement-tags.mjs
+        run: node scripts/preflight.mjs --run agent-enforcement-tags
       - name: Check shared agent configuration
         if: ${{ !cancelled() }}
-        run: node scripts/agents/check-agent-config.mjs
+        run: node scripts/preflight.mjs --run agent-config
       - name: Record actual repository validator checkout and Node profile
         run: node scripts/preflight/ci-evidence.mjs --identity > "$RUNNER_TEMP/identity.json"
       - name: Retain repository validator identity

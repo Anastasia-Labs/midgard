@@ -4,29 +4,35 @@ import { Duration, Effect } from "effect";
 import { startDaLibp2pRetainedPayloadServerFromEnv } from "../da/libp2p-producer.js";
 import { DaPayloadsDB } from "../database/index.js";
 import { isRetryableProviderError } from "../provider-retry.js";
-import { retryStartupStep } from "../services/startup-waiting.js";
+import {
+  retryStartupStep,
+  type StartupStepFailedError,
+} from "../services/startup-waiting.js";
 
 export const logStartupFailure = (message: string) => (error: unknown) =>
   Effect.logError(`${message}: ${formatUnknownError(error)}`);
 
 /**
  * Runs a provider-backed startup step, waiting out a retryable provider
- * failure (`isRetryableProviderError`) every `retryDelayMs` with no deadline
- * under the named reason; any other failure fails at once.
+ * failure (`isRetryableProviderError`) every `retryDelayMs` for at most
+ * `maxAttempts` attempts under the named reason. Any other failure, or the
+ * last attempt's, fails the step (`StartupStepFailedError`).
  */
 export const runStartupProviderStepWithRetry = <A, E, R>(
   key: string,
   step: Effect.Effect<A, E, R>,
   options: Readonly<{
+    maxAttempts: number;
     retryDelayMs: number;
     reason: string | ((error: E) => string);
   }>,
-): Effect.Effect<A, E, R> => {
+): Effect.Effect<A, StartupStepFailedError, R> => {
   const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
   return retryStartupStep(step, {
     key,
     reason: options.reason,
     retryable: isRetryableProviderError,
+    budget: { maxAttempts: options.maxAttempts },
     initialMs: retryDelayMs,
     maxMs: retryDelayMs,
   });

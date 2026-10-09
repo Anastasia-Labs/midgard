@@ -30,7 +30,8 @@ export type CommitteeStoreOpenChecks = Readonly<{
 /**
  * A stored retirement floor bound to anything but this member's current
  * binding, beyond its L1 source-authority digest. The open throws it, so the
- * startup retry reports it on `/readyz` with the process up.
+ * startup fails on it at once (`committee_startup_failed`) and the process
+ * holds, unready, until it is restarted.
  */
 export const COMMITTEE_RETIREMENT_BINDING_CHANGED =
   "committee_retirement_binding_changed";
@@ -39,8 +40,8 @@ export const COMMITTEE_RETIREMENT_BINDING_CHANGED =
  * A stored record names an L1 point older than the configured `L1_ORIGIN`.
  * The follower's origin is the deployment's init point, so no committee
  * record can predate it: the configuration is wrong. The open throws it, so
- * the startup retry holds the node unready under it, the process up, until
- * a restart on the corrected `L1_ORIGIN`.
+ * the startup fails on it at once (`committee_startup_failed`) and the
+ * process holds, unready, until it is restarted on the corrected `L1_ORIGIN`.
  */
 export const COMMITTEE_STORE_POINT_BEFORE_L1_ORIGIN =
   "committee_store_point_before_l1_origin";

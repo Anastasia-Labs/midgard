@@ -11,7 +11,10 @@ import { generatePrivateKey } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";
-import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
+import {
+  createWatcherRuntime,
+  WatcherStartupHeldError,
+} from "../../src/runtime/watcher-runtime.js";
 import { writeWatcherRuntimeProcessConfig } from "../support/watcher-runtime-process-config.js";
 
 /** The node: down for every read until the test brings it up. */
@@ -219,14 +222,33 @@ describe("watcher startup readiness", () => {
       node.readinessDown = false;
     }
 
-    // A failure that is not an L1 transient ends startup, and the server
-    // bound for it closes with the rest.
+    // A failure that is not an L1 transient, and not one a restart may
+    // clear, holds: the server stays up naming `startup_failed`.
     node.queriesDown = false;
     await starting;
-    expect(settled).toBeInstanceOf(Error);
-    expect((settled as Error).message).toBe(
+    expect(settled).toBeInstanceOf(WatcherStartupHeldError);
+    expect(((settled as Error).cause as Error).message).toBe(
       "protocol parameters are malformed",
     );
+    expect(await probe(config, "/readyz")).toEqual({
+      status: 503,
+      body: {
+        ready: false,
+        reasons: ["startup_failed"],
+        l1: [],
+        startup: {
+          stage: "protocol_parameters",
+          outcome: "failed",
+          error: "protocol parameters are malformed",
+        },
+      },
+    });
+    expect(await probe(config, "/v1/status")).toMatchObject({
+      status: 200,
+      body: { liveness: "live", readinessReasons: ["startup_failed"] },
+    });
+    expect(exit).not.toHaveBeenCalled();
+    await (settled as WatcherStartupHeldError).release();
     expect(await probe(config, "/readyz")).toBeUndefined();
   }, 60_000);
 });

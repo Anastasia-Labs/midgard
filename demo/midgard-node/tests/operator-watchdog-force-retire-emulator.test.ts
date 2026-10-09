@@ -156,7 +156,7 @@ const nodeHarness = (fixture: Fixture) => {
 };
 
 describe("operator watchdog forced retirement from the operator set", () => {
-  it("force-retires a capped operator with the anchor read by asset name, refuses without one or on a stale set, and the retired operator reads operator_removed", async () => {
+  it("force-retires a capped operator on an idle network with the anchor read by asset name, refuses without one or on a stale set, and the retired operator reads operator_removed", async () => {
     const fixture = await initOperatorInactivityFixture(2);
     const appointed = await appointFirstSchedulerOperator(fixture);
     const target = appointed.operatorKeyHash;
@@ -177,7 +177,7 @@ describe("operator watchdog forced retirement from the operator set", () => {
     expect(exhausted.plan.currentOperator).toBe(target);
     advanceEmulatorPastUnixTime(
       fixture.emulator,
-      exhausted.plan.thresholdMs + BigInt(PATIENCE_MS) + 1n,
+      exhausted.plan.shiftStartMs + BigInt(PATIENCE_MS) + 1n,
     );
 
     const { runAs, publishSetAs, retiredKeys, dueReasons } =
@@ -205,8 +205,13 @@ describe("operator watchdog forced retirement from the operator set", () => {
         const withoutAnchor = readOperatorWatchdogRecord();
         const retiredWithoutAnchor = yield* Effect.promise(retiredKeys);
 
-        // Honest: the anchor read by asset name.
-        yield* Ref.set(globals.OPERATOR_SET, published);
+        // Honest, on a network with nothing undelivered: forced retirement
+        // asks only for the strike cap, so the watchdog retires the operator
+        // with no event to cite, the anchor read by asset name.
+        yield* Ref.set(globals.OPERATOR_SET, {
+          ...published,
+          neglectedUserEvent: () => Promise.resolve(null),
+        });
         yield* operatorWatchdogTick;
         const honest = readOperatorWatchdogRecord();
         const retiredAfter = yield* Effect.promise(retiredKeys);
@@ -328,7 +333,7 @@ describe("operator watchdog forced retirement from the operator set", () => {
     expect(exhausted.plan.currentOperator).toBe(target);
     advanceEmulatorPastUnixTime(
       fixture.emulator,
-      exhausted.plan.thresholdMs + BigInt(PATIENCE_MS) + 1n,
+      exhausted.plan.shiftStartMs + BigInt(PATIENCE_MS) + 1n,
     );
 
     // Negative, past the node's own guard: the honest witnesses with the

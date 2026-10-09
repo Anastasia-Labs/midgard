@@ -36,6 +36,7 @@ import {
   appointFirstSchedulerOperator,
   fetchSchedulerDatum,
   initOperatorInactivityFixture,
+  submitNeglectedDeposit,
 } from "./helpers/operator-inactivity.js";
 import { resetApplicationTables } from "./utils.js";
 
@@ -46,6 +47,8 @@ describe("operator watchdog wallet selection", () => {
     const successor = fixture.operators.find(
       ({ keyHash }) => keyHash !== appointed.operatorKeyHash,
     )!;
+    // The shift owes a deposit: the evidence every strike cites.
+    await submitNeglectedDeposit(fixture);
     const early = await runWithoutFollower(
       planTakeoverProgram(fixture.lucid, fixture.contracts),
     );

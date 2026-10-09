@@ -6,6 +6,10 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import {
+  type CompleteCanonicalReplayContext,
+  completeCanonicalReplayPredecessorEvidence,
+} from "../workflow/complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
   type FamilyAssemblyContext,
@@ -13,11 +17,6 @@ import {
 } from "../workflow/family-definition.js";
 import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import type {
-  HistoricalNativeScriptCheckpointStore,
-  HistoricalNativeScriptHistorySource,
-} from "../workflow/historical-native-script-corpus.js";
-import { resolveHistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { type ExecutionNativeScriptInvalidContracts } from "./contracts.js";
 import { detectExecutionNativeScriptInvalidCanonicalViolations } from "./replay.js";
@@ -41,11 +40,17 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_CONFIG_KEYS = Object.freeze([
   "lucid",
   "signer",
   "l1Source",
-  "historicalNativeScriptCheckpointStore",
-  "historicalNativeScriptHistorySource",
   "stateQueueMutationLeaseCoordinator",
   "referenceScripts",
 ] as const);
+
+/**
+ * The classifier-admitted replay context carrying the authenticated
+ * predecessor. Optional only so a reconciliation-only resume, which never
+ * replays, still binds.
+ */
+export const EXECUTION_NATIVE_SCRIPT_INVALID_OPTIONAL_CONFIG_KEYS =
+  Object.freeze(["replayContext"] as const);
 
 export const EXECUTION_NATIVE_SCRIPT_INVALID_STEP_DATUM_SCHEMAS = Object.freeze(
   [
@@ -104,8 +109,7 @@ export type ManifestBoundExecutionNativeScriptInvalidWorkflowConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   l1Source: FraudProofL1Source;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+  replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   referenceScripts: ExecutionNativeScriptInvalidWorkflowReferenceScripts;
 }>;
@@ -116,8 +120,7 @@ export type ManifestBoundExecutionNativeScriptInvalidWorkflow = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   l1Source: FraudProofL1Source;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+  replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   contracts: ExecutionNativeScriptInvalidContracts;
   references: ExecutionNativeScriptInvalidWorkflowReferenceScripts;
@@ -197,22 +200,19 @@ export const prepareManifestBoundExecutionNativeScriptInvalidReplay =
       }),
       sources,
     });
-    const corpus = await resolveHistoricalNativeScriptCorpus({
-      deploymentFingerprint: workflow.binding.deploymentFingerprint,
-      checkpointStore: workflow.historicalNativeScriptCheckpointStore,
-      historySource: workflow.historicalNativeScriptHistorySource,
-      currentEvidence: block,
-      sources,
+    const predecessor = completeCanonicalReplayPredecessorEvidence({
+      evidence: block,
+      context: workflow.replayContext,
     });
     const detections = detectExecutionNativeScriptInvalidCanonicalViolations({
       block,
-      corpus,
+      predecessor,
     });
     if (detections.length !== 1)
       throw new Error(
         `executionNativeScriptInvalid replay yielded ${detections.length.toString()} exact findings`,
       );
-    return Object.freeze({ block, corpus, detection: detections[0]! });
+    return Object.freeze({ block, predecessor, detection: detections[0]! });
   };
 
 export type PreparedExecutionNativeScriptInvalid = Awaited<

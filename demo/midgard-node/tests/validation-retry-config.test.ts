@@ -1,6 +1,7 @@
 import "./utils.js";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -144,68 +145,18 @@ describe("CEK program material store configuration", () => {
   });
 });
 
-describe("history commit horizon lag configuration", () => {
+describe("commit-event depth configuration", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it("defaults to no lag, so the commit end time is unchanged", async () => {
+  it("is the deployment profile's commit-event depth, which no environment variable overrides", async () => {
+    const depth = DEPLOYMENT_MANIFEST_L1_FINALITY.commitEventDepth;
+    expect(Number.isSafeInteger(depth) && depth >= 0).toBe(true);
+    vi.stubEnv("COMMIT_EVENT_DEPTH", String(depth + 1));
+    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", String(depth + 1));
     await expect(loadNodeConfig()).resolves.toMatchObject({
-      HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
+      COMMIT_EVENT_DEPTH: depth,
     });
-  });
-
-  it("accepts a block count", async () => {
-    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", "3");
-    await expect(loadNodeConfig()).resolves.toMatchObject({
-      HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 3,
-    });
-  });
-
-  it.each(["-1", "1.5"])("rejects a lag of %s blocks", async (lag) => {
-    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", lag);
-    await expect(loadNodeConfig()).rejects.toThrow(
-      "HISTORY_COMMIT_HORIZON_LAG_BLOCKS must be a non-negative safe integer",
-    );
-  });
-
-  it("accepts a lag of exactly the rollback depth k the follower retains", async () => {
-    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", "2160");
-    await expect(loadNodeConfig()).resolves.toMatchObject({
-      HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 2160,
-    });
-  });
-
-  it("refuses a lag deeper than the rollback depth k, whose block the follower prunes", async () => {
-    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", "2161");
-    await expect(loadNodeConfig()).rejects.toThrow(
-      "HISTORY_COMMIT_HORIZON_LAG_BLOCKS must be at most the deployment profile's rollback depth k = 2160",
-    );
-  });
-});
-
-describe("L1 node-behind bound configuration", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("defaults to the follower's five-minute bound", async () => {
-    await expect(loadNodeConfig()).resolves.toMatchObject({
-      L1_NODE_BEHIND_MAX_MS: 300_000,
-    });
-  });
-
-  it("accepts an operator override", async () => {
-    vi.stubEnv("L1_NODE_BEHIND_MAX_MS", "600000");
-    await expect(loadNodeConfig()).resolves.toMatchObject({
-      L1_NODE_BEHIND_MAX_MS: 600_000,
-    });
-  });
-
-  it.each(["0", "-1", "1.5"])("rejects a bound of %s ms", async (bound) => {
-    vi.stubEnv("L1_NODE_BEHIND_MAX_MS", bound);
-    await expect(loadNodeConfig()).rejects.toThrow(
-      "L1_NODE_BEHIND_MAX_MS must be a positive safe integer",
-    );
   });
 });
