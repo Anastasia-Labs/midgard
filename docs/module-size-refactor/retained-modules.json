@@ -202,7 +202,7 @@
     },
     {
       "file": "demo/midgard-core/tests/deployment-manifest-identity.deployment-manifest-v1-shared-identity.ts",
-      "lines": 811,
+      "lines": 809,
       "reason": "Retained test registration “DeploymentManifestV1 shared identity” (778 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
@@ -832,7 +832,7 @@
     },
     {
       "file": "demo/midgard-fault-proofs/tests/transition-trace-l1-evidence.test.ts",
-      "lines": 1422,
+      "lines": 1417,
       "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
@@ -1162,8 +1162,8 @@
     },
     {
       "file": "demo/midgard-node/src/services/config.make-config.ts",
-      "lines": 1038,
-      "reason": "makeConfig is the dominant indivisible declaration (1077 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "lines": 1032,
+      "reason": "makeConfig is the dominant indivisible declaration (1077 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DEPTH (-1): the commit-event depth d is read from the deployment manifest, whose profile build refuses a d that could cause a strike.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
@@ -1192,14 +1192,14 @@
     },
     {
       "file": "demo/midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
-      "lines": 560,
+      "lines": 566,
       "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
       "file": "demo/midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-      "lines": 905,
-      "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage.",
+      "lines": 907,
+      "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage. DEPTH (+2): the commit anchor d below the permit's view replaces the horizon lag and is passed to both submissions.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
@@ -1294,8 +1294,8 @@
     },
     {
       "file": "demo/midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
-      "lines": 509,
-      "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
+      "lines": 513,
+      "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. DEPTH (+4): the commit-anchor horizon mock returns the anchor with the uncapped end time.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
@@ -1468,8 +1468,8 @@
     },
     {
       "file": "demo/midgard-node/tests/production-lifecycle-streaming-emulator.test.ts",
-      "lines": 948,
-      "reason": "Retained test registration “streams public raw events through production reconciliation, native commitment, refund, payout and reclaim” (939 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
+      "lines": 952,
+      "reason": "Retained test registration “streams public raw events through production reconciliation, native commitment, refund, payout and reclaim” (939 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DEPTH (+4): the future-event commit point waits until the commit anchor, d blocks below the tip, is past the event's validity bound.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
@@ -1798,7 +1798,7 @@
     },
     {
       "file": "demo/midgard-watcher/tests/runtime/deployment-identity.test.ts",
-      "lines": 796,
+      "lines": 794,
       "reason": "Retained test registration “watcher deployment identity” (749 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
@@ -1840,13 +1840,13 @@
     },
     {
       "file": "demo/scripts/deployment-profiles.mjs",
-      "lines": 525,
-      "reason": "validateProfile is the dominant indivisible declaration (206 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
+      "lines": 657,
+      "reason": "validateProfile is the dominant indivisible declaration (262 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
       "file": "demo/scripts/deployment-profiles.test.mjs",
-      "lines": 620,
+      "lines": 837,
       "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },

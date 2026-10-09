@@ -77,12 +77,16 @@ vi.mock("../src/database/index.js", async () => {
   };
 });
 
-// The follower-change driver has ingested past any planned end time.
-vi.mock("../src/database/follower-events.js", async (importOriginal) => ({
+// The commit anchor caps no planned end time.
+vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
   ...(await importOriginal<
-    typeof import("../src/database/follower-events.js")
+    typeof import("../src/services/history-commit-window.js")
   >()),
-  followerEligibilityHorizon: Effect.succeed(Number.MAX_SAFE_INTEGER),
+  commitEventHorizon: () =>
+    Effect.succeed({
+      horizonMs: Number.MAX_SAFE_INTEGER,
+      anchor: { hash: Buffer.alloc(32), height: 0, slot: 0 },
+    }),
 }));
 vi.mock("../src/forced-orders/horizon.js", () => ({
   forcedOrderHorizon: Effect.succeed(null),
@@ -413,8 +417,8 @@ const processedMempoolTxs = [
   },
 ] as never;
 
-/** The final recheck reads the horizon lag; d = 0 reads nothing more. */
-const unlaggedConfig = { HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0 } as never;
+/** The final recheck reads the commit-event depth (a fixture has no permit). */
+const depthConfig = { COMMIT_EVENT_DEPTH: 0 } as never;
 
 const runDepositOnlyCommit = () =>
   Effect.runPromise(
@@ -426,7 +430,7 @@ const runDepositOnlyCommit = () =>
       ),
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
-      Effect.provideService(NodeConfig, unlaggedConfig),
+      Effect.provideService(NodeConfig, depthConfig),
       Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,
@@ -445,7 +449,7 @@ const runTxBackedCommit = () =>
       } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
-      Effect.provideService(NodeConfig, unlaggedConfig),
+      Effect.provideService(NodeConfig, depthConfig),
       Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,

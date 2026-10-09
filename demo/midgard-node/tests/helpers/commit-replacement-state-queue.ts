@@ -213,7 +213,7 @@ export const openNodeServices = async (life: Lifecycle) => {
               operatorSet: null,
               slotToPosixMs: (slot) =>
                 fixture.operatorLucid.slotToUnixTime(slot),
-              horizonLagBlocks: 0,
+              commitEventDepth: 0,
             }),
             submit: (intent) => {
               sent.push(intent.txHash.toString("hex"));

@@ -18,7 +18,7 @@ export const nodeConfig = {
   MIN_FEE_A: 0n,
   MIN_FEE_B: 0n,
   VALIDATION_G4_BUCKET_CONCURRENCY: 1,
-  HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
+  COMMIT_EVENT_DEPTH: 0,
 } as never;
 export const deploymentIdentity = ContractDeploymentIdentity.make({
   kind: "derived",

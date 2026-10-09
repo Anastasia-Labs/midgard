@@ -30,6 +30,7 @@ export type MergeReadinessStatus =
   | "skipped_pending_local_work"
   | "skipped_oldest_block_unattested"
   | "skipped_oldest_block_proven_fraud"
+  | "skipped_oldest_block_event_orphaned"
   | "skipped_oldest_block_not_mature"
   | "skipped_oldest_block_local_ledger_not_ready"
   | "skipped_merge_candidate_changed";
@@ -51,6 +52,7 @@ export type MergePreflightDecision = {
     MergeReadinessStatus,
     | "skipped_oldest_block_unattested"
     | "skipped_oldest_block_proven_fraud"
+    | "skipped_oldest_block_event_orphaned"
     | "skipped_oldest_block_not_mature"
     | "skipped_merge_candidate_changed"
   >;
@@ -338,6 +340,11 @@ export type OldestQueuedBlockReadinessInput = {
   readonly headerHash: string;
   readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
   readonly provenFraud: string | null;
+  /**
+   * Set when the block is a poisoned own header
+   * (`database/poisoned-own-headers.ts`): it names the hold.
+   */
+  readonly eventOrphaned?: string;
   readonly readyAfterUnixTime: number;
   readonly nowUnixTime: number;
 };
@@ -354,6 +361,7 @@ export type OldestQueuedBlockReadiness =
       readonly status:
         | "skipped_oldest_block_unattested"
         | "skipped_oldest_block_proven_fraud"
+        | "skipped_oldest_block_event_orphaned"
         | "skipped_oldest_block_not_mature";
       readonly headerHash: string;
       readonly reason: string;
@@ -402,6 +410,17 @@ export const classifyOldestQueuedBlockReadiness = (
       status: "skipped_oldest_block_proven_fraud",
       headerHash: input.headerHash,
       reason: `header=${input.headerHash},proof=${input.provenFraud},state_correction_required=true`,
+      readyAfterUnixTime: input.readyAfterUnixTime,
+      nowUnixTime: input.nowUnixTime,
+    };
+  }
+  // A landed own block whose event left the chain, or one built on it, is
+  // not merged until it leaves the landed queue; older blocks still merge.
+  if (input.eventOrphaned !== undefined) {
+    return {
+      status: "skipped_oldest_block_event_orphaned",
+      headerHash: input.headerHash,
+      reason: `header=${input.headerHash},${input.eventOrphaned}`,
       readyAfterUnixTime: input.readyAfterUnixTime,
       nowUnixTime: input.nowUnixTime,
     };

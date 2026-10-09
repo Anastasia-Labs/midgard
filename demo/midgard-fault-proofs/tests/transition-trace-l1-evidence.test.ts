@@ -1,4 +1,3 @@
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -34,6 +33,7 @@ import {
 import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  RELEASE_L1_FINALITY_POLICY,
 } from "../src/workflow/release-finality-policy.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
@@ -82,7 +82,7 @@ const captureInput = (snapshot: FraudProofRawL1Snapshot) => {
       deploymentIdentityDigest: snapshot.deploymentIdentityDigest,
       blueprintHash: snapshot.blueprintHash,
       policyDigest: snapshot.finalityPolicyDigest,
-      policy: { ...DEPLOYMENT_MANIFEST_L1_FINALITY },
+      policy: { ...RELEASE_L1_FINALITY_POLICY },
     },
     resolvedContracts: {
       contracts: {
@@ -401,8 +401,7 @@ describe("transition trace immutable L1 evidence", () => {
       observation,
       payloadEnvelopeCbor: retained.block.payloadEnvelopeCbor,
       daProvenance,
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const first = await capture(seed);
     const later = await capture(withLaterEvent(advance(seed)));
@@ -442,7 +441,7 @@ describe("transition trace immutable L1 evidence", () => {
               deploymentIdentityDigest: seed.deploymentIdentityDigest,
               blueprintHash: seed.blueprintHash,
               policyDigest: seed.finalityPolicyDigest,
-              policy: { ...DEPLOYMENT_MANIFEST_L1_FINALITY },
+              policy: { ...RELEASE_L1_FINALITY_POLICY },
             }),
           },
           replayer: VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
@@ -531,8 +530,7 @@ describe("transition trace immutable L1 evidence", () => {
         sourceId: "retained-fixture/emulator",
         grade: "security",
       },
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const compute = vi.spyOn(
       rawSnapshot,
@@ -726,8 +724,7 @@ describe("immutable transition event decoding reuse", () => {
         sourceId: "retained-fixture/event-facts",
         grade: "security",
       },
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const handle = await capture(seed);
     const freshHandle = await capture(advance(seed));
@@ -826,8 +823,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
         sourceId: "retained-fixture/event-facts-failure",
         grade: "security",
       },
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const raw = seed.scopes.find(
       (scope) => scope.role === "forced_transaction_event",
@@ -891,8 +887,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
         sourceId: "retained-fixture/event-facts-outputs",
         grade: "security",
       },
-      minimumConfirmationDepth:
-        DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+      minimumConfirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
     });
     const forcedScope = seed.scopes.find(
       (scope) => scope.role === "forced_transaction_event",

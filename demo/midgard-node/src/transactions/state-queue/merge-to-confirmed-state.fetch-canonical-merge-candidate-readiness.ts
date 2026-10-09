@@ -5,6 +5,10 @@ import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Metric, Ref } from "effect";
 
 import { jsonReplacer } from "../../commands/command-utils.js";
+import {
+  poisonedHeaderHold,
+  readPoisonedOwnHeaders,
+} from "../../database/poisoned-own-headers.js";
 import { Entry as LedgerEntry } from "../../database/utils/ledger.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
 import { l1NowUnixTimeMs } from "../../l1-heads.js";
@@ -174,6 +178,16 @@ export const fetchCanonicalMergeCandidateReadiness = (
           }),
       ),
     );
+    const poisoned = yield* readPoisonedOwnHeaders.pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Merge paused until the own landed blocks whose events left the chain are read",
+            cause,
+          }),
+      ),
+    );
     return {
       status: "candidate",
       confirmedUTxO,
@@ -185,6 +199,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
         headerHash: recomputedHeaderHash,
         currentDaAvailability: firstBlockNode.da_attestation,
         provenFraud: firstBlockNode.proven_fraud,
+        eventOrphaned: poisonedHeaderHold(poisoned, recomputedHeaderHash),
         validFromUnixTime: mergeMaturity.validFromUnixTime,
         readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
         nowUnixTime,

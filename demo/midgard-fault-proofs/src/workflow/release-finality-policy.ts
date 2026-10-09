@@ -14,6 +14,18 @@ export type ReleaseL1FinalityPolicy = {
 };
 
 /**
+ * The selected profile's release policy: the rollback fields of its manifest
+ * `l1Finality`. The commit-event depth binds event inclusion, not release.
+ */
+export const RELEASE_L1_FINALITY_POLICY: ReleaseL1FinalityPolicy =
+  Object.freeze({
+    confirmationDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+    automaticRecoveryMaxDepth:
+      DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
+    deepRollbackPolicy: DEPLOYMENT_MANIFEST_L1_FINALITY.deepRollbackPolicy,
+  });
+
+/**
  * Manifest-verified finality identity returned by the deployment authority.
  * The workflow never accepts a caller-selected depth.
  */

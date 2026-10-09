@@ -29,10 +29,13 @@
  * row (N10b). In the same transaction, while the follower is caught up, the
  * hook deletes each node row without a header whose order is gone and that
  * no unfinished block journal holds. A row such a journal holds is an
- * orphan for the event-history recovery (`countOrphanedAdmissions`) and
+ * orphan for the event-history recovery (`countOrphansAwaitingRecovery`) and
  * keeps the node unready with `l1_events_orphan_recovery` until that
- * journal is disposed of; a row with a header is its header's. An order
- * that lands again is ingested again from its own bytes, to the same row.
+ * journal is disposed of; a row with a header is its header's. A row of a
+ * landed own block whose order is gone holds nothing: the hook logs a
+ * warning once per header and `/readyz` reports a degradation
+ * (`own-landed-orphans.ts`). An order that lands again is ingested again
+ * from its own bytes, to the same row.
  */
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import type { MidgardForcedTxAdmissionStopped } from "@al-ft/midgard-core/consensus-validation";
@@ -70,6 +73,11 @@ import {
 import type { ForcedOrderConfig } from "./config.js";
 import { authenticOrder, outRefLabel } from "./derive.js";
 import { forcedOrderEntry } from "./entry.js";
+import {
+  L1_OWN_BLOCK_FORCED_ORDER_ORPHANED,
+  type OwnLandedForcedOrphan,
+  readOwnLandedForcedOrphans,
+} from "./own-landed-orphans.js";
 import { type ForcedOrderRow, forcedOrdersAt } from "./reads.js";
 
 /** An order's carriage resolved from no source yet; it is retried. */
@@ -173,6 +181,8 @@ type ViewWrite =
       deleted: readonly string[];
       /** Rows whose order is gone that an unfinished block journal holds. */
       orphaned: readonly string[];
+      /** Rows of landed own blocks whose order is gone. */
+      ownLanded: readonly OwnLandedForcedOrphan[];
     }>;
 
 /**
@@ -209,6 +219,7 @@ const writeAtView = (
           kind: "written",
           deleted: deleted.map(rowLabel),
           orphaned: orphaned.map(rowLabel),
+          ownLanded: yield* readOwnLandedForcedOrphans,
         } as ViewWrite;
       }),
     );
@@ -344,9 +355,36 @@ const ruledStop = <E>(
 };
 
 /** The driver hook that ingests the follower's forced orders. */
-export const forcedOrderIngestionHook =
-  (options: ForcedOrderIngestionOptions): DriverHook =>
-  async () => {
+export const forcedOrderIngestionHook = (
+  options: ForcedOrderIngestionOptions,
+): DriverHook => {
+  /** The landed own headers already warned about, while they stay. */
+  const warned = new Set<string>();
+  /**
+   * Warns once per landed own header with a forced order that left the
+   * chain. The node follows it; this becomes a hold once a fault proof for
+   * a fabricated forced transaction exists (NIFP-04).
+   */
+  const warnOwnLanded = async (rows: readonly OwnLandedForcedOrphan[]) => {
+    const byHeader = new Map<string, string[]>();
+    for (const row of rows)
+      byHeader.set(row.headerHash, [
+        ...(byHeader.get(row.headerHash) ?? []),
+        row.order,
+      ]);
+    for (const headerHash of [...warned])
+      if (!byHeader.has(headerHash)) warned.delete(headerHash);
+    for (const [headerHash, orders] of byHeader) {
+      if (warned.has(headerHash)) continue;
+      warned.add(headerHash);
+      await options.run(
+        Effect.logWarning(
+          `forced orders: landed own block ${headerHash} includes forced order(s) whose order left the chain: ${orders.join(", ")}; the node follows the block (${L1_OWN_BLOCK_FORCED_ORDER_ORPHANED})`,
+        ),
+      );
+    }
+  };
+  return async () => {
     const view = await options.store.currentView();
     if (view === null) return undefined;
     const read = await forcedOrdersAt(
@@ -393,6 +431,7 @@ export const forcedOrderIngestionHook =
     else if (written.value.kind === "written") {
       const { deleted } = written.value;
       orphaned.push(...written.value.orphaned);
+      await warnOwnLanded(written.value.ownLanded);
       if (entries.length > 0)
         options.log?.(
           `ingested ${entries.length.toString()} forced order(s) at ${view.point.slot.toString()}`,
@@ -430,3 +469,4 @@ export const forcedOrderIngestionHook =
       ]);
     return undefined;
   };
+};

@@ -228,7 +228,7 @@ name hashes the nonce reference. Creation binds the event ID, event address,
 witness staking script, and `inclusion_time = transaction valid-to + event_wait_duration`.
 This is an eligibility timestamp, not the observed block arrival time.
 The event wait is set per deployment profile (`timing.event_wait_ms` in
-[`config/deployments/`](../../config/deployments/)): 36 hours on `mainnet`
+[`config/deployments/`](../../config/deployments/)): 36 hours 8 minutes on `mainnet`
 (and the generated [default](../../onchain/aiken/env/default.ak) environment),
 30 minutes on `preprod-public`, and 5 minutes on `preprod-testing` (and the
 generated [testnet](../../onchain/aiken/env/testnet.ak) environment) and

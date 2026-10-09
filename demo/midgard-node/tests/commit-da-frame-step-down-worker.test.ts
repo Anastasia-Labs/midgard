@@ -115,12 +115,16 @@ vi.mock("../src/database/index.js", async () => {
     },
   };
 });
-// The follower-change driver has ingested past any planned end time.
-vi.mock("../src/database/follower-events.js", async (importOriginal) => ({
+// The commit anchor caps no planned end time.
+vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
   ...(await importOriginal<
-    typeof import("../src/database/follower-events.js")
+    typeof import("../src/services/history-commit-window.js")
   >()),
-  followerEligibilityHorizon: Effect.succeed(Number.MAX_SAFE_INTEGER),
+  commitEventHorizon: () =>
+    Effect.succeed({
+      horizonMs: Number.MAX_SAFE_INTEGER,
+      anchor: { hash: Buffer.alloc(32), height: 0, slot: 0 },
+    }),
 }));
 vi.mock("../src/forced-orders/horizon.js", () => ({
   forcedOrderHorizon: Effect.succeed(null),

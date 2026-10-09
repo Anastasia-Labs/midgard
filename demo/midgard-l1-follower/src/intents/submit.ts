@@ -41,7 +41,8 @@ export type SubmitDecision =
  * rewind that commits between the commit and the node's mempool admitting
  * the bytes is not seen here. Such a transaction can still land only if
  * its inputs survived the rewind; that is the plan's residual risk 1
- * (§8.1), bounded by the horizon lag d and whichever-lands-wins.
+ * (§8.1), bounded by the commit anchor d blocks below the planning view and
+ * whichever-lands-wins.
  */
 export const decideSubmitIn = async (
   tx: SqlTx,

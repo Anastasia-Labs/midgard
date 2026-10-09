@@ -29,9 +29,15 @@ export const DEPLOYMENT_MANIFEST_STEP_NAMES = Object.freeze([
   "operatorActivation",
 ] as const);
 
-/** The confirmation depth is per deployment profile, so it is typed as a number. */
+/**
+ * The confirmation depth and the commit-event depth are per deployment
+ * profile, so they are typed as numbers. An event is committed only below the
+ * commit anchor, `commitEventDepth` blocks under the view a commit is planned
+ * at.
+ */
 export type DeploymentManifestL1Finality = Readonly<{
   confirmationDepth: number;
+  commitEventDepth: number;
   automaticRecoveryMaxDepth: 2160;
   deepRollbackPolicy: "automated_rewind_replay_incident-v1";
 }>;
@@ -40,6 +46,8 @@ export const DEPLOYMENT_MANIFEST_L1_FINALITY: DeploymentManifestL1Finality =
   Object.freeze({
     confirmationDepth:
       SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth,
+    commitEventDepth:
+      SELECTED_DEPLOYMENT_PROFILE.l1_finality.commit_event_depth,
     automaticRecoveryMaxDepth: 2160,
     deepRollbackPolicy: "automated_rewind_replay_incident-v1",
   });

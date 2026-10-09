@@ -8,7 +8,12 @@ import {
 import {
   daBondWithdrawDelayFloorMs,
   emulatorOnlyProfileNames,
+  COMMIT_TTL_FUTURE_BUFFER_MS,
+  exactDecimal,
   generateProfiles,
+  largestFeasibleCommitEventDepth,
+  largestNoStrikeCommitEventDepth,
+  largestProductionCommitEventDepth,
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
@@ -19,6 +24,9 @@ import {
   specDaBondWithdrawDelayFloorMs,
   validateProfile,
 } from "./deployment-profiles.mjs";
+
+const TTL_FLOOR =
+  /event_wait_ms - 30000 ms \(the commit TTL floor\) - slot_length_ms >= 3 \(d \+ 1\) slot_length_ms \/ active_slot_coeff; the largest such d is /u;
 
 test("confirmation policy is explicit, validated, and bound into profile identity", () => {
   const profiles = readProfiles();
@@ -43,6 +51,213 @@ test("confirmation policy is explicit, validated, and bound into profile identit
   }
   delete profile.l1_finality;
   assert.throws(() => validateProfile(profile, profile.name), /l1_finality/u);
+});
+
+test("every profile binds the commit-event depth and the Cardano consensus it assumes", () => {
+  const profiles = readProfiles();
+  // d, then the largest d each bound admits, by hand at 60,000 ms per block
+  // (3 × 1,000 ms / 0.05): no strike (W + N − L) / 60,000 − 1, the commit TTL
+  // floor (W − 30,000 − 1,000) / 60,000 − 1 and production (W − L) / 60,000,
+  // rounded down. d is the least of them (and of k).
+  const expected = {
+    mainnet: [2160, 2179, 2166, 2160],
+    "preprod-public": [22, 41, 28, 22],
+    "preprod-testing": [3, 16, 3, -3],
+    "local-devnet-testing": [3, 16, 3, -3],
+    "preprod-emulator-testing": [8, 21, 8, 2],
+  };
+  assert.equal(COMMIT_TTL_FUTURE_BUFFER_MS, 30_000);
+  for (const [name, [depth, noStrike, feasible, production]] of Object.entries(
+    expected,
+  )) {
+    const profile = profiles[name];
+    assert.deepEqual(profile.l1_finality, {
+      confirmation_depth: profile.l1_finality.confirmation_depth,
+      commit_event_depth: depth,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
+    });
+    assert.equal(largestNoStrikeCommitEventDepth(profile), BigInt(noStrike));
+    assert.equal(largestFeasibleCommitEventDepth(profile), BigInt(feasible));
+    assert.equal(
+      largestProductionCommitEventDepth(profile),
+      BigInt(production),
+    );
+    const changed = structuredClone(profile);
+    changed.l1_finality.commit_event_depth = 0;
+    assert.notEqual(profileDigest(changed), profileDigest(profile));
+    validateProfile(changed, name);
+  }
+  // 3k/f slots plus the maximum validity range.
+  assert.equal(profiles.mainnet.timing.event_wait_ms, 129_600_000 + 480_000);
+  assert.deepEqual(exactDecimal("0.05"), { numerator: 5n, denominator: 100n });
+  assert.deepEqual(exactDecimal("1"), { numerator: 1n, denominator: 1n });
+  assert.deepEqual(exactDecimal("0.0000001"), {
+    numerator: 1n,
+    denominator: 10n ** 7n,
+  });
+  for (const invalid of [
+    0.05,
+    "0.050",
+    "00.05",
+    ".05",
+    "5e-2",
+    "+0.05",
+    "-0.05",
+    "1.",
+    " 0.05",
+    undefined,
+  ]) {
+    assert.equal(exactDecimal(invalid), undefined);
+  }
+});
+
+test("a commit-event depth above the no-strike bound is refused on every profile, and the bound is exact", () => {
+  const noStrike =
+    /event_wait_ms \+ user_events_negligence_timeout_ms >= 3 \(d \+ 1\) slot_length_ms \/ active_slot_coeff \+ max_validity_range_ms; the largest such d is /u;
+  for (const name of [
+    "preprod-testing",
+    "local-devnet-testing",
+    "preprod-emulator-testing",
+  ]) {
+    // The commit TTL floor binds first on these profiles; the no-strike
+    // check runs before it, so d just past the no-strike bound names it.
+    const profile = structuredClone(readProfiles()[name]);
+    const largest = Number(largestNoStrikeCommitEventDepth(profile));
+    profile.l1_finality.commit_event_depth = largest;
+    assert.throws(() => validateProfile(profile, name), TTL_FLOOR);
+    profile.l1_finality.commit_event_depth = largest + 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      new RegExp(`${noStrike.source}${largest}$`, "u"),
+    );
+  }
+  // Mainnet's no-strike bound sits above k; lifting k exposes it.
+  const mainnet = structuredClone(readProfiles().mainnet);
+  mainnet.l1_finality.security_parameter = 4320;
+  mainnet.l1_finality.commit_event_depth = 2180;
+  assert.throws(() => validateProfile(mainnet, "mainnet"), noStrike);
+});
+
+test("a commit-event depth whose anchor cap cannot reach the commit TTL floor is refused, though the no-strike bound admits it", () => {
+  for (const name of [
+    "preprod-testing",
+    "local-devnet-testing",
+    "preprod-emulator-testing",
+  ]) {
+    const profile = structuredClone(readProfiles()[name]);
+    const largest = Number(largestFeasibleCommitEventDepth(profile));
+    assert.equal(profile.l1_finality.commit_event_depth, largest);
+    validateProfile(profile, name);
+    profile.l1_finality.commit_event_depth = largest + 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      new RegExp(`${TTL_FLOOR.source}${largest}$`, "u"),
+    );
+    // The depth the no-strike bound alone admits holds every commit.
+    profile.l1_finality.commit_event_depth = Number(
+      largestNoStrikeCommitEventDepth(profile),
+    );
+    assert.throws(() => validateProfile(profile, name), TTL_FLOOR);
+  }
+  // k, f and the slot length come from the profile: (300,000 − 30,000 −
+  // slot) / (3 slot / f) − 1, rounded down.
+  const profile = structuredClone(readProfiles()["preprod-testing"]);
+  profile.l1_finality.active_slot_coeff = "0.1";
+  profile.l1_finality.commit_event_depth = 7;
+  validateProfile(profile, profile.name);
+  profile.l1_finality.commit_event_depth = 8;
+  assert.throws(() => validateProfile(profile, profile.name), TTL_FLOOR);
+  profile.l1_finality.active_slot_coeff = "0.05";
+  profile.l1_finality.slot_length_ms = 2000;
+  profile.l1_finality.commit_event_depth = 1;
+  validateProfile(profile, profile.name);
+  profile.l1_finality.commit_event_depth = 2;
+  assert.throws(() => validateProfile(profile, profile.name), TTL_FLOOR);
+  // Mainnet keeps d = k: its TTL floor admits 2166.
+  const mainnet = structuredClone(readProfiles().mainnet);
+  assert.equal(largestFeasibleCommitEventDepth(mainnet), 2166n);
+  mainnet.l1_finality.security_parameter = 4320;
+  mainnet.timing.event_wait_ms = 2_000_000;
+  mainnet.l1_finality.commit_event_depth = 32;
+  assert.throws(
+    () => validateProfile(mainnet, "mainnet"),
+    new RegExp(`${TTL_FLOOR.source}31$`, "u"),
+  );
+});
+
+test("production profiles keep a due event d blocks deep when its commit lands; testing profiles are exempt", () => {
+  const profiles = readProfiles();
+  const production =
+    /event_wait_ms - max_validity_range_ms >= 3 d slot_length_ms \/ active_slot_coeff on a production profile; the largest such d is /u;
+  // Mainnet is tight: 130,080,000 − 480,000 = 129,600,000 = 60,000 × 2160.
+  // Lifting k leaves only the production bound in play.
+  const mainnet = structuredClone(profiles.mainnet);
+  mainnet.l1_finality.security_parameter = 4320;
+  validateProfile(mainnet, "mainnet");
+  mainnet.l1_finality.commit_event_depth = 2161;
+  assert.throws(
+    () => validateProfile(mainnet, "mainnet"),
+    new RegExp(`${production.source}2160$`, "u"),
+  );
+  mainnet.l1_finality.commit_event_depth = 2160;
+  mainnet.timing.event_wait_ms -= 1;
+  assert.throws(() => validateProfile(mainnet, "mainnet"), production);
+  const publicProfile = structuredClone(profiles["preprod-public"]);
+  publicProfile.l1_finality.commit_event_depth = 23;
+  assert.throws(
+    () => validateProfile(publicProfile, "preprod-public"),
+    new RegExp(`${production.source}22$`, "u"),
+  );
+  // The same timing and depth pass under a testing name, where only the
+  // no-strike bound (41 here) applies.
+  const testing = structuredClone(profiles["preprod-emulator-testing"]);
+  testing.timing = structuredClone(publicProfile.timing);
+  testing.l1_finality = structuredClone(publicProfile.l1_finality);
+  validateProfile(testing, testing.name);
+});
+
+test("the commit-event depth is a non-negative integer at most k, and k, f and the slot length are well formed", () => {
+  const mainnet = structuredClone(readProfiles().mainnet);
+  mainnet.l1_finality.security_parameter = 2159;
+  assert.throws(
+    () => validateProfile(mainnet, "mainnet"),
+    /commit_event_depth must be at most l1_finality\.security_parameter \(2159\)/u,
+  );
+  const original = readProfiles()["preprod-testing"];
+  const refuses = (mutate, message) => {
+    const profile = structuredClone(original);
+    mutate(profile.l1_finality);
+    assert.throws(() => validateProfile(profile, profile.name), message);
+  };
+  for (const invalid of [-1, 1.5, "16", Number.NaN, 2 ** 53]) {
+    refuses((l1) => {
+      l1.commit_event_depth = invalid;
+    }, /commit_event_depth must be a non-negative safe integer/u);
+  }
+  // A number, even 0.05, is refused: the canonical JSON of the deployment
+  // identity admits only safe integers. So is any second spelling of a value.
+  for (const invalid of [0.05, "0", "1.5", "0.050", "5e-2", "-0.05", 1]) {
+    refuses((l1) => {
+      l1.active_slot_coeff = invalid;
+    }, /active_slot_coeff must be a canonical decimal string in \(0, 1\]/u);
+  }
+  for (const key of ["security_parameter", "slot_length_ms"]) {
+    refuses(
+      (l1) => {
+        l1[key] = 0;
+      },
+      new RegExp(`l1_finality\\.${key} must be a positive safe integer`, "u"),
+    );
+    refuses((l1) => {
+      delete l1[key];
+    }, /l1_finality must contain exactly/u);
+  }
+  const zero = structuredClone(original);
+  zero.l1_finality.commit_event_depth = 0;
+  zero.l1_finality.active_slot_coeff = "1";
+  validateProfile(zero, zero.name);
 });
 
 test("all profiles have explicit networks and independent deployment identities", () => {
@@ -311,6 +526,8 @@ test("public profiles wait out the validity range plus confirmation depth before
   // 480 s maximum validity range + 30 blocks × 20 s × 2, derived by hand.
   for (const name of ["mainnet", "preprod-public"]) {
     const profile = structuredClone(profiles[name]);
+    // A shallow commit-event depth keeps its own bounds out of the way.
+    profile.l1_finality.commit_event_depth = 0;
     assert.equal(minimumPublicEventWaitMs(profile), 1_680_000);
     assert.ok(profile.timing.event_wait_ms >= 1_680_000);
     profile.timing.event_wait_ms = 1_680_000;

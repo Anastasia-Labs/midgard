@@ -46,12 +46,20 @@ transaction that re-checks the follower view. A row is canonical while the
 follower's never-reuse key set `l1_event_keys` holds its identity; a follower
 rewind past the admission deletes the key, which orphans the row, and the
 driver holds the node unready (`l1_events_orphan_recovery`) until its
-recompute repairs it and re-ingests. Ingestion never writes a row whose identity differs
-from the live row with the same `event_id`.
+recompute repairs it and re-ingests. An orphaned deposit or withdrawal of an
+own landed block is the exception: no block is committed and that block and
+its descendants are not merged (`l1_own_block_event_orphaned`), while the
+follower, admissions and older merges continue; a forced row of one is
+followed and reported (`l1_own_block_forced_order_orphaned`). Ingestion
+never writes a row whose identity differs from the live row with the same
+`event_id`.
 
-The commit end time is bounded by min(journal coverage, follower ingestion):
-events ingested through view time t allow an end time up to
-t + event wait - 1, while that view is still on the follower's chain.
+The commit end time is bounded by the commit anchor: a commit planned at the
+follower view P the driver ingested through has its anchor A at the follower
+block d below P (d is the deployment profile's commit-event depth), and its end
+time is at most time(A) + event wait - 1, so every included event's block lies
+strictly below A. The journal stores A, and the commit is signed and kept only
+while A is on the follower's chain.
 
 ## Exact-Once Projection
 

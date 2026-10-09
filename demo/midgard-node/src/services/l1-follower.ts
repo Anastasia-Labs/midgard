@@ -294,7 +294,7 @@ const followL1 = <R>(
             ? null
             : { config: plan.operatorSet, ownKey: operatorSet.ownKey },
         slotToPosixMs: (slot) => slotClock.slotToUnixTime(slot),
-        horizonLagBlocks: config.HISTORY_COMMIT_HORIZON_LAG_BLOCKS,
+        commitEventDepth: config.COMMIT_EVENT_DEPTH,
       }),
       log: (line) => log(`intents: ${line}`),
     });

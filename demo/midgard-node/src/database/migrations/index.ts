@@ -21,6 +21,7 @@ import txRejectionCausesSql from "./sql/0019_tx_rejection_causes.sql";
 import dropQueueTerminalObserverSql from "./sql/0020_drop_queue_terminal_observer.sql";
 import followerWriteGateSql from "./sql/0021_follower_write_gate.sql";
 import dropEventHistoryControlPlaneSql from "./sql/0022_drop_event_history_control_plane.sql";
+import commitAnchorSql from "./sql/0023_commit_anchor.sql";
 
 export type Migration = {
   readonly version: number;
@@ -183,6 +184,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "drop_event_history_control_plane",
     checksumSha256: sha256Hex(dropEventHistoryControlPlaneSql),
     sql: dropEventHistoryControlPlaneSql,
+    transactional: true,
+  },
+  {
+    version: 23,
+    name: "commit_anchor",
+    checksumSha256: sha256Hex(commitAnchorSql),
+    sql: commitAnchorSql,
     transactional: true,
   },
 ] as const;

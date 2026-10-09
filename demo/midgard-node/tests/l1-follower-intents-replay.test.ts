@@ -154,7 +154,7 @@ const stageOn = (store: FactStore, sink: ReturnType<typeof transport>) =>
       stateQueue: SIM_QUEUE_CONFIG,
       operatorSet: null,
       slotToPosixMs: (slot) => slot * 1000,
-      horizonLagBlocks: 0,
+      commitEventDepth: 0,
     }),
     log: () => {},
   });

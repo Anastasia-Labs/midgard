@@ -20,6 +20,7 @@ import {
   advanceEmulatorToDueWork,
   alignCommitSchedulerBeforeTestWorker,
   fetchLatestCommittedBlock,
+  retainAndAttestSubmittedHeader,
   runCommitWorker,
 } from "../deposit-flow-emulator-shared.js";
 import { openNodeServices } from "./commit-replacement-state-queue.js";
@@ -179,13 +180,24 @@ export const openCommitJourney = async () => {
       vi.setSystemTime(h.fixture.emulator.now());
       await synchronizeBounded(h);
     },
-    /** `journal` won: it landed, the node processed it, and it finalizes. */
+    /** `journal` won: it landed, the node processed it, it is attested, and
+     * it finalizes. The attestation stands in for the DA committee: a block
+     * left unattested fences every later append from its end time plus the
+     * DA attestation timeout, and the journey outlasts that span. */
     expectWinner: async (journal: Journal) => {
       expect(await node.landedRow(journal.header)).toEqual({
         kind: "own",
         state: "processed",
         applied: true,
       });
+      await retainAndAttestSubmittedHeader({
+        fixture: h.fixture,
+        lucidService: node.nodeLucid,
+        globals: h.globals,
+        headerHash: journal.header,
+        submittedTxHash: journal.txHash,
+      });
+      await synchronizeBounded(h);
       await finalizeLocally(h, journal.header);
       expect(await nativeRoot(h)).toBe(journal.root);
       state.winner = journal.header;

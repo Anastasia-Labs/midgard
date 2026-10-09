@@ -1,9 +1,10 @@
 /**
  * The chain a lucid `Emulator` makes, as the follower reads it: an origin
  * (the ledger and slot at the emulator's first observation: its genesis, or
- * a restored ledger recorded without a chain) and one block per change of
- * the emulator's block height, holding the exact bytes of the submitted
- * transactions that height change confirmed, in submission order.
+ * a restored ledger recorded without a chain) and one block per emulator
+ * block height. A clock step that raises the height by n records n blocks:
+ * the first holds the exact bytes of the submitted transactions the step
+ * confirmed, in submission order, and the rest are empty.
  *
  * - `Emulator.prototype.submitTx`, `awaitBlock` and `awaitSlot` are wrapped
  *   when this module loads, so a chain is complete from the first
@@ -33,6 +34,9 @@ import {
 } from "./follower-emulator.ledger.js";
 
 const FOLLOWED = "followedChain";
+
+/** The emulator's block spacing: one block height per 20 slots. */
+export const EMULATOR_SLOTS_PER_BLOCK = 20;
 
 export type FollowedBlock = Readonly<{
   hash: string;
@@ -125,9 +129,44 @@ export const followedBlockBytes = (
   );
 };
 
-/** Records the block a change of `emulator`'s height from `before` made. */
+/** Appends the block holding `txs` at `slot` (above its parent's) to `chain`. */
+const appendBlock = (
+  chain: FollowedChain,
+  emulatorHeight: number,
+  slot: number,
+  txs: readonly string[],
+): void => {
+  const index = chain.blocks.length;
+  const parent = followedPoint(chain, index - 1);
+  const at = Math.max(slot, parent.slot + 1);
+  const raw = encodeFollowerBlock(
+    txs,
+    { hash: parent.hash, height: index },
+    at,
+  );
+  const block = decodeBlock(raw);
+  chain.blocks.push({
+    hash: block.point.hash.toString("hex"),
+    slot: at,
+    emulatorHeight,
+    txs,
+    consumed: block.txs.flatMap((tx) =>
+      (tx.isValid ? tx.inputs : tx.collaterals).map(
+        ({ txHash, index }) => `${txHash.toString("hex")}${index.toString()}`,
+      ),
+    ),
+  });
+};
+
+/**
+ * Records the blocks a change of `emulator`'s height from `before` made: one
+ * per height, as the emulator counts them (one per 20 slots), so the
+ * followed chain is as dense as the emulator's clock says. The blocks are 20
+ * slots apart, ending at the emulator's slot; the first holds the confirmed
+ * transactions, as the emulator confirms them at the first new height.
+ */
 const recordBlock = (emulator: Emulator, before: number): void => {
-  if (emulator.blockHeight === before) return;
+  if (emulator.blockHeight <= before) return;
   const chain = followedChainOf(emulator);
   const history = stateOf(emulator).transactionHistory;
   const confirmed = chain.pending.filter(
@@ -137,27 +176,14 @@ const recordBlock = (emulator: Emulator, before: number): void => {
   chain.pending = chain.pending.filter(
     ({ hash }) => history[hash]?.status === "pending",
   );
-  const index = chain.blocks.length;
-  const parent = followedPoint(chain, index - 1);
-  const slot = Math.max(emulator.slot, parent.slot + 1);
-  const txs = confirmed.map(({ cbor }) => cbor);
-  const raw = encodeFollowerBlock(
-    txs,
-    { hash: parent.hash, height: index },
-    slot,
-  );
-  const block = decodeBlock(raw);
-  chain.blocks.push({
-    hash: block.point.hash.toString("hex"),
-    slot,
-    emulatorHeight: emulator.blockHeight,
-    txs,
-    consumed: block.txs.flatMap((tx) =>
-      (tx.isValid ? tx.inputs : tx.collaterals).map(
-        ({ txHash, index }) => `${txHash.toString("hex")}${index.toString()}`,
-      ),
-    ),
-  });
+  for (let height = before + 1; height <= emulator.blockHeight; height += 1)
+    appendBlock(
+      chain,
+      height,
+      emulator.slot -
+        EMULATOR_SLOTS_PER_BLOCK * (emulator.blockHeight - height),
+      height === before + 1 ? confirmed.map(({ cbor }) => cbor) : [],
+    );
 };
 
 const submitTx = Emulator.prototype.submitTx;

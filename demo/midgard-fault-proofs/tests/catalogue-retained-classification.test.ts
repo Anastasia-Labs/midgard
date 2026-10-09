@@ -2,7 +2,6 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core";
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -56,6 +55,7 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  RELEASE_L1_FINALITY_POLICY,
 } from "../src/workflow/release-finality-policy.js";
 import {
   authenticatedHeaderObservation,
@@ -71,7 +71,7 @@ import {
 
 const DEPLOYMENT = "d1".repeat(32);
 const RELEASE = "e1".repeat(32);
-const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
+const policy = { ...RELEASE_L1_FINALITY_POLICY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,

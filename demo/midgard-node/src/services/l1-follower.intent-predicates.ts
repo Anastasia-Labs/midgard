@@ -11,20 +11,17 @@
  *   operator set, a missing input to the predicate) throws: S6 keeps the
  *   intent live and raises a named transient `/readyz` hold.
  * - A predicate that a later view will decide throws `IntentPredicateWait`
- *   with its own named hold (`INTENT_EVENTS_NOT_DEEP`).
+ *   with its own named hold (`INTENT_COMMIT_ANCHOR_NOT_DEEP`).
  * - Every node family has a predicate (`PREDICATES`); the payout,
  *   reference-script and stake-registration families are in
  *   `l1-follower.intent-predicates.wallet.ts`, the list inserts in
  *   `l1-follower.intent-predicates.list-insert.ts`.
  */
-import {
-  currentViewIn,
-  encodeOutRef,
-  type IntentState,
-} from "@al-ft/midgard-l1-follower";
+import { currentViewIn, type IntentState } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import { commitAnchorCanonicalText } from "../database/commit-anchor.js";
 import {
   createOperatorSetMirror,
   type OperatorSet,
@@ -39,7 +36,6 @@ import type { NodeIntentFamily } from "./intent-journal.js";
 import { listInsert } from "./l1-follower.intent-predicates.list-insert.js";
 import {
   contentRefHex,
-  count,
   keyRest,
   type NodeFamilyPredicateDeps,
   type Read,
@@ -61,89 +57,41 @@ const queueNode = (queue: LandedStateQueue, headerHash: string) =>
   queue.nodes.find((node) => node.headerHash === headerHash);
 
 /**
- * A commit's included event is canonical but admitted fewer than d blocks
- * below the view (a rewind made it shallow): the commit waits for the chain
- * to bury it again.
+ * A commit's anchor is canonical but the follower tip is fewer than d blocks
+ * above it (a rewind shortened the chain above it): the commit waits for the
+ * chain to regrow.
  */
-export const INTENT_EVENTS_NOT_DEEP = "intent_included_events_not_deep";
+export const INTENT_COMMIT_ANCHOR_NOT_DEEP = "intent_commit_anchor_not_deep";
 
 /**
- * Whether the events the commit's block journal includes allow it at this
- * view (B3):
+ * Whether the commit's anchor allows it at this view (plan §8.1): every
+ * included event's block is below the anchor (`database/commit-anchor.ts`).
  *
- * - `false` when one is not canonical: its member names no admission
- *   identity, the identity is not in the follower's key set, or a forced
- *   member has no forced row, or neither an admission key nor order fields;
- * - an `IntentPredicateWait` (`INTENT_EVENTS_NOT_DEEP`) when all are
- *   canonical but one was admitted above `view.height - d`: a rewind that
- *   left the event admitted only makes it shallower, and the regrown chain
- *   buries it again;
+ * - `false` when the journal has no anchor, or its anchor is no longer on
+ *   the follower's chain;
+ * - an `IntentPredicateWait` (`INTENT_COMMIT_ANCHOR_NOT_DEEP`) while the
+ *   view is fewer than d blocks above the anchor;
  * - `true` otherwise.
- *
- * A non-canonical event wins over a shallow one.
  */
-const includedEventsSettled = async (
+const commitAnchorSettled = async (
   read: Read,
   headerHash: Buffer,
 ): Promise<boolean> => {
   const { tx, view, deps } = read;
-  const highest = view.height - deps.horizonLagBlocks;
-  let shallowest: number | null = null;
-  const note = (height: unknown): void => {
-    if (height === null || height === undefined) return;
-    const at = Number(height);
-    if (at > highest && (shallowest === null || at > shallowest))
-      shallowest = at;
-  };
-  for (const [kind, table] of [
-    ["deposit", "pending_block_finalization_deposits"],
-    ["withdrawal", "pending_block_finalization_withdrawals"],
-  ] as const) {
-    const missing = await count(
-      tx,
-      `SELECT count(*) AS n FROM ${table} m WHERE m.header_hash = ?
-        AND (m.l1_event_key IS NULL OR m.l1_origin_outref IS NULL
-          OR NOT EXISTS (SELECT 1 FROM l1_event_keys k WHERE k.kind = ?
-            AND k.key = m.l1_event_key AND k.origin_outref = m.l1_origin_outref))`,
-      [headerHash, kind],
-    );
-    if (missing > 0) return false;
-    const deepest = await tx.query(
-      `SELECT max(e.admitted_height) AS height FROM ${table} m
-        JOIN node_l1_events e ON e.kind = ? AND e.event_key = m.l1_event_key
-        WHERE m.header_hash = ?`,
-      [kind, headerHash],
-    );
-    note(deepest[0]?.height);
-  }
-  const forced = await tx.query(
-    `SELECT f.tx_order_l1_tx_hash AS tx_hash, f.tx_order_l1_output_index AS output_index
-      FROM pending_block_finalization_forced_transactions m
-      LEFT JOIN forced_transaction_utxos f ON f.tx_order_id = m.member_id
-      WHERE m.header_hash = ?`,
+  const rows = await tx.query(
+    `SELECT p.commit_anchor_height AS height,
+        ${commitAnchorCanonicalText("p")} AS canonical
+      FROM pending_block_finalizations p WHERE p.header_hash = ?`,
     [headerHash],
   );
-  for (const row of forced) {
-    if (!Buffer.isBuffer(row.tx_hash)) return false;
-    const txHash = row.tx_hash;
-    const index = Number(row.output_index);
-    const key = encodeOutRef({ txHash, index });
-    const keyed = await count(
-      tx,
-      "SELECT count(*) AS n FROM l1_event_keys WHERE kind = 'forced' AND key = ? AND origin_outref = ?",
-      [key, key],
-    );
-    const orders = await tx.query(
-      "SELECT height FROM node_l1_forced_order_fields WHERE order_tx_hash = ? AND order_output_index = ?",
-      [txHash, index],
-    );
-    if (keyed === 0 && orders.length === 0) return false;
-    for (const order of orders) note(order.height);
-  }
-  if (shallowest !== null)
+  const row = rows[0];
+  if (row === undefined || row.height == null || row.canonical !== true)
+    return false;
+  const anchorHeight = Number(row.height);
+  if (view.height < anchorHeight + deps.commitEventDepth)
     throw new IntentPredicateWait(
-      INTENT_EVENTS_NOT_DEEP,
-      `commit ${headerHash.toString("hex")}: an included event was admitted at height ${String(shallowest)}, fewer than ${deps.horizonLagBlocks.toString()} blocks below the view at height ${view.height.toString()}`,
+      INTENT_COMMIT_ANCHOR_NOT_DEEP,
+      `commit ${headerHash.toString("hex")}: the view at height ${view.height.toString()} is fewer than ${deps.commitEventDepth.toString()} blocks above its anchor at height ${anchorHeight.toString()}`,
     );
   return true;
 };
@@ -208,7 +156,7 @@ const commit = async (read: Read): Promise<boolean> => {
     return false;
   if (!headAllowsAppend(read, queue)) return false;
   if (!schedulerOurs(read, await read.operators())) return false;
-  return includedEventsSettled(read, header);
+  return commitAnchorSettled(read, header);
 };
 
 const merge = async (read: Read): Promise<boolean> => {

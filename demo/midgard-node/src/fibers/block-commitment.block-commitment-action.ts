@@ -19,7 +19,8 @@ import {
 import type { IntentJournal } from "../services/intent-journal.js";
 import { WorkerError } from "../workers/utils/common.js";
 import { buildAndSubmitCommitmentBlockAction } from "./block-commitment.build-and-submit-commitment-block-action.js";
-import { publishCommitHorizonLagReadiness } from "./block-commitment.commit-horizon-lag-readiness.js";
+import { publishCommitAnchorReadiness } from "./block-commitment.commit-anchor-readiness.js";
+import { refuseCommitForOrphanedOwnBlockEvent } from "./block-commitment.own-block-event-orphaned.js";
 import { shouldSkipIdleCommitPipelineBeforeSchedulerAlignment } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import {
   alignCommitSchedulerBeforeMutationWorkerIfIdle,
@@ -112,9 +113,11 @@ export const blockCommitmentAction: Effect.Effect<
   const globals = yield* Globals;
   const nodeConfig = yield* NodeConfig;
   yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
-  yield* publishCommitHorizonLagReadiness;
+  yield* publishCommitAnchorReadiness;
+  const eventOrphaned = yield* refuseCommitForOrphanedOwnBlockEvent;
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
+    if (eventOrphaned) return;
     if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) return;
     if (yield* shouldSkipForActivePendingFinalization) {
       return;

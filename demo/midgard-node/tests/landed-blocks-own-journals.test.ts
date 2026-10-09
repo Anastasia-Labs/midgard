@@ -7,8 +7,9 @@
  *   revived, and its unlanded replacement on the same tail is disposed of.
  * - (b) The replacement lands: the old commit, still unfinished, lost its
  *   base slot and is disposed of; one already disposed of stays so.
- * - (c) A deposit an unfinished commit includes leaves the chain: the
- *   commit is disposed of, so the next commit is built without it.
+ * - (c) An unfinished commit's commit anchor leaves the chain, or it has
+ *   none: the commit is disposed of, so the next commit is built from the
+ *   follower's chain (every event it includes lies below its anchor).
  * - A commit on a base an admitted correction (or a rollback) removed is
  *   disposed of, and nothing stays held: no unfinished journal is left.
  * - L7: a rollback deeper than cd takes a locally finalized own block off
@@ -19,21 +20,20 @@
  *   whose recorded causes are all deleted ones, transitively; a rejection
  *   with another cause, or none, is kept.
  *
- * - Without the follower's admission tables the disposition is held under
- *   a named reason, and the rebase plan is blocked under it, rather than
- *   read as "no event left the chain".
+ * - Without the follower's block tables the disposition is held under a
+ *   named reason, and the rebase plan is blocked under it, rather than read
+ *   as "every anchor is canonical".
  *
  * Every journal is kept: disposal abandons it under its replacement digest,
  * never deletes it.
  */
 import "./utils.js";
 
-import { createHash } from "node:crypto";
-
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import type { CommitAnchor } from "../src/database/commit-anchor.js";
 import {
   PendingBlockFinalizationsDB,
   TxRejectionsDB,
@@ -72,9 +72,11 @@ const journal = (
   base: string,
   status: PendingBlockFinalizationsDB.Status,
   at = 0,
+  anchor?: CommitAnchor,
 ) =>
   Effect.gen(function* () {
     yield* insertOwnJournal({
+      anchor,
       headerHash,
       baseHeaderHash: base,
       baseUtxosRoot: ZERO_ROOT,
@@ -133,41 +135,20 @@ const rebaseJournals = (
 const statusOf = (headerHash: string) =>
   journalStatuses.pipe(Effect.map((statuses) => statuses.get(headerHash)));
 
-/** A deposit member of `headerHash` admitted under (key, origin). */
-const depositMember = (headerHash: string, key: Buffer, origin: Buffer) =>
-  withFollowerWrite(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const payload = Buffer.from("deposit-member");
-      yield* sql`INSERT INTO pending_block_finalization_deposits ${sql.insert({
-        header_hash: Buffer.from(headerHash, "hex"),
-        member_id: key,
-        ordinal: 0,
-        payload_cbor: payload,
-        payload_sha256: createHash("sha256").update(payload).digest(),
-        source_table: "deposits_utxos",
-        source_id: key,
-        source_time_stamp_tz: new Date(1_000_000),
-        l1_event_key: key,
-        l1_origin_outref: origin,
-      } as never)}`;
-    }),
-  );
+/** Follower block `height` at slot 10 * height (+5 on a fork). */
+const followerBlock = (height: number, fork = false) => ({
+  hash: simDigest(`own-journals:l1-block:${String(height)}:${String(fork)}`),
+  height,
+  slot: 10 * height + (fork ? 5 : 0),
+});
 
-const admitKey = (key: Buffer, origin: Buffer) =>
+const writeBlock = (block: ReturnType<typeof followerBlock>) =>
   Effect.flatMap(
     SqlClient.SqlClient,
     (
       sql,
-    ) => sql`INSERT INTO l1_event_keys (kind, key, origin_outref, first_canonical_slot)
-      VALUES ('deposit', ${key}, ${origin}, 0)`,
-  );
-
-const rewindKey = (key: Buffer) =>
-  Effect.flatMap(
-    SqlClient.SqlClient,
-    (sql) =>
-      sql`DELETE FROM l1_event_keys WHERE kind = 'deposit' AND key = ${key}`,
+    ) => sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
+      VALUES (${block.slot}, ${block.hash}, ${block.height}, NULL, 0)`,
   );
 
 /** The schema change was rolled back, carrying what ran under it. */
@@ -328,24 +309,25 @@ describe("own block journals under whichever-lands-wins", () => {
       }),
     ));
 
-  it("(c) disposes of an unfinished commit whose deposit left the chain, and keeps one whose deposit is canonical", () =>
+  it("(c) disposes of an unfinished commit whose commit anchor left the chain, and keeps one whose anchor is canonical", () =>
     inNode(
       Effect.gen(function* () {
-        const key = simDigest("own-journals:deposit-key");
-        const origin = Buffer.concat([key, Buffer.from([0, 0])]);
-        yield* admitKey(key, origin);
-        yield* journal(C, G, JournalStatus.SubmittedUnconfirmed);
-        yield* depositMember(C, key, origin);
+        const anchor = followerBlock(10);
+        yield* writeBlock(anchor);
+        yield* journal(C, G, JournalStatus.SubmittedUnconfirmed, 0, anchor);
         expect(yield* rebaseJournals([], [])).toEqual({
           dispose: [],
           revive: [],
         });
-        yield* rewindKey(key);
+        // A follower rewind below the anchor, and a fork at its height.
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM l1_blocks WHERE height >= ${anchor.height}`;
+        yield* writeBlock(followerBlock(anchor.height, true));
         expect(yield* rebaseJournals([], [])).toEqual({
           dispose: [
             {
               headerHash: C,
-              cause: "it includes an event whose admission left the chain",
+              cause: "its commit anchor left the chain",
               active: true,
             },
           ],
@@ -354,6 +336,23 @@ describe("own block journals under whichever-lands-wins", () => {
         expect(yield* statusOf(C)).toBe(JournalStatus.Abandoned);
         // Nothing unfinished: the commit path builds a replacement.
         expect(yield* PendingBlockFinalizationsDB.hasActive).toBe(false);
+      }),
+    ));
+
+  it("disposes of an unfinished commit with no commit anchor", () =>
+    inNode(
+      Effect.gen(function* () {
+        yield* journal(C, G, JournalStatus.SubmittedUnconfirmed);
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE pending_block_finalizations SET commit_anchor_hash = NULL,
+          commit_anchor_height = NULL, commit_anchor_slot = NULL`;
+        expect(yield* rebaseJournals([], [])).toEqual({
+          dispose: [
+            { headerHash: C, cause: "it has no commit anchor", active: true },
+          ],
+          revive: [],
+        });
+        expect(yield* statusOf(C)).toBe(JournalStatus.Abandoned);
       }),
     ));
 
@@ -410,14 +409,14 @@ describe("own block journals under whichever-lands-wins", () => {
       }),
     ));
 
-  it("holds the disposition under a named reason while a follower admission table is missing, and reads it once present", () =>
+  it("holds the disposition under a named reason while a follower block table is missing, and reads it once present", () =>
     inNode(
       Effect.gen(function* () {
         yield* journal(C, G, JournalStatus.SubmittedUnconfirmed);
         yield* withFollowerWrite(
           Frontier.upsert({ headerHash: G, utxosRoot: ZERO_ROOT }),
         );
-        for (const table of ["l1_event_keys", "node_l1_forced_order_fields"]) {
+        for (const table of ["l1_blocks", "l1_follower_cursor"]) {
           const { disposition, plan } = yield* withoutTable(
             table,
             Effect.all({
@@ -430,13 +429,13 @@ describe("own block journals under whichever-lands-wins", () => {
             revive: [],
             held: {
               reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
-              detail: `the own-journal disposition cannot read event admissions: ${table} missing`,
+              detail: `the own-journal disposition cannot read commit anchors: ${table} missing`,
             },
           });
           expect(plan).toEqual({
             kind: "blocked",
             reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
-            detail: `the own-journal disposition cannot read event admissions: ${table} missing`,
+            detail: `the own-journal disposition cannot read commit anchors: ${table} missing`,
           });
         }
         // Both present: the disposition is read, nothing held or due.

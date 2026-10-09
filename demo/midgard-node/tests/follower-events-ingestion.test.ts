@@ -21,11 +21,11 @@ import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
-  countOrphanedAdmissions,
-  followerEligibilityHorizon,
+  followerIngestedView,
   type FollowerIngestionOutcome,
   reconcileFollowerEvents,
 } from "../src/database/follower-events.js";
+import { countOrphansAwaitingRecovery } from "../src/database/follower-orphan-repair.js";
 import {
   EVENT_IDENTITY_CONFLICT,
   type IngestionPlan,
@@ -293,7 +293,7 @@ describe("follower event ingestion (Postgres)", () => {
         return {
           adopted,
           orphaned,
-          counted: yield* countOrphanedAdmissions,
+          counted: yield* countOrphansAwaitingRecovery,
           rows: yield* eventRows,
         };
       }),
@@ -322,16 +322,16 @@ describe("follower event ingestion (Postgres)", () => {
     ]);
   });
 
-  it("writes nothing at a view a follower rewind removed, and its horizon goes with it", async () => {
+  it("writes nothing at a view a follower rewind removed, and its ingested view goes with it", async () => {
     const { early } = await projectedEvents();
     const result = await run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* resetApplicationTables;
-        const none = yield* followerEligibilityHorizon;
+        const none = yield* followerIngestedView;
         const old = yield* writeFollowerView(VIEW_SLOT - 10, []);
         applied(yield* ingest(old));
-        const ingested = yield* followerEligibilityHorizon;
+        const ingested = yield* followerIngestedView;
         const stalePlan = yield* writeFollowerView(VIEW_SLOT, [early]);
         // The follower rewinds below both views: blocks above go, the
         // generation advances.
@@ -342,13 +342,13 @@ describe("follower event ingestion (Postgres)", () => {
           none,
           ingested,
           stale,
-          rewound: yield* followerEligibilityHorizon,
+          rewound: yield* followerIngestedView,
           rows: yield* eventRows,
         };
       }),
     );
     expect(result.none).toBeNull();
-    expect(result.ingested).toBeTypeOf("number");
+    expect(result.ingested?.point.slot).toBe(VIEW_SLOT - 10);
     expect(result.stale).toEqual({ kind: "stale" });
     expect(result.rewound).toBeNull();
     expect(result.rows.deposits).toEqual([]);

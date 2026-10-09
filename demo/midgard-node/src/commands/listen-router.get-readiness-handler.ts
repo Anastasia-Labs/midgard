@@ -34,6 +34,7 @@ import { runL1ProviderPreflight } from "./l1-provider-preflight.js";
 import {
   L1_TRANSPORT_UNREADY,
   l1ProviderReadiness,
+  ownLandedForcedOrphanDetail,
   pendingFinalizationAgeDetail,
   readinessDatabaseError,
   readinessL1ProviderUnhealthyAfterMs,
@@ -91,6 +92,7 @@ export const getReadinessHandler = Effect.gen(function* () {
     mempoolTxCount,
     leaseInspection,
     journalAges,
+    ownLandedForcedOrphans,
   } = databaseState.right;
   const nowMillis = Date.now();
   const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
@@ -342,6 +344,10 @@ export const getReadinessHandler = Effect.gen(function* () {
   );
   if (pendingFinalizationDetail !== undefined)
     details.push(pendingFinalizationDetail);
+  const forcedOrphanDetail = ownLandedForcedOrphanDetail(
+    ownLandedForcedOrphans,
+  );
+  if (forcedOrphanDetail !== undefined) details.push(forcedOrphanDetail);
   if (
     durableAdmissionOldestAgeMs >
     nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS

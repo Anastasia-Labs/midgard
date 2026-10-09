@@ -7,6 +7,7 @@ import {
   requireCandidateView,
   withFollowerWrite,
 } from "../services/follower-write-gate.js";
+import { commitAnchorCanonical } from "./commit-anchor.js";
 import * as DepositsDB from "./deposits.js";
 import { canonicalForcedAdmission } from "./l1-admission-identity.js";
 import {
@@ -30,7 +31,9 @@ type IdentifiedMember = Pick<
 
 /** Check retained admission identity before applying journal effects: the
  * member's follower admission identity is its event row's, and the follower's
- * key set still holds it. Retirement keeps the key, so a spent list node
+ * key set still holds it. This binds each member to the exact event row it
+ * was journaled from; whether the events' blocks are still on the chain is
+ * the commit anchor's to decide (`commit-anchor.ts`, checked at signing). Retirement keeps the key, so a spent list node
  * remains a valid member. Public event IDs alone never authorize mutation of a
  * replacement row. A forced member's row must still be a canonical admission:
  * its order is in the follower's key set or its order row (a spent order
@@ -109,6 +112,9 @@ export const assertCanonicalEventMembers = (record: {
     ),
   );
 
+export const COMMIT_ANCHOR_NOT_CANONICAL_MESSAGE =
+  "Refusing to sign a commit whose commit anchor is missing or no longer on the follower's chain";
+
 /**
  * SQL commit must complete before handing these exact signed bytes to L1.
  *
@@ -150,8 +156,23 @@ export const recordSignedIntent = <J = never>(
     yield* withFollowerWrite(
       Effect.gen(function* () {
         yield* journalInsert;
-        yield* requireCandidateView;
+        const permit = yield* requireCandidateView;
         const sql = yield* SqlClient.SqlClient;
+        // Signing under a runtime permit needs the journal's commit anchor
+        // on the follower's chain: every included event's block is below it.
+        if (Option.isSome(permit)) {
+          const anchored = yield* sql<{ canonical: boolean }>`
+            SELECT ${commitAnchorCanonical(sql, "p")} AS canonical
+            FROM ${sql(tableName)} p WHERE p.header_hash = ${headerHash}`;
+          if (anchored[0] !== undefined && !anchored[0].canonical)
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: tableName,
+                message: COMMIT_ANCHOR_NOT_CANONICAL_MESSAGE,
+                cause: headerHash.toString("hex"),
+              }),
+            );
+        }
         const record = yield* retrieveByHeaderHash(headerHash, true);
         if (Option.isNone(record))
           return yield* Effect.fail(

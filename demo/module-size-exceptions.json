@@ -146,7 +146,7 @@
   },
   {
     "file": "midgard-core/tests/deployment-manifest-identity.deployment-manifest-v1-shared-identity.ts",
-    "max": 809,
+    "max": 807,
     "reason": "Retained test registration “DeploymentManifestV1 shared identity” (778 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -661,7 +661,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/transition-trace-l1-evidence.test.ts",
-    "max": 1403,
+    "max": 1398,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -921,8 +921,8 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1033,
-    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3): reads the horizon lag d from config.history-commit-horizon-lag.ts, which refuses a negative, fractional or deeper-than-k value at startup. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read. N1-close (-10): the deleted Ogmios and Kupo endpoint keys are no longer read. FIXN (-5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is no longer read; the startup deployment-status read retries with no attempt bound."
+    "max": 1032,
+    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3, since replaced): read the horizon lag d from the environment. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read. N1-close (-10): the deleted Ogmios and Kupo endpoint keys are no longer read. FIXN (-5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is no longer read; the startup deployment-status read retries with no attempt bound. DEPTH (-1): the commit-event depth d is read from the deployment manifest, whose profile build refuses a d that could cause a strike."
   },
   {
     "file": "midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
@@ -946,13 +946,13 @@
   },
   {
     "file": "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
-    "max": 560,
-    "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+13): the merge submission names its journaled intent and the header it merges. I2 (-2): merge funding reads the wallet view; no wallet pin. I5 (+4): the merge opens its intent plan before its L1 reads and records under it."
+    "max": 566,
+    "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+13): the merge submission names its journaled intent and the header it merges. I2 (-2): merge funding reads the wallet view; no wallet pin. I5 (+4): the merge opens its intent plan before its L1 reads and records under it. ORPH3 (+6): logs the skip of an oldest block that is a landed own block whose event left the chain, or is built on one."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-    "max": 905,
-    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage."
+    "max": 907,
+    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage. DEPTH (+2): the commit anchor d below the permit's view replaces the horizon lag and is passed to both submissions."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
@@ -1026,8 +1026,8 @@
   },
   {
     "file": "midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
-    "max": 509,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. U3 (+5): the commit submissions run under a d = 0 NodeConfig, which their final recheck now reads. I2 (-4): no stale-wallet retry to classify."
+    "max": 513,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. U3 (+5): the commit submissions run under a d = 0 NodeConfig, which their final recheck now reads. I2 (-4): no stale-wallet retry to classify. DEPTH (+4): the commit-anchor horizon mock returns the anchor with the uncapped end time."
   },
   {
     "file": "midgard-node/tests/contract-deployment-info.contract-deployment-info.ts",
@@ -1121,8 +1121,8 @@
   },
   {
     "file": "midgard-node/tests/production-lifecycle-streaming-emulator.test.ts",
-    "max": 948,
-    "reason": "Retained test registration “streams public raw events through production reconciliation, native commitment, refund, payout and reclaim” (939 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 952,
+    "reason": "Retained test registration “streams public raw events through production reconciliation, native commitment, refund, payout and reclaim” (939 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DEPTH (+4): the future-event commit point waits until the commit anchor, d blocks below the tip, is past the event's validity bound."
   },
   {
     "file": "midgard-node/tests/mempool-ledger-cache.mempool-ledger-cache.ts",
@@ -1451,7 +1451,7 @@
   },
   {
     "file": "midgard-watcher/tests/runtime/deployment-identity.test.ts",
-    "max": 791,
+    "max": 789,
     "reason": "Retained test registration “watcher deployment identity” (749 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1486,12 +1486,12 @@
   },
   {
     "file": "scripts/deployment-profiles.mjs",
-    "max": 525,
-    "reason": "validateProfile is the dominant indivisible declaration (206 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 657,
+    "reason": "validateProfile is the dominant indivisible declaration (262 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",
-    "max": 620,
+    "max": 837,
     "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

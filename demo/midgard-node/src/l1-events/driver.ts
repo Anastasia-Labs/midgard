@@ -52,7 +52,13 @@ export const classifyChange = (
 /** A named reason the node is not ready, with its detail, for `/readyz`. */
 export type DriverHold = Readonly<{ reason: string; detail: string }>;
 
-/** Orphaned admissions wait for the recovery that rejects their dependents. */
+/**
+ * Orphaned admissions wait for the recovery that rejects their dependents:
+ * an orphan an unfinished block journal holds (forced ones included) until
+ * that journal's disposition, one a foreign landed block holds until the
+ * header leaves the landed queue. An own landed block's orphan does not
+ * hold here (`l1_own_block_event_orphaned`).
+ */
 export const EVENTS_ORPHAN_RECOVERY = "l1_events_orphan_recovery";
 /** The sink refused or failed to ingest; the detail names why. */
 export const EVENTS_INGESTION_FAILED = "l1_events_ingestion_failed";
