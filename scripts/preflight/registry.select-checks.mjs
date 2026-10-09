@@ -25,11 +25,12 @@ export const buildRegistry = (root) => {
   const packages = workspacePackages(root);
   const index = indexAikenModules(root);
   const ciText = workflowText(root);
-  const demo = demoChecks(root, packages);
+  const runtimeWorkflow = readRuntimeWorkflow(root);
+  const demo = demoChecks(root, packages, runtimeWorkflow?.paths);
   const [fmt, focused, blueprint] = aikenChecks(root, index);
   const independent = independentChecks();
   const checks = [
-    ...toolingChecks(),
+    ...toolingChecks(root),
     fmt,
     demo.format,
     demo.build,
@@ -62,7 +63,7 @@ export const buildRegistry = (root) => {
     checks,
     packages,
     index,
-    runtimeWorkflow: readRuntimeWorkflow(root),
+    runtimeWorkflow,
   };
 };
 

@@ -57,6 +57,39 @@ test("interrupted preflight stops dispatching later checks and never reports a p
   );
 });
 
+test("a contrib suite step that skipped tests passes as CI's does; any other exit 3 fails", async () => {
+  const check = (id, skippedTestsPass) => ({
+    id,
+    title: id,
+    triggers: ["x"],
+    capabilities: [],
+    plan: () => [
+      {
+        argv: ["node", "scripts/contrib.mjs", "test"],
+        cwd: ".",
+        ...(skippedTestsPass ? { skippedTestsPass } : {}),
+      },
+    ],
+  });
+  const plan = planPreflight(
+    { checks: [check("suites", true), check("other", false)] },
+    ["x"],
+  );
+  const report = await runPreflight({
+    root: ".",
+    base: "HEAD",
+    plan,
+    probes: { get: async () => ({ status: "available" }), invalidate() {} },
+    log() {},
+    runStep: async () => ({ status: 3, output: "", durationMs: 1 }),
+  });
+  const status = Object.fromEntries(
+    report.results.map((entry) => [entry.id, entry.status]),
+  );
+  assert.deepEqual(status, { suites: "passed", other: "failed" });
+  assert.match(report.results[0].reason, /skipped by their own conditions/u);
+});
+
 const GIT_ENV = {
   ...process.env,
   GIT_CONFIG_NOSYSTEM: "1",

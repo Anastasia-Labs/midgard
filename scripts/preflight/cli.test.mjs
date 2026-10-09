@@ -105,7 +105,11 @@ test("--json prints one document with the stable schema and nothing else", async
   assert.equal(report.exitCode, exitCode);
   assert.equal(exitCode, 0);
   const ids = report.checks.map((check) => check.id);
-  assert.deepEqual(ids, ["merge-conflicts", "required-checks-doc"]);
+  assert.deepEqual(ids, [
+    "merge-conflicts",
+    "required-checks-doc",
+    "registry-paths",
+  ]);
   for (const check of report.checks) {
     assert.deepEqual(Object.keys(check).sort(), [
       "command",

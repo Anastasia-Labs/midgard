@@ -207,15 +207,27 @@ export const workspaceDependentClosure = (packages, names) =>
       .map((pkg) => pkg.name),
   );
 
-// A package whose Vitest global setup provisions Postgres shards cannot run its
-// suite without the test server; the others can.
+// A package whose suites reach the test Postgres: a test file or its Vitest
+// config reads the destination (POSTGRES_HOST) or the per-run database prefix
+// (MIDGARD_TEST_DATABASE_PREFIX). Those suites cannot run without the server.
 export const packageNeedsPostgres = (root, pkg) => {
-  const setup = resolve(root, pkg.directory, "tests/global-setup.ts");
-  return (
-    existsSync(setup) &&
-    /PgClient|provisionMidgardNodeTestDatabaseShards/u.test(
-      readFileSync(setup, "utf8"),
-    )
+  const directory = resolve(root, pkg.directory);
+  const files = readdirSync(directory)
+    .filter((name) => /^vitest\.config\.[cm]?[jt]s$/u.test(name))
+    .map((name) => join(directory, name));
+  const visit = (path) => {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      if (entry.name === "node_modules") continue;
+      const child = join(path, entry.name);
+      if (entry.isDirectory()) visit(child);
+      else if (/\.[cm]?[jt]s$/u.test(entry.name)) files.push(child);
+    }
+  };
+  if (existsSync(join(directory, "tests"))) visit(join(directory, "tests"));
+  return files.some((file) =>
+    /\b(?:POSTGRES_HOST|MIDGARD_TEST_DATABASE_PREFIX)\b/u.test(
+      readFileSync(file, "utf8"),
+    ),
   );
 };
 

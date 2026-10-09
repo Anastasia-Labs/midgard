@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
 import { parseSelectors } from "../../onchain/aiken/scripts/guard-focused-selector.mjs";
+import { reachablePackages } from "../contrib/reached.mjs";
 import { SDK_SUITES } from "./sdk-suite-evidence.mjs";
 import {
   AIKEN_PROJECT,
@@ -230,7 +231,9 @@ export const ledgerChecks = (root, index, ciText) =>
 
 // --- TypeScript workspace -----------------------------------------------
 
-export const demoChecks = (root, packages) => {
+// `ciPaths`: the paths Node CI runs the package suites for (its pull-request
+// path filter), or undefined when its routing is unknown.
+export const demoChecks = (root, packages, ciPaths) => {
   const triggers = packages.map((pkg) => `${pkg.directory}/**`);
   const postgres = new Set(
     packages
@@ -257,23 +260,53 @@ export const demoChecks = (root, packages) => {
       "any file of a workspace package; runs for it and every package that depends on it",
     capabilities: ["node-modules", ...(options.capabilities ?? [])],
     invalidates: options.invalidates,
-    display: `${formatCommand(step(pnpmRun(["<touched package and its dependents>"], script, options.extra)))}`,
+    display: `${formatCommand(step(pnpmRun(["<touched package and its dependents>"], script)))}`,
     plan: ({ matched, full }) => {
       const names = full
         ? new Set(packages.map((pkg) => pkg.name))
         : affected(matched);
-      const selected = ordered(names).filter(options.include ?? (() => true));
+      const selected = ordered(names);
       if (selected.length === 0) {
         return null;
       }
-      if (id === "demo-test") {
+      return [
+        step(
+          pnpmRun(
+            selected.length === packages.length ? undefined : selected,
+            script,
+          ),
+        ),
+      ];
+    },
+  });
+  // The package suites: the tests the change reaches in each package it can
+  // reach (`contrib test --related`, which widens to the whole package when
+  // unsure), as the package `test` script runs them. A full run is every
+  // package's whole suite. A path outside the packages that Node CI runs the
+  // suites for can reach them too (every path, when CI's routing is unknown).
+  const suites = (id, title, include, capabilities) => ({
+    id,
+    title,
+    triggers: [...triggers, ...(ciPaths ?? ["**"])],
+    triggerNote:
+      "any file of a workspace package, or any path Node CI runs the package suites for; runs the tests those files reach in every package they can reach",
+    capabilities: ["node-modules", ...capabilities],
+    display:
+      "node scripts/contrib.mjs test --package <each package the change can reach> --related <changed paths>",
+    plan: ({ matched, full }) => {
+      const names = full
+        ? new Set(packages.map((pkg) => pkg.name))
+        : reachablePackages(root, matched);
+      const selected = ordered(names).filter(include);
+      if (selected.length === 0) return null;
+      if (full) {
         const singles = Object.keys(SDK_SUITES).filter((name) =>
           selected.includes(name),
         );
         const others = selected.filter((name) => !singles.includes(name));
         return [
           ...(others.length
-            ? [step(pnpmRun(others, script, options.extra))]
+            ? [step(pnpmRun(others, "test", ["--workspace-concurrency=1"]))]
             : []),
           ...singles.map((name) =>
             step(["pnpm", "--filter", name, "test"], {
@@ -283,15 +316,23 @@ export const demoChecks = (root, packages) => {
           ),
         ];
       }
-      return [
-        step(
-          pnpmRun(
-            selected.length === packages.length ? undefined : selected,
-            script,
-            options.extra,
-          ),
-        ),
-      ];
+      return selected.map((name) => {
+        const script = packages.find((pkg) => pkg.name === name).scripts.test;
+        // contrib runs Vitest suites only; a plain node --test package runs
+        // its script, whole.
+        return script === undefined || !/\bvitest\b/u.test(script)
+          ? step(pnpmRun([name], "test"))
+          : step(
+              node(
+                "scripts/contrib.mjs",
+                "test",
+                "--package",
+                name,
+                ...matched.flatMap((path) => ["--related", path]),
+              ),
+              { skippedTestsPass: true },
+            );
+      });
     },
   });
   return {
@@ -331,25 +372,17 @@ export const demoChecks = (root, packages) => {
             ];
       },
     },
-    test: task(
+    test: suites(
       "demo-test",
-      "Test suites of the touched packages and their dependents that need no database",
-      "test",
-      {
-        capabilities: ["blueprint"],
-        extra: ["--workspace-concurrency=1"],
-        include: (name) => !postgres.has(name),
-      },
+      "Test suites of the reached packages that need no database",
+      (name) => !postgres.has(name),
+      ["blueprint"],
     ),
-    testDb: task(
+    testDb: suites(
       "demo-test-db",
-      `Postgres-backed test suites (${[...postgres].join(", ")}) of the touched packages and their dependents`,
-      "test",
-      {
-        capabilities: ["blueprint", "postgres", "db-prefix"],
-        extra: ["--workspace-concurrency=1"],
-        include: (name) => postgres.has(name),
-      },
+      `Postgres-backed test suites (${[...postgres].join(", ")}) of the reached packages`,
+      (name) => postgres.has(name),
+      ["blueprint", "postgres", "db-prefix"],
     ),
   };
 };

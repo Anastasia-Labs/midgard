@@ -288,11 +288,10 @@ try {
       cpSync(resolve(root, "scripts"), resolve(scratch, "scripts"), {
         recursive: true,
       });
-      cpSync(
-        resolve(root, "onchain/aiken/scripts"),
-        resolve(scratch, "onchain/aiken/scripts"),
-        { recursive: true },
-      );
+      for (const directory of ["onchain/aiken/scripts", "demo/scripts/lib"])
+        cpSync(resolve(root, directory), resolve(scratch, directory), {
+          recursive: true,
+        });
       if (control.file) {
         const path = resolve(scratch, "scripts/contrib", control.file);
         const original = readFileSync(path, "utf8");

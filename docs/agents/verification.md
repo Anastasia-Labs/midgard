@@ -4,13 +4,13 @@ Commands run from the repository root unless stated otherwise. [review]
 
 ## Required checks
 
-Run `node scripts/preflight.mjs` before pushing. Ordinary PRs assign the
-covered package build/typecheck/full-suite matrix to Node CI, reporting pending
-hosted obligations separately from local results. Read generated
-[required-checks.md](required-checks.md) before choosing an execution mode;
-it lists selectors, ownership, capabilities and `--full-local` usage. Unknown
-workflow routing retains local execution; the normal fast pre-push slice stays
-mandatory. [script: scripts/preflight/run.mjs]
+Run `node scripts/preflight.mjs` before pushing; gate a merge with
+`--full-local --base <target-ref>` ([how](required-checks.md#gate-before-a-merge)).
+Ordinary PRs assign the package build/typecheck/suite matrix to Node CI,
+reported as pending apart from local results. Read generated
+[required-checks.md](required-checks.md) for selectors, ownership and
+capabilities. Unknown workflow routing retains local execution; the fast
+pre-push slice stays mandatory. [script: scripts/preflight/run.mjs]
 
 Focused local regressions and causal red/green checks remain mandatory. Prepare
 fresh compiled/native dependencies and blueprints in this checkout; read

@@ -13,17 +13,13 @@ import { compact, parse } from "../contrib.mjs";
 import { classifyProgress, redact } from "./diagnostics.mjs";
 import { enrollBuilds } from "./enroll-builds.mjs";
 import { fixture } from "./fixture.test-support.mjs";
-import { gatePlan, GATES } from "./gates.mjs";
 import { measureFiles } from "./measure.mjs";
 import { devnetPlan, withPorts } from "./operations.mjs";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
-test("all gate selectors collect real files and every package build is guarded", () => {
-  for (const name of Object.keys(GATES))
-    assert.ok(
-      gatePlan(root, name).every((lane) => lane.files.length > 0),
-      name,
-    );
+// Whether every gate names real files is scripts/ci/check-registry-paths.mjs's
+// job, with the other registries.
+test("every package build is guarded", () => {
   assert.deepEqual(enrollBuilds(root), []);
 });
 

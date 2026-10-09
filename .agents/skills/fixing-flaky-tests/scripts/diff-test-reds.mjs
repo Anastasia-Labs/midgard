@@ -17,13 +17,10 @@
 //               tool cannot see either, and warns.
 //   --json      print the result as JSON instead of text
 //
-// Produce a report and its log with (delete the old report first: vitest
-// writes it only at the end, so a killed run leaves the previous one):
-//   rm -f <report.json>
-//   <env> pnpm --dir demo/<package> exec vitest run <files> <flags> --reporter=default --reporter=json --outputFile=<report.json> 2>&1 | tee <run.log>
-// where <env> and <flags> are what the package's `test` script sets (watcher:
-// env MALLOC_MMAP_THRESHOLD_=131072; node and node-tools: NODE_ENV=emulator
-// and --disableConsoleIntercept, node-tools after its node --test preludes).
+// Produce a report and its log with
+//   node scripts/contrib.mjs test --package <package> [--file <path>]...
+// which prints `receipt: <run>/receipt.json`; the report is <run>/vitest.json
+// and the log <run>/test.log, in a directory no earlier run wrote.
 //
 // The list:
 //   { "version": 1, "program": string, "base": string, "generatedFrom": [string],
