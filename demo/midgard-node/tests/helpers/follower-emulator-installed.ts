@@ -14,7 +14,7 @@ import {
 const installation = installFollowerEmulator();
 
 afterAll(async () => {
-  // One emulator at a time: each use moves the store to its chain.
+  // One emulator at a time: a use that syncs moves the store to its chain.
   const uses: FollowerEmulatorUse[] = [];
   try {
     for (const host of installation.hosts()) uses.push(await host.use());
@@ -27,7 +27,9 @@ afterAll(async () => {
   console.info(
     `follower provider: ${uses.length.toString()} emulators, ${uses
       .reduce((sum, { providerCalls }) => sum + providerCalls, 0)
-      .toString()} provider calls, ${submitted.length.toString()} submitted, ${confirmed.length.toString()} confirmed, ${stored.length.toString()} in the follower store`,
+      .toString()} provider calls, ${submitted.length.toString()} submitted, ${confirmed.length.toString()} confirmed, ${stored.length.toString()} in the follower store, ${uses
+      .filter(({ synced }) => synced)
+      .length.toString()} emulators synced to check`,
   );
   // The suite submitted through the follower provider, and every
   // transaction the emulator confirmed reached the follower store.

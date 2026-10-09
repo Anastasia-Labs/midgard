@@ -24,6 +24,12 @@
  *   failed sync resets the store to its origin (`resetToOrigin`) and replays
  *   the chain, as a tracked-set reset does; the replay mark is cleared
  *   once the replay is back at the tip.
+ * - Store check (`onFollowerHostCheck`): runs after each sync, on the store
+ *   at the synced emulator's chain, and before a sync moves the store off
+ *   the chain of the emulator it last followed, when it may first bring the
+ *   store to that emulator's chain as it now stands (only the blocks it made
+ *   since its last sync). A check that fails while leaving leaves the next
+ *   sync a reset.
  * - Every sync is serialized; a failure leaves the next sync a reset.
  */
 import {
@@ -168,6 +174,9 @@ type Open = {
 };
 
 let open: Open | undefined;
+/** The emulator whose chain `open` holds, as of its last sync. */
+let followed: Emulator | undefined;
+let storeCheck: StoreCheck | undefined;
 let lane: Promise<unknown> = Promise.resolve();
 
 const serialized = <A>(work: () => Promise<A>): Promise<A> => {
@@ -217,6 +226,7 @@ const required = <T extends { kind: string }, K extends T["kind"]>(
 const close = async (): Promise<void> => {
   const closing = open;
   open = undefined;
+  followed = undefined;
   await closing?.store.close().catch(() => undefined);
 };
 
@@ -332,7 +342,27 @@ const sharedBlocks = (current: Open, chain: FollowedChain): number => {
   return shared;
 };
 
+/** Runs the store check if the sync to `emulator` leaves another's chain. */
+const leave = async (emulator: Emulator): Promise<void> => {
+  const leaving = followed;
+  if (
+    open === undefined ||
+    leaving === undefined ||
+    leaving === emulator ||
+    storeCheck === undefined
+  )
+    return;
+  try {
+    await storeCheck(leaving, async () => (await follow(leaving)).store);
+  } catch {
+    // What the check did not read stays unchecked.
+    await close();
+  }
+};
+
 const follow = async (emulator: Emulator): Promise<Open> => {
+  await leave(emulator);
+  followed = undefined;
   const chain = followedChainOf(emulator);
   const binding =
     bindings.get(emulator) ??
@@ -360,6 +390,7 @@ const follow = async (emulator: Emulator): Promise<Open> => {
     const ended = await current.store.endTrackedSetReplay();
     current.replaying = ended === "below_replay_height";
   }
+  followed = emulator;
   return current;
 };
 
@@ -386,6 +417,10 @@ export const withFollowerHost = <A>(
       await close();
       throw error;
     }
+    // What a failed check did not read stays unchecked.
+    await storeCheck?.(emulator, () => Promise.resolve(store)).catch(
+      () => undefined,
+    );
     return read(store);
   });
 
@@ -399,6 +434,27 @@ export const readFollowerHost = <A>(
   serialized(() =>
     open === undefined ? Promise.resolve(undefined) : read(open.store),
   );
+
+/**
+ * A check of `emulator`'s chain: `chain` returns the store at that chain as
+ * it now stands (bringing it there first when the store is leaving it).
+ */
+export type StoreCheck = (
+  emulator: Emulator,
+  chain: () => Promise<FactStore>,
+) => Promise<void>;
+
+/**
+ * Runs `check` after each sync and before each sync that moves the store off
+ * the chain of the emulator it last followed, until the returned unregister
+ * runs.
+ */
+export const onFollowerHostCheck = (check: StoreCheck): (() => void) => {
+  storeCheck = check;
+  return () => {
+    if (storeCheck === check) storeCheck = undefined;
+  };
+};
 
 /** The own wallets of the store's current origin. */
 export const followerHostWallets = (): readonly Buffer[] => open?.wallets ?? [];

@@ -22,6 +22,11 @@
  * - The transport double answers `protocol_params`, the UTxO queries and the
  *   reward-account queries from the emulator, submits to the emulator, and
  *   answers mempool presence from its pending transactions.
+ * - The red-check evidence is gathered as the suite runs: after each sync,
+ *   and each time the host moves the store off an emulator's chain (caught
+ *   up to that chain first), the emulator's confirmed transactions not yet
+ *   found are looked up in the store. `use` syncs an emulator again only
+ *   when one of its confirmed transactions was never found that way.
  *
  * `installFollowerEmulator` routes every emulator's provider calls through
  * the host until `restore`. No emulator internals other than the ledger, the
@@ -35,6 +40,7 @@ import { NodeL1Provider } from "../../src/services/l1-provider.js";
 import { followedChainOf, followedPoint } from "./follower-emulator.chain.js";
 import {
   followerHostWallets,
+  onFollowerHostCheck,
   releaseFollowerHost,
   syncFollowerHost,
   withFollowerHost,
@@ -57,6 +63,8 @@ export type FollowerEmulatorUse = Readonly<{
   confirmed: readonly string[];
   /** Confirmed transactions the follower store holds. */
   stored: readonly string[];
+  /** Whether `use` synced the store to the emulator's chain to check. */
+  synced: boolean;
 }>;
 
 export type FollowerEmulatorHost = Readonly<{
@@ -72,6 +80,8 @@ type OriginalMethods = {
 type Served = {
   providerCalls: number;
   readonly submitted: string[];
+  /** Confirmed transactions found in the store at this emulator's chain. */
+  readonly stored: Set<string>;
   provider?: Readonly<{ store: FactStore; provider: NodeL1Provider }>;
 };
 
@@ -114,7 +124,7 @@ export const installFollowerEmulator = (): FollowerEmulatorInstallation => {
   const servedOf = (emulator: Emulator): Served => {
     let entry = served.get(emulator);
     if (entry === undefined) {
-      entry = { providerCalls: 0, submitted: [] };
+      entry = { providerCalls: 0, submitted: [], stored: new Set() };
       served.set(emulator, entry);
     }
     return entry;
@@ -149,6 +159,26 @@ export const installFollowerEmulator = (): FollowerEmulatorInstallation => {
     entry.provider = { store, provider };
     return provider;
   };
+  /** `emulator`'s confirmed transactions not yet found in the store. */
+  const unfound = (emulator: Emulator): readonly string[] => {
+    const entry = served.get(emulator);
+    if (entry === undefined) return [];
+    const history = stateOf(emulator).transactionHistory;
+    return entry.submitted.filter(
+      (hash) =>
+        !entry.stored.has(hash) && history[hash]?.status === "confirmed",
+    );
+  };
+  /** Adds the unfound transactions `store` holds to `emulator`'s found. */
+  const findStored = async (emulator: Emulator, store: FactStore) => {
+    const entry = servedOf(emulator);
+    for (const hash of unfound(emulator))
+      if ((await store.txByHash(Buffer.from(hash, "hex"))) !== null)
+        entry.stored.add(hash);
+  };
+  const unregisterCheck = onFollowerHostCheck(async (emulator, chain) => {
+    if (unfound(emulator).length > 0) await findStored(emulator, await chain());
+  });
   for (const name of PROVIDER_METHODS)
     prototype[name] = async function (this: Emulator, ...args: unknown[]) {
       const provider = (await providerOf(this)) as unknown as Record<
@@ -165,29 +195,29 @@ export const installFollowerEmulator = (): FollowerEmulatorInstallation => {
   };
   const use =
     (emulator: Emulator) => async (): Promise<FollowerEmulatorUse> => {
-      const { providerCalls, submitted } = servedOf(emulator);
+      const entry = servedOf(emulator);
       const history = stateOf(emulator).transactionHistory;
-      const confirmed = submitted.filter(
+      const confirmed = entry.submitted.filter(
         (hash) => history[hash]?.status === "confirmed",
       );
-      const stored = await withFollowerHost(emulator, async (store) => {
-        const held: string[] = [];
-        for (const hash of confirmed)
-          if ((await store.txByHash(Buffer.from(hash, "hex"))) !== null)
-            held.push(hash);
-        return held;
-      });
+      const synced = unfound(emulator).length > 0;
+      if (synced)
+        await withFollowerHost(emulator, (store) =>
+          findStored(emulator, store),
+        );
       return {
-        providerCalls,
-        submitted: [...submitted],
+        providerCalls: entry.providerCalls,
+        submitted: [...entry.submitted],
         confirmed,
-        stored,
+        stored: confirmed.filter((hash) => entry.stored.has(hash)),
+        synced,
       };
     };
   return {
     hosts: () =>
       [...served.keys()].map((emulator) => ({ emulator, use: use(emulator) })),
     restore: async () => {
+      unregisterCheck();
       for (const [name, method] of saved) prototype[name] = method;
       await releaseFollowerHost();
     },
