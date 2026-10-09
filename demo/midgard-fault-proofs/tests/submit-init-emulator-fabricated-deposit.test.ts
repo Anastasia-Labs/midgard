@@ -238,6 +238,7 @@ const setupChallengedBlockOnEmulator = async (
   committedInfoCbor: string,
   mode: "inline" | "external" = "inline",
   absent = false,
+  admittedBefore = false,
 ) => {
   const {
     emulator,
@@ -300,10 +301,12 @@ const setupChallengedBlockOnEmulator = async (
     catalogue,
     header,
     beforeHeaderCommit: async (hub) => {
+      // A repeat admits the event for the block that ends where this one
+      // starts, so its inclusion time belongs to that earlier block.
       admitted = await harness.history.admit(
         hub,
         { DepositPayload: { event: authenticEvent } },
-        header,
+        admittedBefore ? { ...header, endTime: header.startTime } : header,
       );
       awaitHeaderCommitWindow(emulator, header);
     },
@@ -358,7 +361,9 @@ const setupChallengedBlockOnEmulator = async (
     })
   ).utxo;
   const eventInclusionTime = admitted.captured.commitment.inclusion_time;
-  expect(eventInclusionTime).toBe(header.endTime);
+  expect(eventInclusionTime).toBe(
+    admittedBefore ? header.startTime : header.endTime,
+  );
   return {
     counted,
     header,
@@ -466,15 +471,17 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
 
   it.each(
     (["inline", "external"] as const).flatMap((mode) =>
-      (["diverted-content", "absent-identity"] as const).map((scenario) => ({
-        mode,
-        scenario,
-      })),
+      (["diverted-content", "absent-identity", "repeated-event"] as const).map(
+        (scenario) => ({ mode, scenario }),
+      ),
     ),
   )(
     "proves $scenario deposit with $mode history, mints permanent evidence, and removes the fraudulent commitment",
     async ({ mode, scenario }) => {
       const absent = scenario === "absent-identity";
+      // A repeat commits the authentic content of an event an earlier block
+      // already carried.
+      const repeated = scenario === "repeated-event";
       const harness = await makeEmulatorHarness();
       const {
         realBlueprint,
@@ -487,6 +494,17 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
         category,
       } = harness;
 
+      const authenticInfo = Data.from(
+        DATUM_AUTHENTIC_DEPOSIT_EVENT,
+        SDK.DepositDatum,
+      ).event.info;
+      if (mode === "external") authenticInfo.l2_datum = "ab".repeat(2000);
+      const committedInfoCbor = repeated
+        ? SDK.committedDepositValueBytes(authenticInfo)
+        : VALUE_DIVERTED_DEPOSIT_INFO;
+      const committedInfoHash = repeated
+        ? await Effect.runPromise(SDK.depositInfoCommitment(authenticInfo))
+        : HASH_DIVERTED_DEPOSIT_INFO;
       const {
         counted,
         header,
@@ -499,9 +517,10 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
         referenceScriptUtxos,
       } = await setupChallengedBlockOnEmulator(
         harness,
-        VALUE_DIVERTED_DEPOSIT_INFO,
+        committedInfoCbor,
         mode,
         absent,
+        repeated,
       );
       if (!("DepositPayload" in admitted.captured.payload))
         throw new Error("Wrong payload kind");
@@ -531,7 +550,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
           ...base.payload.block_body,
           header,
           header_hash: headerHash,
-          deposits: [[keyCbor, VALUE_DIVERTED_DEPOSIT_INFO]],
+          deposits: [[keyCbor, committedInfoCbor]],
           counts: {
             ...base.payload.block_body.counts,
             depositCount: counted.count,
@@ -566,14 +585,21 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       expect(plan.classification.fault).toEqual(
         absent
           ? "NonexistentDepositIdentity"
-          : {
-              MismatchedDepositContent: {
-                committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
-                authentic_deposit_info_hash: authenticDepositInfoHash,
-                event_inclusion_time: eventInclusionTime,
+          : repeated
+            ? {
+                IneligibleDepositEvent: {
+                  event_inclusion_time: eventInclusionTime,
+                },
+              }
+            : {
+                MismatchedDepositContent: {
+                  committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
+                  authentic_deposit_info_hash: authenticDepositInfoHash,
+                  event_inclusion_time: eventInclusionTime,
+                },
               },
-            },
       );
+      if (repeated) expect(committedInfoHash).toBe(authenticDepositInfoHash);
 
       // ## init
       const initResult = await submitFabricatedFamilyInit({
@@ -639,9 +665,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       });
       expect(step01Result.txHash).toHaveLength(64);
       expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
-      expect(step01Result.committedDepositInfoHash).toBe(
-        HASH_DIVERTED_DEPOSIT_INFO,
-      );
+      expect(step01Result.committedDepositInfoHash).toBe(committedInfoHash);
       await expect(
         proverLucid.utxosAtWithUnit(
           initResult.firstStepAddress,

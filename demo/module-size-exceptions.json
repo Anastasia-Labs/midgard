@@ -481,17 +481,17 @@
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-event-history-list.journey.ts",
-    "max": 786,
+    "max": 792,
     "reason": "journey is the dominant indivisible declaration (742 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-fabricated-deposit.test.ts",
-    "max": 1265,
+    "max": 1289,
     "reason": "Retained test registration “fabricated-deposit fault-proof emulator lifecycle” (887 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-fabricated-withdrawal.test.ts",
-    "max": 1345,
+    "max": 1367,
     "reason": "Retained test registration “fabricated-withdrawal fault-proof emulator lifecycle” (934 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
