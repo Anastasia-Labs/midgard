@@ -1,12 +1,8 @@
-import {
-  type CanonicalBlockEvidence,
-  fetchCanonicalBlockEvidence,
-} from "../evidence/canonical-block-evidence.js";
-import { deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { deriveResolvedOutputPriorLedgerReplay } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { admitCompleteCanonicalReplayHistoricalCorpus } from "../workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorEvidence } from "../workflow/complete-replay.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { resolveHistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
@@ -74,10 +70,9 @@ export const createManifestBoundSpendInputSignerMissingWorkflow = async (
     stateQueueMutationLeaseCoordinator:
       input.stateQueueMutationLeaseCoordinator,
     decisionDigest: input.decisionDigest,
-    historicalNativeScriptCheckpointStore:
-      input.historicalNativeScriptCheckpointStore,
-    historicalNativeScriptHistorySource:
-      input.historicalNativeScriptHistorySource,
+    ...(input.replayContext === undefined
+      ? {}
+      : { replayContext: input.replayContext }),
   });
 };
 
@@ -105,18 +100,13 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflow =
       observation,
       sources: input.sources,
     });
-    const corpus = await resolveHistoricalNativeScriptCorpus({
-      deploymentFingerprint: input.workflow.binding.deploymentFingerprint,
-      checkpointStore: input.workflow.historicalNativeScriptCheckpointStore,
-      historySource: input.workflow.historicalNativeScriptHistorySource,
-      currentEvidence: canonical,
-      sources: input.sources,
+    const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+      block: canonical,
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence: canonical,
+        context: input.workflow.replayContext,
+      }),
     });
-    const priorLedger =
-      await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
-        block: canonical,
-        corpus,
-      });
     const findings = detectSpendInputSignerMissingCompleteReplay({
       block: canonical,
       priorLedger,
@@ -148,50 +138,24 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflow =
 
 export const createSpendInputSignerMissingRecoveryAdapter = (
   workflow: ManifestBoundSpendInputSignerMissingWorkflow,
-  sources: readonly RetainedDaPayloadSource[],
 ) => {
-  const { config, binding } = workflow;
-  let currentHistory:
-    | {
-        evidence: CanonicalBlockEvidence;
-        corpus: Awaited<ReturnType<typeof resolveHistoricalNativeScriptCorpus>>;
-      }
-    | undefined;
-  const resolveReplayContext = async (canonical: CanonicalBlockEvidence) => {
-    const corpus = await resolveHistoricalNativeScriptCorpus({
-      deploymentFingerprint: binding.deploymentFingerprint,
-      checkpointStore: workflow.historicalNativeScriptCheckpointStore,
-      historySource: workflow.historicalNativeScriptHistorySource,
-      currentEvidence: canonical,
-      sources,
-    });
-    currentHistory = { evidence: canonical, corpus };
-    return {
-      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
-        evidence: canonical,
-        corpus,
-      }),
-    };
-  };
+  const { config } = workflow;
   const material = createCanonicalFamilyArtifactPort(
-    async ({ evidence: canonical, classification }) => {
-      if (currentHistory?.evidence !== canonical)
-        throw new Error(
-          "spendInputSignerMissing requires its exact admitted historical replay context",
-        );
-      return await prepareSpendInputSignerMissingRecoveryMaterial(
+    async ({ evidence: canonical, classification }) =>
+      await prepareSpendInputSignerMissingRecoveryMaterial(
         canonical,
         classification.selected.detectionId,
-        currentHistory.corpus,
-      );
-    },
+        completeCanonicalReplayPredecessorEvidence({
+          evidence: canonical,
+          context: workflow.replayContext,
+        }),
+      ),
   );
-  const assembled = assembleBoundManifestBoundFamilyWorkflow(
+  return assembleBoundManifestBoundFamilyWorkflow(
     SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION,
     workflow.deployment,
     { config, material },
   );
-  return { ...assembled, resolveReplayContext };
 };
 
 export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
@@ -207,5 +171,5 @@ export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
     ...workflow,
     sources,
     journal,
-    ...createSpendInputSignerMissingRecoveryAdapter(workflow, sources),
+    ...createSpendInputSignerMissingRecoveryAdapter(workflow),
   });

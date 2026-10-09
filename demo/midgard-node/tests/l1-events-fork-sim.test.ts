@@ -25,10 +25,7 @@ import {
   type EventSimStats,
   zeroEventSimStats,
 } from "./helpers/l1-events-sim.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+import { testDatabases } from "./helpers/l1-events-store.js";
 
 const SIM_K = 6;
 const RUNS = Number(process.env.L1_EVENTS_FORK_SIM_RUNS ?? "15");
@@ -36,7 +33,7 @@ const databases = testDatabases();
 
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 const openSqlite: ForkRunOptions["open"] = (optionsFor) =>
   Promise.resolve(

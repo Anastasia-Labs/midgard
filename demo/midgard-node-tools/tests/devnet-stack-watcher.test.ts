@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
   copyFileSync,
@@ -59,12 +58,6 @@ import {
   ensureWatcherRelease,
   watcherServiceSpecs,
 } from "../src/devnet-stack/watcher.js";
-import {
-  historyHost,
-  historyTransportEnvironment,
-  startHistoryArchive,
-  startHistoryTunnel,
-} from "../src/devnet-stack/watcher-history.js";
 import {
   loadWatcherModule,
   releasePaths,
@@ -340,19 +333,6 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
         expect(
           (await watcher.loadWatcherSecretText({ kind: "file", path })).length,
         ).toBeGreaterThan(0);
-
-      const providers = JSON.parse(
-        readFileSync(layout.watcherHistoryProviders, "utf8"),
-      );
-      expect(providers.sourceMode).toBe("external_provider_quorum");
-      expect(
-        providers.providers.map(
-          (p: { authorityEndpoint: string }) => p.authorityEndpoint,
-        ),
-      ).toEqual([
-        `https://${historyHost(context.run, "a")}`,
-        `https://${historyHost(context.run, "b")}`,
-      ]);
     }, 300_000);
 
     it("changes nothing on a second call", async () => {
@@ -389,19 +369,10 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       }
     }, 300_000);
 
-    it("orders and wires the watcher's services", () => {
-      const specs = watcherServiceSpecs(context, oneShot);
-      expect(specs.map((spec) => spec.name)).toEqual([
-        "watcher-history-a",
-        "watcher-history-b",
-        "watcher-history-tunnel",
-        "watcher-history-recorder",
-        "watcher",
-      ]);
-      const [, , tunnel, , watcher] = specs;
-      expect(tunnel!.healthUrl).toBe(
-        `http://127.0.0.1:${servicePorts(context.run).historyTunnel}/healthz`,
-      );
+    it("wires the watcher's service", () => {
+      const specs = watcherServiceSpecs(context);
+      expect(specs.map((spec) => spec.name)).toEqual(["watcher"]);
+      const [watcher] = specs;
       expect(watcher!.args.slice(-3)).toEqual([
         "start",
         "--config",
@@ -414,84 +385,9 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
         `http://127.0.0.1:${servicePorts(context.run).watcherOperations}/readyz`,
       );
       expect(watcher!.readyProbe).toBeUndefined();
-      expect(watcher!.env).toMatchObject(
-        historyTransportEnvironment(layout, context.run),
-      );
+      expect(watcher!.env).not.toHaveProperty("HTTPS_PROXY");
+      expect(watcher!.env).not.toHaveProperty("NODE_EXTRA_CA_CERTS");
       expect(watcher!.prestart).toBeUndefined();
     });
-
-    it("serves each provider over TLS through the tunnel under its roster name", async () => {
-      const headerHash = "cd".repeat(28);
-      const record = { headerHash, marker: randomBytes(8).toString("hex") };
-      for (const role of ["a", "b"] as const)
-        writeFileSync(
-          join(
-            layout.watcherHistoryArchive(role),
-            "records",
-            `${headerHash}.json`,
-          ),
-          JSON.stringify(record),
-        );
-      const servers = [
-        await startHistoryArchive(layout, context.run, "a"),
-        await startHistoryArchive(layout, context.run, "b"),
-        await startHistoryTunnel(context.run),
-      ];
-      try {
-        const script = `
-        const urls = JSON.parse(process.argv[1]);
-        const out = [];
-        for (const url of urls) {
-          try {
-            const response = await fetch(url);
-            out.push({ status: response.status, body: await response.text() });
-          } catch (error) {
-            out.push({ error: String(error.cause?.message ?? error.message) });
-          }
-        }
-        console.log(JSON.stringify(out));`;
-        const path = `/midgard/v1/historical-payload/${manifest.manifestId}/${headerHash}`;
-        const urls = [
-          `https://${historyHost(context.run, "a")}${path}`,
-          `https://${historyHost(context.run, "b")}${path}`,
-          `https://unrouted.midgard-devnet.internal${path}`,
-        ];
-        const output = await new Promise<string>((resolve, reject) => {
-          const child = spawn(
-            process.execPath,
-            ["--input-type=module", "-e", script, JSON.stringify(urls)],
-            {
-              env: {
-                PATH: process.env.PATH,
-                ...historyTransportEnvironment(layout, context.run),
-              },
-              stdio: ["ignore", "pipe", "pipe"],
-            },
-          );
-          let stdout = "";
-          let stderr = "";
-          child.stdout.on("data", (chunk) => (stdout += chunk));
-          child.stderr.on("data", (chunk) => (stderr += chunk));
-          child.once("error", reject);
-          child.once("exit", (code) =>
-            code === 0
-              ? resolve(stdout)
-              : reject(new Error(`child exited ${code}: ${stderr}`)),
-          );
-        });
-        const [a, b, unrouted] = JSON.parse(output.trim().split("\n").at(-1)!);
-        expect(a).toEqual({ status: 200, body: JSON.stringify(record) });
-        expect(b).toEqual({ status: 200, body: JSON.stringify(record) });
-        expect(unrouted.error).toBeDefined();
-        for (const role of ["a", "b"] as const)
-          expect(
-            existsSync(
-              join(layout.watcherHistoryArchive(role), "requests.ndjson"),
-            ),
-          ).toBe(true);
-      } finally {
-        for (const server of servers) await server.close();
-      }
-    }, 60_000);
   },
 );

@@ -9,7 +9,7 @@
  * does, so a builder never has to guess what the validator committed.
  *
  * The checkpoint encodings themselves are the repository's single
- * implementation — `src/missing-native-script-tx/staged-walk.ts` — which pins
+ * implementation — `src/staged-field-walk/` — which pins
  * §2.5 field 6. §4 removed field-index domain separation, so the index travels
  * inside the checkpoint and is the only byte that differs here; it is patched
  * exactly as `mint-declared-asset-limit` and `observer-order-invalid` do,
@@ -18,7 +18,7 @@
 
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
-import "../missing-native-script-tx/staged-walk.js";
+import "../staged-field-walk/index.js";
 import "./submit-common.js";
 import "./forced-scan-plan.advance-grammar-by.js";
 import "./forced-scan-plan.plan-network-id-forced-scan.js";

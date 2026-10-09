@@ -42,9 +42,8 @@
 ////
 //// **On the file name.** It says `spend-input-cardinality` because #551 was a
 //// spend-input defect and the first two pairs of rows are still that
-//// measurement. It has since grown two more: a script-witness cardinality pair
-//// (field 6, Q17 step-06) and an address-witness cardinality pair (field 7,
-//// Q16 step-04), because those are the walks the rebind made linear and
+//// measurement. It has since grown an address-witness cardinality pair (field
+//// 7, Q16 step-04), because that is a walk the rebind made linear and
 //// measuring only the flat ones would not be a measurement of the rebind. The
 //// name is therefore narrower than the contents. Renaming it would move the
 //// `module` key of every row in `scripts/native-tx-q1x-exec-ledger-v1.json`
@@ -58,7 +57,6 @@
 use aiken/collection/list
 use aiken/primitive/bytearray
 use fraud_proofs/double_spend/step_04 as double_spend_step_04_validator
-use fraud_proofs/missing_native_script_tx/step_06 as missing_native_script_tx_step_06_validator
 use fraud_proofs/missing_signature/step_04 as missing_signature_step_04_validator
 use fraud_proofs/no_input/step_02 as no_input_step_02_validator
 use midgard/computation_thread as ct
@@ -67,17 +65,14 @@ use midgard/fraud_proofs/field_opening_v1.{
   BodyFieldOpening, FieldOpeningV1, WitnessAnchor, WitnessFieldOpening,
   address_witnesses_field_index, opened_field_walk,
 }
-use midgard/fraud_proofs/missing_native_script_tx/step_06 as missing_native_script_tx_step_06
 use midgard/fraud_proofs/missing_signature/step_04 as missing_signature_step_04
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_address_witness, encode_midgard_tx_input,
-  encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddressWitness, MidgardTransaction, MidgardTransactionBody,
-  MidgardTransactionWitnessSet, MidgardTxInput, MidgardVersionedScript,
-  NativeCardanoScript,
+  MidgardTransactionWitnessSet, MidgardTxInput,
 }
 use midgard/fraud_proofs/no_input/step_02 as no_input_step_02
 use midgard/fraud_proofs/no_input/step_03 as no_input_step_03
@@ -86,7 +81,6 @@ use midgard/native_tx_field_access_v1.{
   spend_input_stride,
 }
 use midgard/native_tx_machine_walk_v1.{field_walk_checkpoint_hash, walk_fold}
-use midgard/script_proof_v1
 
 /// The cardinality #551 measured the defect at, and the one this module
 /// re-measures at. Named from the door's own constant so the two cannot drift.
@@ -338,188 +332,16 @@ test q1x_f6_double_spend_step_04_at_the_admissible_maximum() {
 }
 
 // ---------------------------------------------------------------------------
-// Q17 — `missing-native-script-tx` step-06, the field-6 walk
-// ---------------------------------------------------------------------------
-//
-// The two pairs above measure *arithmetic* item access over a fixed-stride
-// field, which is what #551 was about. Step-06 is the other shape the rebind
-// introduced and the only genuinely **unbounded** one in this wave: field 6 is
-// variable-width, the rule is an absence claim, and `fold_opened_field` walks
-// every item. Its cost is O(N) in the script-witness count by construction, so
-// what has to be measured is not flatness but *fit* — that the whole walk still
-// lands inside the GOAL_SPEC §3.3 basis at the admissible cardinality.
-//
-// AC2 asked for the rolling re-measurement to cover the newly unbounded walks;
-// leaving this one out would have measured only the steps whose cost the rebind
-// made flat and none of the step whose cost it made linear.
-
-/// C20.6's Cardano envelope for native script witnesses — the field-6 twin of
-/// `maximum_cardano_spend_redeemer_count`.
-const admissible_script_witness_count: Int = 224
-
-/// The **direct** route's own admissible maximum. Step-06's staged rebind caps
-/// `DirectFinalize` at `direct_script_witness_limit`; a wider field-6 certifies
-/// its §5.1 grammar and then scans in bounded batches through step-07/step-08,
-/// which `fraud_proofs/missing_native_script_tx/staged_v1.test` measures at
-/// both 65 and C20.6's 224. The one-L1-transaction rows below therefore sit at
-/// this step's own ceiling rather than at the envelope's.
-const direct_script_witness_count: Int =
-  missing_native_script_tx_step_06.direct_script_witness_limit
-
-const minimal_script_witness_count: Int = 1
-
-/// `count` distinct native script witnesses. Distinct because a real
-/// high-cardinality witness set is (§6.1 forbids duplicates), and because the
-/// walk's cost must not be measured against a collection an optimiser could
-/// collapse.
-fn script_witnesses_of(count: Int) -> List<MidgardVersionedScript> {
-  accumulate_script_witnesses(count, [])
-}
-
-fn accumulate_script_witnesses(
-  remaining: Int,
-  accumulated: List<MidgardVersionedScript>,
-) -> List<MidgardVersionedScript> {
-  if remaining <= 0 {
-    accumulated
-  } else {
-    accumulate_script_witnesses(
-      remaining - 1,
-      [
-        MidgardVersionedScript {
-          language: NativeCardanoScript,
-          script_bytes: #"8200581c30303030303030303030303030303030303030303030"
-            |> bytearray.concat(bytearray.push(#"", ( remaining - 1 ) % 256))
-            |> bytearray.concat(bytearray.push(#"", ( remaining - 1 ) / 256)),
-        },
-        ..accumulated
-      ],
-    )
-  }
-}
-
-fn script_cardinality_block(count: Int) -> fixture.NativeBlockFixtureV1 {
-  let base = fixture.valid_native_tx_v1()
-  fixture.native_block_fixture_v1(
-    MidgardTransaction {
-      ..base,
-      witness_set: MidgardTransactionWitnessSet {
-        ..base.witness_set,
-        script_tx_wits: script_witnesses_of(count),
-      },
-    },
-  )
-}
-
-/// A versioned script no `script_witnesses_of` collection contains, so the
-/// absence claim the step adjudicates is true and the walk runs to completion —
-/// the worst case, and the only one worth measuring.
-fn absent_script_hash() -> ByteArray {
-  script_proof_v1.versioned_script_hash(
-    MidgardVersionedScript {
-      language: NativeCardanoScript,
-      script_bytes: #"8201818200581c31313131313131313131313131313131313131313131",
-    },
-  )
-}
-
-fn step_06_preimage_items(count: Int) -> List<ByteArray> {
-  script_witnesses_of(count) |> list.map(encode_midgard_versioned_script)
-}
-
-fn missing_native_script_tx_step_06_control(count: Int) -> Bool {
-  let block = script_cardinality_block(count)
-  let items = step_06_preimage_items(count)
-  let opening = fixture.inline_witness_opening(
-    block.compact_cbor,
-    block.witness_set_compact,
-    items,
-  )
-  let asset_name = fixture.ct_token_asset_name(block)
-  let l1_tx = fixture.finalize_step_l1_tx_v1(asset_name)
-  expect WitnessFieldOpening { carriage: Inline { preimage }, .. } = opening
-  and {
-    // The fixture really does carry `count` canonically encoded items, and the
-    // preimage really is the envelope over them.
-    bytearray.length(preimage) > count,
-    list.length(items) == count,
-    bytearray.length(block.compact.witness_set_hash) == 32,
-    list.length(l1_tx.inputs) > 0,
-  }
-}
-
-fn missing_native_script_tx_step_06_at(count: Int) -> Bool {
-  let block = script_cardinality_block(count)
-  let items = step_06_preimage_items(count)
-  let opening = fixture.inline_witness_opening(
-    block.compact_cbor,
-    block.witness_set_compact,
-    items,
-  )
-  let asset_name = fixture.ct_token_asset_name(block)
-  let l1_tx = fixture.finalize_step_l1_tx_v1(asset_name)
-  missing_native_script_tx_step_06_validator.main.spend(
-    fixture.next_step_script_hash,
-    fixture.computation_thread_policy_id,
-    fixture.fraud_proof_policy_id,
-    fixture.fraud_proof_token_address(),
-    fixture.test_certificate_policy_id,
-    Some(
-      ct.StepDatum {
-        fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(
-          missing_native_script_tx_step_06.State {
-            expected_missing_script_hash: absent_script_hash(),
-            bad_tx_id: block.tx_id,
-            bad_tx_witness_set_hash: block.compact.witness_set_hash,
-            phase: missing_native_script_tx_step_06.Ready,
-          },
-        ),
-      },
-    ),
-    ct.Continue(
-      missing_native_script_tx_step_06.DirectFinalize {
-        input_index: 0,
-        output_index: 0,
-        fraud_proof_mint_redeemer_index: 0,
-        script_tx_wits_opening: opening,
-      },
-    ),
-    fixture.own_out_ref(),
-    l1_tx,
-  )
-}
-
-test q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness() {
-  missing_native_script_tx_step_06_control(minimal_script_witness_count)
-}
-
-test q1x_f6_missing_native_script_tx_step_06_at_one_script_witness() {
-  missing_native_script_tx_step_06_at(minimal_script_witness_count)
-}
-
-test q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum() {
-  missing_native_script_tx_step_06_control(direct_script_witness_count)
-}
-
-/// The unbounded walk at the direct route's own ceiling: 64 script witnesses,
-/// every one visited, the absence claim true. C20.6's 224 is reached by the
-/// staged route and measured there.
-test q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum() {
-  missing_native_script_tx_step_06_at(direct_script_witness_count)
-}
-
-// ---------------------------------------------------------------------------
 // Q16 — `missing-signature` step-04, the field-7 walk
 // ---------------------------------------------------------------------------
 //
-// The second of the wave's two genuinely unbounded walks, and the one the #575
-// round-2 review asked for by name. Step-06 above walks field 6; this walks
-// field 7, and the shapes differ in a way worth measuring separately: field 7
-// is **fixed-stride**, so the walk pays no per-item envelope decode to find the
-// next item, but it still visits every one because the rule is an absence claim.
-// Measuring only field 6 would have left open whether the O(N) cost is the walk
-// or the variable-width decoding behind it.
+// The wave's genuinely unbounded walk, and the one the #575 round-2 review
+// asked for by name. The two pairs above measure *arithmetic* item access over
+// a fixed-stride field; this walks field 7, which is also **fixed-stride**, so
+// the walk pays no per-item envelope decode to find the next item, but it
+// still visits every one because the rule is an absence claim. Its cost is
+// O(N) in the address-witness count by construction, so what has to be
+// measured is not flatness but *fit*.
 
 /// The widest field 7 the format itself admits: §5.4's aggregate field cap over
 /// §5.3's address-witness stride. Derived rather than pinned as a literal,
@@ -530,9 +352,9 @@ const admissible_address_witness_count: Int =
 
 const minimal_address_witness_count: Int = 1
 
-/// `count` distinct address witnesses. Distinct for the same reason the script
-/// witnesses above are: §6.1 forbids duplicates, and a collapsible collection
-/// would not measure a walk.
+/// `count` distinct address witnesses. Distinct because a real
+/// high-cardinality witness set is (§6.1 forbids duplicates), and because a
+/// collapsible collection would not measure a walk.
 fn address_witnesses_of(count: Int) -> List<MidgardAddressWitness> {
   accumulate_address_witnesses(count, [])
 }
@@ -797,54 +619,6 @@ test q1x_f6_compact_structure_length_is_cardinality_independent() {
     bytearray.length(low.compact_cbor) == bytearray.length(high.compact_cbor),
     low.compact_cbor != high.compact_cbor,
   }
-}
-
-/// The step-06 rows measure a validator that discriminates: at the admissible
-/// script-witness cardinality the walk still finds a script that *is* present,
-/// so the absence claim fails and the step refuses. Without this the two
-/// step-06 readings could be readings of a walk over an empty or unauthenticated
-/// collection.
-test q1x_f6_step_06_at_the_admissible_maximum_refuses_a_present_script() fail {
-  let count = direct_script_witness_count
-  let block = script_cardinality_block(count)
-  expect Some(present) = list.at(script_witnesses_of(count), count - 1)
-  let asset_name = fixture.ct_token_asset_name(block)
-  missing_native_script_tx_step_06_validator.main.spend(
-    fixture.next_step_script_hash,
-    fixture.computation_thread_policy_id,
-    fixture.fraud_proof_policy_id,
-    fixture.fraud_proof_token_address(),
-    fixture.test_certificate_policy_id,
-    Some(
-      ct.StepDatum {
-        fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(
-          missing_native_script_tx_step_06.State {
-            expected_missing_script_hash: script_proof_v1.versioned_script_hash(
-              present,
-            ),
-            bad_tx_id: block.tx_id,
-            bad_tx_witness_set_hash: block.compact.witness_set_hash,
-            phase: missing_native_script_tx_step_06.Ready,
-          },
-        ),
-      },
-    ),
-    ct.Continue(
-      missing_native_script_tx_step_06.DirectFinalize {
-        input_index: 0,
-        output_index: 0,
-        fraud_proof_mint_redeemer_index: 0,
-        script_tx_wits_opening: fixture.inline_witness_opening(
-          block.compact_cbor,
-          block.witness_set_compact,
-          step_06_preimage_items(count),
-        ),
-      },
-    ),
-    fixture.own_out_ref(),
-    fixture.finalize_step_l1_tx_v1(asset_name),
-  )
 }
 
 /// The step-04 rows measure a validator that discriminates too: at the

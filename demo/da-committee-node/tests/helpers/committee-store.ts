@@ -6,7 +6,6 @@ import {
   type PostgresCommitteeStoreOptions,
 } from "../../src/store/postgres.js";
 import {
-  DROP_ALL_TIMEOUT_MS,
   type PostgresTestDatabase,
   postgresTestDatabases,
 } from "./postgres-database.js";
@@ -88,4 +87,4 @@ afterAll(async () => {
   await closeAll(openStores);
   await closeAll(fileStores);
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});

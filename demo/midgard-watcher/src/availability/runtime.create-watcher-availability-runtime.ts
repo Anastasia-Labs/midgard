@@ -1,5 +1,5 @@
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import { retainedDaAttemptsOnlyUnavailable } from "@al-ft/midgard-fault-proofs";
+import { retainedDaPayloadCommitmentVerifier } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Lucid,
@@ -232,15 +232,12 @@ export const createWatcherAvailabilityRuntime = async (input: {
     headerHash: string,
     commitment: SDK.DaAvailabilityCommitment,
   ): Promise<boolean> => {
+    const verifyPayload = retainedDaPayloadCommitmentVerifier(commitment);
     for (const source of publicDa.sources) {
-      const result = await source.fetchPayloadByHeaderHash(headerHash);
-      if (
-        result.ok &&
-        SDK.verifyDaAvailabilityPayloadCommitment({
-          commitment,
-          payload: result.payloadEnvelopeCbor,
-        })
-      )
+      const result = await source.fetchPayloadByHeaderHash(headerHash, {
+        verifyPayload,
+      });
+      if (result.ok && (await verifyPayload(result.payloadEnvelopeCbor)).ok)
         return true;
     }
     return false;
@@ -743,9 +740,9 @@ export const createWatcherAvailabilityRuntime = async (input: {
           )
         )
           continue;
-        // A newly included attestation can precede public DA propagation. Only
-        // ordinary unavailability defers classification: malformed/rejected
-        // data still reaches the classifier's mandatory evidence verification.
+        // A newly included attestation can precede public DA propagation, so
+        // classification waits until some source serves a copy. A bad copy
+        // decides nothing: the classifier's own fetch verifies what it uses.
         let unavailable = true;
         for (const source of publicDa.sources) {
           const payload = await source.fetchPayloadByHeaderHash(headerHash);
@@ -753,8 +750,6 @@ export const createWatcherAvailabilityRuntime = async (input: {
             unavailable = false;
             break;
           }
-          if (!retainedDaAttemptsOnlyUnavailable(payload.attempts))
-            unavailable = false;
         }
         if (unavailable) result.add(headerHash);
       }

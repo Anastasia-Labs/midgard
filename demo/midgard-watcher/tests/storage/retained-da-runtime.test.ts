@@ -181,7 +181,7 @@ describe("retained-DA fallback attempt history", () => {
         ...fallback,
         attempts: [...expectedPublic.attempts, ...attempts],
       });
-      expect(fetch).toHaveBeenCalledExactlyOnceWith(headerHash);
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(headerHash, undefined);
       expect(fallback.attempts).toEqual(attempts);
     },
   );

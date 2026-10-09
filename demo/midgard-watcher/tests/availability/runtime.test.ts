@@ -420,7 +420,16 @@ const includedAttestation = () =>
     ],
   }) as unknown as WatcherAuthenticatedStateQueueObservation;
 
-it.each(["not_found", "transport_error", "timeout"])(
+// A bad answer decides nothing either: it is one peer's failed attempt.
+it.each([
+  "not_found",
+  "transport_error",
+  "timeout",
+  "invalid_content",
+  "rejected",
+  "conflict",
+  "failed_verification",
+])(
   "defers newly included attestation on public DA %s without waiting for finality",
   async (status) => {
     const included = includedAttestation();
@@ -434,20 +443,6 @@ it.each(["not_found", "transport_error", "timeout"])(
       new Set(),
     );
     expect(io.reconcile).toHaveBeenCalledTimes(1);
-    await runtime.close();
-  },
-);
-
-it.each(["invalid_content", "rejected", "conflict"])(
-  "leaves public DA %s to mandatory classifier verification",
-  async (status) => {
-    const included = includedAttestation();
-    const runtime = await fixture(undefined, () => included);
-    await runtime.reconcile(observation(1), false);
-    io.payload.mockResolvedValueOnce({ ok: false, attempts: [{ status }] });
-    expect(await runtime.pendingAvailabilityHeaders(included)).toEqual(
-      new Set(),
-    );
     await runtime.close();
   },
 );

@@ -55,10 +55,7 @@ import {
   attachIntentFollower,
   type IntentEmulator,
 } from "./helpers/intent-journal-emulator.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+import { testDatabases } from "./helpers/l1-events-store.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import {
   EMULATOR_PROTOCOL_PARAMETERS,
@@ -75,7 +72,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 /**
  * An initialized protocol whose deposit list admits, and the node's

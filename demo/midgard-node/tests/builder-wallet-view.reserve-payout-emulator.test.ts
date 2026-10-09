@@ -43,10 +43,7 @@ import {
   attachIntentFollower,
   type IntentEmulator,
 } from "./helpers/intent-journal-emulator.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+import { testDatabases } from "./helpers/l1-events-store.js";
 import { makeReserveLifecycleBuilderFixture } from "./reserve-payout-builders.make-reserve-lifecycle-builder-fixture.js";
 import { findUtxoWithUnit } from "./reserve-payout-builders.submit-with-wallet.js";
 
@@ -57,7 +54,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 type Fixture = Awaited<ReturnType<typeof makeReserveLifecycleBuilderFixture>>;
 

@@ -6,7 +6,7 @@ Last reviewed: 2026-09-07 (source inventory and installation scope).
 
 ## Source inventory
 
-The 55 source catalogue categories and all 55 watcher installations are listed
+The 53 source catalogue categories and all 53 watcher installations are listed
 below. This is source coverage, not a claim that a particular network has these
 contracts deployed or that every acceptance suite passed on this revision.
 
@@ -38,7 +38,6 @@ them when you edit it.
 | `0000000c` | `fabricatedWithdrawal`                | Yes               |
 | `0000000d` | `nativeScriptDecoding`                | Yes               |
 | `0000000e` | `missingSignature`                    | Yes               |
-| `0000000f` | `missingNativeScriptTx`               | Yes               |
 | `00000010` | `withdrawnReferenceInput`             | Yes               |
 | `00000011` | `canonicalDecodability`               | Yes               |
 | `00000012` | `committedFieldShape`                 | Yes               |
@@ -52,7 +51,6 @@ them when you edit it.
 | `0000001a` | `inputSetUniqueness`                  | Yes               |
 | `0000001b` | `mintAuthorization`                   | Yes               |
 | `0000001c` | `networkId`                           | Yes               |
-| `0000001d` | `missingNativeScriptUtxo`             | Yes               |
 | `0000001e` | `nativeScriptInvalid`                 | Yes               |
 | `0000001f` | `minAda`                              | Yes               |
 | `00000020` | `fieldPreimageLengthMismatch`         | Yes               |

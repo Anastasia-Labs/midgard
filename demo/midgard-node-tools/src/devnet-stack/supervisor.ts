@@ -19,9 +19,6 @@ import {
 } from "./service-readiness.js";
 export { probe } from "./service-readiness.js";
 import { writeDurableJson } from "./durable.js";
-import { historyDaemonDiscovery } from "./history-daemon-discovery.js";
-import type { HistoryReadinessSpecification } from "./history-role-context.js";
-import { createHistoryRoleRegistry } from "./history-role-registry.js";
 import {
   recoveryScope,
   recoveryScopeMatches,
@@ -38,7 +35,6 @@ import {
 } from "./service-refusal.js";
 /** One long-running process the supervisor keeps alive. */
 export type ServiceSpec = {
-  readonly historyReadiness?: HistoryReadinessSpecification;
   readonly name: string;
   readonly command: string;
   readonly args: readonly string[];
@@ -115,11 +111,6 @@ export type SupervisorPaths = {
   serviceSpecs?: readonly ServiceSpec[];
   readonly runDir: string;
   readonly deploymentBinding?: string;
-  readonly historyDaemon?: Readonly<{
-    descriptorPath: string;
-    supervisorPid: string;
-    runId: string;
-  }>;
   readonly pidDir: string;
   readonly events: string;
   readonly serviceLog: (name: string) => string;
@@ -180,14 +171,8 @@ export const superviseServices = async (
 ) => {
   const recoveryPaths = { ...paths, serviceSpecs: services };
   const startedScope = recoveryScope(recoveryPaths);
-  let cohortChanged: () => void = () => undefined;
-  const history = createHistoryRoleRegistry(recoveryPaths, () =>
-    cohortChanged(),
-  );
   mkdirSync(paths.pidDir, { recursive: true, mode: 0o700 });
   const record = eventRecorder(paths);
-  const historyQuery = historyDaemonDiscovery(recoveryPaths, history, record);
-  cohortChanged = historyQuery.changed;
   await sweepOrphans(paths, policy, record);
   record({
     event: "supervisor-start",
@@ -273,27 +258,18 @@ export const superviseServices = async (
       authorized = undefined;
       permission = undefined;
       const log = openSync(paths.serviceLog(service.name), "a", 0o600);
-      const historyAttempt = history.prepare(service);
       const child = spawn(service.command, [...service.args], {
         cwd: service.cwd,
         env: {
           PATH: process.env.PATH,
           HOME: process.env.HOME,
           ...service.env,
-          ...historyAttempt?.env,
           [SERVICE_MARKER_ENV]: markerFor(paths, service.name),
         },
-        stdio:
-          historyAttempt === null
-            ? ["ignore", log, log]
-            : ["ignore", log, log, "pipe"],
+        stdio: ["ignore", log, log],
         detached: true,
       });
       closeSync(log);
-      const closeHistory =
-        historyAttempt === null
-          ? () => undefined
-          : history.register(historyAttempt, child);
       const startedAt = Date.now();
       const exited = new Promise<{
         code: number | null;
@@ -326,23 +302,10 @@ export const superviseServices = async (
           await sleep(policy.probeIntervalMs, watchdog.signal);
           if (watchdog.signal.aborted) return;
           if (refusal !== undefined && hasReadinessProbe(service)) {
-            const historyProof =
-              service.historyReadiness === undefined
-                ? undefined
-                : await history.prove(service, policy.probeTimeoutMs);
-            const ready =
-              service.historyReadiness === undefined
-                ? await probeServiceReadiness(service, policy.probeTimeoutMs)
-                : {
-                    ok: historyProof !== undefined,
-                    body: '{"ready":true}',
-                  };
-            if (!ready.ok && service.historyReadiness !== undefined)
-              record({
-                event: "refusal-readiness-held",
-                service: service.name,
-                ...history.diagnostic(),
-              });
+            const ready = await probeServiceReadiness(
+              service,
+              policy.probeTimeoutMs,
+            );
             if (
               ready.ok &&
               readinessAnswered(ready.body) &&
@@ -353,8 +316,6 @@ export const superviseServices = async (
                 recoveryScope(recoveryPaths),
               ) &&
               recoveryScopeMatches(startedScope, attemptScope) &&
-              (service.historyReadiness === undefined ||
-                historyProof?.current() === true) &&
               clearServiceRefusal(paths, refusal)
             )
               record({
@@ -402,7 +363,6 @@ export const superviseServices = async (
       watchdog.abort();
       await watching;
       const result = await exited;
-      closeHistory();
       running.delete(service.name);
       const uptimeMs = Date.now() - startedAt;
       record({
@@ -434,15 +394,7 @@ export const superviseServices = async (
     const pidFile = join(paths.pidDir, `${service.name}.json`);
     if (existsSync(pidFile)) unlinkSync(pidFile);
   };
-  try {
-    await Promise.all(services.map((service) => keepAlive(service)));
-  } finally {
-    try {
-      await historyQuery.close();
-    } finally {
-      history.close();
-    }
-  }
+  await Promise.all(services.map((service) => keepAlive(service)));
   record({ event: "supervisor-stop", pid: process.pid });
 };
 export {

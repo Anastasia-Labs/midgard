@@ -18,10 +18,7 @@ import {
   deriveExpectedDaAvailabilityCommitment,
 } from "../../src/peer/signatures.js";
 import { type CommitteeStore } from "../../src/store.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  postgresTestDatabases,
-} from ".././helpers/postgres-database.js";
+import { postgresTestDatabases } from ".././helpers/postgres-database.js";
 
 export {
   openTestCommitteeStore,
@@ -31,7 +28,7 @@ export {
 export const registerCommitteeCleanup = () => {
   afterAll(async () => {
     await postgresDatabases.dropAll();
-  }, DROP_ALL_TIMEOUT_MS);
+  });
 };
 
 export const postgresDatabases = postgresTestDatabases("committee_service");

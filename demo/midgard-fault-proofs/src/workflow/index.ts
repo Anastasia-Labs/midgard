@@ -36,7 +36,6 @@ export * from "./funding-requirements.js";
 export * from "./funding-requirements-test-support.js";
 export * from "./funding-reservation-permit.js";
 export * from "./header-classifier.js";
-export * from "./historical-native-script-corpus.js";
 export * from "./input-no-idx.js";
 export * from "./input-set-uniqueness.js";
 export * from "./invalid-signature.js";

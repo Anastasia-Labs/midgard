@@ -2,12 +2,12 @@ import "./cursor-family-adapter.production-cursor-family-adapter-v1.js";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../src/execution-native-script-invalid/workflow-spec.js";
 import { TRANSITION_TRACE_CURSOR_SPEC } from "../src/transition-trace/workflow-spec.js";
 import {
   createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
 } from "../src/workflow/cursor-family-adapter.js";
-import { MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC } from "../src/workflow/cursor-family-spec.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import {
   context,
@@ -25,7 +25,7 @@ describe("authenticated family action refinement", () => {
   const stage = {
     value: {
       kind: "step",
-      step: 6,
+      step: 4,
       threadOutRef: outRef("11"),
       stateQueueBlockOutRef: outRef("10"),
     } as FraudProofRawL1FamilyStage,
@@ -35,7 +35,7 @@ describe("authenticated family action refinement", () => {
     const capture = vi.fn(async () => ({ transaction: transaction() }));
     const refineAction = vi.fn(async () => ({ grammar }));
     const adapter = createCursorFamilyWorkflowAdapter({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -58,7 +58,7 @@ describe("authenticated family action refinement", () => {
   it("never permits canonical input overrides and does not refine read-only observation", async () => {
     const refineAction = vi.fn(async () => ({ stage: "remove" }));
     const adapter = createCursorFamilyWorkflowAdapter({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -77,7 +77,7 @@ describe("authenticated family action refinement", () => {
 it("reobserves the original self-loop cursor after its successor rolls back", async () => {
   const original: FraudProofRawL1FamilyStage = {
     kind: "step",
-    step: 7,
+    step: 5,
     threadOutRef: outRef("11"),
     stateQueueBlockOutRef: outRef("10"),
   };
@@ -85,7 +85,7 @@ it("reobserves the original self-loop cursor after its successor rolls back", as
   let included = true;
   const capture = vi.fn(async () => ({ transaction: transaction() }));
   const adapter = createCursorFamilyWorkflowAdapter({
-    spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+    spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
     l1: l1(stage, async () => included),
     transactions: port(capture),
     stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -95,7 +95,7 @@ it("reobserves the original self-loop cursor after its successor rolls back", as
     throw new Error("missing original action");
   stage.value = {
     kind: "step",
-    step: 7,
+    step: 5,
     threadOutRef: `${txHash}#0`,
     stateQueueBlockOutRef: outRef("10"),
   };

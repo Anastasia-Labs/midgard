@@ -35,10 +35,7 @@ import {
   keyValuePhasProof,
   keyValuePhasRootWithCount,
 } from "../transition-trace/phas.js";
-import {
-  type HistoricalNativeScriptCorpus,
-  requireHistoricalNativeScriptCorpus,
-} from "../workflow/historical-native-script-corpus.js";
+import { requireReplayPredecessorLedger } from "../workflow/replay-predecessor-ledger.js";
 
 export type PreparedMinAdaTx = {
   readonly kind: "min-ada-tx";
@@ -171,30 +168,18 @@ const sameOutRef = (left: OutputReference, right: OutputReference): boolean =>
 
 export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
   evidence,
-  historicalNativeScriptCorpus,
+  predecessor,
   outRef,
 }: CanonicalEvidenceBuilderInput & {
-  readonly historicalNativeScriptCorpus: HistoricalNativeScriptCorpus;
+  /** The classifier-admitted predecessor; absent only for the genesis ledger. */
+  readonly predecessor: CanonicalBlockEvidence | undefined;
   readonly outRef?: OutputReference;
 }): Promise<PreparedMinAdaUtxo> => {
-  const history = requireHistoricalNativeScriptCorpus(
-    historicalNativeScriptCorpus,
-  );
-  if (history.currentEvidence !== evidence) {
-    throw new Error(
-      "min-ada UTxO history is not bound to the challenged evidence",
-    );
-  }
-  const predecessor = history.reconstructions.at(-2);
-  if (
-    predecessor !== undefined &&
-    (predecessor.headerHash !== evidence.header.prevHeaderHash ||
-      predecessor.header.utxosRoot !== evidence.header.prevUtxosRoot)
-  ) {
-    throw new Error(
-      "min-ada predecessor history does not authenticate the challenged prev_utxos_root",
-    );
-  }
+  const previousLedger = requireReplayPredecessorLedger({
+    block: evidence,
+    predecessor,
+    label: "min-ada UTxO",
+  });
   const members = (
     entries: CanonicalBlockEvidence["reconstruction"]["utxos"],
   ) =>
@@ -214,7 +199,7 @@ export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
       };
     });
   const postMembers = members(evidence.reconstruction.utxos);
-  const previousMembers = members(predecessor?.utxos ?? []);
+  const previousMembers = members(previousLedger?.utxos ?? []);
   const postTrie = await keyValuePhasRootWithCount(postMembers);
   const previousTrie = await keyValuePhasRootWithCount(previousMembers);
   if (

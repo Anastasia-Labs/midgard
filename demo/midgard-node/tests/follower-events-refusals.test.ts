@@ -43,7 +43,6 @@ import {
 } from "./helpers/l1-events-chain.js";
 import {
   ChainDriver,
-  DROP_ALL_TIMEOUT_MS,
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
@@ -56,7 +55,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | Globals>,
@@ -122,8 +121,8 @@ describe("follower event ingestion refusals (Postgres)", () => {
     opened.push(store);
     const d = new ChainDriver(store, eventTrackedSet(EVENTS_CONFIG));
     await d.init();
-    // On-chain admission does not bound a deposit's L2 network id; the node
-    // decodes only Midgard's own.
+    // On-chain admission accepts only Midgard's L2 network ids; the node still
+    // refuses any other id defensively.
     const foreign = eventOrder("deposit", nonceRef(), { l2NetworkId: 7n });
     const honest = eventOrder("deposit", nonceRef(), { inclusionTime: 2_000n });
     await d.forward([admissionTx(foreign, 1), admissionTx(honest, 2)]);

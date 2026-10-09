@@ -15,8 +15,10 @@ import {
   requireLinearFaultInitialDatum,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts.js";
-import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import {
+  type NativeTxBindingContracts,
+  submitNativeTxBinding,
+} from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -90,11 +92,11 @@ export const submitNativeScriptInvalidStep01 = async ({
     },
     Step02Datum,
   );
-  return await submitMissingNativeScriptTxBinding({
+  return await submitNativeTxBinding({
     lucid,
     blueprint,
     network,
-    contracts: contracts as unknown as MissingNativeScriptTxContracts,
+    contracts: contracts as unknown as NativeTxBindingContracts,
     signer,
     stepIndex: 0,
     threadUtxo,

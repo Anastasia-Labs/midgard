@@ -24,8 +24,6 @@ export * from "./invalid-signature.js";
 export * from "./min-ada.js";
 export * from "./min-fee.js";
 export * from "./mint-authorization.js";
-export * from "./missing-native-script-tx.js";
-export * from "./missing-native-script-utxo.js";
 export * from "./missing-signature.js";
 export * from "./native.js";
 export * from "./native-script-decoding.js";

@@ -16,7 +16,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
-import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import { submitNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -81,7 +81,7 @@ export const submitScriptIntegrityHashMissingStep01Accepted = async ({
     } as never,
     ScriptIntegrityStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBinding({
+  return await submitNativeTxBinding({
     lucid: common.lucid,
     blueprint,
     network,

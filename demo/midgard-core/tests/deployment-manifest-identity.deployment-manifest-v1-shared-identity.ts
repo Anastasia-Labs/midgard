@@ -35,9 +35,9 @@ import {
 describe("DeploymentManifestV1 shared identity", () => {
   it("includes every registered fraud-proof validator in the canonical registry", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain("fraudProofZeroInput");
-    // #547 appended the Q18/Q31/Q15 first-step validators. The registry is
-    // append-only, so each must be present and the catalogue order must name
-    // exactly the same set of categories in the same positions.
+    // #547 added the Q18/Q31/Q15 first-step validators. Each must be present
+    // and the catalogue order must name exactly the same set of categories in
+    // the same positions.
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
       "fraudProofNoReferenceInput",
     );
@@ -47,8 +47,8 @@ describe("DeploymentManifestV1 shared identity", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
       "fraudProofInvalidSignature",
     );
-    // The registry is append-only, so its size is not a contract and pinning
-    // it only forces a re-pin on every legitimate append. What is a contract
+    // The registry's size is not a contract, and pinning it only forces a
+    // re-pin on every legitimate addition or removal. What is a contract
     // is that the roster stays internally consistent: a validator that is
     // registered but not published under a reference-script role is applied on
     // every deployment and reachable from none, and two roles that share an
@@ -123,7 +123,6 @@ describe("DeploymentManifestV1 shared identity", () => {
       ["FabricatedDeposit", "fabricated-deposit", 4],
       ["FabricatedWithdrawal", "fabricated-withdrawal", 4],
       ["MissingSignature", "missing-signature", 4],
-      ["MissingNativeScriptTx", "missing-native-script-tx", 8],
       ["WithdrawnReferenceInput", "withdrawn-reference-input", 3],
       ["CanonicalDecodability", "canonical-decodability", 2],
       ["CommittedFieldShape", "committed-field-shape", 2],
@@ -136,7 +135,6 @@ describe("DeploymentManifestV1 shared identity", () => {
       ["ValueNotPreserved", "value-not-preserved", 4],
       ["InputSetUniqueness", "input-set-uniqueness", 4],
       ["MintAuthorization", "mint-authorization", 5],
-      ["MissingNativeScriptUtxo", "missing-native-script-utxo", 5],
       ["NativeScriptInvalid", "native-script-invalid", 3],
       ["MinAda", "min-ada", 2],
       ["TransactionOutputNonCanonical", "transaction-output-non-canonical", 4],

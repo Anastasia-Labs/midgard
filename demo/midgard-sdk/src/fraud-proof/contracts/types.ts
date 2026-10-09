@@ -33,8 +33,6 @@ import { type MinFeeFaultProofContracts } from "./families/min-fee.js";
 import { type MintAuthorizationFaultProofContracts } from "./families/mint-authorization.js";
 import { type MintDeclaredAssetLimitFaultProofContracts } from "./families/mint-declared-asset-limit.js";
 import { type MintItemNonCanonicalFaultProofContracts } from "./families/mint-item-non-canonical.js";
-import { type MissingNativeScriptTxFaultProofContracts } from "./families/missing-native-script-tx.js";
-import { type MissingNativeScriptUtxoFaultProofContracts } from "./families/missing-native-script-utxo.js";
 import { type MissingRedeemerFaultProofContracts } from "./families/missing-redeemer.js";
 import { type MissingScriptSourceFaultProofContracts } from "./families/missing-script-source.js";
 import { type MissingSignatureFaultProofContracts } from "./families/missing-signature.js";
@@ -89,7 +87,6 @@ export type FaultProofContracts = {
   readonly fabricatedWithdrawal: FabricatedWithdrawalFaultProofContracts["fabricatedWithdrawal"];
   readonly nativeScriptDecoding: NativeScriptDecodingFaultProofContracts["nativeScriptDecoding"];
   readonly missingSignature: MissingSignatureFaultProofContracts["missingSignature"];
-  readonly missingNativeScriptTx: MissingNativeScriptTxFaultProofContracts["missingNativeScriptTx"];
   readonly withdrawnReferenceInput: WithdrawnReferenceInputFaultProofContracts["withdrawnReferenceInput"];
   readonly canonicalDecodability: CanonicalDecodabilityFaultProofContracts["canonicalDecodability"];
   readonly committedFieldShape: CommittedFieldShapeFaultProofContracts["committedFieldShape"];
@@ -103,7 +100,6 @@ export type FaultProofContracts = {
   readonly inputSetUniqueness: InputSetUniquenessFaultProofContracts["inputSetUniqueness"];
   readonly mintAuthorization: MintAuthorizationFaultProofContracts["mintAuthorization"];
   readonly networkId: NetworkIdFaultProofContracts["networkId"];
-  readonly missingNativeScriptUtxo: MissingNativeScriptUtxoFaultProofContracts["missingNativeScriptUtxo"];
   readonly nativeScriptInvalid: NativeScriptInvalidFaultProofContracts["nativeScriptInvalid"];
   readonly minAda: MinAdaFaultProofContracts["minAda"];
   readonly fieldPreimageLengthMismatch: FieldPreimageLengthMismatchFaultProofContracts["fieldPreimageLengthMismatch"];

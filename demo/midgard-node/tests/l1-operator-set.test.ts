@@ -26,11 +26,7 @@ import {
   operatorSetProjection,
   retiredInsertionAnchorIn,
 } from "../src/l1-operator-set/index.js";
-import {
-  DROP_ALL_TIMEOUT_MS,
-  storeOpener,
-  testDatabases,
-} from "./helpers/l1-events-store.js";
+import { storeOpener, testDatabases } from "./helpers/l1-events-store.js";
 import {
   loadOperatorSetChainFixture,
   operatorKey,
@@ -58,7 +54,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-}, DROP_ALL_TIMEOUT_MS);
+});
 
 /** A record that never keeps anything (a node database that lost it). */
 const lostRecord: OperatorActivityRecord = {

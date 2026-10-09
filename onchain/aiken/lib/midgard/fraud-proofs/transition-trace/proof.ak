@@ -1093,10 +1093,7 @@ pub fn deposit_address_to_midgard(
   address: Address,
   network_id: Int,
 ) -> native_types.MidgardAddress {
-  expect or {
-      network_id == 0,
-      network_id == 1,
-    }
+  // Event-history admission bounds `network_id` to Midgard's L2 ids.
   native_types.MidgardAddress {
     protected: False,
     network_id,

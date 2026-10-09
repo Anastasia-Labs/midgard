@@ -9,10 +9,6 @@ import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   type HeaderDecision,
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptHistorySource,
-  type HistoricalNativeScriptProviderRoster,
-  type HistoricalNativeScriptSourceRoster,
   parseContractDeploymentInfo,
   requireDeploymentReferenceScript,
   resolveProverSigner,
@@ -63,16 +59,6 @@ export const WATCHER_FAULT_PROOF_STARTUP_READINESS =
  * still requires one, so it is this fixed placeholder.
  */
 export const WATCHER_STARTUP_READINESS_HEADER_HASH = "00".repeat(28);
-
-export type WatcherHistoricalNativeScriptHistoryOverlay = Readonly<{
-  sourceMode: "external_provider_quorum";
-  consistencyPolicy: "exact_bytes_all_providers_v1";
-  providers: readonly Readonly<{
-    sourceId: string;
-    operatorIdentitySha256: string;
-    authorityEndpoint: string;
-  }>[];
-}>;
 
 /**
  * The installed set is the family application registry's keys, read in the
@@ -132,7 +118,6 @@ export type WatcherFaultProofInfrastructureAuthority = Readonly<{
   manifestPath: string;
   blueprintPath: string;
   deploymentInfoPath: string;
-  historicalNativeScriptHistory: WatcherHistoricalNativeScriptHistoryOverlay;
 }>;
 
 /**
@@ -151,14 +136,12 @@ export type WatcherFaultProofApplicationOptions = Readonly<{
   replayTranscriptStore: WatcherReplayTranscriptStore;
   userEvents: WatcherUserEvents;
   infrastructure: WatcherFaultProofInfrastructureAuthority;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
 }>;
 
 export type WatcherFaultProofApplicationConstructionOptions = Omit<
   WatcherFaultProofApplicationOptions,
   | "fundingProfileOverlay"
-  | "historicalNativeScriptCheckpointStore"
   | "deploymentAuthority"
   | "replayTranscriptStore"
   | "userEvents"
@@ -168,7 +151,6 @@ export type WatcherFaultProofApplicationConstructionOptions = Omit<
     deploymentAuthority?: VerifiedWatcherDeploymentAuthority;
     replayTranscriptStore?: WatcherReplayTranscriptStore;
     userEvents?: WatcherUserEvents;
-    historicalNativeScriptCheckpointStore?: HistoricalNativeScriptCheckpointStore;
     fundingProfileOverlay?: WatcherWorkflowFundingProfileOverlay;
     unsafeTransportOptionsForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportOptionsForTest"];
     unsafeTransportFactoryForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportFactoryForTest"];
@@ -231,13 +213,6 @@ export type WatcherFaultProofApplication = Readonly<{
   ): Promise<WatcherCompletedFaultProofVerification>;
   runOrResume(invocation: WorkflowAdapterRunnerInput): Promise<unknown>;
   close(): Promise<void>;
-}>;
-
-export type WatcherHistoricalNativeScriptAuthority = Readonly<{
-  checkpointStore: HistoricalNativeScriptCheckpointStore;
-  providerRoster: HistoricalNativeScriptProviderRoster;
-  historySource: HistoricalNativeScriptHistorySource;
-  l1SourceRoster: Promise<HistoricalNativeScriptSourceRoster>;
 }>;
 
 export type WatcherFaultProofApplicationDependencies = Readonly<{

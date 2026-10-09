@@ -57,7 +57,6 @@ export async function stageJourney(
   {
     context,
     directory,
-    historicalNativeScriptProviders,
     retain,
     readConfirmedTransaction,
     onHealthyPredecessor,
@@ -453,7 +452,6 @@ export async function stageJourney(
   const preparationInput: JourneyFaultPreparationInput = {
     context,
     directory,
-    historicalNativeScriptProviders,
     retain,
     readConfirmedTransaction,
     readSignedCommitRecovery,

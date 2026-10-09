@@ -121,15 +121,15 @@ describe("midgard contracts registry", () => {
         },
       );
 
-      // Applied recipes include the completed-fraud queue marker and explicit
-      // history bounds/retention metadata, both authenticated timing yields, and
-      // the paired list/retention/retirement deployment recipes;
-      // normalize bigint parameters as decimal strings. Re-pinned by #689:
-      // the pooled DA bond validator was added, the per-block availability
-      // bond yield removed, and the availability-challenge and DA-attestation
-      // parameters changed (pool policy, commitment-bound challenges). MPF
-      // fixes (leaf fold, terminal neighbour, deletion Branch, emptied ledger
-      // root, disjoint leaf and branch node preimages) change proofs.
+      // Applied recipes include the completed-fraud queue marker, explicit
+      // history bounds/retention metadata, both authenticated timing yields and
+      // the paired list/retention/retirement recipes; bigint parameters are
+      // decimal strings. Re-pinned by #689 (pooled DA bond added, per-block
+      // availability bond yield removed, availability-challenge and
+      // DA-attestation parameters changed), by MPF fixes (leaf fold, terminal
+      // neighbour, deletion Branch, emptied ledger root, disjoint node
+      // preimages), and by removing missingNativeScriptTx/Utxo, which
+      // missingScriptSource supersedes.
       expect
         .soft(
           createHash("sha256")
@@ -139,7 +139,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "03f98ad101599f6b458dcf5a328a4ffd7eb67059ea5600c17f9c372d94fef08b",
+          "505d0aca1dc952c3de39c617e2c24590200f40445aabbf649f510fc6dafdb6d1",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

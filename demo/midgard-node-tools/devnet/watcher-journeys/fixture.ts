@@ -1,4 +1,3 @@
-import type { HistoricalNativeScriptHistoryProviderIdentity } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
 import type { PublishedDaAttestationOutcome } from "midgard-watcher/tests/support/published-block-actor";
 
@@ -47,8 +46,7 @@ export type StagedJourney = {
 export type JourneyFixtureStage = {
   context: JourneyContext;
   directory: string;
-  historicalNativeScriptProviders: readonly HistoricalNativeScriptHistoryProviderIdentity[];
-  /** Publish the retained payload and archive its real canonical L1 point. */
+  /** Publish the retained payload once its commit is on the recorded chain. */
   retain(block: JourneyBlock, commitTxHash: string): Promise<void>;
   /** Launch observation once a genuine healthy predecessor is retained. */
   onHealthyPredecessor?(headerHash: string): Promise<void>;

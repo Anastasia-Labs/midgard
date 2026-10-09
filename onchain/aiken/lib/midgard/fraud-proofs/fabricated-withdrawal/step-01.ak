@@ -92,19 +92,11 @@ use midgard/transition_trace
 
 /// Catalogue identifier of the `fabricatedWithdrawal` category.
 ///
-/// A category id is the `fraud_proof_catalogue.id_byte_count`-byte big-endian
-/// index of the category's position in the append-only
-/// `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`
-/// (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`), the same derivation
-/// `transition_trace`'s `#"00000004"` follows from `transitionTrace` sitting at
-/// index 4.
-///
-/// **This pin is contingent.** `fabricatedWithdrawal` appends at index 12 only if
-/// `fabricatedDeposit` (Q39) takes index 11 first; neither category is registered
-/// yet, because catalogue registration is parent-owned integration work. If the
-/// append-only order gains any other entry before Q39 and Q40 land, or if the two
-/// land in the other order, this constant and its four sibling pin sites move
-/// together — they are listed in the Q40 report's race note.
+/// A category id is the explicit `fraud_proof_catalogue.id_byte_count`-byte
+/// big-endian value pinned for the category in
+/// `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS`
+/// (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`); this constant is the byte
+/// twin of `fabricatedWithdrawal` there.
 pub const fabricated_withdrawal_fraud_category_id: ByteArray = #"0000000c"
 
 /// A fabricated-withdrawal computation-thread token's asset name is this family's

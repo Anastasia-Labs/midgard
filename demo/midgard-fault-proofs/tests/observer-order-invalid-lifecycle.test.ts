@@ -9,7 +9,7 @@ import "effect";
 import "vitest";
 import "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import "../src/field-opening.js";
-import "../src/missing-native-script-tx/staged-walk.js";
+import "../src/staged-field-walk/index.js";
 import "../src/observer-order-invalid/actuator.js";
 import "../src/observer-order-invalid/artifact.js";
 import "../src/observer-order-invalid/contracts.js";
@@ -52,7 +52,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { advanceMissingNativeScriptTxSemanticCheckpoint } from "../src/missing-native-script-tx/staged-walk.js";
 import { createObserverOrderInvalidActuator } from "../src/observer-order-invalid/actuator.js";
 import { buildObserverOrderInvalidArtifact } from "../src/observer-order-invalid/artifact.js";
 import {
@@ -71,6 +70,7 @@ import {
   buildVanRossemFitLedger,
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
+import { advanceFieldSemanticCheckpoint } from "../src/staged-field-walk/index.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import { acceptedSuccess } from "./observer-order-invalid-lifecycle.accepted-success.js";
@@ -701,7 +701,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       ...base,
       walk: [
         {
-          ...advanceMissingNativeScriptTxSemanticCheckpoint({
+          ...advanceFieldSemanticCheckpoint({
             checkpoint: { ...base.initialWalk, fieldIndex: 6 },
             txId: transactionIdOf(shape),
             items: base.items,

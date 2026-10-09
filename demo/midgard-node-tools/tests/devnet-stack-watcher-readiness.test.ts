@@ -1,18 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { expect, it } from "vitest";
 
-import {
-  makeLayout,
-  type RunEnv,
-  servicePorts,
-} from "../src/devnet-stack/layout.js";
+import { type RunEnv, servicePorts } from "../src/devnet-stack/layout.js";
 import { probeServiceReadiness } from "../src/devnet-stack/service-readiness.js";
 import type { ServiceSpec } from "../src/devnet-stack/supervisor.js";
-import { watcherServiceSpecs } from "../src/devnet-stack/watcher.js";
 
 const run: RunEnv = {
   runId: "synthetic",
@@ -28,33 +20,6 @@ const run: RunEnv = {
   postgresImage: "synthetic",
   portOffset: 0,
 };
-const unrecordedContext = (root: string) => {
-  const context = {
-    layout: makeLayout(root),
-    run,
-    get identities(): never {
-      throw new Error("service declaration must not load identities");
-    },
-    get artifacts(): never {
-      throw new Error("service declaration must not load artifacts");
-    },
-  };
-  return context;
-};
-
-it("refuses to declare the real history cohort without recorded public evidence", () => {
-  const root = mkdtempSync(join(tmpdir(), "watcher-readiness-unrecorded-"));
-  try {
-    expect(() =>
-      watcherServiceSpecs(unrecordedContext(root), {
-        txHash: "11".repeat(32),
-        outputIndex: 0,
-      }),
-    ).toThrow("history recorded public evidence is missing");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
 
 it.each([200, 503, 401])(
   "the real stack URL probe accepts readiness only on HTTP success: %s",
@@ -77,7 +42,6 @@ it.each([200, 503, 401])(
     if (address === null || typeof address === "string")
       throw new Error("missing synthetic port");
     try {
-      // An ordinary URL probe fixture has no history binding or authority.
       // The real configured service URL contract is in devnet-stack-watcher.
       const operations = `http://127.0.0.1:${servicePorts(run).watcherOperations}`;
       const service: ServiceSpec = {

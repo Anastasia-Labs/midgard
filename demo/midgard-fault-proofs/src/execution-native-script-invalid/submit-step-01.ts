@@ -22,8 +22,10 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts.js";
-import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import {
+  type NativeTxBindingContracts,
+  submitNativeTxBinding,
+} from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -81,7 +83,7 @@ export const submitExecutionNativeScriptInvalidStep01Accepted = async ({
 }: {
   lucid: LucidEvolution;
   blueprint: unknown;
-  network: Parameters<typeof submitMissingNativeScriptTxBinding>[0]["network"];
+  network: Parameters<typeof submitNativeTxBinding>[0]["network"];
   contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
@@ -125,14 +127,14 @@ export const submitExecutionNativeScriptInvalidStep01Accepted = async ({
   const acceptedInit = contracts.acceptedPrelude?.[0];
   if (acceptedInit === undefined)
     throw new Error(`${FAMILY}: accepted reconstruction contracts unavailable`);
-  return await submitMissingNativeScriptTxBinding({
+  return await submitNativeTxBinding({
     lucid,
     blueprint,
     network,
     contracts: {
       ...contracts,
       steps: [contracts.steps[0]!, acceptedInit],
-    } as unknown as MissingNativeScriptTxContracts,
+    } as unknown as NativeTxBindingContracts,
     signer,
     stepIndex: 0,
     threadUtxo,

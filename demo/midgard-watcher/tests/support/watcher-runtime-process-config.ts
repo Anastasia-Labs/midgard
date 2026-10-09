@@ -108,22 +108,6 @@ export const writeWatcherRuntimeProcessConfig = async (
       manifestPath: join(directory, "deployment-manifest.json"),
       blueprintPath: join(directory, "plutus.json"),
       deploymentInfoPath: join(directory, "contract-deployment-info.json"),
-      historicalNativeScriptHistory: {
-        sourceMode: "external_provider_quorum",
-        consistencyPolicy: "exact_bytes_all_providers_v1",
-        providers: [
-          {
-            sourceId: "history-a",
-            operatorIdentitySha256: h32(0xa1),
-            authorityEndpoint: "https://history-a.example.test",
-          },
-          {
-            sourceId: "history-b",
-            operatorIdentitySha256: h32(0xb2),
-            authorityEndpoint: "https://history-b.example.test",
-          },
-        ],
-      },
     },
   };
   const config = parseWatcherProcessConfig(configInput);

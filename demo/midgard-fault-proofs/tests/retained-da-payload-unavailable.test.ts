@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 import {
   fetchRetainedDaPayloadByHeaderHash,
   isRetainedDaPayloadUnavailableError,
-  retainedDaAttemptsOnlyUnavailable,
   type RetainedDaFetchAttemptStatus,
   type RetainedDaPayloadSource,
   TransitionTraceChallengerError,
 } from "../src/transition-trace/index.js";
+import { buildPayloadFixture } from "./transition-trace-challenger.build-payload-fixture.js";
 
 const HEADER_HASH = "ab".repeat(28);
 
@@ -24,6 +24,7 @@ const attempt = (sourceId: string, status: RetainedDaFetchAttemptStatus) => ({
 const scriptedSource = (
   sourceId: string,
   script: readonly (readonly RetainedDaFetchAttemptStatus[] | "ok")[],
+  servedBytes = Buffer.from("d87980", "hex"),
 ): RetainedDaPayloadSource & { readonly calls: () => number } => {
   let calls = 0;
   return {
@@ -42,7 +43,7 @@ const scriptedSource = (
           },
           sourceId,
           sourcePeerId: "peer-a",
-          payloadEnvelopeCbor: Buffer.from("d87980", "hex"),
+          payloadEnvelopeCbor: servedBytes,
           attempts: [],
         };
       return {
@@ -99,20 +100,28 @@ describe("retained-DA payload unavailability", () => {
     "rejected",
     "conflict",
     "invalid_content",
+    "failed_verification",
   ])(
-    "keeps a plain fetchFailed when any source answered %s",
+    "reports the payload unavailable even when a source answered %s",
     async (status) => {
       const failure = await fetchFrom([
         scriptedSource("public-a", [["not_found"]]),
         scriptedSource("public-b", [["timeout", status]]),
       ]).catch((error: unknown) => error);
-      expect(failure).toMatchObject({ code: "fetchFailed" });
-      expect((failure as { reason?: unknown }).reason).toBeUndefined();
-      expect(isRetainedDaPayloadUnavailableError(failure)).toBe(false);
+      // A bad answer is a failed attempt for its peer, never the outcome.
+      expect(isRetainedDaPayloadUnavailableError(failure)).toBe(true);
+      expect(failure).toMatchObject({
+        code: "fetchFailed",
+        reason: "payloadUnavailable",
+        headerHash: HEADER_HASH,
+        availability: "unreachable",
+      });
+      expect((failure as Error).message).toContain(`public-b/peer-a`);
+      expect((failure as Error).message).toContain(status);
     },
   );
 
-  it("keeps a plain fetchFailed when no source reported any attempt", async () => {
+  it("keeps a plain fetchFailed only when no source reported any attempt", async () => {
     const failure = await fetchFrom([scriptedSource("public-a", [[]])]).catch(
       (error: unknown) => error,
     );
@@ -121,11 +130,32 @@ describe("retained-DA payload unavailability", () => {
   });
 
   it("returns the payload a source serves on its retry", async () => {
-    const source = scriptedSource("public-a", [["not_found"], "ok"]);
-    const fetched = await fetchFrom([source]);
+    const fixture = await buildPayloadFixture({});
+    const source = scriptedSource(
+      "public-a",
+      [["not_found"], "ok"],
+      fixture.payloadEnvelopeCbor,
+    );
+    const fetched = await fetchRetainedDaPayloadByHeaderHash({
+      headerHash: fixture.headerHash,
+      sources: [source],
+      retries: 1,
+    });
     expect(source.calls()).toBe(2);
-    expect(fetched.payloadEnvelopeCbor.toString("hex")).toBe("d87980");
+    expect(
+      fetched.payloadEnvelopeCbor.equals(fixture.payloadEnvelopeCbor),
+    ).toBe(true);
     expect(fetched.attempts.map(({ status }) => status)).toEqual(["not_found"]);
+  });
+
+  it.each<RetainedDaFetchAttemptStatus>([
+    "rejected",
+    "conflict",
+    "invalid_content",
+  ])("does not ask a source again after it answered %s", async (status) => {
+    const source = scriptedSource("public-a", [[status]]);
+    await fetchFrom([source]).catch(() => undefined);
+    expect(source.calls()).toBe(1);
   });
 
   it("matches the discriminator by value, not by class identity", () => {
@@ -145,22 +175,5 @@ describe("retained-DA payload unavailability", () => {
       }),
     ])
       expect(isRetainedDaPayloadUnavailableError(value)).toBe(false);
-  });
-
-  it("classifies attempt lists with one shared status rule", () => {
-    expect(
-      retainedDaAttemptsOnlyUnavailable([
-        attempt("a", "not_found"),
-        attempt("b", "transport_error"),
-        attempt("c", "timeout"),
-      ]),
-    ).toBe(true);
-    for (const status of ["rejected", "conflict", "invalid_content"] as const)
-      expect(
-        retainedDaAttemptsOnlyUnavailable([
-          attempt("a", "not_found"),
-          attempt("b", status),
-        ]),
-      ).toBe(false);
   });
 });
