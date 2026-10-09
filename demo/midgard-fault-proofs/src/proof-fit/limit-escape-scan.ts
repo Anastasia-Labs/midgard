@@ -1,10 +1,5 @@
 import ts from "typescript";
 
-export const UNPUBLISHABLE_DIAGNOSTIC_BEGIN =
-  "MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_BEGIN";
-export const UNPUBLISHABLE_DIAGNOSTIC_END =
-  "MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_END";
-
 export type FaultProofLimitEscape = {
   readonly path: string;
   readonly line: number;

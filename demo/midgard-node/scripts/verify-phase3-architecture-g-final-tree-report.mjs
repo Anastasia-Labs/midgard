@@ -68,11 +68,24 @@ export const PHASE3_FINAL_TREE_SUITES = Object.freeze(
         "tests/commit-recovery-planner.test.ts",
         "tests/commit-worker-failure-lease-classification.test.ts",
         "tests/confirmation-finalization-race.test.ts",
+        "--reporter=default",
+      ],
+      coverage: ["shared_phase4_lifecycle"],
+    },
+    {
+      id: "shared-phase4-process-harness",
+      argv: [
+        "pnpm",
+        "--dir",
+        "../midgard-node-tools",
+        "exec",
+        "vitest",
+        "run",
         "tests/phase4-process-isolation.test.ts",
         "tests/journal-kill-process-harness.test.ts",
         "--reporter=default",
       ],
-      coverage: ["shared_phase4_lifecycle", "shared_phase4_process_harness"],
+      coverage: ["shared_phase4_process_harness"],
     },
   ].map((suite) =>
     Object.freeze({

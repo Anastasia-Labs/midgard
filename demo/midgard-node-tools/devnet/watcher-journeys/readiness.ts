@@ -11,7 +11,6 @@ import {
   JOURNEY_FIXTURE_OWNERS,
   JOURNEY_FIXTURES,
 } from "./catalogue.js";
-import type { JourneyCategory } from "./fixture.js";
 import {
   type JourneyEvidenceDeployment,
   verifyJourneyResultEvidence,
@@ -166,7 +165,3 @@ export const readJourneyReadiness = async (runDirectory: string) => {
     families,
   };
 };
-
-export type JourneyReadinessFamily = Awaited<
-  ReturnType<typeof readJourneyReadiness>
->["families"][number] & { category: JourneyCategory };

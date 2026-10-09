@@ -15,7 +15,6 @@ import {
 } from "@al-ft/midgard-core";
 import {
   encodeMidgardTxInputCanonical,
-  type FraudProofCatalogueCategoryDeploymentInfo,
   type MidgardTxInput,
   missingSignatureVkeyHash,
   Proof,
@@ -23,10 +22,7 @@ import {
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { MinAdaContracts } from "../../src/min-ada/contracts.js";
-import type { MissingNativeScriptUtxoContracts } from "../../src/missing-native-script-utxo/contracts.js";
 import type { PreparedMissingNativeScriptUtxo } from "../../src/missing-native-script-utxo/prepare.js";
-import type { NativeScriptInvalidContracts } from "../../src/native-script-invalid/contracts.js";
 import type { PreparedNativeScriptInvalid } from "../../src/native-script-invalid/prepare.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import {
@@ -36,7 +32,6 @@ import {
 import { nativeWitnessSet } from "./final-catalogue-emulator.build-min-ada-post-utxo-emulator-fixture.js";
 import {
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
   makeNativeTx,
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
@@ -265,17 +260,3 @@ export const buildNativeScriptInvalidEmulatorFixture = async ({
     ),
   };
 };
-
-export type FinalFamilyHarness<Family> = Awaited<
-  ReturnType<typeof makeFaultProofEmulatorHarness>
-> & {
-  readonly family: Family;
-  readonly category: FraudProofCatalogueCategoryDeploymentInfo;
-};
-
-export type FinalMinAdaFamily = MinAdaContracts;
-
-export type FinalMissingNativeScriptUtxoFamily =
-  MissingNativeScriptUtxoContracts;
-
-export type FinalNativeScriptInvalidFamily = NativeScriptInvalidContracts;

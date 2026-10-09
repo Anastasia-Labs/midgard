@@ -192,15 +192,6 @@ type ArchiveDispatch = (
 
 export type Listening = { readonly close: () => Promise<void> };
 
-/** Serves until SIGTERM or SIGINT, then closes. */
-export const untilSignalled = async (listening: Listening) => {
-  await new Promise<void>((resolve) => {
-    for (const signal of ["SIGTERM", "SIGINT"] as const)
-      process.once(signal, () => resolve());
-  });
-  await listening.close();
-};
-
 /**
  * One provider: the watcher journeys' archive dispatch (the only
  * implementation of the provider API) behind this provider's own HTTPS

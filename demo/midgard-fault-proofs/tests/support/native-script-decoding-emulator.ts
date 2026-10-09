@@ -66,7 +66,6 @@ export {
   type DecodingLedgerFixture,
   decodingMalformedMaximumItem,
   decodingMalformedMultiChunkItem,
-  decodingMalformedWrapperItem,
   decodingPlutusItem,
   type DecodingSubjectSource,
   decodingSubjectTransaction,

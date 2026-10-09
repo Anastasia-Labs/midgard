@@ -8,6 +8,15 @@ export const INSTANCE_LOCK_RECONNECT_INITIAL_MS = 1_000;
 export const INSTANCE_LOCK_RECONNECT_MAX_MS = 30_000;
 
 /**
+ * How long one attempt waits for its session to connect, and for each of
+ * its statements to answer. Without them, an attempt against a host that
+ * drops packets without answering lasts until the operating system's TCP
+ * timeout, and so does a shutdown waiting on that attempt.
+ */
+const INSTANCE_LOCK_CONNECT_TIMEOUT_MS = 10_000;
+const INSTANCE_LOCK_STATEMENT_TIMEOUT_MS = 10_000;
+
+/**
  * Which process kind a lock excludes, and how its refusals read. The lock's
  * key is derived from `keyName` and the schema the holder's tables resolve
  * to, so two holders in different schemas of one database do not exclude
@@ -49,6 +58,12 @@ export type PostgresInstanceLockEvents = {
 
 export type PostgresInstanceLockTimers = {
   readonly sleep: (ms: number) => Promise<void>;
+};
+
+/** The bounds on one attempt; each defaults to its exported constant. */
+export type PostgresInstanceLockBounds = {
+  readonly connectTimeoutMs?: number;
+  readonly statementTimeoutMs?: number;
 };
 
 const defaultTimers: PostgresInstanceLockTimers = {
@@ -108,11 +123,20 @@ type LockRow = {
 const trySession = async (
   identity: PostgresInstanceLockIdentity,
   databaseUrl: string,
+  bounds: PostgresInstanceLockBounds,
   ownStale?: Pick<LockSession, "backendPid" | "backendStart">,
 ): Promise<LockSession> => {
+  const statementTimeoutMs =
+    bounds.statementTimeoutMs ?? INSTANCE_LOCK_STATEMENT_TIMEOUT_MS;
   const client = new pg.Client({
     connectionString: databaseUrl,
     keepAlive: true,
+    connectionTimeoutMillis:
+      bounds.connectTimeoutMs ?? INSTANCE_LOCK_CONNECT_TIMEOUT_MS,
+    // The server cancels a statement past the bound; the client stops
+    // waiting for one whose answer never arrives.
+    statement_timeout: statementTimeoutMs,
+    query_timeout: statementTimeoutMs,
   });
   // An unexpected end of the session is handled on "end".
   client.on("error", () => undefined);
@@ -216,6 +240,7 @@ export class PostgresInstanceLock {
     private readonly databaseUrl: string,
     private readonly events: PostgresInstanceLockEvents,
     private readonly timers: PostgresInstanceLockTimers,
+    private readonly bounds: PostgresInstanceLockBounds,
   ) {
     this.session = session;
     this.watch(session);
@@ -231,13 +256,15 @@ export class PostgresInstanceLock {
     databaseUrl: string,
     events: PostgresInstanceLockEvents = {},
     timers: PostgresInstanceLockTimers = defaultTimers,
+    bounds: PostgresInstanceLockBounds = {},
   ): Promise<PostgresInstanceLock> {
     return new PostgresInstanceLock(
-      await trySession(identity, databaseUrl),
+      await trySession(identity, databaseUrl, bounds),
       identity,
       databaseUrl,
       events,
       timers,
+      bounds,
     );
   }
 
@@ -260,6 +287,7 @@ export class PostgresInstanceLock {
         const session = await trySession(
           this.identity,
           this.databaseUrl,
+          this.bounds,
           this.session,
         );
         if (this.releasing) {

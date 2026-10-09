@@ -14,10 +14,8 @@ export {
   type EventKind,
   type EventListConfig,
   type EventProjectionConfig,
-  EventProjectionConfigError,
   eventProjectionConfigFromContracts,
   eventTrackedSet,
-  parseEventProjectionConfig,
   type SlotTime,
   slotToPosixMs,
 } from "./config.js";

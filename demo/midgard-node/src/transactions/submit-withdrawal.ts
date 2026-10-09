@@ -4,12 +4,7 @@ import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-
  * events on L1.
  */
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Data,
-  datumToHash,
-  type LucidEvolution,
-  type TxSignBuilder,
-} from "@lucid-evolution/lucid";
+import { Data, datumToHash, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
 import {
@@ -29,36 +24,6 @@ export class SubmitWithdrawalError extends EffectData.TaggedError(
   message: string;
   cause: unknown;
 }> {}
-
-export const buildUnsignedWithdrawalTxWithMetadataProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  config: SubmitWithdrawalConfig,
-): Effect.Effect<
-  {
-    readonly tx: TxSignBuilder;
-    readonly metadata: WithdrawalBuildMetadata;
-  },
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.HashingError
-  | SubmitWithdrawalError
-> =>
-  SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
-    lucid,
-    contracts,
-    config,
-  ).pipe(
-    Effect.catchTag("UserEventBuildError", (error) =>
-      Effect.fail(
-        new SubmitWithdrawalError({
-          message: error.message,
-          cause: error.cause,
-        }),
-      ),
-    ),
-  );
 
 /** Durable intent commits raw semantic body and refund bytes before nonce selection. */
 export const withdrawalSubmissionIntentHash = (

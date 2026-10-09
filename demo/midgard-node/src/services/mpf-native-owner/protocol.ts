@@ -21,10 +21,6 @@ export const NATIVE_MPF_OWNER_DEFAULT_CAPS = {
   shutdownTimeoutMs: 10_000,
 } as const;
 
-export type NativeMpfOwnerCaps = {
-  readonly [K in keyof typeof NATIVE_MPF_OWNER_DEFAULT_CAPS]: number;
-};
-
 export const enum NativeMpfRpcKind {
   Hello = 1,
   HelloAck = 2,

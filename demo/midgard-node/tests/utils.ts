@@ -2,13 +2,11 @@ import { createHash } from "node:crypto";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { type Address, Data as LucidData } from "@lucid-evolution/lucid";
+import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Layer } from "effect";
-import { expect } from "vitest";
 
 import { MIGRATIONS } from "../src/database/migrations/index.js";
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
-import * as LedgerUtils from "../src/database/utils/ledger.js";
 import {
   ADMISSION_WRITE_BATCH_MAX_ROWS,
   ADMISSION_WRITE_BATCH_TARGET_ROWS,
@@ -202,40 +200,3 @@ export const deterministicFixtureOutputReferenceId = (
     ),
     "hex",
   );
-
-type LedgerLikeEntry = {
-  readonly [LedgerUtils.Columns.TX_ID]: Buffer;
-  readonly [LedgerUtils.Columns.OUTREF]: Buffer;
-  readonly [LedgerUtils.Columns.OUTPUT]: Buffer;
-  readonly [LedgerUtils.Columns.ADDRESS]: Address;
-};
-
-const withoutLedgerTimestamp = (
-  entry: LedgerLikeEntry,
-): LedgerUtils.EntryNoTimeStamp => ({
-  [LedgerUtils.Columns.TX_ID]: entry[LedgerUtils.Columns.TX_ID],
-  [LedgerUtils.Columns.OUTREF]: entry[LedgerUtils.Columns.OUTREF],
-  [LedgerUtils.Columns.OUTPUT]: entry[LedgerUtils.Columns.OUTPUT],
-  [LedgerUtils.Columns.ADDRESS]: entry[LedgerUtils.Columns.ADDRESS],
-});
-
-const sortLedgerEntries = (
-  entries: readonly LedgerUtils.EntryNoTimeStamp[],
-): LedgerUtils.EntryNoTimeStamp[] =>
-  [...entries].sort((left, right) =>
-    Buffer.compare(
-      left[LedgerUtils.Columns.OUTREF],
-      right[LedgerUtils.Columns.OUTREF],
-    ),
-  );
-
-export const expectLedgerUtxos = (
-  actual: readonly LedgerLikeEntry[],
-  expected: readonly LedgerLikeEntry[],
-): void => {
-  expect(
-    sortLedgerEntries(actual.map((entry) => withoutLedgerTimestamp(entry))),
-  ).toStrictEqual(
-    sortLedgerEntries(expected.map((entry) => withoutLedgerTimestamp(entry))),
-  );
-};

@@ -23,20 +23,17 @@ export {
   buildUnsignedDepositTxWithMetadataProgram,
   type BuiltUnsignedDepositTx,
   type DepositBuildMetadata,
-  DepositConfirmationUnknownError,
   depositSubmissionAttemptFromCompletedTx,
   type DepositSubmissionReconciliationResult,
   matchesDepositSubmissionIntent,
   type SubmitDepositConfig,
   SubmitDepositError,
   type SubmitDepositReferenceScripts,
-  type SubmittedDeposit,
 } from "./submit-deposit.deposit-submission-attempt-from-completed-tx.js";
 export { parseBuildDepositRequest } from "./submit-deposit.parse-build-deposit-request.js";
 export { parseSubmitDepositConfig } from "./submit-deposit.parse-funding-utxos.js";
 export {
   buildUnsignedDepositTxFromFundingContextProgram,
-  buildUnsignedDepositTxProgram,
   depositSubmissionIntentHash,
   reconcileDepositSubmissionAttemptProgram,
   submitDepositWithMetadataProgram,

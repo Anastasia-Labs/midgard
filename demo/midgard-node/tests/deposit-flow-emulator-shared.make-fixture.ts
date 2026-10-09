@@ -381,15 +381,6 @@ export const isEmulatorProvider = (
   (provider as { constructor?: { name?: string } }).constructor?.name ===
     "Emulator";
 
-export type HarnessSignedTx = {
-  readonly submitSafe: () => Promise<
-    | { readonly _tag: "Left"; readonly left: { readonly message: string } }
-    | { readonly _tag: "Right"; readonly right: string }
-  >;
-  readonly toHash: () => string;
-  readonly toCBOR: () => string;
-};
-
 export const describeProviderOutRefStates = (
   lucid: LucidEvolution,
   outRefs: readonly string[],

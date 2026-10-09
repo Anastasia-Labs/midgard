@@ -12,7 +12,6 @@ import "./tx-queue-processor.tx-queue-processor-action.js";
 import "./tx-queue-processor.tx-queue-processor-drain-once.js";
 export {
   ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT,
-  classifyPlutusEvaluationFailure,
   decideAdmissionBatch,
   refusePendingWithdrawalInputs,
   validationBatchDurationSummary,

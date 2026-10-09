@@ -169,8 +169,7 @@ const anchorOf = (row: Record<string, unknown>): Anchor => ({
 /**
  * Closes the queue rows a tx spends and returns, per spent node header hash,
  * the anchor that the tx's re-output of the same header inherits: a header
- * stays anchored at the tx that minted it, as the authenticated observation
- * anchors it (`anchoredHeaderObservation`). Also returns the spent queue
+ * stays anchored at the tx that minted it. Also returns the spent queue
  * roots (`txHash#index`), which a merge must consume.
  */
 const closeSpent = async (

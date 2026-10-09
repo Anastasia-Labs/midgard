@@ -80,10 +80,6 @@ export const decodingCanonicalItem = (): Buffer =>
     }),
   );
 
-/** A wrapper whose language tag is outside {0, 3, 128}: malformed at bind. */
-export const decodingMalformedWrapperItem = (): Buffer =>
-  Buffer.from("8201410a", "hex");
-
 /** A tag-3 (Plutus) item: the direction-B descriptor contradiction. */
 export const decodingPlutusItem = (): Buffer =>
   Buffer.from("82034401020304", "hex");

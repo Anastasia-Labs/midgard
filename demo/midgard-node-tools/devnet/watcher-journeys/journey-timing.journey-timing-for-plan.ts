@@ -82,8 +82,6 @@ export interface JourneyCadence {
   fixtureStagingAllowanceMs?: number;
 }
 
-export type TransitionTraceJourneyCadence = JourneyCadence;
-
 export const HEALTHY_REPLAY_BLOCK_ALLOWANCE_MS = 10_000;
 
 export const MAX_TIMER_MS = 2_147_483_647;

@@ -3,12 +3,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import {
-  type DecodedQueueHeader,
   type LockOutput,
   type QueueNode,
   type QueueOutput,
-  RELEASE_FINALITY_DEPTH,
-  type WatcherStateQueueHeaderObservation,
 } from "./authenticated-state-queue-observation.parse-persisted-header.js";
 import {
   lockOutput,
@@ -218,66 +215,3 @@ export const fraudProofIdentity = ({
     },
   };
 };
-
-/** Pure address/policy identity test seam; it grants no observation authority. */
-
-/**
- * A HeaderV1 node is minted once and re-output by every later queue
- * transaction that rewrites its link. The header's observed chain point is the
- * minting inclusion, exactly as bootstrap derives it from unit history, so a
- * successor commit or availability update never moves the evidence chain point
- * of an already observed header. Only the mutable node fields follow the
- * re-output. A header that was not previously observed is anchored at this
- * transaction, which is its mint.
- */
-export const anchoredHeaderObservation = ({
-  prior,
-  header,
-  queueOutRef,
-  nextHeaderHash,
-  point,
-  minimumConfirmationDepth = RELEASE_FINALITY_DEPTH,
-}: {
-  minimumConfirmationDepth?: number;
-  prior: WatcherStateQueueHeaderObservation | undefined;
-  header: DecodedQueueHeader;
-  queueOutRef: string;
-  nextHeaderHash: string | null;
-  point: {
-    transactionHash: string;
-    blockHash: string;
-    slot: string;
-    blockNo: string;
-    chainPointId: string;
-  };
-}): WatcherStateQueueHeaderObservation => {
-  const anchor =
-    prior !== undefined && prior.headerCborHex === header.headerCborHex
-      ? {
-          observedTransactionHash: prior.observedTransactionHash,
-          observedBlockHash: prior.observedBlockHash,
-          observedSlot: prior.observedSlot,
-          observedBlockNo: prior.observedBlockNo,
-          observedChainPointId: prior.observedChainPointId,
-          finalityDepth: prior.finalityDepth,
-        }
-      : {
-          observedTransactionHash: point.transactionHash,
-          observedBlockHash: point.blockHash,
-          observedSlot: point.slot,
-          observedBlockNo: point.blockNo,
-          observedChainPointId: point.chainPointId,
-          finalityDepth: minimumConfirmationDepth.toString(),
-        };
-  return Object.freeze({
-    ...header,
-    queueOutRef,
-    nextHeaderHash,
-    ...anchor,
-  });
-};
-
-export const unsafeDeriveFraudProofCorrectionIdentityForTest =
-  fraudProofIdentity;
-
-export const unsafeAnchoredHeaderObservationForTest = anchoredHeaderObservation;

@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from "pg";
+import { type PoolClient } from "pg";
 
 import type {
   DaPayloadRecord,
@@ -89,22 +89,6 @@ export const mergeLockedL1SourceState = async (
     [encodeRecord(merged)],
   );
   return merged;
-};
-
-export const upsertRecordWithPool = async <T>(
-  pool: Pool,
-  tableName: string,
-  headerHash: string,
-  record: T,
-): Promise<void> => {
-  await pool.query(
-    `INSERT INTO ${tableName} (header_hash, record, updated_at)
-     VALUES ($1, $2::jsonb, NOW())
-     ON CONFLICT (header_hash) DO UPDATE SET
-       record = EXCLUDED.record,
-       updated_at = NOW()`,
-    [headerHash, encodeRecord(record)],
-  );
 };
 
 export const upsertRecordWithClient = async <T>(

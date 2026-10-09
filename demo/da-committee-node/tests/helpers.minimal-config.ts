@@ -1,6 +1,3 @@
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   daBondManifestAmounts,
@@ -19,16 +16,6 @@ import type {
   MidgardNodeDeployment,
 } from "../src/l1/deployment.js";
 import type {} from "./global-setup.js";
-
-export const writeJson = async (
-  dir: string,
-  name: string,
-  value: unknown,
-): Promise<string> => {
-  const path = join(dir, name);
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
-  return path;
-};
 
 const minimalAuthenticatedDeployment = ({
   prefix,

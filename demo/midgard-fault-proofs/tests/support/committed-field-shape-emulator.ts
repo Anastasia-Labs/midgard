@@ -31,7 +31,6 @@ export {
 export {
   committedFieldShapeInlineClaim,
   expectCommittedFieldShapeOnchainRefusal,
-  preparedFromScenario,
   submitRawCommittedFieldShapeCancel,
   submitRawCommittedFieldShapeStep02,
 } from "./committed-field-shape-emulator.submit-raw-committed-field-shape-step02.js";

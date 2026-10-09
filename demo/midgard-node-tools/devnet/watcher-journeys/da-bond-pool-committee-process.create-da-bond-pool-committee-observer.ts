@@ -286,7 +286,3 @@ export const createDaBondPoolCommitteeObserver = (deps: {
     },
   };
 };
-
-export type DaBondPoolCommitteeObserver = ReturnType<
-  typeof createDaBondPoolCommitteeObserver
->;

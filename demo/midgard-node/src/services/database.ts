@@ -37,6 +37,9 @@ export class BatchSql extends Context.Tag("BatchSql")<
 
 export type DatabasePoolRole = "admission" | "batch" | "worker";
 
+/** How long a new database connection may take to establish. */
+export const DATABASE_CONNECT_TIMEOUT = Duration.seconds(10);
+
 export const databaseConnectTimeout = (
   role: DatabasePoolRole,
 ): Duration.Duration => {
@@ -44,7 +47,7 @@ export const databaseConnectTimeout = (
     case "admission":
     case "batch":
     case "worker":
-      return Duration.seconds(10);
+      return DATABASE_CONNECT_TIMEOUT;
   }
 };
 

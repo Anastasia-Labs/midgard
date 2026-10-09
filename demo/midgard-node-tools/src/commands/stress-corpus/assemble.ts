@@ -75,15 +75,6 @@ const parseRowHeader = (
   };
 };
 
-export const writeShardRows = async (
-  path: string,
-  rows: readonly OpenLoopCorpusRow[],
-): Promise<{ readonly rowCount: number; readonly sha256: string }> => {
-  const writer = await createShardRowWriter(path);
-  await writer.writeRows(rows);
-  return writer.close();
-};
-
 export const createShardRowWriter = async (
   path: string,
 ): Promise<ShardRowWriter> => {

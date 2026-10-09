@@ -5,7 +5,6 @@ export {
 export { parseE2EL2StressConfigArtifact } from "./config-artifact.js";
 export {
   E2E_L2_STRESS_CONFIG_SCHEMA_VERSION,
-  E2E_L2_STRESS_MEASUREMENT_POLICY,
   E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
 } from "./constants.js";
 export { runE2EL2StressThroughput } from "./run.js";

@@ -1,7 +1,4 @@
-import type {
-  CommitteeRetirementGuard,
-  CommitteeRetirementSnapshot,
-} from "./retirement-model.js";
+import type { CommitteeRetirementSnapshot } from "./retirement-model.js";
 import type { CommitteeRetirementPlan } from "./retirement-transition.js";
 
 export type CommitteeRetirementCertificate = Readonly<{
@@ -37,6 +34,3 @@ export const consumeRetirementCertificate = (
 ): void => {
   certificates.delete(token);
 };
-export const certificateGuard = (
-  token: CommitteeRetirementCertificate,
-): CommitteeRetirementGuard => readRetirementCertificate(token).snapshot.guard;

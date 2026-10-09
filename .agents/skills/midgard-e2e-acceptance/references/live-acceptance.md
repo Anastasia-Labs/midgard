@@ -33,8 +33,8 @@ environment variables; it never holds their values. Verify the node `.env` it
 points at, without printing seed phrases:
 
 - `NETWORK=Preprod` and `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing`;
-- loopback Kupo and Ogmios URLs (the history owner's), and no
-  `L1_PROVIDER_FAILOVER`;
+- no `L1_PROVIDER_FAILOVER` (the node reads L1 through the local
+  cardano-node the kupmios overlay mounts, never through Kupo or Ogmios);
 - `RUN_GENESIS_ON_STARTUP=false` and the exact L2 `MIN_FEE_A`/`MIN_FEE_B`;
 - an explicit `MIDGARD_POSTGRES_HOST_PORT` that is neither 5433 nor 55433
   (both belong to test databases);

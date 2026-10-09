@@ -469,5 +469,3 @@ export const runMpfAudit = ({
     }
     return stateQueueResult.value;
   });
-
-export const mpfAuditProgram = runMpfAudit();

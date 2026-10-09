@@ -42,7 +42,8 @@ Sources:
 - The demo `midgard-node` healthcheck fetches `/readyz` and passes on any 2xx
   (`demo/midgard-node/docker-compose.yaml`). A healthy container is bar 3.
 - The kupmios Kupo healthcheck greps for `HTTP/… 200`, so a replaying Kupo
-  (202) is unhealthy and the node does not start against it.
+  (202) is unhealthy. The node does not wait on it: its compose service
+  depends on Postgres and cardano-node only.
 - Phase4 `bootstrap.sh` waits with `wait_http`, which is `curl --fail`: any
   status below 400 passes, **including Kupo's 202**. Bootstrap's wait is bar 2
   for Kupo; the later snapshot step demands `connection_status: "connected"`

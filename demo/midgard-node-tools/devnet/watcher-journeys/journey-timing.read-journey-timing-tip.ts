@@ -212,10 +212,6 @@ export const journeyExecutionTiming = (
 
 export const transitionTraceJourneyExecutionTiming = journeyExecutionTiming;
 
-export type JourneyExecutionTiming = ReturnType<typeof journeyExecutionTiming>;
-
-export type TransitionTraceJourneyExecutionTiming = JourneyExecutionTiming;
-
 /** Suite-load planning opens only a bounded read-only RPC and reads public configuration. */
 export const readJourneyExecutionTiming = async (
   runDirectory: string,

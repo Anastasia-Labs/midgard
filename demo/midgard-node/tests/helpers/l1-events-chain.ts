@@ -184,28 +184,6 @@ export const rootOutput = (kind: EventKind, next: string | null): SimOutput => {
   };
 };
 
-/** A list Filler at `key` (not an event: the projection ignores it). */
-export const fillerOutput = (kind: EventKind, key: string): SimOutput => {
-  const config = listOf(kind);
-  return {
-    address: Buffer.from(config.listAddress, "hex"),
-    lovelace: 2_000_000n,
-    assets: new Map([[config.policyId, new Map([[key, 1n]])]]),
-    datum: Buffer.from(
-      Data.to(
-        {
-          position: { Key: [key] },
-          next: null,
-          protected_until: 0n,
-          payload: { Filler: { refund_key: owner } },
-        },
-        SDK.EventHistoryNode,
-      ),
-      "hex",
-    ),
-  };
-};
-
 /**
  * The tx that admits `order`: it consumes the nonce, mints the key and
  * creates the Order (output 0), referencing `retainedRef` for an external

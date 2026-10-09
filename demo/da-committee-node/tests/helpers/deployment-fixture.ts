@@ -18,5 +18,4 @@ export { buildDaDeploymentFixture } from "./deployment-fixture.build-da-deployme
 export {
   loadDaDeploymentFixture,
   readDaDeploymentFixture,
-  writeDaDeploymentFixture,
 } from "./deployment-fixture.read-da-deployment-fixture.js";

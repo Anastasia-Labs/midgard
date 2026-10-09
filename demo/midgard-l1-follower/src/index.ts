@@ -145,7 +145,6 @@ export {
   type IntentState,
   type IntentStatus,
   type IntentStatuses,
-  type IntentStatusKind,
   type IntentStatusRead,
   isDeadStatus,
 } from "./intents/status.js";
@@ -248,6 +247,7 @@ export {
   INSTANCE_LOCK_RECONNECT_MAX_MS,
   isInstanceLockHeldElsewhere,
   PostgresInstanceLock,
+  type PostgresInstanceLockBounds,
   type PostgresInstanceLockEvents,
   type PostgresInstanceLockIdentity,
   type PostgresInstanceLockTimers,

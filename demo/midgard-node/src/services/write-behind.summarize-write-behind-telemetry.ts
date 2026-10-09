@@ -246,32 +246,3 @@ export const chunkItem = (
   }
   return chunks;
 };
-
-export const takeWriteBehindRowBatch = (
-  items: readonly WriteBehindItem[],
-  maxRows: number,
-): {
-  readonly batch: readonly WriteBehindItem[];
-  readonly remaining: readonly WriteBehindItem[];
-} => {
-  const batch: WriteBehindItem[] = [];
-  let remainingRows = Math.max(1, maxRows);
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index]!;
-    const rows = itemRowCount(item);
-    if (rows <= remainingRows) {
-      batch.push(item);
-      remainingRows -= rows;
-      if (remainingRows === 0) {
-        return { batch, remaining: items.slice(index + 1) };
-      }
-      continue;
-    }
-    batch.push(sliceItem(item, 0, remainingRows));
-    return {
-      batch,
-      remaining: [sliceItem(item, remainingRows), ...items.slice(index + 1)],
-    };
-  }
-  return { batch, remaining: [] };
-};
