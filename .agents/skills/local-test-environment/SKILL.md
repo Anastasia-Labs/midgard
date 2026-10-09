@@ -20,7 +20,9 @@ dists, under its own database family, and counts what ran.
 read-only: it starts, installs and writes nothing, and prints a fix under each
 failure. It checks the pinned Aiken, the test Postgres, the test-database prefix, `demo/node_modules`, the
 blueprint stamp, the `midgard-core`, `midgard-sdk` and `midgard-validation`
-dist, the installed hooks, and the Node and pnpm versions.
+dist, the installed hooks, `core.bare` (true makes the main checkout refuse
+every work-tree command; doctor names the file and never repairs it, so find
+what wrote it), and the Node and pnpm versions. [script: scripts/doctor.test.mjs]
 
 Exit 0 passes, 1 names a failure and its fix, and 3 means unknown. [script: scripts/doctor.mjs]
 
