@@ -2,6 +2,13 @@ name: preprod-public
 network: Preprod
 l1_finality:
   confirmation_depth: 30
+  # Largest d with event_wait - max validity range >= 3d/f slots:
+  # 1,320,000 ms / 60,000 ms = 22 (config/deployments/README.md).
+  commit_event_depth: 22
+  # Cardano consensus the depth bounds assume: k, f and the slot length.
+  security_parameter: 2160
+  active_slot_coeff: "0.05"
+  slot_length_ms: 1000
 timing:
   block_maturity_ms: 604800000
   dispute_response_window_ms: 300000

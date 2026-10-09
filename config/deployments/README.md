@@ -28,21 +28,76 @@ upper bound) can still be struck.
 `timing.event_wait_ms` is the delay between a user event's transaction
 valid-to and its on-chain `inclusion_time`; no block may include the event
 earlier. The public profiles use the worst-case wall time for N Cardano blocks,
-3N/f slots at f = 0.05 and one-second slots: 36 hours on `mainnet` (N = k = 2160)
-and 30 minutes on `preprod-public` (N = 30). Both live testing profiles use a fixed
-five minutes.
+3N/f slots at f = 0.05 and one-second slots, 60 seconds per block. `mainnet`
+adds the maximum validity range: 3k/f slots + 480 s = 129,600,000 + 480,000 ms,
+36 hours 8 minutes (N = k = 2160). A commit lands no earlier than one maximum
+validity range before its header end time, so when the commit that includes a
+due event lands, the event is at least 3k/f slots old, k blocks deep under the
+guaranteed chain-growth bound. `preprod-public` waits 30 minutes (N = 30), which
+leaves 22 blocks after the eight-minute validity range. Both live testing
+profiles use a fixed five minutes and `preprod-emulator-testing` ten.
 Validation requires each public profile's event wait to be at least the maximum
 validity range plus confirmation-depth blocks at twice the 20-second mean block
 time: 28 minutes for `mainnet` and `preprod-public`. Every event a block must
 include was on L1 at least that validity range less than the event wait before
 the commit became valid, so an honest block omits one only if L1 rolls back past
-that span. Under the 3N/f standard above, `preprod-public`'s 30 minutes leave 22
-blocks after the eight-minute validity range, not 30. The live testing profiles are
-exempt: a short L1 fork there can make an honest block omit an event.
+that span. The live testing profiles are exempt: a short L1 fork there can make
+an honest block omit an event.
+
 The existing economics schedule identifiers are retained as manifest data, not
 runtime selectors. Profiles sharing a schedule identifier must have identical
 economics. Settle launch parameter choices before deploying; generation does not
 authorize deployment or alter an existing deployment.
+
+### Commit-event depth
+
+`l1_finality.commit_event_depth` is the commit-event depth d: an event is
+committed only below the commit anchor, the follower block d below the view a
+commit is planned at. The profile binds d; the finalized manifest carries it as
+`l1Finality.commitEventDepth`, and the node reads it from the profile, not from
+an environment variable. Three more `l1_finality` keys give the Cardano
+consensus the bounds assume: `security_parameter` (k = 2160),
+`active_slot_coeff` (f = `"0.05"`) and `slot_length_ms` (1,000), the
+Preprod-like values of every profile. `active_slot_coeff` is a decimal string,
+not a number, because the deployment identity's canonical JSON admits only
+safe-integer numbers; validation requires its one canonical spelling (no sign,
+exponent, leading or trailing zero) and a value in (0, 1]. Under the guaranteed
+chain-growth bound, n blocks take at most 3n/f slots, 60,000 ms per block here.
+Validation reads k, f and the slot length from the profile, turns f into an
+exact rational (`"0.05"` is 5/100) and compares in integers. With W =
+`event_wait_ms`, N = `user_events_negligence_timeout_ms` and L =
+`max_validity_range_ms`, it requires:
+
+- `0 ≤ d ≤ k`. The follower keeps k blocks of history, and the block just
+  above the anchor must not be final.
+- On every profile, no inactivity strike: W + N ≥ 3(d + 1)·slot/f + L. An event
+  becomes includable once the commit anchor is past its validity bound, which
+  needs d + 1 blocks after it, at most 3(d + 1)·slot/f; the commit then lands
+  within L, and the neglected-event strike opens at inclusion time + N
+  (`scheduler.ak`, `inactivity_threshold_from_user_event_inclusion_time`).
+- On every profile, a plannable commit: W − B − slot ≥ 3(d + 1)·slot/f, with
+  B = 30,000 ms (`COMMIT_TTL_FUTURE_BUFFER_MS`, the history-commit TTL floor).
+  A commit's end time E is capped at time(A) + W − 1 with A the commit anchor,
+  and must be at least now + B rounded up to the next slot. When a commit is
+  planned, the view's tip is d blocks above A and the next block has not
+  arrived, so now is at most 3(d + 1)·slot/f after A; the cap reaches the
+  floor whenever the bound holds.
+- On `mainnet` and `preprod-public`: W − L ≥ 3d·slot/f, so a due event is d
+  blocks deep when the commit that includes it lands.
+
+Each profile uses the largest d all bounds admit:
+
+| Profile                    | No-strike largest d | W − B − slot | Plannable largest d | Production largest d | d    |
+| -------------------------- | ------------------- | ------------ | ------------------- | -------------------- | ---- |
+| `mainnet`                  | 2,180 − 1 = 2,179   | 130,049,000  | 2,167 − 1 = 2,166   | 2,160 (tight)        | 2160 |
+| `preprod-public`           | 42 − 1 = 41         | 1,769,000    | 29 − 1 = 28         | 22                   | 22   |
+| `preprod-testing`          | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
+| `local-devnet-testing`     | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
+| `preprod-emulator-testing` | 22 − 1 = 21         | 569,000      | 9 − 1 = 8           | —                    | 8    |
+
+The no-strike column divides W + N − L by 60,000 ms, the plannable column
+divides W − B − slot and the production column W − L; each rounds down.
+Mainnet's d also meets d ≤ k with equality.
 
 ### Interactive emulator tests
 
@@ -238,7 +293,8 @@ operator shifts shorter than grace/validity windows or the commitment gap, incom
 schedules (with the explicit non-interactive testing rule above), and pooled DA
 bond values that break the relations above (challenge window order, slash
 penalty inside the DA bond, withdrawal delay, and the public challenge-window
-margin). Digests use SHA-256 over recursively
+margin), and a commit-event depth outside the bounds in
+[Commit-event depth](#commit-event-depth). Digests use SHA-256 over recursively
 key-sorted JSON, independent of YAML formatting and key order.
 
 ## Runtime and manifests

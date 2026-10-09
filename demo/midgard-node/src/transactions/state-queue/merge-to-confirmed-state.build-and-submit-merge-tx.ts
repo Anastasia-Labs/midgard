@@ -161,6 +161,12 @@ export const buildAndSubmitMergeTx = (
           yield* Effect.logInfo(
             `🔸 Skipping merge because completed fraud requires state correction (${oldestBlockReadiness.reason}).`,
           );
+        } else if (
+          oldestBlockReadiness.status === "skipped_oldest_block_event_orphaned"
+        ) {
+          yield* Effect.logInfo(
+            `🔸 Skipping merge because the oldest block's event left the chain; it waits for a landed correction or a rollback that removes it (${oldestBlockReadiness.reason}).`,
+          );
         } else {
           yield* Effect.logInfo(
             `🔸 Oldest block is not mature enough for merge yet (${oldestBlockReadiness.reason}).`,

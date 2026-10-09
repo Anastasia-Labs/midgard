@@ -1,4 +1,3 @@
-import { decodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
@@ -7,6 +6,7 @@ import {
   requireCandidateView,
   withFollowerWrite,
 } from "../services/follower-write-gate.js";
+import type { CommitAnchor } from "./commit-anchor.js";
 import * as DepositsDB from "./deposits.js";
 import * as ForcedTransactionsDB from "./forcedTransactions.js";
 import {
@@ -52,6 +52,7 @@ import {
   parsePendingBlockFinalization,
   txMemberEntry,
 } from "./pendingBlockFinalizations.parse-pending-block-finalization.js";
+import { programMaterialSidecarsByTxId } from "./pendingBlockFinalizations.program-material-sidecars.js";
 import { withdrawalMemberToAssignment } from "./pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as TxTable from "./utils/tx.js";
@@ -63,9 +64,16 @@ export const preparePendingSubmission = (
     /**
      * Runs after the active-journal guard and inside the same SQL transaction
      * as the pending journal insert. Commit submission uses it to assert the
-     * user-event sources are complete in the same transaction.
+     * user-event sources are complete and the end time within the commit
+     * anchor's cap in the same transaction; it returns the anchor the journal
+     * stores (`commit-anchor.ts`). A journal written under a runtime permit
+     * must have one.
      */
-    readonly beforeJournalInsert?: Effect.Effect<void, DatabaseError, Database>;
+    readonly beforeJournalInsert?: Effect.Effect<
+      CommitAnchor | undefined,
+      DatabaseError,
+      Database
+    >;
   },
 ): Effect.Effect<PreparedPendingSubmission, DatabaseError, Database> =>
   Effect.gen(function* () {
@@ -161,49 +169,7 @@ export const preparePendingSubmission = (
       (entry, ordinal) =>
         withdrawalMemberEntry(input.headerHash, entry, ordinal),
     );
-    const programMaterialByTxId = new Map<string, Buffer>();
-    for (const material of input.mempoolTxProgramMaterialSidecars ?? []) {
-      const txIdHex = material.txId.toString("hex");
-      if (programMaterialByTxId.has(txIdHex)) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: txsTableName,
-            message:
-              "Refusing to prepare duplicate V1 transaction program material",
-            cause: `tx_id=${txIdHex}`,
-          }),
-        );
-      }
-      yield* Effect.try({
-        try: () => decodeMidgardCekProgramMaterialSidecar(material.sidecarCbor),
-        catch: (cause) =>
-          new DatabaseError({
-            table: txsTableName,
-            message:
-              "Refusing to journal malformed V1 transaction program material",
-            cause,
-          }),
-      });
-      programMaterialByTxId.set(txIdHex, Buffer.from(material.sidecarCbor));
-    }
-    if (
-      programMaterialByTxId.size !== input.mempoolTxs.length ||
-      input.mempoolTxs.some(
-        (entry) =>
-          !programMaterialByTxId.has(
-            entry[TxTable.Columns.TX_ID].toString("hex"),
-          ),
-      )
-    ) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: txsTableName,
-          message:
-            "V1 pending journal requires one canonical program-material sidecar per normal transaction",
-          cause: `transactions=${input.mempoolTxs.length.toString()},sidecars=${programMaterialByTxId.size.toString()}`,
-        }),
-      );
-    }
+    const programMaterialByTxId = yield* programMaterialSidecarsByTxId(input);
     const txMembers = input.mempoolTxs.map((entry, ordinal) =>
       txMemberEntry(
         input.headerHash,
@@ -288,9 +254,18 @@ export const preparePendingSubmission = (
             }),
           );
         }
-        if (options?.beforeJournalInsert !== undefined) {
-          yield* options.beforeJournalInsert;
-        }
+        const anchor =
+          options?.beforeJournalInsert === undefined
+            ? undefined
+            : yield* options.beforeJournalInsert;
+        if (Option.isSome(candidateHistory) && anchor === undefined)
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: tableName,
+              message: "Production pending journal requires a commit anchor",
+              cause: input.headerHash.toString("hex"),
+            }),
+          );
         yield* WithdrawalsDB.assertClassificationSnapshots(
           withdrawalMembers.map(withdrawalMemberToAssignment),
         );
@@ -324,6 +299,9 @@ export const preparePendingSubmission = (
           [Columns.CONSENSUS_PROFILE_ID]: metadata.consensusProfileId,
           [Columns.PREPARED_TX_HASH]: input.preparedTxHash ?? null,
           [Columns.SUBMITTED_TX_HASH]: null,
+          [Columns.COMMIT_ANCHOR_HASH]: anchor?.hash ?? null,
+          [Columns.COMMIT_ANCHOR_HEIGHT]: anchor?.height ?? null,
+          [Columns.COMMIT_ANCHOR_SLOT]: anchor?.slot ?? null,
           [Columns.STATE_QUEUE_LEASE_TOKEN]: metadata.stateQueueLeaseToken,
           [Columns.BASE_SNAPSHOT_ID]: metadata.baseSnapshotId,
           [Columns.BASE_TAIL_OUT_REF]: metadata.baseTailOutRef,

@@ -10,6 +10,8 @@
  */
 import type { SqlClient } from "@effect/sql";
 
+import type { LandedBlockKind } from "../landed-blocks/store.js";
+
 export type AdmissionKind = "deposit" | "withdrawal";
 
 export const IdentityColumns = {
@@ -120,3 +122,30 @@ export const orphanedForcedAdmission = (
   sql`${sql(alias)}.projected_header_hash IS NULL
     AND NOT ${canonicalForcedAdmission(sql, alias)}
     AND ${forcedInActiveBlock(sql, alias)}`;
+
+/**
+ * SQL condition: the row aliased `alias` is assigned to a processed landed
+ * block of `kind` (a header in the landed queue).
+ */
+export const onLandedBlock = (
+  sql: SqlClient.SqlClient,
+  alias: string,
+  kind: LandedBlockKind,
+) =>
+  sql`EXISTS (SELECT 1 FROM node_landed_blocks b
+    WHERE b.header_hash = ${sql(alias)}.projected_header_hash
+      AND b.kind = ${kind} AND b.state = 'processed')`;
+
+/**
+ * SQL condition: the forced row aliased `alias` is assigned to a processed
+ * own landed block and its order is gone. The node follows the block (no
+ * hold): it is reported as a degradation until the header leaves the landed
+ * queue.
+ */
+export const ownLandedForcedOrphan = (
+  sql: SqlClient.SqlClient,
+  alias: string,
+) =>
+  sql`${sql(alias)}.projected_header_hash IS NOT NULL
+    AND NOT ${canonicalForcedAdmission(sql, alias)}
+    AND ${onLandedBlock(sql, alias, "own")}`;

@@ -1,47 +1,99 @@
+import type { View } from "@al-ft/midgard-l1-follower";
 import { depth } from "@al-ft/midgard-l1-follower/heads";
 import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { followerEligibilityHorizon } from "../src/database/follower-events.js";
+import type { CommitAnchor } from "../src/database/commit-anchor.js";
 import { FORCED_ORDERS_TABLE } from "../src/forced-orders/index.js";
 import {
   FollowerWrite,
   type FollowerWritePermit,
+  type GateView,
+  gateViewOf,
+  withFollowerWrite,
 } from "../src/services/follower-write-gate.js";
 import {
   commitEventHorizon,
-  type CommitHorizonLag,
   historyCommitTimingBudget,
 } from "../src/services/history-commit-window.js";
-import { refreshCommitUserEventSourcesThroughBlockEnd } from "../src/workers/commit-block-header/submission.js";
+import {
+  assertCommitUserEventSourceCompleteness,
+  COMMIT_ANCHOR_NOT_OF_VIEW_MESSAGE,
+  COMMIT_ANCHOR_UNAVAILABLE_MESSAGE,
+  COMMIT_END_ABOVE_ANCHOR_CAP_MESSAGE,
+  COMMIT_END_ABOVE_FORCED_HORIZON_MESSAGE,
+} from "../src/workers/commit-block-header/submission.commit-event-sources.js";
 import {
   FOLLOWER_GENERATION,
+  followerBlockHash,
   ingestFollowerViewUnowned,
-  modelHorizonLag,
+  modelAnchorClock,
+  modelSlotTime,
   writeFollowerTip,
 } from "./helpers/follower-view.js";
+import { openFollowerWriteGateAt } from "./helpers/follower-write-gate.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(provideDatabaseLayers(effect));
 
-/** A producer's permit; the recheck reads only that one is held. */
-const permit: FollowerWritePermit = {
-  view: {
-    generation: FOLLOWER_GENERATION,
-    slot: 100,
-    hash: "33".repeat(32),
-    height: 0,
-  },
-  epoch: "1",
-};
+/** The commit end-time horizon at commit-event depth `d`, planned at
+ * `view` (a permit's), or at the ingested view (a fixture). */
+const horizonAt = (d: number, view?: GateView) =>
+  run(commitEventHorizon({ view, ...modelAnchorClock(d) }));
+
+/** The anchor cap of the block at `slot`. */
+const capOf = (slot: number) => slot * 1000 + EVENT_WAIT_DURATION_MS - 1;
+
+/** A follower view of the model chain (`writeFollowerTip`'s hashes). */
+const viewAt = (
+  slot: number,
+  height: number = slot,
+  generation: number = FOLLOWER_GENERATION,
+): View => ({
+  generation,
+  point: { slot, hash: followerBlockHash(slot, generation) },
+  height,
+});
+
+/** The anchor block of the model chain at `slot`. */
+const anchorAt = (
+  slot: number,
+  height: number = slot,
+  generation: number = FOLLOWER_GENERATION,
+): CommitAnchor => ({
+  hash: followerBlockHash(slot, generation),
+  height,
+  slot,
+});
+
+/** The journal transaction's end-time recheck (no included events) under `permit`. */
+const journalRecheck = (
+  permit: FollowerWritePermit,
+  blockEndTimeMs: number,
+  commitAnchor: CommitAnchor | undefined,
+  d: number,
+) =>
+  run(
+    withFollowerWrite(
+      assertCommitUserEventSourceCompleteness({
+        blockEndTimeMs,
+        commitAnchor,
+        depth: d,
+        slotToUnixTime: modelSlotTime,
+        includedDepositEntries: [],
+        includedForcedTransactionEntries: [],
+        includedWithdrawalEntries: [],
+      }),
+    ).pipe(Effect.provideService(FollowerWrite, permit)),
+  );
 
 describe("authenticated commit window", () => {
-  // E-N1-2 item 3: the final recheck bounds the end time by min(follower
-  // ingestion, unbuilt forced orders); it polls nothing.
-  it("bounds the final recheck by the follower's ingestion horizon", async () => {
+  // E-N1-2 item 3, plan §8.1: the end time is bounded by min(the commit
+  // anchor's cap, unbuilt forced orders); at d = 0 the anchor is the view.
+  it("bounds the end time by the commit anchor of the ingested view, and rechecks it in the journal transaction", async () => {
     const ingestedSlot = 500;
     await run(
       Effect.gen(function* () {
@@ -49,19 +101,23 @@ describe("authenticated commit window", () => {
         yield* ingestFollowerViewUnowned(ingestedSlot);
       }),
     );
-    const expected = ingestedSlot * 1000 + EVENT_WAIT_DURATION_MS - 1;
-    expect(await run(commitEventHorizon(modelHorizonLag(0)))).toBe(expected);
-    const recheck = (end: number) =>
-      run(
-        refreshCommitUserEventSourcesThroughBlockEnd(
-          end,
-          modelHorizonLag(0),
-        ).pipe(Effect.provideService(FollowerWrite, permit)),
-      );
-    await recheck(expected);
-    await expect(recheck(expected + 1)).rejects.toThrow(
-      /exceeds the ingested event horizon/,
+    const expected = capOf(ingestedSlot);
+    const anchor = anchorAt(ingestedSlot);
+    expect(await horizonAt(0)).toEqual({ horizonMs: expected, anchor });
+    const permit = await run(openFollowerWriteGateAt(viewAt(ingestedSlot)));
+    expect(await horizonAt(0, permit.view)).toEqual({
+      horizonMs: expected,
+      anchor,
+    });
+    await expect(journalRecheck(permit, expected, anchor, 0)).resolves.toEqual(
+      anchor,
     );
+    await expect(
+      journalRecheck(permit, expected + 1, anchor, 0),
+    ).rejects.toThrow(COMMIT_END_ABOVE_ANCHOR_CAP_MESSAGE);
+    await expect(
+      journalRecheck(permit, expected, undefined, 0),
+    ).rejects.toThrow(COMMIT_ANCHOR_UNAVAILABLE_MESSAGE);
   });
 
   // N10: a live forced order the node has not rebuilt yet (carriage still
@@ -73,8 +129,8 @@ describe("authenticated commit window", () => {
         yield* ingestFollowerViewUnowned(500);
       }),
     );
-    const follower = 500_000 + EVENT_WAIT_DURATION_MS - 1;
-    const horizon = () => run(commitEventHorizon(modelHorizonLag(0)));
+    const follower = capOf(500);
+    const horizon = async () => (await horizonAt(0))?.horizonMs;
     const order = (
       index: number,
       inclusionTime: number,
@@ -108,7 +164,14 @@ describe("authenticated commit window", () => {
     expect(await horizon()).toBe(399_999);
     await order(2, 350_000, null);
     expect(await horizon()).toBe(349_999);
-    // A bound past the follower's leaves the follower's.
+    const permit = await run(openFollowerWriteGateAt(viewAt(500)));
+    await expect(
+      journalRecheck(permit, 349_999, anchorAt(500), 0),
+    ).resolves.toBeDefined();
+    await expect(
+      journalRecheck(permit, 350_000, anchorAt(500), 0),
+    ).rejects.toThrow(COMMIT_END_ABOVE_FORCED_HORIZON_MESSAGE);
+    // A bound past the anchor's leaves the anchor's.
     await run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
@@ -117,21 +180,15 @@ describe("authenticated commit window", () => {
     );
     expect(await horizon()).toBe(follower);
     await expect(
-      run(
-        refreshCommitUserEventSourcesThroughBlockEnd(
-          follower + 1,
-          modelHorizonLag(0),
-        ).pipe(Effect.provideService(FollowerWrite, permit)),
-      ),
-    ).rejects.toThrow(/exceeds the ingested event horizon/);
+      journalRecheck(permit, follower + 1, anchorAt(500), 0),
+    ).rejects.toThrow(COMMIT_END_ABOVE_ANCHOR_CAP_MESSAGE);
   });
 
-  it("allows no end time before the first ingestion or after a rewind removes the ingested view", async () => {
-    const horizon = () => run(commitEventHorizon(modelHorizonLag(0)));
+  it("allows no end time before the first ingestion or after a rewind removes the planning view", async () => {
     await run(resetApplicationTables);
-    expect(await horizon()).toBeNull();
+    expect(await horizonAt(0)).toBeNull();
     await run(ingestFollowerViewUnowned(500));
-    expect(await horizon()).toBe(500_000 + EVENT_WAIT_DURATION_MS - 1);
+    expect((await horizonAt(0))?.horizonMs).toBe(capOf(500));
     // A follower rewind: a new generation, and the ingested block is gone.
     await run(
       Effect.gen(function* () {
@@ -140,18 +197,11 @@ describe("authenticated commit window", () => {
         yield* sql`DELETE FROM l1_blocks WHERE slot = 500`;
       }),
     );
-    expect(await horizon()).toBeNull();
-    await expect(
-      run(
-        refreshCommitUserEventSourcesThroughBlockEnd(
-          0,
-          modelHorizonLag(0),
-        ).pipe(Effect.provideService(FollowerWrite, permit)),
-      ),
-    ).rejects.toThrow(/exceeds the ingested event horizon/);
+    expect(await horizonAt(0)).toBeNull();
+    expect(await horizonAt(0, gateViewOf(viewAt(500)))).toBeNull();
     // The driver's next run ingests the new generation's view.
     await run(ingestFollowerViewUnowned(450, [], FOLLOWER_GENERATION + 1));
-    expect(await horizon()).toBe(450_000 + EVENT_WAIT_DURATION_MS - 1);
+    expect((await horizonAt(0))?.horizonMs).toBe(capOf(450));
   });
 
   it("refuses an exhausted or invalid short-window attempt instead of moving its header end", () => {
@@ -180,9 +230,10 @@ describe("authenticated commit window", () => {
 });
 
 /**
- * The horizon lag d (U3) on a synthetic follower chain at 1 s model slots:
+ * The commit anchor on a synthetic follower chain at 1 s model slots:
  * real-looking gaps, with one-slot gaps where they make the edge tight. The
- * covered tip is the last block (height 60, heads depth 1).
+ * view is the last block (height 60, heads depth 1); the anchor is the
+ * block at heads depth d + 1.
  */
 const chainSlots = [
   1_000, 1_020, 1_041, 1_042, 1_070, 1_071, 1_090, 1_091, 1_092, 1_130, 1_150,
@@ -193,6 +244,7 @@ const chain = chainSlots.map((slot, index) => ({
   height: FIRST_HEIGHT + index,
 }));
 const tip = chain.at(-1)!;
+const blockAt = (height: number) => chain[height - FIRST_HEIGHT]!;
 /** The follower holds `blocks`, its cursor at the last, ingested there. */
 const followChain = (blocks: typeof chain = chain) =>
   run(
@@ -214,79 +266,125 @@ const followChain = (blocks: typeof chain = chain) =>
  * time is that bound plus the event wait. */
 const earliestInclusion = (slot: number) =>
   (slot + 1) * 1000 - 1 + EVENT_WAIT_DURATION_MS;
-/** Heads depths (the covered tip is depth 1) of blocks that can hold an
- * event due by `horizon`. */
-const dueDepths = (horizon: number) =>
+/** Heads depths under the view at `viewHeight` (the view is depth 1) of the
+ * blocks that can hold an event due by `horizon`. */
+const dueDepths = (horizon: number, viewHeight: number = tip.height) =>
   chain
-    .filter((block) => earliestInclusion(block.slot) <= horizon)
-    .map((block) => depth(tip.height, block.height));
-/** Fails the test if the slot clock is ever read. */
-const unreadClock: CommitHorizonLag<Error> = {
-  lagBlocks: 0,
-  slotToUnixTime: Effect.fail(new Error("the slot clock was read at d = 0")),
-};
-describe("horizon lag d on the commit end time", () => {
-  it("keeps d = 0 byte-identical to the unlagged horizon, reading no lagged block and no clock", async () => {
-    const states = [
-      ["no follower ingestion", () => run(resetApplicationTables)],
-      ["an ingestion at a lone tip", () => followChain([tip])],
-      ["an ingestion on the chain", () => followChain()],
-    ] as const;
-    for (const [, arrange] of states) {
-      await arrange();
-      const follower = await run(followerEligibilityHorizon);
-      expect(await run(commitEventHorizon(unreadClock))).toBe(follower);
-    }
-    // At the lone tip no block lies below it: any d > 0 would hold.
+    .filter(
+      (block) =>
+        block.height <= viewHeight && earliestInclusion(block.slot) <= horizon,
+    )
+    .map((block) => depth(viewHeight, block.height));
+
+describe("commit anchor d blocks below the planning view", () => {
+  it("is the planning view itself at d = 0, and holds at a lone view for any d > 0", async () => {
     await followChain([tip]);
-    expect(await run(commitEventHorizon(modelHorizonLag(1)))).toBeNull();
-    expect(await run(commitEventHorizon(unreadClock))).toBe(
-      tip.slot * 1000 + EVENT_WAIT_DURATION_MS - 1,
-    );
+    expect(await horizonAt(0)).toEqual({
+      horizonMs: capOf(tip.slot),
+      anchor: anchorAt(tip.slot, tip.height),
+    });
+    expect(await horizonAt(1)).toBeNull();
   });
 
   it.each([0, 1, 3])(
-    "admits no event from the block %i below the follower's covered tip or above it",
-    async (lagBlocks) => {
+    "admits no event from the anchor %i below the view or above it",
+    async (d) => {
       await followChain();
-      const horizon = await run(commitEventHorizon(modelHorizonLag(lagBlocks)));
-      const lagged = chain.at(-1 - lagBlocks)!;
-      expect(horizon).toBe(lagged.slot * 1000 + EVENT_WAIT_DURATION_MS - 1);
-      const depths = dueDepths(horizon!);
+      const horizon = (await horizonAt(d))!;
+      const anchor = chain.at(-1 - d)!;
+      expect(horizon.anchor).toEqual(anchorAt(anchor.slot, anchor.height));
+      expect(horizon.horizonMs).toBe(capOf(anchor.slot));
+      const depths = dueDepths(horizon.horizonMs);
       expect(depths.length).toBeGreaterThan(0);
-      // The lagged block sits at heads depth d + 1; it and every block above
-      // it hold no due event, so each due event has more than d blocks on top.
-      expect(Math.min(...depths)).toBe(lagBlocks + 2);
+      // The anchor sits at heads depth d + 1; it and every block above it
+      // hold no due event, so each due event has more than d + 1 blocks on
+      // top of it, the anchor included.
+      expect(Math.min(...depths)).toBe(d + 2);
     },
   );
 
-  it("admits an event from the block just below the lagged one exactly at the cap", async () => {
-    // Blocks 1_091 and 1_092 are one slot apart: at d = 2 the lagged block is
+  it("admits an event from the block just below the anchor exactly at the cap", async () => {
+    // Blocks 1_091 and 1_092 are one slot apart: at d = 2 the anchor is
     // slot 1_092, and the earliest event of slot 1_091 lands on the cap.
     await followChain();
-    const horizon = await run(commitEventHorizon(modelHorizonLag(2)));
+    const horizon = (await horizonAt(2))!.horizonMs;
     expect(earliestInclusion(1_091)).toBe(horizon);
-    expect(earliestInclusion(1_092)).toBe(horizon! + 1000);
+    expect(earliestInclusion(1_092)).toBe(horizon + 1000);
   });
 
-  it("holds while the follower has no block d below its tip, and refuses the final end above the lagged cap", async () => {
+  it("holds while the follower has no block d below the view, and refuses an end above the cap or an anchor of another depth", async () => {
     await followChain(chain.slice(-3));
-    expect(await run(commitEventHorizon(modelHorizonLag(3)))).toBeNull();
-    const cap = 1_092_000 + EVENT_WAIT_DURATION_MS - 1;
-    expect(await run(commitEventHorizon(modelHorizonLag(2)))).toBe(cap);
-    const refresh = (end: number, lagBlocks: number) =>
-      run(
-        refreshCommitUserEventSourcesThroughBlockEnd(
-          end,
-          modelHorizonLag(lagBlocks),
-        ).pipe(Effect.provideService(FollowerWrite, permit)),
-      );
-    await expect(refresh(cap, 2)).resolves.toBeUndefined();
-    await expect(refresh(cap + 1, 2)).rejects.toThrow(
-      /exceeds the ingested event horizon/,
+    expect(await horizonAt(3)).toBeNull();
+    const cap = capOf(1_092);
+    expect((await horizonAt(2))?.horizonMs).toBe(cap);
+    const permit = await run(
+      openFollowerWriteGateAt(viewAt(tip.slot, tip.height)),
     );
-    await expect(refresh(cap, 3)).rejects.toThrow(
-      /exceeds the ingested event horizon/,
+    const anchor = anchorAt(1_092, 58);
+    await expect(journalRecheck(permit, cap, anchor, 2)).resolves.toEqual(
+      anchor,
     );
+    await expect(journalRecheck(permit, cap + 1, anchor, 2)).rejects.toThrow(
+      COMMIT_END_ABOVE_ANCHOR_CAP_MESSAGE,
+    );
+    await expect(journalRecheck(permit, cap, anchor, 3)).rejects.toThrow(
+      COMMIT_ANCHOR_NOT_OF_VIEW_MESSAGE,
+    );
+    // A block of another chain at the anchor height is not the anchor.
+    await expect(
+      journalRecheck(permit, cap, anchorAt(1_092, 58, 2), 2),
+    ).rejects.toThrow(COMMIT_ANCHOR_NOT_OF_VIEW_MESSAGE);
+  });
+
+  /**
+   * The permit's view P, not the follower's cursor, fixes the anchor. The
+   * driver applied P at height 57 while the follower already followed to
+   * 60; a rewind then lands between P and the cursor (to 58) and leaves P,
+   * and the permit, valid. An end time anchored at the cursor would admit
+   * an event of block 56, which the rewound chain buries under two blocks
+   * only.
+   */
+  it("anchors at the permit's view while the follower's cursor is ahead of it", async () => {
+    const d = 2;
+    await followChain();
+    const behind = blockAt(57);
+    const permit = await run(
+      openFollowerWriteGateAt(viewAt(behind.slot, behind.height)),
+    );
+    const horizon = (await horizonAt(d, permit.view))!;
+    const anchor = blockAt(55);
+    expect(horizon.anchor).toEqual(anchorAt(anchor.slot, anchor.height));
+    expect(horizon.horizonMs).toBe(capOf(anchor.slot));
+    expect(Math.min(...dueDepths(horizon.horizonMs, behind.height))).toBe(
+      d + 2,
+    );
+    // The cursor's anchor (height 58) is not the permit view's, and the
+    // permit view's anchor does not reach the cursor's cap.
+    const cursorAnchor = blockAt(58);
+    await expect(
+      journalRecheck(
+        permit,
+        capOf(cursorAnchor.slot),
+        anchorAt(cursorAnchor.slot, cursorAnchor.height),
+        d,
+      ),
+    ).rejects.toThrow(COMMIT_ANCHOR_NOT_OF_VIEW_MESSAGE);
+    await expect(
+      journalRecheck(permit, capOf(cursorAnchor.slot), horizon.anchor, d),
+    ).rejects.toThrow(COMMIT_END_ABOVE_ANCHOR_CAP_MESSAGE);
+    // The rewind to 58: the permit's view stays on the chain.
+    await run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const rewound = blockAt(58);
+        yield* sql`DELETE FROM l1_blocks WHERE height > ${rewound.height}`;
+        yield* sql`UPDATE l1_follower_cursor SET slot = ${rewound.slot},
+          hash = ${followerBlockHash(rewound.slot)}, height = ${rewound.height}`;
+      }),
+    );
+    expect(await horizonAt(d, permit.view)).toEqual(horizon);
+    await expect(
+      journalRecheck(permit, horizon.horizonMs, horizon.anchor, d),
+    ).resolves.toEqual(horizon.anchor);
   });
 });

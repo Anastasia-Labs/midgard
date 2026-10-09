@@ -14,6 +14,8 @@ import {
   makeNodeConfigForFixture,
   runNodeDatabaseEffect,
 } from "../deposit-flow-emulator-shared.js";
+import { followedChainOf } from "./follower-emulator.chain.js";
+import { followedEmulatorHeights } from "./intent-journal-replay.anchor.js";
 import { expectReplayedFamilies } from "./intent-journal-replay.expect.js";
 import { replayJournaledOnFollower } from "./intent-journal-replay.js";
 
@@ -63,6 +65,9 @@ export const expectFixtureFlowReplayed = async (
       },
       slotToPosixMs: (slot) => fixture.operatorLucid.slotToUnixTime(slot),
       operatorKeyHash: fixture.operatorKeyHash,
+      anchorEmulatorHeight: followedEmulatorHeights(
+        followedChainOf(fixture.emulator),
+      ),
     }),
     families,
     DEPLOYMENT,

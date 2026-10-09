@@ -3,6 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import type { CommitAnchor } from "../../database/commit-anchor.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
@@ -28,7 +29,7 @@ import {
   type UtxoPayloadEntry,
   type UtxoPayloadSizeAggregate,
 } from "../../mpf/index.js";
-import { configuredCommitHorizonLag } from "../../services/history-commit-window.js";
+import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
 import {
   type ContractDeploymentIdentityValue,
   Database,
@@ -68,7 +69,6 @@ import {
   assertCommitUserEventSourceCompleteness,
   isStaleCommitBaseError,
   journalUtxoEntries,
-  refreshCommitUserEventSourcesThroughBlockEnd,
   submitErrorReferencesOutRef,
 } from "./submission.commit-event-sources.js";
 import {
@@ -111,6 +111,7 @@ export const submitTxBackedCommit = ({
   mempoolTxHashes,
   mempoolTxSourceTable,
   workerInput,
+  commitAnchor,
   sizeOfProcessedTxs,
   blockEndTimeCapMs,
   afterDaFrameAccepted,
@@ -150,6 +151,8 @@ export const submitTxBackedCommit = ({
   readonly mempoolTxHashes: Buffer[];
   readonly mempoolTxSourceTable: string;
   readonly workerInput: WorkerInput;
+  /** The commit anchor the end time was planned under (`commitEventHorizon`). */
+  readonly commitAnchor?: CommitAnchor;
   readonly sizeOfProcessedTxs: number;
   readonly blockEndTimeCapMs?: number;
 }) =>
@@ -344,10 +347,6 @@ export const submitTxBackedCommit = ({
                 txSize,
               } = buildResult;
               return Effect.gen(function* () {
-                yield* refreshCommitUserEventSourcesThroughBlockEnd(
-                  blockEndTimeMs,
-                  yield* configuredCommitHorizonLag,
-                );
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
                 const mempoolTxProgramMaterialSidecars =
                   yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
@@ -451,7 +450,8 @@ export const submitTxBackedCommit = ({
                 const beforeJournalInsert =
                   assertCommitUserEventSourceCompleteness({
                     blockEndTimeMs,
-                    lagBlocks: (yield* configuredCommitHorizonLag).lagBlocks,
+                    commitAnchor,
+                    ...(yield* configuredCommitAnchorClock),
                     includedDepositEntries,
                     includedForcedTransactionEntries,
                     includedWithdrawalEntries,

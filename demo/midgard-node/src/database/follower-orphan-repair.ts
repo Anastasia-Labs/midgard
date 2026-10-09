@@ -16,12 +16,35 @@
  * - it is a forced orphan: one is counted only while an unfinished block
  *   journal holds it, and that journal's disposition clears it.
  *
+ * A held orphan is of one of three kinds, by its header:
+ *
+ * - own-landed: a deposit or withdrawal assigned to a processed landed
+ *   block this operator committed. A landed own block whose event left the
+ *   chain holds commits and its own merge until it leaves the landed queue
+ *   (`poisoned-own-headers.ts`); the recompute publishes its view.
+ * - foreign-landed: the same for a block another operator committed. It is
+ *   held until the header leaves the landed queue, and the recompute keeps
+ *   the gate pending meanwhile (`l1_events_orphan_recovery`). The header
+ *   includes an event no longer on L1, so a fabricated-deposit or
+ *   fabricated-withdrawal fault proof applies to it, and an operator whose
+ *   block descends from it is culpable too: the node must not build on it.
+ *   The hold waits on another actor (a fault proof or an L1 rollback that
+ *   removes the header); it is not a retry.
+ * - journal: every other held orphan (a block journal not landed, a header
+ *   the rebase has yet to release, a forced orphan an unfinished journal
+ *   holds). Transient: the own-journal disposition or the rebase clears it,
+ *   and the recompute keeps the gate pending meanwhile.
+ *
+ * A finalized orphan is the kind of its header.
+ *
  * Runs in the caller's gated transaction.
  */
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import {
+  type AdmissionKind,
+  onLandedBlock,
   orphanedAdmission,
   orphanedForcedAdmission,
   sameAdmission,
@@ -74,15 +97,145 @@ export const deleteUnheldOrphans = Effect.gen(function* () {
   return deleted;
 }).pipe(sqlErrorToDatabaseError(table, "Failed to delete orphaned event rows"));
 
-/** The orphans still held (see the module doc), forced ones included. */
-export const countHeldOrphans = Effect.gen(function* () {
+const ORPHAN_TABLES: ReadonlyArray<
+  Readonly<{ table: string; kind: AdmissionKind }>
+> = [
+  { table: "deposits_utxos", kind: "deposit" },
+  { table: "withdrawal_utxos", kind: "withdrawal" },
+];
+
+/** The sum of the `count(*)` subqueries `counts`. */
+const sumOf = (
+  sql: SqlClient.SqlClient,
+  counts: ReadonlyArray<ReturnType<typeof onLandedBlock>>,
+) =>
+  Effect.map(
+    sql<{ count: string }>`SELECT ${sql.join(" + ", false)(counts)} AS count`,
+    (rows) => Number(rows[0]?.count ?? 0),
+  );
+
+/** The held deposit and withdrawal orphans `where` selects (alias `o`), counted. */
+const countHeld = (
+  where: (sql: SqlClient.SqlClient) => ReturnType<typeof onLandedBlock>,
+  forced: boolean,
+  message: string,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const counts = [
+      ...ORPHAN_TABLES.map(
+        ({ table, kind }) => sql`(SELECT count(*) FROM ${sql(table)} o
+          WHERE ${orphanedAdmission(sql, "o", kind)} AND ${held(sql)}
+            AND ${where(sql)})`,
+      ),
+      ...(forced
+        ? [
+            sql`(SELECT count(*) FROM forced_transaction_utxos f
+              WHERE ${orphanedForcedAdmission(sql, "f")})`,
+          ]
+        : []),
+    ];
+    return yield* sumOf(sql, counts);
+  }).pipe(sqlErrorToDatabaseError(table, message));
+
+/**
+ * Own-landed orphans: held deposits and withdrawals assigned to a processed
+ * own landed block.
+ */
+export const countOwnLandedOrphans = countHeld(
+  (sql) => onLandedBlock(sql, "o", "own"),
+  false,
+  "Failed to count own-landed orphans",
+);
+
+/**
+ * Foreign-landed orphans: held deposits and withdrawals assigned to a
+ * processed foreign landed block; held until the header leaves the landed
+ * queue.
+ */
+export const countForeignLandedOrphans = countHeld(
+  (sql) => onLandedBlock(sql, "o", "foreign"),
+  false,
+  "Failed to count foreign-landed orphans",
+);
+
+/**
+ * The detail of the orphan-recovery hold (`l1_events_orphan_recovery`) for
+ * `held` orphans awaiting recovery: the foreign landed headers that hold
+ * some, by name, and how many of the rest wait for a block journal.
+ *
+ * A foreign landed header holding an orphan includes an event no longer on
+ * L1: it is fault-provable, and every block built on it shares that fault,
+ * so the node commits nothing (the gate stays pending) until the header
+ * leaves the landed queue. The detail names the header and that the wait
+ * is for a fault proof or an L1 rollback, not for this node.
+ */
+export const describeOrphansAwaitingRecovery = (held: number) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const orphans = sql.join(
+      " + ",
+      false,
+    )(
+      ORPHAN_TABLES.map(
+        ({ table, kind }) => sql`(SELECT count(*) FROM ${sql(table)} o
+          WHERE o.projected_header_hash = b.header_hash
+            AND ${orphanedAdmission(sql, "o", kind)})`,
+      ),
+    );
+    const rows = yield* sql<{ header_hash: Buffer; orphans: string }>`
+      SELECT header_hash, orphans::text AS orphans FROM (
+        SELECT b.header_hash, ${orphans} AS orphans
+        FROM node_landed_blocks b
+        WHERE b.kind = 'foreign' AND b.state = 'processed') counted
+      WHERE orphans > 0
+      ORDER BY header_hash`;
+    const foreign = rows.reduce((sum, row) => sum + Number(row.orphans), 0);
+    const journal = held - foreign;
+    const journalPart = `${journal.toString()} orphaned event admission(s) wait for their block journal's disposition or the landed-block rebase`;
+    if (rows.length === 0) return journalPart;
+    const named = rows
+      .slice(0, 3)
+      .map((row) => `${row.header_hash.toString("hex")} (${row.orphans})`)
+      .join(", ");
+    const more =
+      rows.length > 3 ? ` and ${(rows.length - 3).toString()} more` : "";
+    return `foreign landed block ${named}${more} includes ${foreign.toString()} event(s) no longer on L1: it is fault-provable (fabricated deposit or withdrawal) and the node does not build on it; the hold clears when a fault proof or an L1 rollback removes the header from the landed queue${journal > 0 ? `; ${journalPart}` : ""}`;
+  }).pipe(
+    sqlErrorToDatabaseError(
+      table,
+      "Failed to describe the orphans awaiting recovery",
+    ),
+  );
+
+/**
+ * Journal orphans: every other held orphan, forced ones included (see the
+ * module doc).
+ */
+export const countJournalOrphans = countHeld(
+  (sql) =>
+    sql`NOT ${onLandedBlock(sql, "o", "own")} AND NOT ${onLandedBlock(sql, "o", "foreign")}`,
+  true,
+  "Failed to count journal orphans",
+);
+
+/**
+ * Every orphan the recompute holds the follower write gate for: all of them
+ * (unheld ones included, which the repair deletes) except the own-landed
+ * kind.
+ */
+export const countOrphansAwaitingRecovery = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{ count: string }>`SELECT
-    (SELECT count(*) FROM deposits_utxos o
-      WHERE ${orphanedAdmission(sql, "o", "deposit")} AND ${held(sql)})
-    + (SELECT count(*) FROM withdrawal_utxos o
-      WHERE ${orphanedAdmission(sql, "o", "withdrawal")} AND ${held(sql)})
-    + (SELECT count(*) FROM forced_transaction_utxos f
-      WHERE ${orphanedForcedAdmission(sql, "f")}) AS count`;
-  return Number(rows[0]?.count ?? 0);
-}).pipe(sqlErrorToDatabaseError(table, "Failed to count held orphans"));
+  const counts = [
+    ...ORPHAN_TABLES.map(
+      ({ table, kind }) => sql`(SELECT count(*) FROM ${sql(table)} o
+        WHERE ${orphanedAdmission(sql, "o", kind)}
+          AND NOT ${onLandedBlock(sql, "o", "own")})`,
+    ),
+    sql`(SELECT count(*) FROM forced_transaction_utxos f
+      WHERE ${orphanedForcedAdmission(sql, "f")})`,
+  ];
+  return yield* sumOf(sql, counts);
+}).pipe(
+  sqlErrorToDatabaseError(table, "Failed to count orphans awaiting recovery"),
+);

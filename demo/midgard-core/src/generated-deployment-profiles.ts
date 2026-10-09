@@ -4,13 +4,17 @@ export const DEPLOYMENT_PROFILES = {
     network: "Mainnet",
     l1_finality: {
       confirmation_depth: 30,
+      commit_event_depth: 2160,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 604800000,
       dispute_response_window_ms: 300000,
       operator_shift_ms: 3600000,
       registration_ms: 30,
-      event_wait_ms: 129600000,
+      event_wait_ms: 130080000,
       user_events_negligence_timeout_ms: 1200000,
       max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
@@ -48,6 +52,10 @@ export const DEPLOYMENT_PROFILES = {
     network: "Preprod",
     l1_finality: {
       confirmation_depth: 30,
+      commit_event_depth: 22,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 604800000,
@@ -92,6 +100,10 @@ export const DEPLOYMENT_PROFILES = {
     network: "Preprod",
     l1_finality: {
       confirmation_depth: 10,
+      commit_event_depth: 3,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 900000,
@@ -136,6 +148,10 @@ export const DEPLOYMENT_PROFILES = {
     network: "Custom",
     l1_finality: {
       confirmation_depth: 10,
+      commit_event_depth: 3,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 900000,
@@ -180,6 +196,10 @@ export const DEPLOYMENT_PROFILES = {
     network: "Preprod",
     l1_finality: {
       confirmation_depth: 3,
+      commit_event_depth: 8,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
     },
     timing: {
       block_maturity_ms: 14400000,
@@ -222,15 +242,15 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "49eff45a76fa11fdc52b04eb32ba39176137b33bf2ca5666ae0d3f7a7b60f11d",
+  mainnet: "a4c0b686e5cf31a2ff04b4b70e38930db0776301680a3fa97fa3c89207854321",
   "preprod-public":
-    "b2660905760a27e23fdcccc7adb25a7991a1cf16caa806283fa29621622b3ea2",
+    "c47e6a7e2ed2467684f036c94fb7798f85a22df4a41c7281c49683725c465a90",
   "preprod-testing":
-    "8290001b338095102b661d18b6ff56cd400662be81e69c8914c2c953e5a7f86b",
+    "7d18ab909e4fe05b1de72719119945e72a81b9cc1d619c38da88163617a71f8a",
   "local-devnet-testing":
-    "b0d358480e8fd36680bae8d24cbc9746409344f20eeb0adea5dfe4f31995d786",
+    "0b57f9efdc5e9b03f8f0956f2ff4d7da87bfd7e4fc16402b9de79a8284e99841",
   "preprod-emulator-testing":
-    "482c50df9e885112e61c445def8f410db4770ea7683fcea86353b067182a50f3",
+    "4139b38c2a2f1f092b1450467d5ae1f05e45b3d0129ec194ed6d773a22bf937c",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
@@ -251,6 +271,9 @@ export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
     proverCollateralFloorLovelace: 5000000,
   },
 } as const;
+
+/** The least span from planning a commit to its TTL (`deployment-profiles.mjs`). */
+export const COMMIT_TTL_FUTURE_BUFFER_MS = 30000;
 
 export const SELECTED_DEPLOYMENT_PROFILE =
   DEPLOYMENT_PROFILES["preprod-testing"];

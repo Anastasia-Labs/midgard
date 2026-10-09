@@ -30,8 +30,8 @@ export type NodeFamilyPredicateDeps = Readonly<{
   operatorSet: Readonly<{ config: OperatorSetConfig; ownKey: string }> | null;
   /** POSIX milliseconds at the start of a slot (the node's slot clock). */
   slotToPosixMs: (slot: number) => number;
-  /** The horizon lag d: a commit's events are at least d blocks below the tip. */
-  horizonLagBlocks: number;
+  /** The commit-event depth d: a commit waits until the tip is d blocks above its anchor. */
+  commitEventDepth: number;
 }>;
 
 export type Read = Readonly<{

@@ -66,5 +66,5 @@ export const walletReplayConfig = (input: {
   L1_REFERENCE_SCRIPT_SEED_PHRASE: input.referenceScriptsSeed,
   L1_REFERENCE_SCRIPT_ADDRESS: input.referenceScriptsAddress,
   L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: input.referenceScriptsAddress,
-  HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
+  COMMIT_EVENT_DEPTH: 0,
 });

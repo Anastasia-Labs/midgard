@@ -95,6 +95,7 @@ const program = Effect.gen(function* () {
   yield* PendingBlockFinalizationsDB.preparePendingSubmission(input, {
     beforeJournalInsert: DepositsDB.markAwaitingAsProjected([depositId]).pipe(
       Effect.andThen(mode === "during" ? Effect.sync(killSelf) : Effect.void),
+      Effect.as(undefined),
     ),
   });
   killSelf();

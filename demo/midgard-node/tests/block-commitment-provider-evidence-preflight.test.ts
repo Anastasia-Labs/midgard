@@ -93,6 +93,32 @@ vi.mock(
   },
 );
 
+// No commit anchor hold and no orphaned own-block event: the tick plans.
+vi.mock(
+  "../src/fibers/block-commitment.commit-anchor-readiness.js",
+  async (importOriginal) => {
+    const { Effect: EffectModule } = await import("effect");
+    return {
+      ...(await importOriginal<
+        typeof import("../src/fibers/block-commitment.commit-anchor-readiness.js")
+      >()),
+      publishCommitAnchorReadiness: EffectModule.void,
+    };
+  },
+);
+vi.mock(
+  "../src/fibers/block-commitment.own-block-event-orphaned.js",
+  async (importOriginal) => {
+    const { Effect: EffectModule } = await import("effect");
+    return {
+      ...(await importOriginal<
+        typeof import("../src/fibers/block-commitment.own-block-event-orphaned.js")
+      >()),
+      refuseCommitForOrphanedOwnBlockEvent: EffectModule.succeed(false),
+    };
+  },
+);
+
 import { blockCommitmentAction } from "../src/fibers/block-commitment.js";
 import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
 
@@ -117,7 +143,7 @@ const alignmentRequiredPlan = {
 const fakeConfig = {
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: 120_000,
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: 30_000,
-  HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
+  COMMIT_EVENT_DEPTH: 0,
 };
 
 const switchToOperatorsMainWalletMock = vi.fn();

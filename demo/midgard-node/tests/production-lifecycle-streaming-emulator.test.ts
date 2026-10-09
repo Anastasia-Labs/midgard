@@ -37,6 +37,7 @@ import {
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
 import { openAutomaticSettlement } from "./helpers/automatic-settlement-lifecycle.js";
+import { EMULATOR_SLOTS_PER_BLOCK } from "./helpers/follower-emulator.chain.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 /** Successful node classification and actual mature merge establish both
  * settlement frontiers; the stand-in's block hashes and heights are synthetic. */
@@ -110,17 +111,20 @@ it("streams public raw events through production reconciliation, native commitme
   };
   /**
    * Waits to a ledger time at which a commit can include `event` as a future
-   * event: the event's inclusion time is still ahead, yet inside the event-wait
-   * horizon of a block committed now. The block-commitment fiber first aligns
-   * the scheduler to now plus the minimum commit buffer, so the commit point
-   * must also leave that buffer inside the operator's current shift, or fall
-   * early in the next shift, where the Rewind is due at once and covers it.
-   * Otherwise the alignment waits for the shift to end and the event matures.
+   * event: its inclusion time is still ahead, yet the commit anchor (d blocks
+   * below the tip, 20 slots a block) is past its validity bound. The
+   * block-commitment fiber first aligns the scheduler to now plus the minimum
+   * commit buffer, so the commit point must also leave that buffer inside the
+   * operator's current shift, or fall early in the next shift, where the
+   * Rewind is due at once and covers it. Otherwise the alignment waits for the
+   * shift to end and the event matures.
    */
   const awaitFutureEventCommitPoint = async (
     event: SDK.DepositUTxO | SDK.WithdrawalUTxO,
   ) => {
     const margin = 20_000;
+    const depth = h.production.nodeConfig.COMMIT_EVENT_DEPTH;
+    const lag = (depth + 1) * EMULATOR_SLOTS_PER_BLOCK * 1_000 + margin;
     const inclusion = Number(event.facts.inclusion_time);
     const window = await Effect.runPromise(
       resolveCurrentOperatorSchedulerWindow(lucid, fixture.contracts),
@@ -131,7 +135,7 @@ it("streams public raw events through production reconciliation, native commitme
     const shiftEnd = window.endTimeMs;
     const earliest = Math.max(
       fixture.emulator.now(),
-      inclusion - SDK.EVENT_WAIT_DURATION_MS + 1 + margin,
+      inclusion - SDK.EVENT_WAIT_DURATION_MS + 1 + lag,
     );
     const latest = inclusion - margin;
     const candidates: ReadonlyArray<readonly [number, number]> = [
