@@ -3,7 +3,7 @@ import {
   followerMigrations,
 } from "@al-ft/midgard-l1-follower";
 import { declaredTables, lintSchema } from "@al-ft/midgard-l1-follower/lint";
-import { Client } from "pg";
+import { Client, Pool } from "pg";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -12,7 +12,10 @@ import {
   committeeMigrations,
 } from "../src/l1/follower/queue-table.js";
 import type { CommitteeStoreReadinessCounts } from "../src/store.js";
-import { committeeStoreMigrations } from "../src/store/postgres.schema.js";
+import {
+  committeeStoreMigrations,
+  initializeCommitteeSchema,
+} from "../src/store/postgres.schema.js";
 import {
   closeTestCommitteeStore,
   openTestCommitteeStore,
@@ -261,5 +264,60 @@ describe("committee store schema", () => {
     const reopened = await openTestCommitteeStore(database);
     const scanned = await withClient(database.url, scannedCounts);
     await expect(reopened.readinessCounts()).resolves.toEqual(scanned);
+  });
+
+  it("runs the schema statements only on a connection that still holds the instance lock", async () => {
+    const database = await testStoreDatabase();
+    await closeTestCommitteeStore(await openTestCommitteeStore(database));
+    // Not pending, so the L1 record upgrade does not parse it.
+    const quarantined = {
+      status: "published",
+      quarantineReason: "stale",
+      quarantinedAt: "2026-10-01T00:00:00.000Z",
+    };
+    await withClient(database.url, (client) =>
+      client.query(
+        "INSERT INTO committee_decision_outbox (effect_id, header_hash, record) VALUES ($1, $2, $3)",
+        ["effect-1", hash(1), quarantined],
+      ),
+    );
+    const outboxRecord = () =>
+      withClient(
+        database.url,
+        async (client) =>
+          (
+            await client.query<{ readonly record: unknown }>(
+              "SELECT record FROM committee_decision_outbox WHERE effect_id = 'effect-1'",
+            )
+          ).rows[0]?.record,
+      );
+    const pool = new Pool({ connectionString: database.url });
+    try {
+      const lost = new Error("the instance lock is no longer held");
+      await expect(
+        initializeCommitteeSchema(
+          pool,
+          {
+            assertHeldAtServer: async () => {
+              throw lost;
+            },
+          },
+          {},
+          () => undefined,
+        ),
+      ).rejects.toBe(lost);
+      // The upgrade UPDATE that strips the quarantine fields did not run.
+      expect(await outboxRecord()).toEqual(quarantined);
+
+      await initializeCommitteeSchema(
+        pool,
+        { assertHeldAtServer: async () => undefined },
+        {},
+        () => undefined,
+      );
+      expect(await outboxRecord()).toEqual({ status: "published" });
+    } finally {
+      await pool.end();
+    }
   });
 });

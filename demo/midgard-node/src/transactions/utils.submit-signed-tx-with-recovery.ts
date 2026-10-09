@@ -4,6 +4,7 @@ import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import { findSubmitOutcomeUnknown } from "../provider-retry.js";
 import {
   IntentJournal,
   type JournalInsert,
@@ -48,7 +49,10 @@ import {
  * (`IntentJournalRefused`). Every send here, retries included, follows S6's
  * decision taken in the record's transaction (§8.1); a held one stops the
  * submission (`IntentSubmitHeld`) and S6's reconciler decides it under the
- * current view. Every retry here sends the same bytes.
+ * current view. Every retry here sends the same bytes; after a send whose
+ * outcome is unknown (the provider's `L1SubmitOutcomeUnknownError`) it first
+ * reads the exact id's status and sends nothing once the transaction landed,
+ * and that error, not a later retry's, is the one reported.
  */
 export const submitSignedTxWithRecovery = (
   lucid: LucidEvolution,
@@ -74,7 +78,15 @@ export const submitSignedTxWithRecovery = (
       Math.ceil(maxOutsideValidityRecoveryWaitMs / SLOT_LENGTH_MS),
     );
 
+    let outcomeUnknown: unknown;
+
     for (;;) {
+      if (
+        outcomeUnknown !== undefined &&
+        (yield* landedAfterOutcomeUnknown(lucid, txHash, outcomeUnknown))
+      ) {
+        return;
+      }
       const preSubmitValidity = yield* preSubmitValidityCheck(
         lucid,
         signed,
@@ -179,6 +191,9 @@ export const submitSignedTxWithRecovery = (
       }
 
       const e = submitResult.left;
+      if (outcomeUnknown === undefined && findSubmitOutcomeUnknown(e)) {
+        outcomeUnknown = e;
+      }
       const submitError = formatUnknownError(e, { includeCause: true });
       const outsideValidityDetails =
         parseOutsideValidityIntervalDetails(e) ??
@@ -442,6 +457,43 @@ export const submitSignedTxWithRecovery = (
         continue;
       }
 
-      return yield* Effect.fail(e);
+      return yield* Effect.fail(outcomeUnknown ?? e);
     }
+  });
+
+/**
+ * Whether `txHash`, sent once with an unknown outcome, landed: its status on
+ * the provider (the follower's view of the exact id). A transaction that
+ * landed phase-2 invalid fails here: its collateral is gone and resending
+ * cannot change that. An unreadable status resends the same bytes, which
+ * cannot land twice.
+ */
+const landedAfterOutcomeUnknown = (
+  lucid: Pick<LucidEvolution, "transactionStatus">,
+  txHash: string,
+  outcomeUnknown: unknown,
+): Effect.Effect<boolean, Error> =>
+  Effect.gen(function* () {
+    const read = yield* Effect.either(
+      Effect.tryPromise(() => lucid.transactionStatus(txHash)),
+    );
+    if (read._tag === "Left") {
+      yield* Effect.logWarning(
+        `Tx ${txHash} status unreadable after a submit with an unknown outcome; sending the same bytes again: ${formatUnknownError(read.left, { includeCause: true })}`,
+      );
+      return false;
+    }
+    if (read.right.status === "failed") {
+      return yield* Effect.fail(
+        new Error(
+          `Tx ${txHash} landed phase-2 invalid after a submit with an unknown outcome`,
+          { cause: outcomeUnknown },
+        ),
+      );
+    }
+    if (read.right.status !== "confirmed") return false;
+    yield* Effect.logInfo(
+      `Tx ${txHash} landed after a submit with an unknown outcome; not sending it again.`,
+    );
+    return true;
   });

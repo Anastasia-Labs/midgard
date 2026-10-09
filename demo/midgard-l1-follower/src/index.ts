@@ -34,6 +34,7 @@ export { classifyFailure, type FailureClass } from "./follow/failure.js";
 export {
   DEFAULT_NODE_BEHIND_MS,
   DEFAULT_STUCK_AFTER,
+  FOLLOW_CREDIT_POLICY,
   followChain,
   type FollowChainOptions,
   FOLLOWER_APPLY_STUCK,
@@ -54,6 +55,7 @@ export {
   type NodeBehindOptions,
   PRUNE_FAILING_AFTER,
   readinessOf,
+  STREAM_INTERRUPTED_AFTER,
 } from "./follow/loop.js";
 export { startWhenFree } from "./follow/start.js";
 export {

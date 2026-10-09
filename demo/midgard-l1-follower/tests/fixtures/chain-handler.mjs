@@ -3,6 +3,9 @@
 // ([{slot, hash, blockNo, prevHash, blockType?, block (hex)}], in order).
 // FindIntersect matches the base or any block; the stream then rolls
 // forward every later block, all reporting the last block as the tip.
+// With `failingOpens` (n) and `servedBeforeFailing` (k), the first open
+// serves k blocks and then fails, the next n opens fail at once, and later
+// opens serve normally.
 import { samePoint } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 
 export default (options) => {
@@ -19,6 +22,7 @@ export default (options) => {
       ? { point: options.base, blockNo: 0 }
       : { point: last.point, blockNo: last.blockNo };
   const known = [options.base, ...blocks.map((block) => block.point)];
+  let opens = 0;
   return {
     hello: () => ({ nodeToClientVersion: 32784 }),
     openStream: ({ points }, stream) => {
@@ -27,8 +31,16 @@ export default (options) => {
       );
       if (at === undefined) return { notFound: tip };
       const from = known.findIndex((entry) => samePoint(entry, at));
-      for (const block of blocks.slice(from))
+      const open = opens;
+      opens += 1;
+      const failing =
+        options.failingOpens !== undefined && open <= options.failingOpens;
+      const served = blocks.slice(from);
+      for (const block of failing
+        ? served.slice(0, open === 0 ? options.servedBeforeFailing : 0)
+        : served)
         stream.rollForward({ ...block, tip });
+      if (failing) stream.fail("node_connection_lost", "fake stream fault");
       return { intersection: at, tip };
     },
   };

@@ -7,6 +7,7 @@ export {
   L1ProviderRequestError,
   L1ProviderScopeError,
   L1ProviderTransientError,
+  L1SubmitOutcomeUnknownError,
   L1SubmitRejectedError,
   L1UnitLookupError,
   type TransientSource,

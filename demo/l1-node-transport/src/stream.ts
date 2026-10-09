@@ -54,6 +54,22 @@ export type ChainSyncOptions = Readonly<{
    * false, such an interruption ends the stream with an error instead.
    */
   resume?: boolean;
+  /**
+   * Told each time a resuming stream fails on its sidecar and is reopened
+   * (`interruptions`), so a reopen loop is visible to the consumer. A
+   * listener's throw is ignored.
+   */
+  onInterrupted?: (interruption: StreamInterruption) => void;
+}>;
+
+/**
+ * The stream's failures that it reopened from: `consecutive` since the last
+ * delivered event, `total` over its life, `last` the latest failure's text.
+ */
+export type StreamInterruption = Readonly<{
+  consecutive: number;
+  total: number;
+  last: string;
 }>;
 
 export type Opened = Readonly<{ intersection: ChainPoint; tip: ChainTip }>;
@@ -106,6 +122,7 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
   #recent: ChainPoint[] = [];
   #window: number;
   #tip: ChainTip | undefined;
+  #interruptions: StreamInterruption | undefined;
   #queue: ChainSyncEvent[] = [];
   #waiters: Array<() => void> = [];
   #failure: Error | undefined;
@@ -154,6 +171,26 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
   /** The node tip the last event reported. */
   get tip(): ChainTip | undefined {
     return this.#tip;
+  }
+
+  /** The failures this stream reopened from; undefined while there were none. */
+  get interruptions(): StreamInterruption | undefined {
+    return this.#interruptions;
+  }
+
+  /** Records a failure the stream reopens from, and tells the consumer. */
+  #interrupted(last: string): void {
+    const interruption: StreamInterruption = {
+      consecutive: (this.#interruptions?.consecutive ?? 0) + 1,
+      total: (this.#interruptions?.total ?? 0) + 1,
+      last,
+    };
+    this.#interruptions = interruption;
+    try {
+      this.options.onInterrupted?.(interruption);
+    } catch {
+      // The record stands; a listener's failure does not stop the reopen.
+    }
   }
 
   get catchingUp(): boolean {
@@ -238,9 +275,10 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
       if (
         error instanceof TransportRequestError &&
         this.options.resume !== false
-      )
+      ) {
+        this.#interrupted(`chain-sync open failed: ${error.message}`);
         this.#scheduleReopen(sidecar);
-      else this.#fail(error as Error);
+      } else this.#fail(error as Error);
     }
   }
 
@@ -263,7 +301,10 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
           `chain-sync stream failed: ${headerText(header.code)}: ${headerText(header.message)}`,
         );
         if (this.options.resume === false) this.#fail(cause);
-        else this.#scheduleReopen(sidecar);
+        else {
+          this.#interrupted(cause.message);
+          this.#scheduleReopen(sidecar);
+        }
         return;
       }
       const seq = natural(header.seq, "sequence number");
@@ -302,6 +343,8 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
       this.#lastSeq = seq;
       this.#lastPoint = event.point;
       this.#tip = tip;
+      if (this.#interruptions !== undefined)
+        this.#interruptions = { ...this.#interruptions, consecutive: 0 };
       this.#queue.push(event);
       this.#wake();
     } catch (error) {

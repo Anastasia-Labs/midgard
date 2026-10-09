@@ -2,13 +2,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import pg from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 
-import type { BlockSummary } from "../src/index.js";
+import { type BlockSummary, openPostgresFactStore } from "../src/index.js";
 import { testDatabases } from "./support/postgres.js";
 import {
   chain,
   fill,
+  options,
   ORIGIN,
   output,
   point,
@@ -208,3 +210,107 @@ describe.each(storeAdapters(databases, scratch))(
     });
   },
 );
+
+/**
+ * A pool whose next COMMIT runs and then fails, as when the connection is
+ * lost while COMMIT's answer is on the way; and, while `failReads` is set,
+ * whose read transactions fail to begin.
+ */
+const ambiguousPool = (url: string) => {
+  const pool = new pg.Pool({ connectionString: url, max: 4 });
+  pool.on("error", () => undefined);
+  const faults = { commit: false, failReads: false };
+  const patched = new WeakSet<pg.PoolClient>();
+  const connect = pool.connect.bind(pool) as () => Promise<pg.PoolClient>;
+  pool.connect = (async () => {
+    const client = await connect();
+    if (!patched.has(client)) {
+      patched.add(client);
+      const query = client.query.bind(client) as (
+        text: unknown,
+        values?: unknown,
+      ) => Promise<unknown>;
+      client.query = (async (text: unknown, values?: unknown) => {
+        if (faults.failReads && String(text).includes("READ ONLY"))
+          throw new Error("connection refused while reading back");
+        const result = await query(text, values);
+        if (faults.commit && text === "COMMIT") {
+          faults.commit = false;
+          throw new Error("connection lost while COMMIT's answer was sent");
+        }
+        return result;
+      }) as typeof client.query;
+    }
+    return client;
+  }) as typeof pool.connect;
+  return { pool, faults };
+};
+
+describe("seed rows on Postgres: a commit whose outcome is unknown", () => {
+  const seed = {
+    outRef: { txHash: fill(0x5d), index: 1 },
+    output: output(TRACKED, 9n),
+  };
+  const opened = async () => {
+    const { url } = await databases.create();
+    const { pool, faults } = ambiguousPool(url);
+    const store = openPostgresFactStore({
+      ...options(2),
+      connection: { pool },
+    });
+    expect(await store.start()).toMatchObject({ kind: "ready" });
+    expect(await store.initialize(ORIGIN)).toMatchObject({
+      kind: "initialized",
+    });
+    expect(await store.applyBlock(chain()[0]!)).toMatchObject({
+      kind: "applied",
+    });
+    return { store, pool, faults };
+  };
+
+  it("reads the committed rows back into the live set", async () => {
+    const { store, pool, faults } = await opened();
+    try {
+      faults.commit = true;
+      expect(
+        await store.insertSeedOutputs(point(chain()[0]), [seed]),
+      ).toMatchObject({ kind: "error" });
+      // Committed, and tracked live, so a spend of it qualifies.
+      expect(await store.output(seed.outRef)).not.toBeNull();
+      expect(store.isTrackedLive(seed.outRef)).toBe(true);
+      // The retry skips the row and the set stays right.
+      expect(
+        await store.insertSeedOutputs(point(chain()[0]), [seed]),
+      ).toMatchObject({ kind: "seeded", inserted: [], skipped: [seed.outRef] });
+      expect(store.isTrackedLive(seed.outRef)).toBe(true);
+    } finally {
+      await store.close();
+      await pool.end();
+    }
+  });
+
+  it("refuses writes until a start reloads the set when the rows cannot be read back", async () => {
+    const { store, pool, faults } = await opened();
+    try {
+      faults.commit = true;
+      faults.failReads = true;
+      expect(
+        await store.insertSeedOutputs(point(chain()[0]), [seed]),
+      ).toMatchObject({ kind: "error" });
+      faults.failReads = false;
+      expect(store.isTrackedLive(seed.outRef)).toBe(false);
+      expect(await store.applyBlock(chain()[1]!)).toMatchObject({
+        kind: "store_locked",
+        detail: expect.stringMatching(/commit outcome is unknown/u) as unknown,
+      });
+      expect(await store.start()).toMatchObject({ kind: "ready" });
+      expect(store.isTrackedLive(seed.outRef)).toBe(true);
+      expect(await store.applyBlock(chain()[1]!)).toMatchObject({
+        kind: "applied",
+      });
+    } finally {
+      await store.close();
+      await pool.end();
+    }
+  });
+});

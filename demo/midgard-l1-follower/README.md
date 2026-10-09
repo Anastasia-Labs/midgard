@@ -93,6 +93,21 @@ connection dropped, or a newer holder bumped the epoch) gets `store_locked`
 from its next write and changes nothing; it must call `start()` again, which
 re-takes the lease or waits. Reads never need the lease.
 
+A role can lend the store a lease held on its own instance lock's session
+(`openPostgresFactStore`'s `writerLease`, from
+`PostgresInstanceLock.followerWriterLease`). While that lock is suspended or
+passive, the `store_locked` detail is the lock's own refusal, so readiness
+names it. The lock is suspended when its session ends, and when
+`assertHeldAtServer` finds the server no longer holds it (the session ended
+at the server while this side's connection stayed open). It then destroys
+that connection and takes the lock again with backoff. The lock's session
+sends TCP keepalives after 10 s idle.
+
+A seed write (`insertSeedOutputs`) that fails during its COMMIT has an
+unknown outcome: the store reads the requested outrefs back and tracks the
+live ones. If it cannot read them back, every write returns `store_locked`
+until `start()` reloads the tracked-outref set.
+
 ## Origin
 
 The origin O (`l1Origin`, `<slot>.<block hash>`) is the point immediately
@@ -504,7 +519,7 @@ type FollowChainOptions = {
   transport: Pick<L1NodeTransport, "openChainSync">;
   origin: OriginConfig;
   signal: AbortSignal;
-  credit?: number; // the chain-sync credit (default 64)
+  credit?: number | CreditPolicy; // default FOLLOW_CREDIT_POLICY: 50 while more than 10 blocks behind the tip, 1 at it
   backoffMs?: { initial: number; max: number };
   log?: (line: string) => void;
   onStatus?: (status: FollowStatus) => void | Promise<void>; // awaited; a throw is logged
@@ -561,7 +576,7 @@ own concern (the loop never makes the process unhealthy). Its reasons:
 | `origin_mismatch`                   | the store was initialized at another origin. Stops the loop.                                                                                                                                                                                                                                                                                                                                                                                          |
 | `l1_follower_apply_stuck`           | one event failed to apply `stuckAfter` times in a row, or once with a deterministic failure (an undecodable block, a constraint or data error). The loop keeps retrying; the next applied event clears it.                                                                                                                                                                                                                                            |
 | `l1_follower_migration_failed`      | the store refused its migrations at start: a recorded migration whose text changed, a duplicate migration id, or a migration the schema lint refuses. A migration whose SQL fails to run is not this reason: it is a failed start like any other, sorted by `classifyFailure` (`l1_follower_waiting`, or `l1_follower_apply_stuck` once stuck). The process stays up and the loop keeps retrying the start; a start whose migrations apply clears it. |
-| `l1_follower_waiting`               | backing off from a transient failure: the writer lease (`store_locked`), a stream failure or end (`stream`), a failed start or read (`store`), an apply failure below the stuck threshold (`apply`). Cleared by the next applied event.                                                                                                                                                                                                               |
+| `l1_follower_waiting`               | backing off from a transient failure: the writer lease (`store_locked`; with a lent lease, the instance lock's refusal), a stream failure or end, or a stream that failed and reopened `STREAM_INTERRUPTED_AFTER` (3) times in a row with no event between (`stream`), a failed start or read (`store`), an apply failure below the stuck threshold (`apply`). Cleared by the next applied event.                                                     |
 | `tracked_set_changed`               | a start found an addition to the protocol tracked set (or no record) and reset the store; the loop replays from the origin. Transient; cleared, in the store too, at the first report at the node tip.                                                                                                                                                                                                                                                |
 | `l1_follower_catching_up`           | the cursor is not at the node tip of the last applied event (and before the first one). A role whose decisions stay safe on a lagging view may ignore it.                                                                                                                                                                                                                                                                                             |
 | `l1_follower_prune_failing`         | `PRUNE_FAILING_AFTER` (3) prune passes in a row failed (a prune hook threw, or the store did): facts past retention stay. One failure is not a reason; the next successful pass clears it.                                                                                                                                                                                                                                                            |

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import { L1SubmitOutcomeUnknownError } from "@al-ft/midgard-l1-follower/provider";
 import {
   CML,
   type LucidEvolution,
@@ -7,6 +8,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { findSubmitOutcomeUnknown } from "./submit-outcome-unknown.js";
 import {
   classifyL1SubmitterUtxos,
   DEFAULT_READINESS_REQUIREMENTS,
@@ -88,6 +90,15 @@ export const isPlainAdaUtxo = (utxo: UTxO): boolean =>
   Object.keys(utxo.assets).length === 1 &&
   typeof utxo.assets.lovelace === "bigint";
 
+/**
+ * Signs, submits and (unless told not to) awaits confirmation. A submission
+ * whose outcome is unknown (the provider's
+ * {@link L1SubmitOutcomeUnknownError}, also inside Lucid's FiberFailure) is
+ * remembered as an unconfirmed in-flight spend under the transaction's id,
+ * computed before the submit, and rethrown carrying that id: the node may
+ * have taken it, so its inputs stay out of selection until
+ * {@link inFlightSubmissionStatus} or a refresh releases them.
+ */
 export const signSubmitAndConfirm = async (
   lucid: Pick<LucidEvolution, "awaitTxConfirmation"> &
     Partial<UtxoOverrideLucid>,
@@ -97,7 +108,21 @@ export const signSubmitAndConfirm = async (
   await refreshL1SubmitterPlainAdaUtxos(lucid);
   const signed = await tx.sign.withWallet().complete();
   const signedCbor = signed.toCBOR();
-  const txHash = await signed.submit();
+  const signedTxHash = transactionIdOf(signedCbor);
+  let txHash: string;
+  try {
+    txHash = await signed.submit();
+  } catch (error) {
+    const outcomeUnknown = findSubmitOutcomeUnknown(error);
+    if (outcomeUnknown === undefined) throw error;
+    const spend = rememberInFlightSpend(lucid, signedTxHash, signedCbor);
+    if (spend !== undefined) spend.unconfirmed = true;
+    throw outcomeUnknown.txHash === signedTxHash
+      ? outcomeUnknown
+      : new L1SubmitOutcomeUnknownError(signedTxHash, outcomeUnknown.reason, {
+          cause: error,
+        });
+  }
   const inFlightSpend = rememberInFlightSpend(lucid, txHash, signedCbor);
   if (options.awaitConfirmation !== false) {
     try {
@@ -115,6 +140,28 @@ export const signSubmitAndConfirm = async (
     await refreshL1SubmitterPlainAdaUtxos(lucid);
   }
   return txHash;
+};
+
+/** What the follower's view of a submitted transaction id decides. */
+export type InFlightSubmissionStatus = "landed" | "pending" | "released";
+
+/**
+ * Resolves a submission whose outcome is unknown by the provider's status of
+ * its transaction id: `landed` once confirmed; `pending` while the node's
+ * mempool holds it; `released` when the chain has not seen it (the release
+ * rule a refresh applies to an unconfirmed spend) or it landed phase-2
+ * invalid, so its effect did not happen. A released spend's inputs are
+ * selectable again. A failed status read throws: the caller keeps waiting.
+ */
+export const inFlightSubmissionStatus = async (
+  lucid: Pick<LucidEvolution, "transactionStatus">,
+  txHash: string,
+): Promise<InFlightSubmissionStatus> => {
+  const { status } = await lucid.transactionStatus(txHash);
+  if (status === "confirmed") return "landed";
+  if (status === "pending") return "pending";
+  inFlightSpendsByLucid.get(lucid)?.delete(txHash);
+  return "released";
 };
 
 /**
@@ -306,6 +353,9 @@ const parseInlineCredential = (value: string): L1SubmitterCredential => {
   }
   return requiredCredential("private_key", value);
 };
+
+const transactionIdOf = (txCbor: string): string =>
+  CML.hash_transaction(CML.Transaction.from_cbor_hex(txCbor).body()).to_hex();
 
 const rememberInFlightSpend = (
   lucid: object,

@@ -23,6 +23,8 @@ export {
   preflightL1SubmitterWallet,
 } from "./submitter.preflight-l1-submitter-wallet.js";
 export {
+  type InFlightSubmissionStatus,
+  inFlightSubmissionStatus,
   isPlainAdaUtxo,
   readL1SubmitterKeySource,
   refreshL1SubmitterPlainAdaUtxos,

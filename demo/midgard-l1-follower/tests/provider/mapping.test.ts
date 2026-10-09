@@ -3,6 +3,7 @@ import {
   encodeCbor,
   SidecarExitedError,
   TransportRequestError,
+  TransportTimeoutError,
 } from "@al-ft/l1-node-transport";
 import {
   CML,
@@ -23,6 +24,7 @@ import {
   fromTransportError,
   L1ProviderRequestError,
   L1ProviderTransientError,
+  L1SubmitOutcomeUnknownError,
   LedgerAnswerError,
   slotConfigFrom,
   toLucidUtxo,
@@ -284,6 +286,40 @@ describe("transport error mapping", () => {
     expect(fromTransportError(refusal("busy"), "submit")).toMatchObject({
       constructor: L1ProviderTransientError,
     });
+  });
+
+  it("names a submission the transport stopped waiting for, or whose sidecar exited, outcome-unknown; a query's stays plainly transient", () => {
+    const txHash = "ab".repeat(32);
+    const timedOut = new TransportTimeoutError("submit had no answer");
+    const exited = new SidecarExitedError({
+      code: 1,
+      signal: null,
+      fatal: null,
+      diagnostics: "",
+    });
+    for (const [error, reason] of [
+      [timedOut, "request_timeout"],
+      [exited, "sidecar_exited"],
+    ] as const) {
+      const unknown = fromTransportError(error, "submit", txHash);
+      expect(unknown).toMatchObject({
+        constructor: L1SubmitOutcomeUnknownError,
+        name: "L1SubmitOutcomeUnknownError",
+        txHash,
+        reason,
+        source: "transport",
+        retryable: true,
+        outcomeUnknown: true,
+        cause: error,
+      });
+      // Every caller that branches on transient still sees one.
+      expect(unknown).toBeInstanceOf(L1ProviderTransientError);
+      expect((unknown as Error).message).toContain(txHash);
+      const query = fromTransportError(error);
+      expect(query).toBeInstanceOf(L1ProviderTransientError);
+      expect(query).not.toBeInstanceOf(L1SubmitOutcomeUnknownError);
+      expect(query).toMatchObject({ reason });
+    }
   });
 
   it("keeps any other refusal a request error", () => {

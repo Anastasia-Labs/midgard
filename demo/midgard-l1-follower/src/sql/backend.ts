@@ -55,6 +55,11 @@ export type TransactionMode =
 export type WriterLease = {
   /** True once the lease's session ended without `release()`. */
   lost(): boolean;
+  /**
+   * Why a lost lease cannot be had now, when its source can name it (an
+   * instance lock's refusal); undefined when it cannot or the lease is held.
+   */
+  refusal?(): string | undefined;
   release(): Promise<void>;
 };
 

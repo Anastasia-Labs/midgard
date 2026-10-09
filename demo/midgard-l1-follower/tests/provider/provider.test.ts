@@ -2,14 +2,17 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { L1NodeTransport } from "@al-ft/l1-node-transport";
+import {
+  type L1NodeTransport,
+  TransportTimeoutError,
+} from "@al-ft/l1-node-transport";
 import {
   CML,
   credentialToAddress,
   Lucid,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { blake2b256 } from "../../src/codec.js";
 import type { BlockSummary, FactStore, TrackedSet } from "../../src/index.js";
@@ -21,6 +24,7 @@ import {
   L1ProviderRequestError,
   L1ProviderScopeError,
   L1ProviderTransientError,
+  L1SubmitOutcomeUnknownError,
   L1SubmitRejectedError,
   L1UnitLookupError,
 } from "../../src/provider/index.js";
@@ -360,6 +364,24 @@ describe.each(providerAdapters(databases, scratch))(
       );
     });
 
+    it("bounds awaitTx on a monotonic clock: a wall clock stepping back does not stretch it", async () => {
+      // Each read of the wall clock is an hour earlier than the last.
+      let wall = Date.now();
+      const stepping = vi.spyOn(Date, "now").mockImplementation(() => {
+        wall -= 3_600_000;
+        return wall;
+      });
+      try {
+        const startedAt = performance.now();
+        await expect(
+          provider.awaitTx("78".repeat(32), 50),
+        ).rejects.toBeInstanceOf(L1AwaitTxTimeoutError);
+        expect(performance.now() - startedAt).toBeLessThan(5_000);
+      } finally {
+        stepping.mockRestore();
+      }
+    }, 10_000);
+
     it("submits through LocalTxSubmission; a rejection carries the ledger's bytes", async () => {
       const txHash = CML.hash_transaction(
         CML.TransactionBody.from_cbor_bytes(BODY),
@@ -377,6 +399,25 @@ describe.each(providerAdapters(databases, scratch))(
       await expect(provider.submitTx("ff00")).rejects.toMatchObject({
         constructor: L1ProviderRequestError,
         code: "tx_undecodable",
+      });
+    });
+
+    it("names a submission the transport stopped waiting for outcome-unknown, with its tx id", async () => {
+      const txHash = CML.hash_transaction(
+        CML.TransactionBody.from_cbor_bytes(BODY),
+      ).to_hex();
+      // The accepting transport, but its submit is never answered.
+      const silent = Object.create(accepting) as L1NodeTransport;
+      silent.submit = () =>
+        Promise.reject(new TransportTimeoutError("submit had no answer"));
+      await expect(
+        new L1FollowerProvider({ store, transport: silent }).submitTx(
+          hex(SMALL_TX),
+        ),
+      ).rejects.toMatchObject({
+        constructor: L1SubmitOutcomeUnknownError,
+        txHash,
+        reason: "request_timeout",
       });
     });
 

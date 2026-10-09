@@ -284,19 +284,31 @@ export const createFactStore = (
   let broken: Intervention | null = null;
   let started = false;
   let lease: WriterLease | null = null;
+  /** The last lease lost, until one is taken again: it names the refusal. */
+  let lostFrom: WriterLease | null = null;
   let epoch = 0;
   let fenced = false;
+  /**
+   * Set when a seed write's commit outcome is unknown and the store could
+   * not be read back: the live set may lack its rows until a start reloads it.
+   */
+  let liveStale = false;
   const notStarted: StoreError = {
     kind: "error",
     error: new Error("the fact store has not been started"),
   };
-  const lostLease = (): StoreLocked =>
+  const lostLease = (refusal?: string): StoreLocked =>
     storeLocked(
-      "this process lost the store's writer lease (its session ended, or another holder took it over); start the store again",
+      `this process lost the store's writer lease (its session ended, or another holder took it over); start the store again${refusal === undefined ? "" : `: ${refusal}`}`,
     );
   /** Why a write may not run now, or null when it may. */
   const writeRefusal = (): StoreError | StoreLocked | null => {
-    if (lease !== null && (fenced || lease.lost())) return lostLease();
+    if (lease !== null && (fenced || lease.lost()))
+      return lostLease(lease.refusal?.());
+    if (liveStale)
+      return storeLocked(
+        "a seed write's commit outcome is unknown and the store could not be read back, so the tracked-outref cache may be stale; start the store again",
+      );
     return started ? null : notStarted;
   };
   /**
@@ -344,11 +356,14 @@ export const createFactStore = (
         if (lease !== null && (fenced || lease.lost())) {
           started = false;
           await lease.release();
+          lostFrom = lease;
           lease = null;
         }
         if (lease === null) {
           lease = await backend.acquireWriterLease();
-          if (lease === null) return storeLocked(HELD_ELSEWHERE);
+          if (lease === null)
+            return storeLocked(lostFrom?.refusal?.() ?? HELD_ELSEWHERE);
+          lostFrom = null;
           fenced = false;
         }
         const { applied } = await applyMigrations(backend, [
@@ -381,6 +396,7 @@ export const createFactStore = (
             ),
           (outRef) => live.add(outRefKey(outRef)),
         );
+        liveStale = false;
         const cursor = await read((tx) => reads.tipIn(tx, dialect));
         const replaying = (await read(readTrackedSetRecordIn))?.replaying;
         started = true;
@@ -471,6 +487,28 @@ export const createFactStore = (
             for (const outRef of result.inserted) live.add(outRefKey(outRef));
           return result;
         } catch (error) {
+          // A failure during COMMIT leaves its outcome unknown: the rows may
+          // be in, and a retry would skip them. Take the live ones from the
+          // store; if it cannot answer, refuse writes until a start reloads.
+          try {
+            const found = await read(async (tx) => {
+              const rows: OutRef[] = [];
+              for (const { outRef } of outputs)
+                if (
+                  (
+                    await tx.query(
+                      "SELECT 1 AS one FROM l1_outputs WHERE tx_hash = ? AND output_index = ? AND spent_slot IS NULL",
+                      [outRef.txHash, outRef.index],
+                    )
+                  ).length > 0
+                )
+                  rows.push(outRef);
+              return rows;
+            });
+            for (const outRef of found) live.add(outRefKey(outRef));
+          } catch {
+            liveStale = true;
+          }
           return { kind: "error", error: asError(error) } as const;
         }
       }),
