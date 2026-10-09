@@ -97,8 +97,9 @@ It is responsible for:
   material retirement after every event exit and recovery obligation completes.
 - Each sweep reads the state queue from L1 first. If that read fails, the
   sweeper logs `retention_pass_skipped` and deletes no DA payload. Once the last
-  successful read is older than `L1_VIEW_FATAL_MS`, the node exits non-zero.
-  The default is the DA attestation timeout, four default sweep intervals: one
+  successful read is older than `L1_VIEW_FATAL_MS`, the sweeper stops sweeping
+  and raises `retention_l1_view_stale` on `/readyz`; it keeps reading L1 and
+  clears the reason on the first good view. The process stays up. The default is the DA attestation timeout, four default sweep intervals: one
   hour on the public profiles and ten minutes on the testing profiles. The value
   must be at least three sweep intervals and at most the retention margin (4.5
   days).

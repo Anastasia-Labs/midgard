@@ -149,6 +149,6 @@ something else started.
    `Startup protocol initialization failed: …` with the mismatch list;
    `Database schema is not compatible: …` means run `db:migrate`; a manifest
    refusal says `cannot be used as contract source`. A DA committee that lost
-   its L1 view writes `{"event":"l1_view_unavailable_exit",…}` and exits 70,
-   which its supervisor restarts by design.
+   its L1 view stays up: its `/readyz` reports `l1_view_unavailable:<ms>` and
+   it keeps ticking until a view returns.
 4. Decide relaunch or redeploy from the table above before restarting.

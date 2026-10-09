@@ -421,34 +421,46 @@ procedures must authenticate manifest distribution.
 
 The bounded runtime initializes and charges one fixed retirement metadata row
 before admitting a new promise. Its deployment, manifest, committee, actor and
-native source bindings are durable. Cleanup preserves the signed retention
-period (at least 15 days), the 2160-block recovery horizon and the existing
+L1 source bindings are durable. Cleanup preserves the signed retention period
+(at least 15 days), the 2160-block recovery horizon and the existing
 512-row/8-MiB limits.
 
-Cleanup first records one provisional checkpoint from the selected native chain
-whose verified slot-to-time conversion is past a cohort's full signed expiry.
-It retains every byte until a later capture proves that same exact checkpoint
-is canonical and final: more than 2160 blocks deep, counting its own block. Complete raw script reads,
-exact native receipt ancestry, reconciled financial-journal evidence and the
-service's live work establish which contiguous header-end-time cohorts can be
-retired. Equal end times retire together. Missing evidence retains the cohort;
-wall time, terminal row status and filtered challenge absence cannot release it.
+Every L1 read cleanup makes comes from the committee's L1 follower, at one read
+boundary on the follower's chain. Cleanup first records one provisional
+checkpoint at that boundary once the boundary's slot, converted to time by the
+node's era history (never the host clock), is past a cohort's full signed
+expiry. It retains every byte until a later pass proves that same checkpoint is
+still on the follower's chain and final: more than 2160 blocks deep, counting
+its own block. A checkpoint the follower no longer has on its chain or no
+longer retains is taken again at a later boundary, so the expiry waits longer.
+Complete script-address reads from the follower's facts, the follower's block
+for every stored point, submitted transaction and signed header's landing,
+reconciled financial-journal evidence and the service's live work establish
+which contiguous header-end-time cohorts can be retired. Equal end times retire
+together. Missing evidence retains the cohort; wall time, terminal row status
+and filtered challenge absence cannot release it. A header past its retention
+whose evidence the follower has already pruned stops retirement there: it is
+reported as `committee_retirement_held` detail under `retention.holds` on
+`/readyz`, never as a readiness failure, and every later cohort waits with it.
 
 The atomic store transition removes the eligible headers, payloads, signatures,
 conflicts, attestations, submitted-receipt rows, broadcasts, completed outbox
 history, capacity evidence and matching source observations. It simultaneously
-advances a permanent inclusive header-end-time floor and its paired native
-checkpoint, generation and digest. Latest confirmed/merged boundaries, replay
-anchors, deferred work, active challenges, unsettled financial claims and live
-callbacks stay pinned. An active service tick holds cleanup; independent
-housekeeping retries between ticks even when new admission is full.
+advances a permanent inclusive header-end-time floor and its paired checkpoint,
+generation and digest. Latest confirmed/merged boundaries, deferred work,
+active challenges, unsettled financial claims and live callbacks stay pinned.
+The committee also pins, in its follower store, the L1 history every stored
+record will read again, so the follower never prunes it first. An active
+service tick holds cleanup; independent housekeeping retries between ticks even
+when new admission is full.
 
 Every new store row and fresh signature checks the floor and generation. Old
 signed bytes can be replayed while retained; after signed-horizon retirement
-those bytes are unavailable and cannot be reconstructed as a new promise.
-Native rollback replay and fresh floor proofs still check the checkpoint with
-an empty retained suffix. A proved crossing records a sticky durable breach;
-missing proof holds progress. Neither restart nor an operator clock clears it.
+those bytes are unavailable and cannot be reconstructed as a new promise. Each
+tick checks the floor's point against the follower's chain. A rollback that
+takes that point off the chain records a sticky durable breach, and every later
+tick holds under it (see [Readiness reasons](#readiness-reasons)). Neither
+restart nor an operator clock clears it.
 
 PostgreSQL removes cohorts and advances metadata in one guarded transaction. The singleton and all
 retained families count toward the same row and encoded-byte budget. This is an
@@ -602,6 +614,88 @@ broadcast_failed
 This is a conceptual profile lifecycle, not the literal persisted status enum.
 Every state transition should be durable and auditable.
 The node must recover after restart without signing a payload whose storage and libp2p retrieval status are unknown.
+
+## Readiness reasons
+
+`/readyz` returns 503 with every reason that holds the committee; `/healthz`
+stays live for each of them and the process keeps running. A reason is the
+text before the first colon; the rest is detail. The L1 follower's own reasons
+(`rollback_beyond_k`, `intersection_outside_history`, `origin_not_on_chain`,
+`origin_after_protocol_init`, `origin_mismatch`, `l1_follower_waiting`,
+`l1_follower_catching_up`, `l1_node_unavailable` and the others) and their
+remedies are in the follower's
+[readiness table](../../midgard-l1-follower/README.md). The DA bond pool
+reasons are under [Attestation Coordinator](#attestation-coordinator), the
+availability responder's in [its guide](availability-responder.md), and the
+instance-lock events in the [package README](../README.md).
+
+While the node starts, `/readyz` reports `starting:<reason>` for the last
+failed attempt, and the attempt is retried with a backoff that doubles from 1 s
+to 30 s. A dependency that comes up clears it. These three do not clear by
+waiting:
+
+- `starting:stale_deployment_state_requires_fresh_redeploy`: the store holds
+  another deployment's state. Point the node at a fresh store for this
+  deployment, or perform the fresh redeploy the detail names; the next attempt
+  then starts.
+- `starting:committee_store_point_before_l1_origin`: a stored record names an
+  L1 point before the configured `L1_ORIGIN`, so the configured origin is
+  wrong. Set `L1_ORIGIN` to the deployment's origin and restart.
+- `starting:committee_retirement_binding_changed`: the stored retirement floor
+  is bound to another member binding than the configured one. Restore the
+  configuration the store was adopted under, or start this member on a fresh
+  store.
+
+Once started:
+
+- `l1_node_handshake_failed`: the cardano-node refused the node-to-client
+  handshake. Check `CARDANO_NETWORK_MAGIC` against the node's network and that
+  the node speaks a node-to-client version the sidecar does. The transport
+  keeps redialing, so a node that accepts the handshake clears it. (The sidecar
+  reports any failure to set up the connection's protocol this way, so read the
+  detail.)
+- `l1_follower_unconfigured`: the follower's configuration is incomplete; the
+  detail names the missing setting. Set it and restart.
+- `l1_follower_not_initialized`: the follower store holds no cursor yet.
+  Transient; it clears once the follower writes its first cursor.
+- `l1_source_configuration_changed: stored network <a>, configured <b>`: the
+  store was written for another Cardano network than the configured one. Every
+  tick is held and nothing is signed. Restore the network the store was written
+  for, or start the node on a fresh store for the configured network. (A changed
+  L1 source authority on the same network is not a hold: it is logged as the
+  `l1_source_configuration_changed` event with the stored and configured
+  digests, and the new authority is recorded.)
+- `retirement_floor_breached: l1_source_retirement_floor_crossed:<slot>:<hash>`:
+  a rollback took the block the retirement floor was certified at off the
+  follower's chain. Bytes retired under that floor cannot be restored, so the
+  breach is sticky and every later tick is held. Neither a restart nor the
+  chain returning clears it; it needs an operator decision on the store.
+- `store_integrity`: a stored header record's status contradicts the status the
+  follower's facts give the same state-queue output. An output's datum never
+  changes, so the store is corrupt. Every later tick is held; restore the store
+  from a good copy or start on a fresh store.
+- `l1_state_queue_unhealthy`: the landed state queue is not one list from one
+  root. Decisions are held until a tick sees a healthy queue; investigate the
+  on-chain queue the detail names.
+- `l1_da_params_mismatch`: the on-chain DA params differ from the configured
+  ones (committee keys, signers hash or threshold). Decisions are held. Correct the committee
+  configuration to match the governed DA params.
+- `l1_da_params_unavailable`: the DA params could not be read from the
+  follower's facts this tick. Transient; the next tick reads them again.
+- `l1_view_unavailable:<age ms>`: no tick has read an L1 view for
+  `L1_VIEW_FATAL_MS`. `l1_view_stale:<age ms>`: the retention pass found no
+  view, or only one older than its staleness bound, so it pruned nothing. The
+  loop keeps ticking in both; the follower's own reasons say why no view is
+  read.
+- `committee_retention_pin_failed`: the committee's pins over its follower
+  store could not be written, so the follower does not prune meanwhile.
+  Transient; the next successful write clears it.
+- `committee_retention_pin_pruned`: a history a stored record needs was pruned
+  before its pin existed, so that record cannot be proven again. Its retirement
+  holds under `committee_retirement_held` as well.
+- `retention check failed: committee_retirement_compaction_failed: <error>`:
+  compacting the retained promises at startup failed. The retention pass
+  compacts again, and its first successful pass clears it.
 
 ## Failure Handling
 
