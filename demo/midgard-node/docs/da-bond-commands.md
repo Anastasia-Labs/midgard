@@ -87,23 +87,20 @@ contract deployment manifest:
 
 ```sh
 node dist/index.js da-bond status \
-  --manifest /var/lib/midgard/contract-deployment-info.json \
-  --kupo-url http://127.0.0.1:1442 \
-  --ogmios-url http://127.0.0.1:1337
+  --manifest /var/lib/midgard/contract-deployment-info.json
 ```
 
-Kupo and Ogmios URLs may instead come from `L1_KUPO_KEY` and `L1_OGMIOS_KEY`.
-The commands authenticate the pool's reference scripts through the manifest's
+The commands read and submit through the node's cardano-node socket. They
+authenticate the pool's reference scripts through the manifest's
 reference-script tokens, and the DA params UTxO by the governor NFT at the
 governor address. The withdraw delay is the manifest's
 `deploymentProfile.timing.da_bond_withdraw_delay_ms`.
 
-The network is the manifest's. A `Custom` deployment (the local devnet) has no
-built-in slot mapping, so the commands derive it the way the node does: from
-the Shelley genesis and a live tip read through the local Ogmios, checked
-against each other. If that fails, the command refuses with
-`Refusing the Custom deployment: ... from the local Ogmios at <url> failed: ...`
-before building anything. Mainnet, Preprod and Preview do not query it.
+The network is the manifest's. The slot mapping is the one the local node's
+ledger gives (its system start and era history), taken the way the node takes
+it, never a configured `zeroTime`. If that read fails, the command refuses with
+`Refusing the deployment: the slot mapping from the local node's ledger at <endpoint> failed: ...`
+before building anything.
 
 Results are JSON on stdout, with amounts as decimal lovelace strings and times
 as POSIX milliseconds (with an ISO copy where shown). A refusal prints

@@ -3911,7 +3911,7 @@ nonce-consuming admission transaction from the authenticated origin block, while
 current transaction/outref remain pointer navigation. Six new both-kind cases plus
 four existing cutoff/rollback cases passed; root independently reran all ten:
 **10 passed, 29 filtered, 24.61s**. The fix preserves shared schemas and opaque
-runtime interfaces. The agent handoff includes the exact patch, commands and hashes.
+runtime interfaces. The agent handoff includes the exact patch, commands and hashes. The cited files were since deleted. <!-- doc-links:historical -->
 
 Builder agent added only `l1-event-history-projection-native-assets-emulator.test.ts`
 after the complete ADA journeys. It mints ordinary alpha/beta assets (5/7), deposits
@@ -3922,7 +3922,7 @@ same stage; no assertion, asset name/amount or production limit was weakened.
 Nineteen accepted signed receipts and the nested error were preserved. Root
 independently parsed all 19 for signed hashes, bytes, fees, budgets, matching paired
 snapshot observations and partial NFT conservation. This is partial journey
-evidence, not payout acceptance.
+evidence, not payout acceptance. The cited files were since deleted. <!-- doc-links:historical -->
 
 Pure-byte investigation confirmed actual admitted event serialization and classifier
 bytes produce the saved settlement root exactly; reconstructed payout Value bytes
@@ -4022,9 +4022,9 @@ acceptance. The full goal remains active and incomplete.
 
 Progress; original objective remains active/incomplete. Root retained all schema,
 source, persistence and integration ownership. Builder agent completed only new
-`demo/midgard-node/tests/l1-event-history-initialization-emulator.test.ts`; audit
+`demo/midgard-node/tests/l1-event-history-initialization-emulator.test.ts` (since deleted); audit
 agent performed read-only initialization/restart reviews; no deployments or live
-mutations were delegated or performed. Main's 239 dirty entries remain preserved.
+mutations were delegated or performed. Main's 239 dirty entries remain preserved. <!-- doc-links:historical -->
 
 Root added complete pre-initialization five-address replay and extracted shared
 whole-block staging without changing the initialized projection interface.
@@ -5103,7 +5103,7 @@ original implementation application or broad-suite completion is claimed.
 
 > Note (deleted 2026-10-08, #810): `eventHistoryCanonicalCoverage.ts`,
 > `signed-intent-canonical-coverage.ts` and their tests no longer exist; the
-> landed-block rebase replaced them. The entries below are kept for history.
+> landed-block rebase replaced them. The entries below are kept for history. <!-- doc-links:historical -->
 
 Root owns new `eventHistoryCanonicalCoverage.ts`: under recovery authority, it
 checks the exact current binding/generation/checkpoint, follows the retained
@@ -5114,7 +5114,7 @@ retained orphan applications. These are freshly source-bound recovery bytes;
 an imported archive or merely persisted cursor never supplies L1 authority.
 Root added an exact-point, socket-authenticated recovery ledger capture for extra
 protocol addresses, including renewed hub verification, needed to establish the
-canonical native/SQL target independently of old local journal roots.
+canonical native/SQL target independently of old local journal roots. That module was since deleted. <!-- doc-links:historical -->
 
 Builders supplied the isolated signed-coverage classifier and27 authored fixtures.
 Its result is inclusion, pending, or covered absence based on the exact signed
@@ -5174,7 +5174,7 @@ Root ran centrally with pinned Node22.22.2/pnpm9.15.4:
 - `pnpm exec vitest run tests/signed-intent-canonical-coverage.test.ts tests/event-history-canonical-coverage.test.ts tests/history-source-owner-pending-recovery.test.ts`
   —29/29 PASS across3 files. Includes27 signed-body/roster cases, one actual SQL
   source-bound activation/branch/corruption case, and one complete pending rollback,
-  continued ingestion, same-head restart, current-frontier readiness/source-loss case.
+  continued ingestion, same-head restart, current-frontier readiness/source-loss case. The cited files were since deleted. <!-- doc-links:historical -->
 - Source7,513 files and all three bound dependency sets unchanged before/after.
 - Root docs command `pnpm --dir docs-site run check:links` — PASS527 Markdown/MDX.
 
@@ -5239,7 +5239,7 @@ root ran pinned Node22/pnpm9 `pnpm exec tsc --noEmit` PASS and
 PASS62/62 (39 signed boundary/expiry,22 strict queue-target,1 actual owner hook/drain/
 restart case). Source7,518 files and all bound dependency sets unchanged.
 Logs/results: `root-original-integration-checkpoint-17-receipts-run.json`;
-coverage log SHA `b2a03b15338e62e1c177a1ae9ac9c3f48b43cfdcc97bada0fd13b570051563b5`.
+coverage log SHA `b2a03b15338e62e1c177a1ae9ac9c3f48b43cfdcc97bada0fd13b570051563b5`. The cited files were since deleted. <!-- doc-links:historical -->
 
 Then, serially on that SAME immutable identity,
 `pnpm exec vitest run tests/l1-event-history-owner-rollback-emulator.test.ts`
@@ -5247,7 +5247,7 @@ FAIL at first genuine commit: its historical commit end1788741024000 predates
 scheduler refresh window1788744963000. No recovery-pass claim. Fixture owner is
 correcting actual timing/source setup while preserving production timing checks.
 Evidence retained in `root-original-integration-checkpoint-17-actual-rollback-run.json`
-and its rollback evidence/log; no heavy job remains from these two runs.
+and its rollback evidence/log; no heavy job remains from these two runs. That test was since deleted. <!-- doc-links:historical -->
 
 A bounded review found a crash/source-supersession safety defect before further
 acceptance: after native restore but before SQL disposition, re-canonicalized origins
@@ -5276,7 +5276,7 @@ Includes generation0, immutable plan/caller snapshots, refreshed evidence,
 prepared obligation despite canonical origins, authority/generation rejection,
 transactional repair failure and idempotence. Complete source7,519 files and all
 three dependency sets unchanged. Plan log SHA
-`12db86326b12285b6a9ed2b57262291e682d090b3c0c66fa57a91dfd597d6927`.
+`12db86326b12285b6a9ed2b57262291e682d090b3c0c66fa57a91dfd597d6927`. The cited files were since deleted. <!-- doc-links:historical -->
 
 Root added bounded Globals publication after successful SQL commit in the same
 cancellation mask: exact confirmed queue/boundary, submission/local-finalization
@@ -5366,7 +5366,7 @@ cache/Globals agreement before Ready, fresh same-public-ID incarnation, real
 recommit and reacceptance of the same signed L2 transaction. Modeled source fork
 and emulator ledger remain explicit limitations. Independent offline verifier
 initially failed due mixed ESM/CommonJS Constr instances; failed log retained,
-artifact import fix delegated with every assertion preserved.
+artifact import fix delegated with every assertion preserved. The cited files were since deleted. <!-- doc-links:historical -->
 
 Stable milestone checkpoint24 is active (7,934 files; source identity
 `3591688845574c778528b7ed799c6635972e53b5adbb5a697d2d392c25731a1c`):

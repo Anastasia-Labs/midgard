@@ -5,7 +5,6 @@ import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
-import type { EventHistoryOwner } from "./event-history-owner.js";
 import {
   type FollowerWriteGateLocal,
   initialFollowerWriteGateLocal,
@@ -145,9 +144,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       state: "starting",
       detail: "settlement worker starting",
     });
-    const EVENT_HISTORY_OWNER = yield* Ref.make<EventHistoryOwner | undefined>(
-      undefined,
-    );
     // This process's side of the follower write gate (plan §8.1): the epoch
     // its driver took, whether a recompute is pending, and the producers
     // running under permits (`follower-write-gate.ts`).
@@ -251,7 +247,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       TX_QUEUE_PROCESSOR_ACTIVE,
       TX_QUEUE_WAKE_GENERATION,
       NATIVE_MPF_OWNER,
-      EVENT_HISTORY_OWNER,
       FOLLOWER_WRITE_GATE,
       L1_FOLLOWER,
       L1_HEAD_SEQUENCE,

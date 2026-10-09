@@ -82,10 +82,10 @@ describe.skipIf(!dbEnabled)(
         Effect.gen(function* () {
           yield* sql.unsafe(FRESH_STORAGE_QUERY);
           yield* sql.unsafe(
-            `INSERT INTO event_history_authority (deployment_identity, owner_token, generation, state, reason, lease_until) VALUES (decode('${marker.manifestId}', 'hex'), '${marker.runId}', 0, 'recovering', 'test', now())`,
+            `INSERT INTO node_deployment (deployment_id) VALUES ('${marker.manifestId}')`,
           );
           expect(yield* failure(sql, FRESH_STORAGE_QUERY)).toContain(
-            "Fresh deployment requires empty local storage: event_history_authority",
+            "Fresh deployment requires empty local storage: node_deployment",
           );
           expect(yield* json(sql, ATTACHMENT_QUERY)).toEqual({
             initTxHashes: [],

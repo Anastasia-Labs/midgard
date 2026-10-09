@@ -39,8 +39,6 @@ configured:
 - `L1_REFERENCE_SCRIPT_ADDRESS`
 - `L1_SETTLEMENT_SEED_PHRASE`: a funded wallet the settlement worker owns,
   holding fee funds and a separate ADA-only collateral UTxO
-- `L1_HISTORY_GENESIS_LOSSLESS_SHA256` (from `node dist/index.js history-genesis-pin`
-  against the intended chain)
 - `HUB_ORACLE_ONE_SHOT_TX_HASH`
 - `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX`
 - `POSTGRES_*`

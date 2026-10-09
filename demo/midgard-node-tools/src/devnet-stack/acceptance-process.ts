@@ -5,7 +5,6 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import type { DeployContext } from "./deploy.js";
 import type { ExecResult } from "./exec.js";
-import { recordedHistoryGenesisPin } from "./history-pin.js";
 import {
   awaitEarlierAttempts,
   type CliRunner,
@@ -168,7 +167,6 @@ export const acceptanceJourneyOwner = (
           ...nodeEnvironment({
             ...context,
             oneShot,
-            historyGenesisPin: recordedHistoryGenesisPin(context.layout),
             role: "command",
           }),
           ...(request.user === undefined

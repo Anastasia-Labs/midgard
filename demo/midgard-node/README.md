@@ -80,14 +80,13 @@ It is responsible for:
   confirmed head, live in the L1 state queue (in the caller's view or in the
   follower's facts), or held for finality (a landed tx merged or removed it
   and that tx is not final yet, or it is the newest merge that is final), and
-  while one of its deposit or withdrawal members belongs to an event-history
-  incarnation that L1 rolled back (signed-header recovery and ledger repair
-  read those). The newest finalized journal is always kept. Unfinished
-  and abandoned journals retain their bases, same-base siblings and
-  descendants; retained recovery plans retain all their journal members. The
-  journal prune runs under the history-producer
-  permit. It takes no permit while the history owner is recovering, holds the
-  permit for a bounded time, and skips to the next sweep when refused.
+  while one of its deposit or withdrawal members is an admission the L1
+  follower no longer holds (an orphan, which ledger repair reads). The newest
+  finalized journal is always kept. Unfinished and abandoned journals retain
+  their bases, same-base siblings and descendants. The journal prune runs
+  under a follower write permit. It takes no permit while the follower-change
+  driver recomputes or has applied no view, holds the permit for a bounded
+  time, and skips to the next sweep when refused.
   `deposits_utxos` and `withdrawal_utxos` are retained because settlement proofs
   recompute the whole header's root, including completed siblings of unpaid
   events. Local consumed/finalized status and a completed settlement job do not
@@ -174,10 +173,7 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    The "Required settings" block at the top of `.env.example` lists every key
    that has no default. Config load fails, for every command including
    `db:migrate`, until each of them has a value; the error names the variable.
-   Three distinct wallets are required (operator, merge, reference-script). The
-   overlay injects the in-stack `L1_OGMIOS_KEY`/`L1_KUPO_KEY` into both the node
-   and the migration container, so leave the `127.0.0.1` values alone unless you
-   run an external L1.
+   Three distinct wallets are required (operator, merge, reference-script).
 
    `.env` values override the image pins in the compose files. Keep the
    `*_IMAGE_TAG` / `CARDANO_NODE_IMAGE_DIGEST` lines in step with
@@ -277,22 +273,7 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    #   -> the --out path must equal MIDGARD_DEPLOYMENT_MANIFEST_PATH in .env
    node dist/index.js register-operator
    node dist/index.js activate-operator
-   node dist/index.js history-genesis-pin
-   #   -> after approving the chain, copy its sha256 into .env as
-   #      L1_HISTORY_GENESIS_LOSSLESS_SHA256
    ```
-
-   `L1_HISTORY_GENESIS_LOSSLESS_SHA256` pins the L1 chain the node's event
-   history is read from: the lowercase SHA-256 of the Shelley genesis that
-   Ogmios returns for `queryNetwork/genesisConfiguration`, decoded without
-   rounding its integers (algorithm `ogmios-shelley-result-lossless-v1`).
-   `listen` re-checks it on every Ogmios socket its history source opens and
-   fails at startup when it is unset or when the chain differs. The operator
-   approves this value: `history-genesis-pin` (`--ogmios-url` overrides
-   `L1_OGMIOS_KEY`) prints the pin of whatever chain the endpoint serves, so
-   run it against an L1 you trust to be the deployment's chain and keep the
-   same value across restarts. A changed pin means a different chain, not a
-   setting to refresh.
 
    `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
    and the DA producer manifest. `deploymentInfo/` is gitignored and mounted
@@ -434,9 +415,9 @@ node dist/index.js reconcile merge-complete --header-hash <hash> --json [--repai
 node dist/index.js reconcile retention-check --json [--alert-threshold-ms <ms>]
 ```
 
-`deposit-projected` is read-only. The running node's history owner projects
-every due deposit; a standalone CLI process holds no history-ingestion permit,
-so there is no projection repair. Use `reconcile-deposit-submission` (below) to
+`deposit-projected` is read-only. The running node's follower-change driver
+projects every due deposit; a standalone CLI process runs no driver, so there
+is no projection repair. Use `reconcile-deposit-submission` (below) to
 settle an unconfirmed deposit submission.
 
 `retention-check` counts the retained DA payloads (`checked`) and those still
@@ -462,13 +443,13 @@ node dist/index.js reconcile-deposit-submission --tx-hash <cardano-tx-hash> --js
 
 `merge-complete` is `satisfied` only when the header has left the state queue
 and its confirmed-merge local finalization job completed. Its `--repair` merges
-only the oldest queued block, and only under the running node's history
-producer permit. When the permit cannot be taken (a standalone CLI process
-holds no history owner; a node's owner may not be Ready) nothing runs: it
+only the oldest queued block, and only under the running node's follower
+write permit. When the permit cannot be taken (a standalone CLI process runs
+no follower-change driver; a node's driver may be recomputing) nothing runs: it
 reports `blocked` with `merge_producer_permit` evidence and points at the
 node's admin `GET /merge`, which answers `503` in the same situation. A merge
 that landed without its local finalization (a restart, a hold timeout or a
-history recovery during the confirmation wait) needs no repair: every merge
+follower recompute during the confirmation wait) needs no repair: every merge
 attempt first finalizes each merge L1 confirmed that the database has not.
 
 If a reconciler reports `ambiguous`, do not blindly repeat the original

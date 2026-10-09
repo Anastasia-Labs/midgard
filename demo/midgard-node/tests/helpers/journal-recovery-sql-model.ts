@@ -6,9 +6,7 @@ import { Effect } from "effect";
 
 import * as MigrationRunner from "../../src/database/migrations/runner.js";
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
-import type { EventHistorySourceBinding } from "../../src/l1-event-history-source.js";
 import { signedIntentReplacementDigest } from "../../src/services/canonical-journal-recovery.js";
-import type { HistoryOwnerChange } from "../../src/services/event-history-owner.js";
 import {
   deterministicFixtureBytes,
   provideDatabaseLayers,
@@ -17,15 +15,13 @@ import {
 
 /**
  * Shared SQL model of the journal recovery suites: journals of this node,
- * and canonical block application receipts, written directly.
+ * written directly.
  */
 
 export const bytes = (label: string, length = 32) =>
   deterministicFixtureBytes(`before-ttl:${label}`, length);
 export const hex = (label: string) => bytes(label).toString("hex");
 
-export const BINDING = hex("binding");
-export const binding = { digest: BINDING } as EventHistorySourceBinding;
 export const BASE_TX = hex("base-tx");
 export const BASE_OUT = `${BASE_TX}#0`;
 export const BASE_HEADER = bytes("base-header", 28);
@@ -230,77 +226,10 @@ export const retainedBaseJournal = insertJournal({
   ),
 );
 
-export type ReceiptTx = Readonly<{
-  txHash: string;
-  spends?: "inputs" | "collaterals";
-  inputs: readonly string[];
-}>;
-
-export const receipt = (txs: readonly ReceiptTx[], digest = BINDING) =>
-  JSON.stringify({
-    bindingDigest: digest,
-    block: {
-      transactions: txs.map((tx) => ({
-        txHash: tx.txHash,
-        spends: tx.spends ?? "inputs",
-        inputs: tx.inputs.map((ref) => {
-          const [txHash, index] = ref.split("#");
-          return { txHash, outputIndex: Number(index) };
-        }),
-      })),
-    },
-  });
-
-/** The canonical application of the block at `height`. */
-export const applyBlock = (
-  height: number,
-  txs: readonly ReceiptTx[],
-  options: { readonly canonical?: boolean; readonly digest?: string } = {},
-) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO event_history_block_applications (
-        binding_digest, block_hash, application_revision, parent_hash,
-        parent_application_revision, block_slot, block_height,
-        before_snapshot_digest, after_snapshot_digest, ledger_receipt,
-        ledger_receipt_digest, undo_record, undo_digest, canonical
-      ) VALUES (${Buffer.from(BINDING, "hex")}, ${bytes(`block:${height}`)},
-        ${height + 1}, ${bytes(`block:${height - 1}`)}, NULL, ${height * 10},
-        ${height}, ${bytes("before")}, ${bytes("after")},
-        ${receipt(txs, options.digest)}, ${bytes("receipt-digest")},
-        '{}', ${bytes("undo")}, ${options.canonical ?? true})`;
-  });
-
 export const seed = Effect.gen(function* () {
   yield* MigrationRunner.migrate({
     appVersion: "test",
     actor: "journal-recovery-sql-model",
   });
   yield* resetApplicationTables;
-  const sql = yield* SqlClient.SqlClient;
-  yield* sql`INSERT INTO event_history_cursor (
-      binding_digest, manifest_id, origin_receipt, origin_receipt_digest,
-      anchor_hash, anchor_slot, anchor_height, anchor_snapshot_digest,
-      head_hash, head_slot, head_height, snapshot_digest, revision, addresses
-    ) VALUES (${Buffer.from(BINDING, "hex")}, ${bytes("manifest")},
-      'explicit SQL model', ${bytes("origin")}, ${bytes("anchor")}, 0, 0,
-      ${bytes("anchor-snapshot")}, ${bytes("anchor")}, 0, 0,
-      ${bytes("anchor-snapshot")}, 0, '[]'::jsonb)`;
 });
-
-export const point = (height: number, slot = height * 10) =>
-  ({ head: { height, slot } }) as never;
-
-export const change = (
-  kind: HistoryOwnerChange["kind"],
-  to: number,
-  options: { readonly from?: number; readonly slot?: number } = {},
-) =>
-  ({
-    kind,
-    before: point(options.from ?? to - 1),
-    after: point(to, options.slot),
-    changes: [],
-  }) as unknown as HistoryOwnerChange;
-
-export const FOREIGN = hex("foreign-apply");

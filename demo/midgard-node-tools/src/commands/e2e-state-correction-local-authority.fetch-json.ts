@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type WebSocketFactory } from "midgard-node/l1-kupmios";
 
+import { type WebSocketFactory } from "../harness-kupmios.js";
 import { type ReleaseL1FinalityPolicy } from "./e2e-release-finality-policy.js";
 
 export type FetchLike = (

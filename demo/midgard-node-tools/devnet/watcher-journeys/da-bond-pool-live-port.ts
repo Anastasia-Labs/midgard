@@ -106,7 +106,6 @@ import "midgard-node/commands/availability-challenge-deployment";
 import "midgard-node/commands/availability-challenge-source";
 import "midgard-node/commands/da-bond";
 import "midgard-node/da/local-signers";
-import "midgard-node/l1-kupmios";
 import "midgard-watcher";
 import "midgard-watcher/tests/support/published-block-actor";
 import "./artifacts.js";

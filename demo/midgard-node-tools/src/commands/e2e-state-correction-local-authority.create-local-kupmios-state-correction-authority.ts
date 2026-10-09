@@ -21,8 +21,11 @@ export const createLocalKupmiosStateCorrectionAuthority = (
   if (l1ProviderFailoverEnabled(config.providerFailover)) {
     throw new Error("Q57 authority forbids L1 provider failover");
   }
-  assertLoopbackEndpoint(config.kupoUrl, "L1_KUPO_KEY");
-  assertLoopbackEndpoint(config.ogmiosUrl, "L1_OGMIOS_KEY");
+  assertLoopbackEndpoint(config.kupoUrl, "the local Kupo endpoint (KUPO_PORT)");
+  assertLoopbackEndpoint(
+    config.ogmiosUrl,
+    "the local Ogmios endpoint (OGMIOS_PORT)",
+  );
   if (!HEX_28.test(config.stateQueuePolicyId)) {
     throw new Error("Q57 authority state-queue policy id is invalid");
   }

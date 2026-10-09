@@ -1,7 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Either, Option } from "effect";
 
-import { retrieveAppliedRecoveryAfterJournal } from "../database/eventHistoryRecoveryPlans.js";
 import {
   ConfirmedLedgerDB,
   MpfEngineStateDB,
@@ -116,45 +115,26 @@ const resolveBaseJournal = (record: PendingBlockFinalizationsDB.Record) =>
     );
   });
 
-/** The native committed point: its root and, when one exists, the finalized
- * journal of this node whose post-state it is. */
+/** The native committed point: its root and the finalized journal of this
+ * node whose post-state it is. */
 type CommittedPoint = {
   readonly root: string;
-  readonly anchor: Option.Option<PendingBlockFinalizationsDB.Record>;
+  readonly anchor: PendingBlockFinalizationsDB.Record;
   readonly source: string;
 };
 
 /**
- * Where the native committed root is. Only this node's own commits advance it
- * (to the committed block's expected root), and an applied native recovery
- * resets it to the recovery's target root. The later of this node's newest
- * finalized journal and the newest applied recovery therefore fixes it. A
- * recovery target is anchored at the newest finalized journal that reached
- * that root, if any; a foreign root has no anchor.
+ * Where the native committed root is. Only this node's own commits advance it,
+ * to the committed block's expected root, so this node's newest finalized
+ * journal fixes it.
  */
 const resolveCommittedPoint = Effect.gen(function* () {
   const newest = yield* PendingBlockFinalizationsDB.retrieveNewestFinalized();
-  const recovery = yield* retrieveAppliedRecoveryAfterJournal(
-    Option.isSome(newest)
-      ? newest.value[PendingBlockFinalizationsDB.Columns.HEADER_HASH]
-      : undefined,
-  );
-  if (Option.isSome(recovery)) {
-    const { kind, recoveryId, targetRoot } = recovery.value;
-    return Option.some<CommittedPoint>({
-      root: targetRoot,
-      anchor:
-        yield* PendingBlockFinalizationsDB.retrieveNewestFinalizedWithExpectedRoot(
-          { expectedUtxosRoot: targetRoot },
-        ),
-      source: `applied ${kind} recovery_id=${recoveryId}`,
-    });
-  }
   return Option.map(
     newest,
     (tip): CommittedPoint => ({
       root: tip[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT],
-      anchor: Option.some(tip),
+      anchor: tip,
       source: `newest finalized journal header_hash=${headerHex(tip)}`,
     }),
   );
@@ -173,8 +153,7 @@ const resolveCommittedPoint = Effect.gen(function* () {
  * is the confirmed ledger: a journal that ended at or before it is merged and
  * cannot bridge to the confirmed ledger, so no audit reads past it.
  *
- * A committed point no local journal reached, a base no local journal reached
- * and a merged base are unverifiable, not divergent: the node cannot
+ * A base no local journal reached and a merged base are unverifiable, not divergent: the node cannot
  * reconstruct a ledger it never held (or no longer holds). A loaded suffix that
  * does not fold to the tip (a delta that does not apply, a root that disagrees
  * with its journal, a cycle) is an integrity failure the caller must treat as a
@@ -204,11 +183,6 @@ export const recomputeCommittedTip = ({
       committedRoot,
       reason: `${point.value.source}: ${reason}`,
     });
-    if (Option.isNone(point.value.anchor)) {
-      return unverifiable(
-        `committed root ${committedRoot} is neither the confirmed ledger root ${confirmedRoot} nor the post-state of a finalized block of this node`,
-      );
-    }
     const boundary =
       yield* PendingBlockFinalizationsDB.retrieveNewestFinalizedWithExpectedRoot(
         { expectedUtxosRoot: confirmedRoot },
@@ -218,7 +192,7 @@ export const recomputeCommittedTip = ({
     // fold below is pure and any failure it reports is an integrity failure.
     const suffix: PendingBlockFinalizationsDB.Record[] = [];
     const seen = new Set<string>();
-    let current = point.value.anchor.value;
+    let current = point.value.anchor;
     for (;;) {
       const headerHashHex = headerHex(current);
       if (seen.has(headerHashHex)) {

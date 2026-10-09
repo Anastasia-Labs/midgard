@@ -262,7 +262,7 @@ export const pruneFinalizedBeyondChallengeability = ({
           WHERE ${sql(Columns.STATUS)} = ${Status.LocallyApplied}
             AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
             AND NOT ${challengeRelevantHeader(sql, `${tableName}.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
-            AND NOT ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`, deploymentIdentityDigest)}
+            AND NOT ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
             AND NOT ${orphanMemberJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
             AND EXISTS (
               SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job

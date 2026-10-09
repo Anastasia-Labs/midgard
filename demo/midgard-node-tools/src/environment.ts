@@ -24,17 +24,19 @@ export type L1KupmiosEnvironment = {
 };
 
 /**
- * The local state-correction authority's own Kupo and Ogmios endpoints and
- * its failover switch, read exactly as it consumes them: the failover stays an
+ * The local state-correction authority's Kupo and Ogmios endpoints and its
+ * failover switch, read exactly as it consumes them: the failover stays an
  * optional string because the consumer normalizes it itself (it treats blank
- * and `"false"` as off), and the two URLs collapse an unset value to `""`.
+ * and `"false"` as off). The endpoints are the local Compose stack's loopback
+ * host ports (`KUPO_PORT`, `OGMIOS_PORT`, defaulting as the Compose file
+ * publishes them); the node itself reads neither.
  */
 export const l1KupmiosEnvironment = (
   env: NodeJS.ProcessEnv = process.env,
 ): L1KupmiosEnvironment => ({
   providerFailover: env.L1_PROVIDER_FAILOVER,
-  kupoUrl: env.L1_KUPO_KEY ?? "",
-  ogmiosUrl: env.L1_OGMIOS_KEY ?? "",
+  kupoUrl: `http://127.0.0.1:${env.KUPO_PORT ?? "1442"}`,
+  ogmiosUrl: `http://127.0.0.1:${env.OGMIOS_PORT ?? "1337"}`,
 });
 
 /** L1_PROVIDER_FAILOVER is off when unset, blank or "false" in any case. */

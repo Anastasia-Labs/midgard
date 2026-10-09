@@ -142,25 +142,6 @@ const requiredEnv = (
   return value;
 };
 
-const requireLoopbackHttpEndpoint = (value: string, label: string): void => {
-  let endpoint: URL;
-  try {
-    endpoint = new URL(value);
-  } catch (cause) {
-    return fail(`${label} must be an absolute loopback HTTP endpoint`, cause);
-  }
-  if (
-    endpoint.protocol !== "http:" ||
-    endpoint.hostname !== "127.0.0.1" ||
-    endpoint.port.length === 0 ||
-    endpoint.pathname !== "/" ||
-    endpoint.search.length > 0 ||
-    endpoint.hash.length > 0
-  ) {
-    fail(`${label} must be an exact 127.0.0.1 HTTP endpoint`);
-  }
-};
-
 /** Enforces the dedicated local-devnet mutation boundary before touching SQL. */
 export const assertPhase4GenesisLedgerGate = ({
   env,
@@ -170,8 +151,6 @@ export const assertPhase4GenesisLedgerGate = ({
   readonly config: Pick<
     NodeConfigDep,
     | "NETWORK"
-    | "L1_OGMIOS_KEY"
-    | "L1_KUPO_KEY"
     | "MIN_FEE_A"
     | "MIN_FEE_B"
     | "RUN_GENESIS_ON_STARTUP"
@@ -203,8 +182,6 @@ export const assertPhase4GenesisLedgerGate = ({
       "Phase 4 genesis ledger command requires RUN_GENESIS_ON_STARTUP=false",
     );
   }
-  requireLoopbackHttpEndpoint(config.L1_OGMIOS_KEY, "L1_OGMIOS_KEY");
-  requireLoopbackHttpEndpoint(config.L1_KUPO_KEY, "L1_KUPO_KEY");
   if (config.POSTGRES_HOST !== "127.0.0.1") {
     fail("Phase 4 genesis ledger command requires loopback Postgres");
   }

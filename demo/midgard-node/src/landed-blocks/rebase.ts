@@ -27,10 +27,8 @@
  * held goes back to `awaiting`; every event a processed foreign or revived
  * own block holds is projected to it; the shared working-ledger recompute
  * (`working-ledger-recompute.rebuild.ts`) runs on the target's ledger;
- * removed rows are deleted, processed ones marked applied, the
- * ledger-store root stamp moves to the target, and the retained plans of
- * retired kinds the native move superseded are discarded
- * (`retired-plans.ts`).
+ * removed rows are deleted, processed ones marked applied, and the
+ * ledger-store root stamp moves to the target.
  *
  * Once that commits, the commit path's globals follow: a revived block's
  * local finalization is pending (its node read back from its signed
@@ -65,7 +63,6 @@ import {
   LandedChainRootNotRetained,
   restoreRefusalHold,
 } from "./restore-holds.js";
-import { discardRetiredPlans } from "./retired-plans.js";
 import { markRows } from "./settlements.js";
 import { deleteRows, markApplied } from "./store.js";
 
@@ -234,7 +231,6 @@ export const rebaseSql = (target: RebaseTarget) =>
     yield* deleteRows(removed.map((row) => row.headerHash));
     yield* markApplied(chained.map((row) => row.headerHash));
     yield* MpfEngineStateDB.stampLedgerMigration(roots.at(-1)!);
-    yield* discardRetiredPlans(target.retired);
     return {
       ...rebuilt,
       revived,

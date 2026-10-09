@@ -58,35 +58,15 @@ export const nodeEnvironment = (input: {
   readonly oneShot?: HubOracleOneShot;
   /** The run's recorded L1 origin (deployment-origin.ts); `listen` needs it. */
   readonly l1Origin?: L1Origin;
-  /**
-   * The run's recorded L1 Shelley genesis pin (history-pin.ts). `null` only
-   * for the command that derives it; `listen` refuses to start without it.
-   */
-  readonly historyGenesisPin: string | null;
   /** `listen` reads the producer DA manifest; commands read the contract one. */
   readonly role: "command" | "listen";
 }): Record<string, string> => {
-  const {
-    layout,
-    run,
-    identities,
-    artifacts,
-    oneShot,
-    l1Origin,
-    historyGenesisPin,
-    role,
-  } = input;
-  if (historyGenesisPin === null && role === "listen")
-    throw new Error(
-      "listen needs the run's L1 history genesis pin; run up first",
-    );
+  const { layout, run, identities, artifacts, oneShot, l1Origin, role } = input;
   if (role === "listen" && (oneShot === undefined || l1Origin === undefined))
     throw new L1OriginUndeterminedError(
       "listen needs the run's hub-oracle nonce and its recorded L1 origin; run up first",
     );
   const ports = servicePorts(run);
-  const kupo = `http://127.0.0.1:${run.kupoPort}`;
-  const ogmios = `http://127.0.0.1:${run.ogmiosPort}`;
   const contractManifest = existsSync(layout.contractManifest)
     ? layout.contractManifest
     : undefined;
@@ -100,13 +80,7 @@ export const nodeEnvironment = (input: {
     // Commands without a --run-state flag read it from here; the default is
     // relative to the node checkout, not this run.
     MIDGARD_RUN_STATE_PATH: layout.deploymentRunState,
-    // The history owner's own Ogmios and Kupo endpoints; the node reads and
-    // submits through the cardano-node socket (L1_NODE_* below).
-    L1_OGMIOS_KEY: ogmios,
-    L1_KUPO_KEY: kupo,
-    ...(historyGenesisPin === null
-      ? {}
-      : { L1_HISTORY_GENESIS_LOSSLESS_SHA256: historyGenesisPin }),
+    // The node reads and submits through the cardano-node socket.
     L1_NODE_SOCKET_PATH: layout.cardanoSocket,
     L1_NODE_CONFIG_PATH: layout.hostCardanoConfig,
     L1_NODE_TRANSPORT_BINARY_PATH: artifacts.transportBinary,

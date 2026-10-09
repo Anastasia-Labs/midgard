@@ -85,8 +85,6 @@ async function fixture() {
     NETWORK: "Preprod",
     MIDGARD_DEPLOYMENT_PROFILE: "preprod-testing",
     RUN_GENESIS_ON_STARTUP: "false",
-    L1_KUPO_KEY: "http://127.0.0.1:1442",
-    L1_OGMIOS_KEY: "http://127.0.0.1:1337",
     MIN_FEE_A: "10",
     MIN_FEE_B: "10",
     DA_THRESHOLD: "2",
@@ -181,18 +179,12 @@ it("permits measured profiles to be corrected before signing while binding the s
     first.intentDigest,
   );
 });
-it("rejects failover, wrong Compose ports and invalid wallet seeds before spending", async () => {
+it("rejects failover and invalid wallet seeds before spending", async () => {
   const value = await fixture();
   value.env.L1_PROVIDER_FAILOVER = "remote";
   await writeFile(value.config.envFile, value.envText());
   await expect(loadStackConfig(value.path)).rejects.toThrow("no failover");
   delete value.env.L1_PROVIDER_FAILOVER;
-  value.env.L1_KUPO_KEY = "http://127.0.0.1:9999";
-  await writeFile(value.config.envFile, value.envText());
-  await expect(loadStackConfig(value.path)).rejects.toThrow(
-    "Compose provider port",
-  );
-  value.env.L1_KUPO_KEY = "http://127.0.0.1:1442";
   value.env[value.config.wallets.user!.seedEnv] = "invalid wallet words";
   await writeFile(value.config.envFile, value.envText());
   await expect(loadStackConfig(value.path)).rejects.toThrow(

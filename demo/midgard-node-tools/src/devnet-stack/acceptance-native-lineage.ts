@@ -1,6 +1,6 @@
 import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
-import { readOgmiosBlockTransaction } from "midgard-node/l1-kupmios";
 
+import { readOgmiosBlockTransaction } from "../harness-kupmios.js";
 import type { AcceptanceNativePoint } from "./acceptance-native-boundary.js";
 import { canonicalOgmiosBlockDepth } from "./acceptance-native-canonical-depth.js";
 import { createAcceptanceNativeTransport } from "./acceptance-native-transport.js";

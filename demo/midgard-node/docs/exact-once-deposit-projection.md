@@ -164,8 +164,7 @@ Expose and alert on:
 
 - Ingestion and projection: `reconcileFollowerEvents` in
   `src/database/follower-events.ts`, run by the follower-change driver
-  (`src/l1-events/driver.ts`, sink in `src/services/l1-follower.ts`) and by the
-  history owner's recovery (`src/services/l1-follower.recovery.ts`).
+  (`src/l1-events/driver.ts`, sink in `src/services/l1-follower.ts`).
 - Admission identity: `src/database/l1-admission-identity.ts`.
 - Commit horizon: `commitEventHorizon` in
   `src/services/history-commit-window.ts`.

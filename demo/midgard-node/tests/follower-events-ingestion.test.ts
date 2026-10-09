@@ -1,6 +1,6 @@
 /**
  * The follower-change driver's Postgres sink (`reconcileFollowerEvents`,
- * N1) and the history owner's follower gating, on the node database: events
+ * N1), on the node database: events
  * the follower's own projection derives (a simulated chain on a SQLite
  * follower store) are ingested at a follower view written into the node
  * database's follower tables.
@@ -17,7 +17,7 @@ import {
   type ProjectedEvent,
 } from "@al-ft/midgard-l1-follower/events";
 import { SqlClient } from "@effect/sql";
-import { Effect, Ref } from "effect";
+import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -30,16 +30,11 @@ import {
   EVENT_IDENTITY_CONFLICT,
   type IngestionPlan,
 } from "../src/l1-events/driver.js";
-import type { HistoryOwnerChange } from "../src/services/event-history-owner.js";
 import {
   FollowerWriteFixture,
   withFollowerWrite,
 } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.globals.js";
-import {
-  ingestAtFollowerView,
-  repairWhenFollowerCaughtUp,
-} from "../src/services/l1-follower.recovery.js";
 import {
   admitFollowerKeys,
   rewindFollowerKey,
@@ -58,10 +53,6 @@ import {
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
-import {
-  followingAtTip,
-  runningFollower,
-} from "./readiness-l1-follower.fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const databases = testDatabases();
@@ -139,14 +130,6 @@ const ingest = (plan: IngestionPlan, cutoffMs = 0) =>
 const applied = (outcome: FollowerIngestionOutcome) => {
   if (outcome.kind !== "applied") throw new Error(`outcome ${outcome.kind}`);
   return outcome.ingestion;
-};
-
-/** The messages along an error's cause chain (the fixture gate wraps it). */
-const causes = (error: unknown): string => {
-  const messages: string[] = [];
-  for (let at: unknown = error; at instanceof Error; at = at.cause)
-    messages.push(at.message);
-  return messages.join(" <- ");
 };
 
 const eventRows = Effect.gen(function* () {
@@ -370,105 +353,5 @@ describe("follower event ingestion (Postgres)", () => {
     expect(result.stale).toEqual({ kind: "stale" });
     expect(result.rewound).toBeNull();
     expect(result.rows.deposits).toEqual([]);
-  });
-});
-
-describe("history owner follower gating", () => {
-  /** Only `after.head.slot` is read outside a Ready append. */
-  const change = (headSlot: number) =>
-    ({ after: { head: { slot: headSlot } } }) as unknown as HistoryOwnerChange;
-
-  const withFollower = (atTip: boolean, plan: IngestionPlan | undefined) =>
-    Effect.gen(function* () {
-      const globals = yield* Globals;
-      yield* Ref.set(globals.L1_FOLLOWER, {
-        ...runningFollower(followingAtTip({ atTip })),
-        planCurrent: () =>
-          Promise.resolve(
-            plan === undefined
-              ? { kind: "none" as const, detail: "no plan" }
-              : { kind: "ok" as const, plan },
-          ),
-      });
-    });
-
-  const ownerReconcile = (headSlot: number, repaired: Ref.Ref<number>) =>
-    withFollowerWrite(
-      ingestAtFollowerView({
-        change: change(headSlot),
-        repair: Ref.update(repaired, (count) => count + 1),
-        network: "Preprod",
-        slotToUnixTime,
-      }),
-    ).pipe(Effect.provideService(FollowerWriteFixture, true));
-
-  it("judges no orphan and ingests nothing until the follower is caught up", async () => {
-    const { early } = await projectedEvents();
-    const result = await run(
-      Effect.gen(function* () {
-        yield* resetApplicationTables;
-        const plan = yield* writeFollowerView(VIEW_SLOT, [early]);
-        yield* withFollower(false, plan);
-        const repaired = yield* Ref.make(0);
-        const outcome = yield* ownerReconcile(VIEW_SLOT, repaired);
-        yield* repairWhenFollowerCaughtUp(
-          Ref.update(repaired, (count) => count + 1),
-        );
-        return {
-          outcome,
-          repaired: yield* Ref.get(repaired),
-          rows: yield* eventRows,
-        };
-      }),
-    );
-    expect(result.outcome).toBeUndefined();
-    expect(result.repaired).toBe(0);
-    expect(result.rows.deposits).toEqual([]);
-  });
-
-  it("repairs, then ingests at the caught-up view with the cutoff at the journal head", async () => {
-    const { early, late } = await projectedEvents();
-    const result = await run(
-      Effect.gen(function* () {
-        yield* resetApplicationTables;
-        const plan = yield* writeFollowerView(VIEW_SLOT, [early, late]);
-        yield* withFollower(true, plan);
-        const repaired = yield* Ref.make(0);
-        // Head slot 5: cutoff min(100 s, 5 s) projects only the 1 s deposit.
-        const outcome = yield* ownerReconcile(5, repaired);
-        yield* repairWhenFollowerCaughtUp(
-          Ref.update(repaired, (count) => count + 1),
-        );
-        return {
-          outcome,
-          repaired: yield* Ref.get(repaired),
-          rows: yield* eventRows,
-        };
-      }),
-    );
-    expect(result.outcome).toBeUndefined();
-    expect(result.repaired).toBe(2);
-    expect(result.rows.deposits.map((row) => row.status)).toEqual([
-      "projected",
-      "awaiting",
-    ]);
-  });
-
-  it("fails a recovery that leaves an orphaned admission", async () => {
-    const { early } = await projectedEvents();
-    const failure = await run(
-      Effect.gen(function* () {
-        yield* resetApplicationTables;
-        applied(yield* ingest(yield* writeFollowerView(VIEW_SLOT, [early])));
-        yield* rewindFollowerKey(early);
-        yield* withFollower(true, yield* writeFollowerView(VIEW_SLOT + 1, []));
-        return yield* ownerReconcile(VIEW_SLOT, yield* Ref.make(0)).pipe(
-          Effect.flip,
-        );
-      }),
-    );
-    expect(causes(failure)).toContain(
-      "1 orphaned event admissions remain after repair",
-    );
   });
 });

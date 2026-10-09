@@ -1191,12 +1191,6 @@
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
-      "file": "demo/midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
-      "lines": 1015,
-      "reason": "makeEventHistoryOwner is the dominant indivisible declaration (952 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
       "file": "demo/midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
       "lines": 750,
       "reason": "midgardContractsFromDeploymentManifest is the dominant indivisible declaration (722 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
@@ -1395,30 +1389,6 @@
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
-      "file": "demo/midgard-node/tests/event-history-journal.test.ts",
-      "lines": 2217,
-      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/event-history-ledger-receipts.test.ts",
-      "lines": 718,
-      "reason": "Retained test registration \u201cowned accepted-ledger inverse receipts\u201d (223 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/event-history-ready-append.test.ts",
-      "lines": 1254,
-      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/event-history-recovery.test.ts",
-      "lines": 603,
-      "reason": "Retained test registration \u201ccanonical history recovery composition\u201d (457 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
       "file": "demo/midgard-node/tests/forced-transactions.test.ts",
       "lines": 936,
       "reason": "Retained test registration \u201cV1 forced transaction material\u201d (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
@@ -1431,12 +1401,6 @@
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
-      "file": "demo/midgard-node/tests/history-source-owner-retention.test.ts",
-      "lines": 628,
-      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
       "file": "demo/midgard-node/tests/initialization-emulator.test.ts",
       "lines": 739,
       "reason": "Retained test registration \u201cinitialization emulator\u201d (684 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
@@ -1446,72 +1410,6 @@
       "file": "demo/midgard-node/tests/l1-control-plane.test.ts",
       "lines": 1419,
       "reason": "Retained test registration \u201cL1 control-plane serialization\u201d (1397 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts",
-      "lines": 895,
-      "reason": "Retained test registration \u201creplays actual initialized lists and joins current external orders whose retained bodies predate activation\u201d (818 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-initialization-emulator.test.ts",
-      "lines": 682,
-      "reason": "Retained test registration \u201cbootstraps both histories from accepted atomic initialization and subsequent public admissions\u201d (614 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-initialization.test.ts",
-      "lines": 574,
-      "reason": "Retained test registration \u201cwhole-block history initialization replay\u201d (238 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-parent-lease-emulator.test.ts",
-      "lines": 587,
-      "reason": "Retained test registration \u201cfails the parent operation lease after accepted response loss while a later lease preserves and then reconciles the signed intent\u201d (544 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-projection-native-assets-emulator.test.ts",
-      "lines": 537,
-      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-raw-deposit-emulator.test.ts",
-      "lines": 562,
-      "reason": "Retained test registration \u201cpreserves actual inline and external Deposit raw map pair order and duplicates through continuation, capture and node conversion\u201d (482 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-raw-production-lifecycle-emulator.test.ts",
-      "lines": 758,
-      "reason": "Retained test registration \u201cpreserves public raw external events through real settlement, refund, payout and reclaim\u201d (719 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-signed-intent-continuation-emulator.test.ts",
-      "lines": 581,
-      "reason": "Retained test registration \u201cretains the original signed intent through an accepted queue pointer continuation before local confirmation\u201d (545 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-source-owner-emulator.test.ts",
-      "lines": 807,
-      "reason": "Retained test registration \u201cruns the default history owner through actual bootstrap, continuation, retirement and fresh restart intersection\u201d (742 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-source.test.ts",
-      "lines": 879,
-      "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/l1-event-history-streaming-production-lifecycle-emulator.test.ts",
-      "lines": 980,
-      "reason": "Retained test registration \u201cstreams public raw events through production reconciliation, native commitment, refund, payout and reclaim\u201d (939 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {

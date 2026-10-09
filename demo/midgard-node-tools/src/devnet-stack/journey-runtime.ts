@@ -10,7 +10,6 @@ import {
   requireSuccess,
 } from "./exec.js";
 import type { TestAsset } from "./funding.js";
-import { recordedHistoryGenesisPin } from "./history-pin.js";
 import { type UserRole, walletInfo } from "./identities.js";
 import { Journal } from "./journal.js";
 import {
@@ -165,7 +164,6 @@ export class JourneyRuntime {
         ...nodeEnvironment({
           ...this.context,
           oneShot: this.oneShot,
-          historyGenesisPin: recordedHistoryGenesisPin(this.context.layout),
           role: "command",
         }),
         ...(request.user === undefined

@@ -37,49 +37,16 @@ export const challengeRelevantHeader = (
  * Journals recovery still reads, irrespective of age. Unfinished and abandoned
  * journals retain their same-base siblings (including other incarnations of a
  * non-root node) and the descendants displacement walks, plus those journals'
- * replay bases. UNION makes cycles finite. Retained native recovery plans keep
- * their primary, member and displaced headers plus immediate replay bases in
- * both states: "applied" alone is no retirement proof. Prepared plans seed the
- * same dependency closure while recovery owns the closed history gate; applied
- * receipts do not retain future finalized descendants forever. An undecodable
- * plan fails the batch closed.
+ * replay bases. UNION makes cycles finite.
  */
 export const recoveryRelevantJournal = (
   sql: SqlClient.SqlClient,
   headerColumn: string,
-  deploymentIdentityDigest?: Buffer,
 ) => sql`${sql(headerColumn)} IN (
-  WITH RECURSIVE retained_plans AS (
-    SELECT header_hash, state, intent::jsonb AS intent FROM event_history_recovery_plans
-    WHERE ${deploymentIdentityDigest === undefined ? sql`TRUE` : sql`manifest_id = ${deploymentIdentityDigest}`}
-  ), plan_intents AS (
-    SELECT state, intent FROM retained_plans
-    UNION ALL
-    SELECT state, intent -> 'originalIntent' FROM retained_plans
-    WHERE intent ->> 'domain' = 'midgard-history-displacement-compensation-intent-v1'
-  ), plan_headers AS (
-    SELECT header_hash, state FROM retained_plans
-  UNION SELECT decode(intent ->> 'headerHash', 'hex'), state FROM plan_intents
-    WHERE intent ->> 'headerHash' ~ '^[0-9a-f]{56}$'
-  UNION SELECT decode(member ->> 'headerHash', 'hex'), plan.state
-    FROM plan_intents AS plan,
-      jsonb_array_elements(
-        COALESCE(plan.intent -> 'members', '[]'::jsonb) ||
-        COALESCE(plan.intent -> 'suffixMembers', '[]'::jsonb)) AS member
-    WHERE member ->> 'headerHash' ~ '^[0-9a-f]{56}$'
-  UNION SELECT decode(named.header_hex, 'hex'), plan.state
-    FROM plan_intents AS plan,
-      jsonb_array_elements_text(
-        COALESCE(plan.intent -> 'displacedHeaderHashes', '[]'::jsonb) ||
-        COALESCE(plan.intent -> 'prefixHeaderHashes', '[]'::jsonb) ||
-        COALESCE(plan.intent -> 'suffixHeaderHashes', '[]'::jsonb))
-        AS named(header_hex)
-    WHERE named.header_hex ~ '^[0-9a-f]{56}$'
-  ), recovery_seeds AS (
+  WITH RECURSIVE recovery_seeds AS (
     SELECT header_hash, base_tail_header_hash, base_tail_out_ref, base_utxos_root
     FROM pending_block_finalizations
-    WHERE status <> 'locally_applied' OR header_hash IN (
-      SELECT header_hash FROM plan_headers WHERE state = 'prepared')
+    WHERE status <> 'locally_applied'
   ), dependent AS (
     SELECT sibling.header_hash, sibling.base_tail_header_hash
     FROM pending_block_finalizations AS sibling
@@ -95,11 +62,7 @@ export const recoveryRelevantJournal = (
     JOIN dependent AS parent ON child.base_tail_header_hash = parent.header_hash
   )
   SELECT header_hash FROM dependent
-  UNION SELECT base_tail_header_hash FROM dependent
-  UNION SELECT header_hash FROM plan_headers
-  UNION SELECT journal.base_tail_header_hash
-    FROM pending_block_finalizations AS journal
-    JOIN plan_headers AS plan ON journal.header_hash = plan.header_hash)`;
+  UNION SELECT base_tail_header_hash FROM dependent)`;
 
 /**
  * The SQL condition true when the journal whose header is `headerColumn` has

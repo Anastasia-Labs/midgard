@@ -255,7 +255,7 @@ export const processMpfs = (
       )
         return yield* Effect.fail(
           new DatabaseError({
-            table: "event_history_cursor",
+            table: MempoolDB.tableName,
             message:
               "Fixed authenticated block window does not cover the selected transaction timestamps",
             cause: `fixed_end=${fixedEnd}`,

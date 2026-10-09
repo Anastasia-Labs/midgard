@@ -7,7 +7,7 @@ import {
   ogmiosJsonRpcAnswerCode,
   openOgmiosSession,
   type WebSocketFactory,
-} from "midgard-node/l1-kupmios";
+} from "../harness-kupmios.js";
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 

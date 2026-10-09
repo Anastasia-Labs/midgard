@@ -33,7 +33,6 @@ const bytes = (n: number, width = 32) => Buffer.alloc(width, n);
 const sha = (value: Uint8Array) => createHash("sha256").update(value).digest();
 const address =
   "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58";
-const binding = bytes(71);
 const eventKey = bytes(84);
 /** The deposit's admission output: its L1 tx (`deposit_l1_tx_hash`), index 0. */
 const originOutRef = Buffer.concat([bytes(73), Buffer.alloc(2)]);
@@ -204,13 +203,6 @@ const fixture = async () => {
   await run(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // This authority-boundary fixture does not fabricate an applied-L1 receipt.
-      yield* sql`INSERT INTO event_history_cursor (
-      binding_digest, manifest_id, origin_receipt, origin_receipt_digest,
-      anchor_hash, anchor_slot, anchor_height, anchor_snapshot_digest,
-      head_hash, head_slot, head_height, snapshot_digest, revision, addresses
-    ) VALUES (${binding}, ${bytes(78)}, 'explicit SQL model', ${bytes(81)},
-      ${bytes(82)}, 1, 1, ${bytes(83)}, ${bytes(82)}, 1, 1, ${bytes(83)}, 0, '[]'::jsonb)`;
       // The explicit SQL model's follower admission of the deposit.
       yield* sql`INSERT INTO l1_event_keys (kind, key, origin_outref, first_canonical_slot)
       VALUES ('deposit', ${eventKey}, ${originOutRef}, 1)`;
@@ -243,12 +235,8 @@ const snapshot = () =>
       const journal = Option.getOrThrow(yield* Pending.retrieveActive());
       const deposits =
         yield* sql`SELECT * FROM deposits_utxos ORDER BY event_id`;
-      const incarnations =
-        yield* sql`SELECT * FROM event_history_incarnations ORDER BY incarnation_id`;
-      const cursor =
-        yield* sql`SELECT * FROM event_history_cursor ORDER BY binding_digest`;
-      const authority = yield* sql`SELECT * FROM event_history_authority`;
-      return { journal, deposits, incarnations, cursor, authority };
+      const keys = yield* sql`SELECT * FROM l1_event_keys ORDER BY kind, key`;
+      return { journal, deposits, keys };
     }),
   );
 const nativeBoundary = () => {

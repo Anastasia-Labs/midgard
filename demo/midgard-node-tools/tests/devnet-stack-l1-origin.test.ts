@@ -100,7 +100,6 @@ describe("the devnet node environment", () => {
       artifacts,
       oneShot,
       l1Origin: recordedL1Origin(layout, oneShot),
-      historyGenesisPin: "ab".repeat(32),
       role: "listen",
     });
     expect(env.L1_ORIGIN).toBe(`41.${"cd".repeat(32)}`);
@@ -141,7 +140,6 @@ describe("the devnet node environment", () => {
         identities,
         artifacts,
         oneShot,
-        historyGenesisPin: "ab".repeat(32),
         role: "listen",
       }),
     ).toThrow(L1OriginUndeterminedError);
@@ -166,7 +164,6 @@ describe("the devnet node environment", () => {
         artifacts: { ...artifacts, transportBinary: "chain-sync" },
         oneShot,
         l1Origin: origin,
-        historyGenesisPin: "ab".repeat(32),
         role: "listen",
       }),
     ).toThrow(NodeFollowerUnconfiguredError);

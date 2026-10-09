@@ -71,17 +71,22 @@ export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
  * seeded by `COPY` or inside a `DO` block would not be restored. Dollar-quoted
  * bodies are skipped, so an INSERT inside a trigger or function body (which
  * runs when the function does, not at migration time) is never replayed. A
- * top-level `INSERT ... SELECT` from application tables is replayed against the
- * emptied tables and adds nothing.
+ * top-level `INSERT ... SELECT` is a one-time carry-over of an existing
+ * database's rows, not a seed row: against the emptied tables it adds nothing,
+ * and the table it reads may since have been dropped by a later migration, so
+ * it is never replayed.
  */
 const MIGRATION_INSERT_STATEMENT = /^\s*INSERT\s+INTO\b[^;]*;/gim;
 const DOLLAR_QUOTED_BODY = /\$([A-Za-z_][A-Za-z0-9_]*)?\$[\s\S]*?\$\1\$/g;
+const CARRY_OVER = /\bSELECT\b/iu;
 
 const migrationSeedRowsSql: readonly string[] = MIGRATIONS.flatMap(
   (migration) =>
-    migration.sql
-      .replace(DOLLAR_QUOTED_BODY, "")
-      .match(MIGRATION_INSERT_STATEMENT) ?? [],
+    (
+      migration.sql
+        .replace(DOLLAR_QUOTED_BODY, "")
+        .match(MIGRATION_INSERT_STATEMENT) ?? []
+    ).filter((statement) => !CARRY_OVER.test(statement)),
 );
 
 /**

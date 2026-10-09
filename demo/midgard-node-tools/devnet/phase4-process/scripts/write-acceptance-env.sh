@@ -51,10 +51,9 @@ const values = {
   ...walletValues,
   ...runValues,
   NETWORK: "Custom",
-  // The history owner's own Ogmios and Kupo endpoints; each node reads and
-  // submits through the run's cardano-node socket (followerInputs below).
-  L1_OGMIOS_KEY: `http://127.0.0.1:${requiredRun("MIDGARD_PHASE4_OGMIOS_PORT")}`,
-  L1_KUPO_KEY: `http://127.0.0.1:${requiredRun("MIDGARD_PHASE4_KUPO_PORT")}`,
+  // Each node reads and submits through the run's cardano-node socket
+  // (followerInputs below); the run's Ogmios and Kupo ports stay in run.env
+  // for the harness.
   POSTGRES_HOST: "127.0.0.1",
   POSTGRES_PORT: requiredRun("MIDGARD_PHASE4_POSTGRES_PORT"),
   POSTGRES_USER: requiredRun("MIDGARD_PHASE4_POSTGRES_USER"),

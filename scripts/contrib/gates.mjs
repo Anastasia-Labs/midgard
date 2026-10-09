@@ -56,7 +56,7 @@ export const GATES = {
       [
         "tests/commit-worker-failure-lease-classification.test.ts",
         "tests/validation-worker-pool.test.ts",
-        "tests/l1-event-history-parent-lease-emulator.test.ts",
+        "tests/commit-parent-lease-emulator.test.ts",
       ],
     ],
     ["@al-ft/midgard-fault-proofs", ["tests/workflow-runtime.test.ts"]],
@@ -71,7 +71,6 @@ export const GATES = {
       [
         "tests/provider-retry.test.ts",
         "tests/startup-protocol-status-retry.test.ts",
-        "tests/history-source-owner-streaming.test.ts",
       ],
     ],
     [

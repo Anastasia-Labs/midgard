@@ -422,7 +422,6 @@ describe("nodeEnvironment", () => {
           artifacts,
           oneShot: { txHash: "00".repeat(32), outputIndex: 0 },
           l1Origin: { slot: 1, blockHash: "11".repeat(32) },
-          historyGenesisPin: "ab".repeat(32),
           role,
         }).MIDGARD_RUN_STATE_PATH,
       ).toBe(layout.deploymentRunState);

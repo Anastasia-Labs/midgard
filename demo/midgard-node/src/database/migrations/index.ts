@@ -20,6 +20,7 @@ import landedBlocksOwnRemovedSql from "./sql/0018_landed_blocks_own_removed.sql"
 import txRejectionCausesSql from "./sql/0019_tx_rejection_causes.sql";
 import dropQueueTerminalObserverSql from "./sql/0020_drop_queue_terminal_observer.sql";
 import followerWriteGateSql from "./sql/0021_follower_write_gate.sql";
+import dropEventHistoryControlPlaneSql from "./sql/0022_drop_event_history_control_plane.sql";
 
 export type Migration = {
   readonly version: number;
@@ -177,6 +178,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: followerWriteGateSql,
     transactional: true,
   },
+  {
+    version: 22,
+    name: "drop_event_history_control_plane",
+    checksumSha256: sha256Hex(dropEventHistoryControlPlaneSql),
+    sql: dropEventHistoryControlPlaneSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -250,16 +258,6 @@ export const APPLICATION_TABLE_NAMES = [
   "deposit_submission_attempts",
   "event_history_submissions",
   "event_history_submission_inputs",
-  "event_history_authority",
-  "event_history_replay_receipts",
-  "event_history_cursor",
-  "event_history_block_applications",
-  "event_history_live_outputs",
-  "event_history_incarnations",
-  "event_history_l2_ledger_receipts",
-  "event_history_l2_ledger_receipt_settlements",
-  "event_history_l2_ledger_receipt_rejections",
-  "event_history_recovery_plans",
   "follower_event_ingestion",
   "node_landed_blocks",
   "node_confirmed_ledger_frontier",
@@ -310,19 +308,10 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_da_payload_announcements_retry",
   "idx_deposit_submission_attempts_deposit_event_id",
   "idx_deposit_submission_attempts_status_submitted_at",
-  "uniq_event_history_canonical_block",
-  "uniq_event_history_canonical_height",
-  "uniq_event_history_incarnation_event",
-  "uniq_event_history_canonical_event",
-  "uniq_event_history_canonical_key",
-  "idx_event_history_incarnations_orphans",
   "idx_deposits_utxos_l1_admission",
   "idx_withdrawal_utxos_l1_admission",
   "idx_withdrawal_utxos_l1_admission_tx",
-  "event_history_l2_ledger_receipts_unreversed",
-  "event_history_recovery_plans_prepared",
   "uniq_node_landed_blocks_processed_parent",
-  "idx_receipt_settlements_settled_by",
   "idx_mempool_included_by",
   "idx_processed_mempool_included_by",
   "idx_node_confirmed_merges_merge_slot",

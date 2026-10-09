@@ -122,7 +122,8 @@ Each journey retains its own compiler/artifact/parameter/manifest binding; emula
 manifest identities are not a live deployment approval.
 
 Exact recent commands, executed from each immutable checkpoint's
-`demo/midgard-node` with the pinned pnpm CLI:
+`demo/midgard-node` with the pinned pnpm CLI. Every event-history test file
+they name was since deleted. <!-- doc-links:historical -->
 
 ```text
 pnpm exec tsc --noEmit

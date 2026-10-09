@@ -56,8 +56,10 @@ export class MergeProducerPermitUnavailable extends Data.TaggedError(
  * unregistered (its writes still pass `withFollowerWrite`'s fixture gate).
  *
  * A registration that refuses before the work starts fails with
- * `MergeProducerPermitUnavailable`. Once the work ran, its own failure wins,
- * with its type.
+ * `MergeProducerPermitUnavailable`. Once the work ran, its outcome is the
+ * result, its failure with its own type: the registration runs the work under
+ * `Effect.either` and its release cannot fail, so it has no failure of its own
+ * after the work ran.
  */
 const withMergeHistoryProducer = <A, E, R>(
   work: Effect.Effect<A, E, R>,
@@ -95,8 +97,6 @@ const withMergeHistoryProducer = <A, E, R>(
     }
     if (Either.isLeft(outcome.value))
       return yield* Effect.fail(outcome.value.left);
-    if (Either.isLeft(registration))
-      return yield* Effect.fail(registration.left);
     return outcome.value.right;
   });
 

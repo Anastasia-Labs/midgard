@@ -42,10 +42,6 @@ import {
  * variables.
  */
 const makeConfig = Effect.gen(function* () {
-  // Read only for the event-history owner's own transport (listen) and the
-  // history-genesis-pin command; no other node path reads Kupo or Ogmios.
-  const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
-  const kupoKey = yield* Config.string("L1_KUPO_KEY");
   const nativeLedgerValues = yield* Config.all(
     Object.fromEntries(
       NATIVE_LEDGER_SETTING_NAMES.map((name) => [
@@ -60,9 +56,6 @@ const makeConfig = Effect.gen(function* () {
   const nativeLedger = yield* Effect.try(() =>
     parseNativeLedgerSettings(nativeLedgerValues),
   );
-  const historyGenesis = yield* Config.string(
-    "L1_HISTORY_GENESIS_LOSSLESS_SHA256",
-  ).pipe(Config.withDefault(""));
   const operatorSeedPhrase = yield* requiredSeedPhrase(
     "L1_OPERATOR_SEED_PHRASE",
   );
@@ -892,10 +885,7 @@ const makeConfig = Effect.gen(function* () {
     L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: l1ProviderPreflightTimeoutMs,
     L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: l1RecentTxVisibilityTimeoutMs,
     L1_RECENT_TX_404_MAX_DELAY_MS: l1RecentTx404MaxDelayMs,
-    L1_OGMIOS_KEY: ogmiosKey,
-    L1_KUPO_KEY: kupoKey,
     L1_NATIVE_LEDGER: nativeLedger,
-    L1_HISTORY_GENESIS_LOSSLESS_SHA256: historyGenesis,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     L1_SETTLEMENT_SEED_PHRASE: settlementSeedPhrase,

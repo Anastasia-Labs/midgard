@@ -10,7 +10,6 @@ import {
 import { parseAddressArgument } from "./commands/command-utils.js";
 import * as DaBondCommand from "./commands/da-bond.js";
 import * as DaBondFiles from "./commands/da-bond-files.js";
-import * as HistoryGenesisPinCommand from "./commands/history-genesis-pin.js";
 import * as L1ProviderPreflightCommand from "./commands/l1-provider-preflight.js";
 import * as L1UtxosCommand from "./commands/l1-utxos.js";
 import { runListen } from "./commands/listen.cli-runtime.js";
@@ -190,23 +189,6 @@ program
       writeJson(await L1UtxosCommand.fetchAddressUtxos({ address, network }));
     } catch (error) {
       failCli("l1-utxos", error);
-    }
-  });
-
-program
-  .command("history-genesis-pin")
-  .description(
-    "Print the Shelley genesis pin of the chain Ogmios serves, for the operator to approve as L1_HISTORY_GENESIS_LOSSLESS_SHA256",
-  )
-  .option(
-    "--ogmios-url <url>",
-    "Override Ogmios URL; defaults to L1_OGMIOS_KEY",
-  )
-  .action(async (options: { ogmiosUrl?: string }) => {
-    try {
-      writeJson(await HistoryGenesisPinCommand.runHistoryGenesisPin(options));
-    } catch (error) {
-      failCli("history-genesis-pin", error);
     }
   });
 

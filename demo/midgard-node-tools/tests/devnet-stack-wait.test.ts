@@ -92,11 +92,6 @@ const context = (): DeployContext => {
   };
   const layout = makeLayout(dir);
   mkdirSync(layout.state, { recursive: true });
-  new Journal(layout.journal).set("historyGenesisPin", {
-    algorithm: "ogmios-shelley-result-lossless-v1",
-    sha256: "ab".repeat(32),
-    recordedAt: "2026-09-30T00:00:00.000Z",
-  });
   new Journal(layout.journal).set("l1Origin", {
     origin: { slot: 1, blockHash: "11".repeat(32) },
     nonceTxHash: "00".repeat(32),
