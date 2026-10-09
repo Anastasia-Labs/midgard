@@ -207,6 +207,14 @@ docs/agents/required-checks.md is generated from this registry.
 - Runs on: every change
 - Mode: runs in the pre-push hook
 
+### `registry-paths`
+
+Registries name only files that exist.
+
+- Command: `node scripts/ci/check-registry-paths.mjs`
+- Runs on: every change
+- Mode: runs in the pre-push hook
+
 ### `repo-tooling-tests`
 
 Repository tooling self-tests (the checks that prove the other checks can fail).
@@ -852,7 +860,6 @@ Transaction preparation node acceptance lane.
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-node/src/fibers/**`
   - `demo/midgard-node/src/workers/**`
-  - `demo/midgard-node/src/utils/commit-submission*.ts`
   - `demo/midgard-node-tools/src/**`
 - Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
 
@@ -866,7 +873,6 @@ Transaction preparation emulator acceptance lane.
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-node/src/fibers/**`
   - `demo/midgard-node/src/workers/**`
-  - `demo/midgard-node/src/utils/commit-submission*.ts`
   - `demo/midgard-node-tools/src/**`
 - Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
 
@@ -1051,7 +1057,6 @@ Transaction preparation sdk acceptance lane.
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-node/src/fibers/**`
   - `demo/midgard-node/src/workers/**`
-  - `demo/midgard-node/src/utils/commit-submission*.ts`
   - `demo/midgard-node-tools/src/**`
 - Needs: `node-modules`, `blueprint`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally

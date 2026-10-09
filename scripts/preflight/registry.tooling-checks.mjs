@@ -88,7 +88,6 @@ export const independentChecks = () => [
       "demo/midgard-sdk/src/**",
       "demo/midgard-node/src/fibers/**",
       "demo/midgard-node/src/workers/**",
-      "demo/midgard-node/src/utils/commit-submission*.ts",
       "demo/midgard-node-tools/src/**",
     ],
     capabilities: [
@@ -233,6 +232,16 @@ export const toolingChecks = (root) => [
     display: "node scripts/preflight.mjs --check-docs",
     fix: "node scripts/preflight.mjs --write-docs",
     plan: () => [step(node("scripts/preflight.mjs", "--check-docs"))],
+  },
+  {
+    // Any deletion or rename can leave a registry naming nothing, so it runs
+    // on every push; it reads files only and takes about two seconds.
+    id: "registry-paths",
+    title: "Registries name only files that exist",
+    always: true,
+    prePush: true,
+    display: "node scripts/ci/check-registry-paths.mjs",
+    plan: () => [step(node("scripts/ci/check-registry-paths.mjs"))],
   },
   {
     id: "repo-tooling-tests",

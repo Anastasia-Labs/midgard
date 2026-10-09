@@ -63,6 +63,9 @@ jobs:
       - name: Check the generated required-checks list
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --check-docs
+      - name: Check registries name only existing files
+        if: ${{ !cancelled() }}
+        run: node scripts/ci/check-registry-paths.mjs
       - name: Check deterministic contributor build guards
         if: ${{ !cancelled() }}
         run: node scripts/contrib/enroll-builds.mjs
