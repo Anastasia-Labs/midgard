@@ -53,6 +53,7 @@
     "tests/commit-da-prefix-accounting.test.ts": 3.2,
     "tests/commit-da-prefix-sizing.test.ts": 8.8,
     "tests/commit-end-time.test.ts": 3.6,
+    "tests/commit-event-depth.test.ts": 5.7,
     "tests/commit-hold-budget.test.ts": 3,
     "tests/commit-mempool-decode.test.ts": 3.1,
     "tests/commit-recovery-planner.test.ts": 2,
