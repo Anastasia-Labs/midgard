@@ -336,7 +336,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/header-classifier.test.ts",
-    "max": 531,
+    "max": 520,
     "reason": "Retained test registration “production authenticated-header classifier V1” (468 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DUPDEL (-23): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
@@ -1136,7 +1136,7 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 538,
+    "max": 543,
     "reason": "Retained test registration “midgard contracts registry” (486 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
