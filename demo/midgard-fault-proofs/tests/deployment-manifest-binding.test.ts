@@ -42,6 +42,10 @@ import {
   bindFraudProofTerminalDeployment,
   bindFraudProofWorkflowDeployment,
 } from "../src/workflow/deployment-manifest-binding.js";
+import {
+  RELEASE_L1_FINALITY_POLICY,
+  validateVerifiedFraudProofReleaseFinalityPolicy,
+} from "../src/workflow/release-finality-policy.js";
 
 const blueprintJson = "{}";
 const script = {
@@ -403,4 +407,64 @@ it("binds completed observation metadata without admitting an executable thread 
     "releaseEconomics",
     "releaseFinality",
   ]);
+});
+
+// Workflow journals record the release identity and recovery compares it
+// whole against the watcher's verified deployment authority, so a manifest
+// field outside the release policy must never reach it. The dispute binding
+// derives its release identity through the same `releasePolicies`.
+describe("release finality identity", () => {
+  it("binds every workflow to the rollback fields alone, never the manifest's commit-event depth", async () => {
+    const current = fixture();
+    expect(current.manifest.l1Finality).toHaveProperty("commitEventDepth");
+    const bindings = [
+      await current.bind(),
+      await bindFraudProofTerminalDeployment({
+        manifest: current.manifest,
+        blueprintJson,
+        deploymentInfo: current.deploymentInfo,
+        category: "doubleSpend",
+        headerHash: "99".repeat(28),
+        proverCredential: "aa".repeat(28),
+      }),
+    ];
+    for (const { releaseFinality } of bindings) {
+      expect(releaseFinality.policy).toStrictEqual(RELEASE_L1_FINALITY_POLICY);
+      expect(
+        validateVerifiedFraudProofReleaseFinalityPolicy(releaseFinality),
+      ).toStrictEqual(releaseFinality);
+    }
+  });
+
+  it("canonicalizes a release identity to the digest-bound fields, dropping a carried commit-event depth", () => {
+    const current = fixture();
+    const releaseFinality = {
+      schemaVersion: "midgard-fraud-proof-release-finality-policy-v1" as const,
+      deploymentIdentityDigest: current.manifest.manifestId,
+      blueprintHash: current.manifest.artifacts.blueprintHash,
+      policyDigest: createHash("sha256")
+        .update(
+          JSON.stringify({
+            automaticRecoveryMaxDepth:
+              RELEASE_L1_FINALITY_POLICY.automaticRecoveryMaxDepth,
+            confirmationDepth: RELEASE_L1_FINALITY_POLICY.confirmationDepth,
+            deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY.deepRollbackPolicy,
+          }),
+        )
+        .digest("hex"),
+      policy: RELEASE_L1_FINALITY_POLICY,
+    };
+    expect(
+      validateVerifiedFraudProofReleaseFinalityPolicy({
+        ...releaseFinality,
+        policy: { ...current.manifest.l1Finality },
+      }),
+    ).toStrictEqual(releaseFinality);
+    expect(() =>
+      validateVerifiedFraudProofReleaseFinalityPolicy({
+        ...releaseFinality,
+        policyDigest: "00".repeat(32),
+      }),
+    ).toThrow("release finality policy digest mismatch");
+  });
 });
