@@ -49,7 +49,7 @@ import {
   runNodeDatabaseEffect,
 } from "./deposit-flow-emulator-shared.make-fixture.js";
 import { stripPlutusV3WitnessByHash } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
-import { withEmulatorStateQueue } from "./helpers/landed-state-queue.js";
+import { withEmulatorChain } from "./helpers/emulator-l1-follower.js";
 
 export const withEmulatorExtraneousScriptRetry = async <A>(
   lucid: LucidEvolution,
@@ -120,7 +120,7 @@ export const runBlockConfirmation = (
           ),
         ),
     ).pipe(
-      withEmulatorStateQueue(lucidService.api, contracts.stateQueue),
+      withEmulatorChain(lucidService.api),
       (program) =>
         // As the confirmation fiber runs it: at the driver's applied view.
         production === undefined ? program : runAtFollowerView(program),

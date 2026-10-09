@@ -74,8 +74,9 @@ const followNextBlock = async (h: Lifecycle) => {
 };
 
 /**
- * The horizon lag d (U3) through the production owner and the follower
- * stand-in (`emulator-l1-follower.ts`, one block per synced tip). Honest: a
+ * The horizon lag d (U3) through the production owner and the node's
+ * follower store (`follower-emulator.host.ts`, one follower block per
+ * emulator block). Honest: a
  * deposit commit built with d = 1 lands, its end at the follower block one
  * below the covered tip. Adversarial: an end above that lagged cap is
  * refused by the final recheck before submission

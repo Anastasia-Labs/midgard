@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardForcedTxCanonical,
@@ -353,10 +355,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
           ForcedTransactionsDB.Status.Awaiting,
       };
       await runNodeDatabaseEffect(
-        insertForcedEntriesWithOrders(
-          [forcedEntry],
-          fixture.operatorLucid.currentSlot(),
-        ),
+        insertForcedEntriesWithOrders([forcedEntry], fixture.operatorLucid),
       );
 
       // Both events sit inside the worker's retrieval window and its

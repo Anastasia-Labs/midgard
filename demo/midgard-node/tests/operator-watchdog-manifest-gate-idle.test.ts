@@ -7,6 +7,8 @@
  * cadence and, while the reason stays raised, ticks again by that retry rather
  * than at the end of a long wait.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import { SqlClient } from "@effect/sql";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { type Context, Effect, Layer, Ref } from "effect";

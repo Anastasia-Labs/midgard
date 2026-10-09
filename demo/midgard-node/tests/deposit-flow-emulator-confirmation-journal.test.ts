@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

@@ -6,15 +6,21 @@
  */
 import { afterAll, expect } from "vitest";
 
-import { installFollowerEmulator } from "./follower-emulator.js";
+import {
+  type FollowerEmulatorUse,
+  installFollowerEmulator,
+} from "./follower-emulator.js";
 
 const installation = installFollowerEmulator();
 
 afterAll(async () => {
-  const uses = await Promise.all(
-    installation.hosts().map((host) => host.use()),
-  );
-  await installation.restore();
+  // One emulator at a time: each use moves the store to its chain.
+  const uses: FollowerEmulatorUse[] = [];
+  try {
+    for (const host of installation.hosts()) uses.push(await host.use());
+  } finally {
+    await installation.restore();
+  }
   const submitted = uses.flatMap(({ submitted }) => submitted);
   const confirmed = uses.flatMap(({ confirmed }) => confirmed);
   const stored = uses.flatMap(({ stored }) => stored);

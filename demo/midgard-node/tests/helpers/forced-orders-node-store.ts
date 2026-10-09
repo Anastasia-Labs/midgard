@@ -25,6 +25,7 @@ import {
 import type { FollowerChange } from "../../src/l1-events/driver.js";
 import { testDatabaseName } from "../test-env.js";
 import { provideDatabaseLayers } from "../utils.js";
+import { closeFollowerHost } from "./follower-emulator.host.js";
 
 /** Runs a node database effect; a layer that fails to build is a defect. */
 export const runDatabase: RunDatabase = (effect) =>
@@ -43,12 +44,17 @@ const nodeDatabaseUrl = (): string => {
   return `postgresql://${env.POSTGRES_USER ?? "postgres"}:${env.POSTGRES_PASSWORD ?? "postgres"}@${env.POSTGRES_HOST ?? "127.0.0.1"}:${env.POSTGRES_PORT ?? "5433"}/${testDatabaseName()}`;
 };
 
-/** A started follower store with `projections`, in the node's database. */
+/**
+ * A started follower store with `projections`, in the node's database. It
+ * takes the writer lease from the emulator follower host (which resets on
+ * its next sync), as one writer replaces another.
+ */
 export const openNodeFollowerStore = async (
   projections: readonly FollowerProjection[],
   securityParameter: number,
   extra: Partial<FactStoreOptions> = {},
 ): Promise<FactStore> => {
+  await closeFollowerHost();
   const store = openPostgresFactStore({
     ...projectionStoreOptions(
       projections,

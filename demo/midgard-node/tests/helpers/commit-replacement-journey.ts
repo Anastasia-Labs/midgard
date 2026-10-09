@@ -1,6 +1,6 @@
 /**
  * One production emulator lifecycle (the follower-change driver over the
- * follower stand-in) with the node services of
+ * node's follower store) with the node services of
  * `commit-replacement-state-queue.ts`, and the journey steps the
  * state-queue replacement journeys share: commits through the production
  * worker with the follower's journal (landed, or lost before any block),
@@ -73,7 +73,7 @@ export const openCommitJourney = async () => {
         targetEndTimeMs: Date.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
       await synchronizeBounded(h);
-      await node.mirrorTracked();
+      await node.followTip();
       const output = await runCommitWorker(
         fixture.contracts,
         lucidService,

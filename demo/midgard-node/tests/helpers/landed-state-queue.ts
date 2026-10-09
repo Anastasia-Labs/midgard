@@ -5,15 +5,9 @@
  * them exactly as it reads a followed chain's, so the node's code under
  * test is the production read.
  *
- * - `seedLandedStateQueue` replaces the outputs at the queue address with
- *   `utxos` (stub fixtures).
- * - `mirrorEmulatorStateQueue` does so from an emulator's live outputs at the
- *   address, at the emulator's slot; `followEmulatorStateQueue` repeats it in
- *   the background whenever the emulator moved, standing in for a follower
- *   that follows the emulator, and `withEmulatorStateQueue` runs an effect
- *   under it.
- * - `emulatorStateQueueSnapshot` / `emulatorStateQueueUTxOs` mirror once and
- *   read P1, for tests asserting on the queue.
+ * `seedLandedStateQueue` replaces the outputs at the queue address with
+ * `utxos` (stub fixtures). An emulator suite's follower follows the
+ * emulator's chain instead (`emulator-l1-follower.ts`).
  */
 import {
   type OutputSummary,
@@ -21,20 +15,11 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import { insertSeedRowsIn } from "@al-ft/midgard-l1-follower/testing";
 import { SqlClient } from "@effect/sql";
-import {
-  getAddressDetails,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
-import { Duration, Effect, Schedule } from "effect";
+import { getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import { followerSqlTx } from "../../src/database/follower-schema.js";
-import {
-  landedStateQueueSnapshot,
-  landedStateQueueUTxOs,
-  type StateQueueContract,
-  type StateQueueSnapshotReason,
-} from "../../src/services/landed-state-queue.js";
+import { type StateQueueContract } from "../../src/services/landed-state-queue.js";
 import { FOLLOWER_GENERATION, followerBlockHash } from "./follower-view.js";
 
 /** A Lucid UTxO's output as the follower stores it (no reference script). */
@@ -155,90 +140,3 @@ export const seedLandedStateQueue = (
   utxos: readonly UTxO[],
   slot = 1,
 ) => writeAddressFacts(stateQueue.spendingScriptAddress, utxos, slot);
-
-/** The emulator's live outputs at the queue address, with the slot it is at. */
-const emulatorQueueOutputs = (
-  lucid: LucidEvolution,
-  stateQueue: Pick<StateQueueContract, "spendingScriptAddress">,
-) =>
-  Effect.map(
-    Effect.promise(() => lucid.utxosAt(stateQueue.spendingScriptAddress)),
-    (utxos) => ({ utxos, slot: lucid.currentSlot() }),
-  );
-
-/** The landed queue's facts from the emulator's live outputs at the queue address. */
-export const mirrorEmulatorStateQueue = (
-  lucid: LucidEvolution,
-  stateQueue: Pick<StateQueueContract, "spendingScriptAddress">,
-) =>
-  Effect.flatMap(emulatorQueueOutputs(lucid, stateQueue), ({ utxos, slot }) =>
-    writeAddressFacts(stateQueue.spendingScriptAddress, utxos, slot),
-  );
-
-/**
- * `mirrorEmulatorStateQueue` now, then every `interval` the emulator moved,
- * for as long as the caller's scope is open: the emulator's follower, as
- * the node's fibers see it.
- */
-export const followEmulatorStateQueue = (
-  lucid: LucidEvolution,
-  stateQueue: Pick<StateQueueContract, "spendingScriptAddress">,
-  interval: Duration.DurationInput = Duration.millis(100),
-) =>
-  Effect.gen(function* () {
-    let last = "";
-    const step = Effect.flatMap(
-      emulatorQueueOutputs(lucid, stateQueue),
-      ({ utxos, slot }) => {
-        const key = `${slot.toString()}:${utxos
-          .map((utxo) => `${utxo.txHash}#${utxo.outputIndex.toString()}`)
-          .sort()
-          .join(",")}`;
-        if (key === last) return Effect.void;
-        return writeAddressFacts(
-          stateQueue.spendingScriptAddress,
-          utxos,
-          slot,
-        ).pipe(Effect.tap(() => Effect.sync(() => (last = key))));
-      },
-    );
-    yield* step;
-    yield* Effect.forkScoped(
-      Effect.repeat(
-        step.pipe(Effect.catchAllCause((cause) => Effect.logDebug(cause))),
-        Schedule.spaced(interval),
-      ),
-    );
-  });
-
-/** `effect` with the emulator's queue followed into P1 while it runs. */
-export const withEmulatorStateQueue =
-  (
-    lucid: LucidEvolution,
-    stateQueue: Pick<StateQueueContract, "spendingScriptAddress">,
-  ) =>
-  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    Effect.scoped(
-      Effect.zipRight(followEmulatorStateQueue(lucid, stateQueue), effect),
-    );
-
-/** The landed queue's snapshot after mirroring the emulator's queue into P1. */
-export const emulatorStateQueueSnapshot = (
-  lucid: LucidEvolution,
-  stateQueue: StateQueueContract,
-  reason: StateQueueSnapshotReason = "manual_status",
-) =>
-  Effect.zipRight(
-    mirrorEmulatorStateQueue(lucid, stateQueue),
-    landedStateQueueSnapshot(stateQueue, reason),
-  );
-
-/** The landed queue's nodes, root first, after mirroring the emulator's queue. */
-export const emulatorStateQueueUTxOs = (
-  lucid: LucidEvolution,
-  stateQueue: StateQueueContract,
-) =>
-  Effect.zipRight(
-    mirrorEmulatorStateQueue(lucid, stateQueue),
-    landedStateQueueUTxOs(stateQueue, "the test's queue read"),
-  );
