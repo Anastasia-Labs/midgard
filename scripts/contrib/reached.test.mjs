@@ -23,6 +23,11 @@ import {
   wholePackageReasons,
 } from "./reached.mjs";
 
+// A hook running these tests exports GIT_DIR; the `git init` below would
+// re-initialise the outer repository under it.
+for (const key of Object.keys(process.env))
+  if (key.startsWith("GIT_")) delete process.env[key];
+
 const repository = resolve(import.meta.dirname, "../..");
 
 // A two-package workspace: `app` depends on `core`; `other` stands apart.
