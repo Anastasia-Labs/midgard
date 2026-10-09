@@ -356,11 +356,11 @@ test state_queue_commit_end_time_never_accepts_any_value_inside_the_window() {
 // deposit (L1450), withdrawal (L1474) and forced-transaction (L1500) branches
 // of `validate_omitted_due_l1_event`.
 //
-// Read the three tests below for exactly what they are. Those predicates are
-// module-private and cannot be imported here, so these tests run *local
-// mirrors* of them: hand transcriptions that live in this file. They document
+// Read the two tests below for exactly what they are. That predicate is
+// module-private and cannot be imported here, so these tests run a *local
+// mirror* of it: a hand transcription that lives in this file. They document
 // the harm model. They do NOT execute proof.ak, and nothing here can detect the
-// mirrors drifting from the originals — only the invalidation trigger recorded
+// mirror drifting from the original — only the invalidation trigger recorded
 // in the Q60 evidence artifact covers that.
 //
 // The other half of the argument — that the far-future `end_time` which would
@@ -384,28 +384,9 @@ fn timed_l1_event_is_due_mirror(
   }
 }
 
-/// Mirror of `proof.ak:1304 forced_tx_is_due`.
-fn forced_tx_is_due_mirror(
-  header_start_time: Int,
-  header_end_time: Int,
-  validity_interval_start: Int,
-  validity_interval_end: Int,
-) -> Bool {
-  if validity_interval_start == -1 {
-    validity_interval_end == -1 || header_start_time <= validity_interval_end
-  } else if validity_interval_end == -1 {
-    validity_interval_start <= header_end_time
-  } else {
-    and {
-      validity_interval_start <= validity_interval_end,
-      validity_interval_start <= header_end_time,
-      header_start_time <= validity_interval_end,
-    }
-  }
-}
-
-/// Due-event class 1 of 3 — deposit (`proof.ak:1450`), over the local mirror:
-/// a deposit that becomes includable one millisecond after the maximum accepted
+/// Due-event class 1 of 2 — deposit (`proof.ak:1450`), over the local mirror.
+/// A forced transaction order is due on the same inclusion window alone, so
+/// this case covers it too: a deposit that becomes includable one millisecond after the maximum accepted
 /// `end_time` is not due for this block, and would be due under a far-future
 /// `end_time`. Documents the harm; does not execute `proof.ak`.
 test state_queue_commit_end_time_bound_keeps_a_future_deposit_not_due() {
@@ -423,7 +404,7 @@ test state_queue_commit_end_time_bound_keeps_a_future_deposit_not_due() {
   }
 }
 
-/// Due-event class 2 of 3 — withdrawal (`proof.ak:1474`), over the local
+/// Due-event class 2 of 2 — withdrawal (`proof.ak:1474`), over the local
 /// mirror, taken a full year past the commit window to show the gap the anchor
 /// closes is unbounded rather than an off-by-one. Documents the harm; does not
 /// execute `proof.ak`.
@@ -438,38 +419,6 @@ test state_queue_commit_end_time_bound_keeps_a_future_withdrawal_not_due() {
       1_700_000_000_000,
       2_015_360_480_000,
       1_731_536_480_000,
-    ),
-  }
-}
-
-/// Due-event class 3 of 3 — forced transaction (`proof.ak:1500`), over the
-/// local mirrors. Its due-ness is `timed_l1_event_is_due` *and*
-/// `forced_tx_is_due` over the forced transaction's own validity interval, and
-/// both halves flip together under a far-future `end_time`. Documents the harm;
-/// does not execute `proof.ak`.
-test state_queue_commit_end_time_bound_keeps_a_future_forced_event_not_due() {
-  and {
-    !timed_l1_event_is_due_mirror(
-      1_700_000_000_000,
-      1_700_000_480_000,
-      1_700_000_480_001,
-    ),
-    !forced_tx_is_due_mirror(
-      1_700_000_000_000,
-      1_700_000_480_000,
-      1_700_000_480_001,
-      1_700_100_000_000,
-    ),
-    timed_l1_event_is_due_mirror(
-      1_700_000_000_000,
-      2_015_360_480_000,
-      1_700_000_480_001,
-    ),
-    forced_tx_is_due_mirror(
-      1_700_000_000_000,
-      2_015_360_480_000,
-      1_700_000_480_001,
-      1_700_100_000_000,
     ),
   }
 }

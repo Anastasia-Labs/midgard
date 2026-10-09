@@ -168,7 +168,7 @@ Midgard's transaction types deviate from Cardano's in the following ways:
       The current canonical mint format carries 28-byte policy IDs without a new L1/L2 origin prefix.
     \item[Time domains require reconciliation.] The original design uses POSIX timestamps in L2 transaction intervals, while block event intervals are also expressed as POSIX times.
       Current \code{validation-machine/shared.ak} compares native transaction interval scalars directly with \code{block\_slot}, and the node derives that slot with its L1 slot conversion.
-      Transaction-order due checks also compare the interval with block event times.
+      Transaction-order due checks use only the order's inclusion time and never compare the interval with block event times.
       These boundaries require one explicit, consistent unit contract and conformance evidence; this draft does not silently convert the POSIX design requirement into a slot-based one.
     \item[Native validity and forced verdict.] User admission and normal block leaves require native validity code zero.
       The compact format admits codes zero and one; a forced leaf additionally carries a typed \code{OperatorVerdictV1}, and its compact code must agree with that verdict.

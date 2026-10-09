@@ -53,7 +53,7 @@ source and transaction ID. Normal transactions retain their native encoding.
 Settlement authenticates the exact order key and unchanged submission source;
 a matching body ID alone does not authenticate substituted witnesses.
 The optimistic L1 order datum also retains a separate \code{inclusion\_time}.
-Due checks use that inclusion time and the transaction validity interval; the unresolved interval-unit conformance issue is described in \cref{h:deviations-from-cardano-transaction-types}.
+Due checks use that inclusion time alone. The transaction validity interval only decides the validation verdict at the block's \code{block\_slot}; the unresolved interval-unit conformance issue is described in \cref{h:deviations-from-cardano-transaction-types}.
 
 The effect of a valid included transaction order on a block's utxo set is identical to a valid L2 transaction request.
 It removes all of the transaction's inputs from the ledger and adds all of its outputs.
