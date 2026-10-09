@@ -19,7 +19,6 @@ falls from 4,033 to 3,964 lines. The remaining large functions/classes are
 deliberate exceptions; this change does not claim that every module is below
 500 lines.
 
-[metrics.json](metrics.json) records the exact before/after counts and date.
 The baseline production denominator is 1,846 under the documented definition,
 rather than the supplied table's 1,801; its 159/45 oversized counts agree with
 that table. Production excludes test/spec/bench filenames, test/e2e/benchmark
@@ -37,8 +36,7 @@ node demo/scripts/module-sizes.mjs --base HEAD \
   --exclude-prefix demo/midgard-node-tools/src/full-stack/ --json
 ```
 
-The [extraction map](extractions.json) lists every changed TS/JS original and
-its replacement parts. In total, **713 TS/JS originals and four Go/Rust
+In total, **713 TS/JS originals and four Go/Rust
 originals** were divided. Existing entrypoints retain their public exports;
 implementation facets live alongside their original files. Writable bindings
 remain with their writers, test hook/registration order is preserved, and
@@ -141,13 +139,12 @@ predates this change.
 All runs below are dated 2026-09-30 UTC. Node 22.22.2 and demo pnpm 9.15.4 were
 used; docs-site corrective runs used its declared pnpm 10.11.0. Initial suites
 ran concurrently on the shared host; timeout failures were rerun with fewer
-workers without changing timeouts. Detailed compact observations and commands
-are in [verification.json](verification.json).
+workers without changing timeouts.
 
-[preflight-results.json](preflight-results.json) preserves the original full
-preflight result: **44 checks passed, eight failed**, exit 1. It is not a green
-preflight result. Corrective runs and remaining failures are distinguished in
-the verification ledger; the full preflight was not repeated wholesale.
+The original full preflight run passed **44 checks and failed eight**, with
+exit code 1. It is not a green preflight result. Corrective runs and remaining
+failures are distinguished below; the full preflight was not repeated
+wholesale.
 
 The workspace typecheck and build checks pass. Final ESLint checks pass over
 all 3,159 owned demo files, with no warnings. Core: 704 passed;
@@ -183,7 +180,8 @@ reproduced against untouched HEAD journey sources with the same dependencies.
   not established, so this report does not claim it was proven pre-existing.
 - The initial formatting/typecheck failures were in concurrently developed
   `full-stack` files. This refactor preserved that work. The final typecheck
-  passes; the final formatting result is recorded in the ledger.
+  passes. The final format check still failed on 11 of those `full-stack`
+  files; the one guard this refactor edited was then formatted and passes.
 - Live process-devnet acceptance, skipped opt-in deployment journeys and
   production release acceptance were not run. No live deployment/reset was
   needed to verify declaration moves. Skipped cases are not counted as passes.
