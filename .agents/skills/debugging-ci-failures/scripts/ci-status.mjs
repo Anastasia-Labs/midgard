@@ -10,6 +10,13 @@
 //
 // Usage:
 //   node ci-status.mjs <pr-number|branch> [--repo owner/name] [--json]
+//                      [--wait [--timeout <minutes>]]
+//
+// --wait looks again every minute while runs on the head are in progress (and
+// for the first five minutes while an expected run has not appeared), stops at
+// the first failure, and gives up after --timeout minutes (default 60, at most
+// 360). It exits with the code below for its last look; progress goes to
+// stderr. See ci-status.wait.mjs.
 //
 // Exit codes (distinct, so a caller never mistakes "could not look" for
 // "looked and found nothing"):
@@ -20,6 +27,7 @@
 //   3  could not query GitHub (gh missing, not authenticated, network, a
 //      response that did not parse)
 //   4  nothing failed and nothing is missing, but runs are still in progress
+//      (with --wait: still in progress when the timeout ran out)
 //   64 usage error
 //
 // Read-only: every gh call is a GET. The gh calls go through an injectable
@@ -31,6 +39,7 @@ import "./ci-status.parse-workflow.mjs";
 import "./ci-status.expectation.mjs";
 import "./ci-status.collect-status.mjs";
 import "./ci-status.render-text.mjs";
+import "./ci-status.wait.mjs";
 
 import { fileURLToPath } from "node:url";
 
@@ -51,3 +60,10 @@ export {
   QueryError,
 } from "./ci-status.parse-workflow.mjs";
 export { main, renderText } from "./ci-status.render-text.mjs";
+export {
+  DEFAULT_TIMEOUT_MINUTES,
+  MAX_QUERY_FAILURES,
+  MISSING_GRACE_MS,
+  POLL_INTERVAL_MS,
+  waitForStatus,
+} from "./ci-status.wait.mjs";
