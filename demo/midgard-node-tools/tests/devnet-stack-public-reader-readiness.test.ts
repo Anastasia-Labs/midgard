@@ -10,9 +10,6 @@ vi.mock("../src/devnet-stack/identities.js", () => ({ walletInfos: vi.fn() }));
 vi.mock("../src/devnet-stack/watcher.js", () => ({
   watcherServiceSpecs: () => [],
 }));
-vi.mock("../src/devnet-stack/history-pin.js", () => ({
-  recordedHistoryGenesisPin: () => ({}),
-}));
 vi.mock("../src/devnet-stack/deployment-origin.js", () => ({
   recordedL1Origin: () => ({}),
 }));

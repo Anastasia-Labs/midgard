@@ -387,10 +387,8 @@ it("restarts the production native initializer after withdrawal empties an unmer
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               protocolParameters:
                 h.deployment.manifest.cardanoProtocolParameters,
-              binding: h.binding,
               diagnostic,
               receipts: h.receipts,
-              transitions: h.transitions,
               nativeBinarySha256:
                 production.nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
             },

@@ -12,7 +12,6 @@ import "../src/commands/submit-withdrawal.js";
 import "../src/database/index.js";
 import "../src/fibers/tx-queue-processor.js";
 import "../src/mpf/index.js";
-import "../src/services/event-history-producer.js";
 import "./deposit-flow-emulator-shared.js";
 import "./deposit-flow-emulator-merge-payout.admit-l2-tx.js";
 

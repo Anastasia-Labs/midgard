@@ -43,7 +43,6 @@ import {
 } from "midgard-node/commands/da-bond";
 import { openCommandL1Access } from "midgard-node/commands/l1-command-access";
 import { daLocalSigners } from "midgard-node/da/local-signers";
-import { fetchKupoSpend } from "midgard-node/l1-kupmios";
 import {
   authenticWatcherDaBondPool,
   deriveWatcherDaBondPoolObservation,
@@ -1270,7 +1269,7 @@ export const createLiveDaBondPoolJourneyPort = async (
           if (signed === undefined || signed.txId !== error.txHash) throw error;
           const attempt = signed;
           // From its upper bound on the ledger refuses it, so once the tip is
-          // there and Kupo agrees, its absence is final.
+          // there and the node's follower agrees, its absence is final.
           await chain.awaitLedgerTime(error.expiryMs);
           for (let read = 1; ; read += 1) {
             const before = await retryTransient("expired commit", () =>
@@ -1280,14 +1279,12 @@ export const createLiveDaBondPoolJourneyPort = async (
               contracts.stateQueue.spendingScriptAddress,
               headerUnit(attempt.block.headerHash),
             );
-            // Kupo keeps spent matches, so this names the transaction that
-            // spent the anchor even after a later Apply re-spent the header.
-            const anchorSpend = await fetchKupoSpend({
-              kupoUrl: context.kupoUrl,
-              outRef: {
-                txHash: attempt.anchor.txHash,
-                outputIndex: attempt.anchor.outputIndex,
-              },
+            // The follower stores every valid transaction it applied, so this
+            // names the transaction that spent the anchor even after a later
+            // Apply re-spent the header.
+            const anchorSpend = await nodeL1Access.store.txSpending({
+              txHash: Buffer.from(attempt.anchor.txHash, "hex"),
+              index: attempt.anchor.outputIndex,
             });
             const after = await retryTransient("expired commit", () =>
               source.readBoundary(),
@@ -1295,7 +1292,7 @@ export const createLiveDaBondPoolJourneyPort = async (
             const decision = settleExpiredCommitReads({
               txId: attempt.txId,
               stable: before.pointId === after.pointId,
-              anchorSpentBy: anchorSpend?.transactionId ?? null,
+              anchorSpentBy: anchorSpend?.txHash.toString("hex") ?? null,
               headerHolders: headers.map((utxo) => utxo.txHash),
               read,
               maxReads: MAX_TRANSIENT_RETRIES,
@@ -1311,7 +1308,7 @@ export const createLiveDaBondPoolJourneyPort = async (
             // Anything else spent the anchor or holds the header: a conflict,
             // not a lapse.
             log(
-              `commit ${intent.label}: expired ${attempt.txId} ${decision}: anchor spent by ${anchorSpend?.transactionId ?? "nothing"}, header held by ${JSON.stringify(headers.map((utxo) => utxo.txHash))}`,
+              `commit ${intent.label}: expired ${attempt.txId} ${decision}: anchor spent by ${anchorSpend?.txHash.toString("hex") ?? "nothing"}, header held by ${JSON.stringify(headers.map((utxo) => utxo.txHash))}`,
             );
             throw error;
           }

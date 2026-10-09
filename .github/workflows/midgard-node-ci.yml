@@ -99,8 +99,6 @@ env:
   AIKEN_FORK_BINARY_MD5: ea9b39054f166e94771f838a662712f7
   L1_BLOCKFROST_API_URL: https://blockfrost.invalid
   L1_BLOCKFROST_KEY: test-key
-  L1_OGMIOS_KEY: http://127.0.0.1:1337
-  L1_KUPO_KEY: http://127.0.0.1:1442
   L1_OPERATOR_SEED_PHRASE: "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail"
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee"
   NETWORK: Preprod

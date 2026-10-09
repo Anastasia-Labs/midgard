@@ -1,8 +1,7 @@
 /**
  * The node reads and submits L1 through the local node transport only: no
  * node source names the removed provider choice (`L1_PROVIDER`), builds a
- * Lucid Kupmios provider, or reads the Ogmios and Kupo endpoints outside the
- * event-history owner's own inputs.
+ * Lucid Kupmios provider, or reads an Ogmios or Kupo endpoint key.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -13,21 +12,6 @@ import { describe, expect, it } from "vitest";
 const PACKAGE_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCANNED = ["src", "scripts"];
 const SOURCE = /\.(?:ts|mts|js|mjs)$/u;
-
-/**
- * The files that may still name `L1_OGMIOS_KEY` or `L1_KUPO_KEY`: the
- * config keys the event-history owner took its transport from (read into
- * the config; no runtime path reads them since the follower-change driver
- * took the owner's duties), and the `history-genesis-pin` command's Ogmios
- * URL default.
- */
-const OWNER_ENDPOINT_READERS = new Set([
-  "src/services/config.make-config.ts",
-  "src/services/config.node-config-dep.ts",
-  "src/commands/history-genesis-pin.ts",
-  "src/index.registration-2.ts",
-  "scripts/capture-node-slot-config.mjs",
-]);
 
 const FORBIDDEN: readonly Readonly<{ name: string; pattern: RegExp }>[] = [
   { name: "the L1_PROVIDER key", pattern: /\bL1_PROVIDER\b/u },
@@ -44,9 +28,11 @@ const FORBIDDEN: readonly Readonly<{ name: string; pattern: RegExp }>[] = [
     name: "a remote L1 provider",
     pattern: /\bkoios\b|blockfrost\.io|blockfrost-fallback-key/iu,
   },
+  {
+    name: "an Ogmios or Kupo endpoint key",
+    pattern: /\bL1_(?:OGMIOS|KUPO)_KEY\b/u,
+  },
 ];
-
-const OWNER_ENDPOINT = /\bL1_(?:OGMIOS|KUPO)_KEY\b/u;
 
 const sourceFiles = (root: string): string[] =>
   SCANNED.flatMap((directory) =>
@@ -69,16 +55,13 @@ const sourceFiles = (root: string): string[] =>
 const nodeL1ProviderViolations = (root: string): string[] =>
   sourceFiles(root).flatMap((file) => {
     const text = readFileSync(join(root, file), "utf8");
-    const found = FORBIDDEN.filter(({ pattern }) => pattern.test(text)).map(
+    return FORBIDDEN.filter(({ pattern }) => pattern.test(text)).map(
       ({ name }) => `${file}: ${name}`,
     );
-    if (OWNER_ENDPOINT.test(text) && !OWNER_ENDPOINT_READERS.has(file))
-      found.push(`${file}: an Ogmios or Kupo endpoint outside the owner`);
-    return found;
   });
 
 describe("the node's L1 access gate", () => {
-  it("finds no removed provider key, Kupmios provider or stray Ogmios/Kupo endpoint reader", () => {
+  it("finds no removed provider key, Kupmios provider or Ogmios/Kupo endpoint key", () => {
     expect(nodeL1ProviderViolations(PACKAGE_ROOT)).toEqual([]);
   });
 
@@ -86,7 +69,7 @@ describe("the node's L1 access gate", () => {
     const files = sourceFiles(PACKAGE_ROOT);
     expect(files).toContain("src/services/lucid.ts");
     expect(files).toContain("src/services/l1-provider.ts");
-    for (const allowed of OWNER_ENDPOINT_READERS)
-      expect(files).toContain(allowed);
+    expect(files).toContain("src/services/config.node-config-dep.ts");
+    expect(files).toContain("scripts/capture-node-slot-config.mjs");
   });
 });

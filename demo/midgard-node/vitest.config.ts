@@ -37,16 +37,10 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/settlement-journal.test.ts
  *   tests/settlement-ownership-handoff.test.ts
  *   tests/settlement-tick-reporting.test.ts
- *   tests/event-history-authority.test.ts
- *   tests/event-history-journal.test.ts
- *   tests/event-history-ready-append.test.ts
- *   tests/l1-event-history-initialization-emulator.test.ts
- *   tests/event-history-recovery.test.ts
- *   tests/event-history-recovery-lease-lapse.test.ts
  *   tests/native-mpf-local-finalization.test.ts
- *   tests/l1-event-history-signed-intent-emulator.test.ts
- *   tests/l1-event-history-signed-intent-restart-emulator.test.ts
- *   tests/l1-event-history-signed-intent-continuation-emulator.test.ts
+ *   tests/signed-intent-response-loss-emulator.test.ts
+ *   tests/signed-intent-restart-emulator.test.ts
+ *   tests/signed-intent-continuation-emulator.test.ts
  *   tests/commit-replacement-state-queue-emulator.test.ts
  *   tests/follower-driver-recompute.test.ts
  *   tests/database.test.ts

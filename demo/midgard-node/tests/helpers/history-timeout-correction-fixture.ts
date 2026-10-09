@@ -10,7 +10,7 @@ import { Effect } from "effect";
 import { expect, vi } from "vitest";
 
 import type { EmulatorFixture } from "../deposit-flow-emulator-shared.js";
-import { submitHistoryObservation } from "./history-projection-observations.js";
+import { submitObservedTransaction } from "./confirmed-transaction-observations.js";
 
 const outRef = (utxo: { txHash: string; outputIndex: number }) =>
   `${utxo.txHash}#${utxo.outputIndex}`;
@@ -107,7 +107,7 @@ export const prepareTimedOutTailRemoval = async ({
         },
       },
     );
-    const accepted = await submitHistoryObservation(
+    const accepted = await submitObservedTransaction(
       lucid,
       await builder.complete({ localUPLCEval: true }),
     );

@@ -123,7 +123,7 @@ Previously implemented portions of a combined gate still need release verificati
       Document CORS, timeout/abort, structured errors, and retry behavior for
       200/202/409/413/415/422/429/503 and provider failures.
 - [ ] Distinguish `/healthz` liveness from `/readyz` readiness. Readiness checks
-      provider freshness, Kupo coverage, Ogmios connection, node sync, deployment
+      the L1 follower's freshness over the cardano-node socket, node sync, deployment
       identity, successful first iterations of required workers, and recovery state.
       A temporary provider failure alone must not trigger restart loops.
 - [ ] Test SIGTERM drain: immediately become non-ready, stop admission and new

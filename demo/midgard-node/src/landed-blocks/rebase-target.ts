@@ -34,7 +34,6 @@ import {
 } from "./own-journals.js";
 import type { OwnJournal } from "./ports.js";
 import { rebaseNeeded } from "./process.js";
-import { type RetiredPlan, retiredPlans } from "./retired-plans.js";
 import { type HeaderRoot, type LandedBlockRow, retrieveRows } from "./store.js";
 
 /** One step of the target: a processed row, or the live own block. */
@@ -58,8 +57,6 @@ export type RebaseTarget = Readonly<{
   live: (OwnJournal & { headerHash: string }) | undefined;
   /** The own journals the rebase disposes of and revives. */
   journals: OwnJournalDisposition;
-  /** The retained plans of retired kinds the rebase discards. */
-  retired: readonly RetiredPlan[];
 }>;
 
 /** The blocked detail while a block the target does not hold marks rows. */
@@ -85,7 +82,6 @@ const targetOn = (
   rows: readonly LandedBlockRow[],
   landed: LandedLedger,
   journals: OwnJournalDisposition,
-  retired: readonly RetiredPlan[],
 ) =>
   Effect.gen(function* () {
     if (journals.held !== undefined)
@@ -156,7 +152,7 @@ const targetOn = (
       } satisfies RebasePlan;
     return {
       kind: "ready",
-      target: { rows, landed, steps, tip, live, journals, retired },
+      target: { rows, landed, steps, tip, live, journals },
     } satisfies RebasePlan;
   });
 
@@ -172,32 +168,29 @@ export const rebaseTargetOf = (rows: readonly LandedBlockRow[]) =>
       rows,
       landed,
       yield* ownJournalDisposition(rows, landed),
-      yield* retiredPlans,
     );
   });
 
 /**
  * Reads the rebase target, and whether a rebase is due (a landed row the
- * working ledger does not match, an own journal to dispose of, or a
- * retained plan of a retired kind, `retired-plans.ts`) and can run.
+ * working ledger does not match, or an own journal to dispose of) and can
+ * run.
  */
 export const rebasePlan = Effect.gen(function* () {
   const rows = yield* retrieveRows;
-  const retired = yield* retiredPlans;
   const landed = yield* landedLedger(rows);
   if (landed === undefined)
-    return rebaseNeeded(rows) || retired.length > 0
+    return rebaseNeeded(rows)
       ? (NO_FRONTIER as RebasePlan)
       : ({ kind: "none" } satisfies RebasePlan);
   const journals = yield* ownJournalDisposition(rows, landed);
   if (
     journals.held === undefined &&
     !rebaseNeeded(rows) &&
-    journals.dispose.length === 0 &&
-    retired.length === 0
+    journals.dispose.length === 0
   )
     return { kind: "none" } satisfies RebasePlan;
-  return yield* targetOn(rows, landed, journals, retired);
+  return yield* targetOn(rows, landed, journals);
 });
 
 /** A step's MPF mutation: its spends and replaced outputs, then its outputs. */

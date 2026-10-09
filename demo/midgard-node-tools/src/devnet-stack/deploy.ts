@@ -5,10 +5,6 @@ import { join } from "node:path";
 import { ensureL1Origin } from "./deployment-origin.js";
 import { readJsonIfPresent, writeDurableFile } from "./durable.js";
 import { execLogged, lastJsonValue, requireSuccess } from "./exec.js";
-import {
-  ensureHistoryGenesisPin,
-  recordedHistoryGenesisPin,
-} from "./history-pin.js";
 import type { Identities } from "./identities.js";
 import type { Layout, RunEnv } from "./layout.js";
 import {
@@ -74,7 +70,6 @@ const runNodeCommand = (
   label: string,
   options: {
     readonly oneShot?: HubOracleOneShot;
-    readonly historyGenesisPin: string | null;
     readonly timeoutMs: number;
   },
 ) =>
@@ -83,7 +78,6 @@ const runNodeCommand = (
     env: nodeEnvironment({
       ...context,
       oneShot: options.oneShot,
-      historyGenesisPin: options.historyGenesisPin,
       role: "command",
     }),
     logDir: context.layout.stepLogs,
@@ -91,7 +85,7 @@ const runNodeCommand = (
     timeoutMs: options.timeoutMs,
   });
 
-/** A node command under the run's recorded L1 history genesis pin. */
+/** A node command in the run's node environment. */
 export const nodeCli = async (
   context: DeployContext,
   args: readonly string[],
@@ -101,22 +95,8 @@ export const nodeCli = async (
 ) =>
   runNodeCommand(context, args, label, {
     oneShot,
-    historyGenesisPin: recordedHistoryGenesisPin(context.layout),
     timeoutMs,
   });
-
-/**
- * Records the run's L1 genesis pin on first use and refuses a chain that no
- * longer serves it. The derivation is the one command that runs before a pin
- * is recorded.
- */
-export const ensureRunChainPin = (context: DeployContext) =>
-  ensureHistoryGenesisPin(context.layout, () =>
-    runNodeCommand(context, ["history-genesis-pin"], "history-genesis-pin", {
-      historyGenesisPin: null,
-      timeoutMs: 120_000,
-    }),
-  );
 
 type RunState = {
   identity?: {
@@ -238,9 +218,6 @@ export const ensureDeployed = async (
       label,
     );
 
-  // First, on a fresh and on an already-deployed run alike: nothing below may
-  // act on a chain that is not the run's own.
-  await ensureRunChainPin(context);
   await step(["db:migrate"], "db-migrate");
 
   const runState = () => readJsonIfPresent<RunState>(layout.deploymentRunState);

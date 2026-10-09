@@ -110,6 +110,11 @@ describe("splitSqlStatements", () => {
         transactional: true,
       },
       { version: 21, name: "follower_write_gate", transactional: true },
+      {
+        version: 22,
+        name: "drop_event_history_control_plane",
+        transactional: true,
+      },
     ]);
   });
 
@@ -289,17 +294,6 @@ describe("applied fresh-install schema", () => {
     readonly fragments: readonly string[];
   }[] = [
     {
-      table: "event_history_replay_receipts",
-      constraint: "event_history_replay_receipts_frontier_check",
-      fragments: [
-        "blocks_replayed = 1",
-        "predecessor_hash IS NULL",
-        "blocks_replayed > 1",
-        "predecessor_hash IS NOT NULL",
-        "predecessor_hash = parent_hash",
-      ],
-    },
-    {
       table: "pending_block_finalizations",
       constraint: "pending_block_finalizations_format_version_check",
       fragments: ["format_version = 1"],
@@ -357,14 +351,20 @@ describe("applied fresh-install schema", () => {
             ...UNLOGGED_TABLES,
           ]);
 
-          // Version 7 drops the speculative foreign-tip table (#752).
+          // Version 7 drops the speculative foreign-tip table (#752), version
+          // 22 every event_history_ table but the submission journal's.
           const dropped = yield* sql<{
             readonly relname: string;
           }>`SELECT relname
                FROM pg_class
                WHERE relnamespace = 'public'::regnamespace
-                 AND relname = 'foreign_tip_reconciliations'`;
-          expect(dropped).toEqual([]);
+                 AND (relname = 'foreign_tip_reconciliations'
+                   OR (relkind = 'r' AND relname LIKE 'event\\_history\\_%'))
+               ORDER BY relname`;
+          expect(dropped.map((row) => row.relname)).toEqual([
+            "event_history_submission_inputs",
+            "event_history_submissions",
+          ]);
 
           // Version 9 drops the census and foreign-adoption tables (N3) and
           // adds the landed-block processing tables, with no working-ledger

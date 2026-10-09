@@ -3,7 +3,7 @@ import { toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { LedgerSnapshotOutput } from "../src/l1-ledger-snapshot.js";
+import type { LedgerSnapshotOutput } from "../src/l1-ogmios-utxo.js";
 import { validateRecoveryStateQueue } from "../src/services/history-recovery-state-queue.js";
 
 const policyId = "aa".repeat(28);

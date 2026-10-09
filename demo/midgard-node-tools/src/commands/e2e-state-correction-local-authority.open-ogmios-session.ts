@@ -2,8 +2,7 @@ import {
   normalizeOgmiosWebSocketUrl,
   type WebSocketFactory,
   type WebSocketLike,
-} from "midgard-node/l1-kupmios";
-
+} from "../harness-kupmios.js";
 import {
   HEX_28,
   HEX_32,

@@ -59,7 +59,6 @@ import {
   retain,
   retained,
   retainedRow,
-  unownedHistory,
 } from "./landed-blocks-replay-foreign.fixture.js";
 import { serveDa } from "./landed-blocks-replay-foreign.transport.js";
 import { resetApplicationTables } from "./utils.js";
@@ -73,7 +72,6 @@ const follow = async (...args: Parameters<typeof followChain>) => {
 
 beforeEach(async () => {
   clock.offsetMs = 0;
-  unownedHistory();
   await db(resetApplicationTables);
 });
 afterEach(async () => {

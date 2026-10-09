@@ -16,8 +16,8 @@
  *   does: a fresh driver's first view runs the recompute and the startup
  *   preparation again.
  *
- * The deployment, its recorded projection receipts and the emulator come
- * from `openHistorySourceOwnerLifecycle`.
+ * The deployment, the receipts of every transaction confirmed on it and the
+ * emulator come from `openPublishedLifecycle`.
  */
 import { SqlClient } from "@effect/sql";
 import { Effect, Exit, Layer, ManagedRuntime, Ref, Scope } from "effect";
@@ -56,9 +56,9 @@ import { resetApplicationTables } from "../utils.js";
 import { makeEmulatorDriver } from "./emulator-l1-follower.driver.js";
 import { openLandedBlocks } from "./emulator-landed-blocks.js";
 import type { emulatorState } from "./emulator-snapshot.js";
-import { openHistorySourceOwnerLifecycle } from "./history-source-owner-emulator.js";
 import { followEmulatorStateQueue } from "./landed-state-queue.js";
 import { nativeOwnerBinaryPath } from "./native-owner-binary.js";
+import { openPublishedLifecycle } from "./published-lifecycle.js";
 
 export type ProductionLifecycleOptions = {
   readonly eventHistoryProtectionDurationMs?: bigint;
@@ -86,7 +86,7 @@ const viewKey = (view: FollowerWritePermit["view"]) =>
 export const openProductionLifecycle = async (
   options: ProductionLifecycleOptions = {},
 ) => {
-  const recorded = await openHistorySourceOwnerLifecycle(
+  const recorded = await openPublishedLifecycle(
     options.eventHistoryProtectionDurationMs,
   );
   const { fixture, lucidService } = recorded;
@@ -111,7 +111,7 @@ export const openProductionLifecycle = async (
   const stoppedGenerations: unknown[] = [];
   const commitAttempts: CommitAttempt[] = [];
   const appliedViews = new Set<string>();
-  /** The recorded projection follows the emulator until a rollback, which
+  /** The transaction observer follows the emulator until a rollback, which
    * it cannot follow (its receipts are the chain before it). */
   let observing = true;
 
@@ -277,8 +277,6 @@ export const openProductionLifecycle = async (
         stoppedGenerations: [...stoppedGenerations],
         scope:
           "Actual accepted emulator transactions; the follower stand-in's synthetic block hashes and heights. Production driver sink, recompute, startup preparation, cache and Architecture G owner.",
-        binding: recorded.binding,
-        genesis: recorded.genesis,
         publications: [...recorded.publications],
         commitAttempts,
         gate: await runtime.runPromise(readFollowerWriteGate),

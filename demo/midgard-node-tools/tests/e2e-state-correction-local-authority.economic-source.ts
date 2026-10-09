@@ -1,10 +1,13 @@
 import "./e2e-state-correction-local-authority.q57-local-kupmios-authority.js";
 
-import type { WebSocketFactory, WebSocketLike } from "midgard-node/l1-kupmios";
 import { describe, expect, it, vi } from "vitest";
 
 import { RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY } from "../src/commands/e2e-release-finality-policy.js";
 import { createLocalKupmiosStateCorrectionSource } from "../src/commands/e2e-state-correction-local-authority.js";
+import type {
+  WebSocketFactory,
+  WebSocketLike,
+} from "../src/harness-kupmios.js";
 import {
   economicsPolicy,
   hash,

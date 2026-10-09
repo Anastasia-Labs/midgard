@@ -148,19 +148,13 @@ export const requiredValue = (
 const positiveInteger = (raw: string, label: string): number =>
   positiveSafeInteger(Number(raw), label);
 
-const isolatedEndpointPort = (
+/** A run-scoped service port the run's compose project publishes on loopback. */
+const isolatedPort = (
   raw: string,
   label: string,
   protectedPorts: ReadonlySet<number>,
 ): number => {
-  const endpoint = new URL(raw);
-  if (endpoint.hostname !== "127.0.0.1" && endpoint.hostname !== "localhost") {
-    throw new Error(`${label} must use a loopback host`);
-  }
-  if (endpoint.port.length === 0) {
-    throw new Error(`${label} must declare an explicit isolated port`);
-  }
-  const port = positiveInteger(endpoint.port, `${label} port`);
+  const port = positiveInteger(raw, label);
   if (protectedPorts.has(port)) {
     throw new Error(`${label} may not use protected live port ${port}`);
   }
@@ -268,14 +262,14 @@ export const validatePhase4ProcessIsolationValues = (
     requiredValue(values, "MIDGARD_PHASE4_NETWORK_MAGIC"),
     "MIDGARD_PHASE4_NETWORK_MAGIC",
   );
-  const ogmiosPort = isolatedEndpointPort(
-    requiredValue(values, "L1_OGMIOS_KEY"),
-    "L1_OGMIOS_KEY",
+  const ogmiosPort = isolatedPort(
+    requiredValue(values, "MIDGARD_PHASE4_OGMIOS_PORT"),
+    "MIDGARD_PHASE4_OGMIOS_PORT",
     new Set([1337]),
   );
-  const kupoPort = isolatedEndpointPort(
-    requiredValue(values, "L1_KUPO_KEY"),
-    "L1_KUPO_KEY",
+  const kupoPort = isolatedPort(
+    requiredValue(values, "MIDGARD_PHASE4_KUPO_PORT"),
+    "MIDGARD_PHASE4_KUPO_PORT",
     new Set([1442]),
   );
   if (new Set([postgresPort, ogmiosPort, kupoPort]).size !== 3) {

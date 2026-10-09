@@ -17,9 +17,7 @@ node dist/index.js availability-challenge status \
   --manifest /var/lib/midgard/contract-deployment-info.json \
   --journal /var/lib/midgard/availability/actor.sqlite \
   --header-hash "$HEADER_HASH" \
-  --wallet-seed-env AVAILABILITY_ACTOR_SEED \
-  --kupo-url http://127.0.0.1:1442 \
-  --ogmios-url http://127.0.0.1:1337
+  --wallet-seed-env AVAILABILITY_ACTOR_SEED
 ```
 
 `HEADER_HASH` is the 28-byte header hash in lowercase hexadecimal. Load the
@@ -28,7 +26,8 @@ manager. Fund its enterprise address; the CLI selects an enterprise wallet to
 match the challenge's payment-key funding and refund addresses. The actor
 payment credential must differ from the configured operator, merge and
 reference deployment wallets.
-Kupo and Ogmios URLs may instead come from `L1_KUPO_KEY` and `L1_OGMIOS_KEY`.
+The commands read the node's L1 follower store once the follower has reached
+the local node's ledger tip, and submit through the node's cardano-node socket.
 
 The journal must have a canonical absolute path on durable storage. Processes
 using the same actor wallet must share that journal. Keep it across restarts:
@@ -37,11 +36,10 @@ ambiguous submission, and retains input reservations until finality or proven
 expiration. `recover` reconciles that actor's journal for the deployment before
 new work. It can report operations for other headers handled by the same actor.
 An intent whose inputs were all spent by another transaction, such as a rival
-Timeout of the same header, expires only once that spend is verified from its
-raw transaction, so Ogmios must run with `--include-transaction-cbor`; without
-it reconciliation stops with an error naming that flag and releases nothing.
-Opening needs a Kupo index that keeps spent outputs, because after Apply the
-full commitment survives only in the spent DA attestation output. Opening a
+Timeout of the same header, expires only once that spend is verified from the
+spending transaction's own bytes, which the follower store keeps. After Apply
+the full commitment survives only in the spent DA attestation output; opening
+reads it from the retained outputs in the follower store. Opening a
 challenge starts that header's workflow, which lasts until its terminal
 transaction reaches finality. The same actor wallet may open challenges on other
 headers of the same deployment meanwhile; the journal refuses operations for a
@@ -49,13 +47,13 @@ different deployment while any workflow is live.
 
 Add the following flags to the common arguments for each mutation:
 
-| Action    | Additional arguments and behavior                                                                                                                                                                                                                                                                      |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `open`    | `--collateral-out-ref <txHash#index>` and `--funding-out-ref <txHash#index>`. The funding coin must hold exactly the configured challenger bond, challenge record lovelace and maximum opening fee. The command recovers the attested commitment from Kupo and checks its hash against the queue node. |
-| `respond` | `--collateral-out-ref <txHash#index>` and `--payload-file <path>`. Reads the exact retained envelope bytes, verifies their frozen commitment, and publishes one next chunk. Optional `--tranche-index <0..15>` selects an active tranche.                                                              |
-| `settle`  | `--collateral-out-ref <txHash#index>`. Settles the next ordered completed tranche, or an unfinished tranche after the strict response deadline.                                                                                                                                                        |
-| `close`   | `--collateral-out-ref <txHash#index>`. Closes a fully answered challenge and preserves the frozen refund beneficiaries.                                                                                                                                                                                |
-| `timeout` | `--collateral-out-ref <txHash#index>`, plus `--funding-out-ref <txHash#index>` when descendant pruning or head removal needs actor fee funding. Advances one required step: expired tranche settlement, unavailable timeout, descendant pruning or final head removal.                                 |
+| Action    | Additional arguments and behavior                                                                                                                                                                                                                                                                                    |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open`    | `--collateral-out-ref <txHash#index>` and `--funding-out-ref <txHash#index>`. The funding coin must hold exactly the configured challenger bond, challenge record lovelace and maximum opening fee. The command recovers the attested commitment from the follower store and checks its hash against the queue node. |
+| `respond` | `--collateral-out-ref <txHash#index>` and `--payload-file <path>`. Reads the exact retained envelope bytes, verifies their frozen commitment, and publishes one next chunk. Optional `--tranche-index <0..15>` selects an active tranche.                                                                            |
+| `settle`  | `--collateral-out-ref <txHash#index>`. Settles the next ordered completed tranche, or an unfinished tranche after the strict response deadline.                                                                                                                                                                      |
+| `close`   | `--collateral-out-ref <txHash#index>`. Closes a fully answered challenge and preserves the frozen refund beneficiaries.                                                                                                                                                                                              |
+| `timeout` | `--collateral-out-ref <txHash#index>`, plus `--funding-out-ref <txHash#index>` when descendant pruning or head removal needs actor fee funding. Advances one required step: expired tranche settlement, unavailable timeout, descendant pruning or final head removal.                                               |
 
 Collateral is explicit plain ADA owned by the dedicated actor; it must not
 overlap spending inputs. The unavailable timeout slashes the DA bond pool: it

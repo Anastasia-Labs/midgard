@@ -1,12 +1,12 @@
 import { normalizeOgmiosHttpUrl } from "@al-ft/midgard-core/ogmios-slot";
+
 import {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
   normalizeKupoHttpUrl,
   readOgmiosBlockTransaction,
   type WebSocketFactory,
-} from "midgard-node/l1-kupmios";
-
+} from "../harness-kupmios.js";
 import {
   type ChainPoint,
   fetchJson,

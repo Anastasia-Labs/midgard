@@ -123,14 +123,8 @@ export type NodeConfigDep = {
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: number;
   L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: number;
   L1_RECENT_TX_404_MAX_DELAY_MS: number;
-  /** The event-history owner's own Ogmios and Kupo (listen), and the
-   * history-genesis-pin command's Ogmios; no other node path reads them. */
-  L1_OGMIOS_KEY: string;
-  L1_KUPO_KEY: string;
   /** Local ledger for reward-account reads; Ogmios cannot answer them. */
   L1_NATIVE_LEDGER: NativeLedgerSettings | undefined;
-  /** Operator-approved lossless Shelley query result hash; required by listen. */
-  L1_HISTORY_GENESIS_LOSSLESS_SHA256: string;
   L1_OPERATOR_SEED_PHRASE: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   /** Required by listen; optional for read-only and deployment commands. */

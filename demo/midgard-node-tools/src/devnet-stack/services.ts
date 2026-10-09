@@ -11,7 +11,6 @@ import {
 import type { DeployContext } from "./deploy.js";
 import { recordedL1Origin } from "./deployment-origin.js";
 import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
-import { recordedHistoryGenesisPin } from "./history-pin.js";
 import { walletInfos } from "./identities.js";
 import { servicePorts } from "./layout.js";
 import { type HubOracleOneShot, nodeEnvironment } from "./node-env.js";
@@ -119,7 +118,6 @@ export const serviceSpecs = (
         ...context,
         oneShot,
         l1Origin,
-        historyGenesisPin: recordedHistoryGenesisPin(layout),
         role: "listen",
       }),
       healthUrl: `${node}/healthz`,

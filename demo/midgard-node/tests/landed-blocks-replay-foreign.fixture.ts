@@ -24,7 +24,6 @@ import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { vi } from "vitest";
 
 import { foreignRetainedDaInsert } from "../src/da/foreign-retained-da.js";
 import { DaPayloadsDB } from "../src/database/index.js";
@@ -44,7 +43,6 @@ import {
 } from "../src/mpf/transition-cbor.js";
 import { NodeConfig } from "../src/services/config.js";
 import type { Database } from "../src/services/database.js";
-import * as Producer from "../src/services/event-history-producer.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.js";
 import { Lucid } from "../src/services/lucid.js";
@@ -357,14 +355,6 @@ export const replayerFor = (store: FactStore) =>
 /** Replays `payload` with a fresh production replayer at the store's view. */
 export const replay = async (store: FactStore, payload: SDK.DaPayload) =>
   inNode(replayerFor(store)(await inputFor(store, payload)));
-
-/** The node's event-history owner is out of scope here: its producer
- * registration runs the work as is, so history writes (the replayer keeping
- * a fetched payload) go through the explicit test-fixture gate. */
-export const unownedHistory = () =>
-  vi
-    .spyOn(Producer, "runHistoryProducer")
-    .mockImplementation((work) => work as never);
 
 /** Retains `row` through the history-write gate. */
 export const retain = (row: DaPayloadsDB.InsertInput) =>

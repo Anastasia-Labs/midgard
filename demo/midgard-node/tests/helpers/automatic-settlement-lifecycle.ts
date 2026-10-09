@@ -43,7 +43,7 @@ export const openAutomaticSettlement = async (h: ProductionLifecycle) => {
   operator.clearUTxOOverride();
   await h.synchronize();
   const owner: Journal.SettlementOwner = {
-    deploymentId: h.binding.manifestId,
+    deploymentId: h.deployment.manifest.manifestId,
     walletAddress,
     token: randomUUID(),
   };

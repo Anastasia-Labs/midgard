@@ -49,8 +49,6 @@ const gateEnv = (): NodeJS.ProcessEnv => ({
 const gateConfig = () =>
   ({
     NETWORK: "Custom",
-    L1_OGMIOS_KEY: "http://127.0.0.1:2337",
-    L1_KUPO_KEY: "http://127.0.0.1:2442",
     MIN_FEE_A: 0n,
     MIN_FEE_B: 0n,
     RUN_GENESIS_ON_STARTUP: false,
@@ -109,7 +107,6 @@ describe("Phase 4 explicit genesis ledger gate", () => {
     [{ MIN_FEE_B: "10" }, {}, "MIN_FEE_A=0"],
     [{}, { MIN_FEE_B: 10n }, "MIN_FEE_A=0"],
     [{}, { RUN_GENESIS_ON_STARTUP: true }, "RUN_GENESIS_ON_STARTUP=false"],
-    [{}, { L1_KUPO_KEY: "https://preprod.example.com" }, "127.0.0.1"],
   ])("rejects unsafe identity %#", (envOverride, configOverride, message) => {
     expect(() =>
       assertPhase4GenesisLedgerGate({

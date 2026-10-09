@@ -41,11 +41,7 @@ points at, without printing seed phrases:
 - every wallet, DA member, transport and DA password variable the
   configuration names, with the stack-only secrets under distinct `STACK_`
   names and each wallet role distinct;
-- `DA_THRESHOLD` between `ceil(2 * members / 3)` and the member count; and
-- the L1 history source pin `L1_HISTORY_GENESIS_LOSSLESS_SHA256`, set to the
-  `sha256` that `node dist/index.js history-genesis-pin` prints against the
-  intended chain. `listen` refuses to start without it, and a different value
-  means a different chain, not a setting to refresh.
+- `DA_THRESHOLD` between `ceil(2 * members / 3)` and the member count.
 
 Fund the wallets to the configured budgets before a fresh run, each with a
 plain output of at least 5 ADA. Attach and resume need only 5 ADA of working

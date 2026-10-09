@@ -13,9 +13,10 @@ watcher) reads and submits through the cardano-node's local socket with the
 its own store and its Lucid client answers from that store. A host that runs
 no node starts only the L1 services from it.
 
-The overlay still starts Ogmios and Kupo. They serve the node's event-history
-owner (`L1_OGMIOS_KEY`, `L1_KUPO_KEY`) and the devnet harness; the node's own
-L1 reads and submissions never use them.
+The overlay still starts Ogmios and Kupo. They serve the node-tools devnet
+harness (and its stop-Kupo and stop-Ogmios drills) and the fault-proofs prover
+CLI (`--ogmios-url`, `--kupo-url`); the node reads and submits only through the
+cardano-node socket.
 
 ## Services
 
@@ -25,8 +26,8 @@ L1 reads and submissions never use them.
 | `kupo-bootstrap`        | same image                                                 | One-shot: restores the official Kupo SQLite snapshot into `./cardano/kupo` when empty and verifies its MD5.                                                                           |
 | `cardano-node`          | `ghcr.io/intersectmbo/cardano-node:11.1.0` (digest-pinned) | Runs the Cardano node. Exposes its Unix socket under `./cardano/ipc`; healthy once `/ipc/node.socket` exists. The midgard-node reads and submits through this socket.                 |
 | `cardano-config-export` | same image                                                 | One-shot: copies the node's config and genesis files to `./cardano/config`, which the midgard-node's L1 transport reads for its network.                                              |
-| `cardano-node-ogmios`   | `cardanosolutions/ogmios:v7.0.0` (digest-pinned)           | Event-history owner only. WebSocket/HTTP bridge to the node, started with `--include-transaction-cbor`. Listens on `1337`; healthy via `ogmios health-check`.                         |
-| `kupo`                  | `cardanosolutions/kupo:v2.11.0` (digest-pinned)            | Event-history owner only. Chain indexer over Ogmios with `--match "*" --since origin`, **no** `--prune-utxo`. Listens on `1442`; healthy only once `/health` returns `200`.           |
+| `cardano-node-ogmios`   | `cardanosolutions/ogmios:v7.0.0` (digest-pinned)           | Harness and prover only. WebSocket/HTTP bridge to the node, started with `--include-transaction-cbor`. Listens on `1337`; healthy via `ogmios health-check`.                          |
+| `kupo`                  | `cardanosolutions/kupo:v2.11.0` (digest-pinned)            | Harness and prover only. Chain indexer over Ogmios with `--match "*" --since origin`, **no** `--prune-utxo`. Listens on `1442`; healthy only once `/health` returns `200`.            |
 
 <Callout type="warn" title="Kupo must not prune">
   The event-history owner reads where outputs were created and spent, which a
@@ -116,7 +117,7 @@ The node reads `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
 (`/ipc/node.socket`, `/cardano-config/config.json` and the image's transport
 binary). Ogmios is reachable on `127.0.0.1:1337` and Kupo on `127.0.0.1:1442`
 from the host; inside the compose network they are `cardano-node-ogmios:1337`
-and `kupo:1442`, which the overlay injects for the event-history owner.
+and `kupo:1442`.
 
 </Step>
 

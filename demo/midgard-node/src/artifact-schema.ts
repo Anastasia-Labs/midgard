@@ -17,9 +17,8 @@
  *
  * Module-local dialects that intentionally stay outside this file:
  * `deployment-manifest.ts` ("Deployment manifest <field> …", accepts
- * whitespace-only strings), `l1-kupmios.ts` (domain parsers,
- * "is not a …"), and `database/utils/exact-record.ts` (the DB-adapter
- * record contract).
+ * whitespace-only strings) and `database/utils/exact-record.ts` (the
+ * DB-adapter record contract).
  */
 
 import { isAbsolute, resolve } from "node:path";

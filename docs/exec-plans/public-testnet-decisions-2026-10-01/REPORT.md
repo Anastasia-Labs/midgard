@@ -499,7 +499,7 @@ A controlled probe of the installed provider returned a structured retryable err
 **Amended after review — the seam is wider than the probe showed, and the shim
 already exists.** The node's only reclassifier of an Ogmios JSON-RPC failure
 matches the string prefix `"Ogmios chain-sync error: "` and a small code set
-([l1-ledger-snapshot.ts:83](../../../demo/midgard-node/src/l1-ledger-snapshot.ts#L83)),
+(`demo/midgard-node/src/l1-ledger-snapshot.ts:83`, since deleted),
 against an error constructed as a plain `Error` carrying that message
 (`l1-tx-order-carriage.open-ogmios-session.ts:88`, since renamed `l1-kupmios.open-ogmios-session.ts`).
 The two committee clients — `provider.ogmios-rpc-session.ts:74` and
@@ -507,7 +507,7 @@ The two committee clients — `provider.ogmios-rpc-session.ts:74` and
 reclassify nothing. The fix is therefore one shared typed classification across
 all three clients, not a single call site. The existing prefix match is itself the
 string-matching shim this item warns against, and should be deleted by the same
-change.
+change. <!-- doc-links:historical -->
 
 **ANSWERED — owner ruling, 1 October 2026:** "Accept as written — honor typed retryability, bounded retries at the owning operation, delete the string-prefix shim (OG-CLASS lane)."
 

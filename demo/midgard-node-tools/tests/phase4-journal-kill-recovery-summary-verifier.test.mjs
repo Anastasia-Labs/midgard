@@ -69,8 +69,6 @@ const phasRegistrationCborSha256 = createHash("sha256")
 
 const requiredNodeEnvKeys = [
   "NETWORK",
-  "L1_OGMIOS_KEY",
-  "L1_KUPO_KEY",
   "POSTGRES_HOST",
   "POSTGRES_PORT",
   "POSTGRES_DB",

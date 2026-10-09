@@ -325,8 +325,8 @@ Depth is also counted three different ways today:
   since deleted by N6, #804). <!-- doc-links:historical -->
 
 The heads module (§9) defines depth once. Retention points already use k:
-`demo/midgard-node/src/services/event-history-owner.retention.ts:31-50` and
-`demo/midgard-node/src/fibers/retention-sweeper.ts:206-207`.
+`demo/midgard-node/src/services/event-history-owner.retention.ts:31-50` (since deleted) and
+`demo/midgard-node/src/fibers/retention-sweeper.ts:206-207`. <!-- doc-links:historical -->
 
 ### 3.6 Wall-clock reads where an L1 slot is required
 
