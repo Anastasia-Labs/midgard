@@ -70,7 +70,7 @@ validator spend(
     own_out_ref: OutputReference,
     self: Transaction,
   ) {
-    let  
+    let
         SpendRedeemer {
           scheduler_input_index,
           scheduler_output_index,
@@ -78,7 +78,7 @@ validator spend(
         }
       = redeemer
 
-    let  
+    let
         Transaction {
           inputs,
           outputs,
@@ -193,7 +193,7 @@ validator spend(
         neglected_user_event,
       } -> {
         // 4c. Input and output datums must both have appointed operators.
-        let  
+        let
             previous_shifts_operator,
             new_shifts_operator,
             previous_shifts_start_time,
@@ -253,7 +253,7 @@ validator spend(
         neglected_user_event,
       } -> {
         // 4d. Input and output datums must both have an appointed operators.
-        let  
+        let
             previous_shifts_operator,
             new_shifts_operator,
             previous_shifts_start_time,
@@ -334,7 +334,7 @@ validator spend(
         removal_reason,
       } -> {
         // 4e. Input and output datums must both have an appointed operators.
-        let  
+        let
             previous_shifts_operator,
             new_shifts_operator,
             _previous_shifts_start_time,
@@ -375,7 +375,7 @@ validator spend(
         registered_element_ref_input_index,
       } -> {
         // 4f. An active operator must be appointed.
-        expect  
+        expect
             ActiveOperator {
               operator: previous_shifts_operator,
               start_time: _previous_shifts_start_time,
@@ -425,7 +425,7 @@ validator spend(
             //      node points to another node as its link.
             expect !last_operator_is_removed
 
-            expect  
+            expect
                 ActiveOperator {
                   operator: new_shifts_operator,
                   start_time: new_shifts_start_time,
@@ -462,7 +462,7 @@ validator spend(
         expect NoActiveOperators = datum
 
         // 5g. An active operator must be appointed at output.
-        expect  
+        expect
             ActiveOperator {
               operator: new_shifts_operator,
               start_time: new_shifts_start_time,
@@ -513,7 +513,7 @@ fn validate_active_datums_and_get_info(
     result,
 ) -> result {
   // 1. An operator must already be appointed active.
-  expect  
+  expect
       ActiveOperator {
         operator: previous_shifts_operator,
         start_time: previous_shifts_start_time,
@@ -521,7 +521,7 @@ fn validate_active_datums_and_get_info(
     = input_datum
 
   // 2. Output datum must specify an appointed operator.
-  expect  
+  expect
       ActiveOperator {
         operator: new_shifts_operator,
         start_time: new_shifts_start_time,
@@ -543,7 +543,7 @@ fn validate_end_of_shift_and_get_operators(
   _extra_signatories: List<VerificationKeyHash>,
 ) -> (VerificationKeyHash, VerificationKeyHash) {
   // 1. Input and output datums must both have an appointed operators.
-  let  
+  let
       previous_shifts_operator,
       new_shifts_operator,
       previous_shifts_start_time,
@@ -595,7 +595,7 @@ fn validate_operator_inactivity_and_get_its_link(
 ) -> linked_list.Link {
   // 1. A matching spending redeemer of the active operators set must exist for
   //    incrementing the strike counter of the inactive operator.
-  expect  
+  expect
       active_operators.StrikeForInactivity {
         operator,
         active_node_link,
@@ -626,7 +626,7 @@ fn validate_operator_inactivity_and_get_its_link(
   // 4. The referred state queue UTxO must be authentic.
   expect
     {
-      let  
+      let
           _state_queue_address,
           _state_queue_lovelace,
           m_header_hash,
@@ -735,7 +735,7 @@ fn validate_root_is_reached(
     |> list.at(active_operators_root_ref_input_index)
 
   {
-    let  
+    let
         _active_root_address,
         _active_root_lovelace,
         m_active_root_key,
@@ -767,7 +767,7 @@ fn validate_operator_is_the_last_active_node(
     |> list.at(active_operators_last_node_ref_input_index)
 
   {
-    let  
+    let
         _active_node_address,
         _active_node_lovelace,
         m_active_node_key,
@@ -803,7 +803,7 @@ fn validate_new_shifts_node_is_next(
   // matches the new shift's operator, and a link that points to the
   // previous operator.
   {
-    let  
+    let
         _active_node_address,
         _active_node_lovelace,
         m_active_node_key,
@@ -847,7 +847,7 @@ fn validate_active_operator_removal(
 
   when removal_reason is {
     OperatorRetirement -> {
-      expect  
+      expect
           active_operators.RetireOperator {
             active_operator_key,
             operator_removal_scheduler_sync: active_operators.ShowSchedulerIsAdvancing {
@@ -875,7 +875,7 @@ fn validate_active_operator_removal(
       )
     }
     OperatorSlashing -> {
-      expect  
+      expect
           active_operators.SlashOperator {
             slashing_arguments: operator_directory.SlashingArguments {
               slashed_operator,
@@ -918,7 +918,7 @@ fn validate_no_registered_operators_can_activate(
     |> list.at(registered_element_ref_input_index)
 
   {
-    let  
+    let
         _registered_element_address,
         _registered_element_lovelace,
         m_registered_element_key,
