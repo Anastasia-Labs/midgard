@@ -30,7 +30,11 @@ export {
   storePoint,
   transportPoint,
 } from "./follow/chain-sync.js";
-export { classifyFailure, type FailureClass } from "./follow/failure.js";
+export {
+  classifyFailure,
+  classifyStreamFailure,
+  type FailureClass,
+} from "./follow/failure.js";
 export {
   DEFAULT_NODE_BEHIND_MS,
   DEFAULT_STUCK_AFTER,
@@ -44,6 +48,8 @@ export {
   FOLLOWER_NODE_UNAVAILABLE,
   FOLLOWER_PRUNE_FAILING,
   FOLLOWER_TRACKED_SET_CHANGED,
+  FOLLOWER_TRANSIENT_BUDGET_MS,
+  FOLLOWER_TRANSIENT_EXHAUSTED,
   FOLLOWER_WAITING,
   type FollowReadiness,
   type FollowReadinessReason,
@@ -245,8 +251,10 @@ export {
   postgresDialect,
 } from "./sql/postgres-backend.js";
 export {
+  INSTANCE_LOCK_REACQUIRE_BUDGET_MS,
   INSTANCE_LOCK_RECONNECT_INITIAL_MS,
   INSTANCE_LOCK_RECONNECT_MAX_MS,
+  InstanceLockFailedError,
   isInstanceLockHeldElsewhere,
   PostgresInstanceLock,
   type PostgresInstanceLockBounds,

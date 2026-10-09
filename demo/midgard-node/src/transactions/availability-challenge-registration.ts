@@ -3,11 +3,17 @@ import {
   type LucidEvolution,
   validatorToRewardAddress,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 
 import { journaledIntent, openPlan } from "../services/intent-journal.js";
 import { handleSignSubmit } from "./utils.js";
 import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
+
+/** An availability-challenge yield's reward account is not registered: a
+ * deployment verdict, which reading again does not change. */
+export class AvailabilityRewardAccountUnregisteredError extends Data.TaggedError(
+  "AvailabilityRewardAccountUnregisteredError",
+)<SDK.GenericErrorFields> {}
 
 /** Check ledger readiness without changing deployment or wallet state. */
 export const assertAvailabilityChallengeRewardAccountsRegisteredProgram = (
@@ -19,7 +25,10 @@ export const assertAvailabilityChallengeRewardAccountsRegisteredProgram = (
     "close",
     "timeout",
   ],
-): Effect.Effect<void, SDK.StateQueueError> =>
+): Effect.Effect<
+  void,
+  SDK.StateQueueError | AvailabilityRewardAccountUnregisteredError
+> =>
   Effect.gen(function* () {
     const network = lucid.config().network;
     if (network === undefined) {
@@ -47,7 +56,7 @@ export const assertAvailabilityChallengeRewardAccountsRegisteredProgram = (
       });
       if (!account.registered) {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new AvailabilityRewardAccountUnregisteredError({
             message: `Availability challenge ${action} reward account is not registered; complete protocol initialization before using this deployment`,
             cause: `rewardAddress=${rewardAddress},scriptHash=${validator.withdrawalScriptHash}`,
           }),

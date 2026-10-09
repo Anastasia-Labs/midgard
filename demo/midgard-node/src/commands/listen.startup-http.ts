@@ -21,9 +21,11 @@ import {
 } from "effect";
 
 import {
+  findStartupStepFailure,
   type StartupWaitingReport,
   StartupWaitingReporter,
 } from "../services/startup-waiting.js";
+import { findTransientBudgetExhausted } from "../services/transient-exhaustion.js";
 
 /** Local startup state: no provider, contract, database or user payload reads. */
 export type NodeStartupStage =
@@ -44,6 +46,11 @@ type StartupState = {
    * by step; reported by `/readyz` after the stage's. */
   readonly stepWaits?: ReadonlyMap<string, readonly string[]>;
   readonly failedStage?: NodeStartupStage | "serving";
+  /** The startup step that failed and its named reason, when a
+   * `StartupStepFailedError` ended the startup; the source and reason of a
+   * `TransientBudgetExhaustedError`. */
+  readonly failedStep?: string;
+  readonly failedReason?: string;
   readonly application?: HttpApp.Default<unknown, Scope.Scope>;
   readonly runtimeDefaults?: Context.Context<DefaultServices.DefaultServices>;
   readonly runtimeLoggers?: HashSet.HashSet<Logger.Logger<unknown, unknown>>;
@@ -64,7 +71,32 @@ export type StartupHttp = {
   >;
 };
 
-/** One listener and one atomic handoff per node instance. */
+/** The failed stage, step and reason a fatal startup reports. */
+const failure = (current: StartupState) => ({
+  ...(current.failedStage === undefined
+    ? {}
+    : { failedStage: current.failedStage }),
+  ...(current.failedStep === undefined
+    ? {}
+    : { failedStep: current.failedStep }),
+  ...(current.failedReason === undefined
+    ? {}
+    : { failedReason: current.failedReason }),
+});
+
+/**
+ * One listener and one atomic handoff per node instance.
+ *
+ * When `run` fails, `/readyz` answers `startup_failed` (with the failed
+ * stage, step and reason) and the outcome follows the failure's class (owner
+ * ruling 2026-10-09; plan §7.5): a transient failure that outlived its
+ * budget (`StartupStepFailedError.exhausted`, `TransientBudgetExhaustedError`)
+ * fails the effect, so the process exits non-zero and its supervisor's
+ * restart is the backoff. Any other failure, deterministic or unknown, holds:
+ * the listener keeps serving `startup_failed`, `/healthz` stays live, and
+ * the effect never completes until it is interrupted, so a supervisor's
+ * restart cannot loop on it.
+ */
 export const withStartupHttpServer = <A, E, R>(
   port: number,
   run: (startup: StartupHttp) => Effect.Effect<A, E, R>,
@@ -131,29 +163,27 @@ export const withStartupHttpServer = <A, E, R>(
       if (current.application !== undefined) return yield* current.application;
       const request = yield* HttpServerRequest.HttpServerRequest;
       const path = request.url.split("?")[0];
+      // Live while the process holds: a failed startup that does not exit
+      // stays up, so a liveness probe must not restart it.
       if (request.method === "GET" && path === "/healthz")
-        return HttpServerResponse.unsafeJson(
-          {
-            status: current.stage === "fatal" ? "error" : "ok",
-            stage: current.stage,
-            ...(current.failedStage === undefined
-              ? {}
-              : { failedStage: current.failedStage }),
-          },
-          { status: current.stage === "fatal" ? 503 : 200 },
-        );
+        return HttpServerResponse.unsafeJson({
+          status: current.stage === "fatal" ? "held" : "ok",
+          stage: current.stage,
+          ...failure(current),
+        });
       return HttpServerResponse.unsafeJson(
         {
           ready: false,
           reasons: [
             current.stage === "fatal" ? "startup_failed" : "startup_incomplete",
+            ...(current.failedReason === undefined
+              ? []
+              : [current.failedReason]),
             ...(current.waitingOn ?? []),
             ...[...(current.stepWaits?.values() ?? [])].flat(),
           ],
           stage: current.stage,
-          ...(current.failedStage === undefined
-            ? {}
-            : { failedStage: current.failedStage }),
+          ...failure(current),
         },
         { status: 503 },
       );
@@ -187,20 +217,42 @@ export const withStartupHttpServer = <A, E, R>(
       });
     return yield* run(startup).pipe(
       Effect.locally(StartupWaitingReporter, reportStepWaiting),
-      Effect.tapErrorCause((cause) =>
+      Effect.catchAllCause((cause) =>
         Cause.isInterruptedOnly(cause)
-          ? Effect.void
+          ? Effect.failCause(cause)
           : Effect.gen(function* () {
               const current = yield* Ref.get(state);
-              if (current.stage === "fatal") return;
-              yield* Ref.set(state, {
-                stage: "fatal",
-                failedStage: current.stage,
-              });
-              // Bound stage only. The original error propagates to CLI teardown.
-              yield* Effect.logError(
-                `node_startup_failed stage=${current.stage}`,
-              );
+              const step = findStartupStepFailure(cause);
+              const spent = findTransientBudgetExhausted(cause);
+              const exits = spent !== undefined || step?.exhausted === true;
+              if (current.stage !== "fatal") {
+                const named =
+                  spent !== undefined
+                    ? { failedStep: spent.source, failedReason: spent.reason }
+                    : step === undefined
+                      ? {}
+                      : { failedStep: step.step, failedReason: step.reason };
+                yield* Ref.set(state, {
+                  stage: "fatal",
+                  failedStage: current.stage,
+                  ...named,
+                });
+                // Names only (stage, and step and reason when a step failed),
+                // never the cause. An exit propagates the original error,
+                // cause included, to CLI teardown, which exits non-zero.
+                const outcome = exits
+                  ? "a transient failure outlived its bound; the node exits non-zero"
+                  : "the node stays up, unready, until it is restarted";
+                yield* Effect.logError(
+                  spent !== undefined
+                    ? `node_transient_budget_exhausted stage=${current.stage} source=${spent.source} reason=${spent.reason}; ${outcome}`
+                    : step === undefined
+                      ? `node_startup_failed stage=${current.stage}; ${outcome}`
+                      : `node_startup_failed stage=${current.stage} step=${step.step} reason=${step.reason}; ${outcome}`,
+                );
+              }
+              if (exits) return yield* Effect.failCause(cause);
+              return yield* Effect.never;
             }),
       ),
     );

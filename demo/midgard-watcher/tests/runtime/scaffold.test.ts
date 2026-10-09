@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { parseWatcherArguments } from "../../src/cli.js";
 import { unsafeRunWatcherCommandForTest } from "../../src/runtime/scaffold.js";
+import { WatcherStartupHeldError } from "../../src/runtime/startup-operations.js";
 
 const ready = (
   overrides: {
@@ -344,5 +345,66 @@ describe("production watcher commands", () => {
       elapsedMs: 1250,
       nativePoint: { slot: "24729", blockNo: "1273" },
     });
+  });
+
+  it("holds a start whose startup failed and holds until shutdown, then exits non-zero", async () => {
+    const errors: string[] = [];
+    const output: string[] = [];
+    let released = 0;
+    let stop: (signal: "SIGTERM") => void = () => undefined;
+    const held = new WatcherStartupHeldError(
+      new Error("deployment authority refused"),
+      async () => {
+        released += 1;
+      },
+    );
+    const running = unsafeRunWatcherCommandForTest(
+      "start",
+      "/etc/watcher.json",
+      {
+        writeOutput: (text) => output.push(text),
+        writeError: (text) => errors.push(text),
+      },
+      {
+        runWatcher: async () => await Promise.reject(held),
+        waitForShutdown: async () =>
+          await new Promise<"SIGTERM">((resolve) => (stop = resolve)),
+      },
+    );
+    await vi.waitFor(() => expect(errors).toHaveLength(1));
+    expect(JSON.parse(errors[0]!)).toMatchObject({
+      command: "start",
+      state: "startup_held",
+      productionReady: false,
+      reason: "startup_failed",
+      error: held.message,
+    });
+    expect(released).toBe(0);
+    stop("SIGTERM");
+    expect(await running).toBe(70);
+    expect(released).toBe(1);
+    expect(output.map((line) => JSON.parse(line) as unknown)).toEqual([
+      expect.objectContaining({ state: "stopping", signal: "SIGTERM" }),
+    ]);
+  });
+
+  it("exits a replay whose startup failed and holds, releasing the hold", async () => {
+    let released = 0;
+    const held = new WatcherStartupHeldError(new Error("refused"), async () => {
+      released += 1;
+    });
+    await expect(
+      unsafeRunWatcherCommandForTest(
+        "replay",
+        "/etc/watcher.json",
+        { writeOutput: () => undefined, writeError: () => undefined },
+        {
+          runWatcher: async () => await Promise.reject(held),
+          waitForShutdown: async () =>
+            await new Promise<"SIGTERM">(() => undefined),
+        },
+      ),
+    ).rejects.toBe(held);
+    expect(released).toBe(1);
   });
 });

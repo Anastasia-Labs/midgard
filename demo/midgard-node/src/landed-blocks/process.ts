@@ -49,7 +49,11 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import type { DriverHold } from "../l1-events/driver.js";
+import {
+  type DriverHold,
+  failureHold,
+  notRetried,
+} from "../l1-events/driver.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
 import type { Database } from "../services/database.js";
@@ -130,10 +134,19 @@ const decodeQueue = (queue: LandedStateQueue) =>
     };
   });
 
+/** A wait: retried on the driver's backoff. */
 const hold = (reason: string, detail: string): DriverHold => ({
   reason,
   detail,
 });
+
+/**
+ * A verdict on the view (an invalid block, an own journal that does not
+ * describe its landed block): replaying it again at the same view gives the
+ * same answer, so no timer re-runs it; the next follower change re-reads it.
+ */
+const verdict = (reason: string, detail: string): DriverHold =>
+  notRetried(hold(reason, detail));
 
 /** Why `node` cannot follow `parent`, if it cannot. */
 const linkageFault = (node: LandedNode, parent: Parent): string | undefined =>
@@ -154,6 +167,20 @@ const HOLD_OF = {
   invalid: LANDED_BLOCK_INVALID,
 } as const;
 
+/**
+ * The hold a replay outcome other than `replayed` stops processing at. The
+ * waits on DA peers and on the follower's facts are retried on the driver's
+ * backoff; `invalid` (a verdict) and `incomplete` (a failure the replay
+ * cannot classify, so not known to be transient) are `notRetried`.
+ */
+export const replayOutcomeHold = (
+  kind: keyof typeof HOLD_OF,
+  detail: string,
+): DriverHold =>
+  kind === "invalid" || kind === "incomplete"
+    ? verdict(HOLD_OF[kind], detail)
+    : hold(HOLD_OF[kind], detail);
+
 type Step =
   | Readonly<{ kind: "row"; row: LandedBlockRow }>
   | Readonly<{ kind: "held"; hold: DriverHold }>;
@@ -171,7 +198,7 @@ const newRow = <R>(
     if (fault !== undefined)
       return {
         kind: "held",
-        hold: hold(LANDED_BLOCK_INVALID, fault),
+        hold: verdict(LANDED_BLOCK_INVALID, fault),
       } satisfies Step;
     const base = {
       headerHash: node.headerHash,
@@ -192,7 +219,7 @@ const newRow = <R>(
       )
         return {
           kind: "held",
-          hold: hold(
+          hold: verdict(
             LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
             `own block ${node.headerHash}'s journal does not describe the landed block (base ${journal.baseTailHeaderHash}/${journal.baseUtxosRoot}, expected ${journal.expectedUtxosRoot})`,
           ),
@@ -203,7 +230,7 @@ const newRow = <R>(
       if (root !== node.header.utxosRoot)
         return {
           kind: "held",
-          hold: hold(
+          hold: verdict(
             LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
             `own block ${node.headerHash}'s journal delta reaches root ${root} on its parent's ledger, its header commits ${node.header.utxosRoot}`,
           ),
@@ -240,24 +267,25 @@ const newRow = <R>(
     if (outcome._tag === "Left")
       return {
         kind: "held",
-        hold: hold(
+        hold: failureHold(
           LANDED_BLOCK_REPLAY_FAILED,
           `block ${node.headerHash}: ${String(outcome.left)}`,
+          outcome.left,
         ),
       } satisfies Step;
     const replayed = outcome.right;
     if (replayed.kind !== "replayed")
       return {
         kind: "held",
-        hold: hold(
-          HOLD_OF[replayed.kind],
+        hold: replayOutcomeHold(
+          replayed.kind,
           `block ${node.headerHash}: ${replayed.detail}`,
         ),
       } satisfies Step;
     if (replayed.root !== node.header.utxosRoot)
       return {
         kind: "held",
-        hold: hold(
+        hold: verdict(
           LANDED_BLOCK_INVALID,
           `block ${node.headerHash} replays to root ${replayed.root}, its header commits ${node.header.utxosRoot}`,
         ),
@@ -358,7 +386,7 @@ const run = <R>(
       if (lineage === undefined || endTime === undefined)
         return combineHolds([
           ...holds,
-          hold(
+          verdict(
             CONFIRMED_LEDGER_BEHIND,
             `the merged queue root ${root.headerHash} is not reachable forward from the confirmed-ledger frontier ${folded.frontier.headerHash} through the retained queue history`,
           ),
@@ -449,7 +477,7 @@ const run = <R>(
 const writeRefusedHold = (error: unknown) => {
   const refused = followerWriteHoldOf(error);
   return refused === undefined
-    ? hold(LANDED_BLOCK_REPLAY_FAILED, String(error))
+    ? failureHold(LANDED_BLOCK_REPLAY_FAILED, String(error), error)
     : hold(LANDED_BLOCKS_WAITING, `${refused.reason}: ${refused.detail}`);
 };
 

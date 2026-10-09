@@ -28,11 +28,13 @@ const NETWORK_FAILURE_CODES: ReadonlySet<string> = new Set([
  * which retries them with this test explicitly) that say only that the node
  * did not answer: the node
  * transport was not ready (its sidecar was starting or restarting, or the
- * node's socket did not accept, did not complete the handshake or dropped the
- * connection), an auxiliary node connection could not be opened, or the read
- * did not start in time. A node that is restarting or still opening its
- * database gives exactly these. A rejected intersection, an invalid startup
- * and every identity mismatch are not among them.
+ * node's socket did not accept or dropped the connection, during the
+ * handshake or after it), an auxiliary node connection could not be opened,
+ * or the read did not start in time. A node that is restarting or still
+ * opening its database gives exactly these. A rejected intersection, an
+ * invalid startup, a refused handshake (`node_handshake_failed`: another
+ * network magic, no common version) and every identity mismatch are not
+ * among them.
  */
 const NODE_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
   "sidecar_starting",
@@ -40,7 +42,6 @@ const NODE_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
   "sidecar_unavailable",
   "sidecar_exited",
   "node_unreachable",
-  "node_handshake_failed",
   "node_connection_lost",
   "node_unresponsive",
   "node_unavailable",

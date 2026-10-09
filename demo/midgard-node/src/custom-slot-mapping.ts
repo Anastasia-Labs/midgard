@@ -5,18 +5,25 @@
  *
  * Every process (the main thread, a worker thread, a CLI command) reads the
  * mapping from its own ledger query. While the node or its sidecar is not
- * reachable the read waits, logging the unready reason, and never exits. A
- * slot length other than the profile's fails at once.
+ * reachable the read waits, logging the unready reason, for at most the L1
+ * node budget; past it, or on any other failure or a slot length other
+ * than the profile's, it fails.
  */
 import {
   SUBMIT_SLOT_LENGTH_MS,
   type SubmitSlotSnapshot,
 } from "@al-ft/midgard-core/ogmios-slot";
 import type { SlotConfig } from "@lucid-evolution/lucid";
-import { Duration, Effect, Schedule } from "effect";
+import { Effect } from "effect";
 
 import { runProviderStepWithRetry } from "./provider-retry.js";
 import { transientL1ReadCause } from "./services/l1-provider.js";
+import {
+  L1_SLOT_MAPPING_PENDING,
+  retryStartupStep,
+  STARTUP_L1_NODE_BUDGET,
+  type StartupStepBudget,
+} from "./services/startup-waiting.js";
 
 export type ResolveLucidSlotMappingOptions = {
   /** One read of the ledger's slot configuration. */
@@ -25,6 +32,8 @@ export type ResolveLucidSlotMappingOptions = {
   readonly retry?: {
     readonly baseDelayMs: number;
     readonly maxDelayMs: number;
+    /** How long a transient read failure is waited out. */
+    readonly budget?: StartupStepBudget;
   };
 };
 
@@ -37,17 +46,21 @@ const asError = (cause: unknown): Error =>
 
 /**
  * The ledger's slot mapping for Lucid. Waits out a transient L1 read failure
- * (node, sidecar or ledger unavailable) with a logged reason; any other
- * failure, or a slot length other than the profile's, fails at once.
+ * (node, sidecar or ledger unavailable: `transientL1ReadCause`) with a
+ * logged reason, under `l1_slot_mapping_pending`, for at most the budget
+ * (`STARTUP_L1_NODE_BUDGET` by default). Past the budget, or on any other
+ * failure, the step fails (`StartupStepFailedError`); a slot length other
+ * than the profile's fails at once.
  */
 export const resolveLucidSlotMapping = (
   options: ResolveLucidSlotMappingOptions,
 ): Effect.Effect<SlotConfig, Error> =>
   Effect.gen(function* () {
-    const retry = options.retry ?? DEFAULT_RETRY;
+    const retry: NonNullable<ResolveLucidSlotMappingOptions["retry"]> =
+      options.retry ?? DEFAULT_RETRY;
     const expectedSlotLengthMs =
       options.expectedSlotLengthMs ?? SUBMIT_SLOT_LENGTH_MS;
-    const slotConfig = yield* Effect.tryPromise({
+    const read = Effect.tryPromise({
       try: options.read,
       catch: asError,
     }).pipe(
@@ -59,13 +72,15 @@ export const resolveLucidSlotMapping = (
               `L1 slot mapping unready: ${transient.message}; waits and re-reads.`,
             );
       }),
-      Effect.retry({
-        schedule: Schedule.exponential(Duration.millis(retry.baseDelayMs)).pipe(
-          Schedule.union(Schedule.spaced(Duration.millis(retry.maxDelayMs))),
-        ),
-        while: (error) => transientL1ReadCause(error) !== undefined,
-      }),
     );
+    const slotConfig = yield* retryStartupStep(read, {
+      key: "l1_slot_mapping",
+      reason: L1_SLOT_MAPPING_PENDING,
+      retryable: (error) => transientL1ReadCause(error) !== undefined,
+      budget: retry.budget ?? { maxElapsed: STARTUP_L1_NODE_BUDGET },
+      initialMs: retry.baseDelayMs,
+      maxMs: retry.maxDelayMs,
+    });
     if (slotConfig.slotLength !== expectedSlotLengthMs)
       return yield* Effect.fail(
         new Error(

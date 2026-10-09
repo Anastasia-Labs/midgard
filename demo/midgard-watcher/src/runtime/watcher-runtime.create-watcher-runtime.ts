@@ -48,10 +48,7 @@ import {
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentReleaseFinalityPolicy,
 } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
-import {
-  startWatcherOperationsHttpServer,
-  type WatcherOperationsHttpServer,
-} from "./operations-http.js";
+import { type WatcherOperationsHttpServer } from "./operations-http.js";
 import {
   createWatcherOperationsObservability,
   watcherDaBondPoolReadFailureReporter,
@@ -59,11 +56,8 @@ import {
 } from "./operations-observability.js";
 import { refusePermanently } from "./permanent-refusal.js";
 import { type WatcherProcessConfig } from "./process-config.js";
-import { createWatcherStartupOperations } from "./startup-operations.js";
-import {
-  createWatcherStartupProgress,
-  type WatcherStartupProgress,
-} from "./startup-progress.js";
+import { type WatcherStartupOperations } from "./startup-operations.js";
+import { type createWatcherStartupProgress } from "./startup-progress.js";
 import {
   openWatcherProverFundingRuntime,
   recheckFundingDecisionHolds,
@@ -98,6 +92,8 @@ const watcherObservationSourceId = (
     authorityNodeId,
   ].join("/")}`;
 
+type WatcherStartup = ReturnType<typeof createWatcherStartupProgress>;
+
 /** How often the cached L1 readiness is refreshed without a follower change. */
 const L1_READINESS_REFRESH_MS = 5_000;
 
@@ -107,30 +103,30 @@ const L1_READINESS_REFRESH_MS = 5_000;
  * decision driver decides from its projections at the tip and at the
  * release depth.
  *
- * Liveness: the operations server binds before the node identity, workflow
- * readiness and protocol parameters stages (the last two read L1), so
- * `/v1/status` (the liveness probe) answers while they wait out an
- * unanswering node and while the follower syncs; there is no
- * `/healthz` route. Until the runtime's observability exists `/readyz` names
- * `startup:<stage>`, the stage most recently begun; after that, until the
- * first pass completes, and whenever the follower, a pass or the journals
- * hold decisions, it names the reason. No L1 condition, journal integrity
- * failure or failed journal open ends the process after the server binds;
- * bad configuration, the journals' directory and key included, exits before
- * it binds.
+ * Liveness: the operations server (`bound`) is bound before any stage
+ * (`createWatcherRuntime`), so `/v1/status` (the liveness probe) answers
+ * while stages wait out an unanswering node and while the follower syncs;
+ * there is no `/healthz` route. Until the runtime's observability exists
+ * `/readyz` names `startup:<stage>`, the stage most recently begun; after
+ * that, until the first pass completes, and whenever the follower, a pass
+ * or the journals hold decisions, it names the reason. No L1 condition,
+ * journal integrity failure or failed journal open ends the process after
+ * startup. On a failure this closes what it opened but the server.
  */
-export const createWatcherRuntime = async (input: {
-  readonly config: WatcherProcessConfig;
-  readonly onStartupProgress?: (progress: WatcherStartupProgress) => void;
-  readonly onAvailabilityStatusTransition?: (
-    event: WatcherAvailabilityStatusTransition,
-  ) => void;
-}): Promise<WatcherRuntime> => {
-  const startupOperations = createWatcherStartupOperations();
-  const startup = createWatcherStartupProgress((progress) => {
-    startupOperations.report(progress);
-    input.onStartupProgress?.(progress);
-  });
+export const startWatcherRuntime = async (
+  input: {
+    readonly config: WatcherProcessConfig;
+    readonly onAvailabilityStatusTransition?: (
+      event: WatcherAvailabilityStatusTransition,
+    ) => void;
+  },
+  bound: Readonly<{
+    startup: WatcherStartup;
+    startupOperations: WatcherStartupOperations;
+    operationsHttp: WatcherOperationsHttpServer;
+  }>,
+): Promise<WatcherRuntime> => {
+  const { startup, startupOperations } = bound;
   const {
     deploymentAuthority,
     deploymentIdentity,
@@ -149,7 +145,8 @@ export const createWatcherRuntime = async (input: {
   let faultProofSupervisor: WatcherFaultProofSupervisor | undefined;
   let faultDecisionBridge: WatcherFaultDecisionBridge | undefined;
   let availability: WatcherAvailabilityRuntime | undefined;
-  let operationsHttp: WatcherOperationsHttpServer | undefined;
+  let operationsHttp: WatcherOperationsHttpServer | undefined =
+    bound.operationsHttp;
   let retainedDaOperationsBinding:
     | WatcherRetainedDaOperationsBinding
     | undefined;
@@ -187,7 +184,6 @@ export const createWatcherRuntime = async (input: {
     const blueprintBytes = await readFile(
       input.config.faultProofInfrastructure.blueprintPath,
     );
-    // A blueprint that misderives the user-event scripts exits before /readyz.
     const userEventScripts = await refusePermanently("user_event_scripts", () =>
       readWatcherUserEventScriptBinding({
         binding: verifyWatcherUserEventScriptBinding({
@@ -204,7 +200,6 @@ export const createWatcherRuntime = async (input: {
       prover: proverWalletAddress,
       availability: availabilityWalletAddress,
     } = await resolveWatcherRuntimeWalletAddresses(input);
-    // A bad journal directory or key exits before the operations server binds.
     await refusePermanently("journal_configuration", () =>
       validateWatcherFaultDecisionJournalConfiguration({
         directory: input.config.workflowJournalDirectory,
@@ -213,13 +208,6 @@ export const createWatcherRuntime = async (input: {
         authenticationKey: rollbackAuthenticationKey,
       }),
     );
-    // Bound before the L1-dependent stages: while they wait out an
-    // unanswering node, `/readyz` names the stage.
-    operationsHttp = await startWatcherOperationsHttpServer({
-      endpoint: input.config.operationsEndpoint,
-      observability: startupOperations,
-    });
-
     const { networkMagic } = await startup("l1_node_identity", () =>
       deriveWatcherNativeGenesisIdentity({ watcherConfig }),
     );
@@ -479,7 +467,7 @@ export const createWatcherRuntime = async (input: {
       faultProofReadiness,
       faultProofSupervisor: activeSupervisor,
       operations,
-      operationsHttp,
+      operationsHttp: bound.operationsHttp,
       recoveredFaultProofWorkflowCount,
       availability: activeAvailability,
       follower: activeFollower,
@@ -487,6 +475,8 @@ export const createWatcherRuntime = async (input: {
       closeAllocatedResources,
     });
   } catch (error) {
+    // The caller closes the server, or keeps it serving a held startup.
+    operationsHttp = undefined;
     try {
       await closeAllocatedResources();
     } catch (shutdownError) {

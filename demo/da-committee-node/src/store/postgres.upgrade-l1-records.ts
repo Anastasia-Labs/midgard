@@ -9,7 +9,8 @@ import { fencedOpenTransaction } from "./postgres.open-checks.js";
 /**
  * The readiness reason of a store holding a record this build cannot read
  * and the open upgrade cannot repair. The open throws it, so the node's
- * startup retry reports it on `/readyz`, the process up.
+ * startup fails on it at once (`committee_startup_failed`) and the process
+ * holds, unready, until it is restarted.
  */
 export const COMMITTEE_STORE_RECORD_UNREADABLE =
   "committee_store_record_unreadable";

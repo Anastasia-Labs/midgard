@@ -26,11 +26,12 @@ import type {
 import { watcherServiceSpecs } from "./watcher.js";
 
 /**
- * The node publishes readiness once startup is done. Its default
- * startup budget: four provider steps (protocol status, DA provider
- * assertions, state-queue boundary seed, tx-order catch-up), each retried
- * STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS 120 x 5 s, plus the first-start
- * ledger scan's LEDGER_SCAN_TIMEOUT_MS of 15 min: 55 min, rounded up.
+ * The node publishes readiness once startup is done. Its startup steps ride
+ * out transient failures within their budgets (the database 15 min, the L1
+ * node 10 min, the protocol status STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS
+ * 120 x 5 s), then wait for the follower to reach the tip and apply its
+ * first view; past a budget the node exits non-zero and the supervisor
+ * restarts it. An hour covers those budgets and a first catch-up.
  */
 export const NODE_START_GRACE_MS = 60 * 60_000;
 

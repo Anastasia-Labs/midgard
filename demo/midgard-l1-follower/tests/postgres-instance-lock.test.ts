@@ -19,6 +19,7 @@ import pg from "pg";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
+  type InstanceLockFailedError,
   isInstanceLockHeldElsewhere,
   PostgresInstanceLock,
   type PostgresInstanceLockBounds,
@@ -31,6 +32,7 @@ import {
   terminateLockHolder,
   type TestDatabase,
   testDatabases,
+  withAdmin,
 } from "./support/postgres.js";
 
 const IDENTITY: PostgresInstanceLockIdentity = {
@@ -41,6 +43,7 @@ const IDENTITY: PostgresInstanceLockIdentity = {
     suspended: "suspended",
     passive: "passive",
     lostAtServer: "lost at server",
+    failed: "failed",
   },
 };
 
@@ -144,14 +147,20 @@ afterAll(async () => {
 /** Every lock event, in order, by name and message. */
 const recorder = () => {
   const seen: string[] = [];
+  const failures: InstanceLockFailedError[] = [];
   return {
     seen,
+    failures,
     events: {
       onInstanceLockSuspended: (error: Error) =>
         seen.push(`suspended: ${error.message}`),
       onInstanceLockHeldElsewhere: (error: Error) =>
         seen.push(`held elsewhere: ${error.message}`),
       onInstanceLockRestored: () => seen.push("restored"),
+      onInstanceLockFailed: (error: InstanceLockFailedError) => {
+        failures.push(error);
+        seen.push("failed");
+      },
     },
   };
 };
@@ -305,6 +314,176 @@ describe("the instance lock on Postgres", () => {
     } finally {
       await lock.release();
       await proxy.close();
+    }
+  });
+});
+
+/**
+ * Reacquire on a clock that advances by each wait: a wait does not block, so
+ * a budget of minutes runs out in as many attempts as the backoff takes.
+ * With `holdAt`, that wait blocks until `release()`.
+ */
+const steppedTimers = (
+  holdAt?: number,
+): PostgresInstanceLockTimers & {
+  waits: () => number;
+  release: () => void;
+} => {
+  let at = 0;
+  let waits = 0;
+  let release = (): void => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    now: () => at,
+    sleep: async (ms) => {
+      waits += 1;
+      at += ms;
+      if (waits === holdAt) await held;
+      await new Promise((resolve) => setImmediate(resolve));
+    },
+    waits: () => waits,
+    release: () => release(),
+  };
+};
+
+/** Budget the stepped clock crosses after 1+2+4+8+16+30 s of waits. */
+const BUDGET_MS = 60_000;
+
+describe("the instance lock's reacquire, by failure class", () => {
+  it("retries a transient failure and takes the lock again within the budget", async () => {
+    const database = await databases.create();
+    const proxy = await freezableProxy(database);
+    const { seen, failures, events } = recorder();
+    // Three refused attempts (1+2+4 s of waits), then held at the fourth.
+    const timers = steppedTimers(4);
+    const lock = await PostgresInstanceLock.acquire(
+      IDENTITY,
+      proxy.url,
+      events,
+      timers,
+      { reacquireBudgetMs: BUDGET_MS },
+    );
+    try {
+      proxy.refuseNew(true);
+      await terminateLockHolder(database, await soleHolder(database));
+      // Refused connections: transient, retried.
+      await until("three refused attempts", () => timers.waits() === 4);
+      expect(proxy.accepted()).toBe(4);
+      expect(seen).toEqual(["suspended: suspended"]);
+      proxy.refuseNew(false);
+      timers.release();
+      await until("the lock taken again", () => seen.includes("restored"));
+      expect(seen).toEqual(["suspended: suspended", "restored"]);
+      expect(failures).toEqual([]);
+      expect(() => lock.assertHeld()).not.toThrow();
+    } finally {
+      await lock.release();
+      await proxy.close();
+    }
+  });
+
+  it("stops under its failed refusal once transient failures outlast the budget", async () => {
+    const database = await databases.create();
+    const proxy = await freezableProxy(database);
+    const { seen, failures, events } = recorder();
+    const timers = steppedTimers();
+    const lock = await PostgresInstanceLock.acquire(
+      IDENTITY,
+      proxy.url,
+      events,
+      timers,
+      { reacquireBudgetMs: BUDGET_MS },
+    );
+    try {
+      proxy.refuseNew(true);
+      await terminateLockHolder(database, await soleHolder(database));
+      await until("the lock to stop trying", () => seen.includes("failed"));
+      expect(seen).toEqual(["suspended: suspended", "failed"]);
+      expect(failures[0]!.exhausted).toBe(true);
+      // Six attempts: the sixth fails 60 s after the first.
+      expect(failures[0]!.attempts).toBe(6);
+      expect(failures[0]!.message).toMatch(
+        /^failed: Postgres stayed unreachable/u,
+      );
+      expect(() => lock.assertHeld()).toThrow(/^failed: /u);
+      expect(lock.followerWriterLease()).toBeNull();
+      // No attempt after it stopped, though Postgres is back.
+      proxy.refuseNew(false);
+      const accepted = proxy.accepted();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(proxy.accepted()).toBe(accepted);
+      expect(seen).not.toContain("restored");
+    } finally {
+      await lock.release();
+      await proxy.close();
+    }
+  });
+
+  it("stops at once on a failure that is not transient, with no retry", async () => {
+    const database = await databases.create();
+    const { seen, failures, events } = recorder();
+    const timers = steppedTimers();
+    const lock = await PostgresInstanceLock.acquire(
+      IDENTITY,
+      database.url,
+      events,
+      timers,
+      { reacquireBudgetMs: BUDGET_MS },
+    );
+    try {
+      // The database is gone: every attempt fails the same way (3D000).
+      await withAdmin((client) =>
+        client.query(`DROP DATABASE ${database.name} WITH (FORCE)`),
+      );
+      await until("the lock to stop trying", () => seen.includes("failed"));
+      expect(seen).toEqual(["suspended: suspended", "failed"]);
+      expect(failures[0]!.exhausted).toBe(false);
+      expect(failures[0]!.attempts).toBe(1);
+      expect(timers.waits()).toBe(1);
+      expect(String(failures[0]!.cause)).toMatch(/does not exist/u);
+    } finally {
+      await lock.release();
+    }
+  });
+
+  it("waits on a holder without a deadline, whatever the budget", async () => {
+    const database = await databases.create();
+    const { seen, failures, events } = recorder();
+    const timers = steppedTimers();
+    const lock = await PostgresInstanceLock.acquire(
+      IDENTITY,
+      database.url,
+      events,
+      timers,
+      { reacquireBudgetMs: BUDGET_MS },
+    );
+    const holder = new pg.Client({ connectionString: database.url });
+    holder.on("error", () => undefined);
+    try {
+      const pid = await soleHolder(database);
+      await holder.connect();
+      const key = await holder.query<{ key: string }>(
+        `SELECT ('x' || left(md5($1::text || coalesce(current_schema(), '')), 15))::bit(60)::bigint::text AS key`,
+        [IDENTITY.keyName],
+      );
+      // Queued behind the lock's session: Postgres grants it to this waiter
+      // as that session ends, before any later attempt can take it.
+      const taken = holder.query("SELECT pg_advisory_lock($1::bigint)", [
+        key.rows[0]!.key,
+      ]);
+      await terminateLockHolder(database, pid);
+      await taken;
+      // Many budgets' worth of the stepped clock: still waiting.
+      await until("ten budgets of waiting", () => timers.waits() > 30);
+      expect(seen).toContain("held elsewhere: passive");
+      expect(failures).toEqual([]);
+      await holder.end();
+      await until("the lock taken again", () => seen.includes("restored"));
+    } finally {
+      await holder.end().catch(() => undefined);
+      await lock.release();
     }
   });
 });

@@ -1,5 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
+import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -7,6 +9,7 @@ import {
   WATCHER_PERMANENT_REFUSAL_EXIT_CODE,
   watcherFailureExitCode,
 } from "../../src/cli.js";
+import { WatcherL1UnavailableError } from "../../src/l1/transient-retry.js";
 import { parseWatcherConfigJson } from "../../src/runtime/config.js";
 import {
   isWatcherPermanentRefusal,
@@ -14,7 +17,14 @@ import {
   WatcherPermanentRefusalError,
 } from "../../src/runtime/permanent-refusal.js";
 import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";
-import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
+import { loadWatcherProcessConfigFile } from "../../src/runtime/process-config.js";
+import { WATCHER_STARTUP_FAILED } from "../../src/runtime/startup-operations.js";
+import {
+  createWatcherRuntime,
+  watcherStartupFailureExits,
+  WatcherStartupHeldError,
+} from "../../src/runtime/watcher-runtime.js";
+import { freeOperationsEndpoint } from "../support/free-port.js";
 import { writeWatcherRuntimeProcessConfig } from "../support/watcher-runtime-process-config.js";
 
 const directories: string[] = [];
@@ -30,7 +40,10 @@ afterEach(async () => {
 const processConfig = async (): Promise<WatcherProcessConfig> => {
   const directory = await mkdtemp("/var/tmp/midgard-watcher-refusal-");
   directories.push(directory);
-  return await writeWatcherRuntimeProcessConfig(directory);
+  return {
+    ...(await writeWatcherRuntimeProcessConfig(directory)),
+    operationsEndpoint: await freeOperationsEndpoint(),
+  };
 };
 
 type RawWatcherConfig = Readonly<{
@@ -56,7 +69,45 @@ const startupFailure = async (config: WatcherProcessConfig) => {
   return failure as Error;
 };
 
-describe("permanent refusal exit code", () => {
+const readyz = async (config: WatcherProcessConfig) => {
+  try {
+    const response = await fetch(`${config.operationsEndpoint}/readyz`);
+    return {
+      status: response.status,
+      body: (await response.json()) as {
+        reasons: string[];
+        startup: { outcome: string; error: string };
+      },
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * A refusal once the operations server bound holds the process up, unready
+ * with `startup_failed` and the refusal; releasing the hold closes the server.
+ */
+const heldRefusal = async (config: WatcherProcessConfig) => {
+  const failure = await startupFailure(config);
+  expect(failure).toBeInstanceOf(WatcherStartupHeldError);
+  const held = await readyz(config);
+  expect(held).toMatchObject({
+    status: 503,
+    body: {
+      reasons: [WATCHER_STARTUP_FAILED],
+      startup: { outcome: "failed" },
+    },
+  });
+  expect(held!.body.startup.error).toBe(
+    (failure.cause as Error | undefined)?.message,
+  );
+  await (failure as WatcherStartupHeldError).release();
+  expect(await readyz(config)).toBeUndefined();
+  return failure;
+};
+
+describe("permanent refusals: held after the server binds, exit 78 before", () => {
   it("gives a byte-comparison refusal its own exit code, and keeps 70 for everything else", async () => {
     const refusal = await refusePermanently("deployment_authority", () => {
       throw new Error("watcher deployment authority trust roots are invalid");
@@ -89,9 +140,9 @@ describe("permanent refusal exit code", () => {
       config.deploymentAuthorityPath,
       JSON.stringify({ ...authority, trustRoots: {} }),
     );
-    const failure = await startupFailure(config);
+    const failure = await heldRefusal(config);
     expect(failure.message).toContain("watcher deployment_authority refused");
-    expect(watcherFailureExitCode(failure)).toBe(78);
+    expect(isWatcherPermanentRefusal(failure)).toBe(true);
   });
 
   it("refuses a runtime config that differs from the process config permanently", async () => {
@@ -101,11 +152,10 @@ describe("permanent refusal exit code", () => {
       config.watcherRuntimeConfigPath,
       JSON.stringify({ ...raw, l1: { ...raw.l1, requestTimeoutMs: 20_000 } }),
     );
-    const failure = await startupFailure(config);
+    const failure = await heldRefusal(config);
     expect(failure.message).toContain(
       "watcher process and workflow runtime configurations differ",
     );
-    expect(watcherFailureExitCode(failure)).toBe(78);
   });
 
   it("refuses a finality policy that differs from the verified release permanently", async () => {
@@ -122,21 +172,66 @@ describe("permanent refusal exit code", () => {
       },
     });
     await writeFile(config.watcherRuntimeConfigPath, text);
-    const failure = await startupFailure({
+    const failure = await heldRefusal({
       ...config,
       watcherConfig: parseWatcherConfigJson(text),
     });
     expect(failure.message).toContain(
       "watcher production finality differs from the verified release",
     );
-    expect(watcherFailureExitCode(failure)).toBe(78);
   });
 
   it("keeps a deployment authority that is not written yet restartable", async () => {
     const config = await processConfig();
     await rm(config.deploymentAuthorityPath);
     const failure = await startupFailure(config);
+    expect(failure).not.toBeInstanceOf(WatcherStartupHeldError);
     expect(isWatcherPermanentRefusal(failure)).toBe(false);
     expect(watcherFailureExitCode(failure)).toBe(70);
+    // It exits: the server bound for it is closed.
+    expect(await readyz(config)).toBeUndefined();
+  });
+
+  it("exits on a startup failure a restart may clear, and holds on any other", () => {
+    const transient = new L1ProviderTransientError("transport", "down");
+    const unavailable = new WatcherL1UnavailableError(600_000, 9, transient);
+    expect(watcherStartupFailureExits(unavailable)).toBe(true);
+    expect(
+      watcherStartupFailureExits(
+        new AggregateError([new Error("cleanup"), unavailable], "startup"),
+      ),
+    ).toBe(true);
+    expect(
+      watcherStartupFailureExits(
+        new Error("read failed", {
+          cause: Object.assign(new Error("no such file"), { code: "ENOENT" }),
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      watcherStartupFailureExits(
+        new WatcherPermanentRefusalError("deployment_authority", "bad roots"),
+      ),
+    ).toBe(false);
+    expect(watcherStartupFailureExits(new Error("malformed"))).toBe(false);
+    expect(watcherStartupFailureExits(transient)).toBe(false);
+  });
+
+  it("refuses a process configuration file that does not parse permanently, before any server binds", async () => {
+    const directory = await mkdtemp("/var/tmp/midgard-watcher-refusal-");
+    directories.push(directory);
+    const path = join(directory, "process.json");
+    await writeFile(path, JSON.stringify({ schemaVersion: "unknown" }));
+    const refused = await loadWatcherProcessConfigFile(path).catch(
+      (error: unknown) => error,
+    );
+    expect(isWatcherPermanentRefusal(refused)).toBe(true);
+    expect(watcherFailureExitCode(refused)).toBe(78);
+    // A file not written yet stays restartable.
+    const missing = await loadWatcherProcessConfigFile(
+      join(directory, "absent.json"),
+    ).catch((error: unknown) => error);
+    expect(isWatcherPermanentRefusal(missing)).toBe(false);
+    expect(watcherFailureExitCode(missing)).toBe(70);
   });
 });

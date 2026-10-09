@@ -47,13 +47,16 @@
  *   and reconciles intents, the own commits it derived dead are disposed of
  *   (I3), and the journal re-reads its refusal holds; all join the driver's.
  *   One trigger's run is `followerTick` (`l1-follower.tick.ts`).
- * - Uncleared states are named `/readyz` reasons; nothing here exits.
+ * - Uncleared states are named `/readyz` reasons. The one exit: a database
+ *   transient (the driver's or the follower store's) that outlives its bound
+ *   (`transient-exhaustion.ts`) exits the node non-zero.
  */
 import { L1NodeTransport } from "@al-ft/l1-node-transport";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type FactStore,
   followChain,
+  FOLLOWER_TRANSIENT_EXHAUSTED,
   type FollowStatus,
   httpTxContentSource,
   openPostgresFactStore,
@@ -115,6 +118,7 @@ import {
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "./midgard-contracts.js";
+import { signalTransientExhausted } from "./transient-exhaustion.js";
 
 /** The follower over `plan`, once the node's network magic is known. */
 const followL1 = <R>(
@@ -309,9 +313,20 @@ const followL1 = <R>(
       recompute,
       refreshJournal: () => journal.refresh(),
     });
+    // A database transient that outlives its bound exits the node (R2).
     const trigger = coalescedRunner(
       () => Runtime.runPromise(runtime)(tick).then((ran) => ran.holds),
       abort.signal,
+      {
+        onExhausted: (holds) =>
+          signalTransientExhausted(globals.TRANSIENT_EXHAUSTION, {
+            source: "driver",
+            reason: holds[0]?.reason ?? "l1_driver_transient_failure",
+            detail: holds
+              .map((hold) => `${hold.reason}: ${hold.detail}`)
+              .join("; "),
+          }),
+      },
     );
     let lastCursor: string | null = null;
     const handle: L1FollowerHandle = {
@@ -344,6 +359,19 @@ const followL1 = <R>(
         }
       },
     });
+    // A follower whose transient store failures outlived their bound stops
+    // `exhausted`; the node exits non-zero (R2).
+    void running.then(
+      (final) => {
+        if (final.state === "exhausted" && !abort.signal.aborted)
+          signalTransientExhausted(globals.TRANSIENT_EXHAUSTION, {
+            source: "l1_follower",
+            reason: FOLLOWER_TRANSIENT_EXHAUSTED,
+            detail: final.waiting?.detail ?? "transient budget exhausted",
+          });
+      },
+      () => undefined,
+    );
     yield* Effect.addFinalizer(() =>
       Effect.promise(async () => {
         abort.abort();

@@ -95,7 +95,8 @@ export const createSupervisor = (input: {
     );
   }
   // An open that could not complete (journal_unavailable) is retried by
-  // every use and in the background; an integrity failure latches.
+  // every use, a status read included, and in the background only while
+  // transient (`isTransientJournalFailure`); an integrity failure latches.
   let openedQueueJournal: WatcherFaultProofQueueJournal | null = null;
   const openQueue = () =>
     watcherJournalOpener(
@@ -1065,8 +1066,10 @@ export const createSupervisor = (input: {
     },
     durableQueueStatus: () => {
       if (openedQueueJournal === null) {
-        // A journal failure answers as itself, never as a bad request:
-        // this throws the latched integrity failure or the failed open.
+        // A read is a use and opens the queue journal again. A journal
+        // failure answers as itself, never as a bad request: this throws
+        // the latched integrity failure or the failed open.
+        void queueJournal().catch(() => undefined);
         journals();
         throw new Error("fault-proof durable queue recovery is incomplete");
       }

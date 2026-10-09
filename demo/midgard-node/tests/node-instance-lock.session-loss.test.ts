@@ -9,6 +9,11 @@
  *   this side (a frozen connection) raises `node_instance_lock_suspended` at
  *   the next server-side check; while the server holds the lock, the checks
  *   raise nothing.
+ * - A lock whose reconnects fail past the reacquire budget stops trying,
+ *   raises `node_instance_lock_failed`, and signals the node's exit
+ *   (`transient-exhaustion.ts`); one whose reconnect Postgres refuses for
+ *   good (a bad password) raises the same reason and signals nothing: the
+ *   node stays up, unready.
  */
 import { Duration, Effect, Schedule } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,16 +24,21 @@ import {
   HALT_POLL_MS,
   pausedWhileHalted,
 } from "../src/services/liveness-halt.js";
-import { NODE_INSTANCE_LOCK_SUSPENDED } from "../src/services/node-instance-lock.js";
+import {
+  NODE_INSTANCE_LOCK_FAILED,
+  NODE_INSTANCE_LOCK_SUSPENDED,
+} from "../src/services/node-instance-lock.js";
 import {
   acquire,
   cleanUpLocks,
   database,
   endLockSessions,
+  exhaustionOf,
   fibers,
   freezingProxy,
   livenessGlobals,
   reasonOf,
+  refusingPostgres,
   release,
   scopes,
   steppedSleep,
@@ -138,6 +148,85 @@ describe(
         );
       } finally {
         await proxy.close();
+        for (const scope of scopes.splice(0)) await release(scope);
+      }
+    }, 30_000);
+  },
+);
+
+describe(
+  "the node instance lock that stops trying",
+  { concurrent: false },
+  () => {
+    it("raises node_instance_lock_failed once Postgres stays unreachable past the reacquire budget, and signals the node's exit", async () => {
+      const proxy = await freezingProxy();
+      const globals = livenessGlobals();
+      // A clock that advances by each wait, so the budget runs out at once.
+      let now = 0;
+      let waits = 0;
+      try {
+        await acquire({
+          connectionString: nodeDatabaseConnectionString({
+            ...database,
+            POSTGRES_HOST: "127.0.0.1",
+            POSTGRES_PORT: proxy.port,
+          }),
+          globals,
+          timers: {
+            now: () => now,
+            sleep: async (ms) => {
+              waits += 1;
+              now += ms;
+              await new Promise((resolve) => setImmediate(resolve));
+            },
+          },
+          bounds: { reacquireBudgetMs: 60_000 },
+        });
+        // Postgres goes away: the session ends and every reconnect is refused.
+        await proxy.close();
+        await vi.waitFor(
+          () => expect(reasonOf(globals)).toBe(NODE_INSTANCE_LOCK_FAILED),
+          { timeout: 5_000, interval: 20 },
+        );
+        const stoppedAt = waits;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(waits).toBe(stoppedAt);
+        expect(reasonOf(globals)).toBe(NODE_INSTANCE_LOCK_FAILED);
+        expect(exhaustionOf(globals)).toMatchObject({
+          source: "instance_lock",
+          reason: NODE_INSTANCE_LOCK_FAILED,
+        });
+      } finally {
+        for (const scope of scopes.splice(0)) await release(scope);
+      }
+    }, 30_000);
+
+    it("raises node_instance_lock_failed on a reconnect Postgres refuses for good, and signals no exit", async () => {
+      const proxy = await freezingProxy();
+      const globals = livenessGlobals();
+      let refusing: { close: () => Promise<void> } | undefined;
+      try {
+        await acquire({
+          connectionString: nodeDatabaseConnectionString({
+            ...database,
+            POSTGRES_HOST: "127.0.0.1",
+            POSTGRES_PORT: proxy.port,
+          }),
+          globals,
+          timers: {
+            sleep: () => new Promise((resolve) => setImmediate(resolve)),
+          },
+        });
+        // Postgres comes back on the same address refusing the login.
+        await proxy.close();
+        refusing = await refusingPostgres(proxy.port);
+        await vi.waitFor(
+          () => expect(reasonOf(globals)).toBe(NODE_INSTANCE_LOCK_FAILED),
+          { timeout: 5_000, interval: 20 },
+        );
+        expect(exhaustionOf(globals)).toBeUndefined();
+      } finally {
+        await refusing?.close();
         for (const scope of scopes.splice(0)) await release(scope);
       }
     }, 30_000);

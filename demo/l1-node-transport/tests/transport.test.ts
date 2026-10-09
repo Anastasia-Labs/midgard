@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
+import { createServer } from "node:net";
 
 import { afterEach, describe, expect, inject, it } from "vitest";
 
@@ -12,6 +13,7 @@ import {
   L1NodeTransport,
   ORIGIN,
   queryRewardAccount,
+  TransportFailedError,
   type TransportReadiness,
 } from "../src/index.js";
 import { headerHash, hex, MockNode, within } from "./mock-node.js";
@@ -35,11 +37,12 @@ const transportFor = (
   socketPath: string,
   onReadiness?: (readiness: TransportReadiness) => void,
   requestTimeoutMs = 20_000,
+  networkMagic = MAGIC,
 ): L1NodeTransport => {
   const transport = new L1NodeTransport({
     binaryPath: sidecarBinary,
     socketPath,
-    networkMagic: MAGIC,
+    networkMagic,
     requestTimeoutMs,
     restartDelayMs: { initial: 50, max: 200 },
     ...(onReadiness === undefined ? {} : { onReadiness }),
@@ -127,6 +130,64 @@ describe("supervisor", () => {
     expect(
       decodeCbor(await transport.query({ query: "chain_block_no" })),
     ).toEqual([1, 1]);
+  });
+
+  it("fails, and stops restarting, once the node refuses the handshake", async () => {
+    const node = await mockNode();
+    const seen: TransportReadiness[] = [];
+    const transport = transportFor(
+      node.socketPath,
+      (readiness) => seen.push(readiness),
+      20_000,
+      MAGIC + 1,
+    );
+    const failure = await transport.whenReady(10_000).catch((e) => e);
+    expect(failure).toBeInstanceOf(TransportFailedError);
+    expect(failure).toMatchObject({ reason: "node_handshake_failed" });
+    expect(transport.readiness).toMatchObject({
+      ready: false,
+      failed: true,
+      reason: "node_handshake_failed",
+    });
+    // Past many restart delays: no further sidecar, the readiness unchanged.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    expect(seen).toHaveLength(1);
+    // Every call and stream fails at once, and names the fault.
+    await expect(
+      transport.query({ query: "chain_block_no" }),
+    ).rejects.toBeInstanceOf(TransportFailedError);
+    expect(() =>
+      transport.openChainSync({ points: [ORIGIN], credit: 1 }),
+    ).toThrow(TransportFailedError);
+  });
+
+  it("restarts with backoff while the node drops the connection during the handshake", async () => {
+    const socketPath = MockNode.vacantSocket();
+    let accepted = 0;
+    const dropping = createServer((socket) => {
+      accepted += 1;
+      socket.destroy();
+    });
+    await new Promise<void>((resolve) => dropping.listen(socketPath, resolve));
+    owned.push({
+      close: () =>
+        new Promise<void>((resolve) => dropping.close(() => resolve())),
+    });
+    const seen: TransportReadiness[] = [];
+    const transport = transportFor(socketPath, (readiness) =>
+      seen.push(readiness),
+    );
+    await expect(transport.whenReady(1_500)).rejects.toMatchObject({
+      reason: "node_connection_lost",
+    });
+    expect(accepted).toBeGreaterThan(1);
+    expect(seen.every((r) => !r.ready && !("failed" in r))).toBe(true);
+    // Once a node answers on the socket, the transport recovers.
+    await new Promise<void>((resolve) => dropping.close(() => resolve()));
+    const node = await MockNode.start(mockNodeBinary, MAGIC, socketPath);
+    owned.push(node);
+    await transport.whenReady(10_000);
+    expect(transport.readiness).toMatchObject({ ready: true });
   });
 });
 

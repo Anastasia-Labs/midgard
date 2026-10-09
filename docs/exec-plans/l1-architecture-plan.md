@@ -994,8 +994,35 @@ In each case:
 - duties that depend on the failed condition are held;
 - the process **stays up**, so a supervisor restart can never loop.
 
-A process may exit only before its `/readyz` listener is bound, for example
-on an unparseable config or a port conflict.
+A process exits only when a restart could plausibly fix the failure (owner
+ruling 2026-10-09):
+
+- **Deterministic or unknown failures hold.** A failure no restart repairs,
+  or one that persists past its stuck bound, keeps the process up and
+  unready under a named terminal reason, as in the table below. Startup is
+  no exception: the `/readyz` listener binds first, and a startup step that
+  fails deterministically holds the process up, unready with
+  `startup_failed` (the committee's is `committee_startup_failed`), the
+  failed step and its reason in the detail.
+- **Bounded transients exit.** A transient failure whose bounded budget is
+  spent exits non-zero after one named log line; the supervisor's restart
+  is the backoff. After startup, Postgres, driver and follower-store
+  transients are each bounded at 15 minutes
+  (`node_transient_budget_exhausted`,
+  `committee_transient_budget_exhausted`, `l1_follower_transient_exhausted`).
+  No unbounded retry of these remains. At startup, a transient that
+  outlasts the startup budget exits the same way.
+- **Chain-source outages are not bounded.** While the cardano-node or the
+  transport sidecar is unreachable, `/readyz` names the outage and the
+  process waits. A sidecar that ends on a code no restart repairs (the node
+  refused the N2C handshake, or a protocol fault) is not restarted: the
+  transport is failed and `/readyz` names it.
+- **Exit 78 only without `/readyz`.** A process exits with status 78 only
+  where it genuinely cannot serve `/readyz`: the watcher refuses its
+  process configuration (including its L1 socket path), which names the
+  endpoint, before it can bind one. A port
+  conflict is a system error, which a restart may clear, so it exits
+  non-zero like a spent transient.
 
 | # | Reason | Trigger | Operator action |
 |---|---|---|---|
@@ -1025,7 +1052,7 @@ startup step: on every run of the step):
 | `protocol_initialization_failed` | R9, or deployment | A run of the startup protocol check fails: the deployment manifest does not match the config (R9), an availability-challenge reward account is not registered, or a runtime reference script is missing or differs. The node has not started serving; the check runs again from the start on a backoff that grows to 30 s, re-reading the deployment status first | Fix what the log names (the config, the registration or the reference script); the next run passes and startup goes on. No restart. |
 
 Everything else is transient and recovers automatically with backoff, while
-`/readyz` reports a reason:
+`/readyz` reports a reason, within the bounds above:
 
 - the cardano-node is unreachable or still syncing;
 - the sidecar crashed;
@@ -1636,7 +1663,8 @@ tests pass.
        operation;
      - the devnet journeys, with no Kupo or Ogmios configured;
      - the liveness rules: each intervention fails `/readyz` with a named
-       reason, and the process never exits or restart-loops.
+       reason, and the process stays up and never restart-loops; it exits
+       only on a spent transient budget (§7.5).
    - A difference from the old behaviour that turns up during
      implementation is reported when it suggests a missing requirement. It
      is never preserved.
@@ -1718,7 +1746,7 @@ deferred are not part of the program pull request.
 
 | Ticket | Scope | Depends on | Acceptance |
 |---|---|---|---|
-| **W1** | Watcher on the follower. Delete multi-provider consistency, the Kupmios capture and the `fp` Kupmios sources (§13.2). | F1–F5, F7, F8 | Simulator fork scenarios: every watcher projection equals a fresh replay of the facts after every operation. Fault detection and proof journeys pass on devnet with no Kupo or Ogmios. Each intervention W1 introduces fails `/readyz` with a named reason; the process never exits or restart-loops. |
+| **W1** | Watcher on the follower. Delete multi-provider consistency, the Kupmios capture and the `fp` Kupmios sources (§13.2). | F1–F5, F7, F8 | Simulator fork scenarios: every watcher projection equals a fresh replay of the facts after every operation. Fault detection and proof journeys pass on devnet with no Kupo or Ogmios. Each intervention W1 introduces fails `/readyz` with a named reason; the process stays up and never restart-loops, and exits only on a spent transient budget (§7.5). |
 | **W2** | Watcher store as per-row SQLite tables. Each row carries a MAC, and each revision a chained digest, O(delta). The journals become tables. Delete the whole-snapshot CAS. Absorbs L2: a completed objective with a verified marker past k is skipped on restart and pruned, and only non-completed rows count toward the cap. | W1 | Persist p99 ≤ 20 ms at 10^5 stored observations (B6). A tampered row or a reordered revision is detected at startup. The watcher README and compose state that the SQLite file must sit on a local disk, never a network filesystem. From L2: 100k retry cycles of one objective keep its table at most 2× its live rows, and a restart succeeds. A cap reached by live rows alone means unready `journal_capacity`, not a throw loop. |
 | **W3** | Watcher rollback = rewind + recompute. Delete `demo/midgard-watcher/src/l1/rollback-engine/*`. Incidents only beyond k. Absorbs L3: losing a block that was final at cd recomputes in-process and never sets `quarantined`. | W1, W2 | Simulator: the watcher's projections equal a fresh replay after every operation. From L3: a rollback that removes a cd-final block resumes in-process with no restart. A rollback beyond k: unready, and the process stays up. |
 
@@ -1726,8 +1754,8 @@ deferred are not part of the program pull request.
 
 | Ticket | Scope | Depends on | Acceptance |
 |---|---|---|---|
-| **N1** | Lists, events, key set and deposit spendability as projections over facts, using `slotNow` and never `new Date()`. Ingestion moves to the follower through a typed follower-change driver, and member identity moves to the §5.4 event key plus an immutable admission point, with the commit horizon at min(journal coverage, follower covered tip). Delete the user-event ingestion fibers and whatever becomes reader-free; the event-history control plane goes at N1-close (§13.1). | F1–F5, F7, F8 | Simulator fork scenarios: every node projection equals a fresh replay of the facts after every operation. Devnet journeys pass with no Kupo or Ogmios configured. Each intervention N1 introduces fails `/readyz` with a named reason; the process never exits or restart-loops. An orphaned-origin id is readmitted, and a retired key is refused. Per-block apply is O(r) (B2, ratio ≤ 1.2). |
-| **N1-close** | Inside this program's pull request, after the node tickets that read the journal have moved to follower identity. Delete the event-history control plane (owner, runtime, producer, recovery, authority, journal core, ledger receipts, `l1-event-history-*`, `l1-ledger-snapshot`; §13.1 rows marked N1-close). Re-source the U3 horizon from the follower. Remove the node's Kupo and Ogmios config keys. Run the node devnet journeys with no Kupo or Ogmios. The I5 gate stays with I5. | N1, I1, I3, I5, N3, N4, N6, U3 | Grep finds no reader of the deleted rows. Devnet journeys pass with no Kupo or Ogmios configured. Each N1 intervention fails `/readyz` with a named reason; the process never exits or restart-loops. |
+| **N1** | Lists, events, key set and deposit spendability as projections over facts, using `slotNow` and never `new Date()`. Ingestion moves to the follower through a typed follower-change driver, and member identity moves to the §5.4 event key plus an immutable admission point, with the commit horizon at min(journal coverage, follower covered tip). Delete the user-event ingestion fibers and whatever becomes reader-free; the event-history control plane goes at N1-close (§13.1). | F1–F5, F7, F8 | Simulator fork scenarios: every node projection equals a fresh replay of the facts after every operation. Devnet journeys pass with no Kupo or Ogmios configured. Each intervention N1 introduces fails `/readyz` with a named reason; the process stays up and never restart-loops, and exits only on a spent transient budget (§7.5). An orphaned-origin id is readmitted, and a retired key is refused. Per-block apply is O(r) (B2, ratio ≤ 1.2). |
+| **N1-close** | Inside this program's pull request, after the node tickets that read the journal have moved to follower identity. Delete the event-history control plane (owner, runtime, producer, recovery, authority, journal core, ledger receipts, `l1-event-history-*`, `l1-ledger-snapshot`; §13.1 rows marked N1-close). Re-source the U3 horizon from the follower. Remove the node's Kupo and Ogmios config keys. Run the node devnet journeys with no Kupo or Ogmios. The I5 gate stays with I5. | N1, I1, I3, I5, N3, N4, N6, U3 | Grep finds no reader of the deleted rows. Devnet journeys pass with no Kupo or Ogmios configured. Each N1 intervention fails `/readyz` with a named reason; the process stays up and never restart-loops, and exits only on a spent transient budget (§7.5). |
 | **N2** | State-queue projection. Every fiber reads it. Delete the topology walks and the address-wide scans (NC6). | N1 | Zero L1 reads in fiber ticks (checked by grep and a test spy). Third-party outputs paid to the queue address never enter the projection. |
 | **N3** | In-order landed-block processing (#744/#695) on facts: adopt when the node holds the post-state, otherwise fetch, replay and compare. Own blocks are never replayed. Delete the census and foreign adoption; rewrite the foreign-base verify (NC9). Runs on today's MPF owner until M2 (§1.4). | N2 | A foreign block that lands is processed exactly once. A rollback that removes it reverts the projection. No per-commit verify remains. |
 | **N4** | Correction admission as a temporal projection (§7.4). Delete correction rewind, restore and recovery. Absorbs L4: delete `refuseRewoundStateQueueCorrectionRollback` and the `state_queue_correction_rewind` halt, and reinstate removed own journals from class B. Until M1–M3, the MPF follows the rewind through `restoreRetainedRoot` (§1.4). | N2 | From L4: a correction admitted at cd, then rolled back at depth cd + 1 (below k): commit, merge and settlement resume with no intervention, and the ledger root equals a fresh replay. A correction that lands again rewinds exactly once. A rollback beyond k: unready, no exit. The node process never restarts; until M1–M3, at most one MPF child restart per rewind. |

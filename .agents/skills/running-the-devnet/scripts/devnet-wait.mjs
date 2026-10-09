@@ -143,6 +143,22 @@ export const classifyResponse = (status, bodyText) => {
       state: "terminal",
       detail: `l1Source intervention: ${object.l1Source.intervention ?? "no reason given"}`,
     };
+  // A process whose startup failed stays up and unready until an operator
+  // fixes the cause and restarts it, unless a transient outlived its budget,
+  // in which case it exits (node: listen.startup-http.ts; DA committee:
+  // startup.ts; watcher: watcher-runtime.startup-hold.ts). Either way no
+  // wait can pass.
+  const held = Array.isArray(object?.reasons)
+    ? object.reasons.find(
+        (reason) =>
+          reason === "startup_failed" || reason === "committee_startup_failed",
+      )
+    : undefined;
+  if (held !== undefined)
+    return {
+      state: "terminal",
+      detail: `${held}: ${[object.failedStage, object.failedStep, object.failedReason, object.detail].filter((part) => typeof part === "string").join(" ") || "no reason given"}`,
+    };
   const reasons = Array.isArray(object?.reasons)
     ? ` reasons=${object.reasons.slice(0, 8).join(",")}`
     : "";

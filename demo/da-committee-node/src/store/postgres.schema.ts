@@ -420,8 +420,9 @@ export const committeeStoreMigrations: MigrationSet = {
  * (`upgradeCommitteeL1Records`), then the stored retirement floor is re-bound
  * and the stored points are checked against the L1 origin (`checks`), each
  * write fenced on the instance lock.
- * A refusal is a named readiness reason the startup retry reports, the
- * process up.
+ * A refusal names its reason; the startup fails on it at once
+ * (`committee_startup_failed`) and the process holds, unready, until it is
+ * restarted.
  */
 export const initializeCommitteeSchema = async (
   pool: Pool,

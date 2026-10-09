@@ -148,7 +148,10 @@ something else started.
 3. Read the first fatal line, not the last. The node logs startup refusals as
    `Startup protocol initialization failed: …` with the mismatch list;
    `Database schema is not compatible: …` means run `db:migrate`; a manifest
-   refusal says `cannot be used as contract source`. A DA committee that lost
-   its L1 view stays up: its `/readyz` reports `l1_view_unavailable:<ms>` and
-   it keeps ticking until a view returns.
+   refusal says `cannot be used as contract source`. A failed startup step
+   logs `node_startup_failed stage=… step=… reason=…; <outcome>`: the node
+   stays up and unready (`startup_failed`, which `devnet-wait` reports as
+   crashed) unless a transient outlived its budget, when it exits. A DA
+   committee that lost its L1 view stays up: its `/readyz` reports
+   `l1_view_unavailable:<ms>` and it keeps ticking until a view returns.
 4. Decide relaunch or redeploy from the table above before restarting.

@@ -32,7 +32,7 @@ it("cancels a retry wait with its owned reason and never starts another attempt"
   start
     .mockReset()
     .mockRejectedValueOnce(
-      new NativeChainSyncStartupFailure("node_handshake_failed"),
+      new NativeChainSyncStartupFailure("node_connection_lost"),
     )
     .mockRejectedValue(
       new Error("unexpected attempt after owner cancellation"),
@@ -61,7 +61,7 @@ it("does not reinterpret an intrinsic failure when termination arrives concurren
 
 it("does not reinterpret a warning failure as cancellation of a wait that never began", async () => {
   const controller = new AbortController();
-  const failure = new NativeChainSyncStartupFailure("node_handshake_failed");
+  const failure = new NativeChainSyncStartupFailure("node_connection_lost");
   start.mockReset().mockRejectedValue(failure);
   await expect(
     startWatcherNativeChainSyncWithRetry({

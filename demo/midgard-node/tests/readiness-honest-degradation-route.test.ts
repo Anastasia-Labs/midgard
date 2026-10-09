@@ -319,18 +319,24 @@ describe("GET /readyz names the local node transport's fault", () => {
   });
 
   it.each([
-    "node_unreachable",
-    "sidecar_restarting",
-    "node_handshake_failed",
+    { ready: false, reason: "node_unreachable", detail: "fixture" },
+    { ready: false, reason: "sidecar_restarting", detail: "fixture" },
+    // A refused handshake fails the transport for good; the process stays
+    // up and names it.
+    {
+      ready: false,
+      failed: true,
+      reason: "node_handshake_failed",
+      detail: "fixture",
+    },
   ] as const)(
-    "goes unready on a %s transport while liveness answers and the process stays up",
-    async (reason) => {
+    "goes unready on a $reason transport while liveness answers and the process stays up",
+    async (transport) => {
+      const reason = transport.reason;
       const exit = vi.spyOn(process, "exit").mockImplementation(() => {
         throw new Error("the readiness handler must never exit");
       });
-      const l1Access: L1AccessStub = {
-        transport: { ready: false, reason, detail: "fixture" },
-      };
+      const l1Access: L1AccessStub = { transport };
       const response = await readyz({ l1Access });
       expect(response.status).toBe(503);
       expect(response.ready).toBe(false);

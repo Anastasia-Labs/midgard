@@ -39,7 +39,7 @@ if (mode === "pending")
   await new Promise<void>((resolve) => server.listen(socketPath, resolve));
 else {
   // Preserve an actual socket inode but remove its listener: native validation
-  // succeeds, and the actual Unix dial reports node_handshake_failed.
+  // succeeds, and the actual Unix dial reports node_unreachable.
   const privatePath = `${socketPath}.bind`;
   await new Promise<void>((resolve) => server.listen(privatePath, resolve));
   linkSync(privatePath, socketPath);

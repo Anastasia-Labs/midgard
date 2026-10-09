@@ -3,6 +3,7 @@ import {
   type ChainSyncStream,
   IntersectNotFoundError,
   type TransportReadiness,
+  TransportUnavailableError,
 } from "@al-ft/l1-node-transport";
 
 import {
@@ -34,8 +35,11 @@ export type Script = {
   limit?: number;
   /** `opened` rejects with this on the matching open (0-based). */
   intersectNotFound?: Readonly<{ open: number; resuming: boolean }>;
-  /** `next` throws once when about to serve this index. */
+  /** `next` throws when about to serve this index (`failTimes` times, default once). */
   failAt?: number;
+  failTimes?: number;
+  /** What `next` throws there: by default the transport going away. */
+  failWith?: () => Error;
 };
 
 export const script = (
@@ -80,8 +84,15 @@ export const scriptedTransport = (
         for (;;) {
           if (closed) return undefined;
           if (s.failAt === position) {
-            s.failAt = undefined;
-            throw new Error("the transport sidecar went away");
+            s.failTimes = (s.failTimes ?? 1) - 1;
+            if (s.failTimes <= 0) s.failAt = undefined;
+            throw (
+              s.failWith?.() ??
+              new TransportUnavailableError(
+                "sidecar_restarting",
+                "the transport sidecar went away",
+              )
+            );
           }
           if (position < Math.min(s.limit ?? Infinity, s.events.length)) {
             position += 1;
@@ -125,7 +136,12 @@ export const follow = async (
     Partial<
       Pick<
         FollowChainOptions,
-        "stuckAfter" | "prune" | "onStatus" | "nodeBehind"
+        | "stuckAfter"
+        | "prune"
+        | "onStatus"
+        | "nodeBehind"
+        | "transientBudgetMs"
+        | "now"
       >
     >,
 ): Promise<FollowRun> => {
@@ -145,6 +161,10 @@ export const follow = async (
       ? {}
       : { stuckAfter: options.stuckAfter }),
     ...(options.prune === undefined ? {} : { prune: options.prune }),
+    ...(options.transientBudgetMs === undefined
+      ? {}
+      : { transientBudgetMs: options.transientBudgetMs }),
+    ...(options.now === undefined ? {} : { now: options.now }),
     ...(options.nodeBehind === undefined
       ? {}
       : { nodeBehind: options.nodeBehind }),

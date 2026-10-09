@@ -373,12 +373,16 @@ const openFollowerParts = async (
  * `records` reads every L1 point and submission the committee store names:
  * before each prune step the loop brings their retention pins current, so
  * no history a stored record reads again is pruned (plan §11).
+ *
+ * `onExhausted` is called once the loop stopped because transient store
+ * failures outlived its budget (`l1_follower_transient_exhausted`).
  */
 export const startCommitteeL1Follower = async (
   config: LoadedCommitteeConfig,
   writerLease: CommitteeWriterLease,
   log: (line: string) => void,
   records: () => Promise<CommitteePinTargets>,
+  onExhausted?: (detail: string) => void,
 ): Promise<CommitteeL1Follower> => {
   const parameters = depthParameters(config);
   const plan = committeeL1FollowerPlan(config);
@@ -431,6 +435,15 @@ export const startCommitteeL1Follower = async (
       status = next;
     },
   });
+  // Transient store failures that outlived the loop's budget stop it
+  // `exhausted`; the process exits non-zero (`transient-exhaustion.ts`).
+  void running.then(
+    (final) => {
+      if (final.state === "exhausted" && !abort.signal.aborted)
+        onExhausted?.(final.waiting?.detail ?? "transient budget exhausted");
+    },
+    () => undefined,
+  );
   return {
     source: committeeL1Source({
       store,

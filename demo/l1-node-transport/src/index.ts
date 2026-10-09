@@ -26,6 +26,7 @@ export {
   type ChainSyncEvent,
   type ChainTip,
   hexToBytes,
+  isTransportFailedReason,
   type LedgerQuery,
   ORIGIN,
   pointKey,
@@ -33,6 +34,8 @@ export {
   type RollForward,
   samePoint,
   type StakeCredential,
+  TRANSPORT_FAILED_REASONS,
+  type TransportFailedReason,
   TransportProtocolError,
   type TransportReadiness,
   type TransportUnreadyReason,
@@ -54,6 +57,7 @@ export {
   IntersectNotFoundError,
   MAX_WINDOW,
   type Opened,
+  STREAM_REOPEN_CODES,
   StreamInterruptedError,
   type StreamInterruption,
 } from "./stream.js";
@@ -68,3 +72,4 @@ export {
   TransportTimeoutError,
   TransportUnavailableError,
 } from "./transport.js";
+export { TransportFailedError } from "./transport-failed.js";

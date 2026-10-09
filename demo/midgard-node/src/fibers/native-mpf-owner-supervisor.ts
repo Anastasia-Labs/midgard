@@ -11,9 +11,10 @@ import type { NativeOwnerRestartHealth } from "../services/mpf-native-owner/serv
 
 export const NATIVE_MPF_OWNER_SUPERVISOR_SOURCE = "native_mpf_owner";
 
-/** Failed child restarts exhausted the owner's window. */
-export const NATIVE_MPF_OWNER_RESTART_EXHAUSTED =
-  "native_mpf_owner_restart_exhausted";
+/** The owner holds: the same child failure repeated past its restart limit,
+ * or one no restart repairs came (the binary is not the pinned one). It
+ * restarts no more; the node stays up and unready until it is restarted. */
+export const NATIVE_MPF_OWNER_STUCK = "native_mpf_owner_stuck";
 
 /** A committed canonical recovery is not installed yet. */
 export const NATIVE_MPF_OWNER_RECOVERY_PENDING =
@@ -60,10 +61,11 @@ const restartHealthOf = (
 /**
  * Surfaces the live Architecture G native owner's refusal in readiness instead
  * of stopping the node. The owner restarts its own child from the durable root
- * marker, unboundedly after a death and again once failed restarts leave its
- * window, and reading its refusal each tick also starts a restart that is due.
- * While it refuses, every commit, merge and recovery refuses at the owner and
- * retries on its own schedule. The owner is re-read each tick because recovery
+ * marker with backoff after a failure, and reading its refusal each tick also
+ * starts a restart that is due; the same failure repeated past the restart
+ * limit holds it (`NATIVE_MPF_OWNER_STUCK`, logged at error), with no further
+ * restarts. While it refuses, every commit, merge and recovery refuses at the
+ * owner and retries on its own schedule. The owner is re-read each tick because recovery
  * flows replace it; the reason clears once the owner serves again or is gone.
  * The restart rate is published, and logs once at warning when it reaches the
  * restart limit inside the window. A promotion the owner refused over a
@@ -116,10 +118,11 @@ export const nativeMpfOwnerSupervisorFiber = (
     yield* raiseLivenessIncident(
       globals,
       NATIVE_MPF_OWNER_SUPERVISOR_SOURCE,
-      health?.exhausted === true
-        ? NATIVE_MPF_OWNER_RESTART_EXHAUSTED
+      health?.held === true
+        ? NATIVE_MPF_OWNER_STUCK
         : NATIVE_MPF_OWNER_RECOVERY_PENDING,
       failure.message,
+      health?.held === true ? { escalateAfterMs: 0 } : {},
     );
   }).pipe(Effect.repeat(schedule));
 };

@@ -12,7 +12,7 @@ harness environment before building a URL.
 | midgard-node            | `PORT`, 3000                                                                      | `/readyz`                              | Ready | 200 with `ready: true`, else 503 with `ready: false` and `reasons`                                                                                                                                                                            |
 | midgard-node            | `PORT`, 3000                                                                      | `/pipeline-status`                     | Work  | Commit, confirmation and merge pipeline state                                                                                                                                                                                                 |
 | midgard-node metrics    | `PROM_METRICS_PORT`, 9464                                                         | `/metrics`                             | Work  | Prometheus text; served only when `listen` runs with `--with-monitoring`                                                                                                                                                                      |
-| DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/healthz`                             | Live  | 200 `{"ok":true}`                                                                                                                                                                                                                             |
+| DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/healthz`                             | Live  | 200 `{"ok":true}`; `{"ok":true,"status":"held"}` while a failed startup holds it up, its `/readyz` 503 with `committee_startup_failed` and the failure in `detail`                                                                            |
 | DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/readyz`                              | Ready | 200 or 503 with the readiness snapshot: `l1Source.status` (`uninitialized`, `healthy`, `intervention` with `l1Source.intervention` naming the follower's reason), `counts.signatures`, `counts.submittedOrConfirmedL1Attestations`, `reasons` |
 | DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/v1/manifest`                         | -     | The committee's runtime manifest                                                                                                                                                                                                              |
 | Watcher operations      | `WATCHER_OPERATIONS_PORT`, 7402                                                   | `/readyz`, `/v1/status`, `/v1/metrics` | Ready | `/readyz` 200, or 503 with `reasons` (see the watcher section below); `/v1/status` 200 whenever the server runs, which is before the L1-dependent startup stages; no bearer                                                                   |
@@ -68,10 +68,27 @@ Sources:
 ## Node `/readyz` reasons
 
 Every reason the node can put in `reasons`, what it means and what to do. A
-`:` form carries parameters after the name. No reason stops the process:
-`/healthz` stays live and the node keeps retrying, so "wait" means the node
-clears the reason itself once the cause is gone. Entries under `details` are
-degradations that leave the node ready. The list is derived from
+`:` form carries parameters after the name. The node exits only when a
+restart could plausibly fix the failure: a transient failure that outlived
+its bound. Otherwise no reason stops the process: `/healthz` stays live, and
+"wait" means the node clears the reason itself once the cause is gone.
+After startup, Postgres transients (the instance lock, the follower's store,
+the driver's coalesced runner) are each bounded at 15 min in a row; past it
+the node logs `node_transient_budget_exhausted source=<source>
+reason=<reason>` and exits non-zero, its supervisor's restart being the
+backoff. An L1 node or sidecar outage is not bounded. A startup step that
+fails holds the node or exits it (next paragraph). Entries under `details`
+are degradations that leave the node ready.
+
+Only a transient failure is retried on a timer: a connection failure or
+timeout, a retryable provider error, a database that is busy or restarting,
+an L1 node or sidecar still starting. A failure that is not known to be
+transient is not retried on a timer. While the node runs, a follower-driver
+hold that a retry can clear (a wait, or a transient failure) runs again on
+the driver's backoff (500 ms doubling to 30 s). A hold no timer can clear (a
+verdict on the view, a failure not known to be transient, a missing schema)
+is read again on the next follower change, which is every new L1 block at
+the tip. The list is derived from
 `demo/midgard-node/src` and the follower readiness reasons of
 `demo/midgard-l1-follower/src` by
 `scripts/ci/check-readiness-reasons-doc.mjs`, which fails when a reason here
@@ -81,35 +98,90 @@ Startup (`src/commands/listen.startup-http.ts`; the step reasons are in
 `src/services/startup-waiting.ts`). Until the node serves, `/readyz` answers
 503 with the stage in `stage`, `startup_incomplete` first, then the stage's
 own reasons, then those of every startup step that is waiting. A step that
-waits retries with a backoff that grows to 30 s, with no deadline, and its
-reason goes once it succeeds:
+meets a transient failure retries it with a backoff that grows to 30 s,
+under the step's budget, and its reason goes once it succeeds. The budgets:
+the database 15 min (`STARTUP_DATABASE_BUDGET`), the L1 node and its
+sidecar 10 min (`STARTUP_L1_NODE_BUDGET`), the protocol deployment status
+`STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS` (default 120) attempts 5 s
+apart, and the DA provider assertions (with the DA capability quorum) the
+same attempts. A failure that is not
+transient fails the step at once; a transient one that outlives the budget
+fails it too. Either way `/readyz` answers `startup_failed` with
+`failedStage`, `failedStep` and `failedReason`, and the log line
+`node_startup_failed stage=<stage> step=<step> reason=<reason>; <outcome>`
+names the last cause. A failure not known to be transient holds: the node
+stays up and unready, `/healthz` answers 200 with `status: "held"`, and
+nothing retries it until the node is restarted. A transient that outlived
+its budget exits non-zero (`<outcome>` says so, and the line starts
+`node_transient_budget_exhausted` when a running source's bound ran out).
+The supervisor's restart policy is the retry after an exit: `restart: always` in
+`demo/midgard-node/docker-compose.yaml`, and the process devnet's supervisor
+(backoff 1 s doubling to 60 s). Waiting on another actor (another process
+holding the instance lock, the follower catching up to the tip) has no
+deadline:
 
 - `startup_incomplete`: the node has not finished starting. Read `stage`
   and the reasons after it.
-- `startup_failed`: a startup stage failed with a verdict the node does not
-  retry (`failedStage` names it); the process exits with the error in its
-  log. Fix what the error names and restart.
+- `startup_failed`: a startup step or stage failed for good; `failedStage`,
+  `failedStep` and `failedReason` name it. A failure not known to be
+  transient holds the node up and unready: fix what the reason and the log
+  name, then restart the node. A transient that outlived its budget exits
+  the node; wait for the restart if the outage has since cleared.
 - `lucid_initialization_pending`: building a Lucid client (its
-  protocol-parameter read) failed. Check the L1 node and the follower.
+  protocol-parameter read) failed transiently. Check the L1 node and the
+  follower.
+- `l1_node_config_pending`: the cardano-node configuration files are not
+  there yet, so the network magic cannot be read. Check the configured
+  paths and that the node has written them.
+- `l1_slot_mapping_pending`: the ledger's slot mapping read failed
+  transiently. Check the L1 node and its sidecar.
 - `database_unreachable`: PostgreSQL does not answer or refuses
   connections; a pool waits to open, or the schema check waits to run.
   Restore Postgres reachability.
+- `database_connection_failed` (a `failedReason`): PostgreSQL refused the
+  connection for a reason waiting does not clear (bad credentials, a missing
+  database). Fix the connection settings.
 - `schema_migration_in_progress`: a `db:migrate` holds the schema lock.
   Wait for it to finish.
+- `database_schema_incompatible` (a `failedReason`): the database's schema
+  is not the one this binary runs on (not migrated, unversioned, a ledger or
+  shape mismatch). Run `migrate`, or point the node at the right database.
 - `protocol_deployment_status_unavailable`: the protocol deployment status
   read failed on the L1 provider. Check the L1 node and the follower.
-- `protocol_initialization_failed`: a run of the startup protocol check
-  failed (the log names why: an unregistered availability-challenge reward
-  account, a reference script not yet published, a deployment-manifest
-  mismatch); the check runs again from the start, re-reading the deployment
-  status first. Fix what the log names; the node goes on by itself.
+- `reward_account_status_unavailable`: the availability-challenge reward
+  account reads failed on the L1 provider. Check the L1 node.
+- `deployment_manifest_mismatch`, `deployment_manifest_unverifiable`,
+  `deployment_manifest_missing` (each a `failedReason`): the configured
+  deployment manifest does not match the deployment, cannot be read or
+  verified, or is not configured though the deployment is complete. Fix the
+  manifest path or the deployment configuration.
+- `protocol_deployment_partial` (a `failedReason`): some, not all, of the
+  protocol deployment is on chain. Finish the deployment.
+- `availability_reward_account_unregistered` (a `failedReason`): an
+  availability-challenge reward account is not registered. Register it.
+- `runtime_reference_scripts_failed` (a `failedReason`): the node-runtime
+  reference-script preflight failed. Publish the reference scripts it
+  names.
+- `protocol_initialization_failed`: the startup's protocol initialization
+  (its transaction, the reference scripts after it, or the deployment-info
+  write) failed; startup ends with it as `failedReason`. Read the log.
 - `da_provider_assertions_unavailable`: the DA provider assertions read
   failed on the L1 provider. Check the L1 node.
 - `da_capability_quorum_pending`: too few DA committee peers answered
   capably yet, and the quorum can still form. Check that the committee's
   peers are up.
 - `admission_backlog_unread`: the first read of the durable admission
-  backlog failed. Check Postgres.
+  backlog failed with a connection failure. Check Postgres.
+- In the `l1_follower_catch_up` stage, `state_queue_unavailable`: the landed
+  state queue could not be read at the follower's view. A transient database
+  failure waits within the database budget; any other read failure ends
+  startup with it as `failedReason`.
+- In the `follower_view_apply` stage, a driver failure hold
+  (`startup_preparation_failed`, `l1_driver_recompute_failed`,
+  `l1_events_ingestion_failed`, `landed_block_rebase_failed`,
+  `mpf_closure_missing`, `native_mpf_restore_index_cap_exceeded`) that the
+  driver does not retry ends startup with it as `failedReason`; one it
+  retries ends startup once it has stood for the database budget.
 
 Core checks (`src/commands/readiness.ts`, the readiness handler):
 
@@ -189,9 +261,10 @@ Commitment and liveness (raised by fibers, cleared by them):
   DA frame. Both refuse the block on every tick. The ledger ceiling needs
   the ledger to shrink (merges and withdrawals); raise either with the
   deployment owner if it stays.
-- `native_mpf_owner_restart_exhausted`: failed native MPF child restarts
-  used up the restart window. Read the child's errors; restart the node once
-  fixed.
+- `native_mpf_owner_stuck`: the native MPF child failed the same way
+  `MPF_NATIVE_OWNER_RESTART_LIMIT` times in a row, or its binary is not the
+  pinned one. The owner restarts it no more. Read the child's error, fix the
+  cause, then restart the node.
 - `native_mpf_owner_recovery_pending`: a committed canonical recovery is
   not installed yet. Wait.
 - `native_mpf_promotion_index_cap_exceeded`: the owner refused to promote a
@@ -225,15 +298,23 @@ Node instance lock (`src/services/node-instance-lock.ts`):
   check `pg_locks`/`pg_stat_activity` for the advisory holder. The node
   takes over by itself once the holder is gone.
 - `node_instance_lock_unavailable`: no Postgres session could be opened to
-  try the lock at startup. Retried with a backoff that grows to 30 s, with
-  no deadline. Restore Postgres
-  reachability and credentials. No restart is needed.
+  try the lock at startup. A connection failure is retried with a backoff
+  that grows to 30 s, for at most the database budget (15 min); past it, or
+  on any other failure, startup fails (step `instance_lock`). Restore
+  Postgres reachability and credentials.
 - `node_instance_lock_suspended`: the session holding the lock ended under a
   live node, or the server-side check (every 10 s, on a session of its own)
   found that the server no longer holds the lock for it. Commit, merge and
   watchdog start no new tick (one already running finishes) and settlement
   is stopped while it reconnects. Usually no action; if it persists, check
   Postgres stability.
+- `node_instance_lock_failed`: a suspended lock stopped trying to take the
+  lock again: a failure that is not a connection failure, or Postgres
+  unreachable for longer than the reacquire budget (15 min) in a row. On
+  the budget, the node exits non-zero (`node_transient_budget_exhausted
+source=instance_lock`) and its supervisor restarts it; on any other
+  failure it stays up with its duties held. Fix Postgres, then restart the
+  node.
 
 L1 follower and follower-change driver
 (`src/services/l1-follower.readiness.ts`):
@@ -253,16 +334,25 @@ L1 follower and follower-change driver
   its origin.
 - `l1_follower_migration_failed`: the follower store refused its migrations
   at start (a recorded migration whose text changed, a duplicate id, or one
-  the schema lint refuses). The node keeps retrying the start. Fix the
-  migration set in the deployed build; a start whose migrations apply clears
-  it.
+  the schema lint refuses). The follow loop stops; the node stays up and
+  unready. Fix the migration set in the deployed build, then restart the
+  node.
+- `l1_follower_transient_exhausted`: the follower's store did not answer
+  (a transient failure) for 15 min with no event settled. The follow loop
+  stops and the node exits non-zero (`node_transient_budget_exhausted
+source=l1_follower`), its supervisor's restart being the backoff. Restore
+  Postgres.
 - `l1_follower_prune_failing`: three prune passes in a row failed, so facts
   past retention stay and the store grows. Read the follower's prune error
   in the log; the next successful pass clears it.
 - `l1_follower_unconfigured`: the node has no follower; the detail names the
   missing configuration. Set it and restart.
 - `l1_node_config_unreadable`: the cardano-node config files do not yield
-  the network magic yet. Check the configured paths; it retries.
+  the network magic yet. Check the configured paths; it retries for the L1
+  node budget (10 min).
+- `l1_node_config_failed`: the network magic read failed for good: the
+  files stayed unreadable past the L1 node budget, or the read failed in a
+  way waiting does not clear. Fix the configured paths and restart.
 - `l1_follower_view_unapplied`: no follower-change driver has applied a
   view yet. Normal at start; wait.
 - `l1_driver_recompute_pending`: a recompute (rebase, orphan repair, first
@@ -271,21 +361,24 @@ L1 follower and follower-change driver
   longer on the follower's chain (a rollback). Wait for the recompute.
 - `startup_preparation_failed`: the startup preparation failed; the detail
   names the step. A landed state queue that is not ready yet shows there as
-  `state_queue_unavailable` or `state_queue_unhealthy`. The next recompute
-  runs it again; fix the named step if it repeats.
-- `l1_driver_recompute_failed`: a recompute failed for a reason it could
-  not name and is retried. Read the detail; it repeats until the cause is
-  fixed.
+  `state_queue_unavailable` or `state_queue_unhealthy`. A transient failure
+  is retried on the driver's backoff; any other fails startup (see
+  `follower_view_apply` above).
+- `l1_driver_recompute_failed`: a recompute failed. A transient failure is
+  retried on the driver's backoff; any other is read again on the next
+  follower change. Read the detail; it repeats until the cause is fixed.
 - `l1_events_ingestion_waiting`: event ingestion waits for its write gate
   while a recovery runs. Wait.
 - `l1_events_ingestion_failed`: ingestion refused or failed; the detail
   names why. `l1_events_hook_failed`: a ticket hook failed; the detail names
-  the hook. Both retry; read the detail.
+  the hook. A transient failure is retried on the driver's backoff, any
+  other on the next follower change; read the detail.
 - `l1_events_orphan_recovery`: orphaned admissions wait for the recovery
   that rejects their dependents. Wait.
 - `l1_event_identity_conflict`: a projected event's public id has a local
   row under another live admission, or none; the event is left out until it
-  clears. Inspect the named event's rows.
+  clears, which only a chain change can do (it is read again on each).
+  Inspect the named event's rows.
 - `l1_event_undecodable:<count>` (a detail): that many projected events do
   not decode into the node's rows and are left out; `refused` names them.
 - `forced_order_carriage_pending`: a forced order's carriage resolved from
@@ -324,13 +417,14 @@ Landed blocks and the confirmed ledger (`src/landed-blocks/holds.ts`; the
 first hold by priority is the reason, the rest are in its detail):
 
 - `landed_block_invalid`: a landed block does not replay to its header or
-  link to its parent; it is never adopted. Report the block.
+  link to its parent; it is never adopted, and no timer replays it again
+  (the next follower change does). Report the block.
 - `landed_block_own_journal_mismatch`: this node's own landed block
   disagrees with its journal. A local fault; processing stops until the
-  journal is repaired: restore the node database from a backup that holds
+  journal is repaired (no timer retries it): restore the node database from a backup that holds
   the block's journal (plan §7.5, R5). Report it with the detail.
 - `landed_block_follower_schema_missing`: the follower's admission tables
-  are missing from the node database. Run `migrate`.
+  are missing from the node database; no timer retries it. Run `migrate`.
 - `landed_block_event_unknown`: a foreign block names an event the follower
   does not know at the view. Wait; it is re-read every run.
 - `landed_block_forced_order_pending`: a forced order in a foreign block's
@@ -350,12 +444,15 @@ first hold by priority is the reason, the rest are in its detail):
   store's disk.
 - `landed_block_rebase_failed`, `landed_block_replay_incomplete`,
   `landed_block_replay_failed`: a rebase, or the import or replay of a
-  landed block, failed for a reason it could not pin on the block; every run
-  retries. Read the detail.
+  landed block, failed for a reason it could not pin on the block. A
+  transient failure is retried on the driver's backoff; any other (and every
+  `landed_block_replay_incomplete`) is read again on the next follower
+  change. Read the detail.
 - `confirmed_ledger_base_mismatch`: a fold's base is not what the block
   names; nothing is written. `confirmed_ledger_behind`: the merged queue
   root is on no lineage the confirmed ledger can reach. Neither occurs on an
-  honest chain with an intact store; report it with the detail.
+  honest chain with an intact store, and no timer retries either; report it
+  with the detail.
 - `landed_blocks_waiting`: the follower write gate refused a write, or the
   follower moved off the run's view. Wait.
 - `landed_block_own_revival_pending`, `confirmed_ledger_own_block_pending`,
@@ -367,7 +464,13 @@ first hold by priority is the reason, the rest are in its detail):
 The watcher's `/readyz` answers 200 when ready, else 503 with `reasons` and
 `l1` (the L1 reasons with their detail); `/v1/status` carries the same
 `readinessReasons` and the `l1Degradations`, which never fail readiness. No
-reason below stops the process. This list covers the reasons and
+reason below stops a running watcher. A startup stage that fails on a
+transient a restart may clear (L1 reads past the startup budget, a system
+error such as a port in use) exits the process non-zero, its supervisor's
+restart policy (`restart: unless-stopped` in
+`demo/midgard-watcher/compose.yaml`) being the retry after that. A follower
+whose store transients outlast 15 min exits it the same way. A refused
+process configuration exits 78, before the operations server binds. This list covers the reasons and
 degradations added for the L1 follower; the full set is
 `WatcherOperationsReadinessReason` in
 `demo/midgard-watcher/src/runtime/operations-observability.watcher-operations-metrics.ts`.
@@ -377,8 +480,15 @@ degradations added for the L1 follower; the full set is
   names the stage most recently begun (`l1_node_identity`,
   `workflow_readiness`, `protocol_parameters`). The body's `startup` field
   holds the stage's latest report; `outcome: "pending"` with `error` and
-  `retryAfterMs` means it is waiting out an unanswering node. `/v1/status`
-  answers 200 meanwhile. Wait; check the node if it lasts.
+  `retryAfterMs` means it is waiting out an unanswering node. A stage waits
+  out an unanswering follower or node transport for at most 10 min
+  (`WATCHER_STARTUP_L1_BUDGET_MS`); past it the stage fails with
+  `watcher_l1_unavailable` and the process exits. `/v1/status` answers 200
+  meanwhile. Wait; check the node if it lasts.
+- `startup_failed`: a startup stage failed on something no restart is known
+  to repair (a configuration or deployment-identity refusal, a malformed
+  read). The watcher stays up and unready under it; the detail names the
+  stage and the error. Fix the cause, then restart the watcher.
 - `fault_proof_objective_unreadable`: at startup an objective's workflow
   journal could not be read (a removal interrupted part way, a symlink, a
   corrupt journal). The objective is held, never run; clears once its header
@@ -392,9 +502,11 @@ degradations added for the L1 follower; the full set is
 - `fault_proof_l1_refused:store_inconsistent`: the follower's stored facts
   contradict one another (two unit histories place one transaction at
   different points). The objective is held; report it with the detail.
-- `l1_follower_loop_failed`: the follow loop threw. It restarts after a
-  backoff (250 ms doubling to 30 s) and the reason clears once the restarted
-  loop reports a status; report the detail.
+- `l1_follower_loop_failed`: the follow loop threw. The loop retries every
+  transient chain, node and store failure itself, so a throw is a defect no
+  retry is known to repair: the loop is not restarted, and the reason stands
+  until the watcher is restarted. Report the detail, then restart the
+  watcher.
 - `deadline_at_risk`, `deadline_unsafe`: a proof deadline is near or past its
   safe start. The watcher keeps running and keeps proving; read
   `deadlineHealth` and `remainingSafeStartMs` in `/v1/metrics`.

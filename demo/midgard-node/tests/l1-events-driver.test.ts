@@ -23,10 +23,13 @@ import {
   EVENTS_HOOK_FAILED,
   EVENTS_INGESTION_FAILED,
   EVENTS_ORPHAN_RECOVERY,
+  failureHold,
   type FollowerChange,
   type IngestionPlan,
+  isRetriedHold,
   type SinkResult,
 } from "../src/l1-events/driver.js";
+import { coalescedRunner } from "../src/services/l1-follower.coalesced-runner.js";
 import {
   admissionTx,
   eventOrder,
@@ -305,6 +308,8 @@ describe.each(["sqlite", "postgres"] as const)(
       const first = driver.applied();
       expect(first).not.toBeNull();
       expect(driver.holds()).toEqual([conflictHold]);
+      // Only a chain change lifts a conflict: no timer re-runs it.
+      expect(driver.holds().map(isRetriedHold)).toEqual([false]);
       expect(driver.refused()).toEqual([undecodable]);
 
       // A run that does not apply keeps the last applied view's refusals.
@@ -350,3 +355,81 @@ describe.each(["sqlite", "postgres"] as const)(
     });
   },
 );
+
+describe("the driver's holds, by failure class", () => {
+  const refused = (message: string) =>
+    Object.assign(new Error(message), { code: "ECONNREFUSED" });
+
+  it("marks a hold over a transient failure retried, and one over any other failure not", async () => {
+    for (const [error, retried] of [
+      [refused("connect ECONNREFUSED 127.0.0.1:5432"), true],
+      [Object.assign(new Error("admin shutdown"), { code: "57P01" }), true],
+      [new Error("store closed"), false],
+      [Object.assign(new Error("duplicate key"), { code: "23505" }), false],
+    ] as const) {
+      const driver = createFollowerDriver({
+        store: {
+          currentView: () => Promise.reject(error),
+        } as unknown as FactStore,
+        config: EVENTS_CONFIG,
+        sink: recordingSink().sink,
+      });
+      await driver.run();
+      expect(driver.holds().map(isRetriedHold)).toEqual([retried]);
+    }
+  });
+
+  /** Runs the coalesced runner over `holdsOf(run)`; counts the runs. */
+  const runner = (holdsOf: (run: number) => readonly DriverHold[]) => {
+    const abort = new AbortController();
+    let runs = 0;
+    const trigger = coalescedRunner(
+      () => {
+        runs += 1;
+        if (runs > 20) throw new Error("retried without bound");
+        return Promise.resolve(holdsOf(runs));
+      },
+      abort.signal,
+      { onExhausted: () => undefined },
+    );
+    return { trigger, runs: () => runs, stop: () => abort.abort() };
+  };
+  const settle = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  it("retries a run held by a transient failure on its backoff, with no trigger, until it clears", async () => {
+    const r = runner((run) =>
+      run < 3
+        ? [failureHold(EVENTS_INGESTION_FAILED, "down", refused("down"))]
+        : [],
+    );
+    try {
+      r.trigger();
+      const deadline = Date.now() + 10_000;
+      while (r.runs() < 3 && Date.now() < deadline) await settle(20);
+      expect(r.runs()).toBe(3);
+      // Cleared: no further retry.
+      await settle(800);
+      expect(r.runs()).toBe(3);
+    } finally {
+      r.stop();
+    }
+  });
+
+  it("does not retry a run held only by a failure that is not transient; the next trigger runs it", async () => {
+    const r = runner(() => [
+      failureHold(EVENTS_INGESTION_FAILED, "boom", new Error("boom")),
+    ]);
+    try {
+      r.trigger();
+      // Well past the first backoff (500 ms).
+      await settle(1_200);
+      expect(r.runs()).toBe(1);
+      r.trigger();
+      await settle(50);
+      expect(r.runs()).toBe(2);
+    } finally {
+      r.stop();
+    }
+  });
+});

@@ -1,7 +1,7 @@
 import type { TransportReadiness } from "@al-ft/l1-node-transport";
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as LE from "@lucid-evolution/lucid";
-import { Duration, Effect, Schedule, type Scope } from "effect";
+import { Effect, type Scope } from "effect";
 
 import {
   resolveLucidSlotMapping,
@@ -9,6 +9,7 @@ import {
 } from "../custom-slot-mapping.js";
 import { readL1FollowerTipSlot, registerL1TipSource } from "../l1-heads.js";
 import { registerL1ProviderView } from "../l1-provider-view.js";
+import { hasCauseCode, isRetryableProviderError } from "../provider-retry.js";
 import { configureReferencePublication } from "../transactions/reference-publication.js";
 import { selectNodeWallet } from "../transactions/utils.wallet-view.js";
 import { ConfigError, NodeConfig } from "./config.js";
@@ -17,30 +18,49 @@ import {
   openNodeL1AccessFromConfig,
 } from "./l1-provider.js";
 import {
+  L1_NODE_CONFIG_PENDING,
   LUCID_INITIALIZATION_PENDING,
   retryStartupStep,
+  STARTUP_L1_NODE_BUDGET,
+  type StartupStepBudget,
+  type StartupStepFailedError,
 } from "./startup-waiting.js";
 
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause), { cause });
 
-/** Capped backoff while the node's config files do not yield its network magic. */
-const OPEN_RETRY = Schedule.exponential(Duration.millis(500)).pipe(
-  Schedule.union(Schedule.spaced(Duration.seconds(30))),
-);
+/** The local node's configuration files are not there yet (a node still
+ * starting writes them): the one open failure waited out. */
+export const isL1NodeConfigPending = (error: unknown): boolean =>
+  hasCauseCode(error, "ENOENT");
+
+/** A step's terminal failure, as the Lucid service's `ConfigError`; the
+ * startup still finds the step behind it (`findStartupStepFailure`). */
+const asConfigError =
+  (network: LE.Network) =>
+  (failure: StartupStepFailedError): ConfigError =>
+    new ConfigError({
+      message: failure.message,
+      cause: failure,
+      fieldsAndValues: [["NETWORK", network]],
+    });
 
 /**
  * One Lucid client's construction (`construct`, which reads the provider's
- * protocol parameters): while it fails it is retried on a capped backoff
- * with no deadline, the startup waiting under
- * `lucid_initialization_pending` (`retryStartupStep`).
+ * protocol parameters): a retryable provider failure
+ * (`isRetryableProviderError`) is waited out on a capped backoff, the
+ * startup waiting under `lucid_initialization_pending`, for at most
+ * `budget` (`STARTUP_L1_NODE_BUDGET` by default). Past it, or on any other
+ * failure, the construction fails with a `ConfigError` over the step's
+ * `StartupStepFailedError`.
  */
 export const constructLucidOnStartup = (
   key: string,
   message: string,
   network: LE.Network,
   construct: () => Promise<LE.LucidEvolution>,
-): Effect.Effect<LE.LucidEvolution> =>
+  budget: StartupStepBudget = { maxElapsed: STARTUP_L1_NODE_BUDGET },
+): Effect.Effect<LE.LucidEvolution, ConfigError> =>
   retryStartupStep(
     Effect.tryPromise({
       try: construct,
@@ -51,11 +71,13 @@ export const constructLucidOnStartup = (
           fieldsAndValues: [["NETWORK", network]],
         }),
     }),
-    { key, reason: LUCID_INITIALIZATION_PENDING },
-  ).pipe(
-    // Every failure is retried above; nothing reaches here.
-    Effect.catchAll(() => Effect.never),
-  );
+    {
+      key,
+      reason: LUCID_INITIALIZATION_PENDING,
+      retryable: isRetryableProviderError,
+      budget,
+    },
+  ).pipe(Effect.mapError(asConfigError(network)));
 
 /**
  * Builds the Lucid service bundle used by the node, including reference-script
@@ -98,31 +120,27 @@ const makeLucid: Effect.Effect<
       }),
     );
   // Opening reads only the node's config files (for its network magic);
-  // while they are unreadable this waits with a logged reason, never exits.
+  // while they are not there yet this waits under `l1_node_config_pending`
+  // for at most the L1 node budget. Any other failure (a wrong network
+  // magic, an unconfigured node) fails at once.
   const access = yield* Effect.acquireRelease(
-    Effect.tryPromise({
-      try: () => openNodeL1AccessFromConfig(nodeConfig),
-      catch: asError,
-    }).pipe(
-      Effect.tapError((error) =>
-        Effect.logWarning(
-          `L1 provider unready: the local node's config is unreadable; waits and re-reads. cause=${error.message}`,
-        ),
-      ),
-      Effect.retry(OPEN_RETRY),
-      Effect.mapError(
-        (cause) =>
-          new ConfigError({
-            message: "Failed to open the node's L1 access",
-            cause,
-            fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
-          }),
-      ),
-    ),
+    retryStartupStep(
+      Effect.tryPromise({
+        try: () => openNodeL1AccessFromConfig(nodeConfig),
+        catch: asError,
+      }),
+      {
+        key: "l1_node_config",
+        reason: L1_NODE_CONFIG_PENDING,
+        retryable: isL1NodeConfigPending,
+        budget: { maxElapsed: STARTUP_L1_NODE_BUDGET },
+        initialMs: 500,
+      },
+    ).pipe(Effect.mapError(asConfigError(nodeConfig.NETWORK))),
     (opened) => Effect.promise(opened.close),
   );
   // A node or sidecar that is not reachable makes this wait with a logged
-  // unready reason, never exit.
+  // unready reason, for at most the L1 node budget.
   const slotConfig = yield* resolveLucidSlotMapping({
     read: access.slotConfig,
   }).pipe(

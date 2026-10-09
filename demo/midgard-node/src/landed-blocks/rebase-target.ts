@@ -17,9 +17,11 @@
 import { Effect } from "effect";
 
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
+import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
 import type { NativeMpfEventOp } from "../services/mpf-native-owner/service.normalize-owner-options.js";
 import { retrieveMergeLinks } from "./confirmed-merges.js";
+import { LANDED_BLOCK_REBASE_PENDING } from "./holds.js";
 import { activeJournal } from "./journal.js";
 import {
   applyDelta,
@@ -71,6 +73,18 @@ export type RebasePlan =
       reason?: string;
     }>
   | Readonly<{ kind: "ready"; target: RebaseTarget }>;
+
+/**
+ * The hold a blocked rebase plan holds. The unnamed block waits on landed
+ * processing, which the driver's backoff runs again; a named one (the
+ * follower schema missing) needs `migrate`, so it is `notRetried`.
+ */
+export const blockedRebaseHold = (
+  plan: Extract<RebasePlan, { kind: "blocked" }>,
+): DriverHold =>
+  plan.reason === undefined
+    ? { reason: LANDED_BLOCK_REBASE_PENDING, detail: plan.detail }
+    : notRetried({ reason: plan.reason, detail: plan.detail });
 
 const NO_FRONTIER = {
   kind: "blocked",

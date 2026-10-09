@@ -15,6 +15,7 @@ import {
   type WatcherObservationAuthority,
   type WatcherObservationRead,
 } from "../l1-follower/observation.js";
+import { decisionFailure } from "./watcher-runtime.decision-failure.js";
 
 /**
  * The watcher's decision driver (ticket W1, with W3's rollback handling):
@@ -47,14 +48,20 @@ import {
  * The durable marker moves only once the replay-transcript retirement reset
  * the last rewind started held. The pass waits for that reset at most
  * `retryDelayMs`; while it is still pending or failed, the driver is unready
- * by name and the marker waits (a failed reset is retried by the next pass,
- * one `retryDelayMs` later).
+ * by name and the marker waits (a reset that failed transiently is retried
+ * by the next pass, one `retryDelayMs` later).
  *
  * Liveness: a pass never throws out of the driver. A failure is a named
- * readiness reason with its detail and a retry after `retryDelayMs`.
+ * readiness reason with its detail. Only a transient failure
+ * (`isDecisionFailureTransient`: the L1 follower or its node transport did
+ * not answer, or the store refused a connection or was busy) is retried
+ * after `retryDelayMs`; any other failure is not retried on a timer, and the
+ * pass runs again only when the follower moves or rewinds. Those waits are
+ * on the L1 source and the store a running watcher rides out, so they have
+ * no deadline.
  */
 
-/** A pass failed; the detail names the failure. Retried after the delay. */
+/** A pass failed; the detail names the failure. */
 export const WATCHER_DECISION_PASS_FAILED = "watcher_decision_pass_failed";
 /** The release-depth observation is not available yet (for example a short chain). */
 export const WATCHER_RELEASE_OBSERVATION_PENDING =
@@ -160,9 +167,6 @@ export type WatcherDecisionDriver = Readonly<{
   close(): Promise<void>;
 }>;
 
-const message = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
-
 /** A failure that only says a rewind or a newer pass retired the work. */
 const retired = (error: unknown): boolean =>
   error instanceof WatcherFaultDecisionRetired;
@@ -206,6 +210,8 @@ export const createWatcherDecisionDriver = (
   type RetirementReset = {
     outcome: "pending" | "held" | "failed";
     detail: string;
+    /** Whether a failure was transient, so the next pass retries it. */
+    transient: boolean;
     settled: Promise<void>;
   };
   let retirementReset: RetirementReset | null = null;
@@ -237,14 +243,17 @@ export const createWatcherDecisionDriver = (
     const reset: RetirementReset = {
       outcome: "pending",
       detail: "",
+      transient: false,
       settled: Promise.resolve(),
     };
     const failed = (error: unknown): void => {
       reset.outcome = "failed";
-      reset.detail = message(error);
+      ({ transient: reset.transient, detail: reset.detail } =
+        decisionFailure(error));
       log(`replay-transcript retirement reset failed: ${reset.detail}`);
-      // The next pass retries it and names the failure.
-      scheduleRetry();
+      // A pass names the failure; only a transient one is retried.
+      if (reset.transient) scheduleRetry();
+      else wake();
     };
     try {
       reset.settled = retirement.reset().then(() => {
@@ -335,8 +344,9 @@ export const createWatcherDecisionDriver = (
           detail: `the replay-transcript retirement reset has not settled within ${input.retryDelayMs.toString()} ms`,
         };
       if (reset.outcome === "failed") {
-        // Retried here; a later pass records the generation once it held.
-        if (retirementReset === reset) resetRetirement();
+        // A transient failure is retried here; a later pass records the
+        // generation once it held. Any other waits for the next rewind.
+        if (retirementReset === reset && reset.transient) resetRetirement();
         return {
           reason: WATCHER_RETIREMENT_RESET_FAILED,
           detail: reset.detail,
@@ -424,10 +434,11 @@ export const createWatcherDecisionDriver = (
           owed = true;
           return;
         }
-        lastError = message(error);
+        const { transient, detail } = decisionFailure(error);
+        lastError = detail;
         held = [{ reason: WATCHER_DECISION_PASS_FAILED, detail: lastError }];
         log(`decision pass failed: ${lastError}`);
-        scheduleRetry();
+        if (transient) scheduleRetry();
       },
     );
     void running.finally(() => {
