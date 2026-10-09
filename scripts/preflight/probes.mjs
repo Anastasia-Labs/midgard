@@ -27,6 +27,14 @@ export const START_TEST_POSTGRES = "bash scripts/start-test-postgres.sh";
 const CORE_DIST_CHECK = "demo/scripts/assert-midgard-core-dist-current.mjs";
 const BLUEPRINT_STAMP_MODULE = "demo/scripts/lib/blueprint-stamp.mjs";
 const WORKTREE_IDENTITY_MODULE = "scripts/lib/worktree-identity.mjs";
+// The modules a capability's probe loads or runs by path rather than by
+// import, so a static import walk of the runner cannot see them (see
+// scripts/ci/preflight-runner-closure.mjs).
+export const PROBE_MODULES = {
+  "core-dist": [CORE_DIST_CHECK],
+  blueprint: [BLUEPRINT_STAMP_MODULE],
+  "db-prefix": [WORKTREE_IDENTITY_MODULE],
+};
 
 const result = (name, status, detail, fix, extra = {}) => ({
   name,

@@ -89,6 +89,12 @@ that spells out a registry command instead, or names a check that is
 unknown, internal or only warns. A check a workflow runs by id counts as
 gated by CI. `--run` combines only with `--list`.
 
+A workflow that runs a check by id lists every module of the runner in its
+path filters, so a runner change re-runs those steps:
+`scripts/ci/preflight-runner-closure.mjs` derives the list from the import
+closure and the probe modules, and
+`scripts/ci/preflight-runner-filters.test.mjs` fails on a missing one.
+
 ## Pre-push hook
 
 `.githooks/pre-push` runs `node scripts/preflight.mjs --pre-push`: the
@@ -278,12 +284,20 @@ Workflow lint.
 
 ### `workflow-triggers`
 
-Workflow trigger table.
+Workflow trigger table and the by-id runner's path filters.
 
-- Command: `node --test scripts/ci/workflow-triggers.test.mjs`
+- Command: `node --test scripts/ci/workflow-triggers.test.mjs scripts/ci/preflight-runner-filters.test.mjs`
 - Runs on:
   - `.github/workflows/**`
   - `scripts/ci/**`
+  - `scripts/preflight.mjs`
+  - `scripts/preflight/**`
+  - `scripts/contrib/**`
+  - `scripts/lib/**`
+  - `demo/scripts/lib/blueprint-stamp.mjs`
+  - `demo/scripts/assert-midgard-core-dist-current.mjs`
+  - `demo/midgard-core/scripts/write-dist-source-digest.mjs`
+  - `onchain/aiken/scripts/**`
 - Mode: runs in the pre-push hook
 
 ### `agent-doc-links`

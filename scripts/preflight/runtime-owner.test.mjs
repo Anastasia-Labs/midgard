@@ -88,7 +88,9 @@ for (const [label, changed] of [
 
 test("unmatched paths and unverifiable workflows keep local runtime obligations", () => {
   for (const [candidate, changed] of [
-    [registry, ["scripts/preflight/derive.mjs"]],
+    // A full-run preflight path Node CI does not run for (not a module of
+    // the by-id runner).
+    [registry, ["scripts/preflight/aiken-fmt-check.mjs"]],
     [
       { ...registry, runtimeWorkflow: undefined },
       ["demo/midgard-sdk/src/index.ts"],

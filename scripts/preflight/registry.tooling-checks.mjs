@@ -330,13 +330,35 @@ export const toolingChecks = (root) => [
   },
   {
     id: "workflow-triggers",
-    title: "Workflow trigger table",
-    triggers: [".github/workflows/**", "scripts/ci/**"],
-    requiresFiles: ["scripts/ci/workflow-triggers.test.mjs"],
+    title: "Workflow trigger table and the by-id runner's path filters",
+    // The runner-filter test walks the by-id runner's imports, so a change
+    // to any module it could reach selects it.
+    triggers: [
+      ".github/workflows/**",
+      "scripts/ci/**",
+      "scripts/preflight.mjs",
+      "scripts/preflight/**",
+      "scripts/contrib/**",
+      "scripts/lib/**",
+      "demo/scripts/lib/blueprint-stamp.mjs",
+      "demo/scripts/assert-midgard-core-dist-current.mjs",
+      "demo/midgard-core/scripts/write-dist-source-digest.mjs",
+      "onchain/aiken/scripts/**",
+    ],
+    requiresFiles: [
+      "scripts/ci/workflow-triggers.test.mjs",
+      "scripts/ci/preflight-runner-filters.test.mjs",
+    ],
     prePush: true,
-    display: "node --test scripts/ci/workflow-triggers.test.mjs",
+    display:
+      "node --test scripts/ci/workflow-triggers.test.mjs scripts/ci/preflight-runner-filters.test.mjs",
     plan: () => [
-      step(["node", "--test", "scripts/ci/workflow-triggers.test.mjs"]),
+      step([
+        "node",
+        "--test",
+        "scripts/ci/workflow-triggers.test.mjs",
+        "scripts/ci/preflight-runner-filters.test.mjs",
+      ]),
     ],
   },
   ...[

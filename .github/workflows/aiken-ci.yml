@@ -1,6 +1,10 @@
 name: Aiken CI
 
 on:
+  # Steps here run checks by id (node scripts/preflight.mjs --run <id>), so the
+  # paths include every module that runner loads: its import closure, from
+  # scripts/ci/preflight-runner-closure.mjs. preflight-runner-filters.test.mjs
+  # fails when a runner module is missing here.
   push:
     branches: ["main"]
     paths:
@@ -13,6 +17,29 @@ on:
       - "demo/pnpm-lock.yaml"
       - "scripts/generate-user-events-witness-script-prefix.sh"
       - "scripts/ci/**"
+      - "scripts/preflight.mjs"
+      - "scripts/preflight/ci-evidence.mjs"
+      - "scripts/preflight/derive.mjs"
+      - "scripts/preflight/docs.mjs"
+      - "scripts/preflight/probes.mjs"
+      - "scripts/preflight/registry.mjs"
+      - "scripts/preflight/registry.demo-checks.mjs"
+      - "scripts/preflight/registry.select-checks.mjs"
+      - "scripts/preflight/registry.tooling-checks.mjs"
+      - "scripts/preflight/run.mjs"
+      - "scripts/preflight/runtime-owner.mjs"
+      - "scripts/preflight/sdk-suite-evidence.mjs"
+      - "scripts/contrib/build-inputs.mjs"
+      - "scripts/contrib/build.mjs"
+      - "scripts/contrib/channels.mjs"
+      - "scripts/contrib/files.mjs"
+      - "scripts/contrib/native-recipes.mjs"
+      - "scripts/contrib/node-options.cjs"
+      - "scripts/contrib/pnpm.mjs"
+      - "scripts/contrib/process.mjs"
+      - "scripts/contrib/reached.mjs"
+      - "scripts/contrib/receipts.mjs"
+      - "scripts/contrib/resources.mjs"
       - ".github/actions/**"
       - ".github/workflows/aiken-ci.yml"
   pull_request:
@@ -26,6 +53,29 @@ on:
       - "demo/pnpm-lock.yaml"
       - "scripts/generate-user-events-witness-script-prefix.sh"
       - "scripts/ci/**"
+      - "scripts/preflight.mjs"
+      - "scripts/preflight/ci-evidence.mjs"
+      - "scripts/preflight/derive.mjs"
+      - "scripts/preflight/docs.mjs"
+      - "scripts/preflight/probes.mjs"
+      - "scripts/preflight/registry.mjs"
+      - "scripts/preflight/registry.demo-checks.mjs"
+      - "scripts/preflight/registry.select-checks.mjs"
+      - "scripts/preflight/registry.tooling-checks.mjs"
+      - "scripts/preflight/run.mjs"
+      - "scripts/preflight/runtime-owner.mjs"
+      - "scripts/preflight/sdk-suite-evidence.mjs"
+      - "scripts/contrib/build-inputs.mjs"
+      - "scripts/contrib/build.mjs"
+      - "scripts/contrib/channels.mjs"
+      - "scripts/contrib/files.mjs"
+      - "scripts/contrib/native-recipes.mjs"
+      - "scripts/contrib/node-options.cjs"
+      - "scripts/contrib/pnpm.mjs"
+      - "scripts/contrib/process.mjs"
+      - "scripts/contrib/reached.mjs"
+      - "scripts/contrib/receipts.mjs"
+      - "scripts/contrib/resources.mjs"
       - ".github/actions/**"
       - ".github/workflows/aiken-ci.yml"
   workflow_dispatch:

@@ -26,7 +26,16 @@ export const buildRegistry = (root) => {
   const index = indexAikenModules(root);
   const ciText = workflowText(root);
   const runtimeWorkflow = readRuntimeWorkflow(root);
-  const demo = demoChecks(root, packages, runtimeWorkflow?.paths);
+  // Node CI also runs for the by-id runner's modules, for its steps that
+  // name checks, not because they reach a package suite. Verification-only
+  // modules cannot reach one, so they do not select the suites here.
+  const demo = demoChecks(
+    root,
+    packages,
+    runtimeWorkflow?.paths.filter(
+      (path) => !matchesAny(path, VERIFICATION_ONLY),
+    ),
+  );
   const [fmt, focused, blueprint] = aikenChecks(root, index);
   const independent = independentChecks();
   const checks = [
