@@ -17,13 +17,12 @@ and the existing **30 millisecond** registration interval. Mainnet's former
 30 millisecond operator shift is replaced by the one-hour shift used off chain.
 Testing economics remain explicit; selecting a test network does not select them.
 
-Every profile allows twenty minutes without a block commitment, and twenty
-minutes for a deposit, withdrawal or transaction order to be included, before an
-operator can be struck for inactivity. Validation requires the negligence timeout
-to be at least the commitment gap, so a neglected event never licenses an earlier
-strike than the gap, and the gap to be shorter than the operator shift, so an
-operator whose shift starts at the last block's end time (its commit's validity
-upper bound) can still be struck.
+Every profile allows twenty minutes for a deposit, withdrawal or transaction
+order to be included before an operator can be struck for inactivity. A strike
+always cites such an undelivered event; a shift with none cannot be struck, so
+an idle network need not commit blocks. Validation requires the negligence
+timeout to be shorter than the operator shift, so an event included as a shift
+starts can make that shift's operator strikable before the shift ends.
 
 `timing.event_wait_ms` is the delay between a user event's transaction
 valid-to and its on-chain `inclusion_time`; no block may include the event
@@ -70,11 +69,24 @@ exact rational (`"0.05"` is 5/100) and compares in integers. With W =
 
 - `0 ≤ d ≤ k`. The follower keeps k blocks of history, and the block just
   above the anchor must not be final.
-- On every profile, no inactivity strike: W + N ≥ 3(d + 1)·slot/f + L. An event
-  becomes includable once the commit anchor is past its validity bound, which
-  needs d + 1 blocks after it, at most 3(d + 1)·slot/f; the commit then lands
-  within L, and the neglected-event strike opens at inclusion time + N
-  (`scheduler.ak`, `inactivity_threshold_from_user_event_inclusion_time`).
+- On every profile, no inactivity strike. A strike cites one undelivered
+  event, with inclusion time I = valid_to + W after the state queue's tail end,
+  and its validity range must lie after max(shift start + grace, I + N)
+  (`scheduler.ak`, `validate_operator_inactivity_and_get_its_link`). With no
+  such event there is no constraint. A commit whose header end E reaches I
+  moves the tail end to at least I, after which the event cannot be cited, so
+  it suffices that each event's covering commit lands by I + N. E is capped
+  at time(A) + W − 1 with A the commit anchor (`commit-anchor.ts`), so the
+  event is includable once A is dated after its valid_to, which needs d + 1
+  blocks, at most 3(d + 1)·slot/f.
+  A commit lands by its TTL E, which is capped at the submit slot's start
+  plus L − 61 s (`commitValidityEndTimeCapMs`), so within L of its planning.
+  Two bounds follow:
+  - W + N ≥ 3(d + 1)·slot/f + L, for an event that is due before it is
+    includable;
+  - N ≥ L, for an event that is includable before it is due: no commit
+    planned more than L − 61 s before I reaches it, and the commit then in
+    flight lands before I, so the covering commit is planned by I.
 - On every profile, a plannable commit: W − B − slot ≥ 3(d + 1)·slot/f, with
   B = 30,000 ms (`COMMIT_TTL_FUTURE_BUFFER_MS`, the history-commit TTL floor).
   A commit's end time E is capped at time(A) + W − 1 with A the commit anchor,
@@ -97,7 +109,8 @@ Each profile uses the largest d all bounds admit:
 
 The no-strike column divides W + N − L by 60,000 ms, the plannable column
 divides W − B − slot and the production column W − L; each rounds down.
-Mainnet's d also meets d ≤ k with equality.
+Mainnet's d also meets d ≤ k with equality. Every profile has N = 1,200,000
+and L = 480,000, so N ≥ L holds with 720,000 ms to spare.
 
 ### Interactive emulator tests
 
@@ -289,7 +302,7 @@ generated environments or `demo/midgard-core/src/generated-deployment-profiles.t
 
 Validation rejects unknown fields, incorrect network/name combinations, unsafe or
 nonpositive integers, inconsistent bond/reward values, invalid DA timing order,
-operator shifts shorter than grace/validity windows or the commitment gap, incompatible dispute
+operator shifts shorter than grace/validity windows or the negligence timeout, incompatible dispute
 schedules (with the explicit non-interactive testing rule above), and pooled DA
 bond values that break the relations above (challenge window order, slash
 penalty inside the DA bond, withdrawal delay, and the public challenge-window

@@ -67,18 +67,18 @@ export type TakeoverPlanning = {
 
 /**
  * Plans a takeover of the current shift in `snapshot` as of the chain clock.
- * `neglectedEvent` narrows the threshold to a specific neglected user event
- * when the caller has one.
+ * `neglectedEvent` is the undelivered user event the strike cites, or null
+ * when there is none, in which case nobody can be struck.
  */
 export const planTakeoverFrom = (
   lucid: LucidEvolution,
   snapshot: SDK.OperatorDirectorySnapshot,
   intentPlan: IntentPlan,
   options: {
-    readonly neglectedEvent?: SDK.NeglectedUserEventClaim;
+    readonly neglectedEvent: SDK.NeglectedUserEventClaim | null;
     readonly params?: SDK.InactivityTimingParameters;
     readonly nowMs?: bigint;
-  } = {},
+  },
 ): Effect.Effect<TakeoverPlanning, L1SlotUnknownError> =>
   Effect.gen(function* () {
     const nowMs = options.nowMs ?? (yield* resolveL1NowMs(lucid));
@@ -94,17 +94,19 @@ export const planTakeoverFrom = (
   });
 
 /**
- * Reads the directory from the provider and plans a takeover of the current
- * shift (the CLI's read; the watchdog plans from the follower's operator
- * set).
+ * Reads the directory and the user events from the provider and plans a
+ * takeover of the current shift (the CLI's read; the watchdog plans from the
+ * follower's operator set and projections). The strike cites the earliest
+ * user event after the directory's state-queue tail, if any.
  */
 export const planTakeoverProgram = (
   lucid: LucidEvolution,
-  contracts: SDK.OperatorDirectoryValidators,
-  options: Parameters<typeof planTakeoverFrom>[3] = {},
+  contracts: SDK.OperatorDirectoryValidators &
+    Pick<SDK.MidgardValidators, "eventHistory" | "txOrder">,
+  options: Omit<Parameters<typeof planTakeoverFrom>[3], "neglectedEvent"> = {},
 ): Effect.Effect<
   TakeoverPlanning,
-  SDK.OperatorDirectorySnapshotError | L1SlotUnknownError,
+  SDK.OperatorDirectorySnapshotError | SDK.LucidError | L1SlotUnknownError,
   IntentJournal
 > =>
   Effect.gen(function* () {
@@ -114,7 +116,15 @@ export const planTakeoverProgram = (
       lucid,
       contracts,
     );
-    return yield* planTakeoverFrom(lucid, snapshot, intentPlan, options);
+    const neglectedEvent = yield* SDK.fetchNeglectedUserEventProgram(
+      lucid,
+      contracts,
+      snapshot.stateQueueTail.endTime,
+    );
+    return yield* planTakeoverFrom(lucid, snapshot, intentPlan, {
+      ...options,
+      neglectedEvent,
+    });
   });
 
 export type ReadyTakeoverPlan = Extract<
@@ -167,10 +177,10 @@ export const submitInactivityStrikeProgram = (
       newOperatorKeyHash: plan.newOperatorKey,
       newStartTime: plan.newStartTime,
       witnesses: plan.witnesses,
-      neglectedEvent:
-        plan.neglectedEvent === undefined
-          ? undefined
-          : { kind: plan.neglectedEvent.kind, utxo: plan.neglectedEvent.utxo },
+      neglectedEvent: {
+        kind: plan.neglectedEvent.kind,
+        utxo: plan.neglectedEvent.utxo,
+      },
       validFrom: plan.validity.validFrom,
       validTo: plan.validity.validTo,
       schedulerSpendingScriptRef: scriptRefs.spending.scheduler,

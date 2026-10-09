@@ -485,38 +485,30 @@ test("profile validation rejects unsafe timing, economics, networks, and unknown
   }
 });
 
-test("every profile keeps the negligence timeout at or above the commitment gap, and the bound is exact", () => {
+test("every profile keeps the negligence timeout shorter than the operator shift, and the bound is exact", () => {
   for (const [name, original] of Object.entries(readProfiles())) {
     const profile = structuredClone(original);
     profile.timing.user_events_negligence_timeout_ms =
-      profile.timing.max_inactivity_between_block_commitments_ms;
+      profile.timing.operator_shift_ms - 1;
     validateProfile(profile, name);
-    profile.timing.user_events_negligence_timeout_ms -= 1;
+    profile.timing.user_events_negligence_timeout_ms += 1;
     assert.throws(
       () => validateProfile(profile, name),
-      /negligence timeout must be at least/u,
+      /negligence timeout must be shorter than the operator shift/u,
     );
   }
 });
 
-test("every profile keeps the commitment gap shorter than the operator shift, and the bound is exact", () => {
+test("every profile gives a covering commit one maximum validity range inside the negligence timeout, and the bound is exact", () => {
   for (const [name, original] of Object.entries(readProfiles())) {
     const profile = structuredClone(original);
-    profile.timing.max_inactivity_between_block_commitments_ms =
-      profile.timing.operator_shift_ms - 1;
-    profile.timing.user_events_negligence_timeout_ms = Math.max(
-      profile.timing.user_events_negligence_timeout_ms,
-      profile.timing.max_inactivity_between_block_commitments_ms,
-    );
+    profile.timing.user_events_negligence_timeout_ms =
+      profile.timing.max_validity_range_ms;
     validateProfile(profile, name);
-    profile.timing.max_inactivity_between_block_commitments_ms += 1;
-    profile.timing.user_events_negligence_timeout_ms = Math.max(
-      profile.timing.user_events_negligence_timeout_ms,
-      profile.timing.max_inactivity_between_block_commitments_ms,
-    );
+    profile.timing.user_events_negligence_timeout_ms -= 1;
     assert.throws(
       () => validateProfile(profile, name),
-      /inactivity between block commitments must be shorter than the operator shift/u,
+      /negligence timeout must cover the maximum validity range/u,
     );
   }
 });

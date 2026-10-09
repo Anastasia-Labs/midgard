@@ -242,6 +242,12 @@ export const strikeInactiveOperatorCommand = Effect.gen(function* () {
           "The scheduler names no operator; there is no shift to strike",
         ),
       );
+    case "no-neglected-event":
+      return yield* Effect.fail(
+        new OperatorCommandRefusal(
+          `Operator ${plan.currentOperator} cannot be struck: no deposit, withdrawal or tx order is undelivered, so the shift has no neglected L1 work`,
+        ),
+      );
     case "not-yet":
       return yield* Effect.fail(
         new OperatorCommandRefusal(describeNotYet(plan)),

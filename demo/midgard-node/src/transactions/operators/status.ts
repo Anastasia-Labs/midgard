@@ -2,7 +2,8 @@
  * The operator status report behind `operator-status` and
  * `GET /operator/status`. Directory membership comes from the SDK's pure
  * status query; the inactivity block comes from the same takeover planner the
- * watchdog uses, so what the report predicts is what the watchdog will do.
+ * watchdog uses, over the same evidence (the earliest undelivered user
+ * event), so what the report predicts is what the watchdog will do.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
@@ -33,6 +34,14 @@ export type OperatorStatusReport = {
   };
   /** `null` when the scheduler names nobody. */
   readonly inactivity: {
+    /**
+     * The undelivered user event a strike would cite; `null` when there is
+     * none, and then nobody can be struck.
+     */
+    readonly neglectedEvent: {
+      readonly kind: SDK.NeglectedUserEventKind;
+      readonly inclusionTime: string;
+    } | null;
     readonly thresholdTime: string | null;
     readonly thresholdSource: string | null;
     /** How long the shift has been strikable; `0` before the threshold. */
@@ -66,6 +75,8 @@ export type OperatorStatusInput = {
   };
   readonly nowMs?: bigint;
   readonly snapshot?: SDK.OperatorDirectorySnapshot;
+  /** The cited event, read from the provider when omitted. */
+  readonly neglectedEvent?: SDK.NeglectedUserEventClaim | null;
 };
 
 const isoOf = (ms: number | null): string | null =>
@@ -73,6 +84,7 @@ const isoOf = (ms: number | null): string | null =>
 
 const inactivityBlock = (
   plan: SDK.InactivityTakeoverPlan,
+  neglectedEvent: SDK.NeglectedUserEventClaim | null,
   nowMs: bigint,
   status: SDK.OperatorStatus,
   patienceMs: number,
@@ -80,8 +92,28 @@ const inactivityBlock = (
   if (plan.kind === "no-shift") {
     return null;
   }
+  const cited =
+    neglectedEvent === null
+      ? null
+      : {
+          kind: neglectedEvent.kind,
+          inclusionTime: neglectedEvent.inclusionTimeMs.toString(),
+        };
+  if (plan.kind === "no-neglected-event") {
+    return {
+      neglectedEvent: null,
+      thresholdTime: null,
+      thresholdSource: null,
+      missedAgeMs: 0,
+      nextTakeoverTime: null,
+      nextPatienceTakeoverTime: null,
+      strikesExhausted: false,
+      blocked: null,
+    };
+  }
   if (plan.kind === "blocked") {
     return {
+      neglectedEvent: cited,
       thresholdTime: null,
       thresholdSource: null,
       missedAgeMs: 0,
@@ -91,22 +123,38 @@ const inactivityBlock = (
       blocked: `${plan.reason}: ${plan.detail}`,
     };
   }
+  if (plan.kind === "strikes-exhausted") {
+    // Forced retirement has no threshold and no designated successor: every
+    // node waits the patience window from the shift's start, as the watchdog.
+    return {
+      neglectedEvent: cited,
+      thresholdTime: null,
+      thresholdSource: null,
+      missedAgeMs: 0,
+      nextTakeoverTime: null,
+      nextPatienceTakeoverTime: (
+        plan.shiftStartMs +
+        1n +
+        BigInt(patienceMs)
+      ).toString(),
+      strikesExhausted: true,
+      blocked: null,
+    };
+  }
   const thresholdMs = plan.thresholdMs;
   const missed = nowMs > thresholdMs ? Number(nowMs - thresholdMs) : 0;
   return {
+    neglectedEvent: cited,
     thresholdTime: thresholdMs.toString(),
-    thresholdSource:
-      plan.kind === "strikes-exhausted" ? null : plan.thresholdSource,
+    thresholdSource: plan.thresholdSource,
     missedAgeMs: missed,
-    // A forced retirement has no designated successor; every node waits.
-    nextTakeoverTime:
-      plan.kind === "strikes-exhausted" ? null : (thresholdMs + 1n).toString(),
+    nextTakeoverTime: (thresholdMs + 1n).toString(),
     nextPatienceTakeoverTime: (
       thresholdMs +
       1n +
       BigInt(patienceMs)
     ).toString(),
-    strikesExhausted: plan.kind === "strikes-exhausted",
+    strikesExhausted: false,
     blocked: null,
   };
 };
@@ -117,17 +165,19 @@ const inactivityBlock = (
  */
 export const deriveOperatorStatusReport = (
   snapshot: SDK.OperatorDirectorySnapshot,
-  input: Omit<OperatorStatusInput, "snapshot" | "nowMs"> & {
+  input: Omit<OperatorStatusInput, "snapshot" | "nowMs" | "neglectedEvent"> & {
     readonly nowMs: bigint;
+    readonly neglectedEvent: SDK.NeglectedUserEventClaim | null;
   },
 ): OperatorStatusReport => {
-  const { operatorKeyHash, nowMs } = input;
+  const { operatorKeyHash, nowMs, neglectedEvent } = input;
   const status = SDK.deriveOperatorStatus(snapshot, operatorKeyHash, nowMs, {
     maxInactivityStrikes: SDK.MAX_INACTIVITY_STRIKES,
   });
   const plan = SDK.planInactivityTakeover({
     snapshot,
     nowMs,
+    neglectedEvent,
     params: {
       ...SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS,
       maxInactivityStrikes: SDK.MAX_INACTIVITY_STRIKES,
@@ -158,7 +208,13 @@ export const deriveOperatorStatusReport = (
       holdsShift: status.holdsShift,
       shiftAgeMs: status.shiftAgeMs === null ? null : Number(status.shiftAgeMs),
     },
-    inactivity: inactivityBlock(plan, nowMs, status, input.watchdog.patienceMs),
+    inactivity: inactivityBlock(
+      plan,
+      neglectedEvent,
+      nowMs,
+      status,
+      input.watchdog.patienceMs,
+    ),
     watchdog: {
       enabled: input.watchdog.enabled,
       patienceMs: input.watchdog.patienceMs,
@@ -174,11 +230,12 @@ export const deriveOperatorStatusReport = (
 
 export const operatorStatusProgram = (
   lucid: LucidEvolution,
-  contracts: SDK.OperatorDirectoryValidators,
+  contracts: SDK.OperatorDirectoryValidators &
+    Pick<SDK.MidgardValidators, "eventHistory" | "txOrder">,
   input: OperatorStatusInput,
 ): Effect.Effect<
   OperatorStatusReport,
-  SDK.OperatorDirectorySnapshotError | SDK.StateQueueError
+  SDK.OperatorDirectorySnapshotError | SDK.StateQueueError | SDK.LucidError
 > =>
   Effect.gen(function* () {
     const snapshot =
@@ -186,5 +243,19 @@ export const operatorStatusProgram = (
       (yield* SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
     const nowMs =
       input.nowMs ?? (yield* resolveL1NowMsOrRefuse(lucid, "status"));
-    return deriveOperatorStatusReport(snapshot, { ...input, nowMs });
+    const neglectedEvent =
+      input.neglectedEvent !== undefined
+        ? input.neglectedEvent
+        : SDK.schedulerCurrentOperator(snapshot.scheduler) === null
+          ? null
+          : yield* SDK.fetchNeglectedUserEventProgram(
+              lucid,
+              contracts,
+              snapshot.stateQueueTail.endTime,
+            );
+    return deriveOperatorStatusReport(snapshot, {
+      ...input,
+      nowMs,
+      neglectedEvent,
+    });
   });

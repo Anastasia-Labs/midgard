@@ -40,6 +40,7 @@ import {
   appointFirstSchedulerOperator,
   fetchSchedulerDatum,
   initOperatorInactivityFixture,
+  submitNeglectedDeposit,
 } from "./helpers/operator-inactivity.js";
 import { resetApplicationTables } from "./utils.js";
 
@@ -55,6 +56,8 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
     const shiftOperator = fixture.operators.find(
       ({ keyHash }) => keyHash === appointed.operatorKeyHash,
     )!;
+    // The shift owes a deposit, so the successor has a threshold to wait for.
+    await submitNeglectedDeposit(fixture);
     const early = await Effect.runPromise(
       withoutFollowerJournal(
         planTakeoverProgram(fixture.lucid, fixture.contracts),

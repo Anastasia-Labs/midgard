@@ -7,12 +7,11 @@ test canonical_scheduler_v1_typescript_abi_vector() {
     cbor.serialise(scheduler.ActiveOperator { operator: #"aa", start_time: 1 }) == #"d87a9f41aa01ff",
     cbor.serialise(scheduler.Init) == #"d87980",
     cbor.serialise(scheduler.Deinit) == #"d87a80",
-    cbor.serialise(scheduler.NoNeglectedUserEvent) == #"d87980",
-    cbor.serialise(scheduler.NeglectedDeposit { deposit_ref_input_index: 1 }) == #"d87a9f01ff",
+    cbor.serialise(scheduler.NeglectedDeposit { deposit_ref_input_index: 1 }) == #"d8799f01ff",
     cbor.serialise(
       scheduler.NeglectedWithdrawal { withdrawal_ref_input_index: 2 },
-    ) == #"d87b9f02ff",
-    cbor.serialise(scheduler.NeglectedTxOrder { tx_order_ref_input_index: 3 }) == #"d87c9f03ff",
+    ) == #"d87a9f02ff",
+    cbor.serialise(scheduler.NeglectedTxOrder { tx_order_ref_input_index: 3 }) == #"d87b9f03ff",
     cbor.serialise(scheduler.OperatorRetirement) == #"d87980",
     cbor.serialise(scheduler.OperatorSlashing) == #"d87a80",
     cbor.serialise(
@@ -38,7 +37,7 @@ test canonical_scheduler_v1_typescript_abi_vector() {
           deposit_ref_input_index: 6,
         },
       },
-    ) == #"d87b9f0102030405d87a9f06ffff",
+    ) == #"d87b9f0102030405d8799f06ffff",
     cbor.serialise(
       scheduler.RewindDueToSkippedOperator {
         active_operators_root_ref_input_index: 1,
@@ -52,7 +51,7 @@ test canonical_scheduler_v1_typescript_abi_vector() {
           withdrawal_ref_input_index: 8,
         },
       },
-    ) == #"d87c9f0102030405d8799f06ff07d87b9f08ffff",
+    ) == #"d87c9f0102030405d8799f06ff07d87a9f08ffff",
     cbor.serialise(
       scheduler.GoToNextDueToOperatorRemoval {
         active_operators_mint_redeemer_index: 1,

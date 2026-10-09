@@ -35,8 +35,6 @@ const timingConstants = {
   registration_ms: "registration_duration",
   event_wait_ms: "event_wait_duration",
   user_events_negligence_timeout_ms: "user_events_negligence_timeout",
-  max_inactivity_between_block_commitments_ms:
-    "max_inactivity_between_block_commitments",
   new_shift_inactivity_grace_period_ms: "new_shift_inactivity_grace_period",
   max_validity_range_ms: "max_validity_range_length",
   da_attestation_timeout_ms: "da_attestation_timeout_v1",
@@ -421,34 +419,15 @@ export const validateProfile = (profile, name) => {
       "Operator shift must cover grace and maximum validity range",
     );
   }
-  // The scheduler's neglected-event guard (scheduler.ak,
-  // inactivity_threshold_from_user_event_inclusion_time) accepts an event whose
-  // inclusion time equals the tail block's end time, which that block already
-  // includes. The commitment-gap threshold (tail end + max inactivity) must
-  // therefore never be later than a neglected event's threshold (inclusion +
-  // negligence), or an operator could be struck for an event it included.
-  // The operator watchdog relies on the same ordering.
-  if (
-    timing.user_events_negligence_timeout_ms <
-    timing.max_inactivity_between_block_commitments_ms
-  ) {
+  // A strike needs its threshold, at least a neglected event's inclusion time
+  // plus the negligence timeout, strictly before the convicted shift ends
+  // (scheduler.ak, validate_operator_inactivity_and_get_its_link). An event
+  // included as a shift starts is strikable within that shift only when the
+  // timeout is shorter than the shift; otherwise a dead operator rotates out
+  // unstruck while the event waits for the next shift.
+  if (timing.user_events_negligence_timeout_ms >= timing.operator_shift_ms) {
     throw new Error(
-      "User-event negligence timeout must be at least the maximum inactivity between block commitments",
-    );
-  }
-  // A strike needs its threshold, at least the tail's end time plus the
-  // commitment gap, strictly before the convicted shift ends (scheduler.ak,
-  // validate_operator_inactivity_and_get_its_link). A shift that starts at the
-  // tail's end time (the last commit's validity upper bound) is strikable only
-  // when the gap is shorter than the shift; otherwise a dead operator following
-  // a live one rotates out unstruck. This assumes a predecessor that respects
-  // the end-time cap; one that commits past its shift end shortens the window.
-  if (
-    timing.max_inactivity_between_block_commitments_ms >=
-    timing.operator_shift_ms
-  ) {
-    throw new Error(
-      "Maximum inactivity between block commitments must be shorter than the operator shift",
+      "User-event negligence timeout must be shorter than the operator shift",
     );
   }
   if (
@@ -479,17 +458,33 @@ export const validateProfile = (profile, name) => {
     throw new Error(
       `l1_finality.commit_event_depth must be at most l1_finality.security_parameter (${securityParameter})`,
     );
-  // No inactivity strike, every profile. An event becomes includable once the
-  // commit anchor is past its validity bound, which needs d + 1 blocks after
-  // it, at most 3(d + 1) slot/f under the chain-growth bound. The commit then
-  // lands within one maximum validity range L, and the neglected-event strike
-  // opens at inclusion time + negligence timeout N (scheduler.ak,
-  // inactivity_threshold_from_user_event_inclusion_time), inclusion time
-  // being the event's validity bound + event wait W.
+  // No inactivity strike, every profile. A strike cites one undelivered event
+  // (inclusion time I = valid_to v + event wait W, after the state queue's
+  // tail end) and opens strictly after max(shift start + grace, I + N), N the
+  // negligence timeout (scheduler.ak, validate_operator_inactivity_and_get_its_link).
+  // With no such event there is nothing to bound. A commit covering the event
+  // (header end E >= I) moves the tail end to E and retires the citation, so
+  // it is enough that each event's covering commit lands by I + N, which that
+  // max never precedes.
+  // - Includable: E is capped at time(A) + W - 1 (commit-anchor.ts), so E >= I
+  //   needs an anchor A dated after v, which needs d + 1 blocks after v, at
+  //   most 3(d + 1) slot/f under the chain-growth bound.
+  // - Landed: a commit lands by its TTL E, and E is capped at the submit
+  //   slot's start + L - 61 s (commitValidityEndTimeCapMs), so it lands within
+  //   one maximum validity range L of its planning.
+  // Hence W + N >= 3(d + 1) slot/f + L here, and N >= L below.
   const noStrikeDepth = largestNoStrikeCommitEventDepth(profile);
   if (BigInt(commitEventDepth) > noStrikeDepth)
     throw new Error(
       `l1_finality.commit_event_depth must satisfy event_wait_ms + user_events_negligence_timeout_ms >= 3 (d + 1) slot_length_ms / active_slot_coeff + max_validity_range_ms; the largest such d is ${noStrikeDepth}`,
+    );
+  // An event admitted before it is due: no commit planned more than L - 61 s
+  // before I can reach it (its E is capped below I), and the commit in flight
+  // then lands by its own E < I, so the covering commit is planned by I and,
+  // as above, lands within L of that: N >= L.
+  if (timing.user_events_negligence_timeout_ms < timing.max_validity_range_ms)
+    throw new Error(
+      "User-event negligence timeout must cover the maximum validity range, the most a covering commit takes from planning to landing",
     );
   // Every profile: the anchor cap must leave room for the commit's TTL. A d
   // past this bound holds every commit even while L1 produces blocks at the

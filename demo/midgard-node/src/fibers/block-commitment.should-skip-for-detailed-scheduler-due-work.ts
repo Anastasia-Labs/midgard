@@ -190,7 +190,9 @@ const COMMIT_PIPELINE_SKIP_LOG_KEY = "block_commitment_idle_skip";
  * True when the tick has no commitment work, so it skips before the L1
  * control plane. The skip is logged once per state change (then at debug);
  * `COMMIT_PIPELINE_IDLE` records whether the tick found no work and
- * `COMMIT_PIPELINE_BACKLOG` what it counted.
+ * `COMMIT_PIPELINE_BACKLOG` what it counted. Skipping never exposes the
+ * operator to a strike: a strike must cite an undelivered deposit,
+ * withdrawal or tx order, and each one due by the tick counts as work here.
  */
 export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
   function* () {

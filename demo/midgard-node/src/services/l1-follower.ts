@@ -72,7 +72,10 @@ import {
   NO_CONTENT_SOURCE,
 } from "../forced-orders/index.js";
 import { createFollowerDriver } from "../l1-events/driver.js";
-import { stateQueueTailOf } from "../l1-operator-set/index.js";
+import {
+  neglectedEventSourcesOf,
+  stateQueueTailOf,
+} from "../l1-operator-set/index.js";
 import { landedStateQueueHook } from "../l1-state-queue/index.js";
 import {
   type ConfirmedLedgerPosition,
@@ -211,6 +214,10 @@ const followL1 = <R>(
       store,
       config: plan.operatorSet,
       depth,
+      neglectedEvents: neglectedEventSourcesOf(
+        plan.projection,
+        plan.forcedOrders,
+      ),
     });
     projections.bindActivity(operatorSet.activity);
     let confirmedLedger: ConfirmedLedgerPosition | null = null;

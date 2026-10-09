@@ -45,7 +45,6 @@ export const SchedulerMintRedeemer = asDataType<SchedulerMintRedeemer>(
 );
 
 export const NeglectedUserEventSchema = Data.Enum([
-  Data.Literal("NoNeglectedUserEvent"),
   Data.Object({
     NeglectedDeposit: Data.Object({
       deposit_ref_input_index: Data.Integer(),

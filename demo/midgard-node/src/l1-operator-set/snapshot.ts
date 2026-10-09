@@ -24,12 +24,17 @@ import type {
 import { landedTail } from "../l1-state-queue/index.js";
 import type { OperatorListContract } from "./config.js";
 import type { OperatorMembership } from "./membership.js";
+import {
+  type NeglectedEventSources,
+  neglectedUserEventIn,
+} from "./neglected-event.js";
 import type { OperatorSet } from "./set.js";
 
 /**
  * What the operator-set hook publishes for the node's fibers
  * (`Globals.OPERATOR_SET`): the set and membership of the last driver run,
- * the landed queue's tail of the same run, and the retired-anchor read.
+ * the landed queue's tail of the same run, the retired-anchor read and the
+ * neglected-event read.
  */
 export type PublishedOperatorSet = Readonly<{
   set: OperatorSet;
@@ -39,11 +44,20 @@ export type PublishedOperatorSet = Readonly<{
   retiredInsertionAnchor: (
     operatorKey: string,
   ) => Promise<SDK.RetiredOperatorNode | null>;
+  /**
+   * The undelivered user event a strike against a tail ending at
+   * `tailEndMs` cites, read at the follower's tip and passing over the
+   * `excluded` citations; null when there is none.
+   */
+  neglectedUserEvent: (
+    tailEndMs: bigint,
+    excluded?: ReadonlySet<string>,
+  ) => Promise<SDK.NeglectedUserEventClaim | null>;
 }>;
 
 /**
  * What one hook run publishes: its set and membership, the landed queue's
- * tail, and the retired-anchor read over `store`.
+ * tail, and the retired-anchor and neglected-event reads over `store`.
  */
 export const publishedOperatorSetOf = (input: {
   readonly set: OperatorSet;
@@ -51,6 +65,7 @@ export const publishedOperatorSetOf = (input: {
   readonly stateQueueTail: SDK.StateQueueTail | null;
   readonly store: Pick<FactStore, "dialect" | "transaction">;
   readonly retired: OperatorListContract;
+  readonly neglectedEvents: NeglectedEventSources;
 }): PublishedOperatorSet => ({
   set: input.set,
   membership: input.membership,
@@ -62,6 +77,16 @@ export const publishedOperatorSetOf = (input: {
         input.store.dialect,
         input.retired,
         operatorKey,
+      ),
+    ),
+  neglectedUserEvent: (tailEndMs, excluded) =>
+    input.store.transaction("read", (tx) =>
+      neglectedUserEventIn(
+        tx,
+        input.store.dialect,
+        input.neglectedEvents,
+        tailEndMs,
+        excluded,
       ),
     ),
 });
@@ -202,6 +227,30 @@ export const publishedRetiredAnchorProgram = (
     catch: (cause) =>
       new SDK.StateQueueError({
         message: `could not read the retired insertion anchor: ${cause instanceof Error ? cause.message : String(cause)}`,
+        cause,
+      }),
+  });
+
+/**
+ * The undelivered user event a strike against `tailEndMs` cites, from the
+ * published set; null when there is none. Fails when there is no set or the
+ * read refuses, so a caller never mistakes an unreadable store for an idle
+ * network.
+ */
+export const publishedNeglectedUserEventProgram = (
+  published: PublishedOperatorSet | undefined,
+  tailEndMs: bigint,
+  excluded?: ReadonlySet<string>,
+): Effect.Effect<SDK.NeglectedUserEventClaim | null, SDK.StateQueueError> =>
+  Effect.tryPromise({
+    try: async () => {
+      if (published === undefined)
+        throw new Error("the operator set is not published");
+      return published.neglectedUserEvent(tailEndMs, excluded);
+    },
+    catch: (cause) =>
+      new SDK.StateQueueError({
+        message: `could not read the neglected user event: ${cause instanceof Error ? cause.message : String(cause)}`,
         cause,
       }),
   });

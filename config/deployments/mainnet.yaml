@@ -23,7 +23,6 @@ timing:
   # blocks deep under the guaranteed chain-growth bound.
   event_wait_ms: 130080000
   user_events_negligence_timeout_ms: 1200000
-  max_inactivity_between_block_commitments_ms: 1200000
   new_shift_inactivity_grace_period_ms: 300000
   max_validity_range_ms: 480000
   da_attestation_timeout_ms: 3600000

@@ -83,10 +83,11 @@
  * coin that covers the worst Timeout fee at the ledger's collateral percentage
  * (G9), and one operating coin for the removal fee and the capital checks.
  *
- * Nothing here enforces operator liveness: `max_inactivity` and the scheduler
- * shift act only through strike and advance transactions, and no process in a
- * journey devnet submits them, so the long waits (the response deadline and
- * the withdraw delay) need no keep-alive commits.
+ * Nothing here enforces operator liveness: inactivity strikes and the
+ * scheduler shift act only through strike and advance transactions, a strike
+ * needs an undelivered user event, and no process in a journey devnet submits
+ * either, so the long waits (the response deadline and the withdraw delay)
+ * need no keep-alive commits.
  */
 import "node:child_process";
 import "node:crypto";

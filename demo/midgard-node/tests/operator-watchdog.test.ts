@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  citationFailuresAt,
   decideOperatorWatchdogAction,
+  emptyCitationFailures,
+  isScriptRefusal,
+  MAX_EXCLUDED_CITATIONS,
+  MAX_STRIKE_ATTEMPTS_PER_CITATION,
   readOperatorWatchdogRecord,
+  recordCitationFailure,
   recordOperatorWatchdogSkip,
   recordOperatorWatchdogTakeover,
   resetOperatorWatchdogRecordForTests,
@@ -51,6 +57,22 @@ describe("operator watchdog policy", () => {
     ).toEqual({ action: "idle", reason: "scheduler_has_no_active_operator" });
   });
 
+  it("never strikes a shift with no neglected user event, on any tier, however late", () => {
+    const plan = { kind: "no-neglected-event" as const, currentOperator: A };
+    for (const ownOperatorKey of [B, C])
+      for (const patienceMs of [0, PATIENCE])
+        expect(
+          decideOperatorWatchdogAction(
+            base({
+              plan,
+              ownOperatorKey,
+              patienceMs,
+              nowMs: THRESHOLD * 1_000,
+            }),
+          ),
+        ).toEqual({ action: "idle", reason: "no_neglected_user_event" });
+  });
+
   it("never strikes its own shift", () => {
     for (const plan of [
       {
@@ -63,7 +85,7 @@ describe("operator watchdog policy", () => {
       {
         kind: "strikes-exhausted" as const,
         currentOperator: B,
-        thresholdMs: THRESHOLD,
+        shiftStartMs: THRESHOLD,
       },
     ]) {
       expect(
@@ -139,11 +161,11 @@ describe("operator watchdog policy", () => {
     ).toMatchObject({ action: "strike", tier: "any_active" });
   });
 
-  it("force-retires an exhausted operator on the any-active tier only", () => {
+  it("force-retires an exhausted operator on the any-active tier, a patience window after its shift starts", () => {
     const plan = {
       kind: "strikes-exhausted" as const,
       currentOperator: A,
-      thresholdMs: THRESHOLD,
+      shiftStartMs: THRESHOLD,
     };
     expect(
       decideOperatorWatchdogAction(base({ plan, nowMs: THRESHOLD + 1 })),
@@ -180,5 +202,78 @@ describe("operator watchdog policy", () => {
       lastSkipReason: "insufficient_funds",
       lastSkipAt: 5,
     });
+  });
+});
+
+describe("operator watchdog citation failures", () => {
+  const at = (
+    failures: typeof emptyCitationFailures,
+    citationId: string,
+    refused: boolean,
+    schedulerRef = "sched#0",
+  ) => recordCitationFailure(failures, { schedulerRef, citationId, refused });
+
+  it("passes over a refused citation at once, leaving the next one citable", () => {
+    const { failures, reason } = at(emptyCitationFailures, "Deposit:a#0", true);
+    expect(reason).toBe("neglected_event_refused");
+    expect([...failures.excluded]).toEqual(["Deposit:a#0"]);
+    expect(failures.excluded.has("Deposit:b#0")).toBe(false);
+  });
+
+  it("retries another failure a bounded number of times, then passes over it", () => {
+    let failures = emptyCitationFailures;
+    const reasons: string[] = [];
+    for (let i = 0; i < MAX_STRIKE_ATTEMPTS_PER_CITATION; i += 1) {
+      const recorded = at(failures, "TxOrder:t#1", false);
+      failures = recorded.failures;
+      reasons.push(recorded.reason);
+    }
+    expect(reasons).toEqual([
+      ...Array<string>(MAX_STRIKE_ATTEMPTS_PER_CITATION - 1).fill(
+        "submission_failed",
+      ),
+      "neglected_event_attempts_exhausted",
+    ]);
+    expect(failures.excluded.has("TxOrder:t#1")).toBe(true);
+    expect(failures.attempts.size).toBe(0);
+  });
+
+  it("starts over when the scheduler moves on", () => {
+    const { failures } = at(emptyCitationFailures, "Deposit:a#0", true);
+    expect(citationFailuresAt(failures, "sched#0")).toBe(failures);
+    const moved = citationFailuresAt(failures, "sched#1");
+    expect(moved.excluded.size).toBe(0);
+    expect(moved.schedulerRef).toBe("sched#1");
+    expect(
+      at(failures, "Deposit:b#0", false, "sched#1").failures.excluded.size,
+    ).toBe(0);
+  });
+
+  it("remembers a bounded number of citations, the oldest giving way", () => {
+    let failures = emptyCitationFailures;
+    for (let i = 0; i <= MAX_EXCLUDED_CITATIONS; i += 1)
+      failures = at(failures, `Deposit:${i.toString()}#0`, true).failures;
+    expect(failures.excluded.size).toBe(MAX_EXCLUDED_CITATIONS);
+    expect(failures.excluded.has("Deposit:0#0")).toBe(false);
+    expect(
+      failures.excluded.has(`Deposit:${MAX_EXCLUDED_CITATIONS.toString()}#0`),
+    ).toBe(true);
+  });
+
+  it("recognises a script refusal through wrapped causes, and nothing else", () => {
+    const refusal = new Error("failed script execution\n Spend[1] ...");
+    expect(isScriptRefusal(refusal)).toBe(true);
+    expect(
+      isScriptRefusal(
+        new Error("strike build failed", {
+          cause: new Error("wrapped", { cause: refusal }),
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isScriptRefusal({ message: "x", cause: "failed script execution" }),
+    ).toBe(true);
+    expect(isScriptRefusal(new Error("fetch failed: ECONNRESET"))).toBe(false);
+    expect(isScriptRefusal(undefined)).toBe(false);
   });
 });

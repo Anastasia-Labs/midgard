@@ -36,6 +36,22 @@ export const fetchInactivityDirectorySnapshot = (
     SDK.fetchOperatorDirectorySnapshotProgram(fixture.lucid, fixture.contracts),
   );
 
+/**
+ * The undelivered user event an honest strike cites, read from the emulator
+ * ledger the way a provider reader does; null on an idle network.
+ */
+export const fetchNeglectedUserEvent = (
+  fixture: OperatorInactivityFixture,
+  snapshot: SDK.OperatorDirectorySnapshot,
+): Promise<SDK.NeglectedUserEventClaim | null> =>
+  Effect.runPromise(
+    SDK.fetchNeglectedUserEventProgram(
+      fixture.lucid,
+      fixture.contracts,
+      snapshot.stateQueueTail.endTime,
+    ),
+  );
+
 export const fetchSchedulerDatum = async (
   fixture: OperatorInactivityFixture,
 ): Promise<SDK.SchedulerDatum> =>
@@ -136,6 +152,10 @@ export const appointFirstSchedulerOperator = async (
 // ---------------------------------------------------------------------------
 
 export type StrikeAttemptOptions = {
+  /**
+   * The event the strike cites. Omitted, the strike cites the earliest
+   * undelivered user event on the ledger, and there must be one.
+   */
   readonly neglectedEvent?: SDK.NeglectedUserEventClaim;
   /**
    * Timing parameters for the plan only. Passing a set that differs from the
@@ -177,11 +197,19 @@ export const prepareInactivityStrike = async (
   if (current === null) {
     throw new Error("The scheduler holds no active operator to strike");
   }
+  const neglectedEvent =
+    options.neglectedEvent ??
+    (await fetchNeglectedUserEvent(fixture, plannedSnapshot));
+  if (neglectedEvent === null) {
+    throw new Error(
+      "No user event is undelivered, so no strike can be planned: submit a neglected event first",
+    );
+  }
   if (options.skipThresholdWait !== true) {
     const threshold = SDK.computeInactivityThreshold({
       shiftStartMs: current.startTime,
       stateQueueTailEndTimeMs: plannedSnapshot.stateQueueTail.endTime,
-      neglectedEvent: options.neglectedEvent,
+      neglectedEvent,
       params: options.params,
     });
     if (threshold.kind === "unsatisfiable") {
@@ -197,7 +225,7 @@ export const prepareInactivityStrike = async (
   const plan = SDK.planInactivityTakeover({
     snapshot,
     nowMs: options.planNowMs ?? BigInt(fixture.emulator.now()),
-    neglectedEvent: options.neglectedEvent,
+    neglectedEvent,
     params: options.params,
     validityWindowMs: STRIKE_VALIDITY_WINDOW_MS,
     alignValidFrom: (candidate) =>
@@ -228,13 +256,7 @@ export const prepareInactivityStrike = async (
       newOperatorKeyHash: options.newOperatorKeyHash ?? plan.newOperatorKey,
       newStartTime: options.newStartTime ?? validity.validTo - 1n,
       witnesses: options.witnesses ?? plan.witnesses,
-      neglectedEvent:
-        options.neglectedEvent === undefined
-          ? undefined
-          : {
-              kind: options.neglectedEvent.kind,
-              utxo: options.neglectedEvent.utxo,
-            },
+      neglectedEvent: { kind: neglectedEvent.kind, utxo: neglectedEvent.utxo },
       validFrom: validity.validFrom,
       validTo: validity.validTo,
       schedulerSpendingScriptRef: scriptRefs.scheduler,

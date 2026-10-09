@@ -12,7 +12,9 @@
  * - `computeInactivityThreshold` / `planInactivityTakeover`: a pure mirror of
  *   the on-chain timing rules (`validators/scheduler.ak`,
  *   `validate_operator_inactivity_and_get_its_link`) so a watchdog can decide
- *   *whether* a strike is possible, and report why not when it is not.
+ *   *whether* a strike is possible, and report why not when it is not. A
+ *   strike always cites an undelivered user event
+ *   (`selectNeglectedUserEvent`); with none there is nothing to strike.
  * - `buildStrikeInactiveOperatorTxProgram`: the transaction builder, which
  *   resolves every redeemer index from the final transaction context rather
  *   than guessing at it.
@@ -31,6 +33,7 @@ import "./directory.js";
 import "./output-selectors.js";
 import "./strike.compute-inactivity-threshold.js";
 import "./strike.plan-inactivity-takeover.js";
+import "./strike.neglected-user-event.js";
 import "./strike.derive-strike-layout.js";
 import "./strike.build-strike-inactive-operator-tx-program.js";
 export { buildStrikeInactiveOperatorTxProgram } from "./strike.build-strike-inactive-operator-tx-program.js";
@@ -53,6 +56,13 @@ export {
   type NeglectedUserEventKind,
   type PlanInactivityTakeoverInput,
 } from "./strike.compute-inactivity-threshold.js";
+export {
+  citableNeglectedUserEvent,
+  fetchNeglectedUserEventProgram,
+  neglectedUserEventCitationId,
+  type NeglectedUserEventCitationSources,
+  selectNeglectedUserEvent,
+} from "./strike.neglected-user-event.js";
 export {
   type BuildStrikeInactiveOperatorTxConfig,
   planInactivityTakeover,

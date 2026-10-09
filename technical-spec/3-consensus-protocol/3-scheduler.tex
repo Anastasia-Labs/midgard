@@ -146,22 +146,19 @@ Redeemers:
               Let its datum be \code{hub\_datum}.
             \item Let \code{state\_queue\_element} be a reference utxo from the state queue.
             \item \code{state\_queue\_element} must have no link.
-            \item Let \code{last\_end\_time} be the exclusive upper bound retrieved from \code{state\_queue\_element} datum (either \code{ConfirmedState} if it's root, or \code{Header} if it's a node).
-            \item Let \code{commitment\_inactivity} be a point in time after the latest activity.
-              It must be found as the following:
-              \begin{itemize}
-                \item Let \code{neglected\_user\_event} be a redeemer argument that may point to a user event.
-                \item If \code{neglected\_user\_event} points to no utxos, \code{commitment\_inactivity} is equal to the sum of \code{last\_end\_time} and \code{max\_inactivity\_between\_block\_commitments}.
-                \item Otherwise, \code{commitment\_inactivity} must equal the inclusion time of the reference user event, plus the \code{user\_events\_negligence\_timeout} protocol parameter.
-                  Additionally, the inclusion time of the event must be greater than or equal \code{last\_end\_time}.
-              \end{itemize}
+            \item Let \code{last\_end\_time} be the end time retrieved from \code{state\_queue\_element} datum (either \code{ConfirmedState} if it's root, or \code{Header} if it's a node).
+            \item Let \code{neglected\_user\_event} be a redeemer argument naming one reference input: an authentic Order node of the deposit or the withdrawal event-history list, or an authentic tx order.
+              Let \code{event\_inclusion} be the inclusion time of that user event.
+              The redeemer has no form without a user event: an operator with no neglected L1 work cannot be skipped.
+            \item \code{event\_inclusion} must be greater than \code{last\_end\_time}.
+              A block covers the user events with \code{start\_time < inclusion\_time <= end\_time}, and each block starts where its predecessor ends, so the state queue has delivered exactly the events with \code{inclusion\_time <= last\_end\_time}.
             \item Let \code{inactivity\_threshold} be the point in time that can determine inactivity of \code{prev\_op}.
-              It must be found as the following:
+              It is the larger of:
               \begin{itemize}
-                \item Let \code{allowed\_init\_inactivity} be the sum of \code{prev\_shift} and the \code{new\_shift\_inactivity\_grace\_period} protocol parameter.
-                \item \code{inactivity\_threshold} is the larger value between \code{allowed\_init\_inactivity} and \code{commitment\_inactivity}.
+                \item the sum of \code{prev\_shift} and the \code{new\_shift\_inactivity\_grace\_period} protocol parameter;
+                \item the sum of \code{event\_inclusion} and the \code{user\_events\_negligence\_timeout} protocol parameter.
               \end{itemize}
-            \item Let \code{prev\_shift\_end} be equal to \code{prev\_shift} plust \code{shift\_duration}.
+            \item Let \code{prev\_shift\_end} be equal to \code{prev\_shift} plus \code{shift\_duration}.
             \item \code{inactivity\_threshold} must be smaller than \code{prev\_shift\_end}.
             \item Transaction's validity range must be entirely after \code{inactivity\_threshold}.
           \end{enumerate}

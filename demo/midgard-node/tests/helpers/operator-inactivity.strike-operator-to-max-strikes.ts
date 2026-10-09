@@ -8,12 +8,14 @@ import {
 import { Effect } from "effect";
 
 import {
+  advanceEmulatorPastUnixTime,
   alignedUnixTimeAtOrBefore,
   type OperatorInactivityFixture,
 } from "./operator-inactivity.build-deployment-snapshot.js";
 import {
   BUILDER_PREFLIGHT_MARKERS,
   fetchInactivityDirectorySnapshot,
+  fetchNeglectedUserEvent,
   prepareInactivityStrike,
   requirePrimaryOperator,
   type StrikeAttemptOptions,
@@ -70,6 +72,8 @@ export const expectInactivityStrikeRefusal = async (
 /**
  * Drives the operator's node to `max_inactivity_strikes` by letting it miss
  * shift after shift. This is the state a forced retirement starts from.
+ * Every strike cites one undelivered deposit, submitted first unless the
+ * ledger already holds an undelivered event; nothing ever delivers it.
  *
  * The shift only comes back round to one operator by rotating through all of
  * them, so in a multi-operator set every other operator is struck on the way
@@ -84,6 +88,14 @@ export const strikeOperatorToMaxStrikes = async (
   readonly inactivityStrikes: bigint;
 }> => {
   const txHashes: string[] = [];
+  if (
+    (await fetchNeglectedUserEvent(
+      fixture,
+      await fetchInactivityDirectorySnapshot(fixture),
+    )) === null
+  ) {
+    await submitNeglectedDeposit(fixture);
+  }
   const maxAttempts = 8 * Math.max(1, fixture.operators.length);
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const snapshot = await fetchInactivityDirectorySnapshot(fixture);
@@ -152,6 +164,29 @@ const neglectedEventValidity = (
   };
 };
 
+/**
+ * Builds an event admission at the emulator's current time, first moving the
+ * emulator past its list predecessor's protection when that is still live (a
+ * fresh deployment's root stays protected for a while after initialization).
+ */
+const buildPastPredecessorProtection = async <A, E>(
+  fixture: OperatorInactivityFixture,
+  build: () => Effect.Effect<A, E>,
+): Promise<A> => {
+  const first = await Effect.runPromise(Effect.either(build()));
+  if (first._tag === "Right") return first.right;
+  const cause = (first.left as { readonly cause?: unknown }).cause as
+    | { readonly name?: unknown; readonly protectedUntil?: unknown }
+    | undefined;
+  if (
+    cause?.name !== "EventHistoryPredecessorProtectedError" ||
+    typeof cause.protectedUntil !== "bigint"
+  )
+    throw first.left;
+  advanceEmulatorPastUnixTime(fixture.emulator, cause.protectedUntil);
+  return Effect.runPromise(build());
+};
+
 const submitNeglectedEvent = async (
   fixture: OperatorInactivityFixture,
   kind: "Deposit" | "Withdrawal",
@@ -184,7 +219,7 @@ export const submitNeglectedDeposit = async (
   fixture: OperatorInactivityFixture,
   lovelace = 20_000_000n,
 ): Promise<SDK.NeglectedUserEventClaim> => {
-  const built = await Effect.runPromise(
+  const built = await buildPastPredecessorProtection(fixture, () =>
     SDK.buildUnsignedDepositTxWithMetadataProgram(
       fixture.lucid,
       fixture.contracts,
@@ -229,7 +264,7 @@ export const submitNeglectedWithdrawal = async (
     l1_address: ownerAddress,
     l1_datum: "NoDatum",
   };
-  const built = await Effect.runPromise(
+  const built = await buildPastPredecessorProtection(fixture, () =>
     SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
       fixture.lucid,
       fixture.contracts,

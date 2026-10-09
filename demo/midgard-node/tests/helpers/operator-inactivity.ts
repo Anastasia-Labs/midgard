@@ -39,6 +39,7 @@ export {
 export {
   appointFirstSchedulerOperator,
   fetchInactivityDirectorySnapshot,
+  fetchNeglectedUserEvent,
   fetchSchedulerDatum,
   type PreparedStrike,
   prepareInactivityStrike,

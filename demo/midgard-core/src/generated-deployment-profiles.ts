@@ -16,7 +16,6 @@ export const DEPLOYMENT_PROFILES = {
       registration_ms: 30,
       event_wait_ms: 130080000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 3600000,
@@ -64,7 +63,6 @@ export const DEPLOYMENT_PROFILES = {
       registration_ms: 30,
       event_wait_ms: 1800000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 3600000,
@@ -112,7 +110,6 @@ export const DEPLOYMENT_PROFILES = {
       registration_ms: 30000,
       event_wait_ms: 300000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
@@ -160,7 +157,6 @@ export const DEPLOYMENT_PROFILES = {
       registration_ms: 30000,
       event_wait_ms: 300000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
@@ -208,7 +204,6 @@ export const DEPLOYMENT_PROFILES = {
       registration_ms: 30000,
       event_wait_ms: 600000,
       user_events_negligence_timeout_ms: 1200000,
-      max_inactivity_between_block_commitments_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
@@ -242,15 +237,15 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "a4c0b686e5cf31a2ff04b4b70e38930db0776301680a3fa97fa3c89207854321",
+  mainnet: "a489260b206d26cafa4cb4d6967af53078ab94e1de80095e154d23e572f2fa17",
   "preprod-public":
-    "c47e6a7e2ed2467684f036c94fb7798f85a22df4a41c7281c49683725c465a90",
+    "9bd1c1354b105ea5f01d4741abe62db7ab0d92406a0dfad4659f5da90181dad9",
   "preprod-testing":
-    "7d18ab909e4fe05b1de72719119945e72a81b9cc1d619c38da88163617a71f8a",
+    "bfa462a7d3218f0d626e57147653875e6914cec89e966d021e36834f098c7a4e",
   "local-devnet-testing":
-    "0b57f9efdc5e9b03f8f0956f2ff4d7da87bfd7e4fc16402b9de79a8284e99841",
+    "8041e1c72ab06af802564b16207ecf5d8849bd7fe95a47b1c995a258a88c1f0b",
   "preprod-emulator-testing":
-    "4139b38c2a2f1f092b1450467d5ae1f05e45b3d0129ec194ed6d773a22bf937c",
+    "d6401886f7b151be49d3ed7d9a32c7fba356a5c15f62662a52fd9654ffc54943",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

@@ -61,9 +61,7 @@ const witnessReferenceInputs = (
     config.hubOracleRefInput,
     config.stateQueueTailRefInput,
     ...witnessNodes,
-    ...(config.neglectedEvent === undefined
-      ? []
-      : [config.neglectedEvent.utxo]),
+    config.neglectedEvent.utxo,
   ];
 };
 
@@ -139,13 +137,11 @@ export const deriveStrikeLayout = ({
     ),
     neglectedUserEventRefInputIndex:
       config.adversarialOverrides?.neglectedUserEventRefInputIndex ??
-      (config.neglectedEvent === undefined
-        ? undefined
-        : requireReferenceInputIndex(
-            ctx,
-            config.neglectedEvent.utxo,
-            `inactivity strike neglected ${config.neglectedEvent.kind}`,
-          )),
+      requireReferenceInputIndex(
+        ctx,
+        config.neglectedEvent.utxo,
+        `inactivity strike neglected ${config.neglectedEvent.kind}`,
+      ),
   };
   if (config.witnesses.tier === "GoToNext") {
     return {
@@ -188,16 +184,7 @@ const encodeNeglectedUserEvent = (
   config: BuildStrikeInactiveOperatorTxConfig,
   layout: StrikeInactiveOperatorLayout,
 ): unknown => {
-  if (config.neglectedEvent === undefined) {
-    return "NoNeglectedUserEvent";
-  }
   const index = layout.neglectedUserEventRefInputIndex;
-  if (index === undefined) {
-    throw schedulerError(
-      "Inactivity strike resolved no reference-input index for its neglected user event",
-      config.neglectedEvent.kind,
-    );
-  }
   switch (config.neglectedEvent.kind) {
     case "Deposit":
       return { NeglectedDeposit: { deposit_ref_input_index: index } };

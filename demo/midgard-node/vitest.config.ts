@@ -90,6 +90,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/mpf-audit-merge-permit-emulator.test.ts
  *   tests/native-mpf-startup-emulator.test.ts
  *   tests/operator-commands-emulator.test.ts
+ *   tests/operator-watchdog-citation-emulator.test.ts
  *   tests/operator-watchdog-force-retire-emulator.test.ts
  *   tests/operator-watchdog-manifest-gate-idle.test.ts
  *   tests/published-initialization-recovery.test.ts
