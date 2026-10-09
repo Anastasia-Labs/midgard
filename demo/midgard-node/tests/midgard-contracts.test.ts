@@ -129,7 +129,10 @@ describe("midgard contracts registry", () => {
       // DA-attestation parameters changed), by MPF fixes (leaf fold, terminal
       // neighbour, deletion Branch, emptied ledger root, disjoint node
       // preimages), by removing missingNativeScriptTx/Utxo (superseded by
-      // missingScriptSource), and by deleting the cross-block family.
+      // missingScriptSource), by deleting the cross-block family, by the
+      // neglected-event strike rule (scheduler, so active operators and the
+      // state queue built on it) and by the forced due-window fix
+      // (transition trace).
       expect
         .soft(
           createHash("sha256")
@@ -139,13 +142,15 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "412ca624c89c9f219b011ce97a37113c08f7fde6f1b4311f1cf7fad73f9292c1",
+          "f795c420ac1ada3369e323a2e06ddfe8fffa83ffce4acd31e39cf9026a62423e",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       // Re-pinned by #689: the state queue and correction lock are applied over
       // the availability-challenge policy, whose parameters now include the
-      // pooled DA bond policy, and again for disjoint MPF node preimages.
+      // pooled DA bond policy, and again for disjoint MPF node preimages and
+      // for the neglected-event strike rule (the state queue is applied over
+      // the scheduler and active-operator scripts).
       expect
         .soft(
           createHash("sha256")
@@ -158,7 +163,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "45ba1c1bb4baf099d347af5b85c2c5fc105871cecf81ffb1d050e023fe61a852",
+          "1b5667707317f450979f8bf401d6c627726e2d8ed3b62519adb1e628e50efa81",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

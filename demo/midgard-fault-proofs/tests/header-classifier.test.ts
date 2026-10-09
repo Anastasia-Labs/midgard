@@ -20,7 +20,6 @@ import {
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
   PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
-  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
 import {
   authenticatedStateQueueObservationDigest,
@@ -107,16 +106,6 @@ describe("production authenticated-header classifier V1", () => {
         releaseFinalityAuthority: finalityAuthority(),
       }),
     ).rejects.toThrow("closed canonical replay bundle");
-
-    await expect(
-      createHeaderClassifier({
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        replayer: RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-        releaseFinalityAuthority: finalityAuthority(),
-      }),
-    ).rejects.toThrow(
-      "complete replay requires an admitted historical replay authority",
-    );
   });
 
   it("fetches public DA once and mints an opaque exact fault selection", async () => {

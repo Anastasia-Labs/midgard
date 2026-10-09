@@ -616,8 +616,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/submit-init-emulator-fixtures.retire-fixture-operator-after-inactivity.ts",
-    "max": 642,
-    "reason": "retireFixtureOperatorAfterInactivity is the dominant indivisible declaration (600 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 717,
+    "reason": "retireFixtureOperatorAfterInactivity is the dominant indivisible declaration (600 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. STRIKE: every strike now cites an undelivered tx order minted by the fixture, since an operator with no neglected L1 work cannot be struck."
   },
   {
     "file": "midgard-fault-proofs/tests/support/transition-trace-final-cases.register-transition-trace-final-cases.ts",
@@ -1206,7 +1206,7 @@
   },
   {
     "file": "midgard-node/tests/sdk-abi-fixtures.test.ts",
-    "max": 1046,
+    "max": 1043,
     "reason": "Retained test registration “SDK canonical ABI fixtures” (1000 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1481,12 +1481,12 @@
   },
   {
     "file": "scripts/deployment-profiles.mjs",
-    "max": 657,
+    "max": 652,
     "reason": "validateProfile is the dominant indivisible declaration (262 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",
-    "max": 837,
+    "max": 829,
     "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
