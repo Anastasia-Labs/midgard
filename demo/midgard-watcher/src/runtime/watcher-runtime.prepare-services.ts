@@ -23,7 +23,6 @@ export const prepareWatcherRuntimeWorkflows = async (
     | "sqlite"
     | "deploymentAuthority"
     | "deploymentIdentity"
-    | "historicalNativeScriptCheckpointStore"
     | "fundingProfileOverlay"
   > &
     Readonly<{
@@ -37,7 +36,6 @@ export const prepareWatcherRuntimeWorkflows = async (
     deploymentAuthority,
     deploymentIdentity,
     sqlite,
-    historicalNativeScriptCheckpointStore,
     fundingProfileOverlay,
     startup,
     userEvents,
@@ -51,7 +49,6 @@ export const prepareWatcherRuntimeWorkflows = async (
       replayTranscriptStore: sqlite.replayTranscripts,
       userEvents,
       infrastructure: input.config.faultProofInfrastructure,
-      historicalNativeScriptCheckpointStore,
       fundingProfileOverlay,
     });
     onAllocated(faultProofApplication);

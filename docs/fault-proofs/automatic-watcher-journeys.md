@@ -4,6 +4,11 @@
 
 Status: All 52 family results accepted through preserved and recovered runs.
 
+The `missingNativeScriptTx` results below are historical: that family and
+`missingNativeScriptUtxo` have since been removed from the catalogue.
+missingScriptSource supersedes these families; it scans inline witnesses and
+resolved reference scripts.
+
 The acceptance target is a fresh, isolated Cardano devnet with real Cardano
 node, Kupo, Ogmios, native chain sync, public libp2p DA retrieval, and the normal
 watcher launcher. The source catalogue supplies the family inventory. Each

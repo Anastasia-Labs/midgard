@@ -59,7 +59,6 @@ import {
   MANIFEST_PATH,
   rawConfig,
   SHARED_THREAD_REFERENCE_KEYS,
-  TEST_HISTORY_STORE,
   testFaultProofL1,
   transportFactory,
 } from "./fault-proof-application.raw-config.js";
@@ -86,7 +85,6 @@ describe("watcher production fault-proof application V1", () => {
           l1: testFaultProofL1(),
           deploymentIdentity: authority.result,
           infrastructure: infrastructure(),
-          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
           unsafeTransportFactoryForTest: transportFactory().factory,
           fundingProfileOverlay,
         },
@@ -123,7 +121,6 @@ describe("watcher production fault-proof application V1", () => {
           l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
           infrastructure: infrastructure(),
-          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
           unsafeTransportFactoryForTest: transport.factory,
         },
         deps,
@@ -310,7 +307,6 @@ describe("watcher production fault-proof application V1", () => {
           l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
           infrastructure: infrastructure(),
-          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
           unsafeTransportFactoryForTest: transport.factory,
         },
         deps,
@@ -367,7 +363,6 @@ describe("watcher production fault-proof application V1", () => {
         {
           l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
-          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
           infrastructure: {
             ...infrastructure(),
             privateEvidenceUrl: "https://operator-private.example",
@@ -394,7 +389,6 @@ describe("watcher production fault-proof application V1", () => {
           {
             l1: testFaultProofL1(),
             deploymentIdentity: AUTHORITY.result,
-            historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
             infrastructure: { ...infrastructure(), ...deleted } as never,
           },
           dependencies(),
@@ -402,32 +396,25 @@ describe("watcher production fault-proof application V1", () => {
       ).toThrow("unknown or missing fields");
     }
 
+    // The retired historical native-script history overlay is an unknown
+    // field: a configuration still carrying it is refused, not ignored.
     expect(() =>
       unsafeCreateWatcherFaultProofApplicationForTest(
         {
           l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
-          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
           infrastructure: {
             ...infrastructure(),
             historicalNativeScriptHistory: {
-              ...infrastructure().historicalNativeScriptHistory,
-              providers: [
-                ...infrastructure().historicalNativeScriptHistory.providers,
-                {
-                  sourceId: "history-provider-c",
-                  operatorIdentitySha256: "71".repeat(32),
-                  authorityEndpoint: "https://history-c.example.test",
-                },
-              ],
+              sourceMode: "external_provider_quorum",
+              consistencyPolicy: "exact_bytes_all_providers_v1",
+              providers: [],
             },
-          },
+          } as never,
         },
         dependencies(),
       ),
-    ).toThrow(
-      "historical native-script providers must have distinct canonical identities and endpoints",
-    );
+    ).toThrow("unknown or missing fields");
 
     const directory = await mkdtemp(
       join(tmpdir(), "midgard-proof-app-hostile-"),
@@ -439,7 +426,6 @@ describe("watcher production fault-proof application V1", () => {
         {
           l1: testFaultProofL1(),
           deploymentIdentity: AUTHORITY.result,
-          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
           infrastructure: infrastructure(),
           unsafeTransportFactoryForTest: transportFactory().factory,
         },
@@ -448,7 +434,7 @@ describe("watcher production fault-proof application V1", () => {
           MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
         },
       );
-      // Every catalogue category now has an installed workflow (54/54), so the
+      // Every catalogue category has an installed workflow, so the
       // uninstalled-category guard is exercised with a forged non-catalogue
       // category string.
       await expect(
@@ -472,7 +458,7 @@ describe("watcher production fault-proof application V1", () => {
   });
 
   it("derives the predecessor-ledger set from the classifier's replay requirement", () => {
-    // The four families whose proof opens prev_utxos_root: the same set the
+    // The families whose proof opens prev_utxos_root: the same set the
     // classifier reads when it decides `predecessor_context_unavailable`.
     // The decision-time check re-checks that invariant; it is not the
     // records' `requires.replayContext` set, which the loop enforces at load.
@@ -480,10 +466,13 @@ describe("watcher production fault-proof application V1", () => {
       [...PREDECESSOR_LEDGER_PROOF_CATEGORIES].sort(),
     );
     expect([...WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES].sort()).toEqual([
+      "executionNativeScriptInvalid",
       "minAda",
-      "missingNativeScriptUtxo",
       "noReferenceInput",
       "nonExistentInput",
+      "resolvedOutputNonCanonical",
+      "spendInputSignerMissing",
+      "transitionTrace",
     ]);
   });
 
@@ -512,7 +501,6 @@ describe("watcher production fault-proof application V1", () => {
       {
         l1: testFaultProofL1(),
         deploymentIdentity: AUTHORITY.result,
-        historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
         infrastructure: infrastructure(),
         unsafeTransportFactoryForTest: transportFactory().factory,
       },
@@ -562,7 +550,6 @@ describe("watcher production fault-proof application V1", () => {
       {
         l1: testFaultProofL1(),
         deploymentIdentity: AUTHORITY.result,
-        historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
         infrastructure: infrastructure(),
         unsafeTransportFactoryForTest: transportFactory().factory,
       },
@@ -638,7 +625,7 @@ describe("watcher production fault-proof application V1", () => {
             "replayContext",
           ),
         );
-      expect(replayContextFamilies).toHaveLength(5);
+      expect(replayContextFamilies).toHaveLength(10);
       for (const category of replayContextFamilies) {
         await expect(applied(category)).rejects.toThrow(
           `${category} application requires replayContext, which the host did not supply`,
@@ -646,12 +633,12 @@ describe("watcher production fault-proof application V1", () => {
       }
       expect(deps.resolveReferenceScript).not.toHaveBeenCalled();
 
-      // A family that requires only what the watcher always supplies (the
-      // historical authority, the validation-challenge port) is applied:
-      // the resolver is asked for exactly its roster.
-      const { referenceScriptOutRefs } = await applied("minAda", true);
+      // A family that requires only the common infrastructure the watcher
+      // always supplies is applied: the resolver is asked for exactly its
+      // roster.
+      const { referenceScriptOutRefs } = await applied("doubleSpend", true);
       expect(Object.keys(referenceScriptOutRefs)).toEqual(
-        Object.keys(FAMILY_APPLICATION_REGISTRY.minAda.roster),
+        Object.keys(FAMILY_APPLICATION_REGISTRY.doubleSpend.roster),
       );
       // Non-tail removal is coordinated locally: the acting path builds its
       // lease coordinator from nothing, and the only secret it reads is the
@@ -693,7 +680,6 @@ it("verifies completion deployment metadata without resolving wallet secrets", a
       l1: testFaultProofL1(),
       deploymentIdentity: AUTHORITY.result,
       infrastructure: infrastructure(),
-      historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
     },
     deps,
     {},

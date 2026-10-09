@@ -5,10 +5,7 @@ import {
   JOURNEY_HISTORY_EVENT_FIXTURE_CANDIDATES,
   JOURNEY_HISTORY_FIXTURES,
 } from "./history-fixtures.js";
-import {
-  JOURNEY_SCRIPT_FIXTURES,
-  JOURNEY_SCRIPT_HISTORY_FIXTURES,
-} from "./script-fixtures.js";
+import { JOURNEY_SCRIPT_FIXTURES } from "./script-fixtures.js";
 import {
   JOURNEY_LOCALLY_VERIFIED_TRANSACTION_FIXTURES,
   JOURNEY_TRANSACTION_FIXTURES,
@@ -45,8 +42,6 @@ export const JOURNEY_FIXTURE_OWNERS = {
   observerOrderInvalid: "transaction",
   distinctAssetAccumulationLimit: "transaction",
   nativeScriptDecoding: "script",
-  missingNativeScriptTx: "script",
-  missingNativeScriptUtxo: "script",
   nativeScriptInvalid: "script",
   witnessScriptDecoding: "script",
   scriptIntegrityHashMissing: "script",
@@ -87,14 +82,12 @@ export const JOURNEY_FIXTURES: readonly JourneyFixture[] = [
   ...JOURNEY_SCRIPT_FIXTURES,
   ...JOURNEY_LOCALLY_VERIFIED_TRANSACTION_FIXTURES,
   ...JOURNEY_HISTORY_FIXTURES,
-  ...JOURNEY_SCRIPT_HISTORY_FIXTURES,
 ];
 
 export const JOURNEY_FIXTURE_CANDIDATES: readonly JourneyFixture[] = [
   transitionTraceJourneyFixture,
   ...JOURNEY_TRANSACTION_FIXTURES,
   ...JOURNEY_SCRIPT_FIXTURES,
-  ...JOURNEY_SCRIPT_HISTORY_FIXTURES,
   ...JOURNEY_HISTORY_FIXTURES,
   ...JOURNEY_HISTORY_EVENT_FIXTURE_CANDIDATES,
 ];

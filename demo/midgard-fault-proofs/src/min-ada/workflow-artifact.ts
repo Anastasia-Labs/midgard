@@ -1,6 +1,5 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import type { HistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import { admitMinAdaArtifact, prepareMinAdaArtifact } from "./artifact.js";
 import {
   admitMinAdaForcedArtifact,
@@ -13,7 +12,7 @@ export const prepareMinAdaWorkflowArtifact = async (args: {
     CanonicalBlockClassification,
     { decision: "fault_detected" }
   > & { category: "minAda" };
-  historicalNativeScriptCorpus: HistoricalNativeScriptCorpus;
+  predecessor: CanonicalBlockEvidence | undefined;
 }) => {
   if (args.classification.selected.detectionId.startsWith("min-ada:forced:"))
     return prepareMinAdaForcedArtifact({

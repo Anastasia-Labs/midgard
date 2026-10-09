@@ -34,20 +34,6 @@ import {
   MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
 } from "../mint-item-non-canonical/workflow.js";
 import {
-  createManifestBoundMissingNativeScriptTxWorkflow,
-  type ManifestBoundMissingNativeScriptTxWorkflow,
-  type ManifestBoundMissingNativeScriptTxWorkflowConfig,
-  MISSING_NATIVE_SCRIPT_TX_FAMILY_DEFINITION,
-  runOrResumeManifestBoundMissingNativeScriptTxWorkflow,
-} from "../missing-native-script-tx/workflow.js";
-import {
-  createManifestBoundMissingNativeScriptUtxoWorkflow,
-  type ManifestBoundMissingNativeScriptUtxoWorkflow,
-  type ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
-  MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION,
-  runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow,
-} from "../missing-native-script-utxo/workflow.js";
-import {
   createManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflowConfig,
@@ -153,12 +139,6 @@ const bundleCursorFamilyApplicationRecord = <
   const { auxiliaryReferenceScriptsKey } = family;
   return cursorFamilyApplicationRecord<Category, Config, Workflow>(definition, {
     requires: family.requires,
-    ...(family.includeMissingNativeScriptTxL1Roster === undefined
-      ? {}
-      : {
-          includeMissingNativeScriptTxL1Roster:
-            family.includeMissingNativeScriptTxL1Roster,
-        }),
     bindsDecisionDigest: false,
     bindConfig: ({ common, parts }): Config => {
       const bound: BundleCursorFamilyConfig = Object.freeze({
@@ -230,9 +210,8 @@ export const WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD =
   });
 
 /**
- * The eight families that reconstruct pre-genesis native scripts through the
- * historical authority. The requirement supplies the shared history source
- * and checkpoint store fields to every config.
+ * The families that replay the challenged block against its authenticated
+ * predecessor read it from the classifier-admitted replay context.
  */
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =
   bundleCursorFamilyApplicationRecord<
@@ -240,42 +219,23 @@ export const MIN_ADA_FAMILY_APPLICATION_RECORD =
     ManifestBoundMinAdaWorkflowConfig,
     ManifestBoundMinAdaWorkflow
   >(MIN_ADA_FAMILY_DEFINITION, {
-    requires: ["historicalNativeScriptAuthority"],
+    requires: ["replayContext"],
     auxiliaryReferenceScriptsKey: "yields",
     constructWorkflow: createManifestBoundMinAdaWorkflow,
     execute: runOrResumeManifestBoundMinAdaWorkflow,
   });
 
-export const MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD =
-  bundleCursorFamilyApplicationRecord<
-    "missingNativeScriptTx",
-    ManifestBoundMissingNativeScriptTxWorkflowConfig,
-    ManifestBoundMissingNativeScriptTxWorkflow
-  >(MISSING_NATIVE_SCRIPT_TX_FAMILY_DEFINITION, {
-    requires: ["historicalNativeScriptAuthority"],
-    includeMissingNativeScriptTxL1Roster: true,
-    constructWorkflow: createManifestBoundMissingNativeScriptTxWorkflow,
-    execute: runOrResumeManifestBoundMissingNativeScriptTxWorkflow,
-  });
-
-export const MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD =
-  bundleCursorFamilyApplicationRecord<
-    "missingNativeScriptUtxo",
-    ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
-    ManifestBoundMissingNativeScriptUtxoWorkflow
-  >(MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION, {
-    requires: ["historicalNativeScriptAuthority"],
-    constructWorkflow: createManifestBoundMissingNativeScriptUtxoWorkflow,
-    execute: runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow,
-  });
-
+/**
+ * crossBlockDuplicateEvent fetches each settled block's payload from the same
+ * public retained-DA sources as the challenged block.
+ */
 export const CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD =
   bundleCursorFamilyApplicationRecord<
     "crossBlockDuplicateEvent",
     ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
     ManifestBoundCrossBlockDuplicateEventWorkflow
   >(CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION, {
-    requires: ["historicalNativeScriptAuthority"],
+    requires: ["retainedDaSources"],
     constructWorkflow: createManifestBoundCrossBlockDuplicateEventWorkflow,
     execute: runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow,
   });
@@ -286,7 +246,7 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =
     ManifestBoundExecutionNativeScriptInvalidWorkflowConfig,
     ManifestBoundExecutionNativeScriptInvalidWorkflow
   >(EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION, {
-    requires: ["historicalNativeScriptAuthority"],
+    requires: ["replayContext"],
     auxiliaryReferenceScriptsKey: "removal",
     constructWorkflow: createManifestBoundExecutionNativeScriptInvalidWorkflow,
     execute: runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow,
@@ -303,7 +263,7 @@ export const TRANSITION_TRACE_FAMILY_APPLICATION_RECORD =
     ManifestBoundTransitionTraceWorkflowConfig,
     ManifestBoundTransitionTraceWorkflow
   >(TRANSITION_TRACE_FAMILY_DEFINITION, {
-    requires: ["historicalNativeScriptAuthority"],
+    requires: ["replayContext"],
     bindsDecisionDigest: false,
     bindConfig: ({ common, roster, references }) =>
       Object.freeze({
@@ -328,7 +288,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD =
     ManifestBoundResolvedOutputNonCanonicalWorkflow
   >(RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION, {
     contracts: RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
-    requires: ["historicalNativeScriptAuthority"],
+    requires: ["replayContext"],
     constructWorkflow: createManifestBoundResolvedOutputNonCanonicalWorkflow,
     execute: executeManifestBoundResolvedOutputNonCanonicalWorkflow,
   });
@@ -340,7 +300,7 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD =
     ManifestBoundSpendInputSignerMissingWorkflow
   >(SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION, {
     contracts: SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
-    requires: ["historicalNativeScriptAuthority"],
+    requires: ["replayContext"],
     constructWorkflow: createManifestBoundSpendInputSignerMissingWorkflow,
     execute: executeManifestBoundSpendInputSignerMissingWorkflow,
   });

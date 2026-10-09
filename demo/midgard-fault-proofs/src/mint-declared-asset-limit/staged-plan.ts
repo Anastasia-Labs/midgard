@@ -1,15 +1,15 @@
 import { computeHash32, decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 
 import {
-  advanceMissingNativeScriptTxGrammarCheckpoint,
-  advanceMissingNativeScriptTxSemanticCheckpoint,
-  encodeMissingNativeScriptTxGrammarCheckpoint,
-  encodeMissingNativeScriptTxSemanticCheckpoint,
-  initialMissingNativeScriptTxGrammarCheckpoint,
-  initialMissingNativeScriptTxSemanticCheckpoint,
-  type MissingNativeScriptTxGrammarCheckpoint,
-  type MissingNativeScriptTxSemanticCheckpoint,
-} from "../missing-native-script-tx/staged-walk.js";
+  advanceFieldGrammarCheckpoint,
+  advanceFieldSemanticCheckpoint,
+  encodeFieldGrammarCheckpoint,
+  encodeFieldSemanticCheckpoint,
+  type FieldGrammarCheckpoint,
+  type FieldSemanticCheckpoint,
+  initialFieldGrammarCheckpoint,
+  initialFieldSemanticCheckpoint,
+} from "../staged-field-walk/index.js";
 import {
   advanceMintDeclaredFold,
   decodeMintDeclaredPolicyHeader,
@@ -25,18 +25,18 @@ import {
 const GRAMMAR_DOMAIN = Buffer.from("MidgardFieldGrammarCheckpointV1", "ascii");
 const WALK_DOMAIN = Buffer.from("MidgardFieldWalkCheckpointV1", "ascii");
 
-export type MintDeclaredGrammarCheckpoint =
-  MissingNativeScriptTxGrammarCheckpoint & { readonly fieldIndex: 5 };
-export type MintDeclaredWalkCheckpoint =
-  MissingNativeScriptTxSemanticCheckpoint & { readonly fieldIndex: 5 };
+export type MintDeclaredGrammarCheckpoint = FieldGrammarCheckpoint & {
+  readonly fieldIndex: 5;
+};
+export type MintDeclaredWalkCheckpoint = FieldSemanticCheckpoint & {
+  readonly fieldIndex: 5;
+};
 
 const grammar5 = (
-  value: MissingNativeScriptTxGrammarCheckpoint,
+  value: FieldGrammarCheckpoint,
 ): MintDeclaredGrammarCheckpoint =>
   ({ ...value, fieldIndex: 5 }) as MintDeclaredGrammarCheckpoint;
-const walk5 = (
-  value: MissingNativeScriptTxSemanticCheckpoint,
-): MintDeclaredWalkCheckpoint =>
+const walk5 = (value: FieldSemanticCheckpoint): MintDeclaredWalkCheckpoint =>
   ({ ...value, fieldIndex: 5 }) as MintDeclaredWalkCheckpoint;
 const grammar6 = (value: MintDeclaredGrammarCheckpoint) => ({
   ...value,
@@ -50,7 +50,7 @@ const walk6 = (value: MintDeclaredWalkCheckpoint) => ({
 export const encodeMintDeclaredGrammarCheckpoint = (
   value: MintDeclaredGrammarCheckpoint,
 ): Buffer => {
-  const encoded = encodeMissingNativeScriptTxGrammarCheckpoint(grammar6(value));
+  const encoded = encodeFieldGrammarCheckpoint(grammar6(value));
   encoded[36] = 5;
   return encoded;
 };
@@ -58,7 +58,7 @@ export const encodeMintDeclaredGrammarCheckpoint = (
 export const encodeMintDeclaredWalkCheckpoint = (
   value: MintDeclaredWalkCheckpoint,
 ): Buffer => {
-  const encoded = encodeMissingNativeScriptTxSemanticCheckpoint(walk6(value));
+  const encoded = encodeFieldSemanticCheckpoint(walk6(value));
   encoded[36] = 5;
   return encoded;
 };
@@ -132,7 +132,7 @@ export const advanceMintDeclaredFoldSnapshot = ({
     closed === 0
       ? snapshot.checkpoint
       : walk5(
-          advanceMissingNativeScriptTxSemanticCheckpoint({
+          advanceFieldSemanticCheckpoint({
             checkpoint: walk6(snapshot.checkpoint),
             txId: transactionId,
             items,
@@ -180,7 +180,7 @@ export const planMintDeclaredAssetLimitField = ({
     targetDeclaredCount: header.declaredCount,
   });
   const initialGrammar = grammar5(
-    initialMissingNativeScriptTxGrammarCheckpoint({
+    initialFieldGrammarCheckpoint({
       txId: transactionId,
       items,
     }),
@@ -189,7 +189,7 @@ export const planMintDeclaredAssetLimitField = ({
   let grammarCursor = initialGrammar;
   do {
     grammarCursor = grammar5(
-      advanceMissingNativeScriptTxGrammarCheckpoint({
+      advanceFieldGrammarCheckpoint({
         checkpoint: grammar6(grammarCursor),
         items,
         budget: itemBudget,
@@ -198,7 +198,7 @@ export const planMintDeclaredAssetLimitField = ({
     grammar.push(grammarCursor);
   } while (grammarCursor.nextItemIndex < items.length);
   const initialWalk = walk5(
-    initialMissingNativeScriptTxSemanticCheckpoint({
+    initialFieldSemanticCheckpoint({
       grammar: grammar6(grammarCursor),
       items,
     }),

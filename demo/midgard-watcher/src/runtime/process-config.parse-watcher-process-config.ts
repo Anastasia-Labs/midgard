@@ -18,7 +18,7 @@ import {
   secretSource,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
   type WatcherProcessConfig,
-} from "./process-config.historical-native-script-history.js";
+} from "./process-config.fault-proof-infrastructure.js";
 
 export const parseWatcherProcessConfig = (
   value: unknown,

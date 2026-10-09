@@ -417,12 +417,7 @@ committee and the node never prune those payloads: their retention is exactly
 the L1 confirmed head, the headers live in the L1 queue, and payloads still
 inside the challengeability horizon. Merged blocks older than the horizon can no
 longer be challenged, so a late watcher needs nothing from before the confirmed
-state, with one exception: the `missing-native-script-tx` family still builds
-its historical native-script corpus by walking retained DA from genesis
-(`resolveHistoricalNativeScriptCorpus` in
-[historical-native-script-corpus.ts](../midgard-fault-proofs/src/workflow/historical-native-script-corpus.ts)),
-so that family depends on payloads outside the retained set until its redesign
-lands.
+state.
 
 ## Running with compose
 

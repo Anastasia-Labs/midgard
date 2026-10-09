@@ -21,10 +21,6 @@ import {
   type CompleteCanonicalReplay,
   type CompleteCanonicalReplayContext,
 } from "./complete-replay.js";
-import {
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptHistorySource,
-} from "./historical-native-script-corpus.js";
 
 export const HEADER_CLASSIFIER =
   "midgard-production-header-classifier-v1" as const;
@@ -208,10 +204,6 @@ export const admittedClassifiers = new WeakMap<
     confirmationDepth: number;
     settlementAuthority?: CrossBlockSettlementAuthority;
     transitionTraceEventAuthority?: TransitionTraceEventAuthority;
-    historicalReplayAuthority?: Readonly<{
-      checkpointStore: HistoricalNativeScriptCheckpointStore;
-      historySource: HistoricalNativeScriptHistorySource;
-    }>;
   }>
 >();
 

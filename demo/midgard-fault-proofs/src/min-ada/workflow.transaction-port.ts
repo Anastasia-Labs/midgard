@@ -5,6 +5,10 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
+  type CompleteCanonicalReplayContext,
+  completeCanonicalReplayPredecessorEvidence,
+} from "../workflow/complete-replay.js";
+import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -16,11 +20,6 @@ import {
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FamilyAssemblyContext } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import {
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptCorpus,
-  type HistoricalNativeScriptHistorySource,
-} from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
@@ -61,7 +60,10 @@ export const transactionPort = (
   prepare: async ({ evidence, classification }) =>
     await prepareMinAdaArtifact({
       evidence,
-      historicalNativeScriptCorpus: config.historicalCorpus(),
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence,
+        context: config.replayContext,
+      }),
       classification,
     }),
   capture: async ({ action, artifact }) => {
@@ -317,8 +319,8 @@ export type ManifestBoundMinAdaWorkflowConfig = Readonly<{
   signer: ResolvedProverSigner;
   referenceScripts: MinAdaWorkflowReferenceScripts;
   l1Source: FraudProofL1Source;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+  /** The classifier-admitted context carrying the authenticated predecessor. */
+  replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -329,31 +331,20 @@ export type ManifestBoundMinAdaWorkflow = Readonly<{
   adapter: FraudProofFamilyWorkflowAdapter;
   terminalVerifier: FraudProofWorkflowTerminalVerifier;
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+  replayContext?: CompleteCanonicalReplayContext;
 }>;
 
-export type HistoricalCorpusCell = {
-  value?: HistoricalNativeScriptCorpus;
-};
-
-export const historicalCorpusCells = new WeakMap<
-  object,
-  HistoricalCorpusCell
->();
-
-export type HistoricalRuntime = Pick<
+export type MinAdaRuntime = Pick<
   ManifestBoundMinAdaWorkflowConfig,
-  | "historicalNativeScriptCheckpointStore"
-  | "historicalNativeScriptHistorySource"
-> & { readonly corpusCell: HistoricalCorpusCell };
+  "replayContext"
+>;
 
 export type AssemblyContext = FamilyAssemblyContext<
   "minAda",
   keyof FaultProofWitnessReferenceScripts,
   true,
   5,
-  HistoricalRuntime
+  MinAdaRuntime
 >;
 
 export const boundConfigs = new WeakMap<AssemblyContext, BoundConfig>();

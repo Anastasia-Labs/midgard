@@ -136,7 +136,6 @@ export const createWatcherRuntime = async (input: {
     deploymentIdentity,
     localL1Source,
     rollbackAuthenticationKey,
-    historicalNativeScriptCheckpointStore,
     fundingProfileOverlay,
     sqlite,
   } = await prepareWatcherRuntimeAuthority(input, startup);
@@ -268,7 +267,6 @@ export const createWatcherRuntime = async (input: {
         deploymentAuthority,
         deploymentIdentity,
         sqlite,
-        historicalNativeScriptCheckpointStore,
         fundingProfileOverlay,
         startup,
         userEvents: activeUserEvents,

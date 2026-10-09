@@ -117,14 +117,8 @@ export const runJourney = async (
       }
     });
   try {
-    const {
-      authority,
-      releaseFinality,
-      watcherConfig,
-      archives,
-      native,
-      retain,
-    } = session;
+    const { authority, releaseFinality, watcherConfig, native, retain } =
+      session;
     const reusedWatcher = session.watcherStarted();
     const baselineStartedAt = new Date().toISOString();
     const baseline =
@@ -161,7 +155,6 @@ export const runJourney = async (
     const fixtureStage: JourneyFixtureStage = {
       context,
       directory,
-      historicalNativeScriptProviders: archives.configuration.providers,
       retain,
       readConfirmedTransaction: native.transaction,
       onHealthyPredecessor: async () => {

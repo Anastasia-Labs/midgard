@@ -5,17 +5,9 @@ import { join } from "node:path";
 import { LOCAL_AUTHORITY_ID } from "./da.js";
 import type { DeployContext } from "./deploy.js";
 import { writeDurableFile, writeOnceFile } from "./durable.js";
-import type { HistoryChildRole } from "./history-child-evidence.js";
-import { historyRecordedBinding } from "./history-recorded-binding.js";
-import type { HistoryReadinessSpecification } from "./history-role-context.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 import type { HubOracleOneShot } from "./node-env.js";
 import type { ServiceSpec } from "./supervisor.js";
-import {
-  ensureHistoryProviders,
-  HISTORY_ROLES,
-  historyTransportEnvironment,
-} from "./watcher-history.js";
 import {
   ensureWatcherReleaseBundle,
   loadWatcherModule,
@@ -173,10 +165,9 @@ const watcherConfigInput = (
 const configText = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
 /**
- * Everything the watcher and its history providers read, generated once
- * under the run's stack directory: the trust-root key, the secrets, the
- * signed release bundle, the providers' identities, and the runtime and
- * process configurations. Every configuration is checked by the watcher's
+ * Everything the watcher reads, generated once under the run's stack
+ * directory: the trust-root key, the secrets, the signed release bundle, and
+ * the runtime and process configurations. Every configuration is checked by the watcher's
  * own parser before it is written. A second call verifies and changes
  * nothing; a release signed for another deployment, or a configuration that
  * would now come out differently, is refused rather than replaced. Secrets
@@ -198,15 +189,9 @@ export const ensureWatcherRelease = async (
     );
   const watcher = await loadWatcherModule(layout);
   const identity = await ensureWatcherReleaseBundle(layout, watcher, manifest);
-  const releaseFinality = await watcher
+  await watcher
     .watcherDeploymentReleaseFinalityAuthority(identity)
     .verifyForWorkflow({ deploymentFingerprint: manifest.manifestId });
-  const history = ensureHistoryProviders(
-    layout,
-    run,
-    releaseFinality,
-    manifest.manifestId,
-  );
   const secrets = Object.fromEntries(
     Object.entries(SECRETS).map(([name, file]) => [
       name,
@@ -248,7 +233,6 @@ export const ensureWatcherRelease = async (
       manifestPath: paths.manifest,
       blueprintPath: paths.blueprint,
       deploymentInfoPath: paths.deploymentInfo,
-      historicalNativeScriptHistory: history,
     },
   };
   watcher.parseWatcherProcessConfig(processInput);
@@ -263,66 +247,23 @@ const WATCHER_ENV = {
 } as const;
 
 /**
- * The watcher's processes, in dependency order: the history providers with
- * their tunnel and feeder, then the watcher.
- *
- * The history providers speak TLS under their own self-signed identities, so
- * they are watched by exit only. The watcher's operations endpoint needs no
- * credentials, but it opens only after the watcher's startup catch-up, so the
- * watcher gets a long start grace.
+ * The watcher's process. Its operations endpoint needs no credentials, but it
+ * opens only after the watcher's startup catch-up, so the watcher gets a long
+ * start grace.
  */
 export const watcherServiceSpecs = (
-  context: DeployContext,
-  _oneShot: HubOracleOneShot,
+  context: Pick<DeployContext, "layout" | "run">,
 ): ServiceSpec[] => {
   const { layout, run } = context;
   const cli = join(layout.watcherRoot, "dist/cli.js");
-  const controller = join(layout.toolsRoot, "dist/devnet-stack.js");
   const operations = operationsEndpoint(run);
-  const tunnel = `http://127.0.0.1:${servicePorts(run).historyTunnel}`;
-  const binding = historyRecordedBinding(layout, run, "Custom");
-  const historyReadiness = (
-    role: HistoryChildRole,
-  ): HistoryReadinessSpecification => ({
-    role,
-    runId: run.runId,
-    deploymentFingerprint: binding.manifest.manifestId,
-    publicBindingDigest: binding.digest,
-    expectedNetwork: "Custom",
-  });
-  const own = (name: string, args: readonly string[]): ServiceSpec => ({
-    name,
-    command: process.execPath,
-    args: [controller, ...args, "--run-dir", layout.runDir],
-    cwd: layout.toolsRoot,
-    env: {},
-  });
   return [
-    ...HISTORY_ROLES.map((role) => ({
-      ...own(`watcher-history-${role}`, [
-        "history-archive",
-        "--provider",
-        role,
-      ]),
-      historyReadiness: historyReadiness(
-        role === "a" ? "history-archive-a" : "history-archive-b",
-      ),
-    })),
-    {
-      ...own("watcher-history-tunnel", ["history-tunnel"]),
-      historyReadiness: historyReadiness("history-tunnel"),
-      healthUrl: `${tunnel}/healthz`,
-    },
-    {
-      ...own("watcher-history-recorder", ["history-recorder"]),
-      historyReadiness: historyReadiness("history-recorder"),
-    },
     {
       name: "watcher",
       command: process.execPath,
       args: [cli, "start", "--config", layout.watcherProcessConfig],
       cwd: layout.watcherRoot,
-      env: { ...WATCHER_ENV, ...historyTransportEnvironment(layout, run) },
+      env: { ...WATCHER_ENV },
       healthUrl: `${operations}/v1/status`,
       readyUrl: `${operations}/readyz`,
       startGraceMs: 60 * 60_000,

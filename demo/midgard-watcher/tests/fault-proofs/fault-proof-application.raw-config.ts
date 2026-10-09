@@ -3,7 +3,6 @@ import {
   type FraudProofL1Source,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
-  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
@@ -43,12 +42,7 @@ export const DEPLOYMENT_INFO_PATH =
 const ADDITIONAL_REFERENCE_CONTRACTS = [
   "fraudProofNativeScriptInvalidStep04",
   "fraudProofNativeScriptInvalidStep05",
-  "fraudProofMissingNativeScriptUtxoStep06",
-  "fraudProofMissingNativeScriptUtxoStep07",
 ] as const;
-
-export const TEST_HISTORY_STORE =
-  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest();
 
 /**
  * The deployment's reference contracts, in the order the fixture resolver
@@ -140,22 +134,6 @@ export const infrastructure = (): WatcherFaultProofInfrastructureAuthority => ({
   manifestPath: MANIFEST_PATH,
   blueprintPath: BLUEPRINT_PATH,
   deploymentInfoPath: DEPLOYMENT_INFO_PATH,
-  historicalNativeScriptHistory: {
-    sourceMode: "external_provider_quorum",
-    consistencyPolicy: "exact_bytes_all_providers_v1",
-    providers: [
-      {
-        sourceId: "history-provider-a",
-        operatorIdentitySha256: "71".repeat(32),
-        authorityEndpoint: "https://history-a.example.test",
-      },
-      {
-        sourceId: "history-provider-b",
-        operatorIdentitySha256: "72".repeat(32),
-        authorityEndpoint: "https://history-b.example.test",
-      },
-    ],
-  },
 });
 
 export const invocation = (

@@ -12,7 +12,6 @@ import "effect";
 import "../../src/transition-trace/l1-events.js";
 import "../../src/transition-trace/phas.js";
 import "../../src/workflow/header-classifier.js";
-import "../../src/workflow/historical-native-script-corpus.js";
 import "../../src/workflow/raw-l1-snapshot.js";
 import "../../src/workflow/release-finality-policy.js";
 import "../helpers/canonical-block-evidence-fixture.js";

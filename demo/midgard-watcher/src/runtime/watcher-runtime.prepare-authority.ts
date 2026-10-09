@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
-import { createSqliteHistoricalNativeScriptCheckpointStore } from "@al-ft/midgard-fault-proofs";
 
 import { loadWatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend.js";
@@ -114,11 +113,6 @@ export const prepareWatcherRuntimeAuthority = async (
   const rollbackAuthenticationKey = await loadWatcherRollbackAuthenticationKey(
     input.config,
   );
-  const historicalNativeScriptCheckpointStore =
-    createSqliteHistoricalNativeScriptCheckpointStore({
-      path: input.config.watcherConfig.storage.path,
-      rollbackAuthenticationKey,
-    });
   const fundingProfileOverlay = await loadWatcherWorkflowFundingProfileOverlay({
     bundlePath: input.config.fundingProfileBundlePath,
     deploymentIdentity,
@@ -132,7 +126,6 @@ export const prepareWatcherRuntimeAuthority = async (
     deploymentIdentity,
     localL1Source,
     rollbackAuthenticationKey,
-    historicalNativeScriptCheckpointStore,
     fundingProfileOverlay,
     sqlite,
   };

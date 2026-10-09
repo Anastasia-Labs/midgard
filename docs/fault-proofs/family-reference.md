@@ -157,28 +157,6 @@ belong to the structural-decoding family for the authenticated script source.
 
 [Validator source](../../onchain/aiken/validators/fraud-proofs/mint-authorization).
 
-## Missing-native-script transaction fault
-
-The family proves that an operator-accepted transaction spends an output locked
-by a Cardano native-script credential while the corresponding native script is
-absent from the transaction's authenticated script-witness collection. A
-present matching script, a non-native script credential, or unauthenticated
-transaction/script bytes cannot convict.
-
-[Validator source](../../onchain/aiken/validators/fraud-proofs/missing-native-script-tx).
-
-## Missing-native-script UTxO fault
-
-The family proves that an operator-accepted transaction spends a predecessor
-output whose authenticated script credential names a Cardano native script
-absent from the spending transaction's script witnesses. It proves predecessor
-ledger membership, derives the credential from the committed output descriptor,
-and binds the supplied native-script bytes to that credential before scanning
-the authenticated witness field. Forged predecessor roots, keys, credentials,
-or script preimages cannot convict.
-
-[Validator source](../../onchain/aiken/validators/fraud-proofs/missing-native-script-utxo).
-
 ## Missing-signature fault
 
 The accepted-invalid route selects a required signer from committed field 4,

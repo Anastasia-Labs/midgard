@@ -188,12 +188,10 @@ export const DECISION_DIGEST = "44".repeat(32);
  */
 const REPLAY_CONTEXT = Object.freeze({ sentinel: "replayContext" });
 
-export const HISTORICAL_AUTHORITY = Object.freeze({
-  checkpointStore: Object.freeze({ sentinel: "checkpointStore" }),
-  providerRoster: Object.freeze({ sentinel: "providerRoster" }),
-  historySource: Object.freeze({ sentinel: "historySource" }),
-  l1SourceRoster: Object.freeze({ sentinel: "l1SourceRoster" }),
-});
+/** A retained-DA source roster whose single source is a sentinel. */
+export const RETAINED_DA_SOURCES = Object.freeze([
+  Object.freeze({ sentinel: "retainedDaSources" }),
+]);
 
 /** A challenge port whose challenge records the coordinates it was asked for. */
 const VALIDATION_CHALLENGE_PORT = Object.freeze({
@@ -214,7 +212,7 @@ export const infrastructure = {
   stateQueueMutationLeaseCoordinator: {} as never,
   decisionDigest: DECISION_DIGEST,
   replayContext: REPLAY_CONTEXT as never,
-  historicalNativeScriptAuthority: HISTORICAL_AUTHORITY as never,
+  retainedDaSources: RETAINED_DA_SOURCES as never,
   validationChallenge: VALIDATION_CHALLENGE_PORT as never,
 } satisfies FamilyCommonInfrastructure;
 
@@ -223,14 +221,14 @@ export const { decisionDigest: _undecided, ...undecidedInfrastructure } =
 
 export const {
   replayContext: _replay,
-  historicalNativeScriptAuthority: _authority,
+  retainedDaSources: _sources,
   validationChallenge: _challenge,
   ...plainInfrastructure
 } = infrastructure;
 
 /**
- * The sentinel parts a bound config carries at any depth: the replay context
- * and each of the historical authority's parts, named by their sentinel.
+ * The sentinel parts a bound config carries at any depth: the replay context,
+ * the challenge, and the retained-DA sources, named by their sentinel.
  */
 export const boundSentinels = (value: unknown, found = new Set<string>()) => {
   if (typeof value !== "object" || value === null) return found;
@@ -250,8 +248,6 @@ export const NO_DIGEST_FAMILIES = [
   "mintAuthorization",
   "withdrawalMistag",
   "minAda",
-  "missingNativeScriptTx",
-  "missingNativeScriptUtxo",
   "transitionTrace",
   "crossBlockDuplicateEvent",
   "executionNativeScriptInvalid",
@@ -266,6 +262,11 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "nativeScriptDecoding",
   "mintAuthorization",
   "withdrawalMistag",
+  "minAda",
+  "transitionTrace",
+  "resolvedOutputNonCanonical",
+  "spendInputSignerMissing",
+  "executionNativeScriptInvalid",
 ];
 
 /**
@@ -286,13 +287,5 @@ export const HAND_WRITTEN_REMOVAL_FAMILIES = [
   "validationTraceDispute",
 ];
 
-export const HISTORICAL_AUTHORITY_FAMILIES = [
-  "minAda",
-  "missingNativeScriptTx",
-  "missingNativeScriptUtxo",
-  "transitionTrace",
-  "crossBlockDuplicateEvent",
-  "resolvedOutputNonCanonical",
-  "spendInputSignerMissing",
-  "executionNativeScriptInvalid",
-];
+/** The families that fetch settled blocks from retained DA. */
+export const RETAINED_DA_SOURCE_FAMILIES = ["crossBlockDuplicateEvent"];

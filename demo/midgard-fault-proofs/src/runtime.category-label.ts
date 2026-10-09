@@ -36,8 +36,6 @@ export const categoryLabel = (
       return "native-script-decoding";
     case "missingSignature":
       return "missing-signature";
-    case "missingNativeScriptTx":
-      return "missing-native-script-tx";
     case "withdrawnReferenceInput":
       return "withdrawn-reference-input";
     case "canonicalDecodability":
@@ -64,8 +62,6 @@ export const categoryLabel = (
       return "mint-authorization";
     case "networkId":
       return "network-id";
-    case "missingNativeScriptUtxo":
-      return "missing-native-script-utxo";
     case "nativeScriptInvalid":
       return "native-script-invalid";
     case "minAda":

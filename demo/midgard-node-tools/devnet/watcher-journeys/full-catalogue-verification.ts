@@ -1,6 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -12,18 +9,16 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
+  completeCanonicalReplayPredecessorEvidence,
   computeFraudProofReleaseFinalityPolicyDigest,
   createCatalogueCompleteCanonicalReplay,
   createHeaderClassifier,
-  createHistoricalNativeScriptHistorySource,
-  createHistoricalNativeScriptProviderRoster,
-  createSqliteHistoricalNativeScriptCheckpointStore,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   type FraudProofRawL1SnapshotAuthority,
   headerDecisionCanonicalEvidence,
-  resolveHistoricalNativeScriptCorpus,
+  headerDecisionReplayContext,
   type RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
@@ -170,163 +165,132 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,
   };
-  const directory = await mkdtemp("/var/tmp/midgard-full-catalogue-local-");
-  try {
-    const historySource = createHistoricalNativeScriptHistorySource({
-      providerRoster: createHistoricalNativeScriptProviderRoster({
-        deploymentFingerprint,
-        providers: [
-          {
-            sourceId: "retained-local-a",
-            authorityEndpoint: "https://retained-a.example.test",
-            operatorIdentitySha256: "aa".repeat(32),
-          },
-          {
-            sourceId: "retained-local-b",
-            authorityEndpoint: "https://retained-b.example.test",
-            operatorIdentitySha256: "bb".repeat(32),
-          },
-        ],
+  // Explicit synthetic parameters for this transaction-only raw fixture.
+  // Neither address is a deployed history authority.
+  const historyParameters = {
+    inlineLimitBytes: 512n,
+    maxPayloadBytes: 5000n,
+    maxPayloadNodes: 512n,
+    retentionAddresses: {
+      deposit: credentialToAddress("Preprod", {
+        type: "Script",
+        hash: "70".repeat(28),
       }),
-    });
-    const checkpointStore = createSqliteHistoricalNativeScriptCheckpointStore({
-      path: join(directory, "history.sqlite"),
-      rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
-    });
-    // Explicit synthetic parameters for this transaction-only raw fixture.
-    // Neither address is a deployed history authority.
-    const historyParameters = {
-      inlineLimitBytes: 512n,
-      maxPayloadBytes: 5000n,
-      maxPayloadNodes: 512n,
-      retentionAddresses: {
-        deposit: credentialToAddress("Preprod", {
-          type: "Script",
-          hash: "70".repeat(28),
-        }),
-        withdrawal: credentialToAddress("Preprod", {
-          type: "Script",
-          hash: "71".repeat(28),
-        }),
-      },
-    };
-    // As in the established catalogue-retained classifier unit test, these are
-    // only the fields consumed by raw authority admission; no deployment claim.
-    const bindingFields = {
-      deploymentFingerprint,
-      blueprintHash: releaseFinality.blueprintHash,
-      network: "Preprod" as const,
-      releaseFinality,
-      resolvedContracts: {
-        hubOraclePolicyId,
-        contracts: { transitionTrace: { history: historyParameters } },
-      },
-      definition: { headerHash: input.block.headerHash },
-    };
-    const transitionTraceEventAuthority =
-      unsafeCreateTransitionTraceEventAuthorityFromRawForTest({
-        binding: bindingFields as Parameters<
-          typeof unsafeCreateTransitionTraceEventAuthorityFromRawForTest
-        >[0]["binding"],
-        authority: raw,
-      });
-    const settlementAuthority =
-      unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
-        binding: bindingFields as Parameters<
-          typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
-        >[0]["binding"],
-        raw,
-        historySource,
-      });
-    const lucid = {
-      utxosAt: async () => {
-        throw new Error("Transaction-only fixture cannot read event history");
-      },
-    } as unknown as LucidEvolution;
-    const replayer = createCatalogueCompleteCanonicalReplay({
-      lucid,
-      network: "Preprod",
+      withdrawal: credentialToAddress("Preprod", {
+        type: "Script",
+        hash: "71".repeat(28),
+      }),
+    },
+  };
+  // As in the established catalogue-retained classifier unit test, these are
+  // only the fields consumed by raw authority admission; no deployment claim.
+  const bindingFields = {
+    deploymentFingerprint,
+    blueprintHash: releaseFinality.blueprintHash,
+    network: "Preprod" as const,
+    releaseFinality,
+    resolvedContracts: {
       hubOraclePolicyId,
-      minimumConfirmationDepth: policy.confirmationDepth,
-      owner: "b1".repeat(28),
-      history: {
-        deposit: {
-          ...historyParameters,
-          retentionAddress: historyParameters.retentionAddresses.deposit,
-        },
-        withdrawal: {
-          ...historyParameters,
-          retentionAddress: historyParameters.retentionAddresses.withdrawal,
-        },
-      },
+      contracts: { transitionTrace: { history: historyParameters } },
+    },
+    definition: { headerHash: input.block.headerHash },
+  };
+  const transitionTraceEventAuthority =
+    unsafeCreateTransitionTraceEventAuthorityFromRawForTest({
+      binding: bindingFields as Parameters<
+        typeof unsafeCreateTransitionTraceEventAuthorityFromRawForTest
+      >[0]["binding"],
+      authority: raw,
     });
-    const classifier = await createHeaderClassifier({
-      deploymentFingerprint,
-      replayer,
-      releaseFinalityAuthority: {
-        authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-        verifyForWorkflow: async () => releaseFinality,
-      },
-      historicalReplayAuthority: { checkpointStore, historySource },
-      settlementAuthority,
-      transitionTraceEventAuthority,
+  const settlementAuthority =
+    unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
+      binding: bindingFields as Parameters<
+        typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
+      >[0]["binding"],
+      raw,
     });
-    const sources: RetainedDaPayloadSource[] = [
-      {
-        sourceId: "retained-local",
-        fetchPayloadByHeaderHash: async (headerHash) => {
-          const retained = [
-            input.block,
-            input.predecessor,
-            ...input.history,
-          ].find((block) => block.headerHash === headerHash);
-          if (retained === undefined)
-            throw new Error(`Missing actual retained ancestor ${headerHash}`);
-          return {
-            ok: true,
-            sourceId: "retained-local",
-            sourcePeerId: "local-test",
-            attempts: [],
-            payloadEnvelopeCbor: Buffer.from(retained.payloadEnvelopeCbor),
-            provenance: {
-              trustClass: "public_or_permissionless_da",
-              sourceId: "retained-local/local-test",
-              grade: "security",
-            },
-          };
-        },
+  const lucid = {
+    utxosAt: async () => {
+      throw new Error("Transaction-only fixture cannot read event history");
+    },
+  } as unknown as LucidEvolution;
+  const replayer = createCatalogueCompleteCanonicalReplay({
+    lucid,
+    network: "Preprod",
+    hubOraclePolicyId,
+    minimumConfirmationDepth: policy.confirmationDepth,
+    owner: "b1".repeat(28),
+    history: {
+      deposit: {
+        ...historyParameters,
+        retentionAddress: historyParameters.retentionAddresses.deposit,
       },
-    ];
-    const observation = authenticatedHeaderObservation(input.block);
-    const decision = await classifyHeader({
-      classifier,
-      observation,
-      predecessorObservation: authenticatedHeaderObservation(input.predecessor),
-      sources,
-      authenticatedObservationDigest:
-        await authenticatedStateQueueObservationDigest({
-          observation,
-          minimumConfirmationDepth: policy.confirmationDepth,
-        }),
-    });
-    const evidence = await headerDecisionCanonicalEvidence(decision);
-    const historicalNativeScriptCorpus =
+      withdrawal: {
+        ...historyParameters,
+        retentionAddress: historyParameters.retentionAddresses.withdrawal,
+      },
+    },
+  });
+  const classifier = await createHeaderClassifier({
+    deploymentFingerprint,
+    replayer,
+    releaseFinalityAuthority: {
+      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+      verifyForWorkflow: async () => releaseFinality,
+    },
+    settlementAuthority,
+    transitionTraceEventAuthority,
+  });
+  const sources: RetainedDaPayloadSource[] = [
+    {
+      sourceId: "retained-local",
+      fetchPayloadByHeaderHash: async (headerHash) => {
+        const retained = [
+          input.block,
+          input.predecessor,
+          ...input.history,
+        ].find((block) => block.headerHash === headerHash);
+        if (retained === undefined)
+          throw new Error(`Missing actual retained ancestor ${headerHash}`);
+        return {
+          ok: true,
+          sourceId: "retained-local",
+          sourcePeerId: "local-test",
+          attempts: [],
+          payloadEnvelopeCbor: Buffer.from(retained.payloadEnvelopeCbor),
+          provenance: {
+            trustClass: "public_or_permissionless_da",
+            sourceId: "retained-local/local-test",
+            grade: "security",
+          },
+        };
+      },
+    },
+  ];
+  const observation = authenticatedHeaderObservation(input.block);
+  const decision = await classifyHeader({
+    classifier,
+    observation,
+    predecessorObservation: authenticatedHeaderObservation(input.predecessor),
+    sources,
+    authenticatedObservationDigest:
+      await authenticatedStateQueueObservationDigest({
+        observation,
+        minimumConfirmationDepth: policy.confirmationDepth,
+      }),
+  });
+  const evidence = await headerDecisionCanonicalEvidence(decision);
+  return {
+    decision,
+    evidence,
+    /** The classifier-admitted predecessor the decision was proved against. */
+    predecessor:
       evidence === undefined
         ? undefined
-        : await resolveHistoricalNativeScriptCorpus({
-            deploymentFingerprint,
-            checkpointStore,
-            historySource,
-            currentEvidence: evidence,
-            sources,
-          });
-    return {
-      decision,
-      evidence,
-      historicalNativeScriptCorpus,
-      verification: "full-installed-local-classification" as const,
-    };
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+        : completeCanonicalReplayPredecessorEvidence({
+            evidence,
+            context: headerDecisionReplayContext(decision),
+          }),
+    verification: "full-installed-local-classification" as const,
+  };
 };

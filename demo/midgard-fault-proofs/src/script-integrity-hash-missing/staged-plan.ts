@@ -4,15 +4,15 @@ import {
 } from "@al-ft/midgard-core";
 
 import {
-  advanceMissingNativeScriptTxGrammarCheckpoint,
-  advanceMissingNativeScriptTxSemanticCheckpoint,
-  encodeMissingNativeScriptTxGrammarCheckpoint,
-  encodeMissingNativeScriptTxSemanticCheckpoint,
-  hashMissingNativeScriptTxGrammarCheckpoint,
-  hashMissingNativeScriptTxSemanticCheckpoint,
-  initialMissingNativeScriptTxGrammarCheckpoint,
-  initialMissingNativeScriptTxSemanticCheckpoint,
-} from "../missing-native-script-tx/staged-walk.js";
+  advanceFieldGrammarCheckpoint,
+  advanceFieldSemanticCheckpoint,
+  encodeFieldGrammarCheckpoint,
+  encodeFieldSemanticCheckpoint,
+  hashFieldGrammarCheckpoint,
+  hashFieldSemanticCheckpoint,
+  initialFieldGrammarCheckpoint,
+  initialFieldSemanticCheckpoint,
+} from "../staged-field-walk/index.js";
 
 export const SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET = 24;
 
@@ -48,10 +48,8 @@ export const scriptIntegrityHashMissingUsesDirectRoute = ({
   );
 };
 
-type Grammar = ReturnType<typeof initialMissingNativeScriptTxGrammarCheckpoint>;
-type Semantic = ReturnType<
-  typeof initialMissingNativeScriptTxSemanticCheckpoint
->;
+type Grammar = ReturnType<typeof initialFieldGrammarCheckpoint>;
+type Semantic = ReturnType<typeof initialFieldSemanticCheckpoint>;
 export type ScriptIntegrityField8Checkpoint = Grammar & {
   readonly fieldIndex: 8;
 };
@@ -71,7 +69,7 @@ export const advanceScriptIntegrityField8Checkpoint = ({
   readonly budget?: number;
 }): ScriptIntegrityField8Checkpoint =>
   scriptIntegrityField8Checkpoint(
-    advanceMissingNativeScriptTxGrammarCheckpoint({
+    advanceFieldGrammarCheckpoint({
       checkpoint: { ...checkpoint, fieldIndex: 6 },
       items,
       budget,
@@ -81,7 +79,7 @@ export const advanceScriptIntegrityField8Checkpoint = ({
 export const encodeScriptIntegrityField8Checkpoint = (
   checkpoint: ScriptIntegrityField8Checkpoint,
 ): Buffer => {
-  const bytes = encodeMissingNativeScriptTxGrammarCheckpoint({
+  const bytes = encodeFieldGrammarCheckpoint({
     ...checkpoint,
     fieldIndex: 6,
   });
@@ -129,12 +127,12 @@ export const planScriptIntegrityHashMissingStagedWalk = ({
     "scriptIntegrityHashMissing redeemers",
   ).map(Buffer.from);
   const grammar: Grammar[] = [];
-  let grammarCursor = initialMissingNativeScriptTxGrammarCheckpoint({
+  let grammarCursor = initialFieldGrammarCheckpoint({
     txId: transactionId,
     items: scriptItems,
   });
   do {
-    grammarCursor = advanceMissingNativeScriptTxGrammarCheckpoint({
+    grammarCursor = advanceFieldGrammarCheckpoint({
       checkpoint: grammarCursor,
       items: scriptItems,
       budget: itemBudget,
@@ -142,12 +140,12 @@ export const planScriptIntegrityHashMissingStagedWalk = ({
     grammar.push(grammarCursor);
   } while (grammarCursor.nextItemIndex < scriptItems.length);
   const semantic: Semantic[] = [];
-  let semanticCursor = initialMissingNativeScriptTxSemanticCheckpoint({
+  let semanticCursor = initialFieldSemanticCheckpoint({
     grammar: grammarCursor,
     items: scriptItems,
   });
   do {
-    semanticCursor = advanceMissingNativeScriptTxSemanticCheckpoint({
+    semanticCursor = advanceFieldSemanticCheckpoint({
       checkpoint: semanticCursor,
       txId: transactionId,
       items: scriptItems,
@@ -157,7 +155,7 @@ export const planScriptIntegrityHashMissingStagedWalk = ({
   } while (semanticCursor.nextItemIndex < scriptItems.length);
   const redeemerGrammar: ScriptIntegrityField8Checkpoint[] = [];
   let redeemerCursor = scriptIntegrityField8Checkpoint(
-    initialMissingNativeScriptTxGrammarCheckpoint({
+    initialFieldGrammarCheckpoint({
       txId: transactionId,
       items: redeemerItems,
     }),
@@ -179,11 +177,9 @@ export const planScriptIntegrityHashMissingStagedWalk = ({
   });
 };
 
-export const scriptIntegrityGrammarHash =
-  hashMissingNativeScriptTxGrammarCheckpoint;
-export const scriptIntegritySemanticHash =
-  hashMissingNativeScriptTxSemanticCheckpoint;
+export const scriptIntegrityGrammarHash = hashFieldGrammarCheckpoint;
+export const scriptIntegritySemanticHash = hashFieldSemanticCheckpoint;
 export const encodeScriptIntegrityGrammarCheckpoint =
-  encodeMissingNativeScriptTxGrammarCheckpoint;
+  encodeFieldGrammarCheckpoint;
 export const encodeScriptIntegritySemanticCheckpoint =
-  encodeMissingNativeScriptTxSemanticCheckpoint;
+  encodeFieldSemanticCheckpoint;

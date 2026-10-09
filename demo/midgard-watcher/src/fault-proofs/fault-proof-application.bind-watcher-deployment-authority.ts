@@ -13,98 +13,7 @@ import {
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofInfrastructureAuthority,
   type WatcherFaultProofL1,
-  type WatcherHistoricalNativeScriptHistoryOverlay,
 } from "./fault-proof-application.production-dependencies.js";
-
-const historicalProviderEndpoint = (value: unknown): string => {
-  if (typeof value !== "string" || value.trim() !== value) {
-    throw new Error("historical native-script provider endpoint is invalid");
-  }
-  let endpoint: URL;
-  try {
-    endpoint = new URL(value);
-  } catch {
-    throw new Error("historical native-script provider endpoint is invalid");
-  }
-  endpoint.pathname = endpoint.pathname.replace(/\/+$/u, "") || "/";
-  if (
-    endpoint.protocol !== "https:" ||
-    endpoint.username.length !== 0 ||
-    endpoint.password.length !== 0 ||
-    endpoint.search.length !== 0 ||
-    endpoint.hash.length !== 0 ||
-    ["127.0.0.1", "localhost", "::1", "[::1]"].includes(
-      endpoint.hostname.toLowerCase(),
-    )
-  ) {
-    throw new Error(
-      "historical native-script provider endpoint must be fixed external HTTPS",
-    );
-  }
-  return endpoint.toString().replace(/\/$/u, "");
-};
-
-const admitHistoricalNativeScriptHistory = (
-  value: unknown,
-): WatcherHistoricalNativeScriptHistoryOverlay => {
-  const input = plainRecord(value, "historical native-script history overlay");
-  exactKeys(
-    input,
-    ["sourceMode", "consistencyPolicy", "providers"],
-    "historical native-script history overlay",
-  );
-  if (
-    input.sourceMode !== "external_provider_quorum" ||
-    input.consistencyPolicy !== "exact_bytes_all_providers_v1" ||
-    !Array.isArray(input.providers) ||
-    input.providers.length < 2 ||
-    input.providers.length > 4
-  ) {
-    throw new Error("historical native-script history overlay is invalid");
-  }
-  const sourceIds = new Set<string>();
-  const operators = new Set<string>();
-  const endpoints = new Set<string>();
-  const providers = input.providers.map((value, index) => {
-    const provider = plainRecord(
-      value,
-      `historical native-script provider ${index.toString()}`,
-    );
-    exactKeys(
-      provider,
-      ["sourceId", "operatorIdentitySha256", "authorityEndpoint"],
-      `historical native-script provider ${index.toString()}`,
-    );
-    const endpoint = historicalProviderEndpoint(provider.authorityEndpoint);
-    if (
-      typeof provider.sourceId !== "string" ||
-      provider.sourceId.trim() !== provider.sourceId ||
-      provider.sourceId.length === 0 ||
-      typeof provider.operatorIdentitySha256 !== "string" ||
-      !/^[0-9a-f]{64}$/u.test(provider.operatorIdentitySha256) ||
-      sourceIds.has(provider.sourceId) ||
-      operators.has(provider.operatorIdentitySha256) ||
-      endpoints.has(endpoint)
-    ) {
-      throw new Error(
-        "historical native-script providers must have distinct canonical identities and endpoints",
-      );
-    }
-    sourceIds.add(provider.sourceId);
-    operators.add(provider.operatorIdentitySha256);
-    endpoints.add(endpoint);
-    return Object.freeze({
-      sourceId: provider.sourceId,
-      operatorIdentitySha256: provider.operatorIdentitySha256,
-      authorityEndpoint: endpoint,
-    });
-  });
-  return Object.freeze({
-    sourceMode: "external_provider_quorum",
-    consistencyPolicy: "exact_bytes_all_providers_v1",
-    providers: Object.freeze(providers),
-  });
-};
 
 export const admitInfrastructure = (
   value: unknown,
@@ -112,12 +21,7 @@ export const admitInfrastructure = (
   const input = plainRecord(value, "fault-proof infrastructure authority");
   exactKeys(
     input,
-    [
-      "manifestPath",
-      "blueprintPath",
-      "deploymentInfoPath",
-      "historicalNativeScriptHistory",
-    ],
+    ["manifestPath", "blueprintPath", "deploymentInfoPath"],
     "fault-proof infrastructure authority",
   );
   return Object.freeze({
@@ -126,9 +30,6 @@ export const admitInfrastructure = (
     deploymentInfoPath: canonicalAbsolutePath(
       input.deploymentInfoPath,
       "deploymentInfoPath",
-    ),
-    historicalNativeScriptHistory: admitHistoricalNativeScriptHistory(
-      input.historicalNativeScriptHistory,
     ),
   });
 };

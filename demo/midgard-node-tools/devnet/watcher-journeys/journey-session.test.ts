@@ -22,7 +22,7 @@ const state = vi.hoisted(() => ({
   watcherState: { state: "running", exitCode: null as number | null },
   bindingCalls: 0,
   failBinding: false,
-  failArchivesClose: false,
+  failNativeClose: false,
   sessionSources: [] as string[],
 }));
 vi.mock("../../../../scripts/lib/source-facets.mjs", () => ({
@@ -87,19 +87,6 @@ vi.mock("./retained-da.js", () => ({
     },
   }),
 }));
-vi.mock("./history-archives.js", () => ({
-  startJourneyHistoryArchives: async () => ({
-    configuration: { providers: [] },
-    caPath: join(state.runDirectory, "binding.json"),
-    retain: vi.fn(),
-    retainNativeBlock: vi.fn(),
-    rollbackNativeBlocks: vi.fn(),
-    close: async () => {
-      state.closed.push("archives");
-      if (state.failArchivesClose) throw new Error("archives close failed");
-    },
-  }),
-}));
 vi.mock("./native-node.js", () => ({
   journeyNativeNodeQuery: async () => ({
     watcherConfig: { l1: { source: { sourceMode: "local_node" } } },
@@ -115,6 +102,7 @@ vi.mock("./native-recorder.js", () => ({
     observedBlockNo: () => undefined,
     close: async () => {
       state.closed.push("native");
+      if (state.failNativeClose) throw new Error("native close failed");
     },
   }),
 }));
@@ -176,7 +164,7 @@ beforeEach(async () => {
   state.launches = [];
   state.bindingCalls = 0;
   state.failBinding = false;
-  state.failArchivesClose = false;
+  state.failNativeClose = false;
   state.sessionSources = [];
   state.watcherState = { state: "running", exitCode: null };
   await mkdir(join(state.runDirectory, "secrets"));
@@ -224,7 +212,6 @@ it("keeps one observer and authenticated-history service lifetime across targets
     expect(Object.keys(first.config.faultProofInfrastructure).sort()).toEqual([
       "blueprintPath",
       "deploymentInfoPath",
-      "historicalNativeScriptHistory",
       "manifestPath",
     ]);
     expect(first.config.workflowJournalDirectory).toBe(
@@ -234,7 +221,7 @@ it("keeps one observer and authenticated-history service lifetime across targets
     await session.close();
   }
   await session.close();
-  expect(state.closed).toEqual(["start-1", "native", "archives", "da"]);
+  expect(state.closed).toEqual(["start-1", "native", "da"]);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });
 
@@ -328,7 +315,7 @@ it("launches from a newly retained healthy predecessor after baseline capture an
     ),
   ).rejects.toThrow("later staging failed");
   expect(state.bindingCalls).toBe(1);
-  expect(state.closed).toHaveLength(4);
+  expect(state.closed).toHaveLength(3);
 });
 
 it("closes and refuses reuse when a pinned deployment input changes", async () => {
@@ -341,7 +328,7 @@ it("closes and refuses reuse when a pinned deployment input changes", async () =
   await expect(session.assertHealthy()).rejects.toThrow(
     "session input changed",
   );
-  expect(state.closed).toHaveLength(4);
+  expect(state.closed).toHaveLength(3);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });
 
@@ -350,7 +337,7 @@ it("cleans up once after binding failure and never reuses partial initialization
   state.failBinding = true;
   await expect(session.ensureWatcher()).rejects.toThrow("binding rejected");
   await session.close();
-  expect(state.closed).toEqual(["native", "archives", "da"]);
+  expect(state.closed).toEqual(["native", "da"]);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });
 
@@ -376,7 +363,7 @@ it("starts against the retained head before staging and closes after fixture fai
     ),
   ).rejects.toThrow("fixture rejected");
   expect(stage).toHaveBeenCalledOnce();
-  expect(state.closed).toHaveLength(4);
+  expect(state.closed).toHaveLength(3);
   await expect(session.assertHealthy()).rejects.toThrow("closed");
 });
 
@@ -543,11 +530,11 @@ it("distinguishes an old completed proof from a target completed during staging"
 it("closes the remaining services even when one service fails to close", async () => {
   const session = await openJourneySession(state.runDirectory);
   await session.ensureWatcher();
-  state.failArchivesClose = true;
+  state.failNativeClose = true;
   await expect(session.close()).rejects.toThrow(
     "Could not close watcher journey session",
   );
-  expect(state.closed).toEqual(["start-1", "native", "archives", "da"]);
+  expect(state.closed).toEqual(["start-1", "native", "da"]);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });
 
@@ -590,6 +577,6 @@ it.each([
   await expect(session.assertHealthy()).rejects.toThrow(
     `session input changed: ${join(state.runDirectory, changed)}`,
   );
-  expect(state.closed).toHaveLength(4);
+  expect(state.closed).toHaveLength(3);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });

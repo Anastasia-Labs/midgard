@@ -20,8 +20,6 @@ export const JOURNEY_READINESS_REASONS = {
   fixture_missing: "No staging adapter implements this family.",
   local_gate_pending:
     "Full installed classifier, exact proof material and accepted-control gate has not passed.",
-  native_history_pending:
-    "Native-script publication and canonical history must be admitted before live staging.",
   event_gate_pending:
     "Stage actual L1 events and verify full classification plus exact family material before live scheduling.",
   maturity_and_settlement_pending:
@@ -94,14 +92,7 @@ export const readJourneyReadiness = async (runDirectory: string) => {
         pending.push("invalid_live_evidence");
       }
     }
-    if (!liveComplete) {
-      pending.push("live_journey_pending");
-      if (
-        category === "missingNativeScriptTx" ||
-        category === "missingNativeScriptUtxo"
-      )
-        pending.push("native_history_pending");
-    }
+    if (!liveComplete) pending.push("live_journey_pending");
     // A valid completed journey itself supplies the real maturity/settlement
     // evidence. A checkpoint or elapsed wall clock alone never clears that gate.
     const remaining = liveComplete

@@ -5,27 +5,25 @@ import {
 } from "@al-ft/midgard-core";
 
 import {
-  advanceMissingNativeScriptTxGrammarCheckpoint,
-  advanceMissingNativeScriptTxSemanticCheckpoint,
-  encodeMissingNativeScriptTxGrammarCheckpoint,
-  encodeMissingNativeScriptTxSemanticCheckpoint,
-  initialMissingNativeScriptTxGrammarCheckpoint,
-  initialMissingNativeScriptTxSemanticCheckpoint,
-  type MissingNativeScriptTxGrammarCheckpoint,
-  type MissingNativeScriptTxSemanticCheckpoint,
-} from "../missing-native-script-tx/staged-walk.js";
+  advanceFieldGrammarCheckpoint,
+  advanceFieldSemanticCheckpoint,
+  encodeFieldGrammarCheckpoint,
+  encodeFieldSemanticCheckpoint,
+  type FieldGrammarCheckpoint,
+  type FieldSemanticCheckpoint,
+  initialFieldGrammarCheckpoint,
+  initialFieldSemanticCheckpoint,
+} from "../staged-field-walk/index.js";
 
 export type ConservationFieldIndex = 2 | 5;
 const encode = (
-  checkpoint:
-    | MissingNativeScriptTxGrammarCheckpoint
-    | MissingNativeScriptTxSemanticCheckpoint,
+  checkpoint: FieldGrammarCheckpoint | FieldSemanticCheckpoint,
   field: ConservationFieldIndex,
 ): string => {
   const bytes =
     "fieldCommitment" in checkpoint
-      ? encodeMissingNativeScriptTxGrammarCheckpoint(checkpoint)
-      : encodeMissingNativeScriptTxSemanticCheckpoint(checkpoint);
+      ? encodeFieldGrammarCheckpoint(checkpoint)
+      : encodeFieldSemanticCheckpoint(checkpoint);
   bytes[36] = field;
   return bytes.toString("hex");
 };
@@ -49,7 +47,7 @@ export const planConservationField = (
   preimage: Uint8Array,
 ) => {
   const items = decodeMidgardFieldPreimage(preimage).map(Buffer.from);
-  let grammar = initialMissingNativeScriptTxGrammarCheckpoint({
+  let grammar = initialFieldGrammarCheckpoint({
     txId: transactionId,
     items,
   });
@@ -61,7 +59,7 @@ export const planConservationField = (
   }[] = [];
   do {
     const before = encode(grammar, field);
-    grammar = advanceMissingNativeScriptTxGrammarCheckpoint({
+    grammar = advanceFieldGrammarCheckpoint({
       checkpoint: grammar,
       items,
       budget: 16,
@@ -74,13 +72,13 @@ export const planConservationField = (
       complete: grammar.nextItemIndex === items.length,
     });
   } while (grammar.nextItemIndex !== items.length);
-  let walk = initialMissingNativeScriptTxSemanticCheckpoint({ grammar, items });
+  let walk = initialFieldSemanticCheckpoint({ grammar, items });
   const initialWalk = encode(walk, field);
   const extents = items.map((item) => {
     const before = encode(walk, field);
     const offset =
       walk.nextOffset + encodeMidgardDefiniteBytes(item).length - item.length;
-    walk = advanceMissingNativeScriptTxSemanticCheckpoint({
+    walk = advanceFieldSemanticCheckpoint({
       checkpoint: walk,
       txId: transactionId,
       items,
