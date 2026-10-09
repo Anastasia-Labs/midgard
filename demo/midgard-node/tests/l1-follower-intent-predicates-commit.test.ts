@@ -9,10 +9,11 @@
  *   `state-queue.ak:137-158`): a Challenged head, a head with a completed
  *   fraud proof, or an Unattested head whose timeout boundary the inclusive
  *   upper validity bound reaches is `false`;
- * - every included event is canonical (`false` otherwise) and at least d
- *   blocks below the view: a shallower one, after a rewind, waits under
- *   `INTENT_EVENTS_NOT_DEEP` and is wanted again once the chain regrows; a
- *   forced order's admission height is held to the same horizon.
+ * - its commit anchor is on the follower's chain (`false` when it has none
+ *   or a rewind removed it) and the view is at least d blocks above it: a
+ *   shallower view, after a rewind, waits under
+ *   `INTENT_COMMIT_ANCHOR_NOT_DEEP` and is wanted again once the chain
+ *   regrows.
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
@@ -21,16 +22,13 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { INTENT_EVENTS_NOT_DEEP } from "../src/services/l1-follower.intent-predicates.js";
+import { INTENT_COMMIT_ANCHOR_NOT_DEEP } from "../src/services/l1-follower.intent-predicates.js";
 import { IntentPredicateWait } from "../src/services/l1-follower.intents.js";
 import { db } from "./helpers/forced-orders-node-store.js";
 import {
+  anchorAt,
   BLOCK,
-  eventIdOf,
-  forcedOrder,
   journalRow,
-  listEvent,
-  member,
   viewHeight,
 } from "./helpers/intent-predicates-commit.js";
 import {
@@ -61,6 +59,13 @@ afterEach(async () => {
 
 const open = () => openPredicateScenario(fixture, opened);
 
+/** The scenario's commit-event depth (`deps().commitEventDepth`). */
+const D = 2;
+
+/** The follower block d below the current view: a fresh commit's anchor. */
+const freshAnchor = async (s: PredicateScenario) =>
+  anchorAt(s, (await viewHeight(s)) - D);
+
 /**
  * The last upper validity slot the scenario's Unattested head accepts an
  * append through: POSIX time counts from the simulated origin at one second
@@ -71,11 +76,35 @@ const LAST_APPEND_SLOT =
   SIM_ORIGIN.point.slot +
   Number((2_000n + SDK.DA_ATTESTATION_TIMEOUT_MS) / 1_000n);
 
-/** This operator holds the shift and the block journal row is live. */
+/**
+ * This operator holds the shift and the block journal row is live, anchored
+ * d below the view.
+ */
 const ownShift = async (s: PredicateScenario): Promise<void> => {
   await s.land(s.lists.insert(s.live(), "active", OWN));
   await s.land(s.lists.shift(s.live(), OWN, 0n));
-  await journalRow("pending_submission");
+  await journalRow("pending_submission", await freshAnchor(s));
+};
+
+const setAnchor = (anchor: { hash: Buffer; height: number; slot: number }) =>
+  db(
+    Effect.flatMap(
+      SqlClient.SqlClient,
+      (sql) => sql`UPDATE pending_block_finalizations
+        SET commit_anchor_hash = ${anchor.hash},
+          commit_anchor_height = ${anchor.height},
+          commit_anchor_slot = ${anchor.slot}`,
+    ),
+  );
+
+/**
+ * `ownShift`, then d + 1 empty blocks, with the journal re-anchored d below
+ * the view: a rewind of up to d + 1 blocks removes no landed transaction.
+ */
+const anchoredAboveEmptyBlocks = async (s: PredicateScenario) => {
+  await ownShift(s);
+  for (let i = 0; i <= D; i += 1) await s.driver.forward([]);
+  await setAnchor(await freshAnchor(s));
 };
 
 /** A commit appending to `tail`, valid through `invalidAfter` (none when null). */
@@ -118,11 +147,13 @@ const waits = async (s: PredicateScenario, hash: Buffer): Promise<void> => {
     (cause: unknown) => cause,
   );
   expect(error).toBeInstanceOf(IntentPredicateWait);
-  expect((error as IntentPredicateWait).reason).toBe(INTENT_EVENTS_NOT_DEEP);
+  expect((error as IntentPredicateWait).reason).toBe(
+    INTENT_COMMIT_ANCHOR_NOT_DEEP,
+  );
 };
 
 describe("the node's commit predicate over the follower's projections", () => {
-  it("wanted while its journal row, tail, shift and included events hold; each failing one is false", async () => {
+  it("wanted while its journal row, tail, shift and commit anchor hold; each failing one is false", async () => {
     const s = await open();
     await s.land(s.lists.insert(s.live(), "active", OWN));
     await s.land(s.lists.shift(s.live(), OWN, 0n));
@@ -130,44 +161,24 @@ describe("the node's commit predicate over the follower's projections", () => {
 
     // No journal row for the header: not wanted.
     expect(await s.verdict(commit)).toBe(false);
-    await journalRow("pending_submission");
-    expect(await s.verdict(commit)).toBe(true);
-
-    // An included deposit, canonical and d below the view.
-    const eventId = eventIdOf(0x31);
-    const { key, origin } = await listEvent(s, "deposit", eventId, 1);
-    await member("pending_block_finalization_deposits", eventId, {
-      key,
-      origin,
-    });
-    expect(await s.verdict(commit)).toBe(true);
-    // Admitted within d of the view: a wait, not false.
+    // A journal row without a commit anchor: not wanted.
+    await journalRow("pending_submission", null);
+    expect(await s.verdict(commit)).toBe(false);
+    // Anchored d below the view.
     const height = await viewHeight(s);
-    await s.sql("UPDATE node_l1_events SET admitted_height = ?", [height - 1]);
+    await setAnchor(await anchorAt(s, height - D));
+    expect(await s.verdict(commit)).toBe(true);
+    // An anchor fewer than d blocks below the view: a wait, not false.
+    await setAnchor(await anchorAt(s, height - D + 1));
     await waits(s, commit);
-    await s.sql("UPDATE node_l1_events SET admitted_height = ?", [height - 2]);
-    expect(await s.verdict(commit)).toBe(true);
-    // No longer canonical: the admission key is gone.
-    await s.sql("DELETE FROM l1_event_keys");
+    // An anchor the follower does not hold at its height: false, and not
+    // canonical wins over shallow.
+    const other = { hash: Buffer.alloc(32, 0x5a), height: height - D, slot: 1 };
+    await setAnchor(other);
     expect(await s.verdict(commit)).toBe(false);
-    // Not canonical wins over shallow.
-    await s.sql("UPDATE node_l1_events SET admitted_height = ?", [height - 1]);
+    await setAnchor({ ...other, height: height - D + 1 });
     expect(await s.verdict(commit)).toBe(false);
-    await s.sql("UPDATE node_l1_events SET admitted_height = ?", [height - 2]);
-    await s.sql(
-      "INSERT INTO l1_event_keys (kind, key, origin_outref, first_canonical_slot) VALUES (?, ?, ?, ?)",
-      ["deposit", key, origin, 0],
-    );
-    expect(await s.verdict(commit)).toBe(true);
-
-    // A forced member with no forced row: false.
-    await member(
-      "pending_block_finalization_forced_transactions",
-      Buffer.alloc(32, 0x44),
-      null,
-    );
-    expect(await s.verdict(commit)).toBe(false);
-    await s.sql("DELETE FROM pending_block_finalization_forced_transactions");
+    await setAnchor(await anchorAt(s, height - D));
     expect(await s.verdict(commit)).toBe(true);
 
     // The scheduler hands the shift to another operator: false.
@@ -212,45 +223,30 @@ describe("the node's commit predicate over the follower's projections", () => {
     expect(await s.verdict(unspent)).toBe(false);
   });
 
-  it("an included event a rewind leaves shallow waits, and is wanted again once the chain regrows", async () => {
+  it("a commit whose anchor a rewind leaves fewer than d blocks deep waits, and is wanted again once the chain regrows", async () => {
     const s = await open();
-    await ownShift(s);
-    await s.driver.forward([]);
-    await s.driver.forward([]);
+    await anchoredAboveEmptyBlocks(s);
     const commit = await commitOn(s, s.head);
-    const eventId = eventIdOf(0x32);
-    const identity = await listEvent(
-      s,
-      "deposit",
-      eventId,
-      (await viewHeight(s)) - 2,
-    );
-    await member("pending_block_finalization_deposits", eventId, identity);
     expect(await s.verdict(commit)).toBe(true);
-    // The rewind drops one block; the event stays admitted, now within d.
+    // The rewind drops one block above the anchor; the anchor stays.
     await s.driver.backward(1);
     await waits(s, commit);
-    // The chain regrows past the horizon.
+    // The chain regrows d blocks above the anchor.
     await s.driver.forward([]);
     expect(await s.verdict(commit)).toBe(true);
   });
 
-  it("a forced order admitted within d of the view waits, and is wanted once it is d deep", async () => {
+  it("a commit whose anchor a rewind removes is false, also once the chain regrows", async () => {
     const s = await open();
-    await ownShift(s);
+    await anchoredAboveEmptyBlocks(s);
     const commit = await commitOn(s, s.head);
-    const memberId = Buffer.alloc(32, 0x45);
-    await member(
-      "pending_block_finalization_forced_transactions",
-      memberId,
-      null,
-    );
-    const height = await viewHeight(s);
-    await forcedOrder(s, memberId, Buffer.alloc(32, 0x46), height - 1);
-    await waits(s, commit);
-    await s.sql("UPDATE node_l1_forced_order_fields SET height = ?", [
-      height - 2,
-    ]);
+    expect(await s.verdict(commit)).toBe(true);
+    // The rewind drops the anchor block and the d blocks above it.
+    await s.driver.backward(D + 1);
+    for (let i = 0; i <= D + 1; i += 1) await s.driver.forward([]);
+    expect(await s.verdict(commit)).toBe(false);
+    // The same commit anchored on the new chain is wanted.
+    await setAnchor(await freshAnchor(s));
     expect(await s.verdict(commit)).toBe(true);
   });
 

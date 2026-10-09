@@ -183,11 +183,11 @@ export type NodeConfigDep = {
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: number;
-  /** Horizon lag d in L1 blocks: the commit end time is capped at
-   * slot(the follower block d below its covered tip) + event_wait - 1, so no
-   * due event comes from the last d blocks. Operator config, not a deployment
-   * profile field; 0 reads nothing and keeps the unlagged horizon. */
-  HISTORY_COMMIT_HORIZON_LAG_BLOCKS: number;
+  /** The commit-event depth d (plan §8.1): the deployment profile's
+   * `l1_finality.commit_event_depth`. A commit's anchor is the follower block
+   * d below the view it is planned at, and its header end is at most the
+   * anchor's time + event_wait - 1 (`database/commit-anchor.ts`). */
+  COMMIT_EVENT_DEPTH: number;
   /** The node-behind bound in ms (`config.node-behind.ts`): the follower's
    * `l1_node_behind` reason and the hold on the node's own sends. */
   L1_NODE_BEHIND_MAX_MS: number;

@@ -145,6 +145,79 @@ export const minimumPublicEventWaitMs = (profile) =>
   profile.timing.max_validity_range_ms +
   l1BlocksBudgetMs(profile.l1_finality.confirmation_depth);
 
+// The commit-event depth d (`l1_finality.commit_event_depth`): an event is
+// committed only below the commit anchor, the follower block d under the view
+// a commit is planned at. Under the guaranteed chain-growth bound, n L1 blocks
+// take at most 3n/f slots, so the bounds below count blocks in a span exactly:
+// active_slot_coeff is a decimal string, because the deployment identity's
+// canonical JSON admits only safe-integer numbers; it becomes a rational
+// ("0.05" is 5/100) and every comparison is BigInt, never a float division.
+export const productionProfileNames = ["mainnet", "preprod-public"];
+const l1FinalityKeys = [
+  "confirmation_depth",
+  "commit_event_depth",
+  "security_parameter",
+  "active_slot_coeff",
+  "slot_length_ms",
+];
+// A canonical decimal string (no sign, exponent, leading or trailing zero, so
+// one value has one spelling and one digest) as an exact rational. Undefined
+// for anything else.
+export const exactDecimal = (value) => {
+  const match =
+    typeof value === "string"
+      ? /^(0|[1-9]\d*)(?:\.(\d*[1-9]))?$/u.exec(value)
+      : null;
+  if (match === null) return undefined;
+  const fraction = match[2] ?? "";
+  return {
+    numerator: BigInt(match[1] + fraction),
+    denominator: 10n ** BigInt(fraction.length),
+  };
+};
+// The most L1 blocks the chain-growth bound guarantees within spanMs:
+// floor(spanMs * f / (3 * slot_length_ms)), rounded toward negative infinity.
+export const guaranteedBlocksWithinMs = (l1Finality, spanMs) => {
+  const f = exactDecimal(l1Finality.active_slot_coeff);
+  const numerator = BigInt(spanMs) * f.numerator;
+  const denominator = 3n * BigInt(l1Finality.slot_length_ms) * f.denominator;
+  const quotient = numerator / denominator;
+  return quotient * denominator > numerator ? quotient - 1n : quotient;
+};
+// Largest d with no inactivity strike: W + N >= 3(d + 1) slot/f + L.
+export const largestNoStrikeCommitEventDepth = (profile) =>
+  guaranteedBlocksWithinMs(
+    profile.l1_finality,
+    BigInt(profile.timing.event_wait_ms) +
+      BigInt(profile.timing.user_events_negligence_timeout_ms) -
+      BigInt(profile.timing.max_validity_range_ms),
+  ) - 1n;
+// The least span from planning a commit to its TTL, the header end time E:
+// the node's history-commit planner refuses an E sooner than this after now.
+// The node reads it from the generated profiles
+// (HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS), so the planner and the bound
+// below share one value.
+export const COMMIT_TTL_FUTURE_BUFFER_MS = 30_000;
+// Largest d at which a commit stays plannable: W - B - slot >= 3(d + 1) slot/f.
+// The anchor caps E at time(A) + W - 1, and the planner needs E at least B
+// after now, rounded up to the next slot boundary. When a commit is planned,
+// the view's tip is d blocks above A and the next block has not arrived, so
+// now is at most 3(d + 1) slot/f after A under the chain-growth bound.
+export const largestFeasibleCommitEventDepth = (profile) =>
+  guaranteedBlocksWithinMs(
+    profile.l1_finality,
+    BigInt(profile.timing.event_wait_ms) -
+      BigInt(COMMIT_TTL_FUTURE_BUFFER_MS) -
+      BigInt(profile.l1_finality.slot_length_ms),
+  ) - 1n;
+// Largest d a production profile admits: W - L >= 3d slot/f.
+export const largestProductionCommitEventDepth = (profile) =>
+  guaranteedBlocksWithinMs(
+    profile.l1_finality,
+    BigInt(profile.timing.event_wait_ms) -
+      BigInt(profile.timing.max_validity_range_ms),
+  );
+
 // Minimum span a public profile keeps between the latest Apply (end time plus
 // the attestation timeout) and the Open deadline (end time plus the challenge
 // window). A challenger must first see a timeout-edge Apply at the profile's
@@ -199,8 +272,26 @@ export const validateProfile = (profile, name) => {
   ) {
     throw new Error(`Profile name/network must match ${name}`);
   }
-  exactKeys(profile.l1_finality, ["confirmation_depth"], "l1_finality");
-  positiveIntegers(profile.l1_finality, ["confirmation_depth"], "l1_finality");
+  exactKeys(profile.l1_finality, l1FinalityKeys, "l1_finality");
+  positiveIntegers(
+    profile.l1_finality,
+    ["confirmation_depth", "security_parameter", "slot_length_ms"],
+    "l1_finality",
+  );
+  const commitEventDepth = profile.l1_finality.commit_event_depth;
+  if (!Number.isSafeInteger(commitEventDepth) || commitEventDepth < 0)
+    throw new Error(
+      "l1_finality.commit_event_depth must be a non-negative safe integer",
+    );
+  const activeSlotCoeff = exactDecimal(profile.l1_finality.active_slot_coeff);
+  if (
+    activeSlotCoeff === undefined ||
+    activeSlotCoeff.numerator === 0n ||
+    activeSlotCoeff.numerator > activeSlotCoeff.denominator
+  )
+    throw new Error(
+      "l1_finality.active_slot_coeff must be a canonical decimal string in (0, 1]",
+    );
   exactKeys(profile.timing, Object.keys(timingConstants), "timing");
   positiveIntegers(profile.timing, Object.keys(timingConstants), "timing");
   exactKeys(profile.da_bond, Object.keys(daBondConstants), "da_bond");
@@ -380,6 +471,45 @@ export const validateProfile = (profile, name) => {
       "Bond must equal slash plus reward; inactivity penalty must be smaller than slash",
     );
   }
+  // The follower keeps k blocks of history, and the block just above the
+  // commit anchor must not be final, so d <= k.
+  const securityParameter = profile.l1_finality.security_parameter;
+  // eslint-disable-next-line midgard/depth-through-heads -- Profile shape check between two depth parameters, counting no block depth; the rule does not list commit_event_depth.
+  if (commitEventDepth > securityParameter)
+    throw new Error(
+      `l1_finality.commit_event_depth must be at most l1_finality.security_parameter (${securityParameter})`,
+    );
+  // No inactivity strike, every profile. An event becomes includable once the
+  // commit anchor is past its validity bound, which needs d + 1 blocks after
+  // it, at most 3(d + 1) slot/f under the chain-growth bound. The commit then
+  // lands within one maximum validity range L, and the neglected-event strike
+  // opens at inclusion time + negligence timeout N (scheduler.ak,
+  // inactivity_threshold_from_user_event_inclusion_time), inclusion time
+  // being the event's validity bound + event wait W.
+  const noStrikeDepth = largestNoStrikeCommitEventDepth(profile);
+  if (BigInt(commitEventDepth) > noStrikeDepth)
+    throw new Error(
+      `l1_finality.commit_event_depth must satisfy event_wait_ms + user_events_negligence_timeout_ms >= 3 (d + 1) slot_length_ms / active_slot_coeff + max_validity_range_ms; the largest such d is ${noStrikeDepth}`,
+    );
+  // Every profile: the anchor cap must leave room for the commit's TTL. A d
+  // past this bound holds every commit even while L1 produces blocks at the
+  // guaranteed rate, so the operator is struck for inactivity.
+  const feasibleDepth = largestFeasibleCommitEventDepth(profile);
+  if (BigInt(commitEventDepth) > feasibleDepth)
+    throw new Error(
+      `l1_finality.commit_event_depth must satisfy event_wait_ms - ${COMMIT_TTL_FUTURE_BUFFER_MS} ms (the commit TTL floor) - slot_length_ms >= 3 (d + 1) slot_length_ms / active_slot_coeff; the largest such d is ${feasibleDepth}`,
+    );
+  // Production profiles: a commit lands no earlier than one maximum validity
+  // range before its header end time, so an event the block must include is
+  // at least W - L old when the commit lands, and d blocks deep by then.
+  const productionDepth = largestProductionCommitEventDepth(profile);
+  if (
+    productionProfileNames.includes(name) &&
+    BigInt(commitEventDepth) > productionDepth
+  )
+    throw new Error(
+      `l1_finality.commit_event_depth must satisfy event_wait_ms - max_validity_range_ms >= 3 d slot_length_ms / active_slot_coeff on a production profile; the largest such d is ${productionDepth}`,
+    );
   return profile;
 };
 
@@ -449,6 +579,8 @@ export const generateProfiles = async (selected, check = false) => {
     `export const DEPLOYMENT_PROFILES = ${JSON.stringify(profiles, null, 2)} as const;\n\n` +
     `export const DEPLOYMENT_PROFILE_DIGESTS = ${JSON.stringify(Object.fromEntries(Object.entries(profiles).map(([name, profile]) => [name, profileDigest(profile)])), null, 2)} as const;\n\n` +
     `export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = ${JSON.stringify(economics, null, 2)} as const;\n\n` +
+    `/** The least span from planning a commit to its TTL (\`deployment-profiles.mjs\`). */\n` +
+    `export const COMMIT_TTL_FUTURE_BUFFER_MS = ${COMMIT_TTL_FUTURE_BUFFER_MS};\n\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE = DEPLOYMENT_PROFILES[${JSON.stringify(selected)}];\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE_DIGEST = DEPLOYMENT_PROFILE_DIGESTS[${JSON.stringify(selected)}];\n` +
     `for (const profile of Object.values(DEPLOYMENT_PROFILES)) {\n` +

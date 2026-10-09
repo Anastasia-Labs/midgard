@@ -181,9 +181,17 @@ Commitment and liveness (raised by fibers, cleared by them):
   hash. Wait.
 - `commit_worker_failed`: the commit worker's last run failed. Read the
   commit worker's error in the log.
-- `commit_horizon_lag_unavailable`: the follower has no block the horizon
-  lag below its tip yet (no cursor, a chain too short above the origin, or a
-  pruned block), so nothing is committed. Wait for the follower to advance.
+- `commit_anchor_unavailable`: the follower has no block the profile's
+  commit-event depth d below the view the driver applied (a chain too short
+  above the origin, or a pruned block while the applied view trails the
+  tip), so nothing is committed. Wait for the follower to advance.
+- `l1_own_block_event_orphaned`: a landed own block includes a deposit or
+  withdrawal whose L1 admission left the chain. No block is committed, and
+  that block and the landed blocks built on it are not merged; admissions
+  (except spends of that deposit's output), older merges, DA and the
+  follower continue. The detail names the header(s) and the event count. It
+  clears by itself when a landed correction or a rollback removes the
+  header from the landed queue; wait.
 - `commit_da_frame_events_overflow`: a block's events alone overflow the DA
   frame. `commit_da_frame_ledger_ceiling`: the base ledger alone exceeds the
   DA frame. Both refuse the block on every tick. The ledger ceiling needs
@@ -282,12 +290,25 @@ L1 follower and follower-change driver
   names why. `l1_events_hook_failed`: a ticket hook failed; the detail names
   the hook. Both retry; read the detail.
 - `l1_events_orphan_recovery`: orphaned admissions wait for the recovery
-  that rejects their dependents. Wait.
+  that rejects their dependents: those an unfinished block journal holds
+  until its disposition, those a foreign landed block holds until the
+  header leaves the landed queue. The detail names each such foreign
+  header: it includes an event no longer on L1, so it is fault-provable
+  (fabricated deposit or withdrawal), and the node commits nothing that
+  would build on it. The hold clears when a fault proof or an L1 rollback
+  removes the header; check that a fault proof against it is under way.
+  Otherwise wait. (One a landed own block holds is
+  `l1_own_block_event_orphaned` instead.)
 - `l1_event_identity_conflict`: a projected event's public id has a local
   row under another live admission, or none; the event is left out until it
   clears. Inspect the named event's rows.
 - `l1_event_undecodable:<count>` (a detail): that many projected events do
   not decode into the node's rows and are left out; `refused` names them.
+- `l1_own_block_forced_order_orphaned:<count>` (a detail): that many forced
+  rows of landed own blocks have an order that left the chain. The node
+  follows the block and stays ready; the forced-order hook logs a warning
+  naming each header and order once. It clears when the header leaves the
+  landed queue.
 - `forced_order_carriage_pending`: a forced order's carriage resolved from
   no source yet; it is retried. If the detail leads with "no L1 tx content
   source is configured", set `L1_TX_CONTENT_SOURCES`.
@@ -307,8 +328,8 @@ L1 follower and follower-change driver
 - `intent_resubmit_rejected`: the L1 node refused a live intent's resend at
   several tips in a row. It clears once the intent stops being live or a
   resend is accepted; read the node's rejection in the detail.
-- `intent_included_events_not_deep`: a commit waits for the chain to bury
-  its included events again after a rewind. Wait.
+- `intent_commit_anchor_not_deep`: a commit waits for the follower tip to
+  be d blocks above its commit anchor again after a rewind. Wait.
 - `intent_journal_no_view`, `intent_journal_unavailable`: the intent journal
   has no follower view, or a database record or read failed. The second
   clears on the journal's next good read or record. Wait; check Postgres if

@@ -2,7 +2,6 @@ import {
   decodeMidgardNativeTxProofFieldLengths,
   encodeMidgardNativeTxProofFieldLengths,
 } from "@al-ft/midgard-core/codec";
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, Lucid, type TxSigned } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
@@ -30,6 +29,7 @@ import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  RELEASE_L1_FINALITY_POLICY,
 } from "../src/workflow/release-finality-policy.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import {
@@ -85,7 +85,7 @@ const provenance = {
   grade: "security",
 } as const;
 
-const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
+const policy = { ...RELEASE_L1_FINALITY_POLICY };
 
 export const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,

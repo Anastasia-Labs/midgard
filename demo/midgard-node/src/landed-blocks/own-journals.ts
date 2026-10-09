@@ -15,8 +15,9 @@
  *   follower's view;
  * - (iii) its base left: the base is removed or disposed of, or another
  *   processed block took the base's successor slot;
- * - (iv) it is unfinished and includes an event whose admission the
- *   follower no longer holds (a deposit, withdrawal or forced order);
+ * - (iv) it is unfinished and its commit anchor is not on the follower's
+ *   chain, or it has none (`database/commit-anchor.ts`): every event it
+ *   includes is in a block below the anchor;
  * - (v) an abandoned block of this node landed: it is revived, and every
  *   unfinished journal (built while it was abandoned) is disposed of.
  *
@@ -34,6 +35,7 @@ import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect, Option } from "effect";
 
+import { commitAnchorCanonical } from "../database/commit-anchor.js";
 import {
   BlocksDB,
   ImmutableDB,
@@ -45,10 +47,6 @@ import {
   StateQueueMutationLeasesDB,
   TxRejectionsDB,
 } from "../database/index.js";
-import {
-  canonicalForcedAdmission,
-  orphanedAdmission,
-} from "../database/l1-admission-identity.js";
 import { ACTIVE_STATUSES } from "../database/pendingBlockFinalizations.columns.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { DriverHold } from "../l1-events/driver.js";
@@ -114,38 +112,36 @@ const intentDead = (txHash: string) =>
   );
 
 /**
- * Unfinished journals holding an event whose admission left the chain, or
- * the follower admission tables that are missing: without them no
- * admission can be read, so the disposition is held rather than read as
- * "nothing left the chain".
+ * Unfinished journals whose commit anchor is not on the follower's chain
+ * (or that have none), or the follower tables that are missing: without
+ * them no anchor can be read, so the disposition is held rather than read
+ * as "every anchor is canonical".
  */
-const orphanHolders = Effect.gen(function* () {
+const anchorlessJournals = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const [tables] = yield* sql<{ keys: boolean; orders: boolean }>`SELECT
-    to_regclass('l1_event_keys') IS NOT NULL AS keys,
-    to_regclass('node_l1_forced_order_fields') IS NOT NULL AS orders`;
+  const [tables] = yield* sql<{ blocks: boolean; cursor: boolean }>`SELECT
+    to_regclass('l1_blocks') IS NOT NULL AS blocks,
+    to_regclass('l1_follower_cursor') IS NOT NULL AS cursor`;
   const missing = [
-    ...(tables?.keys === true ? [] : ["l1_event_keys"]),
-    ...(tables?.orders === true ? [] : ["node_l1_forced_order_fields"]),
+    ...(tables?.blocks === true ? [] : ["l1_blocks"]),
+    ...(tables?.cursor === true ? [] : ["l1_follower_cursor"]),
   ];
   if (missing.length > 0) return { kind: "held", missing } as const;
-  const forced = sql`OR EXISTS (SELECT 1 FROM pending_block_finalization_forced_transactions m
-        JOIN forced_transaction_utxos f ON f.tx_order_id = m.member_id
-        WHERE m.header_hash = p.header_hash
-          AND NOT ${canonicalForcedAdmission(sql, "f")})`;
-  const rows = yield* sql<{ header_hash: Buffer }>`
-    SELECT p.header_hash FROM pending_block_finalizations p
-    WHERE p.status IN ${sql.in(ACTIVE_STATUSES)} AND (
-      EXISTS (SELECT 1 FROM pending_block_finalization_deposits m
-        WHERE m.header_hash = p.header_hash
-          AND ${orphanedAdmission(sql, "m", "deposit")})
-      OR EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals m
-        WHERE m.header_hash = p.header_hash
-          AND ${orphanedAdmission(sql, "m", "withdrawal")})
-      ${forced})`;
+  const rows = yield* sql<{ header_hash: Buffer; anchored: boolean }>`
+    SELECT p.header_hash, p.commit_anchor_hash IS NOT NULL AS anchored
+    FROM pending_block_finalizations p
+    WHERE p.status IN ${sql.in(ACTIVE_STATUSES)}
+      AND NOT ${commitAnchorCanonical(sql, "p")}`;
   return {
     kind: "read",
-    holders: new Set(rows.map((row) => row.header_hash.toString("hex"))),
+    causes: new Map(
+      rows.map((row) => [
+        row.header_hash.toString("hex"),
+        row.anchored
+          ? "its commit anchor left the chain"
+          : "it has no commit anchor",
+      ]),
+    ),
   } as const;
 });
 
@@ -215,17 +211,17 @@ export const ownJournalDisposition = (
       ...landed.chain.map((row) => row.headerHash),
     ];
     const position = new Map(chain.map((hash, index) => [hash, index]));
-    const orphanRead = yield* orphanHolders;
-    if (orphanRead.kind === "held")
+    const anchorRead = yield* anchorlessJournals;
+    if (anchorRead.kind === "held")
       return {
         dispose: [],
         revive,
         held: {
           reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
-          detail: `the own-journal disposition cannot read event admissions: ${orphanRead.missing.join(", ")} missing`,
+          detail: `the own-journal disposition cannot read commit anchors: ${anchorRead.missing.join(", ")} missing`,
         },
       } satisfies OwnJournalDisposition;
-    const orphans = orphanRead.holders;
+    const anchorless = anchorRead.causes;
     const causes = new Map<string, string>();
     for (const candidate of candidates) {
       const { headerHash, status, intendedTxHash } = candidate;
@@ -239,11 +235,8 @@ export const ownJournalDisposition = (
           headerHash,
           `abandoned own block ${revive[0]!} landed and is revived`,
         );
-      else if (orphans.has(headerHash))
-        causes.set(
-          headerHash,
-          "it includes an event whose admission left the chain",
-        );
+      else if (anchorless.has(headerHash))
+        causes.set(headerHash, anchorless.get(headerHash)!);
       else if (intendedTxHash !== null && (yield* intentDead(intendedTxHash)))
         causes.set(headerHash, `its signed commit ${intendedTxHash} is dead`);
     }

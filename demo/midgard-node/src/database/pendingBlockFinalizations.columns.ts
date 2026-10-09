@@ -79,6 +79,9 @@ export enum Columns {
   MPF_REPLAY_EVENT_COUNT = "mpf_replay_event_count",
   STATUS = "status",
   OBSERVED_CONFIRMED_AT_MS = "observed_confirmed_at_ms",
+  COMMIT_ANCHOR_HASH = "commit_anchor_hash",
+  COMMIT_ANCHOR_HEIGHT = "commit_anchor_height",
+  COMMIT_ANCHOR_SLOT = "commit_anchor_slot",
   CREATED_AT = "created_at",
   UPDATED_AT = "updated_at",
 }
@@ -184,6 +187,10 @@ export type Row = {
   [Columns.MPF_REPLAY_EVENT_COUNT]?: number | null;
   [Columns.STATUS]: Status;
   [Columns.OBSERVED_CONFIRMED_AT_MS]: bigint | null;
+  /** The commit anchor (see `commit-anchor.ts`); all three or none. */
+  [Columns.COMMIT_ANCHOR_HASH]?: Buffer | null;
+  [Columns.COMMIT_ANCHOR_HEIGHT]?: PgBigInt | null;
+  [Columns.COMMIT_ANCHOR_SLOT]?: PgBigInt | null;
   [Columns.CREATED_AT]: Date;
   [Columns.UPDATED_AT]: Date;
 };

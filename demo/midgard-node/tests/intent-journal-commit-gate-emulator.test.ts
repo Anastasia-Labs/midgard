@@ -55,6 +55,7 @@ import {
   DROP_ALL_TIMEOUT_MS,
   testDatabases,
 } from "./helpers/l1-events-store.js";
+import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
 
 const databases = testDatabases();
 const opened: IntentEmulator[] = [];
@@ -227,39 +228,42 @@ const preparePendingBlock = async (
     "hex",
   );
   await env.runtime.runPromise(
-    PendingBlockFinalizationsDB.preparePendingSubmission({
-      headerHash,
-      headerCbor: Buffer.from(Data.to(header, SDK.Header), "hex"),
-      preparedTxHash,
-      metadata: {
-        deploymentMarker: makeDeploymentMarker(digest(0x11)),
-        consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
-        stateQueueLeaseToken: "modeled-pending-owner",
-        baseSnapshotId: "modeled-pending-base",
-        baseTailOutRef: `${digest(0x16)}#0`,
-        baseTailHeaderHash: Buffer.alloc(28, 0x41),
-        baseTailDatumCbor: "d87980",
-        baseRoots: roots,
-        blockStartTime: time,
-        expectedRoots,
-        expectedCounts: counts,
+    PendingBlockFinalizationsDB.preparePendingSubmission(
+      {
+        headerHash,
+        headerCbor: Buffer.from(Data.to(header, SDK.Header), "hex"),
+        preparedTxHash,
+        metadata: {
+          deploymentMarker: makeDeploymentMarker(digest(0x11)),
+          consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
+          stateQueueLeaseToken: "modeled-pending-owner",
+          baseSnapshotId: "modeled-pending-base",
+          baseTailOutRef: `${digest(0x16)}#0`,
+          baseTailHeaderHash: Buffer.alloc(28, 0x41),
+          baseTailDatumCbor: "d87980",
+          baseRoots: roots,
+          blockStartTime: time,
+          expectedRoots,
+          expectedCounts: counts,
+        },
+        blockEndTime: new Date(time.getTime() + 60_000),
+        depositEventIds: [],
+        depositEntries: [],
+        forcedTransactionEventIds: [],
+        forcedTransactionEntries: [],
+        withdrawalEventIds: [],
+        withdrawalEntries: [],
+        mempoolTxIds: [],
+        mempoolTxs: [],
+        mempoolTxSourceTable: "none",
+        transitionTraceMembers: [],
+        eventToStepMembers: [],
+        validationTraceMembers: [],
+        validationTraceWitnessMembers: [],
+        ledgerDelta: { spent: [], produced: [] },
       },
-      blockEndTime: new Date(time.getTime() + 60_000),
-      depositEventIds: [],
-      depositEntries: [],
-      forcedTransactionEventIds: [],
-      forcedTransactionEntries: [],
-      withdrawalEventIds: [],
-      withdrawalEntries: [],
-      mempoolTxIds: [],
-      mempoolTxs: [],
-      mempoolTxSourceTable: "none",
-      transitionTraceMembers: [],
-      eventToStepMembers: [],
-      validationTraceMembers: [],
-      validationTraceWitnessMembers: [],
-      ledgerDelta: { spent: [], produced: [] },
-    }).pipe(Effect.provideService(FollowerWrite, permit)),
+      { beforeJournalInsert: Effect.orDie(simCommitAnchor) },
+    ).pipe(Effect.provideService(FollowerWrite, permit)),
   );
   return headerHash;
 };

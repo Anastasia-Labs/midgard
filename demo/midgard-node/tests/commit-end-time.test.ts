@@ -403,7 +403,7 @@ describe("commit end-time resolver", () => {
 
   // Profile timings from config/deployments: mainnet event_wait_ms, and the
   // preprod-testing event_wait_ms and da_attestation_timeout_ms.
-  const MAINNET_EVENT_WAIT_MS = 129_600_000;
+  const MAINNET_EVENT_WAIT_MS = 130_080_000;
   const TESTING_EVENT_WAIT_MS = 300_000;
   const TESTING_DA_ATTESTATION_TIMEOUT_MS = 240_000;
   const HISTORY_BUFFER_MS = 30_000;

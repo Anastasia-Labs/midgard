@@ -18,7 +18,6 @@ import {
   FollowerWriteFixture,
   withFollowerWrite,
 } from "../../src/services/follower-write-gate.js";
-import type { CommitHorizonLag } from "../../src/services/history-commit-window.js";
 
 export const FOLLOWER_GENERATION = 1;
 
@@ -106,9 +105,10 @@ export const writeFollowerView = (
 /** POSIX ms of a model slot (the journal tests' 1 s slots from zero). */
 export const modelSlotTime = (slot: number) => slot * 1000;
 
-/** The commit horizon lag d, dated by the model clock. */
-export const modelHorizonLag = (lagBlocks: number): CommitHorizonLag => ({
-  lagBlocks,
+/** The commit-event depth d with the model slot clock, as
+ * `commitEventHorizon` reads them. */
+export const modelAnchorClock = (depth: number) => ({
+  depth,
   slotToUnixTime: Effect.succeed(modelSlotTime),
 });
 

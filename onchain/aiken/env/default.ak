@@ -43,7 +43,7 @@ pub const shift_duration: Int = 3_600_000
 
 pub const registration_duration: Int = 30
 
-pub const event_wait_duration: Int = 129_600_000
+pub const event_wait_duration: Int = 130_080_000
 
 pub const user_events_negligence_timeout: Int = 1_200_000
 

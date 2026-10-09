@@ -273,8 +273,8 @@ export const preSubmit = (
   );
 
 /**
- * A commit submission run without logs, under the horizon lag d = 0: its
- * final recheck then reads nothing beyond the lag.
+ * A commit submission run without logs, at commit-event depth d = 0 (a
+ * fixture without a write permit: the final recheck stores its anchor as given).
  */
 export const runQuietSubmission = (
   program: Effect.Effect<unknown, unknown, unknown>,
@@ -283,7 +283,7 @@ export const runQuietSubmission = (
     Effect.either(program).pipe(
       Effect.provide(Logger.remove(Logger.defaultLogger)),
       Effect.provideService(NodeConfig, {
-        HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
+        COMMIT_EVENT_DEPTH: 0,
       } as never),
     ) as Effect.Effect<Either.Either<unknown, unknown>>,
   );

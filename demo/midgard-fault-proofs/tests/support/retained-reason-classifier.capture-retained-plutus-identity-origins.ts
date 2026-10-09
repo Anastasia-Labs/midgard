@@ -3,7 +3,6 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardForcedTxProofSource,
 } from "@al-ft/midgard-core";
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -24,6 +23,7 @@ import {
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  RELEASE_L1_FINALITY_POLICY,
 } from "../../src/workflow/release-finality-policy.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "../helpers/transition-history-fixture.js";
 import { buildRetainedPlutusIdentityFixture } from "./retained-reason-classifier.build-retained-plutus-fixture.js";
@@ -160,7 +160,7 @@ export const captureRetainedPlutusIdentityOrigins = async (
   const tip = options.advanceCapture
     ? point("1101", "101", "45")
     : point("1100", "100", "43");
-  const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
+  const policy = { ...RELEASE_L1_FINALITY_POLICY };
   const finality = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: "d1".repeat(32),

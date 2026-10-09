@@ -4,6 +4,7 @@ import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
 import * as DepositsDB from "./deposits.js";
+import { orphanedAdmission } from "./l1-admission-identity.js";
 import {
   clearTable,
   DatabaseError,
@@ -175,11 +176,19 @@ export const retrieve: Effect.Effect<
   sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole ledger"),
 );
 
+/**
+ * SQL condition: the working-ledger row (joined to the deposit it projects,
+ * if any) is spendable: no deposit projects it, or its deposit is assigned
+ * to a header and its follower admission is still on the chain. A deposit
+ * whose admission left the chain (an orphan) projects no spendable output,
+ * so admission rejects a spend of it as a missing input.
+ */
 const spendablePredicate = (sql: SqlClient.SqlClient) => sql`
   (${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)} IS NULL
-    OR ${sql(DepositsDB.tableName)}.${sql(
+    OR (${sql(DepositsDB.tableName)}.${sql(
       DepositsDB.Columns.PROJECTED_HEADER_HASH,
-    )} IS NOT NULL)
+    )} IS NOT NULL
+      AND NOT (${orphanedAdmission(sql, DepositsDB.tableName, "deposit")})))
 `;
 
 export const retrieveSpendable: Effect.Effect<

@@ -517,21 +517,19 @@ describe("DeploymentManifestV1 shared identity", () => {
     expect(verifyDeploymentManifestIdentity(manifest)).toEqual(manifest);
   });
 
-  it("rejects a rehashed manifest that overrides the profile confirmation policy", () => {
+  it("rejects a rehashed manifest that overrides the profile confirmation or commit-event depth", () => {
     const { manifestId: _manifestId, ...identity } = finalizedManifest();
-    const changed = {
-      ...identity,
-      l1Finality: {
-        ...identity.l1Finality,
-        confirmationDepth: identity.l1Finality.confirmationDepth + 1,
-      },
-    };
-    expect(() =>
-      verifyFinalizedDeploymentManifest({
-        ...changed,
-        manifestId: computeDeploymentManifestId(changed),
-      }),
-    ).toThrow(/l1Finality/u);
+    for (const key of ["confirmationDepth", "commitEventDepth"] as const) {
+      const l1Finality = { ...identity.l1Finality };
+      l1Finality[key] += 1;
+      const changed = { ...identity, l1Finality };
+      expect(() =>
+        verifyFinalizedDeploymentManifest({
+          ...changed,
+          manifestId: computeDeploymentManifestId(changed),
+        }),
+      ).toThrow(`l1Finality.${key} must equal`);
+    }
   });
 
   it("accepts only exact release-bound economics profiles", () => {

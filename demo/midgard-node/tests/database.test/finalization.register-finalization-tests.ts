@@ -622,7 +622,7 @@ export const registerFinalizationTests = () => {
               {
                 beforeJournalInsert: DepositsDB.markAwaitingAsProjected([
                   afterDeposit[DepositsDB.Columns.ID],
-                ]),
+                ]).pipe(Effect.as(undefined)),
               },
             );
             const afterRows = yield* DepositsDB.retrieveAllEntries();

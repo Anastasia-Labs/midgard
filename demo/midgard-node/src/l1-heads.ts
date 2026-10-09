@@ -18,9 +18,7 @@
  *
  * `l1BlockBelowCoveredTip(store, d)` is the heads source for "the block d
  * below the covered tip": the follower block at depth d + 1 under the
- * store's cursor (the covered tip has depth 1). U3 caps the commit end time
- * at `slot(tip − d) + W − 1` from it (`laggedEligibilityCap` in
- * `services/history-commit-window.ts`).
+ * store's cursor (the covered tip has depth 1).
  */
 import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
 import type {
@@ -197,7 +195,7 @@ export type L1BlockBelowCoveredTip =
       detail: string;
     }>;
 
-/** The follower reads the lag needs: its cursor and a block by height. A
+/** The follower reads it needs: its cursor and a block by height. A
  * `FactStore` is one; a caller with only SQL passes the same rows. */
 export type CoveredTipHeads = Readonly<{
   cursor(): Promise<Pick<Cursor, "point" | "height"> | null>;

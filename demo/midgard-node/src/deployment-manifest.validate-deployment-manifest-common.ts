@@ -140,7 +140,12 @@ const validateDeploymentManifestCommon = (
   const l1Finality = requireObject(candidate.l1Finality, "l1Finality");
   requireExactKeys(
     l1Finality,
-    ["confirmationDepth", "automaticRecoveryMaxDepth", "deepRollbackPolicy"],
+    [
+      "confirmationDepth",
+      "commitEventDepth",
+      "automaticRecoveryMaxDepth",
+      "deepRollbackPolicy",
+    ],
     [],
     "l1Finality",
   );

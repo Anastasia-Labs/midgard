@@ -76,7 +76,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/forced-order-carriage-emulator.test.ts
  *   tests/l1-state-queue-liveness.test.ts
  *   tests/l1-state-queue-fiber-tick-spy.test.ts
- *   tests/history-commit-horizon-lag-emulator.test.ts
+ *   tests/history-commit-anchor-emulator.test.ts
  *   tests/intent-journal-commit-gate-emulator.test.ts
  *   tests/operator-watchdog-emulator.test.ts
  *   tests/availability-challenge-operation.test.ts

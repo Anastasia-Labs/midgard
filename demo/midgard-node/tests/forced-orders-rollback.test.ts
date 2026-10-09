@@ -7,9 +7,10 @@
  * unfinished block journal holds; a row such a journal holds is an orphan
  * the event-history recovery counts (`l1_events_orphan_recovery`) until the
  * journal is disposed of. The working-ledger rebase disposes of such a
- * journal (I3: it includes an event whose admission left the chain) with
- * no operator step; the hook then deletes the row. An order that lands
- * again ends as exactly one row, the same row.
+ * journal (I3: its commit anchor, the follower block it was built at with
+ * every event it includes below it, left the chain) with no operator step;
+ * the hook then deletes the row. An order that lands again ends as exactly
+ * one row, the same row.
  */
 import { createHash } from "node:crypto";
 
@@ -41,6 +42,7 @@ import {
   ingestionHook,
   UNCHANGED,
 } from "./helpers/forced-orders-node-store.js";
+import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const follow = nodeFollowerLifecycle();
@@ -52,13 +54,15 @@ const HEADER = Buffer.alloc(28, 0x7e);
 
 /**
  * A modeled block journal holding the forced row of `txOrderId`, as a build
- * leaves it: the row `projected` without a header, the journal unfinished.
+ * leaves it: the row `projected` without a header, the journal unfinished,
+ * its commit anchor the follower's tip (d = 0).
  */
 const journal = (txOrderId: Buffer, status: string) =>
   db(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const at = new Date(1_000_000);
+      const anchor = yield* simCommitAnchor;
       yield* sql`INSERT INTO pending_block_finalizations ${sql.insert({
         header_hash: HEADER,
         submitted_tx_hash: null,
@@ -97,6 +101,9 @@ const journal = (txOrderId: Buffer, status: string) =>
         consensus_profile_id: "midgard-consensus-v1",
         expected_validation_traces_root: EMPTY_MERKLE_ROOT,
         expected_validation_trace_count: 0n,
+        commit_anchor_hash: anchor.hash,
+        commit_anchor_height: anchor.height,
+        commit_anchor_slot: anchor.slot,
         ledger_delta_spent: "[]",
         ledger_delta_produced: "[]",
       } as never)}`;
@@ -256,6 +263,8 @@ describe("forced rows across rollbacks (N10b)", () => {
     const { store, chain } = await follow();
     const order = inlineOrder(chain.chain, honest());
     await chain.forward([order]);
+    // The commit's anchor: a block above the order's.
+    await chain.forward([]);
     const { hook, logs } = ingestionHook(store, FORCED_CONFIG);
     expect(await hook(UNCHANGED)).toBeUndefined();
     const [row] = await rows();
@@ -263,7 +272,7 @@ describe("forced rows across rollbacks (N10b)", () => {
     // Journaled and its order live: no orphan.
     expect(await orphans()).toBe(0);
     expect(await hook(UNCHANGED)).toBeUndefined();
-    await chain.backward(1);
+    await chain.backward(2);
     expect(await orphans()).toBe(1);
     for (let attempt = 0; attempt < 2; attempt += 1) {
       expect(await hook(UNCHANGED)).toEqual({
@@ -276,13 +285,13 @@ describe("forced rows across rollbacks (N10b)", () => {
       expect(kept[0]!.projected_header_hash).toBeNull();
     }
     expect(logs.join("\n")).not.toMatch(/deleted/u);
-    // The rebase disposes of the journal for its orphaned member, which
-    // clears the orphan; the hook then deletes the row.
+    // The rebase disposes of the journal, whose anchor the rollback took,
+    // which clears the orphan; the hook then deletes the row.
     expect(await disposeOrphanHolders()).toEqual({
       dispose: [
         {
           headerHash: HEADER.toString("hex"),
-          cause: "it includes an event whose admission left the chain",
+          cause: "its commit anchor left the chain",
           active: true,
         },
       ],
@@ -295,23 +304,35 @@ describe("forced rows across rollbacks (N10b)", () => {
     expect(await horizon()).toBeNull();
   });
 
-  it("a journaled row whose order lands again is no orphan and stays in its journal", async () => {
+  it("a journaled row whose order lands again is no orphan; its journal goes with its anchor and the row stays one row", async () => {
     const { store, chain } = await follow();
     const order = inlineOrder(chain.chain, honest());
     await chain.forward([order]);
+    await chain.forward([]);
     const { hook } = ingestionHook(store, FORCED_CONFIG);
     expect(await hook(UNCHANGED)).toBeUndefined();
     const [row] = await rows();
     await journal(Buffer.from(row!.tx_order_id), "submitted_unconfirmed");
-    const before = await rows();
-    await chain.backward(1);
+    await chain.backward(2);
     expect(await orphans()).toBe(1);
     await chain.forward([order]);
+    await chain.forward([]);
     expect(await orphans()).toBe(0);
-    // The rebase keeps a journal whose forced member is canonical again.
-    expect((await disposeOrphanHolders()).dispose).toEqual([]);
-    expect(await journalStatus()).toBe("submitted_unconfirmed");
+    // The relanded chain is a new branch: the anchor is not on it, so the
+    // rebase disposes of the journal; the row is no orphan and stays.
+    expect((await disposeOrphanHolders()).dispose).toEqual([
+      {
+        headerHash: HEADER.toString("hex"),
+        cause: "its commit anchor left the chain",
+        active: true,
+      },
+    ]);
+    expect(await journalStatus()).toBe("abandoned");
     expect(await hook(UNCHANGED)).toBeUndefined();
-    expect(await rows()).toEqual(before);
+    // The same one row, with no header: the next commit selects it.
+    const after = await rows();
+    expect(after).toHaveLength(1);
+    expect(after[0]!.tx_order_id).toEqual(row!.tx_order_id);
+    expect(after[0]!.projected_header_hash).toBeNull();
   });
 });

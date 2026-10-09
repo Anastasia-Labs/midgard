@@ -3,6 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import type { CommitAnchor } from "../../database/commit-anchor.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
@@ -23,7 +24,7 @@ import {
   type UtxoPayloadEntry,
   type UtxoPayloadSizeAggregate,
 } from "../../mpf/index.js";
-import { configuredCommitHorizonLag } from "../../services/history-commit-window.js";
+import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
 import {
   type ContractDeploymentIdentityValue,
   Database,
@@ -59,7 +60,6 @@ import {
   assertCommitUserEventSourceCompleteness,
   isStaleCommitBaseError,
   journalUtxoEntries,
-  refreshCommitUserEventSourcesThroughBlockEnd,
   submitErrorReferencesOutRef,
 } from "./submission.commit-event-sources.js";
 import {
@@ -83,6 +83,7 @@ export const submitDepositOnlyCommit = ({
   includedWithdrawalEntries,
   includedWithdrawalEventIds,
   workerInput,
+  commitAnchor,
   blockEndTimeCapMs,
   utxoRoot,
   txRoot,
@@ -116,6 +117,8 @@ export const submitDepositOnlyCommit = ({
   readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
   readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly workerInput: WorkerInput;
+  /** The commit anchor the end time was planned under (`commitEventHorizon`). */
+  readonly commitAnchor?: CommitAnchor;
   readonly blockEndTimeCapMs?: number;
   readonly utxoRoot: string;
   readonly txRoot: string;
@@ -279,10 +282,6 @@ export const submitDepositOnlyCommit = ({
                 txSize,
               } = buildResult;
               return Effect.gen(function* () {
-                yield* refreshCommitUserEventSourcesThroughBlockEnd(
-                  blockEndTimeMs,
-                  yield* configuredCommitHorizonLag,
-                );
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
                 const cekProgramMaterial = yield* Effect.try({
                   try: () =>
@@ -365,7 +364,8 @@ export const submitDepositOnlyCommit = ({
                 const beforeJournalInsert =
                   assertCommitUserEventSourceCompleteness({
                     blockEndTimeMs,
-                    lagBlocks: (yield* configuredCommitHorizonLag).lagBlocks,
+                    commitAnchor,
+                    ...(yield* configuredCommitAnchorClock),
                     includedDepositEntries,
                     includedForcedTransactionEntries,
                     includedWithdrawalEntries,

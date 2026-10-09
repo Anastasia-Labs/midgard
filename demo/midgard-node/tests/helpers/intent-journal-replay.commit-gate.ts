@@ -12,6 +12,10 @@ import type { IntentJournalService } from "../../src/services/intent-journal.js"
 import { BeforeSignedTransactionSubmission } from "../../src/transactions/utils.js";
 import { submitWithDurableIntent } from "../../src/workers/commit-block-header/submission.submit-with-durable-intent.js";
 import { type RecordedIntent, SEND_AT_TIP } from "./intent-journal.js";
+import {
+  type AnchorEmulatorHeight,
+  rebindCommitAnchor,
+} from "./intent-journal-replay.anchor.js";
 
 /**
  * Records a commit through its production pre-broadcast gate: the
@@ -19,7 +23,8 @@ import { type RecordedIntent, SEND_AT_TIP } from "./intent-journal.js";
  * owns the transaction the journal's insert runs in. Its pending block
  * is put back as it stood when the worker signed it (prepared, nothing
  * signed or submitted), then restored as the flow left it once the gate
- * has run, so S6 reads the flow's rows.
+ * has run, so S6 reads the flow's rows. Its anchor is first rebound to the
+ * replay's chain when `emulatorHeightOf` is given.
  */
 export const recordCommitThroughGate = async ({
   runtime,
@@ -27,13 +32,17 @@ export const recordCommitThroughGate = async ({
   journal,
   entry,
   header,
+  emulatorHeightOf,
 }: {
   readonly runtime: ManagedRuntime.ManagedRuntime<SqlClient.SqlClient, unknown>;
   readonly sql: SqlClient.SqlClient;
   readonly journal: IntentJournalService;
   readonly entry: RecordedIntent;
   readonly header: Buffer;
+  readonly emulatorHeightOf?: AnchorEmulatorHeight;
 }) => {
+  if (emulatorHeightOf !== undefined)
+    await rebindCommitAnchor({ runtime, sql, header, emulatorHeightOf });
   type Signed = {
     readonly status: string;
     readonly submitted_tx_hash: Buffer | null;

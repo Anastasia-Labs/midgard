@@ -16,8 +16,11 @@
  *   a function of the plan and the node rows, so every run derives them
  *   again. A row with no identity (one from before migration 0008) still
  *   fails the run below, by the eligibility check every event table gets.
- * - Rows whose admission the follower no longer holds (orphans) are counted,
- *   never adopted: their dependents are rejected by the owner's recovery.
+ * - Rows whose admission the follower no longer holds (orphans) are never
+ *   adopted; those the recovery must settle are counted
+ *   (`countOrphansAwaitingRecovery`): their dependents are rejected by the
+ *   owner's recovery. An own landed block's orphan is held by its own
+ *   narrow hold instead and is not counted.
  * - Due deposits are projected into the mempool ledger (hidden until a
  *   header is assigned), up to the caller's cutoff.
  * - The ingestion point is recorded for the commit horizon.
@@ -25,7 +28,6 @@
  * Decoding (`userEventEntry`) runs only for events the node has no row for.
  */
 import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
-import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
 import { SqlClient, type Statement } from "@effect/sql";
 import type { Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -38,12 +40,11 @@ import {
 } from "../l1-events/driver.js";
 import * as Deposits from "./deposits.js";
 import { identityOf, rowOf } from "./follower-events.row-of.js";
+import { countOrphansAwaitingRecovery } from "./follower-orphan-repair.js";
 import { followerViewValid } from "./follower-schema.js";
 import {
   type AdmissionKind,
   canonicalAdmission,
-  orphanedAdmission,
-  orphanedForcedAdmission,
 } from "./l1-admission-identity.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
@@ -83,7 +84,10 @@ const EVENT_TABLE: Readonly<Record<AdmissionKind, string>> = {
 export type FollowerIngestion = Readonly<{
   inserted: number;
   locationsMoved: number;
-  /** Rows whose admission the follower no longer holds. */
+  /**
+   * Orphans the recovery must settle: rows whose admission the follower no
+   * longer holds, own landed blocks' rows excluded.
+   */
   orphans: number;
   /** Events retired at the view that the node never ingested (skipped). */
   retiredUnseen: number;
@@ -318,20 +322,6 @@ const projectAwaitingDeposits = (cutoff: Date) =>
     return entries.length;
   });
 
-/**
- * Event rows whose admission the follower no longer holds (ruling 3). A
- * forced row counts only while an unfinished block journal holds it; the
- * forced-order hook deletes the others (N10b).
- */
-export const countOrphanedAdmissions = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const orphans = yield* sql<{ count: string }>`SELECT
-    (SELECT count(*) FROM deposits_utxos d WHERE ${orphanedAdmission(sql, "d", "deposit")})
-    + (SELECT count(*) FROM withdrawal_utxos w WHERE ${orphanedAdmission(sql, "w", "withdrawal")})
-    + (SELECT count(*) FROM forced_transaction_utxos f WHERE ${orphanedForcedAdmission(sql, "f")}) AS count`;
-  return Number(orphans[0]?.count ?? 0);
-});
-
 /** POSIX ms at the start of the view's slot, through the caller's slot mapping. */
 export type ViewTime = (slot: number) => number;
 
@@ -375,7 +365,7 @@ export const reconcileFollowerEvents = (
           unassociated[0]!.event_id.toString("hex"),
         );
     }
-    const orphans = yield* countOrphanedAdmissions;
+    const orphans = yield* countOrphansAwaitingRecovery;
     const spendableUpserts = yield* reconcileAlreadyProjectedDeposits;
     const projected = yield* projectAwaitingDeposits(new Date(input.cutoffMs));
     const ingestedThroughMs = input.slotToUnixTime(plan.view.point.slot);
@@ -401,44 +391,35 @@ export const reconcileFollowerEvents = (
   }).pipe(sqlErrorToDatabaseError(table, "Failed follower event ingestion"));
 
 /**
- * The commit end-time horizon the follower allows (E-N1-2 item 3): events
- * the driver ingested through view time t bound a block's end time to
- * t + EVENT_WAIT - 1, while that view is still on the follower's chain. No
- * ingestion yet, or one a rewind removed, allows nothing (`null`).
+ * The view the driver last ingested events through, while it is still on
+ * the follower's chain; `null` before the first ingestion or after a rewind
+ * removed it. A commit plans at its write permit's view, which the driver
+ * advances in the same transaction as this row; a model fixture without a
+ * permit plans at this one (`commitEventHorizon`).
  */
-export const followerEligibilityHorizon = Effect.gen(function* () {
+export const followerIngestedView = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   // The ingestion row and its view check read one cursor state.
-  const through = yield* sql.withTransaction(
+  return yield* sql.withTransaction(
     Effect.gen(function* () {
       const rows = yield* sql<{
         generation: string;
         slot: string;
         block_hash: Buffer;
         height: string;
-        ingested_through_ms: string;
       }>`SELECT generation::text AS generation, slot::text AS slot, block_hash,
-          height::text AS height, ingested_through_ms::text AS ingested_through_ms
+          height::text AS height
         FROM follower_event_ingestion`;
       const row = rows[0];
       if (row === undefined) return null;
-      const valid = yield* followerViewValid({
+      const view = {
         generation: Number(row.generation),
         point: { slot: Number(row.slot), hash: Buffer.from(row.block_hash) },
         height: Number(row.height),
-      });
-      return valid ? row.ingested_through_ms : null;
+      };
+      return (yield* followerViewValid(view)) ? view : null;
     }),
   );
-  if (through === null) return null;
-  const end = Number(through) + EVENT_WAIT_DURATION_MS - 1;
-  if (!Number.isSafeInteger(end))
-    return yield* fail(
-      table,
-      "Follower ingestion time cannot form a safe commit horizon",
-      through,
-    );
-  return end;
 }).pipe(
-  sqlErrorToDatabaseError(table, "Failed to read the follower commit horizon"),
+  sqlErrorToDatabaseError(table, "Failed to read the follower ingestion view"),
 );

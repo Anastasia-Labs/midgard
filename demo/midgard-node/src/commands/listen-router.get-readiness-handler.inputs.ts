@@ -12,6 +12,10 @@ import {
   PENDING_FINALIZATION_AGE_BOUND_MS,
   retrieveActiveJournalAges,
 } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import {
+  L1_OWN_BLOCK_FORCED_ORDER_ORPHANED,
+  readOwnLandedForcedOrphans,
+} from "../forced-orders/own-landed-orphans.js";
 
 /**
  * Every database read `/readyz` makes, run only after the connectivity probe
@@ -37,8 +41,18 @@ export const readReadinessDatabaseState = (
         recentLimit: 3,
       }),
       journalAges: yield* retrieveActiveJournalAges,
+      ownLandedForcedOrphans: (yield* readOwnLandedForcedOrphans).length,
     };
   });
+
+/** The degradation a landed own block with a forced order that left the
+ * chain reports: the node follows the block, so it stays ready. */
+export const ownLandedForcedOrphanDetail = (
+  count: number,
+): string | undefined =>
+  count > 0
+    ? `${L1_OWN_BLOCK_FORCED_ORDER_ORPHANED}:${count.toString()}`
+    : undefined;
 
 /** The first line of a database failure, for the public body. */
 export const readinessDatabaseError = (error: unknown): string => {

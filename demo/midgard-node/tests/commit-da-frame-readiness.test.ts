@@ -108,18 +108,6 @@ vi.mock("../src/workers/commit-block-header/build-unsigned-tx.js", async () => {
       }),
   };
 });
-vi.mock(
-  "../src/workers/commit-block-header/submission.commit-event-sources.js",
-  async () => {
-    const actual = await vi.importActual<
-      typeof import("../src/workers/commit-block-header/submission.commit-event-sources.js")
-    >("../src/workers/commit-block-header/submission.commit-event-sources.js");
-    return {
-      ...actual,
-      refreshCommitUserEventSourcesThroughBlockEnd: () => Effect.void,
-    };
-  },
-);
 
 /**
  * The commit worker's DA frame notices reach /readyz through the liveness

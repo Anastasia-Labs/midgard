@@ -9,9 +9,10 @@
  * - the driver's recompute disposes of a live own journal that holds an
  *   orphaned deposit (a member whose admission left the chain) and, in the
  *   same run, removes that deposit with its working-ledger row, then opens
- *   the gate; an orphan a processed landed block holds keeps the gate
- *   pending as `l1_events_orphan_recovery` (producers refused, retried, no
- *   failure) until it is no longer orphaned;
+ *   the gate; an orphan a processed foreign landed block holds keeps the
+ *   gate pending as `l1_events_orphan_recovery` (producers refused, retried,
+ *   no failure) until it is no longer orphaned (one a landed own block holds
+ *   does not: `own-block-event-orphaned.test.ts`);
  * - a failed startup preparation is the driver sink's named hold, the gate
  *   stays pending, and the next run prepares and opens it; nothing fails.
  */
@@ -223,6 +224,11 @@ describe("the follower write gate", () => {
 
 describe("the driver's recompute repairs orphans with the rebase", () => {
   const C = "c4".repeat(28);
+  const ANCHOR = {
+    hash: Buffer.alloc(32, 0xa7),
+    height: DRIVER_TEST_SLOT - 1,
+    slot: DRIVER_TEST_SLOT - 1,
+  };
 
   /**
    * The rebase is due (processed foreign block BLOCK waits unapplied on the
@@ -250,7 +256,12 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
             slotToUnixTime: modelSlotTime,
             cutoffMs: modelSlotTime(DRIVER_TEST_SLOT),
           });
+          const sql = yield* SqlClient.SqlClient;
           if (holder === "journal") {
+            // C's commit anchor: a follower block above the deposit's, which
+            // the rewind past the deposit takes with it.
+            yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
+              VALUES (${ANCHOR.slot}, ${ANCHOR.hash}, ${ANCHOR.height}, NULL, 0)`;
             yield* insertOwnJournal({
               headerHash: C,
               baseHeaderHash: BLOCK,
@@ -260,8 +271,8 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
               produced: [],
               txIds: [],
               at: new Date(1_000),
+              anchor: ANCHOR,
             });
-            const sql = yield* SqlClient.SqlClient;
             yield* sql`UPDATE deposits_utxos SET status = 'projected',
               projected_header_hash = ${Buffer.from(C, "hex")}`;
             const payload = Buffer.from("orphan-member");
@@ -282,6 +293,8 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
           }
           view.events = [];
           yield* rewindFollowerKey(deposit);
+          if (holder === "journal")
+            yield* sql`DELETE FROM l1_blocks WHERE slot = ${ANCHOR.slot}`;
         }),
       ),
     );
@@ -335,7 +348,7 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
     expect(after.gate.applied).toMatchObject({ slot: DRIVER_TEST_SLOT });
   });
 
-  it("holds the gate by name while a landed block holds an orphan, and opens it once the admission returns", async () => {
+  it("holds the gate by name while a foreign landed block holds an orphan, and opens it once the admission returns", async () => {
     const { globals, plan, deposit, view, rows } = await arrange("landed");
     let writes = 0;
     const write = Effect.either(
@@ -349,10 +362,15 @@ describe("the driver's recompute repairs orphans with the rebase", () => {
       globals,
       Effect.gen(function* () {
         const recompute = yield* testDriverRecompute({ plan });
-        expect(yield* recompute.run("first view")).toMatchObject({
+        const first = yield* recompute.run("first view");
+        expect(first).toMatchObject({
           published: false,
           hold: { reason: EVENTS_ORPHAN_RECOVERY },
         });
+        // The hold names the header and why the node waits on it.
+        expect(first.hold?.detail).toMatch(
+          new RegExp(`^foreign landed block ${BLOCK} \\(1\\) .*fault-provable`),
+        );
         expect(holdOf(yield* Effect.either(runAtFollowerView(write)))).toBe(
           DRIVER_RECOMPUTE_PENDING,
         );

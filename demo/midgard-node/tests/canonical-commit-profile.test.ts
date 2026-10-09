@@ -126,12 +126,16 @@ vi.mock(
   },
 );
 
-// The follower-change driver has ingested past any planned end time.
-vi.mock("../src/database/follower-events.js", async (importOriginal) => ({
+// The commit anchor caps no planned end time.
+vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
   ...(await importOriginal<
-    typeof import("../src/database/follower-events.js")
+    typeof import("../src/services/history-commit-window.js")
   >()),
-  followerEligibilityHorizon: Effect.succeed(Number.MAX_SAFE_INTEGER),
+  commitEventHorizon: () =>
+    Effect.succeed({
+      horizonMs: Number.MAX_SAFE_INTEGER,
+      anchor: { hash: Buffer.alloc(32), height: 0, slot: 0 },
+    }),
 }));
 vi.mock("../src/forced-orders/horizon.js", () => ({
   forcedOrderHorizon: Effect.succeed(null),
@@ -270,8 +274,8 @@ const forcedEntryMissingMaterial = {
   cek_program_material_sidecar_cbor: Buffer.alloc(0),
 } as never;
 
-/** The final recheck reads the horizon lag; d = 0 reads nothing more. */
-const unlaggedConfig = { HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0 } as never;
+/** The final recheck reads the commit-event depth (a fixture has no permit). */
+const depthConfig = { COMMIT_EVENT_DEPTH: 0 } as never;
 
 const baseCommitArgs = {
   contracts,
@@ -329,7 +333,7 @@ describe("canonical V1 commit profile", () => {
         } as unknown as Parameters<typeof submitDepositOnlyCommit>[0]),
       ).pipe(
         Effect.provideService(Lucid, fakeLucid),
-        Effect.provideService(NodeConfig, unlaggedConfig),
+        Effect.provideService(NodeConfig, depthConfig),
       ),
     );
 
@@ -381,7 +385,7 @@ describe("canonical V1 commit profile", () => {
         } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
       ).pipe(
         Effect.provideService(Lucid, fakeLucid),
-        Effect.provideService(NodeConfig, unlaggedConfig),
+        Effect.provideService(NodeConfig, depthConfig),
       ),
     );
 
@@ -406,7 +410,7 @@ describe("canonical V1 commit profile", () => {
       MIN_FEE_A: 0n,
       MIN_FEE_B: 0n,
       VALIDATION_G4_BUCKET_CONCURRENCY: 1,
-      HISTORY_COMMIT_HORIZON_LAG_BLOCKS: 0,
+      COMMIT_EVENT_DEPTH: 0,
     } as never;
     const deploymentIdentity = ContractDeploymentIdentity.make({
       kind: "derived",
