@@ -1,7 +1,6 @@
 import { encodeProofThreadForcedSourceKey } from "@al-ft/midgard-sdk";
 import { type VerdictSubject } from "@al-ft/midgard-sdk";
 
-import { detectCrossBlockDuplicateEvents } from "../cross-block-duplicate-event/replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { detectExecutionSourceScriptDecodingCanonicalViolations } from "../execution-source-script-decoding/authenticated-replay.js";
 import { detectFieldItemWidthIllegalCompleteReplay } from "../field-item-width-illegal/workflow.js";
@@ -105,18 +104,6 @@ export const createFabricatedWithdrawalCompleteCanonicalReplay = ({
 };
 
 /** Complete evaluation of all accepted native script witnesses. */
-export const CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY =
-  completeReplayer(["crossBlockDuplicateEvent"], async (evidence, context) => {
-    if (context?.settlements === undefined)
-      throw new Error(
-        "cross-block duplicate replay requires authenticated live settlement context",
-      );
-    return detectCrossBlockDuplicateEvents({
-      evidence,
-      context: context.settlements,
-    });
-  });
-
 export const NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(
     ["nativeScriptDecoding"],

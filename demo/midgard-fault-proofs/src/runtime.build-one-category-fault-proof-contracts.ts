@@ -1,7 +1,6 @@
 import {
   buildCanonicalDecodabilityFaultProofContracts,
   buildCommittedFieldShapeFaultProofContracts,
-  buildCrossBlockDuplicateEventFaultProofContracts,
   buildDaHashPreimageFaultProofContracts,
   buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
@@ -186,10 +185,6 @@ export const buildOneCategoryFaultProofContracts = async ({
     case "doubleWithdraw":
       return await Effect.runPromise(
         buildDoubleWithdrawFaultProofContracts(params),
-      );
-    case "crossBlockDuplicateEvent":
-      return await Effect.runPromise(
-        buildCrossBlockDuplicateEventFaultProofContracts(params),
       );
     case "l2TxMistag":
       return await Effect.runPromise(

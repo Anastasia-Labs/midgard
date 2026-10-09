@@ -66,7 +66,6 @@ export const JOURNEY_FIXTURE_OWNERS = {
   withdrawnReferenceInput: "history",
   withdrawalMistag: "history",
   doubleWithdraw: "history",
-  crossBlockDuplicateEvent: "history",
   withdrawnInput: "history",
 } as const satisfies Record<JourneyCategory, JourneyFixtureOwner>;
 

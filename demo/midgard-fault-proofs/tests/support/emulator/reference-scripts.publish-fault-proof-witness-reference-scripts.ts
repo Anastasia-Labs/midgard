@@ -1,6 +1,5 @@
 import { Lucid, type Script, type UTxO } from "@lucid-evolution/lucid";
 
-import type { CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
 import { chunkedVerifyWithdrawalScript } from "../../../src/proof-chunk-carriage.js";
 import { getCompiledScript } from "../../../src/runtime.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../../../src/step-support.js";
@@ -82,26 +81,6 @@ export const publishFaultProofWitnessReferenceScripts = async ({
     published[name] = publication.utxo;
   }
   return published;
-};
-
-export const publishCrossBlockDuplicateEventReferenceScripts = async ({
-  lucid,
-  contracts,
-}: {
-  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: CrossBlockDuplicateEventContracts;
-}): Promise<readonly [UTxO, UTxO]> => {
-  const first = await publishPlainReferenceScriptUtxo({
-    lucid,
-    script: contracts.steps[0].spendingScript,
-    label: "cross-block-duplicate-event step-01",
-  });
-  const second = await publishPlainReferenceScriptUtxo({
-    lucid,
-    script: contracts.steps[1].spendingScript,
-    label: "cross-block-duplicate-event step-02",
-  });
-  return [first.utxo, second.utxo];
 };
 
 // The validators `remove-fraudulent-block` needs, in the same roster order as

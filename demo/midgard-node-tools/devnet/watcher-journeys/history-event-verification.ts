@@ -9,7 +9,6 @@ import {
   type RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import { unsafeCreateCrossBlockSettlementAuthorityFromRawForTest } from "@al-ft/midgard-fault-proofs/test-support/cross-block-settlement-authority";
 import { unsafeCreateTransitionTraceEventAuthorityFromRawForTest } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
 
 import { bindJourneyEventAuthorities } from "./event-history-bindings.js";
@@ -87,15 +86,13 @@ export const classifyLocalHistoryEventFixture = async (input: {
     return block;
   };
   const deploymentFingerprint = deployment.manifest.manifestId;
-  const { transition, settlement, history } = await bindJourneyEventAuthorities(
-    {
-      manifest: deployment.manifest,
-      blueprintJson: deployment.blueprintJson,
-      deploymentInfo: deployment.deploymentInfo,
-      headerHash: input.block.headerHash,
-      proverCredential: input.stage.operatorVkey,
-    },
-  );
+  const { transition, history } = await bindJourneyEventAuthorities({
+    manifest: deployment.manifest,
+    blueprintJson: deployment.blueprintJson,
+    deploymentInfo: deployment.deploymentInfo,
+    headerHash: input.block.headerHash,
+    proverCredential: input.stage.operatorVkey,
+  });
   const releaseFinality = transition.releaseFinality;
   const policy = releaseFinality.policy;
   const hubOraclePolicyId = deployment.contracts.hubOracle.policyId;
@@ -104,14 +101,6 @@ export const classifyLocalHistoryEventFixture = async (input: {
     unsafeCreateTransitionTraceEventAuthorityFromRawForTest({
       binding: transition,
       authority: input.stage.rawAuthority,
-    });
-  // A settled ancestor's payload is fetched from the same retained sources
-  // the classifier reads; the authority checks it against the live
-  // settlement datum's counted roots.
-  const settlementAuthority =
-    unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
-      binding: settlement,
-      raw: input.stage.rawAuthority,
     });
   const replayer =
     input.replayer ??
@@ -130,7 +119,6 @@ export const classifyLocalHistoryEventFixture = async (input: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => releaseFinality,
     },
-    settlementAuthority,
     transitionTraceEventAuthority,
   });
   const sources: RetainedDaPayloadSource[] = [

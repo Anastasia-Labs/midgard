@@ -38,7 +38,6 @@ const RETIRED_INIT_CATEGORIES = new Set([
   "minFee",
   "withdrawalMistag",
   "doubleWithdraw",
-  "crossBlockDuplicateEvent",
   "l2TxMistag",
   "withdrawnInput",
 ]);

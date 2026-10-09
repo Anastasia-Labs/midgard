@@ -129,7 +129,6 @@ describe("DeploymentManifestV1 shared identity", () => {
       ["MinFee", "min-fee", 2],
       ["WithdrawalMistag", "withdrawal-mistag", 5],
       ["DoubleWithdraw", "double-withdraw", 2],
-      ["CrossBlockDuplicateEvent", "cross-block-duplicate-event", 2],
       ["L2TxMistag", "l2-tx-mistag", 2],
       ["WithdrawnInput", "withdrawn-input", 3],
       ["ValueNotPreserved", "value-not-preserved", 4],
@@ -344,7 +343,7 @@ describe("DeploymentManifestV1 shared identity", () => {
     );
   });
 
-  it("authenticates the exact 54-entry fraud-proof catalogue root and proofs", () => {
+  it("authenticates the exact 52-entry fraud-proof catalogue root and proofs", () => {
     const catalogue = catalogueFixture();
     expect(
       verifyDeploymentManifestFraudProofCatalogueIdentity(catalogue),

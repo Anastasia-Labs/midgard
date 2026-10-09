@@ -95,13 +95,6 @@
         "].sort(([left], [right]) => left.localeCompare(right)),"
       ]
     },
-    "midgard-fault-proofs/src/cross-block-duplicate-event/settlement-authority.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "a.headerHash.localeCompare(b.headerHash) ||",
-        "a.outRef.localeCompare(b.outRef),"
-      ]
-    },
     "midgard-fault-proofs/src/distinct-asset-accumulation-limit/authenticated-replay.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [

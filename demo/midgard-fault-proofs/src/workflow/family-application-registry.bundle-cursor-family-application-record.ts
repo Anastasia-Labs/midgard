@@ -1,11 +1,4 @@
 import {
-  createManifestBoundCrossBlockDuplicateEventWorkflow,
-  CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION,
-  type ManifestBoundCrossBlockDuplicateEventWorkflow,
-  type ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
-  runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow,
-} from "../cross-block-duplicate-event/workflow.js";
-import {
   createManifestBoundExecutionNativeScriptInvalidWorkflow,
   EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
   type ManifestBoundExecutionNativeScriptInvalidWorkflow,
@@ -223,21 +216,6 @@ export const MIN_ADA_FAMILY_APPLICATION_RECORD =
     auxiliaryReferenceScriptsKey: "yields",
     constructWorkflow: createManifestBoundMinAdaWorkflow,
     execute: runOrResumeManifestBoundMinAdaWorkflow,
-  });
-
-/**
- * crossBlockDuplicateEvent fetches each settled block's payload from the same
- * public retained-DA sources as the challenged block.
- */
-export const CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD =
-  bundleCursorFamilyApplicationRecord<
-    "crossBlockDuplicateEvent",
-    ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
-    ManifestBoundCrossBlockDuplicateEventWorkflow
-  >(CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION, {
-    requires: ["retainedDaSources"],
-    constructWorkflow: createManifestBoundCrossBlockDuplicateEventWorkflow,
-    execute: runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow,
   });
 
 export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =

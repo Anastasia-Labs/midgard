@@ -111,7 +111,6 @@ vi.mock("@al-ft/midgard-fault-proofs", async (load) => {
     // synthetic deployment fixture has none, so the bindings are tokens that
     // carry its deployment identity and the explicit history configuration.
     bindFraudProofWorkflowDeployment: async () => bound(),
-    createCrossBlockSettlementAuthority: () => bound(),
     createTransitionTraceEventAuthority: () => bound(),
     createHeaderClassifier: async (
       input: Parameters<typeof actual.createHeaderClassifier>[0],

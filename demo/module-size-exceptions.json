@@ -111,18 +111,18 @@
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/catalogue-roles.deployment-manifest-contract-names.ts",
-    "max": 565,
-    "reason": "One frozen declarative contract-name catalogue (571 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
+    "max": 563,
+    "reason": "One frozen declarative contract-name catalogue (571 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-2): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/reference-script-contracts.ts",
-    "max": 953,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (964 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
+    "max": 949,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (964 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
-    "max": 743,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
+    "max": 739,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-core/tests/availability-operation-journal.test.ts",
@@ -146,8 +146,8 @@
   },
   {
     "file": "midgard-core/tests/deployment-manifest-identity.deployment-manifest-v1-shared-identity.ts",
-    "max": 807,
-    "reason": "Retained test registration “DeploymentManifestV1 shared identity” (778 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 806,
+    "reason": "Retained test registration “DeploymentManifestV1 shared identity” (778 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-core/tests/native-codec.test.ts",
@@ -261,8 +261,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/adapters.workflow-adapter-registration-rows.ts",
-    "max": 671,
-    "reason": "workflowAdapterRegistrationRows: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
+    "max": 659,
+    "reason": "workflowAdapterRegistrationRows: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. DUPDEL (-12): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-fault-proofs/src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.ts",
@@ -296,13 +296,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/catalogue-retained-classification.test.ts",
-    "max": 771,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
-  },
-  {
-    "file": "midgard-fault-proofs/tests/cross-block-installed-lifecycle.test.ts",
-    "max": 903,
-    "reason": "Retained test registration “crossBlockDuplicateEvent installed cursor actuator” (517 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 761,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. DUPDEL (-10): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-fault-proofs/tests/custom-transaction-runner-recovery.test.ts",
@@ -341,8 +336,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/header-classifier.test.ts",
-    "max": 554,
-    "reason": "Retained test registration “production authenticated-header classifier V1” (468 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 531,
+    "reason": "Retained test registration “production authenticated-header classifier V1” (468 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DUPDEL (-23): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-fault-proofs/tests/ledger-delta-dense-trace-totality.test.ts",
@@ -356,8 +351,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/linear-family-state.test.ts",
-    "max": 653,
-    "reason": "Retained test registration “production linear family authenticated state machine V1” (592 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 647,
+    "reason": "Retained test registration “production linear family authenticated state machine V1” (592 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DUPDEL (-6): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-fault-proofs/tests/min-ada-wrongful-rejection-lifecycle.test.ts",
@@ -576,8 +571,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/contracts.build-minimal-fault-proof-contracts.ts",
-    "max": 1177,
-    "reason": "buildMinimalFaultProofContracts is the dominant indivisible declaration (1114 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1147,
+    "reason": "buildMinimalFaultProofContracts is the dominant indivisible declaration (1114 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-30): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts",
@@ -586,8 +581,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/removal-deployment.build-removal-deployment-info.ts",
-    "max": 555,
-    "reason": "buildRemovalDeploymentInfo is the dominant indivisible declaration (510 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 544,
+    "reason": "buildRemovalDeploymentInfo is the dominant indivisible declaration (510 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-11): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.ts",
@@ -596,8 +591,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
-    "max": 508,
-    "reason": "makeAlwaysSucceedsContracts is the dominant indivisible declaration (493 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes."
+    "max": 507,
+    "reason": "makeAlwaysSucceedsContracts is the dominant indivisible declaration (493 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
@@ -636,8 +631,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.unmapped-validators.ts",
-    "max": 571,
-    "reason": "UNMAPPED_VALIDATORS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Combined recovered source removes obsolete lines; cap reduced to the measured final source count. Registered Data executor coverage removes five obsolete unmapped entries; cap ratchets down. Retiring two superseded families removes their entries; cap reduced to the measured count."
+    "max": 569,
+    "reason": "UNMAPPED_VALIDATORS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Combined recovered source removes obsolete lines; cap reduced to the measured final source count. Registered Data executor coverage removes five obsolete unmapped entries; cap ratchets down. Retiring two superseded families removes their entries; cap reduced to the measured count. DUPDEL (-2): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-fault-proofs/tests/support/value-conservation-lifecycle-cases.ts",
@@ -781,8 +776,8 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/history-event-cases.test.ts",
-    "max": 1034,
-    "reason": "Retained test registration (460 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 968,
+    "reason": "Retained test registration (460 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DUPDEL (-66): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/journey-session.test.ts",
@@ -791,13 +786,13 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts",
-    "max": 851,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 866,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. DUPDEL (+15): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/staging.stage-journey.ts",
-    "max": 765,
-    "reason": "stageJourney is the dominant indivisible declaration (712 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 744,
+    "reason": "stageJourney is the dominant indivisible declaration (712 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-21): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.mjs",
@@ -891,8 +886,8 @@
   },
   {
     "file": "midgard-node/src/deployment-manifest.deployment-manifest-reference-script-contract-by-role.ts",
-    "max": 950,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (961 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
+    "max": 946,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (961 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-node/src/mpf/process.process-mpfs.ts",
@@ -916,8 +911,8 @@
   },
   {
     "file": "midgard-node/src/services/always-succeeds.make-always-succeeds-service.ts",
-    "max": 540,
-    "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes."
+    "max": 539,
+    "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
@@ -926,8 +921,8 @@
   },
   {
     "file": "midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
-    "max": 738,
-    "reason": "midgardContractsFromDeploymentManifest is the dominant indivisible declaration (722 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 732,
+    "reason": "midgardContractsFromDeploymentManifest is the dominant indivisible declaration (722 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-6): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-node/src/services/mpf-native-owner/service.production-native-mpf-owner-service.ts",
@@ -1241,8 +1236,8 @@
   },
   {
     "file": "midgard-sdk/src/reference-scripts.reference-script-auth-token-names.ts",
-    "max": 750,
-    "reason": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
+    "max": 746,
+    "reason": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
@@ -1266,8 +1261,8 @@
   },
   {
     "file": "midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts",
-    "max": 1226,
-    "reason": "Retained test registration “fault-proof contract builder” (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Direct committed-step expectations and canonical test encoding: fully applies the boundary award hash and game resolver-hash list in their declared parameter order. Recomputes expected bindings with the pinned WASM API in the shared independent test oracle, avoiding the legacy encoder CBOR-major incompatibility. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
+    "max": 1225,
+    "reason": "Retained test registration “fault-proof contract builder” (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Direct committed-step expectations and canonical test encoding: fully applies the boundary award hash and game resolver-hash list in their declared parameter order. Recomputes expected bindings with the pinned WASM API in the shared independent test oracle, avoiding the legacy encoder CBOR-major incompatibility. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-sdk/tests/tx-order.test.ts",
@@ -1366,8 +1361,8 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
-    "max": 768,
-    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W3V (+32): a validationTraceDispute decision whose pre-follower transcript already started a proof is held by name (validation_transcript_pre_follower) instead of re-keyed; the held decisions share the capture map's lifetime, generation checks and pruning in this closure."
+    "max": 745,
+    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W3V (+32): a validationTraceDispute decision whose pre-follower transcript already started a proof is held by name (validation_transcript_pre_follower) instead of re-keyed; the held decisions share the capture map's lifetime, generation checks and pruning in this closure. DUPDEL (-23): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-progress-authority.ts",
@@ -1406,8 +1401,8 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts",
-    "max": 704,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+2): the application is built over the follower-backed L1 source. W3 (-17): the runtime config drops the deleted Kupmios query services and rollback policy."
+    "max": 703,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+2): the application is built over the follower-backed L1 source. W3 (-17): the runtime config drops the deleted Kupmios query services and rollback policy. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-application.test.ts",

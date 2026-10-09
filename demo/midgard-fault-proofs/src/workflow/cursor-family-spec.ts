@@ -55,19 +55,9 @@ export const WITHDRAWAL_MISTAG_CURSOR_SPEC = Object.freeze({
   }),
 }) satisfies CursorFamilySpec<"withdrawalMistag">;
 
-export const CROSS_BLOCK_DUPLICATE_EVENT_CURSOR_SPEC = Object.freeze({
-  category: "crossBlockDuplicateEvent",
-  stepCount: 2,
-  successors: Object.freeze({
-    1: Object.freeze([2] as const),
-    2: Object.freeze(["proof_token"] as const),
-  }),
-}) satisfies CursorFamilySpec<"crossBlockDuplicateEvent">;
-
 export const CURSOR_FAMILY_SPECS = Object.freeze({
   nativeScriptDecoding: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
   withdrawalMistag: WITHDRAWAL_MISTAG_CURSOR_SPEC,
-  crossBlockDuplicateEvent: CROSS_BLOCK_DUPLICATE_EVENT_CURSOR_SPEC,
   valueNotPreserved: VALUE_NOT_PRESERVED_CURSOR_SPEC,
   mintAuthorization: MINT_AUTHORIZATION_CURSOR_SPEC,
 });

@@ -7,7 +7,6 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { unsafeCreateCrossBlockSettlementAuthorityFromRawForTest } from "../src/cross-block-duplicate-event/settlement-authority.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
   requireTransitionTraceL1Events,
@@ -195,13 +194,6 @@ const classify = async ({
             owner: "b1".repeat(28),
           }),
           releaseFinalityAuthority,
-          settlementAuthority:
-            unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
-              binding: bindingFields as Parameters<
-                typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
-              >[0]["binding"],
-              raw,
-            }),
           transitionTraceEventAuthority:
             unsafeCreateTransitionTraceEventAuthorityFromRawForTest({
               binding: bindingFields as Parameters<

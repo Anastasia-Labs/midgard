@@ -47,10 +47,6 @@
       "midgard-source": "./tests/support/transition-trace-retained.ts",
       "types": "./tests/support/transition-trace-retained.ts"
     },
-    "./test-support/cross-block-settlement-authority": {
-      "midgard-source": "./src/cross-block-duplicate-event/settlement-authority.ts",
-      "types": "./src/cross-block-duplicate-event/settlement-authority.ts"
-    },
     "./test-support/fabricated-history-witness": {
       "midgard-source": "./src/fabricated-history-witness.ts",
       "types": "./src/fabricated-history-witness.ts"

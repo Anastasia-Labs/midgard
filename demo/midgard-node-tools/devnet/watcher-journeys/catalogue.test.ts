@@ -15,11 +15,11 @@ describe("automatic journey catalogue", () => {
       JOURNEY_FIXTURE_CANDIDATES.map(({ category }) => category).sort(),
     ).toEqual([...JOURNEY_CATEGORIES].sort());
   });
-  it("assigns each of the 52 non-interactive families to exactly one fixture owner", () => {
+  it("assigns each of the 51 non-interactive families to exactly one fixture owner", () => {
     const expected = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
       (category) => category !== "validationTraceDispute",
     );
-    expect(expected).toHaveLength(52);
+    expect(expected).toHaveLength(51);
     expect(JOURNEY_CATEGORIES).toEqual(expected);
     expect(Object.keys(JOURNEY_FIXTURE_OWNERS).sort()).toEqual(
       [...expected].sort(),
@@ -38,7 +38,7 @@ describe("automatic journey catalogue", () => {
       Object.values(JOURNEY_FIXTURE_OWNERS).filter(
         (owner) => owner === "history",
       ),
-    ).toHaveLength(13);
+    ).toHaveLength(12);
   });
 
   it("selects the verified trace, direct, and event fixtures for the live gate", () => {
@@ -68,7 +68,6 @@ describe("automatic journey catalogue", () => {
     "transitionTrace,",
     "zeroInput,zeroInput",
     "doubleWithdraw",
-    "crossBlockDuplicateEvent",
   ])(
     "rejects unsupported or ambiguous selection %s before live work",
     (selection) => {

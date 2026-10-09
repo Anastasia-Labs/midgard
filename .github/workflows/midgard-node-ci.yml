@@ -1150,7 +1150,6 @@ jobs:
             watcher-journeys/forced-submission.test.ts \
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-events.test.ts \
-            watcher-journeys/history-settlement.test.ts \
             watcher-journeys/journey-session.test.ts \
             watcher-journeys/journey-timing.test.ts \
             watcher-journeys/kupo-consumption.test.ts \

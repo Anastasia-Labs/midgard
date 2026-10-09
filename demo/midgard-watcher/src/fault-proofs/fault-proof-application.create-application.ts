@@ -9,7 +9,6 @@ import {
   classifyHeader as classifyProductionHeaderV1,
   type CompleteCanonicalReplayContext,
   createCatalogueCompleteCanonicalReplay,
-  createCrossBlockSettlementAuthority,
   createHeaderClassifier,
   FAMILY_APPLICATION_REGISTRY,
   type FamilyValidationChallengePort,
@@ -24,7 +23,6 @@ import {
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  CrossBlockDuplicateEventStep02DatumSchema,
   FabricatedDepositStep02Datum,
   FabricatedDepositStep03Datum,
   FabricatedDepositStep04Datum,
@@ -300,26 +298,6 @@ export function createApplication({
               ),
           ),
         );
-      const binding = await bindFraudProofWorkflowDeployment({
-        manifest: JSON.parse(manifestJson!),
-        blueprintJson: blueprintJson!,
-        deploymentInfo: JSON.parse(deploymentInfoJson!),
-        category: "crossBlockDuplicateEvent",
-        headerHash,
-        proverCredential: "00".repeat(28),
-        stepDatumSchemas: [
-          FraudProofComputationThreadStepDatum,
-          CrossBlockDuplicateEventStep02DatumSchema,
-        ],
-      });
-      if (binding.deploymentFingerprint !== deploymentIdentity.manifestId)
-        throw new Error("cross-block settlement classifier changed deployment");
-      const settlementAuthority = createCrossBlockSettlementAuthority({
-        binding,
-        l1: l1.source(
-          `watcher-settlement-history/${deploymentIdentity.manifestId}`,
-        ),
-      });
       const transitionBinding = await bindFraudProofWorkflowDeployment({
         manifest: JSON.parse(manifestJson!),
         blueprintJson: blueprintJson!,
@@ -435,7 +413,6 @@ export function createApplication({
         replayer,
         releaseFinalityAuthority:
           watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
-        settlementAuthority,
       });
     })();
     return classifierPromise;

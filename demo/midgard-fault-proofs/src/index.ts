@@ -1,7 +1,6 @@
 export * from "./aiken-blueprint-data.js";
 export * from "./canonical-decodability/index.js";
 export * from "./committed-field-shape/index.js";
-export * from "./cross-block-duplicate-event/index.js";
 export * from "./evidence/index.js";
 export * as executionNativeScriptInvalid from "./execution-native-script-invalid/index.js";
 export * from "./execution-source-script-decoding/index.js";
@@ -26,18 +25,6 @@ export * from "./output-reference-script-decoding/index.js";
 // RF-043: legacy diagnostic submit-init/submit-step APIs are intentionally not
 // part of the production package surface.  The CLI and file entrypoints retain
 // the same retirement guard until an authenticated canonical submitter exists.
-export * from "./cross-block-duplicate-event/artifact.js";
-export * from "./cross-block-duplicate-event/replay.js";
-export {
-  createCrossBlockSettlementAuthority,
-  type CrossBlockSettlementAuthority,
-  type CrossBlockSettlementContext,
-  type CrossBlockSettlementRecord,
-  crossBlockSettlementRecords,
-  refreshCrossBlockSettlementContext,
-  requireCrossBlockSettlementAuthority,
-} from "./cross-block-duplicate-event/settlement-authority.js";
-export * from "./cross-block-duplicate-event/workflow.js";
 export * from "./distinct-asset-accumulation-limit/index.js";
 export * from "./invalid-signature/artifact.js";
 export * from "./invalid-signature/contracts.js";

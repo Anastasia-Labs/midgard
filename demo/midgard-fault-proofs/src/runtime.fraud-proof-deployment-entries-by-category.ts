@@ -81,10 +81,6 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofDoubleWithdraw",
     "fraudProofDoubleWithdrawStep02",
   ],
-  crossBlockDuplicateEvent: [
-    "fraudProofCrossBlockDuplicateEvent",
-    "fraudProofCrossBlockDuplicateEventStep02",
-  ],
   l2TxMistag: ["fraudProofL2TxMistag", "fraudProofL2TxMistagStep02"],
   withdrawnInput: [
     "fraudProofWithdrawnInput",

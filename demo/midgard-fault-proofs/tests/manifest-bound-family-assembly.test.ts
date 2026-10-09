@@ -5,7 +5,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as settlementAuthority from "../src/cross-block-duplicate-event/settlement-authority.js";
 import * as inspection from "../src/inspect-contracts.js";
 import * as deployment from "../src/workflow/deployment-manifest-binding.js";
 import { familyStepContractNames } from "../src/workflow/family-definition.js";
@@ -168,16 +167,6 @@ const fixture = (category: AssembledFamilyCategory) => {
     ),
     stateQueueMutationLeaseCoordinator: { acquire: vi.fn() },
   };
-  // The settlement authority is an external L1 authority, isolated alongside
-  // L1 here. Family contract mapping, transaction ports and prerequisite
-  // wiring stay real.
-  vi.spyOn(
-    settlementAuthority,
-    "createCrossBlockSettlementAuthority",
-  ).mockReturnValue({
-    deploymentFingerprint: binding.deploymentFingerprint,
-    capture: vi.fn(),
-  });
   vi.spyOn(
     inspection,
     "parseContractDeploymentReferenceScriptAuthPolicyId",
@@ -192,9 +181,7 @@ const fixture = (category: AssembledFamilyCategory) => {
       ? {}
       : category === "transitionTrace"
         ? { config, cell: {} }
-        : category === "crossBlockDuplicateEvent"
-          ? { retainedDaSources: [] }
-          : undefined);
+        : undefined);
   const assemble = () =>
     assembleManifestBoundFamilyWorkflow(
       definition as never,
@@ -220,7 +207,7 @@ const fixture = (category: AssembledFamilyCategory) => {
 
 describe("manifest-bound family assembly", () => {
   it("covers every migrated definition, linear and cursor", () => {
-    expect(categories).toHaveLength(47);
+    expect(categories).toHaveLength(46);
     expect(
       categories.filter(
         (category) => FAMILY_DEFINITIONS[category].adapter.kind === "linear",
@@ -230,7 +217,7 @@ describe("manifest-bound family assembly", () => {
       categories.filter(
         (category) => FAMILY_DEFINITIONS[category].adapter.kind === "cursor",
       ),
-    ).toHaveLength(29);
+    ).toHaveLength(28);
     for (const category of categories) {
       expect(FAMILY_DEFINITIONS[category].category).toBe(category);
     }

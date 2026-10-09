@@ -32,8 +32,7 @@ export const FAMILY_APPLICATION_RECORD =
  */
 export type FamilyApplicationRequirement =
   | "replayContext"
-  | "validationChallenge"
-  | "retainedDaSources";
+  | "validationChallenge";
 
 /**
  * How a family that disputes a validation trace reaches the freshly admitted
@@ -64,12 +63,6 @@ export type FamilyCommonInfrastructure = Readonly<{
   /** The admitted decision this invocation acts on, when there is one. */
   decisionDigest?: string;
   replayContext?: CompleteCanonicalReplayContext;
-  /**
-   * The admitted public retained-DA sources of this invocation, laid in by the
-   * shared runtime for a family that fetches further blocks' payloads at
-   * build time (crossBlockDuplicateEvent's settled blocks).
-   */
-  retainedDaSources?: readonly RetainedDaPayloadSource[];
   validationChallenge?: FamilyValidationChallengePort;
 }>;
 

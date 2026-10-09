@@ -429,7 +429,6 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       minFee: repeatedFaultProofChain(invalidRange, 2),
       withdrawalMistag: repeatedFaultProofChain(invalidRange, 5),
       doubleWithdraw: repeatedFaultProofChain(doubleSpend, 2),
-      crossBlockDuplicateEvent: repeatedFaultProofChain(doubleSpend, 2),
       l2TxMistag: repeatedFaultProofChain(invalidRange, 2),
       withdrawnInput: repeatedFaultProofChain(nonExistentInput, 3),
       valueNotPreserved: {

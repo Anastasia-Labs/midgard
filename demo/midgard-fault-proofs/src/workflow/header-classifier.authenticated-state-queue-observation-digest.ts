@@ -9,7 +9,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { type CrossBlockSettlementAuthority } from "../cross-block-duplicate-event/settlement-authority.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type TransitionTraceEventAuthority } from "../transition-trace/l1-events.js";
 import {
@@ -202,7 +201,6 @@ export const admittedClassifiers = new WeakMap<
   Readonly<{
     replayer: CompleteCanonicalReplay;
     confirmationDepth: number;
-    settlementAuthority?: CrossBlockSettlementAuthority;
     transitionTraceEventAuthority?: TransitionTraceEventAuthority;
   }>
 >();

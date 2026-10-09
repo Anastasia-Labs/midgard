@@ -23,7 +23,6 @@ import type {
   JourneySuccessor,
   JourneySuccessorCheckpoint,
 } from "./fixture.js";
-import { prepareDuplicateEventHistory } from "./history-settlement.js";
 import {
   type JourneyExecution,
   WATCHER_LAUNCH_TIMEOUT_MS,
@@ -36,10 +35,9 @@ import { readJourneyTiming } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { verifyJourneyPublicDa } from "./public-da-preflight.js";
 import { measureJourneyStage } from "./stage-timing.js";
-import { prepareJourneyHistory } from "./staging.js";
 import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 
-/** One shared service lifecycle for acceptance and genuine history prerequisites. */
+/** One shared service lifecycle for a family's acceptance journey. */
 export const runJourney = async (
   runDirectory: string,
   execution: JourneyExecution,
@@ -50,10 +48,7 @@ export const runJourney = async (
     throw new Error("Journey session belongs to a different run directory");
   await session.assertHealthy();
   const { deployment, provider } = context;
-  const category =
-    execution.kind === "journey"
-      ? execution.fixture.category
-      : "crossBlockDuplicateEvent";
+  const category = execution.fixture.category;
   const directory = join(
     context.runDirectory,
     `work/journeys/${category === "transitionTrace" ? "transition-trace" : category}`,
@@ -121,37 +116,27 @@ export const runJourney = async (
       session;
     const reusedWatcher = session.watcherStarted();
     const baselineStartedAt = new Date().toISOString();
-    const baseline =
-      execution.kind === "journey"
-        ? await captureJourneyWorkflowBaseline(
-            session.workflowJournalDirectory,
-            execution.fixture.category,
-          )
-        : undefined;
-    if (baseline !== undefined)
-      await writeJourneyArtifact(join(directory, "workflow-baseline.json"), {
-        startedAt: baselineStartedAt,
-        finishedAt: new Date().toISOString(),
-        category,
-        prefixes: [...baseline].map(([headerHash, entries]) => ({
-          headerHash,
-          workflowId: entries[0]?.workflowId ?? null,
-          entryCount: entries.length,
-          journalDigest: journalJsonDigest(entries),
-        })),
-      });
-    const timing =
-      execution.kind === "journey"
-        ? await readJourneyTiming(context.runDirectory, category, {
-            authenticatedConfirmationDepth:
-              releaseFinality.policy.confirmationDepth,
-            actionDepth: JOURNEY_ACTION_DEPTH,
-          })
-        : undefined;
-    if (timing !== undefined) {
-      await writeJourneyArtifact(join(directory, "timing-plan.json"), timing);
-      console.info("Live watcher confirmation budget", timing);
-    }
+    const baseline = await captureJourneyWorkflowBaseline(
+      session.workflowJournalDirectory,
+      category,
+    );
+    await writeJourneyArtifact(join(directory, "workflow-baseline.json"), {
+      startedAt: baselineStartedAt,
+      finishedAt: new Date().toISOString(),
+      category,
+      prefixes: [...baseline].map(([headerHash, entries]) => ({
+        headerHash,
+        workflowId: entries[0]?.workflowId ?? null,
+        entryCount: entries.length,
+        journalDigest: journalJsonDigest(entries),
+      })),
+    });
+    const timing = await readJourneyTiming(context.runDirectory, category, {
+      authenticatedConfirmationDepth: releaseFinality.policy.confirmationDepth,
+      actionDepth: JOURNEY_ACTION_DEPTH,
+    });
+    await writeJourneyArtifact(join(directory, "timing-plan.json"), timing);
+    console.info("Live watcher confirmation budget", timing);
     const fixtureStage: JourneyFixtureStage = {
       context,
       directory,
@@ -168,24 +153,6 @@ export const runJourney = async (
         console.info(`Live fixture: ${name}`);
       },
     };
-    if (execution.kind === "prepare_duplicate_event_history") {
-      const head = await stage("honest duplicate-event source history", () =>
-        prepareJourneyHistory(fixtureStage, async (input) => {
-          const history = await prepareDuplicateEventHistory(input);
-          console.info(
-            `Duplicate-event source ${history.source.headerHash} matures at ${new Date(Number(history.readyAt)).toISOString()}; settlement remains required.`,
-          );
-        }),
-      );
-      native.assertHealthy();
-      await writeJourneyArtifact(join(directory, "history-preparation.json"), {
-        deploymentFingerprint: deployment.manifest.manifestId,
-        status: "prepared",
-        head: head.headerHash,
-      });
-      succeeded = true;
-      return;
-    }
     const headPath = join(context.runDirectory, "work/journeys/head.json");
     if (!session.watcherStarted() && existsSync(headPath)) {
       const head = await readJourneyArtifact<{
@@ -227,7 +194,7 @@ export const runJourney = async (
     const { config, requireLive, operations, watcherProgress } = running;
     diagnostics = running.diagnostics;
     const verifiedHeaders = createJourneyVerifiedHeaders(running, directory);
-    const workflowBaseline = baseline?.get(staged.current.headerHash) ?? [];
+    const workflowBaseline = baseline.get(staged.current.headerHash) ?? [];
     await writeJourneyArtifact(join(directory, "session.json"), {
       sessionDirectory: session.directory,
       watcherUse: reusedWatcher ? "reused" : "started",
@@ -312,9 +279,9 @@ export const runJourney = async (
     const completion = await verifyJourneyCorrection({
       workflowBaseline,
       actionDepth: JOURNEY_ACTION_DEPTH,
-      correctionTimeoutMs: timing?.correctionTimeoutMs,
-      progressAllowanceMs: timing?.transactionAllowanceMs,
-      reconciliationAllowanceMs: timing?.allowances.finalizedEvidenceStampMs,
+      correctionTimeoutMs: timing.correctionTimeoutMs,
+      progressAllowanceMs: timing.transactionAllowanceMs,
+      reconciliationAllowanceMs: timing.allowances.finalizedEvidenceStampMs,
       context,
       native,
       workflowJournalDirectory: config.workflowJournalDirectory,
@@ -385,7 +352,7 @@ export const runJourney = async (
         return decision;
       },
       watcherProgress,
-      timing?.allowances.healthySuccessorObservationMs ?? 1_800_000,
+      timing.allowances.healthySuccessorObservationMs,
     );
     await verifiedHeaders.retain();
     await writeJourneyArtifact(
@@ -475,7 +442,7 @@ export const runJourney = async (
             requireLive();
             return (await finalizeEvidence()) === 0 ? true : undefined;
           },
-          timing?.allowances.finalizedEvidenceStampMs,
+          timing.allowances.finalizedEvidenceStampMs,
         ),
       );
     } else {

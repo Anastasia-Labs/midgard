@@ -50,7 +50,6 @@ export const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
   minFee: "fraudProofMinFee",
   withdrawalMistag: "fraudProofWithdrawalMistag",
   doubleWithdraw: "fraudProofDoubleWithdraw",
-  crossBlockDuplicateEvent: "fraudProofCrossBlockDuplicateEvent",
   l2TxMistag: "fraudProofL2TxMistag",
   withdrawnInput: "fraudProofWithdrawnInput",
   valueNotPreserved: "fraudProofValueNotPreserved",

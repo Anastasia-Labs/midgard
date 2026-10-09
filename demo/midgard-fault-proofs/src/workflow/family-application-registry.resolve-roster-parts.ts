@@ -125,24 +125,17 @@ export type CursorFamilyRequirements = Readonly<{
 
 /**
  * The config fields a cursor family reads from the infrastructure its record
- * requires: the replay context, and the retained-DA sources a family that
- * fetches further blocks' payloads reads. The shared loop refuses a required
- * part that is absent before `bindConfig` runs, except on a
- * reconciliation-only invocation, which never reaches the evidence pipeline.
+ * requires: the replay context. The shared loop refuses a required part that
+ * is absent before `bindConfig` runs, except on a reconciliation-only
+ * invocation, which never reaches the evidence pipeline.
  */
 export const requiredInfrastructureFields = (
   family: CursorFamilyRequirements,
 ): ((
   infrastructure: FamilyCommonInfrastructure,
 ) => Readonly<Record<string, unknown>>) => {
-  const requiresSources = family.requires.includes("retainedDaSources");
   return (infrastructure) =>
-    Object.freeze({
-      ...optionalReplayContext(family.requires, infrastructure),
-      ...(requiresSources && infrastructure.retainedDaSources !== undefined
-        ? { retainedDaSources: infrastructure.retainedDaSources }
-        : {}),
-    });
+    Object.freeze(optionalReplayContext(family.requires, infrastructure));
 };
 
 /**

@@ -968,7 +968,7 @@ surface, and a precise matrix `N/A`; prose alone is insufficient.
 | Q39 | `fabricated-deposit` existence and content fidelity                                   | Q00–Q03                                                                       |
 | Q40 | `fabricated-withdrawal` existence and content fidelity                                | Q00–Q03                                                                       |
 | Q41 | `withdrawal-mistag` in both directions including exact payability                     | Q00–Q03                                                                       |
-| Q42 | `cross-block-duplicate-event` with evidence surviving event-NFT consumption           | Q00–Q03                                                                       |
+| Q42 | a deposit or withdrawal event repeated from an earlier block, via Q39/Q40             | Q00–Q03                                                                       |
 | Q43 | `l2-tx-mistag` valid transaction incorrectly made a no-op                             | Q00–Q03, C60                                                                  |
 | Q44 | `da-hash-preimage`                                                                    | Q00–Q03, C30–C31                                                              |
 | Q45 | `script-failure` for enabled native/PlutusV3/MidgardV1 semantics                      | Q00–Q03, C44–C50                                                              |

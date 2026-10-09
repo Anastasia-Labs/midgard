@@ -166,8 +166,6 @@ export const buildDaDeploymentFixture = async (
       withdrawalMistag: contracts.fraudProofWithdrawalMistag!
         .scriptHash as string,
       doubleWithdraw: contracts.fraudProofDoubleWithdraw!.scriptHash as string,
-      crossBlockDuplicateEvent: contracts.fraudProofCrossBlockDuplicateEvent!
-        .scriptHash as string,
       l2TxMistag: contracts.fraudProofL2TxMistag!.scriptHash as string,
       withdrawnInput: contracts.fraudProofWithdrawnInput!.scriptHash as string,
       valueNotPreserved: contracts.fraudProofValueNotPreserved!

@@ -188,11 +188,6 @@ export const DECISION_DIGEST = "44".repeat(32);
  */
 const REPLAY_CONTEXT = Object.freeze({ sentinel: "replayContext" });
 
-/** A retained-DA source roster whose single source is a sentinel. */
-export const RETAINED_DA_SOURCES = Object.freeze([
-  Object.freeze({ sentinel: "retainedDaSources" }),
-]);
-
 /** A challenge port whose challenge records the coordinates it was asked for. */
 const VALIDATION_CHALLENGE_PORT = Object.freeze({
   currentChallenge: async (input: {
@@ -212,7 +207,6 @@ export const infrastructure = {
   stateQueueMutationLeaseCoordinator: {} as never,
   decisionDigest: DECISION_DIGEST,
   replayContext: REPLAY_CONTEXT as never,
-  retainedDaSources: RETAINED_DA_SOURCES as never,
   validationChallenge: VALIDATION_CHALLENGE_PORT as never,
 } satisfies FamilyCommonInfrastructure;
 
@@ -221,14 +215,13 @@ export const { decisionDigest: _undecided, ...undecidedInfrastructure } =
 
 export const {
   replayContext: _replay,
-  retainedDaSources: _sources,
   validationChallenge: _challenge,
   ...plainInfrastructure
 } = infrastructure;
 
 /**
- * The sentinel parts a bound config carries at any depth: the replay context,
- * the challenge, and the retained-DA sources, named by their sentinel.
+ * The sentinel parts a bound config carries at any depth: the replay context
+ * and the challenge, named by their sentinel.
  */
 export const boundSentinels = (value: unknown, found = new Set<string>()) => {
   if (typeof value !== "object" || value === null) return found;
@@ -249,7 +242,6 @@ export const NO_DIGEST_FAMILIES = [
   "withdrawalMistag",
   "minAda",
   "transitionTrace",
-  "crossBlockDuplicateEvent",
   "executionNativeScriptInvalid",
   "missingSignature",
   "networkId",
@@ -286,6 +278,3 @@ export const HAND_WRITTEN_REMOVAL_FAMILIES = [
   "valueNotPreserved",
   "validationTraceDispute",
 ];
-
-/** The families that fetch settled blocks from retained DA. */
-export const RETAINED_DA_SOURCE_FAMILIES = ["crossBlockDuplicateEvent"];

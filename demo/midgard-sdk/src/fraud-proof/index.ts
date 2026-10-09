@@ -7,7 +7,6 @@ export * from "./cek-selection.js";
 export * from "./committed-field-shape.js";
 export * from "./computation-threads.js";
 export * from "./contracts/index.js";
-export * from "./cross-block-duplicate-event.js";
 export * from "./da-hash-preimage.js";
 export * from "./double-spend.js";
 export * from "./double-withdraw.js";

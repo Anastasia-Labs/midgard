@@ -41,7 +41,6 @@ export type FraudProofRawL1ScopeRole =
   | "withdrawal_history_data"
   | "forced_transaction_event"
   | "hub_oracle"
-  | "settlement"
   | "state_queue"
   | FraudProofRawL1ComputationStepRole
   | "permanent_proof_token"
@@ -219,7 +218,6 @@ export const RAW_L1_SCOPE_ROLES = new Set<FraudProofRawL1ScopeRole>([
   "withdrawal_history_data",
   "forced_transaction_event",
   "hub_oracle",
-  "settlement",
   "state_queue",
   "computation_thread_step_01",
   "computation_thread_step_02",

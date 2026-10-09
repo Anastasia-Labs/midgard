@@ -34,20 +34,6 @@ not accept caller-asserted lengths or verdicts.
 
 [Validator source](../../onchain/aiken/validators/fraud-proofs/committed-field-shape).
 
-## Cross-block duplicate-event fault
-
-The family proves that the same authenticated L1 deposit, withdrawal, or forced-order event
-identity was applied by two different L2 blocks. It compares a live challenged
-state-queue block with a distinct confirmed settlement block and requires the
-same event key in the same counted-root domain.
-
-Two distinct withdrawal ids spending the same L2 output are handled by
-`doubleWithdraw`; duplicate still-live events and due-window violations remain
-transition-trace concerns. This family does not treat an unauthenticated
-off-chain archive as evidence.
-
-[Validator source](../../onchain/aiken/validators/fraud-proofs/cross-block-duplicate-event).
-
 ## Double-withdraw fault
 
 The family proves that one block commits two distinct payable withdrawal events
@@ -59,9 +45,10 @@ still omits the two `WithdrawalIsValid` preconditions from its displayed formula
 That is an outstanding specification reconciliation item; the implemented
 predicate described here includes both.
 
-The family is same-block only. Reuse of the same event in two blocks belongs to
-`crossBlockDuplicateEvent`, while a later spend after settlement is handled by
-the state-transition/input-validity machinery.
+The family is same-block only. A deposit or withdrawal event repeated from an
+earlier block is not eligible in the later block's window, so `fabricatedDeposit`
+or `fabricatedWithdrawal` convicts it; a later spend after settlement is handled
+by the state-transition/input-validity machinery.
 
 [Validator source](../../onchain/aiken/validators/fraud-proofs/double-withdraw).
 

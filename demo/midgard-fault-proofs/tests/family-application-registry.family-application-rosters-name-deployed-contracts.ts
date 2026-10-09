@@ -24,8 +24,6 @@ import {
   referenceRoles,
   registry,
   REPLAY_CONTEXT_FAMILIES,
-  RETAINED_DA_SOURCE_FAMILIES,
-  RETAINED_DA_SOURCES,
   undecidedInfrastructure,
   VALIDATION_CHALLENGE_FAMILIES,
   WITNESS_ROLES,
@@ -240,7 +238,6 @@ describe("family application records declare the infrastructure they read", () =
       const config = await bind(record, { infrastructure, references });
       const sentinels = boundSentinels(config);
       const requiresReplay = record.requires.includes("replayContext");
-      const requiresSources = record.requires.includes("retainedDaSources");
       const requiresChallenge = record.requires.includes("validationChallenge");
       expect(sentinels.has("replayContext")).toBe(
         requiresReplay ||
@@ -256,7 +253,6 @@ describe("family application records declare the infrastructure they read", () =
           decisionDigest: DECISION_DIGEST,
         });
       }
-      expect(sentinels.has("retainedDaSources")).toBe(requiresSources);
       // The same record binds without the optional parts: the shared loop
       // refuses a missing required part before binding, and the family's own
       // execution fail-closes on a workflow bound without it.
@@ -284,25 +280,5 @@ describe("family application records declare the infrastructure they read", () =
         .map((record) => record.category)
         .sort(),
     ).toEqual([...REPLAY_CONTEXT_FAMILIES].sort());
-  });
-
-  it("requires the retained-DA sources on exactly the families that fetch settled blocks", () => {
-    expect(
-      Object.values(registry)
-        .filter((record) => record.requires.includes("retainedDaSources"))
-        .map((record) => record.category)
-        .sort(),
-    ).toEqual([...RETAINED_DA_SOURCE_FAMILIES].sort());
-  });
-
-  it("lays the host's retained-DA sources into every retained-DA family", async () => {
-    for (const category of RETAINED_DA_SOURCE_FAMILIES) {
-      const record = registry[category]!;
-      const config = await bind(record, {
-        infrastructure,
-        references: referenceRoles(record.roster),
-      });
-      expect(config.retainedDaSources, category).toBe(RETAINED_DA_SOURCES);
-    }
   });
 });

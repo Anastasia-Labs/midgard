@@ -24,7 +24,6 @@
  * fails typecheck.
  */
 
-import "../cross-block-duplicate-event/workflow.js";
 import "../distinct-asset-accumulation-limit/v1.js";
 import "../execution-native-script-invalid/v1.js";
 import "../execution-source-script-decoding/v1.js";
@@ -87,7 +86,6 @@ export {
   WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
 } from "./family-application-registry.authenticated-certificate-family-application-record.js";
 export {
-  CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD,
   EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
   MIN_ADA_FAMILY_APPLICATION_RECORD,
   MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD,

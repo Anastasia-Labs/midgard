@@ -42,16 +42,15 @@ negative passes, and its full correction lifecycle is exercised.
 
 ## Transition and event rules
 
-| Rule or fault class                                                              | Category                   |
-| -------------------------------------------------------------------------------- | -------------------------- |
-| Trace boundary/link/source/event/count/duplicate/omission/window/one-step faults | `transitionTrace`          |
-| DA transaction key/preimage mismatch                                             | `daHashPreimage`           |
-| Fabricated deposit                                                               | `fabricatedDeposit`        |
-| Fabricated withdrawal                                                            | `fabricatedWithdrawal`     |
-| Withdrawal validity mistag                                                       | `withdrawalMistag`         |
-| Duplicate payable withdrawal                                                     | `doubleWithdraw`           |
-| Cross-block duplicate L1 event                                                   | `crossBlockDuplicateEvent` |
-| Normal L2 transaction mistagged invalid                                          | `l2TxMistag`               |
+| Rule or fault class                                                              | Category               |
+| -------------------------------------------------------------------------------- | ---------------------- |
+| Trace boundary/link/source/event/count/duplicate/omission/window/one-step faults | `transitionTrace`      |
+| DA transaction key/preimage mismatch                                             | `daHashPreimage`       |
+| Fabricated deposit                                                               | `fabricatedDeposit`    |
+| Fabricated withdrawal                                                            | `fabricatedWithdrawal` |
+| Withdrawal validity mistag                                                       | `withdrawalMistag`     |
+| Duplicate payable withdrawal                                                     | `doubleWithdraw`       |
+| Normal L2 transaction mistagged invalid                                          | `l2TxMistag`           |
 
 ## Structural non-categories
 

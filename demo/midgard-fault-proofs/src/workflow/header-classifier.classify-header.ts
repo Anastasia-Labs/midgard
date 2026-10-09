@@ -297,17 +297,6 @@ export const classifyHeader = async ({
   ) {
     admittedReplayContext = Object.freeze({});
   }
-  if (classifier.launchScope.includes("crossBlockDuplicateEvent")) {
-    if (authority.settlementAuthority === undefined)
-      throw new Error("cross-block settlement authority was lost");
-    admittedReplayContext = Object.freeze({
-      ...admittedReplayContext,
-      settlements: await authority.settlementAuthority.capture(
-        routed.evidence,
-        { sources, ...(retries === undefined ? {} : { retries }) },
-      ),
-    });
-  }
   if (transitionTraceEvents !== undefined) {
     admittedReplayContext = Object.freeze({
       ...admittedReplayContext,

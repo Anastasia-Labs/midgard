@@ -1,4 +1,3 @@
-import { CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION } from "../cross-block-duplicate-event/workflow.js";
 import { DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION } from "../distinct-asset-accumulation-limit/v1.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION } from "../execution-native-script-invalid/v1.js";
 import { EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../execution-source-script-decoding/v1.js";
@@ -48,7 +47,6 @@ type CursorFamilyDefinitions = Readonly<{
   scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
   transitionTrace: typeof TRANSITION_TRACE_FAMILY_DEFINITION;
   minAda: typeof MIN_ADA_FAMILY_DEFINITION;
-  crossBlockDuplicateEvent: typeof CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION;
   nativeScriptInvalid: typeof NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION;
   distinctAssetAccumulationLimit: typeof DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION;
   mintDeclaredAssetLimit: typeof MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION;
@@ -86,7 +84,6 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
       SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
     transitionTrace: TRANSITION_TRACE_FAMILY_DEFINITION,
     minAda: MIN_ADA_FAMILY_DEFINITION,
-    crossBlockDuplicateEvent: CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION,
     nativeScriptInvalid: NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
     distinctAssetAccumulationLimit:
       DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION,

@@ -67,7 +67,6 @@ export const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "minFee",
   "withdrawalMistag",
   "doubleWithdraw",
-  "crossBlockDuplicateEvent",
   "l2TxMistag",
   "withdrawnInput",
   "valueNotPreserved",

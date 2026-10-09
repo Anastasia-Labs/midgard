@@ -1,10 +1,6 @@
 import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
 
 import {
-  type CrossBlockSettlementAuthority,
-  requireCrossBlockSettlementAuthority,
-} from "../cross-block-duplicate-event/settlement-authority.js";
-import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../evidence/canonical-block-evidence.js";
@@ -40,26 +36,17 @@ export const createHeaderClassifier = async ({
   deploymentFingerprint,
   replayer,
   releaseFinalityAuthority,
-  settlementAuthority,
   transitionTraceEventAuthority,
 }: {
   readonly deploymentFingerprint: string;
   readonly replayer: CompleteCanonicalReplay;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  readonly settlementAuthority?: CrossBlockSettlementAuthority;
   readonly transitionTraceEventAuthority?: TransitionTraceEventAuthority;
 }): Promise<HeaderClassifier> => {
   const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
   );
   requireCompleteCanonicalReplayBundle(replayer);
-  if (
-    replayer.launchScope.includes("crossBlockDuplicateEvent") &&
-    settlementAuthority === undefined
-  )
-    throw new Error(
-      "cross-block duplicate classifier requires live settlement authority",
-    );
   if (
     replayer.launchScope.includes("transitionTrace") ||
     (replayer.launchScope.includes("validationTraceDispute") &&
@@ -74,14 +61,6 @@ export const createHeaderClassifier = async ({
         "Transition classifier requires admitted raw L1 event authority",
       );
     requireTransitionTraceEventAuthority(transitionTraceEventAuthority);
-  }
-  if (settlementAuthority !== undefined) {
-    requireCrossBlockSettlementAuthority(settlementAuthority);
-    if (
-      settlementAuthority.deploymentFingerprint !==
-      normalizedDeploymentFingerprint
-    )
-      throw new Error("cross-block settlement authority changed deployment");
   }
   if (
     releaseFinalityAuthority.authorityVersion !==
@@ -117,7 +96,6 @@ export const createHeaderClassifier = async ({
         : { transitionTraceEventAuthority }),
       // Classification authorizes reversible fault-proof actions on inclusion.
       confirmationDepth: 1,
-      ...(settlementAuthority === undefined ? {} : { settlementAuthority }),
     }),
   );
   return classifier;
