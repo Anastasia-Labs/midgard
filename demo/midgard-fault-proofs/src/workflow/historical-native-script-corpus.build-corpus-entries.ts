@@ -9,7 +9,11 @@ import {
 } from "@al-ft/midgard-core";
 import { assertSecurityGradeEvidence } from "@al-ft/midgard-sdk";
 
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import {
+  rememberingRetainedDaPayloadVerifier,
+  retainedDaPayloadHeaderVerifier,
+  type RetainedDaPayloadSource,
+} from "../transition-trace/fetch.js";
 import { type TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import {
   type HistoricalNativeScriptCorpus,
@@ -217,14 +221,28 @@ export const fetchHistoricalPayload = async ({
 }): Promise<Buffer> => {
   void retries;
   if (sources.length > 0) {
+    const verifyPayload = rememberingRetainedDaPayloadVerifier(
+      retainedDaPayloadHeaderVerifier(headerHash),
+    );
     const results = await Promise.all(
       sources.map(
-        async (source) => await source.fetchPayloadByHeaderHash(headerHash),
+        async (source) =>
+          await source.fetchPayloadByHeaderHash(headerHash, { verifyPayload }),
+      ),
+    );
+    // A copy that is not the requested payload neither counts as a success
+    // nor as disagreement; it leaves the fail-closed path below.
+    const verdicts = await Promise.all(
+      results.map(async (result) =>
+        result.ok ? await verifyPayload(result.payloadEnvelopeCbor) : undefined,
       ),
     );
     const successes = results.filter(
-      (result): result is Extract<typeof result, { readonly ok: true }> =>
-        result.ok,
+      (
+        result,
+        index,
+      ): result is Extract<typeof result, { readonly ok: true }> =>
+        result.ok && verdicts[index]?.ok === true,
     );
     if (successes.length > 0) {
       successes.forEach((success) =>

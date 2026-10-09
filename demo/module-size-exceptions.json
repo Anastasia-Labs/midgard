@@ -231,7 +231,7 @@
   },
   {
     "file": "midgard-fault-proofs/src/transition-trace/fetch.da-libp2p-retained-da-source.ts",
-    "max": 583,
+    "max": 558,
     "reason": "DaLibp2pRetainedDaSource is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
@@ -1371,7 +1371,7 @@
   },
   {
     "file": "midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
-    "max": 800,
+    "max": 795,
     "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

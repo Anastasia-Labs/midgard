@@ -15,6 +15,7 @@ import {
   DaLibp2pRetainedDaSource,
   type RetainedDaLibp2pRequest,
   type RetainedDaLibp2pTransport,
+  type RetainedDaPayloadFetchOptions,
   type RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs";
 
@@ -216,16 +217,19 @@ export class WatcherRetainedDaSourceWithL1Fallback extends DaLibp2pRetainedDaSou
     super(options);
   }
 
-  override async fetchPayloadByHeaderHash(headerHash: string) {
+  override async fetchPayloadByHeaderHash(
+    headerHash: string,
+    options?: RetainedDaPayloadFetchOptions,
+  ) {
     const readScope = watcherRetainedDaReadScope();
     this.lifetime?.throwIfAborted();
-    const result = await super.fetchPayloadByHeaderHash(headerHash);
+    const result = await super.fetchPayloadByHeaderHash(headerHash, options);
     this.lifetime?.throwIfAborted();
     readScope?.scope.assertCurrent();
     if (result.ok) return result;
     const fallback = await (
       readScope?.l1Source ?? this.l1Source
-    ).fetchPayloadByHeaderHash(headerHash);
+    ).fetchPayloadByHeaderHash(headerHash, options);
     readScope?.scope.assertCurrent();
     this.lifetime?.throwIfAborted();
     return {
