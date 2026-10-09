@@ -177,6 +177,22 @@ Commitment and liveness (raised by fibers, cleared by them):
   keep timing out. Read the named scope's log lines; restart the node if a
   holder never returns.
 
+Node instance lock (`src/services/node-instance-lock.ts`):
+
+- `node_instance_lock_held_elsewhere`: another live process holds this
+  node's instance lock on the same database schema: another node, or an L1
+  follower command on the node's follower tables. This node waits, or holds
+  its operator duties, until that process's session ends. Stop the other
+  node or follower command pointed at this database. If none should exist,
+  check `pg_locks`/`pg_stat_activity` for the advisory holder. The node
+  takes over by itself once the holder is gone.
+- `node_instance_lock_unavailable`: no Postgres session could be opened to
+  try the lock at startup. Retried on backoff up to 30 s. Restore Postgres
+  reachability and credentials. No restart is needed.
+- `node_instance_lock_suspended`: the session holding the lock ended under a
+  live node. Commit, settlement, merge and watchdog are held while it
+  reconnects. Usually no action; if it persists, check Postgres stability.
+
 L1 follower and follower-change driver
 (`src/services/l1-follower.readiness.ts`):
 
