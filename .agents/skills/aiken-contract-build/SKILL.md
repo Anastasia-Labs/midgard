@@ -40,70 +40,43 @@ scripts and the pre-commit hook run `aiken`. Blind spot: a raw `aiken` command
 typed by hand is never checked, and `aikup` can silently repoint `aiken` at a
 stock release. [script: onchain/aiken/scripts/pinned-compiler.mjs]
 
-Run large Midgard vectors one compiler process at a time. Use the repository
-guard for one exact test:
+Run large Midgard vectors one compiler process at a time, and run every check
+through one of two guards. Each fails closed when it collects zero tests, and
+each prints the largest unit-test memory and CPU units with their share of the
+GOAL_SPEC §3.3 basis (a reading, not a gate; a test is not a transaction):
 
-```bash
-node scripts/run-focused-check.mjs \
-  midgard/validation_machine/machine_types \
-  exact_test_name
-```
+- **Exact tests in one module:** pass every unique name to one invocation
+  rather than recompiling the tree for each. It fails unless exactly that many
+  tests from that one module pass. Its stdout stays Aiken's report (the
+  execution ledgers parse it); the summary goes to stderr.
+  [script: onchain/aiken/scripts/run-focused-check.mjs]
 
-When several exact tests in the same module are required, pass every unique
-name to one guard invocation rather than recompiling the tree for each.
-[review]
+  ```bash
+  node scripts/run-focused-check.mjs \
+    midgard/validation_machine/machine_types \
+    first_exact_test_name \
+    second_exact_test_name
+  ```
 
-```bash
-node scripts/run-focused-check.mjs \
-  midgard/validation_machine/machine_types \
-  first_exact_test_name \
-  second_exact_test_name
-```
+  For a dotted test filename, pass the full source module without `.ak`; for
+  example, tests in `cek-data-traverse.max-cardano.test.ak` use
+  `midgard/cek-data-traverse.max-cardano.test` plus the exact test name. The
+  guard builds the shortened Aiken selector and checks the reported module.
 
-The guard constructs one module-qualified exact selector per name and fails
-unless exactly that many tests are collected and all pass. Do not combine a
-bare test name with `aiken check -e`: Aiken can collect zero tests and still
-exit successfully. Blind spot: the guard protects only runs made through it; a
-raw `aiken check -m` that collects zero tests still exits 0.
-[script: onchain/aiken/scripts/run-focused-check.mjs]
-For a dotted test filename, pass the full source module without `.ak`; for
-example, tests in `cek-data-traverse.max-cardano.test.ak` use
-`midgard/cek-data-traverse.max-cardano.test` plus the exact test name. The guard
-constructs the shortened Aiken selector internally and checks the full reported
-module identity. Use the prefix before the first dot only for a direct
-`aiken check -m` selector, where it can also select sibling test modules.
-When invoking Aiken directly, use:
+- **Every test in the modules a selector matches:**
+  `node scripts/guard-focused-selector.mjs <module-selector>...`, or `--all`
+  for the whole suite. The module part is a substring match, so
+  `midgard/native_tx_field_access_v1` also runs
+  `midgard/native_tx_field_access_v1.test` and
+  `midgard/native_tx_field_access_v1_golden.test`. It prints one JSON line per
+  selector: the collected count and the `exUnits` summary.
 
-```bash
-aiken check \
-  -m 'midgard/validation_machine/machine_types.{exact_test_name}' \
-  -e --plain-numbers
-```
-
-To run every test in the modules whose name **contains** a string, use the
-brace form with `..`, or the same text with no braces; on the pinned fork both
-collect the same set (as of 2026-09-26, `aiken v1.1.23+5adf783`):
-
-```bash
-aiken check -m 'midgard/native_tx_field_access_v1.{..}'
-```
-
-The module part is a substring match, so this also runs
-`midgard/native_tx_field_access_v1.test` and
-`midgard/native_tx_field_access_v1_golden.test`. What collects **zero** tests
-and still exits 0 is a selector with no `/` and no `.` (`-m name_v1` is read
-as a test-name filter, not a module) and a dotted module name (the text after
-the first `.` becomes a test-name filter). The fork's
-`Suspicious test filter (-m) yielding no test scenarios` warning fires only
-for a single test-name filter, and did not print at all with output piped. A
-gate that checks only the exit status passes while running nothing. Full
+A raw `aiken check -m` exits 0 when it collects nothing: a selector with no `/`
+and no `.` (`-m name_v1` is read as a test-name filter, not a module), a dotted
+module name (the text after the first `.` becomes a test-name filter), or a
+bare test name with `-e`. The fork's `Suspicious test filter` warning fires
+only for a single test-name filter, and not at all with output piped. Full
 selector rules: [references/cli-traps.md](references/cli-traps.md).
-
-`onchain/aiken/scripts/guard-focused-selector.mjs <module-selector>` and
-`scripts/run-focused-check.mjs <module> <test>...` both fail closed on a zero
-collected total. The guard takes bare module selectors on purpose and is safe
-with them. For the whole suite, `guard-focused-selector.mjs --all` runs
-`aiken check` under the same rules and prints the collected count.
 
 **Never gate or report on a hand-rolled `aiken check -m`**; run the selector
 through one of those two scripts. Blind spot: nothing stops a hand-typed
