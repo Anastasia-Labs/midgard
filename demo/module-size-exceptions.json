@@ -936,8 +936,8 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1038,
-    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3): reads the horizon lag d from config.history-commit-horizon-lag.ts, which refuses a negative, fractional or deeper-than-k value at startup. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read. N1-close (-10): the deleted Ogmios and Kupo endpoint keys are no longer read."
+    "max": 1033,
+    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3): reads the horizon lag d from config.history-commit-horizon-lag.ts, which refuses a negative, fractional or deeper-than-k value at startup. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read. N1-close (-10): the deleted Ogmios and Kupo endpoint keys are no longer read. FIXN (-5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is no longer read; the startup deployment-status read retries with no attempt bound."
   },
   {
     "file": "midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",

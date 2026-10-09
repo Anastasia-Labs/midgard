@@ -17,6 +17,10 @@ import { installL1FollowerTipReader } from "../l1-heads.js";
 import { isConnectionClassError } from "../provider-retry.js";
 import { ConfigError, NodeConfig, NodeConfigDep } from "./config.js";
 import { databaseUpstreamSocket } from "./database-upstream-socket.js";
+import {
+  DATABASE_UNREACHABLE,
+  reportStartupWaiting,
+} from "./startup-waiting.js";
 
 /**
  * Database service wiring for the Midgard node.
@@ -54,42 +58,45 @@ export const databaseConnectTimeout = (
 export type DatabaseStartupRetryOptions = {
   readonly baseDelay: Duration.DurationInput;
   readonly maxDelay: Duration.DurationInput;
-  /** How long a pool keeps waiting for a server that will not connect. */
-  readonly budget: Duration.DurationInput;
 };
 
 export const DATABASE_STARTUP_RETRY: DatabaseStartupRetryOptions = {
   baseDelay: Duration.millis(500),
   maxDelay: Duration.seconds(5),
-  budget: Duration.minutes(15),
 };
 
 /**
  * Rebuilds `layer` while it fails because PostgreSQL cannot be reached or
  * will not yet take a connection (restarting, in recovery, out of slots),
- * logging the unready reason. Any other failure (bad credentials, a missing
+ * with no deadline: it logs the unready reason and reports
+ * `database_unreachable` to the node's startup (`reportStartupWaiting`)
+ * until the pool opens. Any other failure (bad credentials, a missing
  * database, a configuration error) fails at once.
  */
 export const retryDatabaseConnectionAtStartup = <A, E, R>(
   layer: Layer.Layer<A, E, R>,
   role: DatabasePoolRole,
   options: DatabaseStartupRetryOptions = DATABASE_STARTUP_RETRY,
-): Layer.Layer<A, E, R> =>
-  Layer.retry(
+): Layer.Layer<A, E, R> => {
+  const key = `database_pool:${role}`;
+  return Layer.retry(
     layer,
     Schedule.exponential(options.baseDelay).pipe(
       Schedule.union(Schedule.spaced(options.maxDelay)),
-      Schedule.upTo(options.budget),
       Schedule.whileInput((error: E) => isConnectionClassError(error)),
       Schedule.tapInput((error: E) =>
         isConnectionClassError(error)
-          ? Effect.logWarning(
-              `Database unready: reason=database_unreachable; the ${role} pool waits and reconnects. cause=${formatUnknownError(error, { includeCause: true })}`,
+          ? Effect.zipRight(
+              reportStartupWaiting(key, [DATABASE_UNREACHABLE]),
+              Effect.logWarning(
+                `Database unready: reason=${DATABASE_UNREACHABLE}; the ${role} pool waits and reconnects. cause=${formatUnknownError(error, { includeCause: true })}`,
+              ),
             )
           : Effect.void,
       ),
     ),
-  );
+  ).pipe(Layer.tap(() => reportStartupWaiting(key, [])));
+};
 
 /**
  * Builds the PostgreSQL client layer from the decoded node configuration.

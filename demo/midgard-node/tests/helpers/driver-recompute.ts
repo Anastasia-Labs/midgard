@@ -1,7 +1,8 @@
 /**
  * The follower-change driver's recompute (`makeDriverRecompute`) over the
  * node database, for tests without a followed chain. Its plan is what
- * `plan` writes and returns (a follower view, e.g. `writeFollowerView`);
+ * `plan` writes and returns (a follower view, e.g. `writeFollowerView`), or
+ * what `planCurrent` reads from a follower store;
  * slots are model time (`modelSlotTime`); the validation cache is the
  * production one, and the caller provides the write-behind; the native MPF
  * owner is the one the test placed in `globals` (none is started). The
@@ -18,6 +19,7 @@ import {
   readFollowerWriteGate,
   withFollowerWrite,
 } from "../../src/services/follower-write-gate.js";
+import type { FollowerPlanRead } from "../../src/services/l1-follower.readiness.js";
 import { makeDriverRecompute } from "../../src/services/l1-follower.recompute.js";
 import { Lucid } from "../../src/services/lucid.js";
 import { mempoolLedgerCacheLayer } from "../../src/services/mempool-ledger-cache.js";
@@ -36,6 +38,8 @@ export const testDriverRecompute = <R = never>(
   options: {
     /** Writes the follower view the run applies; default: no events at `DRIVER_TEST_SLOT`. */
     readonly plan?: Effect.Effect<IngestionPlan, unknown, Database>;
+    /** Reads the plan from a follower store instead (`planCurrentView`). */
+    readonly planCurrent?: () => Promise<FollowerPlanRead>;
     readonly startupPreparation?: Effect.Effect<void, unknown, R>;
   } = {},
 ) =>
@@ -43,10 +47,12 @@ export const testDriverRecompute = <R = never>(
     const runtime = yield* Effect.runtime<Database>();
     const plan = options.plan ?? writeFollowerView(DRIVER_TEST_SLOT, []);
     return yield* makeDriverRecompute({
-      planCurrent: () =>
-        Runtime.runPromise(runtime)(
-          plan.pipe(Effect.map((at) => ({ kind: "ok", plan: at }) as const)),
-        ),
+      planCurrent:
+        options.planCurrent ??
+        (() =>
+          Runtime.runPromise(runtime)(
+            plan.pipe(Effect.map((at) => ({ kind: "ok", plan: at }) as const)),
+          )),
       ...(options.startupPreparation === undefined
         ? {}
         : { startupPreparation: options.startupPreparation }),

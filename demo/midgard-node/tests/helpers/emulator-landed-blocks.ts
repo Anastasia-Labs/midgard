@@ -1,7 +1,7 @@
 /**
  * Landed-block processing for the production lifecycle, as the production
  * driver runs it: the hook (`landedBlockHook`) after the driver's sink, at
- * the run's view under the driver's write capability (`withDriverView`),
+ * the change's view under the driver's write capability (`withDriverView`),
  * over a follower store in the node's database, with the node's ports and
  * the driver's recompute as the rebase.
  */
@@ -87,12 +87,12 @@ export const openLandedBlocks = async (args: {
     { projection: events, forcedOrders, stateQueue },
     args.rebase,
   );
-  const hook: EmulatorLandedBlocks = (view) =>
+  const hook: EmulatorLandedBlocks = (change) =>
     landedBlockHook({
       store,
       config: stateQueue,
       ports,
-      run: (effect) => args.run(withDriverView(view)(effect)),
-    })({ kind: "unchanged", view });
+      run: (effect) => args.run(withDriverView(change.view)(effect)),
+    })(change);
   return { hook, close: () => store.close() };
 };

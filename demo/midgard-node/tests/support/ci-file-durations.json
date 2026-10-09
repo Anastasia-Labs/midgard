@@ -344,6 +344,14 @@
     "tests/signed-intent-continuation-emulator.test.ts": 13.8,
     "tests/signed-intent-restart-emulator.test.ts": 11.8,
     "tests/signed-intent-response-loss-emulator.test.ts": 12.5,
-    "tests/production-lifecycle-streaming-emulator.test.ts": 77.1
+    "tests/production-lifecycle-streaming-emulator.test.ts": 77.1,
+    "tests/follower-orphan-repair.test.ts": 5.6,
+    "tests/follower-tick.test.ts": 6.9,
+    "tests/node-instance-lock.session-loss.test.ts": 8.2,
+    "tests/database-startup-schema-check.test.ts": 5.9,
+    "tests/startup-protocol-initialization-hold.test.ts": 7.8,
+    "tests/mpf-native-child-rpc-stdin.test.ts": 4.8,
+    "tests/startup-waiting.test.ts": 7.8,
+    "tests/mempool-retrieve-page-order.test.ts": 5
   }
 }

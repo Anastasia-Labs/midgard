@@ -11,8 +11,13 @@ import {
   classifyDaEnvelopeCapabilityQuorum,
   DaCapabilityMismatchError,
   DaCapabilityQuorumPendingError,
+  daProviderAssertionsWaitReason,
 } from "../src/da/startup.js";
 import { isRetryableProviderError } from "../src/provider-retry.js";
+import {
+  DA_CAPABILITY_QUORUM_PENDING,
+  StartupWaitingReporter,
+} from "../src/services/startup-waiting.js";
 
 const manifest = { threshold: 2 } as DaProducerPublicationManifest;
 
@@ -100,7 +105,10 @@ describe("classifyDaEnvelopeCapabilityQuorum", () => {
 });
 
 describe("the startup DA capability quorum", () => {
-  const retry = { maxAttempts: 20, retryDelayMs: 0 } as const;
+  const retry = {
+    retryDelayMs: 0,
+    reason: daProviderAssertionsWaitReason,
+  } as const;
   const scripted = (rounds: readonly DaEnvelopeCapabilityPeerResult[][]) => {
     let calls = 0;
     return {
@@ -117,18 +125,27 @@ describe("the startup DA capability quorum", () => {
     quorumManifest: DaProducerPublicationManifest = manifest,
   ) => {
     let proceeded = 0;
+    const reported: [string, readonly string[]][] = [];
     const effect = runStartupProviderStepWithRetry(
-      "Startup DA provider assertions",
+      "da_provider_assertions",
       assertDaEnvelopeCapabilityQuorumOnStartup(
         quorumManifest,
         "zstd",
         probe.probe,
       ),
       retry,
-    ).pipe(Effect.tap(() => Effect.sync(() => (proceeded += 1))));
+    ).pipe(
+      Effect.tap(() => Effect.sync(() => (proceeded += 1))),
+      Effect.locally(StartupWaitingReporter, (key, reasons) =>
+        Effect.sync(() => {
+          reported.push([key, reasons]);
+        }),
+      ),
+    );
     return {
       run: () => Effect.runPromise(Effect.either(effect)),
       proceeded: () => proceeded,
+      reported: () => reported,
     };
   };
 
@@ -145,6 +162,26 @@ describe("the startup DA capability quorum", () => {
 
     expect(result._tag).toBe("Right");
     expect(probe.calls()).toBe(4);
+    expect(run.proceeded()).toBe(1);
+    expect(run.reported()).toEqual([
+      ["da_provider_assertions", [DA_CAPABILITY_QUORUM_PENDING]],
+      ["da_provider_assertions", [DA_CAPABILITY_QUORUM_PENDING]],
+      ["da_provider_assertions", [DA_CAPABILITY_QUORUM_PENDING]],
+      ["da_provider_assertions", []],
+    ]);
+  });
+
+  it("keeps waiting with no deadline while the quorum is still forming", async () => {
+    const shortfall = [answered(0), notYetServing(1), notYetServing(2)];
+    const probe = scripted([
+      ...Array.from({ length: 150 }, () => shortfall),
+      [answered(0), answered(1), unanswered(2)],
+    ]);
+    const run = startup(probe);
+    const result = await run.run();
+
+    expect(result._tag).toBe("Right");
+    expect(probe.calls()).toBe(151);
     expect(run.proceeded()).toBe(1);
   });
 

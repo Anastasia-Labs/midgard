@@ -6,9 +6,9 @@
  *    block's delta (the caller's);
  * 2. the deposits projected into the working ledger outside any block;
  * 3. every pending transaction, in admission order, re-simulated on what
- *    came before it. A transaction whose input is gone is rejected
- *    ("direct"), with every transaction that spends a rejected one's output
- *    ("dependent"), transitively; the rejections commit with the rebuild or
+ *    came before it. A transaction an input or reference input of which is
+ *    gone is rejected ("direct"), with every transaction that spends or
+ *    reads a rejected one's output ("dependent"), transitively; the rejections commit with the rebuild or
  *    not at all.
  *
  * Pending means unmarked: a row a processed base block includes is marked
@@ -34,6 +34,7 @@ import {
   type LedgerRow,
   loadPendingTxs,
   type PendingTx,
+  readsOf,
 } from "./working-ledger-recompute.pending-txs.js";
 import {
   closeRejections,
@@ -48,7 +49,9 @@ const Columns = MempoolLedgerDB.Columns;
 
 type Provenance = Readonly<{ txId: Buffer; sourceEventId: Buffer | null }>;
 
-/** Replays `pending` on `base`, skipping `rejected`; rejects what cannot apply. */
+/** Replays `pending` on `base`, skipping `rejected`; rejects what cannot
+ * apply: a transaction an output it spends or reads by reference is not in
+ * the ledger before it. */
 const simulate = (
   base: ReadonlyMap<string, Buffer>,
   pending: readonly PendingTx[],
@@ -65,7 +68,9 @@ const simulate = (
   for (const tx of pending) {
     const id = txIdHex(tx);
     if (out.has(id)) continue;
-    const missing = tx.spent.map(hex).filter((key) => !ledger.has(key));
+    const missing = readsOf(tx)
+      .map(hex)
+      .filter((key) => !ledger.has(key));
     if (missing.length > 0) {
       out.add(id);
       changed = true;

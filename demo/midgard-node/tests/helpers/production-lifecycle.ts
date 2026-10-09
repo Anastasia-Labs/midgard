@@ -1,7 +1,8 @@
 /**
  * The node's production pieces over an actual deployment on the emulator
  * (N1): the follower host following the emulator (`emulator-l1-follower.ts`)
- * and the follower-change driver over it (`makeEmulatorDriver`): its sink, its
+ * and the production follower's composition (`followerTick`) with the
+ * follower-change driver over it (`makeEmulatorDriver`): its sink, its
  * recompute with the node's startup preparation (`prepareNodeOnStartup`)
  * and native MPF owner, the rebase the own-commit disposition makes due
  * and, with `landedBlocks`, the landed-block hook at each applied view.
@@ -353,7 +354,7 @@ export const openProductionLifecycle = async (
         const view = driver.applied();
         if (landed === undefined || view === null)
           throw new Error("No landed-block hook or no applied view");
-        return landed.hook(view);
+        return landed.hook({ kind: "unchanged", view });
       },
       command,
       runWithoutSynchronizing,

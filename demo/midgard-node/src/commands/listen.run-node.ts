@@ -8,13 +8,17 @@ import { Cause, Effect, Option, pipe, Ref } from "effect";
 import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.js";
 import {
   assertDaHardeningProviderStartup,
+  daProviderAssertionsWaitReason,
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
 } from "../da/startup.js";
 import { DaPayloadsDB, InitDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
-import { refreshAdmissionBacklogGauge } from "../fibers/index.js";
+import {
+  refreshAdmissionBacklogGauge,
+  refreshAdmissionBacklogGaugeOnStartup,
+} from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
 import {
   admissionAsDefaultSqlLayer,
@@ -122,8 +126,9 @@ export const runNode = (
     );
     // The single-process exclusion: every startup step after this one, the
     // follower's lease release, mutation-job classification and driver
-    // included, runs in the one process holding the lock. A second process
-    // waits here, unready under a named reason.
+    // included, runs after this process took the lock. A second process
+    // waits here, unready under a named reason. A lock lost later holds the
+    // operator duties as `node-instance-lock.ts` describes.
     yield* startup.setStage("instance_lock");
     const instanceLock = yield* acquireNodeInstanceLock({
       connectionString: nodeDatabaseConnectionString(nodeConfig),
@@ -132,10 +137,6 @@ export const runNode = (
     });
     // The DA identity preflight below is local, too.
     yield* startup.setStage("local_preflight");
-    const startupProviderRetry = {
-      maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
-      retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
-    } as const;
     yield* runDaIdentityGatedStartupSequence({
       localPreflight: prepareDaHardeningStartup.pipe(
         Effect.tapError(
@@ -160,21 +161,23 @@ export const runNode = (
           ),
         ),
       providerAssertions: (preflight) =>
-        startup
-          .setStage("provider_assertions")
-          .pipe(
-            Effect.zipRight(
-              runStartupProviderStepWithRetry(
-                "Startup DA provider assertions",
-                assertDaHardeningProviderStartup(preflight),
-                startupProviderRetry,
-              ).pipe(
-                Effect.tapError(
-                  logStartupFailure("Startup DA provider assertions failed"),
-                ),
+        startup.setStage("provider_assertions").pipe(
+          Effect.zipRight(
+            runStartupProviderStepWithRetry(
+              "da_provider_assertions",
+              assertDaHardeningProviderStartup(preflight),
+              {
+                retryDelayMs:
+                  nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
+                reason: daProviderAssertionsWaitReason,
+              },
+            ).pipe(
+              Effect.tapError(
+                logStartupFailure("Startup DA provider assertions failed"),
               ),
             ),
           ),
+        ),
     });
 
     yield* Effect.addFinalizer(() =>
@@ -237,7 +240,7 @@ export const runNode = (
       );
     }
 
-    yield* refreshAdmissionBacklogGauge;
+    yield* refreshAdmissionBacklogGaugeOnStartup(refreshAdmissionBacklogGauge);
 
     const sql = yield* SqlClient.SqlClient;
     const retrieveRetainedDaPayload = (headerHash: Buffer) =>

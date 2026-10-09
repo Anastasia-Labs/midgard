@@ -5,9 +5,9 @@
  */
 import type { DriverHold } from "../l1-events/driver.js";
 import {
+  MPF_CLOSURE_MISSING,
   NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
-  NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
 } from "../services/liveness-halt.js";
 
 /** A landed block does not replay to its header, or does not link to its parent. Never adopted. */
@@ -106,7 +106,7 @@ const PRIORITY = [
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_DA_REFETCH_PENDING,
   LANDED_BLOCK_AWAITING_DA,
-  NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
+  MPF_CLOSURE_MISSING,
   NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
   LANDED_BLOCK_REBASE_FAILED,

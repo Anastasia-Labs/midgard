@@ -11,17 +11,13 @@
  *   under `HaltSource.instanceLock`; refused on the next try because another
  *   process took the lock meanwhile, it raises
  *   `node_instance_lock_held_elsewhere`; taken again, the reason clears.
+ * - Its loss mid-tick and at the server alone:
+ *   `node-instance-lock.session-loss.test.ts`.
  * - `runNode` waits at its `instance_lock` stage, unready under the named
  *   reason, while another process holds the lock, and goes on to the startup
  *   steps after it only once the lock is taken.
  */
-import { once } from "node:events";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-
-import { SqlClient } from "@effect/sql";
-import { PgClient } from "@effect/sql-pg";
-import { Effect, Exit, Fiber, Redacted, Ref, Scope } from "effect";
+import { Effect, Exit, Fiber, Scope } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runNode } from "../src/commands/listen.run-node.js";
@@ -29,15 +25,25 @@ import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Globals } from "../src/services/globals.js";
 import { nodeDatabaseConnectionString } from "../src/services/l1-provider.js";
-import { HaltSource } from "../src/services/liveness-halt.js";
 import {
   acquireNodeInstanceLock,
-  type AcquireNodeInstanceLockOptions,
   NODE_INSTANCE_LOCK_HELD_ELSEWHERE,
   NODE_INSTANCE_LOCK_SUSPENDED,
   NODE_INSTANCE_LOCK_UNAVAILABLE,
-  type NodeInstanceLock,
 } from "../src/services/node-instance-lock.js";
+import {
+  acquire,
+  cleanUpLocks,
+  closedPort,
+  database,
+  endLockSessions,
+  fibers,
+  livenessGlobals,
+  reasonOf,
+  release,
+  scopes,
+  steppedSleep,
+} from "./helpers/node-instance-lock.js";
 
 const after = vi.hoisted(() => ({
   entered: undefined as (() => void) | undefined,
@@ -77,112 +83,10 @@ vi.mock("../src/da/startup.js", async (importOriginal) => {
   };
 });
 
-const env = (name: string): string => {
-  const value = process.env[name];
-  if (value === undefined || value === "")
-    throw new Error(`${name} is not set`);
-  return value;
-};
-
-const database = {
-  POSTGRES_HOST: env("POSTGRES_HOST"),
-  POSTGRES_PORT: Number(env("POSTGRES_PORT")),
-  POSTGRES_USER: env("POSTGRES_USER"),
-  POSTGRES_PASSWORD: env("POSTGRES_PASSWORD"),
-  POSTGRES_DB: env("POSTGRES_DB"),
-};
-const connectionString = nodeDatabaseConnectionString(database);
-
-const livenessGlobals = () => ({
-  LIVENESS_REASONS: Ref.unsafeMake<ReadonlyMap<string, string>>(new Map()),
-});
-
-const reasonOf = (globals: ReturnType<typeof livenessGlobals>) =>
-  Effect.runSync(Ref.get(globals.LIVENESS_REASONS)).get(
-    HaltSource.instanceLock,
-  );
-
-const scopes: Scope.CloseableScope[] = [];
-const fibers: Fiber.RuntimeFiber<unknown, unknown>[] = [];
-
 afterEach(async () => {
-  for (const fiber of fibers.splice(0))
-    await Effect.runPromise(Fiber.interrupt(fiber));
-  for (const scope of scopes.splice(0))
-    await Effect.runPromise(Scope.close(scope, Exit.void));
+  await cleanUpLocks();
   after.entered = undefined;
 });
-
-type Options = Partial<AcquireNodeInstanceLockOptions> & {
-  readonly waited?: string[][];
-};
-
-/** Takes the lock in a scope of its own; resolves once it is held. */
-const acquire = async (
-  options: Options = {},
-): Promise<{ lock: NodeInstanceLock; scope: Scope.CloseableScope }> => {
-  const scope = Effect.runSync(Scope.make());
-  scopes.push(scope);
-  const lock = await Effect.runPromise(
-    acquireNodeInstanceLock({
-      connectionString,
-      globals: livenessGlobals(),
-      waiting: (reasons) =>
-        Effect.sync(() => options.waited?.push([...reasons])),
-      retryInitialMs: 20,
-      retryMaxMs: 50,
-      ...options,
-    }).pipe(Scope.extend(scope)),
-  );
-  return { lock, scope };
-};
-
-const release = (scope: Scope.CloseableScope) =>
-  Effect.runPromise(Scope.close(scope, Exit.void));
-
-/** Ends, from another session, every session holding an advisory lock here. */
-const endLockSessions = () =>
-  Effect.runPromise(
-    Effect.provide(
-      Effect.flatMap(
-        SqlClient.SqlClient,
-        (sql) => sql<{ ended: boolean }>`
-          SELECT pg_terminate_backend(pid) AS ended FROM pg_locks
-          WHERE locktype = 'advisory' AND granted
-            AND database = (
-              SELECT oid FROM pg_database WHERE datname = current_database()
-            )`,
-      ),
-      PgClient.layer({ url: Redacted.make(connectionString) }),
-    ),
-  );
-
-/** A local port nothing listens on. */
-const closedPort = async (): Promise<number> => {
-  const server = createServer();
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const port = (server.address() as AddressInfo).port;
-  await new Promise<void>((resolve, reject) =>
-    server.close((error) => (error ? reject(error) : resolve())),
-  );
-  return port;
-};
-
-/** A sleep the test lets go of, one wake-up at a time. */
-const steppedSleep = () => {
-  const sleepers: (() => void)[] = [];
-  return {
-    timers: {
-      sleep: () =>
-        new Promise<void>((resolve) => {
-          sleepers.push(resolve);
-        }),
-    },
-    sleeping: () => sleepers.length,
-    wake: () => sleepers.shift()?.(),
-  };
-};
 
 describe("the node instance lock", { concurrent: false }, () => {
   it("makes a second acquirer wait, held elsewhere, until the holder's session ends", async () => {

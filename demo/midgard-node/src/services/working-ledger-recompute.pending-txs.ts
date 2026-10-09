@@ -2,6 +2,10 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
+import {
+  decodeMidgardSubmittedTxFromCanonicalCbor,
+  midgardOutRefToCbor,
+} from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
@@ -41,8 +45,31 @@ export type PendingTx = Readonly<{
   entry: Tx.EntryWithTimeStamp;
   source: "mempool" | "processed";
   spent: readonly Buffer[];
+  /** The outputs it reads by reference without spending them (outref CBOR). */
+  referenced: readonly Buffer[];
   produced: readonly LedgerRow[];
 }>;
+
+/** What `tx` needs in the ledger to apply: what it spends and what it reads
+ * by reference. */
+export const readsOf = (tx: PendingTx): readonly Buffer[] => [
+  ...tx.spent,
+  ...tx.referenced,
+];
+
+/** The reference inputs of a pending transaction's bytes (outref CBOR). The
+ * spends and outputs come from its cached delta (`mempool_tx_deltas`); the
+ * reference inputs are read from the bytes, and bytes that do not decode
+ * name none. */
+export const referencedOutRefs = (txCbor: Buffer): readonly Buffer[] => {
+  try {
+    return decodeMidgardSubmittedTxFromCanonicalCbor(
+      txCbor,
+    ).ledgerTx.referenceInputs.map((outRef) => midgardOutRefToCbor(outRef));
+  } catch {
+    return [];
+  }
+};
 
 const producedRow = (
   txId: Buffer,
@@ -90,11 +117,11 @@ const arrivalSeqs = (txIds: readonly Buffer[]) =>
 
 /**
  * `pending` in replay order. A transaction never comes before a pending
- * transaction whose output it spends; beyond that, the order is the time
+ * transaction whose output it spends or reads by reference; beyond that, the order is the time
  * stamp, then admission order (`arrival_seq`, a transaction with none
  * after those with one), then tx id. Each transaction, in that base order,
- * is placed after every pending producer of an output it spends that is
- * not placed yet.
+ * is placed after every pending producer of an output it spends or reads
+ * that is not placed yet.
  */
 export const replayOrder = (
   pending: readonly PendingTx[],
@@ -134,8 +161,9 @@ export const replayOrder = (
     visiting.add(root);
     while (stack.length > 0) {
       const top = stack[stack.length - 1]!;
-      if (top.next < top.tx.spent.length) {
-        const producer = producerOf.get(hex(top.tx.spent[top.next]!));
+      const reads = readsOf(top.tx);
+      if (top.next < reads.length) {
+        const producer = producerOf.get(hex(reads[top.next]!));
         top.next += 1;
         if (
           producer !== undefined &&
@@ -191,7 +219,13 @@ const loadPending = (undecodable: "fail" | "inert") =>
       );
       if (resolved._tag === "Rejected") {
         if (undecodable === "inert") {
-          pending.push({ entry, source, spent: [], produced: [] });
+          pending.push({
+            entry,
+            source,
+            spent: [],
+            referenced: [],
+            produced: [],
+          });
           continue;
         }
         return yield* Effect.fail(
@@ -204,7 +238,13 @@ const loadPending = (undecodable: "fail" | "inert") =>
       const produced: LedgerRow[] = [];
       for (const output of resolved.produced)
         produced.push(yield* producedRow(txId, output));
-      pending.push({ entry, source, spent: resolved.spent, produced });
+      pending.push({
+        entry,
+        source,
+        spent: resolved.spent,
+        referenced: referencedOutRefs(entry[Tx.Columns.TX]),
+        produced,
+      });
     }
     return replayOrder(pending, yield* arrivalSeqs(txIds));
   });

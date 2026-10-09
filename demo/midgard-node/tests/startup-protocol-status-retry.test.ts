@@ -4,6 +4,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { fetchProtocolDeploymentStatusWithStartupRetry } from "../src/commands/listen-startup.js";
+import {
+  PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE,
+  StartupWaitingReporter,
+} from "../src/services/startup-waiting.js";
 import type { ProtocolDeploymentStatus } from "../src/transactions/initialization.js";
 
 const completeStatus = {
@@ -39,10 +43,7 @@ describe("fetchProtocolDeploymentStatusWithStartupRetry", () => {
           }
           return Effect.succeed(completeStatus);
         },
-        {
-          maxAttempts: 5,
-          retryDelayMs: 0,
-        },
+        { retryDelayMs: 0 },
       ),
     );
 
@@ -65,10 +66,7 @@ describe("fetchProtocolDeploymentStatusWithStartupRetry", () => {
               }),
             );
           },
-          {
-            maxAttempts: 5,
-            retryDelayMs: 0,
-          },
+          { retryDelayMs: 0 },
         ),
       ),
     ).rejects.toMatchObject({
@@ -79,25 +77,37 @@ describe("fetchProtocolDeploymentStatusWithStartupRetry", () => {
 });
 
 describe("fetchProtocolDeploymentStatusWithStartupRetry honours typed retryability", () => {
-  const attemptsUntilOutcome = async (error: SDK.LucidError) => {
+  /** Fails with `error` `failures` times, then returns the status. */
+  const attemptsUntilOutcome = async (
+    error: SDK.LucidError,
+    failures = Number.POSITIVE_INFINITY,
+  ) => {
     let attempts = 0;
+    const reported: [string, readonly string[]][] = [];
     const outcome = await Effect.runPromise(
       Effect.either(
         fetchProtocolDeploymentStatusWithStartupRetry(
           () => {
             attempts += 1;
-            return Effect.fail(error);
+            return attempts <= failures
+              ? Effect.fail(error)
+              : Effect.succeed(completeStatus);
           },
-          { maxAttempts: 4, retryDelayMs: 0 },
+          { retryDelayMs: 0 },
+        ),
+      ).pipe(
+        Effect.locally(StartupWaitingReporter, (key, reasons) =>
+          Effect.sync(() => {
+            reported.push([key, reasons]);
+          }),
         ),
       ),
     );
-    expect(outcome._tag).toBe("Left");
-    return attempts;
+    return { attempts, outcome, reported };
   };
 
   it("does not retry a read wrapper around a Kupo refusal", async () => {
-    const attempts = await attemptsUntilOutcome(
+    const { attempts, outcome, reported } = await attemptsUntilOutcome(
       new SDK.LucidError({
         message: "Failed to fetch hub-oracle witness UTxO(s)",
         cause: new KupmiosError({
@@ -107,11 +117,13 @@ describe("fetchProtocolDeploymentStatusWithStartupRetry honours typed retryabili
         }),
       }),
     );
+    expect(outcome._tag).toBe("Left");
     expect(attempts).toBe(1);
+    expect(reported).toEqual([]);
   });
 
-  it("retries, up to its bound, any wrapper around a retryable Kupo answer", async () => {
-    const attempts = await attemptsUntilOutcome(
+  it("retries any wrapper around a retryable Kupo answer with no bound, waiting under its reason, until the read answers", async () => {
+    const { attempts, outcome, reported } = await attemptsUntilOutcome(
       new SDK.LucidError({
         message: "Could not read the state-queue topology",
         cause: new KupmiosError({
@@ -120,7 +132,14 @@ describe("fetchProtocolDeploymentStatusWithStartupRetry honours typed retryabili
           status: 503,
         }),
       }),
+      200,
     );
-    expect(attempts).toBe(4);
+    expect(outcome).toMatchObject({ _tag: "Right", right: completeStatus });
+    expect(attempts).toBe(201);
+    expect(reported).toHaveLength(201);
+    expect(
+      new Set(reported.slice(0, -1).map(([, reasons]) => reasons[0])),
+    ).toEqual(new Set([PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE]));
+    expect(reported.at(-1)).toEqual(["protocol_deployment_status", []]);
   });
 });

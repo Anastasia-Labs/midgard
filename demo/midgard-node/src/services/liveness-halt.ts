@@ -25,7 +25,8 @@ export const HaltSource = {
   operatorMembership: "operator_membership",
   /** The node's instance lock is suspended or held by another process
    * (`node-instance-lock.ts`): another node may hold this database. Holds
-   * every operator duty; the lock taken again clears it. */
+   * every operator duty as `FIBER_HALT_SOURCES` holds it (a scheduled tick
+   * already running finishes); the lock taken again clears it. */
   instanceLock: "node_instance_lock",
 } as const;
 
@@ -308,9 +309,8 @@ export const restartedAcrossHalts = <A, E, R>(
  * follower-change driver retries it on its backoff; the next rebase evaluation that runs, or
  * finds no rebase due, clears it. The node cannot put the root's closure back
  * itself: the operator stops it, installs a native MPF store that retains
- * the root in full, and restarts it. */
-export const NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED =
-  "native_mpf_restore_root_not_retained";
+ * the root in full, and restarts it (plan §7.5, R6). */
+export const MPF_CLOSURE_MISSING = "mpf_closure_missing";
 
 /** The landed-block rebase's native restore was refused because the target
  * root's node closure is in the native MPF store but its full index is over

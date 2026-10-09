@@ -7,7 +7,7 @@
  *   move, the event check, the rejection record, the ledger encoding) is
  *   caught: the driver run returns it as its hold, raised as
  *   `landed_block_rebase_failed` (a store that lost the chain's root as
- *   `native_mpf_restore_root_not_retained`), the rebase stays due, and the next run
+ *   `mpf_closure_missing`), the rebase stays due, and the next run
  *   after the cause is gone rebases and clears it; a fresh process meets
  *   the same hold;
  * - a pending transaction a base block includes stays out of the rebuild,
@@ -28,7 +28,7 @@ import { rollBackRows } from "../src/landed-blocks/settlements.js";
 import { insertRow, retrieveRows } from "../src/landed-blocks/store.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
-import { NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED } from "../src/services/liveness-halt.js";
+import { MPF_CLOSURE_MISSING } from "../src/services/liveness-halt.js";
 import { failure as recomputeFailure } from "../src/services/working-ledger-recompute.pending-txs.js";
 import * as RejectClosure from "../src/services/working-ledger-recompute.reject-closure.js";
 import { testWrite } from "./helpers/driver-recompute.js";
@@ -91,7 +91,7 @@ describe(
       expectHeld(
         await attempt(globals),
         /retains no root of the processed landed chain/,
-        NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
+        MPF_CLOSURE_MISSING,
       );
       native.retainsNothing = false;
       expectRebased(await attempt(globals));
@@ -168,21 +168,17 @@ describe(
       expectHeld(
         await attempt(await processOf(native)),
         /retains no root/,
-        NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
+        MPF_CLOSURE_MISSING,
       );
       // A restart: new process globals, the same database and native store.
       const restarted = await processOf(native);
       const shown = await attempt(restarted);
-      expectHeld(
-        shown,
-        /retains no root/,
-        NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
-      );
+      expectHeld(shown, /retains no root/, MPF_CLOSURE_MISSING);
       native.retainsNothing = false;
       expectRebased(await attempt(restarted));
       expect(
         await Effect.runPromise(currentLivenessReasons(restarted)),
-      ).not.toContain(NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED);
+      ).not.toContain(MPF_CLOSURE_MISSING);
     });
   },
 );

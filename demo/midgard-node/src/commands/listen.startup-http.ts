@@ -20,6 +20,11 @@ import {
   Tracer,
 } from "effect";
 
+import {
+  type StartupWaitingReport,
+  StartupWaitingReporter,
+} from "../services/startup-waiting.js";
+
 /** Local startup state: no provider, contract, database or user payload reads. */
 export type NodeStartupStage =
   | "runtime_services"
@@ -35,6 +40,9 @@ type StartupState = {
   readonly stage: NodeStartupStage | "serving" | "fatal";
   /** Named reasons the stage is waiting on, reported by `/readyz`. */
   readonly waitingOn?: readonly string[];
+  /** Named reasons startup steps retrying under `retryStartupStep` wait on,
+   * by step; reported by `/readyz` after the stage's. */
+  readonly stepWaits?: ReadonlyMap<string, readonly string[]>;
   readonly failedStage?: NodeStartupStage | "serving";
   readonly application?: HttpApp.Default<unknown, Scope.Scope>;
   readonly runtimeDefaults?: Context.Context<DefaultServices.DefaultServices>;
@@ -70,10 +78,13 @@ export const withStartupHttpServer = <A, E, R>(
     });
     const startup: StartupHttp = {
       setStage: (stage, waitingOn) =>
-        Ref.set(
-          state,
-          waitingOn === undefined ? { stage } : { stage, waitingOn },
-        ),
+        Ref.update(state, (current) => ({
+          stage,
+          ...(waitingOn === undefined ? {} : { waitingOn }),
+          ...(current.stepWaits === undefined
+            ? {}
+            : { stepWaits: current.stepWaits }),
+        })),
       publish: (application) =>
         Effect.gen(function* () {
           // Keep every runtime service (including admission SQL) alive in the
@@ -137,6 +148,7 @@ export const withStartupHttpServer = <A, E, R>(
           reasons: [
             current.stage === "fatal" ? "startup_failed" : "startup_incomplete",
             ...(current.waitingOn ?? []),
+            ...[...(current.stepWaits?.values() ?? [])].flat(),
           ],
           stage: current.stage,
           ...(current.failedStage === undefined
@@ -166,7 +178,15 @@ export const withStartupHttpServer = <A, E, R>(
         return yield* bound;
       });
     yield* HttpServer.serveEffect(dispatch, withRuntimeDefaults);
+    const reportStepWaiting: StartupWaitingReport = (key, reasons) =>
+      Ref.update(state, (current) => {
+        const stepWaits = new Map(current.stepWaits);
+        if (reasons.length === 0) stepWaits.delete(key);
+        else stepWaits.set(key, reasons);
+        return { ...current, stepWaits };
+      });
     return yield* run(startup).pipe(
+      Effect.locally(StartupWaitingReporter, reportStepWaiting),
       Effect.tapErrorCause((cause) =>
         Cause.isInterruptedOnly(cause)
           ? Effect.void

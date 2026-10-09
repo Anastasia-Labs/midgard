@@ -9,10 +9,10 @@
  * rebase due, clears the reason.
  */
 import {
+  MPF_CLOSURE_MISSING,
   NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_ESCALATION_MS,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
-  NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
 } from "../services/liveness-halt.js";
 
 /**
@@ -38,7 +38,7 @@ const RESTORE_HOLDS = new Map<
 >([
   [
     "LandedChainRootNotRetained",
-    { reason: NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED, escalateAfterMs: 0 },
+    { reason: MPF_CLOSURE_MISSING, escalateAfterMs: 0 },
   ],
   [
     "NativeMpfFullIndexCapExceeded",

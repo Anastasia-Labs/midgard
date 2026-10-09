@@ -4,6 +4,11 @@ import { Duration, Effect } from "effect";
 
 import { isRetryableProviderError } from "../provider-retry.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
+import {
+  PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE,
+  PROTOCOL_INITIALIZATION_FAILED,
+  retryStartupStep,
+} from "../services/startup-waiting.js";
 import { assertAvailabilityChallengeRewardAccountsRegisteredProgram } from "../transactions/availability-challenge-registration.js";
 import * as Initialization from "../transactions/initialization.js";
 import {
@@ -64,56 +69,30 @@ const writeStartupContractDeploymentInfoAfterFreshInit = (initTxHash: string) =>
     }),
   );
 
+/**
+ * Fetches the protocol deployment status, waiting out a retryable provider
+ * failure (`isRetryableProviderError`) every `retryDelayMs` with no deadline
+ * under `protocol_deployment_status_unavailable`; any other failure fails at
+ * once.
+ */
 export const fetchProtocolDeploymentStatusWithStartupRetry = (
   fetchStatus: () => Effect.Effect<
     Initialization.ProtocolDeploymentStatus,
     SDK.LucidError
   >,
-  options: {
-    readonly maxAttempts: number;
-    readonly retryDelayMs: number;
-  },
-): Effect.Effect<Initialization.ProtocolDeploymentStatus, SDK.LucidError> =>
-  Effect.gen(function* () {
-    const maxAttempts = Math.max(1, Math.floor(options.maxAttempts));
-    const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
-    let lastError: SDK.LucidError | undefined;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      const statusAttempt = yield* Effect.either(fetchStatus());
-      if (statusAttempt._tag === "Right") {
-        if (attempt > 1) {
-          yield* Effect.logInfo(
-            `Startup protocol deployment status query became available after ${attempt.toString()} attempt(s).`,
-          );
-        }
-        return statusAttempt.right;
-      }
-
-      lastError = statusAttempt.left;
-      // The read's own typed retryability decides (a Kupo 503 retries, a
-      // Kupo 400 does not), whatever text the SDK wrapper around it carries.
-      if (!isRetryableProviderError(lastError)) {
-        return yield* Effect.fail(lastError);
-      }
-      if (attempt < maxAttempts) {
-        yield* Effect.logWarning(
-          `Startup protocol deployment status query failed (attempt ${attempt.toString()}/${maxAttempts.toString()}); retrying in ${retryDelayMs.toString()}ms. cause=${formatUnknownError(lastError)}`,
-        );
-        if (retryDelayMs > 0) {
-          yield* Effect.sleep(Duration.millis(retryDelayMs));
-        }
-      }
-    }
-
-    return yield* Effect.fail(
-      new SDK.LucidError({
-        message:
-          "Startup protocol deployment status query failed after bounded retries",
-        cause: `attempts=${maxAttempts.toString()},last_cause=${formatUnknownError(lastError)}`,
-      }),
-    );
+  options: { readonly retryDelayMs: number },
+): Effect.Effect<Initialization.ProtocolDeploymentStatus, SDK.LucidError> => {
+  const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
+  return retryStartupStep(Effect.suspend(fetchStatus), {
+    key: "protocol_deployment_status",
+    reason: PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE,
+    // The read's own typed retryability decides (a Kupo 503 retries, a
+    // Kupo 400 does not), whatever text the SDK wrapper around it carries.
+    retryable: isRetryableProviderError,
+    initialMs: retryDelayMs,
+    maxMs: retryDelayMs,
   });
+};
 
 const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
   Effect.gen(function* () {
@@ -149,7 +128,7 @@ const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
  * Verifies protocol deployment state at startup and optionally auto-initializes
  * an empty deployment.
  */
-export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
+const ensureProtocolInitializedOnce = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const manifestReport =
     yield* ContractDeploymentInfo.verifyConfiguredDeploymentManifestIfPresentProgram;
@@ -170,10 +149,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   const contracts = yield* MidgardContracts;
   const deploymentStatus = yield* fetchProtocolDeploymentStatusWithStartupRetry(
     () => Initialization.fetchProtocolDeploymentStatus(lucid.api, contracts),
-    {
-      maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
-      retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
-    },
+    { retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS },
   );
   // The queue's health is the landed queue's (P1): once the follower runs,
   // an unhealthy queue fails `/readyz` with its reason and stops proposals.
@@ -234,11 +210,21 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   );
   yield* ensureNodeRuntimeReferenceScriptsOnStartup(false);
   yield* writeStartupContractDeploymentInfoAfterFreshInit(initTxHash);
-}).pipe(
-  Effect.tapError((e) =>
-    Effect.logError(
-      `Startup protocol initialization failed: ${formatUnknownError(e)}`,
-    ),
-  ),
-  Effect.orDie,
+});
+
+/**
+ * `ensureProtocolInitializedOnce` until it passes: a failed run (a provider
+ * read, a deployment or manifest verdict, an unregistered reward account,
+ * a failed initialization) is logged and run again from the start on a
+ * capped backoff, the startup waiting under `protocol_initialization_failed`
+ * with no deadline. A run again re-reads the deployment status, so an
+ * initialization a failed run submitted is seen as present, not submitted
+ * twice. Never fails.
+ */
+export const ensureProtocolInitializedOnStartup = retryStartupStep(
+  ensureProtocolInitializedOnce,
+  { key: "protocol_initialization", reason: PROTOCOL_INITIALIZATION_FAILED },
+).pipe(
+  // Every failure is retried above; nothing reaches here.
+  Effect.catchAll(() => Effect.never),
 );
