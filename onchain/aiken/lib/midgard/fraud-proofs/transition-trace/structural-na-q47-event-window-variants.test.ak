@@ -110,7 +110,8 @@ fn dummy_hub_datum() -> hub_oracle.Datum {
 }
 
 /// Publication window is `(start_time, end_time]`: `start_time` is excluded
-/// and `end_time` is included (`timed_l1_event_is_due` in proof.ak).
+/// and `end_time` is included (`horizon.eligible` for deposits and withdrawals,
+/// the inline forced due rule in `proof.validate_forced_l1_event_fault`).
 fn base_header() -> ledger_state.HeaderV1 {
   ledger_state.HeaderV1 {
     prev_utxos_root: h32_a,

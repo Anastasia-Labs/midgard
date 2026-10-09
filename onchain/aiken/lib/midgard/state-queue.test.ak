@@ -351,17 +351,18 @@ test state_queue_commit_end_time_never_accepts_any_value_inside_the_window() {
 // D-S12's concrete harm is that a far-future `end_time` widens the window in
 // which an L1 event counts as "due" for the block being committed, so an
 // operator could sweep events that have not happened yet into their block — or
-// be convicted for omitting them. Due-ness is decided by `timed_l1_event_is_due`
-// in `lib/midgard/fraud-proofs/transition-trace/proof.ak:1294`, reached from the
-// deposit (L1450), withdrawal (L1474) and forced-transaction (L1500) branches
-// of `validate_omitted_due_l1_event`.
+// be convicted for omitting them. Due-ness is the rule
+// `start_time < inclusion_time <= end_time`: `horizon.eligible` in
+// `lib/midgard/event-history/horizon.ak` applies it to deposits and
+// withdrawals, and `validate_forced_l1_event_fault` in
+// `lib/midgard/fraud-proofs/transition-trace/proof.ak` applies it inline to
+// forced transactions.
 //
-// Read the two tests below for exactly what they are. That predicate is
-// module-private and cannot be imported here, so these tests run a *local
-// mirror* of it: a hand transcription that lives in this file. They document
-// the harm model. They do NOT execute proof.ak, and nothing here can detect the
-// mirror drifting from the original — only the invalidation trigger recorded
-// in the Q60 evidence artifact covers that.
+// Read the two tests below for exactly what they are. They run a *local
+// restatement* of that rule, `inclusion_time_is_in_due_window`, a hand
+// transcription that lives in this file. They document the harm model. They do
+// NOT execute horizon.ak or proof.ak, and nothing here can detect the
+// restatement drifting from the rule those modules apply.
 //
 // The other half of the argument — that the far-future `end_time` which would
 // make these events due is refused at commit time — is proved against the real
@@ -372,8 +373,8 @@ test state_queue_commit_end_time_never_accepts_any_value_inside_the_window() {
 // original did not already have.
 // ---------------------------------------------------------------------------
 
-/// Mirror of `proof.ak:1294 timed_l1_event_is_due`.
-fn timed_l1_event_is_due_mirror(
+/// The due window `start_time < inclusion_time <= end_time`, restated locally.
+fn inclusion_time_is_in_due_window(
   header_start_time: Int,
   header_end_time: Int,
   inclusion_time: Int,
@@ -384,19 +385,19 @@ fn timed_l1_event_is_due_mirror(
   }
 }
 
-/// Due-event class 1 of 2 — deposit (`proof.ak:1450`), over the local mirror.
+/// Due-event class 1 of 2 — deposit, over the local restatement.
 /// A forced transaction order is due on the same inclusion window alone, so
 /// this case covers it too: a deposit that becomes includable one millisecond after the maximum accepted
 /// `end_time` is not due for this block, and would be due under a far-future
-/// `end_time`. Documents the harm; does not execute `proof.ak`.
+/// `end_time`. Documents the harm; does not execute `horizon.ak`.
 test state_queue_commit_end_time_bound_keeps_a_future_deposit_not_due() {
   and {
-    !timed_l1_event_is_due_mirror(
+    !inclusion_time_is_in_due_window(
       1_700_000_000_000,
       1_700_000_480_000,
       1_700_000_480_001,
     ),
-    timed_l1_event_is_due_mirror(
+    inclusion_time_is_in_due_window(
       1_700_000_000_000,
       2_015_360_480_000,
       1_700_000_480_001,
@@ -404,18 +405,18 @@ test state_queue_commit_end_time_bound_keeps_a_future_deposit_not_due() {
   }
 }
 
-/// Due-event class 2 of 2 — withdrawal (`proof.ak:1474`), over the local
-/// mirror, taken a full year past the commit window to show the gap the anchor
-/// closes is unbounded rather than an off-by-one. Documents the harm; does not
-/// execute `proof.ak`.
+/// Due-event class 2 of 2 — withdrawal, over the local restatement, taken a
+/// full year past the commit window to show the gap the anchor closes is
+/// unbounded rather than an off-by-one. Documents the harm; does not execute
+/// `horizon.ak`.
 test state_queue_commit_end_time_bound_keeps_a_future_withdrawal_not_due() {
   and {
-    !timed_l1_event_is_due_mirror(
+    !inclusion_time_is_in_due_window(
       1_700_000_000_000,
       1_700_000_480_000,
       1_731_536_480_000,
     ),
-    timed_l1_event_is_due_mirror(
+    inclusion_time_is_in_due_window(
       1_700_000_000_000,
       2_015_360_480_000,
       1_731_536_480_000,
