@@ -324,18 +324,6 @@ export const workflowAdapterRegistrationRows = [
       "install and exercise the manifest-bound double-withdraw runner in a compiled application with the concrete public retained-DA libp2p runtime loader",
   },
   {
-    category: "crossBlockDuplicateEvent",
-    status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "cross-block-duplicate-event/workflow.ts",
-      "cross-block-duplicate-event/settlement-authority.ts",
-      "remove-fraudulent-block.ts",
-    ],
-    requiredClosure:
-      "install and exercise the manifest-bound cross-block runner with authenticated live settlement NFT history and retained public DA",
-  },
-  {
     category: "l2TxMistag",
     status: "missing",
     reason: "constrained_adapter_is_not_launch_scope_complete",

@@ -332,7 +332,6 @@ export const makeAlwaysSucceedsContracts = (
     minFee: scaffoldChain(appendedFamilyFallback, 2),
     withdrawalMistag: scaffoldChain(appendedFamilyFallback, 5),
     doubleWithdraw: scaffoldChain(appendedFamilyFallback, 2),
-    crossBlockDuplicateEvent: scaffoldChain(appendedFamilyFallback, 2),
     l2TxMistag: scaffoldChain(appendedFamilyFallback, 2),
     withdrawnInput: scaffoldChain(appendedFamilyFallback, 3),
     valueNotPreserved: {

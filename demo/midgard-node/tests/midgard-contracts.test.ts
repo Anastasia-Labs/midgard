@@ -128,8 +128,8 @@ describe("midgard contracts registry", () => {
       // availability bond yield removed, availability-challenge and
       // DA-attestation parameters changed), by MPF fixes (leaf fold, terminal
       // neighbour, deletion Branch, emptied ledger root, disjoint node
-      // preimages), and by removing missingNativeScriptTx/Utxo, which
-      // missingScriptSource supersedes.
+      // preimages), by removing missingNativeScriptTx/Utxo (superseded by
+      // missingScriptSource), and by deleting the cross-block family.
       expect
         .soft(
           createHash("sha256")
@@ -139,7 +139,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "505d0aca1dc952c3de39c617e2c24590200f40445aabbf649f510fc6dafdb6d1",
+          "412ca624c89c9f219b011ce97a37113c08f7fde6f1b4311f1cf7fad73f9292c1",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

@@ -48,8 +48,6 @@ export const categoryLabel = (
       return "withdrawal-mistag";
     case "doubleWithdraw":
       return "double-withdraw";
-    case "crossBlockDuplicateEvent":
-      return "cross-block-duplicate-event";
     case "l2TxMistag":
       return "l2-tx-mistag";
     case "withdrawnInput":

@@ -182,7 +182,6 @@ export const validateFraudProofCatalogue = (
     minFee: "fraudProofMinFee",
     withdrawalMistag: "fraudProofWithdrawalMistag",
     doubleWithdraw: "fraudProofDoubleWithdraw",
-    crossBlockDuplicateEvent: "fraudProofCrossBlockDuplicateEvent",
     l2TxMistag: "fraudProofL2TxMistag",
     withdrawnInput: "fraudProofWithdrawnInput",
     valueNotPreserved: "fraudProofValueNotPreserved",

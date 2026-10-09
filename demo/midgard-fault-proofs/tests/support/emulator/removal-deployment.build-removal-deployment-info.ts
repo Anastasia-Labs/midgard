@@ -8,7 +8,6 @@ import { type Script } from "@lucid-evolution/lucid";
 
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/index.js";
 import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/index.js";
-import { type CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
 import type { DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
 import {
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
@@ -37,7 +36,6 @@ import {
 import {
   CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY,
   COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY,
-  CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY,
   DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY,
   INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY,
   L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY,
@@ -62,7 +60,6 @@ export const buildRemovalDeploymentInfo = (
     readonly committedFieldShape?: CommittedFieldShapeContracts;
     readonly minFee?: MinFeeContracts;
     readonly doubleWithdraw?: DoubleWithdrawContracts;
-    readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContracts;
     readonly l2TxMistag?: L2TxMistagContracts;
     readonly withdrawnInput?: WithdrawnInputContracts;
     readonly withdrawalMistag?: WithdrawalMistagContracts;
@@ -397,14 +394,6 @@ export const buildRemovalDeploymentInfo = (
         : {
             [DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash: contracts.doubleWithdraw.steps[0].spendingScriptHash,
-            },
-          }),
-      ...(contracts.crossBlockDuplicateEvent === undefined
-        ? {}
-        : {
-            [CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY]: {
-              scriptHash:
-                contracts.crossBlockDuplicateEvent.steps[0].spendingScriptHash,
             },
           }),
       ...(contracts.l2TxMistag === undefined

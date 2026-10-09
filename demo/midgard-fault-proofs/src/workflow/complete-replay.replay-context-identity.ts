@@ -1,9 +1,5 @@
 import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-import {
-  type CrossBlockSettlementContext,
-  crossBlockSettlementRecords,
-} from "../cross-block-duplicate-event/settlement-authority.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   requireTransitionTraceL1Events,
@@ -31,7 +27,6 @@ export type CompleteCanonicalReplayPredecessor = Readonly<{
 }>;
 
 export type CompleteCanonicalReplayContext = Readonly<{
-  settlements?: CrossBlockSettlementContext;
   /**
    * Exact public-DA/L1-authenticated predecessor. Required by ledger-relative
    * detectors unless the current header commits the empty genesis ledger.
@@ -43,7 +38,6 @@ export type CompleteCanonicalReplayContext = Readonly<{
 }>;
 
 export type CompleteCanonicalReplayContextIdentity = Readonly<{
-  settlementEvidenceDigest?: string;
   predecessorHeaderHash?: string;
   predecessorPayloadEnvelopeSha256?: string;
   predecessorPayloadSha256?: string;
@@ -88,7 +82,6 @@ export const replayContextIdentity = ({
   readonly context: CompleteCanonicalReplayContext | undefined;
 }): CompleteCanonicalReplayContextIdentity | null => {
   const predecessor = requireReplayPredecessorEvidence({ evidence, context });
-  const settlements = context?.settlements;
   const validation = context?.validationTraceReplay;
   const events = context?.transitionTraceEvents;
   if (events !== undefined) {
@@ -105,11 +98,8 @@ export const replayContextIdentity = ({
       predecessor: context?.predecessor,
       transitionTraceEvents: context?.transitionTraceEvents,
     });
-  if (settlements !== undefined)
-    crossBlockSettlementRecords(evidence, settlements);
   if (
     predecessor === undefined &&
-    settlements === undefined &&
     validation === undefined &&
     events === undefined
   )
@@ -135,9 +125,6 @@ export const replayContextIdentity = ({
                   validation.eventEvidenceDigest,
               }),
         }),
-    ...(settlements === undefined
-      ? {}
-      : { settlementEvidenceDigest: settlements.evidenceDigest }),
     ...(predecessor === undefined
       ? {}
       : {

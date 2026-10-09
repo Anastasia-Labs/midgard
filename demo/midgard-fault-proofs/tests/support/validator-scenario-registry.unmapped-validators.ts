@@ -268,8 +268,6 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
     validators: [
       "fraud_proofs/canonical_decodability/step_01.main",
       "fraud_proofs/canonical_decodability/step_02.main",
-      "fraud_proofs/cross_block_duplicate_event/step_01.main",
-      "fraud_proofs/cross_block_duplicate_event/step_02.main",
       "fraud_proofs/da_hash_preimage/step_01.main",
       "fraud_proofs/da_hash_preimage/step_02.main",
       "fraud_proofs/distinct_asset_accumulation_limit/step_01.main",

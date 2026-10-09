@@ -54,7 +54,6 @@ export type FraudProofs = {
   minFee: SpendingValidator;
   withdrawalMistag: SpendingValidator;
   doubleWithdraw: SpendingValidator;
-  crossBlockDuplicateEvent: SpendingValidator;
   l2TxMistag: SpendingValidator;
   withdrawnInput: SpendingValidator;
   /**

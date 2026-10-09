@@ -23,7 +23,6 @@ export const classifyRetainedReasonFixture = async ({
   history = [],
   replayContext,
   transitionTraceEventAuthority,
-  settlementAuthority,
 }: {
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Buffer;
@@ -38,9 +37,6 @@ export const classifyRetainedReasonFixture = async ({
   readonly transitionTraceEventAuthority?: Parameters<
     typeof createHeaderClassifier
   >[0]["transitionTraceEventAuthority"];
-  readonly settlementAuthority?: Parameters<
-    typeof createHeaderClassifier
-  >[0]["settlementAuthority"];
   readonly predecessor?: {
     readonly observation: AuthenticatedStateQueueHeaderObservation;
     readonly payloadEnvelopeCbor: Buffer;
@@ -79,7 +75,6 @@ export const classifyRetainedReasonFixture = async ({
     replayer,
     releaseFinalityAuthority,
     transitionTraceEventAuthority,
-    settlementAuthority,
   });
   const policy = await releaseFinalityAuthority.verifyForWorkflow({
     deploymentFingerprint,

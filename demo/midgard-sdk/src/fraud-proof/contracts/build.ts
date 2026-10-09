@@ -8,7 +8,6 @@ import { type FraudProofs } from "../../common.js";
 import { type EventHistoryPayloadBounds } from "../../user-events/history-payload.js";
 import { buildCanonicalDecodabilityChain } from "./families/canonical-decodability.js";
 import { buildCommittedFieldShapeChain } from "./families/committed-field-shape.js";
-import { buildCrossBlockDuplicateEventChain } from "./families/cross-block-duplicate-event.js";
 import { buildDaHashPreimageChain } from "./families/da-hash-preimage.js";
 import { buildDistinctAssetAccumulationLimitChain } from "./families/distinct-asset-accumulation-limit.js";
 import { buildDoubleSpendChain } from "./families/double-spend.js";
@@ -156,10 +155,6 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
-    const crossBlockDuplicateEvent = yield* buildCrossBlockDuplicateEventChain({
-      ...params,
-      ...shared,
-    });
     const l2TxMistag = yield* buildL2TxMistagChain({ ...params, ...shared });
     const withdrawnInput = yield* buildWithdrawnInputChain({
       ...params,
@@ -288,7 +283,6 @@ export const buildFaultProofContracts = (
       minFee,
       withdrawalMistag,
       doubleWithdraw,
-      crossBlockDuplicateEvent,
       l2TxMistag,
       withdrawnInput,
       valueNotPreserved,
@@ -355,7 +349,6 @@ export const fraudProofContractsToFirstSteps = (
   minFee: contracts.minFee.firstStep,
   withdrawalMistag: contracts.withdrawalMistag.firstStep,
   doubleWithdraw: contracts.doubleWithdraw.firstStep,
-  crossBlockDuplicateEvent: contracts.crossBlockDuplicateEvent.firstStep,
   l2TxMistag: contracts.l2TxMistag.firstStep,
   withdrawnInput: contracts.withdrawnInput.firstStep,
   valueNotPreserved: contracts.valueNotPreserved.firstStep,

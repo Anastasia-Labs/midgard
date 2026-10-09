@@ -342,12 +342,6 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       "doubleWithdraw",
     ),
-    crossBlockDuplicateEvent: linearFaultProofChainFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "crossBlockDuplicateEvent",
-    ),
     l2TxMistag: linearFaultProofChainFromManifest(
       network,
       manifest,

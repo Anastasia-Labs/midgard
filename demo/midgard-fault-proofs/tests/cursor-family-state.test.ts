@@ -336,7 +336,6 @@ describe("production cursor-family authenticated state V1", () => {
     expect(Object.keys(CURSOR_FAMILY_SPECS)).toEqual([
       "nativeScriptDecoding",
       "withdrawalMistag",
-      "crossBlockDuplicateEvent",
       "valueNotPreserved",
       "mintAuthorization",
     ]);

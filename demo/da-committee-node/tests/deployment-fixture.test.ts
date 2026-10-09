@@ -92,11 +92,6 @@ describe("DA deployment fixture", () => {
       ["minFee", "00000013", "fraudProofMinFee"],
       ["withdrawalMistag", "00000014", "fraudProofWithdrawalMistag"],
       ["doubleWithdraw", "00000015", "fraudProofDoubleWithdraw"],
-      [
-        "crossBlockDuplicateEvent",
-        "00000016",
-        "fraudProofCrossBlockDuplicateEvent",
-      ],
       ["l2TxMistag", "00000017", "fraudProofL2TxMistag"],
       ["withdrawnInput", "00000018", "fraudProofWithdrawnInput"],
       [

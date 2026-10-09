@@ -1,5 +1,4 @@
 import {
-  CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
   DOUBLE_WITHDRAW_VIOLATION_ID,
   EventKey,
   type EventKey as EventKeyValue,
@@ -147,16 +146,14 @@ const withdrawalPrerequisiteCovered = (
  * finding owed to that family — at this leaf's own committed position — may
  * discharge it.
  *
- * The replay itself cannot tell a never-authenticated identity from an origin
- * that was authenticated and has since been consumed or settled; a live-UTxO
- * capture shows the same emptiness for both, and the second is a
- * data-availability problem rather than fraud. The distinction is made where the
- * evidence lives: `classifyFabricatedDepositFault` establishes absence only by
- * exhibiting the committed identity in the authenticated *live* output-reference
- * set and refuses a consumed outref
- * (`consumed_live_utxo_fallback_refused`), and the withdrawal family follows the
- * same rule. A consumed origin therefore yields no finding, this prerequisite
- * stays undischarged, and the block fails closed instead of being convicted.
+ * The replay itself cannot classify the leaf's origin. The fabricated family
+ * does, against the authenticated event-history list and its immutable Order
+ * facts (`classifyFabricatedDepositFault` and its withdrawal twin): an identity
+ * absent from the current list is nonexistent, a listed Order whose inclusion
+ * time lies outside the header's window is ineligible, and an eligible Order
+ * whose content differs from the commitment is a content mismatch. An eligible
+ * Order whose content matches yields no finding, so this prerequisite stays
+ * undischarged and the block fails closed instead of being convicted.
  *
  * Forced-transaction origins have no fabricated family, so 0007 does not reach
  * them and they never take this route.
@@ -259,18 +256,13 @@ export const assertReplayPrerequisiteCovered = (
         )
       )
         return;
-      // A deposit whose output the ledger already holds repeats a settled
-      // event; the cross-block finding at that source position names it.
+      // A deposit whose output the ledger already holds repeats an event an
+      // earlier block applied. That event is not eligible in this block's
+      // window, so the fabricated-deposit finding at this leaf convicts it:
+      // ineligible while its Order is listed, nonexistent once it retired.
       if (
         source.phase === "Deposit" &&
-        detections.some(
-          (detection) =>
-            detection.headerHash === evidence.headerHash &&
-            detection.violationId ===
-              CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID &&
-            detection.position ===
-              BigInt(evidence.reconstruction.sourceEvents.indexOf(source)),
-        )
+        fabricatedSourceOriginCovered(evidence, source, detections)
       )
         return;
       throw new CanonicalReplayPrerequisiteError([failure]);

@@ -121,8 +121,6 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofWithdrawalMistagStep05",
   "fraudProofDoubleWithdraw",
   "fraudProofDoubleWithdrawStep02",
-  "fraudProofCrossBlockDuplicateEvent",
-  "fraudProofCrossBlockDuplicateEventStep02",
   "fraudProofL2TxMistag",
   "fraudProofL2TxMistagStep02",
   "fraudProofWithdrawnInput",

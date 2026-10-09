@@ -22,7 +22,6 @@ import {
   type RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import { unsafeCreateCrossBlockSettlementAuthorityFromRawForTest } from "@al-ft/midgard-fault-proofs/test-support/cross-block-settlement-authority";
 import { captureRetainedPlutusIdentityOrigins } from "@al-ft/midgard-fault-proofs/test-support/retained-reason-classifier";
 import {
   requireTransitionTraceL1Events,
@@ -202,13 +201,6 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
       >[0]["binding"],
       authority: raw,
     });
-  const settlementAuthority =
-    unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
-      binding: bindingFields as Parameters<
-        typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
-      >[0]["binding"],
-      raw,
-    });
   const lucid = {
     utxosAt: async () => {
       throw new Error("Transaction-only fixture cannot read event history");
@@ -238,7 +230,6 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => releaseFinality,
     },
-    settlementAuthority,
     transitionTraceEventAuthority,
   });
   const sources: RetainedDaPayloadSource[] = [

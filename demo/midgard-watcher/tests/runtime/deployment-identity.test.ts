@@ -499,7 +499,7 @@ describe("watcher deployment identity", () => {
       scriptHash:
         fixture.policy.appliedScriptHashes.fraudProofMintItemNonCanonical,
     });
-    expect(Object.keys(categories)).toHaveLength(53);
+    expect(Object.keys(categories)).toHaveLength(52);
 
     fixture.policy = {
       ...fixture.policy,

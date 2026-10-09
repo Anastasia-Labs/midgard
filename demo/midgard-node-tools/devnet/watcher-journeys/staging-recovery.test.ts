@@ -30,8 +30,9 @@ import { afterEach, expect, it, vi } from "vitest";
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyBlock, JourneyFixtureStage } from "./fixture.js";
 import {
+  createPreparedJourneyFixture,
   createTransactionJourneyFixture,
-  prepareJourneyHistory,
+  type JourneyFaultPreparationInput,
 } from "./staging.js";
 
 const actorFactory = vi.hoisted(() => vi.fn());
@@ -308,10 +309,24 @@ const openStage = async () => {
   ) => fixture.stage(stageInput(onHealthyPredecessor));
   return {
     directory,
-    stageHistory: () =>
-      prepareJourneyHistory(stageInput(), async ({ commitHistoryBlock }) => {
-        await commitHistoryBlock("recovery", async () => current);
-      }),
+    // Commits one prerequisite history block through the fault preparation,
+    // then stops before any fault is built.
+    stageHistory: async () => {
+      const stop = new Error("history block committed");
+      let history: Awaited<
+        ReturnType<JourneyFaultPreparationInput["commitHistoryBlock"]>
+      >;
+      await expect(
+        createPreparedJourneyFixture(
+          "networkId",
+          async ({ commitHistoryBlock }) => {
+            history = await commitHistoryBlock("recovery", async () => current);
+            throw stop;
+          },
+        ).stage(stageInput()),
+      ).rejects.toBe(stop);
+      return history!;
+    },
     actor,
     recoveryReads,
     pinWallet: vi.spyOn(lucid, "overrideUTxOs"),

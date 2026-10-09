@@ -19,7 +19,6 @@ import "./staging.create-transaction-journey-fixture.js";
 export {
   createPreparedJourneyFixture,
   createTransactionJourneyFixture,
-  prepareJourneyHistory,
 } from "./staging.create-transaction-journey-fixture.js";
 export {
   decodeJourneyRetainedBlock,

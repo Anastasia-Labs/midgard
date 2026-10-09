@@ -12,7 +12,6 @@ import {
 import { type FaultProofBlueprint } from "./blueprint.js";
 import { type CanonicalDecodabilityFaultProofContracts } from "./families/canonical-decodability.js";
 import { type CommittedFieldShapeFaultProofContracts } from "./families/committed-field-shape.js";
-import { type CrossBlockDuplicateEventFaultProofContracts } from "./families/cross-block-duplicate-event.js";
 import { type DaHashPreimageFaultProofContracts } from "./families/da-hash-preimage.js";
 import { type DistinctAssetAccumulationLimitFaultProofContracts } from "./families/distinct-asset-accumulation-limit.js";
 import { type DoubleSpendFaultProofContracts } from "./families/double-spend.js";
@@ -93,7 +92,6 @@ export type FaultProofContracts = {
   readonly minFee: MinFeeFaultProofContracts["minFee"];
   readonly withdrawalMistag: WithdrawalMistagFaultProofContracts["withdrawalMistag"];
   readonly doubleWithdraw: DoubleWithdrawFaultProofContracts["doubleWithdraw"];
-  readonly crossBlockDuplicateEvent: CrossBlockDuplicateEventFaultProofContracts["crossBlockDuplicateEvent"];
   readonly l2TxMistag: L2TxMistagFaultProofContracts["l2TxMistag"];
   readonly withdrawnInput: WithdrawnInputFaultProofContracts["withdrawnInput"];
   readonly valueNotPreserved: ValueNotPreservedFaultProofContracts["valueNotPreserved"];

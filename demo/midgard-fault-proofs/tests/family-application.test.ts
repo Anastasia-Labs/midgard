@@ -161,7 +161,6 @@ describe("shared family application loop", () => {
 
   it.each([
     ["replayContext", { replayContext: { sentinel: "replay" } }],
-    ["retainedDaSources", { retainedDaSources: [{ sentinel: "retained" }] }],
   ] as const)(
     "refuses a record requiring %s when the host omits it and binds it when supplied",
     async (requirement, supplied) => {

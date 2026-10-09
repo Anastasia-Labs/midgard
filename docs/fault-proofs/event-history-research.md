@@ -135,12 +135,6 @@ Three classes need historical authentication:
    [deposit transition](../../onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak#L1116-L1174)
    and [authenticated deposit reference](../../onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak#L1501-L1529).
 
-The separate cross-block-duplicate-event family compares authenticated event
-leaves in a live challenged header and a confirmed settlement block. It already
-has a different evidence route from live-event authentication; replacing it is
-not implied merely by fixing the history gap. See
-[family semantics](family-reference.md#cross-block-duplicate-event-fault).
-
 ## Verification performed
 
 Read the named documentation, watcher records/archive publication, fabricated-event

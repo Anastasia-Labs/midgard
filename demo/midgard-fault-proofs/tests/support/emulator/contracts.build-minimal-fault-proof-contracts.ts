@@ -5,7 +5,6 @@ import {
   buildCanonicalDecodabilityFaultProofContracts,
   buildCommittedFieldShapeFaultProofContracts,
   buildCorrectionLockValidator,
-  buildCrossBlockDuplicateEventFaultProofContracts,
   buildDaHashPreimageFaultProofContracts,
   buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
@@ -73,7 +72,6 @@ import { expect } from "vitest";
 
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/contracts.js";
 import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/contracts.js";
-import { type CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES,
   type DistinctAssetAccumulationContracts,
@@ -147,7 +145,6 @@ export const buildMinimalFaultProofContracts = async (
     realWithdrawnReferenceInput = false,
     realMinFee = false,
     realDoubleWithdraw = false,
-    realCrossBlockDuplicateEvent = false,
     realSettlement = false,
     realTxOrder = false,
     realL2TxMistag = false,
@@ -203,7 +200,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
-    readonly realCrossBlockDuplicateEvent?: boolean;
     readonly realSettlement?: boolean;
     readonly realTxOrder?: boolean;
     readonly realL2TxMistag?: boolean;
@@ -247,7 +243,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly withdrawnReferenceInput?: WithdrawnReferenceInputContracts;
     readonly minFee?: MinFeeContracts;
     readonly doubleWithdraw?: DoubleWithdrawContracts;
-    readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContracts;
     readonly l2TxMistag?: L2TxMistagContracts;
     readonly withdrawnInput?: WithdrawnInputContracts;
     readonly withdrawalMistag?: WithdrawalMistagContracts;
@@ -549,10 +544,6 @@ export const buildMinimalFaultProofContracts = async (
     realDoubleWithdraw,
     buildDoubleWithdrawFaultProofContracts,
   );
-  const crossBlockDuplicateEventContracts = await buildFamilyContracts(
-    realCrossBlockDuplicateEvent,
-    buildCrossBlockDuplicateEventFaultProofContracts,
-  );
   const l2TxMistagContracts = await buildFamilyContracts(
     realL2TxMistag,
     buildL2TxMistagFaultProofContracts,
@@ -829,20 +820,6 @@ export const buildMinimalFaultProofContracts = async (
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: productionStateQueue.policyId,
         };
-  const crossBlockDuplicateEvent:
-    | CrossBlockDuplicateEventContracts
-    | undefined =
-    crossBlockDuplicateEventContracts === undefined
-      ? undefined
-      : {
-          steps:
-            crossBlockDuplicateEventContracts.crossBlockDuplicateEvent.steps,
-          computationThread:
-            crossBlockDuplicateEventContracts.computationThread,
-          fraudProof: crossBlockDuplicateEventContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: productionStateQueue.policyId,
-        };
   const l2TxMistag: L2TxMistagContracts | undefined =
     l2TxMistagContracts === undefined
       ? undefined
@@ -1037,10 +1014,6 @@ export const buildMinimalFaultProofContracts = async (
       doubleWithdraw === undefined
         ? withActiveOperators.fraudProofContracts.doubleWithdraw
         : chainFromSteps(doubleWithdraw.steps),
-    crossBlockDuplicateEvent:
-      crossBlockDuplicateEvent === undefined
-        ? withActiveOperators.fraudProofContracts.crossBlockDuplicateEvent
-        : chainFromSteps(crossBlockDuplicateEvent.steps),
     l2TxMistag:
       l2TxMistag === undefined
         ? withActiveOperators.fraudProofContracts.l2TxMistag
@@ -1131,9 +1104,6 @@ export const buildMinimalFaultProofContracts = async (
       : { withdrawnReferenceInput }),
     ...(minFee === undefined ? {} : { minFee }),
     ...(doubleWithdraw === undefined ? {} : { doubleWithdraw }),
-    ...(crossBlockDuplicateEvent === undefined
-      ? {}
-      : { crossBlockDuplicateEvent }),
     ...(l2TxMistag === undefined ? {} : { l2TxMistag }),
     ...(withdrawnInput === undefined ? {} : { withdrawnInput }),
     ...(withdrawalMistag === undefined ? {} : { withdrawalMistag }),

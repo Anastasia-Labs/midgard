@@ -425,11 +425,9 @@ with the attempt logs. Registration or local verification is not live acceptance
 The newly registered `fabricatedDeposit`, `fabricatedWithdrawal`, and
 `withdrawalMistag` fixtures have no completed live verdict on this deployment.
 
-Two catalogue families remain genuinely blocked: `doubleWithdraw` and
-`crossBlockDuplicateEvent` are candidate fixtures whose current constructions
-select an earlier fault family in the full classifier. The latter also requires
-the genuine settlement prerequisite described under Recovery and maturity.
-Neither a fabricated settlement nor a prior queued header satisfies it.
+One catalogue family remains genuinely blocked: `doubleWithdraw` is a
+candidate fixture whose current construction selects an earlier fault family in
+the full classifier.
 
 ## Measured progression and recovery
 
@@ -1621,16 +1619,3 @@ from `3*k/f` (129,600 one-second slots for this profile). Phase 4 refuses a rest
 at or beyond that boundary before replacing durable state. This is distinct from
 an ordinary follower outage on a continuing canonical chain. There is no
 72-hour snapshot-reuse guarantee.
-
-The `crossBlockDuplicateEvent` journey requires a real prior settlement. Stage
-its honest deposit history early by adopting the independently verified
-`transitionTrace` successor and its exact genuine deposit. The preparation gate
-checks the completed trace result, native commitment, retained payload, deposit
-role and inclusion interval before recording the source header's end time plus
-seven days. Run `history-preparation.test.ts` with
-`MIDGARD_WATCHER_JOURNEY_PREPARE_HISTORY=1` immediately after the trace passes.
-Resume the existing SDK merge path when that actual maturity has elapsed and a
-later healthy queue head exists.
-Keep this family time-gated until the settlement exists; a prior queued header
-or a fabricated settlement cannot satisfy it. Other families can advance the
-same queue while that prerequisite matures.

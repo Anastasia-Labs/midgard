@@ -320,10 +320,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofWithdrawalMistagStep05",
     "V1 fraud-proof double-withdraw step-01": "fraudProofDoubleWithdraw",
     "V1 fraud-proof double-withdraw step-02": "fraudProofDoubleWithdrawStep02",
-    "V1 fraud-proof cross-block-duplicate-event step-01":
-      "fraudProofCrossBlockDuplicateEvent",
-    "V1 fraud-proof cross-block-duplicate-event step-02":
-      "fraudProofCrossBlockDuplicateEventStep02",
     "V1 fraud-proof l2-tx-mistag step-01": "fraudProofL2TxMistag",
     "V1 fraud-proof l2-tx-mistag step-02": "fraudProofL2TxMistagStep02",
     "V1 fraud-proof withdrawn-input step-01": "fraudProofWithdrawnInput",

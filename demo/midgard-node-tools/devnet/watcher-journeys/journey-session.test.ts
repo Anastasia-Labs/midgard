@@ -29,7 +29,7 @@ vi.mock("../../../../scripts/lib/source-facets.mjs", () => ({
   sourceFacetPaths: () => state.sessionSources,
 }));
 vi.mock("./journey-timing.js", () => ({
-  readJourneyTiming: async () => undefined,
+  readJourneyTiming: async () => ({ allowances: {} }),
 }));
 vi.mock("./live-context.js", async (original) => ({
   ...(await original<typeof import("./live-context.js")>()),

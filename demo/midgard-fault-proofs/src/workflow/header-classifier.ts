@@ -2,7 +2,6 @@ import "node:crypto";
 import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
-import "../cross-block-duplicate-event/settlement-authority.js";
 import "../evidence/canonical-block-evidence.js";
 import "../evidence/fraud-proof-evidence.js";
 import "../field-preimage-length-mismatch/evidence.js";

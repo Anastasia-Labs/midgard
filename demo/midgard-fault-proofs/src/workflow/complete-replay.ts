@@ -3,8 +3,6 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
 import "../committed-field-shape/prepare-committed-field-shape.js";
-import "../cross-block-duplicate-event/replay.js";
-import "../cross-block-duplicate-event/settlement-authority.js";
 import "../distinct-asset-accumulation-limit/authenticated-replay.js";
 import "../evidence/canonical-block-evidence.js";
 import "../execution-native-script-invalid/replay.js";
@@ -127,7 +125,6 @@ export {
 export {
   createFabricatedDepositCompleteCanonicalReplay,
   createFabricatedWithdrawalCompleteCanonicalReplay,
-  CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
   EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,

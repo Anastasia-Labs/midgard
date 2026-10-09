@@ -1,7 +1,6 @@
 import {
   CANONICAL_DECODABILITY_VIOLATION_ID,
   COMMITTED_FIELD_SHAPE_VIOLATION_ID,
-  CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
   DA_HASH_PREIMAGE_VIOLATION_ID,
   DOUBLE_WITHDRAW_VIOLATION_ID,
   FABRICATED_DEPOSIT_VIOLATION_ID,
@@ -148,10 +147,6 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   {
     category: "doubleWithdraw",
     violationIds: [DOUBLE_WITHDRAW_VIOLATION_ID],
-  },
-  {
-    category: "crossBlockDuplicateEvent",
-    violationIds: [CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID],
   },
   {
     category: "l2TxMistag",

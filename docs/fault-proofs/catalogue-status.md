@@ -6,7 +6,7 @@ Last reviewed: 2026-09-07 (source inventory and installation scope).
 
 ## Source inventory
 
-The 53 source catalogue categories and all 53 watcher installations are listed
+The 52 source catalogue categories and all 52 watcher installations are listed
 below. This is source coverage, not a claim that a particular network has these
 contracts deployed or that every acceptance suite passed on this revision.
 
@@ -44,7 +44,6 @@ them when you edit it.
 | `00000013` | `minFee`                              | Yes               |
 | `00000014` | `withdrawalMistag`                    | Yes               |
 | `00000015` | `doubleWithdraw`                      | Yes               |
-| `00000016` | `crossBlockDuplicateEvent`            | Yes               |
 | `00000017` | `l2TxMistag`                          | Yes               |
 | `00000018` | `withdrawnInput`                      | Yes               |
 | `00000019` | `valueNotPreserved`                   | Yes               |

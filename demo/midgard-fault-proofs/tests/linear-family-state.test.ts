@@ -283,18 +283,12 @@ describe("production linear family authenticated state machine V1", () => {
     ).toThrow("no production linear family spec");
   });
 
-  it("refuses cross-block-duplicate-event because its workflow runs on the cursor adapter", () => {
-    expect(LINEAR_FAMILY_CATEGORIES).not.toContain("crossBlockDuplicateEvent");
-    expect(() =>
-      linearFamilySpec("crossBlockDuplicateEvent" as "daHashPreimage"),
-    ).toThrow("no production linear family spec");
-    expect(CURSOR_FAMILY_SPECS.crossBlockDuplicateEvent).toMatchObject({
-      category: "crossBlockDuplicateEvent",
-      stepCount: 2,
-      successors: { 1: [2], 2: ["proof_token"] },
-    });
+  it("refuses every family whose workflow runs on the cursor adapter", () => {
     for (const category of Object.keys(CURSOR_FAMILY_SPECS)) {
       expect(LINEAR_FAMILY_CATEGORIES).not.toContain(category);
+      expect(() => linearFamilySpec(category as "daHashPreimage")).toThrow(
+        "no production linear family spec",
+      );
     }
   });
 

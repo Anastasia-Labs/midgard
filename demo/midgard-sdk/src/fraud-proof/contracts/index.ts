@@ -37,12 +37,6 @@ export {
   type CommittedFieldShapeFaultProofContracts,
 } from "./families/committed-field-shape.js";
 export {
-  buildCrossBlockDuplicateEventFaultProofContracts,
-  type BuildCrossBlockDuplicateEventFaultProofContractsParams,
-  CROSS_BLOCK_DUPLICATE_EVENT_FAULT_PROOF_TITLES,
-  type CrossBlockDuplicateEventFaultProofContracts,
-} from "./families/cross-block-duplicate-event.js";
-export {
   buildDaHashPreimageFaultProofContracts,
   type BuildDaHashPreimageFaultProofContractsParams,
   DA_HASH_PREIMAGE_FAULT_PROOF_TITLES,

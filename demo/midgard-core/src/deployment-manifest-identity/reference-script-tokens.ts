@@ -318,10 +318,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof withdrawal-mistag step-05": "V1FpWithdrawalMistagS05",
   "V1 fraud-proof double-withdraw step-01": "V1FpDoubleWithdrawS01",
   "V1 fraud-proof double-withdraw step-02": "V1FpDoubleWithdrawS02",
-  "V1 fraud-proof cross-block-duplicate-event step-01":
-    "V1FpCrossBlockDuplicateEventS01",
-  "V1 fraud-proof cross-block-duplicate-event step-02":
-    "V1FpCrossBlockDuplicateEventS02",
   "V1 fraud-proof l2-tx-mistag step-01": "V1FpL2TxMistagS01",
   "V1 fraud-proof l2-tx-mistag step-02": "V1FpL2TxMistagS02",
   "V1 fraud-proof withdrawn-input step-01": "V1FpWithdrawnInputS01",

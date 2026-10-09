@@ -22,7 +22,6 @@ import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-hist
 
 const transport = vi.hoisted(() => ({ raw: undefined as unknown }));
 
-import { unsafeCreateCrossBlockSettlementAuthorityFromRawForTest } from "../src/cross-block-duplicate-event/settlement-authority.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
   createTransitionTraceEventAuthority,
@@ -116,8 +115,8 @@ const setup = async (
   const hubScope = seed.scopes.find(({ role }) => role === "hub_oracle")!;
   const hubOraclePolicyId = getAddressDetails(hubScope.address)
     .paymentCredential!.hash;
-  // Adapt only the requested raw address/history coverage. Empty settlement
-  // coverage is explicit; the same raw body authenticates hub and forced NFT.
+  // Adapt only the requested raw address/history coverage; the same raw body
+  // authenticates hub and forced NFT.
   const raw: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
     capture: async (request) => ({
@@ -164,13 +163,6 @@ const setup = async (
     binding: transitionBinding,
     l1: fraudProofL1SourceForTest({ authority: () => transport.raw }),
   });
-  const settlementAuthority =
-    unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
-      binding: bindingFields as Parameters<
-        typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
-      >[0]["binding"],
-      raw,
-    });
   const history = {
     inlineLimitBytes: 512n,
     maxPayloadBytes: 5000n,
@@ -192,7 +184,6 @@ const setup = async (
     deploymentFingerprint: DEPLOYMENT,
     replayer,
     releaseFinalityAuthority,
-    settlementAuthority,
     transitionTraceEventAuthority,
   };
   const classifier = await createHeaderClassifier(classifierInput);
@@ -269,7 +260,6 @@ describe("installed catalogue retained classification", replayBudget, () => {
       context?.transitionTraceEvents?.snapshotDigest,
     );
     expect(context?.predecessor).toBeDefined();
-    expect(context?.settlements).toBeDefined();
     const copy = await headerDecisionCanonicalEvidence(decision);
     expect(copy?.headerHash).toBe(fixture.block.headerHash);
     copy!.reconstruction.payloadEnvelopeCbor.fill(0);

@@ -43,7 +43,7 @@ export const WORKFLOW_RUNTIME_CONFIG =
  * What a compiled host loads for one invocation: the common infrastructure
  * every family draws from, the resolver that turns a roster entry into its
  * published reference UTxO, and the public retained-DA transports. It is the
- * same shape for all 53 families, so a host writes one loader. Proof evidence
+ * same shape for every family, so a host writes one loader. Proof evidence
  * is forbidden here; the family's record lays its own config out of these.
  */
 export type LoadedWorkflowRuntime = {
@@ -178,19 +178,9 @@ const createManifestBoundWorkflowRunOrResume =
           ? { reconciliationAuthority: invocation.actuationPermit }
           : {}),
       };
-      if (loaded.infrastructure.retainedDaSources !== undefined) {
-        throw new Error(
-          "production workflow runtime lays in the admitted retained-DA sources itself",
-        );
-      }
       const { workflow } = await applyFamilyApplicationRecord({
         record,
-        // The admitted public DA sources are the one place a family that
-        // fetches further blocks' payloads reads them from.
-        infrastructure: Object.freeze({
-          ...loaded.infrastructure,
-          retainedDaSources: sources,
-        }),
+        infrastructure: loaded.infrastructure,
         resolveReferenceScript: loaded.resolveReferenceScript,
         invocation: application,
       });

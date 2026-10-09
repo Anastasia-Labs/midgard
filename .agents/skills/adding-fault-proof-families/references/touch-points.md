@@ -104,7 +104,7 @@ convention to find them.
 | Surface                                                                                                                                | Enforced by                                                                   |
 | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `catalogue.ts:21` `JOURNEY_FIXTURE_OWNERS` (`transaction`, `script` or `history`)                                                      | typecheck (`satisfies Record<JourneyCategory, JourneyFixtureOwner>`, line 76) |
-| `catalogue.test.ts` owner counts (54 families, lines 22–41)                                                                            | runs in no CI job; run it by hand ([verification.md](verification.md))        |
+| `catalogue.test.ts` owner counts (51 families, lines 18–41)                                                                            | runs in no CI job; run it by hand ([verification.md](verification.md))        |
 | `transaction-fixtures.ts`, `transaction-source-cases.ts`, `transaction-proof-material.ts`, `script-fixtures.ts`, `history-fixtures.ts` | `[review]`; pick the file that matches the owner                              |
 
 ## Docs
