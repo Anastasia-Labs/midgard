@@ -70,6 +70,35 @@ compiled-worker behavior. A zero-test selection, missing/inconsistent report,
 setup error, changed input or changed protected artifact fails. Selected skips
 or todos produce exit 3, rather than a complete pass.
 
+## Mutation checks
+
+```sh
+node scripts/contrib.mjs mutate --target demo/midgard-core/src/da-request-deadline.ts \
+  --from '}, timeoutMs);' --to '}, timeoutMs * 1000);' --expect 'deadline'
+node scripts/contrib.mjs mutate restore
+```
+
+`contrib mutate` replaces the one occurrence of `--from` with `--to` (taken
+verbatim; `--to ''` deletes) in a TypeScript or JavaScript file of a workspace
+package, runs `contrib test` with the mutant in place, and puts the file back.
+By default the run is the tests in the file's package that reach it
+(`--related`); `--package` and `--file` name others. It refuses (exit 2) a
+replacement that matches no text or more than one, a mutant that does not
+parse, and one that changes only comments, types or layout, since TypeScript's
+emit is the same and the mutant would look like it survived. Exit 0 means a
+test killed it (with `--expect REGEX`, a failure whose file, name or message
+matches), 1 that it survived or no test reached it, 3 that the run cannot tell
+(no test ran, or the mutant does not build). The original is journaled under
+the checkout's git directory before the mutant is written, put back in
+`finally` and on SIGINT, SIGTERM and SIGHUP, and verified by hash; a dist the
+run rebuilt from the mutant is rebuilt. A process killed outright leaves the
+journal, and every later `contrib mutate` refuses until `contrib mutate
+restore` puts the file back. Mutate only in a worktree no other session edits:
+the mutant is in the tree while the tests run. The receipt is a
+`causal-guard-mutant` proof.
+
+## Builds
+
 Package `build` scripts now enter the same guard. The original commands live
 under `build:contrib-raw` as the guard's implementation. The three Dockerfiles
 also call these recipes inside their isolated copied build trees; the demo

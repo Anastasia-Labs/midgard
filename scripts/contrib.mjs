@@ -18,6 +18,7 @@ import {
   generateDevnet,
   runAcceptance,
 } from "./contrib/operations.mjs";
+import { mutate, restoreMutant } from "./contrib/mutate.mjs";
 import { renderProgram, validateProgram } from "./contrib/program.mjs";
 import { verifyReceipt } from "./contrib/receipts.mjs";
 import { checkPnpm } from "./doctor.check-pnpm.mjs";
@@ -47,6 +48,9 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs native --package NAME
   node scripts/contrib.mjs test --package NAME [--file PATH... | --related PATH...] [--name REGEX]
       [--seed N] [--source-only] [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
+  node scripts/contrib.mjs mutate --target PATH --from TEXT --to TEXT [--package NAME]
+      [--file TEST...] [--name REGEX] [--expect REGEX] [--seed N]
+  node scripts/contrib.mjs mutate restore
   node scripts/contrib.mjs gate NAME [--plan] [--seed N]
   node scripts/contrib.mjs artifacts list | check --channel ID | sync --channel ID
   node scripts/contrib.mjs artifacts builds
@@ -160,7 +164,14 @@ const valueOptions = new Set([
   "branch",
   "maxWorkers",
   "exclude",
+  "target",
+  "from",
+  "to",
+  "expect",
 ]);
+// Mutation text is taken verbatim: it may be empty or start with "--".
+const verbatimOptions = new Set(["from", "to"]);
+const mutateOptions = ["target", "from", "to", "expect"];
 const flagOptions = new Set([
   "plan",
   "execute",
@@ -187,7 +198,11 @@ export const parse = (argv) => {
       continue;
     }
     const value = argv[++index];
-    if (!value || value.startsWith("--"))
+    if (
+      verbatimOptions.has(key)
+        ? value === undefined
+        : !value || value.startsWith("--")
+    )
       throw new Error(`${argument} requires a value`);
     if (key === "file") options.files.push(value);
     else if (key === "related") options.related.push(value);
@@ -267,6 +282,11 @@ export const main = async (argv) => {
       throw new Error(`--${vitestOption} is supported only for test`);
     if (options.related.length && command !== "test")
       throw new Error("--related is supported only for test");
+    const mutateOption = mutateOptions.find(
+      (key) => options[key] !== undefined,
+    );
+    if (mutateOption && (command !== "mutate" || action))
+      throw new Error(`--${mutateOption} is supported only for mutate`);
     if (
       options.force &&
       command !== "build" &&
@@ -285,6 +305,7 @@ export const main = async (argv) => {
         "artifacts",
         "reproduce",
         "worktree",
+        "mutate",
       ].includes(command) &&
       action !== "remove" &&
       !options.plan &&
@@ -341,6 +362,20 @@ export const main = async (argv) => {
           disableConsoleIntercept: options.disableConsoleIntercept,
         },
       });
+    else if (command === "mutate" && !action)
+      result = await mutate(root, {
+        target: required("target"),
+        from: options.from,
+        to: options.to,
+        packageName: options.package,
+        files: options.files,
+        testName: options.name,
+        expect: options.expect,
+        seed: execution.seed,
+        signal: execution.signal,
+      });
+    else if (command === "mutate" && action === "restore")
+      result = await restoreMutant(root);
     else if (command === "gate")
       result =
         action === "list"
@@ -439,6 +474,10 @@ export const main = async (argv) => {
           `contrib test ${result.package}: no test reached; nothing to run`,
           ...result.reach.why.map((line) => `  ${line}`),
         ].join("\n"),
+      );
+    else if (result?.schema === "midgard-contrib-mutant/v1")
+      console.error(
+        `contrib mutate ${result.mutation.file}:${result.mutation.line}: ${result.status}${result.reason ? `: ${result.reason}` : ""}`,
       );
     else if (
       result?.schema === "midgard-contrib-receipt/v1" &&
