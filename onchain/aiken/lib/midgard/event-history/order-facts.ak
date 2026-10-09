@@ -162,11 +162,15 @@ pub fn admit(
   expect
     when kind is {
       Deposit -> {
-        expect DepositPayload { .. } = payload
+        expect DepositPayload { event } = payload
+        let l2_network_id = event.info.l2_network_id
         // Preserve the existing deposit limit, including ADA when present.
+        // Admission accepts only Midgard's L2 network ids, testnet 0 and
+        // mainnet 1, matching the projection of a deposit to its L2 address.
         and {
           list.length(assets.flatten(original_assets)) <= env.max_tokens_allowed_in_deposits,
           funding.deposit_is_funded(original_assets),
+          l2_network_id == 0 || l2_network_id == 1,
         }
       }
       Withdrawal -> {

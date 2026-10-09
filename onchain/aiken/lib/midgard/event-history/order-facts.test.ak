@@ -128,6 +128,49 @@ test admission_binds_nonce_time_payload_and_actual_original_assets() {
   }
 }
 
+/// The admission fixture with only the deposit's L2 network id replaced.
+fn admit_with_l2_network_id(l2_network_id: Int) -> Payload {
+  expect DepositPayload { event } = payload()
+  let changed = DepositPayload {
+    event: DepositEvent {
+      ..event,
+      info: DepositInfo { ..event.info, l2_network_id },
+    },
+  }
+  let (_, admitted, _) = admit(
+    admission(Facts { ..facts(), location: Inline { payload: changed } }),
+    1000,
+    None,
+  )
+  expect admitted == changed
+  admitted
+}
+
+test admission_accepts_testnet_l2_network_id() {
+  expect DepositPayload { event } = admit_with_l2_network_id(0)
+  event.info.l2_network_id == 0
+}
+
+test admission_accepts_mainnet_l2_network_id() {
+  expect DepositPayload { event } = admit_with_l2_network_id(1)
+  event.info.l2_network_id == 1
+}
+
+test admission_rejects_l2_network_id_two() fail {
+  expect _ = admit_with_l2_network_id(2)
+  True
+}
+
+test admission_rejects_negative_l2_network_id() fail {
+  expect _ = admit_with_l2_network_id(-1)
+  True
+}
+
+test admission_rejects_large_l2_network_id() fail {
+  expect _ = admit_with_l2_network_id(18_446_744_073_709_551_616)
+  True
+}
+
 test admission_rejects_inline_payload_with_too_many_data_nodes() fail {
   expect DepositPayload { event } = payload()
   let wide: Data = list.repeat(0, 1024)
