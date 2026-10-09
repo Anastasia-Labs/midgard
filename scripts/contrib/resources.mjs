@@ -53,7 +53,9 @@ export const processIdentity = (pid = process.pid) => {
       group: Number(fields[2]),
     };
   } catch (error) {
-    if (error.code === "ENOENT") return undefined;
+    // A process that exits between two /proc reads reports ESRCH on the
+    // second; it is gone either way.
+    if (error.code === "ENOENT" || error.code === "ESRCH") return undefined;
     throw new Error(`cannot attest process ${pid}: ${error.message}`);
   }
 };
