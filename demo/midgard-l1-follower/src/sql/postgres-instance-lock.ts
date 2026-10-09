@@ -15,6 +15,13 @@ export const INSTANCE_LOCK_RECONNECT_MAX_MS = 30_000;
  */
 const INSTANCE_LOCK_CONNECT_TIMEOUT_MS = 10_000;
 const INSTANCE_LOCK_STATEMENT_TIMEOUT_MS = 10_000;
+/**
+ * Idle time before the lock's session sends its first TCP keepalive probe.
+ * The session runs no statement while it holds the lock, so a connection
+ * broken without a close is otherwise noticed only after the operating
+ * system's default idle time (two hours on Linux).
+ */
+export const INSTANCE_LOCK_KEEPALIVE_INITIAL_DELAY_MS = 10_000;
 
 /**
  * Which process kind a lock excludes, and how its refusals read. The lock's
@@ -131,6 +138,7 @@ const trySession = async (
   const client = new pg.Client({
     connectionString: databaseUrl,
     keepAlive: true,
+    keepAliveInitialDelayMillis: INSTANCE_LOCK_KEEPALIVE_INITIAL_DELAY_MS,
     connectionTimeoutMillis:
       bounds.connectTimeoutMs ?? INSTANCE_LOCK_CONNECT_TIMEOUT_MS,
     // The server cancels a statement past the bound; the client stops
@@ -138,7 +146,8 @@ const trySession = async (
     statement_timeout: statementTimeoutMs,
     query_timeout: statementTimeoutMs,
   });
-  // An unexpected end of the session is handled on "end".
+  // Errors before the session holds the lock reject the attempt; once it
+  // holds it, an error suspends the lock (`watch`).
   client.on("error", () => undefined);
   let row: LockRow | undefined;
   let heldByOwnStaleSession = false;
@@ -210,9 +219,11 @@ const trySession = async (
  * process started beside a live one is refused it.
  *
  * When the session ends under a live process (Postgres restarted, the
- * connection dropped), the lock is suspended: the work it guards is
- * refused, and the session is reopened with bounded backoff and the lock
- * tried again. Taken again, the work resumes. Refused by a reachable
+ * connection dropped), or a check finds the server no longer holds the lock
+ * for it (`assertHeldAtServer`: the session ended at the server while this
+ * side's connection stayed open), the lock is suspended: the work it guards
+ * is refused, that session's connection is destroyed, and a session is
+ * reopened with bounded backoff and the lock tried again. Taken again, the work resumes. Refused by a reachable
  * Postgres, another process holds it: this process becomes the passive
  * member, refuses the work, and keeps trying at the backoff ceiling until
  * the holder's session ends, then takes over. The holder can also be this
@@ -232,6 +243,8 @@ export class PostgresInstanceLock {
   private refusal: Error | undefined;
   /** Whether the last refused attempt found another process holding it. */
   private heldElsewhere = false;
+  /** The session the lock was last suspended from; it is suspended once. */
+  private suspendedFrom: LockSession | undefined;
   private releasing = false;
 
   private constructor(
@@ -269,13 +282,32 @@ export class PostgresInstanceLock {
   }
 
   private watch(session: LockSession): void {
-    session.client.once("end", () => {
-      if (this.releasing || session !== this.session) return;
-      const error = new Error(this.identity.messages.suspended);
-      this.refusal = error;
-      this.events.onInstanceLockSuspended?.(error);
-      void this.reacquire();
-    });
+    const ended = (): void => {
+      this.suspend(session, this.identity.messages.suspended);
+    };
+    session.client.on("error", ended);
+    session.client.once("end", ended);
+  }
+
+  /**
+   * Suspends the lock held on `session`, once and only while it is the
+   * current session: the guarded work is refused under `message`, the
+   * holder is told, the session's connection is destroyed (it may be open
+   * on this side only), and the lock is taken again with backoff.
+   */
+  private suspend(session: LockSession, message: string): void {
+    if (
+      this.releasing ||
+      session !== this.session ||
+      this.suspendedFrom === session
+    )
+      return;
+    this.suspendedFrom = session;
+    const error = new Error(message);
+    this.refusal = error;
+    this.events.onInstanceLockSuspended?.(error);
+    session.client.connection.stream.destroy();
+    void this.reacquire();
   }
 
   private async reacquire(): Promise<void> {
@@ -318,6 +350,8 @@ export class PostgresInstanceLock {
    * while the lock is suspended, passive or released. It is lost once that
    * session ends or the lock is released, and a lease taken again comes from
    * the next session. Releasing it does nothing: the session is the lock's.
+   * While it is lost, `refusal` names the lock's own refusal (suspended,
+   * lost at the server, or passive), which the fact store reports.
    */
   followerWriterLease(): WriterLease | null {
     if (this.releasing || this.refusal !== undefined) return null;
@@ -327,6 +361,7 @@ export class PostgresInstanceLock {
         this.releasing ||
         this.refusal !== undefined ||
         this.session !== session,
+      refusal: () => this.refusal?.message,
       release: async () => undefined,
     };
   }
@@ -340,11 +375,14 @@ export class PostgresInstanceLock {
   /**
    * Confirms, from inside `client`'s transaction, that the server still holds
    * the lock for this instance's session. The session can end at the server
-   * before this process sees it end.
+   * before this process sees it end: when the server no longer holds it, the
+   * lock is suspended (refused under `lostAtServer`, then taken again) and
+   * this throws.
    */
   async assertHeldAtServer(client: pg.ClientBase): Promise<void> {
     this.assertHeld();
-    const { backendPid, key } = this.session;
+    const session = this.session;
+    const { backendPid, key } = session;
     const result = await client.query<{ readonly held: boolean }>(
       `SELECT EXISTS (
          SELECT 1 FROM pg_locks
@@ -360,6 +398,9 @@ export class PostgresInstanceLock {
       [backendPid, key],
     );
     if (result.rows[0]?.held !== true) {
+      // The session ended at the server; this side may not see it end until
+      // its keepalive gives up. Suspend now and take the lock again.
+      this.suspend(session, this.identity.messages.lostAtServer);
       throw new Error(this.identity.messages.lostAtServer);
     }
   }

@@ -741,8 +741,8 @@
   },
   {
     "file": "midgard-l1-follower/src/store/fact-store.ts",
-    "max": 551,
-    "reason": "The fact store is one state owner: start, the writer lane, the lease fence, the live-outref cache and the generation listeners share private state, and the record logic itself lives in store/tracked-set-record.ts. SI (+48): the start compares the configured protocol tracked set with the store's record and, on an addition, resets and notifies the generation listeners; the wallets option and the record and replay-flag accessors. N3-fix (+4): the roles' prune-floor option, passed to the prune step through the store context. SI-fix (+14): the protocol set normalised once at intake, the rollback-log pull accessor (rewindsSince) and the three-way replay-end result. Moving the public type declarations out is a separate proven pure move."
+    "max": 589,
+    "reason": "The fact store is one state owner: start, the writer lane, the lease fence, the live-outref cache and the generation listeners share private state, and the record logic itself lives in store/tracked-set-record.ts. SI (+48): the start compares the configured protocol tracked set with the store's record and, on an addition, resets and notifies the generation listeners; the wallets option and the record and replay-flag accessors. N3-fix (+4): the roles' prune-floor option, passed to the prune step through the store context. SI-fix (+14): the protocol set normalised once at intake, the rollback-log pull accessor (rewindsSince) and the three-way replay-end result. FIXF (+38): the lent lease's named refusal carried into the store-locked reason, and the seed write's unknown-commit read-back with its stale-cache refusal until the next start; both read and write the live-outref cache and lease state the store owns. Moving the public type declarations out is a separate proven pure move."
   },
   {
     "file": "midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",

@@ -92,13 +92,18 @@ export const fakeChains = () => {
     transport: async (
       base: FakeBase,
       blocks: readonly FakeBlock[],
+      /** See fixtures/chain-handler.mjs. */
+      faults: Readonly<{
+        failingOpens?: number;
+        servedBeforeFailing?: number;
+      }> = {},
     ): Promise<L1NodeTransport> => {
       const dir = await scratch();
       const transport = new L1NodeTransport({
         binaryPath: await writeFakeSidecar({
           path: join(dir, `fake-${transports.length}`),
           handlerModule,
-          options: { base, blocks },
+          options: { base, blocks, ...faults },
         }),
         socketPath: join(dir, "node.socket"),
         networkMagic: 42,

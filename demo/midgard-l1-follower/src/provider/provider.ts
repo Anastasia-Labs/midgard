@@ -319,7 +319,8 @@ export class L1FollowerProvider implements Provider {
     txHash: TxHash,
     checkInterval = DEFAULT_CHECK_INTERVAL_MS,
   ): Promise<boolean> {
-    const deadline = Date.now() + this.#awaitTxTimeoutMs;
+    // Monotonic: a wall-clock step neither cuts the wait short nor stretches it.
+    const deadline = performance.now() + this.#awaitTxTimeoutMs;
     const hash = Buffer.from(txHash, "hex");
     let lastSeen: "in_mempool" | "absent" | "unknown" = "unknown";
     for (;;) {
@@ -337,7 +338,7 @@ export class L1FollowerProvider implements Provider {
         if (!(error instanceof L1ProviderTransientError)) throw error;
         lastSeen = "unknown";
       }
-      const remaining = deadline - Date.now();
+      const remaining = deadline - performance.now();
       if (remaining <= 0)
         throw new L1AwaitTxTimeoutError(
           txHash,
@@ -348,13 +349,18 @@ export class L1FollowerProvider implements Provider {
     }
   }
 
-  /** Submits through LocalTxSubmission; a ledger rejection carries its raw bytes. */
+  /**
+   * Submits through LocalTxSubmission; a ledger rejection carries its raw
+   * bytes. A submission the transport stopped waiting for, or whose sidecar
+   * exited, throws {@link L1SubmitOutcomeUnknownError} with the tx id.
+   */
   async submitTx(tx: Transaction): Promise<TxHash> {
     const bytes = Buffer.from(tx, "hex");
     const txHash = transactionId(bytes);
     const result = await this.#node(
       () => this.#transport.submit(bytes),
       "submit",
+      txHash,
     );
     if (!result.accepted)
       throw new L1SubmitRejectedError(txHash, result.rejection);
@@ -431,11 +437,12 @@ export class L1FollowerProvider implements Provider {
   async #node<T>(
     run: () => Promise<T>,
     operation: "query" | "submit" = "query",
+    txHash: string | null = null,
   ): Promise<T> {
     try {
       return await run();
     } catch (error) {
-      throw fromTransportError(error, operation);
+      throw fromTransportError(error, operation, txHash);
     }
   }
 }

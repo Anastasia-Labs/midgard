@@ -14,6 +14,7 @@ import {
   queryRewardAccount,
   SidecarExitedError,
   StreamInterruptedError,
+  type StreamInterruption,
   TransportProtocolError,
   type TransportReadiness,
   TransportUnavailableError,
@@ -141,6 +142,36 @@ describe("fake sidecar", () => {
     await take(() => stream.next(), 3);
     await expect(stream.next()).rejects.toBeInstanceOf(StreamInterruptedError);
     expect(await stream.ended).toBeInstanceOf(StreamInterruptedError);
+  });
+
+  it("records each failure a resuming stream reopens from, and tells the consumer", async () => {
+    const transport = await transportWith({ failAfter: true });
+    const told: StreamInterruption[] = [];
+    const stream = transport.openChainSync({
+      points: [ORIGIN],
+      credit: 10,
+      onInterrupted: (interruption) => told.push(interruption),
+    });
+    await take(() => stream.next(), 3);
+    // The handler fails every open: the stream keeps reopening, counted.
+    const deadline = Date.now() + 10_000;
+    while (told.length < 2 && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(told.slice(0, 2)).toEqual([
+      {
+        consecutive: 1,
+        total: 1,
+        last: expect.stringContaining("node_connection_lost") as unknown,
+      },
+      {
+        consecutive: 2,
+        total: 2,
+        last: expect.stringContaining("fake fault") as unknown,
+      },
+    ]);
+    expect(stream.interruptions).toEqual(told.at(-1));
+    await stream.close();
+    expect(await stream.ended).toBeNull();
   });
 
   it("fails a stream whose sequence skips a number", async () => {

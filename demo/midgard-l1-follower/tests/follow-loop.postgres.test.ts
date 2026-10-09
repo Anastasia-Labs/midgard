@@ -1,11 +1,14 @@
 import type { ChainSyncEvent } from "@al-ft/l1-node-transport";
+import pg from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
   type FactStore,
   followChain,
+  FOLLOWER_WAITING,
   type FollowStatus,
   openPostgresFactStore,
+  PostgresInstanceLock,
 } from "../src/index.js";
 import {
   buildForkSteps,
@@ -14,7 +17,13 @@ import {
 } from "../src/testing/index.js";
 import { script, scriptedTransport, simOrigin } from "./support/follow-loop.js";
 import { FIXTURE_PROJECTION, SIM_K } from "./support/fork-sim.js";
-import { testDatabases, withAdmin } from "./support/postgres.js";
+import {
+  advisoryLockHolders,
+  freezableProxy,
+  terminateLockHolder,
+  testDatabases,
+  withAdmin,
+} from "./support/postgres.js";
 
 const databases = testDatabases();
 
@@ -154,6 +163,111 @@ describe("followChain on Postgres: dropped connections", () => {
       await running;
       process.off("uncaughtExceptionMonitor", monitor);
       await base.close();
+    }
+  });
+});
+
+describe("followChain on Postgres: an instance lock lent the writer lease", () => {
+  it("names the lock's refusal in readiness while the server has lost it, writes nothing, and resumes once it is taken again", async () => {
+    const database = await databases.create();
+    const proxy = await freezableProxy(database);
+    const suspended: string[] = [];
+    let restored = 0;
+    let openGate = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    const lock = await PostgresInstanceLock.acquire(
+      {
+        keyName: "follow-loop-instance-lock-test:",
+        messages: {
+          heldElsewhere: "held elsewhere",
+          heldByOwnStaleSession: "held by own stale session",
+          suspended: "instance lock suspended",
+          passive: "instance lock passive",
+          lostAtServer: "instance lock lost at server",
+        },
+      },
+      proxy.url,
+      {
+        onInstanceLockSuspended: (error) => suspended.push(error.message),
+        onInstanceLockRestored: () => {
+          restored += 1;
+        },
+      },
+      { sleep: () => gate },
+    );
+    const store = openPostgresFactStore({
+      ...simStoreOptions([FIXTURE_PROJECTION], SIM_K, "postgres"),
+      connection: { connectionString: database.url, maxConnections: 4 },
+      writerLease: () => Promise.resolve(lock.followerWriterLease()),
+    });
+    const s = script(events, { limit: 5 });
+    const statuses: FollowStatus[] = [];
+    const latest = () => statuses[statuses.length - 1];
+    const abort = new AbortController();
+    const running = followChain({
+      store,
+      transport: scriptedTransport(s),
+      origin: simOrigin(),
+      signal: abort.signal,
+      backoffMs: { initial: 1, max: 20 },
+      onStatus: (status) => {
+        statuses.push(status);
+      },
+    });
+    const lockWaiting = (status: FollowStatus | undefined): boolean =>
+      status?.readiness.some(
+        (entry) =>
+          entry.reason === FOLLOWER_WAITING &&
+          entry.detail.includes("instance lock lost at server"),
+      ) ?? false;
+    try {
+      await waitFor("the first 5 events", () => s.acked >= 5, latest);
+      const [pid] = await advisoryLockHolders(database);
+      // The server ends the lock's session; this side's connection hears
+      // nothing, until a fenced write checks the lock at the server.
+      proxy.freeze();
+      await terminateLockHolder(database, pid!);
+      const checker = new pg.Client({ connectionString: database.url });
+      await checker.connect();
+      try {
+        await expect(lock.assertHeldAtServer(checker)).rejects.toThrow(
+          "instance lock lost at server",
+        );
+      } finally {
+        await checker.end();
+      }
+      expect(suspended).toEqual(["instance lock lost at server"]);
+      const ackedWhenLost = s.acked;
+      const cursorWhenLost = await store.cursor();
+      s.limit = undefined;
+      await waitFor(
+        "readiness to name the lock's refusal",
+        () => lockWaiting(latest()),
+        latest,
+      );
+      expect(latest()?.waiting?.cause).toBe("store_locked");
+      // Refused: nothing applied while the lock is lost.
+      await pause(100);
+      expect(s.acked).toBe(ackedWhenLost);
+      expect(await store.cursor()).toEqual(cursorWhenLost);
+      openGate();
+      await waitFor("the lock taken again", () => restored === 1, latest);
+      await waitFor(
+        "the cursor at the last event",
+        () => s.acked === events.length,
+        () => ({ acked: s.acked, status: latest() }),
+      );
+      expect(lockWaiting(latest())).toBe(false);
+      expect(latest()?.waiting).toBeNull();
+      expect(suspended).toHaveLength(1);
+    } finally {
+      abort.abort();
+      await running;
+      await store.close();
+      await lock.release();
+      await proxy.close();
     }
   });
 });

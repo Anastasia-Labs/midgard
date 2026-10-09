@@ -106,6 +106,8 @@ export type OriginStartOptions = Readonly<{
   origin: Point;
   /** The stream's credit (see `ChainSyncOptions.credit`). */
   credit: ChainSyncStream["options"]["credit"];
+  /** Told each failure the stream reopens from (`ChainSyncOptions.onInterrupted`). */
+  onInterrupted?: ChainSyncStream["options"]["onInterrupted"];
 }>;
 
 /**
@@ -131,6 +133,9 @@ export const startFromOrigin = async (
   const stream = options.transport.openChainSync({
     points: [chainPoint(BigInt(origin.slot), origin.hash.toString("hex"))],
     credit: options.credit,
+    ...(options.onInterrupted === undefined
+      ? {}
+      : { onInterrupted: options.onInterrupted }),
   });
   const close = async <T>(result: T): Promise<T> => {
     await stream.close();

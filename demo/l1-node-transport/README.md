@@ -226,6 +226,11 @@ The client remembers, per stream:
 - the intersection;
 - the original points.
 
+Each `cs_failed` a resuming stream reopens from, and each refused reopen,
+is recorded in `stream.interruptions` (`consecutive` since the last
+delivered event, `total`, `last`) and passed to the `onInterrupted` option,
+so a reopen loop is visible to the consumer.
+
 After a sidecar restart (or `cs_failed`) it reopens the stream as follows:
 
 - **points.** `[last point, recent forward points newest first,

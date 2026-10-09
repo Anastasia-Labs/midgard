@@ -23,13 +23,36 @@ export type TransientSource = "transport" | "store" | "follower";
  * connection, a follower that is not initialized yet). Retry with backoff.
  */
 export class L1ProviderTransientError extends L1ProviderError {
-  override readonly name = "L1ProviderTransientError";
+  override readonly name: string = "L1ProviderTransientError";
   constructor(
     readonly source: TransientSource,
     readonly reason: string,
     options?: { cause?: unknown },
   ) {
     super(`L1 provider ${source} unavailable: ${reason}`, options);
+  }
+}
+
+/**
+ * A submission whose outcome is unknown: the transport stopped waiting for
+ * the node's answer, or the sidecar exited, while it was in flight. The node
+ * may have taken the transaction. It is an {@link L1ProviderTransientError}
+ * (`retryable`), so a caller that resends the same bytes behaves as before;
+ * a caller that would build a replacement looks for `txHash` first (in the
+ * mempool or the facts) instead of resubmitting blind. `reason` is the
+ * transient reason the submission failed with.
+ */
+export class L1SubmitOutcomeUnknownError extends L1ProviderTransientError {
+  override readonly name: string = "L1SubmitOutcomeUnknownError";
+  readonly retryable = true;
+  readonly outcomeUnknown = true;
+  constructor(
+    readonly txHash: string | null,
+    reason: string,
+    options?: { cause?: unknown },
+  ) {
+    super("transport", reason, options);
+    this.message = `submission ${txHash === null ? "" : `of transaction ${txHash} `}has an unknown outcome (${reason}): the node may have taken it; look for it by id before building a replacement`;
   }
 }
 
@@ -153,26 +176,32 @@ const QUERY_TRANSIENT_REQUEST_CODES = new Set(["node_timeout"]);
  * {@link L1ProviderTransientError}; any other refusal
  * {@link L1ProviderRequestError}. Anything else is returned unchanged.
  * `operation` is the request that failed: a node timeout is transient for a
- * query only.
+ * query only, and a submission the transport stopped waiting for, or whose
+ * sidecar exited, is {@link L1SubmitOutcomeUnknownError} for `txHash`.
  */
 export const fromTransportError = (
   error: unknown,
   operation: "query" | "submit" = "query",
+  txHash: string | null = null,
 ): unknown => {
   if (error instanceof TransportUnavailableError)
     return new L1ProviderTransientError("transport", error.reason, {
       cause: error,
     });
   if (error instanceof TransportTimeoutError)
-    return new L1ProviderTransientError("transport", "request_timeout", {
-      cause: error,
-    });
-  if (error instanceof SidecarExitedError)
-    return new L1ProviderTransientError(
-      "transport",
-      error.exit.fatal?.code ?? "sidecar_exited",
-      { cause: error },
-    );
+    return operation === "submit"
+      ? new L1SubmitOutcomeUnknownError(txHash, "request_timeout", {
+          cause: error,
+        })
+      : new L1ProviderTransientError("transport", "request_timeout", {
+          cause: error,
+        });
+  if (error instanceof SidecarExitedError) {
+    const reason = error.exit.fatal?.code ?? "sidecar_exited";
+    return operation === "submit"
+      ? new L1SubmitOutcomeUnknownError(txHash, reason, { cause: error })
+      : new L1ProviderTransientError("transport", reason, { cause: error });
+  }
   if (error instanceof TransportRequestError)
     return TRANSIENT_REQUEST_CODES.has(error.code) ||
       (operation === "query" && QUERY_TRANSIENT_REQUEST_CODES.has(error.code))

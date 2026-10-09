@@ -55,6 +55,7 @@ export {
   MAX_WINDOW,
   type Opened,
   StreamInterruptedError,
+  type StreamInterruption,
 } from "./stream.js";
 export {
   closeSharedL1NodeTransports,

@@ -2,6 +2,7 @@ import {
   type ChainSyncEvent,
   type ChainSyncStream,
   IntersectNotFoundError,
+  type StreamInterruption,
   type TransportReadiness,
 } from "@al-ft/l1-node-transport";
 
@@ -26,12 +27,14 @@ import { watchNodeBehind } from "./node-behind.js";
 import { startWhenFree } from "./start.js";
 import {
   DEFAULT_STUCK_AFTER,
+  FOLLOW_CREDIT_POLICY,
   type FollowChainOptions,
   type FollowStatus,
   type FollowWaitCause,
   LOOP_PRUNE_BUDGET,
   LOOP_PRUNE_EVERY,
   readinessOf,
+  STREAM_INTERRUPTED_AFTER,
 } from "./status.js";
 
 export * from "./status.js";
@@ -81,7 +84,7 @@ export const followChain = async (
   store.watchProtocolInit(options.origin.hubOracleOneShot);
   const backoff = options.backoffMs ?? { initial: 500, max: 30_000 };
   const log = options.log ?? (() => undefined);
-  const credit = options.credit ?? 64;
+  const credit = options.credit ?? FOLLOW_CREDIT_POLICY;
   const stuckAfter = options.stuckAfter ?? DEFAULT_STUCK_AFTER;
   const pruneBudget = options.prune?.budget ?? LOOP_PRUNE_BUDGET;
   const pruneEvery = options.prune?.everyEvents ?? LOOP_PRUNE_EVERY;
@@ -348,6 +351,25 @@ export const followChain = async (
     return "continue";
   };
 
+  /**
+   * A failure the stream reopens from on its own: logged, and from
+   * `STREAM_INTERRUPTED_AFTER` in a row a wait on the stream, so a reopen
+   * loop is visible. The next applied event clears it.
+   */
+  const onInterrupted = (interruption: StreamInterruption): void => {
+    const { consecutive, total, last } = interruption;
+    if (consecutive <= STREAM_INTERRUPTED_AFTER || consecutive % 60 === 0)
+      log(
+        `chain-sync stream failed and is reopening (${consecutive} in a row, ${total} in all): ${last}`,
+      );
+    if (consecutive >= STREAM_INTERRUPTED_AFTER)
+      void failed(
+        "stream",
+        `the chain-sync stream failed ${consecutive} times in a row and keeps reopening: ${last}`,
+        "transient",
+      );
+  };
+
   let delay = backoff.initial;
   const wait = async (): Promise<void> => {
     await sleep(delay, signal);
@@ -376,6 +398,7 @@ export const followChain = async (
         transport: options.transport,
         origin: options.origin.origin,
         credit,
+        onInterrupted,
       });
       if (begun.kind === "intervention") {
         await stopOn(begun);
@@ -403,6 +426,7 @@ export const followChain = async (
         stream = options.transport.openChainSync({
           points: await intersectionPoints(store),
           credit,
+          onInterrupted,
         });
       } else {
         stream = begun.stream;

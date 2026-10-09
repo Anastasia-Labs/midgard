@@ -3,14 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { type ChainSyncEvent, L1NodeTransport } from "@al-ft/l1-node-transport";
+import {
+  type ChainSyncEvent,
+  type ChainSyncStream,
+  L1NodeTransport,
+} from "@al-ft/l1-node-transport";
 import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
   type FactStore,
+  FOLLOW_CREDIT_POLICY,
   followChain,
   FOLLOWER_NODE_UNAVAILABLE,
+  FOLLOWER_WAITING,
   type FollowStatus,
   intersectionPoints,
   openPostgresFactStore,
@@ -22,7 +28,7 @@ import {
   forkCorpus,
   simStoreOptions,
 } from "../src/testing/index.js";
-import { type FakeBlock, fakeChains } from "./support/fake-chain.js";
+import { type FakeBlock, fakeChains, rawBlock } from "./support/fake-chain.js";
 import {
   appliedAll,
   follow,
@@ -269,3 +275,143 @@ describe.each(["sqlite", "postgres"] as const)(
     });
   },
 );
+
+describe("followChain's chain-sync credit", () => {
+  it("opens with a deep window while behind the node's tip, and narrows it to one block at the tip", async () => {
+    const origin = simOrigin().origin;
+    const blocks: FakeBlock[] = [];
+    for (let i = 1; i <= 30; i += 1)
+      blocks.push(
+        rawBlock(
+          origin.slot + i,
+          1_000 + i,
+          blocks.at(-1)?.hash ?? origin.hash.toString("hex"),
+          [],
+        ),
+      );
+    const transport = await fakes.transport(simBase(), blocks);
+    const streams: ChainSyncStream[] = [];
+    /** Whether each stream opened with its catch-up window. */
+    const openedCatchingUp: boolean[] = [];
+    const store = await stores.sqlite();
+    const abort = new AbortController();
+    let status: FollowStatus | undefined;
+    const running = followChain({
+      store,
+      transport: {
+        readiness: transport.readiness,
+        onReadiness: (listener) => transport.onReadiness(listener),
+        openChainSync: (options) => {
+          const stream = transport.openChainSync(options);
+          streams.push(stream);
+          openedCatchingUp.push(stream.catchingUp);
+          return stream;
+        },
+      },
+      origin: simOrigin(),
+      signal: abort.signal,
+      backoffMs: { initial: 5, max: 20 },
+      onStatus: (next) => {
+        status = next;
+      },
+    });
+    try {
+      const deadline = Date.now() + 10_000;
+      while (status?.atTip !== true || status.cursor?.height !== 1_030) {
+        if (Date.now() > deadline)
+          throw new Error(`timed out; ${JSON.stringify(status?.readiness)}`);
+        await pause(10);
+      }
+      expect(streams.length).toBeGreaterThan(0);
+      for (const stream of streams)
+        expect(stream.options.credit).toEqual({
+          catchUpWindow: 50,
+          tipWindow: 1,
+          catchUpDistance: 10n,
+        });
+      expect(FOLLOW_CREDIT_POLICY).toEqual(streams[0]!.options.credit);
+      // 30 blocks behind at open: the deep window. At the tip: one block.
+      expect(openedCatchingUp.every((catchingUp) => catchingUp)).toBe(true);
+      expect(streams.at(-1)!.catchingUp).toBe(false);
+    } finally {
+      abort.abort();
+      await running;
+      await store.close();
+    }
+  });
+});
+
+describe("followChain over a stream that keeps failing and reopening", () => {
+  it("reports a reopen loop as a wait on the stream, and clears it at the next applied event", async () => {
+    const origin = simOrigin().origin;
+    const blocks: FakeBlock[] = [];
+    for (let i = 1; i <= 8; i += 1)
+      blocks.push(
+        rawBlock(
+          origin.slot + i,
+          1_000 + i,
+          blocks.at(-1)?.hash ?? origin.hash.toString("hex"),
+          [],
+        ),
+      );
+    // The first open serves 3 blocks and fails; the next 2 fail at once.
+    const transport = await fakes.transport(simBase(), blocks, {
+      failingOpens: 2,
+      servedBeforeFailing: 3,
+    });
+    const store = await stores.sqlite();
+    const abort = new AbortController();
+    const statuses: FollowStatus[] = [];
+    const logged: string[] = [];
+    const running = followChain({
+      store,
+      transport,
+      origin: simOrigin(),
+      signal: abort.signal,
+      backoffMs: { initial: 5, max: 20 },
+      log: (line) => logged.push(line),
+      onStatus: (next) => {
+        statuses.push(next);
+      },
+    });
+    const reopenLoop = (status: FollowStatus): boolean =>
+      status.waiting?.cause === "stream" &&
+      status.readiness.some(
+        (entry) =>
+          entry.reason === FOLLOWER_WAITING &&
+          entry.detail.includes("3 times in a row"),
+      );
+    try {
+      const deadline = Date.now() + 15_000;
+      while (statuses.at(-1)?.cursor?.height !== 1_008) {
+        if (Date.now() > deadline)
+          throw new Error(
+            `timed out; ${JSON.stringify(statuses.at(-1)?.readiness)}`,
+          );
+        await pause(20);
+      }
+      const loop = statuses.findIndex(reopenLoop);
+      expect(loop).toBeGreaterThan(-1);
+      // Held at the cursor of the third block while the stream reopened.
+      expect(statuses[loop]!.cursor?.height).toBe(1_003);
+      // Two failures in a row were logged, not yet a wait.
+      expect(
+        statuses
+          .slice(0, loop)
+          .some((status) => status.waiting?.cause === "stream"),
+      ).toBe(false);
+      expect(
+        logged.filter((line) => line.startsWith("chain-sync stream failed")),
+      ).toHaveLength(3);
+      const last = statuses.at(-1)!;
+      expect(last.waiting).toBeNull();
+      expect(
+        last.readiness.some((entry) => entry.reason === FOLLOWER_WAITING),
+      ).toBe(false);
+    } finally {
+      abort.abort();
+      await running;
+      await store.close();
+    }
+  });
+});

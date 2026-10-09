@@ -1,4 +1,5 @@
 import type {
+  CreditPolicy,
   L1NodeTransport,
   TransportUnreadyReason,
 } from "@al-ft/l1-node-transport";
@@ -46,6 +47,24 @@ export const FOLLOWER_TRACKED_SET_CHANGED = "tracked_set_changed";
  * the store did): every fact past retention stays until one succeeds.
  */
 export const FOLLOWER_PRUNE_FAILING = "l1_follower_prune_failing";
+
+/**
+ * The following stream's default credit: a deep window while it is more than
+ * ten blocks behind the node's tip, and one outstanding block at the tip, so
+ * a closed stream frees its node connection after at most one more block.
+ */
+export const FOLLOW_CREDIT_POLICY: CreditPolicy = Object.freeze({
+  catchUpWindow: 50,
+  tipWindow: 1,
+  catchUpDistance: 10n,
+});
+
+/**
+ * Failures in a row the chain-sync stream reopened from, with no event
+ * between them, before the loop reports itself waiting on the stream
+ * (`FOLLOWER_WAITING`, cause `stream`). The next applied event clears it.
+ */
+export const STREAM_INTERRUPTED_AFTER = 3;
 
 /** A named reason a role's `/readyz` reports while the follower holds it unready. */
 export type FollowReadinessReason =
@@ -136,8 +155,8 @@ export type FollowChainOptions = Readonly<{
   >;
   origin: OriginConfig;
   signal: AbortSignal;
-  /** The chain-sync stream's credit (default 64). */
-  credit?: number;
+  /** The chain-sync stream's credit (default `FOLLOW_CREDIT_POLICY`). */
+  credit?: number | CreditPolicy;
   /** Capped exponential backoff (default 500 ms to 30 s). */
   backoffMs?: Readonly<{ initial: number; max: number }>;
   log?: (line: string) => void;
