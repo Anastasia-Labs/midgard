@@ -15,7 +15,7 @@ import {
 } from "../sync-blueprint-from.mjs";
 import { runDirectory } from "./build.mjs";
 import { runProcess } from "./process.mjs";
-import { pinnedPnpm } from "./pnpm.mjs";
+import { pinnedPnpm, requireInstalled } from "./pnpm.mjs";
 import { withResource } from "./resources.mjs";
 
 // One answer to "this checkout needs a blueprint": nobody decides between
@@ -81,6 +81,7 @@ export const syncCandidates = (root, checkouts = listCheckouts(root)) => {
 };
 
 const deploymentBuild = async (root, profile, { signal, env }) => {
+  requireInstalled(root);
   const logPath = resolve(runDirectory(), "deployment-build.log");
   const step = await withResource(
     "memory-heavy-build",
