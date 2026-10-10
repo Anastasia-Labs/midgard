@@ -16,29 +16,12 @@
  * the rest of the change applies: an identity conflict is a hold, an
  * undecodable event a refusal `/readyz` names while the node stays ready.
  */
-import {
-  SidecarExitedError,
-  StreamInterruptedError,
-  TransportRequestError,
-  TransportTimeoutError,
-  TransportUnavailableError,
-} from "@al-ft/l1-node-transport";
-import {
-  classifyFailure,
-  type FactStore,
-  type View,
-} from "@al-ft/midgard-l1-follower";
+import type { FactStore, View } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 import {
   eventsAt,
   type ProjectedEvent,
 } from "@al-ft/midgard-l1-follower/events";
-import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
-
-import {
-  isConnectionClassError,
-  isRetryableProviderError,
-} from "../provider-retry.js";
 
 /** The follower view the driver last applied, and the one it is applying. */
 export type FollowerChange =
@@ -104,60 +87,18 @@ export const isTransientFailureHold = (hold: DriverHold): boolean =>
   TRANSIENT_FAILURE.has(hold);
 
 /**
- * Whether a failure says only that a dependency did not answer: a
- * connection-class or retryable provider failure (`isConnectionClassError`,
- * `isRetryableProviderError`) or a store failure the follower classifies as
- * transient (`classifyFailure`). An unrecognised failure is not transient.
+ * Builds the hold for a failure: retried without bound, retried for a
+ * bounded time (`transientFailure`) or `notRetried`. The effectful caller
+ * supplies it (`failureHold`, `services/l1-follower.failure-hold.ts`): the
+ * classification names the node transport's error classes and the provider
+ * retry policy, which this module keeps out of its imports (the determinism
+ * lint, `tests/l1-events-lint.test.ts`).
  */
-export const isTransientDriverFailure = (error: unknown): boolean => {
-  if (isConnectionClassError(error) || isRetryableProviderError(error))
-    return true;
-  let current: unknown = error;
-  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
-    if (classifyFailure(current) === "transient") return true;
-    current = current.cause;
-  }
-  return false;
-};
-
-/**
- * Whether a failure comes from the L1 node: its transport or sidecar, or
- * the follower provider's node or follower path (not its store). Waiting on
- * the node has no bound (plan §7.5).
- */
-export const isL1NodeOutage = (error: unknown): boolean => {
-  let current: unknown = error;
-  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
-    if (
-      current instanceof TransportUnavailableError ||
-      current instanceof SidecarExitedError ||
-      current instanceof TransportTimeoutError ||
-      current instanceof StreamInterruptedError ||
-      current instanceof TransportRequestError ||
-      (current instanceof L1ProviderTransientError &&
-        current.source !== "store")
-    )
-      return true;
-    current = current.cause;
-  }
-  return false;
-};
-
-/**
- * A failure hold. A transient failure is retried: one from the L1 node
- * (`isL1NodeOutage`) without bound, any other (the database) as a
- * `transientFailure`, for a bounded time. A failure that is not transient
- * is `notRetried`.
- */
-export const failureHold = (
+export type FailureHold = (
   reason: string,
   detail: string,
   error: unknown,
-): DriverHold => {
-  const hold = { reason, detail };
-  if (!isTransientDriverFailure(error)) return notRetried(hold);
-  return isL1NodeOutage(error) ? hold : transientFailure(hold);
-};
+) => DriverHold;
 
 /**
  * Orphaned admissions wait for the recovery that rejects their dependents:
@@ -315,8 +256,11 @@ export const createFollowerDriver = (options: {
   readonly config: EventProjectionConfig;
   readonly sink: FollowerEventSink;
   readonly hooks?: DriverHooks;
+  /** The hold for a failure the driver caught (`FailureHold`). */
+  readonly failureHold: FailureHold;
   readonly log?: (line: string) => void;
 }): FollowerDriver => {
+  const failureHold = options.failureHold;
   const log = options.log ?? (() => undefined);
   const hooks = options.hooks ?? {};
   let applied: View | null = null;

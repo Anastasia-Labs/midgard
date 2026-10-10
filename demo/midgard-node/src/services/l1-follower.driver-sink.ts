@@ -8,7 +8,6 @@ import { Cause, Data, Effect, Ref, Runtime } from "effect";
 import { reconcileFollowerEvents } from "../database/follower-events.js";
 import {
   EVENTS_INGESTION_FAILED,
-  failureHold,
   type FollowerChange,
   type FollowerEventSink,
   type IngestionPlan,
@@ -24,6 +23,7 @@ import {
   withFollowerWrite,
 } from "./follower-write-gate.js";
 import { Globals } from "./globals.globals.js";
+import { failureHold } from "./l1-follower.failure-hold.js";
 import { message } from "./l1-follower.network-magic.js";
 import {
   DRIVER_RECOMPUTE_FAILED,

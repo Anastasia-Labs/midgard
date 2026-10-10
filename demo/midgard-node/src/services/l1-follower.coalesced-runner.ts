@@ -1,10 +1,10 @@
 import {
   type DriverHold,
   EVENTS_INGESTION_FAILED,
-  failureHold,
   isRetriedHold,
   isTransientFailureHold,
 } from "../l1-events/driver.js";
+import { failureHold } from "./l1-follower.failure-hold.js";
 import { NODE_TRANSIENT_BUDGET_MS } from "./transient-exhaustion.js";
 
 /** Retry delays for a held driver: capped exponential. */

@@ -13,12 +13,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   type DriverHold,
-  failureHold,
-  isL1NodeOutage,
   isRetriedHold,
   isTransientFailureHold,
 } from "../src/l1-events/driver.js";
 import { coalescedRunner } from "../src/services/l1-follower.coalesced-runner.js";
+import {
+  failureHold,
+  isL1NodeOutage,
+} from "../src/services/l1-follower.failure-hold.js";
 
 const MINUTE = 60_000;
 

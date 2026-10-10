@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Fiber } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import type { NodeConfig } from "../src/services/config.js";
@@ -10,7 +10,7 @@ const seen = vi.hoisted(() => ({
   resumeProvider: undefined as
     | ((effect: Effect.Effect<never, Error>) => void)
     | undefined,
-  completion: undefined as Promise<Exit.Exit<unknown, unknown>> | undefined,
+  running: undefined as Fiber.RuntimeFiber<unknown, unknown> | undefined,
   databaseAcquisitions: 0,
 }));
 
@@ -101,7 +101,7 @@ vi.mock("../src/commands/cli-runtime.js", async (importOriginal) => {
   return {
     ...original,
     runCliEffect: (effect: Effect.Effect<unknown, unknown>) => {
-      seen.completion = Effect.runPromiseExit(effect);
+      seen.running = Effect.runFork(effect);
     },
   };
 });
@@ -109,41 +109,102 @@ vi.mock("../src/commands/cli-runtime.js", async (importOriginal) => {
 import "../src/index.registration-2.js";
 
 import { program } from "../src/index.registration.js";
+import { startupStepFailed } from "../src/services/startup-waiting.js";
 
+/**
+ * Starts the registered `listen` command up to the provider boundary and
+ * checks what the listener serves there: live probes, no admission or init,
+ * no database. Returns the listener's base URL.
+ */
+const startToProviderBoundary = async (): Promise<string> => {
+  seen.servers = [];
+  seen.resumeProvider = undefined;
+  seen.running = undefined;
+  await program.parseAsync(["node", "midgard-node", "listen"]);
+  await vi.waitFor(() => expect(seen.resumeProvider).toBeTypeOf("function"));
+  expect(seen.servers).toHaveLength(1);
+  const address = seen.servers[0]!.address();
+  expect(address).toBeTypeOf("object");
+  if (address === null || typeof address === "string")
+    throw new Error("Expected bound TCP listener");
+  const url = `http://127.0.0.1:${address.port}`;
+  const health = await fetch(`${url}/healthz`);
+  expect(health.status).toBe(200);
+  expect(await health.json()).toEqual({
+    status: "ok",
+    stage: "runtime_services",
+  });
+  const ready = await fetch(`${url}/readyz`);
+  expect(ready.status).toBe(503);
+  expect(await ready.json()).toEqual({
+    ready: false,
+    reasons: ["startup_incomplete"],
+    stage: "runtime_services",
+  });
+  expect(
+    (await fetch(`${url}/submit`, { method: "POST", body: "unparsed" })).status,
+  ).toBe(503);
+  expect((await fetch(`${url}/init`)).status).toBe(503);
+  expect(seen.databaseAcquisitions).toBe(0);
+  return url;
+};
+
+/** Interrupts a startup still running, so a failed case cannot leak it. */
+const stopStartup = async () => {
+  if (seen.running !== undefined && seen.running.unsafePoll() === null)
+    await Effect.runPromise(Fiber.interrupt(seen.running));
+};
+
+// A failure no restart repairs holds the process up and unready, and a
+// transient one that outlived its bound exits (plan §7.5, owner ruling
+// 2026-10-09; `withStartupHttpServer`).
 describe("registered listen command startup/provider order", () => {
-  it("binds probes before the real Lucid provider boundary, rejects admission/init, then propagates failure and closes", async () => {
-    await program.parseAsync(["node", "midgard-node", "listen"]);
-    await vi.waitFor(() => expect(seen.resumeProvider).toBeTypeOf("function"));
-    const providerFailure = new Error("provider boundary failed");
+  it("binds probes before the real Lucid provider boundary, rejects admission/init, then holds a deterministic provider failure up and unready", async () => {
+    const url = await startToProviderBoundary();
     try {
-      expect(seen.servers).toHaveLength(1);
-      const address = seen.servers[0]!.address();
-      expect(address).toBeTypeOf("object");
-      if (address === null || typeof address === "string")
-        throw new Error("Expected bound TCP listener");
-      const url = `http://127.0.0.1:${address.port}`;
+      seen.resumeProvider!(Effect.fail(new Error("provider boundary failed")));
+      await expect
+        .poll(async () => {
+          const ready = await fetch(`${url}/readyz`);
+          return { status: ready.status, body: await ready.json() };
+        })
+        .toEqual({
+          status: 503,
+          body: {
+            ready: false,
+            reasons: ["startup_failed"],
+            stage: "fatal",
+            failedStage: "runtime_services",
+          },
+        });
       const health = await fetch(`${url}/healthz`);
       expect(health.status).toBe(200);
       expect(await health.json()).toEqual({
-        status: "ok",
-        stage: "runtime_services",
+        status: "held",
+        stage: "fatal",
+        failedStage: "runtime_services",
       });
-      const ready = await fetch(`${url}/readyz`);
-      expect(ready.status).toBe(503);
-      expect(await ready.json()).toEqual({
-        ready: false,
-        reasons: ["startup_incomplete"],
-        stage: "runtime_services",
-      });
-      expect(
-        (await fetch(`${url}/submit`, { method: "POST", body: "unparsed" }))
-          .status,
-      ).toBe(503);
-      expect((await fetch(`${url}/init`)).status).toBe(503);
+      // Held, not exited: the command has not completed.
+      expect(seen.running!.unsafePoll()).toBeNull();
       expect(seen.databaseAcquisitions).toBe(0);
     } finally {
-      seen.resumeProvider!(Effect.fail(providerFailure));
-      const exit = await seen.completion!;
+      await stopStartup();
+    }
+    expect(seen.servers.every((server) => !server.listening)).toBe(true);
+  });
+
+  it("propagates a provider read whose transient budget ran out, and closes", async () => {
+    await startToProviderBoundary();
+    const exhausted = startupStepFailed({
+      step: "l1_slot_mapping",
+      reason: "l1_slot_mapping_pending",
+      cause: new Error("provider boundary unreachable"),
+      exhausted: true,
+      attempts: 3,
+    });
+    try {
+      seen.resumeProvider!(Effect.fail(exhausted));
+      const exit = await Effect.runPromise(Fiber.await(seen.running!));
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         expect(Cause.pretty(exit.cause)).toContain(
@@ -151,10 +212,13 @@ describe("registered listen command startup/provider order", () => {
         );
         expect(Cause.failureOption(exit.cause)).toMatchObject({
           _tag: "Some",
-          value: { cause: providerFailure },
+          value: { cause: exhausted },
         });
       }
-      expect(seen.servers.every((server) => !server.listening)).toBe(true);
+    } finally {
+      await stopStartup();
     }
+    expect(seen.servers.every((server) => !server.listening)).toBe(true);
+    expect(seen.databaseAcquisitions).toBe(0);
   });
 });

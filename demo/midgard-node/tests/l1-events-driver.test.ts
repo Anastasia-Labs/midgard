@@ -23,13 +23,13 @@ import {
   EVENTS_HOOK_FAILED,
   EVENTS_INGESTION_FAILED,
   EVENTS_ORPHAN_RECOVERY,
-  failureHold,
   type FollowerChange,
   type IngestionPlan,
   isRetriedHold,
   type SinkResult,
 } from "../src/l1-events/driver.js";
 import { coalescedRunner } from "../src/services/l1-follower.coalesced-runner.js";
+import { failureHold } from "../src/services/l1-follower.failure-hold.js";
 import {
   admissionTx,
   eventOrder,
@@ -128,6 +128,7 @@ describe.each(["sqlite", "postgres"] as const)(
       const { calls, sink } = recordingSink();
       const log: string[] = [];
       const driver = createFollowerDriver({
+        failureHold,
         store,
         config: EVENTS_CONFIG,
         sink,
@@ -200,6 +201,7 @@ describe.each(["sqlite", "postgres"] as const)(
         detail: "signed intent awaits landing",
       };
       const driver = createFollowerDriver({
+        failureHold,
         store,
         config: EVENTS_CONFIG,
         sink,
@@ -292,6 +294,7 @@ describe.each(["sqlite", "postgres"] as const)(
       ]);
       const lines: string[] = [];
       const driver = createFollowerDriver({
+        failureHold,
         store,
         config: EVENTS_CONFIG,
         sink,
@@ -339,6 +342,7 @@ describe.each(["sqlite", "postgres"] as const)(
       const { calls, sink } = recordingSink();
       const log: string[] = [];
       const driver = createFollowerDriver({
+        failureHold,
         store: failing,
         config: EVENTS_CONFIG,
         sink,
@@ -367,6 +371,7 @@ describe("the driver's holds, by failure class", () => {
       [Object.assign(new Error("duplicate key"), { code: "23505" }), false],
     ] as const) {
       const driver = createFollowerDriver({
+        failureHold,
         store: {
           currentView: () => Promise.reject(error),
         } as unknown as FactStore,

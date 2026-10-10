@@ -57,10 +57,7 @@ import {
   type EventRefusal,
   EVENTS_INGESTION_WAITING,
   EVENTS_ORPHAN_RECOVERY,
-  failureHold as classifiedHold,
   type IngestionPlan,
-  isL1NodeOutage,
-  isTransientDriverFailure,
   notRetried,
   transientFailure,
 } from "../l1-events/driver.js";
@@ -94,6 +91,11 @@ import {
   withFollowerWrite,
 } from "./follower-write-gate.js";
 import { Globals } from "./globals.globals.js";
+import {
+  failureHold as classifiedHold,
+  isL1NodeOutage,
+  isTransientDriverFailure,
+} from "./l1-follower.failure-hold.js";
 import type { FollowerPlanRead } from "./l1-follower.readiness.js";
 import {
   clearLivenessIncident,

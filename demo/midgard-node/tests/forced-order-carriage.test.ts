@@ -34,6 +34,7 @@ import {
   createFollowerDriver,
   type FollowerEventSink,
 } from "../src/l1-events/driver.js";
+import { failureHold } from "../src/services/l1-follower.failure-hold.js";
 import {
   FORCED_CONFIG,
   nativeTransactionCbor,
@@ -192,6 +193,7 @@ describe("forced-order carriage resolution (§12.3)", () => {
         }),
     };
     const driver = createFollowerDriver({
+      failureHold,
       store,
       config: EVENTS_CONFIG,
       sink,

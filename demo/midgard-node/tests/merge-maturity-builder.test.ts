@@ -20,6 +20,8 @@ const hashBlockHeaderMock = vi.hoisted(() => vi.fn());
 const fetchFirstBlockTxsMock = vi.hoisted(() => vi.fn());
 const breakDownTxMock = vi.hoisted(() => vi.fn());
 const localSlotSnapshotProviderMock = vi.hoisted(() => vi.fn());
+// The poisoned own headers the readiness read returns (none by default).
+const poisonedHeaders = vi.hoisted(() => ({ value: new Set<string>() }));
 
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 
@@ -43,6 +45,27 @@ vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
   return {
     ...actual,
     requireLandedStateQueue: requireLandedStateQueueMock,
+  };
+});
+
+// The poisoned-own-headers read is the readiness check's one database read
+// (a landed own block whose event left the chain is not merged); it runs
+// before the BlocksDB lookup, so it is replaced here like the landed queue.
+vi.mock("../src/database/poisoned-own-headers.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../src/database/poisoned-own-headers.js")
+    >();
+  const { Effect: EffectModule } = await import("effect");
+  return {
+    ...actual,
+    readPoisonedOwnHeaders: EffectModule.sync(() => ({
+      orphaned: [...poisonedHeaders.value].map((hash) => ({
+        headerHash: hash,
+        orphans: 1,
+      })),
+      headers: poisonedHeaders.value,
+    })),
   };
 });
 
@@ -200,6 +223,7 @@ describe("merge builder maturity preflight", () => {
     breakDownTxMock.mockReset();
     localSlotSnapshotProviderMock.mockReset();
     fakeLucidUtxosAt.mockReset();
+    poisonedHeaders.value = new Set();
 
     configureCandidate({
       // A state-queue node's `da_attestation` is the
@@ -267,6 +291,21 @@ describe("merge builder maturity preflight", () => {
     expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
     expect(breakDownTxMock).not.toHaveBeenCalled();
     expect(localSlotSnapshotProviderMock).not.toHaveBeenCalled();
+  });
+
+  it("returns event-orphaned for a poisoned own header before BlocksDB lookup or decode", async () => {
+    poisonedHeaders.value = new Set([headerHash]);
+    setNow(530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms);
+
+    const result = await runBuilder();
+
+    expect(result).toMatchObject({
+      status: "skipped_oldest_block_event_orphaned",
+      headerHash,
+      reason: expect.stringContaining(`header=${headerHash}`),
+    });
+    expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
+    expect(breakDownTxMock).not.toHaveBeenCalled();
   });
 
   it("calls nothing mature on a local clock 10 minutes fast", async () => {

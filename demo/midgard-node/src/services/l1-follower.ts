@@ -93,6 +93,7 @@ import {
 } from "./intent-journal.tracked-set.js";
 import { coalescedRunner } from "./l1-follower.coalesced-runner.js";
 import { driverSink } from "./l1-follower.driver-sink.js";
+import { failureHold } from "./l1-follower.failure-hold.js";
 import { nodeFamilyPredicate } from "./l1-follower.intent-predicates.js";
 import {
   createNodeIntentStage,
@@ -234,6 +235,7 @@ const followL1 = <R>(
       recompute.rebaseIfDue,
     );
     const driver = createFollowerDriver({
+      failureHold,
       store,
       config: plan.projection,
       sink,
