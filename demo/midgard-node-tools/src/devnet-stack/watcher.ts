@@ -2,8 +2,11 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
+
 import { LOCAL_AUTHORITY_ID } from "./da.js";
 import type { DeployContext } from "./deploy.js";
+import { recordedL1Origin } from "./deployment-origin.js";
 import { writeDurableFile, writeOnceFile } from "./durable.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 import type { HubOracleOneShot } from "./node-env.js";
@@ -117,6 +120,7 @@ const watcherConfigInput = (
   schemaVersion: string,
   confirmationDepth: number,
   secrets: ReturnType<typeof ensureSecrets>,
+  origin: L1Origin,
 ) => {
   const { layout } = context;
   return {
@@ -138,6 +142,7 @@ const watcherConfigInput = (
             .digest("hex"),
         },
       },
+      origin: { slot: origin.slot, blockHash: origin.blockHash },
       requestTimeoutMs: 30_000,
       maxConcurrency: 8,
       finality: { depth: confirmationDepth },
@@ -205,6 +210,9 @@ export const ensureWatcherRelease = async (
     watcher.WATCHER_CONFIG_SCHEMA_VERSION,
     manifest.l1Finality.confirmationDepth,
     secrets,
+    // The follower starts at the run's recorded origin; without one the
+    // watcher holds unready (l1_origin_not_configured).
+    recordedL1Origin(layout, oneShot),
   );
   watcher.parseWatcherConfig(watcherInput);
   const fresh = ![

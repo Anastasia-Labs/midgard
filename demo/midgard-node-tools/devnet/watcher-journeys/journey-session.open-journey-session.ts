@@ -15,6 +15,7 @@ import {
 import { createPublishedWatcherDeploymentAuthority } from "midgard-watcher/tests/support/published-deployment-authority";
 
 import { sourceFacetPaths } from "../../../../scripts/lib/source-facets.mjs";
+import { deriveL1Origin } from "../../src/l1-origin.js";
 import { writeJourneyArtifact } from "./artifacts.js";
 import {
   ensureJourneyWatcherSecrets,
@@ -115,6 +116,18 @@ export const openJourneySession = async (runDirectory: string) => {
     const nativeQuery = await journeyNativeNodeQuery(context.runDirectory);
     if (nativeQuery.watcherConfig.l1.source.sourceMode !== "local_node")
       throw new Error("Native node source required");
+    // The run watcher follows from the deployment's origin, the point before
+    // its hub-oracle nonce's block; without one it holds unready.
+    const { origin } = await stage("deployment L1 origin", () =>
+      deriveL1Origin({
+        node: {
+          socketPath: nativeQuery.watcherConfig.l1.source.chainSync.socketPath,
+          binaryPath: nativeQuery.binaryPath,
+          networkMagic: context.customNetwork.networkMagic,
+        },
+        nonceTxHash: deployment.manifest.hubOracleOneShot.txHash,
+      }),
+    );
     const watcherInput = {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
       mode: "acceptance",
@@ -122,6 +135,7 @@ export const openJourneySession = async (runDirectory: string) => {
       customNetwork: context.customNetwork,
       l1: {
         source: nativeQuery.watcherConfig.l1.source,
+        origin: { slot: origin.slot, blockHash: origin.blockHash },
         requestTimeoutMs: 30_000,
         maxConcurrency: 8,
         finality: { depth: JOURNEY_FINALITY_DEPTH },

@@ -373,13 +373,14 @@ k leaves the watcher up and unready with the `/readyz` reason
 network the automatic watcher journeys run against; it is not a relaxation of
 finality.
 
-`$.l1.origin` is an optional operator override of the deployment's L1 origin,
+`$.l1.origin` is the deployment's L1 origin,
 `{"slot": <n>, "blockHash": "<64 lowercase hex>"}`: the point immediately
 before the block holding the `prepareHubOracleNonce` tx, where the L1 follower
 starts. `midgard-l1-follower find-origin` prints it (see
-[the follower README](../midgard-l1-follower/README.md#origin)). Absent means
-the deployment's own origin applies. It is operator configuration only: it is
-not part of any profile or manifest and changes no deployment identity.
+[the follower README](../midgard-l1-follower/README.md#origin)). Without it the
+follower holds the watcher unready (`l1_origin_not_configured`). It is operator
+configuration only: it is not part of any profile or manifest and changes no
+deployment identity.
 
 `$.l1.finality.depth` stays the manifest's release depth and governs anchoring:
 finalized audit anchors, incident records and evidence stamps. Fault-proof
