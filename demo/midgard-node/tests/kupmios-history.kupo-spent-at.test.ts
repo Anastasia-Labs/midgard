@@ -15,7 +15,7 @@ import {
   fetchKupoAncestorPoint,
   fetchKupoSpend,
   readOgmiosBlockTransaction,
-} from "../src/harness-kupmios.js";
+} from "../src/l1-external/kupmios-history.js";
 
 /**
  * What the node-tools harness reads out of Kupo's `spent_at`, against what a live Kupo

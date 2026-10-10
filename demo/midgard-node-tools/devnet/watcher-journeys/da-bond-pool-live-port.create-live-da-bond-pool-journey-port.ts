@@ -33,15 +33,12 @@ import {
   spendingValidatorOf,
 } from "midgard-node/commands/availability-challenge-deployment";
 import {
-  availabilityCommandCanonicalSource,
-  availabilityStoreUnitHistory,
-} from "midgard-node/commands/availability-challenge-source";
-import {
   type DaBondContext,
   daBondStatusCommand,
 } from "midgard-node/commands/da-bond";
-import { openCommandL1Access } from "midgard-node/commands/l1-command-access";
 import { daLocalSigners } from "midgard-node/da/local-signers";
+import { availabilityKupmiosSource } from "midgard-node/l1-external/kupmios-availability-source";
+import { fetchKupoSpend } from "midgard-node/l1-external/kupmios-history";
 import {
   authenticWatcherDaBondPool,
   deriveWatcherDaBondPoolObservation,
@@ -553,17 +550,12 @@ export const createLiveDaBondPoolJourneyPort = async (
     throw new DaBondPoolCommitteeUnavailableError(
       `run.env lacks the devnet Postgres ${postgresMissing.join(", ")}`,
     );
-  // The node's L1 access, as a node command opens it from its environment:
-  // the local node and the node database its follower writes.
-  const nodeL1AccessEnv: Record<string, string> = {
+  // The CLI is a tool (option E): the local node's ledger, no store.
+  const cliL1Env: Record<string, string> = {
+    L1_ACCESS: "node",
     L1_NODE_SOCKET_PATH: nativeLedgerPaths.socket,
     L1_NODE_CONFIG_PATH: nativeLedgerPaths.config,
     L1_NODE_TRANSPORT_BINARY_PATH: nativeLedgerPaths.binary,
-    POSTGRES_HOST: "127.0.0.1",
-    POSTGRES_PORT: postgres.port!,
-    POSTGRES_USER: postgres.user!,
-    POSTGRES_PASSWORD: postgres.password!,
-    POSTGRES_DB: postgres.database!,
   };
   // A resumed run restarts the node on the database its earlier run left,
   // as the normal run's restart before step 6 does.
@@ -766,7 +758,7 @@ export const createLiveDaBondPoolJourneyPort = async (
       ...inheritedEnv,
       MIDGARD_CONFIG_MODE: "disabled",
       MIDGARD_DOTENV_MODE: "disabled",
-      ...nodeL1AccessEnv,
+      ...cliL1Env,
     },
     workDirectory: (label) => {
       const directory = join(
@@ -807,27 +799,24 @@ export const createLiveDaBondPoolJourneyPort = async (
   });
   mkdirSync(join(evidenceDirectory, "cli"), { recursive: true });
 
-  // The availability command flow, composed from the CLI's steps, on the
-  // node's L1 access (its follower store and local node) as the CLI opens it.
+  // The availability command flow, composed from the CLI's steps, on its
+  // `--l1 kupmios` source (chain history: unit history, foreign spends).
   const availabilityDeployment = await availabilityDeploymentFromManifest(
     challengerLucid,
     manifest,
   );
-  const nodeL1Access = await openCommandL1Access({
-    network: "Custom",
-    env: nodeL1AccessEnv,
+  const source = availabilityKupmiosSource({
+    lucid: challengerLucid,
+    kupoUrl: context.kupoUrl,
+    ogmiosUrl: context.ogmiosUrl,
   });
   const buildContext = {
     daChallengeWindowMs: BigInt(
       manifest.deploymentProfile.timing.da_challenge_window_ms,
     ),
     daAttestationPolicyId: manifest.contracts.daAttestationMint?.scriptHash,
-    unitHistory: availabilityStoreUnitHistory(nodeL1Access.store),
+    unitHistory: source.unitHistory,
   };
-  const source = availabilityCommandCanonicalSource({
-    lucid: challengerLucid,
-    access: nodeL1Access,
-  });
   const retryTransient = async <T>(
     label: string,
     action: () => Promise<T>,
@@ -1153,7 +1142,6 @@ export const createLiveDaBondPoolJourneyPort = async (
           );
       } finally {
         journal.close();
-        await nodeL1Access.close();
       }
     },
 
@@ -1276,12 +1264,11 @@ export const createLiveDaBondPoolJourneyPort = async (
               contracts.stateQueue.spendingScriptAddress,
               headerUnit(attempt.block.headerHash),
             );
-            // The follower stores every valid transaction it applied, so this
-            // names the transaction that spent the anchor even after a later
-            // Apply re-spent the header.
-            const anchorSpend = await nodeL1Access.store.txSpending({
-              txHash: Buffer.from(attempt.anchor.txHash, "hex"),
-              index: attempt.anchor.outputIndex,
+            // Kupo keeps spent matches, so this names the transaction that
+            // spent the anchor even after a later Apply re-spent the header.
+            const anchorSpend = await fetchKupoSpend({
+              kupoUrl: context.kupoUrl,
+              outRef: attempt.anchor,
             });
             const after = await retryTransient("expired commit", () =>
               source.readBoundary(),
@@ -1289,7 +1276,7 @@ export const createLiveDaBondPoolJourneyPort = async (
             const decision = settleExpiredCommitReads({
               txId: attempt.txId,
               stable: before.pointId === after.pointId,
-              anchorSpentBy: anchorSpend?.txHash.toString("hex") ?? null,
+              anchorSpentBy: anchorSpend?.transactionId ?? null,
               headerHolders: headers.map((utxo) => utxo.txHash),
               read,
               maxReads: MAX_TRANSIENT_RETRIES,
@@ -1305,7 +1292,7 @@ export const createLiveDaBondPoolJourneyPort = async (
             // Anything else spent the anchor or holds the header: a conflict,
             // not a lapse.
             log(
-              `commit ${intent.label}: expired ${attempt.txId} ${decision}: anchor spent by ${anchorSpend?.txHash.toString("hex") ?? "nothing"}, header held by ${JSON.stringify(headers.map((utxo) => utxo.txHash))}`,
+              `commit ${intent.label}: expired ${attempt.txId} ${decision}: anchor spent by ${anchorSpend?.transactionId ?? "nothing"}, header held by ${JSON.stringify(headers.map((utxo) => utxo.txHash))}`,
             );
             throw error;
           }

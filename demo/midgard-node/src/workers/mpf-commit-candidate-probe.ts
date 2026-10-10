@@ -18,7 +18,7 @@ import {
 import * as Tx from "../database/utils/tx.js";
 import { NodeConfig } from "../services/config.js";
 import { type Lucid } from "../services/index.js";
-import { openNodeL1AccessFromConfig } from "../services/l1-provider.js";
+import { openNodeLedgerAccessFromConfig } from "../services/l1-node-ledger-access.js";
 import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
 import { batchProgram, breakDownTx } from "../utils.js";
 import {
@@ -144,8 +144,9 @@ void (async () => {
         nodeConfig.NETWORK === "Custom"
           ? yield* Effect.acquireUseRelease(
               Effect.tryPromise({
-                try: () => openNodeL1AccessFromConfig(nodeConfig),
-                catch: probeError("open the node's L1 access"),
+                // A probe, not a role: the local node's ledger alone.
+                try: () => openNodeLedgerAccessFromConfig(nodeConfig),
+                catch: probeError("open the local node's ledger"),
               }),
               (access) =>
                 Effect.tryPromise({

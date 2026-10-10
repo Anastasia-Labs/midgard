@@ -8,7 +8,7 @@ import {
   Database,
   type DatabaseInitializationError,
 } from "../services/database.js";
-import { Lucid } from "../services/lucid.js";
+import { FollowerLucidLive, Lucid } from "../services/lucid.js";
 import { MidgardContracts } from "../services/midgard-contracts.js";
 import { serializeStateQueueUTxO } from "./utils/commit-block-header.js";
 import {
@@ -132,7 +132,7 @@ const provideConfirmationWorkerServices = <A, E>(
     effect,
     Effect.provide(Database.workerLayer),
     Effect.provide(MidgardContracts.Default),
-    Effect.provide(Lucid.Default),
+    Effect.provide(FollowerLucidLive),
     Effect.provide(NodeConfig.layer),
   );
 

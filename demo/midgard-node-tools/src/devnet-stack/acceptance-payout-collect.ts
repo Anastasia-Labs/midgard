@@ -1,16 +1,16 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, datumToHash } from "@lucid-evolution/lucid";
-
 import {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
   fetchKupoMatch,
   fetchKupoSpend,
-} from "../harness-kupmios.fetch-kupo-spend.js";
+} from "midgard-node/l1-external/kupmios-history.fetch-kupo-spend";
 import type {
   FetchLike,
   L1ChainPoint,
-} from "../harness-kupmios.l1-chain-point.js";
+} from "midgard-node/l1-external/kupmios-history.l1-chain-point";
+
 import type { AcceptanceNativePayoutScope } from "./acceptance-native-boundary.js";
 import { verifyAcceptancePayoutLineage } from "./acceptance-payout-lineage.js";
 import { acceptanceRemainingMs } from "./acceptance-payout-sources.js";

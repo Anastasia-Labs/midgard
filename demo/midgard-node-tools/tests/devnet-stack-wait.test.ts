@@ -19,7 +19,10 @@ import {
   type RunEnv,
   servicePorts,
 } from "../src/devnet-stack/layout.js";
-import { serviceSpecs } from "../src/devnet-stack/services.js";
+import {
+  roleProcessesFailClosed,
+  serviceSpecs,
+} from "../src/devnet-stack/services.js";
 import { waitForServices } from "../src/devnet-stack/stack.js";
 import type { ServiceSpec } from "../src/devnet-stack/supervisor.js";
 
@@ -141,6 +144,36 @@ describe("the node's start grace", () => {
     // Four provider steps retried 120 x 5 s, plus the 15 min first-start ledger scan.
     const startupBudgetMs = 4 * 120 * 5_000 + 15 * 60_000;
     expect(node.startGraceMs).toBeGreaterThanOrEqual(startupBudgetMs);
+  });
+});
+
+describe("the role processes the stack starts", () => {
+  it("carry no Kupo, Ogmios, Blockfrost or tool L1 setting", () => {
+    const specs = serviceSpecs(context(), oneShot);
+    expect(specs.map((spec) => spec.name)).toContain("node");
+    for (const spec of specs)
+      expect(
+        Object.keys(spec.env).filter((name) =>
+          /KUPO|OGMIOS|BLOCKFROST|^L1_ACCESS$|^L1_PROVIDER$/u.test(name),
+        ),
+      ).toEqual([]);
+  });
+
+  it("refuse, by service and setting, an environment that would carry one", () => {
+    const node = serviceSpecs(context(), oneShot).find(
+      (spec) => spec.name === "node",
+    )!;
+    expect(() =>
+      roleProcessesFailClosed([
+        { ...node, env: { ...node.env, L1_OGMIOS_URL: "ws://127.0.0.1:1337" } },
+      ]),
+    ).toThrow(
+      expect.objectContaining({
+        reason: "role_non_follower_l1_config",
+        role: "node",
+        keys: ["L1_OGMIOS_URL"],
+      }),
+    );
   });
 });
 

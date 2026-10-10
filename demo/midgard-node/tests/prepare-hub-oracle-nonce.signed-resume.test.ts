@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { L1TxStatusUnknownError } from "@al-ft/midgard-l1-follower/provider";
 import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -13,6 +14,7 @@ import {
 import {
   SignedNonceConflictError,
   SignedNonceRejectedError,
+  SignedNonceStatusUnknownError,
 } from "../src/commands/prepare-hub-oracle-nonce.resume-signed.js";
 import { hubOracleNonceRunStateHooks } from "../src/commands/prepare-hub-oracle-nonce.run-state-hooks.js";
 import { loadDeploymentRunState } from "../src/e2e/run-state.js";
@@ -68,11 +70,12 @@ const fakeLucid = ({
   const submitTx = vi.fn(async (cbor: string) => cbor);
   const lucid = {
     config: () => ({ provider: { submitTx } }),
-    transactionStatus: vi.fn(async (hash: string) => ({
-      status: statuses.length > 1 ? statuses.shift()! : statuses[0]!,
-      txHash: hash,
-      confirmation: { txHash: hash },
-    })),
+    transactionStatus: vi.fn(async (hash: string) => {
+      const status = statuses.length > 1 ? statuses.shift()! : statuses[0]!;
+      // The node ledger's answer for a tx it cannot place (every output spent).
+      if (status === "unknown") throw new L1TxStatusUnknownError(hash);
+      return { status, txHash: hash, confirmation: { txHash: hash } };
+    }),
     utxosByOutRef: vi.fn(async () => (inputsLive ? [INPUT as UTxO] : [])),
     awaitTxConfirmation: vi.fn(async (hash: string) => ({ txHash: hash })),
     utxosAt: vi.fn(async () => [
@@ -294,6 +297,54 @@ describe("hub-oracle nonce signed before submission", () => {
     expect(String(error)).toContain(signed.txHash);
     expect(chain.submitTx).not.toHaveBeenCalled();
     expect(chain.lucid.awaitTxConfirmation).not.toHaveBeenCalled();
+  });
+
+  it("refuses as retryable, never as a conflict, when the access cannot tell whether it landed", async () => {
+    const signed = signedNonceTx();
+    const chain = fakeLucid({ statuses: ["unknown"], inputsLive: false });
+    const error = await Effect.runPromise(
+      Effect.flip(reconcileProgram(chain.service, signed)),
+    );
+    expect(error).toBeInstanceOf(SignedNonceStatusUnknownError);
+    expect(error).not.toBeInstanceOf(SignedNonceConflictError);
+    expect(error).toMatchObject({
+      reason: "signed_nonce_status_unknown",
+      retryable: true,
+    });
+    expect(String(error)).toContain(signed.txHash);
+    expect(String(error)).toContain("--l1 kupmios");
+    expect(String(error)).toContain("do not pass --fresh-redeploy");
+    expect(String(error)).not.toContain("can never land");
+    expect(chain.submitTx).not.toHaveBeenCalled();
+    expect(chain.lucid.awaitTxConfirmation).not.toHaveBeenCalled();
+  });
+
+  it("refuses as unknown, not rejected, when a definite rejection meets an unknown status", async () => {
+    const signed = signedNonceTx();
+    const chain = fakeLucid({ statuses: ["unknown"], inputsLive: true });
+    chain.submitTx.mockRejectedValueOnce(
+      ogmiosError(3122, "Insufficient fee", {
+        minimumRequiredFee: { ada: { lovelace: 250_000 } },
+      }),
+    );
+    const error = await Effect.runPromise(
+      Effect.flip(reconcileProgram(chain.service, signed)),
+    );
+    expect(error).toBeInstanceOf(SignedNonceStatusUnknownError);
+    expect(String(error)).not.toContain("--fresh-redeploy <reason>");
+  });
+
+  it("resubmits the recorded bytes on an unknown status while its inputs are unspent", async () => {
+    const signed = signedNonceTx();
+    const chain = fakeLucid({
+      statuses: ["unknown"],
+      inputsLive: true,
+      txHash: signed.txHash,
+    });
+    await expect(reconcile(chain.service, signed)).resolves.toMatchObject({
+      outRef: `${signed.txHash}#0`,
+    });
+    expect(chain.submitTx).toHaveBeenCalledExactlyOnceWith(signed.signedTxCbor);
   });
 
   it("treats inputs spent by the recorded transaction itself as landed", async () => {

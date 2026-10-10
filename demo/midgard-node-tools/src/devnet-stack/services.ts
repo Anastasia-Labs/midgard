@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { assertRoleL1Env } from "@al-ft/midgard-l1-follower";
+
 import {
   COMMITTEE_SIZE,
   committeeEnvironment,
@@ -88,7 +90,7 @@ export const serviceSpecs = (
     },
   );
   const node = `http://127.0.0.1:${ports.nodeHttp}`;
-  return [
+  return roleProcessesFailClosed([
     ...committees,
     {
       name: "public-retained-da",
@@ -117,7 +119,22 @@ export const serviceSpecs = (
       startGraceMs: NODE_START_GRACE_MS,
     },
     ...watcherServiceSpecs(context),
-  ];
+  ]);
+};
+
+/**
+ * Every service the stack starts is a role process (node `listen`, the DA
+ * committee and its public reader, the watcher), reading L1 only through its
+ * follower (option E). The harness is a tool and may use Kupmios, but none of
+ * that reaches a role: a spec whose environment carries a Kupo, Ogmios,
+ * Blockfrost or tool `L1_ACCESS` setting is refused before anything starts.
+ * The supervisor passes a service only `PATH`, `HOME` and this environment.
+ */
+export const roleProcessesFailClosed = (
+  specs: ServiceSpec[],
+): ServiceSpec[] => {
+  for (const spec of specs) assertRoleL1Env(spec.env, spec.name);
+  return specs;
 };
 
 /** What the endurance maintainer and its status report read. */

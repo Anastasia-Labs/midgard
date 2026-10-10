@@ -29,12 +29,10 @@ it.skipIf(process.env.MIDGARD_WATCHER_RECOVER_DEPLOYMENT !== "1")(
         }),
     );
     const ogmiosUrl = `http://127.0.0.1:${env.MIDGARD_PHASE4_OGMIOS_PORT}`;
-    const provider = new JourneyLocalKupmios(
-      `http://127.0.0.1:${env.MIDGARD_PHASE4_KUPO_PORT}`,
-      ogmiosUrl,
-      native,
-    );
+    const kupoUrl = `http://127.0.0.1:${env.MIDGARD_PHASE4_KUPO_PORT}`;
+    const provider = new JourneyLocalKupmios(kupoUrl, ogmiosUrl, native);
     const lucid = await journeyLucid(provider, {
+      kupoUrl,
       ogmiosUrl,
       customNetwork: native.watcherConfig.customNetwork!,
     });

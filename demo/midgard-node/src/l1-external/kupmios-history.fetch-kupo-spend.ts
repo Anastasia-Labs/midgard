@@ -13,8 +13,8 @@ import {
   normalizeKupoHttpUrl,
   type WebSocketFactory,
   type WebSocketLike,
-} from "./harness-kupmios.l1-chain-point.js";
-import { KupoNotYetIndexed } from "./harness-kupmios.source-unavailable.js";
+} from "./kupmios-history.l1-chain-point.js";
+import { KupoNotYetIndexed } from "./kupmios-history.source-unavailable.js";
 
 /**
  * The chain point at which an output was created, from Kupo's match for it.

@@ -24,7 +24,7 @@ import { handOffUnwrittenRefusalHolds } from "./commit-block-header.hand-off-ref
 import {
   type CommitLucidFactory,
   CommitWorkerInvariantError,
-  defaultCommitLucidFactory,
+  followerCommitLucidFactory,
   provideCommitBlockWorkerServices,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import { WorkerInput, WorkerOutput } from "./utils/commit-block-header.js";
@@ -33,8 +33,8 @@ import { WorkerInput, WorkerOutput } from "./utils/commit-block-header.js";
 // exact same effect graph without going through a worker-thread bootstrap.
 export const runCommitBlockHeaderWorkerProgram = (
   workerInput: WorkerInput,
-  notifyParent?: NotifyCommitWorkerParent,
-  commitLucidFactory: CommitLucidFactory = defaultCommitLucidFactory,
+  notifyParent: NotifyCommitWorkerParent | undefined,
+  commitLucidFactory: CommitLucidFactory,
 ): Effect.Effect<
   WorkerOutput,
   unknown,
@@ -186,7 +186,11 @@ if (parentPort !== null) {
     Effect.sync(() => workerParentPort.postMessage(message));
 
   const program = provideCommitBlockWorkerServices(
-    runCommitBlockHeaderWorkerProgram(inputData, notifyParent),
+    runCommitBlockHeaderWorkerProgram(
+      inputData,
+      notifyParent,
+      followerCommitLucidFactory,
+    ),
   );
 
   void Effect.runPromise(captureCommitWorkerFailure(program)).then((output) => {

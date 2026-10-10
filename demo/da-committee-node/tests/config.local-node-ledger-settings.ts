@@ -137,3 +137,26 @@ describe("local node ledger settings", () => {
     ).rejects.toThrow(/all-or-none/u);
   });
 });
+
+describe("the committee node's L1 access is its follower only", () => {
+  it("refuses at start, by name, a Kupmios, Blockfrost or tool L1 setting", async () => {
+    const refused = loadCommitteeConfig({
+      L1_KUPO_URL: "http://kupo:1442",
+      L1_BLOCKFROST_PROJECT_ID: "preprodX",
+    });
+    await expect(refused).rejects.toMatchObject({
+      name: "RoleL1AccessRefusedError",
+      reason: "role_non_follower_l1_config",
+      keys: ["L1_KUPO_URL", "L1_BLOCKFROST_PROJECT_ID"],
+    });
+    await expect(refused).rejects.toThrow(
+      /da-committee-node reads L1 only through its follower/u,
+    );
+  });
+
+  it("passes the follower's own access on to the rest of the configuration", async () => {
+    await expect(
+      loadCommitteeConfig({ L1_ACCESS: "follower" }),
+    ).rejects.toThrow(/MIDGARD_DEPLOYMENT_MANIFEST_PATH/u);
+  });
+});

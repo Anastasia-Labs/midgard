@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { l1SlotNow } from "midgard-node/l1-heads";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { journeyLucid, registerJourneyL1Tip } from "./journey-lucid.js";
+import { journeyL1Access, journeyLucid } from "./journey-lucid.js";
 import {
   JourneyLocalKupmios,
   type JourneyNativeNodeQuery,
@@ -31,6 +31,7 @@ const native: JourneyNativeNodeQuery = {
 };
 const ogmiosUrl = "http://ogmios.test";
 const network = {
+  kupoUrl: "http://kupo.test",
   ogmiosUrl,
   customNetwork: {
     slotConfig: { zeroTime: 1_700_000_000_000, zeroSlot: 0, slotLength: 100 },
@@ -54,7 +55,10 @@ const stubOgmiosTip = () => {
   const fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
     expect(String(url)).toBe(ogmiosUrl);
     expect(JSON.parse(String(init?.body)).method).toBe("queryNetwork/tip");
-    return Response.json({ jsonrpc: "2.0", result: { slot: TIP_SLOT } });
+    return Response.json({
+      jsonrpc: "2.0",
+      result: { slot: TIP_SLOT, id: "ab".repeat(32) },
+    });
   });
   vi.stubGlobal("fetch", fetch);
   return fetch;
@@ -75,24 +79,22 @@ describe("journey Lucid heads tip source", () => {
     expect(fetch).toHaveBeenCalled();
   });
 
-  it("leaves a live Lucid without the harness source slot-unknown", async () => {
+  it("leaves a live Lucid over no L1 access slot-unknown, and gives every Lucid over the harness provider its clock", async () => {
     stubOgmiosTip();
-    const unregistered = await Lucid(harnessProvider(), "Custom", {
+    const provider = harnessProvider();
+    const unopened = await Lucid(provider, "Custom", {
       slotConfig: network.customNetwork.slotConfig,
     });
 
-    const failure = await Effect.runPromise(
-      Effect.flip(l1SlotNow(unregistered)),
-    );
-    expect(failure).toMatchObject({
-      _tag: "L1SlotUnknownError",
-      message: "L1 slot unknown: this Lucid client has no tip source",
-    });
+    const failure = await Effect.runPromise(Effect.flip(l1SlotNow(unopened)));
+    expect(failure).toMatchObject({ _tag: "L1SlotUnknownError" });
 
-    // The capture tests build their own Lucid and register the same source.
-    registerJourneyL1Tip(unregistered, network);
+    // A capture test builds its own Lucid over the harness provider: once
+    // the harness access is open on it, that Lucid has the same clock.
+    const access = journeyL1Access(provider, network);
+    expect(journeyL1Access(provider, network)).toBe(access);
     await expect(
-      Effect.runPromise(l1SlotNow(unregistered)),
+      Effect.runPromise(l1SlotNow(unopened)),
     ).resolves.toBeGreaterThanOrEqual(TIP_SLOT);
   });
 });

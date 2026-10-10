@@ -2,7 +2,8 @@ import {
   normalizeOgmiosWebSocketUrl,
   type WebSocketFactory,
   type WebSocketLike,
-} from "../harness-kupmios.js";
+} from "midgard-node/l1-external/kupmios-history";
+
 import {
   HEX_28,
   HEX_32,

@@ -1,49 +1,30 @@
 import type { TransportReadiness } from "@al-ft/l1-node-transport";
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as LE from "@lucid-evolution/lucid";
-import { Effect, type Scope } from "effect";
+import { Effect, Layer, type Scope } from "effect";
 
 import {
   resolveLucidSlotMapping,
   retryTransientSubmitSlotSnapshot,
 } from "../custom-slot-mapping.js";
-import { readL1FollowerTipSlot, registerL1TipSource } from "../l1-heads.js";
-import { registerL1ProviderView } from "../l1-provider-view.js";
-import { hasCauseCode, isRetryableProviderError } from "../provider-retry.js";
+import { isRetryableProviderError } from "../provider-retry.js";
 import { configureReferencePublication } from "../transactions/reference-publication.js";
 import { selectNodeWallet } from "../transactions/utils.wallet-view.js";
 import { ConfigError, NodeConfig } from "./config.js";
 import {
-  NODE_L1_ACCESS_UNCONFIGURED,
-  openNodeL1AccessFromConfig,
-} from "./l1-provider.js";
+  asStartupConfigError,
+  FollowerL1AdapterLive,
+  L1Adapter,
+} from "./l1-adapter.js";
 import {
-  L1_NODE_CONFIG_PENDING,
   LUCID_INITIALIZATION_PENDING,
   retryStartupStep,
   STARTUP_L1_NODE_BUDGET,
   type StartupStepBudget,
-  type StartupStepFailedError,
 } from "./startup-waiting.js";
 
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause), { cause });
-
-/** The local node's configuration files are not there yet (a node still
- * starting writes them): the one open failure waited out. */
-export const isL1NodeConfigPending = (error: unknown): boolean =>
-  hasCauseCode(error, "ENOENT");
-
-/** A step's terminal failure, as the Lucid service's `ConfigError`; the
- * startup still finds the step behind it (`findStartupStepFailure`). */
-const asConfigError =
-  (network: LE.Network) =>
-  (failure: StartupStepFailedError): ConfigError =>
-    new ConfigError({
-      message: failure.message,
-      cause: failure,
-      fieldsAndValues: [["NETWORK", network]],
-    });
 
 /**
  * One Lucid client's construction (`construct`, which reads the provider's
@@ -77,14 +58,13 @@ export const constructLucidOnStartup = (
       retryable: isRetryableProviderError,
       budget,
     },
-  ).pipe(Effect.mapError(asConfigError(network)));
+  ).pipe(Effect.mapError(asStartupConfigError(network)));
 
 /**
  * Builds the Lucid service bundle used by the node, including reference-script
- * and operator-wallet specializations. Both clients read through one
- * `L1FollowerProvider` over the node's follower store and the local node's
- * transport (`services/l1-provider.ts`), on the slot mapping the ledger
- * reports.
+ * and operator-wallet specializations. Both clients read through the one
+ * L1 access the process's `L1Adapter` opens (the follower store's in a
+ * role, a tool adapter's in a command), on that adapter's slot mapping.
  */
 const makeLucid: Effect.Effect<
   {
@@ -108,37 +88,12 @@ const makeLucid: Effect.Effect<
     switchToReferenceScriptWallet: Effect.Effect<void>;
   },
   ConfigError,
-  NodeConfig | Scope.Scope
+  NodeConfig | L1Adapter | Scope.Scope
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  if (nodeConfig.L1_NATIVE_LEDGER === undefined)
-    return yield* Effect.fail(
-      new ConfigError({
-        message: `The node's L1 provider needs ${NODE_L1_ACCESS_UNCONFIGURED}`,
-        cause: "l1-node-unconfigured",
-        fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
-      }),
-    );
-  // Opening reads only the node's config files (for its network magic);
-  // while they are not there yet this waits under `l1_node_config_pending`
-  // for at most the L1 node budget. Any other failure (a wrong network
-  // magic, an unconfigured node) fails at once.
-  const access = yield* Effect.acquireRelease(
-    retryStartupStep(
-      Effect.tryPromise({
-        try: () => openNodeL1AccessFromConfig(nodeConfig),
-        catch: asError,
-      }),
-      {
-        key: "l1_node_config",
-        reason: L1_NODE_CONFIG_PENDING,
-        retryable: isL1NodeConfigPending,
-        budget: { maxElapsed: STARTUP_L1_NODE_BUDGET },
-        initialMs: 500,
-      },
-    ).pipe(Effect.mapError(asConfigError(nodeConfig.NETWORK))),
-    (opened) => Effect.promise(opened.close),
-  );
+  // The adapter the process provides: the follower in a role, a tool access
+  // in a command (`l1-adapter.ts`).
+  const access = yield* (yield* L1Adapter).open(nodeConfig);
   // A node or sidecar that is not reachable makes this wait with a logged
   // unready reason, for at most the L1 node budget.
   const slotConfig = yield* resolveLucidSlotMapping({
@@ -170,9 +125,9 @@ const makeLucid: Effect.Effect<
   yield* Effect.logInfo("Initializing Lucid...");
   yield* Effect.logInfo(
     `L1 provider route: ${JSON.stringify({
-      primary: "l1_node",
+      access: access.kind,
       network: nodeConfig.NETWORK,
-      socket: access.endpoint,
+      endpoint: access.endpoint,
     })}`,
   );
   const lucid = yield* constructLucidOnStartup(
@@ -194,18 +149,11 @@ const makeLucid: Effect.Effect<
     ),
   );
   yield* switchToReferenceScriptWallet;
-  // Both clients read one L1 view: their `l1SlotNow` comes from the L1
-  // follower's covered tip (N1). The ledger-tip submit-slot read below only
-  // bounds a new tx's validity interval; it never moves `l1SlotNow`.
-  registerL1TipSource([lucid, referenceScriptsApi], readL1FollowerTipSlot, {
-    slotLengthMs: slotConfig.slotLength,
-  });
+  // Both clients are built over the access's provider, so both read its one
+  // L1 view: `l1SlotNow` from its tip, view points and the submit slot from
+  // it (`l1-access.ts`). The ledger-tip submit-slot read only bounds a new
+  // tx's validity interval; it never moves `l1SlotNow`.
   const readSubmitSlotSnapshotOnce = readLedgerTip;
-  registerL1ProviderView([lucid, referenceScriptsApi], {
-    submitSlotSnapshot: readSubmitSlotSnapshotOnce,
-    viewPoint: () =>
-      Effect.tryPromise({ try: access.synchronizedViewPoint, catch: asError }),
-  });
   const referenceScriptsWalletAddress = yield* Effect.tryPromise({
     try: () => referenceScriptsApi.wallet().address(),
     catch: (e) =>
@@ -293,9 +241,15 @@ const makeLucid: Effect.Effect<
 
 /**
  * Service exposing the fully-initialized Lucid clients and wallet-switching
- * helpers used by the node.
+ * helpers used by the node. It requires an `L1Adapter`: a role provides
+ * `FollowerL1AdapterLive`, a command `ToolL1AdapterLive`.
  */
 export class Lucid extends Effect.Service<Lucid>()("Lucid", {
   scoped: makeLucid,
   dependencies: [NodeConfig.layer],
 }) {}
+
+/** The Lucid service of a role process: over the follower adapter. */
+export const FollowerLucidLive = Lucid.Default.pipe(
+  Layer.provide(FollowerL1AdapterLive),
+);

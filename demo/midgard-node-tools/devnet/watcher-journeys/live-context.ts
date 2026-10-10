@@ -123,7 +123,7 @@ export const loadJourneyContext = async (runDirectory: string) => {
       throw new Error(`Stored reference changed: ${receipt.role}`);
     }
   }
-  const network = { ogmiosUrl, customNetwork };
+  const network = { kupoUrl, ogmiosUrl, customNetwork };
   const operatorLucid = await journeyLucid(
     provider,
     network,

@@ -1,7 +1,7 @@
+import type { WebSocketFactory } from "midgard-node/l1-external/kupmios-history";
 import { describe, expect, it, vi } from "vitest";
 
 import { canonicalOgmiosBlockDepth } from "../src/devnet-stack/acceptance-native-canonical-depth.js";
-import type { WebSocketFactory } from "../src/harness-kupmios.js";
 
 const intersectionSocket = (
   answer: (request: {

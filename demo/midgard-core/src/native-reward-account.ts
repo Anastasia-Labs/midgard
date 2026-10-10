@@ -10,8 +10,6 @@ import {
 } from "@al-ft/l1-node-transport";
 import {
   CML,
-  Kupmios,
-  type KupmiosOptions,
   type RewardAccountState,
   stakeCredentialOf,
 } from "@lucid-evolution/lucid";
@@ -281,33 +279,3 @@ export const queryNativeRewardAccount = async (
     clearTimeout(timer);
   }
 };
-
-/**
- * Kupo/Ogmios transport whose reward-account state comes from the local
- * ledger. Without a configured authority it refuses reward-account reads:
- * Ogmios would report every undelegated registered account as absent.
- */
-export class NativeLedgerKupmios extends Kupmios {
-  readonly #authority: () => Promise<NativeLedgerAuthority | undefined>;
-
-  constructor(
-    kupoUrl: string,
-    ogmiosUrl: string,
-    authority: () => Promise<NativeLedgerAuthority | undefined>,
-    options?: KupmiosOptions,
-  ) {
-    super(kupoUrl, ogmiosUrl, options);
-    this.#authority = authority;
-  }
-
-  override async getRewardAccount(
-    rewardAddress: string,
-  ): Promise<RewardAccountState> {
-    const authority = await this.#authority();
-    if (authority === undefined)
-      throw new Error(
-        "Reward-account state requires a local node ledger: Ogmios omits registered accounts that have no stake-pool delegation. Configure the node socket, node config and node transport binary.",
-      );
-    return await queryNativeRewardAccount(authority, rewardAddress);
-  }
-}

@@ -137,7 +137,10 @@ const expectNodeProcessOwner = (owner: string | undefined) => {
 const probeWorkerLeaseOwner = (owner: string) => {
   const input = { data: { ledgerStoreLeaseOwner: owner } } as WorkerInput;
   return provideDatabaseLayers(
-    runCommitBlockHeaderWorkerProgram(input).pipe(
+    // The owner check refuses before any L1 read, so the Lucid is unused.
+    runCommitBlockHeaderWorkerProgram(input, undefined, () =>
+      Effect.succeed({} as Lucid),
+    ).pipe(
       Effect.provideService(NodeConfig, config),
       Effect.provideService(MidgardContracts, {} as MidgardContracts),
       Effect.provideService(

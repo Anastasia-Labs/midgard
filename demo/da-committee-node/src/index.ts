@@ -11,6 +11,7 @@ import {
   retentionReadinessFromDeadlines,
 } from "./committee-service.js";
 import { loadCommitteeConfig, type LoadedCommitteeConfig } from "./config.js";
+import { committeeFailureExit } from "./config-refusal-exit.js";
 import { l1SubmitterWalletPreflightFromConfig } from "./coordinator/factory.js";
 import { DaPeerRegistry } from "./da/libp2p/index.js";
 import {
@@ -60,8 +61,8 @@ const main = async (): Promise<void> => {
     printHelp();
     return;
   }
-  // Before the configuration is read, no port is known to serve `/readyz`
-  // on: a configuration that does not load exits non-zero.
+  // No port serves `/readyz` before the configuration loads: a failure exits
+  // non-zero, a role L1 refusal 78 with its reason (config-refusal-exit.ts).
   const config = await loadCommitteeConfig();
   const startedAtMs = Date.now();
   const once = process.argv.includes("--once");
@@ -493,8 +494,7 @@ fails.
 };
 
 main().catch((error) => {
-  process.stderr.write(
-    `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-  );
-  process.exit(1);
+  const { code, line } = committeeFailureExit(error);
+  process.stderr.write(line);
+  process.exit(code);
 });

@@ -1,6 +1,6 @@
 import type { Assets, Network } from "@lucid-evolution/lucid";
+import type { ObservedL1TransactionAtPoint } from "midgard-node/l1-external/kupmios-history.l1-chain-point";
 
-import type { ObservedL1TransactionAtPoint } from "../harness-kupmios.l1-chain-point.js";
 import type { WithdrawalRecord } from "./journey-values.js";
 
 export type AcceptanceOutRef = Readonly<{

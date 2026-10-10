@@ -7,21 +7,21 @@ import {
 } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 
-import { type OgmiosSession } from "./harness-kupmios.fetch-kupo-spend.js";
+import { type OgmiosSession } from "./kupmios-history.fetch-kupo-spend.js";
 import {
   HEX_32,
   type ObservedL1Transaction,
   type WebSocketFactory,
-} from "./harness-kupmios.l1-chain-point.js";
+} from "./kupmios-history.l1-chain-point.js";
 import {
   L1SourceUnavailable,
   OgmiosRequestTimeout,
-} from "./harness-kupmios.source-unavailable.js";
+} from "./kupmios-history.source-unavailable.js";
 
 /**
  * An Ogmios error answer whose code says the node cannot answer now (still
  * syncing, crossing an era, the acquired state expired, its node connection
- * lost): the same outage as a dropped socket, so a harness reader may retry
+ * lost): the same outage as a dropped socket, so a history reader may retry
  * on it.
  */
 export class OgmiosJsonRpcUnavailable extends L1SourceUnavailable {
@@ -254,7 +254,7 @@ const exactOutRef = (value: unknown, label: string): OutRefLike => {
 };
 
 /**
- * Ogmios's JSON transaction view, narrowed to what the harness readers use:
+ * Ogmios's JSON transaction view, narrowed to what the history readers use:
  * the id, the spent inputs in ledger order and the reference inputs. These
  * fields are always there; the raw transaction CBOR is not, since Ogmios
  * emits a transaction's `cbor` only when the server was started with

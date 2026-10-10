@@ -1,6 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { assertRoleL1Env } from "@al-ft/midgard-l1-follower";
 
 import {
   parseWatcherConfig,
@@ -217,10 +218,17 @@ const assertWatcherL1SocketPath = async (socketPath: string): Promise<void> => {
  * Reads and checks the process configuration. Its refusals come before the
  * operations server can bind, so they are permanent refusals (exit code 78);
  * a system error reading the file (ENOENT, EIO, ...) is left restartable.
+ * The watcher is a role: it reads L1 only through its follower, so an
+ * environment carrying a non-follower L1 setting (Kupmios, Blockfrost,
+ * `L1_ACCESS`) is refused first, naming the setting.
  */
 export const loadWatcherProcessConfigFile = async (
   path: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<WatcherProcessConfig> => {
+  await refusePermanently("l1_access", () =>
+    assertRoleL1Env(env, "midgard-watcher"),
+  );
   const config = await refusePermanently("process_configuration", async () =>
     parseWatcherProcessConfig(await configFile(path)),
   );

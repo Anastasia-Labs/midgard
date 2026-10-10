@@ -21,7 +21,7 @@ import {
   VERSION,
 } from "./index.registration.js";
 import * as Services from "./services/index.js";
-import { openNodeL1AccessFromConfig } from "./services/l1-provider.js";
+import { openNodeLedgerAccessFromConfig } from "./services/l1-node-ledger-access.js";
 
 daBondChainOptions(
   daBond
@@ -168,7 +168,7 @@ daBondChainOptions(
 program
   .command("l1-utxos")
   .description(
-    "Fetch and print Cardano L1 UTxOs for an address through the local node and the node's follower store",
+    "Fetch and print Cardano L1 UTxOs for an address through the --l1 access (the local node's ledger by default)",
   )
   .requiredOption("--address <address>", "Cardano payment address to query")
   .option("--network <network>", "Override network; defaults to NETWORK")
@@ -201,8 +201,9 @@ program
   .action(async () => {
     const mainEffect = Effect.gen(function* () {
       const nodeConfig = yield* Services.NodeConfig;
+      // A tool: the local node's ledger, never the node's follower store.
       const report = yield* Effect.acquireUseRelease(
-        Effect.tryPromise(() => openNodeL1AccessFromConfig(nodeConfig)),
+        Effect.tryPromise(() => openNodeLedgerAccessFromConfig(nodeConfig)),
         (access) =>
           Effect.tryPromise(() =>
             L1ProviderPreflightCommand.runL1ProviderPreflight({

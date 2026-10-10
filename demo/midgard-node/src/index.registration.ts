@@ -12,6 +12,7 @@ import {
   writeJson,
 } from "./commands/cli-runtime.js";
 import * as DaBondCommand from "./commands/da-bond.js";
+import { registerL1AccessOption } from "./commands/l1-access-option.js";
 import { type DaLibp2pPreflightMode } from "./da/libp2p-producer.js";
 import {
   DA_LIBP2P_RUNTIME_PROFILES,
@@ -196,6 +197,7 @@ program.version(VERSION).description(
           ${"Midgard Node – Demo CLI Application"}
   ${ENV_VARS_GUIDE}`,
 );
+registerL1AccessOption(program);
 
 program
   .command("availability-journal")

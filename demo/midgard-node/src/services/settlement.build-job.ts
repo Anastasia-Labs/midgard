@@ -27,7 +27,7 @@ import {
   IntentJournalLive,
   journaledIntent,
 } from "./intent-journal.js";
-import { Lucid } from "./lucid.js";
+import { FollowerLucidLive, Lucid } from "./lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContractServices,
@@ -354,7 +354,7 @@ export const settlementProgram = (
 
 export const settlementWorkerLayer = Layer.mergeAll(
   MidgardContractServices,
-  Lucid.Default,
+  FollowerLucidLive,
   IntentJournalLive,
 ).pipe(
   Layer.provideMerge(Database.workerLayer),

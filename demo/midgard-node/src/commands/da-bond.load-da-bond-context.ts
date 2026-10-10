@@ -1,15 +1,17 @@
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   credentialToAddress,
   Lucid,
   type LucidEvolution,
   type Network,
   toUnit,
+  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
-import type { NodeL1Access } from "../services/l1-provider.js";
+import type { L1Access, L1ViewPoint } from "../l1-access.js";
 import {
   authenticatedManifestReference,
   availabilityParametersFromManifest,
@@ -42,17 +44,22 @@ import {
   readDaBondSecretEnv,
 } from "./da-bond-files.js";
 import { withCommandL1Access } from "./l1-command-access.js";
-
-/** The part of the node's L1 access the da-bond commands read. */
-export type DaBondL1Access = Pick<
-  NodeL1Access,
-  "provider" | "endpoint" | "slotConfig" | "ledgerTip"
->;
+import { assertCommandPayerIsDedicated } from "./operational-wallet-refusal.js";
 
 /**
- * Lucid on the deployment's network, with the slot mapping the local node's
- * ledger gives (its system start and era history), exactly as the node takes
- * it (`services/lucid.ts`). Never a configured `zeroTime`: a wrong one shifts
+ * The part of a tool L1 access (`l1-command-access.ts`) the da-bond commands
+ * read: any of the tool adapters, each with its ledger tip.
+ */
+export type DaBondL1Access = Pick<
+  L1Access,
+  "provider" | "endpoint" | "slotConfig"
+> &
+  Readonly<{ ledgerTip: () => Promise<L1ViewPoint> }>;
+
+/**
+ * Lucid on the deployment's network, with the slot mapping the access gives
+ * (the local node's ledger: its system start and era history), exactly as
+ * the node takes it (`services/lucid.ts`). Never a configured `zeroTime`: a wrong one shifts
  * every validity interval, and the pool's `unlock_at` is anchored at one. A
  * failed read stops the command before Lucid is built.
  */
@@ -65,7 +72,7 @@ export const daBondLucid = async (input: {
     slotConfig = await input.access.slotConfig();
   } catch (cause) {
     throw new DaBondSlotMappingError(
-      `Refusing the deployment: the slot mapping from the local node's ledger at ${input.access.endpoint} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `Refusing the deployment: the slot mapping from the L1 access at ${input.access.endpoint} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },
     );
   }
@@ -76,13 +83,46 @@ export const daBondLucid = async (input: {
 };
 
 /**
- * The time of the local node's ledger tip slot: the clock the node checks
+ * The time of the access's ledger tip slot: the clock the node checks
  * validity bounds against.
  */
 export const daBondLedgerTimeMs = async (
   lucid: LucidEvolution,
   access: Pick<DaBondL1Access, "ledgerTip">,
 ): Promise<number> => lucid.slotToUnixTime((await access.ledgerTip()).slot);
+
+/**
+ * `da-bond top-up` never pays from the node's operational wallets
+ * (`operational-wallet-refusal.ts`): the funding secret's variable is not
+ * one of the node's seed settings, and the wallet it selects (the payment
+ * key's enterprise address, or the mnemonic's base address as
+ * `daBondTopUpCommand` selects it) shares no payment credential with them
+ * or with the deployment's reference-script deploy address.
+ */
+export const assertDaBondPayerIsDedicated = (input: {
+  readonly walletSeedEnv: string;
+  readonly walletSecret: string;
+  readonly referenceScriptDeployAddress: string;
+  readonly network: Network;
+  readonly env: NodeJS.ProcessEnv;
+}): void => {
+  const secret = input.walletSecret.trim();
+  const payerAddress =
+    secret.startsWith("ed25519_sk1") || secret.startsWith("ed25519e_sk1")
+      ? credentialToAddress(input.network, {
+          type: "Key",
+          hash: CML.PrivateKey.from_bech32(secret).to_public().hash().to_hex(),
+        })
+      : walletFromSeed(secret, { network: input.network }).address;
+  assertCommandPayerIsDedicated({
+    command: "da-bond top-up",
+    walletSeedEnv: input.walletSeedEnv,
+    payerAddress,
+    referenceScriptDeployAddress: input.referenceScriptDeployAddress,
+    network: input.network,
+    env: input.env,
+  });
+};
 
 const readVerifiedManifest = (path: string) => {
   const manifest = readDeploymentManifestFile(path);
@@ -161,18 +201,25 @@ export const loadDaBondContext = (
   daBondContextFrom(readVerifiedManifest(options.manifest), access);
 
 /**
- * Runs `use` with the production context over a command L1 access on the
- * manifest's network (`l1-command-access.ts`), closing it afterwards.
+ * Runs `use` with the production context over the tool L1 access `--l1`
+ * selects, on the manifest's network (`l1-command-access.ts`), closing it
+ * afterwards.
  */
 const withDaBondContext = async <T>(
   options: DaBondChainOptions,
   env: NodeJS.ProcessEnv,
   use: (ctx: DaBondContext) => Promise<T>,
+  /** A refusal checked on the verified manifest, before any L1 read. */
+  guard?: (
+    manifest: ReturnType<typeof readVerifiedManifest>,
+    network: Network,
+  ) => void,
 ): Promise<T> => {
   const manifest = readVerifiedManifest(options.manifest);
-  return withCommandL1Access(
-    { network: daBondNetwork(manifest.network), env },
-    async (access) => use(await daBondContextFrom(manifest, access)),
+  const network = daBondNetwork(manifest.network);
+  guard?.(manifest, network);
+  return withCommandL1Access({ network, env }, async (access) =>
+    use(await daBondContextFrom(manifest, access)),
   );
 };
 
@@ -188,8 +235,18 @@ export const runDaBondTopUp = async (
   );
   daBondSigningKeyFromSecret(walletSecret);
   parseLovelace(options.amount, "--amount");
-  return withDaBondContext(options, env, (ctx) =>
-    daBondTopUpCommand(ctx, { amount: options.amount, walletSecret }),
+  return withDaBondContext(
+    options,
+    env,
+    (ctx) => daBondTopUpCommand(ctx, { amount: options.amount, walletSecret }),
+    (manifest, network) =>
+      assertDaBondPayerIsDedicated({
+        walletSeedEnv: options.walletSeedEnv,
+        walletSecret,
+        referenceScriptDeployAddress: manifest.referenceScriptDeployAddress,
+        network,
+        env,
+      }),
   );
 };
 

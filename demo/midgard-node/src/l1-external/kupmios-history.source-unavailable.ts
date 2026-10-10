@@ -2,7 +2,7 @@
  * endpoint was unreachable, slow or closed, or an indexer has not caught up
  * with a block another source already served. Retrying after fresh source
  * authentication and intersection cannot admit different history, so a
- * harness reader may retry on it. Anything that DOES say
+ * history reader may retry on it. Anything that DOES say
  * something about the chain (a genesis mismatch, a missing intersection, a
  * broken ancestry link, a malformed answer) is never one of these. */
 export class L1SourceUnavailable extends Error {}

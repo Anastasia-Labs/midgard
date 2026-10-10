@@ -1,7 +1,5 @@
-import {
-  type NativeLedgerAuthority,
-  NativeLedgerKupmios,
-} from "@al-ft/midgard-core/native-reward-account";
+import { NativeLedgerKupmios } from "@al-ft/midgard-core/native-ledger-kupmios";
+import { type NativeLedgerAuthority } from "@al-ft/midgard-core/native-reward-account";
 import { type KupmiosOptions } from "@lucid-evolution/lucid";
 import {
   deriveWatcherNativeGenesisIdentity,

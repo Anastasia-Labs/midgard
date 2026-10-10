@@ -7,6 +7,7 @@ import {
 } from "@al-ft/midgard-core";
 import { parseDaLibp2pRuntimeManifest } from "@al-ft/midgard-core/da-transport";
 import { parseL1Origin } from "@al-ft/midgard-core/l1-origin";
+import { assertRoleL1Env } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -51,6 +52,9 @@ import { normalizeHex } from "./utils/hex.js";
 export const loadCommitteeConfig = async (
   env: Env = process.env,
 ): Promise<LoadedCommitteeConfig> => {
+  // A role: L1 only through its follower; a Kupmios, Blockfrost or tool
+  // `L1_ACCESS` setting is refused at start, by name.
+  assertRoleL1Env(env, "da-committee-node");
   const deploymentManifestPath = requireEnv(
     env,
     "MIDGARD_DEPLOYMENT_MANIFEST_PATH",

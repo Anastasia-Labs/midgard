@@ -1,186 +1,204 @@
-import type { Cursor, StoredBlock, StoredTx } from "@al-ft/midgard-l1-follower";
-import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Emulator, Lucid } from "@lucid-evolution/lucid";
+import { Emulator, Lucid } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   availabilityCommandCanonicalSource,
-  availabilityForeignSpendResolver,
-  type AvailabilityStore,
-  availabilityStoreBoundary,
-  storedTransactionCbor,
+  AvailabilityHistoryUnavailableError,
+  availabilityNodeLedgerSource,
 } from "../src/commands/availability-challenge-source.js";
+import type { ToolL1Access } from "../src/commands/l1-command-access.js";
+import {
+  availabilityKupmiosSource,
+  kupoUnitHistory,
+} from "../src/l1-external/kupmios-availability-source.js";
+import type { FetchLike } from "../src/l1-external/kupmios-history.js";
 
-const hash = (byte: string) => Buffer.from(byte.repeat(32), "hex");
+const hex = (byte: string) => byte.repeat(32);
 
-const cursorAt = (slot: number, blockHash: Buffer, height: number): Cursor => ({
-  point: { slot, hash: blockHash },
-  height,
-  generation: 1,
-  origin: { slot: 0, hash: hash("00") },
-  prunedThroughSlot: 0,
+type PointStatus = "on_chain" | "not_on_chain" | "immutable";
+
+/** A node-ledger access whose tip and point statuses the test sets. */
+const ledger = (state: {
+  tip: { slot: number; hash: string; blockNo: number };
+  status: Map<string, PointStatus>;
+}) => ({
+  readTip: async () => state.tip,
+  pointStatus: async (point: { slot: number; hash: string }) =>
+    state.status.get(`${point.slot.toString()}:${point.hash}`) ??
+    ("not_on_chain" as const),
 });
 
-/** A follower store holding the given canonical blocks and transactions. */
-const fakeStore = (state: {
-  cursor: Cursor | null;
-  blocks: StoredBlock[];
-  txs?: StoredTx[];
-  spends?: Map<string, { txHash: Buffer; slot: number }>;
-}): AvailabilityStore =>
-  ({
-    cursor: async () => state.cursor,
-    pointStatus: async (point) => {
-      const block = state.blocks.find(
-        (b) => b.slot === point.slot && b.hash.equals(point.hash),
-      );
-      return block === undefined
-        ? {
-            kind: "point_not_canonical",
-            detail: `${point.hash.toString("hex")} at slot ${point.slot.toString()} is not on the stored chain`,
-          }
-        : { kind: "canonical", height: block.height, depth: 1 };
-    },
-    blockAtOrBeforeSlot: async (slot) =>
-      [...state.blocks].reverse().find((b) => b.slot <= slot) ?? null,
-    txByHash: async (txHash) =>
-      state.txs?.find((tx) => tx.hash.equals(txHash)) ?? null,
-    txSpending: async (outRef) =>
-      state.spends?.get(
-        `${outRef.txHash.toString("hex")}#${outRef.index.toString()}`,
-      ) ?? null,
-  }) as AvailabilityStore;
-
-const block = (
-  slot: number,
-  blockHash: Buffer,
-  height: number,
-): StoredBlock => ({
-  slot,
-  hash: blockHash,
-  height,
-  parentHash: null,
-  qualifyingTxCount: 1,
-});
-
-describe("availability command canonical source (follower store)", () => {
-  it("reads the boundary only once the follower reached the node's ledger tip", async () => {
-    const tip = hash("11");
-    const store = fakeStore({
-      cursor: cursorAt(100, tip, 10),
-      blocks: [block(100, tip, 10)],
-    });
-    const behind = availabilityStoreBoundary({
-      store,
-      synchronizedViewPoint: async () => {
-        throw new L1ProviderTransientError("follower", "behind_node_tip");
-      },
-    });
-    await expect(behind()).rejects.toThrow(
-      "L1 provider follower unavailable: behind_node_tip",
-    );
-    const synced = availabilityStoreBoundary({
-      store,
-      synchronizedViewPoint: async () => ({
-        slot: 100,
-        id: tip.toString("hex"),
-      }),
-    });
-    await expect(synced()).resolves.toEqual({
-      pointId: `100:${tip.toString("hex")}`,
-      slot: 100,
-      blockNo: 10,
-      blockHash: tip.toString("hex"),
-    });
-  });
-
-  it("revokes a captured generation when the anchor is no longer on the stored chain", async () => {
-    const original = hash("11");
+describe("availability canonical source on the node ledger (a tool, before listen)", () => {
+  it("anchors on the ledger tip and keeps it while the node still has it", async () => {
     const state = {
-      cursor: cursorAt(100, original, 10),
-      blocks: [block(100, original, 10)],
+      tip: { slot: 100, hash: hex("11"), blockNo: 10 },
+      status: new Map<string, PointStatus>([[`100:${hex("11")}`, "on_chain"]]),
     };
     const lucid = await Lucid(new Emulator([]), "Custom");
-    const source = availabilityCommandCanonicalSource({
+    const source = availabilityNodeLedgerSource({
       lucid,
-      access: {
-        store: fakeStore(state),
-        synchronizedViewPoint: async () => ({
-          slot: state.cursor.point.slot,
-          id: state.cursor.point.hash.toString("hex"),
-        }),
-      },
+      access: ledger(state),
     });
     const anchor = await source.readBoundary();
+    expect(anchor).toEqual({
+      pointId: `100:${hex("11")}`,
+      slot: 100,
+      blockNo: 10,
+      blockHash: hex("11"),
+    });
     await expect(
       source.assertCanonicalAncestor(anchor),
     ).resolves.toBeUndefined();
-    const rival = hash("22");
-    state.cursor = cursorAt(100, rival, 10);
-    state.blocks = [block(100, rival, 10)];
+  });
+
+  it("revokes the anchor once the node no longer has it, or it left the volatile window", async () => {
+    const state = {
+      tip: { slot: 100, hash: hex("11"), blockNo: 10 },
+      status: new Map<string, PointStatus>([[`100:${hex("11")}`, "on_chain"]]),
+    };
+    const lucid = await Lucid(new Emulator([]), "Custom");
+    const source = availabilityNodeLedgerSource({
+      lucid,
+      access: ledger(state),
+    });
+    const anchor = await source.readBoundary();
+    state.status.set(`100:${hex("11")}`, "not_on_chain");
     await expect(source.assertCanonicalAncestor(anchor)).rejects.toThrow(
-      /canonical generation changed.*point_not_canonical/,
+      /canonical generation changed.*no longer on the node's chain/,
+    );
+    state.status.set(`100:${hex("11")}`, "immutable");
+    await expect(source.assertCanonicalAncestor(anchor)).rejects.toThrow(
+      /canonical generation changed.*past the node's volatile window/,
     );
   });
 
-  it("verifies a foreign spend from the stored spending transaction's own bytes", async () => {
-    const spentRef = `${"aa".repeat(32)}#0`;
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("aa".repeat(32)),
-      0n,
-    );
-    const inputs = CML.TransactionInputList.new();
-    inputs.add(input);
-    const body = CML.TransactionBody.new(
-      inputs,
-      CML.TransactionOutputList.new(),
-      0n,
-    );
-    const bodyCbor = Buffer.from(body.to_cbor_bytes());
-    const spendingHash = Buffer.from(CML.hash_transaction(body).to_raw_bytes());
-    const witnessCbor = Buffer.from(
-      CML.TransactionWitnessSet.new().to_cbor_bytes(),
-    );
-    const stored = {
-      hash: spendingHash,
-      blockSlot: 90,
-      isValid: true,
-      bodyCbor,
-      witnessCbor,
-      auxCbor: null,
-    } as unknown as StoredTx;
-    const spendBlock = hash("33");
-    const tip = hash("44");
-    const store = fakeStore({
-      cursor: cursorAt(100, tip, 12),
-      blocks: [block(90, spendBlock, 9), block(100, tip, 12)],
-      txs: [stored],
-      spends: new Map([[spentRef, { txHash: spendingHash, slot: 90 }]]),
-    });
-    const readBoundary = availabilityStoreBoundary({
-      store,
-      synchronizedViewPoint: async () => ({
-        slot: 100,
-        id: tip.toString("hex"),
+  it("refuses every history read by name, pointing at --l1 kupmios", async () => {
+    const lucid = await Lucid(new Emulator([]), "Custom");
+    const source = availabilityNodeLedgerSource({
+      lucid,
+      access: ledger({
+        tip: { slot: 1, hash: hex("11"), blockNo: 1 },
+        status: new Map(),
       }),
     });
-    const resolve = availabilityForeignSpendResolver({ store, readBoundary });
-    const spend = await resolve(spentRef);
-    expect(spend).toMatchObject({
-      outRef: spentRef,
-      spendingTxHash: spendingHash.toString("hex"),
-      spendPoint: `90:${spendBlock.toString("hex")}`,
-      confirmationDepth: 3,
+    const refusal = source.unitHistory({ policyId: "aa", assetName: "bb" });
+    await expect(refusal).rejects.toBeInstanceOf(
+      AvailabilityHistoryUnavailableError,
+    );
+    await expect(refusal).rejects.toMatchObject({
+      reason: "availability_history_unavailable",
+      access: "node",
     });
-    expect(
-      SDK.transactionConsumesOutRef({
-        transactionCbor: storedTransactionCbor(stored),
-        transactionId: spendingHash.toString("hex"),
-        outRef: spentRef,
+    await expect(refusal).rejects.toThrow(/--l1 kupmios/);
+  });
+
+  it("refuses the Blockfrost access, which has no history reader", async () => {
+    const lucid = await Lucid(new Emulator([]), "Custom");
+    await expect(
+      availabilityCommandCanonicalSource({
+        lucid,
+        access: { kind: "blockfrost" } as ToolL1Access,
       }),
-    ).toBe(true);
-    // An outref no stored transaction spent reads as no spend.
-    await expect(resolve(`${"bb".repeat(32)}#0`)).resolves.toBeUndefined();
+    ).rejects.toMatchObject({
+      reason: "availability_history_unavailable",
+      access: "blockfrost",
+    });
+  });
+});
+
+/** A fetch answering Kupo's /health, /checkpoints and Ogmios's tip. */
+const kupmiosFetch = (state: {
+  ogmios: { slot: number; id: string; height: number };
+  kupo: { slot: number; etag: string };
+  checkpoints: Map<number, { slot_no: number; header_hash: string }>;
+}): FetchLike =>
+  (async (url: string, init?: { body?: string }) => {
+    if (url.startsWith("http://ogmios")) {
+      const method = (JSON.parse(init?.body ?? "{}") as { method: string })
+        .method;
+      const result =
+        method === "queryNetwork/tip"
+          ? { slot: state.ogmios.slot, id: state.ogmios.id }
+          : state.ogmios.height;
+      return new Response(JSON.stringify({ result }));
+    }
+    const path = new URL(url).pathname;
+    if (path === "/health")
+      return new Response(
+        `kupo_most_recent_checkpoint ${state.kupo.slot.toString()}\n`,
+        { headers: { etag: `"${state.kupo.etag}"` } },
+      );
+    if (path.startsWith("/checkpoints/"))
+      return new Response(
+        JSON.stringify(
+          state.checkpoints.get(Number(path.split("/").at(-1))) ?? null,
+        ),
+      );
+    return new Response("not found", { status: 404 });
+  }) as unknown as FetchLike;
+
+describe("availability canonical source on Kupmios", () => {
+  it("anchors only where Kupo and Ogmios agree on the tip", async () => {
+    const state = {
+      ogmios: { slot: 100, id: hex("11"), height: 10 },
+      kupo: { slot: 100, etag: hex("11") },
+      checkpoints: new Map([[100, { slot_no: 100, header_hash: hex("11") }]]),
+    };
+    const lucid = await Lucid(new Emulator([]), "Custom");
+    const source = availabilityKupmiosSource({
+      lucid,
+      kupoUrl: "http://kupo",
+      ogmiosUrl: "http://ogmios",
+      fetchImpl: kupmiosFetch(state),
+    });
+    const anchor = await source.readBoundary();
+    expect(anchor).toEqual({
+      pointId: `100:${hex("11")}`,
+      slot: 100,
+      blockNo: 10,
+      blockHash: hex("11"),
+    });
+    await expect(
+      source.assertCanonicalAncestor(anchor),
+    ).resolves.toBeUndefined();
+    // A rival block at the anchor's slot revokes it.
+    state.checkpoints.set(100, { slot_no: 100, header_hash: hex("22") });
+    await expect(source.assertCanonicalAncestor(anchor)).rejects.toThrow(
+      /canonical generation changed/,
+    );
+    // Kupo behind Ogmios: no boundary.
+    state.kupo = { slot: 99, etag: hex("33") };
+    await expect(source.readBoundary()).rejects.toThrow(
+      /Kupo and Ogmios aligned/,
+    );
+  });
+
+  it("reads a unit's history from Kupo, inline datums only", async () => {
+    const seen: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      seen.push(url);
+      return new Response(
+        JSON.stringify([
+          { datum_type: "inline", datum: "d87980" },
+          { datum_type: "hash", datum: "d87a80" },
+          {},
+        ]),
+      );
+    }) as unknown as FetchLike;
+    await expect(
+      kupoUnitHistory({ kupoUrl: "http://kupo", fetchImpl })({
+        policyId: "aa",
+        assetName: "bb",
+      }),
+    ).resolves.toEqual(["d87980", null, null]);
+    expect(seen).toEqual(["http://kupo/matches/aa.bb?resolve_hashes"]);
+    const broken = (async () =>
+      new Response(JSON.stringify({ hint: "no" }))) as unknown as FetchLike;
+    await expect(
+      kupoUnitHistory({ kupoUrl: "http://kupo", fetchImpl: broken })({
+        policyId: "aa",
+        assetName: "bb",
+      }),
+    ).rejects.toThrow(/no match array/);
   });
 });

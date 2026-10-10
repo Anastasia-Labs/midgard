@@ -314,7 +314,7 @@ it.skipIf(runDirectory === undefined)(
         "cardano-cli returned an invalid funding transaction hash",
       );
     await provider.awaitTx(fundingTxHash, 500);
-    const network = { ogmiosUrl, customNetwork: { slotConfig } };
+    const network = { kupoUrl, ogmiosUrl, customNetwork: { slotConfig } };
     const operatorLucid = await journeyLucid(
       provider,
       network,

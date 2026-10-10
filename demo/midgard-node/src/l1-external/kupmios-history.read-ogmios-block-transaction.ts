@@ -1,7 +1,7 @@
 import {
   BASE16_BYTES,
   defaultWebSocketFactory,
-} from "./harness-kupmios.fetch-kupo-spend.js";
+} from "./kupmios-history.fetch-kupo-spend.js";
 import {
   DEFAULT_L1_BLOCK_SCAN_LIMIT,
   DEFAULT_L1_READ_TIMEOUT_MS,
@@ -11,11 +11,11 @@ import {
   normalizeOgmiosWebSocketUrl,
   type ObservedL1TransactionAtPoint,
   type WebSocketFactory,
-} from "./harness-kupmios.l1-chain-point.js";
+} from "./kupmios-history.l1-chain-point.js";
 import {
   openOgmiosSession,
   parseObservedTransaction,
-} from "./harness-kupmios.open-ogmios-session.js";
+} from "./kupmios-history.open-ogmios-session.js";
 
 /**
  * Rolls chain-sync from `intersection` forward to `blockPoint` and returns the

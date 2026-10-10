@@ -12,8 +12,6 @@ import {
   Schedule,
 } from "effect";
 
-import { followerCoveredTipSlot } from "../database/follower-events.covered-tip-slot.js";
-import { installL1FollowerTipReader } from "../l1-heads.js";
 import { isConnectionClassError } from "../provider-retry.js";
 import { ConfigError, NodeConfig, NodeConfigDep } from "./config.js";
 import { databaseUpstreamSocket } from "./database-upstream-socket.js";
@@ -224,22 +222,9 @@ const WorkerSqlClientLive: Layer.Layer<
   createPgLayerEffect("worker", (config) => config.POSTGRES_WORKER_POOL_SIZE),
 );
 
-/** Installs this process's reader of the follower's covered tip, the node's
- * L1 tip (`l1-heads.ts`), over the pool it is built on. */
-const FollowerTipReaderLive = Layer.effectDiscard(
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    installL1FollowerTipReader(() =>
-      followerCoveredTipSlot.pipe(
-        Effect.provideService(SqlClient.SqlClient, sql),
-      ),
-    );
-  }),
-);
-
 const BatchSqlAliasLive = Layer.effect(BatchSql, SqlClient.SqlClient);
 const BatchDatabaseLive = Layer.provideMerge(
-  Layer.merge(BatchSqlAliasLive, FollowerTipReaderLive),
+  BatchSqlAliasLive,
   BatchSqlClientLive,
 );
 
@@ -259,10 +244,7 @@ export const Database = {
   layer: DatabaseLive.pipe(Layer.provide(NodeConfig.layer)),
   /** Exposes the same decoded NodeConfig used to construct both SQL pools. */
   layerWithNodeConfig: Layer.provideMerge(DatabaseLive, NodeConfig.layer),
-  workerLayer: Layer.provideMerge(
-    FollowerTipReaderLive,
-    WorkerSqlClientLive,
-  ).pipe(Layer.provide(NodeConfig.layer)),
+  workerLayer: WorkerSqlClientLive.pipe(Layer.provide(NodeConfig.layer)),
 };
 
 /**

@@ -1,9 +1,11 @@
 /**
- * The node's L1 access (plan §4.4, N1): one `L1FollowerProvider` over the
- * node's follower store (its tables in the node database, read only here)
- * and the local node's transport (local state query, LocalTxSubmission,
- * LocalTxMonitor). Every Lucid client and every L1 read the node and its
- * CLIs make goes through it; nothing reads Kupo or Ogmios.
+ * The follower adapter of the L1-access port (`l1-access.ts`; plan §4.4,
+ * N1), for role processes only (`listen` and its workers): one
+ * `L1FollowerProvider` over the node's follower store (its tables in the
+ * node database, read only here) and the local node's transport (local
+ * state query, LocalTxSubmission, LocalTxMonitor). Nothing reads Kupo or
+ * Ogmios. Tools use the node-ledger adapter (`l1-node-ledger-access.ts`)
+ * or an external one, never this.
  *
  * - The store is opened as a reader: it is never started, so it takes no
  *   writer lease and runs no migration. The follower in the main thread is
@@ -21,13 +23,11 @@
  *   ends the process.
  */
 import {
-  decodeCbor,
   type L1NodeTransport,
   sharedL1NodeTransport,
   type TransportReadiness,
 } from "@al-ft/l1-node-transport";
 import type { NativeLedgerNetwork } from "@al-ft/midgard-core/native-reward-account";
-import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import {
   type FactStore,
   openPostgresFactStore,
@@ -48,29 +48,24 @@ import type {
   UTxO,
 } from "@lucid-evolution/lucid";
 
+import {
+  type L1Access,
+  type L1AccessAdapter,
+  type L1ViewPoint,
+  openL1Access,
+} from "../l1-access.js";
 import { type NodeConfigDep } from "./config.node-config-dep.js";
 import { nodeSeededAddresses } from "./intent-journal.tracked-set.js";
+import {
+  L1LedgerBehindError,
+  ledgerSubmitSlotSnapshot,
+  ledgerTipPointOf,
+} from "./l1-ledger-tip.js";
+import { NODE_L1_ACCESS_UNCONFIGURED } from "./l1-node-ledger-access.js";
 import {
   nativeLedgerNetworkMagic,
   type NativeLedgerSettings,
 } from "./native-ledger.js";
-
-/** The local node's ledger tip is further behind wall time than the bound. */
-export class L1LedgerBehindError extends Error {
-  override readonly name = "L1LedgerBehindError";
-  readonly reason = "l1_node_behind";
-  readonly retryable = true;
-  constructor(
-    readonly ledgerTipSlot: number,
-    readonly wallSlot: number,
-    readonly lagMs: number,
-    readonly boundMs: number,
-  ) {
-    super(
-      `l1_node_behind: the local node's ledger tip ${ledgerTipSlot.toString()} is ${lagMs.toString()} ms behind wall slot ${wallSlot.toString()} (bound ${boundMs.toString()} ms)`,
-    );
-  }
-}
 
 /** The follower store has no cursor yet: no view point to read at. */
 const notInitialized = () =>
@@ -107,8 +102,13 @@ export const l1ReadFailureKind = (error: unknown): string => {
   return "l1_read_failed";
 };
 
-/** A view point of the provider: the follower's cursor. */
-export type L1ViewPoint = Readonly<{ slot: number; id: string }>;
+export type { L1ViewPoint } from "../l1-access.js";
+export {
+  L1LedgerBehindError,
+  ledgerSubmitSlotSnapshot,
+  ledgerTipPointOf,
+  wallSlotAt,
+} from "./l1-ledger-tip.js";
 
 const EMPTY_TRACKED_SET = {
   addresses: new Set<string>(),
@@ -194,35 +194,28 @@ export class NodeL1Provider extends L1FollowerProvider {
   }
 }
 
-/** The node's L1 access: the provider and the reads around it. */
-export type NodeL1Access = Readonly<{
-  provider: NodeL1Provider;
-  store: FactStore;
-  transport: L1NodeTransport;
-  /** The local node's socket, for diagnostics. */
-  endpoint: string;
-  /** Lucid's slot configuration from the ledger; cached once read. */
-  slotConfig: () => Promise<SlotConfig>;
-  /** One submit-slot snapshot (see the module comment). */
-  submitSlotSnapshot: () => Promise<SubmitSlotSnapshot>;
-  /** The local node's ledger tip, read now. */
-  ledgerTip: () => Promise<L1ViewPoint>;
-  /** The follower's cursor: the point every tracked read is answered at. */
-  viewPoint: () => Promise<L1ViewPoint>;
-  /**
-   * The follower's cursor once it has reached the node's ledger tip read
-   * first (that tip, or past it), so follower lag is never read as chain
-   * state. The transient `follower:behind_node_tip` after
-   * `VIEW_SYNC_TIMEOUT_MS`.
-   */
-  synchronizedViewPoint: () => Promise<L1ViewPoint>;
-  /** The ledger's protocol parameters, as the node's CBOR answer. */
-  protocolParametersCbor: () => Promise<Uint8Array>;
-  /** The transport's current readiness. */
-  transportReadiness: () => TransportReadiness;
-  /** Releases the store's connections; the shared transport idles unreferenced. */
-  close: () => Promise<void>;
-}>;
+/** The follower adapter (roles only): the store and transport around it. */
+export type NodeL1AccessAdapter = L1AccessAdapter &
+  Readonly<{
+    kind: "follower";
+    provider: NodeL1Provider;
+    store: FactStore;
+    transport: L1NodeTransport;
+    /** The local node's ledger tip, read now. */
+    ledgerTip: () => Promise<L1ViewPoint>;
+    protocolParametersCbor: () => Promise<Uint8Array>;
+    transportReadiness: () => TransportReadiness;
+  }>;
+
+/**
+ * The node's L1 access in a role: the follower adapter over the port. Its
+ * clock is the follower's covered tip; its view point is the follower's
+ * cursor; its synchronized view point is that cursor once it has reached the
+ * node's ledger tip read first (so follower lag is never read as chain
+ * state), the transient `follower:behind_node_tip` after
+ * `VIEW_SYNC_TIMEOUT_MS`.
+ */
+export type NodeL1Access = L1Access<NodeL1AccessAdapter>;
 
 const transportCall = async <T>(run: () => Promise<T>): Promise<T> => {
   try {
@@ -232,70 +225,9 @@ const transportCall = async <T>(run: () => Promise<T>): Promise<T> => {
   }
 };
 
-/** The ledger tip from a `chain_point` answer: `[]` (origin) or `[slot, hash]`. */
-export const ledgerTipPointOf = (answer: Uint8Array): L1ViewPoint => {
-  const value = decodeCbor(answer);
-  if (!Array.isArray(value))
-    throw new Error("the ledger's chain point is not a CBOR array");
-  if (value.length === 0)
-    throw new L1ProviderTransientError("transport", "ledger_at_origin");
-  const [slot, hash] = value;
-  if (
-    value.length !== 2 ||
-    !(
-      (typeof slot === "number" && Number.isSafeInteger(slot) && slot >= 0) ||
-      (typeof slot === "bigint" &&
-        slot >= 0n &&
-        slot <= BigInt(Number.MAX_SAFE_INTEGER))
-    ) ||
-    !(hash instanceof Uint8Array) ||
-    hash.length !== 32
-  )
-    throw new Error("the ledger's chain point is not [slot, hash32]");
-  return { slot: Number(slot), id: Buffer.from(hash).toString("hex") };
-};
-
 /** How long a synchronized view point waits for the follower to reach the node's tip. */
 export const VIEW_SYNC_TIMEOUT_MS = 60_000;
 const VIEW_SYNC_POLL_MS = 500;
-
-/** The slot `nowMs` falls in on `slotConfig`. */
-export const wallSlotAt = (slotConfig: SlotConfig, nowMs: number): number =>
-  slotConfig.zeroSlot +
-  Math.floor((nowMs - slotConfig.zeroTime) / slotConfig.slotLength);
-
-/**
- * A submit-slot snapshot from a ledger tip and wall time: `currentSlot` is
- * the later of the two; a tip more than `boundMs` behind wall time is refused.
- */
-export const ledgerSubmitSlotSnapshot = (
-  input: Readonly<{
-    slotConfig: SlotConfig;
-    ledgerTipSlot: number;
-    nowMs: number;
-    boundMs: number;
-  }>,
-): SubmitSlotSnapshot => {
-  const wallSlot = wallSlotAt(input.slotConfig, input.nowMs);
-  const lagMs = Math.max(
-    0,
-    (wallSlot - input.ledgerTipSlot) * input.slotConfig.slotLength,
-  );
-  if (lagMs > input.boundMs)
-    throw new L1LedgerBehindError(
-      input.ledgerTipSlot,
-      wallSlot,
-      lagMs,
-      input.boundMs,
-    );
-  return {
-    source: "l1_node_tip",
-    currentSlot: Math.max(wallSlot, input.ledgerTipSlot),
-    ledgerTipSlot: input.ledgerTipSlot,
-    observedAtMs: input.nowMs,
-    slotLengthMs: input.slotConfig.slotLength,
-  };
-};
 
 /** The Postgres connection string for the node database. */
 export const nodeDatabaseConnectionString = (
@@ -390,12 +322,17 @@ export const openNodeL1Access = async (
       id: cursor.point.hash.toString("hex"),
     };
   };
-  return {
+  return openL1Access({
+    kind: "follower",
     provider,
     store,
     transport,
+    ledgerTip,
     endpoint: input.nativeLedger.socketPath,
     slotConfig: readSlotConfig,
+    // The clock's tip is the follower's covered tip (N1), the same tip
+    // `depth()` counts from.
+    tipSlot: async () => (await viewPoint()).slot,
     submitSlotSnapshot: async () => {
       const config = await readSlotConfig();
       const tip = await ledgerTip();
@@ -406,7 +343,6 @@ export const openNodeL1Access = async (
         boundMs: input.nodeBehindMaxMs,
       });
     },
-    ledgerTip,
     viewPoint,
     synchronizedViewPoint: async () => {
       const deadline = Date.now() + VIEW_SYNC_TIMEOUT_MS;
@@ -431,7 +367,7 @@ export const openNodeL1Access = async (
       transportCall(() => transport.query({ query: "protocol_params" })),
     transportReadiness: () => transport.readiness,
     close: () => store.close().catch(() => undefined),
-  };
+  });
 };
 
 /** The node configuration the L1 access reads. */
@@ -448,9 +384,7 @@ export type NodeL1AccessConfig = Pick<
 > &
   Parameters<typeof nodeSeededAddresses>[0];
 
-/** The settings missing from a node with no local node configured. */
-export const NODE_L1_ACCESS_UNCONFIGURED =
-  "no local node is configured (L1_NODE_SOCKET_PATH, L1_NODE_CONFIG_PATH, L1_NODE_TRANSPORT_BINARY_PATH)";
+export { NODE_L1_ACCESS_UNCONFIGURED };
 
 /** Opens the node's L1 access from its configuration. */
 export const openNodeL1AccessFromConfig = async (

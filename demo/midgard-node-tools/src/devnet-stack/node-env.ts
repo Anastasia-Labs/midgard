@@ -80,7 +80,9 @@ export const nodeEnvironment = (input: {
     // Commands without a --run-state flag read it from here; the default is
     // relative to the node checkout, not this run.
     MIDGARD_RUN_STATE_PATH: layout.deploymentRunState,
-    // The node reads and submits through the cardano-node socket.
+    // The node reads and submits through the cardano-node socket: `listen`
+    // through its follower, a command through the node's ledger (option E).
+    ...(role === "command" ? { L1_ACCESS: "node" } : {}),
     L1_NODE_SOCKET_PATH: layout.cardanoSocket,
     L1_NODE_CONFIG_PATH: layout.hostCardanoConfig,
     L1_NODE_TRANSPORT_BINARY_PATH: artifacts.transportBinary,

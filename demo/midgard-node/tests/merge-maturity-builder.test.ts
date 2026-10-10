@@ -1,14 +1,14 @@
 import "./utils.js";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { registerL1ProviderView } from "../src/l1-provider-view.js";
 import { Globals, NodeConfig } from "../src/services/index.js";
 import {
-  registerTestL1Tip,
+  attachTestL1Access,
   TEN_MINUTES_MS,
   type TestL1Tip,
 } from "./helpers/l1-tip.js";
@@ -214,7 +214,13 @@ describe("merge builder maturity preflight", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(510_000);
-    l1Tip = registerTestL1Tip(fakeLucid, 510);
+    // The client's submit-slot reader: the local node's ledger tip.
+    l1Tip = attachTestL1Access(fakeLucid, 510, {
+      submitSlotSnapshot: () =>
+        Effect.runPromise(
+          localSlotSnapshotProviderMock() as Effect.Effect<SubmitSlotSnapshot>,
+        ),
+    });
     requireLandedStateQueueMock.mockReset();
     getStateQueueNodeFromStateQueueDatumMock.mockReset();
     getHeaderFromStateQueueDatumMock.mockReset();
@@ -248,11 +254,6 @@ describe("merge builder maturity preflight", () => {
         slotLengthMs: 1_000,
       }),
     );
-    // The client's submit-slot reader: the local node's ledger tip.
-    registerL1ProviderView([fakeLucid], {
-      submitSlotSnapshot: localSlotSnapshotProviderMock,
-      viewPoint: () => Effect.fail(new Error("no view point in this test")),
-    });
   });
 
   afterEach(() => {

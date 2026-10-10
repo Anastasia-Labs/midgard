@@ -1,5 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
+import { L1TxStatusUnknownError } from "@al-ft/midgard-l1-follower/provider";
 import { CML, type LucidEvolution, type OutRef } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -13,6 +14,39 @@ export class SignedNonceConflictError extends Error {
 export class SignedNonceRejectedError extends Error {
   override readonly name = "SignedNonceRejectedError";
 }
+
+/**
+ * The L1 access cannot say whether the recorded nonce landed: under
+ * `--l1 node` the ledger reads a transaction whose every output is already
+ * spent like one that never landed. Nothing was resubmitted and the run
+ * state is kept; re-running it under an access that reads the transaction
+ * itself (`--l1 kupmios`) settles it. Never a reason to replace the
+ * deployment identity.
+ */
+export class SignedNonceStatusUnknownError extends Error {
+  override readonly name = "SignedNonceStatusUnknownError";
+  readonly reason = "signed_nonce_status_unknown";
+  readonly retryable = true;
+  constructor(txHash: string, cause: unknown) {
+    super(
+      [
+        `Hub-oracle nonce transaction ${txHash} was signed and recorded (run-state step hubOracleNonceSigned), but the L1 access cannot tell whether it landed: ${formatUnknownError(cause)}.`,
+        "Nothing was resubmitted and the run state is kept. Re-run the same command with --l1 kupmios (L1_KUPO_URL, L1_OGMIOS_URL), which reads the transaction itself; do not pass --fresh-redeploy for this.",
+      ].join(" "),
+      { cause },
+    );
+  }
+}
+
+/** The access's unknown-status refusal on the cause chain, if any. */
+const statusUnknown = (error: unknown): L1TxStatusUnknownError | undefined => {
+  let current = error;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
+    if (current instanceof L1TxStatusUnknownError) return current;
+    current = current.cause;
+  }
+  return undefined;
+};
 
 /** Ogmios reports every ledger refusal of a submitted transaction as 3000–3999. */
 const ogmiosSubmitFailureCode = (error: unknown): number | undefined => {
@@ -61,20 +95,51 @@ const spendingInputs = (txHash: string, signedTxCbor: string): OutRef[] => {
   }));
 };
 
-const landed = (lucid: LucidEvolution, txHash: string) =>
+/**
+ * Whether the nonce landed: `true`, `false`, or the access's unknown-status
+ * refusal (`L1TxStatusUnknownError`), returned for the caller to weigh.
+ */
+const landed = (
+  lucid: LucidEvolution,
+  txHash: string,
+): Effect.Effect<boolean | L1TxStatusUnknownError, Error> =>
   Effect.tryPromise({
     try: async () => (await lucid.transactionStatus(txHash)).status,
-    catch: (cause) =>
-      new Error(
-        `Failed to read the status of hub-oracle nonce transaction ${txHash}: ${formatUnknownError(cause)}`,
-      ),
-  }).pipe(Effect.map((status) => status === "confirmed"));
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.map((status) => status === "confirmed"),
+    Effect.catchAll((cause) => {
+      const unknown = statusUnknown(cause);
+      return unknown !== undefined
+        ? Effect.succeed(unknown)
+        : Effect.fail(
+            new Error(
+              `Failed to read the status of hub-oracle nonce transaction ${txHash}: ${formatUnknownError(cause)}`,
+            ),
+          );
+    }),
+  );
+
+/**
+ * The decisive status read, made once the nonce can only have landed or be
+ * lost: an unknown status refuses (`SignedNonceStatusUnknownError`, which
+ * the operator retries) rather than read as "not landed".
+ */
+const landedOrUnknown = (lucid: LucidEvolution, txHash: string) =>
+  Effect.flatMap(landed(lucid, txHash), (status) =>
+    typeof status === "boolean"
+      ? Effect.succeed(status)
+      : Effect.fail(new SignedNonceStatusUnknownError(txHash, status)),
+  );
 
 /**
  * Resumes the nonce transaction recorded before its first submission. A
  * transaction that has not landed is only ever resubmitted byte for byte, so
  * a resume can never create a second nonce; if another transaction spent its
  * inputs the recorded nonce can no longer land and the resume fails closed.
+ * A status the access cannot tell (`--l1 node`, every output spent) is
+ * "not landed" only while the nonce's inputs are unspent, which proves it;
+ * otherwise it refuses as unknown, never as a conflict.
  */
 export const resumeSignedHubOracleNonceTransaction = ({
   lucid,
@@ -91,7 +156,8 @@ export const resumeSignedHubOracleNonceTransaction = ({
       catch: (cause) =>
         cause instanceof Error ? cause : new Error(String(cause)),
     });
-    if (yield* landed(lucid, txHash)) return "landed";
+    // Unknown is not landed here: the inputs read next decide it.
+    if ((yield* landed(lucid, txHash)) === true) return "landed";
     const live = yield* Effect.tryPromise({
       try: () => lucid.utxosByOutRef(inputs),
       catch: (cause) =>
@@ -110,8 +176,9 @@ export const resumeSignedHubOracleNonceTransaction = ({
       )
       .map((input) => `${input.txHash}#${input.outputIndex.toString()}`);
     if (spent.length > 0) {
-      // The transaction may have landed between the two reads.
-      if (yield* landed(lucid, txHash)) return "landed";
+      // The transaction may have landed between the two reads; spent inputs
+      // prove nothing, so an unknown status refuses as unknown.
+      if (yield* landedOrUnknown(lucid, txHash)) return "landed";
       return yield* Effect.fail(
         new SignedNonceConflictError(
           [
@@ -143,7 +210,7 @@ export const resumeSignedHubOracleNonceTransaction = ({
       );
       return "resubmitted";
     }
-    if (yield* landed(lucid, txHash)) return "landed";
+    if (yield* landedOrUnknown(lucid, txHash)) return "landed";
     return yield* Effect.fail(
       new SignedNonceRejectedError(
         [

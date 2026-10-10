@@ -234,4 +234,28 @@ describe("permanent refusals: held after the server binds, exit 78 before", () =
     expect(isWatcherPermanentRefusal(missing)).toBe(false);
     expect(watcherFailureExitCode(missing)).toBe(70);
   });
+
+  it("refuses permanently, before reading its configuration, a watcher started with a non-follower L1 setting", async () => {
+    const directory = await mkdtemp("/var/tmp/midgard-watcher-refusal-");
+    directories.push(directory);
+    const absent = join(directory, "absent.json");
+    const refused = await loadWatcherProcessConfigFile(absent, {
+      L1_OGMIOS_URL: "http://ogmios:1337",
+      L1_ACCESS: "kupmios",
+    }).catch((error: unknown) => error);
+    expect(isWatcherPermanentRefusal(refused)).toBe(true);
+    expect(watcherFailureExitCode(refused)).toBe(78);
+    expect((refused as Error).message).toMatch(
+      /watcher l1_access refused: midgard-watcher reads L1 only through its follower.*L1_ACCESS, L1_OGMIOS_URL/,
+    );
+    expect((refused as Error).cause).toMatchObject({
+      reason: "role_non_follower_l1_config",
+    });
+    // The follower's own access passes on to the file read.
+    const follower = await loadWatcherProcessConfigFile(absent, {
+      L1_ACCESS: "follower",
+    }).catch((error: unknown) => error);
+    expect(isWatcherPermanentRefusal(follower)).toBe(false);
+    expect(watcherFailureExitCode(follower)).toBe(70);
+  });
 });

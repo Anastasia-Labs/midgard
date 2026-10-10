@@ -47,7 +47,6 @@ import {
 import {
   type CommitLucidFactory,
   CommitWorkerInvariantError,
-  defaultCommitLucidFactory,
   pendingUserEventCountsUpTo,
   shouldHydrateCommitBaseEntries,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
@@ -102,13 +101,15 @@ import {
 export const buildOnVerifiedCommitBaseProgram = (
   workerInput: WorkerInput,
   transactionsMpf: MidgardMpf,
-  notifyParent?: NotifyCommitWorkerParent,
-  nativeMpfClient?: NativeMpfWorkerPortClient,
-  nativeMpfState?: {
-    context?: NativeMpfBuildContext;
-    preserve: boolean;
-  },
-  acquireCommitLucid: CommitLucidFactory = defaultCommitLucidFactory,
+  notifyParent: NotifyCommitWorkerParent | undefined,
+  nativeMpfClient: NativeMpfWorkerPortClient | undefined,
+  nativeMpfState:
+    | {
+        context?: NativeMpfBuildContext;
+        preserve: boolean;
+      }
+    | undefined,
+  acquireCommitLucid: CommitLucidFactory,
 ): Effect.Effect<
   WorkerOutput,
   unknown,

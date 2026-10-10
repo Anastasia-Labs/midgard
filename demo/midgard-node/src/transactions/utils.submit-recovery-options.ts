@@ -2,7 +2,7 @@ import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { registeredSubmitSlotSnapshot } from "../l1-provider-view.js";
+import { accessSubmitSlotSnapshot } from "../l1-provider-view.js";
 import {
   type InlineWaitPolicy,
   type SubmitTimingPlan,
@@ -153,7 +153,7 @@ export const resolvePreSubmitSlotSnapshot = (
   if (slotSnapshot !== undefined) {
     return slotSnapshot();
   }
-  const registered = registeredSubmitSlotSnapshot(lucid);
+  const registered = accessSubmitSlotSnapshot(lucid);
   if (registered !== undefined) {
     return registered();
   }

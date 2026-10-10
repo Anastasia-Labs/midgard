@@ -10,17 +10,17 @@ import {
 import { Effect, Either } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { openL1Access } from "../src/l1-access.js";
 import {
   L1_TIP_REFRESH_MS,
   l1NowUnixTimeMs,
   l1SlotNow,
   observeL1Tip,
-  registerL1TipSource,
 } from "../src/l1-heads.js";
 import { operatorStatusProgram } from "../src/transactions/operators/status.js";
-import { TEN_MINUTES_MS } from "./helpers/l1-tip.js";
+import { attachTestL1Access, TEN_MINUTES_MS } from "./helpers/l1-tip.js";
 
-/** A stub client: only the identity the tip-source registry keys on. */
+/** A stub client: nothing but the access attached to it. */
 const stubClient = (): LucidEvolution => ({}) as LucidEvolution;
 
 /** A live (non-emulator) Lucid client on Preprod, whose own slot follows the
@@ -42,14 +42,13 @@ describe("l1SlotNow", () => {
     const api = stubClient();
     let monotonicMs = 0;
     let tip: number | null = null;
-    registerL1TipSource(
-      [api],
-      () =>
-        tip === null
-          ? Effect.fail(new Error("Ogmios unreachable"))
-          : Effect.succeed(tip),
-      { slotLengthMs: 1_000, monotonicNowMs: () => monotonicMs },
-    );
+    attachTestL1Access(api, 0, {
+      tipSlot: async () => {
+        if (tip === null) throw new Error("the L1 node is unreachable");
+        return tip;
+      },
+      monotonicNowMs: () => monotonicMs,
+    });
     const unknown = await Effect.runPromise(Effect.either(l1SlotNow(api)));
     expect(Either.isLeft(unknown) && unknown.left._tag).toBe(
       "L1SlotUnknownError",
@@ -72,15 +71,13 @@ describe("l1SlotNow", () => {
     const api = stubClient();
     let monotonicMs = 0;
     let reads = 0;
-    registerL1TipSource(
-      [api],
-      () =>
-        Effect.sync(() => {
-          reads += 1;
-          return 50;
-        }),
-      { slotLengthMs: 1_000, monotonicNowMs: () => monotonicMs },
-    );
+    attachTestL1Access(api, 0, {
+      tipSlot: async () => {
+        reads += 1;
+        return 50;
+      },
+      monotonicNowMs: () => monotonicMs,
+    });
     await Effect.runPromise(l1SlotNow(api));
     await Effect.runPromise(l1SlotNow(api));
     expect(reads).toBe(1);
@@ -95,24 +92,65 @@ describe("l1SlotNow", () => {
     expect(reads).toBe(2);
   });
 
-  it("refuses a live client with no tip source, and answers an emulator client with its chain slot", async () => {
+  it("refuses a live client built over no L1 access, and answers an emulator client with its chain slot", async () => {
     const live = await liveClient();
     const unknown = await Effect.runPromise(Effect.either(l1SlotNow(live)));
-    expect(Either.isLeft(unknown)).toBe(true);
+    expect(Either.isLeft(unknown) && unknown.left.message).toBe(
+      "L1 slot unknown: this Lucid client is not built over an L1 access adapter",
+    );
     const emulator = new Emulator([]);
     const emulated = await Lucid(emulator, "Custom");
     emulator.awaitSlot(25);
     expect(await Effect.runPromise(l1SlotNow(emulated))).toBe(emulator.slot);
   });
 
+  it("gives every live client built over an adapter's provider that adapter's clock, with no registration", async () => {
+    let tipReads = 0;
+    const provider = {
+      getProtocolParameters: async () => PROTOCOL_PARAMETERS_DEFAULT,
+    } as unknown as Provider;
+    const access = openL1Access({
+      kind: "node",
+      provider,
+      endpoint: "test",
+      slotConfig: async () => ({
+        zeroTime: 1_000_000,
+        zeroSlot: 0,
+        slotLength: 1_000,
+      }),
+      tipSlot: async () => {
+        tipReads += 1;
+        return 4_242;
+      },
+      viewPoint: async () => ({ slot: 4_242, id: "ab".repeat(32) }),
+      synchronizedViewPoint: async () => ({ slot: 4_242, id: "ab".repeat(32) }),
+      submitSlotSnapshot: () => Promise.reject(new Error("unused")),
+      close: async () => undefined,
+    });
+    // Through the port, and straight over the adapter's provider: both carry
+    // the clock.
+    const viaPort = await access.lucid("Custom");
+    const direct = await Lucid(provider, "Custom", {
+      slotConfig: { zeroTime: 1_000_000, zeroSlot: 0, slotLength: 1_000 },
+    });
+    expect(await Effect.runPromise(l1SlotNow(viaPort))).toBe(4_242);
+    expect(await Effect.runPromise(l1SlotNow(direct))).toBe(4_242);
+    expect(await Effect.runPromise(l1NowUnixTimeMs(viaPort))).toBe(
+      1_000_000 + 4_242_000,
+    );
+    // One clock per access: the second client read no tip of its own.
+    expect(tipReads).toBe(1);
+    // One provider belongs to one access.
+    expect(() =>
+      openL1Access({ ...access, provider, kind: "kupmios" }),
+    ).toThrow("this provider already belongs to an open node L1 access");
+  });
+
   it("does not move when the wall clock runs 10 minutes fast, while Lucid's own slot does", async () => {
     const live = await liveClient();
     const tipSlot = live.currentSlot();
     let monotonicMs = 0;
-    registerL1TipSource([live], () => Effect.succeed(tipSlot), {
-      slotLengthMs: 1_000,
-      monotonicNowMs: () => monotonicMs,
-    });
+    attachTestL1Access(live, tipSlot, { monotonicNowMs: () => monotonicMs });
     const slot = await Effect.runPromise(l1SlotNow(live));
     const nowMs = await Effect.runPromise(l1NowUnixTimeMs(live));
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -172,10 +210,7 @@ describe("operator decisions read L1 now", () => {
   it("does not call an activation time reached on a wall clock 10 minutes fast", async () => {
     const live = await liveClient();
     const tipSlot = live.currentSlot();
-    registerL1TipSource([live], () => Effect.succeed(tipSlot), {
-      slotLengthMs: 1_000,
-      monotonicNowMs: () => 0,
-    });
+    attachTestL1Access(live, tipSlot, { monotonicNowMs: () => 0 });
     const l1NowMs = BigInt(live.slotToUnixTime(tipSlot));
     // Activation is 5 minutes after L1 now: before it on L1, after it on a
     // wall clock 10 minutes fast.

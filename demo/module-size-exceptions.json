@@ -761,8 +761,8 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts",
-    "max": 1636,
-    "reason": "createLiveDaBondPoolJourneyPort is the dominant indivisible declaration (1473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N1K (+19): the availability command flow opens the node's L1 access (its follower store and local node) from the stack environment and reads the Open commitment's unit history from that store, instead of Kupo and Ogmios URLs."
+    "max": 1623,
+    "reason": "createLiveDaBondPoolJourneyPort is the dominant indivisible declaration (1473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. L1 access option E (+6 over the pre-N1K 1617): the journey is a tool, so the availability command flow reads through the Kupmios adapter (anchor, status and the Open commitment's unit history from Kupo and Ogmios) and the CLI it spawns selects the node-ledger access; no role store is opened."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.da-bond-pool-live-port-availability-validity-and-lapses.ts",
@@ -946,8 +946,8 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-    "max": 907,
-    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage. DEPTH (+2): the commit anchor d below the permit's view replaces the horizon lag and is passed to both submissions."
+    "max": 908,
+    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage. DEPTH (+2): the commit anchor d below the permit's view replaces the horizon lag and is passed to both submissions. L1 access E (+1): the commit Lucid factory has no default, so every caller names the follower or tool Lucid."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",

@@ -213,7 +213,7 @@ export const availabilityTimeoutRentRefundAddress = (
 
 /**
  * The inline datums of every retained output that ever held one unit, live or
- * spent (`availabilityStoreUnitHistory` over the node's follower store).
+ * spent (the canonical source's `unitHistory`: Kupo under `--l1 kupmios`).
  */
 export type AvailabilityUnitHistory = (
   input: Readonly<{ policyId: string; assetName: string }>,

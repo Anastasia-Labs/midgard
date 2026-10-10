@@ -12,7 +12,7 @@ import { Effect } from "effect";
 
 import { fetchRetentionL1View } from "../fibers/retention-sweeper.js";
 import { newestTerminalOutcome } from "../l1-queue-terminals/index.js";
-import { parseNonNegativeIntegerOption } from "./cli-runtime.js";
+import { parseNonNegativeIntegerOption } from "./cli-options.js";
 
 /**
  * Executable retention deadline alert (GOAL_SPEC 9.4 / Q54).

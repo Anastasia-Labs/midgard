@@ -224,6 +224,13 @@ export {
   type TxContentSource,
 } from "./resolve/outputs.js";
 export {
+  assertRoleL1Env,
+  NON_FOLLOWER_L1_ENV_KEYS,
+  type NonFollowerL1EnvKey,
+  nonFollowerL1EnvKeys,
+  RoleL1AccessRefusedError,
+} from "./role-l1-env.js";
+export {
   FOLLOWER_MIGRATION_NAMESPACE,
   followerMigrations,
 } from "./schema/follower-migrations.js";

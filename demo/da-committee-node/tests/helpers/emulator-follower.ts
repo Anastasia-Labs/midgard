@@ -1,6 +1,9 @@
 import { join } from "node:path";
 
-import type { L1NodeTransport } from "@al-ft/l1-node-transport";
+import type {
+  L1NodeTransport,
+  LedgerStateSession,
+} from "@al-ft/l1-node-transport";
 import {
   decodeBlock,
   LOOP_PRUNE_BUDGET,
@@ -302,7 +305,10 @@ export const emulatorFollower = async (
     store,
     transport: {
       hasTx: async () => false,
-      query: async () => cbor.map(),
+      withLedgerState: async <T>(
+        _at: unknown,
+        use: (session: LedgerStateSession) => Promise<T>,
+      ) => await use({ query: async () => cbor.map() }),
     } as unknown as L1NodeTransport,
   });
   return {

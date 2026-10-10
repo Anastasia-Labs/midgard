@@ -302,7 +302,7 @@ beforeAll(async () => {
   };
 }, TIMEOUT_MS);
 
-describe("da-bond CLI on an emulator pool", () => {
+describe("da-bond CLI on an emulator pool", { shuffle: false }, () => {
   it(
     "status reads a full Bonded pool",
     async () => {
@@ -850,7 +850,7 @@ describe("da-bond on the ledger's slot mapping (P25)", () => {
     const refused = daBondLucid({ access, network: "Custom" });
     await expect(refused).rejects.toBeInstanceOf(DaBondSlotMappingError);
     await expect(refused).rejects.toThrow(
-      "Refusing the deployment: the slot mapping from the local node's ledger at /run/cardano/node.socket failed: L1 provider transport unavailable: node_unreachable",
+      "Refusing the deployment: the slot mapping from the L1 access at /run/cardano/node.socket failed: L1 provider transport unavailable: node_unreachable",
     );
     expect(getProtocolParameters).not.toHaveBeenCalled();
   });
@@ -928,7 +928,7 @@ describe("da-bond on the ledger's slot mapping (P25)", () => {
     const { loaded, reached } = await loadCustom(access);
     expect(loaded).toBeInstanceOf(DaBondSlotMappingError);
     expect((loaded as Error).message).toContain(
-      "Refusing the deployment: the slot mapping from the local node's ledger at /run/cardano/node.socket failed",
+      "Refusing the deployment: the slot mapping from the L1 access at /run/cardano/node.socket failed",
     );
     expect(getProtocolParameters).not.toHaveBeenCalled();
     expect(reached).toEqual([]);

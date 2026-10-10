@@ -1,34 +1,17 @@
-import {
-  type L1NodeTransport,
-  queryRewardAccount,
-} from "@al-ft/l1-node-transport";
-import {
-  type Address,
-  CML,
-  type Credential,
-  type Datum,
-  type DatumHash,
-  type Delegation,
-  type EvalRedeemer,
-  getAddressDetails,
-  type OutRef as LucidOutRef,
-  type PolicyId,
-  type ProtocolParameters,
-  type Provider,
-  type RewardAccountState,
-  type RewardAddress,
-  type SlotConfig,
-  type Transaction,
-  type TransactionStatus,
-  type TxHash,
-  type Unit,
-  type UTxO,
+import type { L1NodeTransport } from "@al-ft/l1-node-transport";
+import type {
+  Address,
+  Credential,
+  Datum,
+  DatumHash,
+  OutRef as LucidOutRef,
+  TransactionStatus,
+  TxHash,
+  Unit,
+  UTxO,
 } from "@lucid-evolution/lucid";
 
-import { readArray, skipItem, slice } from "../cbor/reader.js";
-import { blake2b256 } from "../codec.js";
 import { addressCredentials } from "../decode/output.js";
-import { decodeLedgerUtxos, type LedgerUtxo } from "../decode/utxo.js";
 import type { SqlTx } from "../sql/backend.js";
 import { datumByHashIn } from "../store/datum.js";
 import type { FactStore } from "../store/fact-store.js";
@@ -36,30 +19,21 @@ import { isTrackedOutput } from "../store/qualify.js";
 import * as reads from "../store/reads.js";
 import type { OutputSummary, OutRef, StoredOutput } from "../types.js";
 import {
-  fromTransportError,
   L1AwaitTxTimeoutError,
   L1CarriagePendingError,
-  L1LocalEvaluationOnlyError,
   L1ProviderError,
-  L1ProviderRequestError,
   L1ProviderScopeError,
   L1ProviderTransientError,
-  L1SubmitRejectedError,
   L1UnitLookupError,
 } from "./errors.js";
 import {
-  decodeEraHistory,
-  decodeProtocolParameters,
-  decodeSystemStart,
-  slotConfigFrom,
-} from "./ledger.js";
-import {
-  holdsPolicy,
-  holdsUnit,
-  splitUnit,
-  toLucidUtxo,
-  utxoSubject,
-} from "./utxo.js";
+  DEFAULT_CHECK_INTERVAL_MS,
+  LedgerProvider,
+  lucidUtxo,
+  outRefKey,
+  toOutRef,
+} from "./ledger-provider.js";
+import { holdsUnit, splitUnit, utxoSubject } from "./utxo.js";
 
 export type L1FollowerProviderOptions = Readonly<{
   /** The role's fact store: tracked outputs, qualifying txs, blocks. */
@@ -70,48 +44,15 @@ export type L1FollowerProviderOptions = Readonly<{
   awaitTxTimeoutMs?: number;
 }>;
 
-/** The ledger state query takes at most this many items per request. */
-const MAX_QUERY_ITEMS = 4_096;
-const DEFAULT_AWAIT_TX_TIMEOUT_MS = 160_000;
-const DEFAULT_CHECK_INTERVAL_MS = 3_000;
-
-const delay = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-const outRefKey = (outRef: OutRef): string =>
-  `${outRef.txHash.toString("hex")}#${outRef.index}`;
-
-const toOutRef = (outRef: LucidOutRef): OutRef => ({
-  txHash: Buffer.from(outRef.txHash, "hex"),
-  index: outRef.outputIndex,
-});
-
-const lucidUtxo = (
-  row: Readonly<{ outRef: OutRef; output: OutputSummary }>,
-): UTxO => toLucidUtxo(row.outRef, row.output);
-
-/** The transaction id: blake2b-256 of the body's exact bytes. */
-const transactionId = (tx: Buffer): string => {
-  try {
-    const body = readArray(tx, 0).items[0];
-    if (body === undefined) throw new Error("the transaction has no body");
-    return blake2b256(slice(tx, body, skipItem(tx, body))).toString("hex");
-  } catch (error) {
-    throw new L1ProviderRequestError(
-      "tx_undecodable",
-      "the transaction is not a CBOR [body, witnesses, ...] array",
-      { cause: error },
-    );
-  }
-};
-
 /**
- * A Lucid provider over the L1 follower (plan §4.4): UTxO, datum and
- * transaction reads from the fact store; protocol parameters, slot
- * configuration, untracked UTxOs and reward accounts from local state query;
- * submission through LocalTxSubmission and mempool presence through
- * LocalTxMonitor. It never reads Kupo or Ogmios and never evaluates scripts
- * remotely. Every failure is a typed error; none ends the process.
+ * A Lucid provider over the L1 follower (plan §4.4): the node-ledger
+ * provider ({@link LedgerProvider}) with the role's fact store over it.
+ * UTxO, datum and transaction reads in the tracked scope come from the
+ * store; protocol parameters, slot configuration, untracked UTxOs and reward
+ * accounts from local state query at the node's tip; submission through
+ * LocalTxSubmission and mempool presence through LocalTxMonitor. It never
+ * reads Kupo or Ogmios and never evaluates scripts remotely. Every failure
+ * is a typed error; none ends the process.
  *
  * Scope: an address the role tracks (by address or payment credential) is
  * answered from the facts alone, at the follower's tip, seed rows included.
@@ -119,67 +60,23 @@ const transactionId = (tx: Buffer): string => {
  * payment credential the role does not track is refused: the ledger query
  * cannot enumerate by credential.
  */
-export class L1FollowerProvider implements Provider {
+export class L1FollowerProvider extends LedgerProvider {
   readonly #store: FactStore;
-  readonly #transport: L1NodeTransport;
-  readonly #awaitTxTimeoutMs: number;
 
   constructor(options: L1FollowerProviderOptions) {
+    super({
+      transport: options.transport,
+      ...(options.awaitTxTimeoutMs === undefined
+        ? {}
+        : { awaitTxTimeoutMs: options.awaitTxTimeoutMs }),
+      // Untracked reads keep the node's tip: the store is the role's view.
+      pinPointMs: 0,
+    });
     this.#store = options.store;
-    this.#transport = options.transport;
-    this.#awaitTxTimeoutMs =
-      options.awaitTxTimeoutMs ?? DEFAULT_AWAIT_TX_TIMEOUT_MS;
-  }
-
-  async getProtocolParameters(): Promise<ProtocolParameters> {
-    return decodeProtocolParameters(
-      await this.#node(() =>
-        this.#transport.query({ query: "protocol_params" }),
-      ),
-    );
-  }
-
-  /** Lucid's slot configuration from the ledger's era history and system start. */
-  async slotConfig(): Promise<SlotConfig> {
-    const [systemStart, eraHistory] = await this.#node(() =>
-      this.#transport.withLedgerState("tip", async (state) => [
-        await state.query({ query: "system_start" }),
-        await state.query({ query: "era_history" }),
-      ]),
-    );
-    return slotConfigFrom(
-      decodeSystemStart(systemStart!),
-      decodeEraHistory(eraHistory!),
-    );
-  }
-
-  async getUtxos(addressOrCredential: Address | Credential): Promise<UTxO[]> {
-    return (await this.#outputsOf(addressOrCredential, "getUtxos")).map(
-      lucidUtxo,
-    );
-  }
-
-  async getUtxosWithUnit(
-    addressOrCredential: Address | Credential,
-    unit: Unit,
-  ): Promise<UTxO[]> {
-    splitUnit(unit);
-    return (await this.#outputsOf(addressOrCredential, "getUtxosWithUnit"))
-      .filter((row) => holdsUnit(row.output, unit))
-      .map(lucidUtxo);
-  }
-
-  async getUtxosWithPolicy(
-    addressOrCredential: Address | Credential,
-    policyId: PolicyId,
-  ): Promise<UTxO[]> {
-    return (await this.#outputsOf(addressOrCredential, "getUtxosWithPolicy"))
-      .filter((row) => holdsPolicy(row.output, policyId))
-      .map(lucidUtxo);
   }
 
   /** The one live tracked output holding `unit`; only tracked outputs are searched. */
-  async getUtxoByUnit(unit: Unit): Promise<UTxO> {
+  override async getUtxoByUnit(unit: Unit): Promise<UTxO> {
     const { policyId, assetName } = splitUnit(unit);
     const rows = (
       await this.#factsUtxos({ by: "unit", policyId, assetName })
@@ -194,7 +91,9 @@ export class L1FollowerProvider implements Provider {
    * from the ledger at the node's tip, unless the ledger's output is in the
    * tracked scope, whose state is the follower's.
    */
-  async getUtxosByOutRef(outRefs: Array<LucidOutRef>): Promise<UTxO[]> {
+  override async getUtxosByOutRef(
+    outRefs: Array<LucidOutRef>,
+  ): Promise<UTxO[]> {
     const wanted = [
       ...new Map(
         outRefs.map((outRef) => {
@@ -218,46 +117,14 @@ export class L1FollowerProvider implements Provider {
         found.set(outRefKey(row.outRef), lucidUtxo(row));
     });
     const tracked = this.#store.trackedSet();
-    for (let start = 0; start < missing.length; start += MAX_QUERY_ITEMS)
-      for (const entry of await this.#ledgerUtxos({
-        query: "utxo_by_txin",
-        txIns: missing.slice(start, start + MAX_QUERY_ITEMS).map((outRef) => ({
-          txId: outRef.txHash.toString("hex"),
-          index: outRef.index,
-        })),
-      }))
-        if (!isTrackedOutput(entry.output, tracked))
-          found.set(outRefKey(entry.outRef), lucidUtxo(entry));
+    for (const entry of await this.ledgerUtxosByTxIn(missing, "tip"))
+      if (!isTrackedOutput(entry.output, tracked))
+        found.set(outRefKey(entry.outRef), lucidUtxo(entry));
     return wanted.flatMap((outRef) => found.get(outRefKey(outRef)) ?? []);
   }
 
-  async getDelegation(rewardAddress: RewardAddress): Promise<Delegation> {
-    const { poolId, rewards } = await this.getRewardAccount(rewardAddress);
-    return { poolId, rewards };
-  }
-
-  async getRewardAccount(
-    rewardAddress: RewardAddress,
-  ): Promise<RewardAccountState> {
-    const credential = getAddressDetails(rewardAddress).stakeCredential;
-    if (credential === undefined)
-      throw new L1ProviderRequestError(
-        "invalid_reward_address",
-        `${rewardAddress} carries no stake credential`,
-      );
-    const snapshot = await this.#node(() =>
-      queryRewardAccount(this.#transport, credential),
-    );
-    return {
-      registered: snapshot.registered,
-      poolId:
-        snapshot.poolIdHash === null ? null : poolBech32(snapshot.poolIdHash),
-      rewards: snapshot.rewardsLovelace,
-    };
-  }
-
   /** A datum preimage from the stored witness sets; never an empty answer. */
-  async getDatum(datumHash: DatumHash): Promise<Datum> {
+  override async getDatum(datumHash: DatumHash): Promise<Datum> {
     const datum = await this.#read((tx) =>
       datumByHashIn(tx, Buffer.from(datumHash, "hex")),
     );
@@ -270,7 +137,9 @@ export class L1FollowerProvider implements Provider {
    * applied its block (qualifying txs only, plan §5.2), pending while the
    * node's mempool holds it, otherwise not found.
    */
-  async getTransactionStatus(txHash: TxHash): Promise<TransactionStatus> {
+  override async getTransactionStatus(
+    txHash: TxHash,
+  ): Promise<TransactionStatus> {
     const landed = await this.#read(async (tx) => {
       const stored = await reads.txByHashIn(
         tx,
@@ -306,7 +175,7 @@ export class L1FollowerProvider implements Provider {
         },
       };
     }
-    const inMempool = await this.#node(() => this.#transport.hasTx(txHash));
+    const inMempool = await this.node(() => this.transport.hasTx(txHash));
     return { status: inMempool ? "pending" : "not_found", txHash };
   }
 
@@ -315,12 +184,12 @@ export class L1FollowerProvider implements Provider {
    * or phase-2-failed); throws {@link L1AwaitTxTimeoutError} after the
    * configured bound. Only qualifying txs reach the facts (plan §5.2).
    */
-  async awaitTx(
+  override async awaitTx(
     txHash: TxHash,
     checkInterval = DEFAULT_CHECK_INTERVAL_MS,
   ): Promise<boolean> {
     // Monotonic: a wall-clock step neither cuts the wait short nor stretches it.
-    const deadline = performance.now() + this.#awaitTxTimeoutMs;
+    const deadline = performance.now() + this.awaitTxTimeoutMs;
     const hash = Buffer.from(txHash, "hex");
     let lastSeen: "in_mempool" | "absent" | "unknown" = "unknown";
     for (;;) {
@@ -331,7 +200,7 @@ export class L1FollowerProvider implements Provider {
           )) !== null
         )
           return true;
-        lastSeen = (await this.#node(() => this.#transport.hasTx(txHash)))
+        lastSeen = (await this.node(() => this.transport.hasTx(txHash)))
           ? "in_mempool"
           : "absent";
       } catch (error) {
@@ -342,37 +211,16 @@ export class L1FollowerProvider implements Provider {
       if (remaining <= 0)
         throw new L1AwaitTxTimeoutError(
           txHash,
-          this.#awaitTxTimeoutMs,
+          this.awaitTxTimeoutMs,
           lastSeen,
         );
-      await delay(Math.min(checkInterval, remaining));
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(checkInterval, remaining)),
+      );
     }
   }
 
-  /**
-   * Submits through LocalTxSubmission; a ledger rejection carries its raw
-   * bytes. A submission the transport stopped waiting for, or whose sidecar
-   * exited, throws {@link L1SubmitOutcomeUnknownError} with the tx id.
-   */
-  async submitTx(tx: Transaction): Promise<TxHash> {
-    const bytes = Buffer.from(tx, "hex");
-    const txHash = transactionId(bytes);
-    const result = await this.#node(
-      () => this.#transport.submit(bytes),
-      "submit",
-      txHash,
-    );
-    if (!result.accepted)
-      throw new L1SubmitRejectedError(txHash, result.rejection);
-    return txHash;
-  }
-
-  /** Never remote: complete transactions with `localUPLCEval: true`. */
-  evaluateTx(): Promise<EvalRedeemer[]> {
-    return Promise.reject(new L1LocalEvaluationOnlyError());
-  }
-
-  async #outputsOf(
+  protected override async outputsOf(
     addressOrCredential: Address | Credential,
     query: string,
   ): Promise<readonly Readonly<{ outRef: OutRef; output: OutputSummary }>[]> {
@@ -393,10 +241,10 @@ export class L1FollowerProvider implements Provider {
         tracked.paymentCredentials.has(payment.hash.toString("hex")))
     )
       return await this.#factsUtxos(subject);
-    return await this.#ledgerUtxos({
-      query: "utxo_by_address",
-      addresses: [subject.address],
-    });
+    return await this.ledgerUtxos(
+      [{ query: "utxo_by_address", addresses: [subject.address] }],
+      "tip",
+    );
   }
 
   /** Live tracked outputs at the follower's tip; refuses before initialization. */
@@ -413,14 +261,6 @@ export class L1FollowerProvider implements Provider {
     });
   }
 
-  async #ledgerUtxos(
-    query: Parameters<L1NodeTransport["query"]>[0],
-  ): Promise<readonly LedgerUtxo[]> {
-    return decodeLedgerUtxos(
-      await this.#node(() => this.#transport.query(query)),
-    );
-  }
-
   async #read<T>(run: (tx: SqlTx) => Promise<T>): Promise<T> {
     try {
       return await this.#store.transaction("read", run);
@@ -433,25 +273,4 @@ export class L1FollowerProvider implements Provider {
       );
     }
   }
-
-  async #node<T>(
-    run: () => Promise<T>,
-    operation: "query" | "submit" = "query",
-    txHash: string | null = null,
-  ): Promise<T> {
-    try {
-      return await run();
-    } catch (error) {
-      throw fromTransportError(error, operation, txHash);
-    }
-  }
 }
-
-const poolBech32 = (hashHex: string): string => {
-  const hash = CML.Ed25519KeyHash.from_hex(hashHex);
-  try {
-    return hash.to_bech32("pool");
-  } finally {
-    hash.free();
-  }
-};

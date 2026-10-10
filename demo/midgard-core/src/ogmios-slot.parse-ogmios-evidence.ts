@@ -8,8 +8,15 @@ export type SubmitSlotSnapshot = {
   /**
    * `l1_node_tip`: the local node's ledger tip over local state query, with
    * `currentSlot` from wall time on the ledger's slot configuration.
+   * `provider_tip`: a remote provider's latest block (a tool's Blockfrost
+   * access), with `currentSlot` from wall time the same way.
    */
-  readonly source: "local_ogmios_tip" | "l1_node_tip" | "emulator" | "test";
+  readonly source:
+    | "local_ogmios_tip"
+    | "l1_node_tip"
+    | "provider_tip"
+    | "emulator"
+    | "test";
   readonly currentSlot: number;
   /**
    * The slot of the ledger's latest block. `currentSlot` runs ahead of it on

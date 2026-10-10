@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   openOgmiosSession,
   type WebSocketLike,
-} from "../src/harness-kupmios.js";
+} from "../src/l1-external/kupmios-history.js";
 import {
   ogmiosJsonRpcAnswerCode,
   OgmiosJsonRpcUnavailable,
-} from "../src/harness-kupmios.open-ogmios-session.js";
-import { L1SourceUnavailable } from "../src/harness-kupmios.source-unavailable.js";
+} from "../src/l1-external/kupmios-history.open-ogmios-session.js";
+import { L1SourceUnavailable } from "../src/l1-external/kupmios-history.source-unavailable.js";
 
 /** Answers every request with one JSON-RPC error envelope. */
 class AnsweringSocket implements WebSocketLike {

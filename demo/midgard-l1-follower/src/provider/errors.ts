@@ -111,6 +111,22 @@ export class L1ProviderScopeError extends L1ProviderError {
   }
 }
 
+/**
+ * The query cannot be answered from the node's ledger alone (the
+ * `LedgerProvider`, no store): local state query finds outputs by address
+ * or outref, never by payment credential or unit, and holds no datum
+ * preimages.
+ */
+export class L1LedgerScopeError extends L1ProviderError {
+  override readonly name = "L1LedgerScopeError";
+  constructor(
+    readonly query: string,
+    readonly detail: string,
+  ) {
+    super(`${query} cannot be answered from the node's ledger: ${detail}`);
+  }
+}
+
 /** `getUtxoByUnit` found no live tracked output, or more than one, holding the unit. */
 export class L1UnitLookupError extends L1ProviderError {
   override readonly name = "L1UnitLookupError";
@@ -133,9 +149,29 @@ export class L1AwaitTxTimeoutError extends L1ProviderError {
     readonly txHash: string,
     readonly timeoutMs: number,
     readonly lastSeen: "in_mempool" | "absent" | "unknown",
+    /** Where the landing was looked for. */
+    observedIn = "the L1 facts",
   ) {
     super(
-      `transaction ${txHash} did not land in the L1 facts within ${timeoutMs} ms (last seen: ${lastSeen})`,
+      `transaction ${txHash} did not land in ${observedIn} within ${timeoutMs} ms (last seen: ${lastSeen})`,
+    );
+  }
+}
+
+/**
+ * The node's ledger cannot say whether a transaction landed: no output of it
+ * is unspent at the tip and the node's mempool does not hold it. One that
+ * never landed and one whose every output is already spent (or, for one the
+ * provider did not submit, one with more outputs than it probes) read the
+ * same, so the answer is unknown, never "not found". A chain index
+ * (`--l1 kupmios`) reads the transaction itself.
+ */
+export class L1TxStatusUnknownError extends L1ProviderError {
+  override readonly name = "L1TxStatusUnknownError";
+  readonly reason = "ledger_tx_status_unknown";
+  constructor(readonly txHash: string) {
+    super(
+      `the node's ledger cannot tell whether transaction ${txHash} landed: no output of it is unspent at the tip and the mempool does not hold it (it never landed, or every output is already spent); read its status from a chain index (--l1 kupmios)`,
     );
   }
 }
@@ -145,7 +181,7 @@ export class L1LocalEvaluationOnlyError extends L1ProviderError {
   override readonly name = "L1LocalEvaluationOnlyError";
   constructor() {
     super(
-      "the follower provider never evaluates scripts remotely; complete the transaction with localUPLCEval: true",
+      "the node-transport provider never evaluates scripts remotely; complete the transaction with localUPLCEval: true",
     );
   }
 }

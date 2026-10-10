@@ -49,7 +49,7 @@ export const NETWORK_MAGIC_RETRY = Schedule.exponential(
 ).pipe(Schedule.union(Schedule.spaced(Duration.seconds(30))));
 
 /** Whether a failed read waits: the config files are not there yet (a node
- * still starting writes them), as `isL1NodeConfigPending` in `lucid.ts`. */
+ * still starting writes them), as `isL1NodeConfigPending` in `l1-adapter.ts`. */
 const pending = (error: UnknownException): boolean =>
   hasCauseCode(error.error, "ENOENT");
 

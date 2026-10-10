@@ -47,7 +47,8 @@ export {
 } from "./commit-block-header.commit-explicit-block-header-program.js";
 export {
   type CommitLucidFactory,
-  defaultCommitLucidFactory,
+  environmentCommitLucidFactory,
+  followerCommitLucidFactory,
   provideCommitBlockWorkerServices,
   shouldHydrateCommitBaseEntries,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";

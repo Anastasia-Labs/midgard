@@ -7,6 +7,7 @@ import {
   collectStringOption,
   failCli,
   parseStringListOption,
+  ToolLucidLive,
   writeJson,
 } from "midgard-node/commands/cli-runtime";
 import {
@@ -379,7 +380,7 @@ program
           Effect.provide(Services.WriteBehindLive),
           Effect.provide(Services.NodeConfig.layer),
           Effect.provide(Services.Database.layer),
-          Effect.provide(Services.Lucid.Default),
+          Effect.provide(ToolLucidLive),
           Effect.provide(Services.MidgardContractServices),
           Effect.provide(stressCliLoggerLayer),
         ),

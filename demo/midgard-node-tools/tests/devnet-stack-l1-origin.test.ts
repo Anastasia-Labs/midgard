@@ -103,6 +103,13 @@ describe("the devnet node environment", () => {
       role: "listen",
     });
     expect(env.L1_ORIGIN).toBe(`41.${"cd".repeat(32)}`);
+    // `listen` reads through its follower; a command through the node's
+    // ledger, selected explicitly.
+    expect(env.L1_ACCESS).toBeUndefined();
+    expect(
+      nodeEnvironment({ layout, run, identities, artifacts, role: "command" })
+        .L1_ACCESS,
+    ).toBe("node");
     const plan = nodeFollowerPlan(env);
     expect(plan).toMatchObject({
       kind: "run",

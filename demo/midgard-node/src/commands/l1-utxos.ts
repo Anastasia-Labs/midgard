@@ -94,9 +94,8 @@ export const readAddressUtxos = async ({
 };
 
 /**
- * The UTxOs at a payment address through the node's L1 access: the follower
- * store's facts for a tracked address, the local node's ledger at its tip for
- * any other.
+ * The UTxOs at a payment address through the tool L1 access `--l1` selects
+ * (`l1-command-access.ts`): by default the local node's ledger at its tip.
  */
 export const fetchAddressUtxos = async ({
   address,

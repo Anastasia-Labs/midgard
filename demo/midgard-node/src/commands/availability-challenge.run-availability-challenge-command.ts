@@ -7,10 +7,10 @@ import {
   Data,
   type Network,
   paymentCredentialOf,
+  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
-import type { NodeL1Access } from "../services/l1-provider.js";
 import { resolveNetwork } from "./address-from-seed.js";
 import { buildAvailabilityCommandTransaction } from "./availability-challenge.build-availability-command-transaction.js";
 import {
@@ -21,11 +21,17 @@ import {
 } from "./availability-challenge.plan-availability-command-action.js";
 import { availabilityDeploymentFromManifest } from "./availability-challenge-deployment.js";
 import {
+  assertAvailabilityActionServed,
   availabilityCommandCanonicalSource,
-  availabilityStoreUnitHistory,
 } from "./availability-challenge-source.js";
 import { readDeploymentManifestFile } from "./contract-deployment-info.js";
-import { commandLucid, withCommandL1Access } from "./l1-command-access.js";
+import {
+  commandLucid,
+  selectToolL1Access,
+  type ToolL1Access,
+  withCommandL1Access,
+} from "./l1-command-access.js";
+import { assertCommandPayerIsDedicated } from "./operational-wallet-refusal.js";
 
 export const runAvailabilityChallengeCommand = async (
   action: AvailabilityCommandAction,
@@ -59,35 +65,39 @@ export const runAvailabilityChallengeCommand = async (
     throw new Error(
       `Availability actor seed is missing from ${options.walletSeedEnv}`,
     );
+  // An action the selected access cannot observe is refused before anything
+  // is read, opened, built or submitted.
+  assertAvailabilityActionServed(action, { kind: selectToolL1Access(env) });
   const manifest = readDeploymentManifestFile(options.manifest);
   verifyFinalizedDeploymentManifest(manifest);
   const network = resolveNetwork({ network: manifest.network, env });
+  // The node's operational wallets never pay for an availability action.
+  assertCommandPayerIsDedicated({
+    command: "availability",
+    walletSeedEnv: options.walletSeedEnv,
+    payerAddress: walletFromSeed(seed, { network, addressType: "Enterprise" })
+      .address,
+    referenceScriptDeployAddress: manifest.referenceScriptDeployAddress,
+    network,
+    env,
+  });
   return withCommandL1Access({ network, env }, (access) =>
-    runAvailabilityOnAccess(
-      action,
-      options,
-      env,
-      seed,
-      manifest,
-      network,
-      access,
-    ),
+    runAvailabilityOnAccess(action, options, seed, manifest, network, access),
   );
 };
 
 /**
- * The command over the node's L1 access: Lucid on the follower provider and
- * the ledger's slot mapping, the canonical source on the follower store,
- * submission through the provider.
+ * The command over the tool L1 access `--l1` selects: Lucid on the access's
+ * provider and slot mapping, the canonical source over the same access
+ * (`availability-challenge-source.ts`), submission through the provider.
  */
 const runAvailabilityOnAccess = async (
   action: AvailabilityCommandAction,
   options: AvailabilityCommandOptions,
-  env: NodeJS.ProcessEnv,
   seed: string,
   manifest: ReturnType<typeof readDeploymentManifestFile>,
   network: Network,
-  access: NodeL1Access,
+  access: ToolL1Access,
 ): Promise<unknown> => {
   const lucid = await commandLucid(access, network, {
     evaluator: createScalusEvaluator(),
@@ -97,33 +107,8 @@ const runAvailabilityOnAccess = async (
   const actor = paymentCredentialOf(actorAddress);
   if (actor.type !== "Key")
     throw new Error("Availability actuation requires a payment-key wallet");
-  const operationalSeeds = [
-    "L1_OPERATOR_SEED_PHRASE",
-    "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
-    "L1_REFERENCE_SCRIPT_SEED_PHRASE",
-  ];
-  if (operationalSeeds.includes(options.walletSeedEnv))
-    throw new Error(
-      "Availability requires a dedicated actor seed environment variable",
-    );
-  const operationalHashes = new Set<string>([
-    paymentCredentialOf(manifest.referenceScriptDeployAddress).hash,
-  ]);
-  for (const name of operationalSeeds) {
-    if (env[name]?.trim()) {
-      lucid.selectWallet.fromSeed(env[name]!.trim());
-      operationalHashes.add(
-        paymentCredentialOf(await lucid.wallet().address()).hash,
-      );
-    }
-  }
-  if (operationalHashes.has(actor.hash))
-    throw new Error(
-      "Availability actor payment credential overlaps an operational node wallet",
-    );
-  lucid.selectWallet.fromSeed(seed, { addressType: "Enterprise" });
   const deployment = await availabilityDeploymentFromManifest(lucid, manifest);
-  const source = availabilityCommandCanonicalSource({ lucid, access });
+  const source = await availabilityCommandCanonicalSource({ lucid, access });
   const journal = openAvailabilityOperationJournal(options.journal);
   try {
     const canonicalAnchor = await source.readBoundary();
@@ -259,10 +244,7 @@ const runAvailabilityOnAccess = async (
         buildAvailabilityCommandTransaction(
           lucid,
           deployment,
-          availabilityCommandBuildContext(
-            manifest,
-            availabilityStoreUnitHistory(access.store),
-          ),
+          availabilityCommandBuildContext(manifest, source.unitHistory),
           snapshot,
           operation,
           options,

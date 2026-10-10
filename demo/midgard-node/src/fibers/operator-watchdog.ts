@@ -35,7 +35,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref, type Schedule } from "effect";
 
-import { errorMessage } from "../commands/cli-runtime.js";
+import { errorMessage } from "../commands/cli-options.js";
 import { verifyConfiguredDeploymentManifestProgram } from "../commands/contract-deployment-info.js";
 import { l1SlotNow } from "../l1-heads.js";
 import {

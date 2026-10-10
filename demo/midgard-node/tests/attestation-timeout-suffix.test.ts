@@ -14,7 +14,7 @@ import {
   resolveCommitAppendFenceEndTimeCapLocal,
   resolveCommitAppendFenceReferencesLocal,
 } from "../src/workers/commit-block-header/state-queue.js";
-import { registerTestL1Tip, TEN_MINUTES_MS } from "./helpers/l1-tip.js";
+import { attachTestL1Access, TEN_MINUTES_MS } from "./helpers/l1-tip.js";
 import { seedLandedStateQueue } from "./helpers/landed-state-queue.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -160,7 +160,7 @@ describe("pending queue attestation expiry", () => {
     // L1 now at slot 0, before every fixture node's deadline: an expired node
     // refuses instead. The stub client has no slot mapping, so slot s starts
     // at s * 1000 ms.
-    const tipAtZero = (api: LucidEvolution) => registerTestL1Tip(api, 0);
+    const tipAtZero = (api: LucidEvolution) => attachTestL1Access(api, 0);
     // The head (end 1000) is attested and the tail (end 2000) is not. The
     // on-chain fence reads the head only; the build must still land before
     // the tail's deadline, or timeout correction loses the tail to it.
@@ -214,7 +214,7 @@ describe("pending queue attestation expiry", () => {
           resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
         );
       // One slot before the deadline the node still caps the end.
-      const tip = registerTestL1Tip(queue.api, deadlineMs / 1_000 - 1);
+      const tip = attachTestL1Access(queue.api, deadlineMs / 1_000 - 1);
       expect(await fence()).toBe(deadlineMs - 1);
       // At the deadline no end remains below it: the fence refuses exactly
       // as the build's fence references do, rather than leaving an end cap
@@ -245,7 +245,7 @@ describe("pending queue attestation expiry", () => {
     // The tail's deadline is 2000 + T. L1 now is one slot before it; the wall
     // clock is 10 minutes past it.
     const queue = await fixture();
-    const tip = registerTestL1Tip(queue.api, (2_000 + timeoutMs) / 1_000 - 1);
+    const tip = attachTestL1Access(queue.api, (2_000 + timeoutMs) / 1_000 - 1);
     vi.useFakeTimers({ toFake: ["Date"] });
     onTestFinished(() => {
       vi.useRealTimers();
@@ -276,16 +276,14 @@ describe("pending queue attestation expiry", () => {
       stateQueuePolicyId: policyId,
     };
     const queue = await fixture();
-    const { registerL1TipSource } = await import("../src/l1-heads.js");
     let available = false;
-    registerL1TipSource(
-      [queue.api],
-      () =>
-        available
-          ? Effect.succeed(0)
-          : Effect.fail(new Error("Ogmios unreachable")),
-      { slotLengthMs: 1_000, monotonicNowMs: () => (available ? 1_000 : 0) },
-    );
+    attachTestL1Access(queue.api, 0, {
+      tipSlot: async () => {
+        if (!available) throw new Error("the L1 node is unreachable");
+        return 0;
+      },
+      monotonicNowMs: () => (available ? 1_000 : 0),
+    });
     await expect(
       queue.run(
         resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
@@ -303,7 +301,7 @@ describe("pending queue attestation expiry", () => {
       Number(SDK.DA_ATTESTATION_TIMEOUT_MS + 2_000n) / 1_000;
     {
       const expired = await fixture();
-      registerTestL1Tip(expired.api, expiredAtSlot);
+      attachTestL1Access(expired.api, expiredAtSlot);
       await expect(
         expired.run(
           resolveCommitAppendFenceReferencesLocal(
@@ -314,7 +312,7 @@ describe("pending queue attestation expiry", () => {
         ),
       ).rejects.toThrow("expired unattested suffix");
       const applied = await fixture(true);
-      registerTestL1Tip(applied.api, expiredAtSlot);
+      attachTestL1Access(applied.api, expiredAtSlot);
       expect(
         await applied.run(
           resolveCommitAppendFenceReferencesLocal(

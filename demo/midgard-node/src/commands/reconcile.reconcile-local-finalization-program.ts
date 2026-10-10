@@ -17,7 +17,10 @@ import {
   NodeConfig,
 } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
-import { runCommitBlockHeaderWorkerProgram } from "../workers/commit-block-header.js";
+import {
+  environmentCommitLucidFactory,
+  runCommitBlockHeaderWorkerProgram,
+} from "../workers/commit-block-header.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput as CommitBlockWorkerInput,
@@ -152,7 +155,13 @@ export const reconcileLocalFinalizationProgram = ({
         sizeOfProcessedTxsSoFar: 0,
       },
     } satisfies CommitBlockWorkerInput;
-    const workerOutput = yield* runCommitBlockHeaderWorkerProgram(workerInput);
+    // The command's own Lucid (the tool access `--l1` selects), never the
+    // role's follower Lucid: a command opens no role store.
+    const workerOutput = yield* runCommitBlockHeaderWorkerProgram(
+      workerInput,
+      undefined,
+      yield* environmentCommitLucidFactory,
+    );
     canonicalHeaders = yield* fetchCanonicalStateQueueHeaders;
     canonicalHeader = canonicalHeaders.find(
       (entry) => entry.headerHash === headerHashHex,

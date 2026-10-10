@@ -14,11 +14,11 @@ import {
 } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { NativeLedgerKupmios } from "../src/native-ledger-kupmios.js";
 import {
   admitNativeRewardAccount,
   type NativeLedgerAuthority,
   nativeLedgerAuthoritySource,
-  NativeLedgerKupmios,
   queryNativeRewardAccount,
   resolveNativeLedgerAuthority,
 } from "../src/native-reward-account.js";

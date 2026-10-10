@@ -2,12 +2,14 @@ import { normalizeOgmiosHttpUrl } from "@al-ft/midgard-core/ogmios-slot";
 import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 
 /**
- * The Ogmios and Kupo client pieces the node-tools harness reads a local
- * devnet's chain with (the e2e state-correction local authority and the
- * native acceptance lineage and payout collection): chain points, URL
- * normalisation, timed JSON fetches, and the narrowed fetch and WebSocket
- * surfaces a test can stand up. The node itself reads L1 only through its
- * follower and node transport; nothing here is part of the operator binary.
+ * The Ogmios and Kupo history client pieces of the Kupmios tool adapter
+ * (`kupmios-access.ts`): the availability command's history reads under
+ * `--l1 kupmios`, and the node-tools harness (the e2e state-correction local
+ * authority and the native acceptance lineage and payout collection). Chain
+ * points, URL normalisation, timed JSON fetches, and the narrowed fetch and
+ * WebSocket surfaces a test can stand up. Tools only: a role process reads
+ * L1 only through its follower, and the role boundary test keeps this
+ * directory out of every role's module graph.
  */
 
 /** A point on the chain, spelled the way both Ogmios and Kupo spell it. */
@@ -16,7 +18,7 @@ export type L1ChainPoint = {
   readonly headerHash: string;
 };
 
-/** One transaction, as much of it as the harness readers use. */
+/** One transaction, as much of it as the history readers use. */
 export type ObservedL1Transaction = {
   readonly txHash: string;
   /** Spending inputs in the ledger order presented by Ogmios. */

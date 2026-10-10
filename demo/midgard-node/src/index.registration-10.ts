@@ -11,6 +11,7 @@ import {
   provideDatabaseTxServices,
   runCliEffect,
   tapJson,
+  ToolLucidLive,
   writeJson,
 } from "./commands/cli-runtime.js";
 import {
@@ -153,7 +154,7 @@ program
             ),
           ),
         ),
-        Effect.provide(Services.Lucid.Default),
+        Effect.provide(ToolLucidLive),
         Effect.provide(Services.NodeConfig.layer),
         Effect.provide(Services.MidgardContractServices),
       );

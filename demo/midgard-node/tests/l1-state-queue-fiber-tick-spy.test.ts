@@ -32,7 +32,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { attestationTimeoutCorrectionAction } from "../src/fibers/attestation-timeout-correction.attestation-timeout-correction-action.js";
 import { fetchRetentionL1View } from "../src/fibers/retention-sweeper.js";
-import { registerL1TipSource } from "../src/l1-heads.js";
 import {
   ContractDeploymentIdentity,
   Globals,
@@ -55,6 +54,7 @@ import {
 } from "../src/workers/commit-block-header/state-queue.js";
 import { fetchSortedCommittedStateQueueBlocks } from "../src/workers/utils/confirm-block-commitments.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
+import { attachTestL1Access } from "./helpers/l1-tip.js";
 import { seedLandedStateQueue } from "./helpers/landed-state-queue.js";
 import {
   nodeDatum,
@@ -125,7 +125,7 @@ beforeEach(async () => {
     presetProtocolParameters: PROTOCOL_PARAMETERS_DEFAULT,
   });
   // The follower's covered tip stands in for the node's slot source.
-  registerL1TipSource([lucid], () => Effect.succeed(TIP_SLOT));
+  attachTestL1Access(lucid, TIP_SLOT);
   vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
     touch(`fetch(${String(input instanceof Request ? input.url : input)})`),
   );
