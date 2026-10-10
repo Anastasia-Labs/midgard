@@ -254,7 +254,12 @@ it
           header: full.evidence.header,
           headerHash: full.evidence.headerHash,
           detection: detections[0]!,
-          predecessor: full.predecessor,
+          // Mirror the family artifact: the admitted predecessor's identity only.
+          predecessor: {
+            headerHash: full.predecessor.headerHash,
+            payloadEnvelopeSha256: full.predecessor.payloadEnvelopeSha256,
+            payloadSha256: full.predecessor.payloadSha256,
+          },
         }),
       );
     }
