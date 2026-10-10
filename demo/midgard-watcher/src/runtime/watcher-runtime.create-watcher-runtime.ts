@@ -258,6 +258,7 @@ export const startWatcherRuntime = async (
         fundingProfileOverlay,
         startup,
         userEvents: activeUserEvents,
+        follower: activeFollower,
         l1: activeFollower.faultProofL1,
         onAllocated: (application) => {
           allocatedFaultProofApplication = application;
