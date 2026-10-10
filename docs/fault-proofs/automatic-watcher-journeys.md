@@ -417,7 +417,7 @@ The thirteen subsequent anchored passes used inclusion-based progression:
 | `withdrawnInput`          | Sep 14, 20:24:55.612 | Shared watcher reused; expired, unminted successor rebuilt; healthy-source catch-up completed          |
 
 For inclusion-based families, `result.json` records functional checks, while
-`finalized-evidence-stamp.json` establishes anchored completion. A result may
+`finalized-evidence-stamp.json` establishes the release-depth anchor. A result may
 still say `terminal-included-awaiting-anchor` after its separate stamp is written.
 Keep `pending-evidence-stamp.json`, `completed-workflow.json`,
 `finalized-workflow.json`, `native-chain.ndjson`, and `timings.ndjson` together
@@ -1565,8 +1565,8 @@ confirmed submissions remain subject to the existing checks.
 
 Fault staging, the proof chain, the honest successor commitment, and healthy
 processing advance on authenticated inclusion. The production journal records
-`terminal_included` for provisional completion and `completed` only after the
-terminal is independently reauthenticated at release depth. Rollback invalidates
+`terminal_included` for provisional completion and `completed` only once the
+terminal is deeper than the automatic recovery horizon. Rollback invalidates
 cached authority; the worker re-observes current state and reconciles submitted
 attempts before retrying or rebuilding. A suitable signed transaction can be
 rebroadcast under fresh authority. The existing chain index and submission
@@ -1574,14 +1574,17 @@ journal supply recovery state; no per-family inverse workflow is required.
 
 The harness persists `pending-evidence-stamp.json` before its inclusion-based
 `result.json`. The shared watcher continues reconciliation across families and
-restart. At each family boundary the harness stamps pending requests whose
-journals have reached `completed`; only the last selected family waits for all
-remaining stamps before stopping services. `finalized-evidence-stamp.json`
-records the release policy digest, actual finalized terminal, stamp time, and
-independent native evidence path; `finalized-workflow.json` retains its validated
-journal. The recorder must have replayed enough canonical blocks to establish
-the proof-token, removal, and honest-successor depths. A reauthenticated terminal
-may have a different inclusion point after rollback.
+restart. At each family boundary the harness stamps pending requests whose last
+`terminal_included` (or an existing `completed`) its own native recorder
+authenticates at the release depth (`l1Finality.confirmationDepth`): the recorder
+must have replayed enough canonical blocks to establish the proof-token, removal,
+and honest-successor depths. The journey does not await `completed`. Only the
+last selected family waits for all remaining stamps before stopping services.
+`finalized-evidence-stamp.json` records the release policy digest, the terminal
+and its journal kind (`terminalKind`; absent in older stamps, meaning
+`completed`), stamp time, and independent native evidence path;
+`finalized-workflow.json` retains its validated journal. A reauthenticated
+terminal may have a different inclusion point after rollback.
 A historical completed proof can resume its unfinished honest-successor stage
 against the authenticated current retained head when it has no prepared successor.
 The original fault and removal evidence stay unchanged, and a separate
