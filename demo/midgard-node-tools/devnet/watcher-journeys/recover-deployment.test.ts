@@ -1,18 +1,14 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-  CML,
-  coreToUtxo,
-  Lucid,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { CML, coreToUtxo, validatorToScriptHash } from "@lucid-evolution/lucid";
 import {
   admitWatcherNativeRollForwardBlock,
   parseWatcherNativeChainSyncEvent,
 } from "midgard-watcher";
 import { expect, it } from "vitest";
 
+import { journeyLucid } from "./journey-lucid.js";
 import { JourneyLocalKupmios } from "./local-kupmios.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
@@ -32,13 +28,15 @@ it.skipIf(process.env.MIDGARD_WATCHER_RECOVER_DEPLOYMENT !== "1")(
           return [line.slice(0, at), line.slice(at + 1)];
         }),
     );
+    const ogmiosUrl = `http://127.0.0.1:${env.MIDGARD_PHASE4_OGMIOS_PORT}`;
     const provider = new JourneyLocalKupmios(
       `http://127.0.0.1:${env.MIDGARD_PHASE4_KUPO_PORT}`,
-      `http://127.0.0.1:${env.MIDGARD_PHASE4_OGMIOS_PORT}`,
+      ogmiosUrl,
       native,
     );
-    const lucid = await Lucid(provider, "Custom", {
-      slotConfig: native.watcherConfig.customNetwork!.slotConfig,
+    const lucid = await journeyLucid(provider, {
+      ogmiosUrl,
+      customNetwork: native.watcherConfig.customNetwork!,
     });
     const transactions = new Map<string, string>();
     for (const line of (

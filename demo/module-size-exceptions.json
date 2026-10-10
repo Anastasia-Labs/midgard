@@ -761,7 +761,7 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts",
-    "max": 1639,
+    "max": 1636,
     "reason": "createLiveDaBondPoolJourneyPort is the dominant indivisible declaration (1473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N1K (+19): the availability command flow opens the node's L1 access (its follower store and local node) from the stack environment and reads the Open commitment's unit history from that store, instead of Kupo and Ogmios URLs."
   },
   {

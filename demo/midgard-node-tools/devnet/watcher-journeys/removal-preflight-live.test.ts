@@ -12,6 +12,7 @@ import { expect, it } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyBlock } from "./fixture.js";
+import { registerJourneyL1Tip } from "./journey-lucid.js";
 import { loadJourneyContext } from "./live-context.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
@@ -113,6 +114,7 @@ it.skipIf(runDirectory === undefined || !selected)(
         },
       },
     });
+    registerJourneyL1Tip(lucid, context);
     signer.selectWallet(lucid);
     await expect(
       submitRemoveFraudulentBlock({

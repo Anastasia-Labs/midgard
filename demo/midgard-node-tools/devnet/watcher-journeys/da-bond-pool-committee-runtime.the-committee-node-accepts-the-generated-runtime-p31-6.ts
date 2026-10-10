@@ -123,6 +123,9 @@ describe("reusing an earlier run's runtime (resumed journey)", () => {
   });
 });
 
+/** The isolated journey devnet's magic (`live-context.ts` requires it). */
+const JOURNEY_DEVNET_NETWORK_MAGIC = 424_242;
+
 describe("the committee node accepts the generated runtime (P31(6))", () => {
   let deployment: Awaited<ReturnType<typeof publishWorkflowDeployment>>;
   let runDirectory: string;
@@ -175,6 +178,10 @@ describe("the committee node accepts the generated runtime (P31(6))", () => {
           "deploymentInfo/manifest.json",
         ),
         network: deployment.manifest.network,
+        // A Custom network names its magic, as the live port's settings do.
+        ...(deployment.manifest.network === "Custom"
+          ? { networkMagic: JOURNEY_DEVNET_NETWORK_MAGIC }
+          : {}),
         l1Origin: { slot: 100, blockHash: "ab".repeat(32) },
         finalityDepth: deployment.manifest.l1Finality.confirmationDepth,
       }),

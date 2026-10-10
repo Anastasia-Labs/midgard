@@ -9,11 +9,7 @@ import {
   sharedL1NodeTransport,
 } from "@al-ft/l1-node-transport";
 import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk";
-import {
-  generateSeedPhrase,
-  Lucid,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
+import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { cardanoProtocolParametersIdentityFromLedger } from "midgard-node/commands/contract-deployment-info";
 import {
@@ -33,6 +29,7 @@ import {
   writeJourneyFile,
 } from "./artifacts.js";
 import { verifyJourneyConfiguration } from "./configuration.js";
+import { journeyLucid } from "./journey-lucid.js";
 import { readOgmiosTipSlot } from "./ledger-tip.js";
 import { createLiveWorkflowChain } from "./live-chain.js";
 import { loadJourneyContext } from "./live-context.js";
@@ -317,14 +314,17 @@ it.skipIf(runDirectory === undefined)(
         "cardano-cli returned an invalid funding transaction hash",
       );
     await provider.awaitTx(fundingTxHash, 500);
-    const operatorLucid = await Lucid(provider, "Custom", {
-      slotConfig,
-      evaluator: createScalusEvaluator(),
-    });
-    const publisherLucid = await Lucid(provider, "Custom", {
-      slotConfig,
-      evaluator: createScalusEvaluator(),
-    });
+    const network = { ogmiosUrl, customNetwork: { slotConfig } };
+    const operatorLucid = await journeyLucid(
+      provider,
+      network,
+      createScalusEvaluator(),
+    );
+    const publisherLucid = await journeyLucid(
+      provider,
+      network,
+      createScalusEvaluator(),
+    );
     operatorLucid.selectWallet.fromSeed(accounts.operator!.seedPhrase);
     publisherLucid.selectWallet.fromSeed(accounts.publisher!.seedPhrase);
     const blueprint = process.env.MIDGARD_REAL_BLUEPRINT_PATH;

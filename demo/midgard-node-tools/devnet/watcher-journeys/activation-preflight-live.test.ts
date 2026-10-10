@@ -9,6 +9,7 @@ import { activateOperatorProgram } from "midgard-node/transactions/register-acti
 import { expect, it } from "vitest";
 
 import { writeJourneyArtifact } from "./artifacts.js";
+import { registerJourneyL1Tip } from "./journey-lucid.js";
 import { loadJourneyContext } from "./live-context.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
@@ -58,6 +59,7 @@ it.skipIf(runDirectory === undefined || !selected)(
         },
       },
     });
+    registerJourneyL1Tip(lucid, context);
     lucid.selectWallet.fromSeed(context.accounts.publisher.seedPhrase);
     await expect(
       Effect.runPromise(

@@ -10,7 +10,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
   Data,
-  Lucid,
   paymentCredentialOf,
   toUnit,
   type UTxO,
@@ -152,6 +151,7 @@ import {
   summarizeDaBondPoolTimeout,
 } from "./da-bond-pool-live-port.summarize-da-bond-pool-timeout.js";
 import { describeErrorChain } from "./error-chain.js";
+import { journeyLucid } from "./journey-lucid.js";
 import { readJourneyCadence } from "./journey-timing.js";
 import {
   awaitLedgerTipSlot,
@@ -242,10 +242,7 @@ export const createLiveDaBondPoolJourneyPort = async (
   const localSigners = daLocalSigners(daSignerConfig);
 
   const newLucid = () =>
-    Lucid(provider, "Custom", {
-      slotConfig: customNetwork.slotConfig,
-      evaluator: createScalusEvaluator(),
-    });
+    journeyLucid(provider, context, createScalusEvaluator());
   const readLucid = await newLucid();
   const network = readLucid.config().network;
   if (network === undefined || network !== manifest.network)
