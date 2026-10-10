@@ -241,7 +241,18 @@ export const runJourney = async (
           });
           nextStartupReport = Date.now() + 15_000;
         }
-        return status;
+        // While startup runs, `/v1/status` answers with a `startup:<stage>`
+        // reason and every other operations route answers 503 `starting`.
+        const reasons =
+          (status as { readinessReasons?: readonly string[] } | undefined)
+            ?.readinessReasons ?? [];
+        if (reasons.includes("startup_failed"))
+          throw new Error(
+            `Watcher startup failed and holds: ${JSON.stringify(status)}`,
+          );
+        return reasons.some((reason) => reason.startsWith("startup:"))
+          ? undefined
+          : status;
       },
       // A watcher resuming after a long L1 outage catches up on every block it
       // missed, so the launcher is budgeted by its progress.
