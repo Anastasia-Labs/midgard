@@ -81,12 +81,20 @@ exact rational (`"0.05"` is 5/100) and compares in integers. With W =
   blocks, at most 3(d + 1)·slot/f.
   A commit lands by its TTL E, which is capped at the submit slot's start
   plus L − 61 s (`commitValidityEndTimeCapMs`), so within L of its planning.
-  Two bounds follow:
+  Three bounds follow:
   - W + N ≥ 3(d + 1)·slot/f + L, for an event that is due before it is
     includable;
   - N ≥ L, for an event that is includable before it is due: no commit
     planned more than L − 61 s before I reaches it, and the commit then in
-    flight lands before I, so the covering commit is planned by I.
+    flight lands before I, so the covering commit is planned by I;
+  - grace ≥ L (`new_shift_inactivity_grace_period_ms`), for an event already
+    overdue at a shift boundary (I + N ≤ shift start). The threshold there is
+    shift start + grace, and the successor that inherits the event can plan
+    its covering commit only once its shift starts, so the commit lands within
+    L of the shift start, by the threshold. Every profile sets grace = L =
+    480,000 ms. After a fraud removal rolls the tail end back, an event the
+    removal re-exposes is held only to shift start + grace, which may already
+    have passed; this is by design.
 - On every profile, a plannable commit: W − B − slot ≥ 3(d + 1)·slot/f, with
   B = 30,000 ms (`COMMIT_TTL_FUTURE_BUFFER_MS`, the history-commit TTL floor).
   A commit's end time E is capped at time(A) + W − 1 with A the commit anchor,

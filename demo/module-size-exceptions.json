@@ -1136,8 +1136,8 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 543,
-    "reason": "Retained test registration “midgard contracts registry” (486 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 544,
+    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/midgard-local-script-eval.test.ts",
@@ -1481,12 +1481,12 @@
   },
   {
     "file": "scripts/deployment-profiles.mjs",
-    "max": 652,
-    "reason": "validateProfile is the dominant indivisible declaration (262 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 663,
+    "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",
-    "max": 829,
+    "max": 843,
     "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
