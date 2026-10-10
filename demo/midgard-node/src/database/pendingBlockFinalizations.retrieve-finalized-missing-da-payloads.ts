@@ -19,6 +19,7 @@ import {
 import { decodePendingBlockFinalizationRow } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 import { type Record } from "./pendingBlockFinalizations.parse-ledger-delta.js";
 import { retrieveRecord } from "./pendingBlockFinalizations.retrieve-record.js";
+import { ACTIVE_PENDING_JOURNAL_REFUSAL } from "./pendingBlockFinalizations.single-active-refusal.js";
 import {
   challengeRelevantHeader,
   orphanMemberJournal,
@@ -189,8 +190,7 @@ export const assertNoUnreconciledSignedSubmission = Effect.gen(function* () {
     return yield* Effect.fail(
       new DatabaseError({
         table: tableName,
-        message:
-          "Refusing to prepare a new pending block while another active pending-finalization record exists",
+        message: ACTIVE_PENDING_JOURNAL_REFUSAL,
         cause: `signed_header=${rows[0]!.header_hash.toString("hex")}; canonical reconciliation required`,
       }),
     );

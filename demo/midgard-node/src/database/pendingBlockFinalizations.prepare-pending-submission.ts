@@ -54,6 +54,10 @@ import {
 } from "./pendingBlockFinalizations.parse-pending-block-finalization.js";
 import { programMaterialSidecarsByTxId } from "./pendingBlockFinalizations.program-material-sidecars.js";
 import { withdrawalMemberToAssignment } from "./pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import {
+  ACTIVE_PENDING_JOURNAL_REFUSAL,
+  refuseOnSingleActiveIndexLoss,
+} from "./pendingBlockFinalizations.single-active-refusal.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as TxTable from "./utils/tx.js";
 import * as WithdrawalsDB from "./withdrawals.js";
@@ -246,8 +250,7 @@ export const preparePendingSubmission = (
           return yield* Effect.fail(
             new DatabaseError({
               table: tableName,
-              message:
-                "Refusing to prepare a new pending block while another active pending-finalization record exists",
+              message: ACTIVE_PENDING_JOURNAL_REFUSAL,
               cause: `active_header_hash=${active[Columns.HEADER_HASH].toString(
                 "hex",
               )},requested_header_hash=${input.headerHash.toString("hex")}`,
@@ -369,7 +372,7 @@ export const preparePendingSubmission = (
           [Columns.MPF_REPLAY_EVENT_COUNT]: nativeMpfReplay?.eventCount ?? null,
           [Columns.STATUS]: Status.PendingSubmission,
           [Columns.OBSERVED_CONFIRMED_AT_MS]: null,
-        })}`;
+        })}`.pipe(refuseOnSingleActiveIndexLoss(tableName, input.headerHash));
         const permit = candidateHistory;
         const memberHistory = (eventTable: string, eventId: Buffer) =>
           Effect.gen(function* () {
