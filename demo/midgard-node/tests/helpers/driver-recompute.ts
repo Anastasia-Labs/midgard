@@ -9,13 +9,14 @@
  * recompute lives in the run that made it; each `run` or `rebaseIfDue` is
  * one driver run.
  */
-import { Effect, Runtime } from "effect";
+import { Effect, Either, Runtime } from "effect";
 
 import type { IngestionPlan } from "../../src/l1-events/driver.js";
 import type { Database } from "../../src/services/database.js";
 import {
   FollowerDriverWrite,
   followerViewOf,
+  followerWriteHoldOf,
   readFollowerWriteGate,
   withFollowerWrite,
 } from "../../src/services/follower-write-gate.js";
@@ -25,6 +26,10 @@ import { Lucid } from "../../src/services/lucid.js";
 import { mempoolLedgerCacheLayer } from "../../src/services/mempool-ledger-cache.js";
 import { MidgardContracts } from "../../src/services/midgard-contracts.js";
 import { modelSlotTime, writeFollowerView } from "./follower-view.js";
+
+/** The named hold of a refused write, if it was refused by one. */
+export const holdOf = (result: Either.Either<unknown, unknown>) =>
+  Either.isLeft(result) ? followerWriteHoldOf(result.left)?.reason : undefined;
 
 /** The slot the default plan's follower view is written at. */
 export const DRIVER_TEST_SLOT = 100;

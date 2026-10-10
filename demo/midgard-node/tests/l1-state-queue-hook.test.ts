@@ -31,6 +31,7 @@ import {
   stateQueueProjection,
   stateQueueTrackedSet,
 } from "../src/l1-state-queue/index.js";
+import { failureHold } from "../src/services/l1-follower.failure-hold.js";
 import { l1FollowerReadiness } from "../src/services/l1-follower.readiness.js";
 import { EVENTS_CONFIG } from "./helpers/l1-events-chain.js";
 import {
@@ -142,6 +143,7 @@ describe.each(["sqlite", "postgres"] as const)(
 
       const published: Published[] = [];
       const driver = createFollowerDriver({
+        failureHold,
         store,
         config: EVENTS_CONFIG,
         sink: { apply: () => Promise.resolve(APPLIED) },

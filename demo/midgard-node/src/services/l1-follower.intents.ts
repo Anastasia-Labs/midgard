@@ -39,11 +39,8 @@ import {
   WALLET_SEED_PENDING,
 } from "@al-ft/midgard-l1-follower";
 
-import {
-  type DriverHold,
-  failureHold,
-  notRetried,
-} from "../l1-events/driver.js";
+import { type DriverHold, notRetried } from "../l1-events/driver.js";
+import { failureHold } from "./l1-follower.failure-hold.js";
 
 /** An S6 pass failed as a whole (the store read); the next trigger retries. */
 export const INTENT_RECONCILE_FAILED = "intent_reconcile_failed";

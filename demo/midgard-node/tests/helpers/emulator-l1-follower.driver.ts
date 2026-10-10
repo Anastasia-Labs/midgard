@@ -21,6 +21,7 @@ import {
 import { Globals } from "../../src/services/index.js";
 import { IntentJournal } from "../../src/services/intent-journal.js";
 import { driverSink } from "../../src/services/l1-follower.driver-sink.js";
+import { failureHold } from "../../src/services/l1-follower.failure-hold.js";
 import { planCurrentView } from "../../src/services/l1-follower.readiness.js";
 import { makeDriverRecompute } from "../../src/services/l1-follower.recompute.js";
 import { followerTick } from "../../src/services/l1-follower.tick.js";
@@ -130,6 +131,7 @@ export const makeEmulatorDriver = <R = never>(
     let driver: FollowerDriver | undefined;
     const driverOf = () =>
       (driver ??= createFollowerDriver({
+        failureHold,
         store,
         config: projection(),
         sink,

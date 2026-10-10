@@ -49,15 +49,12 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import {
-  type DriverHold,
-  failureHold,
-  notRetried,
-} from "../l1-events/driver.js";
+import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
 import type { Database } from "../services/database.js";
 import { followerWriteHoldOf } from "../services/follower-write-gate.js";
+import { failureHold } from "../services/l1-follower.failure-hold.js";
 import type { MergePoint } from "./confirmed-merges.js";
 import {
   bootstrapFrontier,

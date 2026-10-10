@@ -20,12 +20,9 @@ import {
   awaitLandedStateQueueOnStartup,
   STATE_QUEUE_UNAVAILABLE,
 } from "../src/commands/listen-startup.await-landed-state-queue.js";
-import {
-  type DriverHold,
-  failureHold,
-  notRetried,
-} from "../src/l1-events/driver.js";
+import { type DriverHold, notRetried } from "../src/l1-events/driver.js";
 import { Globals } from "../src/services/globals.js";
+import { failureHold } from "../src/services/l1-follower.failure-hold.js";
 import type { L1FollowerHandle } from "../src/services/l1-follower.readiness.js";
 import { STARTUP_PREPARATION_FAILED } from "../src/services/l1-follower.recompute.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";

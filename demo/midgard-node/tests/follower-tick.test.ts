@@ -28,6 +28,7 @@ import {
 import { readFollowerWriteGate } from "../src/services/follower-write-gate.js";
 import { coalescedRunner } from "../src/services/l1-follower.coalesced-runner.js";
 import { driverSink } from "../src/services/l1-follower.driver-sink.js";
+import { failureHold } from "../src/services/l1-follower.failure-hold.js";
 import { planCurrentView } from "../src/services/l1-follower.readiness.js";
 import {
   type FollowerTick,
@@ -112,6 +113,7 @@ describe("the follower's composition", () => {
             Effect.provideService(Lucid, modelSlotLucid),
           );
           const driver = createFollowerDriver({
+            failureHold,
             store,
             config: EVENTS_CONFIG,
             sink,
