@@ -486,6 +486,17 @@ export const validateProfile = (profile, name) => {
     throw new Error(
       "User-event negligence timeout must cover the maximum validity range, the most a covering commit takes from planning to landing",
     );
+  // An event already overdue at a shift boundary (I + N <= shift start): the
+  // max above is then shift start + grace, and the successor, which can plan
+  // the covering commit only once its shift starts, lands it within L of
+  // that: grace >= L. After a fraud removal rolls the tail end back, an event
+  // it re-exposes is held only to shift start + grace, by design.
+  if (
+    timing.new_shift_inactivity_grace_period_ms < timing.max_validity_range_ms
+  )
+    throw new Error(
+      "New-shift inactivity grace period must cover the maximum validity range, the most a successor's covering commit takes from planning to landing",
+    );
   // Every profile: the anchor cap must leave room for the commit's TTL. A d
   // past this bound holds every commit even while L1 produces blocks at the
   // guaranteed rate, so the operator is struck for inactivity.

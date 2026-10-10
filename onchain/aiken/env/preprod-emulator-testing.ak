@@ -47,7 +47,7 @@ pub const event_wait_duration: Int = 600_000
 
 pub const user_events_negligence_timeout: Int = 1_200_000
 
-pub const new_shift_inactivity_grace_period: Int = 300_000
+pub const new_shift_inactivity_grace_period: Int = 480_000
 
 pub const max_validity_range_length: Int = 480_000
 

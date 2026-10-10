@@ -131,8 +131,9 @@ describe("midgard contracts registry", () => {
       // preimages), by removing missingNativeScriptTx/Utxo (superseded by
       // missingScriptSource), by deleting the cross-block family, by the
       // neglected-event strike rule (scheduler, so active operators and the
-      // state queue built on it) and by the forced due-window fix
-      // (transition trace).
+      // state queue built on it), by the forced due-window fix
+      // (transition trace) and by raising the new-shift inactivity grace to
+      // the maximum validity range (scheduler spend only).
       expect
         .soft(
           createHash("sha256")
@@ -142,7 +143,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "f795c420ac1ada3369e323a2e06ddfe8fffa83ffce4acd31e39cf9026a62423e",
+          "248d28ac5e0730f685256aafbc64909962fc1cbfe935b0028d48796856fb65f1",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

@@ -513,6 +513,20 @@ test("every profile gives a covering commit one maximum validity range inside th
   }
 });
 
+test("every profile gives a successor's covering commit one maximum validity range inside the new-shift grace, and the bound is exact", () => {
+  for (const [name, original] of Object.entries(readProfiles())) {
+    const profile = structuredClone(original);
+    profile.timing.new_shift_inactivity_grace_period_ms =
+      profile.timing.max_validity_range_ms;
+    validateProfile(profile, name);
+    profile.timing.new_shift_inactivity_grace_period_ms -= 1;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /inactivity grace period must cover the maximum validity range/u,
+    );
+  }
+});
+
 test("public profiles wait out the validity range plus confirmation depth before requiring an event; testing profiles are exempt", () => {
   const profiles = readProfiles();
   // 480 s maximum validity range + 30 blocks × 20 s × 2, derived by hand.
