@@ -175,9 +175,21 @@ export const workspacePackages = (root) =>
       })),
   );
 
+// A package is named by its declared name or its directory under demo/. A
+// directory may also carry a scope the workspace uses (`@al-ft/midgard-node`
+// for the unscoped `midgard-node`), since half the packages are scoped and
+// the other half are not.
 export const packageByName = (root, name) => {
-  const pkg = workspacePackages(root).find(
-    (entry) => entry.name === name || entry.directory === `demo/${name}`,
+  const packages = workspacePackages(root);
+  const scopes = new Set(
+    packages.flatMap(({ name: declared }) =>
+      declared?.startsWith("@") ? [declared.split("/")[0]] : [],
+    ),
+  );
+  const [scope, rest] = name.split("/");
+  const directory = rest !== undefined && scopes.has(scope) ? rest : name;
+  const pkg = packages.find(
+    (entry) => entry.name === name || entry.directory === `demo/${directory}`,
   );
   if (!pkg)
     throw new Error(
