@@ -8,9 +8,7 @@ import {
   outRefFromByte,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { CML } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll } from "vitest";
 
-import type { WatcherLocalUserEventAuthority } from "../../src/indexers/user-event-indexer.js";
 import {
   evaluateWatcherBlockReplayCandidates,
   makeWatcherPhaseBConfig,
@@ -19,15 +17,15 @@ import {
 } from "../../src/verification/block-replay.js";
 import {
   dataHex,
-  type LocalReplayEvent,
   type PublicFixtureEvent,
-  readLocalReplayEvent,
 } from "../support/block-replay-public-fixture.js";
 import { makeForcedTxFixture } from "../support/forced-submission-fixture.js";
 import {
-  createLocalReplayUserEventAuthorities,
-  type LocalReplayUserEventAuthorities,
-} from "../support/local-user-event-authority-fixture.js";
+  fixtureDepositEvent,
+  fixtureForcedOrderEvent,
+  type FixtureUserEvent,
+  fixtureWithdrawalEvent,
+} from "../support/user-event-authority-fixture.js";
 import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-forced-order-fixture.js";
 
 const header = { blockSlot: 0n } as Parameters<
@@ -137,60 +135,49 @@ const FORCED_VARIANT_NONCES = Object.freeze({
   Mismatch: "d9",
 });
 
-export let localAuthorities: LocalReplayUserEventAuthorities;
+export const depositOrigin: FixtureUserEvent = fixtureDepositEvent({
+  nonceByte: "d1",
+  l2Address: FIXED_ADDRESS_DATA,
+  originalAssets: { lovelace: 3_000_000n },
+});
 
-export let depositLocal: LocalReplayEvent;
-
-export let withdrawalLocal: LocalReplayEvent;
-
-export let forcedLocal: LocalReplayEvent;
-
-export let forcedVariantLocal: Readonly<
-  Record<keyof typeof FORCED_VARIANT_NONCES, LocalReplayEvent>
->;
-
-beforeAll(async () => {
-  localAuthorities = await createLocalReplayUserEventAuthorities({
-    deposit: { nonceByte: "d1", l2Address: FIXED_ADDRESS_DATA },
-    withdrawals: [
-      {
-        key: "flow",
-        nonceByte: "d2",
-        l2OutRef: {
-          transactionId: WITHDRAWAL_FLOW_NATIVE.txId.toString("hex"),
-          outputIndex: 0n,
-        },
-        info: {
-          body: {
-            l2_outref: {
-              transactionId: WITHDRAWAL_FLOW_NATIVE.txId.toString("hex"),
-              outputIndex: 0n,
-            },
-            l2_owner: FIXED_KEY.to_public().hash().to_hex(),
-            l2_value: new Map([["", new Map([["", FUNDED_OUTPUT_LOVELACE]])]]),
-            l1_address: FIXED_ADDRESS_DATA,
-            l1_datum: "NoDatum",
-          },
-          signature: ["aa", "bb"],
-          validity: "WithdrawalIsValid",
-        },
+export const withdrawalOrigin: FixtureUserEvent = fixtureWithdrawalEvent({
+  nonceByte: "d2",
+  info: {
+    body: {
+      l2_outref: {
+        transactionId: WITHDRAWAL_FLOW_NATIVE.txId.toString("hex"),
+        outputIndex: 0n,
       },
-    ],
-    forcedOrders: [
-      {
-        key: "flow",
-        nonceByte: "d3",
-        payload: genuineUserEventForcedPayloadForCanonicalTx(
-          FORCED_FLOW_NATIVE.txCbor,
-        ),
-      },
-      ...(
-        Object.entries(FORCED_VARIANT_NONCES) as [
-          keyof typeof FORCED_VARIANT_NONCES,
-          string,
-        ][]
-      ).map(([key, nonceByte]) => ({
-        key,
+      l2_owner: FIXED_KEY.to_public().hash().to_hex(),
+      l2_value: new Map([["", new Map([["", FUNDED_OUTPUT_LOVELACE]])]]),
+      l1_address: FIXED_ADDRESS_DATA,
+      l1_datum: "NoDatum",
+    },
+    signature: ["aa", "bb"],
+    validity: "WithdrawalIsValid",
+  },
+});
+
+export const forcedOrigin: FixtureUserEvent = fixtureForcedOrderEvent({
+  nonceByte: "d3",
+  payload: genuineUserEventForcedPayloadForCanonicalTx(
+    FORCED_FLOW_NATIVE.txCbor,
+  ),
+});
+
+export const forcedVariantOrigins: Readonly<
+  Record<keyof typeof FORCED_VARIANT_NONCES, FixtureUserEvent>
+> = Object.freeze(
+  Object.fromEntries(
+    (
+      Object.entries(FORCED_VARIANT_NONCES) as [
+        keyof typeof FORCED_VARIANT_NONCES,
+        string,
+      ][]
+    ).map(([key, nonceByte]) => [
+      key,
+      fixtureForcedOrderEvent({
         nonceByte,
         payload: genuineUserEventForcedPayloadForCanonicalTx(
           (key === "Mismatch"
@@ -198,35 +185,10 @@ beforeAll(async () => {
             : FORCED_INVALID_CASES[key]
           ).native.txCbor,
         ),
-      })),
-    ],
-  });
-  const read = async (
-    authority: WatcherLocalUserEventAuthority | null | undefined,
-  ): Promise<LocalReplayEvent> => {
-    if (authority === null || authority === undefined)
-      throw new Error("local replay authority was not published");
-    return readLocalReplayEvent(authority);
-  };
-  depositLocal = await read(localAuthorities.deposit);
-  withdrawalLocal = await read(localAuthorities.withdrawals.flow);
-  forcedLocal = await read(localAuthorities.forcedOrders.flow);
-  const variants: Partial<
-    Record<keyof typeof FORCED_VARIANT_NONCES, LocalReplayEvent>
-  > = {};
-  for (const key of Object.keys(
-    FORCED_VARIANT_NONCES,
-  ) as (keyof typeof FORCED_VARIANT_NONCES)[])
-    variants[key] = await read(localAuthorities.forcedOrders[key]);
-  forcedVariantLocal = variants as Record<
-    keyof typeof FORCED_VARIANT_NONCES,
-    LocalReplayEvent
-  >;
-}, 120_000);
-
-afterAll(async () => {
-  await localAuthorities?.close();
-}, 120_000);
+      }),
+    ]),
+  ) as Record<keyof typeof FORCED_VARIANT_NONCES, FixtureUserEvent>,
+);
 
 // Every `outRef` below is §5.3's fixed-index field-0/1 item — the ledger MPF
 // trie key — so each is exactly 38 bytes and its output index is the

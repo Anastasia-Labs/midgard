@@ -10,7 +10,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { type JournalJsonObject } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { type FraudProofRawL1Utxo } from "../workflow/raw-l1-snapshot.js";
 import type { ConservationPosition } from "./union-plan.js";
 
@@ -43,7 +43,7 @@ export type ManifestBoundValueConservationWorkflowConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   referenceScripts: ValueConservationReferences;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;

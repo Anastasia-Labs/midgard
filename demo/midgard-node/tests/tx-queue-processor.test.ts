@@ -2,25 +2,20 @@ import type { PhaseAValidatedTx } from "@al-ft/midgard-validation";
 import { Cause, Effect, Logger, LogLevel, Ref, Schedule } from "effect";
 import { describe, expect, it } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
-import { DatabaseError } from "../src/database/utils/common.js";
 import {
   ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT,
-  classifyPlutusEvaluationFailure,
   refusePendingWithdrawalInputs,
   repeatScheduledWithCauseLogging,
 } from "../src/fibers/tx-queue-processor.js";
-import { HistoryRecoverySuperseded } from "../src/services/event-history-recovery.js";
+import {
+  DRIVER_RECOMPUTE_PENDING,
+  followerWriteHeld,
+  followerWriteUnavailable,
+} from "../src/services/follower-write-gate.js";
 
-/** The exact refusal `runHistoryProducer` returns while the gate is closed. */
+/** The exact refusal the follower write gate returns while a recompute is pending. */
 const gateClosed = () =>
-  new DatabaseError({
-    table: Authority.tableName,
-    message: "Current authenticated history producer is required",
-    cause: new HistoryRecoverySuperseded({
-      message: "History source gate is closed",
-    }),
-  });
+  followerWriteHeld(DRIVER_RECOMPUTE_PENDING, "a landed-block rebase");
 
 /** Runs the loop over scripted iterations and records every log line. */
 const runLoggedIterations = async (
@@ -54,51 +49,7 @@ const runLoggedIterations = async (
   return lines;
 };
 
-describe("tx queue processor plutus evaluation failure classification", () => {
-  it("treats infrastructure/network failures as retryable", () => {
-    expect(
-      classifyPlutusEvaluationFailure(new Error("fetch failed")),
-    ).toBeNull();
-    expect(
-      classifyPlutusEvaluationFailure(
-        new Error("Configured Lucid provider does not support evaluateTx"),
-      ),
-    ).toBeNull();
-    expect(
-      classifyPlutusEvaluationFailure(
-        new Error(
-          'Could not evaluate the transaction: {"status_code":500,"message":"backend unavailable"}',
-        ),
-      ),
-    ).toBeNull();
-  });
-
-  it("recognizes strong positive evidence of script failure", () => {
-    const detail = classifyPlutusEvaluationFailure(
-      new Error(
-        "TxId: abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd ScriptHash: 00112233445566778899aabbccddeeff00112233445566778899aabb Caused by: The provided Plutus code called 'error'",
-      ),
-    );
-
-    expect(detail).not.toBeNull();
-    expect(detail).toContain(
-      "script_hash=00112233445566778899aabbccddeeff00112233445566778899aabb",
-    );
-  });
-
-  it("treats generic deterministic UPLC failures as script-invalid", () => {
-    expect(
-      classifyPlutusEvaluationFailure(new Error("UPLC evaluation failed")),
-    ).toContain("UPLC evaluation failed");
-    expect(
-      classifyPlutusEvaluationFailure(
-        new Error(
-          'Could not evaluate the transaction: {"status_code":400,"message":"The provided Plutus code called error"}',
-        ),
-      ),
-    ).toContain("Could not evaluate the transaction");
-  });
-
+describe("tx queue processor scheduled loop", () => {
   it("keeps the scheduled loop alive after one iteration fails", async () => {
     const attempts = await Effect.runPromise(
       Effect.gen(function* () {
@@ -120,7 +71,7 @@ describe("tx queue processor plutus evaluation failure classification", () => {
     expect(attempts).toBe(2);
   });
 
-  it("reports a closed history gate once per closure without a stack, and keeps real failures at WARN", async () => {
+  it("reports a closed follower write gate once per closure without a stack, and keeps real failures at WARN", async () => {
     const lines = await runLoggedIterations([
       () => Effect.fail(gateClosed()),
       // Concurrent drains fail together; one interrupted sibling is still a
@@ -142,7 +93,7 @@ describe("tx queue processor plutus evaluation failure classification", () => {
         ),
     ]);
     const closed = lines.filter(({ message }) =>
-      message.includes("history owner recovers"),
+      message.includes("follower-change driver recomputes"),
     );
     expect(closed.map(({ level, hasCause }) => [level, hasCause])).toEqual([
       ["INFO", false],
@@ -160,11 +111,7 @@ describe("tx queue processor plutus evaluation failure classification", () => {
     const lines = await runLoggedIterations([
       () =>
         Effect.fail(
-          new DatabaseError({
-            table: Authority.tableName,
-            message: "Current authenticated history producer is required",
-            cause: "History producer coverage changed",
-          }),
+          followerWriteUnavailable("The follower write gate row is missing"),
         ),
     ]);
     expect(lines.map(({ level }) => level)).toEqual(["WARN"]);

@@ -1,7 +1,7 @@
 import type { AvailabilityOperationRecord } from "@al-ft/midgard-core/availability-operation-journal";
 import {
   computeFraudProofRawL1PointId,
-  type LocalKupmiosFraudProofRawSource,
+  FraudProofL1CheckpointChangedError,
 } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { CML, utxoToCore } from "@lucid-evolution/lucid";
@@ -19,39 +19,16 @@ import {
   parametersFixture,
 } from "../support/availability-challenge-fixture.js";
 import {
+  availabilityFollowerIo,
+  availabilityFollowerL1,
+} from "../support/availability-follower-l1.js";
+import {
   availabilityOperationIntent as intent,
   deferredAvailabilityRead as deferred,
 } from "../support/availability-operation-intent.js";
 
-const sourcePolicy = vi.hoisted(() => ({
-  observationDepth: "release_finality" as "release_finality" | "inclusion",
-}));
-const io = vi.hoisted(() => ({
-  pin: vi.fn(),
-  address: vi.fn(),
-  inclusion: vi.fn(),
-  outrefs: vi.fn(),
-  history: vi.fn(),
-  transaction: vi.fn(),
-  predecessor: vi.fn(),
-  release: vi.fn(),
-}));
-vi.mock("@al-ft/midgard-fault-proofs", async (original) => ({
-  ...(await original<typeof import("@al-ft/midgard-fault-proofs")>()),
-  localKupmiosHttpOgmiosRawSourceDetails: () => ({
-    deploymentIdentityDigest: "11".repeat(32),
-    blueprintHash: "22".repeat(32),
-    observationDepth: sourcePolicy.observationDepth,
-    confirmationDepth: 30,
-  }),
-  pinAdmittedLocalKupmiosBoundaryAtPoint: io.pin,
-  readAdmittedLocalKupmiosAddressUtxosAtPoint: io.address,
-  readAdmittedLocalKupmiosTransactionInclusion: io.inclusion,
-  readAdmittedLocalKupmiosUtxosByOutRefAtPoint: io.outrefs,
-  readAdmittedLocalKupmiosUnitHistoryAtPoint: io.history,
-  readAdmittedLocalKupmiosRawTransaction: io.transaction,
-  readAdmittedLocalKupmiosPredecessorPoint: io.predecessor,
-}));
+const sdk = vi.hoisted(() => ({ release: vi.fn() }));
+const io = availabilityFollowerIo();
 vi.mock("@al-ft/midgard-sdk", async (original) => ({
   ...(await original<typeof import("@al-ft/midgard-sdk")>()),
   daAvailabilityChallengeSnapshotFromUtxos: async (
@@ -59,7 +36,7 @@ vi.mock("@al-ft/midgard-sdk", async (original) => ({
     headerHash: string,
   ) => ({ headerHash }),
   // SDK walking is tested separately; drive the actual watcher reader wiring.
-  resolveDaAvailabilityWorkflowRelease: io.release,
+  resolveDaAvailabilityWorkflowRelease: sdk.release,
 }));
 // Real capture/sibling drain; admission and decoding have separate fixtures.
 vi.mock("../../src/indexers/authenticated-state-queue-observation.js", () => ({
@@ -105,31 +82,32 @@ const observation = (slot: number) =>
     finalizedHeaders: [],
   }) as unknown as WatcherAuthenticatedStateQueueObservation;
 const fixture = () => {
-  const source = {} as LocalKupmiosFraudProofRawSource;
+  const l1 = availabilityFollowerL1(io);
   return {
-    source,
+    l1,
     intake: createWatcherAvailabilityObservation({
       identity,
       deployment,
-      source,
+      l1,
+      confirmationDepth: 30,
     }),
   };
 };
 beforeEach(() => {
-  sourcePolicy.observationDepth = "release_finality";
-  for (const mock of Object.values(io)) mock.mockReset();
-  io.pin.mockResolvedValue(undefined);
+  for (const mock of [...Object.values(io), sdk.release]) mock.mockReset();
   io.address.mockResolvedValue([]);
   io.inclusion.mockResolvedValue(null);
   io.outrefs.mockResolvedValue({ outputs: [], spends: [] });
 });
 
-describe("availability captures sharing a local source", () => {
-  it.each(["inclusion", "release_finality"] as const)(
-    "reads published proof payload at %s authority without changing availability actuation",
-    async (observationDepth) => {
-      sourcePolicy.observationDepth = observationDepth;
-      const { source } = fixture();
+describe("availability captures on the follower's reads", () => {
+  it.each([
+    [1, "reaches the transaction reader"],
+    [30, "refuses the tip view"],
+  ] as const)(
+    "reads published proof payload at minimum depth %i and %s at finality depth 1",
+    async (minimumConfirmationDepth, _outcome) => {
+      const { l1 } = fixture();
       const current = {
         ...observation(10),
         nativePoint: { ...observation(10).nativePoint, finalityDepth: "1" },
@@ -145,7 +123,8 @@ describe("availability captures sharing a local source", () => {
       const payloadSource = createWatcherL1AvailabilityPayloadSource({
         identity,
         deployment,
-        rawSource: source,
+        l1,
+        minimumConfirmationDepth,
         lucid: { slotToUnixTime: (slot) => slot * 1000 },
         currentObservation: () => current,
       });
@@ -160,19 +139,59 @@ describe("availability captures sharing a local source", () => {
       await expect(
         payloadSource.fetchPayloadByHeaderHash("77".repeat(28)),
       ).rejects.toThrow(
-        observationDepth === "inclusion"
+        minimumConfirmationDepth === 1
           ? "authenticated payload reader reached"
           : "authenticated deployment observation",
       );
-      if (observationDepth === "inclusion")
+      if (minimumConfirmationDepth === 1)
         expect(io.transaction).toHaveBeenCalledWith(
-          expect.objectContaining({ minimumConfirmationDepth: 1 }),
+          expect.objectContaining({ txHash: "first" }),
         );
       else expect(io.transaction).not.toHaveBeenCalled();
     },
   );
 
-  it("pins an operation only after a concurrent snapshot has finished all address reads", async () => {
+  it("refuses a transaction shallower than the reader's minimum depth", async () => {
+    const { intake } = fixture();
+    const signed = intent();
+    io.inclusion.mockResolvedValue({ blockNo: "7", pointId: "inclusion" });
+    io.transaction.mockResolvedValue({ confirmationDepth: 29 });
+    await expect(intake.operation(observation(11), signed)).rejects.toThrow(
+      "shallower than the required confirmation depth",
+    );
+  });
+
+  it("checks the capture's point is canonical only after every read, and refuses a point a rollback removed", async () => {
+    const { intake } = fixture();
+    const started = deferred();
+    const release = deferred();
+    io.address.mockImplementation(async () => {
+      started.resolve();
+      await release.promise;
+      return [];
+    });
+    io.status.mockResolvedValue({
+      kind: "point_not_canonical",
+      detail: "rolled back",
+    });
+    const first = intake.snapshot(observation(10), "77".repeat(28));
+    const refused = first.catch((error: unknown) => error);
+    await started.promise;
+    await nextTurn();
+    expect(io.address).toHaveBeenCalledTimes(4);
+    expect(io.status).not.toHaveBeenCalled();
+    release.resolve();
+    const error = await refused;
+    expect(error).toBeInstanceOf(FraudProofL1CheckpointChangedError);
+    expect((error as Error).message).toContain("left the canonical chain");
+    expect(io.status.mock.calls.map(([input]) => input.point.slot)).toEqual([
+      "10",
+    ]);
+    for (const order of io.address.mock.invocationCallOrder)
+      expect(order).toBeLessThan(io.status.mock.invocationCallOrder[0]!);
+  });
+
+  it("runs captures at different points concurrently, each checked at its own point", async () => {
     const { intake } = fixture();
     const started = deferred();
     const release = deferred();
@@ -184,23 +203,17 @@ describe("availability captures sharing a local source", () => {
     const first = intake.snapshot(observation(10), "77".repeat(28));
     await started.promise;
     const second = intake.operation(observation(11), intent());
-    await nextTurn();
-    expect(io.address).toHaveBeenCalledTimes(4);
-    expect(io.pin.mock.calls.map(([input]) => input.point.slot)).toEqual([
-      "10",
-    ]);
-    expect(io.inclusion).not.toHaveBeenCalled();
-    release.resolve();
-    await expect(first).resolves.toMatchObject({ headerHash: "77".repeat(28) });
     await expect(second).resolves.toEqual({
       status: "unspent",
       currentSlot: 11,
     });
-    expect(io.pin.mock.calls.map(([input]) => input.point.slot)).toEqual([
-      "10",
-      "11",
-    ]);
     expect(io.outrefs.mock.calls[0]![0].point.slot).toBe("11");
+    release.resolve();
+    await expect(first).resolves.toMatchObject({ headerHash: "77".repeat(28) });
+    expect(io.status.mock.calls.map(([input]) => input.point.slot)).toEqual([
+      "11",
+      "10",
+    ]);
   });
 
   it("preserves the authenticated current block for included-intent history pruning", async () => {
@@ -270,87 +283,46 @@ describe("availability captures sharing a local source", () => {
     });
   });
 
-  it("drains a failed snapshot's siblings before releasing a queued capture", async () => {
+  it("settles every sibling read of a failed snapshot before it fails", async () => {
     const { intake } = fixture();
-    const started = deferred();
     const release = deferred();
+    let settled = false;
     io.address.mockImplementation(async ({ address }: { address: string }) => {
       if (address === "availability") throw new Error("address read failed");
       if (address === "queue") {
-        started.resolve();
         await release.promise;
+        settled = true;
       }
       return [];
     });
     const first = intake.snapshot(observation(10), "77".repeat(28));
-    const failed = expect(first).rejects.toThrow("address read failed");
-    await started.promise;
-    const second = intake.operation(observation(11), intent());
-    await nextTurn();
-    expect(io.pin).toHaveBeenCalledTimes(1);
-    expect(io.inclusion).not.toHaveBeenCalled();
-    release.resolve();
-    await failed;
-    await expect(second).resolves.toEqual({
-      status: "unspent",
-      currentSlot: 11,
+    let failure: unknown;
+    void first.catch((error: unknown) => {
+      failure = error;
     });
-    expect(io.pin).toHaveBeenCalledTimes(2);
+    await nextTurn();
+    expect(failure).toBeUndefined();
+    release.resolve();
+    await expect(first).rejects.toThrow("address read failed");
+    expect(settled).toBe(true);
+    expect(io.status).not.toHaveBeenCalled();
   });
 
-  it("holds a public history capture until failed transaction reads have drained", async () => {
-    const { intake, source } = fixture();
-    const started = deferred();
-    const release = deferred();
-    const published = {
-      ...observation(10),
-      finalizedHeaders: [
-        {
-          headerHash: "77".repeat(28),
-          daAvailability: {
-            Published: { terminal_commitment: "88".repeat(32) },
-          },
-        },
-      ],
-    } as unknown as WatcherAuthenticatedStateQueueObservation;
-    const payloadSource = createWatcherL1AvailabilityPayloadSource({
-      identity,
-      deployment,
-      rawSource: source,
-      lucid: { slotToUnixTime: (slot) => slot * 1_000 },
-      currentObservation: () => published,
+  it("refuses an operation whose inputs may have been pruned instead of reading them as missing", async () => {
+    const { intake } = fixture();
+    const spent = `${"aa".repeat(32)}#0`;
+    io.outrefs.mockResolvedValue({
+      outputs: [],
+      spends: [],
+      beyondRetention: [spent],
     });
-    io.history.mockResolvedValue({
-      transactions: [
-        { txHash: "first", inclusionPoint: observation(1).nativePoint },
-        { txHash: "second", inclusionPoint: observation(2).nativePoint },
-      ],
-    });
-    io.transaction.mockImplementation(
-      async ({ txHash }: { txHash: string }) => {
-        if (txHash === "first") throw new Error("history read failed");
-        started.resolve();
-        await release.promise;
-        return {};
-      },
-    );
-    const first = payloadSource.fetchPayloadByHeaderHash("77".repeat(28));
-    const failed = expect(first).rejects.toThrow("history read failed");
-    await started.promise;
-    const second = intake.snapshot(observation(11), "99".repeat(28));
-    await nextTurn();
-    expect(io.transaction).toHaveBeenCalledTimes(2);
-    expect(io.pin).toHaveBeenCalledTimes(1);
-    expect(io.address).not.toHaveBeenCalled();
-    release.resolve();
-    await failed;
-    await expect(second).resolves.toMatchObject({
-      headerHash: "99".repeat(28),
-    });
-    expect(io.pin.mock.calls.map(([input]) => input.point.slot)).toEqual([
-      "10",
-      "11",
-    ]);
+    await expect(
+      intake.operation(observation(11), {
+        ...intent(),
+        spentOutRefs: [spent],
+        collateralOutRefs: [],
+      }),
+    ).rejects.toThrow("may have been pruned");
   });
 
   describe("workflow release readers (P20)", () => {
@@ -373,7 +345,7 @@ describe("availability captures sharing a local source", () => {
     const captured = async (slot = 11) => {
       const { intake } = fixture();
       let readers!: SDK.DaAvailabilityForeignSpendReaders;
-      io.release.mockImplementation(async (given) => {
+      sdk.release.mockImplementation(async (given) => {
         readers = given;
         return released;
       });
@@ -384,13 +356,13 @@ describe("availability captures sharing a local source", () => {
       await expect(
         intake.workflowRelease(observation(slot), open, "88".repeat(28)),
       ).resolves.toBe(released);
-      expect(io.release).toHaveBeenCalledWith(
+      expect(sdk.release).toHaveBeenCalledWith(
         expect.anything(),
         open,
         "88".repeat(28),
         30,
       );
-      expect(io.pin.mock.calls.map(([input]) => input.point.slot)).toEqual([
+      expect(io.status.mock.calls.map(([input]) => input.point.slot)).toEqual([
         slot.toString(),
       ]);
       return readers;
@@ -433,9 +405,7 @@ describe("availability captures sharing a local source", () => {
           point: expect.objectContaining({ slot: "11", blockNo: "11" }),
         }),
       );
-      io.predecessor.mockResolvedValueOnce({
-        predecessorPoint: spendPoint(8),
-      });
+      io.predecessor.mockResolvedValueOnce(spendPoint(8));
       await expect(readers.fetchAncestor(9)).resolves.toStrictEqual({
         slot: 8,
         blockHash: "77".repeat(32),
@@ -475,6 +445,7 @@ describe("availability captures sharing a local source", () => {
         bodyCbor: body.to_cbor_hex(),
         witnessSetCbor: CML.TransactionWitnessSet.new().to_cbor_hex(),
         isValid: true,
+        confirmationDepth: 30,
       });
       await expect(
         readers.readTransaction({ ancestor, point: at, txHash }),
@@ -487,7 +458,6 @@ describe("availability captures sharing a local source", () => {
         expect.objectContaining({
           txHash,
           expectedInclusionPoint: spendPoint(9),
-          minimumConfirmationDepth: 30,
         }),
       );
       // Included elsewhere, or not at all: not this spend.
@@ -529,7 +499,7 @@ describe("DA bond pool read (spec #685 E5, #691)", () => {
       assets: pool.assets,
       datum: pool.datum,
     });
-    expect(io.pin.mock.calls.map(([input]) => input.point.slot)).toEqual([
+    expect(io.status.mock.calls.map(([input]) => input.point.slot)).toEqual([
       "12",
     ]);
     expect(io.address).toHaveBeenCalledWith(
@@ -546,9 +516,8 @@ describe("DA bond pool read (spec #685 E5, #691)", () => {
       Withdrawing: { unlock_at: 1_900_000_000_000n },
     });
     const output = utxoToCore(pool).output();
-    // The local Kupmios source serves `to_canonical_cbor_hex` of each output
-    // (rawUtxoFromOutput), which turns lucid's indefinite-length datum list
-    // definite-length.
+    // A raw read may serve `to_canonical_cbor_hex` of an output, which turns
+    // lucid's indefinite-length datum list definite-length.
     const outputCbor = output.to_canonical_cbor_hex();
     expect(outputCbor).not.toBe(output.to_cbor_hex());
     io.address.mockResolvedValue([

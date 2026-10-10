@@ -1,6 +1,3 @@
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   daBondManifestAmounts,
@@ -19,16 +16,6 @@ import type {
   MidgardNodeDeployment,
 } from "../src/l1/deployment.js";
 import type {} from "./global-setup.js";
-
-export const writeJson = async (
-  dir: string,
-  name: string,
-  value: unknown,
-): Promise<string> => {
-  const path = join(dir, name);
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
-  return path;
-};
 
 const minimalAuthenticatedDeployment = ({
   prefix,
@@ -106,13 +93,11 @@ export const minimalAvailabilityChallengeYields =
     ) as MidgardNodeDeployment["availabilityChallengeYields"];
 
 export const minimalConfig = ({
-  dir,
   manifestPath,
   deploymentInfoPath,
   signerSeed,
   signerPublicKey,
 }: {
-  readonly dir: string;
   readonly manifestPath: string;
   readonly deploymentInfoPath: string;
   readonly signerSeed: string;
@@ -199,14 +184,6 @@ export const minimalConfig = ({
     availabilityChallengeYields: minimalAvailabilityChallengeYields(),
     stateQueueYields: minimalStateQueueYields(),
   },
-  l1Source: {
-    sourceMode: "local_node",
-    authorityNodeId: "fixture-node",
-    chainSyncProviderUrl: "chain-sync:fixture:/tmp/state-queue.json",
-    chainSyncCursorPath: "/tmp/state-queue.chain-sync-cursor.json",
-    queryProviderUrls: ["fixture:/tmp/state-queue.json"],
-  },
-  cardanoProviderUrls: ["fixture:/tmp/state-queue.json"],
   finalityDepth: 2,
   automaticRecoveryMaxDepth: 2,
   daTransport: {
@@ -249,7 +226,11 @@ export const minimalConfig = ({
   },
   l1SubmitterIds: [],
   l1LeaderFailoverMs: 0,
-  localState: { kind: "file", path: join(dir, "store") },
+  // Tests open their own store; this URL is never connected to.
+  localState: {
+    kind: "database",
+    url: "postgresql://unused.invalid/committee",
+  },
   daParams: {
     committeeHex: signerPublicKey,
     committeeSignersHash: "",

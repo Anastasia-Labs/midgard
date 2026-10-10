@@ -150,13 +150,7 @@ const journalStatus = (headerHash: Buffer) =>
   );
 
 const withFreshPayloadTables = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  isolatedDb(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE TABLE da_payloads RESTART IDENTITY CASCADE`;
-      return yield* effect;
-    }).pipe(Effect.ensuring(disarmCompletionFault)),
-  );
+  isolatedDb(effect.pipe(Effect.ensuring(disarmCompletionFault)));
 
 /** The first attempt applies the block and finalizes the journal, then loses
  * its completion record. */
@@ -171,7 +165,7 @@ const finalizeLosingCompletion = (
     yield* disarmCompletionFault;
     expect(Exit.isFailure(first)).toBe(true);
     expect(probe.counts).toEqual({ beforeReset: 1, reset: 1 });
-    expect(yield* journalStatus(headerHash)).toBe(Status.Finalized);
+    expect(yield* journalStatus(headerHash)).toBe(Status.LocallyApplied);
     const job = yield* readJob(localJobId(headerHash));
     expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Failed);
     expect(job[J.LAST_ERROR]).toContain("completion record lost");
@@ -229,7 +223,7 @@ describe("local finalization of a journal that is already finalized", () => {
           expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Completed);
           expect(job[J.COMPLETED_AT]).not.toBeNull();
           expect(job[J.ATTEMPTS]).toBe(1);
-          expect(yield* journalStatus(done)).toBe(Status.Finalized);
+          expect(yield* journalStatus(done)).toBe(Status.LocallyApplied);
           expect(yield* startupGate).toBeUndefined();
         }),
       ),

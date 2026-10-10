@@ -60,7 +60,7 @@ level is in
 
 ```sh
 node .agents/skills/fixing-flaky-tests/scripts/rerun.mjs --times 20 --timeout-s 900 -- \
-  pnpm --dir demo/midgard-node exec vitest run tests/<file>.test.ts
+  node scripts/contrib.mjs test --package midgard-node --file tests/<file>.test.ts
 ```
 
 Each vitest run of a `midgard-node` file pays global setup: Postgres shard

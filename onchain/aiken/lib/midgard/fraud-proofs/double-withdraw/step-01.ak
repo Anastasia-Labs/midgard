@@ -36,7 +36,10 @@
 //// ### Scope boundary
 ////
 //// - Same L1 withdrawal **event** applied in two different blocks is the
-////   cross-block-duplicate-event family's rule, not this one's.
+////   fabricated-withdrawal family's rule, not this one's: the later block
+////   commits an event that is ineligible for its window (or whose Order has
+////   retired), proved as `IneligibleWithdrawalEvent` or
+////   `NonexistentWithdrawalIdentity`.
 //// - Two blocks each paying the same L2 UTxO through **distinct** event ids is
 ////   trace territory: the second block's `ValidWithdrawalTransition` cannot
 ////   hold over a spent L2 UTxO, so the withdrawal-mistag/transition-trace

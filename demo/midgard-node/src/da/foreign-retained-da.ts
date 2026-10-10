@@ -1,11 +1,15 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { daRequestResponseProtocolId } from "@al-ft/midgard-core/da-transport";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import {
+  DA_TRANSPORT_LIMITS,
+  daRequestResponseProtocolId,
+} from "@al-ft/midgard-core/da-transport";
 import {
   DaLibp2pRetainedDaSource,
   fetchRetainedDaPayloadByHeaderHash,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 
 import { DaPayloadsDB } from "../database/index.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
@@ -17,12 +21,27 @@ import {
   headerRoots,
   rootMismatches,
 } from "../workers/commit-block-header/da-payload.compute-da-payload-roots.js";
-import { decodeStoredPayload } from "../workers/t2-foreign-event-reconciliation.resolve-t2-foreign-event-evidence.js";
 import { loadDaProducerPublicationManifestFromEnv } from "./libp2p-producer.parse-da-producer-publication-manifest.js";
 import { getPublicationTransport } from "./libp2p-producer.publish-da-payload-insert-from-env.js";
 
+/** Decodes a stored DA payload envelope; only the canonical V1 schema is accepted. */
+export const decodeStoredPayload = ({
+  payloadCbor,
+  schemaVersion,
+}: {
+  readonly payloadCbor: Buffer;
+  readonly schemaVersion: number;
+}): Promise<SDK.DaPayload> =>
+  schemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)
+    ? Promise.reject(
+        new Error("Stored DA payload schema version must equal canonical V1"),
+      )
+    : unwrapDaPayload(payloadCbor, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      }).then((unwrapped) => SDK.decodeDaPayload(unwrapped.innerBytes));
+
 /** Construct a retained row only from the canonical header and acquired bytes.
- * The caller persists it after whole-prefix replay, census and rebinding. */
+ * The caller persists it once the block's replay reached its header's root. */
 export const foreignRetainedDaInsert = (
   headerHash: string,
   header: SDK.Header,
@@ -189,3 +208,60 @@ export const fetchForeignRetainedDa = (
       ),
     );
   });
+
+/** The first wait after a failed foreign DA fetch; it doubles per failure. */
+export const FOREIGN_DA_RETRY_BASE_MS = 1_000;
+/** The longest wait between foreign DA fetches of one header. */
+export const FOREIGN_DA_RETRY_MAX_MS = 60_000;
+/** Headers the memo remembers; the oldest is forgotten past this. */
+const FOREIGN_DA_MEMO_LIMIT = 1_024;
+
+type Attempt = Readonly<{ atMs: number; failures: number }>;
+
+/**
+ * A per-header next-attempt memo for foreign DA fetches: after a failed
+ * fetch, the header is not fetched again (no peer is asked) before its next
+ * attempt time, which backs off exponentially from
+ * `FOREIGN_DA_RETRY_BASE_MS` to `FOREIGN_DA_RETRY_MAX_MS`; a fetch that
+ * succeeds forgets the header. Time is read from the Effect clock; nothing
+ * sleeps: a fetch asked for early fails `missing` at once.
+ */
+export const foreignDaFetchMemo = () => {
+  const attempts = new Map<string, Attempt>();
+  return (headerHash: string, header: SDK.Header) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const last = attempts.get(headerHash);
+      if (last !== undefined && now < last.atMs)
+        return yield* Effect.fail(
+          new ForeignBlockVerificationError({
+            foreignHeaderHash: headerHash,
+            reason: "missing",
+            detail: `foreign public DA fetch of ${headerHash} backs off ${(last.atMs - now).toString()} ms after ${last.failures.toString()} failed attempts`,
+          }),
+        );
+      const fetched = yield* Effect.either(
+        fetchForeignRetainedDa(headerHash, header),
+      );
+      if (fetched._tag === "Right") {
+        attempts.delete(headerHash);
+        return fetched.right;
+      }
+      const failures = (last?.failures ?? 0) + 1;
+      attempts.delete(headerHash);
+      attempts.set(headerHash, {
+        atMs:
+          (yield* Clock.currentTimeMillis) +
+          Math.min(
+            FOREIGN_DA_RETRY_BASE_MS * 2 ** Math.min(failures - 1, 30),
+            FOREIGN_DA_RETRY_MAX_MS,
+          ),
+        failures,
+      });
+      for (const oldest of attempts.keys()) {
+        if (attempts.size <= FOREIGN_DA_MEMO_LIMIT) break;
+        attempts.delete(oldest);
+      }
+      return yield* Effect.fail(fetched.left);
+    });
+};

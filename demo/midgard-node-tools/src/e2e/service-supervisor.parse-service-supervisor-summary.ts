@@ -200,10 +200,7 @@ export const parseServiceSupervisorSummary = (
               attempt.signal === null &&
               !attempt.timedOut &&
               attempt.outputTermination === null &&
-              attempt.fileTermination === null))) ||
-        (index > 0 &&
-          Date.parse(attempt.startedAt) <
-            Date.parse(parsed.attempts[index - 1]!.finishedAt)),
+              attempt.fileTermination === null))),
     )
   ) {
     throw new Error(

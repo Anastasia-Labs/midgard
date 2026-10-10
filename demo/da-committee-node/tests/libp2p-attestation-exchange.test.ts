@@ -17,7 +17,6 @@ import "../src/signer.js";
 import "../src/store.js";
 import "../src/utils/hex.js";
 import "./helpers.js";
-import "./helpers/final-snapshot.js";
 import "./libp2p-attestation-exchange.state-queue-record.js";
 import "./libp2p-attestation-exchange.da-attestation-exchange-over-real-libp2p.js";
 
@@ -43,9 +42,13 @@ import {
   signDaAttestation,
   validateDaCommittee,
 } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
 import { bytesToHex } from "../src/utils/hex.js";
-import { makePayloadFixture, tempDir } from "./helpers.js";
+import { makePayloadFixture } from "./helpers.js";
+import {
+  openTestCommitteeStore,
+  saveHealthyL1SourceState,
+} from "./helpers/committee-store.js";
 import {
   availabilityCommitmentAuthority,
   commitmentFor,
@@ -85,7 +88,7 @@ const twoMemberCommittee = async () => {
         availabilityCommitment: commitment.commitment,
       }),
     });
-  const verify = (store: JsonFileCommitteeStore) =>
+  const verify = (store: PostgresCommitteeStore) =>
     saveVerifiedPayload(store, {
       deploymentFingerprint,
       headerHash,
@@ -94,7 +97,9 @@ const twoMemberCommittee = async () => {
       header,
     });
   const verifiedStore = async () => {
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+    );
     await verify(store);
     return store;
   };
@@ -116,7 +121,7 @@ type Committee = Awaited<ReturnType<typeof twoMemberCommittee>>;
  */
 const pullExchange = (
   committee: Committee,
-  localStore: JsonFileCommitteeStore,
+  localStore: PostgresCommitteeStore,
   respond: (requestCbor: Uint8Array) => Promise<Buffer>,
 ) =>
   new DaLibp2pAttestationExchange({
@@ -150,7 +155,7 @@ const pullExchange = (
 
 const pollerFor = (
   committee: Committee,
-  store: JsonFileCommitteeStore,
+  store: PostgresCommitteeStore,
   attestationExchange: DaAttestationExchange,
 ) =>
   new PeerSignaturePoller({
@@ -225,7 +230,9 @@ describe("peer signature polling before the local payload is verified", () => {
 
   it("blames no peer while the payload is missing, then ingests once it is verified", async () => {
     const committee = await twoMemberCommittee();
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+    );
     // What a failed payload fetch leaves behind: a record with no bytes.
     await store.saveDaPayload({
       deploymentFingerprint,

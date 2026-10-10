@@ -13,7 +13,6 @@ import "./deployment-identity.make-fixture.js";
 
 import {
   computeDeploymentManifestId,
-  DEPLOYMENT_MANIFEST_L1_FINALITY,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
@@ -21,6 +20,7 @@ import {
   DEPLOYMENT_PROFILES,
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
+import { RELEASE_L1_FINALITY_POLICY } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -288,7 +288,7 @@ describe("watcher deployment identity", () => {
     ).resolves.toMatchObject({
       deploymentIdentityDigest: identity.manifestId,
       blueprintHash: BLUEPRINT_HASH,
-      policy: DEPLOYMENT_MANIFEST_L1_FINALITY,
+      policy: RELEASE_L1_FINALITY_POLICY,
       policyDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
     await expect(
@@ -325,9 +325,7 @@ describe("watcher deployment identity", () => {
     ).toEqual([10, 10, 30, 30]);
     const selectedDepth =
       SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth;
-    expect(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth).toBe(
-      selectedDepth,
-    );
+    expect(RELEASE_L1_FINALITY_POLICY.confirmationDepth).toBe(selectedDepth);
 
     const fixture = makeFixture();
     expect(fixture.signedIdentity.manifest.l1Finality.confirmationDepth).toBe(
@@ -450,11 +448,6 @@ describe("watcher deployment identity", () => {
       categoryId: "0000001c",
       scriptHash: fixture.policy.appliedScriptHashes.fraudProofNetworkId,
     });
-    expect(categories.missingNativeScriptUtxo).toEqual({
-      categoryId: "0000001d",
-      scriptHash:
-        fixture.policy.appliedScriptHashes.fraudProofMissingNativeScriptUtxo,
-    });
     expect(categories.nativeScriptInvalid).toEqual({
       categoryId: "0000001e",
       scriptHash:
@@ -506,7 +499,7 @@ describe("watcher deployment identity", () => {
       scriptHash:
         fixture.policy.appliedScriptHashes.fraudProofMintItemNonCanonical,
     });
-    expect(Object.keys(categories)).toHaveLength(55);
+    expect(Object.keys(categories)).toHaveLength(52);
 
     fixture.policy = {
       ...fixture.policy,

@@ -7,7 +7,6 @@ import {
   createWithdrawnInputJourneyFixture,
   fabricatedDepositJourneyFixture,
 } from "./history-event-staging.js";
-import { crossBlockDuplicateEventJourneyFixture } from "./history-settlement.js";
 import { createTransactionJourneyFixture } from "./staging.js";
 
 /** Locally verified candidates; the catalogue admits them after full-scope checks. */
@@ -28,6 +27,5 @@ export const JOURNEY_HISTORY_FIXTURES = [
 
 /** Existing fixtures whose faults are selected as an earlier family by the full catalogue. */
 export const JOURNEY_HISTORY_EVENT_FIXTURE_CANDIDATES = [
-  crossBlockDuplicateEventJourneyFixture,
   createWithdrawalJourneyFixture("doubleWithdraw"),
 ];

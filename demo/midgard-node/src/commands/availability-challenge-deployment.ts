@@ -1,8 +1,11 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  credentialToAddress,
   type LucidEvolution,
   type Network,
   type Script,
+  scriptHashToCredential,
+  toUnit,
   type UTxO,
   validatorToAddress,
   validatorToRewardAddress,
@@ -96,6 +99,30 @@ export const mintingValidatorOf = (value: Script): SDK.MintingValidator => ({
   mintingScriptCBOR: value.script,
   policyId: validatorToScriptHash(value),
 });
+
+/**
+ * The one hub-oracle UTxO: the oracle NFT at the hub-oracle script's own
+ * address, read by address so every tool adapter serves it (the node's
+ * ledger finds outputs by address, not by unit).
+ */
+const hubOracleUtxo = async (
+  lucid: LucidEvolution,
+  policyId: string,
+): Promise<UTxO> => {
+  const network = lucid.config().network;
+  if (network === undefined)
+    throw new Error("Hub oracle lookup needs the Lucid network");
+  const unit = toUnit(policyId, SDK.HUB_ORACLE_ASSET_NAME);
+  const found = await lucid.utxosAtWithUnit(
+    credentialToAddress(network, scriptHashToCredential(policyId)),
+    unit,
+  );
+  if (found.length !== 1)
+    throw new Error(
+      `Expected exactly one hub-oracle UTxO holding ${unit}, found ${found.length.toString()}`,
+    );
+  return found[0]!;
+};
 
 /** Build operational authority only from the verified manifest's live role outputs. */
 export const availabilityDeploymentFromManifest = async (
@@ -221,9 +248,7 @@ export const availabilityDeploymentFromManifest = async (
     hubOraclePolicyId,
     referenceScriptAuthPolicyId: authPolicy,
     referenceScripts: references,
-    hubOracleRefInput: await lucid.utxoByUnit(
-      hubOraclePolicyId + SDK.HUB_ORACLE_ASSET_NAME,
-    ),
+    hubOracleRefInput: await hubOracleUtxo(lucid, hubOraclePolicyId),
     parameters: availabilityParametersFromManifest(manifest),
   };
 };

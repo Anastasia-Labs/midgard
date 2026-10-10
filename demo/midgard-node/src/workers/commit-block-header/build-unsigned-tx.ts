@@ -1,19 +1,22 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import type { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import type { OperatorWalletView } from "../../operator-wallet-view.js";
-import { HistoryProducer } from "../../services/event-history-producer.js";
+import { FollowerWrite } from "../../services/follower-write-gate.js";
 import {
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   historyCommitTimingBudget,
-  historyEligibilityHorizon,
 } from "../../services/history-commit-window.js";
 import {
   type ContractDeploymentIdentityValue,
   Lucid,
   NodeConfig,
 } from "../../services/index.js";
+import {
+  IntentJournal,
+  journaledIntent,
+} from "../../services/intent-journal.js";
 import {
   handleSignSubmitNoConfirmation,
   type NoInlineSubmitDefer,
@@ -47,8 +50,9 @@ const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
 /** Whether a no-inline defer left anything to resubmit: the pre-submit check
  * defers before the signed intent is persisted, so nothing was sent; the
  * provider-slot and early-validity defers follow the persist and a provider
- * refusal of the bytes as not yet valid, which the signed-intent rebroadcast
- * fiber resubmits unchanged once the tip reaches their validity lower bound. */
+ * refusal of the bytes as not yet valid; the follower's intent stage (S6)
+ * resubmits the journaled bytes unchanged on each new tip until they land or
+ * are dead. */
 export const commitSubmitDeferMessage = (defer: NoInlineSubmitDefer) =>
   `Commit block submit deferred in no-inline mode (${defer.kind}, current slot ${defer.currentSlot.toString()}, target slot ${defer.targetSlot.toString()}, due slot ${defer.dueSlot.toString()}): ${
     defer.kind === "pre_submit_validity"
@@ -99,7 +103,6 @@ export const buildUnsignedCommitTx = (
   transitionCommitments: SDK.HeaderTransitionCommitments,
   _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
   endDate: Date,
-  initialOperatorWalletView?: OperatorWalletView,
   maximumEndTimeMs?: number,
 ): Effect.Effect<
   CommitBuildResult,
@@ -111,10 +114,15 @@ export const buildUnsignedCommitTx = (
   | SDK.LinkedListError
   | TxSignError
   | TxSubmitError,
-  Lucid | NodeConfig
+  Lucid | NodeConfig | SqlClient.SqlClient | IntentJournal
 > =>
   Effect.gen(function* () {
-    const history = yield* Effect.serviceOption(HistoryProducer);
+    const journal = yield* IntentJournal;
+    // S5: the plan opens before this build's first L1 read. The caller's
+    // read of `latestBlock` precedes it; that tail is the commit's input, so
+    // the commit lands only on a chain that holds it.
+    const plan = yield* journal.openPlan;
+    const history = yield* Effect.serviceOption(FollowerWrite);
     const ownedWindow = Option.isSome(history);
     const checkTimingBudget = ownedWindow
       ? historyCommitTimingBudget
@@ -168,10 +176,7 @@ export const buildUnsignedCommitTx = (
           : COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
     const fixedHistoryEnd = Option.isSome(history)
-      ? Math.min(
-          candidateEndTimeMs,
-          historyEligibilityHorizon(history.value.coverage),
-        )
+      ? candidateEndTimeMs
       : undefined;
     const finalEndTimeCap =
       fixedHistoryEnd === undefined
@@ -229,7 +234,6 @@ export const buildUnsignedCommitTx = (
         lucid.api,
         contracts,
         witnessEndTime,
-        witnessContext?.operatorWalletView ?? initialOperatorWalletView,
         lucid.referenceScriptsAddress,
         submitSlotSnapshot,
         false,
@@ -368,13 +372,19 @@ export const buildUnsignedCommitTx = (
           dependencyKey: `commit-block:${newHeaderHash}`,
           invalidationKey: `commit-block:${newHeaderHash}`,
         },
-        // The signed intent is journaled: the history owner releases it once
-        // its base output is spent, and block confirmation records a landing.
+        // The signed intent is journaled: the own-journal disposition releases
+        // it once its base output is spent, and block confirmation records a landing.
         unknownInputsFailFast: true,
       };
       const signAndSubmitProgram = handleSignSubmitNoConfirmation(
         lucid.api,
         txBuilder,
+        journaledIntent(
+          "commit",
+          `commit:tail=${latestBlock.utxo.txHash}#${latestBlock.utxo.outputIndex.toString()}`,
+          plan,
+          Buffer.from(newHeaderHash, "hex"),
+        ),
         submitRecoveryOptions,
       )
         .pipe(
@@ -386,7 +396,10 @@ export const buildUnsignedCommitTx = (
                 ),
           ),
         )
-        .pipe(Effect.withSpan("handleSignSubmit-commit-block"));
+        .pipe(
+          Effect.provideService(IntentJournal, journal),
+          Effect.withSpan("handleSignSubmit-commit-block"),
+        );
 
       return {
         preparedTxHash: txBuilder.toHash(),

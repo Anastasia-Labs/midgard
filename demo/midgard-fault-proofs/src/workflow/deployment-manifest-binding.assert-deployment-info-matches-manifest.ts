@@ -27,6 +27,7 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   type FraudProofReleaseFinalityAuthority,
+  releaseL1FinalityPolicyOf,
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy.js";
 
@@ -273,7 +274,7 @@ export const releasePolicies = (
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
 } => {
-  const finalityPolicy = manifest.l1Finality;
+  const finalityPolicy = releaseL1FinalityPolicyOf(manifest.l1Finality);
   const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifest.manifestId,

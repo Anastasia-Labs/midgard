@@ -26,10 +26,7 @@ export {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES,
   DEPLOYMENT_MANIFEST_STEP_NAMES,
 } from "./deployment-manifest.require-out-ref-string.js";
-export {
-  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  REQUIRED_TRANSACTION_ORDER_CONTRACTS,
-} from "./deployment-manifest.required-transaction-order-contracts.js";
+export { DEPLOYMENT_MANIFEST_SCHEMA_VERSION } from "./deployment-manifest.required-transaction-order-contracts.js";
 export { validationDisputeMaturityFitsProfile } from "./deployment-manifest.validate-da-identity.js";
 export { parseDeploymentManifestValue } from "./deployment-manifest.validate-deployment-manifest-common.js";
 

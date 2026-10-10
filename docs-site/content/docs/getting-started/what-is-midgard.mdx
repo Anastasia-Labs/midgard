@@ -123,10 +123,10 @@ Midgard's design adds smart-contract mechanisms for this:
   these inclusion times but omits the associated event, so operators who keep
   committing blocks cannot ignore deposits and withdrawals.
 - **L2 transaction orders** let any user escalate an ignored transaction by posting
-  it on L1. The current transaction-order path uses the ordered transaction
-  validity interval and authenticated L1 order evidence to determine when it
-  must be processed. This differs from the older inclusion-time sketch in the
-  technical specification.
+  it on L1. Like deposits and withdrawals, an order gets a definite inclusion
+  time, and the block whose event interval spans it must include the order. The
+  transaction's own validity interval only decides whether the included
+  transaction is applied or recorded as rejected.
 - **The target escape hatch** lowers the bond requirement for replacement
   operators if block production stops. It is not a direct user force-exit and is
   not implemented as a production recovery guarantee today; public deployments

@@ -34,13 +34,13 @@
     "stress-corpus-generate": "pnpm run build && node dist/index.js stress-corpus-generate",
     "stress-corpus-verify": "pnpm run build && node dist/index.js stress-corpus-verify",
     "e2e-stress-l2-throughput": "pnpm run build && node dist/index.js e2e-stress-l2-throughput",
-    "accept:phase4:pipelined-process": "node dist/index.js e2e-pipelined-commit-process-acceptance --node-root ../midgard-node",
-    "verify:phase4:pipelined-process-summary": "node scripts/verify-phase4-pipelined-process-summary.mjs",
-    "test:phase4:pipelined-process-summary-verifier": "node --test tests/phase4-pipelined-process-summary-verifier.test.mjs",
-    "test:phase4:devnet-assets": "node --test devnet/phase4-process/tests/assets.test.mjs devnet/phase4-process/tests/custom-chain-config.test.mjs",
-    "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/e2e-da-gates.test.ts tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --disableConsoleIntercept",
+    "accept:phase4:journal-kill-recovery": "node dist/index.js e2e-journal-kill-recovery-acceptance --node-root ../midgard-node",
+    "verify:phase4:journal-kill-recovery-summary": "node scripts/verify-phase4-journal-kill-recovery-summary.mjs",
+    "test:phase4:journal-kill-recovery-summary-verifier": "node --test tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
+    "test:phase4:devnet-assets": "node --test devnet/phase4-process/tests/assets.test.mjs devnet/phase4-process/tests/custom-chain-config.test.mjs devnet/phase4-process/tests/l1-follower-inputs.test.mjs devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs devnet/phase4-process/tests/recovery-window.test.mjs",
+    "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --disableConsoleIntercept",
     "pretest": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build",
-    "test": "pnpm run test:phase4:pipelined-process-summary-verifier && pnpm run test:phase4:devnet-assets && export NODE_ENV='emulator' && vitest run --disableConsoleIntercept",
+    "test": "pnpm run test:phase4:journal-kill-recovery-summary-verifier && pnpm run test:phase4:devnet-assets && export NODE_ENV='emulator' && vitest run --disableConsoleIntercept",
     "build:contrib-raw": "tsup"
   },
   "keywords": [
@@ -56,6 +56,7 @@
     "@al-ft/lucid-midgard": "workspace:*",
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-fault-proofs": "workspace:*",
+    "@al-ft/midgard-l1-follower": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
     "@chainsafe/libp2p-noise": "17.0.0",
@@ -105,6 +106,7 @@
     "undici": "^7.25.0"
   },
   "devDependencies": {
+    "@al-ft/l1-node-transport": "workspace:*",
     "@al-ft/midgard-test-support": "workspace:*",
     "@types/json-bigint": "1.0.4",
     "@types/node": "^22.17.0",

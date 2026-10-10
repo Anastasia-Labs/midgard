@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { registerOperatorProgram } from "../src/transactions/register-active-operator.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   appointFirstSchedulerOperator,
   initOperatorInactivityFixture,
@@ -102,11 +103,13 @@ describe("operator exit emulator", () => {
     // say so locally instead of building a transaction that gets slashed.
     await expect(
       runProgram(
-        registerOperatorProgram(
-          lucid,
-          contracts,
-          BOND_LOVELACE,
-          fixture.referenceScriptsLucid,
+        withoutFollowerJournal(
+          registerOperatorProgram(
+            lucid,
+            contracts,
+            BOND_LOVELACE,
+            fixture.referenceScriptsLucid,
+          ),
         ),
       ),
     ).rejects.toThrow(/already in the operator directory/);

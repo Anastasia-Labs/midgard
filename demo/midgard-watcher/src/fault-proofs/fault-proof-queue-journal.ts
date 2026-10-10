@@ -1,26 +1,30 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { mkdir, readdir, readFile, realpath, unlink } from "node:fs/promises";
-import { isAbsolute, join, normalize } from "node:path";
-
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
+import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
+import { openWatcherProofObjective } from "./fault-proof-objective-table.js";
 import {
-  isTornJsonRecord,
-  publishExclusiveFile,
-  removeStagedRecordFiles,
-  stagedRecordPath,
-  syncDirectory,
-} from "../storage/exclusive-record-file.js";
+  openWatcherJournalDatabase,
+  type WatcherJournalDatabase,
+  WatcherJournalIntegrityError,
+  type WatcherJournalRow,
+} from "./watcher-journal-database.js";
+import {
+  type WatcherJournalName,
+  watcherObjectiveScope,
+} from "./watcher-journal-schema.js";
 
-export const WATCHER_FAULT_PROOF_QUEUE_RECORD =
-  "midgard-watcher-production-fault-proof-queue-record-v1" as const;
+/**
+ * The fault-proof queue journal (ticket W2): one row per scheduled job
+ * identity, updated in place as the job moves through queued, active and
+ * finished. A newer identity of the same objective replaces the older row,
+ * so retries never grow the table. Registering a job also records its
+ * objective as open, in the same commit, before any workflow directory
+ * exists.
+ */
+const JOURNAL = "fault_proof_queue" satisfies WatcherJournalName;
 
-const RECORD_FILE = /^([0-9]{20})\.json$/u;
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-const MAXIMUM_RECORDS = 65_536;
-const MAXIMUM_RECORD_BYTES = 64 * 1024;
-const MAC_DOMAIN = "midgard-watcher-fault-proof-edf-queue-v1";
 
 export type WatcherFaultProofQueueIdentity = Readonly<{
   category: string;
@@ -29,85 +33,21 @@ export type WatcherFaultProofQueueIdentity = Readonly<{
   rollbackGeneration: string;
 }>;
 
-type QueueEvent =
-  | Readonly<{
-      kind: "enqueued";
-      identity: WatcherFaultProofQueueIdentity;
-      queuedAtMs: string;
-    }>
-  | Readonly<{
-      kind: "requeued" | "reopened" | "started" | "finished";
-      jobIdentityDigest: string;
-      observedAtMs: string;
-    }>;
+type QueueState = "queued" | "active" | "finished";
 
-type QueueRecord = Readonly<{
-  schemaVersion: typeof WATCHER_FAULT_PROOF_QUEUE_RECORD;
-  revision: string;
-  priorRecordSha256: string | null;
-  deploymentFingerprint: string;
-  event: QueueEvent;
-  authenticationKeyId: string;
-  authenticationMac: string;
-}>;
-
-type QueueState = Readonly<{
+type QueueBody = Readonly<{
+  identity: WatcherFaultProofQueueIdentity;
   queuedAtMs: string;
-  state: "queued" | "active" | "finished";
+  observedAtMs: string;
 }>;
-
-const transitionPredecessor = (
-  kind: Exclude<QueueEvent["kind"], "enqueued">,
-): QueueState["state"] => {
-  switch (kind) {
-    case "started":
-      return "queued";
-    case "finished":
-    case "requeued":
-      return "active";
-    case "reopened":
-      return "finished";
-    default:
-      throw new Error("fault-proof queue transition kind is invalid");
-  }
-};
-
-const validateTransition = (
-  prior: QueueState | undefined,
-  jobIdentityDigest: string,
-  observedAtMs: string,
-  kind: Exclude<QueueEvent["kind"], "enqueued">,
-): QueueState => {
-  if (!HEX_32.test(jobIdentityDigest)) {
-    throw new Error("fault-proof queue transition identity digest is invalid");
-  }
-  if (!NATURAL.test(observedAtMs)) {
-    throw new Error("fault-proof queue transition observation time is invalid");
-  }
-  const expectedState = transitionPredecessor(kind);
-  if (prior === undefined) {
-    throw new Error(
-      `fault-proof queue ${kind} has no admitted predecessor: ${jobIdentityDigest}`,
-    );
-  }
-  if (prior.state !== expectedState) {
-    throw new Error(
-      `fault-proof queue ${kind} requires ${expectedState} predecessor, found ${prior.state}: ${jobIdentityDigest}`,
-    );
-  }
-  // Authenticated revisions establish event order. Wall time can move backward
-  // during clock synchronization, including between enqueue and completion.
-  // Keep the actual timestamps and original queue age without treating their
-  // relative order as authority to execute a transition.
-  return prior;
-};
 
 export type WatcherFaultProofQueueJournal = Readonly<{
+  /** Queues the job, or requeues it when it is active or finished; the
+   * original queue time is kept. */
   register(
     identity: WatcherFaultProofQueueIdentity,
     observedAtMs: string,
-    options?: Readonly<{ reopenFinished: boolean }>,
-  ): Promise<Readonly<{ queuedAtMs: string; finished: boolean }>>;
+  ): Promise<Readonly<{ queuedAtMs: string }>>;
   markStarted(jobIdentityDigest: string, observedAtMs: string): Promise<void>;
   markFinished(jobIdentityDigest: string, observedAtMs: string): Promise<void>;
   status(): Readonly<{
@@ -116,34 +56,12 @@ export type WatcherFaultProofQueueJournal = Readonly<{
   }>;
 }>;
 
-const sha256 = (value: Uint8Array | string): string =>
-  createHash("sha256").update(value).digest("hex");
-
-const recordName = (revision: bigint): string =>
-  `${revision.toString().padStart(20, "0")}.json`;
-
-const exactDirectory = async (path: string): Promise<string> => {
-  if (
-    !isAbsolute(path) ||
-    normalize(path) !== path ||
-    path === "/" ||
-    path === "/tmp" ||
-    path.startsWith("/tmp/")
-  ) {
-    throw new Error("fault-proof queue journal directory is invalid");
-  }
-  await mkdir(path, { recursive: true, mode: 0o700 });
-  if ((await realpath(path)) !== path) {
-    throw new Error("fault-proof queue journal traverses a symlink");
-  }
-  return path;
-};
-
 const identityDigest = (
   deploymentFingerprint: string,
   identity: WatcherFaultProofQueueIdentity,
 ): string => {
   if (
+    typeof identity.category !== "string" ||
     identity.category.length === 0 ||
     identity.category.length > 128 ||
     !HEX_28.test(identity.headerHash) ||
@@ -152,260 +70,158 @@ const identityDigest = (
   ) {
     throw new Error("fault-proof queue identity is invalid");
   }
-  return sha256(watcherCanonicalJson({ deploymentFingerprint, ...identity }));
+  return watcherSha256CanonicalJson({ deploymentFingerprint, ...identity });
 };
 
-const recordBody = (record: QueueRecord) => ({
-  schemaVersion: record.schemaVersion,
-  revision: record.revision,
-  priorRecordSha256: record.priorRecordSha256,
-  deploymentFingerprint: record.deploymentFingerprint,
-  event: record.event,
-  authenticationKeyId: record.authenticationKeyId,
-});
+/** A row that differs from its job identity refuses the journals. */
+const parseRow = (
+  database: WatcherJournalDatabase,
+  deploymentFingerprint: string,
+  row: WatcherJournalRow,
+): QueueBody & Readonly<{ state: QueueState }> => {
+  const body = row.body as QueueBody | null;
+  const fail = (): never =>
+    database.refuse(JOURNAL, `row ${row.key} differs from its job identity`);
+  if (
+    (row.state !== "queued" &&
+      row.state !== "active" &&
+      row.state !== "finished") ||
+    typeof body !== "object" ||
+    body === null ||
+    typeof body.queuedAtMs !== "string" ||
+    !NATURAL.test(body.queuedAtMs) ||
+    typeof body.identity !== "object" ||
+    body.identity === null
+  )
+    fail();
+  try {
+    if (
+      identityDigest(deploymentFingerprint, body!.identity) !== row.key ||
+      watcherObjectiveScope(
+        body!.identity.category,
+        body!.identity.headerHash,
+      ) !== row.scope
+    )
+      fail();
+  } catch (error) {
+    if (error instanceof WatcherJournalIntegrityError) throw error;
+    fail();
+  }
+  return { ...body!, state: row.state as QueueState };
+};
 
 export const openWatcherFaultProofQueueJournal = async (input: {
   readonly journalRoot: string;
   readonly deploymentFingerprint: string;
   readonly authenticationKey: Uint8Array;
 }): Promise<WatcherFaultProofQueueJournal> => {
-  if (
-    !HEX_32.test(input.deploymentFingerprint) ||
-    input.authenticationKey.byteLength !== 32
-  ) {
+  if (!HEX_32.test(input.deploymentFingerprint)) {
     throw new Error("fault-proof queue journal authority is invalid");
   }
-  const directory = await exactDirectory(
-    join(input.journalRoot, "fault-proof-queue-v1"),
-  );
-  const key = createHmac("sha256", input.authenticationKey)
-    .update(MAC_DOMAIN)
-    .digest();
-  const authenticationKeyId = sha256(key);
-  const mac = (body: unknown): string =>
-    createHmac("sha256", key).update(watcherCanonicalJson(body)).digest("hex");
-  const states = new Map<string, QueueState>();
-  let lastRecordSha256: string | null = null;
-  let nextRevision = 0n;
-  await removeStagedRecordFiles(directory);
-  const entries = await readdir(directory, { withFileTypes: true });
-  entries.sort((left, right) => left.name.localeCompare(right.name));
-  if (entries.length > MAXIMUM_RECORDS) {
-    throw new Error("fault-proof queue journal exceeds its recovery bound");
-  }
-  // Appends now stage every record, so only the earlier writer, which created
-  // the revision name before writing and fsyncing it, leaves a final record
-  // that is empty or not UTF-8 JSON when it is killed. That append never
-  // returned, and every caller changes its state only after the append
-  // returns, so replaying without the record gives the state a kill just
-  // before that call would have left. Drop it once every earlier record is
-  // admitted; a torn record that is not final still fails closed.
-  const finalEntry = entries.at(-1);
-  const tornFinal =
-    finalEntry !== undefined &&
-    finalEntry.isFile() &&
-    finalEntry.name === recordName(BigInt(entries.length - 1)) &&
-    isTornJsonRecord(await readFile(join(directory, finalEntry.name)))
-      ? entries.pop()!.name
-      : null;
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index]!;
-    const match = RECORD_FILE.exec(entry.name);
-    if (
-      !entry.isFile() ||
-      match === null ||
-      BigInt(match[1]!) !== BigInt(index)
-    ) {
-      throw new Error("fault-proof queue journal contains an invalid record");
-    }
-    const bytes = await readFile(join(directory, entry.name));
-    if (bytes.byteLength === 0 || bytes.byteLength > MAXIMUM_RECORD_BYTES) {
-      throw new Error("fault-proof queue journal record size is invalid");
-    }
-    let parsed: QueueRecord;
-    try {
-      parsed = JSON.parse(bytes.toString("utf8")) as QueueRecord;
-    } catch {
-      throw new Error("fault-proof queue journal record is malformed");
-    }
-    const body = recordBody(parsed);
-    const expectedMac = Buffer.from(mac(body), "hex");
-    const claimedMac = Buffer.from(parsed.authenticationMac ?? "", "hex");
-    if (
-      parsed.schemaVersion !== WATCHER_FAULT_PROOF_QUEUE_RECORD ||
-      parsed.revision !== index.toString() ||
-      parsed.deploymentFingerprint !== input.deploymentFingerprint ||
-      parsed.priorRecordSha256 !== lastRecordSha256 ||
-      parsed.authenticationKeyId !== authenticationKeyId ||
-      claimedMac.byteLength !== expectedMac.byteLength ||
-      !timingSafeEqual(claimedMac, expectedMac)
-    ) {
-      throw new Error("fault-proof queue journal authentication failed");
-    }
-    const event = parsed.event;
-    if (event.kind === "enqueued") {
-      if (!NATURAL.test(event.queuedAtMs)) {
-        throw new Error("fault-proof queue enqueue time is invalid");
-      }
-      const digest = identityDigest(
-        input.deploymentFingerprint,
-        event.identity,
-      );
-      if (states.has(digest)) {
-        throw new Error("fault-proof queue repeats its initial enqueue");
-      }
-      states.set(
-        digest,
-        Object.freeze({ queuedAtMs: event.queuedAtMs, state: "queued" }),
-      );
-    } else {
-      const prior = validateTransition(
-        states.get(event.jobIdentityDigest),
-        event.jobIdentityDigest,
-        event.observedAtMs,
-        event.kind,
-      );
-      const state =
-        event.kind === "started"
-          ? "active"
-          : event.kind === "finished"
-            ? "finished"
-            : "queued";
-      states.set(
-        event.jobIdentityDigest,
-        Object.freeze({ queuedAtMs: prior.queuedAtMs, state }),
-      );
-    }
-    lastRecordSha256 = sha256(bytes);
-    nextRevision += 1n;
-  }
-  if (tornFinal !== null) {
-    await unlink(join(directory, tornFinal));
-    await syncDirectory(directory);
-  }
+  const database = openWatcherJournalDatabase({
+    journalRoot: input.journalRoot,
+    authenticationKey: input.authenticationKey,
+  });
+  // Startup admits every row once; a foreign or altered row fails closed.
+  for (const row of database.rows(JOURNAL))
+    parseRow(database, input.deploymentFingerprint, row);
 
-  let serial = Promise.resolve();
-  const serialize = <T>(action: () => Promise<T>): Promise<T> => {
-    const operation = serial.then(action);
-    serial = operation.then(
-      () => undefined,
-      () => undefined,
-    );
-    return operation;
-  };
-
-  // Callers hold the serializer across the state check, append and state
-  // update. Serializing only file writes lets a retry read stale active state
-  // and append a requeue after a concurrent finish has already been committed.
-  const append = async (event: QueueEvent): Promise<void> => {
-    if (nextRevision >= BigInt(MAXIMUM_RECORDS)) {
-      throw new Error("fault-proof queue journal exceeds its append bound");
-    }
-    const body = {
-      schemaVersion: WATCHER_FAULT_PROOF_QUEUE_RECORD,
-      revision: nextRevision.toString(),
-      priorRecordSha256: lastRecordSha256,
-      deploymentFingerprint: input.deploymentFingerprint,
-      event,
-      authenticationKeyId,
-    } as const;
-    const record = Object.freeze({ ...body, authenticationMac: mac(body) });
-    const bytes = Buffer.from(`${watcherCanonicalJson(record)}\n`, "utf8");
-    // Linking a fsynced staging file fails with EEXIST when another writer
-    // already holds this revision, like an exclusive create, and never
-    // exposes a partial record under the revision name.
-    await publishExclusiveFile({
-      stagingPath: stagedRecordPath(directory),
-      path: join(directory, recordName(nextRevision)),
-      bytes,
-    });
-    await syncDirectory(directory);
-    lastRecordSha256 = sha256(bytes);
-    nextRevision += 1n;
-  };
-
+  // Authenticated revisions establish event order. Wall time can move backward
+  // during clock synchronization, so observation times are recorded but never
+  // compared to authorize a transition.
   const transition = async (
     jobIdentityDigest: string,
     observedAtMs: string,
-    kind: "started" | "finished",
+    from: QueueState,
+    to: QueueState,
   ): Promise<void> => {
-    const prior = validateTransition(
-      states.get(jobIdentityDigest),
-      jobIdentityDigest,
-      observedAtMs,
-      kind,
-    );
-    await append(Object.freeze({ kind, jobIdentityDigest, observedAtMs }));
-    states.set(
-      jobIdentityDigest,
-      Object.freeze({
-        queuedAtMs: prior.queuedAtMs,
-        state: kind === "started" ? "active" : "finished",
-      }),
-    );
+    if (!HEX_32.test(jobIdentityDigest))
+      throw new Error(
+        "fault-proof queue transition identity digest is invalid",
+      );
+    if (!NATURAL.test(observedAtMs))
+      throw new Error(
+        "fault-proof queue transition observation time is invalid",
+      );
+    database.transaction((tx) => {
+      const row = tx.row(JOURNAL, jobIdentityDigest);
+      if (row === undefined)
+        throw new Error(
+          `fault-proof queue transition has no admitted predecessor: ${jobIdentityDigest}`,
+        );
+      const prior = parseRow(database, input.deploymentFingerprint, row);
+      if (prior.state !== from)
+        throw new Error(
+          `fault-proof queue transition requires ${from} predecessor, found ${prior.state}: ${jobIdentityDigest}`,
+        );
+      tx.put(JOURNAL, {
+        key: jobIdentityDigest,
+        scope: row.scope,
+        state: to,
+        body: {
+          identity: prior.identity,
+          queuedAtMs: prior.queuedAtMs,
+          observedAtMs,
+        },
+      });
+    });
   };
 
   return Object.freeze({
-    register: (identity, observedAtMs, options) =>
-      serialize(async () => {
-        if (!NATURAL.test(observedAtMs)) {
-          throw new Error("fault-proof queue enqueue time is invalid");
-        }
-        const digest = identityDigest(input.deploymentFingerprint, identity);
-        const prior = states.get(digest);
-        if (prior?.state === "finished" && options?.reopenFinished !== true) {
-          return Object.freeze({
-            queuedAtMs: prior.queuedAtMs,
-            finished: true,
-          });
-        }
-        if (prior?.state === "queued") {
-          return Object.freeze({
-            queuedAtMs: prior.queuedAtMs,
-            finished: false,
-          });
-        }
-        if (prior?.state === "active" || prior?.state === "finished") {
-          await append(
-            Object.freeze({
-              kind: prior.state === "finished" ? "reopened" : "requeued",
-              jobIdentityDigest: digest,
-              observedAtMs,
-            }),
-          );
-          states.set(
-            digest,
-            Object.freeze({ queuedAtMs: prior.queuedAtMs, state: "queued" }),
-          );
-          return Object.freeze({
-            queuedAtMs: prior.queuedAtMs,
-            finished: false,
-          });
-        }
-        await append(
-          Object.freeze({
-            kind: "enqueued",
-            identity: Object.freeze({ ...identity }),
-            queuedAtMs: observedAtMs,
-          }),
-        );
-        states.set(
-          digest,
-          Object.freeze({ queuedAtMs: observedAtMs, state: "queued" }),
-        );
-        return Object.freeze({ queuedAtMs: observedAtMs, finished: false });
-      }),
-    markStarted: (digest, observedAtMs) =>
-      serialize(() => transition(digest, observedAtMs, "started")),
-    markFinished: (digest, observedAtMs) =>
-      serialize(() => transition(digest, observedAtMs, "finished")),
-    status: () => {
-      const queued = [...states.values()].filter(
-        ({ state }) => state === "queued",
+    register: async (identity, observedAtMs) => {
+      if (!NATURAL.test(observedAtMs)) {
+        throw new Error("fault-proof queue enqueue time is invalid");
+      }
+      const digest = identityDigest(input.deploymentFingerprint, identity);
+      const scope = watcherObjectiveScope(
+        identity.category,
+        identity.headerHash,
       );
-      const oldest = queued
-        .map(({ queuedAtMs }) => BigInt(queuedAtMs))
-        .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))[0];
+      return database.transaction((tx) => {
+        openWatcherProofObjective(tx, {
+          category: identity.category as WatcherInstalledWorkflowCategory,
+          headerHash: identity.headerHash,
+        });
+        let queuedAtMs = observedAtMs;
+        for (const row of tx.rows(JOURNAL, { scope })) {
+          if (row.key !== digest) {
+            tx.delete(JOURNAL, row.key);
+            continue;
+          }
+          const prior = parseRow(database, input.deploymentFingerprint, row);
+          if (prior.state === "queued")
+            return Object.freeze({ queuedAtMs: prior.queuedAtMs });
+          queuedAtMs = prior.queuedAtMs;
+        }
+        tx.put(JOURNAL, {
+          key: digest,
+          scope,
+          state: "queued",
+          body: {
+            identity: {
+              category: identity.category,
+              headerHash: identity.headerHash,
+              decisionDigest: identity.decisionDigest,
+              rollbackGeneration: identity.rollbackGeneration,
+            },
+            queuedAtMs,
+            observedAtMs,
+          },
+        });
+        return Object.freeze({ queuedAtMs });
+      });
+    },
+    markStarted: (digest, observedAtMs) =>
+      transition(digest, observedAtMs, "queued", "active"),
+    markFinished: (digest, observedAtMs) =>
+      transition(digest, observedAtMs, "active", "finished"),
+    status: () => {
+      const queued = database
+        .rows(JOURNAL, { state: "queued" })
+        .map(({ body }) => BigInt((body as QueueBody).queuedAtMs));
+      const oldest = queued.sort((left, right) =>
+        left < right ? -1 : left > right ? 1 : 0,
+      )[0];
       return Object.freeze({
         queuedJobCount: queued.length,
         oldestQueuedAtMs: oldest?.toString() ?? null,

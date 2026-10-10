@@ -12,8 +12,6 @@ import { createInterface } from "node:readline";
 import { setTimeout as pause } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import type { JourneyHistoryTransportEnvironment } from "./history-archive-transport.js";
-
 /** Recognize actual startup diagnostics without interpreting them as readiness. */
 export const journeyStartupProgress = (line: string) => {
   let event: Record<string, unknown> | null;
@@ -80,8 +78,6 @@ export const launchJourneyWatcherProcess = (input: {
   command: "authority" | "start";
   configPath: string;
   directory: string;
-  caPath: string;
-  transportEnvironment?: JourneyHistoryTransportEnvironment;
 }) => {
   const startedAt = new Date().toISOString();
   const attempt = `${input.command}-${startedAt.replaceAll(":", "-")}-${randomUUID()}`;
@@ -141,8 +137,6 @@ export const launchJourneyWatcherProcess = (input: {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         PATH: process.env.PATH,
-        NODE_EXTRA_CA_CERTS: input.caPath,
-        ...input.transportEnvironment,
         MALLOC_MMAP_THRESHOLD_: "131072",
       },
     },

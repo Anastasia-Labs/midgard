@@ -6,14 +6,12 @@ import {
   getAddressDetails,
   Lucid as makeLucid,
   type LucidEvolution,
-  type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Option } from "effect";
 import { Effect } from "effect";
 
 import { DepositSubmissionAttemptsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { persistDepositUTxOs } from "../fibers/fetch-and-insert-deposit-utxos.js";
 import {
   Database,
   Lucid as LucidService,
@@ -91,10 +89,8 @@ export const reconcileDepositSubmissionAttemptProgram = (
               }),
           });
     if (matchesIntent) {
-      const { reconciledCount } = yield* persistDepositUTxOs(
-        deposits,
-        nodeConfig.NETWORK,
-      );
+      // The deposit row is the follower-change driver's to write (E-N1-2
+      // ruling 1); this check only settles the submission attempt.
       yield* DepositSubmissionAttemptsDB.markReconciled(txHashBuffer);
       return {
         txHash,
@@ -103,7 +99,7 @@ export const reconcileDepositSubmissionAttemptProgram = (
         expectedDepositOutRef:
           attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
         depositRowsFound: 1,
-        reconciledCount,
+        reconciledCount: 0,
         nextSafeAction:
           "Deposit matches the submission intent in current authenticated L1 history; continue without resubmitting.",
       } as const;
@@ -125,22 +121,6 @@ export const reconcileDepositSubmissionAttemptProgram = (
         "Do not resubmit yet; reconcile the original transaction receipt and current event history.",
     } as const;
   });
-
-export const buildUnsignedDepositTxProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  config: SubmitDepositConfig,
-): Effect.Effect<
-  TxSignBuilder,
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.HashingError
-  | SubmitDepositError
-> =>
-  buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(
-    Effect.map(({ tx }) => tx),
-  );
 
 export const buildUnsignedDepositTxFromFundingContextProgram = (
   lucid: LucidEvolution,

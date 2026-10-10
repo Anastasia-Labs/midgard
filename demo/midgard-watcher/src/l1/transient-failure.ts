@@ -1,7 +1,11 @@
 import {
-  LocalKupmiosCheckpointChangedError,
-  LocalKupmiosTransportUnavailableError,
+  FraudProofL1CheckpointChangedError,
+  FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs";
+import {
+  fromTransportError,
+  L1ProviderTransientError,
+} from "@al-ft/midgard-l1-follower/provider";
 
 import { NativeChainSyncStartupFailure } from "./native-chain-sync.exact-record.js";
 
@@ -20,20 +24,28 @@ const NETWORK_FAILURE_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Startup failures that say only that the node did not answer: its socket did
- * not accept, its tip query or the chain-sync session broke before readiness,
- * or it did not become ready in time. A node that is restarting or still
- * opening its database gives exactly these. A persistent exact-point helper
- * at its live-session bound is a transient overload of the same kind. A
- * rejected intersection, an invalid startup and every identity mismatch are
- * not among them.
+ * Native chain-sync startup failures (produced by node-tools' devnet stack,
+ * which retries them with this test explicitly) that say only that the node
+ * did not answer: the node
+ * transport was not ready (its sidecar was starting or restarting, or the
+ * node's socket did not accept or dropped the connection, during the
+ * handshake or after it), an auxiliary node connection could not be opened,
+ * or the read did not start in time. A node that is restarting or still
+ * opening its database gives exactly these. A rejected intersection, an
+ * invalid startup, a refused handshake (`node_handshake_failed`: another
+ * network magic, no common version) and every identity mismatch are not
+ * among them.
  */
 const NODE_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
-  "node_handshake_failed",
-  "tip_query_failed",
-  "chain_sync_failed",
+  "sidecar_starting",
+  "sidecar_restarting",
+  "sidecar_unavailable",
+  "sidecar_exited",
+  "node_unreachable",
+  "node_connection_lost",
+  "node_unresponsive",
+  "node_unavailable",
   "startup_timed_out",
-  "service_session_limit",
 ]);
 
 export const isWatcherNativeNodeUnavailable = (
@@ -45,39 +57,30 @@ export const isWatcherNativeNodeUnavailable = (
 /** How far down a `cause` chain a wrapped transient is still recognised. */
 const MAXIMUM_CAUSE_DEPTH = 8;
 
-/**
- * A Lucid Kupmios provider error that the provider itself marks retryable
- * (timeout, transport loss, HTTP 408/425/429/5xx). Matched by shape: the
- * workspace holds more than one copy of the provider, so `instanceof` cannot
- * cross them. A non-retryable one (a decode failure, any other status) is not
- * a transient.
- */
-const retryableProviderError = (error: Error): boolean =>
-  (error.name === "KupmiosError" || error.name === "OgmiosJsonRpcError") &&
-  (error as { readonly _tag?: unknown })._tag === error.name &&
-  (error as { readonly provider?: unknown }).provider === "Kupmios" &&
-  (error as { readonly retryable?: unknown }).retryable === true;
-
 const transientCode = (error: Error): boolean => {
   const code = (error as { readonly code?: unknown }).code;
   return typeof code === "string" && NETWORK_FAILURE_CODES.has(code);
 };
 
 /**
- * Whether a failed L1 read says only that Kupo, Ogmios or the node did not
- * answer, or moved while a snapshot was read: nothing about the chain or the
+ * Whether a failed L1 read says only that the follower or its node transport
+ * did not answer, or that
+ * the chain moved while a snapshot was read: nothing about the chain or the
  * deployment. Such a read can be repeated as is. Every other error, including
- * one that merely carries a transient error's name, is not one.
+ * one that merely carries a transient error's name, is not one. A raw node
+ * transport failure is classified as the follower's provider classifies a
+ * query's (`fromTransportError`): an outage, a timeout, a sidecar exit and
+ * the refusals that clear on their own are transient.
  */
 export const isWatcherL1TransientFailure = (error: unknown): error is Error => {
   let current: unknown = error;
   for (let depth = 0; depth < MAXIMUM_CAUSE_DEPTH; depth += 1) {
     if (!(current instanceof Error)) return false;
     if (
-      current instanceof LocalKupmiosTransportUnavailableError ||
-      current instanceof LocalKupmiosCheckpointChangedError ||
-      retryableProviderError(current) ||
-      isWatcherNativeNodeUnavailable(current) ||
+      current instanceof FraudProofL1UnavailableError ||
+      current instanceof FraudProofL1CheckpointChangedError ||
+      current instanceof L1ProviderTransientError ||
+      fromTransportError(current) instanceof L1ProviderTransientError ||
       transientCode(current)
     )
       return true;

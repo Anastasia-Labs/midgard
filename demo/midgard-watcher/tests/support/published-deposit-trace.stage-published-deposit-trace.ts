@@ -15,6 +15,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import type { DaLocalSignerConfig } from "midgard-node/da/local-signers";
+import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
 import { activateRegisteredOperatorProgram } from "midgard-node/transactions/register-active-operator";
 import { canActivateRegisteredOperatorImmediately } from "midgard-node/transactions/register-active-operator/activation";
 
@@ -82,9 +83,6 @@ export const stagePublishedDepositTrace = async (
   let address = await lucid.wallet().address();
   const awaitConfirmed = async (txHash: string) => {
     await lucid.awaitTx(txHash, 500);
-    // Operator onboarding maintains an explicit wallet snapshot. Refresh it
-    // after direct SDK transactions so their successors use the live ledger.
-    lucid.overrideUTxOs(await lucid.utxosAt(address));
   };
   let operatorVkey = paymentCredentialOf(address).hash;
   const one = async (scriptAddress: string, unit: string): Promise<UTxO> => {
@@ -175,7 +173,6 @@ export const stagePublishedDepositTrace = async (
         await chain.awaitLedgerTime(Number(result.deadlineMs) + 1000);
       } else if (result.status === "complete") {
         onStage(`abandoned header removal ${result.targetHeaderHash}`);
-        lucid.overrideUTxOs(await lucid.utxosAt(address));
         await finalizeRemoval();
       } else {
         throw new Error(
@@ -456,7 +453,6 @@ export const stagePublishedDepositTrace = async (
     if (!immediateActivation) {
       await chain.awaitLedgerTime(activationTime + 1);
     }
-    lucid.overrideUTxOs(await lucid.utxosAt(address));
     await Effect.runPromise(
       activateRegisteredOperatorProgram(
         lucid,
@@ -465,7 +461,7 @@ export const stagePublishedDepositTrace = async (
         successorVkey,
         publisher,
         await publisher.wallet().address(),
-      ),
+      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
     );
     if (
       (
@@ -476,7 +472,6 @@ export const stagePublishedDepositTrace = async (
       ).length !== 1
     )
       throw new Error("Successor activation did not produce its active node");
-    lucid.overrideUTxOs(await lucid.utxosAt(address));
   };
   await activateDanglingSuccessorRegistration();
   // Abandoned-header removal continues the root in a new output.

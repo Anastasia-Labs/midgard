@@ -1,7 +1,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, TxHash } from "@lucid-evolution/lucid";
+import type { SqlClient } from "@effect/sql";
+import { TxHash } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import { landedStateQueueUTxOs } from "../../services/landed-state-queue.js";
 import {
   SerializedStateQueueUTxO,
   serializeStateQueueUTxO,
@@ -113,8 +115,8 @@ export const decideUnsubmittedPendingBlockRecovery = ({
   if (canonicalMatchFound) {
     return "recover_canonical";
   }
-  // A signed intent is resolved only by the history owner's signed-intent
-  // reconciliation (authenticated view of the tail node's slot); defer to it.
+  // A signed intent is resolved only by the landed-block rebase's journal
+  // disposition (S6's derived status and the landed chain); defer to it.
   if (pendingBlock.intendedTxHash != null) return "defer";
   return shouldDeferUnsubmittedPendingBlockRecovery({
     pendingBlock,
@@ -125,26 +127,14 @@ export const decideUnsubmittedPendingBlockRecovery = ({
     : "recover_stale";
 };
 
-export const fetchLatestCommittedStateQueueBlock = (
-  lucid: LucidEvolution,
-  stateQueueAuthValidator: SDK.AuthenticatedValidator,
-): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
-  SDK.fetchLatestCommittedBlockProgram(lucid, {
-    stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-    stateQueuePolicyId: stateQueueAuthValidator.policyId,
-  });
-
+/** The healthy landed queue, root first (P1, never L1). */
 export const fetchSortedCommittedStateQueueBlocks = (
-  lucid: LucidEvolution,
   stateQueueAuthValidator: SDK.AuthenticatedValidator,
 ): Effect.Effect<
   readonly SDK.StateQueueUTxO[],
-  SDK.LucidError | SDK.LinkedListError
-> =>
-  SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
-    stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-    stateQueuePolicyId: stateQueueAuthValidator.policyId,
-  });
+  SDK.StateQueueError,
+  SqlClient.SqlClient
+> => landedStateQueueUTxOs(stateQueueAuthValidator, "block confirmation");
 
 export const latestCommittedStateQueueBlockFromSorted = (
   blocks: readonly SDK.StateQueueUTxO[],

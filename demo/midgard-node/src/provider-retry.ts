@@ -1,5 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { isTransientOgmiosJsonRpcFailure } from "@al-ft/midgard-core/ogmios-json-rpc-error";
+import { L1SubmitOutcomeUnknownError } from "@al-ft/midgard-l1-follower/provider";
 import { Cause, Duration, Effect, Runtime } from "effect";
 
 export type ProviderRetryOptions = {
@@ -141,6 +142,23 @@ const hasTransientConnectionShape = (
   );
 };
 
+/**
+ * The follower provider's {@link L1SubmitOutcomeUnknownError} on `error`'s
+ * cause chain, or `undefined`: a submission the node may have taken, so its
+ * id must be looked up before anything is sent or built in its place. Matched
+ * by name too, like `L1ProviderTransientError` above, so a second loaded copy
+ * of the follower package is still recognised.
+ */
+export const findSubmitOutcomeUnknown = (
+  error: unknown,
+): L1SubmitOutcomeUnknownError | undefined =>
+  causeChain(error).find(
+    (link): link is Record<string, unknown> & L1SubmitOutcomeUnknownError =>
+      link instanceof L1SubmitOutcomeUnknownError ||
+      (link.name === "L1SubmitOutcomeUnknownError" &&
+        link.outcomeUnknown === true),
+  );
+
 /** True when any error on `error`'s cause chain carries the string `code`. */
 export const hasCauseCode = (error: unknown, code: string): boolean =>
   causeChain(error).some((link) => link.code === code);
@@ -161,7 +179,8 @@ export const isConnectionClassError = (error: unknown): boolean =>
 /**
  * True for a provider failure that a later attempt can clear: an error that
  * declares itself retryable (`KupmiosError`, the Ogmios slot-evidence and DA
- * quorum errors), an Ogmios error answer whose code says the node cannot
+ * quorum errors, the L1 ledger tip behind wall time), the follower
+ * provider's `L1ProviderTransientError`, an Ogmios error answer whose code says the node cannot
  * answer now (Kupmios marks every Ogmios error answer non-retryable, because
  * Ogmios sends them all as HTTP 400), a structured transport, resolver or
  * connection code on any cause, or a known transient provider message. A
@@ -177,6 +196,8 @@ export const isRetryableProviderError = (error: unknown): boolean => {
     chain.some(
       (link) =>
         link.retryable === true ||
+        // The follower provider's node, sidecar, store or follower outage.
+        link.name === "L1ProviderTransientError" ||
         isTransientOgmiosJsonRpcFailure(link) ||
         link.name === "TimeoutError" ||
         hasTransientConnectionShape(link, [

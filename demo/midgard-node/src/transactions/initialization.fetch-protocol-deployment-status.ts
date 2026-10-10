@@ -9,12 +9,12 @@ import { Effect, Schedule } from "effect";
 
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import { NodeConfig } from "../services/config.js";
+import { type IntentJournal, openPlan } from "../services/intent-journal.js";
 import { Lucid } from "../services/lucid.js";
 import {
   type ContractDeploymentIdentityValue,
   MidgardContracts,
 } from "../services/midgard-contracts.js";
-import { fetchStateQueueTopologyProgram } from "../services/state-queue-topology.js";
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "./availability-challenge-registration.js";
 import {
   type AtomicProtocolInitReferenceScripts,
@@ -37,6 +37,7 @@ import {
   fetchHistoryRootState,
   isDaBondPoolInitialized,
   isDaParamsInitialized,
+  isStateQueueInitialized,
   makePartialProtocolDeploymentError,
   type ProtocolDeploymentStatus,
   resolveDefaultDeploymentDeadline,
@@ -67,7 +68,7 @@ export const fetchProtocolDeploymentStatus = (
       lucid,
       contracts,
     );
-    const stateQueueTopology = yield* fetchStateQueueTopologyProgram(
+    const stateQueueInitialized = yield* isStateQueueInitialized(
       lucid,
       contracts.stateQueue,
     );
@@ -120,7 +121,7 @@ export const fetchProtocolDeploymentStatus = (
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
       ...(correctionLockWitness === null ? ["correction-lock"] : []),
       ...(!daParamsInitialized ? ["da-params"] : []),
-      ...(!stateQueueTopology.initialized ? ["state-queue"] : []),
+      ...(!stateQueueInitialized ? ["state-queue"] : []),
       ...(!schedulerInitialized ? ["scheduler"] : []),
       ...(!registeredOperatorsInitialized ? ["registered-operators"] : []),
       ...(!activeOperatorsInitialized ? ["active-operators"] : []),
@@ -134,8 +135,7 @@ export const fetchProtocolDeploymentStatus = (
       hubOracleWitness !== null &&
       correctionLockWitness !== null &&
       daParamsInitialized &&
-      stateQueueTopology.initialized &&
-      stateQueueTopology.healthy &&
+      stateQueueInitialized &&
       schedulerInitialized &&
       registeredOperatorsInitialized &&
       activeOperatorsInitialized &&
@@ -148,7 +148,7 @@ export const fetchProtocolDeploymentStatus = (
       hubOracleWitness === null &&
       correctionLockWitness === null &&
       !daParamsInitialized &&
-      !stateQueueTopology.initialized &&
+      !stateQueueInitialized &&
       !schedulerInitialized &&
       !registeredOperatorsInitialized &&
       !activeOperatorsInitialized &&
@@ -161,7 +161,7 @@ export const fetchProtocolDeploymentStatus = (
       withdrawalHistoryInitialized: withdrawalHistory.initialized,
       hubOracleWitness,
       correctionLockWitness,
-      stateQueueTopology,
+      stateQueueInitialized,
       daParamsInitialized,
       daBondPoolInitialized,
       schedulerInitialized,
@@ -224,7 +224,8 @@ export const buildAtomicProtocolInitTxProgram = (
   | SDK.LucidError
   | SDK.Bech32DeserializationError
   | SDK.UnspecifiedNetworkError
-  | SDK.HashingError
+  | SDK.HashingError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const validityRange = resolveDeploymentValidityBounds(lucid, validTo);
@@ -251,7 +252,7 @@ export const buildAtomicProtocolInitTxProgram = (
 export const program: Effect.Effect<
   string,
   unknown,
-  Lucid | MidgardContracts | NodeConfig
+  Lucid | MidgardContracts | NodeConfig | IntentJournal
 > = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* MidgardContracts;
@@ -269,6 +270,8 @@ export const program: Effect.Effect<
     `Fraud proof catalogue root prepared for initialization: ${fraudProofCatalogueDeploymentInfo.root}`,
   );
 
+  // S5: the plan opens before the deployment-status read the init rests on.
+  const plan = yield* openPlan;
   const status = yield* fetchProtocolDeploymentStatus(lucid, contracts);
   if (status.complete) {
     yield* ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
@@ -312,6 +315,11 @@ export const program: Effect.Effect<
       contracts.consensusProfile,
     ),
     "Failed to build atomic real protocol initialization transaction",
+    {
+      txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+      outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+    },
+    plan,
   );
   yield* Effect.logInfo(
     `Atomic real protocol initialization submitted: txHash=${txHash}`,

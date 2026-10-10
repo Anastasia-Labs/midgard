@@ -5,18 +5,60 @@ node scripts/contrib.mjs prepare --package midgard-node --plan
 node scripts/contrib.mjs prepare --package midgard-node --execute
 node scripts/contrib.mjs test --package midgard-node --file tests/validation-worker-pool.test.ts
 node scripts/contrib.mjs test --package midgard-node --file tests/database.test.ts --seed 42
+node scripts/contrib.mjs test --package midgard-watcher --maxWorkers 2
+node scripts/contrib.mjs test --package midgard-node --related demo/midgard-core/src/canonical-json.ts
 node scripts/contrib.mjs build --package midgard-sdk
 node scripts/contrib.mjs native --package midgard-node
 node scripts/contrib.mjs boundary --package midgard-core
 ```
 
-File selectors are package-relative explicit test paths. The runner resolves
-that package's Vitest, supplies emulator mode for node/node-tools and test mode
-for other packages, derives the package's pretest
-builds, requires the selected blueprint stamp and local test Postgres where
-applicable, and assigns an invocation-specific disposable database family.
-Both file and test ordering use the recorded seed. A name selector records
-filtered assertions separately from skipped selected assertions.
+`contrib test` is how suites run, one file or a whole package. It runs the
+package's own `test` script, the command CI runs: the environment that script
+sets (`NODE_ENV=emulator` for node and node-tools, `NODE_ENV=test` where it
+sets none), its Vitest flags and, for a whole-package run without `--name`, its
+plain-Node preludes (`scripts/contrib/vitest-command.mjs`). A script flag the
+runner does not understand is refused, not dropped. The caller may add only
+Vitest's `--maxWorkers N`, `--exclude GLOB` (repeatable) and
+`--disableConsoleIntercept`, spelled as Vitest spells them.
+
+`--file` takes package-relative test paths; without one, the run is the whole
+package. Before running, `vitest list` collects the files with the same
+configuration and flags: a named file the config or an `--exclude` drops, or a
+filter that also selects other files, is refused, and the receipt then
+requires the report to cover exactly those files. The runner derives the
+package's pretest builds, makes the blueprint ready where the package reads it
+(copied from a checkout with identical inputs and profile, else built with
+`deployment:build`), requires the local test Postgres where the package's
+tests read it, and assigns an invocation-specific disposable database family,
+dropped when the run ends. Both file and test ordering use the recorded seed.
+A name selector records filtered assertions separately from skipped selected
+assertions.
+
+`--related PATH` (repeatable, exclusive with `--file`) runs the test files a
+set of changed files reaches (`scripts/contrib/reached.mjs`). A child process
+asks the package's own Vitest for its import graph from source, rooted at every
+test, setup file and script of the package and every script outside the
+packages, so edges into other packages, worker entries and spawned scripts are
+graphed; Vitest's own `related` misses the last two, and the workspace bundles
+hide the first. On top of imports, a module reaches a file it names in a
+string literal (a fixture, a worker entry, a JSON input), the files under a
+directory it lists, and a package's `dist` when a built input of its closure
+changed. A `.ak` change also reaches every reader of
+`onchain/aiken/plutus.json`. Whatever cannot be decided widens: a module the
+probe cannot analyse always runs, a data file nothing names, a manifest, a
+lockfile, a Vitest or TypeScript configuration or the shared test harness runs
+the whole package, and so does a change reaching a package whose plain-Node
+preludes are not graphed. A failed probe runs the whole package. Nothing
+reached prints `no test reached; nothing to run` and exits 0 with a
+`midgard-contrib-reach/v1` result; otherwise the receipt carries `reach` (the
+changed files, `whole`, the reached files and why). A file named only through
+a computed path with no part of its name spelled is the one edge it cannot
+see.
+
+The terminal gets a short verdict on stderr (counts, then each failed test or
+file that failed to load with its first message line, the log and the receipt)
+and a compact JSON summary on stdout; `--output FILE` keeps the full receipt,
+and the run directory holds the logs and Vitest's JSON report.
 
 Place watcher test checkouts on the project filesystem outside `/tmp`: its
 funding recovery suites exercise the production guard against temporary durable
@@ -27,6 +69,35 @@ whose entire execution stays inside the source resolver; it cannot establish
 compiled-worker behavior. A zero-test selection, missing/inconsistent report,
 setup error, changed input or changed protected artifact fails. Selected skips
 or todos produce exit 3, rather than a complete pass.
+
+## Mutation checks
+
+```sh
+node scripts/contrib.mjs mutate --target demo/midgard-core/src/da-request-deadline.ts \
+  --from '}, timeoutMs);' --to '}, timeoutMs * 1000);' --expect 'deadline'
+node scripts/contrib.mjs mutate restore
+```
+
+`contrib mutate` replaces the one occurrence of `--from` with `--to` (taken
+verbatim; `--to ''` deletes) in a TypeScript or JavaScript file of a workspace
+package, runs `contrib test` with the mutant in place, and puts the file back.
+By default the run is the tests in the file's package that reach it
+(`--related`); `--package` and `--file` name others. It refuses (exit 2) a
+replacement that matches no text or more than one, a mutant that does not
+parse, and one that changes only comments, types or layout, since TypeScript's
+emit is the same and the mutant would look like it survived. Exit 0 means a
+test killed it (with `--expect REGEX`, a failure whose file, name or message
+matches), 1 that it survived or no test reached it, 3 that the run cannot tell
+(no test ran, or the mutant does not build). The original is journaled under
+the checkout's git directory before the mutant is written, put back in
+`finally` and on SIGINT, SIGTERM and SIGHUP, and verified by hash; a dist the
+run rebuilt from the mutant is rebuilt. A process killed outright leaves the
+journal, and every later `contrib mutate` refuses until `contrib mutate
+restore` puts the file back. Mutate only in a worktree no other session edits:
+the mutant is in the tree while the tests run. The receipt is a
+`causal-guard-mutant` proof.
+
+## Builds
 
 Package `build` scripts now enter the same guard. The original commands live
 under `build:contrib-raw` as the guard's implementation. The three Dockerfiles
@@ -135,13 +206,15 @@ the docs site pins pnpm 10; an ambient executable cannot select their version.
 Corepack must be available. Source folders named `build`, `target` or `dist`
 remain inputs; generated outputs are excluded only at their owning project.
 
-Guarded invocations hold an exclusive workspace resource while consuming or
-publishing compiled artifacts. Build steps also enter a host-wide memory-heavy
-queue. Nested guarded commands inherit ownership only when their token and
-Linux process ancestry match. This serializes guarded consumers in one
-checkout. Raw compiler/test commands and external editors can bypass the
-lease; the final digest check catches resulting changes. It does not freeze
-external processes or make mutable dist paths immutable.
+Guarded invocations hold an exclusive workspace resource while they write
+compiled artifacts (dist, native outputs, the blueprint). `contrib test` holds
+it only for that preparation and releases it before the suites start, so test
+runs in one checkout proceed side by side. Build steps also enter a host-wide
+memory-heavy queue. Nested guarded commands inherit ownership only when their
+token and Linux process ancestry match. A build, blueprint copy, raw compiler
+or editor that changes a prerequisite under a running suite is caught by the
+final digest check, which fails the receipt. It does not freeze external
+processes or make mutable dist paths immutable.
 
 Run `node scripts/contrib/enroll-builds.mjs --write` after adding a package
 build recipe. CI checks enrollment. Do not invoke a raw recipe as contributor

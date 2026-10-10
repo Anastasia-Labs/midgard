@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import type { SqlClient } from "@effect/sql";
 import {
   calculateMinLovelaceFromUTxO,
   Data,
@@ -7,28 +8,23 @@ import {
 import { Effect } from "effect";
 
 import { committeeSignerIndex, daLocalSigners } from "../da/local-signers.js";
+import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import { outRefLabel } from "../tx-context.js";
 import { type OperatorDaConfig } from "./da-attestation.fetch-da-attestation-reference-scripts.js";
 
+/** The landed queue's blocks without a DA attestation (P1, never L1). */
 export const fetchUnattestedHeaders = (
-  lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   headerHash?: string,
 ): Effect.Effect<
   readonly SDK.DaAttestationStateQueueTarget[],
-  | SDK.DataCoercionError
-  | SDK.HashingError
-  | SDK.LinkedListError
-  | SDK.LucidError
-  | SDK.StateQueueError
+  SDK.DataCoercionError | SDK.HashingError | SDK.StateQueueError,
+  SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
-    const stateQueueUtxos = yield* SDK.fetchSortedStateQueueUTxOsProgram(
-      lucid,
-      {
-        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-        stateQueuePolicyId: contracts.stateQueue.policyId,
-      },
+    const stateQueueUtxos = yield* landedStateQueueUTxOs(
+      contracts.stateQueue,
+      "DA attestation",
     );
     const matches: SDK.DaAttestationStateQueueTarget[] = [];
     for (const stateQueueUtxo of stateQueueUtxos) {

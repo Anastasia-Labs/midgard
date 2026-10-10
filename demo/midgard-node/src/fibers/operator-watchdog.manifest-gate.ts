@@ -1,6 +1,6 @@
 import { Cause, Effect, Exit, Ref } from "effect";
 
-import { errorMessage } from "../commands/cli-runtime.js";
+import { errorMessage } from "../commands/cli-options.js";
 import type { Globals } from "../services/globals.globals.js";
 import {
   clearLivenessIncident,

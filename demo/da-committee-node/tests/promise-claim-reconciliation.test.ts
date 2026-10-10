@@ -6,11 +6,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { availabilityResponderOperations } from "../src/availability/factory.js";
 import { committeeClaimReconciliation } from "../src/availability/promise-claim-reconciliation.js";
+import type { CommitteeAvailabilityReads } from "../src/l1/follower/availability-reads.js";
 import {
   dirs,
   journals,
   scene,
 } from "./helpers/availability-sdk-read-scope.js";
+import { followerBoundary } from "./helpers/follower-boundary.js";
 
 afterEach(() => {
   journals.splice(0).forEach((journal) => journal.close());
@@ -31,33 +33,43 @@ const fixture = () => {
   const lease = s.journal.acquire(s.context.actor, "setup", Date.now(), 1000);
   s.journal.persist(lease, intent, Date.now());
   s.journal.release(lease);
-  const point = {
-    network: "Custom",
-    slot: 100,
-    blockHash: "ab".repeat(32),
-    providerSource: "fixture",
-    observedAt: "fixture",
-  };
+  const blockHash = "ab".repeat(32);
   const boundary = {
-    pointId: `${point.slot}:${point.blockHash}`,
+    pointId: `100:${blockHash}`,
     blockNo: 100,
+    generation: 0,
   };
   const controls = {
     canonical: true,
-    rollbackGeneration: 0,
-    sequence: 1,
-    onCursor: async () => {},
+    generation: 0,
+    onFollowerRead: async () => {},
     onBoundary: async () => {},
     runtimeIdle: () => {},
     openedScopes: 0,
   };
-  const currentCursor = async () => {
-    await controls.onCursor();
-    return {
-      sequence: controls.sequence,
-      rollbackGeneration: controls.rollbackGeneration,
-      point,
-    };
+  const reads: CommitteeAvailabilityReads = {
+    readBoundary: async () => {
+      await controls.onFollowerRead();
+      return followerBoundary(
+        { slot: 100, blockHash, blockNo: 100 },
+        controls.generation,
+      );
+    },
+    viewValid: async (view) => view.generation === controls.generation,
+    canonicalPoint: async () => null,
+    submissionPoint: async () => null,
+    landingPoint: async () => null,
+    failedLanding: async () => undefined,
+    intentPins: { add: async () => {}, bind: () => {} },
+    foreignSpend: {
+      fetchSpend: async () => undefined,
+      fetchAncestor: async () => {
+        throw new Error("No spend");
+      },
+      readTransaction: async () => {
+        throw new Error("No spend");
+      },
+    },
   };
   const operations = availabilityResponderOperations({
     lucid: {
@@ -76,21 +88,7 @@ const fixture = () => {
           : { status: "not_found", txHash },
       utxosByOutRef: async () => [],
     } as unknown as LucidEvolution,
-    readers: {
-      currentPoint: async () => point,
-      currentCursor,
-      tipBlockNo: async () => 100,
-      resolveInclusion: async () => ({}),
-      foreignSpend: {
-        fetchSpend: async () => undefined,
-        fetchAncestor: async () => {
-          throw new Error("No spend");
-        },
-        readTransaction: async () => {
-          throw new Error("No spend");
-        },
-      },
-    },
+    reads,
     assertSourceHealthy: async () => {},
     context: s.context,
   });
@@ -106,7 +104,6 @@ const fixture = () => {
       await controls.onBoundary();
       return operations.readBoundary(scope);
     },
-    currentCursor,
     reconcile: operations.reconcile,
     assertRuntimeIdle: () => controls.runtimeIdle(),
   });
@@ -175,10 +172,10 @@ describe("exact committee retained-claim reconciliation receipts", () => {
     expect(f.journal.get(f.intent.id)?.intent).toEqual(f.intent);
   });
 
-  it("refuses a lease acquired during the last post-reconciliation cursor await", async () => {
+  it("refuses a lease acquired during the last post-reconciliation follower read", async () => {
     const f = fixture();
     let reads = 0;
-    f.controls.onCursor = async () => {
+    f.controls.onFollowerRead = async () => {
       if (
         f.journal.get(f.intent.id)?.state === "confirmed" &&
         f.journal.actorSnapshot(f.context.actor, f.context.deploymentIdentity)
@@ -201,7 +198,7 @@ describe("exact committee retained-claim reconciliation receipts", () => {
   it("rejects a same-count actor ownership change during its last source await", async () => {
     const f = fixture();
     let changed = false;
-    f.controls.onCursor = async () => {
+    f.controls.onFollowerRead = async () => {
       if (
         !changed &&
         f.journal.get(f.intent.id)?.state === "confirmed" &&
@@ -227,6 +224,29 @@ describe("exact committee retained-claim reconciliation receipts", () => {
     expect(f.journal.reservedOutRefs(f.context.actor)).toHaveLength(1);
     await expect(
       f.guard.assertCompatibleClaimsCurrent(f.boundary),
+    ).rejects.toThrow("lack a current");
+  });
+
+  it("binds the receipt to the follower view's generation, so a rollback during the pass refuses it", async () => {
+    const f = fixture();
+    expect(await f.guard.reconcile()).toBe("ready");
+    await expect(
+      f.guard.assertCompatibleClaimsCurrent({ ...f.boundary, generation: 1 }),
+    ).rejects.toThrow("lack a current");
+    let guardReads = 0;
+    f.controls.onBoundary = async () => {
+      // The pass's closing boundary read lands after a rollback that
+      // returned to the same point under a new generation.
+      if (++guardReads === 2) f.controls.generation = 1;
+    };
+    await expect(f.guard.reconcile()).rejects.toThrow(
+      /rolled back|changed before/u,
+    );
+    await expect(
+      f.guard.assertCompatibleClaimsCurrent(f.boundary),
+    ).rejects.toThrow("lack a current");
+    await expect(
+      f.guard.assertCompatibleClaimsCurrent({ ...f.boundary, generation: 1 }),
     ).rejects.toThrow("lack a current");
   });
 

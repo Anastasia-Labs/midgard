@@ -59,28 +59,11 @@ export const writeWatcherRuntimeProcessConfig = async (
             genesisConfigPath: "/etc/cardano/shelley-genesis.json",
             genesisIdentitySha256: h32(0x66),
           },
-          queryServices: [
-            {
-              kind: "ogmios",
-              identity: "local-ogmios",
-              endpoint: "ws://127.0.0.1:1337",
-            },
-            {
-              kind: "kupo",
-              identity: "local-kupo",
-              endpoint: "http://127.0.0.1:1442",
-            },
-          ],
         },
         requestTimeoutMs: 10_000,
         maxConcurrency: 4,
         finality: {
           depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-          rollback: {
-            beforeFinality: "rewind",
-            afterFinality: "quarantine",
-            maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-          },
         },
       },
       da: {
@@ -113,10 +96,8 @@ export const writeWatcherRuntimeProcessConfig = async (
     deploymentAuthorityPath: join(directory, "deployment-authority.json"),
     ruleBundlePath: join(directory, "rule-bundle.json"),
     fundingProfileBundlePath: join(directory, "funding-profiles.json"),
-    nativeChainSyncBinaryPath: "/usr/local/bin/midgard-chain-sync",
-    trustedHeadAuthorityEndpoint: "http://127.0.0.1:43123",
+    l1NodeTransportBinaryPath: "/usr/local/bin/midgard-l1-node-transport",
     operationsEndpoint: "http://127.0.0.1:43124",
-    httpBearerSecretSource: environment("MIDGARD_WATCHER_TRUSTED_HEAD_BEARER"),
     workflowJournalDirectory: join(directory, "workflows"),
     availability: {
       keySource: environment("WATCHER_AVAILABILITY_KEY"),
@@ -127,22 +108,6 @@ export const writeWatcherRuntimeProcessConfig = async (
       manifestPath: join(directory, "deployment-manifest.json"),
       blueprintPath: join(directory, "plutus.json"),
       deploymentInfoPath: join(directory, "contract-deployment-info.json"),
-      historicalNativeScriptHistory: {
-        sourceMode: "external_provider_quorum",
-        consistencyPolicy: "exact_bytes_all_providers_v1",
-        providers: [
-          {
-            sourceId: "history-a",
-            operatorIdentitySha256: h32(0xa1),
-            authorityEndpoint: "https://history-a.example.test",
-          },
-          {
-            sourceId: "history-b",
-            operatorIdentitySha256: h32(0xb2),
-            authorityEndpoint: "https://history-b.example.test",
-          },
-        ],
-      },
     },
   };
   const config = parseWatcherProcessConfig(configInput);

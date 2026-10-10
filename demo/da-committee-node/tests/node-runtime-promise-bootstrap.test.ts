@@ -1,15 +1,9 @@
-import { join } from "node:path";
-
 import { identityFromSeedHex } from "@al-ft/midgard-core/da-libp2p-identity";
 import { describe, expect, it, vi } from "vitest";
 
 import type { availabilityResponderFromConfig } from "../src/availability/factory.js";
 import { AvailabilityResponder } from "../src/availability/responder.js";
-import type { DaAttestationChainReader } from "../src/l1/da-attestation-reader.js";
-import { FileChainSyncConsumerCursorStore } from "../src/l1/provider.file-chain-sync-consumer-cursor-store.js";
-import { FileChainSyncCursorStore } from "../src/l1/provider.file-chain-sync-cursor-store.js";
-import { LocalNodeChainAuthority } from "../src/l1/provider.local-node-chain-authority.js";
-import { LocalNodeStateQueueProvider } from "../src/l1/provider.local-node-state-queue-provider.js";
+import type { CommitteeL1Readiness } from "../src/l1/follower/l1-follower.js";
 import { openCommitteeNodeRuntime } from "../src/node-runtime.js";
 import { loadDaSigner } from "../src/signer.js";
 import type { CommitteeStore } from "../src/store.js";
@@ -17,8 +11,8 @@ import { promiseAdmissionFixture } from "./helpers/promise-admission.js";
 
 const seam = vi.hoisted(() => ({
   openStore: vi.fn(),
-  provider: vi.fn(),
-  chainReader: vi.fn(),
+  follower: vi.fn(),
+  followerStopped: vi.fn(),
   factory: vi.fn(),
   started: vi.fn(),
   stopped: vi.fn(),
@@ -29,12 +23,9 @@ const seam = vi.hoisted(() => ({
 vi.mock("../src/store/factory.js", () => ({
   openCommitteeStore: seam.openStore,
 }));
-vi.mock("../src/l1/provider.js", async (original) => ({
-  ...(await original<typeof import("../src/l1/provider.js")>()),
-  providerFromConfig: seam.provider,
-}));
-vi.mock("../src/l1/da-attestation-reader.js", () => ({
-  daAttestationReaderFromConfig: seam.chainReader,
+vi.mock("../src/l1/follower/l1-follower.js", async (original) => ({
+  ...(await original<typeof import("../src/l1/follower/l1-follower.js")>()),
+  startCommitteeL1Follower: seam.follower,
 }));
 vi.mock("../src/availability/factory.js", () => ({
   availabilityResponderFromConfig: seam.factory,
@@ -76,68 +67,20 @@ const fixture = async () => {
   const f = await promiseAdmissionFixture();
   seam.payloads.mockImplementation(f.payloadSource.fetchPayloadCandidates);
   const identity = await identityFromSeedHex("01".repeat(32));
-  const point = {
-    network: f.config.network,
-    slot: 0,
-    blockHash: "00".repeat(32),
-    providerSource: "chain-sync:fixture",
-    observedAt: new Date(0).toISOString(),
-  };
-  const cursorStore = new FileChainSyncCursorStore(
-    join(f.dir, "chain-sync.json"),
-    "11".repeat(32),
-  );
-  const consumed = new FileChainSyncConsumerCursorStore(
-    join(f.dir, "consumer.json"),
-    "11".repeat(32),
-  );
-  const authority = new LocalNodeChainAuthority(
-    "fixture",
-    f.config.network,
-    {
-      next: async () => ({
-        event: { direction: "roll_forward", point },
-        tip: point,
-      }),
-    },
-    cursorStore,
-  );
-  const provider = new LocalNodeStateQueueProvider(
-    authority,
-    [
-      {
-        ...f.provider,
-        currentChainPoint: async () => point,
-        fetchStateQueueNodes: f.provider.fetchStateQueueNodes,
-        fetchStateQueueSnapshot: f.provider.fetchStateQueueSnapshot,
-        fetchStateQueueReplayCheckpoints: async (anchor, current) => {
-          expect(anchor).toEqual(current);
-          return [];
-        },
-      },
-    ],
-    ["fixture"],
-    consumed,
-  );
   seam.openStore.mockResolvedValue(f.store);
-  seam.provider.mockResolvedValue(provider);
-  const fetchDaParams: DaAttestationChainReader["fetchDaParams"] =
-    async () => ({
-      outRef: "00".repeat(32) + "#0",
-      ownerCount: 1,
-      updateThreshold: 1,
-      rawDatum: {
-        committee: f.config.daParams.committeeHex,
-        committee_signers_hash: f.config.daParams.committeeSignersHash,
-        da_threshold: 1n,
-        owners: [],
-        update_threshold: 1n,
-      },
-      committeeHex: f.config.daParams.committeeHex,
-      committeeSignersHash: f.config.daParams.committeeSignersHash,
-      threshold: f.config.daParams.threshold,
-    });
-  seam.chainReader.mockResolvedValue({ fetchDaParams });
+  seam.followerStopped.mockResolvedValue(undefined);
+  // The follower's facts hold no DA params output, so the runtime gets no
+  // DA chain reader: a null follower store.
+  const following: { reasons: CommitteeL1Readiness[] } = { reasons: [] };
+  seam.follower.mockResolvedValue({
+    source: { ...f.provider, readiness: () => following.reasons },
+    store: null,
+    provider: null,
+    lucid: async () => {
+      throw new Error("no Lucid in this fixture");
+    },
+    stop: seam.followerStopped,
+  });
   const adoption = {
     policyArtifactPath: "/selected",
     trustedPolicyDigest: "00".repeat(32),
@@ -164,18 +107,12 @@ const fixture = async () => {
       ],
     },
     availabilityPromiseAdoption: adoption,
-    cardanoL1Source: {
-      sourceMode: "local_node" as const,
-      authorityNodeId: "fixture",
-      authorityDigest: "11".repeat(32),
-      networkMagic: 2,
-    },
+    cardanoL1Source: { networkMagic: 2 },
   };
   const { DaPeerRegistry } = await import("../src/da/libp2p/DaPeerRegistry.js");
   return {
     ...f,
-    provider,
-    consumed,
+    following,
     local: {
       config,
       signer: await loadDaSigner("hex:" + "00".repeat(31) + "01"),
@@ -189,13 +126,11 @@ const fixture = async () => {
 };
 
 describe("actual node unsigned promise enrollment", () => {
-  it("consumes the real cursor without signing or financial actions, then enables the same service only after owned compaction", async () => {
+  it("scans once the follower is ready, without signing or financial actions, then enables the same service only after owned compaction", async () => {
     const f = await fixture();
-    expect(await f.consumed.load()).toBeUndefined();
     let readPins: (() => readonly string[]) | undefined;
     const compact = vi.fn(async () => {
       expect(readPins).toBeDefined();
-      expect(await f.consumed.load()).toBeDefined();
       expect(await f.store.listDaSignatures()).toEqual([]);
       expect(seam.published).not.toHaveBeenCalled();
       expect(seam.reconciled).not.toHaveBeenCalled();
@@ -205,9 +140,6 @@ describe("actual node unsigned promise enrollment", () => {
     seam.factory.mockImplementation(
       async (_config: unknown, store: CommitteeStore) => {
         expect(store).toBe(f.store);
-        expect(await f.consumed.load()).toEqual(
-          await f.provider.currentChainSyncCursor(),
-        );
         expect(await store.listDaSignatures()).toEqual([]);
         return {
           responder: new AvailabilityResponder({
@@ -243,6 +175,7 @@ describe("actual node unsigned promise enrollment", () => {
     } finally {
       await runtime.close();
     }
+    expect(seam.followerStopped).toHaveBeenCalledOnce();
   });
 
   it("does not enable signing or start external loops when factory enrollment fails after the genuine scan", async () => {
@@ -253,26 +186,65 @@ describe("actual node unsigned promise enrollment", () => {
     await expect(openCommitteeNodeRuntime(f.local, {})).rejects.toThrow(
       "controlled factory evidence unavailable",
     );
-    expect(await f.consumed.load()).toBeDefined();
+    expect(seam.followerStopped).toHaveBeenCalledOnce();
     expect(seam.started).not.toHaveBeenCalled();
     expect(seam.published).not.toHaveBeenCalled();
     expect(seam.reconciled).not.toHaveBeenCalled();
   });
-  it("preserves quarantine when existing decisions lack the durable consumed cursor", async () => {
+
+  it("holds the bootstrap scan on a follower reason no wait clears, reporting it with the process up, then proceeds once it clears", async () => {
     const f = await fixture();
-    const normal = f.service(f.store, false);
-    await normal.initialize();
-    expect(await normal.tick()).toMatchObject({ signedHeaders: 2, errors: [] });
-    expect(await f.consumed.load()).toBeUndefined();
-    await expect(openCommitteeNodeRuntime(f.local, {})).rejects.toThrow();
+    f.following.reasons = [
+      { reason: "rollback_beyond_k", detail: "rolled back 7 blocks" },
+    ];
+    seam.factory.mockImplementation(
+      async (_config: unknown, store: CommitteeStore) => {
+        expect(f.following.reasons).toEqual([]);
+        return {
+          responder: new AvailabilityResponder({
+            deploymentFingerprint: f.config.deploymentFingerprint,
+            deploymentIdentity: "fixture",
+            store,
+            reconcile: async () => "ready",
+            discover: async () => [],
+            execute: async () => "pending",
+          }),
+          promiseAdmissionSource: f.source,
+          close: () => {},
+        } satisfies Awaited<ReturnType<typeof availabilityResponderFromConfig>>;
+      },
+    );
+    const held: string[] = [];
+    const runtime = await openCommitteeNodeRuntime(f.local, {}, (reasons) => {
+      held.push(reasons.map(({ reason }) => reason).join(","));
+      expect(seam.factory).not.toHaveBeenCalled();
+      expect(seam.published).not.toHaveBeenCalled();
+      // An operator repaired the follower.
+      f.following.reasons = [];
+    });
+    try {
+      expect(held).toEqual(["rollback_beyond_k"]);
+      expect(seam.factory).toHaveBeenCalledOnce();
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("stops only when the caller's onL1Held throws (a one-shot run), stopping the follower and signing nothing", async () => {
+    const f = await fixture();
+    f.following.reasons = [
+      { reason: "rollback_beyond_k", detail: "rolled back 7 blocks" },
+    ];
+    await expect(
+      openCommitteeNodeRuntime(f.local, {}, (reasons) => {
+        throw new Error(
+          reasons.map(({ reason, detail }) => `${reason}: ${detail}`).join(),
+        );
+      }),
+    ).rejects.toThrow("rollback_beyond_k: rolled back 7 blocks");
+    expect(seam.followerStopped).toHaveBeenCalledOnce();
     expect(seam.factory).not.toHaveBeenCalled();
     expect(seam.started).not.toHaveBeenCalled();
-    expect(seam.reconciled).not.toHaveBeenCalled();
-    expect(await f.consumed.load()).toBeUndefined();
-    const reopened = await f.open();
-    expect(await reopened.getL1SourceState()).toMatchObject({
-      status: "quarantined",
-    });
-    expect(await reopened.listDaSignatures()).toHaveLength(2);
+    expect(seam.published).not.toHaveBeenCalled();
   });
 });

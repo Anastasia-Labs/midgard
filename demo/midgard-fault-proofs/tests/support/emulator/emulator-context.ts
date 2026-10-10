@@ -5,7 +5,6 @@ import {
   phasMembershipWithdrawalScriptFromBlueprint,
 } from "@al-ft/midgard-sdk";
 import {
-  Emulator,
   type EmulatorAccount,
   generateEmulatorAccount,
   getAddressDetails,
@@ -18,7 +17,6 @@ import { expect } from "vitest";
 
 import { resolveProverSigner } from "../../../src/index.js";
 import { type Blueprint, getCompiledScript, network } from "./blueprints.js";
-import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 
 export const alignUnixTimeToEmulatorSlotBoundary = (
   lucid: Awaited<ReturnType<typeof Lucid>>,
@@ -222,28 +220,6 @@ export const seedDualAddressPartyAccounts = ({
       assets: fees,
     })),
   ];
-};
-
-/**
- * Two funded emulator wallets and their Lucid instances: the funder that
- * publishes the fraudulent block and the prover that drives the correction
- * path.
- */
-export const newEmulatorParty = async () => {
-  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const prover = fundedProverEmulatorAccount(20_000_000_000n);
-  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
-  const funderLucid = await Lucid(emulator, "Custom");
-  const proverLucid = await Lucid(emulator, "Custom");
-  funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-  const proverSigner = resolveProverSigner({
-    network,
-    walletSeedPhrase: prover.seedPhrase,
-  });
-  // Selected through the signer so the prover Lucid instance and every
-  // `signer.selectWallet(lucid)` call site address the same funded wallet.
-  proverSigner.selectWallet(proverLucid);
-  return { emulator, funderLucid, proverLucid, proverSigner };
 };
 
 export const funderPaymentKeyHash = async (

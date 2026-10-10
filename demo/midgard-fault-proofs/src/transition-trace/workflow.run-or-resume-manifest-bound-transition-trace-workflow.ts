@@ -3,6 +3,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
+  completeCanonicalReplayPredecessorEvidence,
   createTransitionTraceCompleteCanonicalReplayFromRetainedHistory,
   requireCompleteCanonicalReplayDecision,
 } from "../workflow/complete-replay.js";
@@ -10,7 +11,6 @@ import {
   defineFamily,
   type FamilyReferenceScripts,
 } from "../workflow/family-definition.js";
-import { resolveHistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
@@ -72,12 +72,11 @@ export const TRANSITION_TRACE_FAMILY_DEFINITION = defineFamily<
   replayer: (context) =>
     createTransitionTraceCompleteCanonicalReplayFromRetainedHistory(
       () => {
-        const corpus = context.runtime.cell.corpus;
-        if (corpus === undefined)
+        if (context.runtime.cell.evidence === undefined)
           throw new Error(
             "Transition replay requires freshly derived retained history",
           );
-        return corpus;
+        return context.runtime.cell.predecessor;
       },
       () => {
         const events = context.runtime.cell.l1Events;
@@ -180,25 +179,25 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
     sources,
     minimumConfirmationDepth: 1,
   });
-  const corpus = await resolveHistoricalNativeScriptCorpus({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    checkpointStore: workflow.config.historicalNativeScriptCheckpointStore,
-    historySource: workflow.config.historicalNativeScriptHistorySource,
-    currentEvidence: evidence,
-    sources,
+  const predecessor = completeCanonicalReplayPredecessorEvidence({
+    evidence,
+    context: workflow.config.replayContext,
   });
   if (
-    cell.corpus !== undefined &&
-    cell.corpus.corpusDigest !== corpus.corpusDigest
+    cell.evidence !== undefined &&
+    cell.predecessor?.payloadEnvelopeSha256 !==
+      predecessor?.payloadEnvelopeSha256
   )
-    throw new Error("Transition authenticated history changed across resume");
+    throw new Error(
+      "Transition authenticated predecessor changed across resume",
+    );
   const l1Events = await captureTransitionTraceL1Events({
     binding: workflow.binding,
     authority: workflow.l1.rawL1!,
   });
   const replay = await replayTransitionTraceFromRetainedHistory({
     evidence,
-    corpus,
+    predecessor,
     l1Events,
   });
   const raw = requireTransitionTraceL1Events(l1Events);
@@ -226,7 +225,7 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
       ...(depositOpening === null ? {} : { depositOpening }),
       artifact: createTransitionTraceWorkflowArtifact({
         evidence,
-        corpus,
+        predecessor,
         proof: bound.proof,
         detectionId,
         l1Snapshot: replay.l1Snapshot,
@@ -240,7 +239,8 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
     });
   }
   cell.evidence = evidence;
-  cell.corpus = corpus;
+  if (predecessor === undefined) delete cell.predecessor;
+  else cell.predecessor = predecessor;
   cell.l1Events = l1Events;
   cell.prepared = prepared;
   const replayer = workflow.replayer;

@@ -130,7 +130,7 @@ describe("production input-set-uniqueness forced authority", () => {
       | "signer"
       | "referenceScripts"
       | "replayContext"
-      | "source"
+      | "l1Source"
       | "stateQueueMutationLeaseCoordinator"
     >();
     expect(

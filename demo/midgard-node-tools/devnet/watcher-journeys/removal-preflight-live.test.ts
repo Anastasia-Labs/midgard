@@ -12,6 +12,7 @@ import { expect, it } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyBlock } from "./fixture.js";
+import { journeyL1Access } from "./journey-lucid.js";
 import { loadJourneyContext } from "./live-context.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
@@ -113,6 +114,8 @@ it.skipIf(runDirectory === undefined || !selected)(
         },
       },
     });
+    // The harness access over this provider is this Lucid's clock.
+    journeyL1Access(context.provider, context);
     signer.selectWallet(lucid);
     await expect(
       submitRemoveFraudulentBlock({

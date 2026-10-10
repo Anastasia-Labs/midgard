@@ -25,6 +25,7 @@ import type {
   ValidationTraceDisputeSemanticGroup,
 } from "./workflow-chain-state.js";
 import { type createValidationTraceFieldCarriageProvider } from "./workflow-field-carriage.js";
+import { type ValidationStagedPreparationSource } from "./workflow-staged-route-preparation.js";
 
 /**
  * Ruling R6 ("installed" semantics for the sole interactive family): from
@@ -34,9 +35,13 @@ import { type createValidationTraceFieldCarriageProvider } from "./workflow-fiel
  * complete. `planValidationTraceDisputeMove` is total over the cursor type,
  * so the runner can always force progress: detect → initiate → play every
  * honest response → claim timeout when the operator stalls → award →
- * remove. An interrupted multi-transaction semantic route cancels the thread
- * (a legal, always-available single transaction) and restarts from init —
- * progress is never blocked on lost local state, and the cursor is re-derived
+ * remove. A CEK core or context route, and the split ScriptSources
+ * redeemer-item route, advance one stage per move from the checkpoint the
+ * previous stage left, bound to the preparation the entry move journaled.
+ * Any other interrupted multi-transaction semantic route, or a staged one
+ * without that journaled preparation, cancels the thread (a legal,
+ * always-available single transaction) and restarts from init — progress is
+ * never blocked on lost local state, and the cursor is re-derived
  * exclusively from chain state on every invocation.
  */
 export type ValidationTraceDisputeActuatorAction =
@@ -57,6 +62,12 @@ export type ValidationTraceDisputeActuatorAction =
       stage: "semantic_resolution";
       threadOutRef: string;
       scriptSourcesItemPreparedCbor?: string;
+      /**
+       * Continues a CEK core or context route from its live stage checkpoint:
+       * the semantic resolver's prepared-resolution datum the route's first
+       * move consumed.
+       */
+      cekPreparedResolutionCbor?: string;
     }>
   | Readonly<{
       stage: "cancel_semantic_route";
@@ -107,8 +118,30 @@ export type ValidationTraceDisputeRetainedRouteInput = Readonly<{
   transitionCborHex?: string;
   auxiliaryCborHex?: string;
   fieldCarriageBinding?: ValidationTraceDisputeFieldCarriageBinding;
+  /**
+   * The prepared-resolution datum the split ScriptSources redeemer-item
+   * route's entry stage consumed; every later stage resumes against it.
+   */
   scriptSourcesItemPreparedCbor?: string;
+  /**
+   * The prepared-resolution datum a CEK core or context route's first stage
+   * consumed at the semantic resolver; every later stage resumes against it.
+   */
+  cekPreparedResolutionCbor?: string;
 }>;
+
+/** Semantic groups whose stages the workflow advances one move at a time. */
+const RESUMABLE_CEK_GROUPS: ReadonlySet<ValidationTraceDisputeSemanticGroup> =
+  new Set(["cek_core_stage", "cek_context_stage", "cek_context_item_stage"]);
+/**
+ * The groups a split ScriptSources redeemer-item stage classifies as. Its
+ * normalizers, source authenticator and shared executors compile to the same
+ * addresses as the CEK context item chain's, which the address classifier
+ * registers first; only its envelope, settlement and extra executors are its
+ * own.
+ */
+const SCRIPT_SOURCES_ITEM_GROUPS: ReadonlySet<ValidationTraceDisputeSemanticGroup> =
+  new Set(["script_sources_item_stage", "cek_context_item_stage"]);
 
 export const planValidationTraceDisputeMove = ({
   stage,
@@ -211,13 +244,41 @@ export const planValidationTraceDisputeMove = ({
             threadOutRef: stage.threadOutRef,
           },
         };
-      // A staged multi-transaction route interrupted mid-flight is always
+      // Each CEK core and context stage reaches the pre-submit boundary, so
+      // the workflow submits one stage per move and resumes the next from
+      // the checkpoint it leaves, against the journaled preparation.
+      if (
+        RESUMABLE_CEK_GROUPS.has(stage.group) &&
+        retained?.cekPreparedResolutionCbor !== undefined
+      )
+        return {
+          kind: "act",
+          action: {
+            stage: "semantic_resolution",
+            threadOutRef: stage.threadOutRef,
+            cekPreparedResolutionCbor: retained.cekPreparedResolutionCbor,
+          },
+        };
+      // The split ScriptSources redeemer-item route reaches the boundary at
+      // every stage too, and resumes against the preparation its entry stage
+      // consumed.
+      if (
+        SCRIPT_SOURCES_ITEM_GROUPS.has(stage.group) &&
+        retained?.scriptSourcesItemPreparedCbor !== undefined
+      )
+        return {
+          kind: "act",
+          action: {
+            stage: "semantic_resolution",
+            threadOutRef: stage.threadOutRef,
+            scriptSourcesItemPreparedCbor:
+              retained.scriptSourcesItemPreparedCbor,
+          },
+        };
+      // Any other staged multi-transaction route interrupted mid-flight is
       // recoverable without local memory: cancellation is a single legal
       // transaction at every checkpoint (full journal discipline), after
       // which the cursor re-derives `not_started` and the dispute restarts.
-      // The retained-DA resume helpers remain operator tooling; their
-      // multi-transaction drivers predate the pre-submit boundary seam, so
-      // the durable workflow never routes through them.
       return {
         kind: "act",
         action: {
@@ -339,6 +400,8 @@ export type ValidationTraceDisputeActuatorConfig = Readonly<{
   resolved: ResolvedValidationTraceDisputeDeploymentContracts;
   references: ValidationTraceDisputeWorkflowReferences;
   operatorProofs: ValidationTraceDisputeOperatorProofSource;
+  /** Recomputes a staged route's preparation when the journal's is unusable. */
+  stagedPreparations: ValidationStagedPreparationSource;
   fieldCarriage?: ReturnType<typeof createValidationTraceFieldCarriageProvider>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;

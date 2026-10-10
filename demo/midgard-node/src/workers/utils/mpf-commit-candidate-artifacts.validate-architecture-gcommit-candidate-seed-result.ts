@@ -10,11 +10,13 @@ export const validateArchitectureGCommitCandidateSeedResult = ({
   expectedDatabaseName,
   expectedCorpusSliceSha256,
   expectedTransactionCount,
+  expectedConfirmedLedgerCount,
 }: {
   readonly value: unknown;
   readonly expectedDatabaseName: string;
   readonly expectedCorpusSliceSha256: string;
   readonly expectedTransactionCount: number;
+  readonly expectedConfirmedLedgerCount: number;
 }): ArchitectureGCommitCandidateSeedResult => {
   const result = exactKeysRecord(
     value,
@@ -27,6 +29,7 @@ export const validateArchitectureGCommitCandidateSeedResult = ({
       "fundingCount",
       "terminalLedgerCount",
       "deltaCount",
+      "confirmedLedgerCount",
     ],
   );
   const expectedCount = positiveSafeInteger(
@@ -51,6 +54,11 @@ export const validateArchitectureGCommitCandidateSeedResult = ({
       sha256Digest(expectedCorpusSliceSha256, "expectedCorpusSliceSha256") ||
     result.mempoolTxCount !== expectedCount ||
     result.deltaCount !== expectedCount ||
+    result.confirmedLedgerCount !==
+      positiveSafeInteger(
+        expectedConfirmedLedgerCount,
+        "expectedConfirmedLedgerCount",
+      ) ||
     result.fundingCount !== fundingCount ||
     result.terminalLedgerCount !== terminalLedgerCount
   ) {

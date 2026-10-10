@@ -18,11 +18,12 @@ import {
   DaLibp2pNode,
   DaPayloadSubmitAdmission,
 } from "da-committee-node/da/libp2p";
-import { JsonFileCommitteeStore } from "da-committee-node/store";
+import { PostgresCommitteeStore } from "da-committee-node/store/postgres";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
+import { postgresTestDatabases } from "../../da-committee-node/tests/helpers/postgres-database.js";
 import {
   closeDaLibp2pPublicationTransport,
   createDaLibp2pProducerTransport,
@@ -37,6 +38,7 @@ import {
   DaPayloadsDB,
 } from "../src/database/index.js";
 import { reconcileDaPublicationsOnce } from "../src/fibers/da-publication-reconciler.js";
+import { TEST_DATABASE_PREFIX } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const enabled = process.env.MIDGARD_RUN_DA_PHASE5_JOINED_E2E === "1";
@@ -92,11 +94,25 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       multiaddrs: ["/ip4/127.0.0.1/tcp/0/p2p/" + producerIdentity.peerId],
       roles: ["producer"],
     };
-    const stores = await Promise.all(
-      committeeSeeds.map((_, index) =>
-        JsonFileCommitteeStore.open(join(temp, "store-" + index.toString())),
-      ),
-    );
+    const databases = postgresTestDatabases(TEST_DATABASE_PREFIX);
+    const stores: PostgresCommitteeStore[] = [];
+    const closeStores = async () => {
+      try {
+        await Promise.all(stores.splice(0).map((store) => store.close()));
+      } finally {
+        await databases.dropAll();
+      }
+    };
+    try {
+      for (let index = 0; index < committeeSeeds.length; index += 1) {
+        stores.push(
+          await PostgresCommitteeStore.open((await databases.create()).url),
+        );
+      }
+    } catch (error) {
+      await closeStores();
+      throw error;
+    }
     const committeeNodes = committeeSeeds.map((seed, index) => {
       const config: Libp2pDaTransportConfig = {
         kind: "libp2p",
@@ -298,6 +314,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
         }
       }
       await rm(temp, { recursive: true, force: true });
+      await closeStores();
     }
   }, 60_000);
 });

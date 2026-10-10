@@ -77,7 +77,7 @@ describe("objective progress transport backoff", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("does not extend the authenticated deadline when observations arrive during retry", async () => {
+  it("holds the objective by name, never extending its authenticated deadline, when observations arrive during retry", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const root = await mkdtemp("/var/tmp/midgard-objective-deadline-");
     paths.push(root);
@@ -102,12 +102,32 @@ describe("objective progress transport backoff", () => {
       ...job,
       observationRevision: "newer",
     });
-    const stopped = expect(supervisor.done).rejects.toThrow(
-      "deadline is unsafe",
+    let settled = false;
+    void supervisor.done.then(
+      () => (settled = true),
+      () => (settled = true),
     );
     now += 1_000;
     await vi.advanceTimersByTimeAsync(1_000);
-    await stopped;
+    await waitFor(
+      () =>
+        supervisor.status().journalDecisionMissing.length === 1 &&
+        supervisor.status().activeJob === null,
+    );
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      journalDecisionMissing: [
+        {
+          kind: "objective",
+          category: "doubleSpend",
+          headerHash: job.headerHash,
+          detail: `doubleSpend/${job.headerHash}`,
+          readiness: "fault_proof_start_deadline_passed",
+        },
+      ],
+    });
+    expect(settled).toBe(false);
     expect(run).toHaveBeenCalledTimes(1);
     await supervisor.close();
   });

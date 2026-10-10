@@ -20,6 +20,10 @@ import {
 import * as Journal from "../database/eventHistorySubmissions.js";
 import { Database } from "../services/database.js";
 import {
+  IntentJournalWithoutFollower,
+  unjournaledSubmission,
+} from "../services/intent-journal.js";
+import {
   assertHistorySubmissionAttempt,
   decodeHistorySubmissionRequest,
   encodeHistorySubmissionRequest,
@@ -80,10 +84,7 @@ export const historyIntentOptionsData = (
 
 /** Exact-body transport shared by fresh submission and restart. Absence is
  * deliberately not a rejection: providers may lag or outputs may be spent. */
-export const historySubmissionTransport = (
-  lucid: LucidEvolution,
-  walletAddress: string,
-) => {
+export const historySubmissionTransport = (lucid: LucidEvolution) => {
   const observe = async (
     attempt: SDK.EventHistorySubmissionAttempt,
   ): Promise<SDK.EventHistorySubmissionOutcome> => {
@@ -115,13 +116,20 @@ export const historySubmissionTransport = (
       throw new Error("Wallet changed the history transaction body");
     try {
       await Effect.runPromise(
-        submitSignedTxWithRecovery(lucid, signed, attempt.txHash),
+        submitSignedTxWithRecovery(
+          lucid,
+          signed,
+          attempt.txHash,
+          unjournaledSubmission(
+            "no_follower",
+            `event_history:${attempt.txHash}`,
+          ),
+        ).pipe(Effect.provide(IntentJournalWithoutFollower)),
       );
       await Effect.runPromise(
         awaitSubmittedTransactionConfirmation(lucid, {
           txHash: attempt.txHash,
           signedTxCbor,
-          walletAddress,
         }),
       );
       return { kind: "Confirmed" };
@@ -364,7 +372,7 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
           }
           row = saved;
         };
-        const transport = historySubmissionTransport(lucid, walletAddress);
+        const transport = historySubmissionTransport(lucid);
         // A reserved input frees once its holder's transaction settles, which
         // it observes no faster than its confirmation poll, or once the
         // holder's attempt expires, so the SDK rebuilds at that cadence until

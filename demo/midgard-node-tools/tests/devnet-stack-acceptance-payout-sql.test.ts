@@ -55,20 +55,31 @@ beforeAll(async () => {
   if (process.env.MIDGARD_SKIP_DB_TESTS === "1") return;
   await maintenance.unsafe(`CREATE DATABASE "${database}"`);
   created = true;
-  await sql`CREATE TABLE authority_fixture (singleton boolean, deployment_identity bytea, generation bigint, state text, lease_until timestamptz)`;
-  await sql`INSERT INTO authority_fixture VALUES (true, decode(${deployment}, 'hex'), 9, 'ready', clock_timestamp() + interval '30 minutes')`;
+  await sql`CREATE TABLE gate_fixture (singleton boolean, applied_generation bigint, pending_reason text)`;
+  await sql`INSERT INTO gate_fixture VALUES (true, 9, NULL)`;
   await sql.unsafe(`CREATE FUNCTION assert_read_only() RETURNS boolean LANGUAGE plpgsql AS $$ BEGIN
     IF current_setting('default_transaction_read_only') <> 'on'
        OR current_setting('transaction_read_only') <> 'on'
        OR current_setting('statement_timeout') <> '5s' THEN RAISE EXCEPTION 'read flags refused'; END IF;
     RETURN true; END $$`);
-  await sql`CREATE VIEW event_history_authority AS SELECT * FROM authority_fixture WHERE assert_read_only()`;
+  await sql`CREATE VIEW node_follower_write_gate AS SELECT * FROM gate_fixture WHERE assert_read_only()`;
+  await sql`CREATE TABLE settlement_jobs (deployment_id text, kind text, event_id text, phase text)`;
   await sql`CREATE TABLE settlement_attempts (deployment_id text, kind text, event_id text,
     tx_hash text, phase text, signed_cbor text, required_outputs integer[], status text)`;
-  for (const row of collectorFixture().snapshot.attempts)
+  const { attempts } = collectorFixture().snapshot;
+  for (const event of new Set(attempts.map((row) => row.event_id)))
+    await sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
+    VALUES (${deployment}, 'withdrawal', ${event}, 'complete')`;
+  // A complete job's attempts are its receipts, final or not yet (their
+  // L1 outcome is the intent journal's); an expired one never is.
+  for (const [index, row] of attempts.entries())
     await sql`INSERT INTO settlement_attempts
     (deployment_id,kind,event_id,tx_hash,phase,signed_cbor,required_outputs,status)
-    VALUES (${deployment}, 'withdrawal', ${row.event_id}, ${row.tx_hash}, ${row.phase}, ${row.signed_cbor}, ${row.required_outputs}, 'confirmed')`;
+    VALUES (${deployment}, 'withdrawal', ${row.event_id}, ${row.tx_hash}, ${row.phase}, ${row.signed_cbor}, ${row.required_outputs}, ${index % 2 === 0 ? "final" : "pending"})`;
+  const first = attempts[0]!;
+  await sql`INSERT INTO settlement_attempts
+    (deployment_id,kind,event_id,tx_hash,phase,signed_cbor,required_outputs,status)
+    VALUES (${deployment}, 'withdrawal', ${first.event_id}, ${"ee".repeat(32)}, ${first.phase}, ${first.signed_cbor}, ${first.required_outputs}, 'expired')`;
 });
 afterAll(async () => {
   await sql.end();
@@ -98,9 +109,12 @@ it.skipIf(process.env.MIDGARD_SKIP_DB_TESTS === "1")(
     const result = await read(collectorFixture());
     expect(result.generation).toBe("9");
     expect(result.attempts).toHaveLength(16);
+    expect(result.attempts.map((row) => row.tx_hash)).not.toContain(
+      "ee".repeat(32),
+    );
     expect(
       (await sql`SELECT count(*)::text AS n FROM settlement_attempts`)[0]!.n,
-    ).toBe("16");
+    ).toBe("17");
     await noReaders();
     expect(
       (
@@ -110,7 +124,7 @@ it.skipIf(process.env.MIDGARD_SKIP_DB_TESTS === "1")(
   },
 );
 it.skipIf(process.env.MIDGARD_SKIP_DB_TESTS === "1")(
-  "refuses excess rows, oversized CBOR, foreign deployment and stale history before acknowledgement",
+  "refuses excess rows, oversized CBOR, foreign deployment and an unpublished follower view before acknowledgement",
   async () => {
     await expect(read(collectorFixture(), 15)).rejects.toThrow(
       /read-only settlement source refused/,
@@ -129,11 +143,11 @@ it.skipIf(process.env.MIDGARD_SKIP_DB_TESTS === "1")(
         16384,
       ),
     ).rejects.toThrow(/refused/);
-    await sql`UPDATE authority_fixture SET state = 'held'`;
+    await sql`UPDATE gate_fixture SET pending_reason = 'l1_driver_recompute_pending'`;
     try {
       await expect(read(collectorFixture())).rejects.toThrow(/refused/);
     } finally {
-      await sql`UPDATE authority_fixture SET state = 'ready'`;
+      await sql`UPDATE gate_fixture SET pending_reason = NULL`;
     }
   },
 );
@@ -159,7 +173,7 @@ it.skipIf(process.env.MIDGARD_SKIP_DB_TESTS === "1")(
       for (;;) {
         const active =
           await maintenance`SELECT count(*)::text AS n FROM pg_stat_activity
-        WHERE datname = ${database} AND query LIKE 'SELECT generation%' AND state = 'active'`;
+        WHERE datname = ${database} AND query LIKE 'SELECT applied_generation%' AND state = 'active'`;
         if (active[0]!.n === "1") break;
         if (Date.now() >= fixture.scope.deadlineEpochMs)
           throw new Error("fixture query did not start");

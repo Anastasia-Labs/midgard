@@ -9,7 +9,6 @@ import type {
   PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../domain.js";
-import { classifyDaAttestationMarker } from "../l1/attestation-marker.js";
 import {
   type DaAvailabilityCommitmentAuthority,
   deriveExpectedDaAvailabilityCommitment,
@@ -58,14 +57,8 @@ export class SubmitterReconciler {
   async reconcileHeader(
     header: StateQueueHeaderRecord,
   ): Promise<SubmitterReconcileResult> {
-    const marker = classifyDaAttestationMarker(header.daAttestation);
-    if (
-      header.finalized &&
-      header.status === "attested" &&
-      marker.kind === "already_attested_expected"
-    ) {
-      return { status: "reconciled", reason: "already attested" };
-    }
+    // Whether the header is owed at all is the caller's read of the tick's
+    // facts (`reconcileStandingOf`); an attested output is out of scope.
     if (!isReconcilableHeader(header)) {
       return { status: "skipped", reason: "header is not in submitter scope" };
     }

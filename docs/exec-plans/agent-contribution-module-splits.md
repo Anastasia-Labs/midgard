@@ -15,7 +15,7 @@ threshold. All nine were decomposed; the final inventory covers 4,784 source fil
 zero source files above 5,000 lines and 93 above 2,000 lines. The inventory
 uses `git ls-files --cached --others --exclude-standard -z`, deduplicates paths,
 reads existing source files and counts physical lines. The largest is now
-`demo/da-committee-node/tests/provider.test.ts` at 4,474 lines. JSON datasets,
+`demo/da-committee-node/tests/provider.test.ts` (since deleted) at 4,474 lines. JSON datasets, <!-- doc-links:historical -->
 lockfiles and documents are not source modules in that inventory.
 
 The [work plan](agent-contribution-parallel-work.md#oversized-module-sweep)
@@ -156,7 +156,7 @@ exit 1. The initial node run also expired a history-authority lease during its r
 Both SDK files then passed all eight tests with their existing timeouts when run serially (`pnpm --dir demo/midgard-sdk exec vitest run tests/lucid-inline-datum-preservation.test.ts tests/lucid-static-completion.test.ts --maxWorkers=1 --minWorkers=1`, exit 0). The split database file itself collected 128 tests in that run: 127 passed and the unchanged saturated-vs-baseline latency-ratio assertion failed. A focused run loading the original database file and original production modules passed that case (one passed, 127 excluded by selection, exit 0). The comparison used a separate `MIDGARD_TEST_DATABASE_PREFIX` so it could not reset the active run's worker databases. This single baseline observation does not establish a failure rate or prove why the concurrent run failed. The final full database rerun passed all 128 cases with a separate database prefix and unchanged assertions; the full fault-proof result is recorded above.
 
 A further node check ran `tests/deployable-scripts.test.ts` and
-`tests/event-history-journal.test.ts` with `-t 'deployable-script catalogue|advances at most RETENTION_BATCH'`,
+`tests/event-history-journal.test.ts` (since deleted) with `-t 'deployable-script catalogue|advances at most RETENTION_BATCH'`,
 `--maxWorkers=1 --minWorkers=1 --disable-console-intercept`, `NODE_ENV=emulator`
 and a separate database prefix: 11 passed, one failed and 38 excluded by
 selection of 50; exit 1. The catalogue setup succeeded; the history-authority
@@ -164,7 +164,7 @@ lease expiration persisted. The scheduler's `tests/deposit-flow-emulator-commit-
 with `-t 'direct wake path'` failed identically with original modules and current
 modules: each one passed, one failed, two excluded by selection, exit 1. Both
 runs received `SubmittedAwaitingConfirmationOutput` where the unaligned case
-expected `SpeculativeCandidateInvalidatedOutput` with reason `T4`.
+expected `SpeculativeCandidateInvalidatedOutput` with reason `T4`. <!-- doc-links:historical -->
 
 A second watcher baseline ran the origin, attestation and runtime files with
 original modules: 15 passed, two failed and six skipped of 23, plus a failed

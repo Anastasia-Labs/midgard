@@ -1,6 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
 import {
   decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidence,
@@ -92,64 +89,36 @@ export const prepareJourneyTransactionProof = async (input: {
     category === "spendInputSignerMissing" ||
     category === "resolvedOutputNonCanonical"
   ) {
-    const directory = await mkdtemp("/var/tmp/midgard-transaction-proof-");
-    try {
-      const deploymentFingerprint = "d1".repeat(32);
-      const corpus = await Proofs.resolveHistoricalNativeScriptCorpus({
-        deploymentFingerprint,
-        currentEvidence: evidence,
-        sources: verified.sources,
-        checkpointStore:
-          Proofs.createSqliteHistoricalNativeScriptCheckpointStore({
-            path: join(directory, "history.sqlite"),
-            rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
-          }),
-        historySource: Proofs.createHistoricalNativeScriptHistorySource({
-          providerRoster: Proofs.createHistoricalNativeScriptProviderRoster({
-            deploymentFingerprint,
-            providers: [
-              {
-                sourceId: "archive-a",
-                authorityEndpoint: "https://archive-a.example.test",
-                operatorIdentitySha256: "aa".repeat(32),
-              },
-              {
-                sourceId: "archive-b",
-                authorityEndpoint: "https://archive-b.example.test",
-                operatorIdentitySha256: "bb".repeat(32),
-              },
-            ],
-          }),
-        }),
-      });
-      const priorLedger =
-        await Proofs.deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
+    // The prior ledger is the named predecessor's; the helper refuses an
+    // absent or substituted one for a non-genesis header.
+    const priorLedger = await Proofs.deriveResolvedOutputPriorLedgerReplay({
+      block: evidence,
+      predecessor: await Proofs.canonicalBlockEvidenceFromVerifiedPayload({
+        ...raw,
+        observation: authenticatedHeaderObservation(input.predecessor),
+        payloadEnvelopeCbor: input.predecessor.payloadEnvelopeCbor,
+      }),
+    });
+    if (category === "spendInputSignerMissing") {
+      const prepared =
+        Proofs.deriveSpendInputSignerMissingEvidenceFromCompleteReplay({
           block: evidence,
-          corpus,
+          priorLedger,
         });
-      if (category === "spendInputSignerMissing") {
-        const prepared =
-          Proofs.deriveSpendInputSignerMissingEvidenceFromCompleteReplay({
-            block: evidence,
-            priorLedger,
-          });
-        if (!Proofs.spendInputSignerMissingEvidenceCloses(prepared))
-          throw new Error("Spend-input signer proof does not close");
-        return prepared;
-      }
-      const prepared = Proofs.detectResolvedOutputNonCanonicalCompleteReplay({
-        block: evidence,
-        priorLedger,
-      });
-      if (
-        prepared.length !== 1 ||
-        !Proofs.resolvedOutputEvidenceCloses(prepared[0]!)
-      )
-        throw new Error("Resolved output proof does not close uniquely");
-      return prepared[0];
-    } finally {
-      await rm(directory, { recursive: true, force: true });
+      if (!Proofs.spendInputSignerMissingEvidenceCloses(prepared))
+        throw new Error("Spend-input signer proof does not close");
+      return prepared;
     }
+    const prepared = Proofs.detectResolvedOutputNonCanonicalCompleteReplay({
+      block: evidence,
+      priorLedger,
+    });
+    if (
+      prepared.length !== 1 ||
+      !Proofs.resolvedOutputEvidenceCloses(prepared[0]!)
+    )
+      throw new Error("Resolved output proof does not close uniquely");
+    return prepared[0];
   }
   if (category === "missingSignature")
     return Proofs.prepareMissingSignatureWrongfulRejection({ block: evidence });

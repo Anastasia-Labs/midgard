@@ -9,6 +9,11 @@ import {
   ghRunner,
   QueryError,
 } from "./ci-status.parse-workflow.mjs";
+import {
+  DEFAULT_TIMEOUT_MINUTES,
+  MAX_TIMEOUT_MINUTES,
+  waitForStatus,
+} from "./ci-status.wait.mjs";
 
 export const renderText = (report, code) => {
   const lines = [];
@@ -73,20 +78,48 @@ export const renderText = (report, code) => {
 };
 
 export const USAGE =
-  "usage: ci-status.mjs <pr-number|branch> [--repo owner/name] [--json]";
+  "usage: ci-status.mjs <pr-number|branch> [--repo owner/name] [--json] [--wait [--timeout <minutes>|<N>m|<N>h]]";
 
 export const main = (
   argv,
-  { run = ghRunner, out = console.log, err = console.error } = {},
+  {
+    run = ghRunner,
+    out = console.log,
+    err = console.error,
+    wait: waitOptions,
+  } = {},
 ) => {
   const args = [...argv];
   let repo = DEFAULT_REPO;
   let json = false;
+  let wait = false;
+  let timeoutMinutes;
   const positional = [];
   while (args.length > 0) {
     const arg = args.shift();
     if (arg === "--json") json = true;
-    else if (arg === "--repo") {
+    else if (arg === "--wait") wait = true;
+    else if (arg === "--timeout") {
+      const value = args.shift();
+      // Bare digits are minutes; `m` and `h` may say so explicitly.
+      const match = /^(\d+)([mh]?)$/u.exec(value ?? "");
+      timeoutMinutes = match
+        ? Number(match[1]) * (match[2] === "h" ? 60 : 1)
+        : Number.NaN;
+      if (!(timeoutMinutes >= 1 && timeoutMinutes <= MAX_TIMEOUT_MINUTES)) {
+        const seconds =
+          match &&
+          match[2] === "" &&
+          timeoutMinutes > MAX_TIMEOUT_MINUTES &&
+          timeoutMinutes % 60 === 0
+            ? ` (${String(value)} reads as minutes; for ${String(value)} seconds write ${String(Number(match[1]) / 60)})`
+            : "";
+        err(
+          `--timeout takes whole minutes (90 or 90m) or hours (2h), from 1 minute to ${String(MAX_TIMEOUT_MINUTES)}${seconds}\n${USAGE}`,
+        );
+        return EXIT.usage;
+      }
+    } else if (arg === "--repo") {
       const value = args.shift();
       if (value === undefined || !/^[\w.-]+\/[\w.-]+$/u.test(value)) {
         err(USAGE);
@@ -105,9 +138,25 @@ export const main = (
     err(USAGE);
     return EXIT.usage;
   }
+  if (timeoutMinutes !== undefined && !wait) {
+    err(`--timeout bounds --wait; it means nothing without it\n${USAGE}`);
+    return EXIT.usage;
+  }
   let report;
+  let code;
   try {
-    report = collectStatus(positional[0], { run, repo });
+    if (wait) {
+      ({ report, code } = waitForStatus(positional[0], {
+        run,
+        repo,
+        timeoutMinutes: timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES,
+        progress: (line) => err(`waiting  ${line}`),
+        ...waitOptions,
+      }));
+    } else {
+      report = collectStatus(positional[0], { run, repo });
+      code = verdict(report);
+    }
   } catch (error) {
     if (error instanceof QueryError) {
       err(`could not query GitHub: ${error.message}`);
@@ -118,7 +167,6 @@ export const main = (
     }
     throw error;
   }
-  const code = verdict(report);
   out(
     json
       ? JSON.stringify({ ...report, exitCode: code }, null, 2)

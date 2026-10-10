@@ -103,8 +103,13 @@ describe("fault decision bridge behind an L1 merge", () => {
     expect(observability.api.metrics().verificationLatencyMs.sampleCount).toBe(
       "2",
     );
-    await h.bridge.retryDeferredClassification(current);
-    expect(h.application.classifyHeader).toHaveBeenCalledTimes(2);
+    // A later pass reads the live header again, never the merged one.
+    await h.bridge.reconcileAndDispatch(current);
+    expect(
+      h.application.classifyHeader.mock.calls.map(
+        ([request]) => request.header.headerHash,
+      ),
+    ).toEqual([live.headerHash, live.headerHash, live.headerHash]);
   });
 
   it("still fails closed on an unmerged Attested header whose payload is unavailable", async () => {

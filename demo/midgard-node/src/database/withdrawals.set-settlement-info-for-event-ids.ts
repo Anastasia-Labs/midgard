@@ -2,7 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import {
   Columns,
@@ -33,13 +33,14 @@ export const retrieveByEventIds = (
     ),
   );
 
+/** Withdrawals admitted by the L1 tx `cardanoTxHash` (ruling 2: the admission tx, not the moving location). */
 export const retrieveByCardanoTxHash = (
   cardanoTxHash: Buffer,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     return yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.WITHDRAWAL_L1_TX_HASH)} = ${cardanoTxHash}
+      WHERE substring(l1_origin_outref from 1 for 32) = ${cardanoTxHash}
       ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
   }).pipe(
     Effect.withLogSpan(`retrieveByCardanoTxHash ${tableName}`),
@@ -53,23 +54,6 @@ export const retrieveByProjectedHeaderHash = (
   projectedHeaderHash: Buffer,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
   projectedEventAdapter.retrieveByProjectedHeaderHash(projectedHeaderHash);
-
-export const retrieveAwaitingEntriesDueBy = (
-  endTime: Date,
-): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.STATUS)} = ${Status.Awaiting}
-        AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}
-      ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
-  }).pipe(
-    Effect.withLogSpan(`retrieveAwaitingEntriesDueBy ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve awaiting withdrawals due by the requested time",
-    ),
-  );
 
 export const retrievePendingHeaderEntriesUpTo = (
   endTime: Date,
@@ -117,7 +101,7 @@ export const markAwaitingAsProjected = (
       }),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     sqlErrorToDatabaseError(tableName, "Failed to project withdrawals"),
   );
 
@@ -266,7 +250,7 @@ export const setSettlementInfoForEventIds = (
       ),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`setSettlementInfoForEventIds ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -290,7 +274,7 @@ export const markProjectedByEventIds = (
       }),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     sqlErrorToDatabaseError(tableName, "Failed to assign withdrawal header"),
   );
 
@@ -300,4 +284,4 @@ export const clearProjectedHeaderAssignmentByEventIds = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   projectedEventAdapter
     .clearProjectedHeaderAssignmentByEventIds(ids, projectedHeaderHash)
-    .pipe(withHistoryWrite);
+    .pipe(withFollowerWrite);

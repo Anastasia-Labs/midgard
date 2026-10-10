@@ -13,6 +13,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   evidence,
   type ReconciliationResult,
@@ -34,7 +35,7 @@ export const reconcileMergeCompleteProgram = ({
 }): Effect.Effect<
   ReconciliationResult,
   unknown,
-  Database | Lucid | MidgardContracts | Globals | NodeConfig
+  Database | Lucid | MidgardContracts | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");
@@ -84,7 +85,7 @@ export const reconcileMergeCompleteProgram = ({
           ],
           repairActions,
           nextAction:
-            "A merge finalizes history rows and needs the running node's history producer permit. A standalone process cannot hold it; on the running node it is unavailable until the history owner is Ready. Trigger the merge through the node's admin GET /merge endpoint, which merges the oldest queued block, once its history owner is Ready.",
+            "A merge finalizes history rows and needs the running node's follower write gate. A standalone process cannot hold it; on the running node it is unavailable until the follower-change driver has published its view. Trigger the merge through the node's admin GET /merge endpoint, which merges the oldest queued block, once the node is ready.",
         });
       }
       const { mergeResult } = attempt;

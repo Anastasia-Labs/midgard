@@ -1,7 +1,7 @@
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
-} from "../local-ledger-slot.js";
+} from "@al-ft/midgard-core/ogmios-slot";
 
 /**
  * Shared transaction signing, submission, confirmation, and recovery helpers.
@@ -37,39 +37,6 @@ export const DEFAULT_SIGNED_TX_INLINE_WAIT_MS = 60_000;
 const DEFAULT_STALE_PROVIDER_VALIDITY_RETRY_MAX_ATTEMPTS = Math.ceil(
   DEFAULT_SIGNED_TX_INLINE_WAIT_MS / SLOT_LENGTH_MS,
 );
-
-/** Ogmios reports a spent or missing input as JSON-RPC error 3117 with its
- * outrefs under `data.unknownOutputReferences`. A provider wrapper can carry
- * that error only as formatted text (an `Error.cause` is not enumerable), so
- * the text forms are matched as well as the structured field. */
-const UNKNOWN_OUTPUT_REFERENCE_TEXT_REGEX =
-  /unknownOutputReferences|JSON-RPC error 3117\b|"code":\s*3117\b/;
-
-export const isUnknownOutputReferenceSubmitError = (
-  error: unknown,
-): boolean => {
-  const seen = new Set<unknown>();
-  const hasStructuredUnknownInput = (value: unknown): boolean => {
-    if (typeof value !== "object" || value === null || seen.has(value)) {
-      return false;
-    }
-    seen.add(value);
-    const record = value as Record<string, unknown>;
-    if ("unknownOutputReferences" in record || "badInputs" in record) {
-      return true;
-    }
-    return Object.values(record).some(hasStructuredUnknownInput);
-  };
-  if (hasStructuredUnknownInput(error)) {
-    return true;
-  }
-  return errorTextSearchStrings(error).some(
-    (message) =>
-      message.includes("BadInputsUTxO") ||
-      message.includes("UnknownInput") ||
-      UNKNOWN_OUTPUT_REFERENCE_TEXT_REGEX.test(message),
-  );
-};
 
 const OUTSIDE_VALIDITY_INTERVAL_REGEX =
   /OutsideValidityIntervalUTxO \(ValidityInterval \{invalidBefore = SJust \(SlotNo (\d+)\), invalidHereafter = SJust \(SlotNo (\d+)\)\}\) \(SlotNo (\d+)\)/;

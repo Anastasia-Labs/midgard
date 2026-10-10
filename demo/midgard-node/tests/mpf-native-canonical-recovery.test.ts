@@ -11,12 +11,16 @@ import {
   encodeNativeMpfEventLog,
   ProductionNativeMpfOwnerService,
 } from "../src/services/mpf-native-owner/index.js";
+import {
+  NativeMpfRestoreReadFailed,
+  NativeMpfRootNotRetained,
+} from "../src/services/mpf-native-owner/protocol.js";
+import { NativeMpfClosureIncomplete } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
 import type { NativeMpfOwnerServiceOptions } from "../src/services/mpf-native-owner/service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
 
 // This suite checks the native durable boundary with the actual pinned child.
-// Plan authorization belongs to the production history owner, not these hashes.
 describe("native canonical root recovery", () => {
   const paths: string[] = [];
   const services = new Set<ProductionNativeMpfOwnerService>();
@@ -212,10 +216,11 @@ describe("native canonical root recovery", () => {
         () => undefined,
         (error: unknown) => error,
       );
-    expect(refusal).toBeInstanceOf(Error);
+    expect(refusal).toBeInstanceOf(NativeMpfRootNotRetained);
     expect((refusal as Error).message).toBe(
       `Native MPF canonical recovery target root ${targetRoot} is not retained in full; refusing to restore`,
     );
+    expect((refusal as Error).cause).toBeInstanceOf(NativeMpfClosureIncomplete);
     expect(String((refusal as Error).cause)).toMatch(/missing record/);
     expect((await service.diagnostics()).durableRoot).toBe(plan.expectedRoot);
     const generation = await service.fork(plan.expectedRoot);
@@ -224,6 +229,61 @@ describe("native canonical root recovery", () => {
     expect(await inspectStore(options.levelPath, plan.recoveryId)).toEqual({
       root: plan.expectedRoot,
       receipt: undefined,
+    });
+  });
+
+  /** The owner's own store handle, which the restore reads the target
+   * closure through. */
+  const storeOf = (service: ProductionNativeMpfOwnerService) =>
+    (service as unknown as { db: Level<string, unknown> }).db;
+
+  it("refuses a target whose closure holds a record that is not a node as not retained", async () => {
+    const { service, options, plan } = await fixture();
+    // The ancestor's root record, outside the live descendant's closure.
+    await storeOf(service).put(plan.targetRoot, { corrupt: true });
+    const refusal = await service.restoreCanonicalRoot(plan).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refusal).toBeInstanceOf(NativeMpfRootNotRetained);
+    expect(String((refusal as Error).cause)).toMatch(/malformed record/);
+    expect((await service.diagnostics()).durableRoot).toBe(plan.expectedRoot);
+    await close(service);
+    expect(await inspectStore(options.levelPath, plan.recoveryId)).toEqual({
+      root: plan.expectedRoot,
+      receipt: undefined,
+    });
+  });
+
+  it("names a failed read of the target closure as transient, changes nothing, and restores once the read succeeds", async () => {
+    const { service, options, plan } = await fixture();
+    const store = storeOf(service);
+    const getMany = store.getMany.bind(store);
+    let failures = 1;
+    store.getMany = (async (keys: string[]) => {
+      if (failures-- > 0)
+        throw Object.assign(new Error("IO error: injected read failure"), {
+          code: "LEVEL_IO_ERROR",
+        });
+      return getMany(keys);
+    }) as typeof store.getMany;
+    const refusal = await service.restoreCanonicalRoot(plan).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refusal).toBeInstanceOf(NativeMpfRestoreReadFailed);
+    expect(refusal).not.toBeInstanceOf(NativeMpfRootNotRetained);
+    expect((refusal as Error).message).toBe(
+      `Native MPF canonical recovery could not read target root ${plan.targetRoot}'s node closure from the native MPF store: IO error: injected read failure`,
+    );
+    expect((await service.diagnostics()).durableRoot).toBe(plan.expectedRoot);
+    // The next restore reads the closure and completes.
+    await service.restoreCanonicalRoot(plan);
+    await assertAncestorContents(service, plan.targetRoot);
+    await close(service);
+    expect(await inspectStore(options.levelPath, plan.recoveryId)).toEqual({
+      root: plan.targetRoot,
+      receipt: JSON.stringify(plan),
     });
   });
 

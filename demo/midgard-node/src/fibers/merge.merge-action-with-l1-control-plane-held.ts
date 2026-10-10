@@ -8,7 +8,7 @@ import {
   TxAdmissionsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -16,10 +16,12 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
-  fetchStateQueueSnapshotProgram,
+  awaitPostMergeSnapshot,
+  landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
-} from "../services/state-queue-topology.js";
+} from "../services/landed-state-queue.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeSubmitValidityEvidence,
@@ -67,7 +69,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
   | TxConfirmError
   | TxSubmitError
   | TxSignError,
-  Lucid | MidgardContracts | Database | Globals | NodeConfig
+  Lucid | MidgardContracts | Database | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     // The L1 control plane's hold began when this attempt acquired it.
@@ -124,10 +126,10 @@ export const mergeActionWithL1ControlPlaneHeld = (
     };
     // Finalize any merge that landed without its local finalization before
     // deciding anything else, so even an attempt that skips catches it up.
-    // Its failure fails this attempt, and the attempt runs under the producer
-    // permit, so only while the history owner is Ready. A merge landing after
+    // Its failure fails this attempt, and the attempt runs under the
+    // follower write gate, so only while the driver's view is published. A merge landing after
     // this read is finalized by buildAndSubmitMergeTx before it builds on it.
-    yield* finalizeLandedMergesProgram(lucid.api, fetchConfig);
+    yield* finalizeLandedMergesProgram(fetchConfig);
     const minQueueLength =
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING;
@@ -185,7 +187,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
       }
       const preLeaseLocalLedgerGate = yield* captureMergeLocalLedgerGate({
         lucid: lucid.api,
-        nodeConfig,
         validFromUnixTime: preLeaseCandidate.readiness.validFromUnixTime,
         headerHash: preLeaseCandidate.readiness.headerHash,
         candidateIdentity: preLeaseCandidate.readiness.candidateIdentity,
@@ -197,7 +198,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
           headerHash: preLeaseCandidate.readiness.headerHash,
           reason: preLeaseLocalLedgerGate.reason,
           readyAfterUnixTime: preLeaseCandidate.readiness.readyAfterUnixTime,
-          nowUnixTime: Date.now(),
+          nowUnixTime: preLeaseCandidate.readiness.nowUnixTime,
         } satisfies MergeActionResult;
       }
     }
@@ -238,7 +239,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
           if (leasedCandidate.status === "candidate") {
             const leasedLocalLedgerGate = yield* captureMergeLocalLedgerGate({
               lucid: lucid.api,
-              nodeConfig,
               validFromUnixTime: leasedCandidate.readiness.validFromUnixTime,
               leaseToken,
               headerHash: leasedCandidate.readiness.headerHash,
@@ -252,13 +252,12 @@ export const mergeActionWithL1ControlPlaneHeld = (
                 reason: leasedLocalLedgerGate.reason,
                 readyAfterUnixTime:
                   leasedCandidate.readiness.readyAfterUnixTime,
-                nowUnixTime: Date.now(),
+                nowUnixTime: leasedCandidate.readiness.nowUnixTime,
               } satisfies MergeActionResult;
             }
           }
 
-          const preMergeSnapshot = yield* fetchStateQueueSnapshotProgram(
-            lucid.api,
+          const preMergeSnapshot = yield* landedStateQueueSnapshot(
             stateQueueAuthValidator,
             "manual_status",
           );
@@ -284,10 +283,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
             ],
             { concurrency: "unbounded" },
           );
-          const queueLength = Math.max(
-            0,
-            preMergeSnapshot.topology.parsedNodeCount - 1,
-          );
+          const queueLength = preMergeSnapshot.blockCount;
           const preflight = planMergePreflight({
             force,
             queueLength,
@@ -337,7 +333,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
               // the L1 confirmation cannot write without it.
               assertSubmitAuthority: () =>
                 StateQueueMutationLeasesDB.revalidate(leaseToken).pipe(
-                  Effect.zipRight(withHistoryWrite(Effect.void)),
+                  Effect.zipRight(withFollowerWrite(Effect.void)),
                 ),
               onConfirmedFinalization: (outcome) =>
                 Ref.set(confirmed, Option.some({ ...outcome, trigger })),
@@ -367,10 +363,9 @@ export const mergeActionWithL1ControlPlaneHeld = (
                 : { nowUnixTime: mergeTxResult.nowUnixTime }),
             } satisfies MergeActionResult;
           }
-          const snapshot = yield* fetchStateQueueSnapshotProgram(
-            lucid.api,
+          const snapshot = yield* awaitPostMergeSnapshot(
             stateQueueAuthValidator,
-            "post_merge",
+            mergeTxResult.headerHash,
           );
           yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
           yield* Effect.logInfo(

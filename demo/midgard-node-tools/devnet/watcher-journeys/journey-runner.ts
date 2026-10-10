@@ -9,7 +9,6 @@ import "midgard-watcher";
 import "vitest";
 import "./artifacts.js";
 import "./correction.js";
-import "./history-settlement.js";
 import "./journey-session.js";
 import "./journey-timing.js";
 import "./live-context.js";
@@ -20,7 +19,4 @@ import "./staging.js";
 import "./journey-runner.journey-execution.js";
 import "./journey-runner.run-journey.js";
 import "./journey-runner.run-autonomous-watcher-journey.js";
-export {
-  prepareAutonomousWatcherHistory,
-  runAutonomousWatcherJourney,
-} from "./journey-runner.run-autonomous-watcher-journey.js";
+export { runAutonomousWatcherJourney } from "./journey-runner.run-autonomous-watcher-journey.js";

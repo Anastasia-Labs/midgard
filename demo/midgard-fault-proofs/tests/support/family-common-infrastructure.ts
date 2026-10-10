@@ -19,7 +19,7 @@ export const familyCommonInfrastructureForTest = (
   decisionDigest: actuation.decisionDigest,
   lucid: {} as never,
   signer: {} as never,
-  source: {} as never,
+  l1Source: {} as never,
   stateQueueMutationLeaseCoordinator: {} as never,
   ...overrides,
 });

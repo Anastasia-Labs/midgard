@@ -25,7 +25,6 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  * for, and the reason the shard scheme exists.
  *
  *   tests/admission-writer.test.ts
- *   tests/canonical-journal-recovery-replacement-siblings.test.ts
  *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
  *   tests/event-history-submission-backstop-emulator.test.ts
  *   tests/event-history-submission-emulator.test.ts
@@ -38,43 +37,70 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/settlement-journal.test.ts
  *   tests/settlement-ownership-handoff.test.ts
  *   tests/settlement-tick-reporting.test.ts
- *   tests/event-history-authority.test.ts
- *   tests/event-history-journal.test.ts
- *   tests/event-history-ready-append.test.ts
- *   tests/l1-event-history-initialization-emulator.test.ts
- *   tests/event-history-recovery.test.ts
- *   tests/event-history-recovery-lease-lapse.test.ts
  *   tests/native-mpf-local-finalization.test.ts
- *   tests/l1-event-history-signed-intent-emulator.test.ts
- *   tests/l1-event-history-signed-intent-restart-emulator.test.ts
- *   tests/l1-event-history-signed-intent-continuation-emulator.test.ts
- *   tests/foreign-da-reconciliation.test.ts
+ *   tests/signed-intent-response-loss-emulator.test.ts
+ *   tests/signed-intent-restart-emulator.test.ts
+ *   tests/signed-intent-continuation-emulator.test.ts
+ *   tests/commit-replacement-state-queue-emulator.test.ts
+ *   tests/orphan-funded-transfer-repair-emulator.test.ts
+ *   tests/working-ledger-rebuild-order.test.ts
+ *   tests/node-instance-lock.test.ts
+ *   tests/follower-driver-recompute.test.ts
  *   tests/database.test.ts
  *   tests/da-bond-pool-bootstrap-emulator.test.ts
  *   tests/deposit-flow-emulator-commit-selection.test.ts
  *   tests/deposit-flow-emulator-confirmation-journal.test.ts
  *   tests/deposit-flow-emulator-input-resolution.test.ts
  *   tests/deposit-flow-emulator-merge-payout.test.ts
- *   tests/deposit-flow-emulator-recovery-invalidation.test.ts
  *   tests/deposit-flow-emulator-submission.test.ts
  *   tests/merge-landed-finalization.test.ts
  *   tests/merge-landed-finalization-emulator.test.ts
+ *   tests/merge-maturity-preflight.test.ts
  *   tests/migration-locking.test.ts
  *   tests/migration-runner.test.ts
  *   tests/pipeline-status-route.test.ts
  *   tests/retention-enforcement.test.ts
- *   tests/state-queue-correction-ledger-restore.test.ts
+ *   tests/correction-admission-rollback-emulator.test.ts
  *   tests/state-queue-node-floor-challenge-emulator.test.ts
  *   tests/state-reconciliation-emulator.test.ts
  *   tests/tx-admissions-claim-load.test.ts
  *   tests/tx-admissions-monotone-timestamps.test.ts
- *   tests/tx-order-carriage-l1-observation.test.ts
- *   tests/user-event-ingestion-idempotent-reconcile.test.ts
  *   tests/block-commitment-signed-intent-skip.test.ts
+ *   tests/commit-held-header-journal.test.ts
  *   tests/history-retention-prune.test.ts
+ *   tests/retention-sweeper.history-permit.test.ts
  *   tests/readiness-honest-degradation-route.test.ts
- *   tests/history-expired-intent-release-query-budget.test.ts
+ *   tests/readiness-follower-write-gate-route.test.ts
  *   tests/state-queue-mutation-lease-settle-retry.test.ts
+ *   tests/forced-order-carriage.test.ts
+ *   tests/forced-order-carriage-emulator.test.ts
+ *   tests/l1-state-queue-liveness.test.ts
+ *   tests/l1-state-queue-fiber-tick-spy.test.ts
+ *   tests/history-commit-anchor-emulator.test.ts
+ *   tests/intent-journal-commit-gate-emulator.test.ts
+ *   tests/operator-watchdog-emulator.test.ts
+ *   tests/availability-challenge-operation.test.ts
+ *   tests/availability-challenge-responder-lifecycle.test.ts
+ *   tests/builder-wallet-view.genesis-deposit-emulator.test.ts
+ *   tests/builder-wallet-view.operator-exit-emulator.test.ts
+ *   tests/builder-wallet-view.registration-emulator.test.ts
+ *   tests/builder-wallet-view.reserve-payout-emulator.test.ts
+ *   tests/cek-material-publication-emulator.test.ts
+ *   tests/da-bond-pool-lifecycle.test.ts
+ *   tests/mpf-audit-merge-permit-emulator.test.ts
+ *   tests/native-mpf-startup-emulator.test.ts
+ *   tests/operator-commands-emulator.test.ts
+ *   tests/operator-watchdog-citation-emulator.test.ts
+ *   tests/operator-watchdog-force-retire-emulator.test.ts
+ *   tests/operator-watchdog-manifest-gate-idle.test.ts
+ *   tests/published-initialization-recovery.test.ts
+ *   tests/reference-publication-chain.test.ts
+ *   tests/reference-publication-submit-seam.test.ts
+ *   tests/reference-publication.test.ts
+ *   tests/reference-script-sweep-emulator.test.ts
+ *   tests/reserve-payout-economic-acceptance-emulator.test.ts
+ *   tests/reserve-payout-reference-resolution-emulator.test.ts
+ *   tests/script-reward-registration.test.ts
  */
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:
@@ -97,9 +123,9 @@ export default defineConfig({
     // after refusing a stale onchain/aiken/plutus.json.
     globalSetup: [blueprintStampGlobalSetup, "./tests/global-setup.ts"],
     // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
-    // the longest files first: three attestation-timeout and signed-intent
-    // emulator files run four to five minutes each while most files take
-    // seconds, so a giant that starts last sets a fork's wall time by itself.
+    // the longest files first: a few database and emulator files run two to
+    // three minutes each while most files take seconds, so a giant that starts
+    // last sets a fork's wall time by itself.
     // The table is keyed by package-relative path, so a file weighs the same in
     // `midgard-node` and `midgard-node:source`. Each CI shard is its own job
     // with its own Postgres service, so the per-worker database scheme above
@@ -128,15 +154,15 @@ export default defineConfig({
             "./tests/**/*.test.ts",
             "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
           ],
-          exclude: [
-            ...configDefaults.exclude,
-            "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
-          ],
+          exclude: [...configDefaults.exclude],
         },
       },
       { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
     ),
     testTimeout: 420_000,
+    // Suites drop their test databases in `afterAll`; each `DROP DATABASE …
+    // WITH (FORCE)` can outlast the 10 s hook default on a loaded CI runner.
+    hookTimeout: 120_000,
     ...(bail === undefined ? {} : { bail }),
     environment: "node",
   },

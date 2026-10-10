@@ -205,6 +205,15 @@ const validateConflictingSignatureHeaderEvidence = (
     DA_ON_CHAIN_WITNESS_LENGTH,
     "upper_header_witness",
   );
+  // Equivocation is one signer, one header, two commitments. Signing sibling
+  // headers is truthful (docs/midgard/decisions/
+  // da-sibling-signatures-not-slashable.md), so a cross-header pair is refused.
+  if (!lowerHeaderHash.equals(upperHeaderHash)) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "conflicting signature/commitment evidence must name one header hash",
+    );
+  }
   const lowerIdentity = Buffer.concat([
     lowerHeaderHash,
     computeDaSha256Hash(lowerCommitmentCbor),

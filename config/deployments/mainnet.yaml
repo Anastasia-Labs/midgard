@@ -2,15 +2,28 @@ name: mainnet
 network: Mainnet
 l1_finality:
   confirmation_depth: 30
+  # Events are committed only below the commit anchor, commit_event_depth
+  # blocks under the follower view a commit is planned at. Here d = k, so
+  # W - L = 129,600,000 = 3d/f slots exactly; config/deployments/README.md
+  # derives both bounds.
+  commit_event_depth: 2160
+  # Cardano consensus the depth bounds assume: k, f and the slot length.
+  security_parameter: 2160
+  active_slot_coeff: "0.05"
+  slot_length_ms: 1000
 timing:
   block_maturity_ms: 604800000
   dispute_response_window_ms: 300000
   operator_shift_ms: 3600000
   registration_ms: 30
-  event_wait_ms: 129600000 # worst case for k=2160 blocks = 3k/f slots = 3*2160/0.05 s (36 h)
+  # 3k/f slots + max validity range = 3*2160/0.05 s + 480 s = 129,600,000 +
+  # 480,000 ms (36 h 8 min). A commit lands no earlier than one maximum
+  # validity range before its header end time, so when the commit that
+  # includes a due event lands, the event is at least 3k/f slots old: k
+  # blocks deep under the guaranteed chain-growth bound.
+  event_wait_ms: 130080000
   user_events_negligence_timeout_ms: 1200000
-  max_inactivity_between_block_commitments_ms: 1200000
-  new_shift_inactivity_grace_period_ms: 300000
+  new_shift_inactivity_grace_period_ms: 480000
   max_validity_range_ms: 480000
   da_attestation_timeout_ms: 3600000
   da_small_response_window_ms: 3600000

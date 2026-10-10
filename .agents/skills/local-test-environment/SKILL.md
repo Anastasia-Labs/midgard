@@ -11,18 +11,18 @@ missing prerequisite or two checkouts touching the same resource.
 
 ## Start with `doctor`
 
-For a focused run, first read [the deterministic contributor workflow](../../../docs/agents/contrib.md#focused-tests-and-builds)
-and use `node scripts/contrib.mjs prepare --package <name> --plan`, then
-`node scripts/contrib.mjs test --package <name> --file <package-relative path>`.
-This owns preparation, compiled-input identity, invocation database naming,
-resource exclusion, selected-test counts and the execution receipt. Keep raw
-Vitest for deliberately diagnosed exceptions, with that limitation in the report.
+Run suites with `node scripts/contrib.mjs test --package <name> [--file <path> | --related <changed>]`
+([how](references/running-suites.md#one-file-the-files-a-change-reaches-or-the-whole-package)): it runs
+the package's `test` script as CI does, after preparing the blueprint and
+dists, under its own database family, and counts what ran.
 
 `node scripts/doctor.mjs` (`--json` for machine-readable output) is
 read-only: it starts, installs and writes nothing, and prints a fix under each
 failure. It checks the pinned Aiken, the test Postgres, the test-database prefix, `demo/node_modules`, the
 blueprint stamp, the `midgard-core`, `midgard-sdk` and `midgard-validation`
-dist, the installed hooks, and the Node and pnpm versions.
+dist, the installed hooks, `core.bare` (true makes the main checkout refuse
+every work-tree command; doctor names the file and never repairs it, so find
+what wrote it), and the Node and pnpm versions. [script: scripts/doctor.test.mjs]
 
 Exit 0 passes, 1 names a failure and its fix, and 3 means unknown. [script: scripts/doctor.mjs]
 
@@ -32,8 +32,8 @@ stamp are unavailable. `scripts/doctor.test.mjs` covers the exit codes.
 
 ## Test Postgres on 5433
 
-The `midgard-node` and `midgard-node-tools` suites (and `da-committee-node`)
-need a server on `127.0.0.1:5433`; without one, global setup fails and vitest
+The `midgard-node`, `midgard-node-tools`, `da-committee-node`,
+`midgard-l1-follower` and `midgard-watcher` suites need a server on `127.0.0.1:5433`; without one, global setup fails and vitest
 reports "No test files found".
 
 ```bash
@@ -60,20 +60,18 @@ runs `initdb` once into `~/.midgard-pg/5433` and starts the server with
 
 ## One database family per checkout
 
-Each suite creates sharded databases named `<prefix>_w<N>`, one per vitest
-worker. The prefix comes from `scripts/lib/worktree-identity.mjs` and its
-TypeScript twin `demo/midgard-node/tests/worktree-identity.ts`:
+Raw suites shard databases as `<prefix>_w<N>`. The prefix comes from
+`scripts/lib/worktree-identity.mjs` (TypeScript twin
+`demo/midgard-node/tests/worktree-identity.ts`): `midgard_test` and
+`midgard_tools_test` in the main checkout, `<family>_<path hash>` in a linked
+worktree (first 8 hex digits of the sha256 of its real path). `contrib test`
+uses `midgard_contrib_<path hash>_<random>` per run and drops it afterwards.
+An explicit `MIDGARD_TEST_DATABASE_PREFIX` wins over both.
 
-| Checkout        | `midgard-node` suites      | `midgard-node-tools` suites      |
-| --------------- | -------------------------- | -------------------------------- |
-| Main checkout   | `midgard_test`             | `midgard_tools_test`             |
-| Linked worktree | `midgard_test_<path hash>` | `midgard_tools_test_<path hash>` |
-
-The hash is the first 8 hex digits of the sha256 of the worktree's real path.
-An explicit `MIDGARD_TEST_DATABASE_PREFIX` wins over both. `da-committee-node`
-creates a randomly named database per test instead. See the identity with
-`node scripts/lib/worktree-identity.mjs`; `doctor` prints the prefix.
-
+- **Create and remove lane worktrees with `contrib worktree create|remove`.**
+  `remove` refuses unsaved work and drops the worktree's own databases;
+  see [lane worktrees](../../../docs/agents/contrib/worktrees.md).
+  [script: scripts/contrib/worktree.mjs]
 - **Do not export one fixed `MIDGARD_TEST_DATABASE_PREFIX` in a shell that
   runs suites in two checkouts.** The explicit value wins in both, and the two
   runs drop each other's shards mid-test. [review]
@@ -89,24 +87,24 @@ follows the `import` condition to `dist/`, so code run outside vitest needs it.
 closure in order. Node suites need their bundled workers; tooling also needs
 plain-Node imports. `contrib test` owns these artifacts until the run joins.
 
-- **A raw focused `vitest run` skips `pretest`.** Use `contrib test` so stale
-  compiled consumers fail or rebuild before execution. [script: scripts/contrib.mjs]
+- **A raw `vitest run` skips `pretest`.** `contrib test` rebuilds stale
+  compiled consumers before execution. [script: scripts/contrib.mjs]
 - **Build dist in each checkout; never copy it from another.** Guarded stamps
   authenticate checkout, source closure and emitted dependencies. [script: scripts/contrib/build.mjs]
 
 ## The blueprint stamp
 
-The suites of `midgard-node`, `midgard-sdk`, `midgard-validation`,
-`midgard-fault-proofs` and `midgard-watcher` read the untracked
-`onchain/aiken/plutus.json`. Their global setup
-(`demo/midgard-test-support/blueprint-stamp-setup.js`) refuses the run with a
-`[blueprint-stamp]` error when the blueprint was built from other sources or
-by another compiler; an absent one is left to the suites that read it. Rebuild
-with `pnpm --dir demo deployment:build preprod-testing`, or copy another
-checkout's with `node scripts/sync-blueprint-from.mjs <checkout>`, which copies
-only a fresh blueprint whose stamped inputs and deployment profile match this
-tree and otherwise exits 1 naming the first difference.
+Suites that read the untracked `onchain/aiken/plutus.json` run
+`demo/midgard-test-support/blueprint-stamp-setup.js`, which refuses with a
+`[blueprint-stamp]` error a blueprint built from other sources or by another
+compiler, or one `MIDGARD_REAL_BLUEPRINT_PATH` names without a fresh build
+record. An absent default one is left to the suites that read it.
 
+- **`contrib prepare` and `contrib test` make the blueprint ready; nobody
+  chooses between copying and building.** A stale or other-profile blueprint
+  is copied from a checkout whose build record matches this tree
+  (`scripts/sync-blueprint-from.mjs` re-verifies the copy), else built with
+  `deployment:build`. [script: scripts/contrib/blueprint.mjs]
 - **`MIDGARD_BLUEPRINT_STAMP=warn` is for a deliberate run against a stale
   build only**; never report such a run as a result for the current tree.
   CI never sets it, and nothing stops a local run from setting it. [review]

@@ -3,6 +3,7 @@ import {
   calculateMinLovelaceFromUTxO,
   Emulator,
   type LucidEvolution,
+  type TxSigned,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -81,6 +82,8 @@ export const key = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
 export type Publication = {
   readonly hash: string;
   readonly cbor: string;
+  /** The signed tx the submit seam sends (its bytes are `cbor`). */
+  readonly signed: TxSigned;
   readonly inputs: readonly UTxO[];
   readonly outputs: readonly UTxO[];
   readonly targets: readonly SDK.ReferenceScriptTarget[];

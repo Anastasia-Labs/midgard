@@ -28,27 +28,36 @@ credential must differ from `L1_SUBMITTER_KEY_SOURCE`, including when two key
 source strings resolve to the same key. The attestation submitter does not share
 the responder's resource reservations.
 
-Actuation requires the configured `local_node` chain-sync authority and an
-aligned Kupmios query provider. Startup verifies deployed reference role NFTs,
-script hashes, all four availability withdrawal registrations and sufficient
-plain ADA collateral in the responder wallet. Publication, settlement and close
-fees come from the challenger's protected on-chain fee shares. The responder
-does not automatically fund itself from the operator wallet.
+Actuation requires the committee's L1 chain follower on the operator's own
+cardano-node. The responder reads its canonical boundary (the follower's view),
+transaction status, inputs and every rival spend from the follower's facts, and
+submits through the same node; no chain index (Kupo, Ogmios) is configured. The
+responder is built on the first drain the follower is ready for: until then
+each drain reports `awaiting_scan` with the follower's reasons, and a failed
+construction reports `failed` and is retried on the next drain, with the
+process up. Construction verifies deployed reference role NFTs, script hashes,
+all four availability withdrawal registrations and sufficient plain ADA
+collateral in the responder wallet. Publication, settlement and close fees come
+from the challenger's protected on-chain fee shares. The responder does not
+automatically fund itself from the operator wallet.
 
-The responder's withdrawal registrations are read from the local node ledger rather than from Ogmios, which omits
-registered reward accounts that have no stake-pool delegation. With a `kupmios:`
-provider, set all three of these absolute paths, or none:
+The follower and the withdrawal-registration query use the local node through
+these three absolute paths, set all together, and `L1_ORIGIN`, the
+deployment's origin point (`<slot>.<block hash>`, as
+`midgard-l1-follower find-origin` prints it):
 
 ```sh
 CARDANO_LOCAL_NODE_SOCKET_PATH=/run/cardano/node.socket
 CARDANO_LOCAL_NODE_CONFIG_PATH=/etc/cardano/config.json
-CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH=/opt/midgard/midgard-chain-sync
+CARDANO_L1_NODE_TRANSPORT_BINARY_PATH=/opt/midgard/midgard-l1-node-transport
 ```
 
-Build the helper with `pnpm --dir demo/midgard-watcher run native:build`. The
+The binary is the node transport sidecar; build it with
+`pnpm --dir demo/l1-node-transport run native:build`. The
 node configuration's Shelley genesis must match the configured network. The
 query uses `CARDANO_LOCAL_NODE_AUTHORITY_ID` when set, otherwise
-`local-cardano-node`. Without these settings, registration checks fail closed.
+`local-cardano-node`. Without these settings the committee stays unready with
+`l1_follower_unconfigured`, and registration checks fail closed.
 
 `--once` executes one responder cycle. The normal service continues on each
 poll. The `availability_responder` event reports pending, included, confirmed,
@@ -67,9 +76,10 @@ Publication, settlement and close spend only protocol outputs, so another member
 a watcher or anyone copying the transaction can land the same step first. Once
 past its validity, the responder's own intent expires when a valid transaction
 that lists one of its inputs has spent it at finality depth, verified from that
-transaction's raw bytes; the responder then selects its next step from live
-state. Ogmios must therefore run with `--include-transaction-cbor`. Without it
-the responder stops with an error naming that flag and releases nothing.
+transaction's raw bytes, which the follower stores with each block; the
+responder then selects its next step from live state. A rollback of the view a
+pass reconciled at, or a view that moves during a spend read, reports
+`awaiting_scan` and releases nothing; the next pass reads again at one view.
 
 Publication is permissionless. The live challenge record retains the attested
 commitment the committee signed. A later committee configuration does not
@@ -87,14 +97,16 @@ also stalls the whole chain while it lasts: the state queue refuses every
 Append while its head is `Challenged`, until the challenge is closed, which
 sets the head to `Published`, or times out.
 
-The native queue scanner collects retention evidence from finalized ordered
-transitions and their exact consumed queue outputs. Published outputs prove a
-closed challenge; final unavailable removal binds the original challenge through
-the correction lock. Evidence is persisted with each terminal header and
-revalidated after restart, including the authenticated block end time.
+The committee's L1 follower supplies the retention evidence: a header's exit
+from the state queue (merged or removed) becomes its terminal record only once
+that exit is final, deeper than k blocks on the follower's chain. Published
+outputs prove a closed challenge; final unavailable removal binds the original
+challenge through the correction lock. The terminal record is persisted with the
+header and carries the exit's block, including the authenticated block end time.
 
-Retention synchronizes the local chain authority before deletion and holds its
-cursor lock while the store atomically checks the terminal evidence, healthy
-source, finality and deadline. An unconsumed rollback blocks deletion; source
-quarantine revokes stored evidence. Missing evidence, generic terminal status,
-and absent challenge UTxOs retain the payload.
+Retention runs only against the follower's view read in the same tick, and the
+store atomically checks the terminal evidence, finality and deadline. While the
+follower holds the committee unready (catching up, a rollback it is still
+absorbing, or `rollback_beyond_k`), no view is read and nothing is deleted; the
+process stays up and `/readyz` names the reason. Missing evidence, generic
+terminal status, and absent challenge UTxOs retain the payload.

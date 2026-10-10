@@ -16,28 +16,35 @@ import type {
 import { type CommitteeConfig } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
 import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
-import type { DaGossipMessageHandlerContext } from "./da/libp2p/DaGossip.js";
+import type {
+  DaGossipMessageHandler,
+  DaGossipMessageHandlerContext,
+} from "./da/libp2p/DaGossip.js";
 import type { DaLibp2pNode } from "./da/libp2p/DaLibp2pNode.js";
 import type { DaPeerRegistry } from "./da/libp2p/DaPeerRegistry.js";
-import type { DaPayloadSource } from "./da/source.js";
+import type { DaPayloadFetchFailure, DaPayloadSource } from "./da/source.js";
 import type {
   DaSignatureRecord,
   DaStoredConflictEvidenceRecord,
 } from "./domain.js";
 import type { DaAttestationChainReader } from "./l1/da-attestation-reader.js";
-import { type StateQueueProvider } from "./l1/state-queue-scanner.js";
+import type { CommitteeL1Source } from "./l1/follower/l1-follower.js";
 import {
   type DaSigner,
   type DaSignerValidation,
   verifyDaSignatureWitness,
 } from "./signer.js";
-import { type CommitteeStore } from "./store.js";
+import {
+  type CommitteeStore,
+  type CommitteeStoreReadinessCounts,
+} from "./store.js";
 import type { RetentionDeadlineReport } from "./store/retention.js";
 
 export type CommitteeServiceDeps = {
   readonly config: CommitteeConfig;
   readonly store: CommitteeStore;
-  readonly stateQueueProvider: StateQueueProvider;
+  /** Every L1 read the committee's decisions make: its follower. */
+  readonly l1: CommitteeL1Source;
   readonly payloadSource: DaPayloadSource;
   readonly signer?: DaSigner;
   readonly signerValidation?: DaSignerValidation;
@@ -53,38 +60,21 @@ export type CommitteeServiceDeps = {
   readonly now?: () => Date;
   /** Writes one structured JSON log line; defaults to stderr. */
   readonly writeEvent?: (line: string) => void;
-  /** Overrides {@link DA_PARAMS_STARTUP_RETRY}. */
-  readonly daParamsStartupRetry?: DaParamsStartupRetry;
-};
-
-export type DaParamsStartupRetry = {
-  readonly attempts: number;
-  readonly initialDelayMs: number;
-  readonly maxDelayMs: number;
-};
-
-/**
- * Startup reads of the on-chain DA params retry an observation failure (a
- * Kupo or Ogmios timeout, a provider still starting) with exponential backoff,
- * about 90 s in all, because nothing restarts a member that exits. That
- * deliberately includes finding no DA params output and providers that
- * disagree: right after a fresh deploy both are transient (Kupo is still
- * indexing the deployment, the providers are at different tips). An integrity
- * failure is never retried.
- */
-export const DA_PARAMS_STARTUP_RETRY: DaParamsStartupRetry = {
-  attempts: 8,
-  initialDelayMs: 1_000,
-  maxDelayMs: 30_000,
 };
 
 export type CommitteeTickResult = {
   readonly scannedHeaders: number;
   readonly signedHeaders: number;
+  /** Headers in good standing (attested, final or reconciled), not posts. */
   readonly reconciledHeaders: number;
   readonly skippedHeaders: number;
   readonly payloadFetches: readonly CommitteePayloadFetchObservation[];
   readonly errors: readonly string[];
+  /**
+   * Present when the tick made no decision: why the L1 source held it. Not
+   * an error; readiness reports the same reasons.
+   */
+  readonly held?: readonly string[];
 };
 
 export type CommitteePayloadFetchObservation = {
@@ -133,6 +123,20 @@ export type CommitteeRetentionReadinessSnapshot = {
    */
   readonly alerting: number;
   readonly error?: string;
+  /**
+   * Retirements held at a header, each naming it and its cause
+   * (`committee_retirement_held`): a degraded detail shown on `/readyz` and
+   * in status that never makes the committee not ready. Retention keeps the
+   * header's record meanwhile.
+   */
+  readonly holds?: readonly string[];
+  /**
+   * Retention pins the follower could not keep or write
+   * (`committee_retention_pin_pruned`, `committee_retention_pin_failed`):
+   * each makes the committee not ready, as a lost pin loses history a record
+   * needs and a failed pin write holds the follower's prune.
+   */
+  readonly pinFailures?: readonly string[];
 };
 
 /**
@@ -179,10 +183,15 @@ export type CommitteeReadinessSnapshot = {
   readonly promiseAdmissionPolicy?: CommitteePromiseAdmissionPolicyStatus;
   readonly promiseAdmission?: AvailabilityResponseAdmissionDecision;
   readonly l1Source?: {
-    readonly sourceMode: "local_node" | "external_providers";
-    readonly status: "uninitialized" | "healthy" | "quarantined";
+    readonly sourceMode: "local_node";
+    /**
+     * `intervention`: the follower holds the committee on a reason no wait
+     * clears (`rollback_beyond_k`, a stuck point, no configuration); the
+     * process stays up and `intervention` names it.
+     */
+    readonly status: "uninitialized" | "healthy" | "intervention";
+    readonly intervention?: string;
     readonly observedAt?: string;
-    readonly quarantineReason?: string;
   };
   readonly deployment: {
     readonly configuredFingerprint: string;
@@ -210,20 +219,13 @@ export type CommitteeReadinessSnapshot = {
     readonly lastFinishedAt?: string;
     readonly scannedHeaders: number;
     readonly signedHeaders: number;
+    /** The last tick's headers in good standing, not posts. */
     readonly reconciledHeaders: number;
     readonly skippedHeaders: number;
     readonly errors: readonly string[];
   };
   readonly retention?: CommitteeRetentionReadinessSnapshot;
-  readonly counts: {
-    readonly discoveredHeaders: number;
-    readonly missingPayloads: number;
-    readonly verifiedPayloads: number;
-    readonly verifiedPayloadsMissingL1Attestation: number;
-    readonly signatures: number;
-    readonly l1AttestationSubmissions: number;
-    readonly submittedOrConfirmedL1Attestations: number;
-  };
+  readonly counts: CommitteeStoreReadinessCounts;
   readonly reasons: readonly string[];
 };
 
@@ -237,14 +239,50 @@ export type CoordinatorPublishResult = {
 };
 
 /**
- * Retention exemption sets of the last tick whose L1 observation passed every
- * source check, stamped with the time it was accepted.
+ * Retention exemption sets of the last tick that read a view on which the
+ * committee decided, stamped with the time it was accepted: the confirmed
+ * head and every header in the landed queue or in the queue at the latest
+ * final block, with that block's time as the release clock.
  */
 export type CommitteeL1View = {
   readonly observedAtMs: number;
   readonly confirmedHeadHash: string;
   readonly liveQueueHeaderHashes: ReadonlySet<string>;
-  readonly recoveryProofUnavailable?: boolean;
+  readonly finalBlockTimeMs: number | null;
+};
+
+export const createDaConflictEvidenceGossipHandler = (args: {
+  readonly deploymentFingerprint: string;
+  readonly registry: DaPeerRegistry;
+  readonly store: Pick<CommitteeStore, "saveDaConflictEvidence">;
+  readonly now?: () => Date;
+}): DaGossipMessageHandler => {
+  const now = args.now ?? (() => new Date());
+  return async (context) => {
+    await ingestDaConflictEvidence({
+      ...args,
+      context,
+      receivedAt: now(),
+    });
+  };
+};
+
+export const payloadFetchObservation = (
+  headerHash: string,
+  attempts: DaPayloadFetchFailure["attempts"],
+): CommitteePayloadFetchObservation => {
+  const status = attempts.every((attempt) => attempt.status === "not_found")
+    ? "missing_da"
+    : "fetch_failed";
+  const detail = attempts
+    .map((attempt) => `${attempt.sourcePeerId}:${attempt.status}`)
+    .join(",");
+  return {
+    headerHash,
+    status,
+    sourcePeerIds: attempts.map((attempt) => attempt.sourcePeerId),
+    ...(detail.length === 0 ? {} : { detail }),
+  };
 };
 
 export const ingestDaConflictEvidence = async (args: {

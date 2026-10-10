@@ -3,7 +3,7 @@ import "./e2e-state-correction-local-authority.q57-local-kupmios-authority.js";
 import type {
   WebSocketFactory,
   WebSocketLike,
-} from "midgard-node/l1-tx-order-carriage";
+} from "midgard-node/l1-external/kupmios-history";
 import { describe, expect, it, vi } from "vitest";
 
 import { RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY } from "../src/commands/e2e-release-finality-policy.js";
@@ -106,7 +106,6 @@ const economicSource = ({
   };
   return {
     source: createLocalKupmiosStateCorrectionSource({
-      provider: "Kupmios",
       providerFailover: undefined,
       kupoUrl: "http://127.0.0.1:1442",
       ogmiosUrl: "http://127.0.0.1:1337",

@@ -2,12 +2,9 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { ensureL1Origin } from "./deployment-origin.js";
 import { readJsonIfPresent, writeDurableFile } from "./durable.js";
-import { execLogged, lastJsonValue, requireSuccess } from "./exec.js";
-import {
-  ensureHistoryGenesisPin,
-  recordedHistoryGenesisPin,
-} from "./history-pin.js";
+import { execLogged, requireSuccess } from "./exec.js";
 import type { Identities } from "./identities.js";
 import type { Layout, RunEnv } from "./layout.js";
 import {
@@ -47,16 +44,16 @@ export const ensureArtifacts = (layout: Layout): Artifacts => {
     nativeOwnerBinary,
     0o755,
   );
-  const chainSyncBinary = join(layout.bin, "midgard-chain-sync");
+  const transportBinary = join(layout.bin, "midgard-l1-node-transport");
   copyOnce(
-    join(layout.watcherRoot, "dist/native/midgard-chain-sync"),
-    chainSyncBinary,
+    join(layout.transportRoot, "dist/native/midgard-l1-node-transport"),
+    transportBinary,
     0o755,
   );
   return {
     nativeOwnerBinary,
     nativeOwnerSha256: sha256File(nativeOwnerBinary),
-    chainSyncBinary,
+    transportBinary,
   };
 };
 
@@ -73,7 +70,6 @@ const runNodeCommand = (
   label: string,
   options: {
     readonly oneShot?: HubOracleOneShot;
-    readonly historyGenesisPin: string | null;
     readonly timeoutMs: number;
   },
 ) =>
@@ -82,7 +78,6 @@ const runNodeCommand = (
     env: nodeEnvironment({
       ...context,
       oneShot: options.oneShot,
-      historyGenesisPin: options.historyGenesisPin,
       role: "command",
     }),
     logDir: context.layout.stepLogs,
@@ -90,7 +85,7 @@ const runNodeCommand = (
     timeoutMs: options.timeoutMs,
   });
 
-/** A node command under the run's recorded L1 history genesis pin. */
+/** A node command in the run's node environment. */
 export const nodeCli = async (
   context: DeployContext,
   args: readonly string[],
@@ -100,22 +95,8 @@ export const nodeCli = async (
 ) =>
   runNodeCommand(context, args, label, {
     oneShot,
-    historyGenesisPin: recordedHistoryGenesisPin(context.layout),
     timeoutMs,
   });
-
-/**
- * Records the run's L1 genesis pin on first use and refuses a chain that no
- * longer serves it. The derivation is the one command that runs before a pin
- * is recorded.
- */
-export const ensureRunChainPin = (context: DeployContext) =>
-  ensureHistoryGenesisPin(context.layout, () =>
-    runNodeCommand(context, ["history-genesis-pin"], "history-genesis-pin", {
-      historyGenesisPin: null,
-      timeoutMs: 120_000,
-    }),
-  );
 
 type RunState = {
   identity?: {
@@ -237,9 +218,6 @@ export const ensureDeployed = async (
       label,
     );
 
-  // First, on a fresh and on an already-deployed run alike: nothing below may
-  // act on a chain that is not the run's own.
-  await ensureRunChainPin(context);
   await step(["db:migrate"], "db-migrate");
 
   const runState = () => readJsonIfPresent<RunState>(layout.deploymentRunState);
@@ -261,6 +239,10 @@ export const ensureDeployed = async (
     throw new Error(
       `${layout.deploymentRunState} records no completed hub-oracle nonce`,
     );
+  // The node's follower starts at the point before the nonce block; a run
+  // whose origin cannot be found never starts a node.
+  const origin = await ensureL1Origin(context, oneShot);
+  console.log(`deploy: L1 origin ${origin.slot}.${origin.blockHash}`);
 
   const manifest = () =>
     readJsonIfPresent<ContractManifest>(layout.contractManifest);
@@ -295,19 +277,3 @@ export const ensureDeployed = async (
   await step(["register-active-operator"], "register-active-operator", oneShot);
   return oneShot;
 };
-
-export const deploymentStatus = async (
-  context: DeployContext,
-  oneShot: HubOracleOneShot,
-) =>
-  lastJsonValue(
-    requireSuccess(
-      await nodeCli(
-        context,
-        ["deployment-status"],
-        "deployment-status",
-        oneShot,
-      ),
-      "deployment-status",
-    ).stdout,
-  );

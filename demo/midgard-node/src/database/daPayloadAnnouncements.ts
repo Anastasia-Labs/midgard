@@ -1,8 +1,8 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
+import { owedPayload } from "../l1-queue-terminals/reads.js";
 import { Database } from "../services/database.js";
-import { owedPayload } from "./daPayloadTerminalOutcomes.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "da_payload_announcements";
@@ -74,8 +74,8 @@ export const claimDue = ({
   readonly leaseOwner: string;
   readonly leaseToken: string;
   readonly leaseMs: number;
-  /** Verified manifest ID scoping authenticated removal outcomes; absent for
-   * a derived contract bundle (see `owedPayload`). */
+  /** Verified manifest ID; absent for a derived contract bundle, which
+   * consults no removal (see `owedPayload`). */
   readonly deploymentIdentityDigest?: Buffer;
 }): Effect.Effect<readonly Row[], DatabaseError, Database> =>
   Effect.gen(function* () {

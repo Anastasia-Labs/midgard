@@ -4,23 +4,13 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { AvailabilityResponseLoopEnforcement } from "../availability-response-loop.js";
 import type { CommitteeL1ClientConfig } from "../config.js";
-import { readAvailabilityCursor } from "../l1/availability-cursor.js";
-import { committeeOwnedAvailabilitySubmit } from "../l1/availability-owned-submit.js";
-import { committeeScopedAttemptLucid } from "../l1/availability-scoped-lucid.js";
-import { committeeScopedUtxos } from "../l1/availability-scoped-utxos.js";
-import type { ChainSyncReplayProvider } from "../l1/provider.js";
-import type { StateQueueProvider } from "../l1/state-queue-scanner.js";
-import { type CommitteeStore, JsonFileCommitteeStore } from "../store.js";
-import {
-  committeeBoundReadContext,
-  drainCommitteeReadResources,
-  inheritCommitteeReadOwner,
-} from "./committee-owned-read-transports.js";
+import type { CommitteeAvailabilityReads } from "../l1/follower/availability-reads.js";
+import type { CommitteeStore } from "../store.js";
 import { createCommitteePromiseAdmissionSource } from "./create-promise-admission-source.js";
 import {
   availabilityResponderCollateral,
-  availabilityResponderL1ReadersFromConfig,
   availabilityResponderOperations,
+  committeeBoundReadContext,
 } from "./factory.availability-responder-operations.js";
 import {
   availabilityResponderTransactionOperation,
@@ -28,90 +18,74 @@ import {
 } from "./factory.discover-availability-responder-challenges.js";
 import { committeePromiseActorRuntime } from "./promise-actor-runtime.js";
 import { committeeRunningPromiseBuildDigest } from "./promise-adoption-evidence.js";
-import { loadCommitteePromiseCausalAdoption } from "./promise-causal-adoption.js";
+import {
+  type CommitteePromiseLedger,
+  loadCommitteePromiseCausalAdoption,
+} from "./promise-causal-adoption.js";
 import { committeeClaimReconciliation } from "./promise-claim-reconciliation.js";
-import { committeePromiseExecutionScopes } from "./promise-execution-scopes.js";
+import {
+  committeePromiseExecutionScopes,
+  committeePromiseOwnedStage,
+} from "./promise-execution-scopes.js";
 import { committeePromiseStoreReadOwner } from "./promise-owned-read.js";
 import { committeePromiseRetirementRuntime } from "./promise-retirement-runtime.js";
 import type { CommitteePromiseRuntimePolicyAuthority } from "./promise-runtime-policy.js";
 import { AvailabilityResponder } from "./responder.js";
 import { assertAvailabilityResponderSourceHealthy } from "./source-authority.js";
 
-const isReplayProvider = (
-  provider: StateQueueProvider,
-): provider is StateQueueProvider & ChainSyncReplayProvider =>
-  [
-    "refreshAvailabilityCursor",
-    "currentChainSyncCursor",
-    "loadConsumedChainSyncCursor",
-    "acknowledgeChainSyncCursor",
-    "replayChainSyncEvents",
-  ].every((key) => typeof Reflect.get(provider, key) === "function");
-
 /** Actual configured owner for the explicitly adopted private profile. No
- * artifact or fixture can substitute for installed cursor/transport/actor gates. */
+ * artifact or fixture can substitute for installed cursor/source/actor gates.
+ * Every L1 read is the committee follower's (its view bounds each stage) or
+ * the node's ledger state; every submit is the node's LocalTxSubmission. */
 export const configuredCommitteePromiseRuntime = async (input: {
   config: CommitteeL1ClientConfig;
   lucid: LucidEvolution;
+  reads: CommitteeAvailabilityReads;
+  /** The node's protocol parameters and slot configuration, by local state query. */
+  ledger: Omit<CommitteePromiseLedger, "viewValid">;
   deployment: SDK.DaAvailabilityDeployment;
   actorId: string;
   store: CommitteeStore;
   journal: AvailabilityOperationJournal;
-  chainProvider: StateQueueProvider;
-  kupoUrl: string;
-  ogmiosUrl: string;
 }) => {
-  const { config, lucid, deployment, journal, store, actorId, chainProvider } =
-    input;
-  if (!(store instanceof JsonFileCommitteeStore))
-    throw new Error("Controlled admission requires the calibrated JSON store");
-  if (!isReplayProvider(chainProvider))
-    throw new Error(
-      "Adopted profile requires bounded canonical cursor authority",
-    );
-  let generation: number | undefined;
+  const { config, lucid, reads, deployment, journal, store, actorId } = input;
   let authority: CommitteePromiseRuntimePolicyAuthority | undefined;
   let loopInstalled = false;
   const breach = (reason: string) => authority?.breach(reason);
-  const limits = {
-    requestRefusalMs: 10000,
-    httpResponseBytes: 4194304,
-    webSocketMessageBytes: 4194304,
-    rawUtxos: 1024,
-  };
   const scopes = committeePromiseExecutionScopes({
-    provider: chainProvider,
-    limits,
+    readCursor: () => reads.readBoundary(),
     breach,
   });
   const actorRuntime = committeePromiseActorRuntime(breach);
   const storeReads = committeePromiseStoreReadOwner();
-  const currentCursor = async (scope?: SDK.DaAvailabilityReadScope) => {
-    const owned = scope ?? scopes.open();
-    try {
-      const cursor = await readAvailabilityCursor(chainProvider, owned);
-      generation = cursor.rollbackGeneration;
-      return cursor;
-    } finally {
-      if (!scope) {
-        await storeReads.join();
-        await drainCommitteeReadResources(owned);
-        owned.close();
-      }
-    }
+  const provider = lucid.config().provider;
+  if (provider === undefined)
+    throw new Error("Adopted responder has no transaction provider");
+  /** A refusal leaves the SDK's exact signed intent unresolved; nothing here
+   * releases it or supplies replacement bytes. */
+  const submit = (signedCbor: string): Promise<string> => {
+    if (
+      !journal
+        .pending(String(config.contractDeploymentInfo.manifestId), actorId)
+        .some((record) => record.intent.signedCbor === signedCbor)
+    )
+      throw new Error(
+        "Owned submit requires the exact persisted pending bytes",
+      );
+    return committeePromiseOwnedStage({
+      stage: "submit",
+      capMs: 3000,
+      breach,
+      run: () => provider.submitTx(signedCbor),
+    });
   };
   const ops = availabilityResponderOperations({
     lucid,
+    reads,
     assertSourceHealthy: () =>
       storeReads.read(() =>
         assertAvailabilityResponderSourceHealthy(store, config),
       ),
-    readers: availabilityResponderL1ReadersFromConfig({
-      ...input,
-      config,
-      currentCursor,
-      sourceReadLimits: limits,
-    }),
     context: {
       deploymentIdentity: String(config.contractDeploymentInfo.manifestId),
       actor: actorId,
@@ -122,26 +96,21 @@ export const configuredCommitteePromiseRuntime = async (input: {
         lucid,
         deployment.parameters,
       ),
-      submit: (signedCbor) =>
-        committeeOwnedAvailabilitySubmit({ ...input, signedCbor, breach }),
+      submit: async (signedCbor) => submit(signedCbor),
     },
   });
   const setup = scopes.open();
   let adoption: Awaited<ReturnType<typeof loadCommitteePromiseCausalAdoption>>;
   try {
     await scopes.refresh(setup);
-    await currentCursor(setup);
     const runtimeBuildDigest = await committeeRunningPromiseBuildDigest();
     setup.assertCurrent();
     adoption = await loadCommitteePromiseCausalAdoption({
-      ...input,
+      config,
+      actorId,
       storeBackend: store.constructor.name,
       runtimeBuildDigest,
-      currentRollbackGeneration: () => {
-        if (generation === undefined)
-          throw new Error("Canonical rollback generation unavailable");
-        return generation;
-      },
+      ledger: { ...input.ledger, viewValid: reads.viewValid },
       installedEnforcement: Object.entries({
         cursor: 5000,
         poll: 15000,
@@ -163,7 +132,6 @@ export const configuredCommitteePromiseRuntime = async (input: {
     authority = adoption.authority;
   } finally {
     await storeReads.join();
-    await drainCommitteeReadResources(setup);
     setup.close();
   }
   const claims = committeeClaimReconciliation({
@@ -172,31 +140,14 @@ export const configuredCommitteePromiseRuntime = async (input: {
     deploymentIdentity: String(config.contractDeploymentInfo.manifestId),
     openReadScope: scopes.open,
     readBoundary: ops.readBoundary,
-    currentCursor,
     reconcile: ops.reconcile,
     assertRuntimeIdle: actorRuntime.assertIdle,
     maximumRetainedRecords: 1024,
   });
-  const readUtxos = committeeScopedUtxos({ kupoUrl: input.kupoUrl, limits });
   const walletAddress = await lucid.wallet().address();
-  const scopedClients = new WeakMap<
-    SDK.DaAvailabilityReadScope,
-    Promise<LucidEvolution>
-  >();
   const assertCollateralCurrent = async (
     scope: SDK.DaAvailabilityReadScope,
   ) => {
-    let client = scopedClients.get(scope);
-    if (!client) {
-      client = committeeScopedAttemptLucid({
-        ...input,
-        original: lucid,
-        scope,
-        limits,
-      });
-      scopedClients.set(scope, client);
-    }
-    const attempt = await client;
     const metadata = journal.actorSnapshot(
       actorId,
       String(config.contractDeploymentInfo.manifestId),
@@ -217,12 +168,12 @@ export const configuredCommitteePromiseRuntime = async (input: {
     );
     const collateral = await availabilityResponderCollateral(
       {
-        config: attempt.config,
+        config: () => lucid.config(),
         wallet: () => ({ address: async () => walletAddress }),
         utxosAt: async (address) => {
           if (typeof address !== "string")
             throw new Error("Collateral requires the exact actor address");
-          return (await readUtxos(address, scope)).filter(
+          return (await scope.read(() => lucid.utxosAt(address))).filter(
             (row) => !normal.has(`${row.txHash}#${row.outputIndex}`),
           );
         },
@@ -243,7 +194,6 @@ export const configuredCommitteePromiseRuntime = async (input: {
     claims,
     scopes,
     ops,
-    readUtxos,
     assertIdle: actorRuntime.assertIdle,
     joinStoreReads: storeReads.join,
   });
@@ -252,15 +202,11 @@ export const configuredCommitteePromiseRuntime = async (input: {
     actorId,
     retirementPort: retirement.port,
     retirementGrowthReserve: retirement.growthReserve,
-    currentCursor,
     readBoundary: ops.readBoundary,
     assertActuationCurrent: ops.assertActuationCurrent,
     policyAuthority: authority,
     openReadScope: scopes.open,
-    sourceReadLimits: limits,
     currentSchedulingEnabled: true,
-    scopedReadUtxos: readUtxos,
-    walletAddress,
     readProtocolDigest: adoption.readProtocolDigest,
     assertCollateralCurrent,
     assertCompatibleClaimsCurrent: claims.assertCompatibleClaimsCurrent,
@@ -268,8 +214,6 @@ export const configuredCommitteePromiseRuntime = async (input: {
     drainReadResources: async (scope) => {
       if (!scope) throw new Error("Owned admission read scope is unavailable");
       await storeReads.join();
-      await drainCommitteeReadResources(scope);
-      scopes.assertDrained();
     },
     prepareCanonicalClaims: async (scope) => {
       if (!loopInstalled)
@@ -306,7 +250,6 @@ export const configuredCommitteePromiseRuntime = async (input: {
         return await ops.reconcile(scope);
       } finally {
         await storeReads.join();
-        await drainCommitteeReadResources(scope);
         scope.close();
       }
     },
@@ -323,18 +266,21 @@ export const configuredCommitteePromiseRuntime = async (input: {
           () => {
             complete = false;
           },
-          { scope, readUtxos },
+          { scope },
         );
         const after = await ops.readBoundary(scope);
         scope.assertCurrent();
-        if (!complete || before.pointId !== after.pointId)
+        if (
+          !complete ||
+          before.pointId !== after.pointId ||
+          before.generation !== after.generation
+        )
           throw new Error(
             "Complete response discovery changed or was unavailable",
           );
         return found;
       } finally {
         await storeReads.join();
-        await drainCommitteeReadResources(scope);
         scope.close();
       }
     },
@@ -379,7 +325,6 @@ export const configuredCommitteePromiseRuntime = async (input: {
         observationSignal: scope.signal,
         observationTimeoutMs: Math.max(1, Math.ceil(scope.remainingMs())),
         assertActuationCurrent: async (child?: SDK.DaAvailabilityReadScope) => {
-          inheritCommitteeReadOwner(scope, child);
           await ops.assertActuationCurrent(child ?? scope);
           if (
             buildStageStart !== undefined &&
@@ -424,20 +369,13 @@ export const configuredCommitteePromiseRuntime = async (input: {
               ),
               signal: (shared ?? scope).signal,
             });
-            inheritCommitteeReadOwner(scope, builderScope);
             try {
               return await actorRuntime.trackUnsigned(
                 builderScope,
                 async () => {
                   try {
-                    const attempt = await committeeScopedAttemptLucid({
-                      ...input,
-                      original: lucid,
-                      scope: builderScope,
-                      limits,
-                    });
                     const tx = await availabilityResponderTransactionOperation(
-                      attempt,
+                      lucid,
                       deployment,
                       action,
                     ).build(builderScope.signal, builderScope);
@@ -456,7 +394,6 @@ export const configuredCommitteePromiseRuntime = async (input: {
                     return tx;
                   } finally {
                     await storeReads.join();
-                    await drainCommitteeReadResources(builderScope);
                   }
                 },
               );
@@ -474,7 +411,6 @@ export const configuredCommitteePromiseRuntime = async (input: {
         finishBuildStage();
         await actorRuntime.join();
         await storeReads.join();
-        await drainCommitteeReadResources(scope);
         scope.close();
       }
     },
@@ -485,6 +421,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
     promiseLoopEnforcement,
     bindRetirementOperationalPins: retirement.bindOperationalPins,
     compactRetainedPromises: retirement.compact,
+    retirementHolds: retirement.holds,
     close: () => journal.close(),
   };
 };

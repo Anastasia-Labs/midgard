@@ -2,18 +2,19 @@ import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Metric } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { WriteBehind } from "../services/write-behind.js";
 import { ProcessedTx } from "../utils.js";
 import type * as AddressHistoryDB from "./addressHistory.js";
 import * as DepositsDB from "./deposits.js";
+import * as MempoolInclusionsDB from "./mempoolInclusions.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
+import { tableName as txAdmissionsTableName } from "./txAdmissions.verify-claimed-payload-rows.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
-  retrieveNumberOfEntries,
   sqlErrorToDatabaseError,
 } from "./utils/common.js";
 import * as Ledger from "./utils/ledger.js";
@@ -188,7 +189,7 @@ export const insertMultiple = (
       return;
     }
     const sql = yield* SqlClient.SqlClient;
-    yield* withHistoryWrite(
+    yield* withFollowerWrite(
       sql.withTransaction(insertMultipleCore(processedTxs)),
     );
     yield* enqueueAcceptedWriteBehind(processedTxs);
@@ -204,20 +205,24 @@ export const insert = (
   insertMultiple([processedTx]);
 
 /**
- * Retrieves mempool transaction CBOR by transaction hash.
+ * Retrieves pending mempool transaction CBOR by transaction hash (a row a
+ * block's inclusion mark holds is not pending).
  */
 export const retrieveTxCborByHash = (txHash: Buffer) =>
-  Tx.retrieveValue(tableName, txHash);
+  MempoolInclusionsDB.retrievePendingValue(tableName, txHash);
 
 /**
- * Retrieves mempool transaction CBOR blobs for a batch of hashes.
+ * Retrieves pending mempool transaction CBOR blobs for a batch of hashes.
  */
 export const retrieveTxCborsByHashes = (
   txHashes: Buffer[] | readonly Buffer[],
-) => Tx.retrieveValues(tableName, txHashes);
+) => MempoolInclusionsDB.retrievePendingValues(tableName, txHashes);
 
 export type MempoolCursor = {
   readonly timeStampTz: Date;
+  /** The row's admission order (`ADMISSION_ORDER_NONE` for a row with no
+   * admission), as decimal text. */
+  readonly arrivalSeq: string;
   readonly txId: Buffer;
 };
 
@@ -226,6 +231,20 @@ export type MempoolPage = {
   readonly nextCursor: MempoolCursor | null;
 };
 
+/** The admission order of a mempool row with no admission row: after every
+ * row that has one (the largest `bigint`). */
+const ADMISSION_ORDER_NONE = "9223372036854775807";
+
+/**
+ * A page of pending mempool rows in admission order: the time stamp (each
+ * accepted batch's insert time), then the admission sequence
+ * (`tx_admissions.arrival_seq`; a row with none after those with one), then
+ * the tx id. A transaction is accepted only once its parents' outputs are in
+ * the working ledger, at an earlier insert time or earlier in the same
+ * batch, whose admissions are validated in admission order: so a parent
+ * comes before its child, and a page, or any prefix of the pages, never
+ * holds a child without its pending parent.
+ */
 export const retrievePage = ({
   after,
   limit,
@@ -241,33 +260,47 @@ export const retrievePage = ({
     const sql = yield* SqlClient.SqlClient;
     const pageLimit = Math.max(1, Math.floor(limit));
     const afterTime = after?.timeStampTz ?? null;
+    const afterSeq = after?.arrivalSeq ?? null;
     const afterTxId = after?.txId ?? null;
     const upperTime = upTo ?? null;
-    const rows = yield* sql<Tx.EntryWithTimeStamp>`
-      SELECT
-        ${sql(Tx.Columns.TX_ID)},
-        ${sql(Tx.Columns.TX)},
-        ${sql(Tx.Columns.TIMESTAMPTZ)}
-      FROM ${sql(tableName)}
-      WHERE ((${afterTime}::timestamptz IS NULL)
-        OR (${sql(Tx.Columns.TIMESTAMPTZ)}, ${sql(Tx.Columns.TX_ID)}) >
-           (${afterTime}::timestamptz, ${afterTxId}::bytea))
-        AND (${upperTime}::timestamptz IS NULL
-        OR ${sql(Tx.Columns.TIMESTAMPTZ)} <= ${upperTime}::timestamptz)
-      ORDER BY ${sql(Tx.Columns.TIMESTAMPTZ)} ASC, ${sql(Tx.Columns.TX_ID)} ASC
+    const rows = yield* sql<Tx.EntryWithTimeStamp & { order_seq: string }>`
+      SELECT * FROM (
+        SELECT
+          mempool.${sql(Tx.Columns.TX_ID)},
+          mempool.${sql(Tx.Columns.TX)},
+          mempool.${sql(Tx.Columns.TIMESTAMPTZ)},
+          COALESCE(admission.arrival_seq, ${ADMISSION_ORDER_NONE}::bigint)
+            AS order_seq
+        FROM ${sql(tableName)} AS mempool
+        LEFT JOIN ${sql(txAdmissionsTableName)} AS admission
+          ON admission.tx_id = mempool.${sql(Tx.Columns.TX_ID)}
+        WHERE mempool.${sql(MempoolInclusionsDB.INCLUDED_BY)} IS NULL
+          AND (${upperTime}::timestamptz IS NULL
+          OR mempool.${sql(Tx.Columns.TIMESTAMPTZ)} <= ${upperTime}::timestamptz)
+      ) AS pending
+      WHERE (${afterTime}::timestamptz IS NULL)
+        OR (${sql(Tx.Columns.TIMESTAMPTZ)}, order_seq, ${sql(Tx.Columns.TX_ID)}) >
+           (${afterTime}::timestamptz, ${afterSeq}::bigint, ${afterTxId}::bytea)
+      ORDER BY ${sql(Tx.Columns.TIMESTAMPTZ)} ASC, order_seq ASC,
+        ${sql(Tx.Columns.TX_ID)} ASC
       LIMIT ${pageLimit}`;
-    const entries: readonly Tx.EntryWithTimeStamp[] = rows;
+    const entries: readonly Tx.EntryWithTimeStamp[] = rows.map((row) => ({
+      [Tx.Columns.TX_ID]: row[Tx.Columns.TX_ID],
+      [Tx.Columns.TX]: row[Tx.Columns.TX],
+      [Tx.Columns.TIMESTAMPTZ]: row[Tx.Columns.TIMESTAMPTZ],
+    }));
     yield* mempoolRetrievePageDurationTimer(
       Effect.succeed(Duration.millis(Date.now() - startedAt)),
     );
     yield* mempoolRetrievePageRowsGauge(Effect.succeed(BigInt(entries.length)));
-    const last = entries.at(-1);
+    const last = rows.at(-1);
     return {
       entries,
       nextCursor:
-        entries.length === pageLimit && last !== undefined
+        rows.length === pageLimit && last !== undefined
           ? {
               timeStampTz: last[Tx.Columns.TIMESTAMPTZ],
+              arrivalSeq: String(last.order_seq),
               txId: last[Tx.Columns.TX_ID],
             }
           : null,
@@ -280,8 +313,9 @@ export const retrievePage = ({
     sqlErrorToDatabaseError(tableName, "Failed to retrieve mempool page"),
   );
 
+/** The number of pending (unmarked) mempool rows. */
 export const retrieveTxCount: Effect.Effect<bigint, DatabaseError, Database> =
-  retrieveNumberOfEntries(tableName);
+  MempoolInclusionsDB.countPending(tableName);
 
 export const clearTxs = (
   txHashes: Buffer[],

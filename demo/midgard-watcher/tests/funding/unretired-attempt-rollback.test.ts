@@ -11,6 +11,7 @@ import {
   setupFundingRecoveryFixture,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { runtimeAuthority } from "./prover-funding-calculation.runtime-authority.js";
 
 afterEach(async () => {
@@ -28,6 +29,7 @@ it("re-lands the exact bytes of a confirmed, unretired attempt rolled back after
   });
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: fixture.old.launchScope,
     deploymentIdentity,
     protocolParameters: await runtimeAuthority(deploymentIdentity, 45, 3, 600),

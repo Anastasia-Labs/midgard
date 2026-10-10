@@ -18,7 +18,6 @@ import {
   type WatcherStateQueueHeaderObservation,
   type WatcherStateQueueRemovalKind,
 } from "../indexers/authenticated-state-queue-observation.js";
-import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { watcherSameCanonicalJson } from "../storage/durable-store.js";
 import type { WatcherClassificationWarning } from "./fault-decision-bridge.classification-miss.js";
@@ -63,25 +62,15 @@ export type WatcherFaultDecisionBridge = Readonly<{
     observation: WatcherAuthenticatedStateQueueObservation,
   ): Promise<WatcherFaultDecisionBridgeResult>;
   /** Forwards prepared queue authority to the supervisor during startup. */
-  recoverExisting(
-    input?: Readonly<{ nativeProgress: WatcherNativeBlockAdmission }>,
-  ): Promise<number>;
+  recoverExisting(): Promise<number>;
   /** Reconciles one finalized queue cursor and schedules its one allowed fault. */
   reconcileAndDispatch(
     observation: WatcherAuthenticatedStateQueueObservation,
   ): Promise<WatcherFaultDecisionBridgeResult>;
-  /** Retries only a queue whose public DA or predecessor attachment is pending. */
-  retryDeferredClassification(
-    observation: WatcherAuthenticatedStateQueueObservation,
-  ): Promise<void>;
   /** Schedules the target selected by the most recent successful prepare. */
   dispatchPrepared(): Promise<unknown> | null;
   /** Invalidates all runnable authority synchronously on native rollback. */
   invalidateForRollback(): void;
-  /** Fence advancing history without revoking a target that does not consume it. */
-  beforeHistoryAdvance(): void;
-  /** Retire all cached decisions when local event history loses authority. */
-  invalidateForHistoryChange(): void;
   /** Revokes all runnable authority before production shutdown can await I/O. */
   invalidateForShutdown(): void;
   status(): Readonly<{
@@ -149,11 +138,6 @@ export type BridgeDependencies = Readonly<{
   warn?(
     warning: WatcherUnverifiedHeaderWarning | WatcherClassificationWarning,
   ): void;
-  /**
-   * Wait before the `consecutive`-th retry of a deferred suffix. Omitted, a
-   * deferred suffix is retried on every wake.
-   */
-  deferredRetryDelayMs?(consecutive: number): number;
   nowMs?(): bigint;
   monotonicNowMs?(): number;
   requestProgress(request: WatcherFaultProofProgressRequest): Promise<void>;

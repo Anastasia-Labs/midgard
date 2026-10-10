@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,8 +16,6 @@ import {
   reconcileMergeCompleteProgram,
   type ReconciliationResult,
 } from "../src/commands/reconcile.js";
-import * as Authority from "../src/database/eventHistoryAuthority.js";
-import { CORRECTION_REWIND_RECOVERY_DOMAIN } from "../src/database/eventHistoryRecoveryPlans.js";
 import {
   ConfirmedLedgerDB,
   MpfEngineStateDB,
@@ -27,10 +27,13 @@ import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { hydrateLedgerMpfFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import type { NodeConfigDep } from "../src/services/config.js";
-import { HistoryProducer } from "../src/services/event-history-producer.js";
+import {
+  DRIVER_RECOMPUTE_PENDING,
+  FOLLOWER_VIEW_UNAPPLIED,
+} from "../src/services/follower-write-gate.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
-import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -41,6 +44,7 @@ import {
   BlocksDB,
   ContractDeploymentIdentity,
   Database,
+  emulatorStateQueueSnapshot,
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
   Globals,
@@ -56,7 +60,8 @@ import {
   runLocalFinalizationRecoveryWorker,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 type LedgerEntries = Parameters<typeof hydrateLedgerMpfFromLedgerEntries>[1];
 
@@ -96,12 +101,12 @@ vi.mock(
 
 /**
  * Actual public deposits, commits, confirmations and local finalizations under
- * the production history owner and Architecture G native owner; the merges run
- * through the admin GET /merge handler and `reconcile merge-complete --repair`
- * with no producer permit taken by the test.
+ * the production follower-change driver and Architecture G native owner; the
+ * merges run through the admin GET /merge handler and `reconcile
+ * merge-complete --repair` with no follower write permit taken by the test.
  */
-it("audits the native MPF root at the committed tip, and merges manually only under the history producer permit", async () => {
-  const initial = await openHistoryProductionOwnerLifecycle();
+it("audits the native MPF root at the committed tip, and merges manually only under a follower write permit", async () => {
+  const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
   let { globals, production } = h;
@@ -110,8 +115,8 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   const histories = SDK.requireEventHistoryContracts(fixture.contracts);
   const scratch = await mkdtemp(join(tmpdir(), "midgard-audit-leveldb-"));
 
-  // The production node's services, without a producer permit or the
-  // unowned-model fixture: exactly what the admin router and the CLI get.
+  // The production node's services, without a follower write permit or the
+  // fixture capability: exactly what the admin router and the CLI get.
   type RunOverrides = {
     readonly globals?: Globals;
     readonly nodeConfig?: NodeConfigDep;
@@ -140,6 +145,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       ),
       Effect.provideService(MempoolLedgerCache, production.cache),
       Effect.provide(Database.layer),
+      Effect.provide(IntentJournalWithoutFollower),
     ) as Effect.Effect<A, E, never>;
   const run = <A, E>(
     effect: Effect.Effect<A, E, any>,
@@ -169,17 +175,16 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   };
   const queue = () =>
     Effect.runPromise(
-      fetchStateQueueSnapshotProgram(
+      emulatorStateQueueSnapshot(
         fixture.operatorLucid,
         fixture.contracts.stateQueue,
         "startup",
-      ),
+      ).pipe(Effect.provide(Database.layer)),
     );
   const submit = async (built: { tx: TxSignBuilder }) => {
     const signed = await built.tx.sign.withWallet().complete();
     const hash = await signed.submit();
     expect(await wallet.awaitTx(hash)).toBe(true);
-    wallet.overrideUTxOs(await wallet.utxosAt(address));
     await h.synchronize();
     return hash;
   };
@@ -359,58 +364,16 @@ it("audits the native MPF root at the committed tip, and merges manually only un
         ledger_delta_produced = ${fields.ledger_delta_produced}::text::jsonb
         WHERE header_hash = ${Buffer.from(headerHash, "hex")}`,
     );
-  // An applied correction rewind plan, as the recovery coordinator leaves it
-  // after the native restore; only its state, time and target root matter to
-  // the audit.
-  const rewindIntent = (headerHash: string, targetRoot: string) =>
-    JSON.stringify({
-      bindingDigest: "11".repeat(32),
-      domain: CORRECTION_REWIND_RECOVERY_DOMAIN,
-      expectedRoot: "22".repeat(32),
-      headerHash,
-      journalDigest: "33".repeat(32),
-      manifestId: "44".repeat(32),
-      members: [{ headerHash, transitionDigest: "55".repeat(32) }],
-      targetRoot,
-    });
-  const insertAppliedRewind = (
-    recoveryId: string,
-    headerHash: string,
-    targetRoot: string,
-  ) =>
-    sqlRun(
-      (sql) => sql`INSERT INTO event_history_recovery_plans
-        (recovery_id, binding_digest, manifest_id, header_hash, intent,
-         evidence_digest, checkpoint_revision, head_hash, snapshot_digest,
-         owner_generation, state)
-        VALUES (${Buffer.from(recoveryId, "hex")}, ${Buffer.alloc(32, 0x11)},
-          ${Buffer.alloc(32, 0x44)}, ${Buffer.from(headerHash, "hex")},
-          ${rewindIntent(headerHash, targetRoot)}, ${Buffer.alloc(32, 0x66)}, 0,
-          ${Buffer.alloc(32, 0x77)}, ${Buffer.alloc(32, 0x88)}, 0, 'applied')`,
-    );
-  const setRewindTarget = (recoveryId: string, targetRoot: string) =>
-    sqlRun(
-      (sql) => sql`UPDATE event_history_recovery_plans
-        SET intent = jsonb_set(intent::jsonb, '{targetRoot}',
-          to_jsonb(${targetRoot}::text))::text
-        WHERE recovery_id = ${Buffer.from(recoveryId, "hex")}`,
-    );
-  const deleteRewind = (recoveryId: string) =>
-    sqlRun(
-      (sql) => sql`DELETE FROM event_history_recovery_plans
-        WHERE recovery_id = ${Buffer.from(recoveryId, "hex")}`,
-    );
-  const authorityRow = async () =>
+  /** The recompute the follower write gate holds writes for, if any. */
+  const gatePending = async () =>
     (
       await sqlRun(
-        (sql) => sql<{
-          readonly generation: string;
-          readonly state: string;
-          readonly reason: string;
-        }>`SELECT generation::text AS generation, state, reason
-          FROM event_history_authority`,
+        (sql) =>
+          sql<{
+            readonly reason: string | null;
+          }>`SELECT pending_reason AS reason FROM node_follower_write_gate`,
       )
-    )[0]!;
+    )[0]!.reason;
   const decodeMergeBody = (response: {
     readonly status: number;
     readonly body: { readonly _tag: string; readonly body?: unknown };
@@ -423,10 +386,6 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   };
 
   try {
-    // The shared worker shard keeps earlier suites' (and earlier runs')
-    // recovery plan rows, which the production lifecycle reset does not own;
-    // an applied one would move the native committed point under this test.
-    await sqlRun((sql) => sql`DELETE FROM event_history_recovery_plans`);
     await advanceEmulatorPastLatestBlockEndTime(fixture);
 
     // --- Bug A: one finalized, unmerged block. -----------------------------
@@ -526,7 +485,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     const firstFields = await journalFields(first.headerHash);
     const secondFields = await journalFields(second.headerHash);
     expect(firstFields.status).toBe(
-      PendingBlockFinalizationsDB.Status.Finalized,
+      PendingBlockFinalizationsDB.Status.LocallyApplied,
     );
     expect(secondFields.base_tail_header_hash.toString("hex")).toBe(
       first.headerHash,
@@ -658,82 +617,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     await writeJournalFields(second.headerHash, rebased);
     await acknowledgeCleanAudit();
 
-    // A correction rewind removes B (built on the foreign F) and resets the
-    // native root to B's replay base, F's root. P is still this node's newest
-    // finalized journal, but the rewind applied after it fixes the committed
-    // point: a native root at F's root is unverifiable, not divergent, and P's
-    // post-state is now stale.
-    await writeJournalFields(second.headerHash, {
-      ...rebased,
-      status: PendingBlockFinalizationsDB.Status.Abandoned,
-      base_utxos_root: unheldRoot,
-      mpf_replay_base_root: Buffer.from(unheldRoot, "hex"),
-    });
-    const rewindId = "5a".repeat(32);
-    await insertAppliedRewind(rewindId, second.headerHash, unheldRoot);
-    const foreignRewound = await auditWithNativeRoot(unheldRoot);
-    expect(foreignRewound).toMatchObject({
-      skippedReason: "tip_unverifiable",
-      tipCommittedRoot: unheldRoot,
-      diverged: false,
-    });
-    expect(foreignRewound.tipUnverifiable).toContain(
-      `applied correction_rewind recovery_id=${rewindId}`,
-    );
-    expect(await auditHealthy()).toBe(true);
-    // A rewind to the confirmed ledger is verified there, with nothing
-    // unmerged on top.
-    await setRewindTarget(rewindId, clean.confirmedRoot);
-    expect(await auditWithNativeRoot(clean.confirmedRoot)).toMatchObject({
-      matchedPoint: "tip",
-      recomputedRoot: clean.confirmedRoot,
-      unmergedJournalCount: 0,
-      diverged: false,
-    });
-    // A rewind to P's post-state is reconstructed through P.
-    await setRewindTarget(rewindId, tipRoot);
-    expect(await auditWithNativeRoot(tipRoot)).toMatchObject({
-      matchedPoint: "tip",
-      recomputedRoot: tipRoot,
-      unmergedJournalCount: 1,
-      diverged: false,
-    });
-    // A rewind applied before P's journal was created does not govern: P,
-    // committed after it, does.
-    await setRewindTarget(rewindId, unheldRoot);
-    await sqlRun(
-      (sql) => sql`UPDATE event_history_recovery_plans SET updated_at =
-        (SELECT created_at - interval '1 second' FROM pending_block_finalizations
-          WHERE header_hash = ${Buffer.from(first.headerHash, "hex")})
-        WHERE recovery_id = ${Buffer.from(rewindId, "hex")}`,
-    );
-    expect(await auditWithNativeRoot(tipRoot)).toMatchObject({
-      matchedPoint: "tip",
-      unmergedJournalCount: 1,
-      diverged: false,
-    });
-    expect(await auditHealthy()).toBe(true);
-    // After the foreign rewind, P's post-state and the removed block's
-    // post-state both diverge.
-    await sqlRun(
-      (sql) => sql`UPDATE event_history_recovery_plans SET updated_at = NOW()
-        WHERE recovery_id = ${Buffer.from(rewindId, "hex")}`,
-    );
-    expect(await auditWithNativeRoot(tipRoot)).toMatchObject({
-      recomputedRoot: clean.confirmedRoot,
-      tipCommittedRoot: unheldRoot,
-      diverged: true,
-    });
-    expect(await auditWithNativeRoot(twoBlockTip)).toMatchObject({
-      diverged: true,
-    });
-    expect(await auditHealthy()).toBe(false);
-    await deleteRewind(rewindId);
-    // The rebased journal stays in place through both merges below.
-    await writeJournalFields(second.headerHash, rebased);
-    await acknowledgeCleanAudit();
-
-    // --- Bug C: manual merges under the running node's producer permit. ----
+    // --- Bug C: manual merges under the running node's follower write permit.
     await advanceEmulatorPastUnixTime(
       fixture,
       mergeMaturityWindow(fixture.operatorLucid, second.endTimeMs)
@@ -750,8 +634,8 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       repairActions: [],
       nextAction: expect.stringContaining(first.headerHash),
     });
-    // A standalone CLI process holds no history owner, so it cannot take the
-    // producer permit and must not merge.
+    // A standalone CLI process runs no follower-change driver, so it cannot
+    // take a follower write permit and must not merge.
     const standalone = await reconcile(first.headerHash, true, {
       globals: await makeGlobalsService(),
     });
@@ -762,38 +646,33 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     });
     expect(evidenceDetail(standalone, "merge_producer_permit")).toMatchObject({
       available: false,
-      reason: expect.stringContaining("History owner is not initialized"),
+      reason: expect.stringContaining(FOLLOWER_VIEW_UNAPPLIED),
     });
     const standaloneAdmin = await run(getMergeHandler, {
       globals: await makeGlobalsService(),
     });
     expect(standaloneAdmin.status).toBe(503);
     expect(decodeMergeBody(standaloneAdmin).cause).toContain(
-      "History owner is not initialized",
+      FOLLOWER_VIEW_UNAPPLIED,
     );
-    expect((await queue()).topology.parsedNodeCount).toBe(3);
+    expect((await queue()).blockCount).toBe(2);
     expect(await mergeJob(first.headerHash)).toBeUndefined();
 
-    // History recovery revokes the permit after the merge registered: the
+    // A driver recompute holds the gate after the merge registered: the
     // pre-submit check under the lease refuses before the transaction leaves,
     // since the local finalization after it could no longer write.
-    const authorityBefore = await authorityRow();
-    expect(authorityBefore.state).toBe("ready");
+    expect(await gatePending()).toBeNull();
     let revocations = 0;
     const revokingLucid = {
       ...lucidService,
       switchToOperatorsMergingWallet: Effect.gen(function* () {
-        const permit = yield* HistoryProducer;
-        yield* Authority.beginRecovery(
-          permit.token,
-          "test: history recovery began during a merge",
-        );
+        yield* holdFollowerWriteGate("test: a recompute began during a merge");
         revocations += 1;
         yield* lucidService.switchToOperatorsMergingWallet;
       }),
     };
-    // No follower synchronization after the revocation: the owner would
-    // (rightly) refuse to run until its recovery completes.
+    // No follower synchronization after the hold: a fresh driver run would
+    // recompute and reopen the gate.
     let revoked = await run(Effect.either(mergeAction(true)), {
       lucid: revokingLucid,
     });
@@ -818,31 +697,23 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(
       Either.isLeft(revoked) &&
         formatUnknownError(revoked.left, { includeCause: true }),
-    ).toContain("History authority generation or owner changed");
-    expect((await queue()).topology.parsedNodeCount).toBe(3);
+    ).toContain(DRIVER_RECOMPUTE_PENDING);
+    expect((await queue()).blockCount).toBe(2);
     expect(await mergeJob(first.headerHash)).toBeUndefined();
-    expect(await authorityRow()).toMatchObject({ state: "recovering" });
-    // A node whose history owner is not Ready blocks the repair with evidence.
+    expect(await gatePending()).toBe(DRIVER_RECOMPUTE_PENDING);
+    // A node whose gate is held blocks the repair with evidence.
     const notReady = await reconcile(first.headerHash, true);
     expect(notReady).toMatchObject({ status: "blocked", repairActions: [] });
     expect(evidenceDetail(notReady, "merge_producer_permit")).toMatchObject({
       available: false,
-      reason: expect.stringContaining("History source gate is closed"),
+      reason: expect.stringContaining(DRIVER_RECOMPUTE_PENDING),
     });
-    expect((await queue()).topology.parsedNodeCount).toBe(3);
-    // An owner that lost its generation stays closed, and its lease cannot be
-    // retired under the revoked generation: the node restarts once that lease
-    // lapses (expired here rather than waited out).
-    h = await initial.restartRuntime({
-      afterStop: async () => {
-        await sqlRun(
-          (sql) => sql`UPDATE event_history_authority
-            SET lease_until = clock_timestamp()`,
-        );
-      },
-    });
+    expect((await queue()).blockCount).toBe(2);
+    // The node restarts: the fresh driver's first view recomputes and
+    // reopens the gate.
+    h = await initial.restartRuntime();
     ({ globals, production } = h);
-    expect(await authorityRow()).toMatchObject({ state: "ready" });
+    expect(await gatePending()).toBeNull();
 
     const repaired = await untilMergeSubmitted(
       () => reconcile(first.headerHash, true),
@@ -865,7 +736,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(await mergeJob(first.headerHash)).toMatchObject({
       [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
     });
-    expect((await queue()).topology.parsedNodeCount).toBe(2);
+    expect((await queue()).blockCount).toBe(1);
     expect(await reconcile(first.headerHash, false)).toMatchObject({
       status: "satisfied",
       nextAction: null,
@@ -879,6 +750,8 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       diverged: false,
     });
 
+    // The second block's journal bound to its parent again, for its merge.
+    await writeJournalFields(second.headerHash, secondFields);
     // The admin merge of the second block is interrupted (as the L1 control
     // plane's hold timeout would) after the L1 confirmation, while its local
     // finalization is running: the finalization still completes.
@@ -973,7 +846,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(await reconcile(second.headerHash, false)).toMatchObject({
       status: "satisfied",
     });
-    expect((await queue()).topology.parsedNodeCount).toBe(1);
+    expect((await queue()).blockCount).toBe(0);
 
     // Fully merged: the confirmed ledger has caught up with the native tip.
     expect(await run(runLedgerPayloadAudit)).toMatchObject({
@@ -985,25 +858,6 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     });
     expect(await auditHealthy()).toBe(true);
 
-    // The tip walk stops at the confirmed boundary (B, whose post-state is the
-    // confirmed ledger): a committed point at P's post-state is anchored at a
-    // merged journal, which is unverifiable without reading any further back.
-    const mergedRewindId = "6b".repeat(32);
-    await insertAppliedRewind(mergedRewindId, second.headerHash, tipRoot);
-    const mergedAnchor = await auditWithNativeRoot(tipRoot);
-    expect(mergedAnchor).toMatchObject({
-      skippedReason: "tip_unverifiable",
-      tipCommittedRoot: tipRoot,
-      diverged: false,
-    });
-    expect(mergedAnchor.tipUnverifiable).toContain(
-      `header_hash=${first.headerHash} ended at or before the confirmed boundary header_hash=${second.headerHash}`,
-    );
-    expect(await auditWithNativeRoot(twoBlockTip)).toMatchObject({
-      tipCommittedRoot: tipRoot,
-      diverged: true,
-    });
-    await deleteRewind(mergedRewindId);
     await acknowledgeCleanAudit();
   } finally {
     try {

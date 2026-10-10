@@ -56,7 +56,7 @@ export const bindFamilyRecoveryFixture = async (
     .spyOn(deployment, "requireManifestBoundReferenceScriptUtxo")
     .mockImplementation(({ utxo }) => utxo);
   const observe = vi
-    .spyOn(observations, "createFraudProofFamilyLocalKupmiosL1ObservationPort")
+    .spyOn(observations, "createFraudProofFamilyL1ObservationPort")
     .mockReturnValue(l1 as never);
   try {
     return await bindManifestBoundFamilyWorkflow(
@@ -80,7 +80,7 @@ export const bindFamilyRecoveryFixture = async (
             (role) => [role, reference],
           ),
         ),
-        source: {},
+        l1Source: {},
         stateQueueMutationLeaseCoordinator:
           workflow.stateQueueMutationLeaseCoordinator,
       } as never,

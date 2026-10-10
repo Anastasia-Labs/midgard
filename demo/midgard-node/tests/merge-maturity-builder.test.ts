@@ -1,31 +1,71 @@
 import "./utils.js";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Ref } from "effect";
+import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Globals, NodeConfig } from "../src/services/index.js";
+import {
+  attachTestL1Access,
+  TEN_MINUTES_MS,
+  type TestL1Tip,
+} from "./helpers/l1-tip.js";
 
-const fetchConfirmedStateAndItsLinkProgramMock = vi.hoisted(() => vi.fn());
+const requireLandedStateQueueMock = vi.hoisted(() => vi.fn());
 const getStateQueueNodeFromStateQueueDatumMock = vi.hoisted(() => vi.fn());
 const getHeaderFromStateQueueDatumMock = vi.hoisted(() => vi.fn());
 const hashBlockHeaderMock = vi.hoisted(() => vi.fn());
 const fetchFirstBlockTxsMock = vi.hoisted(() => vi.fn());
 const breakDownTxMock = vi.hoisted(() => vi.fn());
-const makeLocalOgmiosSubmitSlotSnapshotProviderMock = vi.hoisted(() => vi.fn());
 const localSlotSnapshotProviderMock = vi.hoisted(() => vi.fn());
+// The poisoned own headers the readiness read returns (none by default).
+const poisonedHeaders = vi.hoisted(() => ({ value: new Set<string>() }));
+
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 
 vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
   return {
     ...actual,
-    fetchConfirmedStateAndItsLinkProgram:
-      fetchConfirmedStateAndItsLinkProgramMock,
     getStateQueueNodeFromStateQueueDatum:
       getStateQueueNodeFromStateQueueDatumMock,
     getHeaderFromStateQueueDatum: getHeaderFromStateQueueDatumMock,
     hashBlockHeader: hashBlockHeaderMock,
+  };
+});
+
+// The landed queue (P1) the builder reads its length, root and link from.
+vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../src/services/landed-state-queue.js")
+    >();
+  return {
+    ...actual,
+    requireLandedStateQueue: requireLandedStateQueueMock,
+  };
+});
+
+// The poisoned-own-headers read is the readiness check's one database read
+// (a landed own block whose event left the chain is not merged); it runs
+// before the BlocksDB lookup, so it is replaced here like the landed queue.
+vi.mock("../src/database/poisoned-own-headers.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../src/database/poisoned-own-headers.js")
+    >();
+  const { Effect: EffectModule } = await import("effect");
+  return {
+    ...actual,
+    readPoisonedOwnHeaders: EffectModule.sync(() => ({
+      orphaned: [...poisonedHeaders.value].map((hash) => ({
+        headerHash: hash,
+        orphans: 1,
+      })),
+      headers: poisonedHeaders.value,
+    })),
   };
 });
 
@@ -43,16 +83,6 @@ vi.mock("../src/utils.js", async (importOriginal) => {
   return {
     ...actual,
     breakDownTx: breakDownTxMock,
-  };
-});
-
-vi.mock("../src/local-ledger-slot.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../src/local-ledger-slot.js")>();
-  return {
-    ...actual,
-    makeLocalOgmiosSubmitSlotSnapshotProvider:
-      makeLocalOgmiosSubmitSlotSnapshotProviderMock,
   };
 });
 
@@ -140,10 +170,12 @@ const configureCandidate = ({
   const blockHeader = {
     endTime,
   } as SDK.Header;
-  fetchConfirmedStateAndItsLinkProgramMock.mockImplementation(() =>
+  // Eight queued blocks, above the default minimum queue length.
+  requireLandedStateQueueMock.mockImplementation(() =>
     Effect.succeed({
-      confirmed: genesisConfirmed,
-      link: makeLink(),
+      healthy: true,
+      root: { element: genesisConfirmed },
+      nodes: Array.from({ length: 8 }, () => ({ element: makeLink() })),
     }),
   );
   getStateQueueNodeFromStateQueueDatumMock.mockImplementation(() =>
@@ -161,33 +193,43 @@ const configureCandidate = ({
 
 const runBuilder = () =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      const globals = yield* Globals;
-      yield* Ref.set(globals.BLOCKS_IN_QUEUE, 8);
-      yield* Ref.set(
-        globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
-        Date.now(),
-      );
-      return yield* buildAndSubmitMergeTx(fakeLucid, fetchConfig, contracts);
-    }).pipe(
+    buildAndSubmitMergeTx(fakeLucid, fetchConfig, contracts).pipe(
+      withoutFollowerJournal,
       Effect.provide(Globals.Default),
       Effect.provide(NodeConfig.layer),
     ) as Effect.Effect<MergeTxResult, unknown, never>,
   );
 
+const readyAfterUnixTime =
+  520_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms;
+
 describe("merge builder maturity preflight", () => {
+  // Maturity is judged at the L1 `slotNow`; the local clock keeps driving
+  // only the submit-ledger timing.
+  let l1Tip: TestL1Tip;
+  const setNow = (unixTimeMs: number) => {
+    vi.setSystemTime(unixTimeMs);
+    l1Tip.setTipSlot(unixTimeMs / 1_000);
+  };
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(510_000);
-    fetchConfirmedStateAndItsLinkProgramMock.mockReset();
+    // The client's submit-slot reader: the local node's ledger tip.
+    l1Tip = attachTestL1Access(fakeLucid, 510, {
+      submitSlotSnapshot: () =>
+        Effect.runPromise(
+          localSlotSnapshotProviderMock() as Effect.Effect<SubmitSlotSnapshot>,
+        ),
+    });
+    requireLandedStateQueueMock.mockReset();
     getStateQueueNodeFromStateQueueDatumMock.mockReset();
     getHeaderFromStateQueueDatumMock.mockReset();
     hashBlockHeaderMock.mockReset();
     fetchFirstBlockTxsMock.mockReset();
     breakDownTxMock.mockReset();
-    makeLocalOgmiosSubmitSlotSnapshotProviderMock.mockReset();
     localSlotSnapshotProviderMock.mockReset();
     fakeLucidUtxosAt.mockReset();
+    poisonedHeaders.value = new Set();
 
     configureCandidate({
       // A state-queue node's `da_attestation` is the
@@ -211,9 +253,6 @@ describe("merge builder maturity preflight", () => {
         observedAtMs: 0,
         slotLengthMs: 1_000,
       }),
-    );
-    makeLocalOgmiosSubmitSlotSnapshotProviderMock.mockImplementation(
-      () => localSlotSnapshotProviderMock,
     );
   });
 
@@ -241,9 +280,7 @@ describe("merge builder maturity preflight", () => {
       daAttestation: SDK.NO_DA_ATTESTATION,
       endTime: 500_000n,
     });
-    vi.setSystemTime(
-      530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms,
-    );
+    setNow(530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms);
 
     const result = await runBuilder();
 
@@ -257,10 +294,40 @@ describe("merge builder maturity preflight", () => {
     expect(localSlotSnapshotProviderMock).not.toHaveBeenCalled();
   });
 
+  it("returns event-orphaned for a poisoned own header before BlocksDB lookup or decode", async () => {
+    poisonedHeaders.value = new Set([headerHash]);
+    setNow(530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms);
+
+    const result = await runBuilder();
+
+    expect(result).toMatchObject({
+      status: "skipped_oldest_block_event_orphaned",
+      headerHash,
+      reason: expect.stringContaining(`header=${headerHash}`),
+    });
+    expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
+    expect(breakDownTxMock).not.toHaveBeenCalled();
+  });
+
+  it("calls nothing mature on a local clock 10 minutes fast", async () => {
+    // L1 now is one slot before maturity; the local clock is 10 minutes past
+    // it.
+    setNow(readyAfterUnixTime - 1_000);
+    vi.setSystemTime(readyAfterUnixTime + TEN_MINUTES_MS);
+
+    const result = await runBuilder();
+
+    expect(result).toMatchObject({
+      status: "skipped_oldest_block_not_mature",
+      headerHash,
+      readyAfterUnixTime,
+      nowUnixTime: readyAfterUnixTime - 1_000,
+    });
+    expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
+  });
+
   it("lets a semantically ready candidate proceed to the local submit-ledger gate", async () => {
-    vi.setSystemTime(
-      530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms,
-    );
+    setNow(530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms);
 
     const result = await runBuilder();
 
@@ -299,7 +366,7 @@ describe("merge builder maturity preflight", () => {
         localSubmitSlotSnapshot: {
           currentSlot: 12,
           slotLengthMs: 1_000,
-          source: "local_ogmios_tip",
+          source: "l1_node_tip",
         },
         nowMs: 1_000,
       }),
@@ -310,7 +377,7 @@ describe("merge builder maturity preflight", () => {
       dueSlot: 17,
       dueAtMs: 6_000,
       waitMs: 5_000,
-      slotSource: "local_ogmios_tip",
+      slotSource: "l1_node_tip",
       reason: expect.stringContaining("provider_current_slot=7"),
       dependencyKey: "merge:candidate:10:12",
       invalidationKey: "merge:candidate:10:12",

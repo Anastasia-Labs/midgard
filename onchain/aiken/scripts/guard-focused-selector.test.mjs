@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   evaluateSelectorReport,
+  exUnitsSummary,
   parseInvocation,
   parseSelectors,
 } from "./guard-focused-selector.mjs";
@@ -134,8 +135,43 @@ test("accepts a selector that collects and passes every test", () => {
       total: 10,
       passed: 10,
       failed: 0,
+      exUnits: { unitTests: 0 },
       ok: true,
     },
+  );
+});
+
+test("summarises the largest unit-test execution units against the §3.3 basis", () => {
+  const report = {
+    modules: [
+      {
+        name: "midgard/a",
+        tests: [
+          { title: "small", execution_units: { mem: 1_000, cpu: 9_000_000 } },
+          { title: "property", iterations: 100 },
+        ],
+      },
+      {
+        name: "midgard/b",
+        tests: [
+          { title: "wide", execution_units: { mem: 3_300_000, cpu: 1_000 } },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(exUnitsSummary(report), {
+    unitTests: 2,
+    maxMem: { test: "midgard/b.wide", mem: 3_300_000, ofBasis: "25.0%" },
+    maxCpu: { test: "midgard/a.small", cpu: 9_000_000, ofBasis: "0.1%" },
+  });
+  const result = runGuardAgainstStub(
+    { summary: { total: 3, passed: 3, failed: 0 }, ...report },
+    ["midgard"],
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(
+    JSON.parse(result.stdout).exUnits.maxMem.test,
+    "midgard/b.wide",
   );
 });
 

@@ -18,7 +18,6 @@ import {
   type StateQueueUTxO,
 } from "./state-queue.js";
 import {
-  availableOperatorWalletUtxos,
   encodeActiveOperatorCommitRedeemer,
   encodeStateQueueCommitRedeemer,
   encodeStateQueueLinkedListMutationSpendRedeemer,
@@ -168,7 +167,7 @@ export const buildDeterministicCommitTxBuilder = ({
 > =>
   Effect.gen(function* () {
     const presetWalletInputs = yield* requireOperatorWalletInputs(
-      availableOperatorWalletUtxos(witness.operatorWalletView),
+      witness.operatorWalletInputs,
       "state_queue commit tx",
     );
     yield* Effect.logInfo(

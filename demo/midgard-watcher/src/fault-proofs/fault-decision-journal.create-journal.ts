@@ -1,218 +1,180 @@
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
-import { headerDecisionEnvelope } from "@al-ft/midgard-fault-proofs";
-
-import { watcherCanonicalJson } from "../storage/durable-store.js";
 import {
-  canonicalDirectory,
+  type HeaderDecision,
+  headerDecisionEnvelope,
+} from "@al-ft/midgard-fault-proofs";
+
+import {
   DIGEST,
   exactLaunchScope,
-  exactRecord,
   exactString,
   MAX_RECORDS,
-  RECORD_FILE,
-  sha256,
   type UnsafeWatcherFaultDecisionJournalForTest,
-  type UnsafeWatcherFaultDecisionJournalStorage,
   WATCHER_FAULT_DECISION_JOURNAL_SCHEMA_VERSION,
   WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
   type WatcherFaultDecisionJournal,
   type WatcherPersistedFaultDecisionRecord,
 } from "./fault-decision-journal.exact-record.js";
-import {
-  parseDecision,
-  productionStorage,
-  readBounded,
-} from "./fault-decision-journal.parse-decision.js";
+import { parseDecision } from "./fault-decision-journal.parse-decision.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
+import {
+  isWatcherJournalIntegrityError,
+  isWatcherJournalUnavailableError,
+  openWatcherJournalDatabase,
+  WATCHER_JOURNAL_DATABASE_FILE,
+  WatcherJournalCapacityError,
+  WatcherJournalConfigurationError,
+  type WatcherJournalDatabase,
+  type WatcherJournalRow,
+} from "./watcher-journal-database.js";
+import {
+  WATCHER_JOURNAL_TABLES,
+  watcherObjectiveScope,
+} from "./watcher-journal-schema.js";
 
-const createJournal = async (input: {
-  readonly directory: string;
-  readonly deploymentFingerprint: string;
-  readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
-  readonly exposeUnsafeAppendForTest: boolean;
-  readonly storage: UnsafeWatcherFaultDecisionJournalStorage;
-}): Promise<
-  WatcherFaultDecisionJournal | UnsafeWatcherFaultDecisionJournalForTest
-> => {
-  const parent = canonicalDirectory(input.directory);
+const JOURNAL = "fault_decisions" as const;
+
+type JournalInput = Readonly<{
+  /** The workflow journal directory; the journals' database lives in it. */
+  directory: string;
+  deploymentFingerprint: string;
+  launchScope: readonly WatcherInstalledWorkflowCategory[];
+  /** The 32-byte key the journal rows are authenticated with. */
+  authenticationKey: Uint8Array;
+}>;
+
+// A fault decision shares its objective's scope, so pruning the objective
+// prunes it; the production writer appends no other kind.
+const decisionScope = (decision: HeaderDecision): string =>
+  decision.decision === "fault_detected"
+    ? watcherObjectiveScope(decision.category, decision.headerHash)
+    : `${decision.decision}:${decision.headerHash}`;
+
+/** A row whose body is not a decision of this deployment, or differs from
+ * its key, refuses the journals for this process. */
+const parseRow = (
+  database: WatcherJournalDatabase,
+  row: WatcherJournalRow,
+  deploymentFingerprint: string,
+  launchScope: readonly WatcherInstalledWorkflowCategory[],
+): WatcherPersistedFaultDecisionRecord => {
+  let decision: HeaderDecision;
+  try {
+    decision = parseDecision(row.body, deploymentFingerprint, launchScope);
+  } catch (error) {
+    return database.refuse(
+      JOURNAL,
+      `row ${row.key} body is not a decision: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (
+    row.key !== decision.decisionDigest ||
+    row.scope !== decisionScope(decision) ||
+    row.state !== decision.decision
+  )
+    database.refuse(JOURNAL, `row ${row.key} differs from its decision`);
+  return Object.freeze({
+    schemaVersion: WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
+    revision: row.revision.toString(),
+    decision,
+  });
+};
+
+const createJournal = (
+  input: JournalInput,
+  exposeUnsafeAppendForTest: boolean,
+): WatcherFaultDecisionJournal | UnsafeWatcherFaultDecisionJournalForTest => {
   const deploymentFingerprint = exactString(
     input.deploymentFingerprint,
     DIGEST,
     "watcher fault decision deployment fingerprint",
   );
   const launchScope = exactLaunchScope(input.launchScope, input.launchScope);
-  const directory = join(parent, "fault-decisions");
-  await input.storage.prepare(parent, directory);
-
-  const parseRecordBytes = (
-    bytes: Uint8Array,
-    index: number,
-    priorSha256: string | null,
-  ): WatcherPersistedFaultDecisionRecord => {
-    let value: unknown;
-    try {
-      value = JSON.parse(
-        new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+  const database = openWatcherJournalDatabase({
+    journalRoot: input.directory,
+    authenticationKey: input.authenticationKey,
+  });
+  // The admitted rows, refreshed from the rows written since the cached
+  // revision; a prune elsewhere (a changed row count) reloads them all.
+  let cachedRevision = -1;
+  const byDigest = new Map<string, WatcherPersistedFaultDecisionRecord>();
+  const reload = (afterRevision?: number): void => {
+    for (const row of database.rows(
+      JOURNAL,
+      afterRevision === undefined ? {} : { afterRevision },
+    ))
+      byDigest.set(
+        row.key,
+        parseRow(database, row, deploymentFingerprint, launchScope),
       );
-    } catch {
-      throw new Error("watcher fault decision journal record is malformed");
-    }
-    const record = exactRecord(
-      value,
-      ["schemaVersion", "revision", "priorRecordSha256", "decision"],
-      "watcher fault decision record",
-    );
-    if (
-      record.schemaVersion !== WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION ||
-      record.revision !== index.toString() ||
-      record.priorRecordSha256 !== priorSha256
-    ) {
-      throw new Error("watcher fault decision journal chain is invalid");
-    }
-    const parsed = Object.freeze({
-      schemaVersion: WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
-      revision: index.toString(),
-      priorRecordSha256: priorSha256,
-      decision: parseDecision(
-        record.decision,
-        deploymentFingerprint,
-        launchScope,
-      ),
-    });
-    const canonicalBytes = Buffer.from(
-      `${watcherCanonicalJson(parsed)}\n`,
-      "utf8",
-    );
-    if (!Buffer.from(bytes).equals(canonicalBytes)) {
-      throw new Error("watcher fault decision journal bytes are noncanonical");
-    }
-    return parsed;
   };
-
-  const scan = async (): Promise<
-    readonly WatcherPersistedFaultDecisionRecord[]
-  > => {
-    const entries = await input.storage.list(directory);
-    const names = entries
-      .map((entry) => {
-        if (!entry.isFile || !RECORD_FILE.test(entry.name)) {
-          throw new Error(
-            `watcher fault decision journal contains invalid entry ${entry.name}`,
-          );
-        }
-        return entry.name;
-      })
-      .sort();
-    if (names.length > MAX_RECORDS) {
-      throw new Error(
-        "watcher fault decision journal exceeds its record bound",
-      );
+  const refresh = (): void => {
+    const head = database.head(JOURNAL);
+    if (head.revision === cachedRevision) return;
+    if (cachedRevision >= 0 && head.revision > cachedRevision)
+      reload(cachedRevision);
+    if (byDigest.size !== head.liveRows || cachedRevision < 0) {
+      byDigest.clear();
+      reload();
     }
-    const records: WatcherPersistedFaultDecisionRecord[] = [];
-    let priorSha256: string | null = null;
-    for (let index = 0; index < names.length; index += 1) {
-      const name = names[index]!;
-      const expectedName = `${index.toString().padStart(20, "0")}.json`;
-      if (name !== expectedName) {
-        throw new Error("watcher fault decision journal has a revision gap");
-      }
-      const bytes = await readBounded(input.storage, join(directory, name));
-      const parsed = parseRecordBytes(bytes, index, priorSha256);
-      priorSha256 = sha256(bytes);
-      records.push(parsed);
-    }
-    return Object.freeze(records);
+    cachedRevision = head.revision;
   };
-
-  const cachedRecords = [...(await scan())];
-  const decisionByDigest = new Map(
-    cachedRecords.map((record) => [record.decision.decisionDigest, record]),
-  );
-  if (decisionByDigest.size !== cachedRecords.length) {
-    throw new Error("watcher fault decision journal repeats a decision digest");
-  }
-  let lastRecordSha256 = (() => {
-    const prior = cachedRecords.at(-1);
-    return prior === undefined
-      ? null
-      : sha256(`${watcherCanonicalJson(prior)}\n`);
-  })();
-
-  let serial = Promise.resolve();
-  const serialized = async <Result>(operation: () => Promise<Result>) => {
-    const previous = serial;
-    let release!: () => void;
-    serial = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await previous;
-    try {
-      return await operation();
-    } finally {
-      release();
-    }
-  };
+  refresh();
 
   const appendEnvelope = async (
     value: unknown,
-  ): Promise<WatcherPersistedFaultDecisionRecord> =>
-    await serialized(async () => {
-      const decision = parseDecision(value, deploymentFingerprint, launchScope);
-      const existing = decisionByDigest.get(decision.decisionDigest);
-      if (existing !== undefined) return existing;
-      if (cachedRecords.length >= MAX_RECORDS) {
-        throw new Error("watcher fault decision journal is full");
-      }
-      const record = Object.freeze({
-        schemaVersion: WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
-        revision: cachedRecords.length.toString(),
-        priorRecordSha256: lastRecordSha256,
-        decision,
+  ): Promise<WatcherPersistedFaultDecisionRecord> => {
+    const decision = parseDecision(value, deploymentFingerprint, launchScope);
+    refresh();
+    const existing = byDigest.get(decision.decisionDigest);
+    if (existing !== undefined) return existing;
+    database.transaction((tx) => {
+      if (tx.row(JOURNAL, decision.decisionDigest) !== undefined) return;
+      if (tx.count(JOURNAL) >= MAX_RECORDS)
+        throw new WatcherJournalCapacityError(JOURNAL, MAX_RECORDS);
+      tx.put(JOURNAL, {
+        key: decision.decisionDigest,
+        scope: decisionScope(decision),
+        state: decision.decision,
+        body: decision,
       });
-      const bytes = Buffer.from(`${watcherCanonicalJson(record)}\n`, "utf8");
-      const path = join(
-        directory,
-        `${cachedRecords.length.toString().padStart(20, "0")}.json`,
-      );
-      await input.storage.writeExclusive(path, bytes);
-      await input.storage.syncDirectory(directory);
-      const readBack = await readBounded(input.storage, path);
-      const appended = parseRecordBytes(
-        readBack,
-        cachedRecords.length,
-        lastRecordSha256,
-      );
-      if (appended.decision.decisionDigest !== decision.decisionDigest) {
-        throw new Error(
-          "watcher fault decision journal failed append read-back",
-        );
-      }
-      cachedRecords.push(appended);
-      decisionByDigest.set(decision.decisionDigest, appended);
-      lastRecordSha256 = sha256(readBack);
-      return appended;
     });
+    refresh();
+    const appended = byDigest.get(decision.decisionDigest);
+    if (appended === undefined)
+      throw new Error("watcher fault decision journal failed append read-back");
+    return appended;
+  };
 
   const journal: WatcherFaultDecisionJournal = Object.freeze({
     schemaVersion: WATCHER_FAULT_DECISION_JOURNAL_SCHEMA_VERSION,
-    readAll: async () => Object.freeze([...cachedRecords]),
-    audit: async () =>
-      await serialized(async () => {
-        const audited = await scan();
-        if (
-          watcherCanonicalJson(audited) !== watcherCanonicalJson(cachedRecords)
-        ) {
-          throw new Error(
-            "watcher fault decision journal changed outside the admitted writer",
-          );
-        }
-        return audited;
-      }),
-    appendLiveDecision: async (decision) =>
+    readAll: async () => {
+      refresh();
+      return Object.freeze(
+        [...byDigest.values()].sort(
+          (left, right) =>
+            Number(left.revision) - Number(right.revision) ||
+            Number(
+              left.decision.decisionDigest > right.decision.decisionDigest,
+            ) -
+              Number(
+                left.decision.decisionDigest < right.decision.decisionDigest,
+              ),
+        ),
+      );
+    },
+    read: async (decisionDigest) => {
+      refresh();
+      return byDigest.get(decisionDigest);
+    },
+    appendLiveDecision: async (decision: HeaderDecision) =>
       await appendEnvelope(headerDecisionEnvelope(decision)),
   });
-  return input.exposeUnsafeAppendForTest
+  return exposeUnsafeAppendForTest
     ? Object.freeze({
         ...journal,
         unsafeAppendDecisionEnvelopeForTest: appendEnvelope,
@@ -220,28 +182,85 @@ const createJournal = async (input: {
     : journal;
 };
 
-export const openWatcherFaultDecisionJournal = async (input: {
-  readonly directory: string;
-  readonly deploymentFingerprint: string;
-  readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
-}): Promise<WatcherFaultDecisionJournal> =>
-  (await createJournal({
-    ...input,
-    exposeUnsafeAppendForTest: false,
-    storage: productionStorage,
-  })) as WatcherFaultDecisionJournal;
+/**
+ * Startup's check of the journal configuration, before the operations server
+ * binds: the deployment fingerprint, launch scope, directory and key. A
+ * configuration error throws `WatcherJournalConfigurationError`. The
+ * journals' own state does not throw here: an integrity failure is latched and
+ * an open that could not complete is retried, both reported by readiness.
+ */
+export const validateWatcherFaultDecisionJournalConfiguration = (
+  input: JournalInput,
+): void => {
+  try {
+    exactString(
+      input.deploymentFingerprint,
+      DIGEST,
+      "watcher fault decision deployment fingerprint",
+    );
+    exactLaunchScope(input.launchScope, input.launchScope);
+  } catch (error) {
+    throw new WatcherJournalConfigurationError(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  try {
+    openWatcherJournalDatabase({
+      journalRoot: input.directory,
+      authenticationKey: input.authenticationKey,
+    });
+  } catch (error) {
+    if (
+      isWatcherJournalIntegrityError(error) ||
+      isWatcherJournalUnavailableError(error)
+    )
+      return;
+    throw error;
+  }
+};
+
+export const openWatcherFaultDecisionJournal = async (
+  input: JournalInput,
+): Promise<WatcherFaultDecisionJournal> =>
+  createJournal(input, false) as WatcherFaultDecisionJournal;
 
 /** Test-only structural seeding seam; production append still requires admission. */
 export const unsafeOpenWatcherFaultDecisionJournalForTest = async (
-  input: {
-    readonly directory: string;
-    readonly deploymentFingerprint: string;
-    readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
-  },
-  storage: UnsafeWatcherFaultDecisionJournalStorage = productionStorage,
+  input: JournalInput,
 ): Promise<UnsafeWatcherFaultDecisionJournalForTest> =>
-  (await createJournal({
-    ...input,
-    exposeUnsafeAppendForTest: true,
-    storage,
-  })) as UnsafeWatcherFaultDecisionJournalForTest;
+  createJournal(input, true) as UnsafeWatcherFaultDecisionJournalForTest;
+
+/**
+ * Evidence for tooling outside the watcher process, which holds no journal
+ * key: the recorded decisions in journal order, each checked against its own
+ * digest. It opens the database read-only and never authenticates rows, so
+ * it is evidence, never authority.
+ */
+export const readWatcherFaultDecisionEvidence = (input: {
+  readonly directory: string;
+  readonly deploymentFingerprint: string;
+  readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
+}): readonly HeaderDecision[] => {
+  const database = new DatabaseSync(
+    join(input.directory, WATCHER_JOURNAL_DATABASE_FILE),
+    { readOnly: true },
+  );
+  try {
+    const rows = database
+      .prepare(
+        `SELECT body FROM ${WATCHER_JOURNAL_TABLES.fault_decisions} ORDER BY revision, row_key`,
+      )
+      .all() as { body: string }[];
+    return Object.freeze(
+      rows.map(({ body }) =>
+        parseDecision(
+          JSON.parse(body) as unknown,
+          input.deploymentFingerprint,
+          input.launchScope,
+        ),
+      ),
+    );
+  } finally {
+    database.close();
+  }
+};

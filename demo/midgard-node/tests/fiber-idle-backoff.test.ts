@@ -1,14 +1,4 @@
-import { SqlClient } from "@effect/sql";
-import {
-  Effect,
-  Fiber,
-  Logger,
-  LogLevel,
-  Option,
-  Ref,
-  TestClock,
-  TestContext,
-} from "effect";
+import { Effect, Logger, LogLevel, Option, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -21,13 +11,9 @@ import {
   recordMergeTickIdleness,
   skipIdleMergeTick,
 } from "../src/fibers/merge.idle-backoff.js";
-import {
-  speculativeCommitBuilderFiber,
-  speculativeCommitSubmitterFiber,
-} from "../src/fibers/speculative-commit-builder.submit-speculative-candidate-on-confirmation.js";
 import { nextIdleBackoffState } from "../src/services/globals.idle-backoff.js";
 import { logOnStateChange } from "../src/services/globals.liveness-reasons.js";
-import { Globals, NodeConfig } from "../src/services/index.js";
+import { Globals } from "../src/services/index.js";
 
 const runWithGlobals = <A, E>(effect: Effect.Effect<A, E, Globals>) =>
   Effect.runPromise(effect.pipe(Effect.provide(Globals.Default)));
@@ -182,69 +168,5 @@ describe("status logs", () => {
       ),
     );
     expect(logs).toEqual(["INFO:idle", "DEBUG:idle", "INFO:busy", "INFO:idle"]);
-  });
-});
-
-describe("speculative wake loops", () => {
-  it("refresh their heartbeat while no wake arrives", async () => {
-    const refreshed = await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        const fiber = yield* Effect.fork(
-          speculativeCommitSubmitterFiber as Effect.Effect<
-            void,
-            never,
-            Globals
-          >,
-        );
-        yield* TestClock.adjust("1 second");
-        yield* Ref.set(globals.HEARTBEAT_SPECULATIVE_COMMIT_SUBMITTER, 0);
-        yield* TestClock.adjust("31 seconds");
-        const heartbeat = yield* Ref.get(
-          globals.HEARTBEAT_SPECULATIVE_COMMIT_SUBMITTER,
-        );
-        yield* Fiber.interrupt(fiber);
-        return heartbeat > 0;
-      }).pipe(
-        Effect.provide(Globals.Default),
-        Effect.provide(TestContext.TestContext),
-      ),
-    );
-    expect(refreshed).toBe(true);
-  });
-
-  it("refresh the builder heartbeat while no build wake arrives", async () => {
-    // No active pending finalization, so the builder goes straight to its
-    // wake loop; the config is read only on the pending path.
-    const noRowsSql = Object.assign(
-      (() => Effect.succeed([])) as unknown as SqlClient.SqlClient,
-      { in: (values: readonly unknown[]) => values },
-    ) as unknown as SqlClient.SqlClient;
-    const refreshed = await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        const fiber = yield* Effect.fork(
-          speculativeCommitBuilderFiber as Effect.Effect<
-            void,
-            never,
-            Globals | SqlClient.SqlClient | NodeConfig
-          >,
-        );
-        yield* TestClock.adjust("1 second");
-        yield* Ref.set(globals.HEARTBEAT_SPECULATIVE_COMMIT_BUILDER, 0);
-        yield* TestClock.adjust("31 seconds");
-        const heartbeat = yield* Ref.get(
-          globals.HEARTBEAT_SPECULATIVE_COMMIT_BUILDER,
-        );
-        yield* Fiber.interrupt(fiber);
-        return heartbeat > 0;
-      }).pipe(
-        Effect.provideService(SqlClient.SqlClient, noRowsSql),
-        Effect.provideService(NodeConfig, {} as never),
-        Effect.provide(Globals.Default),
-        Effect.provide(TestContext.TestContext),
-      ),
-    );
-    expect(refreshed).toBe(true);
   });
 });

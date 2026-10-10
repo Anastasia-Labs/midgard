@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 import {
   type MidgardNodeDeployment,
@@ -25,8 +25,4 @@ export const loadDaDeploymentFixture = async (
     network,
   );
   return deployment;
-};
-
-export const writeDaDeploymentFixture = async (path: string): Promise<void> => {
-  await writeFile(path, JSON.stringify(await readDaDeploymentFixture()));
 };

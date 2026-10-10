@@ -37,7 +37,6 @@ const gateEnv = (): NodeJS.ProcessEnv => ({
   MIDGARD_PHASE4_RUN_DIR: "/tmp/midgard-phase4-test",
   MIDGARD_PHASE4_NETWORK_MAGIC: "424242",
   NETWORK: "Custom",
-  L1_PROVIDER: "Kupmios",
   POSTGRES_DB: "midgard_phase4_process_test",
   POSTGRES_PORT: "5544",
   MIN_FEE_A: "0",
@@ -50,9 +49,6 @@ const gateEnv = (): NodeJS.ProcessEnv => ({
 const gateConfig = () =>
   ({
     NETWORK: "Custom",
-    L1_PROVIDER: "Kupmios",
-    L1_OGMIOS_KEY: "http://127.0.0.1:2337",
-    L1_KUPO_KEY: "http://127.0.0.1:2442",
     MIN_FEE_A: 0n,
     MIN_FEE_B: 0n,
     RUN_GENESIS_ON_STARTUP: false,
@@ -111,7 +107,6 @@ describe("Phase 4 explicit genesis ledger gate", () => {
     [{ MIN_FEE_B: "10" }, {}, "MIN_FEE_A=0"],
     [{}, { MIN_FEE_B: 10n }, "MIN_FEE_A=0"],
     [{}, { RUN_GENESIS_ON_STARTUP: true }, "RUN_GENESIS_ON_STARTUP=false"],
-    [{}, { L1_KUPO_KEY: "https://preprod.example.com" }, "127.0.0.1"],
   ])("rejects unsafe identity %#", (envOverride, configOverride, message) => {
     expect(() =>
       assertPhase4GenesisLedgerGate({
@@ -160,7 +155,7 @@ describe("Phase 4 genesis ledger V1 report decoder", () => {
     [{ status: "complete" }, "noncanonical"],
     [
       {
-        schemaVersion: "midgard-phase4-t1-recovery-attestation-v1",
+        schemaVersion: "midgard-phase4-unrelated-attestation-v1",
       },
       "noncanonical",
     ],

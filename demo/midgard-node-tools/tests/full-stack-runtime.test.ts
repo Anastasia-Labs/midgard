@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -10,15 +9,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { assertComposeVersion } from "../src/full-stack/prerequisites.js";
 import { committeeIsReady } from "../src/full-stack/readiness.js";
 import { runtimeInputDigest, runtimeSteps } from "../src/full-stack/runtime.js";
+import { NodeFollowerUnconfiguredError } from "../src/l1-origin.js";
 import {
   RecordingProcesses,
   removeStackFixtures,
   stackEnvironment,
   stackFixture,
 } from "./full-stack-fixtures.js";
+import { nodeFollowerPlan } from "./node-follower-plan.js";
 
 const manifestId = "a".repeat(64);
-const recordKey = "0f".repeat(32);
 const committeeReady = (signerIndex: number) => ({
   ready: true,
   deployment: {
@@ -69,6 +69,12 @@ afterEach(async () => {
   await removeStackFixtures();
 });
 
+const DEPLOYED_FOLLOWER_INPUTS = {
+  HUB_ORACLE_ONE_SHOT_TX_HASH: "ab".repeat(32),
+  HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0",
+  L1_ORIGIN: `7.${"cd".repeat(32)}`,
+};
+
 /** A generated run with one committee member and live HTTP services on loopback. */
 async function stack() {
   const state = { nodeStarted: false };
@@ -87,11 +93,6 @@ async function stack() {
         deploymentFingerprint: manifestId,
         launchScope: { complete: true },
       },
-      "/v1/identity": {
-        recordAuthenticationKeyId: createHash("sha256")
-          .update(Buffer.from(recordKey, "hex"))
-          .digest("hex"),
-      },
     };
     const value = body[request.url ?? ""];
     response.statusCode = value === undefined ? 503 : 200;
@@ -107,6 +108,8 @@ async function stack() {
   config.da.ports.committeeApiBase = committeePort;
   const env = stackEnvironment(config);
   const processes = new RecordingProcesses(config, env);
+  // What the deployment steps restore before the services step runs.
+  Object.assign(processes.env, DEPLOYED_FOLLOWER_INPUTS);
   processes.responses["runtime-start"] = () => {
     state.nodeStarted = true;
   };
@@ -124,11 +127,9 @@ async function stack() {
       da_committee: { members: [{ signer_index: 0, peer_id: "peer-0" }] },
     }),
   );
-  await writeFile(join(directory, "bearer"), "bearer-token\n");
-  await writeFile(join(directory, "record-key"), `${recordKey}\n`);
   await writeFile(
     join(directory, "watcher.env"),
-    `WATCHER_RECORD_KEY_FILE=${join(directory, "record-key")}\n`,
+    `WATCHER_ROLLBACK_KEY_FILE=${join(directory, "rollback-key")}\n`,
   );
   await writeFile(
     join(directory, "run/runtime.json"),
@@ -136,7 +137,6 @@ async function stack() {
       inputDigest: await runtimeInputDigest(processes),
       compose: join(directory, "run/services/compose.json"),
       operationsEndpoint: servicesUrl,
-      authorityEndpoint: servicesUrl,
       committeeServices: ["da-committee-0"],
     }),
   );
@@ -171,6 +171,29 @@ describe("runtime services step", () => {
     expect(preflight.args).toContain("dial-only");
     expect(preflight.args).not.toContain("bind-listen");
   });
+  it("starts the public reader only after granting it exactly its two tables in the migrated database", async () => {
+    const { processes, services } = await stack();
+    await services.execute(undefined);
+    const ids = processes.calls.map((call) => call.id);
+    const committee = ids.indexOf("committee-start");
+    const grant = ids.indexOf("public-reader-grant-0");
+    const reader = ids.indexOf("public-reader-start");
+    expect(committee).toBeGreaterThan(-1);
+    expect(grant).toBeGreaterThan(committee);
+    expect(reader).toBeGreaterThan(grant);
+    expect(processes.calls[committee]!.args).not.toContain(
+      "public-retained-da",
+    );
+    const sql = processes.calls[grant]!.args.at(-1)!;
+    expect(processes.calls[grant]!.args).toContain("midgard_da_0");
+    expect(sql).toContain(
+      "REVOKE ALL ON ALL TABLES IN SCHEMA public FROM midgard_da_reader;",
+    );
+    expect(sql).toContain("REVOKE ALL ON TABLES FROM midgard_da_reader;");
+    expect(
+      sql.match(/GRANT SELECT ON ([^;]+) TO midgard_da_reader;/u)?.[1],
+    ).toBe("committee_da_payloads, committee_state_queue_headers");
+  });
   it("binds the producer port only before its container first starts", async () => {
     const { processes, services } = await stack();
     await services.execute(undefined);
@@ -203,6 +226,34 @@ describe("runtime services step", () => {
     expect(pin).toBeGreaterThan(-1);
     expect(database).toBeGreaterThan(pin);
   });
+  it("writes a node.env whose L1 follower runs from the deployment's origin", async () => {
+    const { directory, services } = await stack();
+    await services.execute(undefined);
+    const nodeEnv = parse(
+      await readFile(join(directory, "run/services/node.env")),
+    );
+    const plan = nodeFollowerPlan(nodeEnv);
+    expect(plan).toMatchObject({
+      kind: "run",
+      socketPath: "/ipc/node.socket",
+      origin: { hubOracleOneShot: { index: 0 } },
+    });
+    if (plan.kind !== "run") throw new Error(plan.detail);
+    expect(plan.origin.origin.slot).toBe(7);
+  });
+  it("refuses to write node.env without the deployment's origin", async () => {
+    const { directory, processes, services } = await stack();
+    delete processes.env.L1_ORIGIN;
+    await expect(services.execute(undefined)).rejects.toThrow(
+      NodeFollowerUnconfiguredError,
+    );
+    await expect(
+      readFile(join(directory, "run/services/node.env")),
+    ).rejects.toThrow(/ENOENT/);
+    expect(processes.calls.map((call) => call.id)).not.toContain(
+      "runtime-start",
+    );
+  });
   it("confirms a completed run without rebuilding or restarting it", async () => {
     const { processes, services, state } = await stack();
     state.nodeStarted = true;
@@ -227,7 +278,7 @@ describe("runtime services step", () => {
     ).toMatchObject({ status: "complete" });
     await writeFile(
       join(directory, "watcher.env"),
-      `WATCHER_RECORD_KEY_FILE=${join(directory, "record-key")}\nOTHER=1\n`,
+      `WATCHER_ROLLBACK_KEY_FILE=${join(directory, "rollback-key")}\nOTHER=1\n`,
     );
     const complete = { status: "complete" as const, attempts: 1 };
     expect(
@@ -278,7 +329,7 @@ describe("runtime services step", () => {
     processes.config.da.ports.database -= 1;
     await writeFile(
       join(directory, "watcher.env"),
-      `WATCHER_RECORD_KEY_FILE=${join(directory, "record-key")}\nOTHER=1\n`,
+      `WATCHER_ROLLBACK_KEY_FILE=${join(directory, "rollback-key")}\nOTHER=1\n`,
     );
     expect(await configuration.reconcile(complete)).toEqual({
       status: "retry",

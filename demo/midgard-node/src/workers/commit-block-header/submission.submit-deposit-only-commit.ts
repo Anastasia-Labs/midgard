@@ -3,6 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import type { CommitAnchor } from "../../database/commit-anchor.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
@@ -12,7 +13,7 @@ import {
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import type * as Ledger from "../../database/utils/ledger.js";
-import { reachPipelinedCommitCrashCheckpoint } from "../../e2e/pipelined-commit-crash-checkpoint.js";
+import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
 import {
   emptyRootHexProgram,
   type LedgerDelta,
@@ -23,10 +24,7 @@ import {
   type UtxoPayloadEntry,
   type UtxoPayloadSizeAggregate,
 } from "../../mpf/index.js";
-import {
-  isPotentiallyStaleOperatorWalletViewError,
-  type OperatorWalletView,
-} from "../../operator-wallet-view.js";
+import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
 import {
   type ContractDeploymentIdentityValue,
   Database,
@@ -57,19 +55,15 @@ import {
   assertPreSubmitDaPayloadSize,
   daProgramMaterialFromSidecars,
   forcedProgramMaterialSidecars,
-  maybeAbandonPreviousStaleAttempt,
-  StaleOperatorWalletRetrySignal,
 } from "./submission.assert-pre-submit-da-payload-size.js";
 import {
   assertCommitUserEventSourceCompleteness,
   isStaleCommitBaseError,
   journalUtxoEntries,
-  refreshCommitUserEventSourcesThroughBlockEnd,
-  runWithStaleOperatorWalletRetry,
-  signalStaleOperatorWalletRetry,
   submitErrorReferencesOutRef,
-} from "./submission.run-with-stale-operator-wallet-retry.js";
+} from "./submission.commit-event-sources.js";
 import {
+  awaitNextCommitWindow,
   retainedIntentFailure,
   submitWithDurableIntent,
 } from "./submission.submit-with-durable-intent.js";
@@ -89,6 +83,7 @@ export const submitDepositOnlyCommit = ({
   includedWithdrawalEntries,
   includedWithdrawalEventIds,
   workerInput,
+  commitAnchor,
   blockEndTimeCapMs,
   utxoRoot,
   txRoot,
@@ -105,8 +100,6 @@ export const submitDepositOnlyCommit = ({
   utxoPayloadAggregate,
   selectedBaseUtxosRoot,
   implicitGenesisEntries,
-  beforePendingJournalInsert,
-  afterPendingJournalPrepared,
   afterDaFrameAccepted,
   nativeMpfReplay,
 }: CommitSubmissionHooks & {
@@ -124,6 +117,8 @@ export const submitDepositOnlyCommit = ({
   readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
   readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly workerInput: WorkerInput;
+  /** The commit anchor the end time was planned under (`commitEventHorizon`). */
+  readonly commitAnchor?: CommitAnchor;
   readonly blockEndTimeCapMs?: number;
   readonly utxoRoot: string;
   readonly txRoot: string;
@@ -248,10 +243,7 @@ export const submitDepositOnlyCommit = ({
       },
     );
 
-    const submitCommitAttempt = (
-      initialOperatorWalletView?: OperatorWalletView,
-      previousPendingHeaderHash?: Buffer,
-    ) =>
+    const submitCommitAttempt = () =>
       revalidateStateQueueLease(workerInput).pipe(
         Effect.zipRight(
           PendingBlockFinalizationsDB.assertNoUnreconciledSignedSubmission,
@@ -270,7 +262,6 @@ export const submitDepositOnlyCommit = ({
             transitionCommitments,
             consensusProfile,
             endTime,
-            initialOperatorWalletView,
             blockEndTimeCapMs,
           ).pipe(
             Effect.flatMap((buildResult) => {
@@ -291,9 +282,6 @@ export const submitDepositOnlyCommit = ({
                 txSize,
               } = buildResult;
               return Effect.gen(function* () {
-                yield* refreshCommitUserEventSourcesThroughBlockEnd(
-                  blockEndTimeMs,
-                );
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
                 const cekProgramMaterial = yield* Effect.try({
                   try: () =>
@@ -324,10 +312,6 @@ export const submitDepositOnlyCommit = ({
                   cekProgramMaterial,
                 });
                 yield* afterDaFrameAccepted ?? Effect.void;
-                yield* maybeAbandonPreviousStaleAttempt(
-                  previousPendingHeaderHash,
-                  headerHashBuffer,
-                );
                 yield* MpfEngineStateDB.stampLedgerPayloadAggregate({
                   rootHex: roots.utxoRoot,
                   aggregate: utxoPayloadAggregate,
@@ -378,103 +362,101 @@ export const submitDepositOnlyCommit = ({
                     transitionDelta: ledgerDelta,
                   });
                 const beforeJournalInsert =
-                  beforePendingJournalInsert?.(blockEndTimeMs) ??
                   assertCommitUserEventSourceCompleteness({
                     blockEndTimeMs,
+                    commitAnchor,
+                    ...(yield* configuredCommitAnchorClock),
                     includedDepositEntries,
                     includedForcedTransactionEntries,
                     includedWithdrawalEntries,
                   });
-                return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-                  {
-                    headerHash: headerHashBuffer,
-                    preparedTxHash: Buffer.from(preparedTxHash, "hex"),
-                    headerCbor: newHeaderCbor,
-                    metadata,
-                    blockEndTime: new Date(blockEndTimeMs),
-                    depositEventIds: includedDepositEventIds,
-                    depositEntries: includedDepositEntries,
-                    forcedTransactionEventIds:
-                      includedForcedTransactionEventIds,
-                    forcedTransactionEntries: includedForcedTransactionEntries,
-                    withdrawalEventIds: includedWithdrawalEventIds,
-                    withdrawalEntries: includedWithdrawalEntries,
-                    mempoolTxIds: [],
-                    mempoolTxs: [],
-                    mempoolTxProgramMaterialSidecars: [],
-                    mempoolTxSourceTable: "none",
-                    transitionTraceMembers,
-                    eventToStepMembers,
-                    validationTraceMembers,
-                    validationTraceWitnessMembers:
-                      validationTraceMembers.flatMap((entry) =>
-                        entry.witnesses.map(([key, value]) => ({
-                          keyCbor: Buffer.from(key, "hex"),
-                          valueCbor: Buffer.from(value, "hex"),
-                        })),
-                      ),
-                    ledgerDelta: {
-                      spent: journalLedgerState.ledgerDelta.spent,
-                      produced: journalUtxoEntries(
-                        journalLedgerState.ledgerDelta.produced,
-                      ),
-                    },
-                    utxoPayloadAggregate,
-                    nativeMpfReplay,
-                  },
-                  { beforeJournalInsert },
-                ).pipe(
-                  Effect.tap(() => afterPendingJournalPrepared ?? Effect.void),
-                  Effect.andThen(
-                    reachPipelinedCommitCrashCheckpoint(
-                      "journal_prepared_before_submit",
-                    ),
-                  ),
-                  Effect.andThen(
-                    Effect.matchEffect(
-                      revalidateStateQueueLease(workerInput).pipe(
-                        Effect.andThen(
-                          assertLiveTailCommitBase(contracts, commitBaseTail),
+                const prepared =
+                  yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+                    {
+                      headerHash: headerHashBuffer,
+                      preparedTxHash: Buffer.from(preparedTxHash, "hex"),
+                      headerCbor: newHeaderCbor,
+                      metadata,
+                      blockEndTime: new Date(blockEndTimeMs),
+                      depositEventIds: includedDepositEventIds,
+                      depositEntries: includedDepositEntries,
+                      forcedTransactionEventIds:
+                        includedForcedTransactionEventIds,
+                      forcedTransactionEntries:
+                        includedForcedTransactionEntries,
+                      withdrawalEventIds: includedWithdrawalEventIds,
+                      withdrawalEntries: includedWithdrawalEntries,
+                      mempoolTxIds: [],
+                      mempoolTxs: [],
+                      mempoolTxProgramMaterialSidecars: [],
+                      mempoolTxSourceTable: "none",
+                      transitionTraceMembers,
+                      eventToStepMembers,
+                      validationTraceMembers,
+                      validationTraceWitnessMembers:
+                        validationTraceMembers.flatMap((entry) =>
+                          entry.witnesses.map(([key, value]) => ({
+                            keyCbor: Buffer.from(key, "hex"),
+                            valueCbor: Buffer.from(value, "hex"),
+                          })),
                         ),
-                        Effect.andThen(
-                          submitWithDurableIntent(
-                            headerHashBuffer,
-                            signAndSubmitProgram,
-                          ),
+                      ledgerDelta: {
+                        spent: journalLedgerState.ledgerDelta.spent,
+                        produced: journalUtxoEntries(
+                          journalLedgerState.ledgerDelta.produced,
                         ),
-                      ),
-                      {
-                        onFailure: (error) =>
-                          Effect.gen(function* () {
-                            const retained = yield* retainedIntentFailure(
-                              headerHashBuffer,
-                              error,
-                            );
-                            if (retained !== undefined) return retained;
-                            return yield* handleDepositOnlySubmissionFailure({
-                              error,
-                              headerHashBuffer,
-                              expectedTailOutRef:
-                                stateQueueOutRef(commitBaseTail),
-                            });
-                          }),
-                        onSuccess: (txHash) =>
-                          PendingBlockFinalizationsDB.markSubmitted(
-                            headerHashBuffer,
-                            Buffer.from(fromHex(txHash)),
-                          ).pipe(
-                            Effect.andThen(
-                              submittedAwaitingConfirmationOutput(
-                                txHash,
-                                txSize,
-                                blockEndTimeMs,
-                                newHeaderHash,
-                              ),
-                            ),
-                          ),
                       },
+                      utxoPayloadAggregate,
+                      nativeMpfReplay,
+                    },
+                    { beforeJournalInsert },
+                  );
+                if (prepared.kind === "held")
+                  return yield* awaitNextCommitWindow(prepared.heldHeaderHash);
+                yield* reachCommitCrashCheckpoint(
+                  "journal_prepared_before_submit",
+                );
+                return yield* Effect.matchEffect(
+                  revalidateStateQueueLease(workerInput).pipe(
+                    Effect.andThen(
+                      assertLiveTailCommitBase(contracts, commitBaseTail),
+                    ),
+                    Effect.andThen(
+                      submitWithDurableIntent(
+                        headerHashBuffer,
+                        signAndSubmitProgram,
+                      ),
                     ),
                   ),
+                  {
+                    onFailure: (error) =>
+                      Effect.gen(function* () {
+                        const retained = yield* retainedIntentFailure(
+                          headerHashBuffer,
+                          error,
+                        );
+                        if (retained !== undefined) return retained;
+                        return yield* handleDepositOnlySubmissionFailure({
+                          error,
+                          headerHashBuffer,
+                          expectedTailOutRef: stateQueueOutRef(commitBaseTail),
+                        });
+                      }),
+                    onSuccess: (txHash) =>
+                      PendingBlockFinalizationsDB.markSubmitted(
+                        headerHashBuffer,
+                        Buffer.from(fromHex(txHash)),
+                      ).pipe(
+                        Effect.andThen(
+                          submittedAwaitingConfirmationOutput(
+                            txHash,
+                            txSize,
+                            blockEndTimeMs,
+                            newHeaderHash,
+                          ),
+                        ),
+                      ),
+                  },
                 );
               });
             }),
@@ -490,59 +472,45 @@ export const submitDepositOnlyCommit = ({
       readonly error: unknown;
       readonly headerHashBuffer: Buffer;
       readonly expectedTailOutRef: string;
-    }): Effect.Effect<
-      WorkerOutput,
-      StaleOperatorWalletRetrySignal,
-      Database
-    > =>
+    }): Effect.Effect<WorkerOutput, never, Database> =>
       error instanceof TxSubmitError &&
-      isPotentiallyStaleOperatorWalletViewError(error)
-        ? signalStaleOperatorWalletRetry({
-            pendingHeaderHash: headerHashBuffer,
-            error,
-            label: "User-event-only commit submission",
+      submitErrorReferencesOutRef(error, expectedTailOutRef)
+        ? Effect.gen(function* () {
+            yield* PendingBlockFinalizationsDB.markAbandoned(
+              headerHashBuffer,
+            ).pipe(Effect.catchAll(() => Effect.void));
+            yield* Effect.logWarning(
+              `🔹 User-event-only commit submission hit stale state-queue tail ${expectedTailOutRef}; the next worker tick will rebuild against the refreshed live tail.`,
+            );
+            return {
+              type: "NothingToCommitOutput",
+            } satisfies WorkerOutput;
           })
-        : error instanceof TxSubmitError &&
-            submitErrorReferencesOutRef(error, expectedTailOutRef)
+        : isStaleCommitBaseError(error)
           ? Effect.gen(function* () {
               yield* PendingBlockFinalizationsDB.markAbandoned(
                 headerHashBuffer,
               ).pipe(Effect.catchAll(() => Effect.void));
               yield* Effect.logWarning(
-                `🔹 User-event-only commit submission hit stale state-queue tail ${expectedTailOutRef}; the next worker tick will rebuild against the refreshed live tail.`,
+                `🔹 User-event-only commit base ${expectedTailOutRef} became stale before submission; rolling back local roots for a rebuild on the next worker tick.`,
               );
               return {
                 type: "NothingToCommitOutput",
               } satisfies WorkerOutput;
             })
-          : isStaleCommitBaseError(error)
-            ? Effect.gen(function* () {
-                yield* PendingBlockFinalizationsDB.markAbandoned(
-                  headerHashBuffer,
-                ).pipe(Effect.catchAll(() => Effect.void));
-                yield* Effect.logWarning(
-                  `🔹 User-event-only commit base ${expectedTailOutRef} became stale before submission; rolling back local roots for a rebuild on the next worker tick.`,
-                );
-                return {
-                  type: "NothingToCommitOutput",
-                } satisfies WorkerOutput;
-              })
-            : Effect.gen(function* () {
-                yield* PendingBlockFinalizationsDB.markAbandoned(
-                  headerHashBuffer,
-                ).pipe(Effect.catchAll(() => Effect.void));
-                const detail = formatUnknownError(error);
-                yield* Effect.logError(
-                  `🔹 User-event-only commit submission failed: ${detail}`,
-                );
-                return {
-                  type: "FailureOutput",
-                  error: `User-event-only commit submission failed: ${detail}`,
-                } satisfies WorkerOutput;
-              });
+          : Effect.gen(function* () {
+              yield* PendingBlockFinalizationsDB.markAbandoned(
+                headerHashBuffer,
+              ).pipe(Effect.catchAll(() => Effect.void));
+              const detail = formatUnknownError(error);
+              yield* Effect.logError(
+                `🔹 User-event-only commit submission failed: ${detail}`,
+              );
+              return {
+                type: "FailureOutput",
+                error: `User-event-only commit submission failed: ${detail}`,
+              } satisfies WorkerOutput;
+            });
 
-    return yield* runWithStaleOperatorWalletRetry({
-      label: "User-event-only commit submission",
-      attempt: submitCommitAttempt,
-    });
+    return yield* submitCommitAttempt();
   });

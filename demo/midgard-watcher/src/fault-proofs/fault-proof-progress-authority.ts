@@ -1,6 +1,3 @@
-import { mkdir, readdir, realpath } from "node:fs/promises";
-import { join } from "node:path";
-
 import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowReconciliationPermitController,
@@ -16,26 +13,42 @@ import {
   assertWatcherStateQueueObservation,
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
+import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import {
-  assertWatcherNativeBlockAdmission,
-  type WatcherNativeBlockAdmission,
-} from "../l1/native-block-admission.js";
-import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
+  openWatcherFaultDecisionJournal,
+  type WatcherFaultDecisionJournal,
+} from "./fault-decision-journal.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import {
-  isWatcherProofCompletionMarked,
-  markWatcherProofCompletionBeyondRecovery,
-} from "./fault-proof-completion-marker.js";
+  createWatcherProofObjectiveCleanup,
+  type WatcherProofCleanupFailure,
+} from "./fault-proof-objective-cleanup.js";
 import {
   readWatcherProofExecution,
   type WatcherProofExecution,
   type WatcherProofObjective,
 } from "./fault-proof-objective-journal.js";
+import {
+  canOpenWatcherProofObjective,
+  completeWatcherProofObjective,
+  listWatcherProofObjectives,
+  matchingWatcherProofMarker,
+  type WatcherProofCompletionMarker,
+  watcherProofJobActive,
+  watcherProofJobPending,
+  watcherProofMarkerMatches,
+} from "./fault-proof-objective-table.js";
 import type { WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
+import {
+  isWatcherProofDecisionMissingError,
+  type WatcherDecisionHold,
+  WatcherProofDecisionMissingError,
+} from "./watcher-decision-hold.js";
+import { openWatcherJournalDatabase } from "./watcher-journal-database.js";
+import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
 
 export type WatcherFaultProofProgressRequest = Readonly<{
   observation: WatcherAuthenticatedStateQueueObservation;
-  nativeProgress?: WatcherNativeBlockAdmission;
   rollbackGeneration: string;
   fault?: Readonly<{
     decision: HeaderFaultDecision;
@@ -57,8 +70,18 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
     request: WatcherFaultProofProgressRequest,
   ): Promise<readonly WatcherFaultProofProgressContext[]>;
   revokeAuthority(reason: string): void;
+  /** Open objectives, held ones included. */
   unfinishedCount(): number;
-  /** A completion verified beyond rollback recovery is also marked durably. */
+  /** Objectives held because their recorded decision is missing. */
+  decisionHolds(): readonly WatcherDecisionHold[];
+  /** Released or final objectives whose workflow directory a removal could
+   * not take (their rows stay), and tombstones a sweep could not delete:
+   * each admission retries them. */
+  cleanupFailures(): readonly WatcherProofCleanupFailure[];
+  /** Holds an objective whose execution names a missing decision. */
+  holdObjective(hold: WatcherDecisionHold): Promise<void>;
+  /** Records the completion; one verified beyond rollback recovery is
+   * marked, and pruned with its workflow directory once its job is done. */
   markCompleted(
     objective: WatcherProofObjective,
     verified?: Readonly<{
@@ -66,6 +89,12 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
       confirmationDepth: number;
     }>,
   ): Promise<void>;
+  /** The objective's marker when it matches this exact execution: verified
+   * beyond rollback recovery, so final and never verified or held again. */
+  completionMarker(
+    objective: WatcherProofObjective,
+    execution: WatcherProofExecution,
+  ): WatcherProofCompletionMarker | null;
   updateExecution(input: {
     readonly objective: WatcherProofObjective;
     readonly execution: WatcherProofExecution;
@@ -90,9 +119,8 @@ type Objective = {
 };
 const keyOf = ({ category, headerHash }: WatcherProofObjective): string =>
   `${category}:${headerHash}`;
-const MAX_OBJECTIVES = 2_048;
-const isCompletedJournal = (objective: Objective): boolean =>
-  objective.entries?.some(({ event }) => event.kind === "completed") === true;
+// Bounds the recently admitted decisions kept in memory.
+const MAX_CACHED_DECISIONS = 2_048;
 
 /** Restored decisions authorize observation of signed work only. The supervisor
  * revalidates the latest selected execution immediately before funding. */
@@ -100,16 +128,79 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   readonly journalRoot: string;
   readonly deploymentFingerprint: string;
   readonly categories: readonly WatcherInstalledWorkflowCategory[];
+  readonly authenticationKey: Uint8Array;
+  readonly retention?: WatcherProofRetention; // holds open objectives' L1 history
+  /** Told when an objective stops being driven (`objectiveSettled`). */
+  readonly onObjectiveSettled?: (objective: WatcherProofObjective) => void;
+  /** Whether a job of the objective is queued, running or handed over in
+   * this process; its workflow directory stays while it is. */
+  readonly jobInProcess?: (objective: WatcherProofObjective) => boolean;
+  /** Told when the objective's workflow directory is removed. */
+  readonly onObjectiveRemoved?: (objective: WatcherProofObjective) => void;
 }): WatcherFaultProofProgressAuthority => {
+  const database = () =>
+    openWatcherJournalDatabase({
+      journalRoot: input.journalRoot,
+      authenticationKey: input.authenticationKey,
+    });
+  const cleanup = createWatcherProofObjectiveCleanup({
+    journalRoot: input.journalRoot,
+    deploymentFingerprint: input.deploymentFingerprint,
+    database,
+    ...(input.jobInProcess === undefined
+      ? {}
+      : { jobInProcess: input.jobInProcess }),
+    ...(input.onObjectiveRemoved === undefined
+      ? {}
+      : { onRemoved: input.onObjectiveRemoved }),
+  });
+  // A journal failure is retried by the next use.
+  const openDecisions: () => Promise<WatcherFaultDecisionJournal> =
+    watcherJournalOpener(
+      () =>
+        openWatcherFaultDecisionJournal({
+          directory: input.journalRoot,
+          deploymentFingerprint: input.deploymentFingerprint,
+          launchScope: input.categories,
+          authenticationKey: input.authenticationKey,
+        }),
+      { retryInBackground: false },
+    ).open;
+  const k = input.retention?.securityParameter; // markers are made k deep
   const objectives = new Map<string, Objective>();
+  // Objectives whose execution names a decision the journal does not hold:
+  // they take no new work and clear once their header leaves the finalized
+  // queue (journal_decision_missing).
+  const held = new Map<
+    string,
+    WatcherDecisionHold & Readonly<{ kind: "objective" }>
+  >();
+  // Held objectives whose workflow directory startup could not read
+  // (fault_proof_objective_unreadable), by whether their row was marked
+  // final: their release forgets them without reading the directory again.
+  const unreadable = new Map<string, boolean>();
   const decisions = new Map<string, HeaderFaultDecision>();
-  let initialized: Promise<void> | undefined;
+  // A retry is safe: initialization reads the journals before it changes any
+  // state, so a latched journal throws again at its first read, and an open
+  // that could not complete changed nothing.
+  const initializeOnce = watcherJournalOpener(() => initialize(), {
+    retryInBackground: false,
+  }).open;
   let epoch = 0;
+  // Open objectives whose L1 history pruning removed before a pin held it,
+  // by the admission that tried: the retention names them
+  // (l1_proof_history_pruned), each later new observation retries the pin
+  // from current facts, and they stay open.
+  const unheld = new Map<string, number>();
+  let admissions = 0;
+  const hold = async (target: WatcherProofObjective): Promise<void> => {
+    const result = await input.retention?.pin(target);
+    if (result?.kind === "already_pruned")
+      unheld.set(keyOf(target), admissions);
+    else unheld.delete(keyOf(target));
+  };
   let lastObservation: string | undefined;
   let generation = -1n;
-  let latestNativeProgress:
-    | Pick<WatcherNativeBlockAdmission, "blockHash" | "blockNo" | "slot">
-    | undefined;
   const readDecision = async (
     digest: string,
   ): Promise<HeaderFaultDecision | undefined> => {
@@ -119,34 +210,12 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       decisions.set(digest, cached);
       return cached;
     }
-    // Journal handles retain their admitted snapshot. The bridge's writer may
-    // have appended this decision since startup, so a genuine cache miss must
-    // re-admit the current disk chain rather than reuse a stale reader handle.
-    const journal = await openWatcherFaultDecisionJournal({
-      directory: input.journalRoot,
-      deploymentFingerprint: input.deploymentFingerprint,
-      launchScope: input.categories,
-    });
-    for (const { decision } of await journal.readAll()) {
-      if (
-        decision.decision === "fault_detected" &&
-        decision.decisionDigest === digest
-      ) {
-        decisions.set(digest, decision);
-        return decision;
-      }
-    }
-    return undefined;
-  };
-  // Completed journals stay indexed until canonical verification retires
-  // them, but they hold no unfinished work and are never erased, so counting
-  // them would refuse every restart once enough proofs had completed.
-  const assertRecoveryBound = (): void => {
-    let unfinished = 0;
-    for (const objective of objectives.values())
-      if (!isCompletedJournal(objective)) unfinished += 1;
-    if (unfinished > MAX_OBJECTIVES)
-      throw new Error("proof progress exceeds its recovery bound");
+    // The bridge's writer may have appended this decision since startup;
+    // the journal reads the rows committed since its last read.
+    const decision = (await (await openDecisions()).read(digest))?.decision;
+    if (decision?.decision !== "fault_detected") return undefined;
+    decisions.set(digest, decision);
+    return decision;
   };
   const pruneDecisions = (): void => {
     const retained = new Set(
@@ -163,9 +232,59 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     );
     for (const digest of inactive.slice(
       0,
-      Math.max(0, inactive.length - MAX_OBJECTIVES),
+      Math.max(0, inactive.length - MAX_CACHED_DECISIONS),
     ))
       decisions.delete(digest);
+  };
+  const missingDecision = (
+    target: WatcherProofObjective,
+    decisionDigest: string | undefined,
+    detail: string,
+  ): WatcherProofDecisionMissingError =>
+    new WatcherProofDecisionMissingError({
+      kind: "objective",
+      category: target.category,
+      headerHash: target.headerHash,
+      decisionDigest: decisionDigest ?? null,
+      detail: `${target.category}/${target.headerHash}: ${detail} (${decisionDigest ?? "none"})`,
+    });
+  // The objective keeps its L1 history pinned while held; a hold is never
+  // dispatched again in this process.
+  const holdObjective = async (hold: WatcherDecisionHold): Promise<void> => {
+    if (hold.kind !== "objective") return;
+    const key = keyOf(hold);
+    if (!held.has(key) && !objectives.has(key))
+      await input.retention?.pin(hold);
+    objectives.delete(key);
+    held.set(key, hold);
+    input.onObjectiveSettled?.(hold);
+  };
+  const queued = (
+    observation: WatcherAuthenticatedStateQueueObservation,
+    target: WatcherProofObjective,
+  ): boolean =>
+    observation.finalizedHeaders.some(
+      ({ headerHash }) => headerHash === target.headerHash,
+    );
+  // An objective whose header left the finalized queue has resolved: its
+  // proof or another landed and is final, or the header merged. Its pin goes,
+  // and its rows and workflow directory once no job of it is queued or
+  // active: such a job's run adopts the objective again, and a later
+  // observation releases it.
+  const release = async (target: WatcherProofObjective): Promise<void> => {
+    await input.retention?.release(target);
+    const final = unreadable.get(keyOf(target)) === true;
+    unreadable.delete(keyOf(target));
+    await cleanup.forget(target, { final, departed: true });
+  };
+  const clearResolvedHolds = async (
+    observation: WatcherAuthenticatedStateQueueObservation,
+  ): Promise<void> => {
+    for (const [key, hold] of held) {
+      if (queued(observation, hold)) continue;
+      held.delete(key);
+      await release(hold);
+    }
   };
   const loadExecution = async (objective: Objective): Promise<void> => {
     const execution = await readWatcherProofExecution({
@@ -174,18 +293,33 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       objective: objective.decision,
       selectedWorkflowId: objective.workflowId,
     });
-    if (execution === undefined) return;
+    if (execution !== undefined) await adoptExecution(objective, execution);
+  };
+  const adoptExecution = async (
+    objective: Pick<Objective, "entries" | "workflowId"> & {
+      decision?: HeaderFaultDecision;
+    },
+    execution: WatcherProofExecution,
+  ): Promise<void> => {
+    const target = execution.entries[0]!.identity;
     const decisionDigest = execution.entries[0]!.identity.decisionDigest;
     const decision =
       decisionDigest === undefined
         ? undefined
         : await readDecision(decisionDigest);
+    if (target.target.kind !== "state_queue_header")
+      throw new Error("proof progress execution names no queue header");
     if (
       decision === undefined ||
-      decision.category !== objective.decision.category ||
-      decision.headerHash !== objective.decision.headerHash
+      decision.category !== target.category ||
+      decision.headerHash !== target.target.headerHash
     )
-      throw new Error(
+      throw missingDecision(
+        {
+          category: target.category as WatcherInstalledWorkflowCategory,
+          headerHash: target.target.headerHash,
+        },
+        decisionDigest,
         "proof progress has no exact recorded execution decision",
       );
     objective.decision = decision;
@@ -193,53 +327,74 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     objective.workflowId = execution.workflowId;
   };
   const initialize = async (): Promise<void> => {
-    const journal = await openWatcherFaultDecisionJournal({
-      directory: input.journalRoot,
-      deploymentFingerprint: input.deploymentFingerprint,
-      launchScope: input.categories,
-    });
-    for (const { decision } of await journal.readAll())
+    for (const { decision } of await (await openDecisions()).readAll())
       if (decision.decision === "fault_detected")
         decisions.set(decision.decisionDigest, decision);
-    const root = join(input.journalRoot, "fault-proofs");
-    await mkdir(root, { recursive: true, mode: 0o700 });
-    if ((await realpath(root)) !== root)
-      throw new Error("proof progress journal traverses a symlink");
-    const categories = new Set<string>(input.categories);
-    let unfinished = 0;
-    for (const category of await readdir(root, { withFileTypes: true })) {
-      if (!category.isDirectory() || !categories.has(category.name))
-        throw new Error("proof progress journal contains an unknown category");
-      const categoryPath = join(root, category.name);
-      if ((await realpath(categoryPath)) !== categoryPath)
-        throw new Error("proof progress category traverses a symlink");
-      for (const header of await readdir(categoryPath, {
-        withFileTypes: true,
-      })) {
-        if (!header.isDirectory() || !/^[0-9a-f]{56}$/u.test(header.name))
-          throw new Error("proof progress journal contains an invalid target");
-        // A completion verified beyond rollback recovery holds no work.
-        const target = { category: category.name, headerHash: header.name };
-        if (await isWatcherProofCompletionMarked({ ...input, target }))
-          continue;
-        const candidates = [...decisions.values()].filter(
-          (decision) =>
-            decision.category === category.name &&
-            decision.headerHash === header.name,
-        );
-        const candidate = candidates[0];
-        if (candidate === undefined)
-          throw new Error(
-            "proof progress target has no recorded fault decision",
-          );
-        const objective: Objective = { decision: candidate };
-        await loadExecution(objective);
-        if (objective.entries !== undefined) {
-          objectives.set(keyOf(candidate), objective);
-          if (!isCompletedJournal(objective) && ++unfinished > MAX_OBJECTIVES)
-            throw new Error("proof progress exceeds its recovery bound");
-        }
+    // A crash during an earlier removal's delete left its tombstone.
+    await cleanup.sweep();
+    // Startup lists the objective table, never the workflow directories.
+    const rows = listWatcherProofObjectives(database(), input.categories);
+    for (const row of rows) {
+      const target = row.objective;
+      // No job of this process owns a queued or active row left by the last
+      // one; a later run of the objective registers its job again.
+      if (watcherProofJobPending(database(), target)) cleanup.markStale(target);
+      let execution;
+      try {
+        execution = await readWatcherProofExecution({
+          journalRoot: input.journalRoot,
+          deploymentFingerprint: input.deploymentFingerprint,
+          objective: target,
+        });
+      } catch (error) {
+        // A directory that cannot be read (a symlink, a sequence gap a
+        // partial delete left, an I/O error) never fails startup: the
+        // objective is held and takes no work, and once its header leaves
+        // the finalized queue its rows are forgotten without trusting it.
+        unreadable.set(keyOf(target), row.marker !== null);
+        await holdObjective({
+          kind: "objective",
+          category: target.category,
+          headerHash: target.headerHash,
+          decisionDigest: null,
+          detail: `${target.category}/${target.headerHash}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          readiness: "fault_proof_objective_unreadable",
+        });
+        continue;
       }
+      // Rows of an active job are left to that job's own finish.
+      const settled = !watcherProofJobActive(database(), target);
+      // A completion verified beyond rollback recovery holds no work.
+      if (
+        settled &&
+        row.marker !== null &&
+        (execution === undefined ||
+          watcherProofMarkerMatches(row.marker, execution, k))
+      ) {
+        await input.retention?.release(target); // a crash can leave the pin
+        await cleanup.forget(target, { final: true, departed: true });
+        continue;
+      }
+      // A job queued but never started left no execution and holds no work;
+      // a live fault queues it again. One a crash left active is forgotten
+      // once its header leaves the finalized queue.
+      if (execution === undefined) {
+        await input.retention?.release(target); // admission pins it again
+        await cleanup.forget(target, { final: false, departed: settled });
+        continue;
+      }
+      const objective = {} as Objective;
+      try {
+        await adoptExecution(objective, execution);
+      } catch (error) {
+        if (!isWatcherProofDecisionMissingError(error)) throw error;
+        await holdObjective(error.hold);
+        continue;
+      }
+      await hold(target);
+      objectives.set(keyOf(target), objective);
     }
     pruneDecisions();
   };
@@ -250,7 +405,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     readonly objective: WatcherProofObjective;
     readonly execution: WatcherProofExecution;
   }): Promise<void> => {
-    await (initialized ??= initialize());
+    await initializeOnce();
     const first = execution.entries[0];
     if (
       first === undefined ||
@@ -273,10 +428,17 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       decision === undefined ||
       decision.category !== key.category ||
       decision.headerHash !== key.headerHash
-    )
-      throw new Error(
+    ) {
+      const error = missingDecision(
+        key,
+        first.identity.decisionDigest,
         "proof progress execution update omitted its exact recorded decision",
       );
+      await holdObjective(error.hold);
+      throw error;
+    }
+    if (!objectives.has(keyOf(key)) && !held.has(keyOf(key))) await hold(key);
+    held.delete(keyOf(key));
     const objective = objectives.get(keyOf(key)) ?? { decision };
     if (
       objective.workflowId !== undefined &&
@@ -289,7 +451,6 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     objective.entries = execution.entries;
     objective.workflowId = execution.workflowId;
     objectives.set(keyOf(key), objective);
-    assertRecoveryBound();
     pruneDecisions();
   };
   return Object.freeze({
@@ -304,57 +465,25 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           "proof progress observation has a foreign deployment or generation",
         );
       const startedEpoch = epoch;
-      await (initialized ??= initialize());
+      admissions += 1;
+      await initializeOnce();
       if (
         epoch !== startedEpoch ||
         BigInt(request.rollbackGeneration) < generation
       )
         return [];
-      const nextGeneration = BigInt(request.rollbackGeneration);
-      if (nextGeneration !== generation) latestNativeProgress = undefined;
-      generation = nextGeneration;
+      generation = BigInt(request.rollbackGeneration);
+      await clearResolvedHolds(request.observation);
+      if (epoch !== startedEpoch) return [];
+      await cleanup.retry(
+        request.observation,
+        (target) => objectives.has(keyOf(target)) || held.has(keyOf(target)),
+      );
+      if (epoch !== startedEpoch) return [];
+      // The revision changes with every admitted queue observation; the
+      // decision driver admits one per follower change, which is the wakeup.
       const queuePoint = request.observation.nativePoint;
-      const progress = request.nativeProgress;
-      if (progress !== undefined) {
-        assertWatcherNativeBlockAdmission(progress);
-        if (
-          BigInt(progress.blockNo) < BigInt(queuePoint.blockNo) ||
-          BigInt(progress.slot) < BigInt(queuePoint.slot) ||
-          (BigInt(progress.blockNo) > BigInt(queuePoint.blockNo) &&
-            BigInt(progress.slot) <= BigInt(queuePoint.slot)) ||
-          (progress.blockNo === queuePoint.blockNo &&
-            (progress.blockHash !== queuePoint.blockHash ||
-              progress.slot !== queuePoint.slot))
-        )
-          throw new Error(
-            "proof progress native point is behind or differs from its queue evidence",
-          );
-        if (latestNativeProgress !== undefined) {
-          if (BigInt(progress.blockNo) < BigInt(latestNativeProgress.blockNo))
-            return [];
-          if (
-            (progress.blockNo === latestNativeProgress.blockNo &&
-              (progress.blockHash !== latestNativeProgress.blockHash ||
-                progress.slot !== latestNativeProgress.slot)) ||
-            (BigInt(progress.blockNo) > BigInt(latestNativeProgress.blockNo) &&
-              BigInt(progress.slot) <= BigInt(latestNativeProgress.slot))
-          )
-            throw new Error("proof progress native point is not monotone");
-        }
-        // Only a bounded wakeup marker is retained. Queue, funding and terminal
-        // facts continue to come from their existing authenticated authorities.
-        latestNativeProgress = {
-          blockHash: progress.blockHash,
-          blockNo: progress.blockNo,
-          slot: progress.slot,
-        };
-      }
-      const progressPoint =
-        latestNativeProgress !== undefined &&
-        BigInt(latestNativeProgress.blockNo) > BigInt(queuePoint.blockNo)
-          ? latestNativeProgress
-          : queuePoint;
-      const observationRevision = `${request.observation.observationDigest}:${progressPoint.blockHash}`;
+      const observationRevision = `${request.observation.observationDigest}:${queuePoint.blockHash}`;
       const observationKey = `${request.rollbackGeneration}:${observationRevision}`;
       const changed = observationKey !== lastObservation;
       const contexts: WatcherFaultProofProgressContext[] = [];
@@ -390,34 +519,67 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           throw new Error(
             "proof progress fault differs from its authenticated observation or authority",
           );
-        decisions.set(fault.decision.decisionDigest, fault.decision);
-        const objective = objectives.get(currentKey!) ?? {
-          decision: fault.decision,
-        };
-        objective.currentPermit = fault.actuationPermit;
-        objective.currentDecisionDigest = fault.decision.decisionDigest;
-        objectives.set(currentKey!, objective);
-        contexts.push({
-          observationRevision,
-          ...fault,
-          rollbackGeneration: request.rollbackGeneration,
-        });
+        // At its cap of open objectives the table refuses a new one: the
+        // supervisor reports journal_capacity and a later observation retries.
+        // A held objective takes no new work until it resolves.
+        if (
+          !held.has(currentKey!) &&
+          (objectives.has(currentKey!) ||
+            canOpenWatcherProofObjective(database(), fault.decision))
+        ) {
+          if (!objectives.has(currentKey!)) {
+            await hold(fault.decision);
+            if (epoch !== startedEpoch) return [];
+          }
+          decisions.set(fault.decision.decisionDigest, fault.decision);
+          const objective = objectives.get(currentKey!) ?? {
+            decision: fault.decision,
+          };
+          objective.currentPermit = fault.actuationPermit;
+          objective.currentDecisionDigest = fault.decision.decisionDigest;
+          objectives.set(currentKey!, objective);
+          contexts.push({
+            observationRevision,
+            ...fault,
+            rollbackGeneration: request.rollbackGeneration,
+          });
+        }
       }
-      assertRecoveryBound();
       if (changed) {
         for (const [key, objective] of objectives) {
+          const tried = unheld.get(key);
+          if (tried !== undefined && tried < admissions)
+            await hold(objective.decision);
           if (key === currentKey) continue;
           // Newly started work acquires its durable identity on its first
           // historical observation. Already restored identities stay indexed.
-          if (objective.entries === undefined) await loadExecution(objective);
+          if (objective.entries === undefined)
+            try {
+              await loadExecution(objective);
+            } catch (error) {
+              if (!isWatcherProofDecisionMissingError(error)) throw error;
+              await holdObjective(error.hold);
+              continue;
+            }
           if (epoch !== startedEpoch) return [];
           if (
             objective.entries === undefined ||
             !objective.entries.some(
               ({ event }) => event.kind === "submission_intent",
             )
-          )
+          ) {
+            // With no fault naming it and no signed attempt to reconcile,
+            // nothing drives it again until its header is queued again, which
+            // admits it afresh: it is released as a resolved hold is.
+            if (!queued(request.observation, objective.decision)) {
+              objectives.delete(key);
+              unheld.delete(key);
+              input.onObjectiveSettled?.(objective.decision);
+              await release(objective.decision);
+              if (epoch !== startedEpoch) return [];
+            }
             continue;
+          }
           if (objective.historical?.generation !== request.rollbackGeneration) {
             const controller = createWorkflowReconciliationPermitController({
               decision: objective.decision,
@@ -444,7 +606,10 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       pruneDecisions();
       return Object.freeze(contexts);
     },
-    unfinishedCount: () => objectives.size,
+    unfinishedCount: () => objectives.size + held.size,
+    decisionHolds: () => Object.freeze([...held.values()]),
+    cleanupFailures: cleanup.failures,
+    holdObjective,
     revokeAuthority: (reason) => {
       for (const objective of objectives.values()) {
         if (objective.currentPermit !== undefined)
@@ -455,7 +620,6 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         delete objective.historical;
       }
       lastObservation = undefined;
-      latestNativeProgress = undefined;
       epoch += 1;
     },
     updateExecution,
@@ -478,15 +642,37 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       };
       return controller.permit;
     },
-    markCompleted: async (objective, verified) => {
+    markCompleted: async (objective, done) => {
       objectives.delete(keyOf(objective));
+      unheld.delete(keyOf(objective));
+      held.delete(keyOf(objective));
+      unreadable.delete(keyOf(objective));
+      input.onObjectiveSettled?.(objective);
       pruneDecisions();
-      if (verified !== undefined)
-        await markWatcherProofCompletionBeyondRecovery({
-          ...input,
-          objective,
-          ...verified,
-        });
+      // The row frees the cap slot and spares a restart one verification. A
+      // failed write leaves it open, so the next start verifies it again.
+      let marked = false;
+      try {
+        marked = completeWatcherProofObjective(database(), objective, done, k);
+      } catch {
+        // Verified again on the next start.
+      }
+      // Released once the marker holds, and forgotten with its workflow
+      // directory once its job is done and an observation no longer queues
+      // its header (a fault then names the marker, not a fresh objective);
+      // unmarked, it is verified again.
+      if (marked) {
+        await input.retention?.release(objective);
+        await cleanup.forget(objective, { final: true, departed: false });
+      }
     },
+    completionMarker: (objective, execution) =>
+      matchingWatcherProofMarker(
+        database(),
+        objective,
+        execution,
+        k,
+        input.categories,
+      ),
   });
 };

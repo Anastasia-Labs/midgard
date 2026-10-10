@@ -63,7 +63,3 @@ export const createLifecycleCoverageRecorder = () => {
     },
   };
 };
-
-export type LifecycleCoverageRecorder = ReturnType<
-  typeof createLifecycleCoverageRecorder
->;

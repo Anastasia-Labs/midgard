@@ -46,8 +46,10 @@ fixed order:
 2. the seeded legacy/overlay/Architecture G differential;
 3. malformed-frame, child SIGKILL/stale-epoch, both atomic-promotion crash
    boundaries, and post-submit replay tests;
-4. the database atomic journal/process-kill suite; and
-5. the shared Phase 4 planner, lifecycle, recovery, and process-harness suite.
+4. the database atomic journal/process-kill suite;
+5. the shared Phase 4 planner, lifecycle and recovery suite; and
+6. the Phase 4 process-isolation and process-harness suite, which lives in
+   `demo/midgard-node-tools`.
 
 It stops on the first failed command and emits a failed, non-authorizing
 report. It never silently omits a suite.
@@ -70,7 +72,7 @@ pnpm verify:phase3:architecture-g:final-tree -- \
   --report "$RUN/final-tree-report.json"
 ```
 
-Pass criteria are five exact zero-exit commands, all required coverage labels,
+Pass criteria are six exact zero-exit commands, all required coverage labels,
 unchanged source identity, and unchanged raw-log hashes under offline
 verification.
 
@@ -168,7 +170,7 @@ the offline verifier requires both retained log artifacts to carry a clean
 `midgard-secret-scanned-log-v1` result with zero redactions. Thus a failing
 driver can preserve useful diagnostics without allowing a seed, signing key,
 password, or raw transaction body into retained evidence.
-The verifier enforces the field-level evidence contract: fresh/Kupmios/local
+The verifier enforces the field-level evidence contract: fresh/local-node/local
 UPLC readiness; confirmed and projected deposit; at least two unique L2
 admissions; DA metadata, payload CBOR, watcher status, and attestation hashes;
 automatic merge and finalized headers; exact three-address balances and zero DB

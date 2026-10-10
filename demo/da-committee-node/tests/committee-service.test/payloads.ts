@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { CommitteeService } from "../../src/committee-service.js";
 import { daPayloadSha256 } from "../../src/da/payload.js";
 import { type Header } from "../../src/domain.js";
-import { hashBlockHeader } from "../../src/l1/state-queue-scanner.js";
+import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
 import { bytesToHex } from "../../src/utils/hex.js";
 import {
@@ -15,12 +15,12 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from ".././helpers.js";
-import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
+import { fakeL1Source } from ".././helpers/fake-l1-source.js";
 import {
   expectedCommitment,
   failPayloadSource,
   missingPayload,
-  openJsonCommitteeStore,
+  openTestCommitteeStore,
   payloadCandidates,
   payloadSourceFromCandidates,
 } from "./fixtures.js";
@@ -32,7 +32,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -52,11 +51,11 @@ export const registerPayloadsTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -97,7 +96,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -117,7 +115,7 @@ export const registerPayloadsTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -131,7 +129,7 @@ export const registerPayloadsTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -179,7 +177,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -199,7 +196,7 @@ export const registerPayloadsTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -213,7 +210,7 @@ export const registerPayloadsTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -300,7 +297,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -320,11 +316,11 @@ export const registerPayloadsTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -369,7 +365,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -390,11 +385,11 @@ export const registerPayloadsTests = () => {
       signerIndex: 0,
     });
     let payloadAvailable = false;
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -446,11 +441,10 @@ export const registerPayloadsTests = () => {
 
 const reverifyHarness = async (payloadBytes: Buffer, header: Header) => {
   const dir = await tempDir();
-  const headerHash = hashBlockHeader(header);
+  const headerHash = headerHashOf(header);
   const seed = "00".repeat(31) + "01";
   const signer = await loadDaSigner(`hex:${seed}`);
   const config = minimalConfig({
-    dir,
     manifestPath: `${dir}/manifest.json`,
     deploymentInfoPath: `${dir}/deployment.json`,
     signerSeed: seed,
@@ -465,7 +459,7 @@ const reverifyHarness = async (payloadBytes: Buffer, header: Header) => {
       ),
     },
   };
-  const store = await openJsonCommitteeStore(dir);
+  const store = await openTestCommitteeStore();
   // A verdict an earlier build cached for these bytes.
   await store.saveDaPayload({
     deploymentFingerprint: configWithDaHash.deploymentFingerprint,
@@ -481,7 +475,7 @@ const reverifyHarness = async (payloadBytes: Buffer, header: Header) => {
   const service = new CommitteeService({
     config: configWithDaHash,
     store,
-    stateQueueProvider: withFinalSnapshot({
+    l1: fakeL1Source({
       fetchStateQueueNodes: async () => [
         makeObservedNode({ header, headerHash, depth: 10 }),
       ],

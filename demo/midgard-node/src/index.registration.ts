@@ -12,6 +12,7 @@ import {
   writeJson,
 } from "./commands/cli-runtime.js";
 import * as DaBondCommand from "./commands/da-bond.js";
+import { registerL1AccessOption } from "./commands/l1-access-option.js";
 import { type DaLibp2pPreflightMode } from "./da/libp2p-producer.js";
 import {
   DA_LIBP2P_RUNTIME_PROFILES,
@@ -196,6 +197,7 @@ program.version(VERSION).description(
           ${"Midgard Node – Demo CLI Application"}
   ${ENV_VARS_GUIDE}`,
 );
+registerL1AccessOption(program);
 
 program
   .command("availability-journal")
@@ -265,14 +267,6 @@ for (const action of [
       (value: string) =>
         parseNonNegativeIntegerOption(value, "--tranche-index"),
     )
-    .option(
-      "--kupo-url <url>",
-      "Local canonical Kupo URL; defaults to L1_KUPO_KEY",
-    )
-    .option(
-      "--ogmios-url <url>",
-      "Local canonical Ogmios URL; defaults to L1_OGMIOS_KEY",
-    )
     .action(
       async (
         options: AvailabilityChallengeCommand.AvailabilityCommandOptions,
@@ -298,19 +292,10 @@ export const daBond = program
   );
 
 export const daBondChainOptions = (command: Command): Command =>
-  command
-    .requiredOption(
-      "--manifest <path>",
-      "Verified finalized contract deployment manifest",
-    )
-    .option(
-      "--kupo-url <url>",
-      "Local canonical Kupo URL; defaults to L1_KUPO_KEY",
-    )
-    .option(
-      "--ogmios-url <url>",
-      "Local canonical Ogmios URL; defaults to L1_OGMIOS_KEY",
-    );
+  command.requiredOption(
+    "--manifest <path>",
+    "Verified finalized contract deployment manifest",
+  );
 
 daBondChainOptions(
   daBond

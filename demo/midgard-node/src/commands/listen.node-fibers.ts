@@ -1,13 +1,11 @@
 import { Duration, Effect, Schedule } from "effect";
 
-import { foreignDaReconciliationFiber } from "../fibers/foreign-da-reconciliation.js";
 import {
   admissionBacklogGaugeFiber,
   attestationTimeoutCorrectionFiber,
   blockCommitmentFiber,
   blockConfirmationFiber,
   daPublicationReconcilerFiber,
-  fetchAndInsertTxOrderUTxOsFiber,
   L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS,
   l1ProviderReadinessRefresherFiber,
   mergeFiber,
@@ -16,16 +14,12 @@ import {
   nativeMpfOwnerSupervisorFiber,
   operatorWatchdogFiber,
   retentionSweeperFiber,
-  speculativeCommitBuilderFiber,
-  speculativeCommitSubmitterFiber,
   txQueueProcessorFiber,
-  userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
-import { operatorMembershipFiber } from "../fibers/operator-membership.js";
 import { settlementFiber } from "../fibers/settlement.js";
-import { signedIntentRebroadcastFiber } from "../fibers/signed-intent-rebroadcast.js";
 import { Globals } from "../services/globals.js";
 import { type NodeConfigDep, writeBehindFiber } from "../services/index.js";
+import { onL1HeadChange } from "../services/l1-head-trigger.js";
 import {
   awaitHaltCleared,
   FIBER_HALT_SOURCES,
@@ -60,6 +54,39 @@ const heldSchedule = <A, E, R>(
     ),
   );
 
+/**
+ * `makeFiber` on the next L1 head change (`onL1HeadChange`), at most
+ * `maxIdleMs` apart: its ticks read the node's projections, never L1.
+ */
+const onHeadChange = <A, E, R>(
+  maxIdleMs: number,
+  makeFiber: (schedule: Schedule.Schedule<number>) => Effect.Effect<A, E, R>,
+) =>
+  Effect.flatMap(Globals, (globals) =>
+    Effect.flatMap(
+      onL1HeadChange(globals, Duration.millis(maxIdleMs)),
+      makeFiber,
+    ),
+  );
+
+/** `makeFiber` on `onHeadChange`, held like `heldSchedule`. */
+const heldOnHeadChange = <A, E, R>(
+  name: HeldFiber,
+  maxIdleMs: number,
+  makeFiber: (schedule: Schedule.Schedule<number>) => Effect.Effect<A, E, R>,
+) =>
+  Effect.flatMap(Globals, (globals) =>
+    Effect.flatMap(awaitHaltCleared(globals, FIBER_HALT_SOURCES[name]), () =>
+      Effect.flatMap(
+        onL1HeadChange(globals, Duration.millis(maxIdleMs)),
+        (schedule) =>
+          makeFiber(
+            pausedWhileHalted(schedule, globals, FIBER_HALT_SOURCES[name]),
+          ),
+      ),
+    ),
+  );
+
 /** `fiber`, stopped while a source `FIBER_HALT_SOURCES[name]` names has a
  * raised liveness reason and started again once it clears. */
 const heldRestart = <A, E, R>(name: HeldFiber, fiber: Effect.Effect<A, E, R>) =>
@@ -70,7 +97,7 @@ const heldRestart = <A, E, R>(name: HeldFiber, fiber: Effect.Effect<A, E, R>) =>
 /**
  * The scheduled background fibers `runNode` runs for the node's lifetime,
  * keyed by name. `runNodeFiberSet` adds the fibers that need its startup
- * state (the retained-payload server and history owner). The HTTP listener is
+ * state (the retained-payload server). The HTTP listener is
  * scoped at the CLI boundary so local probes are available during startup.
  * None of them fails: a condition a fiber cannot resolve raises a liveness
  * reason instead, and the fibers whose effects that condition must stop are
@@ -91,47 +118,34 @@ export const nodeFibers = ({
   daPublicationReconciler: daPublicationReconcilerFiber(
     mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
   ),
-  foreignDaReconciliation: foreignDaReconciliationFiber(
-    mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
-  ),
   blockCommitment: heldSchedule(
     "blockCommitment",
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
     blockCommitmentFiber,
   ),
-  blockConfirmation: blockConfirmationFiber(
-    mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+  blockConfirmation: onHeadChange(
+    nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
+    blockConfirmationFiber,
   ),
-  signedIntentRebroadcast: signedIntentRebroadcastFiber(mkSchedule(1_000)),
   operatorWatchdog: heldSchedule(
     "operatorWatchdog",
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
     operatorWatchdogFiber,
   ),
-  operatorMembership: operatorMembershipFiber,
   l1ProviderReadinessRefresher: l1ProviderReadinessRefresherFiber(
     mkSchedule(L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS),
-  ),
-  userEventBarrierRefresher: nodeConfig.SPECULATIVE_COMMIT_BUILD
-    ? userEventBarrierRefresherFiber(
-        mkSchedule(nodeConfig.USER_EVENT_BARRIER_REFRESH_MS),
-      )
-    : Effect.void,
-  speculativeCommitBuilder: nodeConfig.SPECULATIVE_COMMIT_BUILD
-    ? heldRestart("speculativeCommitBuilder", speculativeCommitBuilderFiber)
-    : Effect.void,
-  speculativeCommitSubmitter: nodeConfig.SPECULATIVE_COMMIT_BUILD
-    ? heldRestart("speculativeCommitSubmitter", speculativeCommitSubmitterFiber)
-    : Effect.void,
-  fetchAndInsertTxOrderUTxOs: fetchAndInsertTxOrderUTxOsFiber(
-    mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
   ),
   retentionSweeper: retentionSweeperFiber(
     mkSchedule(nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS),
   ),
-  merge: heldSchedule("merge", nodeConfig.WAIT_BETWEEN_MERGE_TXS, mergeFiber),
-  attestationTimeoutCorrection: attestationTimeoutCorrectionFiber(
-    mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS),
+  merge: heldOnHeadChange(
+    "merge",
+    nodeConfig.WAIT_BETWEEN_MERGE_TXS,
+    mergeFiber,
+  ),
+  attestationTimeoutCorrection: onHeadChange(
+    nodeConfig.WAIT_BETWEEN_MERGE_TXS,
+    attestationTimeoutCorrectionFiber,
   ),
   mpfPayloadAudit: mpfPayloadAuditFiber,
   nativeMpfOwnerSupervisor: nativeMpfOwnerSupervisorFiber(
@@ -146,12 +160,11 @@ export const nodeFibers = ({
 });
 
 /**
- * The startup fiber whose failure still ends the process: the history owner
- * stopping. HTTP acquisition failure propagates at the CLI boundary. Every
- * other fiber `runNodeFiberSet` returns, startup or scheduled, has error channel
- * `never`.
+ * The startup fibers whose failure ends the process: none. HTTP acquisition
+ * failure propagates at the CLI boundary; every fiber `runNodeFiberSet`
+ * returns, startup or scheduled, has error channel `never`.
  */
-export type ProcessEndingStartupFiber = "historyOwnerStopped";
+export type ProcessEndingStartupFiber = never;
 
 /**
  * Every fiber `runNode` runs for the node's lifetime: the ones built from its

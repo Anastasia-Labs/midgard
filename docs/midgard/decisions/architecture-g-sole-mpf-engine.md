@@ -23,9 +23,9 @@ Startup fails closed unless the node is pinned to one owner binary:
 - `MPF_NATIVE_OWNER_SIDECAR_PATH` names the owner's durable sidecar; it
   defaults to `<LEDGER_MPF_DB_PATH>.architecture-g.sidecar`.
 
-`SPECULATIVE_COMMIT_BUILD` remains an explicit opt-in that defaults to `false`.
-The check that it runs on an "overlay-capable" engine is gone, because every
-engine now is Architecture G.
+Speculative commit building and its `SPECULATIVE_COMMIT_BUILD` setting were
+deleted on 2026-10-03 (#752). A commit is built only once its base block has
+landed.
 
 ## Why
 
@@ -59,11 +59,10 @@ discharge it.
 
 ## Carried forward from the superseded record
 
-Speculative building does not authorize submitting children of unconfirmed L1
-commits. The [one-hour gate](../../benchmark-scenarios/phase-4-pipelined-one-hour.md)
-measures the current pipeline. Unconfirmed chaining needs a separate design for
-rollback, journals, provider acceptance, and on-chain state linkage. Multi-block
-merge likewise requires an explicit validator and recovery assessment.
+No commit is submitted as a child of an unconfirmed L1 commit. Unconfirmed
+chaining needs a separate design for rollback, journals, provider acceptance,
+and on-chain state linkage. Multi-block merge likewise requires an explicit
+validator and recovery assessment.
 
 DA capacity is a consensus and memory-admission boundary, not an environment
 escape hatch. The retired 50k distribution fixture could not be regenerated

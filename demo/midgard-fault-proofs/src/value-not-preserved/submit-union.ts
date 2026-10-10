@@ -23,7 +23,7 @@ import {
 import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
 import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import { submitNativeTxBinding } from "../native-tx-binding.js";
 import {
   fetchUtxoByOutRef,
   parseOutRef,
@@ -272,7 +272,7 @@ export const submitConservationCancel = (
 /** The carried native source door also supports published maximum MPF proofs. */
 export const submitConservationAcceptedSource = async (
   params: Omit<
-    Parameters<typeof submitMissingNativeScriptTxBinding>[0],
+    Parameters<typeof submitNativeTxBinding>[0],
     | "contracts"
     | "stepIndex"
     | "nextDatum"
@@ -301,7 +301,7 @@ export const submitConservationAcceptedSource = async (
       )
   )
     throw new Error("value conservation: accepted claim checkpoint differs");
-  return await submitMissingNativeScriptTxBinding({
+  return await submitNativeTxBinding({
     ...params,
     contracts: {
       ...params.contracts,

@@ -236,7 +236,7 @@ export const reconcileBlockCommittedProgram = ({
       : null;
     const status: ReconciliationStatus =
       canonical ||
-      journalStatus === PendingBlockFinalizationsDB.Status.Finalized
+      journalStatus === PendingBlockFinalizationsDB.Status.LocallyApplied
         ? "satisfied"
         : journalStatus === null
           ? "ambiguous"

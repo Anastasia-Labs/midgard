@@ -9,10 +9,15 @@ import {
   provideTxServices,
   runCliEffect,
   tapJson,
+  ToolLucidLive,
 } from "./commands/cli-runtime.js";
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import { program } from "./index.registration.js";
 import * as Services from "./services/index.js";
+import {
+  type IntentJournal,
+  IntentJournalWithoutFollower,
+} from "./services/intent-journal.js";
 import * as OperatorCommands from "./transactions/operators/commands.js";
 import {
   liveReferenceScriptDeployment,
@@ -88,15 +93,10 @@ program
         });
         const limits = yield* Effect.tryPromise({
           try: async () => {
-            const provider = lucidService.referenceScriptsApi.config().provider;
-            if (provider === undefined) {
-              throw new Error("Lucid has no configured Cardano provider");
-            }
             const { snapshot } =
-              await ContractDeploymentInfo.cardanoProtocolParametersIdentityFromProvider(
-                provider,
-                await ContractDeploymentInfo.queryLocalOgmiosProtocolParameters(
-                  nodeConfig.L1_OGMIOS_KEY,
+              await ContractDeploymentInfo.cardanoProtocolParametersIdentityFromLedger(
+                ContractDeploymentInfo.ledgerProtocolParametersReader(
+                  lucidService,
                 ),
               );
             return referenceScriptSweepLimitsFromProtocolParameters(snapshot);
@@ -146,9 +146,10 @@ program
   .action(async () => {
     const mainEffect = pipe(
       RegisterActiveOperator.program,
+      Effect.provide(IntentJournalWithoutFollower),
       Effect.provide(Services.NodeConfig.layer),
       Effect.provide(Services.MidgardContracts.Default),
-      Effect.provide(Services.Lucid.Default),
+      Effect.provide(ToolLucidLive),
       Effect.tap((result) =>
         Effect.logInfo(
           `register-active-operator completed: ${JSON.stringify(result)}`,
@@ -169,7 +170,10 @@ export const runOperatorCommand = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    Services.NodeConfig | Services.MidgardContracts | Services.Lucid
+    | Services.NodeConfig
+    | Services.MidgardContracts
+    | Services.Lucid
+    | IntentJournal
   >,
 ): void => {
   runCliEffect(

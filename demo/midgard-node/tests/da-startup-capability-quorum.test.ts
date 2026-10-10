@@ -11,10 +11,21 @@ import {
   classifyDaEnvelopeCapabilityQuorum,
   DaCapabilityMismatchError,
   DaCapabilityQuorumPendingError,
+  daProviderAssertionsWaitReason,
 } from "../src/da/startup.js";
 import { isRetryableProviderError } from "../src/provider-retry.js";
+import {
+  DA_CAPABILITY_QUORUM_PENDING,
+  StartupStepFailedError,
+  StartupWaitingReporter,
+} from "../src/services/startup-waiting.js";
 
 const manifest = { threshold: 2 } as DaProducerPublicationManifest;
+
+// The quorum verdict a failed startup step carries: the step's last failure
+// (a `DatabaseInitializationError`) wraps it.
+const verdictOf = (error: StartupStepFailedError | undefined): unknown =>
+  (error?.cause as { readonly cause?: unknown } | undefined)?.cause;
 
 // A peer that answered: `capable` or rejecting with `error`.
 const answered = (
@@ -100,7 +111,13 @@ describe("classifyDaEnvelopeCapabilityQuorum", () => {
 });
 
 describe("the startup DA capability quorum", () => {
-  const retry = { maxAttempts: 20, retryDelayMs: 0 } as const;
+  // The startup's provider budget: `STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS`
+  // probes, here with no wait between them.
+  const retry = {
+    maxAttempts: 200,
+    retryDelayMs: 0,
+    reason: daProviderAssertionsWaitReason,
+  } as const;
   const scripted = (rounds: readonly DaEnvelopeCapabilityPeerResult[][]) => {
     let calls = 0;
     return {
@@ -115,20 +132,30 @@ describe("the startup DA capability quorum", () => {
   const startup = (
     probe: ReturnType<typeof scripted>,
     quorumManifest: DaProducerPublicationManifest = manifest,
+    maxAttempts: number = retry.maxAttempts,
   ) => {
     let proceeded = 0;
+    const reported: [string, readonly string[]][] = [];
     const effect = runStartupProviderStepWithRetry(
-      "Startup DA provider assertions",
+      "da_provider_assertions",
       assertDaEnvelopeCapabilityQuorumOnStartup(
         quorumManifest,
         "zstd",
         probe.probe,
       ),
-      retry,
-    ).pipe(Effect.tap(() => Effect.sync(() => (proceeded += 1))));
+      { ...retry, maxAttempts },
+    ).pipe(
+      Effect.tap(() => Effect.sync(() => (proceeded += 1))),
+      Effect.locally(StartupWaitingReporter, (key, reasons) =>
+        Effect.sync(() => {
+          reported.push([key, reasons]);
+        }),
+      ),
+    );
     return {
       run: () => Effect.runPromise(Effect.either(effect)),
       proceeded: () => proceeded,
+      reported: () => reported,
     };
   };
 
@@ -146,6 +173,47 @@ describe("the startup DA capability quorum", () => {
     expect(result._tag).toBe("Right");
     expect(probe.calls()).toBe(4);
     expect(run.proceeded()).toBe(1);
+    expect(run.reported()).toEqual([
+      ["da_provider_assertions", [DA_CAPABILITY_QUORUM_PENDING]],
+      ["da_provider_assertions", [DA_CAPABILITY_QUORUM_PENDING]],
+      ["da_provider_assertions", [DA_CAPABILITY_QUORUM_PENDING]],
+      ["da_provider_assertions", []],
+    ]);
+  });
+
+  it("keeps waiting while the quorum is still forming within the budget", async () => {
+    const shortfall = [answered(0), notYetServing(1), notYetServing(2)];
+    const probe = scripted([
+      ...Array.from({ length: 150 }, () => shortfall),
+      [answered(0), answered(1), unanswered(2)],
+    ]);
+    const run = startup(probe);
+    const result = await run.run();
+
+    expect(result._tag).toBe("Right");
+    expect(probe.calls()).toBe(151);
+    expect(run.proceeded()).toBe(1);
+  });
+
+  it("fails the startup under da_capability_quorum_pending once a quorum still short outlives the budget", async () => {
+    const shortfall = [answered(0), notYetServing(1), notYetServing(2)];
+    const probe = scripted([shortfall]);
+    const run = startup(probe, manifest, 5);
+    const result = await run.run();
+
+    expect(result._tag).toBe("Left");
+    expect(probe.calls()).toBe(5);
+    expect(run.proceeded()).toBe(0);
+    const error = result._tag === "Left" ? result.left : undefined;
+    expect(error).toBeInstanceOf(StartupStepFailedError);
+    expect(error).toMatchObject({
+      step: "da_provider_assertions",
+      reason: DA_CAPABILITY_QUORUM_PENDING,
+      exhausted: true,
+      attempts: 5,
+    });
+    expect(verdictOf(error)).toBeInstanceOf(DaCapabilityQuorumPendingError);
+    expect(run.reported().at(-1)).toEqual(["da_provider_assertions", []]);
   });
 
   it("refuses at once when the committee answers and rejects", async () => {
@@ -165,8 +233,12 @@ describe("the startup DA capability quorum", () => {
     expect(probe.calls()).toBe(1);
     expect(run.proceeded()).toBe(0);
     const error = result._tag === "Left" ? result.left : undefined;
-    expect(error?.cause).toBeInstanceOf(DaCapabilityMismatchError);
-    expect(isRetryableProviderError(error)).toBe(false);
+    expect(verdictOf(error)).toBeInstanceOf(DaCapabilityMismatchError);
+    expect(error).toMatchObject({
+      step: "da_provider_assertions",
+      exhausted: false,
+    });
+    expect(isRetryableProviderError(verdictOf(error))).toBe(false);
   });
 
   it("keeps a limit mismatch terminal although its name reads like a transient", async () => {
@@ -184,8 +256,8 @@ describe("the startup DA capability quorum", () => {
     expect(probe.calls()).toBe(1);
     expect(run.proceeded()).toBe(0);
     const error = result._tag === "Left" ? result.left : undefined;
-    expect(error?.cause).toBeInstanceOf(DaCapabilityMismatchError);
-    expect(String(error?.cause)).toMatch(/request_timeout_ms/u);
+    expect(verdictOf(error)).toBeInstanceOf(DaCapabilityMismatchError);
+    expect(String(verdictOf(error))).toMatch(/request_timeout_ms/u);
   });
 
   it("keeps a refusal terminal even beside an unreachable peer's transport error", async () => {
@@ -205,7 +277,7 @@ describe("the startup DA capability quorum", () => {
     expect(result._tag).toBe("Left");
     expect(probe.calls()).toBe(1);
     const error = result._tag === "Left" ? result.left : undefined;
-    expect(error?.cause).toBeInstanceOf(DaCapabilityMismatchError);
-    expect(String(error?.cause)).not.toMatch(/ECONNREFUSED/u);
+    expect(verdictOf(error)).toBeInstanceOf(DaCapabilityMismatchError);
+    expect(String(verdictOf(error))).not.toMatch(/ECONNREFUSED/u);
   });
 });

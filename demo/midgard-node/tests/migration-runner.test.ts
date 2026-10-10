@@ -41,7 +41,6 @@ describe("splitSqlStatements", () => {
       /* block comment with a semicolon; */
       SELECT 2;
     `);
-
     expect(statements).toEqual([
       "SELECT 'state; restore', 'escaped '' ; still string'",
       'SELECT "semi;colon"',
@@ -68,18 +67,35 @@ describe("splitSqlStatements", () => {
 
   it("keeps v1 as the single fresh-install baseline with ordered transactional successors", () => {
     expect(
-      MIGRATIONS.map(({ version, name, transactional }) => ({
+      MIGRATIONS.map(({ version, name, transactional }) => [
         version,
         name,
         transactional,
-      })),
+      ]),
     ).toEqual([
-      { version: 1, name: "initial_schema", transactional: true },
-      { version: 2, name: "automatic_settlement", transactional: true },
-      { version: 3, name: "operator_membership", transactional: true },
-      { version: 4, name: "retained_script_material", transactional: true },
-      { version: 5, name: "foreign_event_census", transactional: true },
-      { version: 6, name: "foreign_native_adoption", transactional: true },
+      [1, "initial_schema", true],
+      [2, "automatic_settlement", true],
+      [3, "operator_membership", true],
+      [4, "retained_script_material", true],
+      [5, "foreign_event_census", true],
+      [6, "foreign_native_adoption", true],
+      [7, "drop_foreign_tip_reconciliations", true],
+      [8, "follower_admission_identity", true],
+      [9, "landed_blocks", true],
+      [10, "intent_refusal_holds", true],
+      [11, "locally_applied_block_status", true],
+      [12, "receipt_settlements", true],
+      [13, "mempool_inclusion_marks", true],
+      [14, "confirmed_ledger_merges", true],
+      [15, "settlement_status_derived", true],
+      [16, "receipt_rejections", true],
+      [17, "drop_settlement_hold_slot", true],
+      [18, "landed_blocks_own_removed", true],
+      [19, "tx_rejection_causes", true],
+      [20, "drop_queue_terminal_observer", true],
+      [21, "follower_write_gate", true],
+      [22, "drop_event_history_control_plane", true],
+      [23, "commit_anchor", true],
     ]);
   });
 
@@ -259,17 +275,6 @@ describe("applied fresh-install schema", () => {
     readonly fragments: readonly string[];
   }[] = [
     {
-      table: "event_history_replay_receipts",
-      constraint: "event_history_replay_receipts_frontier_check",
-      fragments: [
-        "blocks_replayed = 1",
-        "predecessor_hash IS NULL",
-        "blocks_replayed > 1",
-        "predecessor_hash IS NOT NULL",
-        "predecessor_hash = parent_hash",
-      ],
-    },
-    {
       table: "pending_block_finalizations",
       constraint: "pending_block_finalizations_format_version_check",
       fragments: ["format_version = 1"],
@@ -301,31 +306,6 @@ describe("applied fresh-install schema", () => {
       constraint: "pending_block_finalizations_deployment_manifest_id_check",
       fragments: ["'^[0-9a-f]{64}$'"],
     },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_format_version_check",
-      fragments: ["format_version = 1"],
-    },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_evidence_kind_check",
-      fragments: ["pending_v1", "verified_empty_v1", "verified_da_v1"],
-    },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_resolved_evidence_check",
-      fragments: ["status <> 'resolved'", "evidence_kind <> 'pending_v1'"],
-    },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_verified_da_nonempty_check",
-      fragments: ["evidence_kind <> 'verified_da_v1'"],
-    },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_deployment_manifest_id_check",
-      fragments: ["'^[0-9a-f]{64}$'"],
-    },
   ];
 
   it("enforces the replay, deployment and durability contracts in the database", async () => {
@@ -350,6 +330,42 @@ describe("applied fresh-install schema", () => {
                ORDER BY relname`;
           expect(unlogged.map((row) => row.relname)).toEqual([
             ...UNLOGGED_TABLES,
+          ]);
+
+          // Version 7 drops the speculative foreign-tip table (#752), version
+          // 22 every event_history_ table but the submission journal's.
+          const dropped = yield* sql<{
+            readonly relname: string;
+          }>`SELECT relname
+               FROM pg_class
+               WHERE relnamespace = 'public'::regnamespace
+                 AND (relname = 'foreign_tip_reconciliations'
+                   OR (relkind = 'r' AND relname LIKE 'event\\_history\\_%'))
+               ORDER BY relname`;
+          expect(dropped.map((row) => row.relname)).toEqual([
+            "event_history_submission_inputs",
+            "event_history_submissions",
+          ]);
+
+          // Version 9 drops the census and foreign-adoption tables (N3) and
+          // adds the landed-block processing tables, with no working-ledger
+          // basis table (nothing reads one).
+          const landed = yield* sql<{
+            readonly relname: string;
+          }>`SELECT relname
+               FROM pg_class
+               WHERE relnamespace = 'public'::regnamespace
+                 AND relkind = 'r'
+                 AND relname IN ('foreign_native_adoptions',
+                   'foreign_verified_segments', 'foreign_confirmed_frontier',
+                   'event_history_census_frontier',
+                   'event_history_census_blocks', 'node_landed_blocks',
+                   'node_working_ledger_basis',
+                   'node_confirmed_ledger_frontier')
+               ORDER BY relname`;
+          expect(landed.map((row) => row.relname)).toEqual([
+            "node_confirmed_ledger_frontier",
+            "node_landed_blocks",
           ]);
 
           const constraints = yield* sql<{

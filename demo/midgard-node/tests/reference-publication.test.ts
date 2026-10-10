@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -5,11 +7,11 @@ import {
   generateEmulatorAccount,
   Lucid,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { expect, it } from "vitest";
 
 import { referencePublicationFundingRequired } from "../src/transactions/reference-publication.js";
 import { ensureReferenceScriptTargetsProgram } from "../src/transactions/reference-scripts.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 it("refuses completion when confirmed reference outputs disappear from the canonical provider", async () => {
   const account = generateEmulatorAccount({ lovelace: 1_000_000_000n });
@@ -29,7 +31,7 @@ it("refuses completion when confirmed reference outputs disappear from the canon
     return true;
   };
   await expect(
-    Effect.runPromise(
+    runWithoutFollower(
       ensureReferenceScriptTargetsProgram(
         lucid,
         "test",
@@ -79,7 +81,7 @@ it("chains by default from exact accepted parent change before any reference is 
     peakBeforeBlock = Math.max(peakBeforeBlock, ++sinceBlock);
     return hash;
   };
-  const result = await Effect.runPromise(
+  const result = await runWithoutFollower(
     ensureReferenceScriptTargetsProgram(lucid, "test", targets, authPolicy),
   );
   expect(result.map(({ name }) => name)).toEqual(
@@ -112,7 +114,7 @@ const publicationFixture = async (count = 28, fundingOutputs = 1) => {
     return true;
   };
   const run = () =>
-    Effect.runPromise(
+    runWithoutFollower(
       ensureReferenceScriptTargetsProgram(
         lucid,
         "test",
@@ -256,7 +258,7 @@ it("keeps serial execution at one unconfirmed publication", async () => {
     peak = Math.max(peak, ++outstanding);
     return hash;
   };
-  const result = await Effect.runPromise(
+  const result = await runWithoutFollower(
     ensureReferenceScriptTargetsProgram(
       f.lucid,
       "test",
@@ -343,7 +345,7 @@ it("bounds signed bytes independently of lane depth without changing the packing
     bytes = 0;
     count = 0;
   };
-  const result = await Effect.runPromise(
+  const result = await runWithoutFollower(
     ensureReferenceScriptTargetsProgram(
       f.lucid,
       "test",
@@ -485,7 +487,7 @@ it.each([200, 1000])(
       }
       return submit(cbor);
     };
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       ensureReferenceScriptTargetsProgram(
         lucid,
         "fragmented",
@@ -581,7 +583,7 @@ it("funds the consolidation fees of a wallet holding exactly the lane requiremen
     return true;
   };
 
-  const result = await Effect.runPromise(
+  const result = await runWithoutFollower(
     ensureReferenceScriptTargetsProgram(
       lucid,
       "test",

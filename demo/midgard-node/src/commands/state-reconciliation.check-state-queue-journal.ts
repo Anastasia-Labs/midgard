@@ -64,7 +64,7 @@ export const checkStateQueueJournal = (
           `${label}: journal base tail ${journal.baseTailHeaderHash} differs from the header's prevHeaderHash ${header.prevHeaderHash}`,
         );
       }
-      if (journal.status === JOURNAL_STATUS.Finalized) continue;
+      if (journal.status === JOURNAL_STATUS.LocallyApplied) continue;
       if (journal.status === JOURNAL_STATUS.Abandoned) {
         acc.failures.push(
           `${label}: its journal is marked abandoned (correction digest ${journal.correctionTransitionDigest ?? "<none>"}) but the header is still on L1`,
@@ -76,28 +76,7 @@ export const checkStateQueueJournal = (
       );
       continue;
     }
-    const foreignRow = ctx.foreign.get(header.headerHash);
-    if (foreignRow !== undefined) {
-      if (header.roots !== null) {
-        acc.failures.push(
-          ...rootsDiff(label, header.roots, {
-            ...foreignRow.roots,
-            ...(foreignRow.transactionsRoot === null
-              ? {}
-              : { transactions: foreignRow.transactionsRoot }),
-          }),
-        );
-      }
-      if (foreignRow.status === "awaiting") {
-        acc.inFlight.push(`${label}: foreign header awaiting reconciliation`);
-      } else {
-        acc.notes.push(`${label}: foreign header, reconciled`);
-      }
-      continue;
-    }
-    acc.failures.push(
-      `${label}: no journal and no foreign-tip reconciliation exists for this on-chain header`,
-    );
+    acc.failures.push(`${label}: no journal exists for this on-chain header`);
   }
 
   for (const hash of merged.abandonedOnChain) {
@@ -110,7 +89,7 @@ export const checkStateQueueJournal = (
     const onChain = ctx.onChainUnmerged.has(journal.headerHash);
     const isMergedHeader = merged.headers.has(journal.headerHash);
     if (
-      journal.status === JOURNAL_STATUS.Finalized &&
+      journal.status === JOURNAL_STATUS.LocallyApplied &&
       !onChain &&
       !isMergedHeader
     ) {
@@ -150,46 +129,17 @@ export const checkStateQueueJournal = (
     );
   }
 
-  const observer = ctx.sql.observer;
-  if (observer.kind === "absent") {
-    acc.notes.push(
-      "no state-queue correction observer state is stored for this state-queue policy; removal marking could not be cross-checked against admitted transitions",
-    );
-  } else if (observer.kind === "invalid") {
-    acc.failures.push(
-      `stored correction observer state is invalid: ${observer.reason}`,
-    );
-  } else {
-    for (const transition of observer.admitted) {
-      if (transition.transitionKind === "merge") continue;
-      for (const removed of transition.removedHeaderHashes) {
-        const label = `header ${removed} removed by admitted ${transition.transitionKind} ${transition.transactionHash}`;
-        if (ctx.onChainUnmerged.has(removed)) {
-          acc.failures.push(`${label} is still on the L1 queue`);
-        }
-        const journal = ctx.journals.get(removed);
-        if (journal === undefined) {
-          acc.notes.push(
-            `${label}: no local journal (not produced by this node)`,
-          );
-        } else if (journal.status === JOURNAL_STATUS.Abandoned) {
-          if (
-            journal.correctionTransitionDigest !== transition.transitionDigest
-          ) {
-            acc.failures.push(
-              `${label}: journal abandoned with correction digest ${journal.correctionTransitionDigest ?? "<none>"}, expected ${transition.transitionDigest}`,
-            );
-          }
-        } else {
-          acc.inFlight.push(
-            `${label}: journal is still ${journal.status}; correction reinclusion has not run`,
-          );
-        }
-      }
+  for (const removal of ctx.sql.queueRemovals) {
+    const label = `header ${removal.headerHash} removed by landed tx ${removal.transactionHash}`;
+    if (ctx.onChainUnmerged.has(removal.headerHash)) {
+      acc.failures.push(`${label} is still on the L1 queue`);
     }
-    if (observer.pendingCount > 0) {
-      acc.notes.push(
-        `${plural(observer.pendingCount, "correction transition")} observed but not yet final`,
+    const journal = ctx.journals.get(removal.headerHash);
+    if (journal === undefined) {
+      acc.notes.push(`${label}: no local journal (not produced by this node)`);
+    } else if (journal.status !== JOURNAL_STATUS.Abandoned) {
+      acc.inFlight.push(
+        `${label}: journal is still ${journal.status}; the landed-block rebase has not disposed of it yet`,
       );
     }
   }

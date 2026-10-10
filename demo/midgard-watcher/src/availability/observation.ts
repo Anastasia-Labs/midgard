@@ -2,20 +2,7 @@ import type {
   AvailabilityOperationIntent,
   AvailabilityOperationRecord,
 } from "@al-ft/midgard-core/availability-operation-journal";
-import {
-  computeFraudProofRawL1PointId,
-  type FraudProofRawL1Point,
-  type LocalKupmiosFraudProofRawSource,
-  localKupmiosHttpOgmiosRawSourceDetails,
-  pinAdmittedLocalKupmiosBoundaryAtPoint,
-  readAdmittedLocalKupmiosAddressUtxosAtPoint,
-  readAdmittedLocalKupmiosPredecessorPoint,
-  readAdmittedLocalKupmiosRawTransaction,
-  readAdmittedLocalKupmiosTransactionInclusion,
-  readAdmittedLocalKupmiosUnitHistoryAtPoint,
-  readAdmittedLocalKupmiosUtxosByOutRefAtPoint,
-  settleLocalKupmiosReads,
-} from "@al-ft/midgard-fault-proofs";
+import { type FraudProofRawL1Point } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -29,6 +16,10 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import {
+  refusalError,
+  required,
+} from "../l1-follower/fault-proof-l1-source.chain.js";
+import {
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentProtocolScriptAuthority,
 } from "../runtime/deployment-identity.js";
@@ -36,84 +27,58 @@ import {
   recoverWatcherAttestedCommitment,
   watcherRawTransactionCbor,
 } from "./commitment-source.js";
+import {
+  observationPoint,
+  rawTransactionAt,
+  readAtPoint,
+  settleAll,
+  unitHistoryTransactions,
+  type WatcherAvailabilityL1,
+} from "./follower-reads.js";
 import { authenticWatcherDaBondPool } from "./pool-observation.js";
-import { withWatcherAvailabilityReadOperation } from "./read-operation.js";
 
 const outRef = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
 
-/** Every snapshot and inclusion witness belongs to one canonical finalized point. */
+/**
+ * Every snapshot and inclusion witness belongs to one canonical finalized
+ * point, read from the watcher's chain follower. `confirmationDepth` is the
+ * verified deployment's release depth.
+ */
 export const createWatcherAvailabilityObservation = (input: {
   identity: VerifiedWatcherDeploymentIdentity;
-  source: LocalKupmiosFraudProofRawSource;
+  l1: WatcherAvailabilityL1;
+  confirmationDepth: number;
   deployment: SDK.DaAvailabilityDeployment;
   scope?: SDK.DaAvailabilityReadScope;
   /** Resolves hashed DAAT datums during commitment recovery (E1). */
   lucid?: Pick<LucidEvolution, "config">;
 }) => {
-  const details = localKupmiosHttpOgmiosRawSourceDetails(input.source);
-  if (
-    details?.deploymentIdentityDigest !== input.identity.manifestId ||
-    details.blueprintHash !== input.identity.blueprintHash
-  ) {
-    throw new Error(
-      "Availability raw source differs from the signed deployment",
-    );
-  }
-  // The source's release depth comes from the verified deployment finality.
-  const confirmationDepth = details.confirmationDepth;
-  const capture = <T>(
+  const { confirmationDepth } = input;
+  if (!Number.isSafeInteger(confirmationDepth) || confirmationDepth < 1)
+    throw new Error("Availability confirmation depth must be positive");
+  const reads = input.l1.reads;
+  const capture = async <T>(
     observation: WatcherAuthenticatedStateQueueObservation,
     read: () => Promise<T>,
-  ): Promise<T> =>
-    withWatcherAvailabilityReadOperation(
-      input.source,
+  ): Promise<T> => {
+    assertWatcherStateQueueObservation(observation);
+    if (
+      observation.deploymentIdentityDigest !== input.identity.manifestId ||
+      BigInt(observation.nativePoint.finalityDepth) < BigInt(confirmationDepth)
+    ) {
+      throw new Error(
+        "Availability intake requires the exact finalized deployment observation",
+      );
+    }
+    return await readAtPoint(
+      input.l1,
+      observationPoint(observation),
       input.scope,
-      async (assertCurrent) => {
-        assertWatcherStateQueueObservation(observation);
-        if (
-          observation.deploymentIdentityDigest !== input.identity.manifestId ||
-          BigInt(observation.nativePoint.finalityDepth) <
-            BigInt(confirmationDepth)
-        ) {
-          throw new Error(
-            "Availability intake requires the exact finalized deployment observation",
-          );
-        }
-        assertCurrent();
-        // A repin alone retains raw-block/point caches. Reset the complete owning
-        // read before pinning this exact authenticated native point on every retry.
-        if (input.scope !== undefined) await input.source.readBoundary();
-        assertCurrent();
-        const { blockHash, slot, blockNo } = observation.nativePoint;
-        await pinAdmittedLocalKupmiosBoundaryAtPoint({
-          source: input.source,
-          point: {
-            blockHash,
-            slot,
-            blockNo,
-            pointId: computeFraudProofRawL1PointId({
-              blockHash,
-              slot,
-              blockNo,
-            }),
-          },
-        });
-        assertCurrent();
-        const result = await read();
-        assertCurrent();
-        return result;
-      },
+      read,
     );
-  const pointOf = (observation: WatcherAuthenticatedStateQueueObservation) => {
-    const { blockHash, slot, blockNo } = observation.nativePoint;
-    return {
-      blockHash,
-      slot,
-      blockNo,
-      pointId: computeFraudProofRawL1PointId({ blockHash, slot, blockNo }),
-    };
   };
+  const pointOf = observationPoint;
   // An Attested node's commitment never changes, so each verified recovery is
   // kept for the node's lifetime in the finalized queue.
   const commitments = new Map<string, SDK.DaAvailabilityCommitment>();
@@ -122,11 +87,7 @@ export const createWatcherAvailabilityObservation = (input: {
     address: string,
   ): Promise<UTxO[]> => {
     const point = pointOf(observation);
-    const raw = await readAdmittedLocalKupmiosAddressUtxosAtPoint({
-      source: input.source,
-      address,
-      point,
-    });
+    const raw = required(await reads.addressUtxosAtPoint(address, point));
     return raw.map((output) => {
       const [txHash, index] = output.outRef.split("#");
       return {
@@ -168,7 +129,7 @@ export const createWatcherAvailabilityObservation = (input: {
           stateQueueUtxos,
           correctionLockUtxos,
           poolUtxos,
-        ] = await settleLocalKupmiosReads([
+        ] = await settleAll([
           readAddress(
             observation,
             input.deployment.contracts.availabilityChallenge
@@ -242,40 +203,28 @@ export const createWatcherAvailabilityObservation = (input: {
             config: () =>
               ({}) as ReturnType<Pick<LucidEvolution, "config">["config"]>,
           },
-          readHistory: async (unit) => {
-            const history = await readAdmittedLocalKupmiosUnitHistoryAtPoint({
-              source: input.source,
+          readHistory: async (unit) =>
+            await unitHistoryTransactions(
+              reads,
               unit,
               point,
-            });
-            return await settleLocalKupmiosReads(
-              history.transactions.map(({ txHash, inclusionPoint }) =>
-                readAdmittedLocalKupmiosRawTransaction({
-                  source: input.source,
-                  txHash,
-                  expectedInclusionPoint: inclusionPoint,
-                  minimumConfirmationDepth: confirmationDepth,
-                }),
-              ),
-            );
-          },
+              confirmationDepth,
+            ),
           readTransaction: async (txHash) => {
-            const inclusion =
-              await readAdmittedLocalKupmiosTransactionInclusion({
-                source: input.source,
-                txHash,
-              });
+            const inclusion = required(
+              await reads.transactionInclusion(txHash),
+            );
             if (
               inclusion === null ||
               BigInt(inclusion.blockNo) > BigInt(point.blockNo)
             )
               return undefined;
-            return await readAdmittedLocalKupmiosRawTransaction({
-              source: input.source,
+            return await rawTransactionAt(
+              reads,
               txHash,
-              expectedInclusionPoint: inclusion,
-              minimumConfirmationDepth: confirmationDepth,
-            });
+              inclusion,
+              confirmationDepth,
+            );
           },
         });
       });
@@ -295,7 +244,7 @@ export const createWatcherAvailabilityObservation = (input: {
     /**
      * Whether this actor's challenge workflow for `headerHash` ended in a
      * terminal step someone else landed (P20), walked from its confirmed Open
-     * at the finalized point with the same Kupo/Ogmios reads as the foreign
+     * at the finalized point with the same follower reads as the foreign
      * spends of {@link operation}. Every spend is verified from its raw bytes
      * and counted `finalityDepth` deeper than the point it lies below.
      */
@@ -319,9 +268,14 @@ export const createWatcherAvailabilityObservation = (input: {
           }),
           fetchSpend: async (ref) => {
             const outRef = `${ref.txHash}#${ref.outputIndex.toString()}`;
-            const observed = await readAdmittedLocalKupmiosUtxosByOutRefAtPoint(
-              { source: input.source, point, outRefs: [outRef] },
+            const observed = required(
+              await reads.utxosByOutRefAtPoint([outRef], point),
             );
+            if (observed.beyondRetention.includes(outRef))
+              throw refusalError(
+                "beyond_retention",
+                `the spend of ${outRef} may have been pruned`,
+              );
             const spend = observed.spends.find(
               (entry) => entry.outRef === outRef,
             );
@@ -343,22 +297,18 @@ export const createWatcherAvailabilityObservation = (input: {
               throw new Error(
                 "Availability workflow release has no spend at the requested slot",
               );
-            const { predecessorPoint } =
-              await readAdmittedLocalKupmiosPredecessorPoint({
-                source: input.source,
-                point: spendPoint,
-              });
+            const predecessorPoint = required(
+              await reads.predecessorPoint(spendPoint),
+            );
             return {
               slot: Number(predecessorPoint.slot),
               blockHash: predecessorPoint.blockHash,
             };
           },
           readTransaction: async ({ point: spendPoint, txHash }) => {
-            const inclusion =
-              await readAdmittedLocalKupmiosTransactionInclusion({
-                source: input.source,
-                txHash,
-              });
+            const inclusion = required(
+              await reads.transactionInclusion(txHash),
+            );
             if (
               inclusion === null ||
               Number(inclusion.slot) !== spendPoint.slot ||
@@ -369,12 +319,12 @@ export const createWatcherAvailabilityObservation = (input: {
               throw new Error(
                 "Availability input spend lies above the canonical boundary",
               );
-            const raw = await readAdmittedLocalKupmiosRawTransaction({
-              source: input.source,
+            const raw = await rawTransactionAt(
+              reads,
               txHash,
-              expectedInclusionPoint: inclusion,
-              minimumConfirmationDepth: confirmationDepth,
-            });
+              inclusion,
+              confirmationDepth,
+            );
             return {
               txHash: raw.txHash,
               point: {
@@ -400,10 +350,9 @@ export const createWatcherAvailabilityObservation = (input: {
     ): Promise<SDK.DaAvailabilityOperationObservation> {
       return await capture(observation, async () => {
         const signed = CML.Transaction.from_cbor_hex(intent.signedCbor);
-        const inclusion = await readAdmittedLocalKupmiosTransactionInclusion({
-          source: input.source,
-          txHash: intent.txHash,
-        });
+        const inclusion = required(
+          await reads.transactionInclusion(intent.txHash),
+        );
         if (inclusion !== null) {
           if (
             BigInt(inclusion.blockNo) > BigInt(observation.nativePoint.blockNo)
@@ -414,12 +363,12 @@ export const createWatcherAvailabilityObservation = (input: {
                 "Availability transaction has not reached the admitted finalized point",
             };
           }
-          const transaction = await readAdmittedLocalKupmiosRawTransaction({
-            source: input.source,
-            txHash: intent.txHash,
-            expectedInclusionPoint: inclusion,
-            minimumConfirmationDepth: confirmationDepth,
-          });
+          const transaction = await rawTransactionAt(
+            reads,
+            intent.txHash,
+            inclusion,
+            confirmationDepth,
+          );
           if (
             CML.TransactionBody.from_cbor_hex(
               transaction.bodyCbor,
@@ -440,21 +389,16 @@ export const createWatcherAvailabilityObservation = (input: {
           };
         }
         const consumed = [...intent.spentOutRefs, ...intent.collateralOutRefs];
-        const { blockHash, slot, blockNo } = observation.nativePoint;
-        const observed = await readAdmittedLocalKupmiosUtxosByOutRefAtPoint({
-          source: input.source,
-          outRefs: consumed,
-          point: {
-            blockHash,
-            slot,
-            blockNo,
-            pointId: computeFraudProofRawL1PointId({
-              blockHash,
-              slot,
-              blockNo,
-            }),
-          },
-        });
+        const { slot, blockNo } = observation.nativePoint;
+        const observed = required(
+          await reads.utxosByOutRefAtPoint(consumed, pointOf(observation)),
+        );
+        // A pruned row cannot be told from a spend: never read it as missing.
+        if (observed.beyondRetention.length > 0)
+          throw refusalError(
+            "beyond_retention",
+            `availability inputs ${observed.beyondRetention.join(", ")} may have been pruned`,
+          );
         const unspent = new Set(observed.outputs.map(({ outRef }) => outRef));
         if (consumed.every((ref) => unspent.has(ref))) {
           return {

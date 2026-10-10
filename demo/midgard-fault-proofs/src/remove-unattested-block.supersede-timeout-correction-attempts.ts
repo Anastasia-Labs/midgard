@@ -6,11 +6,12 @@ import {
   type TimeoutCorrectionJournal,
 } from "./remove-unattested-block.parse-timeout-correction-journal.js";
 import {
+  type TimeoutCorrectionAttemptObservation,
+  timeoutCorrectionAttemptStatus,
   timeoutCorrectionEffectIsCanonical,
-  type TimeoutCorrectionRecovery,
 } from "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
 import { outRefLabel } from "./runtime.js";
-import { reconcileSignedWorkflowTransaction } from "./workflow/signed-transaction-reconciliation.js";
+import { type SignedWorkflowTransaction } from "./workflow/signed-transaction-reconciliation.js";
 import {
   type SupersededAttemptReadSchedule,
   supersededAttemptReadSchedule,
@@ -19,23 +20,25 @@ import {
 /**
  * Owner ruling (whichever lands wins): an abandoned timeout-correction
  * attempt that a rollback lands is adopted as confirmed once the queue shows
- * its effect; past k its retirement is bookkeeping. Reads are bounded by the
+ * its effect; once it is dead beyond k its retirement is bookkeeping. An
+ * abandoned attempt is observed, never resubmitted. Reads are bounded by the
  * shared schedule, so they cost little however many attempts accumulate.
  */
 export const adoptLandedTimeoutCorrectionAttempts = async ({
   journal,
   queue,
-  recovery,
+  observe,
   nowMs,
   schedule = supersededAttemptReadSchedule,
 }: {
   readonly journal: TimeoutCorrectionJournal;
   readonly queue: readonly StateQueueUTxO[];
-  readonly recovery: TimeoutCorrectionRecovery | undefined;
+  readonly observe: (
+    signed: SignedWorkflowTransaction,
+  ) => Promise<TimeoutCorrectionAttemptObservation>;
   readonly nowMs: number;
   readonly schedule?: SupersededAttemptReadSchedule;
 }): Promise<TimeoutCorrectionJournal> => {
-  if (recovery === undefined) return journal;
   const abandoned = journal.steps.filter(
     ({ status }) => status === "abandoned",
   );
@@ -47,20 +50,17 @@ export const adoptLandedTimeoutCorrectionAttempts = async ({
   for (const txHash of due) {
     const stepIndex = next.steps.findIndex((step) => step.txHash === txHash);
     const step = next.steps[stepIndex]!;
-    const result = await reconcileSignedWorkflowTransaction({
+    const status = await observe({
       transactionHash: step.txHash,
       signedTransactionCborHex: step.signedCbor,
-      observe: recovery.observeSignedTransaction,
-      // An abandoned attempt is observed, never rebroadcast.
-      reportInclusion: true,
-    });
-    const landed =
-      result.kind === "confirmed" ||
-      (result.kind === "pending" && result.retirement !== undefined);
-    if (landed && timeoutCorrectionEffectIsCanonical(step, queue)) {
+    }).then(timeoutCorrectionAttemptStatus, () => "unknown" as const);
+    if (
+      status === "confirmed" &&
+      timeoutCorrectionEffectIsCanonical(step, queue)
+    ) {
       schedule.forget(txHash);
       next = replaceJournalStepStatus(next, stepIndex, "confirmed");
-    } else if (result.kind === "not_found" && result.retirement !== undefined) {
+    } else if (status === "expired" || status === "invalidated") {
       schedule.forget(txHash);
       next = replaceJournalStepStatus(next, stepIndex, "retired");
     } else schedule.unresolved(txHash, nowMs);

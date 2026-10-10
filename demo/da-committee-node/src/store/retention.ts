@@ -5,6 +5,7 @@ import {
   type RetentionPruneDecision,
   type RetentionQueueReference,
 } from "@al-ft/midgard-core";
+import { isFinal } from "@al-ft/midgard-l1-follower";
 
 import type { CommitteeConfig } from "../config.js";
 import type {
@@ -16,12 +17,17 @@ import type { CommitteeStore } from "../store.js";
 /**
  * Retention enforcement for the committee node store (GOAL_SPEC 9.4 / Q54).
  *
- * Confirmation admits terminal observations. Retirement is separate: exact
- * authenticated terminal history must be more than the signed recovery depth
- * in blocks AFTER inclusion. The replay anchor retains younger history so a
- * later scan can refresh that proof. Missing authority retains bytes and is
- * exposed in retention readiness; every scan retries it. The confirmed head,
- * live queue and newest merged boundary remain held as well.
+ * Releasing a payload cannot be undone, so it is decided only on what is
+ * final (deeper than k, plan §9): a terminal record counts only when its
+ * authenticated exit is final, and the challengeability horizon is measured
+ * by the release clock, the start of the latest final block's slot, never by
+ * the wall clock. A commit's validity ends at its header's `endTime`, so once
+ * a final block is past a header's horizon every commit of that header that
+ * can ever land is final: in the queue at that block (held below), or final
+ * out of it. Missing authority retains bytes and is exposed in retention
+ * readiness; every scan retries it. Waiting for finality is normal and is
+ * never a readiness reason. The confirmed head, live queue and the queue at
+ * the latest final block remain held as well.
  */
 
 export type RetentionCandidate = {
@@ -43,17 +49,27 @@ export type RetentionL1View = {
   readonly confirmedHeadHash: string;
   /** Hashes of every header node currently in the L1 state queue. */
   readonly liveQueueHeaderHashes: ReadonlySet<string>;
-  readonly recoveryProofUnavailable?: boolean;
+  /**
+   * The release clock: the start time of the latest final block's slot, or
+   * null while no block is final (nothing is then past its horizon).
+   */
+  readonly finalBlockTimeMs: number | null;
 };
 
-export type RetentionScanOptions = RetentionL1View & {
-  readonly nowMs: number;
+/** What one retained payload's release is decided on. */
+export type RetainedPayloadReleaseOptions = RetentionL1View & {
   readonly retentionDays?: number;
   /** Reported as a diagnostic when a payload or header does not match it. */
   readonly deploymentFingerprint?: string;
-  /** Release-bound L1 depth used by the terminal-history diagnostic. */
-  readonly minimumFinalityDepth?: number;
+  /** k: a terminal record releases only when its exit is deeper. */
   readonly automaticRecoveryMaxDepth?: number;
+};
+
+export type RetentionScanOptions = RetainedPayloadReleaseOptions & {
+  /** Wall-clock time of the scan: reporting and the deadline alert only. */
+  readonly nowMs: number;
+  /** A released payload takes its header row; never under promise adoption. */
+  readonly releaseHeader?: boolean;
 };
 
 /**
@@ -97,10 +113,13 @@ export const retentionQueueReference = (
 /**
  * Headers whose payloads stay retained although L1 at its tip no longer lists
  * them: every header a not-yet-final checkpoint moved or took out of the
- * queue, and the newest header whose merge is final. A reader at release
+ * queue, and the headers of the newest merge recorded `finalized`, which is
+ * safe (depth >= cd, `headerRecordOf`), not final. A reader at release
  * finality still sees each as queued, or as the confirmed head its queue
- * extends. Each is released once a later merge is final at the deployment's
- * finality depth, the only depth either source is judged at.
+ * extends. The pin moves to each newer safe merge; finality itself is
+ * enforced by the cohort gate, which retires a header only once its points
+ * are final (deeper than k) at the boundary (`final(q)` in `planRetirement`,
+ * `retirement-transition.ts`).
  */
 export const finalityHeldHeaderHashes = (
   deferredHeaderHashes: readonly string[],
@@ -139,18 +158,18 @@ export const finalityHeldHeaderHashes = (
 const isTerminalStatus = (status: StateQueueHeaderRecord["status"]): boolean =>
   status === "merged" || status === "removed";
 
+/**
+ * A terminal record that names its exit on the authenticated state-queue
+ * transition source, at any depth: the record's authority, not its finality.
+ */
 export const hasAuthenticatedTerminalHistory = (
   header: StateQueueHeaderRecord | undefined,
-  minimumFinalityDepth: number | undefined,
 ): boolean => {
   if (header === undefined || !isTerminalStatus(header.status)) {
     return false;
   }
   const point = header.observedChainPoint;
   return (
-    Number.isSafeInteger(minimumFinalityDepth) &&
-    minimumFinalityDepth !== undefined &&
-    minimumFinalityDepth >= 0 &&
     header.finalized === true &&
     point.finalized === true &&
     point.providerSource === "authenticated_state_queue_transition_v1" &&
@@ -164,13 +183,13 @@ export const hasAuthenticatedTerminalHistory = (
     point.blockHeight >= 0 &&
     typeof point.depth === "number" &&
     Number.isSafeInteger(point.depth) &&
-    point.depth >= minimumFinalityDepth &&
+    point.depth >= 1 &&
     header.computedHeaderHash === header.headerHash &&
     header.validationErrors.length === 0
   );
 };
 
-/** True only for release-bound, authenticated history beyond the recovery horizon. */
+/** True only for an authenticated terminal record whose exit is final (deeper than k). */
 export const terminalRecoveryFinal = (
   header: StateQueueHeaderRecord | undefined,
   options: Pick<
@@ -178,17 +197,47 @@ export const terminalRecoveryFinal = (
     "automaticRecoveryMaxDepth" | "deploymentFingerprint"
   >,
   payloadDeploymentFingerprint: string,
-): boolean =>
-  options.automaticRecoveryMaxDepth !== undefined &&
-  Number.isSafeInteger(options.automaticRecoveryMaxDepth) &&
-  options.automaticRecoveryMaxDepth >= 0 &&
-  header?.deploymentFingerprint === payloadDeploymentFingerprint &&
-  (options.deploymentFingerprint === undefined ||
-    header?.deploymentFingerprint === options.deploymentFingerprint) &&
-  hasAuthenticatedTerminalHistory(
-    header,
-    options.automaticRecoveryMaxDepth + 1,
+): boolean => {
+  const securityParameter = options.automaticRecoveryMaxDepth;
+  const exitDepth = header?.observedChainPoint.depth;
+  return (
+    securityParameter !== undefined &&
+    Number.isSafeInteger(securityParameter) &&
+    securityParameter >= 0 &&
+    header?.deploymentFingerprint === payloadDeploymentFingerprint &&
+    (options.deploymentFingerprint === undefined ||
+      header.deploymentFingerprint === options.deploymentFingerprint) &&
+    hasAuthenticatedTerminalHistory(header) &&
+    typeof exitDepth === "number" &&
+    isFinal(exitDepth, { securityParameter })
   );
+};
+
+/**
+ * The one release decision for a retained payload, shared by the scan and
+ * the store's locked re-decision: the core retention decision, measured by
+ * the release clock. Before any block is final the clock reads as the epoch.
+ */
+export const retainedPayloadPruneDecision = (
+  payload: Pick<
+    DaStoredPayloadRecord,
+    "headerHash" | "fetchedAt" | "deploymentFingerprint"
+  >,
+  header: StateQueueHeaderRecord | undefined,
+  options: RetainedPayloadReleaseOptions,
+): RetentionPruneDecision =>
+  daRetentionPruneDecision({
+    nowMs: options.finalBlockTimeMs ?? 0,
+    blockEndTimeMs: retentionBlockEndTimeMs(payload, header),
+    headerStatus: header?.status ?? "unobserved",
+    queueReference: retentionQueueReference(payload.headerHash, options),
+    retentionDays: options.retentionDays,
+    terminalRecoveryFinal: terminalRecoveryFinal(
+      header,
+      options,
+      payload.deploymentFingerprint,
+    ),
+  });
 
 /**
  * Joins retained DA payloads to their state-queue headers and applies the core
@@ -199,7 +248,9 @@ export const retentionCandidates = async (
   options: RetentionScanOptions,
 ): Promise<readonly RetentionCandidate[]> => {
   const payloads = await store.listDaPayloads();
-  const headers = await store.listStateQueueHeaders();
+  const headers = await store.getStateQueueHeaders(
+    payloads.map(({ headerHash }) => headerHash),
+  );
   const headerByHash = new Map<string, StateQueueHeaderRecord>(
     headers.map((header) => [header.headerHash, header]),
   );
@@ -219,7 +270,7 @@ export const retentionCandidates = async (
     const terminalHistoryAuthorityMismatch =
       header !== undefined &&
       isTerminalStatus(header.status) &&
-      !hasAuthenticatedTerminalHistory(header, options.minimumFinalityDepth);
+      !hasAuthenticatedTerminalHistory(header);
     return {
       headerHash: payload.headerHash,
       deploymentFingerprint: payload.deploymentFingerprint,
@@ -228,18 +279,7 @@ export const retentionCandidates = async (
       queueReference,
       fingerprintMismatch,
       terminalHistoryAuthorityMismatch,
-      decision: daRetentionPruneDecision({
-        nowMs: options.nowMs,
-        blockEndTimeMs,
-        headerStatus,
-        queueReference,
-        retentionDays: options.retentionDays,
-        terminalRecoveryFinal: terminalRecoveryFinal(
-          header,
-          options,
-          payload.deploymentFingerprint,
-        ),
-      }),
+      decision: retainedPayloadPruneDecision(payload, header, options),
     };
   });
 };
@@ -264,12 +304,13 @@ const pruneRetentionCandidates = async (
     // observed between the scan and the delete is decided afresh.
     const deleted = await store.deleteDaPayloadIfPrunable({
       headerHash: candidate.headerHash,
-      nowMs: options.nowMs,
+      finalBlockTimeMs: options.finalBlockTimeMs,
       retentionDays: options.retentionDays,
       confirmedHeadHash: options.confirmedHeadHash,
       liveQueueHeaderHashes: options.liveQueueHeaderHashes,
       automaticRecoveryMaxDepth: options.automaticRecoveryMaxDepth,
       deploymentFingerprint: options.deploymentFingerprint,
+      ...(options.releaseHeader === true ? { releaseHeader: true } : {}),
     });
     if (deleted) {
       prunedHeaderHashes.push(candidate.headerHash);
@@ -338,8 +379,8 @@ export const retentionCycleOptions = (
     CommitteeConfig,
     | "retentionAlertThresholdMs"
     | "deploymentFingerprint"
-    | "finalityDepth"
     | "automaticRecoveryMaxDepth"
+    | "availabilityPromiseAdoption"
   > & {
     readonly daTransport: Pick<CommitteeConfig["daTransport"], "retentionDays">;
   },
@@ -347,14 +388,14 @@ export const retentionCycleOptions = (
   nowMs: number,
 ): RetentionDeadlineOptions => ({
   nowMs,
+  releaseHeader: config.availabilityPromiseAdoption === undefined,
   alertThresholdMs: config.retentionAlertThresholdMs,
   retentionDays: config.daTransport.retentionDays,
   deploymentFingerprint: config.deploymentFingerprint,
-  minimumFinalityDepth: config.finalityDepth,
   automaticRecoveryMaxDepth: config.automaticRecoveryMaxDepth,
   confirmedHeadHash: view.confirmedHeadHash,
   liveQueueHeaderHashes: view.liveQueueHeaderHashes,
-  recoveryProofUnavailable: view.recoveryProofUnavailable,
+  finalBlockTimeMs: view.finalBlockTimeMs,
 });
 
 const retentionDeadlineReportFromCandidates = (
@@ -369,11 +410,13 @@ const retentionDeadlineReportFromCandidates = (
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
   const entries = candidates.map<RetentionDeadlineEntry>((candidate) => {
+    // Reported on the wall clock; the decision itself ran on the release
+    // clock, which trails it by about k blocks.
     const base = {
       headerHash: candidate.headerHash,
       reasonCode: candidate.decision.reasonCode,
       challengeableUntilMs: candidate.decision.challengeableUntilMs,
-      remainingMs: candidate.decision.remainingMs,
+      remainingMs: candidate.decision.challengeableUntilMs - options.nowMs,
     };
     if (alertThresholdMs === undefined) {
       return { ...base, headroomMs: null, alerting: false };
@@ -388,8 +431,11 @@ const retentionDeadlineReportFromCandidates = (
     return {
       ...base,
       headroomMs: alert.headroomMs,
+      // A payload past its horizon on the wall clock is only waiting for
+      // the release clock: no longer challengeable, nothing to alert on.
       alerting:
         candidate.decision.reasonCode === "still_challengeable" &&
+        alert.remainingMs >= 0 &&
         alert.alerting,
     };
   });
@@ -411,8 +457,7 @@ const retentionDeadlineReportFromCandidates = (
       const missing = candidates.filter(
         (candidate) =>
           candidate.decision.reasonCode === "terminal_recovery_pending" &&
-          (options.recoveryProofUnavailable === true ||
-            candidate.terminalHistoryAuthorityMismatch ||
+          (candidate.terminalHistoryAuthorityMismatch ||
             candidate.fingerprintMismatch ||
             options.automaticRecoveryMaxDepth === undefined),
       ).length;

@@ -7,7 +7,7 @@ import {
   Lucid,
   withL1ControlPlaneWaitTimeout,
 } from "../services/index.js";
-import { type StateQueueSnapshot } from "../services/state-queue-topology.js";
+import { type StateQueueSnapshot } from "../services/landed-state-queue.js";
 import { type MergeReadinessStatus } from "../transactions/state-queue/merge-readiness.js";
 import {
   type CanonicalMergeCandidateReadiness,
@@ -172,7 +172,9 @@ export const logSemanticSkip = (
       ? "oldest block is not DA-attested yet"
       : readiness.status === "skipped_oldest_block_proven_fraud"
         ? "oldest block has completed fraud and requires state correction"
-        : "oldest block is not mature yet";
+        : readiness.status === "skipped_oldest_block_event_orphaned"
+          ? "oldest block is a landed own block whose event left the chain, or is built on one; it waits for a landed correction or a rollback that removes it"
+          : "oldest block is not mature yet";
   return Effect.logInfo(
     `🔸 Skipping merge ${phase} because ${message} (${readiness.reason}).`,
   );

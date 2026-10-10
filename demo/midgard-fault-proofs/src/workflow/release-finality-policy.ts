@@ -14,6 +14,27 @@ export type ReleaseL1FinalityPolicy = {
 };
 
 /**
+ * The release policy of a manifest `l1Finality` (or of any value carrying its
+ * fields): the rollback fields only. The commit-event depth binds event
+ * inclusion, not release. Every producer of a release identity projects
+ * through here: workflow journals record the identity and recovery compares it
+ * whole, so an extra field passed through structurally would make a recovered
+ * workflow differ from its own deployment and wedge it.
+ */
+export const releaseL1FinalityPolicyOf = (
+  l1Finality: ReleaseL1FinalityPolicy,
+): ReleaseL1FinalityPolicy =>
+  Object.freeze({
+    confirmationDepth: l1Finality.confirmationDepth,
+    automaticRecoveryMaxDepth: l1Finality.automaticRecoveryMaxDepth,
+    deepRollbackPolicy: l1Finality.deepRollbackPolicy,
+  });
+
+/** The selected profile's release policy. */
+export const RELEASE_L1_FINALITY_POLICY: ReleaseL1FinalityPolicy =
+  releaseL1FinalityPolicyOf(DEPLOYMENT_MANIFEST_L1_FINALITY);
+
+/**
  * Manifest-verified finality identity returned by the deployment authority.
  * The workflow never accepts a caller-selected depth.
  */
@@ -78,8 +99,14 @@ export const validateVerifiedFraudProofReleaseFinalityPolicy = (
   if (value.policyDigest !== policyDigest) {
     throw new Error("release finality policy digest mismatch");
   }
+  // The canonical identity is exactly the fields the digests bind; anything
+  // else a producer carried structurally is unauthenticated and is dropped so
+  // it can never reach a workflow journal.
   return Object.freeze({
-    ...value,
-    policy: Object.freeze({ ...value.policy }),
+    schemaVersion: value.schemaVersion,
+    deploymentIdentityDigest: value.deploymentIdentityDigest,
+    blueprintHash: value.blueprintHash,
+    policyDigest: value.policyDigest,
+    policy: releaseL1FinalityPolicyOf(value.policy),
   });
 };

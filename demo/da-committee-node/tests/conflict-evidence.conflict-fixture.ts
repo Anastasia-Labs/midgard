@@ -14,7 +14,7 @@ import { DaGossip, type DaPubsubMessage } from "../src/da/libp2p/DaGossip.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import { createDaTopicAllowlist } from "../src/da/libp2p/DaTopics.js";
 import { loadDaSigner, signDaAttestation } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
 
 export const DEPLOYMENT_FINGERPRINT = "ab".repeat(32);
 
@@ -27,6 +27,9 @@ export const UNKNOWN_PEER_ID =
 export const LOWER_HEADER_HASH = "11".repeat(28);
 
 export const UPPER_HEADER_HASH = LOWER_HEADER_HASH;
+
+// A sibling of LOWER_HEADER_HASH: same parent, different header hash.
+export const SIBLING_HEADER_HASH = "22".repeat(28);
 
 export const conflictFixture = async () => {
   const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
@@ -178,7 +181,7 @@ export const signatureRecord = ({
 
 export const conflictGossip = (
   registry: DaPeerRegistry,
-  store: JsonFileCommitteeStore,
+  store: PostgresCommitteeStore,
 ): DaGossip => {
   const handler = createDaConflictEvidenceGossipHandler({
     deploymentFingerprint: DEPLOYMENT_FINGERPRINT,

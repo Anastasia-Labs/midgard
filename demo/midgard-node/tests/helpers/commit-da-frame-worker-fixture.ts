@@ -18,6 +18,7 @@ export const nodeConfig = {
   MIN_FEE_A: 0n,
   MIN_FEE_B: 0n,
   VALIDATION_G4_BUCKET_CONCURRENCY: 1,
+  COMMIT_EVENT_DEPTH: 0,
 } as never;
 export const deploymentIdentity = ContractDeploymentIdentity.make({
   kind: "derived",
@@ -35,7 +36,6 @@ export const fakeSql = Object.assign(
     withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
   },
 ) as unknown as SqlClient.SqlClient;
-const watermark = Date.parse("2026-01-01T00:07:00.999Z");
 export const workerInput = {
   nativeMpf: {
     port: {} as MessagePort,
@@ -57,23 +57,5 @@ export const workerInput = {
     sizeOfProcessedTxsSoFar: 0,
     baseSnapshotId: "test",
     stateQueueHasUnmergedTail: false,
-    speculativeBuild: {
-      base: {
-        headerHash: "aa".repeat(28),
-        utxosRoot: "33".repeat(32),
-        blockEndTimeMs: Date.parse("2026-01-01T00:05:00.000Z"),
-        submittedTxHash: "bb".repeat(32),
-      },
-      watermarks: {
-        depositMs: watermark,
-        withdrawalMs: watermark,
-        txOrderMs: watermark,
-        refreshedAtMs: watermark,
-      },
-      excludedMempoolTxIds: [],
-      excludedDepositEventIds: [],
-      excludedForcedTransactionEventIds: [],
-      excludedWithdrawalEventIds: [],
-    },
   },
 } as unknown as WorkerInput;

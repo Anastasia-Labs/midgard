@@ -27,7 +27,7 @@ export const UNIT = `${"dd".repeat(28)}00`;
 
 export const OTHER_UNIT = `${"ee".repeat(28)}01`;
 
-export const SOURCE = "local-kupmios-release-v1";
+const SOURCE = "local-kupmios-release-v1";
 
 const policy = {
   confirmationDepth: 30,
@@ -148,9 +148,9 @@ export const fixture = (): {
       trustClass: "authenticated_cardano_l1",
       sourceId: SOURCE,
       grade: "security",
-      sourceMode: "local_kupo_ogmios",
-      kupoCheckpoint: cursorPoint,
-      ogmiosTip: tip,
+      sourceMode: "local_chain_follower",
+      boundaryPoint: cursorPoint,
+      tipPoint: tip,
     },
     cursor: {
       point: cursorPoint,

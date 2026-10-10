@@ -2,26 +2,15 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { authorityReadinessProbe } from "./authority-readiness.js";
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
+
 import { LOCAL_AUTHORITY_ID } from "./da.js";
 import type { DeployContext } from "./deploy.js";
+import { recordedL1Origin } from "./deployment-origin.js";
 import { writeDurableFile, writeOnceFile } from "./durable.js";
-import type { HistoryChildRole } from "./history-child-evidence.js";
-import { historyRecordedBinding } from "./history-recorded-binding.js";
-import type { HistoryReadinessSpecification } from "./history-role-context.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 import type { HubOracleOneShot } from "./node-env.js";
 import type { ServiceSpec } from "./supervisor.js";
-import {
-  finishWatcherAuthorityProvisioning,
-  FRESH_AUTHORITY_PROFILE,
-  prepareWatcherAuthorityProvisioning,
-} from "./watcher-authority-provisioning.js";
-import {
-  ensureHistoryProviders,
-  HISTORY_ROLES,
-  historyTransportEnvironment,
-} from "./watcher-history.js";
 import {
   ensureWatcherReleaseBundle,
   loadWatcherModule,
@@ -32,9 +21,7 @@ import {
 type SecretSource = { readonly kind: "file"; readonly path: string };
 
 const SECRETS = {
-  record: "trusted-head-record.key",
   rollback: "rollback-authority.key",
-  bearer: "http-bearer.key",
   prover: "prover.seed",
   availability: "availability.seed",
 } as const;
@@ -42,10 +29,10 @@ const SECRETS = {
 const hex32 = () => randomBytes(32).toString("hex");
 
 /**
- * The watcher's five secrets, one regular 0600 file each, no trailing
+ * The watcher's three secrets, one regular 0600 file each, no trailing
  * newline, written once. The wallet seeds are the run's own funded
- * `watcherProver` / `watcherAvailability` identities; the three keys are
- * random and belong to this run only.
+ * `watcherProver` / `watcherAvailability` identities; the rollback key is
+ * random and belongs to this run only.
  */
 const ensureSecrets = (context: DeployContext, allowMissing: boolean) => {
   const { layout, identities } = context;
@@ -70,9 +57,7 @@ const ensureSecrets = (context: DeployContext, allowMissing: boolean) => {
     return { kind: "file", path };
   };
   const secrets = {
-    record: random(SECRETS.record),
     rollback: random(SECRETS.rollback),
-    bearer: random(SECRETS.bearer),
     prover: fixed(SECRETS.prover, identities.seeds.watcherProver),
     availability: fixed(
       SECRETS.availability,
@@ -126,13 +111,8 @@ const retainedDaPeer = (layout: Layout) => {
   return { identity: "devnet-public-retained-da", multiaddr };
 };
 
-const endpoints = (run: RunEnv) => {
-  const ports = servicePorts(run);
-  return {
-    authority: `http://127.0.0.1:${ports.watcherAuthority}`,
-    operations: `http://127.0.0.1:${ports.watcherOperations}`,
-  };
-};
+const operationsEndpoint = (run: RunEnv) =>
+  `http://127.0.0.1:${servicePorts(run).watcherOperations}`;
 
 /** The watcher's runtime configuration, exactly as its process config embeds it. */
 const watcherConfigInput = (
@@ -140,8 +120,9 @@ const watcherConfigInput = (
   schemaVersion: string,
   confirmationDepth: number,
   secrets: ReturnType<typeof ensureSecrets>,
+  origin: L1Origin,
 ) => {
-  const { layout, run } = context;
+  const { layout } = context;
   return {
     schemaVersion,
     mode: "acceptance",
@@ -160,29 +141,11 @@ const watcherConfigInput = (
             .update(readFileSync(layout.shelleyGenesis))
             .digest("hex"),
         },
-        queryServices: [
-          {
-            kind: "ogmios",
-            identity: "devnet-ogmios",
-            endpoint: `http://127.0.0.1:${run.ogmiosPort}`,
-          },
-          {
-            kind: "kupo",
-            identity: "devnet-kupo",
-            endpoint: `http://127.0.0.1:${run.kupoPort}`,
-          },
-        ],
       },
+      origin: { slot: origin.slot, blockHash: origin.blockHash },
       requestTimeoutMs: 30_000,
       maxConcurrency: 8,
-      finality: {
-        depth: confirmationDepth,
-        rollback: {
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: confirmationDepth,
-        },
-      },
+      finality: { depth: confirmationDepth },
     },
     da: {
       peers: [retainedDaPeer(layout)],
@@ -207,19 +170,18 @@ const watcherConfigInput = (
 const configText = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
 /**
- * Everything the watcher, its trusted-head authority and its history
- * providers read, generated once under the run's stack directory: the
- * trust-root key, the secrets, the signed release bundle, the providers'
- * identities, and the runtime, authority and process configurations. Every
- * configuration is checked by the watcher's own parser before it is written.
- * A second call verifies and changes nothing; a release signed for another
- * deployment, or a configuration that would now come out differently, is
- * refused rather than replaced.
+ * Everything the watcher reads, generated once under the run's stack
+ * directory: the trust-root key, the secrets, the signed release bundle, and
+ * the runtime and process configurations. Every configuration is checked by the watcher's
+ * own parser before it is written. A second call verifies and changes
+ * nothing; a release signed for another deployment, or a configuration that
+ * would now come out differently, is refused rather than replaced. Secrets
+ * are generated only for a fresh watcher (no configuration and no data yet);
+ * an established watcher's missing secret is refused, never regenerated.
  */
 export const ensureWatcherRelease = async (
   context: DeployContext,
   oneShot: HubOracleOneShot,
-  initializeAuthority = false,
 ): Promise<void> => {
   const { layout, run, artifacts } = context;
   const manifest = readFinalizedManifest(layout);
@@ -232,15 +194,9 @@ export const ensureWatcherRelease = async (
     );
   const watcher = await loadWatcherModule(layout);
   const identity = await ensureWatcherReleaseBundle(layout, watcher, manifest);
-  const releaseFinality = await watcher
+  await watcher
     .watcherDeploymentReleaseFinalityAuthority(identity)
     .verifyForWorkflow({ deploymentFingerprint: manifest.manifestId });
-  const history = ensureHistoryProviders(
-    layout,
-    run,
-    releaseFinality,
-    manifest.manifestId,
-  );
   const secrets = Object.fromEntries(
     Object.entries(SECRETS).map(([name, file]) => [
       name,
@@ -248,47 +204,23 @@ export const ensureWatcherRelease = async (
     ]),
   ) as Record<keyof typeof SECRETS, SecretSource>;
   const paths = releasePaths(layout);
-  const { authority, operations } = endpoints(run);
 
   const watcherInput = watcherConfigInput(
     context,
     watcher.WATCHER_CONFIG_SCHEMA_VERSION,
     manifest.l1Finality.confirmationDepth,
     secrets,
+    // The follower starts at the run's recorded origin; without one the
+    // watcher holds unready (l1_origin_not_configured).
+    recordedL1Origin(layout, oneShot),
   );
   watcher.parseWatcherConfig(watcherInput);
-  const policy = watcher.makeWatcherFinalityPolicy(watcherInput, identity);
-  if (policy === null)
-    throw new Error(
-      "the watcher refused a finality policy for this configuration and release",
-    );
-  const authorityInput = {
-    schemaVersion:
-      watcher.WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
-    policy,
-    liveRecordLimit: FRESH_AUTHORITY_PROFILE.liveRecordLimit,
-    directory: join(layout.watcherData, "trusted-head"),
-    endpoint: authority,
-    recordAuthenticationKeySource: secrets.record,
-    httpBearerSecretSource: secrets.bearer,
-  };
-  const authorityConfig = watcher.parseWatcherTrustedHeadAuthorityProcessConfig(
-    JSON.parse(JSON.stringify(authorityInput)),
-  );
-  const descriptorPath = join(layout.watcher, "authority-provisioning.json");
-  const prepared = prepareWatcherAuthorityProvisioning({
-    config: authorityConfig,
-    descriptorPath,
-    secretPaths: Object.values(secrets).map((source) => source.path),
-    protectedPaths: [
-      layout.watcherRuntimeConfig,
-      layout.watcherAuthorityConfig,
-      layout.watcherProcessConfig,
-      layout.watcherData,
-    ],
-    initialize: initializeAuthority,
-  });
-  ensureSecrets(context, prepared.allowMissingSecrets);
+  const fresh = ![
+    layout.watcherRuntimeConfig,
+    layout.watcherProcessConfig,
+    layout.watcherData,
+  ].some(existsSync);
+  ensureSecrets(context, fresh);
   mkdirSync(layout.watcherData, { recursive: true, mode: 0o700 });
   const processInput = {
     schemaVersion: watcher.WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
@@ -297,10 +229,8 @@ export const ensureWatcherRelease = async (
     deploymentAuthorityPath: paths.authority,
     ruleBundlePath: paths.rules,
     fundingProfileBundlePath: paths.fundingProfiles,
-    nativeChainSyncBinaryPath: artifacts.chainSyncBinary,
-    trustedHeadAuthorityEndpoint: authority,
-    operationsEndpoint: operations,
-    httpBearerSecretSource: secrets.bearer,
+    l1NodeTransportBinaryPath: artifacts.transportBinary,
+    operationsEndpoint: operationsEndpoint(run),
     workflowJournalDirectory: join(layout.watcherData, "workflows"),
     availability: {
       keySource: secrets.availability,
@@ -311,20 +241,11 @@ export const ensureWatcherRelease = async (
       manifestPath: paths.manifest,
       blueprintPath: paths.blueprint,
       deploymentInfoPath: paths.deploymentInfo,
-      historicalNativeScriptHistory: history,
     },
   };
   watcher.parseWatcherProcessConfig(processInput);
   writeOnceFile(layout.watcherRuntimeConfig, configText(watcherInput));
-  writeOnceFile(layout.watcherAuthorityConfig, configText(authorityInput));
   writeOnceFile(layout.watcherProcessConfig, configText(processInput));
-  await finishWatcherAuthorityProvisioning({
-    prepared,
-    config: authorityConfig,
-    configPath: layout.watcherAuthorityConfig,
-    descriptorPath,
-    cliPath: join(layout.watcherRoot, "dist/cli.js"),
-  });
 };
 
 const WATCHER_ENV = {
@@ -333,100 +254,27 @@ const WATCHER_ENV = {
   MIDGARD_DOTENV_MODE: "disabled",
 } as const;
 
-/** True once the trusted-head authority answers an authenticated identity read. */
-export const authorityAnswers = async (
-  layout: Layout,
-  run: RunEnv,
-): Promise<boolean> => {
-  const bearer = readFileSync(layout.watcherSecret(SECRETS.bearer), "utf8");
-  try {
-    const response = await fetch(`${endpoints(run).authority}/v1/identity`, {
-      headers: { authorization: `Bearer ${bearer}` },
-      signal: AbortSignal.timeout(5_000),
-    });
-    await response.arrayBuffer();
-    return response.ok;
-  } catch {
-    return false;
-  }
-};
-
 /**
- * The watcher's processes, in dependency order: the trusted-head authority,
- * the history providers with their tunnel and feeder, then the watcher, which
- * starts only once the authority answers.
- *
- * The authority serves only bearer-authenticated routes, so it has no
- * liveness URL; it is restarted when it exits. The history providers speak
- * TLS under their own self-signed identities, so they too are watched by exit
- * only. The watcher's operations endpoint needs no credentials, but it opens
- * only after the watcher's startup catch-up, so the watcher gets a long start
- * grace.
+ * The watcher's process. Its operations endpoint needs no credentials, but it
+ * opens only after the watcher's startup catch-up, so the watcher gets a long
+ * start grace.
  */
 export const watcherServiceSpecs = (
-  context: DeployContext,
-  _oneShot: HubOracleOneShot,
+  context: Pick<DeployContext, "layout" | "run">,
 ): ServiceSpec[] => {
   const { layout, run } = context;
   const cli = join(layout.watcherRoot, "dist/cli.js");
-  const controller = join(layout.toolsRoot, "dist/devnet-stack.js");
-  const { operations } = endpoints(run);
-  const tunnel = `http://127.0.0.1:${servicePorts(run).historyTunnel}`;
-  const binding = historyRecordedBinding(layout, run, "Custom");
-  const historyReadiness = (
-    role: HistoryChildRole,
-  ): HistoryReadinessSpecification => ({
-    role,
-    runId: run.runId,
-    deploymentFingerprint: binding.manifest.manifestId,
-    publicBindingDigest: binding.digest,
-    expectedNetwork: "Custom",
-  });
-  const own = (name: string, args: readonly string[]): ServiceSpec => ({
-    name,
-    command: process.execPath,
-    args: [controller, ...args, "--run-dir", layout.runDir],
-    cwd: layout.toolsRoot,
-    env: {},
-  });
+  const operations = operationsEndpoint(run);
   return [
-    {
-      name: "watcher-authority",
-      readyProbe: authorityReadinessProbe(layout, run),
-      command: process.execPath,
-      args: [cli, "authority", "--config", layout.watcherAuthorityConfig],
-      cwd: layout.watcherRoot,
-      env: { ...WATCHER_ENV },
-    },
-    ...HISTORY_ROLES.map((role) => ({
-      ...own(`watcher-history-${role}`, [
-        "history-archive",
-        "--provider",
-        role,
-      ]),
-      historyReadiness: historyReadiness(
-        role === "a" ? "history-archive-a" : "history-archive-b",
-      ),
-    })),
-    {
-      ...own("watcher-history-tunnel", ["history-tunnel"]),
-      historyReadiness: historyReadiness("history-tunnel"),
-      healthUrl: `${tunnel}/healthz`,
-    },
-    {
-      ...own("watcher-history-recorder", ["history-recorder"]),
-      historyReadiness: historyReadiness("history-recorder"),
-    },
     {
       name: "watcher",
       command: process.execPath,
       args: [cli, "start", "--config", layout.watcherProcessConfig],
       cwd: layout.watcherRoot,
-      env: { ...WATCHER_ENV, ...historyTransportEnvironment(layout, run) },
+      env: { ...WATCHER_ENV },
       healthUrl: `${operations}/v1/status`,
       readyUrl: `${operations}/readyz`,
       startGraceMs: 60 * 60_000,
-      prestart: () => authorityAnswers(layout, run),
     },
   ];
 };

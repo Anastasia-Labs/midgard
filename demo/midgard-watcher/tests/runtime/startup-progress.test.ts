@@ -1,11 +1,16 @@
-import { LocalKupmiosTransportUnavailableError } from "@al-ft/midgard-fault-proofs";
+import {
+  SidecarExitedError,
+  TransportRequestError,
+} from "@al-ft/l1-node-transport";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { watcherFailureCauses } from "../../src/cli.js";
+import { WatcherL1UnavailableError } from "../../src/l1/transient-retry.js";
 import { unsafeRunWatcherCommandForTest } from "../../src/runtime/scaffold.js";
 import {
   createWatcherStartupProgress,
-  WATCHER_STARTUP_L1_RETRIED_STAGES,
+  WatcherStartupStageHeld,
 } from "../../src/runtime/startup-progress.js";
 
 afterEach(() => vi.useRealTimers());
@@ -91,9 +96,6 @@ it("writes startup progress before runtime construction fails without claiming r
         writeError: errors,
       },
       {
-        runAuthority: async () => {
-          throw new Error("Unexpected authority start");
-        },
         runWatcher: async (_path, report) => {
           report({
             stage: "header_classification",
@@ -118,66 +120,56 @@ it("writes startup progress before runtime construction fails without claiming r
   });
 });
 
-it.each([...WATCHER_STARTUP_L1_RETRIED_STAGES])(
-  "runs %s again through an L1 transient, reporting the wait, and completes once",
-  async (stage) => {
-    const report = vi.fn();
-    const action = vi
-      .fn<() => Promise<string>>()
-      .mockRejectedValueOnce(
-        new LocalKupmiosTransportUnavailableError(
-          "request to http://127.0.0.1:1442/checkpoints/9 timed out",
-        ),
-      )
-      .mockResolvedValueOnce("recovered");
-    await expect(
-      createWatcherStartupProgress(report, () => 1)(stage, action),
-    ).resolves.toBe("recovered");
-    expect(action).toHaveBeenCalledTimes(2);
-    expect(report.mock.calls.map(([event]) => event)).toEqual([
-      expect.objectContaining({ stage, outcome: "started" }),
-      expect.objectContaining({
-        stage,
-        outcome: "pending",
-        error: "request to http://127.0.0.1:1442/checkpoints/9 timed out",
-        retryAfterMs: 1,
-      }),
-      expect.objectContaining({ stage, outcome: "completed" }),
-    ]);
-  },
-);
+it("runs a held stage again, reporting the wait, and completes once", async () => {
+  const report = vi.fn();
+  const action = vi
+    .fn<() => Promise<string>>()
+    .mockRejectedValueOnce(
+      new WatcherStartupStageHeld("waiting for the follower to reach the tip"),
+    )
+    .mockResolvedValueOnce("recovered");
+  await expect(
+    createWatcherStartupProgress(report, () => 1)("follower_ready", action),
+  ).resolves.toBe("recovered");
+  expect(action).toHaveBeenCalledTimes(2);
+  expect(report.mock.calls.map(([event]) => event)).toEqual([
+    expect.objectContaining({ stage: "follower_ready", outcome: "started" }),
+    expect.objectContaining({
+      stage: "follower_ready",
+      outcome: "pending",
+      error: "waiting for the follower to reach the tip",
+      retryAfterMs: 1,
+    }),
+    expect.objectContaining({ stage: "follower_ready", outcome: "completed" }),
+  ]);
+});
 
-it("retries without a progress reporter too", async () => {
+it("runs a held stage again without a progress reporter too", async () => {
   const action = vi
     .fn<() => Promise<number>>()
-    .mockRejectedValueOnce(new LocalKupmiosTransportUnavailableError("down"))
+    .mockRejectedValueOnce(new WatcherStartupStageHeld("held"))
     .mockResolvedValueOnce(7);
   await expect(
-    createWatcherStartupProgress(undefined, () => 1)(
-      "state_queue_recovery",
-      action,
-    ),
+    createWatcherStartupProgress(undefined, () => 1)("follower_ready", action),
   ).resolves.toBe(7);
   expect(action).toHaveBeenCalledTimes(2);
 });
 
 it.each([
   [
-    "a genuine refusal in a retried stage",
-    "state_queue_recovery",
-    new Error(
-      "state-queue retained prefix changed after durable suffix revocation",
-    ),
+    "a genuine refusal",
+    "header_classification",
+    new Error("deployment reference script differs from the verified manifest"),
   ],
   [
     "an L1 transient in an identity stage",
     "deployment_authority",
-    new LocalKupmiosTransportUnavailableError("down"),
+    new FraudProofL1UnavailableError("down"),
   ],
   [
     "an L1 transient a stage that keeps what it allocates raised outside its retried reads",
     "workflow_readiness",
-    new LocalKupmiosTransportUnavailableError("down"),
+    new FraudProofL1UnavailableError("down"),
   ],
 ])("still fails startup on %s, at once", async (_label, stage, failure) => {
   const report = vi.fn();
@@ -200,7 +192,7 @@ it("repeats only a stage's L1 read through a transient, never what the stage all
   const read = vi
     .fn<() => Promise<string>>()
     .mockRejectedValueOnce(
-      new LocalKupmiosTransportUnavailableError("Kupo is re-indexing"),
+      new FraudProofL1UnavailableError("Kupo is re-indexing"),
     )
     .mockRejectedValueOnce(
       Object.assign(new TypeError("fetch failed"), {
@@ -253,4 +245,85 @@ it("fails a stage's retried L1 read at once on a genuine refusal", async () => {
     "started",
     "failed",
   ]);
+});
+
+it("waits out a sidecar exit and a node timeout on the protocol parameters read, and completes without failing startup", async () => {
+  const report = vi.fn();
+  const read = vi
+    .fn<() => Promise<string>>()
+    .mockRejectedValueOnce(
+      new SidecarExitedError({
+        code: 1,
+        signal: null,
+        fatal: null,
+        diagnostics: "",
+      }),
+    )
+    .mockRejectedValueOnce(
+      new TransportRequestError(
+        "node_timeout",
+        "the node did not answer the query in time",
+      ),
+    )
+    .mockResolvedValueOnce("parameters");
+  await expect(
+    createWatcherStartupProgress(report, () => 1)(
+      "protocol_parameters",
+      async ({ retryL1Read }) => await retryL1Read(read),
+    ),
+  ).resolves.toBe("parameters");
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(report.mock.calls.map(([event]) => event.outcome)).toEqual([
+    "started",
+    "pending",
+    "pending",
+    "completed",
+  ]);
+});
+
+it("fails startup under watcher_l1_unavailable once a stage's L1 read stays transient past the budget", async () => {
+  const report = vi.fn();
+  const cause = new FraudProofL1UnavailableError("the node is not answering");
+  const read = vi.fn(async (): Promise<string> => {
+    if (read.mock.calls.length > 1_000)
+      throw new Error("retried without bound");
+    throw cause;
+  });
+  // Each failure is read 20 s after the one before.
+  let now = 0;
+  const failure = await createWatcherStartupProgress(report, () => 1, {
+    l1BudgetMs: 60_000,
+    now: () => (now += 20_000),
+  })("protocol_parameters", async ({ retryL1Read }) => await retryL1Read(read))
+    .then(() => undefined)
+    .catch((error: unknown) => error);
+  expect(failure).toBeInstanceOf(WatcherL1UnavailableError);
+  expect(failure).toMatchObject({
+    reason: "watcher_l1_unavailable",
+    attempts: 4,
+    cause,
+  });
+  expect(read).toHaveBeenCalledTimes(4);
+  expect(report).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      stage: "protocol_parameters",
+      outcome: "failed",
+      error: expect.stringMatching(/^watcher_l1_unavailable: /u) as unknown,
+    }),
+  );
+});
+
+it("waits on a held stage past any L1 budget", async () => {
+  let held = 0;
+  let now = 0;
+  await expect(
+    createWatcherStartupProgress(undefined, () => 1, {
+      l1BudgetMs: 60_000,
+      now: () => (now += 60_000),
+    })("follower_ready", async () => {
+      held += 1;
+      if (held <= 5) throw new WatcherStartupStageHeld("held");
+      return "ready";
+    }),
+  ).resolves.toBe("ready");
 });

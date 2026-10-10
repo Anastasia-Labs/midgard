@@ -15,9 +15,9 @@ import {
 import {
   answer,
   fakeClock,
+  intervention,
   type L1Source,
-  quarantined,
-  REPLAY_STUCK,
+  ROLLBACK_BEYOND_K,
   shortReason,
 } from "./da-bond-pool-committee-process.the-journey-committee-node.js";
 import { DA_BOND_POOL_JOURNEY_CHRONOLOGY } from "./da-bond-pool-journey.js";
@@ -304,18 +304,18 @@ describe("the committee node's lifecycle (P27(3))", () => {
     );
   });
 
-  it("records, then fails, an observation whose L1 source is quarantined", async () => {
+  it("records, then fails, an observation whose L1 follower holds the node on an intervention", async () => {
     const h = harness();
     h.setL1Source({ status: "healthy" });
     await h.observer.start();
     await expect(h.observer.observe()).resolves.toMatchObject({
       synced: true,
     });
-    h.setReasons([`L1 source is quarantined: ${REPLAY_STUCK}`]);
-    h.setL1Source(quarantined);
+    h.setReasons([ROLLBACK_BEYOND_K]);
+    h.setL1Source(intervention);
     await expect(h.observer.observe()).rejects.toThrow(
       new RegExp(
-        `\\(pid 500\\) quarantined its L1 source: ${REPLAY_STUCK}`,
+        `\\(pid 500\\) is held on an L1 follower intervention: ${ROLLBACK_BEYOND_K}`,
         "u",
       ),
     );

@@ -37,35 +37,23 @@ import {
 import {
   decodeJourneyRetainedBlock,
   type FaultPreparation,
-  type HistoryPreparation,
   type JourneyFaultBuildInput,
   type JourneyFaultPreparationInput,
   type StagingCheckpoint,
 } from "./staging.decode-journey-retained-block.js";
 
-export function stageJourney(
-  input: JourneyFixtureStage,
-  task: HistoryPreparation,
-): Promise<JourneySuccessor>;
-
-export function stageJourney(
-  input: JourneyFixtureStage,
-  task: FaultPreparation,
-): Promise<StagedJourney>;
-
 export async function stageJourney(
   {
     context,
     directory,
-    historicalNativeScriptProviders,
     retain,
     readConfirmedTransaction,
     onHealthyPredecessor,
     readSignedCommitRecovery,
     onStage,
   }: JourneyFixtureStage,
-  task: HistoryPreparation | FaultPreparation,
-): Promise<JourneySuccessor | StagedJourney> {
+  task: FaultPreparation,
+): Promise<StagedJourney> {
   const { deployment, accounts, provider } = context;
   const { contracts, chain } = deployment;
   const fingerprint = deployment.manifest.manifestId;
@@ -191,7 +179,6 @@ export async function stageJourney(
       },
       onStage,
     });
-    lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
     if (disposition.kind === "included") return disposition.txHash;
     onStage(
       `${label} ${signed.txHash} retired: ${disposition.reason}; rebuilding from the current protocol state`,
@@ -282,8 +269,7 @@ export async function stageJourney(
     predecessor = { ...initial.current, commitTxHash: initial.commits[1]! };
   }
   await retain(predecessor, predecessor.commitTxHash);
-  if (task.mode === "fault")
-    await onHealthyPredecessor?.(predecessor.headerHash);
+  await onHealthyPredecessor?.(predecessor.headerHash);
   let retainedPredecessor = await decodeJourneyRetainedBlock(predecessor);
   const operatorKey = paymentCredentialOf(
     await deployment.operatorLucid.wallet().address(),
@@ -454,7 +440,6 @@ export async function stageJourney(
   const preparationInput: JourneyFaultPreparationInput = {
     context,
     directory,
-    historicalNativeScriptProviders,
     retain,
     readConfirmedTransaction,
     readSignedCommitRecovery,
@@ -463,15 +448,6 @@ export async function stageJourney(
     ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
     commitHistoryBlock,
   };
-  if (task.mode === "history") {
-    await task.prepare(preparationInput);
-    await assertTail(predecessor);
-    await writeJourneyArtifact(headPath, {
-      deploymentFingerprint: fingerprint,
-      block: predecessor,
-    });
-    return predecessor;
-  }
   const prepared = await task.prepare(preparationInput);
   if (prepared.predecessor !== undefined) {
     predecessor = prepared.predecessor;

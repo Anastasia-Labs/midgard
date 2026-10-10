@@ -3,23 +3,29 @@ import { describe, expect, it } from "vitest";
 
 import {
   NATIVE_MPF_OWNER_RECOVERY_PENDING,
-  NATIVE_MPF_OWNER_RESTART_EXHAUSTED,
+  NATIVE_MPF_OWNER_STUCK,
   NATIVE_MPF_OWNER_SUPERVISOR_SOURCE,
+  NATIVE_MPF_PROMOTION_INDEX_CAP_EXCEEDED,
+  NATIVE_MPF_PROMOTION_INDEX_CAP_SOURCE,
   nativeMpfOwnerRestartsInWindowGauge,
   nativeMpfOwnerSupervisorFiber,
 } from "../src/fibers/native-mpf-owner-supervisor.js";
 import { Globals } from "../src/services/globals.js";
-import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/protocol.js";
+import {
+  type NativeMpfFullIndexHealth,
+  type NativeMpfOwnerService,
+  NativeMpfPromotionIndexCapExceeded,
+} from "../src/services/mpf-native-owner/protocol.js";
 import type { NativeOwnerRestartHealth } from "../src/services/mpf-native-owner/service.restart-policy.js";
 
 const health = (
   overrides: Partial<NativeOwnerRestartHealth> = {},
 ): NativeOwnerRestartHealth => ({
   restartsInWindow: 0,
-  failedRestartsInWindow: 0,
+  failuresInARow: 0,
   restartLimit: 3,
   restartWindowMs: 3_600_000,
-  exhausted: false,
+  held: false,
   ...overrides,
 });
 
@@ -32,13 +38,16 @@ const owner = (
  * a recovery flow replaces the live one. Returns the exit, the reason raised
  * after each tick (read where the schedule steps, as it ends too) and the
  * restart gauge after the last one. */
-const supervise = (owners: readonly (NativeMpfOwnerService | undefined)[]) =>
+const supervise = (
+  owners: readonly (NativeMpfOwnerService | undefined)[],
+  source: string = NATIVE_MPF_OWNER_SUPERVISOR_SOURCE,
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const globals = yield* Globals;
       const raised: (string | undefined)[] = [];
       const reason = Effect.map(Ref.get(globals.LIVENESS_REASONS), (reasons) =>
-        reasons.get(NATIVE_MPF_OWNER_SUPERVISOR_SOURCE),
+        reasons.get(source),
       );
       yield* Ref.set(globals.NATIVE_MPF_OWNER, owners[0]);
       const exit = yield* Effect.exit(
@@ -79,13 +88,13 @@ describe("native MPF owner supervisor", () => {
   });
 
   it("surfaces an owner's refusal instead of stopping the node, and clears it once the owner serves again", async () => {
-    const exhausted = new Error("Native MPF owner restart limit exhausted");
+    const held = new Error("Native MPF owner holds: the same failure");
     const pending = new Error("Native MPF canonical recovery is not installed");
     const { exit, raised } = await supervise([
       owner(() => undefined),
       owner(
-        () => exhausted,
-        () => health({ exhausted: true, failedRestartsInWindow: 3 }),
+        () => held,
+        () => health({ held: true, failuresInARow: 3 }),
       ),
       owner(() => pending),
       owner(() => undefined),
@@ -94,7 +103,7 @@ describe("native MPF owner supervisor", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(raised).toEqual([
       undefined,
-      NATIVE_MPF_OWNER_RESTART_EXHAUSTED,
+      NATIVE_MPF_OWNER_STUCK,
       NATIVE_MPF_OWNER_RECOVERY_PENDING,
       undefined,
       undefined,
@@ -109,5 +118,46 @@ describe("native MPF owner supervisor", () => {
       ),
     ]);
     expect(gauge).toBe(5);
+  });
+
+  it("names a promotion the owner refused over a full-index cap, apart from its refusals, and clears it once the owner no longer holds it", async () => {
+    const refusal = new NativeMpfPromotionIndexCapExceeded(
+      "cd".repeat(32),
+      "FULL_INDEX_MAX_BYTES",
+      536_870_912,
+      536_871_000,
+    );
+    const refusing = (
+      promotionRefusal: NativeMpfPromotionIndexCapExceeded | undefined,
+    ) =>
+      ({
+        terminalFailure: () => undefined,
+        restartHealth: () => health(),
+        fullIndexHealth: (): NativeMpfFullIndexHealth => ({
+          bytes: 400_000_000,
+          records: 1_000_000,
+          promotionRefusal,
+        }),
+      }) as unknown as NativeMpfOwnerService;
+    const promotion = await supervise(
+      [
+        refusing(undefined),
+        refusing(refusal),
+        refusing(refusal),
+        refusing(undefined),
+      ],
+      NATIVE_MPF_PROMOTION_INDEX_CAP_SOURCE,
+    );
+    expect(Exit.isSuccess(promotion.exit)).toBe(true);
+    expect(promotion.raised).toEqual([
+      undefined,
+      NATIVE_MPF_PROMOTION_INDEX_CAP_EXCEEDED,
+      NATIVE_MPF_PROMOTION_INDEX_CAP_EXCEEDED,
+      undefined,
+    ]);
+    expect(refusal.message).toContain("FULL_INDEX_MAX_BYTES = 536870912");
+    // The owner still serves: its own source raises nothing.
+    const own = await supervise([refusing(refusal)]);
+    expect(own.raised).toEqual([undefined]);
   });
 });

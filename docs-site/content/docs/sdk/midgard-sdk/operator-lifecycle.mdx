@@ -29,9 +29,13 @@ The `operator-lifecycle/` directory holds the exit and recovery side:
 - `status.ts`: `deriveOperatorStatus` answers where a key sits, whether it is
   a duplicate, whether it holds the shift, and when its bond unlocks;
   `assertOperatorNotInDirectory` is the registration skip check.
-- `strike.ts`: `planInactivityTakeover` decides whether the scheduled operator
-  can be struck now, and `buildStrikeInactiveOperatorTxProgram` builds the
-  strike that hands the shift to the next operator.
+- `strike.ts`: `fetchNeglectedUserEventProgram` reads the earliest deposit,
+  withdrawal or tx order the state queue has not delivered
+  (`selectNeglectedUserEvent` picks among candidates read elsewhere);
+  `planInactivityTakeover` decides from that event whether the scheduled
+  operator can be struck now, and answers `no-neglected-event` when there is
+  none; `buildStrikeInactiveOperatorTxProgram` builds the strike, which cites
+  the event and hands the shift to the next operator.
 - `exit.ts`: `deriveRetireOperatorWitnesses` and
   `buildUnsignedRetireOperatorTxProgram` build voluntary and forced
   retirements (`retiredOperatorBondTranche` gives the retired node's

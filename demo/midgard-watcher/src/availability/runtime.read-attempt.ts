@@ -1,13 +1,17 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, Lucid, type LucidEvolution } from "@lucid-evolution/lucid";
+import {
+  Data,
+  Lucid,
+  type LucidEvolution,
+  type Provider,
+} from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
-import { createWatcherLocalKupmiosRawSource } from "../l1/local-kupmios-raw-source.js";
-import { WatcherLocalKupmios } from "../l1/native-reward-account.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import type { WatcherProcessConfig } from "../runtime/process-config.js";
 import { withWatcherRetainedDaReadScope } from "../storage/retained-da-runtime.read-scope.js";
+import type { WatcherAvailabilityL1 } from "./follower-reads.js";
 import { createWatcherAvailabilityObservation } from "./observation.js";
 import { createWatcherL1AvailabilityPayloadSource } from "./published-payload.js";
 import { watcherAvailabilityAttemptProvider } from "./runtime.attempt-provider.js";
@@ -32,6 +36,8 @@ export const watcherAvailabilityAuthenticatedOpenDeadline = (
 export const createWatcherAvailabilityReadAttempt = (input: {
   config: WatcherProcessConfig;
   identity: VerifiedWatcherDeploymentIdentity;
+  l1: WatcherAvailabilityL1 & Readonly<{ provider: Provider }>;
+  confirmationDepth: number;
   deployment: SDK.DaAvailabilityDeployment;
   observation: WatcherAuthenticatedStateQueueObservation;
   baseLucid: LucidEvolution;
@@ -44,30 +50,18 @@ export const createWatcherAvailabilityReadAttempt = (input: {
     input.scope.assertCurrent();
   };
   assertCurrent();
-  const source = createWatcherLocalKupmiosRawSource({
-    watcherConfig: input.config.watcherConfig,
-    deploymentIdentity: input.identity,
-    captureBounds: {
-      signal: input.scope.signal,
-      timeoutMs: Math.max(
-        1,
-        Math.min(
-          input.config.watcherConfig.l1.requestTimeoutMs,
-          Math.ceil(input.scope.remainingMs()),
-        ),
-      ),
-    },
-  });
   const intake = createWatcherAvailabilityObservation({
     identity: input.identity,
-    source,
+    l1: input.l1,
+    confirmationDepth: input.confirmationDepth,
     deployment: input.deployment,
     scope: input.scope,
   });
   const l1Source = createWatcherL1AvailabilityPayloadSource({
     identity: input.identity,
     deployment: input.deployment,
-    rawSource: source,
+    l1: input.l1,
+    minimumConfirmationDepth: input.confirmationDepth,
     lucid: input.baseLucid,
     currentObservation: () => input.observation,
     scope: input.scope,
@@ -95,31 +89,9 @@ export const createWatcherAvailabilityReadAttempt = (input: {
     lucid: (): Promise<LucidEvolution> => {
       assertCurrent();
       instance ??= (async () => {
-        const configured = input.config.watcherConfig.l1.source;
-        if (configured.sourceMode !== "local_node")
-          throw new Error("Attempt requires local node");
-        const kupo = required(
-          configured.queryServices.find(({ kind }) => kind === "kupo"),
-          "Kupo source",
-        );
-        const ogmios = required(
-          configured.queryServices.find(({ kind }) => kind === "ogmios"),
-          "Ogmios source",
-        );
         const provider = watcherAvailabilityAttemptProvider(
           input.scope,
-          input.config.watcherConfig.l1.requestTimeoutMs,
-          (timeoutMs) =>
-            new WatcherLocalKupmios(
-              kupo.endpoint,
-              ogmios.endpoint,
-              {
-                watcherConfig: input.config.watcherConfig,
-                binaryPath: input.config.nativeChainSyncBinaryPath,
-                timeoutMs,
-              },
-              { requestTimeoutMs: timeoutMs },
-            ),
+          input.l1.provider,
         );
         const lucid = await Lucid(provider, input.identity.network, {
           evaluator: createScalusEvaluator(),

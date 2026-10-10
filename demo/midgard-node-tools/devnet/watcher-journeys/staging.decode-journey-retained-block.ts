@@ -67,12 +67,6 @@ export const decodeJourneyRetainedBlock = async (
   };
 };
 
-export type HistoryPreparation = {
-  mode: "history";
-  prepare(input: JourneyFaultPreparationInput): Promise<void>;
-};
-
 export type FaultPreparation = {
-  mode: "fault";
   prepare(input: JourneyFaultPreparationInput): Promise<JourneyPreparedFault>;
 };

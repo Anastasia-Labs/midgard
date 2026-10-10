@@ -1,7 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
-import type { ChainSyncCursor } from "./l1/provider.js";
-
 export type ChainPoint = {
   readonly slot?: number;
   readonly blockHash?: string;
@@ -22,31 +20,6 @@ export type ObservedStateQueueNode = {
   readonly header: Header;
   readonly daAttestation: SDK.DaAvailabilityStateQueueStatus;
   readonly chainPoint: ChainPoint;
-};
-
-/**
- * One atomically observed state-queue view. The confirmed root is retained in
- * the observation so disappearance of a block node can only become a terminal
- * outcome when the root observation itself is final.
- */
-export type ObservedStateQueueSnapshot = {
-  readonly nodes: readonly ObservedStateQueueNode[];
-  readonly confirmedHeaderHash: string;
-  readonly confirmedStateOutRef: string;
-  readonly observedChainPoint: ChainPoint;
-  /**
-   * Block height of the chain tip the snapshot was read at, when the source
-   * can read it at that same point. The depths of the snapshot's outputs are
-   * counted from this tip, and replayed history is judged final against it
-   * too, so one tick judges all finality at one tip.
-   */
-  readonly tipBlockNo?: number;
-  /**
-   * The local node's chain-sync cursor the snapshot was read at. Rollbacks
-   * after it may have undone what the snapshot shows, so a consumer that acts
-   * on the snapshot replays the rollback feed from here.
-   */
-  readonly chainSyncCursor?: ChainSyncCursor;
 };
 
 export type StateQueueHeaderStatus =

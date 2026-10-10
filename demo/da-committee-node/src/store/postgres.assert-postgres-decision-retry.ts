@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from "pg";
+import { type PoolClient } from "pg";
 
 import type {
   DaPayloadRecord,
@@ -13,9 +13,9 @@ import {
   mergeL1SourceState,
   parseL1SourceState,
   parseStoredJson,
-  UNKNOWN_STATE_QUEUE_STATUS,
 } from "../store.js";
 import type { PostgresStoreInstanceLockEvents } from "./postgres.instance-lock.js";
+import type { CommitteeStoreOpenChecks } from "./postgres.open-checks.js";
 
 export type JsonRecordRow = {
   readonly record: unknown;
@@ -23,7 +23,6 @@ export type JsonRecordRow = {
   readonly evidence_hash?: unknown;
   readonly header_hash?: unknown;
   readonly commitment_digest?: unknown;
-  readonly conflicting_header_hash?: unknown;
   readonly conflicting_commitment_digest?: unknown;
   readonly reporter_peer_id?: unknown;
   readonly signer_index?: unknown;
@@ -46,7 +45,10 @@ export const COMMITTEE_TABLES = [
 ] as const;
 
 /** The instance lock's events; see `PostgresStoreInstanceLock`. */
-export type PostgresCommitteeStoreOptions = PostgresStoreInstanceLockEvents;
+export type PostgresCommitteeStoreOptions = PostgresStoreInstanceLockEvents & {
+  /** Checked, and the retirement floor re-bound, as the store opens. */
+  readonly openChecks?: CommitteeStoreOpenChecks;
+};
 
 export const ensureL1SourceStateRow = async (
   client: PoolClient,
@@ -89,22 +91,6 @@ export const mergeLockedL1SourceState = async (
   return merged;
 };
 
-export const upsertRecordWithPool = async <T>(
-  pool: Pool,
-  tableName: string,
-  headerHash: string,
-  record: T,
-): Promise<void> => {
-  await pool.query(
-    `INSERT INTO ${tableName} (header_hash, record, updated_at)
-     VALUES ($1, $2::jsonb, NOW())
-     ON CONFLICT (header_hash) DO UPDATE SET
-       record = EXCLUDED.record,
-       updated_at = NOW()`,
-    [headerHash, encodeRecord(record)],
-  );
-};
-
 export const upsertRecordWithClient = async <T>(
   client: PoolClient,
   tableName: string,
@@ -125,19 +111,35 @@ export const upsertSignatureWithClient = async (
   client: PoolClient,
   record: DaSignatureRecordV1,
 ): Promise<void> => {
+  // The member's own signature is its signed decision (class B): the
+  // header's end time is kept in its row, for the obligations projection.
+  const endTimeMs =
+    record.source === "local" ? signedEndTimeMs(record).toString() : null;
   await client.query(
     `INSERT INTO committee_da_signatures
-       (header_hash, commitment_digest, signer_index, record, updated_at)
-     VALUES ($1, $2, $3, $4::jsonb, NOW())
+       (header_hash, commitment_digest, signer_index, record, end_time_ms, updated_at)
+     VALUES ($1, $2, $3, $4::jsonb, $5, NOW())
      ON CONFLICT (header_hash, commitment_digest, signer_index) DO UPDATE SET
-       record = EXCLUDED.record, updated_at = NOW()`,
+       record = EXCLUDED.record,
+       end_time_ms = EXCLUDED.end_time_ms,
+       updated_at = NOW()`,
     [
       record.headerHash,
       record.availabilityCommitmentDigest,
       record.signerIndex,
       encodeRecord(record),
+      endTimeMs,
     ],
   );
+};
+
+const signedEndTimeMs = (record: DaSignatureRecordV1): bigint => {
+  const text = record.validation.l1Header.endTime;
+  if (!/^(0|[1-9][0-9]*)$/u.test(text))
+    throw new Error(
+      `local DA signature for ${record.headerHash} has no end time in milliseconds`,
+    );
+  return BigInt(text);
 };
 
 export const queryOne = async <T>(
@@ -211,7 +213,7 @@ export const assertConflictEvidenceRowIdentity = (
     row.evidence_hash !== record.evidenceHash ||
     row.header_hash !== record.headerHash ||
     row.commitment_digest !== record.commitmentDigest ||
-    row.conflicting_header_hash !== record.conflictingHeaderHash ||
+    record.conflictingHeaderHash !== record.headerHash ||
     row.conflicting_commitment_digest !== record.conflictingCommitmentDigest ||
     row.signer_index !== record.signerIndex ||
     row.reporter_peer_id !== record.reporterPeerId
@@ -252,9 +254,6 @@ export const assertPostgresDecisionRetry = (
     existing.headerHash !== next.headerHash ||
     existing.stateQueueOutRef !== next.stateQueueOutRef ||
     existing.signerIndex !== next.signerIndex ||
-    existing.slot !== next.slot ||
-    existing.blockHash !== next.blockHash ||
-    existing.finalized !== next.finalized ||
     existing.createdAt !== next.createdAt ||
     next.attemptCount !== existing.attemptCount + 1
   ) {
@@ -274,11 +273,7 @@ export const assertPostgresDecisionSourceState = (
     sourceState.sourceMode !== effect.sourceMode ||
     sourceState.network !== effect.network ||
     observation?.stateQueueOutRef !== effect.stateQueueOutRef ||
-    observation.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS ||
-    observation.finalized !== true ||
-    observation.hasPersistedDecision !== true ||
-    observation.slot !== effect.slot ||
-    observation.blockHash !== effect.blockHash
+    observation.hasPersistedDecision !== true
   ) {
     throw new Error("decision outbox lacks matching durable L1 observation");
   }

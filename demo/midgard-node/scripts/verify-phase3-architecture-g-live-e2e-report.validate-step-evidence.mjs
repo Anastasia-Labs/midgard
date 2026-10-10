@@ -14,7 +14,7 @@ export const validateStepEvidence = (stepId, evidence, context, reasons) => {
         evidence?.runMode !== "fresh" ||
         evidence?.engine !== "architecture_g" ||
         evidence?.localUplc !== true ||
-        evidence?.provider !== "Kupmios" ||
+        evidence?.provider !== "l1_node" ||
         evidence?.cleanDeployment !== true ||
         !ready(evidence?.readiness)
       ) {
@@ -159,7 +159,7 @@ export const validateStepEvidence = (stepId, evidence, context, reasons) => {
         evidence.ownerEpochAfter === evidence.ownerEpochBefore ||
         evidence?.authoritativeMarkerAfter !== evidence?.candidateRoot ||
         evidence?.replayedCandidateRoot !== evidence?.candidateRoot ||
-        evidence?.journalStatus !== "finalized" ||
+        evidence?.journalStatus !== "locally_applied" ||
         evidence?.l2Status !== "committed" ||
         evidence?.auditDivergence !== 0 ||
         evidence?.recoveryLogMarker !==

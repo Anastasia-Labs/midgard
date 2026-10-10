@@ -20,6 +20,7 @@ import {
   sleep,
   usablePeerSignature,
 } from "./on-chain.on-chain-lifecycle-coordinator-deps.js";
+import { UnresolvedSubmissions } from "./on-chain.unresolved-submissions.js";
 import { planDaAttestationLifecycle } from "./planner.js";
 import { DaBondPoolApplyBackoffError } from "./pool-backoff.js";
 import type { DaBondPoolCheck } from "./pool-monitor.js";
@@ -31,6 +32,7 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
   private readonly deps: OnChainLifecycleCoordinatorDeps;
   private readonly headerLocks = new Map<string, Promise<void>>();
   private readonly lastErrors = new Map<string, string>();
+  private readonly unresolved = new UnresolvedSubmissions();
   private lastSingleKeyNoticeAt: number | undefined;
 
   constructor(deps: OnChainLifecycleCoordinatorDeps) {
@@ -147,12 +149,38 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
 
   private async reconcileOnce(args: RequiredReconcileArgs): Promise<void> {
     const { context } = args;
-    let candidates = await this.fetchCandidates(context.headerHash);
-    let action = await this.plan(args, candidates);
-    action = await this.waitForLeadership(args, action);
+    const planned = await this.unresolved.plan(context.headerHash, {
+      submitter: this.deps.submitter,
+      plan: async () => {
+        const candidates = await this.fetchCandidates(context.headerHash);
+        return { candidates, action: await this.plan(args, candidates) };
+      },
+      planOnceShown: (landed) =>
+        this.fetchCandidatesUntilPlanChanges(args, landed),
+      record: (landed) =>
+        this.recordSubmission(
+          context,
+          landed.txKind,
+          landed.txHash,
+          landed.inputsUsed,
+        ),
+    });
+    if (planned === undefined) {
+      return;
+    }
+    let candidates = planned.candidates;
+    let action = await this.waitForLeadership(args, planned.action);
 
     if (action.kind === "init") {
-      const result = await this.deps.submitter.initAttestation(context);
+      const result = await this.unresolved.submitting(
+        context.headerHash,
+        {
+          txKind: "init",
+          action,
+          inputsUsed: [context.validation.stateQueueOutRef],
+        },
+        () => this.deps.submitter.initAttestation(context),
+      );
       if (result.status === "already_attested") {
         return;
       }
@@ -171,12 +199,18 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
 
     if (action.kind === "add_signatures") {
       const candidate = requireCandidate(candidates, action.candidateOutRef);
-      const result = await this.deps.submitter.addSignatures({
-        record: context,
-        candidate,
-        packedWitnessesHex: action.packedWitnessesHex,
-        signerIndexes: action.signerIndexes,
-      });
+      const signing = action;
+      const result = await this.unresolved.submitting(
+        context.headerHash,
+        { txKind: "add_signatures", action, inputsUsed: [candidate.outRef] },
+        () =>
+          this.deps.submitter.addSignatures({
+            record: context,
+            candidate,
+            packedWitnessesHex: signing.packedWitnessesHex,
+            signerIndexes: signing.signerIndexes,
+          }),
+      );
       if (result.status === "already_attested") {
         return;
       }
@@ -199,10 +233,19 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
 
     if (action.kind === "apply") {
       const candidate = requireCandidate(candidates, action.candidateOutRef);
-      const result = await this.deps.submitter.applyAttestation({
-        record: context,
-        candidate,
-      });
+      const result = await this.unresolved.submitting(
+        context.headerHash,
+        {
+          txKind: "apply",
+          action,
+          inputsUsed: [candidate.outRef, context.validation.stateQueueOutRef],
+        },
+        () =>
+          this.deps.submitter.applyAttestation({
+            record: context,
+            candidate,
+          }),
+      );
       if (result.status === "already_attested") {
         return;
       }

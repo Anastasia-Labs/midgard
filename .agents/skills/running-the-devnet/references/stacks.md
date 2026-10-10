@@ -6,7 +6,7 @@ unless a block says otherwise.
 ## Phase4 isolated devnet
 
 A private Cardano chain (one pool, network magic 424242 by default) with
-Ogmios, Kupo and Postgres, used by the pipelined-commit process gate. Its
+Ogmios, Kupo and Postgres, used by the journal-kill recovery process gate. Its
 README is the authority:
 [`demo/midgard-node-tools/devnet/phase4-process/README.md`](../../../../demo/midgard-node-tools/devnet/phase4-process/README.md).
 Devnet rules for this directory are in
@@ -66,7 +66,7 @@ that every reset restores.
 ### Run the acceptance gate
 
 The command, with the environment it needs, is in the README section
-"Acceptance reset command" (`pnpm run accept:phase4:pipelined-process` from
+"Acceptance reset command" (`pnpm run accept:phase4:journal-kill-recovery` from
 `demo/midgard-node-tools`). It starts its own `midgard-node listen` processes
 and waits on their `/readyz`.
 
@@ -96,7 +96,6 @@ crashed container stays down and keeps its log.
 - Because that drift check binds the source and `dist` of both `midgard-node`
   and `midgard-node-tools`, a code change needs a **new run**: generate,
   bootstrap and snapshot again in a fresh directory.
-- `t1-recover.sh` is the only accepted short-rollback command (README).
 - There is no teardown script. To discard a run, stop its compose project
   (`... compose.yaml down` with `run.env` sourced) and remove the run directory
   as a whole. Removing only `postgres/`, `kupo/` or `cardano/` would pair new
@@ -148,7 +147,7 @@ port or `COMPOSE_PROJECT_NAME` already set in the environment or `.env` wins.
 
 | Step                    | Command                                                                      |
 | ----------------------- | ---------------------------------------------------------------------------- |
-| L1 and Postgres first   | `docker compose $F up -d postgres cardano-node-ogmios kupo`                  |
+| L1 and Postgres first   | `docker compose $F up -d postgres cardano-node cardano-config-export`        |
 | Check health            | `docker compose $F ps`                                                       |
 | Schema                  | `docker compose $F run --rm midgard-node-migrate`                            |
 | Full stack              | `docker compose $F up -d`                                                    |
@@ -156,10 +155,9 @@ port or `COMPOSE_PROJECT_NAME` already set in the environment or `.env` wins.
 
 - `up` runs `midgard-node-migrate` first and starts `midgard-node` only after
   it exits successfully (`depends_on: service_completed_successfully`).
-- `midgard-node` waits for healthy Postgres, Ogmios and Kupo, and its own
-  healthcheck is `/readyz` (5 s interval, 60 retries, 30 s start period).
-- Kupo's healthcheck passes only on HTTP 200, not 202, so the node does not
-  start against an index that is still replaying.
+- `midgard-node` waits for healthy Postgres and cardano-node and the finished
+  config export, and its own healthcheck is `/readyz` (5 s interval, 60
+  retries, 30 s start period).
 - `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
   and the DA producer manifest (README step 6).
 - `midgard-node` and Postgres have `restart: always`. A node that crashes on

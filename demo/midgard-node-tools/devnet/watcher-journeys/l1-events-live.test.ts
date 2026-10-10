@@ -1,11 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as pause } from "node:timers/promises";
 
 import {
   bindFraudProofWorkflowDeployment,
-  createLocalKupmiosFraudProofRawL1SnapshotAuthority,
-  createLocalKupmiosHttpOgmiosRawSource,
   resolveProverSigner,
   TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
 } from "@al-ft/midgard-fault-proofs";
@@ -20,6 +17,12 @@ import {
 import { expect, it } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
+import {
+  journeyFollowedScripts,
+  journeyFollowerAuthority,
+  journeyFollowerNode,
+  openJourneyFollowerL1,
+} from "./journey-follower-l1.js";
 import { loadJourneyContext } from "./live-context.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
@@ -55,85 +58,38 @@ it.skipIf(runDirectory === undefined).each([false, true])(
       proverCredential: signer.paymentKeyHash,
       stepDatumSchemas: TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
     });
-    if (config.l1.source.sourceMode !== "local_node")
-      throw new Error(
-        "Event probe requires the actual local-node configuration",
-      );
-    const { queryServices } = config.l1.source;
-    const endpoint = (kind: "kupo" | "ogmios") => {
-      const service = queryServices.find((service) => service.kind === kind);
-      if (service === undefined) throw new Error(`Missing ${kind} endpoint`);
-      return service.endpoint;
-    };
-    const responses: {
-      url: string;
-      status: number;
-      checkpoint: string | null;
-      etag: string | null;
-      elapsedMs: number;
-    }[] = [];
     const started = performance.now();
-    const source = createLocalKupmiosHttpOgmiosRawSource({
-      sourceId: "journey-trace-event-acquisition",
-      kupoHttpUrl: endpoint("kupo"),
-      ogmiosUrl: endpoint("ogmios"),
-      releaseFinality: binding.releaseFinality,
-      timeoutMs: config.l1.requestTimeoutMs,
-      fetchImpl: async (input, init) => {
-        const response = await fetch(input, init);
-        responses.push({
-          url: String(input),
-          status: response.status,
-          checkpoint: response.headers.get("x-most-recent-checkpoint"),
-          etag: response.headers.get("etag"),
-          elapsedMs: performance.now() - started,
-        });
-        return response;
-      },
+    const follower = await openJourneyFollowerL1({
+      authority: journeyFollowerAuthority(deployment.manifest),
+      followedScripts: journeyFollowedScripts(deployment),
+      node: journeyFollowerNode(context),
+      origin: config.l1.origin,
+      automaticRecoveryMaxDepth:
+        binding.releaseFinality.policy.automaticRecoveryMaxDepth,
+      storeDirectory: directory,
     });
-    let boundaryReads = 0;
-    let advancedHead: { previous: string; current: string } | undefined;
-    const observedSource = {
-      ...source,
-      readBoundary: async () => {
-        const boundary = await source.readBoundary();
-        boundaryReads += 1;
-        if (advanceHead && boundaryReads === 1) {
-          const previous = responses.at(-1)?.etag;
-          if (previous == null)
-            throw new Error("No actual boundary response head");
-          const deadline = performance.now() + 120_000;
-          // Hold the captured boundary until the real producer advances. Every
-          // response remains authentic; this controls only the read interleaving.
-          for (;;) {
-            const response = await fetch(`${endpoint("kupo")}/checkpoints`, {
-              signal: AbortSignal.timeout(config.l1.requestTimeoutMs),
-            });
-            await response.arrayBuffer();
-            const current = response.headers.get("etag");
-            if (response.ok && current !== null && current !== previous) {
-              advancedHead = { previous, current };
-              break;
-            }
-            if (performance.now() >= deadline)
-              throw new Error(
-                "Real producer did not advance within the probe window",
-              );
-            await pause(500);
-          }
-        }
-        return boundary;
-      },
-    };
+    const capture = async () =>
+      await captureTransitionTraceL1Events({
+        binding,
+        authority: follower.l1
+          .source("journey-trace-event-acquisition")
+          .snapshotAuthority({
+            releaseFinality: binding.releaseFinality,
+            observationDepth: "inclusion",
+          }),
+      });
+    let advancedHead: { previous: number; current: number } | undefined;
     let outcome: unknown;
     try {
-      const events = await captureTransitionTraceL1Events({
-        binding,
-        authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
-          source: observedSource,
-          releaseFinality: binding.releaseFinality,
-        }),
-      });
+      let events = await capture();
+      if (advanceHead) {
+        // Capture again once the real producer has added a block: the
+        // follower's facts moved, and the capture still admits the event.
+        const previous = follower.height();
+        await follower.atTip(previous);
+        advancedHead = { previous, current: follower.height() };
+        events = await capture();
+      }
       const admitted = requireTransitionTraceL1Events(events);
       expect(
         admitted.events.some(
@@ -145,7 +101,7 @@ it.skipIf(runDirectory === undefined).each([false, true])(
       ).toBe(true);
       if (advanceHead) {
         expect(advancedHead).toBeDefined();
-        expect(boundaryReads).toBeGreaterThan(3);
+        expect(advancedHead!.current).toBeGreaterThan(advancedHead!.previous);
       }
       outcome = { status: "passed", events };
       console.info("Actual trace event acquisition passed", outcome);
@@ -157,6 +113,7 @@ it.skipIf(runDirectory === undefined).each([false, true])(
       };
       throw error;
     } finally {
+      await follower.close();
       await writeJourneyArtifact(
         join(
           runDirectory!,
@@ -169,9 +126,7 @@ it.skipIf(runDirectory === undefined).each([false, true])(
           observedAt: new Date().toISOString(),
           durationMs: performance.now() - started,
           outcome,
-          boundaryReads,
           advancedHead,
-          responses,
         },
       );
     }

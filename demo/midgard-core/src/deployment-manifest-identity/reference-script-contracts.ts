@@ -110,18 +110,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofMissingSignatureStep03",
     "V1 fraud-proof missing-signature step-04":
       "fraudProofMissingSignatureStep04",
-    "V1 fraud-proof missing-native-script-tx step-01":
-      "fraudProofMissingNativeScriptTx",
-    "V1 fraud-proof missing-native-script-tx step-02":
-      "fraudProofMissingNativeScriptTxStep02",
-    "V1 fraud-proof missing-native-script-tx step-03":
-      "fraudProofMissingNativeScriptTxStep03",
-    "V1 fraud-proof missing-native-script-tx step-04":
-      "fraudProofMissingNativeScriptTxStep04",
-    "V1 fraud-proof missing-native-script-tx step-05":
-      "fraudProofMissingNativeScriptTxStep05",
-    "V1 fraud-proof missing-native-script-tx step-06":
-      "fraudProofMissingNativeScriptTxStep06",
     "V1 fraud-proof withdrawn-reference-input step-01":
       "fraudProofWithdrawnReferenceInput",
     "V1 fraud-proof withdrawn-reference-input step-02":
@@ -149,10 +137,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofWithdrawalMistagStep05",
     "V1 fraud-proof double-withdraw step-01": "fraudProofDoubleWithdraw",
     "V1 fraud-proof double-withdraw step-02": "fraudProofDoubleWithdrawStep02",
-    "V1 fraud-proof cross-block-duplicate-event step-01":
-      "fraudProofCrossBlockDuplicateEvent",
-    "V1 fraud-proof cross-block-duplicate-event step-02":
-      "fraudProofCrossBlockDuplicateEventStep02",
     "V1 fraud-proof l2-tx-mistag step-01": "fraudProofL2TxMistag",
     "V1 fraud-proof l2-tx-mistag step-02": "fraudProofL2TxMistagStep02",
     "V1 fraud-proof withdrawn-input step-01": "fraudProofWithdrawnInput",
@@ -273,24 +257,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 fraud-proof invalid-signature step-01": "fraudProofInvalidSignature",
     "V1 fraud-proof invalid-signature step-02":
       "fraudProofInvalidSignatureStep02",
-    "V1 fraud-proof missing-native-script-tx step-07":
-      "fraudProofMissingNativeScriptTxStep07",
-    "V1 fraud-proof missing-native-script-tx step-08":
-      "fraudProofMissingNativeScriptTxStep08",
-    "V1 fraud-proof missing-native-script-utxo step-01":
-      "fraudProofMissingNativeScriptUtxo",
-    "V1 fraud-proof missing-native-script-utxo step-02":
-      "fraudProofMissingNativeScriptUtxoStep02",
-    "V1 fraud-proof missing-native-script-utxo step-03":
-      "fraudProofMissingNativeScriptUtxoStep03",
-    "V1 fraud-proof missing-native-script-utxo step-04":
-      "fraudProofMissingNativeScriptUtxoStep04",
-    "V1 fraud-proof missing-native-script-utxo step-05":
-      "fraudProofMissingNativeScriptUtxoStep05",
-    "V1 fraud-proof missing-native-script-utxo step-06":
-      "fraudProofMissingNativeScriptUtxoStep06",
-    "V1 fraud-proof missing-native-script-utxo step-07":
-      "fraudProofMissingNativeScriptUtxoStep07",
     "V1 fraud-proof native-script-invalid step-01":
       "fraudProofNativeScriptInvalid",
     "V1 fraud-proof native-script-invalid step-02":

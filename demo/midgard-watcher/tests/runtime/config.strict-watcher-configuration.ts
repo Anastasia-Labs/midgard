@@ -9,11 +9,9 @@ import {
   watcherConfigDiagnostic,
 } from "../../src/runtime/config.js";
 import {
-  OPERATOR_ID_A,
   PEER_A,
   rejected,
   validConfig,
-  validLocalNodeConfig,
 } from "./config.explicit-local-devnet-configuration.js";
 
 describe("strict watcher configuration", () => {
@@ -27,15 +25,7 @@ describe("strict watcher configuration", () => {
       l1: {
         requestTimeoutMs: 10_000,
         maxConcurrency: 8,
-        finality: {
-          depth: 15,
-          rollback: {
-            beforeFinality: "rewind",
-            afterFinality: "quarantine",
-            maxDepth: 15,
-            postFinalityRecoveryMaxDepth: 2_160,
-          },
-        },
+        finality: { depth: 15 },
       },
       storage: {
         driver: "sqlite",
@@ -47,17 +37,11 @@ describe("strict watcher configuration", () => {
       },
     });
     expect(parseWatcherConfig(parsed)).toBe(parsed);
-    expect(parsed.l1.source.sourceMode).toBe("external_providers");
-    if (parsed.l1.source.sourceMode !== "external_providers") {
-      throw new Error("Expected external provider configuration");
-    }
-    expect(parsed.l1.source.providers.map(({ identity }) => identity)).toEqual([
-      "provider-a",
-      "provider-b",
-    ]);
+    expect(parsed.l1.source).toEqual(validConfig().l1.source);
     expect(Object.isFrozen(parsed)).toBe(true);
     expect(Object.isFrozen(parsed.l1.source)).toBe(true);
-    expect(Object.isFrozen(parsed.l1.source.providers)).toBe(true);
+    expect(Object.isFrozen(parsed.l1.source.chainSync)).toBe(true);
+    expect(Object.isFrozen(parsed.l1.finality)).toBe(true);
     expect(Object.isFrozen(parsed.proverWallet.keySource)).toBe(true);
     expect(Object.isFrozen(parsed.storage.rollbackAuthorityKeySource)).toBe(
       true,
@@ -124,63 +108,6 @@ describe("strict watcher configuration", () => {
     );
   });
 
-  it("requires two independent external providers in every watcher mode", () => {
-    const input = validConfig();
-    input.mode = "development";
-    input.l1.source.providers = [
-      {
-        identity: "local-provider",
-        operatorIdentitySha256: OPERATOR_ID_A,
-        endpoint: "http://127.0.0.1:1442",
-      },
-    ];
-
-    rejected(
-      () => parseWatcherConfig(input),
-      "out_of_bounds",
-      "$.l1.source.providers",
-    );
-  });
-
-  it("requires HTTPS transport binding for development external providers", () => {
-    const input = validConfig();
-    input.mode = "development";
-    input.l1.source.providers[0]!.endpoint = "http://127.0.0.1:1442";
-
-    rejected(
-      () => parseWatcherConfig(input),
-      "invalid_endpoint",
-      "$.l1.source.providers[0].endpoint",
-    );
-  });
-
-  it("admits the exact local-node/Kupmios topology and snapshots it", () => {
-    const input = validLocalNodeConfig();
-    const parsed = parseWatcherConfig(input);
-    expect(parsed.l1.source).toEqual(input.l1.source);
-    expect(Object.isFrozen(parsed.l1.source)).toBe(true);
-    if (parsed.l1.source.sourceMode !== "local_node") {
-      throw new Error("expected admitted local-node source");
-    }
-    expect(Object.isFrozen(parsed.l1.source.queryServices)).toBe(true);
-  });
-
-  it("admits local Kupmios without requiring db-sync", () => {
-    const input = validLocalNodeConfig();
-    input.l1.source.queryServices = input.l1.source.queryServices.filter(
-      (service) => service.kind !== "db_sync",
-    );
-
-    const parsed = parseWatcherConfig(input);
-    expect(parsed.l1.source.sourceMode).toBe("local_node");
-    if (parsed.l1.source.sourceMode !== "local_node") {
-      throw new Error("expected admitted local-node source");
-    }
-    expect(
-      parsed.l1.source.queryServices.map((service) => service.kind),
-    ).toEqual(["ogmios", "kupo"]);
-  });
-
   it("accepts every adjacent numeric boundary", () => {
     const minimum = validConfig();
     minimum.l1.requestTimeoutMs = WATCHER_CONFIG_BOUNDS.requestTimeoutMs.min;
@@ -188,8 +115,6 @@ describe("strict watcher configuration", () => {
     minimum.l1.maxConcurrency = WATCHER_CONFIG_BOUNDS.concurrency.min;
     minimum.da.maxConcurrency = WATCHER_CONFIG_BOUNDS.concurrency.min;
     minimum.l1.finality.depth = WATCHER_CONFIG_BOUNDS.finalityDepth.min;
-    minimum.l1.finality.rollback.maxDepth =
-      WATCHER_CONFIG_BOUNDS.rollbackDepth.min;
     minimum.deadlines = {
       daFetchMs: WATCHER_CONFIG_BOUNDS.deadlineMs.min,
       daPublishMs: WATCHER_CONFIG_BOUNDS.deadlineMs.min,
@@ -206,8 +131,6 @@ describe("strict watcher configuration", () => {
     maximum.l1.maxConcurrency = WATCHER_CONFIG_BOUNDS.concurrency.max;
     maximum.da.maxConcurrency = WATCHER_CONFIG_BOUNDS.concurrency.max;
     maximum.l1.finality.depth = WATCHER_CONFIG_BOUNDS.finalityDepth.max;
-    maximum.l1.finality.rollback.maxDepth =
-      WATCHER_CONFIG_BOUNDS.rollbackDepth.max;
     maximum.deadlines = {
       daFetchMs: WATCHER_CONFIG_BOUNDS.deadlineMs.max,
       daPublishMs: WATCHER_CONFIG_BOUNDS.deadlineMs.max,
@@ -217,10 +140,9 @@ describe("strict watcher configuration", () => {
     expect(parseWatcherConfig(maximum).l1.maxConcurrency).toBe(
       WATCHER_CONFIG_BOUNDS.concurrency.max,
     );
-    expect(
-      parseWatcherConfig(maximum).l1.finality.rollback
-        .postFinalityRecoveryMaxDepth,
-    ).toBe(WATCHER_CONFIG_BOUNDS.postFinalityRecoveryDepth.max);
+    expect(parseWatcherConfig(maximum).l1.finality.depth).toBe(
+      WATCHER_CONFIG_BOUNDS.finalityDepth.max,
+    );
   });
 
   it.each([
@@ -261,6 +183,13 @@ describe("strict watcher configuration", () => {
       },
     ],
     [
+      "finality over max",
+      "out_of_bounds",
+      (input: ReturnType<typeof validConfig>) => {
+        input.l1.finality.depth = WATCHER_CONFIG_BOUNDS.finalityDepth.max + 1;
+      },
+    ],
+    [
       "deadline over max",
       "out_of_bounds",
       (input: ReturnType<typeof validConfig>) => {
@@ -291,29 +220,16 @@ describe("strict watcher configuration", () => {
     },
   );
 
-  it("requires rollback depth to remain inside finality depth", () => {
+  it("refuses the deleted rollback policy keys under finality", () => {
     const input = validConfig();
-    input.l1.finality.depth = 14;
-    input.l1.finality.rollback.maxDepth = 15;
-
-    rejected(
-      () => parseWatcherConfig(input),
-      "out_of_bounds",
-      "$.l1.finality.rollback.maxDepth",
-    );
-  });
-
-  it("keeps pending rewind depth distinct from the Cardano-k post-finality recovery cap", () => {
-    const input = validConfig();
-    input.l1.finality.depth = 10;
-    input.l1.finality.rollback.maxDepth = 4;
-
-    expect(parseWatcherConfig(input).l1.finality.rollback).toEqual({
-      beforeFinality: "rewind",
-      afterFinality: "quarantine",
-      maxDepth: 4,
-      postFinalityRecoveryMaxDepth: 2_160,
+    Object.assign(input.l1.finality, {
+      rollback: {
+        beforeFinality: "rewind",
+        afterFinality: "quarantine",
+        maxDepth: 15,
+      },
     });
+    rejected(() => parseWatcherConfig(input), "unknown_field", "$.l1.finality");
   });
 
   it("requires deadlines to cover their corresponding request timeout", () => {
@@ -336,7 +252,7 @@ describe("strict watcher configuration", () => {
     );
   });
 
-  it("requires exact target network, mode, schema, and rollback literals", () => {
+  it("requires exact target network, mode and schema literals", () => {
     const mutations: ReadonlyArray<
       readonly [string, (input: ReturnType<typeof validConfig>) => void]
     > = [
@@ -359,18 +275,6 @@ describe("strict watcher configuration", () => {
           input.targetNetwork = "preprod";
         },
       ],
-      [
-        "pre-finality policy",
-        (input) => {
-          input.l1.finality.rollback.beforeFinality = "ignore";
-        },
-      ],
-      [
-        "post-finality policy",
-        (input) => {
-          input.l1.finality.rollback.afterFinality = "rewind";
-        },
-      ],
     ];
 
     for (const [, mutate] of mutations) {
@@ -378,77 +282,6 @@ describe("strict watcher configuration", () => {
       mutate(input);
       rejected(() => parseWatcherConfig(input), "invalid_value");
     }
-  });
-
-  it("requires two operationally distinct external providers in acceptance mode", () => {
-    const one = validConfig();
-    one.l1.source.providers = [one.l1.source.providers[0]!];
-    rejected(
-      () => parseWatcherConfig(one),
-      "out_of_bounds",
-      "$.l1.source.providers",
-    );
-
-    const identityAlias = validConfig();
-    identityAlias.l1.source.providers[1]!.identity = "provider-a";
-    rejected(
-      () => parseWatcherConfig(identityAlias),
-      "provider_alias",
-      "$.l1.source.providers[1]",
-    );
-
-    const operatorAlias = validConfig();
-    operatorAlias.l1.source.providers[1]!.operatorIdentitySha256 =
-      OPERATOR_ID_A;
-    rejected(
-      () => parseWatcherConfig(operatorAlias),
-      "provider_alias",
-      "$.l1.source.providers[1]",
-    );
-
-    const endpointAlias = validConfig();
-    endpointAlias.l1.source.providers[1]!.endpoint =
-      "https://CARDANO-A.EXAMPLE:443/";
-    rejected(
-      () => parseWatcherConfig(endpointAlias),
-      "provider_alias",
-      "$.l1.source.providers[1]",
-    );
-
-    const trailingDotAlias = validConfig();
-    trailingDotAlias.l1.source.providers[1]!.endpoint =
-      "https://cardano-a.example./";
-    rejected(
-      () => parseWatcherConfig(trailingDotAlias),
-      "provider_alias",
-      "$.l1.source.providers[1]",
-    );
-
-    const malformedOperatorIdentity = validConfig();
-    malformedOperatorIdentity.l1.source.providers[0]!.operatorIdentitySha256 =
-      "11".repeat(31);
-    rejected(
-      () => parseWatcherConfig(malformedOperatorIdentity),
-      "invalid_value",
-      "$.l1.source.providers[0].operatorIdentitySha256",
-    );
-  });
-
-  it.each([
-    "http://cardano-a.example",
-    "https://localhost:1442",
-    "https://127.0.0.1:1442",
-    "https://user:password@cardano-a.example",
-    "https://cardano-a.example?token=inline",
-    "https://cardano-a.example#fragment",
-  ])("rejects an unsafe acceptance provider endpoint: %s", (endpoint) => {
-    const input = validConfig();
-    input.l1.source.providers[0]!.endpoint = endpoint;
-    rejected(
-      () => parseWatcherConfig(input),
-      "invalid_endpoint",
-      "$.l1.source.providers[0].endpoint",
-    );
   });
 
   it("rejects unknown, legacy, and mixed L1 source-mode shapes", () => {
@@ -461,32 +294,32 @@ describe("strict watcher configuration", () => {
       "$.l1.source.sourceMode",
     );
 
-    const legacy = validConfig();
-    const legacyL1 = legacy.l1 as unknown as Record<string, unknown>;
-    const externalSource = legacyL1.source as Record<string, unknown>;
-    delete legacyL1.source;
-    legacyL1.providers = externalSource.providers;
-    rejected(() => parseWatcherConfig(legacy), "unknown_field", "$.l1");
-
-    const mixedExternal = validConfig();
-    Object.assign(mixedExternal.l1.source, { queryServices: [] });
+    const externalProviders = validConfig();
+    (externalProviders.l1.source as Record<string, unknown>).sourceMode =
+      "external_providers";
     rejected(
-      () => parseWatcherConfig(mixedExternal),
-      "unknown_field",
-      "$.l1.source",
+      () => parseWatcherConfig(externalProviders),
+      "invalid_value",
+      "$.l1.source.sourceMode",
     );
 
-    const mixedLocal = validLocalNodeConfig();
-    Object.assign(mixedLocal.l1.source, {
-      providers: validConfig().l1.source.providers,
+    const queryServices = validConfig();
+    Object.assign(queryServices.l1.source, {
+      queryServices: [
+        {
+          kind: "kupo",
+          identity: "local-kupo",
+          endpoint: "http://127.0.0.1:1442",
+        },
+      ],
     });
     rejected(
-      () => parseWatcherConfig(mixedLocal),
+      () => parseWatcherConfig(queryServices),
       "unknown_field",
       "$.l1.source",
     );
 
-    const missingChainSync = validLocalNodeConfig();
+    const missingChainSync = validConfig();
     delete (missingChainSync.l1.source as Record<string, unknown>).chainSync;
     rejected(
       () => parseWatcherConfig(missingChainSync),
@@ -496,14 +329,9 @@ describe("strict watcher configuration", () => {
   });
 
   it("rejects every hostile local-node authority mutation", () => {
-    const inputs = [
-      validLocalNodeConfig(),
-      validLocalNodeConfig(),
-      validLocalNodeConfig(),
-    ];
+    const inputs = [validConfig(), validConfig()];
     inputs[0]!.l1.source.authorityNodeId = "Watcher Node";
     inputs[1]!.l1.source.chainSync.socketPath = "/tmp/node.socket";
-    inputs[2]!.l1.source.queryServices[0]!.endpoint = "http://ogmios.example";
     rejected(
       () => parseWatcherConfig(inputs[0]),
       "invalid_value",
@@ -513,11 +341,6 @@ describe("strict watcher configuration", () => {
       () => parseWatcherConfig(inputs[1]),
       "unsafe_path",
       "$.l1.source.chainSync.socketPath",
-    );
-    rejected(
-      () => parseWatcherConfig(inputs[2]),
-      "invalid_endpoint",
-      "$.l1.source.queryServices[0].endpoint",
     );
   });
 
@@ -609,7 +432,7 @@ describe("strict watcher configuration", () => {
   });
 
   it("rejects a configurable action depth while preserving the release finality policy", () => {
-    const input = validLocalNodeConfig();
+    const input = validConfig();
     const finality = parseWatcherConfig(input).l1.finality;
     Object.assign(input.l1.finality, { actionDepth: 1 });
     rejected(() => parseWatcherConfig(input), "unknown_field", "$.l1.finality");
@@ -624,8 +447,9 @@ describe("strict watcher configuration", () => {
       ["root", (input) => Object.assign(input, { compatibility: true })],
       ["L1", (input) => Object.assign(input.l1, { fallback: true })],
       [
-        "provider",
-        (input) => Object.assign(input.l1.source.providers[0]!, { alias: "a" }),
+        "chain sync",
+        (input) =>
+          Object.assign(input.l1.source.chainSync, { fallbackSocket: "a" }),
       ],
       ["DA", (input) => Object.assign(input.da, { fallback: true })],
       [

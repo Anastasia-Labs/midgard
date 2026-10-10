@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { CommitteeStore } from "../store.js";
+import { AvailabilityResponderAwaitingScanError } from "./awaiting-scan-error.js";
 import { retainedAvailabilityPayload } from "./retained-payload.js";
 
 export type AvailabilityResponderChallenge = Readonly<{
@@ -69,22 +70,6 @@ export type AvailabilityResponderMissedDeadline = Readonly<{
 
 /** Steps one drain runs at most, so a drain always ends. */
 export const AVAILABILITY_RESPONDER_MAX_DRAIN_STEPS = 32;
-
-/**
- * The committee's chain-sync cursor is not at the aligned Kupmios tip, or the
- * tip moved while a boundary was read. Every responder step is refused until
- * the committee's next L1 scan catches the cursor up, so this aborts the step
- * like any error; but it is the normal wait for that scan, not a failure, and
- * the tick reports it as `awaiting_scan` instead of throwing it.
- */
-export class AvailabilityResponderAwaitingScanError extends Error {
-  constructor() {
-    super(
-      "Availability responder awaits the next canonical committee node L1 scan before acting",
-    );
-    this.name = "AvailabilityResponderAwaitingScanError";
-  }
-}
 
 const awaitingScanReport = (
   error: AvailabilityResponderAwaitingScanError,

@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
 import { MempoolLedgerDB, WithdrawalsDB } from "../../src/database/index.js";
+import { insertWithdrawals } from "../helpers/event-rows.js";
 import {
   address1,
   databaseFixtureBytes,
@@ -69,7 +70,7 @@ export const registerWalletViewTests = () => {
               WithdrawalsDB.Status.Projected,
               WithdrawalsDB.Validity.SpentWithdrawalUtxo,
             );
-            yield* WithdrawalsDB.insertEntries([
+            yield* insertWithdrawals([
               unclassified,
               projectedValid,
               projectedInvalid,

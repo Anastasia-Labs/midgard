@@ -24,6 +24,7 @@ import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
   createHeaderClassifier,
+  headerDecisionReplayContext,
 } from "../src/workflow/header-classifier.js";
 
 const hooks = vi.hoisted(() => ({
@@ -41,9 +42,9 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
     await load<typeof import("../src/workflow/family-l1-observation.js")>();
   return {
     ...actual,
-    createFraudProofFamilyLocalKupmiosL1ObservationPort: (
+    createFraudProofFamilyL1ObservationPort: (
       input: Parameters<
-        typeof actual.createFraudProofFamilyLocalKupmiosL1ObservationPort
+        typeof actual.createFraudProofFamilyL1ObservationPort
       >[0],
     ) =>
       actual.createFraudProofFamilyRawL1ObservationPort({
@@ -69,14 +70,7 @@ import {
   createManifestBoundTransitionTraceWorkflow,
   runOrResumeManifestBoundTransitionTraceWorkflow,
 } from "../src/transition-trace/workflow.js";
-import {
-  createHistoricalNativeScriptHistorySource,
-  createHistoricalNativeScriptProviderRoster,
-  createSqliteHistoricalNativeScriptCheckpointStore,
-  HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD,
-} from "../src/workflow/historical-native-script-corpus.js";
 import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
-import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
@@ -85,6 +79,7 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
+import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   observeEmulatorSubmissions,
   recordCrossBlockRawEmulator,
@@ -598,58 +593,9 @@ describe("transition trace installed retained-history workflow", () => {
             item,
           ]),
         );
-        vi.stubGlobal("fetch", async (input: string | URL | Request) => {
-          const url = new URL(
-            typeof input === "string"
-              ? input
-              : input instanceof URL
-                ? input.toString()
-                : input.url,
-          );
-          const archived = archive.get(url.pathname.split("/").at(-1)!);
-          if (archived === undefined)
-            return new Response("not found", { status: 404 });
-          const point = {
-            slot: "1",
-            blockNo: "1",
-            blockHash: "01".padStart(64, "0"),
-          };
-          return new Response(
-            JSON.stringify({
-              schemaVersion: HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD,
-              deploymentFingerprint: DEPLOYMENT,
-              headerHash: archived.headerHash,
-              payloadEnvelopeCborHex:
-                archived.payloadEnvelopeCbor.toString("hex"),
-              inclusionPoint: {
-                ...point,
-                pointId: computeFraudProofRawL1PointId(point),
-              },
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          );
-        });
         directory = await mkdtemp(
           join(homedir(), "transition-trace-installed-"),
         );
-        const historicalNativeScriptHistorySource =
-          createHistoricalNativeScriptHistorySource({
-            providerRoster: createHistoricalNativeScriptProviderRoster({
-              deploymentFingerprint: DEPLOYMENT,
-              providers: [
-                {
-                  sourceId: "archive-a",
-                  authorityEndpoint: "https://archive-a.example.test",
-                  operatorIdentitySha256: "aa".repeat(32),
-                },
-                {
-                  sourceId: "archive-b",
-                  authorityEndpoint: "https://archive-b.example.test",
-                  operatorIdentitySha256: "bb".repeat(32),
-                },
-              ],
-            }),
-          });
         // Model the separate mutation-lease service across application restarts.
         const makeLease = (token: string) => ({
           token,
@@ -678,7 +624,7 @@ describe("transition trace installed retained-history workflow", () => {
             return lease;
           },
         };
-        const config = {
+        const baseConfig = {
           manifest: {},
           blueprintJson: JSON.stringify(h.realBlueprint),
           deploymentInfo,
@@ -686,13 +632,7 @@ describe("transition trace installed retained-history workflow", () => {
           lucid,
           signer: h.proverSigner,
           referenceScripts,
-          source: {} as never,
-          historicalNativeScriptCheckpointStore:
-            createSqliteHistoricalNativeScriptCheckpointStore({
-              path: join(directory, "history.sqlite"),
-              rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
-            }),
-          historicalNativeScriptHistorySource,
+          l1Source: {} as never,
           stateQueueMutationLeaseCoordinator,
         };
         const sources = [
@@ -719,7 +659,8 @@ describe("transition trace installed retained-history workflow", () => {
         ];
         const workflowClock = installedWorkflowEmulatorClock(h.emulator);
         workflowClock.awaitReleaseDepth();
-        let workflow = await createManifestBoundTransitionTraceWorkflow(config);
+        let workflow =
+          await createManifestBoundTransitionTraceWorkflow(baseConfig);
         const rawHandle = await captureTransitionTraceL1Events({
           binding: workflow.binding,
           authority: recorder.authority,
@@ -734,10 +675,6 @@ describe("transition trace installed retained-history workflow", () => {
           deploymentFingerprint: DEPLOYMENT,
           replayer: TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
           releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-          historicalReplayAuthority: {
-            checkpointStore: config.historicalNativeScriptCheckpointStore,
-            historySource: historicalNativeScriptHistorySource,
-          },
           // The recorder's raw authority is injected directly rather than
           // through the module mock above: whether a module that imports the
           // mocked module during the mock factory's own load receives the
@@ -760,6 +697,9 @@ describe("transition trace installed retained-history workflow", () => {
               minimumConfirmationDepth: finalityPolicy.confirmationDepth,
             }),
           sources,
+          predecessorObservation: authenticatedHeaderObservation(
+            fixture.predecessor,
+          ),
         });
         expect(decision.decision).toBe(honest ? "healthy" : "fault_detected");
         if (!honest)
@@ -767,6 +707,14 @@ describe("transition trace installed retained-history workflow", () => {
             category: "transitionTrace",
             violationId: "transition-trace",
           });
+        // The workflow replays against the classifier-admitted predecessor.
+        const replayContext = headerDecisionReplayContext(decision);
+        expect(replayContext?.predecessor).toBeDefined();
+        const config = {
+          ...baseConfig,
+          ...(replayContext === undefined ? {} : { replayContext }),
+        };
+        workflow = await createManifestBoundTransitionTraceWorkflow(config);
         const journal = new DirectoryFraudProofWorkflowJournalStore(
           join(directory, "journal"),
         );

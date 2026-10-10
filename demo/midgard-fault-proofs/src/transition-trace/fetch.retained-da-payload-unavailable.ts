@@ -4,26 +4,25 @@ import type {
   RetainedDaFetchAttemptStatus,
 } from "./fetch.admit-retained-da-provenance.js";
 
-const UNAVAILABLE_ATTEMPT_STATUSES: ReadonlySet<RetainedDaFetchAttemptStatus> =
+const TRANSIENT_ATTEMPT_STATUSES: ReadonlySet<RetainedDaFetchAttemptStatus> =
   new Set(["not_found", "transport_error", "timeout"]);
 
 /**
- * True when every attempt reports only that its source does not serve the
- * payload yet. A rejected, conflicting or invalid response is evidence about
- * the payload, never ordinary unavailability, and keeps its fail-closed path.
- * Callers that need at least one answered request check that themselves.
+ * True when asking the same source again could plausibly succeed. A source
+ * that served a bad copy (failed verification, a rejection, a conflict or
+ * invalid content) is not asked again within one fetch.
  */
-export const retainedDaAttemptsOnlyUnavailable = (
+export const retainedDaAttemptsRetryable = (
   attempts: readonly RetainedDaFetchAttempt[],
 ): boolean =>
-  attempts.every(({ status }) => UNAVAILABLE_ATTEMPT_STATUSES.has(status));
+  attempts.every(({ status }) => TRANSIENT_ATTEMPT_STATUSES.has(status));
 
 export const RETAINED_DA_PAYLOAD_UNAVAILABLE = "payloadUnavailable" as const;
 
 /**
  * `not_found`: every source answered and none holds the payload.
- * `unreachable`: at least one source did not answer (transport error or
- * timeout), so nothing is known about the payload yet.
+ * `unreachable`: at least one source did not answer or served a bad copy, so
+ * nothing is known about the payload yet.
  */
 export type RetainedDaPayloadAvailability = "not_found" | "unreachable";
 
@@ -35,10 +34,12 @@ export const retainedDaAttemptsAvailability = (
     : "unreachable";
 
 /**
- * No public source served the payload and none returned anything but
- * not_found, transport_error or timeout. The code stays `fetchFailed`;
- * `reason` and `headerHash` let a caller that can wait tell this apart, and
- * `availability` says whether every source answered.
+ * No public source served a copy that verified, whatever each attempt
+ * reported: a bad copy is a failed attempt for its peer only and never decides
+ * the outcome, and withholding is settled by the availability challenge, not
+ * by this fetch failing closed. The code stays `fetchFailed`; `reason` and
+ * `headerHash` let a caller that can wait tell this apart, and `availability`
+ * says whether every source answered.
  */
 export class RetainedDaPayloadUnavailableError extends TransitionTraceChallengerError {
   readonly reason = RETAINED_DA_PAYLOAD_UNAVAILABLE;

@@ -5,7 +5,6 @@ import {
   buildCanonicalDecodabilityFaultProofContracts,
   buildCommittedFieldShapeFaultProofContracts,
   buildCorrectionLockValidator,
-  buildCrossBlockDuplicateEventFaultProofContracts,
   buildDaHashPreimageFaultProofContracts,
   buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
@@ -26,8 +25,6 @@ import {
   buildMintAuthorizationFaultProofContracts,
   buildMintDeclaredAssetLimitFaultProofContracts,
   buildMintItemNonCanonicalFaultProofContracts,
-  buildMissingNativeScriptTxFaultProofContracts,
-  buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
   buildNativeScriptDecodingFaultProofContracts,
   buildNativeScriptInvalidFaultProofContracts,
@@ -75,7 +72,6 @@ import { expect } from "vitest";
 
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/contracts.js";
 import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/contracts.js";
-import { type CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES,
   type DistinctAssetAccumulationContracts,
@@ -86,8 +82,6 @@ import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js
 import { type MinAdaContracts } from "../../../src/min-ada/contracts.js";
 import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
 import { type MintAuthorizationContracts } from "../../../src/mint-authorization/contracts.js";
-import { type MissingNativeScriptTxContracts } from "../../../src/missing-native-script-tx/contracts.js";
-import { type MissingNativeScriptUtxoContracts } from "../../../src/missing-native-script-utxo/contracts.js";
 import { type MissingSignatureContracts } from "../../../src/missing-signature/contracts.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/contracts.js";
 import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts.js";
@@ -138,8 +132,6 @@ export const buildMinimalFaultProofContracts = async (
     realValidationTraceDispute = false,
     realNativeScriptDecoding = false,
     realMissingSignature = false,
-    realMissingNativeScriptTx = false,
-    realMissingNativeScriptUtxo = false,
     realNativeScriptInvalid = false,
     realMinAda = false,
     realCanonicalDecodability = false,
@@ -153,7 +145,6 @@ export const buildMinimalFaultProofContracts = async (
     realWithdrawnReferenceInput = false,
     realMinFee = false,
     realDoubleWithdraw = false,
-    realCrossBlockDuplicateEvent = false,
     realSettlement = false,
     realTxOrder = false,
     realL2TxMistag = false,
@@ -196,8 +187,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly realValidationTraceDispute?: boolean;
     readonly realNativeScriptDecoding?: boolean;
     readonly realMissingSignature?: boolean;
-    readonly realMissingNativeScriptTx?: boolean;
-    readonly realMissingNativeScriptUtxo?: boolean;
     readonly realNativeScriptInvalid?: boolean;
     readonly realMinAda?: boolean;
     readonly realCanonicalDecodability?: boolean;
@@ -211,7 +200,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
-    readonly realCrossBlockDuplicateEvent?: boolean;
     readonly realSettlement?: boolean;
     readonly realTxOrder?: boolean;
     readonly realL2TxMistag?: boolean;
@@ -248,8 +236,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly fabricatedWithdrawal?: FabricatedWithdrawalContracts;
     readonly nativeScriptDecoding?: NativeScriptDecodingContracts;
     readonly missingSignature?: MissingSignatureContracts;
-    readonly missingNativeScriptTx?: MissingNativeScriptTxContracts;
-    readonly missingNativeScriptUtxo?: MissingNativeScriptUtxoContracts;
     readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
     readonly minAda?: MinAdaContracts;
     readonly canonicalDecodability?: CanonicalDecodabilityContracts;
@@ -257,7 +243,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly withdrawnReferenceInput?: WithdrawnReferenceInputContracts;
     readonly minFee?: MinFeeContracts;
     readonly doubleWithdraw?: DoubleWithdrawContracts;
-    readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContracts;
     readonly l2TxMistag?: L2TxMistagContracts;
     readonly withdrawnInput?: WithdrawnInputContracts;
     readonly withdrawalMistag?: WithdrawalMistagContracts;
@@ -507,14 +492,6 @@ export const buildMinimalFaultProofContracts = async (
     realMissingSignature,
     buildMissingSignatureFaultProofContracts,
   );
-  const missingNativeScriptTxContracts = await buildFamilyContracts(
-    realMissingNativeScriptTx,
-    buildMissingNativeScriptTxFaultProofContracts,
-  );
-  const missingNativeScriptUtxoContracts = await buildFamilyContracts(
-    realMissingNativeScriptUtxo,
-    buildMissingNativeScriptUtxoFaultProofContracts,
-  );
   const nativeScriptInvalidContracts = await buildFamilyContracts(
     realNativeScriptInvalid,
     buildNativeScriptInvalidFaultProofContracts,
@@ -566,10 +543,6 @@ export const buildMinimalFaultProofContracts = async (
   const doubleWithdrawContracts = await buildFamilyContracts(
     realDoubleWithdraw,
     buildDoubleWithdrawFaultProofContracts,
-  );
-  const crossBlockDuplicateEventContracts = await buildFamilyContracts(
-    realCrossBlockDuplicateEvent,
-    buildCrossBlockDuplicateEventFaultProofContracts,
   );
   const l2TxMistagContracts = await buildFamilyContracts(
     realL2TxMistag,
@@ -769,28 +742,6 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: productionStateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const missingNativeScriptTx: MissingNativeScriptTxContracts | undefined =
-    missingNativeScriptTxContracts === undefined
-      ? undefined
-      : {
-          steps: missingNativeScriptTxContracts.missingNativeScriptTx.steps,
-          computationThread: missingNativeScriptTxContracts.computationThread,
-          fraudProof: missingNativeScriptTxContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: productionStateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
-  const missingNativeScriptUtxo: MissingNativeScriptUtxoContracts | undefined =
-    missingNativeScriptUtxoContracts === undefined
-      ? undefined
-      : {
-          steps: missingNativeScriptUtxoContracts.missingNativeScriptUtxo.steps,
-          computationThread: missingNativeScriptUtxoContracts.computationThread,
-          fraudProof: missingNativeScriptUtxoContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: productionStateQueue.policyId,
-          fieldPreimageCertificatePolicyId,
-        };
   const nativeScriptInvalid: NativeScriptInvalidContracts | undefined =
     nativeScriptInvalidContracts === undefined
       ? undefined
@@ -866,20 +817,6 @@ export const buildMinimalFaultProofContracts = async (
           steps: doubleWithdrawContracts.doubleWithdraw.steps,
           computationThread: doubleWithdrawContracts.computationThread,
           fraudProof: doubleWithdrawContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: productionStateQueue.policyId,
-        };
-  const crossBlockDuplicateEvent:
-    | CrossBlockDuplicateEventContracts
-    | undefined =
-    crossBlockDuplicateEventContracts === undefined
-      ? undefined
-      : {
-          steps:
-            crossBlockDuplicateEventContracts.crossBlockDuplicateEvent.steps,
-          computationThread:
-            crossBlockDuplicateEventContracts.computationThread,
-          fraudProof: crossBlockDuplicateEventContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: productionStateQueue.policyId,
         };
@@ -1045,14 +982,6 @@ export const buildMinimalFaultProofContracts = async (
               missingSignature.forcedWitness.spendingScript.script,
             ),
           },
-    missingNativeScriptTx:
-      missingNativeScriptTx === undefined
-        ? withActiveOperators.fraudProofContracts.missingNativeScriptTx
-        : chainFromSteps(missingNativeScriptTx.steps),
-    missingNativeScriptUtxo:
-      missingNativeScriptUtxo === undefined
-        ? withActiveOperators.fraudProofContracts.missingNativeScriptUtxo
-        : chainFromSteps(missingNativeScriptUtxo.steps),
     nativeScriptInvalid:
       nativeScriptInvalid === undefined
         ? withActiveOperators.fraudProofContracts.nativeScriptInvalid
@@ -1085,10 +1014,6 @@ export const buildMinimalFaultProofContracts = async (
       doubleWithdraw === undefined
         ? withActiveOperators.fraudProofContracts.doubleWithdraw
         : chainFromSteps(doubleWithdraw.steps),
-    crossBlockDuplicateEvent:
-      crossBlockDuplicateEvent === undefined
-        ? withActiveOperators.fraudProofContracts.crossBlockDuplicateEvent
-        : chainFromSteps(crossBlockDuplicateEvent.steps),
     l2TxMistag:
       l2TxMistag === undefined
         ? withActiveOperators.fraudProofContracts.l2TxMistag
@@ -1170,10 +1095,6 @@ export const buildMinimalFaultProofContracts = async (
     ...(fabricatedWithdrawal === undefined ? {} : { fabricatedWithdrawal }),
     ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
-    ...(missingNativeScriptTx === undefined ? {} : { missingNativeScriptTx }),
-    ...(missingNativeScriptUtxo === undefined
-      ? {}
-      : { missingNativeScriptUtxo }),
     ...(nativeScriptInvalid === undefined ? {} : { nativeScriptInvalid }),
     ...(minAda === undefined ? {} : { minAda }),
     ...(canonicalDecodability === undefined ? {} : { canonicalDecodability }),
@@ -1183,9 +1104,6 @@ export const buildMinimalFaultProofContracts = async (
       : { withdrawnReferenceInput }),
     ...(minFee === undefined ? {} : { minFee }),
     ...(doubleWithdraw === undefined ? {} : { doubleWithdraw }),
-    ...(crossBlockDuplicateEvent === undefined
-      ? {}
-      : { crossBlockDuplicateEvent }),
     ...(l2TxMistag === undefined ? {} : { l2TxMistag }),
     ...(withdrawnInput === undefined ? {} : { withdrawnInput }),
     ...(withdrawalMistag === undefined ? {} : { withdrawalMistag }),

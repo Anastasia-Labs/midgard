@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { DepthParameters } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { CML, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Cause, Effect, Layer, Option, Schedule } from "effect";
@@ -12,25 +13,37 @@ import {
   initializePayoutProgram,
 } from "../commands/reserve-payout.js";
 import * as Journal from "../database/settlement.js";
-import { synchronizePublicationIndexerPoint } from "../transactions/reference-publication-provider.js";
 import { ReservePayoutTransport } from "../transactions/reserve-payout.js";
 import { TxSignError } from "../transactions/utils.js";
+import {
+  readWalletView,
+  selectNodeWallet,
+  signOverWalletView,
+} from "../transactions/utils.wallet-view.js";
 import { NodeConfig } from "./config.js";
 import { Database } from "./database.js";
-import { Lucid } from "./lucid.js";
+import {
+  IntentJournal,
+  IntentJournalLive,
+  journaledIntent,
+} from "./intent-journal.js";
+import { FollowerLucidLive, Lucid } from "./lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContractServices,
 } from "./midgard-contracts.js";
 import {
-  exactStatus,
   inspectSettlementAttempt,
   reconcileAttempt,
-  reconcileSettlementReceipts,
   type SettlementHealth,
   settlementWaitUntil,
   settlementWalletAddress,
 } from "./settlement.reconcile-attempt.js";
+import {
+  noOpenAttempt,
+  settleAttempts,
+  settlementDepthParameters,
+} from "./settlement.status.js";
 import {
   settlementCall,
   settlementCauseDetail,
@@ -38,69 +51,18 @@ import {
   settlementJobError,
 } from "./settlement-call.js";
 
-/** Fair scheduling must not reuse a rollback-restored coin before recovering
- * the old signed body that reserved it. Only visible wallet coins are queried. */
-export const reconcileRestoredSettlementFees = (
-  owner: Journal.SettlementOwner,
-  lucid: Pick<LucidEvolution, "transactionStatus" | "utxosAt">,
-) =>
-  Effect.gen(function* () {
-    const config = yield* NodeConfig;
-    const wallet = yield* settlementCall("settlement wallet utxosAt", () =>
-      lucid.utxosAt(owner.walletAddress),
-    );
-    const receipt = yield* Journal.restoredFeeReceipt(
-      owner,
-      wallet.map((u) => `${u.txHash}#${u.outputIndex}`),
-    );
-    if (receipt === undefined) return true;
-    yield* settlementCall("indexer sync", () =>
-      synchronizePublicationIndexerPoint(
-        config.L1_OGMIOS_KEY,
-        config.L1_KUPO_KEY,
-      ),
-    );
-    const status = yield* exactStatus(lucid, receipt.tx_hash);
-    if (status.status !== "confirmed") {
-      yield* Journal.resumeReceipt(owner, receipt);
-      return false;
-    }
-    // The initial wallet query may itself have been behind the receipt query.
-    const refreshed = yield* settlementCall("settlement wallet utxosAt", () =>
-      lucid.utxosAt(owner.walletAddress),
-    );
-    if (
-      refreshed.some((u) =>
-        receipt.fee_inputs.includes(`${u.txHash}#${u.outputIndex}`),
-      )
-    )
-      return yield* Effect.fail(
-        new Error(
-          "Settlement indexer reports a confirmed receipt and its unspent fee input; waiting for consistent evidence",
-        ),
-      );
-    return true;
-  });
-
 const buildJob = (
   owner: Journal.SettlementOwner,
   job: Journal.SettlementJob,
   lucid: LucidEvolution,
-  generation: string,
+  parameters: DepthParameters,
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const journal = yield* IntentJournal;
+    // S5: the job's plan opens before its first L1 read.
+    const plan = yield* journal.openPlan;
     let phase = job.phase;
-    if (
-      phase !== "complete" &&
-      !(yield* reconcileRestoredSettlementFees(owner, lucid))
-    )
-      return;
-    // Recheck receipts after every history recovery generation, including node restart.
-    if (job.verified_generation !== generation) {
-      if (!(yield* reconcileSettlementReceipts(owner, job, lucid))) return;
-      yield* Journal.updateJob(owner, job, phase, generation);
-    }
     if (phase === "complete") return;
     if (job.kind === "withdrawal") {
       const payout = yield* payoutStatusProgram(job.event_id);
@@ -121,13 +83,17 @@ const buildJob = (
       Effect.provideService(ReservePayoutTransport, {
         prepare: (tx, required) =>
           Effect.gen(function* () {
+            // Signed over the settlement wallet's view (§8.5), so a step that
+            // spends the predicted change of a live own intent gets its
+            // witness; the fee inputs are the body inputs that view holds.
+            const witnessed = yield* signOverWalletView(lucid, tx);
             const signed = yield* settlementCall(
               "sign settlement transaction",
-              () => tx.sign.withWallet().complete(),
+              () => witnessed.complete(),
             );
-            const walletUtxos = yield* settlementCall(
-              "settlement wallet utxosAt",
-              () => lucid.utxosAt(owner.walletAddress),
+            const { utxos: walletUtxos } = yield* readWalletView(
+              lucid,
+              owner.walletAddress,
             );
             const bodyInputs = CML.Transaction.from_cbor_hex(signed.toCBOR())
               .body()
@@ -146,7 +112,6 @@ const buildJob = (
               signed_cbor: signed.toCBOR(),
               required_outputs: [...required],
               status: "pending",
-              recovery: false,
               fee_inputs: walletUtxos
                 .map((u) => `${u.txHash}#${u.outputIndex}`)
                 .filter((out) => selectedInputs.includes(out)),
@@ -154,10 +119,40 @@ const buildJob = (
             yield* settlementCheck("inspect settlement attempt", () =>
               inspectSettlementAttempt(attempt),
             );
-            yield* Journal.saveAttempt(owner, attempt);
+            // The exact bytes are journaled in one transaction with the
+            // attempt checkpoint: this gate opens it and records the intent
+            // inside it (`PreBroadcastGate`), so a refusal of either stops
+            // the attempt and leaves neither. S6 sends the journaled bytes
+            // from there.
+            yield* journal.record(
+              journaledIntent(
+                "settlement",
+                `settlement:${job.kind}:${job.event_id}:${selectedPhase}`,
+                plan,
+                Buffer.from(job.event_id, "hex"),
+              ),
+              attempt.signed_cbor,
+              attempt.tx_hash,
+              { kind: "record_only" },
+              (journalInsert) =>
+                sql
+                  .withTransaction(
+                    journalInsert.pipe(
+                      Effect.zipRight(
+                        Journal.saveAttempt(
+                          owner,
+                          attempt,
+                          noOpenAttempt(owner, parameters),
+                        ),
+                      ),
+                    ),
+                  )
+                  .pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+            );
             return attempt.tx_hash;
           }).pipe(
             Effect.provideService(SqlClient.SqlClient, sql),
+            Effect.provideService(IntentJournal, journal),
             Effect.mapError(
               (cause) =>
                 new TxSignError({
@@ -177,31 +172,32 @@ export const settlementTick = (
   lucid: LucidEvolution,
   report: (health: SettlementHealth) => void,
 ) => {
-  // This closure is reused across ticks. Pending confirmation does not consume
-  // a turn: alternate selections so neither current work nor recovery starves.
-  let preferCompleted = false;
   return Effect.gen(function* () {
-    const generation = yield* Journal.assertOwner(owner);
-    const pending = yield* Journal.pending(owner.deploymentId);
-    if (pending !== undefined) {
+    yield* Journal.assertOwner(owner);
+    const parameters = yield* settlementDepthParameters;
+    // Every open attempt's outcome is derived from the intent journal at
+    // the follower's cursor; the oldest one not yet confirmed blocks new
+    // work until it lands cd deep or is proven expired.
+    const blocker = yield* settleAttempts(owner, parameters);
+    if (blocker !== undefined) {
+      const { attempt } = blocker;
       const detail = yield* reconcileAttempt(
         owner,
-        pending,
+        attempt,
+        blocker.status,
         lucid,
-        generation,
       ).pipe(
         Effect.mapError((cause) =>
-          settlementJobError(pending, `${pending.phase} reconcile`, cause),
+          settlementJobError(attempt, `${attempt.phase} reconcile`, cause),
         ),
       );
       report({ observedAt: Date.now(), state: "waiting", detail });
       return;
     }
-    const job = yield* Journal.nextJob(owner, generation, preferCompleted);
+    const job = yield* Journal.nextJob(owner);
     if (job !== undefined) {
-      preferCompleted = !preferCompleted;
       const result = yield* Effect.exit(
-        buildJob(owner, job, lucid, generation),
+        buildJob(owner, job, lucid, parameters),
       );
       if (result._tag === "Failure") {
         // Name the job and phase in the stored error and the health report,
@@ -217,13 +213,7 @@ export const settlementTick = (
           ? settlementWaitUntil(failure.value, Date.now())
           : undefined;
         if (due !== undefined) {
-          yield* Journal.updateJob(
-            owner,
-            job,
-            job.phase,
-            job.verified_generation,
-            due - Date.now(),
-          );
+          yield* Journal.updateJob(owner, job, job.phase, due - Date.now());
           report({
             observedAt: Date.now(),
             state: "waiting",
@@ -232,14 +222,7 @@ export const settlementTick = (
           return;
         }
         const delay = Math.min(60_000, 5_000 * 2 ** Math.min(job.failures, 4));
-        yield* Journal.updateJob(
-          owner,
-          job,
-          job.phase,
-          job.verified_generation,
-          delay,
-          detail,
-        );
+        yield* Journal.updateJob(owner, job, job.phase, delay, detail);
         return yield* Effect.fail(new Error(detail));
       }
     }
@@ -304,11 +287,20 @@ const acquireOwnership = (
 /** One serial transaction stream; waits happen between ticks, never in a node
  * control-plane or ledger lease. Local UPLC evaluation runs in the worker. */
 export const settlementProgram = (
-  report: (health: SettlementHealth) => void,
+  post: (health: SettlementHealth) => void,
   ownerToken: string = randomUUID(),
 ) =>
   Effect.gen(function* () {
     const config = yield* NodeConfig;
+    const journal = yield* IntentJournal;
+    // Each report hands the node the refusal holds this worker's journal
+    // could not write; the node's journal takes them over (I1-H1).
+    const report = (health: SettlementHealth) => {
+      const holds = journal.handOff();
+      post(
+        holds.length === 0 ? health : { ...health, intentRefusalHolds: holds },
+      );
+    };
     const identity = yield* ContractDeploymentIdentity;
     if (identity.kind !== "manifest" || identity.manifestId === undefined)
       return yield* Effect.fail(
@@ -321,7 +313,7 @@ export const settlementProgram = (
       () => settlementWalletAddress(config),
     );
     const baseLucid = yield* Lucid;
-    baseLucid.api.selectWallet.fromSeed(config.L1_SETTLEMENT_SEED_PHRASE!);
+    selectNodeWallet(baseLucid.api, config.L1_SETTLEMENT_SEED_PHRASE!);
     // This client belongs exclusively to the worker; commands cannot switch it
     // back to the commitment wallet.
     const settlementLucid = new Lucid({
@@ -362,6 +354,9 @@ export const settlementProgram = (
 
 export const settlementWorkerLayer = Layer.mergeAll(
   MidgardContractServices,
-  Lucid.Default,
-  Database.workerLayer,
-).pipe(Layer.provideMerge(NodeConfig.layer));
+  FollowerLucidLive,
+  IntentJournalLive,
+).pipe(
+  Layer.provideMerge(Database.workerLayer),
+  Layer.provideMerge(NodeConfig.layer),
+);

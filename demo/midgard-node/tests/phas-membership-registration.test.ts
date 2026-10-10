@@ -9,15 +9,18 @@ import { describe, expect, it, vi } from "vitest";
 
 import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
-  type CapturedPhasMembershipRegistrationTransaction,
   decodePhasMembershipRegistrationTransactionBodyEvidence,
   decodePhasMembershipRewardRegistrationResult,
+} from "../src/transactions/phas-membership-registration.decode.js";
+import {
+  type CapturedPhasMembershipRegistrationTransaction,
   ensurePhasMembershipRewardAccountRegisteredProgram,
   inspectPhasMembershipRegistrationTransaction,
   isPhasMembershipAlreadyRegisteredError,
   queryPhasMembershipRewardAccountRegisteredProgram,
 } from "../src/transactions/phas-membership-registration.js";
 import { TxSubmitError } from "../src/transactions/utils.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const phasIdentity = SDK.phasMembershipIdentity(
   "Preprod",
@@ -98,7 +101,7 @@ describe("PHAS membership reward registration", () => {
         certificate: { ...capture.evidence.certificate, unknown: true },
       },
       {
-        schemaVersion: "midgard-phase4-t1-probe-v1",
+        schemaVersion: "midgard-phase4-unrelated-proof-v1",
         txHash: capture.evidence.txHash,
         cborSha256: capture.evidence.cborSha256,
         cborSizeBytes: capture.evidence.cborSizeBytes,
@@ -219,7 +222,7 @@ describe("PHAS membership reward registration", () => {
       ),
     );
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
         queryRegistration: () => Effect.succeed("registered"),
         buildRegistrationTx,
@@ -248,7 +251,7 @@ describe("PHAS membership reward registration", () => {
     const buildRegistrationTx = vi.fn(() => Effect.succeed(built));
     const submitRegistrationTx = vi.fn(() => Effect.succeed("aa".repeat(32)));
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       ensurePhasMembershipRewardAccountRegisteredProgram(lucid, {
         queryRegistration: () => Effect.succeed("unregistered"),
         buildRegistrationTx,
@@ -265,7 +268,14 @@ describe("PHAS membership reward registration", () => {
       transactionBody: capturedTransaction("aa".repeat(32)).evidence,
     });
     expect(buildRegistrationTx).toHaveBeenCalledOnce();
-    expect(submitRegistrationTx).toHaveBeenCalledWith(lucid, built);
+    expect(submitRegistrationTx).toHaveBeenCalledWith(
+      lucid,
+      built,
+      expect.objectContaining({
+        kind: "none",
+        reason: "intent_journal_no_view",
+      }),
+    );
   });
 
   it("keeps the typed submit-error race fallback after an unregistered preflight", async () => {
@@ -275,7 +285,7 @@ describe("PHAS membership reward registration", () => {
       scriptHash: phasIdentity.scriptHash,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
         queryRegistration: () => Effect.succeed("unregistered"),
         buildRegistrationTx: () => Effect.succeed(built),
@@ -314,7 +324,7 @@ describe("PHAS membership reward registration", () => {
     };
 
     await expect(
-      Effect.runPromise(
+      runWithoutFollower(
         ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
           queryRegistration: () => Effect.succeed("unregistered"),
           buildRegistrationTx: () => Effect.succeed(built),
@@ -339,7 +349,7 @@ describe("PHAS membership reward registration", () => {
     );
 
     await expect(
-      Effect.runPromise(
+      runWithoutFollower(
         ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
           queryRegistration: () =>
             Effect.fail(

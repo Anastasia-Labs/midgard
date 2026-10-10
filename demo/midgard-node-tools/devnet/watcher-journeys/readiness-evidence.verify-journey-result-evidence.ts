@@ -18,6 +18,7 @@ import {
 import { Effect } from "effect";
 
 import { readJourneyArtifact } from "./artifacts.js";
+import type { JourneyFinalizedEvidenceStamp } from "./correction.finalize-pending-journey-evidence.js";
 import type {
   JourneyBlock,
   JourneyCategory,
@@ -96,6 +97,7 @@ export const verifyJourneyResultEvidence = async (
     entries: saved,
   });
   let nativeEvidencePath = await readJourneyNativeEvidencePath(directory);
+  let anchoredTerminal: FraudProofWorkflowTerminal | undefined;
   if (result.executionPolicy === "authenticated-inclusion") {
     const provisional = [...entries]
       .reverse()
@@ -111,15 +113,9 @@ export const verifyJourneyResultEvidence = async (
       canonicalDigest(result.completion),
       canonicalDigest(provisional.terminal),
     );
-    const stamp = await readJourneyArtifact<{
-      category: JourneyCategory;
-      headerHash: string;
-      deploymentFingerprint: string;
-      releaseFinalityPolicyDigest: string;
-      finalityDepth: number;
-      terminal: FraudProofWorkflowTerminal;
-      nativeEvidencePath: string;
-    }>(join(directory, "finalized-evidence-stamp.json"));
+    const stamp = await readJourneyArtifact<JourneyFinalizedEvidenceStamp>(
+      join(directory, "finalized-evidence-stamp.json"),
+    );
     assert.equal(stamp.category, category);
     assert.equal(stamp.headerHash, staged.current.headerHash);
     assert.equal(stamp.deploymentFingerprint, fingerprint);
@@ -144,12 +140,29 @@ export const verifyJourneyResultEvidence = async (
       saved,
       "Final journal changed the provisional history",
     );
-    const completed = entries.at(-1)!.event;
-    assert(completed.kind === "completed");
+    // An included anchor's release depth is re-checked below against the
+    // native capture; older stamps predate the kind and anchor `completed`.
+    const terminalKind = stamp.terminalKind ?? "completed";
+    const anchor =
+      terminalKind === "completed"
+        ? entries.at(-1)!.event
+        : [...entries]
+            .reverse()
+            .find(({ event }) => event.kind === "terminal_included")?.event;
+    assert(
+      anchor?.kind === terminalKind,
+      "Finalized journal lacks the stamp's anchored terminal",
+    );
+    if (terminalKind === "terminal_included")
+      assert(
+        entries.every(({ event }) => event.kind !== "completed"),
+        "Included anchor ignored a completed terminal",
+      );
     assert.equal(
       canonicalDigest(stamp.terminal),
-      canonicalDigest(completed.terminal),
+      canonicalDigest(anchor.terminal),
     );
+    anchoredTerminal = anchor.terminal;
     nativeEvidencePath = stamp.nativeEvidencePath;
   }
   assert.equal(entries[0]!.identity.deploymentFingerprint, fingerprint);
@@ -158,17 +171,19 @@ export const verifyJourneyResultEvidence = async (
     kind: "state_queue_header",
     headerHash: staged.current.headerHash,
   });
-  const terminal = entries.at(-1)!.event;
-  assert.equal(terminal.kind, "completed", "Workflow has not completed");
-  if (terminal.kind !== "completed")
-    throw new Error("Workflow has not completed");
-  if (result.executionPolicy !== "authenticated-inclusion")
+  const completedTerminal = () => {
+    const terminal = entries.at(-1)!.event;
+    assert.equal(terminal.kind, "completed", "Workflow has not completed");
+    if (terminal.kind !== "completed")
+      throw new Error("Workflow has not completed");
     assert.equal(
       canonicalDigest(result.completion),
       canonicalDigest(terminal.terminal),
       "Result changed the validated terminal",
     );
-  const completion = terminal.terminal;
+    return terminal.terminal;
+  };
+  const completion = anchoredTerminal ?? completedTerminal();
   const decisions = await readDecisions(runDirectory, fingerprint);
   const fault = decisions.find(
     (decision) => decision.headerHash === staged.current.headerHash,
@@ -204,6 +219,7 @@ export const verifyJourneyResultEvidence = async (
   transaction(deployment.initialization.txHash);
   for (const { event } of entries)
     if (event.kind === "confirmed") transaction(event.txHash);
+  // The release depth (a stamp's finalityDepth) authenticates the anchor.
   const confirmationDepth = BigInt(
     deployment.manifest.l1Finality.confirmationDepth,
   );

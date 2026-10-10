@@ -17,7 +17,6 @@ export {
   readWriteBehindTelemetry,
   recordWriteBehindTransactionTelemetry,
   summarizeWriteBehindTelemetry,
-  takeWriteBehindRowBatch,
   WriteBehind,
   type WriteBehindDepths,
   writeBehindFlushCounter,

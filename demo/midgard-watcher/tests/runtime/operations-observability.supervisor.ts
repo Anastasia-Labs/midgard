@@ -14,6 +14,12 @@ export const supervisor = () => {
     deadlineHealth: "safe",
     earliestDeadlineJob: null,
     remainingSafeStartMs: "1000000",
+    journalIntegrity: null,
+    journalUnavailable: null,
+    journalCapacity: false,
+    journalDecisionMissing: [],
+    objectiveCleanupFailures: [],
+    journalBusy: null,
   });
   return {
     runtime: Object.freeze({

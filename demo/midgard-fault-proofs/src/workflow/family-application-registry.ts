@@ -14,8 +14,7 @@
  * that names that step's contract. A cursor family without a decision digest
  * derives its record from its definition too, declaring beside its roster the
  * optional infrastructure it requires — the predecessor replay context or the
- * historical native-script authority — and the config fields it reads from
- * it. A family whose config shape is its own writes a short record by hand:
+ * public retained-DA sources — and the config fields it reads from it. A family whose config shape is its own writes a short record by hand:
  * `doubleSpend`, `transitionTrace`, `mintItemNonCanonical`, `missingSignature`,
  * `networkId`, `valueNotPreserved` and `validationTraceDispute`, the last of
  * which is the one family that requires the host's validation-challenge port.
@@ -25,7 +24,6 @@
  * fails typecheck.
  */
 
-import "../cross-block-duplicate-event/workflow.js";
 import "../distinct-asset-accumulation-limit/v1.js";
 import "../execution-native-script-invalid/v1.js";
 import "../execution-source-script-decoding/v1.js";
@@ -36,8 +34,6 @@ import "../min-ada/workflow.js";
 import "../mint-authorization/workflow.js";
 import "../mint-declared-asset-limit/v1.js";
 import "../mint-item-non-canonical/workflow.js";
-import "../missing-native-script-tx/workflow.js";
-import "../missing-native-script-utxo/workflow.js";
 import "../missing-redeemer/v1.js";
 import "../missing-script-source/v1.js";
 import "../native-script-decoding/workflow.js";
@@ -90,13 +86,10 @@ export {
   WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
 } from "./family-application-registry.authenticated-certificate-family-application-record.js";
 export {
-  CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD,
   EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
   MIN_ADA_FAMILY_APPLICATION_RECORD,
   MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD,
   MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
-  MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD,
-  MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD,
   NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
   NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
   RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,

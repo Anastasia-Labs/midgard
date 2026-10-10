@@ -12,7 +12,7 @@ import {
 import {
   resolvePreSubmitSlotSnapshot,
   type SubmitRecoveryOptions,
-} from "./utils.reconcile-wallet-utxos-from-signed-tx.js";
+} from "./utils.submit-recovery-options.js";
 
 export const preSubmitValidityCheck = (
   lucid: LucidEvolution,

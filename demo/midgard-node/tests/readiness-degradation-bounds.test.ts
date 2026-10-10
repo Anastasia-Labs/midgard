@@ -53,14 +53,14 @@ describe("readiness degradation bounds", () => {
       ).toEqual({ reason: "provider_query_unhealthy:l1-provider" });
   });
 
-  it("never applies a provider-failure bound shorter than the derived L1 tip bound", () => {
+  it("never applies a provider-failure bound shorter than the ledger-tip staleness bound", () => {
     expect(readinessL1ProviderUnhealthyAfterMs(undefined)).toBe(BOUND);
     expect(readinessL1ProviderUnhealthyAfterMs(200_000)).toBe(BOUND);
     expect(readinessL1ProviderUnhealthyAfterMs(Number.NaN)).toBe(BOUND);
     const longTip = BOUND + 60_000;
     expect(readinessL1ProviderUnhealthyAfterMs(longTip)).toBe(longTip);
-    // A failure past the flat bound but inside a longer derived tip bound
-    // stays a detail; past the derived bound it is a reason.
+    // A failure past the flat bound but inside a longer ledger-tip bound
+    // stays a detail; past that bound it is a reason.
     const failing = {
       healthy: false,
       lastExactSuccessAtMs: NOW - 1_000,

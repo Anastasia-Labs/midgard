@@ -1,5 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option, Schedule } from "effect";
 
@@ -15,7 +16,11 @@ import {
 import { DatabaseError } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
 import type { MidgardMpf, MpfError } from "../../mpf/index.js";
-import { type Database, Lucid } from "../../services/index.js";
+import { type Database } from "../../services/index.js";
+import {
+  findLandedBlock,
+  readLandedStateQueue,
+} from "../../services/landed-state-queue.js";
 import type { TxSubmitError } from "../../transactions/utils.js";
 import { batchProgram } from "../../utils.js";
 import type { WorkerInput, WorkerOutput } from "./commit-block-header.js";
@@ -121,7 +126,7 @@ export const successfulLocalFinalizationRecoveryProgram = (
     // parent as the full reload its failed output triggers.
     if (
       record[PendingBlockFinalizationsDB.Columns.STATUS] ===
-      PendingBlockFinalizationsDB.Status.Finalized
+      PendingBlockFinalizationsDB.Status.LocallyApplied
     ) {
       yield* MutationJobsDB.markCompleted(
         MutationJobsDB.localBlockFinalizationJobId(confirmedHeaderHash),
@@ -193,14 +198,11 @@ export const skippedSubmissionProgram = (
       "skipped-submission-db-transfer",
       (startIndex: number, endIndex: number) =>
         Effect.gen(function* () {
-          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
-          const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
-          yield* ProcessedMempoolDB.insertTxs(batchTxs).pipe(
-            Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
-          );
-          yield* MempoolDB.clearTxs(batchHashes).pipe(
-            Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
-          );
+          // The rows move as they are now: a mark a block set after the
+          // selection moves with its row.
+          yield* ProcessedMempoolDB.moveFromMempool(
+            mempoolTxHashes.slice(startIndex, endIndex),
+          ).pipe(Effect.withSpan(`mempool-db-move-txs-${startIndex}`));
         }),
       1,
     );
@@ -240,31 +242,17 @@ export const failedSubmissionProgram = (
 export const recoverSubmittedTxHashByHeaderProgram = (
   stateQueueAuthValidator: SDK.AuthenticatedValidator,
   expectedHeaderHash: string,
-): Effect.Effect<Option.Option<string>, never, Lucid> =>
+): Effect.Effect<Option.Option<string>, never, SqlClient.SqlClient> =>
   Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-    };
-    const sortedBlocks = yield* SDK.fetchSortedStateQueueUTxOsProgram(
-      lucid.api,
-      fetchConfig,
+    const read = yield* readLandedStateQueue(stateQueueAuthValidator);
+    if (read.kind !== "ok")
+      return yield* Effect.fail(`${read.kind}: ${read.detail}`);
+    const block = findLandedBlock(read.queue, expectedHeaderHash);
+    if (block === undefined) return Option.none();
+    yield* Effect.logWarning(
+      `🔹 Submit errored but on-chain header ${expectedHeaderHash} is already present in canonical state_queue; recovering submission state.`,
     );
-    for (const block of sortedBlocks) {
-      if (block.datum.key === "Empty") {
-        continue;
-      }
-      const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
-      const headerHash = yield* SDK.hashBlockHeader(header);
-      if (headerHash === expectedHeaderHash) {
-        yield* Effect.logWarning(
-          `🔹 Submit errored but on-chain header ${expectedHeaderHash} is already present in canonical state_queue; recovering submission state.`,
-        );
-        return Option.some(block.utxo.txHash);
-      }
-    }
-    return Option.none();
+    return Option.some(block.element.utxo.txHash);
   }).pipe(
     Effect.catchAll((error) =>
       Effect.gen(function* () {

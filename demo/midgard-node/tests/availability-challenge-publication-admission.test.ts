@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../src/transactions/availability-challenge-registration.js";
 import { nodeRuntimeReferenceScriptTargets } from "../src/transactions/reference-scripts.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   createMainnetEmulatorLucid,
   MAINNET_PROTOCOL_PARAMETERS,
@@ -91,7 +92,7 @@ describe("availability-challenge publication admission", () => {
         scriptHash: validatorToScriptHash(target.script),
       });
     }
-    const registrations = await Effect.runPromise(
+    const registrations = await runWithoutFollower(
       ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
         lucid,
         contracts,
@@ -104,7 +105,7 @@ describe("availability-challenge publication admission", () => {
         (await lucid.rewardAccountAt(registration.rewardAddress)).registered,
       ).toBe(true);
     }
-    const repeated = await Effect.runPromise(
+    const repeated = await runWithoutFollower(
       ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
         lucid,
         contracts,

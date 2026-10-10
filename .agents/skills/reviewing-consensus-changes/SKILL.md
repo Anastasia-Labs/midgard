@@ -128,9 +128,17 @@ and those commands destroy uncommitted work. [review]
   See the disposable-build rules in
   [aiken-contract-build](../aiken-contract-build/SKILL.md).
 
-- **TypeScript.** Red-check only in a worktree no other session uses. Copy the
-  fixed file to the scratch directory, put the bug back in place, run the test,
-  copy the saved file back, and confirm `git diff` shows only the fix.
+- **TypeScript.** Red-check only in a worktree no other session uses, with
+  `contrib mutate`: it puts the bug back as a mutant, refuses one that changes
+  no emitted code, runs the tests that reach the file, and puts the file back,
+  verified by hash, even when interrupted
+  ([mutation checks](../../../docs/agents/contrib/tests-and-builds.md#mutation-checks)).
+  Pass the predicted failure as `--expect`:
+
+  ```bash
+  node scripts/contrib.mjs mutate --target <file> \
+    --from '<fixed text>' --to '<buggy text>' --expect '<predicted failure>'
+  ```
 
 A negative test must fail at the check it names, not somewhere earlier. For
 emulator negatives, `expectOnchainRefusal` rejects a failure that did not come

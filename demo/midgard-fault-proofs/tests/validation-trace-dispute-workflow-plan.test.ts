@@ -155,7 +155,7 @@ describe("validationTraceDispute workflow planning (ruling R6)", () => {
     ).toEqual({ kind: "completed" });
   });
 
-  it("always owns the cancel move at every interrupted staged-route checkpoint", () => {
+  it("owns the cancel move at every staged-route checkpoint without a journaled CEK preparation", () => {
     const groups: readonly ValidationTraceDisputeSemanticGroup[] = [
       "cek_material_traversal",
       "cek_core_stage",
@@ -176,7 +176,7 @@ describe("validationTraceDispute workflow planning (ruling R6)", () => {
         group,
         role: group,
       };
-      // With or without retained material the workflow owns one legal
+      // Without a journaled CEK preparation the workflow owns one legal
       // transaction: cancel the stalled route and restart from init.
       expect(
         actionStage(planValidationTraceDisputeMove({ stage, retained })),
@@ -185,6 +185,121 @@ describe("validationTraceDispute workflow planning (ruling R6)", () => {
         "cancel_semantic_route",
       );
     }
+  });
+
+  it("resumes a journaled CEK core or context route at its live stage", () => {
+    const retained = {
+      transitionCborHex: "d879",
+      auxiliaryCborHex: "d87a",
+      cekPreparedResolutionCbor: "d87b",
+    } as const;
+    const resumable: readonly ValidationTraceDisputeSemanticGroup[] = [
+      "cek_core_stage",
+      "cek_context_stage",
+      "cek_context_item_stage",
+    ];
+    for (const group of resumable)
+      expect(
+        planValidationTraceDisputeMove({
+          stage: {
+            kind: "semantic_in_flight",
+            threadOutRef: thread,
+            group,
+            role: group,
+          },
+          retained,
+        }),
+      ).toEqual({
+        kind: "act",
+        action: {
+          stage: "semantic_resolution",
+          threadOutRef: thread,
+          cekPreparedResolutionCbor: "d87b",
+        },
+      });
+    // Every other staged route still cancels, journaled preparation or not.
+    for (const group of [
+      "cek_material_traversal",
+      "canonical_decode_item_stage",
+      "script_sources_item_stage",
+      "proof_item",
+    ] as const)
+      expect(
+        actionStage(
+          planValidationTraceDisputeMove({
+            stage: {
+              kind: "semantic_in_flight",
+              threadOutRef: thread,
+              group,
+              role: group,
+            },
+            retained,
+          }),
+        ),
+      ).toBe("cancel_semantic_route");
+  });
+
+  it("resumes a journaled split ScriptSources item route at its live stage", () => {
+    const stage: ValidationTraceDisputeChainStage = {
+      kind: "semantic_in_flight",
+      threadOutRef: thread,
+      group: "script_sources_item_stage",
+      role: "traversalNormalizer",
+    };
+    expect(
+      planValidationTraceDisputeMove({
+        stage,
+        retained: {
+          transitionCborHex: "d879",
+          auxiliaryCborHex: "d87a",
+          scriptSourcesItemPreparedCbor: "d905",
+        },
+      }),
+    ).toEqual({
+      kind: "act",
+      action: {
+        stage: "semantic_resolution",
+        threadOutRef: thread,
+        scriptSourcesItemPreparedCbor: "d905",
+      },
+    });
+    // Its shared stages compile to the CEK context item chain's addresses
+    // and classify as that group.
+    expect(
+      planValidationTraceDisputeMove({
+        stage: { ...stage, group: "cek_context_item_stage" },
+        retained: { scriptSourcesItemPreparedCbor: "d905" },
+      }),
+    ).toEqual({
+      kind: "act",
+      action: {
+        stage: "semantic_resolution",
+        threadOutRef: thread,
+        scriptSourcesItemPreparedCbor: "d905",
+      },
+    });
+    // The preparation binds only its own route: no other staged route
+    // resumes against it.
+    for (const group of [
+      "cek_material_traversal",
+      "cek_core_stage",
+      "cek_context_stage",
+      "canonical_decode_item_stage",
+      "proof_item",
+    ] as const)
+      expect(
+        actionStage(
+          planValidationTraceDisputeMove({
+            stage: {
+              kind: "semantic_in_flight",
+              threadOutRef: thread,
+              group,
+              role: group,
+            },
+            retained: { scriptSourcesItemPreparedCbor: "d905" },
+          }),
+        ),
+      ).toBe("cancel_semantic_route");
   });
 
   it("threads retained shared-item preparation into the semantic move", () => {

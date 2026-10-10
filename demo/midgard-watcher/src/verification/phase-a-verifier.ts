@@ -59,7 +59,7 @@
  * reason code. `action: "accept"` is reachable only when the canonical
  * validator accepted every transaction in the block.
  *
- * Like the finality engine and W22, the result is frozen, versioned, and
+ * Like W22, the result is frozen, versioned, and
  * digest-bound with `watcherSha256CanonicalJson`, so two runs over the same
  * bytes produce the same `resultDigest`.
  */

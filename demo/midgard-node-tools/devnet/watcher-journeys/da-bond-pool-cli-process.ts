@@ -121,9 +121,10 @@ export const createDaBondPoolCli = (deps: {
   /** `[node, <repo>/demo/midgard-node/dist/index.js]`. */
   readonly command: readonly [string, string];
   readonly manifestPath: string;
-  readonly kupoUrl: string;
-  readonly ogmiosUrl: string;
-  /** The environment every process gets (the inherited allowlist and the settings). */
+  /**
+   * The environment every process gets (the inherited allowlist and the
+   * settings, with the node's L1 access: its local node and its database).
+   */
   readonly env: Readonly<Record<string, string>>;
   /** A fresh directory for one withdraw step's files. */
   readonly workDirectory: (label: string) => string;
@@ -133,14 +134,7 @@ export const createDaBondPoolCli = (deps: {
     runs: readonly DaBondPoolProcessRun[],
   ) => Promise<void>;
 }) => {
-  const chainOptions = [
-    "--manifest",
-    deps.manifestPath,
-    "--kupo-url",
-    deps.kupoUrl,
-    "--ogmios-url",
-    deps.ogmiosUrl,
-  ];
+  const chainOptions = ["--manifest", deps.manifestPath];
   const daBond = (...args: string[]): [string, ...string[]] => [
     ...deps.command,
     "da-bond",
@@ -308,5 +302,3 @@ export const createDaBondPoolCli = (deps: {
     },
   };
 };
-
-export type DaBondPoolCli = ReturnType<typeof createDaBondPoolCli>;

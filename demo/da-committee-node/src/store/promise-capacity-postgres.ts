@@ -43,11 +43,7 @@ export const writer =
     const canonical = parsePromiseCapacityEvidence(record);
     const key = promiseCapacityEvidenceKey(canonical);
     return withClient(async (client) => {
-      const state = await lockL1SourceState(client);
-      if (state?.status === "quarantined")
-        throw new Error(
-          "Cannot persist capacity evidence while source is quarantined",
-        );
+      await lockL1SourceState(client);
       const rows = await client.query<{ record: unknown }>(
         "SELECT record FROM committee_promise_capacity_evidence WHERE evidence_key=$1 FOR UPDATE",
         [key],

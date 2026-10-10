@@ -5,6 +5,8 @@ import { Effect } from "effect";
 import { MutationJobsDB } from "../database/index.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import { Lucid, MidgardContracts } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
+import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import {
   ensurePhasMembershipRewardAccountRegisteredProgram,
   queryPhasMembershipRewardAccountRegisteredProgram,
@@ -25,13 +27,13 @@ type CanonicalStateQueueHeader = {
 const stateQueueOutRef = (utxo: SDK.StateQueueUTxO): string =>
   `${utxo.utxo.txHash}#${utxo.utxo.outputIndex.toString()}`;
 
+/** The landed queue's blocks (P1), root excluded, in list order. */
 export const fetchCanonicalStateQueueHeaders = Effect.gen(function* () {
-  const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const sorted = yield* SDK.fetchSortedStateQueueUTxOsProgram(lucid.api, {
-    stateQueuePolicyId: contracts.stateQueue.policyId,
-    stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-  });
+  const sorted = yield* landedStateQueueUTxOs(
+    contracts.stateQueue,
+    "reconciliation",
+  );
   return sorted.flatMap((utxo): CanonicalStateQueueHeader[] =>
     utxo.datum.key === "Empty"
       ? []
@@ -81,7 +83,7 @@ export const reconcilePhasRegisteredProgram = ({
   repair,
 }: {
   readonly repair: boolean;
-}): Effect.Effect<ReconciliationResult, unknown, Lucid> =>
+}): Effect.Effect<ReconciliationResult, unknown, Lucid | IntentJournal> =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
     const identity = yield* Effect.try({

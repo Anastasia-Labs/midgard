@@ -7,23 +7,12 @@ import {
   assertWatcherStateQueueObservation,
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
-import {
-  createWatcherSqliteBlockProgressStore,
-  type WatcherBlockProgressStore,
-} from "./block-progress-store.js";
-import type { WatcherDurableAtomicBackend } from "./durable-store.js";
+import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.exact-record.js";
 import { watcherCanonicalJson } from "./durable-store.js";
 import {
   createWatcherSqliteReplayTranscriptStore,
   type WatcherReplayTranscriptStore,
 } from "./replay-transcript-store.js";
-import { createWatcherSqliteRecordStore } from "./sqlite-record-store.js";
-import type { WatcherUserEventArchive } from "./user-event-checkpoint.js";
-import {
-  createWatcherSqliteUserEventCoverageStore,
-  type WatcherUserEventCoverageStore,
-} from "./user-event-coverage-store.js";
 
 export const WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION =
   "midgard-watcher-sqlite-durable-backend-v1" as const;
@@ -63,15 +52,8 @@ const deepFreezeJson = (value: unknown): unknown => {
 
 export type WatcherSqliteDurableBackend = Readonly<{
   schemaVersion: typeof WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION;
-  backend: WatcherDurableAtomicBackend;
   stateQueueObservations: WatcherSqliteStateQueueObservationStore;
-  userEventArchive: WatcherUserEventArchive;
   replayTranscripts: WatcherReplayTranscriptStore;
-  /** "Processed through block N" ring, authenticated with the rollback key. */
-  openBlockProgress(authenticationKey: Uint8Array): WatcherBlockProgressStore;
-  openUserEventCoverage(
-    authenticationKey: Uint8Array,
-  ): WatcherUserEventCoverageStore;
   close(): void;
 }>;
 
@@ -87,8 +69,8 @@ export type WatcherSqliteStateQueueObservationStore = Readonly<{
 }>;
 
 /**
- * Production record updates and progress-marker CAS over SQLite. The independent trusted-head
- * authority deliberately does not share this database or its backup domain.
+ * The watcher's production SQLite store: state-queue observations and replay
+ * transcripts.
  */
 const openWatcherSqliteDurableBackendInternal = async (
   input: {
@@ -147,9 +129,6 @@ const openWatcherSqliteDurableBackendInternal = async (
       canonical_json TEXT NOT NULL CHECK (length(canonical_json) > 0)
     ) STRICT;
   `);
-
-  const { backend, userEventArchive } =
-    createWatcherSqliteRecordStore(database);
 
   const selectStateQueueObservations = database.prepare(`
     SELECT sequence, observation_digest, previous_observation_digest,
@@ -399,17 +378,8 @@ const openWatcherSqliteDurableBackendInternal = async (
 
   return Object.freeze({
     schemaVersion: WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION,
-    backend,
     stateQueueObservations,
-    userEventArchive,
     replayTranscripts: createWatcherSqliteReplayTranscriptStore(database),
-    openBlockProgress: (authenticationKey) =>
-      createWatcherSqliteBlockProgressStore({ database, authenticationKey }),
-    openUserEventCoverage: (authenticationKey) =>
-      createWatcherSqliteUserEventCoverageStore({
-        database,
-        authenticationKey,
-      }),
     close: () => database.close(),
   });
 };

@@ -85,31 +85,9 @@ export type IntermediateLedgerReplayCapture = Readonly<{
   transitionIndex: string;
 }>;
 
-export type CrossBlockReplayCapture = Readonly<{
-  identity: AuthenticatedReplayCaptureIdentity;
-  settled: RawPredecessorContext;
-  settlementOutputCborHex: string;
-  settlementOutRef: string;
-  settlementTransactionBodyCborHex: string;
-  settlementInclusionPointDigest: string;
-  settlementFinalityPolicyDigest: string;
-}>;
-
-export type HistoricalNativeScriptReplayCapture = Readonly<{
-  identity: AuthenticatedReplayCaptureIdentity;
-  /** Exact response bytes from the dedicated public retained-DA protocol. */
-  retainedDaHistoricalPreimageEnvelopeCborHex: string;
-  retainedDaProtocol: string;
-  retainedDaSourceDigest: string;
-  /** Raw L1-history corroboration admitted separately by historical-script. */
-  historicalL1Corroboration: unknown;
-}>;
-
 export type AuthenticatedReplayCapture =
   | NativeScriptDecodingReplayCapture
-  | IntermediateLedgerReplayCapture
-  | CrossBlockReplayCapture
-  | HistoricalNativeScriptReplayCapture;
+  | IntermediateLedgerReplayCapture;
 
 /**
  * Source-neutral watcher/application capture port. Returned values are always

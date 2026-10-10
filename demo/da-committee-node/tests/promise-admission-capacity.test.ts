@@ -7,10 +7,7 @@ import {
 } from "../src/availability/promise-capacity-evidence.js";
 import { retiredPromiseCutoffs } from "../src/availability/promise-cutoff-source.js";
 import { deriveExpectedDaAvailabilityCommitment } from "../src/peer/signatures.js";
-import {
-  promiseAdmissionFixture,
-  stores,
-} from "./helpers/promise-admission.js";
+import { promiseAdmissionFixture } from "./helpers/promise-admission.js";
 
 // Signs one promise, then wires the committee's capacity source to a
 // controllable selected chain over that promise's cutoff.
@@ -114,8 +111,8 @@ describe("persisted capacity certificate at the actual committee signing boundar
     expect(await evidence()).toMatchObject({ retirementKind: "open_cutoff" });
     expect((await evidence())?.certifiedAt).toBeUndefined();
     setBoundary({
-      slot: firstSlot + 2160,
-      blockNo: 2260,
+      slot: firstSlot + 2159,
+      blockNo: 2259,
       blockHash: "34".repeat(32),
     });
     expect(await service.tick()).toMatchObject({
@@ -126,12 +123,12 @@ describe("persisted capacity certificate at the actual committee signing boundar
     expect((await check()).decision).toMatchObject({ status: "admitted" });
     expect((await evidence())?.certifiedAt).toBeUndefined();
     setBoundary({
-      slot: firstSlot + 2161,
-      blockNo: 2261,
+      slot: firstSlot + 2160,
+      blockNo: 2260,
       blockHash: "56".repeat(32),
     });
     expect((await check()).decision).toMatchObject({ status: "admitted" });
-    expect((await evidence())?.certifiedAt?.blockNo).toBe(2261);
+    expect((await evidence())?.certifiedAt?.blockNo).toBe(2260);
     expect(f.sign).toHaveBeenCalledTimes(2);
     // A rollback that removes the certified negative checkpoint exceeds the
     // supported monotonic floor: capacity cannot be reused on the new fork.
@@ -142,7 +139,6 @@ describe("persisted capacity certificate at the actual committee signing boundar
     // Persisted floor-cross evidence, rather than this process's memo, fences
     // subsequent admission even if the provider reports the old point again.
     await state.activeStore.close();
-    stores.delete(state.activeStore);
     state.activeStore = await f.open();
     state.orphan = false;
     expect((await check()).decision).toMatchObject({

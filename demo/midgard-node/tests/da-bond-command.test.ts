@@ -1,7 +1,5 @@
 import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,8 +12,6 @@ import {
   type LucidEvolution,
   paymentCredentialOf,
   PROTOCOL_PARAMETERS_DEFAULT,
-  type Provider,
-  SLOT_CONFIG_NETWORK,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -24,8 +20,9 @@ import {
   daBondAssembleCommand,
   daBondChainSubmit,
   type DaBondContext,
-  DaBondCustomSlotMappingError,
+  type DaBondL1Access,
   daBondLucid,
+  DaBondSlotMappingError,
   daBondStatusCommand,
   daBondSubmitAndConfirm,
   daBondTopUpCommand,
@@ -46,8 +43,9 @@ import {
 /**
  * `loadDaBondContext` on a Custom manifest: a finalized Custom manifest cannot
  * pass this suite's compiled (Preprod) profile check, so while `custom.active`
- * is set the manifest read and verification, the provider, and the first
- * reference authentication (the stage right after Lucid is built) are stubbed,
+ * is set the manifest read and verification and the first reference
+ * authentication (the stage right after Lucid is built) are stubbed, the L1
+ * access is a fake (`fakeAccess`),
  * and the Lucid instance that reaches that stage is captured. With
  * `completeLoad` set, the stubbed manifest also names the DA params governor
  * and the reference authentication answers with the given pool references, so
@@ -55,7 +53,6 @@ import {
  */
 const custom = vi.hoisted(() => ({
   active: false,
-  provider: undefined as unknown,
   reached: [] as unknown[],
   completeLoad: undefined as
     | undefined
@@ -111,16 +108,6 @@ vi.mock(
     };
   },
 );
-
-vi.mock("../src/services/native-ledger.js", async (original) => {
-  const actual =
-    await original<typeof import("../src/services/native-ledger.js")>();
-  return {
-    ...actual,
-    makeNodeKupmios: (...args: Parameters<typeof actual.makeNodeKupmios>) =>
-      custom.active ? custom.provider : actual.makeNodeKupmios(...args),
-  };
-});
 
 vi.mock(
   "../src/commands/availability-challenge-deployment.js",
@@ -315,7 +302,7 @@ beforeAll(async () => {
   };
 }, TIMEOUT_MS);
 
-describe("da-bond CLI on an emulator pool", () => {
+describe("da-bond CLI on an emulator pool", { shuffle: false }, () => {
   it(
     "status reads a full Bonded pool",
     async () => {
@@ -784,197 +771,133 @@ describe("da-bond production submit", () => {
 });
 
 /**
- * A local Ogmios answering the three HTTP queries the node's `Custom` slot
- * mapping makes: `/health`, `queryNetwork/tip` and the Shelley genesis. The
- * chain started `genesisStartMs` ago-ish at one-second slots, so the live
- * snapshot and the genesis agree.
+ * The node's L1 access as the da-bond commands read it: the ledger's slot
+ * mapping and tip, over a provider that only answers what `Lucid(...)` asks
+ * when it is built. The chain started at `genesisStartMs` at one-second slots.
  */
-const fakeOgmios = async (options: {
+const fakeAccess = (options: {
   genesisStartMs: number;
-  genesisFails?: true;
-  /** How many slots `queryNetwork/tip` answers behind the wall clock. */
+  slotConfigFails?: true;
+  /** How many slots the ledger tip answers behind the wall clock. */
   tipLagSlots?: number;
 }) => {
-  const requests: string[] = [];
-  /** Every slot `queryNetwork/tip` answered, in order. */
+  const reads: string[] = [];
+  /** Every slot the ledger tip answered, in order. */
   const tipSlots: number[] = [];
-  const slotNow = () =>
-    Math.floor((Date.now() - options.genesisStartMs) / 1_000);
-  const server = createServer((request, response) => {
-    let body = "";
-    request.on("data", (chunk: Buffer) => {
-      body += chunk.toString("utf8");
-    });
-    request.on("end", () => {
-      const reply = (status: number, payload: unknown) => {
-        response.writeHead(status, { "content-type": "application/json" });
-        response.end(JSON.stringify(payload));
-      };
-      if (request.method === "GET" && request.url === "/health") {
-        requests.push("health");
-        reply(200, {
-          connectionStatus: "connected",
-          networkSynchronization: 1,
-          lastKnownTip: { slot: slotNow() },
-          lastTipUpdate: new Date().toISOString(),
-        });
-        return;
-      }
-      const { method, id } = JSON.parse(body) as {
-        method: string;
-        id: string;
-      };
-      requests.push(method);
-      if (method === "queryNetwork/tip") {
-        const slot = slotNow() - (options.tipLagSlots ?? 0);
-        tipSlots.push(slot);
-        reply(200, { jsonrpc: "2.0", result: { slot }, id });
-      } else if (
-        method === "queryNetwork/genesisConfiguration" &&
-        options.genesisFails === undefined
-      ) {
-        reply(200, {
-          jsonrpc: "2.0",
-          result: {
-            startTime: new Date(options.genesisStartMs).toISOString(),
-            slotLength: { milliseconds: 1_000 },
-          },
-          id,
-        });
-      } else {
-        reply(500, { error: `no answer for ${method}` });
-      }
-    });
-  });
-  await new Promise<void>((resolve) =>
-    server.listen(0, "127.0.0.1", () => resolve()),
-  );
-  const { port } = server.address() as AddressInfo;
-  return {
-    url: `ws://127.0.0.1:${port.toString()}`,
-    requests,
-    tipSlots,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-  };
-};
-
-/** A provider that only answers what `Lucid(...)` asks when it is built. */
-const buildOnlyProvider = () => {
   const getProtocolParameters = vi.fn(async () => PROTOCOL_PARAMETERS_DEFAULT);
-  return {
-    provider: { getProtocolParameters } as unknown as Provider,
-    getProtocolParameters,
+  const access: DaBondL1Access = {
+    provider: {
+      getProtocolParameters,
+    } as unknown as DaBondL1Access["provider"],
+    endpoint: "/run/cardano/node.socket",
+    slotConfig: async () => {
+      reads.push("slotConfig");
+      if (options.slotConfigFails !== undefined)
+        throw new Error("L1 provider transport unavailable: node_unreachable");
+      return {
+        zeroTime: options.genesisStartMs,
+        zeroSlot: 0,
+        slotLength: 1_000,
+      };
+    },
+    ledgerTip: async () => {
+      reads.push("ledgerTip");
+      const slot =
+        Math.floor((Date.now() - options.genesisStartMs) / 1_000) -
+        (options.tipLagSlots ?? 0);
+      tipSlots.push(slot);
+      return { slot, id: "ab".repeat(32) };
+    },
   };
+  return { access, reads, tipSlots, getProtocolParameters };
 };
 
-describe("da-bond on a Custom (local devnet) deployment (P25)", () => {
+describe("da-bond on the ledger's slot mapping (P25)", () => {
   // A whole second, about an hour before now.
   const genesisStartMs = Math.floor(Date.now() / 1_000) * 1_000 - 3_600_000;
 
-  it("builds Lucid with the slot mapping the local Ogmios Shelley genesis gives", async () => {
-    const ogmios = await fakeOgmios({ genesisStartMs });
-    const { provider, getProtocolParameters } = buildOnlyProvider();
-    try {
-      const lucid = await daBondLucid({
-        provider,
-        network: "Custom",
-        ogmiosUrl: ogmios.url,
-      });
-      expect(lucid.config().network).toBe("Custom");
-      expect(lucid.config().slotConfig).toEqual({
-        zeroTime: genesisStartMs,
-        zeroSlot: 0,
-        slotLength: 1_000,
-      });
-      expect(ogmios.requests).toEqual([
-        "health",
-        "queryNetwork/tip",
-        "queryNetwork/genesisConfiguration",
-      ]);
-      expect(getProtocolParameters).toHaveBeenCalled();
-    } finally {
-      await ogmios.close();
-    }
+  it("builds a Custom Lucid with the slot mapping the local node's ledger gives", async () => {
+    const { access, reads, getProtocolParameters } = fakeAccess({
+      genesisStartMs,
+    });
+    const lucid = await daBondLucid({ access, network: "Custom" });
+    expect(lucid.config().network).toBe("Custom");
+    expect(lucid.config().slotConfig).toEqual({
+      zeroTime: genesisStartMs,
+      zeroSlot: 0,
+      slotLength: 1_000,
+    });
+    expect(reads).toEqual(["slotConfig"]);
+    expect(getProtocolParameters).toHaveBeenCalled();
   });
 
-  it("refuses a Custom deployment whose Shelley genesis query fails, with a named error and before Lucid is built", async () => {
-    const ogmios = await fakeOgmios({ genesisStartMs, genesisFails: true });
-    const { provider, getProtocolParameters } = buildOnlyProvider();
-    try {
-      const refused = daBondLucid({
-        provider,
-        network: "Custom",
-        ogmiosUrl: ogmios.url,
-      });
-      await expect(refused).rejects.toBeInstanceOf(
-        DaBondCustomSlotMappingError,
-      );
-      await expect(refused).rejects.toThrow(
-        `Refusing the Custom deployment: the Shelley genesis query from the local Ogmios at ${ogmios.url} failed: HTTP 500`,
-      );
-      expect(getProtocolParameters).not.toHaveBeenCalled();
-    } finally {
-      await ogmios.close();
-    }
+  it("builds a public network's Lucid with the ledger's slot mapping too", async () => {
+    const { access } = fakeAccess({ genesisStartMs });
+    const lucid = await daBondLucid({ access, network: "Preprod" });
+    expect(lucid.config().network).toBe("Preprod");
+    expect(lucid.config().slotConfig).toEqual({
+      zeroTime: genesisStartMs,
+      zeroSlot: 0,
+      slotLength: 1_000,
+    });
   });
 
-  const loadCustom = async (ogmiosUrl: string) => {
-    const { provider, getProtocolParameters } = buildOnlyProvider();
+  it("refuses a deployment whose ledger slot mapping read fails, with a named error and before Lucid is built", async () => {
+    const { access, getProtocolParameters } = fakeAccess({
+      genesisStartMs,
+      slotConfigFails: true,
+    });
+    const refused = daBondLucid({ access, network: "Custom" });
+    await expect(refused).rejects.toBeInstanceOf(DaBondSlotMappingError);
+    await expect(refused).rejects.toThrow(
+      "Refusing the deployment: the slot mapping from the L1 access at /run/cardano/node.socket failed: L1 provider transport unavailable: node_unreachable",
+    );
+    expect(getProtocolParameters).not.toHaveBeenCalled();
+  });
+
+  const loadCustom = async (access: DaBondL1Access) => {
     custom.active = true;
-    custom.provider = provider;
     custom.reached = [];
     try {
       const loaded = await loadDaBondContext(
-        {
-          manifest: "custom-manifest.json",
-          kupoUrl: "http://127.0.0.1:1442",
-          ogmiosUrl,
-        },
-        {},
+        { manifest: "custom-manifest.json" },
+        access,
       ).then(
         () => undefined,
         (error: unknown) => error,
       );
-      return { loaded, reached: custom.reached, getProtocolParameters };
+      return { loaded, reached: custom.reached };
     } finally {
       custom.active = false;
-      custom.provider = undefined;
     }
   };
 
-  it("loadDaBondContext admits a Custom manifest and builds its Lucid with the genesis-derived slot mapping", async () => {
-    const ogmios = await fakeOgmios({ genesisStartMs });
-    try {
-      const { loaded, reached } = await loadCustom(ogmios.url);
-      // It gets past the network parser and the manifest/Lucid network check
-      // to the reference authentication, with the genesis mapping installed.
-      expect(loaded).toEqual(new Error("stop after Lucid is built"));
-      expect(reached).toHaveLength(1);
-      const lucid = reached[0] as LucidEvolution;
-      expect(lucid.config().network).toBe("Custom");
-      expect(lucid.config().slotConfig).toEqual({
-        zeroTime: genesisStartMs,
-        zeroSlot: 0,
-        slotLength: 1_000,
-      });
-      expect(ogmios.requests).toEqual([
-        "health",
-        "queryNetwork/tip",
-        "queryNetwork/genesisConfiguration",
-      ]);
-    } finally {
-      await ogmios.close();
-    }
+  it("loadDaBondContext admits a Custom manifest and builds its Lucid with the ledger's slot mapping", async () => {
+    const { access, reads } = fakeAccess({ genesisStartMs });
+    const { loaded, reached } = await loadCustom(access);
+    // It gets past the network parser and the manifest/Lucid network check
+    // to the reference authentication, with the ledger mapping installed.
+    expect(loaded).toEqual(new Error("stop after Lucid is built"));
+    expect(reached).toHaveLength(1);
+    const lucid = reached[0] as LucidEvolution;
+    expect(lucid.config().network).toBe("Custom");
+    expect(lucid.config().slotConfig).toEqual({
+      zeroTime: genesisStartMs,
+      zeroSlot: 0,
+      slotLength: 1_000,
+    });
+    expect(reads).toEqual(["slotConfig"]);
   });
 
-  it("loadDaBondContext reads the clock from the local node's tip, which trails the wall clock", async () => {
+  it("loadDaBondContext reads the clock from the local node's ledger tip, which trails the wall clock", async () => {
     // The node checks a lower bound against its tip slot + 1. A withdraw
     // begin or complete whose lower bound came from the wall clock, 30 slots
     // ahead of this tip, would be refused as not yet valid.
-    const ogmios = await fakeOgmios({ genesisStartMs, tipLagSlots: 30 });
-    const { provider } = buildOnlyProvider();
+    const { access, tipSlots } = fakeAccess({
+      genesisStartMs,
+      tipLagSlots: 30,
+    });
     custom.active = true;
-    custom.provider = provider;
     custom.reached = [];
     custom.completeLoad = {
       references: {
@@ -985,56 +908,30 @@ describe("da-bond on a Custom (local devnet) deployment (P25)", () => {
     };
     try {
       const loaded = await loadDaBondContext(
-        {
-          manifest: "custom-manifest.json",
-          kupoUrl: "http://127.0.0.1:1442",
-          ogmiosUrl: ogmios.url,
-        },
-        {},
+        { manifest: "custom-manifest.json" },
+        access,
       );
-      const tipSlot = ogmios.tipSlots.at(-1)!;
+      const tipSlot = tipSlots.at(-1)!;
       expect(loaded.now()).toBe(genesisStartMs + tipSlot * 1_000);
       expect(loaded.now()).toBeLessThanOrEqual(Date.now() - 29_000);
     } finally {
       custom.active = false;
-      custom.provider = undefined;
       custom.completeLoad = undefined;
-      await ogmios.close();
     }
   });
 
-  it("loadDaBondContext refuses a Custom manifest whose Shelley genesis query fails, before Lucid is built", async () => {
-    const ogmios = await fakeOgmios({ genesisStartMs, genesisFails: true });
-    try {
-      const { loaded, reached, getProtocolParameters } = await loadCustom(
-        ogmios.url,
-      );
-      expect(loaded).toBeInstanceOf(DaBondCustomSlotMappingError);
-      expect((loaded as Error).message).toContain(
-        `Refusing the Custom deployment: the Shelley genesis query from the local Ogmios at ${ogmios.url} failed: HTTP 500`,
-      );
-      expect(getProtocolParameters).not.toHaveBeenCalled();
-      expect(reached).toEqual([]);
-    } finally {
-      await ogmios.close();
-    }
-  });
-
-  it("keeps a public network's built-in slot mapping and never asks Ogmios for one", async () => {
-    const ogmios = await fakeOgmios({ genesisStartMs });
-    const { provider } = buildOnlyProvider();
-    try {
-      const lucid = await daBondLucid({
-        provider,
-        network: "Preprod",
-        ogmiosUrl: ogmios.url,
-      });
-      expect(lucid.config().network).toBe("Preprod");
-      expect(lucid.config().slotConfig).toEqual(SLOT_CONFIG_NETWORK.Preprod);
-      expect(ogmios.requests).toEqual([]);
-    } finally {
-      await ogmios.close();
-    }
+  it("loadDaBondContext refuses a manifest whose ledger slot mapping read fails, before Lucid is built", async () => {
+    const { access, getProtocolParameters } = fakeAccess({
+      genesisStartMs,
+      slotConfigFails: true,
+    });
+    const { loaded, reached } = await loadCustom(access);
+    expect(loaded).toBeInstanceOf(DaBondSlotMappingError);
+    expect((loaded as Error).message).toContain(
+      "Refusing the deployment: the slot mapping from the L1 access at /run/cardano/node.socket failed",
+    );
+    expect(getProtocolParameters).not.toHaveBeenCalled();
+    expect(reached).toEqual([]);
   });
 });
 

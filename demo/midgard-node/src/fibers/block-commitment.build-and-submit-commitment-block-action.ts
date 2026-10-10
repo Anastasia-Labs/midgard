@@ -1,16 +1,14 @@
-import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
+import { Duration, Effect, Metric, Option, Ref, Runtime } from "effect";
 
 import {
-  ForeignTipReconciliationsDB,
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
 import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 import {
-  HistoryProducer,
-  runHistoryProducer,
-} from "../services/event-history-producer.js";
-import type { ForeignBaseVerificationScope } from "../services/foreign-base-verification.js";
+  FollowerWrite,
+  runAtFollowerView,
+} from "../services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -18,11 +16,12 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
-import { recoverNativeMpfForLocalFinalization } from "../services/native-mpf-local-finalization.js";
+import { IntentJournal } from "../services/intent-journal.js";
 import {
-  fetchStateQueueSnapshotProgram,
+  landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
-} from "../services/state-queue-topology.js";
+} from "../services/landed-state-queue.js";
+import { recoverNativeMpfForLocalFinalization } from "../services/native-mpf-local-finalization.js";
 import {
   WorkerInput,
   WorkerOutput,
@@ -31,19 +30,12 @@ import { WorkerError } from "../workers/utils/common.js";
 import { extendCommitmentHoldForBacklog } from "./block-commitment.commit-hold-budget.js";
 import { promoteCommitWorkerNativeResult } from "./block-commitment.native-result.js";
 import {
-  applyCommitForeignVerification,
-  beginCommitForeignVerification,
-  notifyForeignNativeAdoptionRequested,
-  prepareForeignBaseForCommitment,
-} from "./block-commitment.prepare-foreign-base.js";
-import {
   commitBlockCounter,
   commitBlockNumTxGauge,
   commitBlockTxCounter,
   commitBlockTxSizeGauge,
   commitWorkerDurationTimer,
   type CommitWorkerMessage,
-  foreignTipReconciliationAwaitingGauge,
   publishFullMempoolLedgerReload,
   recoverNativeMpfFromActiveJournalAfterWorkerFailure,
   resolveAuthoritativeLocalFinalizationPreflight,
@@ -52,19 +44,18 @@ import {
 } from "./block-commitment.promote-or-recover-native-mpf.js";
 import { runCommitWorkerInThread } from "./block-commitment.run-commit-worker-in-thread.js";
 import { publishCommitMempoolLedgerMutation } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
+import { COMMIT_WINDOW_PENDING } from "./block-commitment.worker-readiness.js";
 import { classifyCommitWorkerOutputForMutationLease } from "./commit-worker-failure-classification.js";
 import { nativeMpfWorkerInput } from "./native-mpf-worker-input.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { registerSlotAwareDueWork } from "./slot-aware-due-work.js";
-import { reduceSpeculativeCommitState } from "./speculative-commit-state.js";
 
 /** Run a commitment worker and publish its node state and metrics. */
 export const buildAndSubmitCommitmentBlockAction = (
   stateQueueLeaseToken?: string,
 ) => {
-  let adoptionRequested = false;
   return Effect.gen(function* () {
-    const history = yield* HistoryProducer;
+    const history = yield* FollowerWrite;
     const workerStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
@@ -79,12 +70,10 @@ export const buildAndSubmitCommitmentBlockAction = (
     let CURRENT_BLOCK_START_TIME_MS = yield* Ref.get(
       globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
     );
-    let foreignVerificationScope: ForeignBaseVerificationScope | undefined;
     let BASE_SNAPSHOT_ID: string | undefined;
     let STATE_QUEUE_HAS_UNMERGED_TAIL = false;
     if (!LOCAL_FINALIZATION_PENDING) {
-      const snapshot = yield* fetchStateQueueSnapshotProgram(
-        lucid.api,
+      const snapshot = yield* landedStateQueueSnapshot(
         contracts.stateQueue,
         "commit_preflight",
       );
@@ -92,13 +81,6 @@ export const buildAndSubmitCommitmentBlockAction = (
       AVAILABLE_CONFIRMED_BLOCK = snapshot.tailCommitBase.utxo;
       CURRENT_BLOCK_START_TIME_MS = snapshot.tailCommitBase.blockEndTimeMs;
       BASE_SNAPSHOT_ID = snapshot.snapshotId;
-      foreignVerificationScope = yield* beginCommitForeignVerification(
-        globals,
-        {
-          ...history.token,
-          baseHeaderHash: snapshot.tailCommitBase.headerHash,
-        },
-      );
       STATE_QUEUE_HAS_UNMERGED_TAIL =
         snapshot.root.outRef !== snapshot.tailCommitBase.outRef;
       const activePending = yield* PendingBlockFinalizationsDB.retrieveActive();
@@ -171,17 +153,6 @@ export const buildAndSubmitCommitmentBlockAction = (
         AVAILABLE_LOCAL_FINALIZATION_BLOCK,
       );
     }
-    const foreignBase = yield* prepareForeignBaseForCommitment({
-      localFinalizationPending: LOCAL_FINALIZATION_PENDING,
-      availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
-      owner: nativeMpfOwner,
-      globals,
-      scope: foreignVerificationScope,
-    });
-    if (foreignBase !== undefined) {
-      adoptionRequested = foreignBase.adoptionRequested;
-      return foreignBase.output;
-    }
     const nativeMpfInput = yield* nativeMpfWorkerInput(
       nativeMpfOwner,
       "commit-block-header",
@@ -189,6 +160,7 @@ export const buildAndSubmitCommitmentBlockAction = (
     );
     const ledgerStoreLeaseOwner =
       MpfEngineStateDB.nodeProcessCommitLeaseOwner();
+    const intentJournal = yield* IntentJournal;
     const databaseRuntime = yield* Effect.runtime<Database>();
     const releaseTerminatedWorkerLedgerLease = () =>
       Runtime.runPromise(databaseRuntime)(
@@ -234,6 +206,7 @@ export const buildAndSubmitCommitmentBlockAction = (
           globals,
           message,
           nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
+          intentJournal.adopt,
         ),
       releaseLedgerLease: releaseTerminatedWorkerLedgerLease,
     });
@@ -303,12 +276,6 @@ export const buildAndSubmitCommitmentBlockAction = (
       nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
     );
 
-    yield* applyCommitForeignVerification(
-      globals,
-      foreignVerificationScope,
-      workerOutput,
-    );
-
     switch (workerOutput.type) {
       case "SuccessfulSubmissionOutput": {
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
@@ -363,23 +330,6 @@ export const buildAndSubmitCommitmentBlockAction = (
         yield* Effect.logWarning(
           `🔹 Block submitted but local finalization is pending recovery: ${workerOutput.error}`,
         );
-        if (nodeConfig.SPECULATIVE_COMMIT_BUILD) {
-          yield* Ref.update(globals.SPECULATIVE_COMMIT_STATE, (state) =>
-            reduceSpeculativeCommitState(
-              state,
-              {
-                _tag: "SubmittedBase",
-                baseHeaderHash: workerOutput.submittedHeaderHash,
-                atMs: Date.now(),
-              },
-              nodeConfig.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
-            ),
-          );
-          yield* Queue.offer(
-            globals.SPECULATIVE_BUILD_WAKE_QUEUE,
-            workerOutput.submittedHeaderHash,
-          );
-        }
         break;
       }
       case "SubmittedAwaitingConfirmationOutput": {
@@ -402,23 +352,6 @@ export const buildAndSubmitCommitmentBlockAction = (
         yield* Effect.logInfo(
           "🔹 Block submitted; local finalization is intentionally deferred until L1 confirmation.",
         );
-        if (nodeConfig.SPECULATIVE_COMMIT_BUILD) {
-          yield* Ref.update(globals.SPECULATIVE_COMMIT_STATE, (state) =>
-            reduceSpeculativeCommitState(
-              state,
-              {
-                _tag: "SubmittedBase",
-                baseHeaderHash: workerOutput.submittedHeaderHash,
-                atMs: Date.now(),
-              },
-              nodeConfig.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
-            ),
-          );
-          yield* Queue.offer(
-            globals.SPECULATIVE_BUILD_WAKE_QUEUE,
-            workerOutput.submittedHeaderHash,
-          );
-        }
         break;
       }
       case "SuccessfulLocalFinalizationRecoveryOutput": {
@@ -452,29 +385,23 @@ export const buildAndSubmitCommitmentBlockAction = (
         );
         break;
       }
-      case "AwaitingForeignDaOutput": {
+      case "AwaitingCommitBaseOutput": {
         yield* Effect.logWarning(
-          `🔹 Commit deferred awaiting verified foreign DA header_hash=${workerOutput.foreignHeaderHash} reason=${workerOutput.reason}`,
+          `🔹 Commit deferred awaiting its base header_hash=${workerOutput.baseHeaderHash}: ${workerOutput.detail}`,
+        );
+        break;
+      }
+      case "AwaitingNextCommitWindowOutput": {
+        yield* Effect.logWarning(
+          `🔹 Commit deferred awaiting the next window (${COMMIT_WINDOW_PENDING}) header_hash=${workerOutput.heldHeaderHash}: ${workerOutput.detail}`,
         );
         break;
       }
       case "FailureOutput": {
         break;
       }
-      case "SpeculativeCandidateReadyOutput":
-      case "SpeculativeCandidateInvalidatedOutput": {
-        break;
-      }
     }
-    const awaitingForeignTipReconciliations =
-      yield* ForeignTipReconciliationsDB.countAwaiting;
-    yield* foreignTipReconciliationAwaitingGauge(
-      Effect.succeed(awaitingForeignTipReconciliations),
-    );
     yield* emitQueueStateMetrics;
     return workerOutput;
-  }).pipe(
-    runHistoryProducer,
-    Effect.tap(() => notifyForeignNativeAdoptionRequested(adoptionRequested)),
-  );
+  }).pipe(runAtFollowerView);
 };

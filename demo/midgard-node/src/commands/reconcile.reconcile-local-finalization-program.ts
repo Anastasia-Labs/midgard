@@ -16,7 +16,11 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
-import { runCommitBlockHeaderWorkerProgram } from "../workers/commit-block-header.js";
+import type { IntentJournal } from "../services/intent-journal.js";
+import {
+  environmentCommitLucidFactory,
+  runCommitBlockHeaderWorkerProgram,
+} from "../workers/commit-block-header.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput as CommitBlockWorkerInput,
@@ -45,7 +49,12 @@ export const reconcileLocalFinalizationProgram = ({
 }): Effect.Effect<
   ReconciliationResult,
   unknown,
-  Database | Lucid | MidgardContracts | ContractDeploymentIdentity | NodeConfig
+  | Database
+  | Lucid
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | NodeConfig
+  | IntentJournal
 > =>
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");
@@ -73,7 +82,7 @@ export const reconcileLocalFinalizationProgram = ({
       ? journal.value[PendingBlockFinalizationsDB.Columns.STATUS]
       : null;
     const alreadyFinalized =
-      journalStatus === PendingBlockFinalizationsDB.Status.Finalized &&
+      journalStatus === PendingBlockFinalizationsDB.Status.LocallyApplied &&
       txHashes.length > 0 &&
       !unfinishedJobs.some(
         (entry) =>
@@ -146,7 +155,13 @@ export const reconcileLocalFinalizationProgram = ({
         sizeOfProcessedTxsSoFar: 0,
       },
     } satisfies CommitBlockWorkerInput;
-    const workerOutput = yield* runCommitBlockHeaderWorkerProgram(workerInput);
+    // The command's own Lucid (the tool access `--l1` selects), never the
+    // role's follower Lucid: a command opens no role store.
+    const workerOutput = yield* runCommitBlockHeaderWorkerProgram(
+      workerInput,
+      undefined,
+      yield* environmentCommitLucidFactory,
+    );
     canonicalHeaders = yield* fetchCanonicalStateQueueHeaders;
     canonicalHeader = canonicalHeaders.find(
       (entry) => entry.headerHash === headerHashHex,
@@ -159,7 +174,7 @@ export const reconcileLocalFinalizationProgram = ({
       workerOutput.type === "SuccessfulLocalFinalizationRecoveryOutput" &&
       Option.isSome(afterJournal) &&
       afterJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
-        PendingBlockFinalizationsDB.Status.Finalized &&
+        PendingBlockFinalizationsDB.Status.LocallyApplied &&
       txHashes.length > 0 &&
       !unfinishedJobs.some(
         (entry) =>
@@ -234,11 +249,10 @@ export const observeMergeCompletion = (headerHash: Buffer, jobId: string) =>
 
 /**
  * A merge is complete only when the header has left the state queue AND its
- * confirmed-merge local finalization job completed. That job clears the
- * block's rows in the same transaction that folds its ledger delta, so rows
- * that remain after the header left the queue mean the local finalization did
- * not happen; an absent row set alone proves nothing, because a block without
- * L2 transactions never had rows.
+ * confirmed-merge local finalization job completed. The block's rows prove
+ * neither: they stay until its fold is final (`releaseFinalFolds`), well
+ * after its merge completed, and a block without L2 transactions never had
+ * rows.
  */
 export const mergeCompletionVerdict = (
   observed: MergeCompletionObservation,
@@ -254,22 +268,16 @@ export const mergeCompletionVerdict = (
     };
   const jobStatus = observed.job?.[MutationJobsDB.Columns.STATUS];
   if (jobStatus === MutationJobsDB.Status.Completed)
-    return observed.txCount === 0
-      ? { status: "satisfied", nextAction: null }
-      : {
-          status: "ambiguous",
-          nextAction:
-            "The confirmed-merge finalization job completed but block rows for this header exist again; inspect local_block_rows before claiming merge complete.",
-        };
+    return { status: "satisfied", nextAction: null };
   if (observed.job !== undefined)
     return {
       status: "blocked",
-      nextAction: `The header left the state queue but its confirmed-merge local finalization is ${String(jobStatus)}; the running node's merge fiber retries it before every merge while the history owner is Ready, and no merge proceeds until it succeeds. If it keeps failing, inspect the job's last_error.`,
+      nextAction: `The header left the state queue but its confirmed-merge local finalization is ${String(jobStatus)}; the running node's merge fiber retries it before every merge while the follower-change driver's view is published, and no merge proceeds until it succeeds. If it keeps failing, inspect the job's last_error.`,
     };
   return {
     status: "ambiguous",
     nextAction:
-      "The header is not queued and this database holds no confirmed-merge finalization job for it: its merge landed and the running node's merge fiber has not finalized it yet (it does so before its next merge once the history owner is Ready), it was merged before this database existed, or it was removed by state-queue correction; inspect pending_block_finalization.",
+      "The header is not queued and this database holds no confirmed-merge finalization job for it: its merge landed and the running node's merge fiber has not finalized it yet (it does so before its next merge once the follower-change driver's view is published), it was merged before this database existed, or it was removed by state-queue correction; inspect pending_block_finalization.",
   };
 };
 
@@ -299,8 +307,8 @@ export const mergeResultEvidence = (
           trigger: mergeResult.trigger,
           headerHash: mergeResult.headerHash,
           txHash: mergeResult.txHash,
-          postMergeQueueNodeCount:
-            mergeResult.postMergeSnapshot.topology.parsedNodeCount,
+          // The root and the blocks, as the artifact has always counted them.
+          postMergeQueueNodeCount: mergeResult.postMergeSnapshot.blockCount + 1,
         }
       : Object.fromEntries(
           Object.entries(mergeResult).filter(

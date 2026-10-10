@@ -9,6 +9,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   canonicalCommittedWithdrawalTransitionEffect,
   type LocalScriptEvaluation,
+  type PhaseAValidatedTx,
   runPhaseAValidation,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
@@ -41,12 +42,11 @@ import {
   COMMIT_REJECT_CODE_SAME_BLOCK_DEPOSIT_INPUT,
   COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
   commitStageInputPostState,
-  type CommitStageLedgerRevert,
   commitTxDeltaCacheHitCounter,
   commitTxDeltaFallbackDecodedCounter,
-  persistCommitStageRejectedTransactions,
   resolveTxDeltaForCommit,
 } from "./commit-rejection.js";
+import { settleCommitStageRejections } from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
 import { MpfError } from "./errors.js";
 import {
   acceptedTransactionLedgerWitnesses,
@@ -149,10 +149,6 @@ export const processMpfs = (
     sizeOfProcessedTxs: number;
     rejectedMempoolTxsCount: number;
     rejectedMempoolTxHashes: readonly Buffer[];
-    rejectionEntries: readonly TxRejectionsDB.EntryNoTimestamp[];
-    /** Reverts the rejected transactions' ledger effects, for a caller that
-     * persists the rejection itself (`deferDatabaseWrites`). */
-    ledgerRevert: CommitStageLedgerRevert;
     includedDepositEntriesCount: number;
     includedDepositEntries: readonly DepositsDB.Entry[];
     includedDepositEventIds: readonly Buffer[];
@@ -259,7 +255,7 @@ export const processMpfs = (
       )
         return yield* Effect.fail(
           new DatabaseError({
-            table: "event_history_cursor",
+            table: MempoolDB.tableName,
             message:
               "Fixed authenticated block window does not cover the selected transaction timestamps",
             cause: `fixed_end=${fixedEnd}`,
@@ -321,14 +317,7 @@ export const processMpfs = (
       includedDepositEntries = yield* resolveIncludedDepositEntriesForWindow({
         currentBlockStartTime: config.currentBlockStartTime,
         effectiveEndTime,
-        persistProjection: config.deferDatabaseWrites !== true,
       });
-      includedDepositEntries = includedDepositEntries.filter(
-        (entry) =>
-          !config.excludedDepositEventIds?.has(
-            entry[DepositsDB.Columns.ID].toString("hex"),
-          ),
-      );
     }
     const includedDepositEntriesCount = includedDepositEntries.length;
     const includedDepositEventIds = includedDepositEntries.map((entry) =>
@@ -358,15 +347,7 @@ export const processMpfs = (
         yield* resolveIncludedForcedTransactionEntriesForWindow({
           currentBlockStartTime: config.currentBlockStartTime,
           effectiveEndTime,
-          persistProjection: config.deferDatabaseWrites !== true,
         });
-      includedForcedTransactionEntries =
-        includedForcedTransactionEntries.filter(
-          (entry) =>
-            !config.excludedForcedTransactionEventIds?.has(
-              entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
-            ),
-        );
     }
     const includedForcedTransactionEntriesCount =
       includedForcedTransactionEntries.length;
@@ -393,12 +374,6 @@ export const processMpfs = (
           currentBlockStartTime: config.currentBlockStartTime,
           effectiveEndTime,
         });
-      includedWithdrawalEntries = includedWithdrawalEntries.filter(
-        (entry) =>
-          !config.excludedWithdrawalEventIds?.has(
-            entry[WithdrawalsDB.Columns.ID].toString("hex"),
-          ),
-      );
 
       const seenWithdrawalTarget = new Map<string, Buffer>();
       const mutableClassifiedWithdrawals: ClassifiedWithdrawal[] = [];
@@ -440,25 +415,23 @@ export const processMpfs = (
       }
       classifiedWithdrawals = mutableClassifiedWithdrawals;
 
-      if (config.deferDatabaseWrites !== true) {
-        yield* WithdrawalsDB.setSettlementInfoForEventIds(
-          classifiedWithdrawals.map((classified) => ({
-            eventId: classified.entry[WithdrawalsDB.Columns.ID],
-            expectedClassificationRevision:
-              classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
-            settlementEventInfo: classified.settlementEventInfo,
-            validity: classified.validity,
-            validityDetail: classified.validityDetail,
-          })),
-        );
-        yield* WithdrawalsDB.markAwaitingAsProjected(
-          classifiedWithdrawals.map((classified) => ({
-            eventId: classified.entry[WithdrawalsDB.Columns.ID],
-            expectedClassificationRevision:
-              classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
-          })),
-        );
-      }
+      yield* WithdrawalsDB.setSettlementInfoForEventIds(
+        classifiedWithdrawals.map((classified) => ({
+          eventId: classified.entry[WithdrawalsDB.Columns.ID],
+          expectedClassificationRevision:
+            classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
+          settlementEventInfo: classified.settlementEventInfo,
+          validity: classified.validity,
+          validityDetail: classified.validityDetail,
+        })),
+      );
+      yield* WithdrawalsDB.markAwaitingAsProjected(
+        classifiedWithdrawals.map((classified) => ({
+          eventId: classified.entry[WithdrawalsDB.Columns.ID],
+          expectedClassificationRevision:
+            classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
+        })),
+      );
 
       includedWithdrawalEntries = classifiedWithdrawals.map((classified) => ({
         ...classified.entry,
@@ -542,10 +515,7 @@ export const processMpfs = (
         }
       }
     }
-    if (
-      config.deferDatabaseWrites !== true &&
-      classifiedForcedTransactions.length > 0
-    ) {
+    if (classifiedForcedTransactions.length > 0) {
       yield* ForcedTransactionsDB.setProofClassifications(
         classifiedForcedTransactions.map(({ entry }) => ({
           txOrderId: entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
@@ -668,6 +638,31 @@ export const processMpfs = (
       }),
     );
 
+    // A commit-stage rejection's inputs resolve against this block's
+    // post-state: its revert restores exactly the inputs the block leaves
+    // unspent. A block member the rejection closure reaches leaves the block.
+    const commitPostState = (accepted: readonly PhaseAValidatedTx[]) =>
+      commitStageInputPostState({
+        baseLedgerOutputs: selectedLedgerOutputs,
+        insertedOutputs: new Map([
+          ...rawInsertedLedgerOutputsByOutRef,
+          ...accepted.flatMap(({ graph }) =>
+            graph.produced.map(
+              (row) =>
+                [
+                  hexOf(row[Ledger.Columns.OUTREF]),
+                  Buffer.from(row[Ledger.Columns.OUTPUT]),
+                ] as const,
+            ),
+          ),
+        ]),
+        spentOutRefHexes: new Set([
+          ...withdrawnOutRefHexes,
+          ...forcedSpentOutRefHexes,
+          ...accepted.flatMap(({ graph }) => graph.spentOutRefHexes),
+        ]),
+      });
+    let commitStageRejectionsSettled = false;
     if (processedMempoolTxs.length > 0) {
       const validation = config!.forcedValidation!;
       const durableProgramMaterial =
@@ -745,22 +740,35 @@ export const processMpfs = (
             }),
         ),
       );
-      const proofPhaseB = yield* evaluateNormalBlockCandidates({
-        candidates: proofPhaseA.accepted,
-        state: proofPreState,
-        blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
-        bucketConcurrency: validation.bucketConcurrency,
-        consensusProfile,
-        scriptEvaluationsByTxId: proofScriptEvaluationsByTxId,
-      });
-      const proofRejected = [...proofPhaseA.rejected, ...proofPhaseB.rejected];
-      for (const rejected of proofRejected) {
+      for (const rejected of proofPhaseA.rejected) {
         rejectedTxHashes.push(Buffer.from(rejected.txId));
         rejectionEntries.push({
           [TxRejectionsDB.Columns.TX_ID]: Buffer.from(rejected.txId),
           [TxRejectionsDB.Columns.REJECT_CODE]: rejected.code,
           [TxRejectionsDB.Columns.REJECT_DETAIL]: rejected.detail,
         });
+      }
+      const proofPhaseB = yield* settleCommitStageRejections({
+        candidates: proofPhaseA.accepted,
+        evaluate: (candidates) => {
+          proofScriptEvaluationsByTxId.clear();
+          return evaluateNormalBlockCandidates({
+            candidates,
+            state: proofPreState,
+            blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
+            bucketConcurrency: validation.bucketConcurrency,
+            consensusProfile,
+            scriptEvaluationsByTxId: proofScriptEvaluationsByTxId,
+          });
+        },
+        rejectionEntries,
+        resolveInputPostState: commitPostState,
+        onLedgerReverted: config.onMempoolLedgerReverted,
+      });
+      commitStageRejectionsSettled = true;
+      for (const entry of proofPhaseB.rejectionEntries) {
+        rejectedTxHashes.push(entry[TxRejectionsDB.Columns.TX_ID]);
+        rejectionEntries.push(entry);
       }
 
       const decodedByTxHashForCommit = new Map(
@@ -894,50 +902,12 @@ export const processMpfs = (
       );
     }
 
-    // Admission already applied the rejected transactions to mempool_ledger.
-    // Their inputs resolve against this block's post-state so the revert
-    // restores exactly the inputs the block leaves unspent.
-    const rejectedTxIdHexes = new Set(rejectedTxHashes.map(hexOf));
-    const acceptedTxIdHexes = new Set(mempoolTxHashes.map(hexOf));
-    const ledgerRevert: CommitStageLedgerRevert = {
-      rejected: decodedMempoolTxs
-        .filter((decoded) => rejectedTxIdHexes.has(hexOf(decoded.txHash)))
-        .map(({ txHash, spent, produced }) => ({
-          txId: txHash,
-          spent,
-          produced,
-        })),
-      resolveInputPostState: commitStageInputPostState({
-        baseLedgerOutputs: selectedLedgerOutputs,
-        insertedOutputs: rawInsertedLedgerOutputsByOutRef,
-        spentOutRefHexes: new Set([
-          ...withdrawnOutRefHexes,
-          ...forcedSpentOutRefHexes,
-          ...decodedMempoolTxs.flatMap((decoded) =>
-            acceptedTxIdHexes.has(hexOf(decoded.txHash))
-              ? decoded.spent.map(hexOf)
-              : [],
-          ),
-        ]),
-      }),
-    };
-    if (rejectedTxHashes.length > 0 && config.deferDatabaseWrites !== true) {
-      yield* Effect.logWarning(
-        `Dropping ${rejectedTxHashes.length} transaction(s) from MempoolDB`,
-      );
-      const mempoolLedgerReverted =
-        yield* persistCommitStageRejectedTransactions({
-          rejectedTxHashes,
-          rejectionEntries,
-          ledgerRevert,
-        });
-      if (
-        mempoolLedgerReverted &&
-        config.onMempoolLedgerReverted !== undefined
-      ) {
-        yield* config.onMempoolLedgerReverted;
-      }
-    }
+    if (!commitStageRejectionsSettled)
+      yield* settleCommitStageRejections({
+        rejectionEntries,
+        resolveInputPostState: commitPostState,
+        onLedgerReverted: config.onMempoolLedgerReverted,
+      });
 
     const transactionRootBeforeApply = yield* transactionsMpf.root();
     const ledgerRootBeforeApplyHex = Buffer.from(
@@ -1582,8 +1552,6 @@ export const processMpfs = (
       sizeOfProcessedTxs,
       rejectedMempoolTxsCount: rejectedTxHashes.length,
       rejectedMempoolTxHashes: rejectedTxHashes,
-      rejectionEntries,
-      ledgerRevert,
       includedDepositEntriesCount,
       includedDepositEntries,
       includedDepositEventIds,

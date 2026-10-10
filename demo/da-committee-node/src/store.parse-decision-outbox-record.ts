@@ -1,16 +1,11 @@
 import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 
-import type {
-  DaStoredPayloadRecord,
-  StateQueueHeaderRecord,
-} from "./domain.js";
+import type { DaStoredPayloadRecord } from "./domain.js";
 import {
   type CommitteeDeploymentRecord,
   type DecisionOutboxRecord,
   hasPayloadBytes,
-  type L1ObservedDecision,
   type StoreData,
-  UNKNOWN_STATE_QUEUE_STATUS,
 } from "./store.committee-store.js";
 
 export const withDerivedPayloadFetchStatus = (
@@ -127,8 +122,6 @@ export const parseDecisionOutboxRecord = (
     "createdAt",
     "updatedAt",
     "lastError",
-    "quarantineReason",
-    "quarantinedAt",
   ]);
   const signerMatchesKind =
     record.effectKind === "signature_publish"
@@ -143,7 +136,10 @@ export const parseDecisionOutboxRecord = (
     typeof record.deploymentFingerprint !== "string" ||
     record.deploymentFingerprint.length === 0 ||
     (record.sourceMode !== "local_node" &&
-      record.sourceMode !== "external_providers") ||
+      !(
+        record.sourceMode === "external_providers" &&
+        record.status !== "pending"
+      )) ||
     typeof record.network !== "string" ||
     record.network.length === 0 ||
     (record.effectKind !== "signature_publish" &&
@@ -170,23 +166,13 @@ export const parseDecisionOutboxRecord = (
     typeof record.updatedAt !== "string" ||
     !isCanonicalIsoTimestamp(record.updatedAt) ||
     (record.lastError !== undefined &&
-      (typeof record.lastError !== "string" ||
-        record.lastError.length === 0)) ||
-    (record.quarantineReason !== undefined &&
-      (typeof record.quarantineReason !== "string" ||
-        record.quarantineReason.length === 0)) ||
-    (record.quarantinedAt !== undefined &&
-      (typeof record.quarantinedAt !== "string" ||
-        !isCanonicalIsoTimestamp(record.quarantinedAt)))
+      (typeof record.lastError !== "string" || record.lastError.length === 0))
   ) {
     throw new Error("decision outbox record is malformed");
   }
   if (
     record.slot === undefined ||
     record.blockHash === undefined ||
-    (record.quarantineReason === undefined) !==
-      (record.quarantinedAt === undefined) ||
-    (record.quarantineReason !== undefined && record.status !== "failed") ||
     (record.status === "failed" && record.lastError === undefined) ||
     (record.status !== "failed" && record.lastError !== undefined)
   ) {
@@ -214,12 +200,6 @@ export const parseDecisionOutboxRecord = (
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     ...(record.lastError === undefined ? {} : { lastError: record.lastError }),
-    ...(record.quarantineReason === undefined
-      ? {}
-      : { quarantineReason: record.quarantineReason }),
-    ...(record.quarantinedAt === undefined
-      ? {}
-      : { quarantinedAt: record.quarantinedAt }),
   };
   if (
     canonical.effectId !==
@@ -237,43 +217,6 @@ export const parseDecisionOutboxRecord = (
   }
   return canonical;
 };
-
-export const assertDecisionRetry = (
-  existing: DecisionOutboxRecord | undefined,
-  next: DecisionOutboxRecord,
-): void => {
-  if (existing === undefined) {
-    return;
-  }
-  if (
-    existing.effectId !== next.effectId ||
-    existing.deploymentFingerprint !== next.deploymentFingerprint ||
-    existing.sourceMode !== next.sourceMode ||
-    existing.network !== next.network ||
-    existing.effectKind !== next.effectKind ||
-    existing.headerHash !== next.headerHash ||
-    existing.stateQueueOutRef !== next.stateQueueOutRef ||
-    existing.signerIndex !== next.signerIndex ||
-    existing.slot !== next.slot ||
-    existing.blockHash !== next.blockHash ||
-    existing.finalized !== next.finalized ||
-    existing.createdAt !== next.createdAt ||
-    next.attemptCount !== existing.attemptCount + 1
-  ) {
-    throw new Error("decision outbox retry does not match durable identity");
-  }
-};
-
-/**
- * The status `observation` was last known by: its own, or for an unknown one
- * the `lastKnownStatus` it carries.
- */
-export const knownStatus = (
-  observation: L1ObservedDecision,
-): StateQueueHeaderRecord["status"] | undefined =>
-  observation.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS
-    ? observation.lastKnownStatus
-    : observation.stateQueueStatus;
 
 export const isCanonicalIsoTimestamp = (value: string): boolean => {
   const time = Date.parse(value);

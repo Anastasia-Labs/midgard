@@ -1,9 +1,15 @@
-# In-stack Cardano L1 for midgard-node: cardano-node (Mithril-bootstrapped),
-# Ogmios and Kupo. This is the canonical L1 stack for every Midgard role; hosts
-# that run only a watcher or a DA committee node start just the L1 services:
+# In-stack Cardano L1 for midgard-node: cardano-node (Mithril-bootstrapped)
+# and its exported config, plus Ogmios and Kupo. Every Midgard role (node,
+# watcher, DA committee) reads and submits L1 only through the cardano-node
+# socket, with its own ChainSync follower and the node transport; hosts that
+# run only a watcher or a DA committee node start just the L1 node:
 #
 #   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
-#     up -d cardano-node-ogmios kupo
+#     up -d cardano-node cardano-config-export
+#
+# No role reads Ogmios or Kupo. They stay for the node-tools devnet harness
+# and its stop-kupo/stop-ogmios drills, and the fault-proofs prover CLI
+# (--ogmios-url, --kupo-url). Kupo follows Ogmios's ChainSync.
 #
 # Image pins: every image below is pinned by tag AND digest, with one default
 # per image shared by every service that names it. Change the tag and digest
@@ -11,26 +17,27 @@
 # version because the Mithril bootstrap compares it against the certified
 # snapshot's cardano_node_version.
 
-x-l1-env: &l1-env
-  L1_PROVIDER: Kupmios
-  L1_OGMIOS_KEY: http://cardano-node-ogmios:1337
-  L1_KUPO_KEY: http://kupo:1442
-
 services:
+  # The node's L1 follower reads the in-stack cardano-node directly: its
+  # socket, its config (exported by cardano-config-export) and the
+  # midgard-l1-node-transport binary baked into the image. It also needs
+  # L1_ORIGIN from .env (see .env.example); without it the node stays unready
+  # (l1_follower_unconfigured) rather than exiting.
   midgard-node:
-    environment: *l1-env
+    environment:
+      L1_NODE_SOCKET_PATH: /ipc/node.socket
+      L1_NODE_CONFIG_PATH: /cardano-config/config.json
+      L1_NODE_TRANSPORT_BINARY_PATH: /usr/local/bin/midgard-l1-node-transport
+    volumes:
+      - ./cardano/ipc:/ipc
+      - ./cardano/config:/cardano-config:ro
     depends_on:
       postgres:
         condition: service_healthy
-      cardano-node-ogmios:
+      cardano-config-export:
+        condition: service_completed_successfully
+      cardano-node:
         condition: service_healthy
-      kupo:
-        condition: service_healthy
-
-  # db:migrate loads the full node config, so it needs the same in-stack L1
-  # endpoints as midgard-node even though it only touches Postgres.
-  midgard-node-migrate:
-    environment: *l1-env
 
   mithril-bootstrap:
     image: ghcr.io/intersectmbo/mithril-client:${MITHRIL_CLIENT_IMAGE_TAG:-2630.1-hotfix-3f6cb73@sha256:e512868501e19aaff39764909d6eccc473449da36567ba8d6fd652a24630a1e5}
@@ -96,6 +103,24 @@ services:
     networks:
       midgard_net:
 
+  # Copies the node config and genesis files the cardano-node image runs with
+  # to ./cardano/config, so host-side readers (midgard-node's L1 follower, a
+  # watcher's MIDGARD_L1_CONFIG_DIR) see the same files. Reruns on every up,
+  # so an image bump refreshes them.
+  cardano-config-export:
+    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.1.0}@${CARDANO_NODE_IMAGE_DIGEST:-sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a}
+    entrypoint:
+      - /bin/sh
+      - /bootstrap/export-cardano-config.sh
+    environment:
+      NETWORK: ${NETWORK}
+    volumes:
+      - ./cardano/config:/export
+      - ./scripts/export-cardano-config.sh:/bootstrap/export-cardano-config.sh:ro
+    restart: "no"
+    networks:
+      midgard_net:
+
   cardano-node-ogmios:
     image: cardanosolutions/ogmios:${OGMIOS_IMAGE_TAG:-v7.0.0@sha256:8892ef5f77b94f1c95427cf9f2b40e6235a32b27a8b1e378db02289f3991617f}
     entrypoint:
@@ -123,15 +148,14 @@ services:
 
   kupo:
     image: cardanosolutions/kupo:${KUPO_IMAGE_TAG:-v2.11.0@sha256:0a8cd8b5e373103e9e0a68b162d82c69a6f76042bb073c31912724034e51ca9e}
-    # No --prune-utxo: the node's forced-order carriage reader
-    # (src/l1-tx-order-carriage.ts) reads spent carriage outputs, which a
-    # pruning index deletes. The official Kupo snapshot restored by
+    # No --prune-utxo: the Kupo readers named at the top read spent outputs,
+    # which a pruning index deletes. The official Kupo snapshot restored by
     # kupo-bootstrap was itself built pruned, so outputs spent before the
     # snapshot point are absent. That is fine for a deployment initialised
     # after this bring-up (the usual case); to serve a deployment whose L1
     # history predates the snapshot, set KUPO_BOOTSTRAP_MODE=origin and let
     # Kupo sync from origin instead. Kupo >= v2.10.0 is required for the
-    # ?resolve_hashes query the same reader depends on.
+    # ?resolve_hashes query the same readers depend on.
     command:
       - --ogmios-host
       - cardano-node-ogmios

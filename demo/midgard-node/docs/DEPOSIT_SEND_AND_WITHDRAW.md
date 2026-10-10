@@ -31,15 +31,14 @@ Start from `demo/midgard-node/.env.example` and verify the preprod deployment is
 configured:
 
 - `NETWORK=Preprod`
-- `L1_PROVIDER=Kupmios` with healthy local Kupo and Ogmios endpoints
+- `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
+  `L1_NODE_TRANSPORT_BINARY_PATH` for a synced local cardano-node
 - `L1_OPERATOR_SEED_PHRASE`
 - `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`
 - `L1_REFERENCE_SCRIPT_SEED_PHRASE`
 - `L1_REFERENCE_SCRIPT_ADDRESS`
 - `L1_SETTLEMENT_SEED_PHRASE`: a funded wallet the settlement worker owns,
   holding fee funds and a separate ADA-only collateral UTxO
-- `L1_HISTORY_GENESIS_LOSSLESS_SHA256` (from `node dist/index.js history-genesis-pin`
-  against the intended chain)
 - `HUB_ORACLE_ONE_SHOT_TX_HASH`
 - `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX`
 - `POSTGRES_*`
@@ -424,7 +423,8 @@ registration transaction and relies on normal transaction confirmation.
 
 The L1 event may not have reached its inclusion time. Compare its
 `inclusionTime` with the current time, then check the node's `/readyz`
-reasons, for example `history_owner_not_ready`. Only the running node ingests
+reasons, for example `l1_follower_catching_up` or
+`l1_follower_view_unapplied`. Only the running node ingests
 L1 events; there is no one-shot ingestion command.
 
 ### `submit-withdrawal` Rejects The L2 Out-Ref

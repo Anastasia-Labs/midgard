@@ -46,15 +46,12 @@ rg -n "instanceof Error|String\\(|JSON\\.stringify\\(|isHex|hex|assert|invariant
 3. For each candidate, prove the redundancy from code, not intent. Identify the canonical upstream validation or helper and the affected call path.
 4. Patch only high-confidence reductions. If the cleanup needs a shared helper, put it at the narrowest existing shared boundary already used by the scope.
 5. Keep behavior strict. Do not add compatibility switches or fallback modes to preserve old runtime objects. [review]
-6. Run targeted verification first, then broader verification when the touched surface is shared:
+6. Run the tests the change reaches first, then gate it; the gate builds, typechecks and tests every package the change can reach, as CI does:
 
 ```bash
-cd demo
-pnpm run typecheck
-pnpm run test
+node scripts/contrib.mjs test --package <name> --related <changed path>...
+node scripts/preflight.mjs --full-local --base <target-ref>
 ```
-
-Use narrower package scripts first when available and the change is scoped.
 
 ## Final Report
 

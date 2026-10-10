@@ -33,30 +33,10 @@ export type BuiltUnsignedDepositTx = {
 
 export type DepositBuildMetadata = SDK.DepositBuildMetadata;
 
-export type SubmittedDeposit = {
-  readonly txHash: string;
-  readonly metadata: DepositBuildMetadata;
-  readonly confirmationStatus:
-    | "confirmed"
-    | "reconciled_after_timeout"
-    | "ambiguous";
-};
-
 export class SubmitDepositError extends EffectData.TaggedError(
   "SubmitDepositError",
 )<{
   message: string;
-  cause: unknown;
-}> {}
-
-export class DepositConfirmationUnknownError extends EffectData.TaggedError(
-  "DepositConfirmationUnknownError",
-)<{
-  message: string;
-  txHash: string;
-  depositEventId: string;
-  expectedDepositOutRef: string;
-  reconciliation: DepositSubmissionReconciliationResult;
   cause: unknown;
 }> {}
 

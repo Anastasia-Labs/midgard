@@ -23,6 +23,7 @@ import {
 import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
 import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.js";
+import { recordObjectives } from "./watcher-journal-fixture.js";
 
 /** Signed double-spend journals, real enough for the supervisor's journal,
  * decision and reconciliation-permit admission. */
@@ -80,9 +81,7 @@ export const classifyDoubleSpend = async (seed = 91) => {
   return decision;
 };
 
-export type DoubleSpendDecision = Awaited<
-  ReturnType<typeof classifyDoubleSpend>
->;
+type DoubleSpendDecision = Awaited<ReturnType<typeof classifyDoubleSpend>>;
 
 const submissionEvents = (
   actionId: string,
@@ -146,6 +145,10 @@ export const writeExecution = async (
         ]
       : []),
   ];
+  // The queue records the objective before its workflow journal exists.
+  recordObjectives(root, [
+    { category: "doubleSpend", headerHash: decision.headerHash },
+  ]);
   const journal = new DirectoryFraudProofWorkflowJournalStore(
     join(root, "fault-proofs", "doubleSpend", decision.headerHash),
   );

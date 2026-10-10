@@ -10,13 +10,13 @@ import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { canonicalRejectionArm } from "../../src/verification/block-replay.replay-forced-transition-effect.js";
+import { WatcherBlockReplayError } from "../../src/verification/block-replay.watcher-block-replay-result.js";
 import {
   isWatcherForcedOperatorVerdict,
   WATCHER_FORCED_TX_VALID,
   watcherForcedOperatorVerdict,
-} from "../../src/indexers/user-event-indexer.js";
-import { canonicalRejectionArm } from "../../src/verification/block-replay.replay-forced-transition-effect.js";
-import { WatcherBlockReplayError } from "../../src/verification/block-replay.watcher-block-replay-result.js";
+} from "../../src/verification/user-event.js";
 import { userEventForcedOperatorVerdictForClassification } from "../support/user-event-forced-order-fixture.js";
 
 /**

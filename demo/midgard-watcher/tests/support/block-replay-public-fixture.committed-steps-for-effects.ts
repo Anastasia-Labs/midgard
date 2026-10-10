@@ -12,7 +12,7 @@ import {
   makeNativeTx,
   outRefFromTxId,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-snapshot.js";
@@ -89,31 +89,6 @@ export const dataHex = <A>(
   value: A,
   schema: Parameters<typeof Data.to>[1],
 ): string => encodeData(value, schema as never).toString("hex");
-
-export const cardanoOutputAssets = (
-  outputCborHex: string,
-): Readonly<Record<string, bigint>> => {
-  const value = CML.TransactionOutput.from_cbor_hex(outputCborHex).amount();
-  const assets: Record<string, bigint> = { lovelace: value.coin() };
-  const multiasset = value.multi_asset();
-  if (multiasset !== undefined) {
-    const policies = multiasset.keys();
-    for (let policyIndex = 0; policyIndex < policies.len(); policyIndex += 1) {
-      const policy = policies.get(policyIndex);
-      const policyAssets = multiasset.get_assets(policy);
-      if (policyAssets === undefined) continue;
-      const names = policyAssets.keys();
-      for (let nameIndex = 0; nameIndex < names.len(); nameIndex += 1) {
-        const name = names.get(nameIndex);
-        const quantity = policyAssets.get(name);
-        if (quantity !== undefined) {
-          assets[`${policy.to_hex()}${name.to_hex()}`] = quantity;
-        }
-      }
-    }
-  }
-  return Object.freeze(assets);
-};
 
 export const nativeEffect = (input: {
   readonly spent: readonly Buffer[];

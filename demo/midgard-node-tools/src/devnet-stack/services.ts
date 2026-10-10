@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { assertRoleL1Env } from "@al-ft/midgard-l1-follower";
+
 import {
   COMMITTEE_SIZE,
   committeeEnvironment,
@@ -9,8 +11,8 @@ import {
   publicRetainedDaEnvironment,
 } from "./da.js";
 import type { DeployContext } from "./deploy.js";
+import { recordedL1Origin } from "./deployment-origin.js";
 import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
-import { recordedHistoryGenesisPin } from "./history-pin.js";
 import { walletInfos } from "./identities.js";
 import { servicePorts } from "./layout.js";
 import { type HubOracleOneShot, nodeEnvironment } from "./node-env.js";
@@ -26,30 +28,22 @@ import type {
 import { watcherServiceSpecs } from "./watcher.js";
 
 /**
- * The node publishes readiness once startup is done. Its default
- * startup budget: four provider steps (protocol status, DA provider
- * assertions, state-queue boundary seed, tx-order catch-up), each retried
- * STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS 120 x 5 s, plus the first-start
- * ledger scan's LEDGER_SCAN_TIMEOUT_MS of 15 min: 55 min, rounded up.
+ * The node publishes readiness once startup is done. Its startup steps ride
+ * out transient failures within their budgets (the database 15 min, the L1
+ * node 10 min, the protocol status STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS
+ * 120 x 5 s), then wait for the follower to reach the tip and apply its
+ * first view; past a budget the node exits non-zero and the supervisor
+ * restarts it. An hour covers those budgets and a first catch-up.
  */
 export const NODE_START_GRACE_MS = 60 * 60_000;
 
 export const supervisorPaths = (
-  context: Pick<DeployContext, "layout"> & Partial<Pick<DeployContext, "run">>,
+  context: Pick<DeployContext, "layout">,
   specs?: readonly ServiceSpec[],
 ): SupervisorPaths => ({
   runDir: context.layout.runDir,
   runtimeCodeStamp: () => codeStamp(runtimeDistTargets(context.layout)),
   serviceSpecs: specs,
-  historyDaemon:
-    context.run !== undefined &&
-    specs?.some((spec) => spec.historyReadiness !== undefined)
-      ? {
-          runId: context.run.runId,
-          supervisorPid: context.layout.supervisorPid,
-          descriptorPath: context.layout.historyDaemonDescriptor,
-        }
-      : undefined,
   deploymentBinding: existsSync(context.layout.contractManifest)
     ? createHash("sha256")
         .update(readFileSync(context.layout.contractManifest))
@@ -70,6 +64,9 @@ export const serviceSpecs = (
 ): ServiceSpec[] => {
   const { layout, run, identities, artifacts } = context;
   const ports = servicePorts(run);
+  // Every committee follower and the node start from the run's recorded
+  // origin; without one no service is specified.
+  const l1Origin = recordedL1Origin(layout, oneShot);
   const committees: ServiceSpec[] = Array.from(
     { length: COMMITTEE_SIZE },
     (_, index) => {
@@ -83,8 +80,9 @@ export const serviceSpecs = (
           layout,
           run,
           identities,
-          chainSyncBinary: artifacts.chainSyncBinary,
+          transportBinary: artifacts.transportBinary,
           index,
+          l1Origin,
         }),
         healthUrl: `${base}/healthz`,
         readyUrl: `${base}/readyz`,
@@ -92,7 +90,7 @@ export const serviceSpecs = (
     },
   );
   const node = `http://127.0.0.1:${ports.nodeHttp}`;
-  return [
+  return roleProcessesFailClosed([
     ...committees,
     {
       name: "public-retained-da",
@@ -113,15 +111,30 @@ export const serviceSpecs = (
       env: nodeEnvironment({
         ...context,
         oneShot,
-        historyGenesisPin: recordedHistoryGenesisPin(layout),
+        l1Origin,
         role: "listen",
       }),
       healthUrl: `${node}/healthz`,
       readyUrl: `${node}/readyz`,
       startGraceMs: NODE_START_GRACE_MS,
     },
-    ...watcherServiceSpecs(context, oneShot),
-  ];
+    ...watcherServiceSpecs(context),
+  ]);
+};
+
+/**
+ * Every service the stack starts is a role process (node `listen`, the DA
+ * committee and its public reader, the watcher), reading L1 only through its
+ * follower (option E). The harness is a tool and may use Kupmios, but none of
+ * that reaches a role: a spec whose environment carries a Kupo, Ogmios,
+ * Blockfrost or tool `L1_ACCESS` setting is refused before anything starts.
+ * The supervisor passes a service only `PATH`, `HOME` and this environment.
+ */
+export const roleProcessesFailClosed = (
+  specs: ServiceSpec[],
+): ServiceSpec[] => {
+  for (const spec of specs) assertRoleL1Env(spec.env, spec.name);
+  return specs;
 };
 
 /** What the endurance maintainer and its status report read. */

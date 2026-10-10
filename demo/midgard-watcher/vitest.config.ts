@@ -53,7 +53,11 @@ export default defineConfig({
           test: {
             name: "testing-profile",
             include: ["./tests/**/*.test.ts"],
-            exclude: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
+            exclude: [
+              "./tests/fault-proofs/watcher-installed-journey.test.ts",
+              "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
+              "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
+            ],
             globalSetup: [blueprintStampGlobalSetup],
           },
         },
@@ -65,7 +69,11 @@ export default defineConfig({
         plugins: [interactiveEmulatorPlugin()],
         test: {
           name: "interactive-emulator",
-          include: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
+          include: [
+            "./tests/fault-proofs/watcher-installed-journey.test.ts",
+            "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
+            "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
+          ],
           globalSetup: [interactiveEmulatorSetup],
           env: { MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint },
         },
@@ -99,6 +107,9 @@ export default defineConfig({
     // The heaviest restart/rewind tests can exceed Vitest's 5s default on
     // shared runners. Headroom for slow runners, not a license for slow tests.
     testTimeout: 60_000,
+    // Suites drop their test databases in `afterAll`; each `DROP DATABASE …
+    // WITH (FORCE)` can outlast the 10 s hook default on a loaded CI runner.
+    hookTimeout: 120_000,
   },
   environments: midgardSourceEnvironments(),
 });

@@ -1,3 +1,7 @@
+import {
+  SUBMIT_SLOT_LENGTH_MS,
+  type SubmitSlotSnapshot,
+} from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -6,31 +10,27 @@ import {
   registerSlotAwareDueWork,
   type SlotAwareDueWork,
 } from "../../fibers/slot-aware-due-work.js";
-import {
-  localOgmiosSubmitSlotEvidence,
-  makeLocalOgmiosSubmitSlotSnapshotProvider,
-  SUBMIT_SLOT_LENGTH_MS,
-  type SubmitSlotSnapshot,
-} from "../../local-ledger-slot.js";
+import { submitSlotEvidence } from "../../l1-provider-view.js";
 import { Database } from "../../services/index.js";
 import { slotAwareDueWorkFromSubmitTiming } from "../submit-timing-due-work.js";
 import {
   type NoInlineSubmitDefer,
   type NoInlineSubmitRecoveryOptions,
 } from "../utils.js";
+import { resolvePreSubmitSlotSnapshot } from "../utils.submit-recovery-options.js";
 import {
   DEFAULT_MERGE_LOCAL_LEDGER_MAX_WAIT_MS,
   mergeSubmitValidityEvidence,
   planMergeLocalLedgerGate,
 } from "./merge-readiness.js";
-import {
-  slotFromUnixTime,
-  type SubmitSlotConfig,
-} from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
+import { slotFromUnixTime } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 import { MERGE_CONFIRMATION_PROVIDER_RETRIES } from "./merge-to-confirmed-state.landed-unfinalized-merges.js";
 
+/**
+ * The merge's submit recovery. Without an explicit reader, the submit-slot
+ * snapshot is the Lucid client's registered one (the local node's ledger tip).
+ */
 export const mergeSubmitRecoveryOptions = (
-  nodeConfig: SubmitSlotConfig,
   deferEvidence: {
     readonly key: string;
     readonly dependencyKey: string;
@@ -42,12 +42,9 @@ export const mergeSubmitRecoveryOptions = (
   label: "merge",
   confirmationRetries: MERGE_CONFIRMATION_PROVIDER_RETRIES,
   ...(confirmationDeadlineMs === undefined ? {} : { confirmationDeadlineMs }),
-  slotSnapshot:
-    submitSlotSnapshot ??
-    makeLocalOgmiosSubmitSlotSnapshotProvider({
-      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-    }),
+  ...(submitSlotSnapshot === undefined
+    ? {}
+    : { slotSnapshot: submitSlotSnapshot }),
   requireSlotForBoundedTx: true,
   maxPreSubmitWaitMs: DEFAULT_MERGE_LOCAL_LEDGER_MAX_WAIT_MS,
   inlineWaitPolicy: "defer_positive_wait",
@@ -110,7 +107,7 @@ export const mergeNoInlineSubmitDueWorkFromDefer = ({
 
 export const registerMergeNoInlineSubmitDueWork = (
   defer: NoInlineSubmitDefer,
-  nodeConfig: SubmitSlotConfig,
+  lucid: LucidEvolution,
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
 ) =>
   Effect.gen(function* () {
@@ -119,18 +116,15 @@ export const registerMergeNoInlineSubmitDueWork = (
         mergeNoInlineSubmitDueWorkFromDefer({ defer }),
       );
     }
-    const localSnapshot = yield* (
-      submitSlotSnapshot ??
-      makeLocalOgmiosSubmitSlotSnapshotProvider({
-        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-        timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-      })
-    )().pipe(
+    const localSnapshot = yield* resolvePreSubmitSlotSnapshot(
+      lucid,
+      submitSlotSnapshot,
+    ).pipe(
       Effect.mapError(
         (cause) =>
           new SDK.StateQueueError({
             message:
-              "Failed to read local Ogmios submit-ledger slot before registering merge provider-slot defer",
+              "Failed to read the local ledger's submit slot before registering merge provider-slot defer",
             cause,
           }),
       ),
@@ -145,7 +139,6 @@ export const registerMergeNoInlineSubmitDueWork = (
 
 export const captureMergeLocalLedgerGate = ({
   lucid,
-  nodeConfig,
   validFromUnixTime,
   leaseToken,
   headerHash,
@@ -153,7 +146,6 @@ export const captureMergeLocalLedgerGate = ({
   submitSlotSnapshot,
 }: {
   readonly lucid: LucidEvolution;
-  readonly nodeConfig: SubmitSlotConfig;
   readonly validFromUnixTime: number;
   readonly leaseToken?: string;
   readonly headerHash: string;
@@ -175,13 +167,10 @@ export const captureMergeLocalLedgerGate = ({
       validFromSlot,
       ...(candidateIdentity === undefined ? {} : { candidateIdentity }),
     });
-    const slotSnapshotProvider =
-      submitSlotSnapshot ??
-      makeLocalOgmiosSubmitSlotSnapshotProvider({
-        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-        timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-      });
-    const snapshot = yield* slotSnapshotProvider().pipe(
+    const snapshot = yield* resolvePreSubmitSlotSnapshot(
+      lucid,
+      submitSlotSnapshot,
+    ).pipe(
       Effect.mapError(
         (cause) =>
           new SDK.StateQueueError({
@@ -215,7 +204,7 @@ export const captureMergeLocalLedgerGate = ({
       "callerLabel=merge",
       `dependencyKey=${dueWorkEvidence.dependencyKey}`,
       `invalidationKey=${dueWorkEvidence.invalidationKey}`,
-      localOgmiosSubmitSlotEvidence(snapshot),
+      submitSlotEvidence(snapshot),
     ].join(",");
     if (gate.status === "ready") {
       yield* Effect.logInfo(`🔸 Merge local-ledger gate ready (${logFields}).`);

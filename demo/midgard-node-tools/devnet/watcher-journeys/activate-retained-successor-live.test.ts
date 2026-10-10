@@ -5,12 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
-import {
-  createLocalKupmiosHttpOgmiosRawSource,
-  readAdmittedLocalKupmiosSignedTransactionRecovery,
-  rebroadcastAdmittedLocalKupmiosSignedTransaction,
-  type SignedWorkflowTransaction,
-} from "@al-ft/midgard-fault-proofs";
+import { type SignedWorkflowTransaction } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -20,16 +15,14 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
 import { activateOperatorProgram } from "midgard-node/transactions/register-active-operator";
-import {
-  loadWatcherVerifiedDeploymentAuthority,
-  parseWatcherProcessConfig,
-  watcherDeploymentReleaseFinalityAuthority,
-} from "midgard-watcher";
+import { parseWatcherProcessConfig } from "midgard-watcher";
 import { expect, it } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import { loadJourneyContext } from "./live-context.js";
+import { readSignedTransactionRecovery } from "./signed-transaction-recovery.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const selected = process.env.MIDGARD_WATCHER_JOURNEY_ACTIVATE_SUCCESSOR === "1";
@@ -127,30 +120,16 @@ it.skipIf(runDirectory === undefined || !selected)(
       ),
     );
     const config = processConfig.watcherConfig;
-    const authority = await loadWatcherVerifiedDeploymentAuthority({
-      path: processConfig.deploymentAuthorityPath,
-      ruleBundlePath: processConfig.ruleBundlePath,
-    });
-    const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
-      authority.deploymentIdentity,
-    ).verifyForWorkflow({ deploymentFingerprint: manifest.manifestId });
     if (config.l1.source.sourceMode !== "local_node")
       throw new Error("Activation recovery requires the admitted local node");
-    const services = config.l1.source.queryServices;
-    const endpoint = (kind: "kupo" | "ogmios") => {
-      const service = services.find((entry) => entry.kind === kind);
-      if (service === undefined) throw new Error(`Missing ${kind} endpoint`);
-      return service.endpoint;
-    };
-    expect(endpoint("kupo")).toBe(context.kupoUrl);
-    expect(endpoint("ogmios")).toBe(context.ogmiosUrl);
-    const source = createLocalKupmiosHttpOgmiosRawSource({
-      sourceId: "journey-retained-successor-activation",
-      kupoHttpUrl: endpoint("kupo"),
-      ogmiosUrl: endpoint("ogmios"),
-      releaseFinality,
-      timeoutMs: config.l1.requestTimeoutMs,
-    });
+    // Without a chain recorder a spent input stays pending; inclusion shows
+    // as an activation output in the local node's ledger.
+    const recover = (transaction: SignedWorkflowTransaction) =>
+      readSignedTransactionRecovery({
+        ogmiosUrl: context.ogmiosUrl,
+        timeoutMs: config.l1.requestTimeoutMs,
+        ...transaction,
+      });
     const binding = {
       schema: "retained-successor-activation-v1" as const,
       deploymentFingerprint: manifest.manifestId,
@@ -319,7 +298,7 @@ it.skipIf(runDirectory === undefined || !selected)(
             SDK.getProtocolParameters("Preprod").required_bond,
             publisher,
             publisherAddress,
-          ),
+          ).pipe(Effect.provide(IntentJournalWithoutFollower)),
         );
       } catch (cause) {
         if (!captured) throw cause;
@@ -339,17 +318,16 @@ it.skipIf(runDirectory === undefined || !selected)(
     const deadline = performance.now() + 12 * 60_000;
     let included = false;
     while (performance.now() < deadline) {
-      const observation =
-        await readAdmittedLocalKupmiosSignedTransactionRecovery({
-          source,
-          ...journal.transaction,
-        });
+      const observation = await recover(journal.transaction);
       await append(observation.status, observation.reason);
       if (observation.status === "included") {
         included = true;
         break;
       }
-      if (observation.status === "expired" || observation.status === "conflict")
+      if (
+        observation.status === "expired" ||
+        observation.status === "invalidated"
+      )
         throw new Error(
           `Activation ${observation.status}; exact record retained, no replacement permitted`,
         );
@@ -362,31 +340,23 @@ it.skipIf(runDirectory === undefined || !selected)(
             "Activation exhausted its three durable identical-byte submission attempts",
           );
         try {
-          const hash = await rebroadcastAdmittedLocalKupmiosSignedTransaction({
-            source,
-            ...journal.transaction,
-            authorizeResubmission: async (candidate) => {
-              expect(candidate).toEqual(journal!.transaction);
-              validate(journal!);
-              const current =
-                await readAdmittedLocalKupmiosSignedTransactionRecovery({
-                  source,
-                  ...candidate,
-                });
-              if (current.status !== "rebroadcast")
-                throw new Error(
-                  `Activation submission no longer eligible: ${current.status}`,
-                );
-              await append(
-                "submission_intent",
-                "Exact signed bytes authorized by current canonical absence, unspent inputs and mempool absence",
-              );
-            },
-          });
+          validate(journal);
+          const current = await recover(journal.transaction);
+          if (current.status !== "rebroadcast")
+            throw new Error(
+              `Activation submission no longer eligible: ${current.status}`,
+            );
+          await append(
+            "submission_intent",
+            "Exact signed bytes authorized by absent outputs, unspent inputs and an open TTL",
+          );
+          const hash = await context.provider.submitTx(
+            journal.transaction.signedTransactionCborHex,
+          );
           expect(hash).toBe(journal.transaction.transactionHash);
           await append(
             "submitted",
-            "Ogmios acknowledged the exact recorded transaction hash",
+            "The node acknowledged the exact recorded transaction hash",
           );
         } catch (cause) {
           await append(

@@ -22,9 +22,6 @@ export const h32 = (byte: string): string => byte.repeat(32);
 export const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
-export const asWireValue = <T>(value: T): T =>
-  JSON.parse(JSON.stringify(value)) as T;
-
 export const NATIVE_SCRIPT_CBOR = "820501";
 
 export const NATIVE_SCRIPT_HASH = validatorToScriptHash({

@@ -5,6 +5,7 @@ import { Effect } from "effect";
 import {
   assertUserCliWalletIsOperationallyIsolated,
   failCli,
+  ToolLucidLive,
   writeJson,
 } from "midgard-node/commands/cli-runtime";
 import {
@@ -233,7 +234,7 @@ program
             ),
           ).pipe(
             Effect.provide(Services.WriteBehindLive),
-            Effect.provide(Services.Lucid.Default),
+            Effect.provide(ToolLucidLive),
             Effect.provide(Services.Database.layer),
             Effect.provide(Services.NodeConfig.layer),
             Effect.provide(Services.MidgardContractServices),

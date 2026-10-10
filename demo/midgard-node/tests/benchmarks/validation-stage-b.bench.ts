@@ -99,6 +99,7 @@ import {
 } from "../../src/services/write-behind.js";
 import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import { projectDepositsToMempoolLedger } from "../helpers/deposit-projection.js";
+import { insertDeposits } from "../helpers/event-rows.js";
 import {
   type AdmissionInsert,
   assertGate,
@@ -747,21 +748,21 @@ const drainReplica = async (
         validationMempoolInsertDurationTimer,
       );
       const writeBehindBefore = yield* readWriteBehindTelemetry;
-      const depositProjectionDeltaIntervalMs = 5_000;
-      let depositProjectionDeltaBumps = 0;
-      const bumpWindowAverageBatchMs: number[] = [];
-      const depositProjectionDeltaFiber = yield* Effect.forkScoped(
+      const depositIngestionIntervalMs = 5_000;
+      let depositIngestions = 0;
+      const depositWindowAverageBatchMs: number[] = [];
+      const depositIngestionFiber = yield* Effect.forkScoped(
         Effect.forever(
-          Effect.sleep(Duration.millis(depositProjectionDeltaIntervalMs)).pipe(
+          Effect.sleep(Duration.millis(depositIngestionIntervalMs)).pipe(
             Effect.zipRight(
               Effect.gen(function* () {
                 const before = yield* Metric.value(
                   validationBatchDurationTimer,
                 );
-                const bump = depositProjectionDeltaBumps + 1;
+                const ingestion = depositIngestions + 1;
                 const hash = (label: string) =>
                   createHash("sha256")
-                    .update(`${database}:${bump.toString()}:${label}`)
+                    .update(`${database}:${ingestion.toString()}:${label}`)
                     .digest();
                 const eventId = Buffer.from(
                   LucidData.to(
@@ -773,24 +774,21 @@ const drainReplica = async (
                   ),
                   "hex",
                 );
-                yield* DepositsDB.insertEntries([
-                  {
-                    [DepositsDB.Columns.ID]: eventId,
-                    [DepositsDB.Columns.INFO]: hash("info"),
-                    [DepositsDB.Columns.INCLUSION_TIME]: new Date(0),
-                    [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: hash("l1"),
-                    [DepositsDB.Columns.LEDGER_TX_ID]: hash("ledger"),
-                    [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from([0x80]),
-                    [DepositsDB.Columns.LEDGER_ADDRESS]:
-                      "addr_test1_phase2_benchmark_deposit",
-                    [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,
-                    [DepositsDB.Columns.STATUS]: DepositsDB.Status.Awaiting,
-                  },
-                ]);
-                yield* projectDepositsToMempoolLedger.pipe(
-                  Effect.provideService(NodeConfig, nodeConfig),
-                );
-                depositProjectionDeltaBumps += 1;
+                const deposit: DepositsDB.Entry = {
+                  [DepositsDB.Columns.ID]: eventId,
+                  [DepositsDB.Columns.INFO]: hash("info"),
+                  [DepositsDB.Columns.INCLUSION_TIME]: new Date(0),
+                  [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: hash("l1"),
+                  [DepositsDB.Columns.LEDGER_TX_ID]: hash("ledger"),
+                  [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from([0x80]),
+                  [DepositsDB.Columns.LEDGER_ADDRESS]:
+                    "addr_test1_phase2_benchmark_deposit",
+                  [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,
+                  [DepositsDB.Columns.STATUS]: DepositsDB.Status.Awaiting,
+                };
+                yield* insertDeposits([deposit]);
+                yield* projectDepositsToMempoolLedger([deposit]);
+                depositIngestions += 1;
                 yield* Effect.forkScoped(
                   Effect.sleep("1 second").pipe(
                     Effect.zipRight(
@@ -800,7 +798,7 @@ const drainReplica = async (
                         );
                         const count = after.count - before.count;
                         if (count > 0) {
-                          bumpWindowAverageBatchMs.push(
+                          depositWindowAverageBatchMs.push(
                             (after.sum - before.sum) / count,
                           );
                         }
@@ -826,8 +824,8 @@ const drainReplica = async (
           api: { currentSlot: () => 0 },
         } as unknown as Lucid),
       );
-      const depositProjectionActiveDurationMs = performance.now() - startedAt;
-      yield* Fiber.interrupt(depositProjectionDeltaFiber);
+      const depositIngestionActiveDurationMs = performance.now() - startedAt;
+      yield* Fiber.interrupt(depositIngestionFiber);
       yield* cache.withPhaseBLock(cache.currentState);
       const writeBehindRowsBeforeFinalFlush = (yield* writeBehind.depths)
         .totalDepth;
@@ -863,12 +861,12 @@ const drainReplica = async (
       const batches = metricAfter.count - metricBefore.count;
       const averageBatchMs =
         (metricAfter.sum - metricBefore.sum) / Math.max(1, batches);
-      const worstBumpThroughputRatio =
-        bumpWindowAverageBatchMs.length === 0
+      const worstDepositWindowThroughputRatio =
+        depositWindowAverageBatchMs.length === 0
           ? null
           : Math.min(
-              ...bumpWindowAverageBatchMs.map(
-                (bumpAverage) => averageBatchMs / bumpAverage,
+              ...depositWindowAverageBatchMs.map(
+                (windowAverage) => averageBatchMs / windowAverage,
               ),
             );
       let p99BatchMs = metricAfter.max;
@@ -916,9 +914,9 @@ const drainReplica = async (
       return {
         database,
         writeBehindMaxBatch: nodeConfig.WRITE_BEHIND_MAX_BATCH,
-        depositProjectionDeltaIntervalMs,
-        depositProjectionActiveDurationMs,
-        depositProjectionDeltaBumps,
+        depositIngestionIntervalMs,
+        depositIngestionActiveDurationMs,
+        depositIngestions,
         ledgerCacheDeltaApplies: Number(
           cacheDeltaAfter.count - cacheDeltaBefore.count,
         ),
@@ -926,8 +924,8 @@ const drainReplica = async (
           cacheFullReloadAfter.count - cacheFullReloadBefore.count,
         ),
         averageBatchMs,
-        bumpWindowAverageBatchMs,
-        worstBumpThroughputRatio,
+        depositWindowAverageBatchMs,
+        worstDepositWindowThroughputRatio,
         accepted,
         rejected,
         batches,
@@ -1474,7 +1472,7 @@ describe("Phase 2 sustained real-Postgres Stage B operator benchmark", () => {
         );
         expect(replica.mempoolRows).toBe(manifest.files.corpus.rowCount);
         expect(replica.mempoolLedgerRows).toBe(
-          expectedLedgerRows + replica.depositProjectionDeltaBumps,
+          expectedLedgerRows + replica.depositIngestions,
         );
         expect(replica.cachedLedgerRows).toBe(expectedLedgerRows);
         expect(replica.missingExpectedTxIds).toBe(0);

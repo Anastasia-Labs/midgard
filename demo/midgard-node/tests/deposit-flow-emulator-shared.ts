@@ -39,20 +39,15 @@ import "../src/database/index.js";
 import "../src/database/utils/ledger.js";
 import "../src/fibers/block-commitment.js";
 import "../src/fibers/block-confirmation.js";
-import "../src/fibers/fetch-and-insert-deposit-utxos.js";
-import "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
 import "../src/fibers/merge.js";
 import "../src/fibers/slot-aware-due-work.js";
-import "../src/fibers/speculative-commit-builder.js";
-import "../src/fibers/user-event-barrier-refresher.js";
 import "../src/lucid-time.js";
 import "../src/mpf/index.js";
-import "../src/services/event-history-producer.js";
 import "../src/services/index.js";
+import "../src/services/landed-state-queue.js";
 import "../src/services/mempool-ledger-cache.js";
 import "../src/services/native-mpf-local-finalization.js";
 import "../src/services/native-mpf-startup.js";
-import "../src/services/state-queue-topology.js";
 import "../src/services/write-behind.js";
 import "../src/transactions/da-attestation.js";
 import "../src/transactions/initialization.js";
@@ -74,7 +69,7 @@ import "../src/workers/utils/commit-end-time.js";
 import "../src/workers/utils/common.js";
 import "../src/workers/utils/scheduler-refresh.js";
 import "./helpers/availability-challenge.js";
-import "./helpers/deposit-projection.js";
+import "./helpers/emulator-l1-follower.js";
 import "./helpers/emulator-submit-slot-snapshot.js";
 import "./helpers/native-owner-binary.js";
 import "./helpers/real-midgard-contracts.js";
@@ -82,7 +77,7 @@ import "./helpers/tx-inspection.js";
 import "./test-env.js";
 import "./deposit-flow-emulator-shared.make-fixture.js";
 import "./deposit-flow-emulator-shared.submit-with-wallet.js";
-import "./deposit-flow-emulator-shared.speculative-worker-input-from-active-journal.js";
+import "./deposit-flow-emulator-shared.commit-worker-program.js";
 import "./deposit-flow-emulator-shared.run-block-confirmation.js";
 
 import { createHash, randomUUID } from "node:crypto";
@@ -137,26 +132,17 @@ import { utxosProgram } from "../src/commands/utxos.js";
 import { withdrawalStatusProgram } from "../src/commands/withdrawal-status.js";
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "../src/database/confirmedLedger.js";
 import {
-  AddressHistoryDB,
   BlocksDB,
-  CommonUtils,
-  ConfirmedLedgerDB,
   DaPayloadsDB,
   DepositsDB,
-  DepositSubmissionAttemptsDB,
   ForcedTransactionsDB,
-  ForeignTipReconciliationsDB,
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
-  MempoolTxDeltasDB,
   MigrationRunner,
-  MutationJobsDB,
   PendingBlockFinalizationsDB,
-  ProcessedMempoolDB,
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
-  TxRejectionsDB,
   TxUtils,
   UserEventsUtils,
   WithdrawalsDB,
@@ -164,16 +150,8 @@ import {
 import * as Ledger from "../src/database/utils/ledger.js";
 import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.js";
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
-import { reconcileVisibleDepositUTxOs } from "../src/fibers/fetch-and-insert-deposit-utxos.js";
-import { reconcileVisibleWithdrawalUTxOs } from "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
-import { decideSpeculativeInstructionForLiveTip } from "../src/fibers/speculative-commit-builder.js";
-import type {
-  SpeculativeCandidateSummary,
-  UserEventBarrierWatermarks,
-} from "../src/fibers/speculative-commit-state.js";
-import { runUserEventBarrierRefresherPass } from "../src/fibers/user-event-barrier-refresher.js";
 import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
 import {
   commitTxDeltaCacheHitCounter,
@@ -182,10 +160,7 @@ import {
   MidgardMpf,
 } from "../src/mpf/index.js";
 import type { NodeConfigDep } from "../src/services/config.js";
-import {
-  HistoryProducer,
-  UnownedHistoryFixture,
-} from "../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import {
   ContractDeploymentIdentity,
@@ -195,12 +170,15 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
+import {
+  IntentJournal,
+  type IntentJournalService,
+} from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
 import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
 import { recoverNativeMpfForLocalFinalization } from "../src/services/native-mpf-local-finalization.js";
 import { initializeArchitectureGOwner } from "../src/services/native-mpf-startup.js";
-import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
 import { WriteBehindLive } from "../src/services/write-behind.js";
 import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.js";
 import {
@@ -219,9 +197,9 @@ import { materializeConfirmedLedgerSnapshot } from "../src/transactions/state-qu
 import { mergeMaturityWindow } from "../src/transactions/state-queue/merge-readiness.js";
 import { buildUnsignedDepositTxFromFundingContextProgram } from "../src/transactions/submit-deposit.js";
 import { commitExplicitBlockHeaderProgram } from "../src/workers/commit-block-header.js";
+import { LANDED_COMMIT_BASE_PENDING } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
 import {
   serializeStateQueueUTxO,
-  type SpeculativeCommitWorkerInstruction,
   type WorkerInput as CommitWorkerInput,
   type WorkerOutput as CommitWorkerOutput,
 } from "../src/workers/utils/commit-block-header.js";
@@ -231,6 +209,16 @@ import {
 } from "../src/workers/utils/commit-end-time.js";
 import { type WorkerOutput as ConfirmationWorkerOutput } from "../src/workers/utils/confirm-block-commitments.js";
 import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
+import {
+  advanceEmulatorToDueWork,
+  alignCommitSchedulerBeforeTestWorker,
+  commitWorkerProgram,
+  getStateQueueDatumEndTime,
+  makeGlobalsService,
+  makeLucidRuntimeService,
+  type OwnedCommitFixture,
+  type ProductionHistoryFixtureRuntime,
+} from "./deposit-flow-emulator-shared.commit-worker-program.js";
 import {
   EMULATOR_DEPLOYMENT_IDENTITY,
   type EmulatorFixture,
@@ -251,27 +239,22 @@ import {
   withEmulatorExtraneousScriptRetry,
 } from "./deposit-flow-emulator-shared.run-block-confirmation.js";
 import {
-  advanceEmulatorToDueWork,
-  alignCommitSchedulerBeforeTestWorker,
-  commitWorkerProgram,
-  getStateQueueDatumEndTime,
-  makeGlobalsService,
-  makeLucidRuntimeService,
-  type OwnedCommitFixture,
-  type ProductionHistoryFixtureRuntime,
-  speculativeWorkerInputFromActiveJournal,
-} from "./deposit-flow-emulator-shared.speculative-worker-input-from-active-journal.js";
-import {
   advanceEmulatorPastUnixTime,
   submitDepositWithDiagnostics,
 } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
-import { projectDepositsToMempoolLedger } from "./helpers/deposit-projection.js";
+import {
+  emulatorStateQueueSnapshot,
+  ingestEmulatorEventsUnowned,
+  syncEmulatorChain,
+  syncEmulatorFollower,
+  withEmulatorChain,
+} from "./helpers/emulator-l1-follower.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
 } from "./helpers/native-owner-binary.js";
-import { testDatabaseName } from "./test-env.js";
+import { resetApplicationTables } from "./utils.js";
 
 // `EMULATOR_DEPLOYMENT_IDENTITY` is a `derived` identity with no finalized
 // manifest, so the wave's Q58 script derivation takes the
@@ -532,13 +515,13 @@ export const initializeProtocol = async ({
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(emulator.now()));
 
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensureEventHistoryRewardAccountsRegisteredProgram(
       referenceScriptsLucid,
       contracts,
     ),
   );
-  const initTx = await Effect.runPromise(
+  const initTx = await runWithoutFollower(
     buildAtomicProtocolInitTxProgram(
       operatorLucid,
       contracts,
@@ -557,12 +540,12 @@ export const initializeProtocol = async ({
   const completedInitTx = await initTx.complete({ localUPLCEval: true });
   const signedInitTx = await completedInitTx.sign.withWallet().complete();
   await operatorLucid.awaitTx(await signedInitTx.submit());
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensurePhasMembershipRewardAccountRegisteredProgram(operatorLucid),
   );
 
   vi.setSystemTime(new Date(emulator.now()));
-  await Effect.runPromise(
+  await runWithoutFollower(
     registerOperatorProgram(
       operatorLucid,
       contracts,
@@ -572,7 +555,7 @@ export const initializeProtocol = async ({
   );
   emulator.awaitSlot(REGISTRATION_ACTIVATION_DELAY_SLOTS);
   vi.setSystemTime(new Date(emulator.now()));
-  await Effect.runPromise(
+  await runWithoutFollower(
     activateOperatorProgram(
       operatorLucid,
       contracts,
@@ -581,42 +564,6 @@ export const initializeProtocol = async ({
     ),
   );
 };
-
-export const clearNodeTables = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{ name: string }>`SELECT current_database() AS name`;
-  expect(rows[0]?.name).toBe(testDatabaseName());
-  // Reset the isolated model database as one FK-consistent operation. A prior
-  // test must not leave authority or wallet-output reservations behind.
-  yield* sql`TRUNCATE event_history_l2_ledger_receipts, mpf_engine_state, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_replay_receipts, event_history_authority, event_history_submission_inputs, event_history_submissions`;
-}).pipe(
-  Effect.zipRight(
-    Effect.all(
-      [
-        AddressHistoryDB.clear,
-        BlocksDB.clear,
-        ConfirmedLedgerDB.clear,
-        MempoolDB.clear,
-        MempoolLedgerDB.clear,
-        MempoolTxDeltasDB.clear,
-        ProcessedMempoolDB.clear,
-        ImmutableDB.clear,
-        PendingBlockFinalizationsDB.clear,
-        DaPayloadsDB.clear,
-        DepositSubmissionAttemptsDB.clear,
-        ForeignTipReconciliationsDB.clear,
-        TxRejectionsDB.clear,
-        ForcedTransactionsDB.clear,
-        CommonUtils.clearTable(TxAdmissionsDB.tableName),
-        CommonUtils.clearTable(MutationJobsDB.tableName),
-        CommonUtils.clearTable(StateQueueMutationLeasesDB.tableName),
-        CommonUtils.clearTable(DepositsDB.tableName),
-        CommonUtils.clearTable(WithdrawalsDB.tableName),
-      ],
-      { concurrency: "unbounded" },
-    ).pipe(Effect.asVoid),
-  ),
-);
 
 /**
  * Initializes the runtime used by the deposit-flow emulator tests.
@@ -628,7 +575,10 @@ export const initializeNodeRuntime = async () => {
       actor: "deposit-flow-emulator.test",
     }),
   );
-  await runNodeDatabaseEffect(clearNodeTables);
+  // Every file on a worker shares its database and restarts its chain from
+  // the same genesis, so nothing a previous file left may survive: follower
+  // facts, a forced order or a projection row would read as this chain's.
+  await runNodeDatabaseEffect(resetApplicationTables);
 };
 
 export const cleanupRuntimePaths = async ({
@@ -663,10 +613,9 @@ export const cleanupRuntimePaths = async ({
 };
 
 /**
- * Fixtures without a production history owner still commit through the
- * native Architecture G owner, the node's only MPF engine: one owner per
- * fixture ledger store, started on first use and closed with the store by
- * `cleanupRuntimePaths`.
+ * Fixtures commit through the native Architecture G owner, the node's only
+ * MPF engine: one owner per fixture ledger store, started on first use and
+ * closed with the store by `cleanupRuntimePaths`.
  */
 const unownedNativeOwners = new Map<string, NativeMpfOwnerService>();
 
@@ -679,6 +628,8 @@ const unownedNativeOwner = (
     const running = unownedNativeOwners.get(nodeConfig.LEDGER_MPF_DB_PATH);
     if (running !== undefined) return running;
     const globals = yield* Globals.pipe(Effect.provide(Globals.Default));
+    // Its startup reads the landed queue (P1) at the emulator's tip.
+    yield* syncEmulatorChain(lucidService.api);
     const owner = yield* initializeArchitectureGOwner(globals, nodeConfig).pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, contracts as any),
@@ -731,9 +682,10 @@ export const withUnownedNativeOwnerStopped = async <A>(
     const nodeConfig = await makeNodeConfigForFixture(fixture);
     await Effect.runPromise(
       unownedNativeOwner(fixture.contracts, lucidService, nodeConfig).pipe(
+        withEmulatorChain(lucidService.api),
         Effect.zipRight(attachUnownedNativeOwner(globals)),
         Effect.provide(Database.layer),
-        Effect.provideService(UnownedHistoryFixture, true),
+        Effect.provideService(FollowerWriteFixture, true),
       ),
     );
   }
@@ -795,6 +747,10 @@ const fixtureNodeConfigFromEnvironment = NodeConfig.pipe(
 );
 
 import { runOwnedNativeCommit } from "./deposit-flow-emulator-shared.run-owned-native-commit.js";
+import {
+  runWithoutFollower,
+  withoutFollowerJournal,
+} from "./helpers/intent-journal.js";
 
 const runFixtureCommitProgram = (
   contracts: SDK.MidgardValidators,
@@ -803,37 +759,43 @@ const runFixtureCommitProgram = (
   nodeConfig: NodeConfigDep | undefined,
   production: OwnedCommitFixture | undefined,
 ) => {
+  // The commit path reads the landed queue (P1): follow the emulator's.
+  const followed = withEmulatorChain(lucidService.api);
   if (production === undefined)
-    return Effect.gen(function* () {
-      const config = nodeConfig ?? (yield* fixtureNodeConfigFromEnvironment);
-      return yield* runUnownedNativeCommit(
-        contracts,
-        lucidService,
-        config,
-        input,
-        (nativeInput) =>
-          commitWorkerProgram(
-            contracts,
-            lucidService,
-            nativeInput,
-            undefined,
-            config,
-          ),
-      );
-    });
-  return runOwnedNativeCommit(
-    contracts,
-    lucidService,
-    production,
-    input,
-    (nativeInput) =>
-      commitWorkerProgram(
-        contracts,
-        lucidService,
-        nativeInput,
-        undefined,
-        production.nodeConfig,
-      ),
+    return followed(
+      Effect.gen(function* () {
+        const config = nodeConfig ?? (yield* fixtureNodeConfigFromEnvironment);
+        return yield* runUnownedNativeCommit(
+          contracts,
+          lucidService,
+          config,
+          input,
+          (nativeInput) =>
+            commitWorkerProgram(
+              contracts,
+              lucidService,
+              nativeInput,
+              undefined,
+              config,
+            ),
+        );
+      }),
+    );
+  return followed(
+    runOwnedNativeCommit(
+      contracts,
+      lucidService,
+      production,
+      input,
+      (nativeInput) =>
+        commitWorkerProgram(
+          contracts,
+          lucidService,
+          nativeInput,
+          undefined,
+          production.nodeConfig,
+        ),
+    ),
   );
 };
 
@@ -844,6 +806,8 @@ export const runCommitWorker = async (
   nodeConfig?: NodeConfigDep,
   deploymentIdentity: ContractDeploymentIdentityValue = EMULATOR_DEPLOYMENT_IDENTITY,
   production?: OwnedCommitFixture,
+  /** The run's journal; by default, a process's with no follower. */
+  journal?: IntentJournalService,
 ) => {
   const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
     latestBlock.datum,
@@ -862,7 +826,7 @@ export const runCommitWorker = async (
       sizeOfProcessedTxsSoFar: 0,
     },
   } satisfies CommitWorkerInput;
-  const leaseResult = await Effect.runPromise(
+  const leaseResult = await runWithoutFollower(
     StateQueueMutationLeasesDB.tryWithLease(
       "deposit-flow-emulator",
       (stateQueueLeaseToken) =>
@@ -884,7 +848,10 @@ export const runCommitWorker = async (
         ContractDeploymentIdentity.make(deploymentIdentity),
       ),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
+      journal === undefined
+        ? (effect) => effect
+        : Effect.provideService(IntentJournal, journal),
     ),
   );
   if (leaseResult._tag === "Busy") {
@@ -932,6 +899,10 @@ export const runCommitWorkerUntilSubmitted = async ({
             : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS),
       });
     await production?.synchronize();
+    // Without an owner, the driver's ingestion runs under the fixture gate;
+    // an owned fixture's synchronize drives the follower itself.
+    if (production === undefined)
+      await runNodeDatabaseEffect(ingestEmulatorEventsUnowned(fixture));
     const output = await runCommitWorker(
       fixture.contracts,
       lucidService,
@@ -946,9 +917,8 @@ export const runCommitWorkerUntilSubmitted = async ({
     lastOutput = output;
     if (
       production !== undefined &&
-      output?.type === "AwaitingForeignDaOutput" &&
-      output.reason ===
-        "Verified foreign ledger adoption is pending source-owner recovery"
+      output?.type === "AwaitingCommitBaseOutput" &&
+      output.detail === LANDED_COMMIT_BASE_PENDING
     )
       continue;
     if (output?.type !== "RegisteredDueWorkOutput") {
@@ -987,32 +957,21 @@ export const runMergeUntilMerged = async ({
       await production?.synchronize();
       if (production === undefined)
         await Effect.runPromise(attachUnownedNativeOwner(globals));
-      lastResult = await Effect.runPromise(
+      lastResult = await runWithoutFollower(
         mergeAction(force).pipe(
+          withEmulatorChain(lucidService.api),
           (program) =>
             production === undefined
-              ? program.pipe(Effect.provideService(UnownedHistoryFixture, true))
-              : production.owner.runProducer((token, assertCurrent, coverage) =>
-                  assertCurrent.pipe(
-                    Effect.zipRight(
-                      program.pipe(
-                        Effect.provideService(HistoryProducer, {
-                          token,
-                          coverage,
-                        }),
-                        Effect.provideService(
-                          MempoolLedgerCache,
-                          production.cache,
-                        ),
-                      ),
-                    ),
-                  ),
+              ? program.pipe(Effect.provideService(FollowerWriteFixture, true))
+              : // The merge action takes its own producer permit.
+                program.pipe(
+                  Effect.provideService(MempoolLedgerCache, production.cache),
                 ),
           Effect.provideService(LucidService, lucidService as any),
           Effect.provideService(MidgardContracts, fixture.contracts as any),
           Effect.provideService(Globals, globals),
           Effect.provide(Database.layer),
-          Effect.provideService(UnownedHistoryFixture, true),
+          Effect.provideService(FollowerWriteFixture, true),
           Effect.provideService(NodeConfig, nodeConfig),
           Effect.provideService(
             ContractDeploymentIdentity,
@@ -1075,10 +1034,19 @@ export const runBarrierRefresherForTest = async (
   globals: Globals,
   fixture: EmulatorFixture,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
+  options: Readonly<{ projectToLedger?: boolean }> = {},
 ) => {
   const nodeConfig = await makeNodeConfigForFixture(fixture);
+  // The follower's event ingestion at the emulator tip (deposits due by now
+  // projected on request).
+  const barrierPass = ingestEmulatorEventsUnowned(fixture, {
+    globals,
+    ...(options.projectToLedger === true
+      ? { projectThroughMs: Date.now() }
+      : {}),
+  });
   return Effect.runPromise(
-    runUserEventBarrierRefresherPass.pipe(
+    barrierPass.pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, fixture.contracts as any),
       Effect.provideService(
@@ -1087,113 +1055,10 @@ export const runBarrierRefresherForTest = async (
       ),
       Effect.provideService(Globals, globals),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(NodeConfig, nodeConfig),
     ),
   );
-};
-
-export const runSpeculativeWorkerWithInstruction = async ({
-  fixture,
-  lucidService,
-  watermarks,
-  onReady,
-  nodeConfig,
-  production,
-}: {
-  readonly fixture: EmulatorFixture;
-  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
-  readonly watermarks: UserEventBarrierWatermarks;
-  readonly nodeConfig?: NodeConfigDep;
-  readonly production?: OwnedCommitFixture;
-  readonly onReady: (
-    candidate: SpeculativeCandidateSummary,
-  ) => Effect.Effect<
-    SpeculativeCommitWorkerInstruction,
-    unknown,
-    Database | ContractDeploymentIdentity
-  >;
-}) => {
-  const workerInput = await speculativeWorkerInputFromActiveJournal(
-    watermarks,
-    canonicalSlotConfigForLucid(lucidService.api),
-  );
-  let candidate: SpeculativeCandidateSummary | undefined;
-  let acquiredLeaseToken: string | undefined;
-  let lucidAcquisitions = 0;
-  const config = nodeConfig ?? (await makeNodeConfigForFixture(fixture));
-  const runSpeculative = (nativeInput: CommitWorkerInput) =>
-    commitWorkerProgram(
-      fixture.contracts,
-      lucidService,
-      nativeInput,
-      (readyCandidate) => {
-        candidate = readyCandidate;
-        // Source-owned short-window selection authenticates the live append
-        // fence once. Unowned model candidates have no provider acquisition.
-        expect(lucidAcquisitions).toBe(production === undefined ? 0 : 1);
-        return onReady(readyCandidate).pipe(
-          Effect.provideService(
-            ContractDeploymentIdentity,
-            fixtureDeploymentIdentity(fixture),
-          ),
-          Effect.tap((instruction) =>
-            instruction.type === "SubmitSpeculativeCandidate"
-              ? Effect.sync(() => {
-                  acquiredLeaseToken = instruction.stateQueueLeaseToken;
-                })
-              : Effect.void,
-          ),
-        );
-      },
-      config,
-      () =>
-        Effect.sync(() => {
-          lucidAcquisitions += 1;
-          return lucidService as any;
-        }),
-    );
-  const output = await Effect.runPromise(
-    (production === undefined
-      ? runUnownedNativeCommit(
-          fixture.contracts,
-          lucidService,
-          config,
-          workerInput,
-          runSpeculative,
-        )
-      : runOwnedNativeCommit(
-          fixture.contracts,
-          lucidService,
-          production,
-          workerInput,
-          runSpeculative,
-          false,
-        )
-    ).pipe(
-      Effect.ensuring(
-        Effect.suspend(() =>
-          acquiredLeaseToken === undefined
-            ? Effect.void
-            : StateQueueMutationLeasesDB.release(acquiredLeaseToken).pipe(
-                Effect.catchAll(() => Effect.void),
-              ),
-        ),
-      ),
-      Effect.provideService(
-        ContractDeploymentIdentity,
-        fixtureDeploymentIdentity(fixture),
-      ),
-      Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
-    ),
-  );
-  if (candidate === undefined) {
-    throw new Error(
-      `Speculative worker completed without a ready candidate: ${JSON.stringify(output)}`,
-    );
-  }
-  return { candidate, output, lucidAcquisitions };
 };
 
 export const runConfirmationJournalInsertionRace = async (
@@ -1295,7 +1160,7 @@ export const runConfirmationJournalInsertionRace = async (
       Effect.provideService(Globals, globals),
       Effect.provideService(NodeConfig, testNodeConfig),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
     ),
   );
 
@@ -1356,7 +1221,10 @@ export const runNodeCommandProgram = <A>(
     const nodeConfig = await makeNodeConfigForFixture(fixture);
     await Effect.runPromise(attachUnownedNativeOwner(globals));
     return Effect.runPromise(
+      // The commands open the events they settle by id from the follower's
+      // event rows; the emulator's follower brings them to its tip first.
       effect.pipe(
+        withEmulatorChain(lucidService.api),
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
         // The wave made the merge/settlement command paths require the
@@ -1371,7 +1239,8 @@ export const runNodeCommandProgram = <A>(
         Effect.provideService(Globals, globals),
         Effect.provideService(NodeConfig, nodeConfig),
         Effect.provide(Database.layer),
-        Effect.provideService(UnownedHistoryFixture, true),
+        Effect.provideService(FollowerWriteFixture, true),
+        withoutFollowerJournal,
       ) as Effect.Effect<A, any, never>,
     );
   });
@@ -1408,7 +1277,7 @@ export const runLocalFinalizationRecoveryWorker = async (
     }),
   );
 
-  const output = await Effect.runPromise(
+  const output = await runWithoutFollower(
     runFixtureCommitProgram(
       contracts,
       lucidService,
@@ -1422,7 +1291,7 @@ export const runLocalFinalizationRecoveryWorker = async (
         ContractDeploymentIdentity.make(deploymentIdentity),
       ),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       nodeConfig === undefined
         ? Effect.provide(NodeConfig.layer)
         : Effect.provideService(NodeConfig, nodeConfig),
@@ -1543,19 +1412,10 @@ export const submitDepositAndRefreshBarriers = async ({
   );
   await advanceEmulatorPastUnixTime(fixture, latestInclusionTimeMs);
   vi.setSystemTime(new Date(fixture.emulator.now()));
-  const watermarks = await runBarrierRefresherForTest(
-    globals,
-    fixture,
-    lucidService,
-  );
-  if (projectToLedger) {
-    await runNodeCommandProgram(projectDepositsToMempoolLedger, {
-      fixture,
-      lucidService,
-      globals,
-    });
-  }
-  return { submittedTxHash, watermarks };
+  await runBarrierRefresherForTest(globals, fixture, lucidService, {
+    projectToLedger,
+  });
+  return { submittedTxHash };
 };
 
 export const commitConfirmRecoverAndMerge = async ({
@@ -1654,7 +1514,7 @@ export const commitConfirmRecoverAndMerge = async ({
     globals,
     production,
   });
-  expect(mergeResult.postMergeSnapshot.topology.parsedNodeCount).toBe(1);
+  expect(mergeResult.postMergeSnapshot.blockCount).toBe(0);
 
   const settlementUnit = toUnit(
     fixture.contracts.settlement.policyId,
@@ -1812,14 +1672,22 @@ afterEach(async () => {
   }
 });
 export {
-  countDaPayloadRows,
+  advanceEmulatorToDueWork,
+  alignCommitSchedulerBeforeTestWorker,
+  commitWorkerProgram,
+  getStateQueueDatumEndTime,
+  makeGlobalsService,
+  makeLucidRuntimeService,
+  type ProductionHistoryFixtureRuntime,
+  submitWithdrawalWithDiagnostics,
+} from "./deposit-flow-emulator-shared.commit-worker-program.js";
+export {
   type DepositFlowReferenceScripts,
   describeProviderOutRefStates,
   EMULATOR_DEPLOYMENT_IDENTITY,
   EMULATOR_PROTOCOL_PARAMETERS,
   EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
   type EmulatorFixture,
-  type HarnessSignedTx,
   isEmulatorProvider,
   isProviderVisibleUnspent,
   loadContracts,
@@ -1835,36 +1703,20 @@ export {
   advanceEmulatorPastLatestBlockEndTime,
   expectDaCommitteeAcceptsPersistedPayload,
   expectedAuthenticatedEventRoot,
-  expectHeaderRootsToMatchCandidate,
   fetchLatestCommittedBlock,
   fetchSchedulerDatum,
   findUtxoWithUnit,
-  normalizeT1RecoveryGlobals,
   retainSubmittedHeaderPayload,
   runBlockConfirmation,
   stateQueueFetchConfig,
   withEmulatorExtraneousScriptRetry,
 } from "./deposit-flow-emulator-shared.run-block-confirmation.js";
 export {
-  advanceEmulatorToDueWork,
-  alignCommitSchedulerBeforeTestWorker,
-  assertSpeculativeDepositSnapshotIsMemoryOnly,
-  commitWorkerProgram,
-  getStateQueueDatumEndTime,
-  makeGlobalsService,
-  makeLucidRuntimeService,
-  type NormalizedT1RecoveryGlobals,
-  type ProductionHistoryFixtureRuntime,
-  speculativeWorkerInputFromActiveJournal,
-  submitWithdrawalWithDiagnostics,
-} from "./deposit-flow-emulator-shared.speculative-worker-input-from-active-journal.js";
-export {
   advanceEmulatorPastUnixTime,
   advanceHistoryAdmissionClock,
   ensureSeparateCollateralUtxo,
   isPlainPureAdaUtxo,
   providerVisibleWalletUtxos,
-  refreshWalletUtxosFromProvider,
   stripPlutusV3WitnessByHash,
   submitDepositWithDiagnostics,
   submitWithWallet,
@@ -1895,16 +1747,15 @@ export {
   DaPayloadsDB,
   Data,
   Database,
-  decideSpeculativeInstructionForLiveTip,
   decodeNodeUtxo,
   DepositsDB,
   Effect,
+  emulatorStateQueueSnapshot,
   encodeMidgardCekProgramMaterialSidecar,
-  fetchStateQueueSnapshotProgram,
   ForcedTransactionsDB,
-  ForeignTipReconciliationsDB,
   Globals,
   ImmutableDB,
+  ingestEmulatorEventsUnowned,
   initializePayoutProgram,
   Ledger,
   LucidService,
@@ -1923,11 +1774,8 @@ export {
   payoutStatusProgram,
   PendingBlockFinalizationsDB,
   processedTxFromValidatedTx,
-  projectDepositsToMempoolLedger,
   Queue,
   randomUUID,
-  reconcileVisibleDepositUTxOs,
-  reconcileVisibleWithdrawalUTxOs,
   Ref,
   reserveUtxosProgram,
   resolveCurrentOperatorSchedulerWindow,
@@ -1939,6 +1787,7 @@ export {
   serializeStateQueueUTxO,
   SqlClient,
   StateQueueMutationLeasesDB,
+  syncEmulatorFollower,
   toUnit,
   TxAdmissionsDB,
   TxUtils,
@@ -1951,11 +1800,4 @@ export {
   WriteBehindLive,
 };
 
-export type {
-  NodeConfigDep,
-  NodeUtxo,
-  QueuedTx,
-  SpeculativeCandidateSummary,
-  SpeculativeCommitWorkerInstruction,
-  UserEventBarrierWatermarks,
-};
+export type { NodeConfigDep, NodeUtxo, QueuedTx };

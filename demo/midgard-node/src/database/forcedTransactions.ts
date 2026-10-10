@@ -19,7 +19,6 @@ export {
   insertEntries,
   markAwaitingAsProjected,
   markProjectedByEventIds,
-  reopenAfterStateQueueCorrectionByEventIds,
   retrieveAllEntries,
   retrieveByProjectedHeaderHash,
   retrieveByTxOrderId,

@@ -11,11 +11,10 @@ import {
   recoverTimeoutCorrectionAttempt,
   reopenRolledBackTimeoutCorrectionSteps,
   selectTimeoutCorrectionTarget,
+  type TimeoutCorrectionAttemptObservation,
   type TimeoutCorrectionJournal,
   type TimeoutCorrectionRecovery,
 } from "../src/remove-unattested-block.js";
-import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
-import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
 const h = (byte: string) => byte.repeat(28);
 const tx = (byte: string) => byte.repeat(32);
 const address = credentialToAddress("Preprod", { type: "Key", hash: h("dd") });
@@ -128,63 +127,31 @@ const journal = (
     ],
   };
 };
-const canonicalPointFields = {
-  slot: "40",
-  blockHash: tx("77"),
-  blockNo: "10",
-};
-const canonicalPoint = {
-  ...canonicalPointFields,
-  pointId: computeFraudProofRawL1PointId(canonicalPointFields),
-};
-const recovery = (status: SignedTransactionRecoveryObservation["status"]) => ({
-  observeSignedTransaction: vi.fn(
+const recovery = (
+  status: TimeoutCorrectionAttemptObservation["status"],
+  final = false,
+) => ({
+  observeAttempt: vi.fn(
     async (
-      signed: Parameters<
-        TimeoutCorrectionRecovery["observeSignedTransaction"]
-      >[0],
-    ): Promise<SignedTransactionRecoveryObservation> => ({
-      ...signed,
+      _signed: Parameters<TimeoutCorrectionRecovery["observeAttempt"]>[0],
+    ): Promise<TimeoutCorrectionAttemptObservation> => ({
       status,
+      final,
       reason: status,
-      canonicalPoint: {
-        ...canonicalPoint,
-        slot: "10000",
-        blockHash: tx("88"),
-        blockNo: "2210",
-        pointId: computeFraudProofRawL1PointId({
-          ...canonicalPoint,
-          slot: "10000",
-          blockHash: tx("88"),
-          blockNo: "2210",
-        }),
-      },
-      releaseFinalPoint: canonicalPoint,
-      inputs: [],
+      canonicalPoint: { slot: 10_000, hash: tx("88") },
+      releaseFinalPoint: { slot: 40, hash: tx("77") },
     }),
-  ),
-  rebroadcastSignedTransaction: vi.fn(
-    async (
-      signed: Parameters<
-        TimeoutCorrectionRecovery["rebroadcastSignedTransaction"]
-      >[0],
-    ) => {
-      await signed.authorizeResubmission(signed);
-      return signed.transactionHash;
-    },
   ),
 });
 const recover = (
-  source: TimeoutCorrectionRecovery | undefined,
+  source: ReturnType<typeof recovery>,
   nodes = queue(block("11"), block("22")),
   pending = journal(),
 ) =>
   recoverTimeoutCorrectionAttempt({
     journal: pending,
     queue: nodes,
-    transactionStatus: "not_found",
-    recovery: source,
-    authorizeResubmission: vi.fn(async () => undefined),
+    observe: source.observeAttempt,
   });
 
 describe("generalized attestation-timeout recovery", () => {
@@ -307,23 +274,20 @@ describe("generalized attestation-timeout recovery", () => {
       expect(result.journal).toBe(pending);
     },
   );
-  it.each(["expired", "invalidated"] as const)(
-    "retires only canonically proven %s attempts",
+  it.each(["expired", "invalidated", "conflict"] as const)(
+    "retires a %s attempt only once it is final, and abandons it before",
     async (status) => {
-      const source = recovery(status);
-      expect((await recover(source)).disposition).toBe("superseded");
-      expect(source.rebroadcastSignedTransaction).not.toHaveBeenCalled();
+      const held = await recover(recovery(status));
+      expect(held.disposition).toBe("superseded");
+      expect(held.journal.steps[0]!.status).toBe("abandoned");
+      const final = await recover(recovery(status, true));
+      expect(final.disposition).toBe("superseded");
+      expect(final.journal.steps[0]!.status).toBe("retired");
     },
   );
-  it("rebroadcasts exact bytes once after ambiguity without creating another intent", async () => {
+  it("keeps a live attempt pending with its exact retained bytes", async () => {
     const pending = journal();
-    const source = recovery("rebroadcast");
-    source.rebroadcastSignedTransaction.mockImplementationOnce(
-      async (signed) => {
-        await signed.authorizeResubmission(signed);
-        throw new Error("acknowledgement lost");
-      },
-    );
+    const source = recovery("pending");
     const result = await recover(
       source,
       queue(block("11"), block("22")),
@@ -331,11 +295,10 @@ describe("generalized attestation-timeout recovery", () => {
     );
     expect(result.disposition).toBe("pending");
     expect(result.journal).toBe(pending);
-    expect(source.rebroadcastSignedTransaction).toHaveBeenCalledOnce();
-    expect(
-      source.rebroadcastSignedTransaction.mock.calls[0]![0]
-        .signedTransactionCborHex,
-    ).toBe(pending.steps[0]!.signedCbor);
+    expect(source.observeAttempt).toHaveBeenCalledWith({
+      transactionHash: pending.steps[0]!.txHash,
+      signedTransactionCborHex: pending.steps[0]!.signedCbor,
+    });
   });
   it("requires exact canonical inclusion and matching queue effects before confirmation", async () => {
     const source = recovery("included");
@@ -346,34 +309,19 @@ describe("generalized attestation-timeout recovery", () => {
       "confirmed",
     );
   });
-  it("preserves attempts on unavailable canonical evidence and rejects substituted identities", async () => {
-    const source = recovery("expired");
-    source.observeSignedTransaction.mockRejectedValueOnce(
-      new Error("node unavailable"),
-    );
+  it("preserves attempts on unavailable evidence and rejects substituted bytes", async () => {
+    const source = recovery("expired", true);
+    source.observeAttempt.mockRejectedValueOnce(new Error("store unavailable"));
     expect((await recover(source)).disposition).toBe("pending");
-    expect((await recover(undefined)).disposition).toBe("pending");
-    source.observeSignedTransaction.mockImplementationOnce(async (signed) => ({
-      ...signed,
-      transactionHash: tx("ff"),
-      status: "expired",
-      reason: "substituted",
-      canonicalPoint: {
-        ...canonicalPoint,
-        slot: "10000",
-        blockHash: tx("88"),
-        blockNo: "2210",
-        pointId: computeFraudProofRawL1PointId({
-          ...canonicalPoint,
-          slot: "10000",
-          blockHash: tx("88"),
-          blockNo: "2210",
-        }),
-      },
-      releaseFinalPoint: canonicalPoint,
-      inputs: [],
-    }));
-    await expect(recover(source)).rejects.toThrow("substituted");
+    expect((await recover(recovery("unknown"))).disposition).toBe("pending");
+    const pending = journal();
+    const substituted = {
+      ...pending,
+      steps: [{ ...pending.steps[0]!, txHash: tx("ff") }],
+    };
+    await expect(
+      recover(source, queue(block("11"), block("22")), substituted),
+    ).rejects.toThrow("differ from their durable transaction identity");
   });
   it("reopens a rollback-restored objective anywhere without discarding signed attempts", () => {
     const completed = { ...journal("confirmed"), completed: true };
@@ -428,18 +376,13 @@ describe("generalized attestation-timeout recovery", () => {
     expect(reopened.steps).toEqual([
       { ...retained.steps[0], status: "prepared" },
     ]);
-    const source = recovery("rebroadcast");
-    source.rebroadcastSignedTransaction.mockImplementationOnce(
-      async (signed) => {
-        await signed.authorizeResubmission(signed);
-        return signed.transactionHash;
-      },
-    );
+    // Live again: pending on the same signed bytes (the node's intent
+    // reconciler, not this workflow, resends them).
+    const source = recovery("pending");
     const result = await recover(source, restoredQueue, reopened);
     expect(result.disposition).toBe("pending");
     expect(
-      source.rebroadcastSignedTransaction.mock.calls[0]![0]
-        .signedTransactionCborHex,
+      source.observeAttempt.mock.calls[0]![0].signedTransactionCborHex,
     ).toBe(retained.steps[0]!.signedCbor);
     const continued = block("11");
     continued.utxo.txHash = tx("99");

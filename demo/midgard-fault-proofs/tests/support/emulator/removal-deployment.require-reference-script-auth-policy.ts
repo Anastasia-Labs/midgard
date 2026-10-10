@@ -22,9 +22,6 @@ export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY =
 export const MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofMissingSignature";
 
-export const MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY =
-  "fraudProofMissingNativeScriptTx";
-
 export const WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofWithdrawnReferenceInput";
 
@@ -38,9 +35,6 @@ export const MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY = "fraudProofMinFee";
 
 export const DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofDoubleWithdraw";
-
-export const CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY =
-  "fraudProofCrossBlockDuplicateEvent";
 
 export const L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY = "fraudProofL2TxMistag";
 

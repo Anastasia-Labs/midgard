@@ -4,16 +4,12 @@ import {
   parseOutRefLabel,
 } from "@al-ft/midgard-core/out-ref";
 import {
-  Blockfrost,
   CML,
   credentialToAddress,
   getAddressDetails,
-  Kupmios,
-  Lucid,
   type LucidEvolution,
   type Network,
   type PrivateKey,
-  type SlotConfig,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 
@@ -23,17 +19,9 @@ const DEFAULT_WALLET_SEED_ENV = "USER_WALLET";
 
 export const DEFAULT_CONFIRMATION_POLL_MS = 5_000;
 
-export type ProviderKind = "Blockfrost" | "Kupmios";
-
-export type SubmitProviderConfig = {
-  readonly slotConfig?: SlotConfig;
-  readonly network: Network;
-  readonly provider?: ProviderKind;
-  readonly blockfrostApiUrl?: string;
-  readonly blockfrostKey?: string;
-  readonly kupoUrl?: string;
-  readonly ogmiosUrl?: string;
-};
+// The prover CLI's external submit provider (`makeLucidForSubmit`) lives in
+// `runtime.make-lucid-for-submit.ts`, the one module allowed to construct
+// one.
 
 export type ProverSignerConfig = {
   readonly network: Network;
@@ -55,77 +43,6 @@ export type ParsedOutRef = OutRefLike;
 const normalizeNonEmpty = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim() ?? "";
   return trimmed.length === 0 ? undefined : trimmed;
-};
-
-const parseProviderKind = (
-  value: string | undefined,
-  env: NodeJS.ProcessEnv = process.env,
-): ProviderKind => {
-  const resolved =
-    normalizeNonEmpty(value) ?? normalizeNonEmpty(env.L1_PROVIDER);
-  if (resolved === "Blockfrost" || resolved === "Kupmios") {
-    return resolved;
-  }
-  if (resolved === undefined) {
-    return "Blockfrost";
-  }
-  throw new Error('--provider must be either "Blockfrost" or "Kupmios".');
-};
-
-const requireConfigValue = (
-  direct: string | undefined,
-  envName: string,
-  label: string,
-  env: NodeJS.ProcessEnv,
-): string => {
-  const resolved = normalizeNonEmpty(direct) ?? normalizeNonEmpty(env[envName]);
-  if (resolved === undefined) {
-    throw new Error(
-      `${label} is required; pass it directly or set ${envName}.`,
-    );
-  }
-  return resolved;
-};
-
-export const makeLucidForSubmit = async (
-  config: SubmitProviderConfig,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<LucidEvolution> => {
-  const provider = parseProviderKind(config.provider, env);
-  if (provider === "Blockfrost") {
-    return await Lucid(
-      new Blockfrost(
-        requireConfigValue(
-          config.blockfrostApiUrl,
-          "L1_BLOCKFROST_API_URL",
-          "--blockfrost-api-url",
-          env,
-        ),
-        requireConfigValue(
-          config.blockfrostKey,
-          "L1_BLOCKFROST_KEY",
-          "--blockfrost-key",
-          env,
-        ),
-      ),
-      config.network,
-      { slotConfig: config.slotConfig },
-    );
-  }
-
-  return await Lucid(
-    new Kupmios(
-      requireConfigValue(config.kupoUrl, "L1_KUPO_KEY", "--kupo-url", env),
-      requireConfigValue(
-        config.ogmiosUrl,
-        "L1_OGMIOS_KEY",
-        "--ogmios-url",
-        env,
-      ),
-    ),
-    config.network,
-    { slotConfig: config.slotConfig },
-  );
 };
 
 const paymentKeyHashFromAddress = (address: string): string => {

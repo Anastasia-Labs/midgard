@@ -157,7 +157,6 @@ export const checkSettlements = (
     seen.set(headerHash, settlement.outRef);
     const headerLabel = `${label} (header ${headerHash})`;
     const journal = ctx.journals.get(headerHash);
-    const foreignRow = ctx.foreign.get(headerHash);
     if (!merged.headers.has(headerHash)) {
       if (ctx.onChainUnmerged.has(headerHash)) {
         acc.failures.push(
@@ -171,7 +170,7 @@ export const checkSettlements = (
         );
         continue;
       }
-      if (journal === undefined && foreignRow === undefined) {
+      if (journal === undefined) {
         acc.notes.push(
           `${headerLabel}: header predates locally known history (${merged.stopReason}); roots not comparable`,
         );
@@ -192,19 +191,9 @@ export const checkSettlements = (
       acc.failures.push(
         ...rootsDiff(headerLabel, settlement.roots, journal.expected),
       );
-    } else if (foreignRow !== undefined) {
-      compared += 1;
-      acc.failures.push(
-        ...rootsDiff(headerLabel, settlement.roots, {
-          ...foreignRow.roots,
-          ...(foreignRow.transactionsRoot === null
-            ? {}
-            : { transactions: foreignRow.transactionsRoot }),
-        }),
-      );
     } else {
       acc.notes.push(
-        `${headerLabel}: merged header without a local journal or foreign row; roots not comparable`,
+        `${headerLabel}: merged header without a local journal; roots not comparable`,
       );
     }
   }

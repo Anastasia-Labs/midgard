@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { parseWatcherArguments } from "../../src/cli.js";
 import { unsafeRunWatcherCommandForTest } from "../../src/runtime/scaffold.js";
+import { WatcherStartupHeldError } from "../../src/runtime/startup-operations.js";
 
 const ready = (
   overrides: {
@@ -38,49 +39,6 @@ const ready = (
 });
 
 describe("production watcher command arguments", () => {
-  it("parses only explicit authority initialization with its retained generation", () => {
-    const generation = "generation-00000000-0000-0000-0000-000000000001";
-    expect(
-      parseWatcherArguments([
-        "authority-init",
-        "--config",
-        "/etc/authority.json",
-        "--generation",
-        generation,
-      ]),
-    ).toEqual({
-      kind: "initialize",
-      command: "authority-init",
-      configPath: "/etc/authority.json",
-      generation,
-    });
-  });
-
-  it.each([
-    ["authority-init", "--config", "/etc/authority.json"],
-    ["authority-init", "--config", "/etc/authority.json", "--generation", ""],
-    [
-      "authority-init",
-      "--config",
-      "/etc/authority.json",
-      "--attempt",
-      "generation-00000000-0000-0000-0000-000000000001",
-    ],
-    [
-      "authority-init",
-      "--config",
-      "/etc/authority.json",
-      "--generation",
-      "generation-00000000-0000-0000-0000-000000000001",
-      "--force",
-    ],
-  ])(
-    "refuses incomplete or additional authority initialization args %s",
-    (...argv) => {
-      expect(parseWatcherArguments(argv)).toMatchObject({ kind: "invalid" });
-    },
-  );
-
   it.each([
     {
       name: "start",
@@ -91,11 +49,6 @@ describe("production watcher command arguments", () => {
       name: "replay",
       argv: ["replay", "--config", "/etc/watcher.json"],
       command: "replay",
-    },
-    {
-      name: "authority",
-      argv: ["authority", "--config", "/etc/authority.json"],
-      command: "authority",
     },
   ])("parses $name with its explicit config path", ({ argv, command }) => {
     expect(parseWatcherArguments(argv)).toEqual({
@@ -121,6 +74,14 @@ describe("production watcher command arguments", () => {
     {
       name: "a trailing extra argument",
       argv: ["start", "--config", "/etc/watcher.json", "--force"],
+    },
+    {
+      name: "the removed authority command",
+      argv: ["authority", "--config", "/etc/authority.json"],
+    },
+    {
+      name: "the removed authority-init command",
+      argv: ["authority-init", "--config", "/etc/authority.json"],
     },
     {
       name: "the config flag before the command",
@@ -154,7 +115,6 @@ describe("production watcher commands", () => {
     } = { writeOutput: () => undefined, writeError: () => undefined },
   ) =>
     await unsafeRunWatcherCommandForTest(command, "/etc/watcher.json", io, {
-      runAuthority: async () => ({ close: async () => undefined }),
       runWatcher: async () => runtime,
       waitForShutdown: async () => "SIGTERM" as const,
     });
@@ -239,14 +199,6 @@ describe("production watcher commands", () => {
       overrides: { phase: "closing" as const },
     },
     {
-      name: "a proof deadline is at risk",
-      overrides: { deadlineHealth: "at_risk" as const },
-    },
-    {
-      name: "a proof deadline is already unsafe",
-      overrides: { deadlineHealth: "unsafe" as const },
-    },
-    {
       name: "no fault-proof category reported readiness",
       overrides: { faultProofReadiness: [] },
     },
@@ -275,6 +227,35 @@ describe("production watcher commands", () => {
     },
   );
 
+  it.each(["at_risk", "unsafe"] as const)(
+    "keeps running when a proof deadline is %s, and reports its health",
+    async (deadlineHealth) => {
+      let closed = false;
+      const lines: string[] = [];
+      await expect(
+        runCommand(
+          "start",
+          ready({ deadlineHealth, onClose: () => (closed = true) }),
+          {
+            writeOutput: (text: string) => lines.push(text),
+            writeError: (text: string) => lines.push(text),
+          },
+        ),
+      ).resolves.toBe(0);
+      // Started and ran until shutdown: no exit on the deadline.
+      expect(closed).toBe(true);
+      expect(
+        lines.map((line) => JSON.parse(line) as Record<string, unknown>),
+      ).toEqual([
+        expect.objectContaining({
+          state: "ready",
+          proofDeadlineHealth: deadlineHealth,
+        }),
+        expect.objectContaining({ state: "stopping", signal: "SIGTERM" }),
+      ]);
+    },
+  );
+
   it("treats an unexpected clean runtime exit as a liveness failure and closes", async () => {
     let closed = false;
     await expect(
@@ -283,7 +264,6 @@ describe("production watcher commands", () => {
         "/etc/watcher.json",
         { writeOutput: () => undefined, writeError: () => undefined },
         {
-          runAuthority: async () => ({ close: async () => undefined }),
           runWatcher: async () =>
             ready({
               done: Promise.resolve(),
@@ -314,40 +294,6 @@ describe("production watcher commands", () => {
     expect(closed).toBe(true);
   });
 
-  it("keeps the trusted-head authority process separate and closes it on signal", async () => {
-    const events: string[] = [];
-    await expect(
-      unsafeRunWatcherCommandForTest(
-        "authority",
-        "/etc/authority.json",
-        {
-          writeOutput: (text) => events.push(text),
-          writeError: (text) => events.push(text),
-        },
-        {
-          runAuthority: async () => ({
-            close: async () => {
-              events.push("authority-closed");
-            },
-          }),
-          runWatcher: async () => {
-            throw new Error("watcher process must not be constructed");
-          },
-          waitForShutdown: async () => "SIGINT",
-        },
-      ),
-    ).resolves.toBe(0);
-    // The authority command advertises its own readiness record — never the
-    // watcher's proof-supervision record — and closes only after shutdown.
-    expect(events).toHaveLength(2);
-    expect(JSON.parse(events[0]!)).toEqual({
-      packageName: "midgard-watcher",
-      command: "authority",
-      state: "ready",
-    });
-    expect(events[1]).toBe("authority-closed");
-  });
-
   it("retains availability failure timing when startup subsequently fails", async () => {
     const errors: string[] = [];
     const output: string[] = [];
@@ -360,7 +306,6 @@ describe("production watcher commands", () => {
           writeError: (text) => errors.push(text),
         },
         {
-          runAuthority: async () => ({ close: async () => undefined }),
           runWatcher: async (_config, _startup, onAvailability) => {
             onAvailability({
               status: {
@@ -400,5 +345,66 @@ describe("production watcher commands", () => {
       elapsedMs: 1250,
       nativePoint: { slot: "24729", blockNo: "1273" },
     });
+  });
+
+  it("holds a start whose startup failed and holds until shutdown, then exits non-zero", async () => {
+    const errors: string[] = [];
+    const output: string[] = [];
+    let released = 0;
+    let stop: (signal: "SIGTERM") => void = () => undefined;
+    const held = new WatcherStartupHeldError(
+      new Error("deployment authority refused"),
+      async () => {
+        released += 1;
+      },
+    );
+    const running = unsafeRunWatcherCommandForTest(
+      "start",
+      "/etc/watcher.json",
+      {
+        writeOutput: (text) => output.push(text),
+        writeError: (text) => errors.push(text),
+      },
+      {
+        runWatcher: async () => await Promise.reject(held),
+        waitForShutdown: async () =>
+          await new Promise<"SIGTERM">((resolve) => (stop = resolve)),
+      },
+    );
+    await vi.waitFor(() => expect(errors).toHaveLength(1));
+    expect(JSON.parse(errors[0]!)).toMatchObject({
+      command: "start",
+      state: "startup_held",
+      productionReady: false,
+      reason: "startup_failed",
+      error: held.message,
+    });
+    expect(released).toBe(0);
+    stop("SIGTERM");
+    expect(await running).toBe(70);
+    expect(released).toBe(1);
+    expect(output.map((line) => JSON.parse(line) as unknown)).toEqual([
+      expect.objectContaining({ state: "stopping", signal: "SIGTERM" }),
+    ]);
+  });
+
+  it("exits a replay whose startup failed and holds, releasing the hold", async () => {
+    let released = 0;
+    const held = new WatcherStartupHeldError(new Error("refused"), async () => {
+      released += 1;
+    });
+    await expect(
+      unsafeRunWatcherCommandForTest(
+        "replay",
+        "/etc/watcher.json",
+        { writeOutput: () => undefined, writeError: () => undefined },
+        {
+          runWatcher: async () => await Promise.reject(held),
+          waitForShutdown: async () =>
+            await new Promise<"SIGTERM">(() => undefined),
+        },
+      ),
+    ).rejects.toBe(held);
+    expect(released).toBe(1);
   });
 });

@@ -38,44 +38,29 @@ checked until it is committed.
 ## 3. Blueprint
 
 The fault-proofs emulator tests load `onchain/aiken/plutus.json`
-(`demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts:29`, or
-`MIDGARD_REAL_BLUEPRINT_PATH`). Rebuild it after any Aiken change, as CI does
-in "Build testnet Aiken blueprint":
+(`demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts:29`).
+`contrib test` rebuilds it after an Aiken change (`deployment:build`, as CI
+does in "Build testnet Aiken blueprint"), or copies a matching one from
+another checkout; the suites' global setup refuses a stale one. Never commit
+it.
+
+## 4. Package tests and typechecks
+
+While iterating, run the tests your change reaches, never a whole package
+by hand: the fault-proofs suite took 20.5 minutes at eight forks on
+2026-09-21 (its `vitest.config.ts`).
 
 ```bash
-pnpm --dir demo deployment:build preprod-testing
+node scripts/contrib.mjs test --package midgard-fault-proofs --related <changed path>...
 ```
 
-A stale `plutus.json` makes emulator tests fail against the old validators.
-Never commit it.
+Each run builds the stale dists its package needs (the SDK among them) first.
 
-## 4. Focused package tests
-
-Run the files your change touches, not whole suites. The fault-proofs suite
-took 20.5 minutes at eight forks on 2026-09-21 (its `vitest.config.ts`).
-
-```bash
-pnpm --dir demo/midgard-sdk run build
-pnpm --dir demo/midgard-sdk exec vitest run tests/fraud-proof-catalogue-registration.test.ts tests/reference-scripts.test.ts
-pnpm --dir demo/midgard-core exec vitest run tests/deployment-manifest-identity.test.ts
-pnpm --dir demo/midgard-fault-proofs exec vitest run tests/workflow.test.ts tests/family-application-registry.test.ts tests/typed-reason-disposition.test.ts
-pnpm --dir demo/midgard-fault-proofs exec vitest run tests/<kebab>-lifecycle.test.ts
-pnpm --dir demo/midgard-watcher exec vitest run tests/runtime/deployment-identity.test.ts
-```
-
-Then each package's typecheck, which is where most tables in
-[touch-points.md](touch-points.md) are enforced:
-
-```bash
-pnpm --dir demo/midgard-sdk run typecheck
-pnpm --dir demo/midgard-fault-proofs run typecheck
-pnpm --dir demo/midgard-node run typecheck
-pnpm --dir demo/midgard-watcher run typecheck
-pnpm --dir demo/da-committee-node run typecheck
-pnpm --dir demo/midgard-node-tools run typecheck
-```
-
-CI builds the SDK before the packages that import it; do the same.
+Then gate the change with `node scripts/preflight.mjs --full-local --base
+<target-ref>`. It builds and typechecks every package that depends on what
+changed (the typechecks enforce most tables in
+[touch-points.md](touch-points.md)), and runs lint, format, the goldens and
+the tests the change reaches in each package, each as CI runs it.
 
 ## 5. Node tests and the DA fixture
 
@@ -88,8 +73,8 @@ Regenerate the DA deployment fixture after the contract set changes, then
 rerun without the variable to confirm it matches:
 
 ```bash
-MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts
-pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts tests/deployment-manifest.test.ts
+node scripts/contrib.mjs artifacts sync --channel da-deployment-fixture
+node scripts/contrib.mjs test --package midgard-node --file tests/da-deployment-fixture-generation.test.ts --file tests/deployment-manifest.test.ts
 ```
 
 The fixture lands in

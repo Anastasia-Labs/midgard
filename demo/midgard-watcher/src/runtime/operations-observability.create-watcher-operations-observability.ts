@@ -1,7 +1,6 @@
 import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
+import { watcherDecisionHoldReason } from "../fault-proofs/watcher-decision-hold.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
-import { coordinatorHoldsReadiness } from "./chain-coordinator.integrity-hold.js";
-import type { WatcherChainCoordinator } from "./chain-coordinator.js";
 import {
   createWatcherAlertBook,
   WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS,
@@ -47,9 +46,18 @@ export const createWatcherOperationsObservability = (input: {
   }>;
   /** Live state of the application's shared retained-DA transport. */
   readonly retainedDaTransportStatus: () => WatcherRetainedDaTransportStatus;
-  readonly coordinatorStatus?: () => ReturnType<
-    WatcherChainCoordinator["status"]
-  > | null;
+  /** The L1 follower's and decision driver's named reasons, read
+   * synchronously (the runtime caches them on every follower change). */
+  readonly l1Readiness?: () => readonly Readonly<{
+    reason: string;
+    detail: string;
+  }>[];
+  /** Named L1 degradations, read synchronously; never readiness reasons. */
+  readonly l1Degradations?: () => readonly Readonly<{
+    reason: string;
+    count: number;
+    detail: string;
+  }>[];
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
   readonly l1FreshnessMaximumAgeMs?: number;
@@ -137,7 +145,6 @@ export const createWatcherOperationsObservability = (input: {
     values.push(value);
     if (values.length > maximumRetainedDiagnostics) values.shift();
   };
-
   const alerts = createWatcherAlertBook({
     append: (record) => append<WatcherAlertDiagnostic>(record),
     daFetchMaximumAgeMs:
@@ -287,6 +294,13 @@ export const createWatcherOperationsObservability = (input: {
     });
   };
 
+  const l1Degradations = () =>
+    Object.freeze(
+      (input.l1Degradations?.() ?? []).map(({ reason, count, detail }) =>
+        Object.freeze({ reason, count: count.toString(), detail }),
+      ),
+    );
+
   const status = (): WatcherOperationsStatus => {
     const observedAt = nowMs();
     if (observedAt < 0n) throw new Error("observability clock is invalid");
@@ -294,7 +308,7 @@ export const createWatcherOperationsObservability = (input: {
     const scope = launchScope();
     const sources = sourceHealth(monotonicTime());
     const active = alerts.active();
-    const reasons: WatcherOperationsStatus["readinessReasons"][number][] = [];
+    const reasons: string[] = [];
     if (supervisor.phase !== "accepting")
       reasons.push("supervisor_not_accepting");
     if (!supervisor.recovered) reasons.push("recovery_incomplete");
@@ -302,12 +316,25 @@ export const createWatcherOperationsObservability = (input: {
     if (supervisor.deadlineHealth === "at_risk")
       reasons.push("deadline_at_risk");
     if (supervisor.deadlineHealth === "unsafe") reasons.push("deadline_unsafe");
+    if (supervisor.journalIntegrity !== null) reasons.push("journal_integrity");
+    if (supervisor.journalUnavailable !== null)
+      reasons.push("journal_unavailable");
+    if (supervisor.journalCapacity) reasons.push("journal_capacity");
+    if (supervisor.objectiveCleanupFailures.length > 0)
+      reasons.push("fault_proof_objective_cleanup_failed");
+    const holds = supervisor.journalDecisionMissing;
+    reasons.push(...new Set(holds.map(watcherDecisionHoldReason)));
+    if (supervisor.journalBusy !== null) reasons.push("journal_busy");
     if (latestL1Sources.size === 0) reasons.push("l1_source_unavailable");
     else if (sources.stale > 0 || sources.disagreement > 0)
       reasons.push("l1_source_stale");
-    const coordinator = input.coordinatorStatus?.() ?? null;
-    if (coordinatorHoldsReadiness(coordinator))
-      reasons.push("coordinator_recovery_hold");
+    const l1Readiness = Object.freeze(
+      (input.l1Readiness?.() ?? []).map(({ reason, detail }) =>
+        Object.freeze({ reason, detail }),
+      ),
+    );
+    for (const { reason } of l1Readiness)
+      if (!reasons.includes(reason)) reasons.push(reason);
     const retainedDaTransport = input.retainedDaTransportStatus();
     if (retainedDaTransport.state === "failed")
       reasons.push("retained_da_transport_failed");
@@ -327,8 +354,9 @@ export const createWatcherOperationsObservability = (input: {
       liveness,
       readiness: reasons.length === 0 ? "ready" : "not_ready",
       readinessReasons: Object.freeze(reasons),
+      l1Readiness,
+      l1Degradations: l1Degradations(),
       retainedDaTransport,
-      coordinator,
       launchScope: scope,
       supervisor,
       activeAlerts: active,
@@ -421,6 +449,9 @@ export const createWatcherOperationsObservability = (input: {
       activeAlertCount: alerts.active().length.toString(),
       unverifiedHeaders: unverifiedHeaders.summary(),
       deferredClassifications: unverifiedHeaders.deferred(),
+      l1Degradations: Object.freeze(
+        Object.fromEntries(l1Degradations().map((d) => [d.reason, d.count])),
+      ),
     });
   };
 
@@ -461,13 +492,11 @@ export const createWatcherOperationsObservability = (input: {
     },
   });
 
-  const handleHttpRequest = (request: Request): Promise<Response> =>
-    handleWatcherOperationsHttpRequest(request, api);
-
   return Object.freeze({
     schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,
     api,
     sink,
-    handleHttpRequest,
+    handleHttpRequest: (request: Request): Promise<Response> =>
+      handleWatcherOperationsHttpRequest(request, api),
   });
 };

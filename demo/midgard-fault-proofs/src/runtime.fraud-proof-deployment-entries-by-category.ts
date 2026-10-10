@@ -56,16 +56,6 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofMissingSignatureStep03",
     "fraudProofMissingSignatureStep04",
   ],
-  missingNativeScriptTx: [
-    "fraudProofMissingNativeScriptTx",
-    "fraudProofMissingNativeScriptTxStep02",
-    "fraudProofMissingNativeScriptTxStep03",
-    "fraudProofMissingNativeScriptTxStep04",
-    "fraudProofMissingNativeScriptTxStep05",
-    "fraudProofMissingNativeScriptTxStep06",
-    "fraudProofMissingNativeScriptTxStep07",
-    "fraudProofMissingNativeScriptTxStep08",
-  ],
   withdrawnReferenceInput: [
     "fraudProofWithdrawnReferenceInput",
     "fraudProofWithdrawnReferenceInputStep02",
@@ -90,10 +80,6 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
   doubleWithdraw: [
     "fraudProofDoubleWithdraw",
     "fraudProofDoubleWithdrawStep02",
-  ],
-  crossBlockDuplicateEvent: [
-    "fraudProofCrossBlockDuplicateEvent",
-    "fraudProofCrossBlockDuplicateEventStep02",
   ],
   l2TxMistag: ["fraudProofL2TxMistag", "fraudProofL2TxMistagStep02"],
   withdrawnInput: [
@@ -123,15 +109,6 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofMintAuthorizationStep07",
   ],
   networkId: ["fraudProofNetworkId", "fraudProofNetworkIdStep02"],
-  missingNativeScriptUtxo: [
-    "fraudProofMissingNativeScriptUtxo",
-    "fraudProofMissingNativeScriptUtxoStep02",
-    "fraudProofMissingNativeScriptUtxoStep03",
-    "fraudProofMissingNativeScriptUtxoStep04",
-    "fraudProofMissingNativeScriptUtxoStep05",
-    "fraudProofMissingNativeScriptUtxoStep06",
-    "fraudProofMissingNativeScriptUtxoStep07",
-  ],
   nativeScriptInvalid: [
     "fraudProofNativeScriptInvalid",
     "fraudProofNativeScriptInvalidStep02",

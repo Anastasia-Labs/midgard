@@ -3,6 +3,7 @@ import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { activateOperatorProgram } from "../src/transactions/register-active-operator.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   addActivatedOperatorAbove,
   advanceShiftToPredecessor,
@@ -262,11 +263,13 @@ describe("operator exit scheduler synchronisation", () => {
     // Activating the stranger clears the block: the retiring operator is no
     // longer the last member and the shift goes to its neighbour.
     await runProgram(
-      activateOperatorProgram(
-        stranger,
-        contracts,
-        BOND_LOVELACE,
-        fixture.referenceScriptsLucid,
+      withoutFollowerJournal(
+        activateOperatorProgram(
+          stranger,
+          contracts,
+          BOND_LOVELACE,
+          fixture.referenceScriptsLucid,
+        ),
       ),
     );
     await retireOperator({

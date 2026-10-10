@@ -6,6 +6,8 @@ import {
   resolveL1ViewFatalMs,
 } from "@al-ft/midgard-core";
 import { parseDaLibp2pRuntimeManifest } from "@al-ft/midgard-core/da-transport";
+import { parseL1Origin } from "@al-ft/midgard-core/l1-origin";
+import { assertRoleL1Env } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -37,13 +39,8 @@ import {
   optionalNonEmpty,
   optionalSplitList,
   requireEnv,
-  splitList,
 } from "./config.operational-provider-identity.js";
-import {
-  cardanoL1SourceConfig,
-  isLiveLucidProviderUrl,
-  parseL1SourceConfig,
-} from "./config.parse-l1-source-config.js";
+import { cardanoL1SourceConfig } from "./config.parse-l1-source-config.js";
 import {
   assertLibp2pDaRetentionDays,
   deploymentFingerprintConfig,
@@ -55,6 +52,9 @@ import { normalizeHex } from "./utils/hex.js";
 export const loadCommitteeConfig = async (
   env: Env = process.env,
 ): Promise<LoadedCommitteeConfig> => {
+  // A role: L1 only through its follower; a Kupmios, Blockfrost or tool
+  // `L1_ACCESS` setting is refused at start, by name.
+  assertRoleL1Env(env, "da-committee-node");
   const deploymentManifestPath = requireEnv(
     env,
     "MIDGARD_DEPLOYMENT_MANIFEST_PATH",
@@ -142,6 +142,14 @@ export const loadCommitteeConfig = async (
     env.L1_SUBMITTER_KEY_SOURCE,
     "L1_SUBMITTER_KEY_SOURCE",
   );
+  // The deployment's L1 origin point until the redeploy carries it in the
+  // manifest: `<slot>.<block hash>`, as `midgard-l1-follower find-origin`
+  // prints it. Absent when unset.
+  const l1OriginText = optionalNonEmpty(env.L1_ORIGIN);
+  const l1Origin =
+    l1OriginText === undefined
+      ? undefined
+      : parseL1Origin(l1OriginText, "L1_ORIGIN");
   const l1SubmitterId = optionalNonEmpty(env.DA_L1_SUBMITTER_ID);
   const l1SubmitterIds = optionalSplitList(env.DA_L1_SUBMITTER_IDS);
   if (
@@ -152,15 +160,7 @@ export const loadCommitteeConfig = async (
       "DA_L1_SUBMITTER_ID must be present in DA_L1_SUBMITTER_IDS",
     );
   }
-  const cardanoProviderUrls = splitList(
-    requireEnv(env, "CARDANO_PROVIDER_URLS"),
-  );
-  const cardanoL1Source = cardanoL1SourceConfig({
-    env,
-    network,
-    cardanoProviderUrls,
-  });
-  const l1Source = parseL1SourceConfig(env, cardanoProviderUrls);
+  const cardanoL1Source = cardanoL1SourceConfig({ env, network });
   const nativeLedger = parseNativeLedgerConfig(env);
   const daCommitteeMembers = libp2pDaTransport.peers.map((member) => ({
     index: member.signerIndex,
@@ -175,13 +175,6 @@ export const loadCommitteeConfig = async (
     throw new Error(
       "L1_SUBMITTER_KEY_SOURCE is required when DA_L1_SUBMISSION_ENABLED=true",
     );
-  }
-  if (l1SubmissionEnabled) {
-    if (!isLiveLucidProviderUrl(cardanoProviderUrls[0]!)) {
-      throw new Error(
-        "L1 submission requires a blockfrost: or kupmios: CARDANO_PROVIDER_URLS entry",
-      );
-    }
   }
   const l1SubmitterPreflight = l1SubmitterPreflightConfig({
     env,
@@ -234,9 +227,8 @@ export const loadCommitteeConfig = async (
     availabilityChallenge: manifestAvailabilityChallenge,
     consensusProfile,
     midgardNodeDeployment,
-    l1Source,
-    cardanoProviderUrls,
     ...(nativeLedger === undefined ? {} : { nativeLedger }),
+    ...(l1Origin === undefined ? {} : { l1Origin }),
     finalityDepth: configuredFinalityDepth,
     automaticRecoveryMaxDepth,
     daTransport: libp2pDaTransport,

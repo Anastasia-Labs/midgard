@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import { psql } from "./chain.js";
 import { type DeployContext, nodeCli } from "./deploy.js";
@@ -164,18 +165,20 @@ export const ensureDaManifests = async (
     );
 };
 
-const kupmios = (run: RunEnv) =>
-  `kupmios:http://127.0.0.1:${run.kupoPort}|http://127.0.0.1:${run.ogmiosPort}`;
-
-/** A committee member's complete environment, from the run's records only. */
+/**
+ * A committee member's complete environment, from the run's records only.
+ * Its L1 follower reads the local node from `l1Origin`, the run's recorded
+ * origin (`recordedL1Origin`); no chain index is configured.
+ */
 export const committeeEnvironment = (input: {
   readonly layout: Layout;
   readonly run: RunEnv;
   readonly identities: Identities;
-  readonly chainSyncBinary: string;
+  readonly transportBinary: string;
   readonly index: number;
+  readonly l1Origin: L1Origin;
 }): Record<string, string> => {
-  const { layout, run, identities, chainSyncBinary, index } = input;
+  const { layout, run, identities, transportBinary, index, l1Origin } = input;
   const member = committeeMembers(identities)[index];
   if (member === undefined) throw new Error(`no committee member ${index}`);
   const data = layout.committeeData(index);
@@ -186,14 +189,11 @@ export const committeeEnvironment = (input: {
     MIDGARD_NETWORK: "Custom",
     MIDGARD_DEPLOYMENT_MANIFEST_PATH: layout.committeeManifest(index),
     MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: layout.contractManifest,
-    CARDANO_PROVIDER_URLS: kupmios(run),
-    CARDANO_L1_SOURCE_MODE: "local_node",
     CARDANO_LOCAL_NODE_AUTHORITY_ID: LOCAL_AUTHORITY_ID,
-    CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: `chain-sync:${kupmios(run)}`,
-    CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH: `${data}/chain-sync-cursor.json`,
+    L1_ORIGIN: formatL1Origin(l1Origin),
     CARDANO_LOCAL_NODE_SOCKET_PATH: layout.cardanoSocket,
     CARDANO_LOCAL_NODE_CONFIG_PATH: layout.hostCardanoConfig,
-    CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: chainSyncBinary,
+    CARDANO_L1_NODE_TRANSPORT_BINARY_PATH: transportBinary,
     CARDANO_NETWORK_MAGIC: String(run.networkMagic),
     // The committee refuses any value but its manifest's confirmation depth,
     // which is the compiled deployment profile's.

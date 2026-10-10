@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
+import { depth, isFinal } from "@al-ft/midgard-l1-follower";
 
 export type PromiseCapacityPoint = Readonly<{
   slot: number;
@@ -80,7 +81,9 @@ export const parsePromiseCapacityEvidence = (
     r.certifiedAt === undefined ? undefined : point(r.certifiedAt);
   if (
     certificate !== undefined &&
-    (certificate.blockNo - captured.blockNo <= r.recoveryDepth ||
+    (!isFinal(depth(certificate.blockNo, captured.blockNo), {
+      securityParameter: r.recoveryDepth,
+    }) ||
       certificate.slot <= captured.slot ||
       certificate.blockHash === captured.blockHash)
   )

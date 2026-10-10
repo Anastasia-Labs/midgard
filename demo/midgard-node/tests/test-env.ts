@@ -79,9 +79,6 @@ export const testDatabaseNames = (): readonly string[] => {
 };
 
 const TEST_ENV_DEFAULTS: Record<string, string> = {
-  L1_PROVIDER: "Kupmios",
-  L1_OGMIOS_KEY: "http://127.0.0.1:1337",
-  L1_KUPO_KEY: "http://127.0.0.1:1442",
   L1_OPERATOR_SEED_PHRASE:
     "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX:

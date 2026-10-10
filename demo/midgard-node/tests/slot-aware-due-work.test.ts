@@ -154,7 +154,7 @@ describe("slot-aware due-work registry", () => {
       deltaSlots: 10,
       waitMs: 10_000,
       slotLengthMs: 1_000,
-      slotSource: "local_ogmios_tip",
+      slotSource: "l1_node_tip",
       invalidBeforeSlot: 18,
       reason: "wait_ms=10000,max_inline_wait_ms=5000",
       dependencyKey: "merge:header:18",

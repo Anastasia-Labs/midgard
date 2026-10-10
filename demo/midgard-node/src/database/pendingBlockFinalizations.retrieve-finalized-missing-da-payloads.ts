@@ -2,7 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import * as DaPayloadsDB from "./daPayloads.js";
 import * as MutationJobsDB from "./mutationJobs.js";
 import {
@@ -19,6 +19,7 @@ import {
 import { decodePendingBlockFinalizationRow } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 import { type Record } from "./pendingBlockFinalizations.parse-ledger-delta.js";
 import { retrieveRecord } from "./pendingBlockFinalizations.retrieve-record.js";
+import { ACTIVE_PENDING_JOURNAL_REFUSAL } from "./pendingBlockFinalizations.single-active-refusal.js";
 import {
   challengeRelevantHeader,
   orphanMemberJournal,
@@ -69,7 +70,7 @@ export const retrieveFinalizedMissingDaPayloads = ({
               ON ${sql(DaPayloadsDB.tableName)}.${sql(
                 DaPayloadsDB.Columns.HEADER_HASH,
               )} = ${sql(tableName)}.${sql(Columns.HEADER_HASH)}
-            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.Finalized}
+            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.LocallyApplied}
               AND ${sql(DaPayloadsDB.tableName)}.${sql(
                 DaPayloadsDB.Columns.HEADER_HASH,
               )} IS NULL
@@ -80,7 +81,7 @@ export const retrieveFinalizedMissingDaPayloads = ({
               ON ${sql(DaPayloadsDB.tableName)}.${sql(
                 DaPayloadsDB.Columns.HEADER_HASH,
               )} = ${sql(tableName)}.${sql(Columns.HEADER_HASH)}
-            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.Finalized}
+            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.LocallyApplied}
               AND ${sql(DaPayloadsDB.tableName)}.${sql(
                 DaPayloadsDB.Columns.HEADER_HASH,
               )} IS NULL
@@ -98,14 +99,15 @@ export const retrieveFinalizedMissingDaPayloads = ({
     ),
   );
 
-/** A signed commit intent no acknowledgement, landing or replacement has
- * resolved: only the history owner's signed-intent reconciliation clears it. */
+/** A signed commit intent no acknowledgement, landing or disposal has
+ * resolved: S6 derives its status, and the landed-block rebase disposes of
+ * its journal once it is dead or its base left (whichever lands wins). */
 const unreconciledSignedSubmission = (sql: SqlClient.SqlClient) =>
   sql`status = ${Status.PendingSubmission} AND intended_tx_hash IS NOT NULL`;
 
 /** How long an active journal may stay unresolved before the node reports it:
- * well past the signed-intent replacement window, so an honest replacement
- * never trips it. */
+ * well past the time S6 takes to derive a missed commit dead, so an honest
+ * replacement never trips it. */
 export const PENDING_FINALIZATION_AGE_BOUND_MS = 15 * 60_000;
 
 export type UnreconciledSignedSubmission = {
@@ -188,13 +190,12 @@ export const assertNoUnreconciledSignedSubmission = Effect.gen(function* () {
     return yield* Effect.fail(
       new DatabaseError({
         table: tableName,
-        message:
-          "Refusing to prepare a new pending block while another active pending-finalization record exists",
+        message: ACTIVE_PENDING_JOURNAL_REFUSAL,
         cause: `signed_header=${rows[0]!.header_hash.toString("hex")}; canonical reconciliation required`,
       }),
     );
 }).pipe(
-  withHistoryWrite,
+  withFollowerWrite,
   sqlErrorToDatabaseError(tableName, "Failed signed submission preflight"),
 );
 
@@ -219,18 +220,15 @@ export const withdrawalMemberToAssignment = (
  * landed-merge walk stops at a header with no journal, so pruning one before
  * its merge is folded locally would skip that merge silently), and any
  * journal whose header is still challenge-relevant (`challengeRelevantHeader`:
- * the confirmed head, a live queue header, a header DA retention holds for
- * finality, or one any recorded correction-observer transition, pending or
- * admitted, merged or removed, or the observer's durable cursor still names,
- * so a merge admitted at confirmation depth keeps its journal until it is
- * final at k), any journal whose merge the observer has not recorded since it
- * was folded locally (or every journal, while the deployment has no observer
- * record), and any journal with an orphaned event member
+ * the confirmed head, a live queue header, or a header DA retention holds for
+ * finality: live in the follower's facts, or merged or removed by a landed tx
+ * that is not final yet, so a landed merge keeps its journal until it is
+ * final at k), and any journal with an orphaned event member
  * (`orphanMemberJournal`). Recovery dependencies are also kept:
  * unfinished/abandoned journals' bases, same-base siblings and descendants,
  * and every retained native recovery plan's primary/member headers. Each batch
- * is its own history write, so it needs the history producer permit and holds
- * it for one statement at a time. Returns the number removed.
+ * is its own gated write, so it needs the follower write gate and holds it
+ * for one statement at a time. Returns the number removed.
  */
 export const pruneFinalizedBeyondChallengeability = ({
   challengeableCutoff,
@@ -261,32 +259,22 @@ export const pruneFinalizedBeyondChallengeability = ({
         )}
         WHERE ${sql(Columns.HEADER_HASH)} IN (
           SELECT ${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)}
-          WHERE ${sql(Columns.STATUS)} = ${Status.Finalized}
+          WHERE ${sql(Columns.STATUS)} = ${Status.LocallyApplied}
             AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
             AND NOT ${challengeRelevantHeader(sql, `${tableName}.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
-            AND NOT ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`, deploymentIdentityDigest)}
+            AND NOT ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
             AND NOT ${orphanMemberJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
             AND EXISTS (
               SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job
               WHERE job.${sql(MutationJobsDB.Columns.JOB_ID)} =
                   ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
                   encode(${sql(tableName)}.${sql(Columns.HEADER_HASH)}, 'hex')
-                AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed}
-                -- The observer saved its record after the merge was folded
-                -- locally. The journal is past the retention window, so its
-                -- header was committed long before that save: the record
-                -- still queues the header, names its merge, or dropped the
-                -- merge as final beyond k. No record (NULL) keeps every
-                -- journal.
-                AND job.${sql(MutationJobsDB.Columns.COMPLETED_AT)} < (
-                  SELECT observer.updated_at
-                  FROM state_queue_terminal_observer_states AS observer
-                  WHERE observer.deployment_identity_digest = ${deploymentIdentityDigest}))
+                AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed})
             AND ${sql(Columns.HEADER_HASH)} <> (
               SELECT newest.${sql(Columns.HEADER_HASH)} FROM ${sql(
                 tableName,
               )} AS newest
-              WHERE newest.${sql(Columns.STATUS)} = ${Status.Finalized}
+              WHERE newest.${sql(Columns.STATUS)} = ${Status.LocallyApplied}
               ORDER BY newest.${sql(Columns.BLOCK_END_TIME)} DESC,
                 newest.${sql(Columns.CREATED_AT)} DESC
               LIMIT 1)
@@ -295,7 +283,7 @@ export const pruneFinalizedBeyondChallengeability = ({
         RETURNING ${sql(Columns.HEADER_HASH)}`;
         return rows.length;
       }).pipe(
-        withHistoryWrite,
+        withFollowerWrite,
         Effect.withLogSpan(`pruneFinalizedBeyondChallengeability ${tableName}`),
         sqlErrorToDatabaseError(
           tableName,
@@ -303,48 +291,3 @@ export const pruneFinalizedBeyondChallengeability = ({
         ),
       ),
   });
-
-/** Retained journals recovery still reads, plus merges not finalized locally.
- * Finalized same-base siblings/descendants and recovery-plan members need
- * recorded landing evidence too. Settled finalized journals alone do not hold
- * their observer transition forever: that would cycle with journal retention. */
-export const retrieveCorrectionObserverJournalDependencies: Effect.Effect<
-  readonly Readonly<{
-    headerHash: string;
-    baseTailHeaderHash: string;
-    baseTailOutRef: string;
-    abandoned: boolean;
-  }>[],
-  DatabaseError,
-  Database
-> = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{
-    readonly header_hash: Buffer;
-    readonly base_tail_header_hash: Buffer;
-    readonly base_tail_out_ref: string;
-    readonly status: Status;
-  }>`SELECT ${sql(Columns.HEADER_HASH)}, ${sql(Columns.BASE_TAIL_HEADER_HASH)},
-      ${sql(Columns.BASE_TAIL_OUT_REF)}, ${sql(Columns.STATUS)}
-    FROM ${sql(tableName)}
-    WHERE ${sql(Columns.STATUS)} <> ${Status.Finalized}
-      OR ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
-      OR NOT EXISTS (
-        SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job
-        WHERE job.${sql(MutationJobsDB.Columns.JOB_ID)} =
-            ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
-            encode(${sql(tableName)}.${sql(Columns.HEADER_HASH)}, 'hex')
-          AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed})
-    ORDER BY ${sql(Columns.HEADER_HASH)}`;
-  return rows.map((row) => ({
-    headerHash: row.header_hash.toString("hex"),
-    baseTailHeaderHash: row.base_tail_header_hash.toString("hex"),
-    baseTailOutRef: row.base_tail_out_ref,
-    abandoned: row.status === Status.Abandoned,
-  }));
-}).pipe(
-  sqlErrorToDatabaseError(
-    tableName,
-    "Failed to read the journals the correction observer depends on",
-  ),
-);

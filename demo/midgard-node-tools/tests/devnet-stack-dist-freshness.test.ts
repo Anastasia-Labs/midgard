@@ -111,6 +111,8 @@ describe("runtimeDistTargets", () => {
       "midgard-fault-proofs",
       "midgard-sdk",
       "midgard-core",
+      "l1-node-transport",
+      "midgard-l1-follower",
       "midgard-validation",
       "lucid-midgard",
     ]);

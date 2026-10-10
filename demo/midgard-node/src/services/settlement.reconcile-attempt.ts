@@ -1,4 +1,5 @@
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
+import { type IntentStatus, isDeadStatus } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -9,16 +10,10 @@ import { Effect } from "effect";
 
 import { EventSettlementProofError } from "../commands/event-settlement-proof.js";
 import * as Journal from "../database/settlement.js";
-import { synchronizePublicationIndexerPoint } from "../transactions/reference-publication-provider.js";
-import { NodeConfig, type NodeConfigDep } from "./config.js";
-import { ContractDeploymentIdentity } from "./midgard-contracts.js";
-import {
-  describeSettlementError,
-  isSettlementInputsSpentRejection,
-  settlementCall,
-  settlementCheck,
-} from "./settlement-call.js";
-import { readSettlementOutputEvidence } from "./settlement-output.js";
+import { providerViewPoint } from "../l1-provider-view.js";
+import { type NodeConfigDep } from "./config.js";
+import type { UnwrittenHold } from "./intent-journal.holds.js";
+import { settlementCall, settlementCheck } from "./settlement-call.js";
 
 export type SettlementHealth = {
   observedAt: number;
@@ -32,6 +27,14 @@ export type SettlementHealth = {
    * it clears the node's failure streak; the node strips it before
    * publishing the health. */
   tickCompleted?: boolean;
+  /**
+   * Set by the worker when its intent journal holds refusals whose write to
+   * the node database has not landed (I1-H1): the worker hands them over,
+   * and the node's journal takes them (`adopt`), names them on `/readyz`
+   * and writes them until they land. The node strips it before publishing
+   * the health.
+   */
+  intentRefusalHolds?: readonly UnwrittenHold[];
 };
 
 export const settlementWalletAddress = (config: NodeConfigDep): string => {
@@ -161,65 +164,28 @@ const spendingInputs = (attempt: Journal.SettlementAttempt) => {
   }));
 };
 
+/**
+ * The tick's work on the attempt that blocks new work (`settleAttempts`):
+ * one whose derived status (`status`, null when not journaled) is not yet
+ * confirmed. Landed short of cd, it waits. Otherwise it is expired once the
+ * L1 view (the follower at the node's tip, read before and after) proves it
+ * can never land; until then it waits for S6.
+ */
 export const reconcileAttempt = (
   owner: Journal.SettlementOwner,
   attempt: Journal.SettlementAttempt,
+  status: IntentStatus | null,
   lucid: LucidEvolution,
-  generation: string,
 ) =>
   Effect.gen(function* () {
-    const config = yield* NodeConfig;
-    const identity = yield* ContractDeploymentIdentity;
     const { validToSlot } = yield* settlementCheck(
       "inspect settlement attempt",
       () => inspectSettlementAttempt(attempt),
     );
-    const status = yield* exactStatus(lucid, attempt.tx_hash);
-    if (status.status === "confirmed") {
-      const depth =
-        identity.l1Finality?.confirmationDepth ??
-        identity.manifest?.l1Finality.confirmationDepth;
-      if (depth === undefined)
-        return yield* Effect.fail(
-          new Error("Settlement requires manifest-bound L1 finality"),
-        );
-      const confirmedDepth =
-        status.confirmation.blockHash === undefined
-          ? 0
-          : yield* Journal.confirmationDepth(
-              owner,
-              status.confirmation.blockHash,
-            );
-      if (confirmedDepth < depth)
-        return "waiting for authenticated confirmation depth";
-      if (attempt.required_outputs.length > 0) {
-        const blockHash = status.confirmation.blockHash;
-        if (blockHash === undefined)
-          return "waiting for confirmation block identity";
-        const exact = yield* settlementCall("Kupo output evidence", () =>
-          readSettlementOutputEvidence(config.L1_KUPO_KEY, attempt, blockHash),
-        );
-        if (!exact)
-          return yield* Effect.fail(
-            new Error(
-              `Confirmed settlement ${attempt.tx_hash} lacks its exact expected outputs`,
-            ),
-          );
-      }
-      yield* Journal.finishAttempt(
-        owner,
-        attempt,
-        "confirmed",
-        settlementNextPhase(attempt.phase),
-        generation,
-      );
-      return "confirmed settlement transaction";
-    }
-    const before = yield* settlementCall("indexer sync", () =>
-      synchronizePublicationIndexerPoint(
-        config.L1_OGMIOS_KEY,
-        config.L1_KUPO_KEY,
-      ),
+    if (status?.kind === "landed")
+      return `settlement transaction ${attempt.tx_hash} landed at depth ${status.depth}; waiting for confirmation depth`;
+    const before = yield* settlementCall("L1 view sync", () =>
+      Effect.runPromise(providerViewPoint(lucid)),
     );
     if (before.slot >= validToSlot) {
       const observed = yield* exactStatus(lucid, attempt.tx_hash);
@@ -231,11 +197,8 @@ export const reconcileAttempt = (
         owner,
         inputs.map((out) => out.txHash),
       );
-      const after = yield* settlementCall("indexer sync", () =>
-        synchronizePublicationIndexerPoint(
-          config.L1_OGMIOS_KEY,
-          config.L1_KUPO_KEY,
-        ),
+      const after = yield* settlementCall("L1 view sync", () =>
+        Effect.runPromise(providerViewPoint(lucid)),
       );
       if (
         canExpireSettlementAttempt({
@@ -257,13 +220,7 @@ export const reconcileAttempt = (
               )),
         })
       ) {
-        yield* Journal.finishAttempt(
-          owner,
-          attempt,
-          "expired",
-          attempt.phase,
-          generation,
-        );
+        yield* Journal.expireAttempt(owner, attempt);
         return "expired unsubmitted body; rebuilding from current state";
       }
       return yield* Effect.fail(
@@ -273,60 +230,12 @@ export const reconcileAttempt = (
       );
     }
     yield* Journal.assertOwner(owner);
-    const provider = lucid.config().provider;
-    if (provider === undefined)
-      return yield* Effect.fail(new Error("Settlement provider unavailable"));
-    // The exact body is resubmitted every tick until its status reads
-    // confirmed. While it waits in a mempool (or in a block the indexer has
-    // not reached) the node refuses the copy because its inputs are spent;
-    // that is progress, not a failure, and the next tick reads its status. A
-    // body whose inputs another transaction spent never confirms; past its
-    // validity bound the expiry check above refuses it as ambiguous.
-    const submitted = yield* settlementCall(
-      "submit settlement transaction",
-      () => provider.submitTx(attempt.signed_cbor),
-    ).pipe(
-      Effect.map((hash) => ({ hash })),
-      Effect.catchIf(
-        (error) => isSettlementInputsSpentRejection(error.cause),
-        (error) =>
-          Effect.succeed({
-            waiting: `settlement transaction ${attempt.tx_hash} not confirmed yet; its resubmission is refused because its inputs are already spent (by it in a mempool, or by a block): ${describeSettlementError(error.cause).slice(0, 500)}`,
-          }),
-      ),
-    );
-    if ("waiting" in submitted) return submitted.waiting;
-    const hash = submitted.hash;
-    if (hash !== attempt.tx_hash)
-      return yield* Effect.fail(
-        new Error("Settlement submit returned a different transaction hash"),
-      );
-    return "submitted exact journaled settlement transaction";
-  });
-
-/** Synchronize before both positive and negative receipt observations: a
- * lagging indexer may still report a confirmation from the rolled-back fork. */
-export const reconcileSettlementReceipts = (
-  owner: Journal.SettlementOwner,
-  job: Journal.SettlementJob,
-  lucid: Pick<LucidEvolution, "transactionStatus">,
-) =>
-  Effect.gen(function* () {
-    const config = yield* NodeConfig;
-    const receipts = yield* Journal.attempts(job);
-    if (receipts.length > 0)
-      yield* settlementCall("indexer sync", () =>
-        synchronizePublicationIndexerPoint(
-          config.L1_OGMIOS_KEY,
-          config.L1_KUPO_KEY,
-        ),
-      );
-    for (const receipt of receipts) {
-      const status = yield* exactStatus(lucid, receipt.tx_hash);
-      if (status.status !== "confirmed") {
-        yield* Journal.resumeReceipt(owner, receipt);
-        return false;
-      }
-    }
-    return true;
+    // The journaled bytes have one sender, S6 (the node follower's intent
+    // reconciler): it sends them at every tip while they are live, absent
+    // from the mempool and spendable, and never sends a dead intent (§8.2:
+    // an input spent by another tx, expired, failed). This tick only reads
+    // status; a dead body waits for the expiry decision above.
+    if (status !== null && isDeadStatus(status))
+      return `settlement transaction ${attempt.tx_hash} is dead (${status.kind}); not resubmitted`;
+    return `settlement transaction ${attempt.tx_hash} journaled; S6 sends its exact bytes until it lands`;
   });

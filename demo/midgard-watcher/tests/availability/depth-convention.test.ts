@@ -8,55 +8,27 @@ import {
 } from "@al-ft/midgard-core/availability-operation-journal";
 import type {
   FraudProofRawL1Point,
-  readAdmittedLocalKupmiosRawTransaction,
-  readAdmittedLocalKupmiosUtxosByOutRefAtPoint,
+  FraudProofRawL1Transaction,
 } from "@al-ft/midgard-fault-proofs";
 import type { DaAvailabilityForeignSpendReaders } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
+import type { FollowerVerifiedSpend } from "../../src/l1-follower/raw-reads.types.js";
+import {
+  availabilityFollowerIo,
+  availabilityFollowerL1,
+} from "../support/availability-follower-l1.js";
 
-type RawTransaction = Awaited<
-  ReturnType<typeof readAdmittedLocalKupmiosRawTransaction>
->;
-type InputSpend = Awaited<
-  ReturnType<typeof readAdmittedLocalKupmiosUtxosByOutRefAtPoint>
->["spends"][number];
 const io = vi.hoisted(() => ({
   tip: 2260,
   included: true,
-  raw: undefined as RawTransaction | undefined,
+  raw: undefined as FraudProofRawL1Transaction | undefined,
   inclusion: undefined as FraudProofRawL1Point | undefined,
-  spend: undefined as InputSpend | undefined,
+  spend: undefined as FollowerVerifiedSpend | undefined,
 }));
-vi.mock("@al-ft/midgard-fault-proofs", async (original) => ({
-  ...(await original<typeof import("@al-ft/midgard-fault-proofs")>()),
-  localKupmiosHttpOgmiosRawSourceDetails: () => ({
-    deploymentIdentityDigest: "deployment",
-    blueprintHash: "blueprint",
-    confirmationDepth: 30,
-  }),
-  withLocalKupmiosSourceCapture: async (
-    _: unknown,
-    read: () => Promise<unknown>,
-  ) => read(),
-  pinAdmittedLocalKupmiosBoundaryAtPoint: async () => {},
-  readAdmittedLocalKupmiosTransactionInclusion: async () =>
-    io.included ? io.inclusion : null,
-  readAdmittedLocalKupmiosRawTransaction: async () => {
-    if (io.raw === undefined)
-      throw new Error("raw transaction fixture missing");
-    return { ...io.raw, confirmationDepth: io.tip - 100 + 1 };
-  },
-  readAdmittedLocalKupmiosUtxosByOutRefAtPoint: async () => {
-    if (io.spend === undefined) throw new Error("spend fixture missing");
-    return { outputs: [], spends: [io.spend] };
-  },
-  readAdmittedLocalKupmiosPredecessorPoint: async () => ({
-    predecessorPoint: { slot: "99", blockHash: "bb".repeat(32) },
-  }),
-}));
+const follower = availabilityFollowerIo();
 vi.mock("../../src/indexers/authenticated-state-queue-observation.js", () => ({
   assertWatcherStateQueueObservation: () => {},
 }));
@@ -180,10 +152,27 @@ const setup = (after: number) => {
   };
   // Admission is mocked only at the raw-source/observation boundary. The real
   // watcher adapters, SQLite retirement journal and SDK spend verifier run.
+  follower.inclusion.mockImplementation(async () =>
+    io.included ? io.inclusion : null,
+  );
+  follower.transaction.mockImplementation(async () => {
+    if (io.raw === undefined)
+      throw new Error("raw transaction fixture missing");
+    return { ...io.raw, confirmationDepth: io.tip - 100 + 1 };
+  });
+  follower.outrefs.mockImplementation(async () => {
+    if (io.spend === undefined) throw new Error("spend fixture missing");
+    return { outputs: [], spends: [io.spend] };
+  });
+  follower.predecessor.mockResolvedValue({
+    slot: "99",
+    blockHash: "bb".repeat(32),
+  });
   const intake = createWatcherAvailabilityObservation({
     identity: { manifestId: "deployment", blueprintHash: "blueprint" },
-    source: {},
     deployment: {},
+    l1: availabilityFollowerL1(follower),
+    confirmationDepth: 30,
   } as unknown as Parameters<typeof createWatcherAvailabilityObservation>[0]);
   const dir = mkdtempSync(join(tmpdir(), "availability-depth-convention-"));
   dirs.push(dir);

@@ -29,8 +29,33 @@ import {
   type WatcherFaultProofApplicationConstructionOptions,
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofInfrastructureAuthority,
-  type WatcherHistoricalNativeScriptAuthority,
+  type WatcherFaultProofL1,
 } from "./fault-proof-application.production-dependencies.js";
+
+/**
+ * The source id a family's L1 snapshots and signed recovery are recorded
+ * under. Snapshot digests and persisted journals bind it, so it keeps the
+ * shape the earlier local source wrote.
+ */
+export const watcherFaultProofSourceId = ({
+  category,
+  manifestId,
+  localL1Source,
+}: {
+  readonly category: string;
+  readonly manifestId: string;
+  readonly localL1Source: Readonly<{
+    authorityNodeId: string;
+    chainSync: Readonly<{ genesisIdentitySha256: string }>;
+  }>;
+}): string =>
+  [
+    "watcher-fault-proof",
+    category,
+    manifestId,
+    localL1Source.authorityNodeId,
+    localL1Source.chainSync.genesisIdentitySha256,
+  ].join("/");
 
 /**
  * The watcher's one loader body for an acting invocation. On top of the
@@ -46,17 +71,17 @@ export const buildCommonInfrastructure = async ({
   invocation,
   infrastructure,
   deploymentIdentity,
-  historicalNativeScriptAuthority,
   replayContexts,
   validationChallenge,
+  l1,
   dependencies,
   environment,
 }: {
   readonly watcherConfig: WatcherConfig;
   readonly invocation: WorkflowAdapterReadinessInput;
+  readonly l1: WatcherFaultProofL1;
   readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  readonly historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthority;
   readonly replayContexts: ReadonlyMap<string, CompleteCanonicalReplayContext>;
   readonly validationChallenge: FamilyValidationChallengePort;
   readonly dependencies: WatcherFaultProofApplicationDependencies;
@@ -67,6 +92,7 @@ export const buildCommonInfrastructure = async ({
     bindWatcherDeploymentAuthority({
       watcherConfig,
       infrastructure,
+      l1,
       dependencies,
     }),
     readSecret({
@@ -103,23 +129,14 @@ export const buildCommonInfrastructure = async ({
       ...(decisionDigest === undefined ? {} : { decisionDigest }),
       lucid: binding.lucid,
       signer,
-      source: Object.freeze({
-        sourceId: [
-          "watcher-fault-proof",
+      l1Source: l1.source(
+        watcherFaultProofSourceId({
           category,
-          deploymentIdentity.manifestId,
-          binding.localL1Source.authorityNodeId,
-          binding.localL1Source.chainSync.genesisIdentitySha256,
-        ].join("/"),
-        kupoHttpUrl: binding.kupoHttpUrl,
-        ogmiosUrl: binding.ogmiosUrl,
-        timeoutMs: watcherConfig.l1.requestTimeoutMs,
-      }),
+          manifestId: deploymentIdentity.manifestId,
+          localL1Source: binding.localL1Source,
+        }),
+      ),
       stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator(),
-      historicalNativeScriptAuthority: Object.freeze({
-        ...historicalNativeScriptAuthority,
-        l1SourceRoster: await historicalNativeScriptAuthority.l1SourceRoster,
-      }),
       ...(replayContext === undefined ? {} : { replayContext }),
       validationChallenge,
     }),

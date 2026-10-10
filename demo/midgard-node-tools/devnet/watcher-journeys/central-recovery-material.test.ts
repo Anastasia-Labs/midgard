@@ -165,19 +165,19 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
               );
             case "resolvedOutputNonCanonical":
             case "spendInputSignerMissing": {
-              const corpus = full.historicalNativeScriptCorpus;
-              if (corpus === undefined)
-                throw new Error("Exact admitted history required");
+              const admitted = full.predecessor;
+              if (admitted === undefined)
+                throw new Error("Exact admitted predecessor required");
               return category === "resolvedOutputNonCanonical"
                 ? await FP.prepareResolvedOutputNonCanonicalRecoveryMaterial(
                     evidence,
                     detectionId,
-                    corpus,
+                    admitted,
                   )
                 : await FP.prepareSpendInputSignerMissingRecoveryMaterial(
                     evidence,
                     detectionId,
-                    corpus,
+                    admitted,
                   );
             }
           }

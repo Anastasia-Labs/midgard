@@ -45,7 +45,7 @@ export const runRetiredFamilyProof = async (
       fault,
     },
   });
-  await p.refreshFunding();
+  p.selectSigner();
   const lastInput = {
     ...p.common,
     threadOutRef: thirdResult.nextThreadOutRef,
@@ -92,7 +92,7 @@ export const runRetiredFamilyProof = async (
     Effect.runSync(SDK.getStateQueueNodeFromStateQueueDatum(markedView))
       .proven_fraud,
   ).toBe(p.init.computationThreadAssetName);
-  await p.refreshFunding();
+  p.selectSigner();
   const now = BigInt(input.now());
   const removed = await submitRemoveFraudulentBlock({
     lucid: input.lucid,

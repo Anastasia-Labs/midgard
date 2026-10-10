@@ -1,23 +1,30 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  type FraudProofL1Source,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
-  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution, Provider, UTxO } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
 import {
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofInfrastructureAuthority,
 } from "../../src/fault-proofs/fault-proof-application.js";
+import type { WatcherFaultProofL1 } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 
 export const AUTHORITY = makeWatcherDeploymentAuthorityFixture();
+
+/** The follower-backed L1 the application is given; no test here reads it. */
+export const testFaultProofL1 = (): WatcherFaultProofL1 => ({
+  source: (sourceId) => ({ sourceId }) as unknown as FraudProofL1Source,
+  provider: {} as Provider,
+});
 
 export const DEPLOYMENT = AUTHORITY.result.manifestId;
 
@@ -35,12 +42,7 @@ export const DEPLOYMENT_INFO_PATH =
 const ADDITIONAL_REFERENCE_CONTRACTS = [
   "fraudProofNativeScriptInvalidStep04",
   "fraudProofNativeScriptInvalidStep05",
-  "fraudProofMissingNativeScriptUtxoStep06",
-  "fraudProofMissingNativeScriptUtxoStep07",
 ] as const;
-
-export const TEST_HISTORY_STORE =
-  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest();
 
 /**
  * The deployment's reference contracts, in the order the fixture resolver
@@ -89,28 +91,11 @@ export const rawConfig = () => ({
         genesisConfigPath: "/etc/cardano/shelley-genesis.json",
         genesisIdentitySha256: "33".repeat(32),
       },
-      queryServices: [
-        {
-          kind: "ogmios",
-          identity: "local-ogmios",
-          endpoint: "ws://127.0.0.1:1337",
-        },
-        {
-          kind: "kupo",
-          identity: "local-kupo",
-          endpoint: "http://127.0.0.1:1442",
-        },
-      ],
     },
     requestTimeoutMs: 10_000,
     maxConcurrency: 8,
     finality: {
       depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-      rollback: {
-        beforeFinality: "rewind",
-        afterFinality: "quarantine",
-        maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-      },
     },
   },
   da: {
@@ -149,22 +134,6 @@ export const infrastructure = (): WatcherFaultProofInfrastructureAuthority => ({
   manifestPath: MANIFEST_PATH,
   blueprintPath: BLUEPRINT_PATH,
   deploymentInfoPath: DEPLOYMENT_INFO_PATH,
-  historicalNativeScriptHistory: {
-    sourceMode: "external_provider_quorum",
-    consistencyPolicy: "exact_bytes_all_providers_v1",
-    providers: [
-      {
-        sourceId: "history-provider-a",
-        operatorIdentitySha256: "71".repeat(32),
-        authorityEndpoint: "https://history-a.example.test",
-      },
-      {
-        sourceId: "history-provider-b",
-        operatorIdentitySha256: "72".repeat(32),
-        authorityEndpoint: "https://history-b.example.test",
-      },
-    ],
-  },
 });
 
 export const invocation = (

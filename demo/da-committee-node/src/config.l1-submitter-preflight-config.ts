@@ -191,7 +191,6 @@ const RETIRED_WATCHER_ENV_NAMES: Readonly<Record<string, string>> = {
   WATCHER_API_HOST: "DA_COMMITTEE_API_HOST",
   WATCHER_API_PORT: "DA_COMMITTEE_API_PORT",
   WATCHER_POLL_INTERVAL_MS: "DA_COMMITTEE_POLL_INTERVAL_MS",
-  WATCHER_DB_PATH: "DA_COMMITTEE_DB_PATH",
   WATCHER_DATABASE_URL: "DA_COMMITTEE_DATABASE_URL",
 };
 
@@ -215,22 +214,11 @@ export const rejectRetiredWatcherEnvNames = (env: Env): void => {
 
 export const localState = (env: Env): LocalStateConfig => {
   rejectRetiredWatcherEnvNames(env);
-  const dbPath = optionalNonEmpty(env.DA_COMMITTEE_DB_PATH);
   const databaseUrl = optionalNonEmpty(env.DA_COMMITTEE_DATABASE_URL);
-  if (dbPath !== undefined && databaseUrl !== undefined) {
-    throw new Error(
-      "set only one of DA_COMMITTEE_DB_PATH or DA_COMMITTEE_DATABASE_URL",
-    );
+  if (databaseUrl === undefined) {
+    throw new Error("DA_COMMITTEE_DATABASE_URL is required");
   }
-  if (dbPath !== undefined) {
-    return { kind: "file", path: dbPath };
-  }
-  if (databaseUrl !== undefined) {
-    return { kind: "database", url: databaseUrl };
-  }
-  throw new Error(
-    "DA_COMMITTEE_DB_PATH or DA_COMMITTEE_DATABASE_URL is required",
-  );
+  return { kind: "database", url: databaseUrl };
 };
 
 export const availabilityJournalPath = (env: Env): string | undefined => {
@@ -246,7 +234,7 @@ export const availabilityJournalPath = (env: Env): string | undefined => {
 const NATIVE_LEDGER_PATH_SETTINGS = [
   ["socketPath", "CARDANO_LOCAL_NODE_SOCKET_PATH"],
   ["nodeConfigPath", "CARDANO_LOCAL_NODE_CONFIG_PATH"],
-  ["binaryPath", "CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH"],
+  ["binaryPath", "CARDANO_L1_NODE_TRANSPORT_BINARY_PATH"],
 ] as const;
 
 export const DEFAULT_NATIVE_LEDGER_AUTHORITY_ID = "local-cardano-node";
@@ -255,10 +243,10 @@ export const NATIVE_LEDGER_AUTHORITY_ID =
   /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;
 
 /**
- * The local node ledger settings are all-or-none and allowed in both source
- * modes: the reward-account gap is in Ogmios, not in the source mode. Paths
- * must be lexically canonical here; symlinks are refused when the authority is
- * resolved against the filesystem.
+ * The local node settings are all-or-none: the committee's L1 follower reads
+ * and submits through this node, and reward-account reads use its ledger.
+ * Paths must be lexically canonical here; symlinks are refused when the
+ * authority is resolved against the filesystem.
  */
 export const parseNativeLedgerConfig = (
   env: Env,

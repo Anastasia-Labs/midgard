@@ -3,7 +3,7 @@ import "node:fs";
 import "node:os";
 import "node:path";
 import "vitest";
-import "../src/local-ledger-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "../src/workers/utils/mpf-commit-candidate-artifacts.js";
 import "./mpf-commit-candidate-probe-artifacts.root-probe-result.js";
 
@@ -11,9 +11,9 @@ import { createHash } from "node:crypto";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { parseOgmiosShelleyGenesisSlotConfig } from "@al-ft/midgard-core/ogmios-slot";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { parseOgmiosShelleyGenesisSlotConfig } from "../src/local-ledger-slot.js";
 import {
   assertArchitectureGCandidateSlotRuntimeIdentity,
   decodeArchitectureGCommitCandidateInput,
@@ -67,6 +67,12 @@ const customSlotConfigDocument = {
     zeroSlot: 0,
     slotLength: customGenesis.slotLengthMs,
   },
+};
+
+const customLedgerSlotConfig = {
+  zeroTime: customGenesis.startTimeMs,
+  zeroSlot: 0,
+  slotLength: customGenesis.slotLengthMs,
 };
 
 const customSlotConfigArtifactPath = join(
@@ -130,6 +136,7 @@ const candidateInput = () => ({
   fixtureCreationPath: "/evidence/fixture-creation.json",
   fixtureCreationSha256: hash(14),
   fixtureInitialUtxoCount: 2,
+  baseUtxosRoot: fixtureRoot,
   baseUtxoPayloadAggregate: {
     entryCount: 2,
     encodedTupleBytes: 1024,
@@ -151,43 +158,12 @@ const candidateInput = () => ({
       sizeOfProcessedTxsSoFar: 0,
       baseSnapshotId: `architecture-g-candidate:${submittedTxHash}`,
       stateQueueHasUnmergedTail: true,
-      speculativeBuild: {
-        base: {
-          headerHash: submittedTxHash.slice(0, 56),
-          utxosRoot: fixtureRoot,
-          blockEndTimeMs: currentBlockStartTimeMs,
-          submittedTxHash,
-        },
-        watermarks: {
-          depositMs: currentBlockStartTimeMs + 1,
-          withdrawalMs: currentBlockStartTimeMs + 2,
-          txOrderMs: currentBlockStartTimeMs + 3,
-          refreshedAtMs: currentBlockStartTimeMs + 3,
-        },
-        excludedMempoolTxIds: [] as string[],
-        excludedDepositEventIds: [] as string[],
-        excludedForcedTransactionEventIds: [] as string[],
-        excludedWithdrawalEventIds: [] as string[],
-      },
     },
   },
 });
 
 const candidateProbeResult = () => {
   const input = candidateInput();
-  const candidateWatermarks = structuredClone(
-    input.workerInput.data.speculativeBuild.watermarks,
-  );
-  const candidateEndTimeMs = 2_000;
-  // The commit worker derives the invalidation key from the candidate end time
-  // and the minimum of the three barrier watermarks
-  // (`minimumBarrierWatermarkMs`), so the fixture must derive it the same way
-  // instead of pinning a literal that silently drifts from the watermarks.
-  const candidateInvalidationKey = `${input.workerInput.data.speculativeBuild.base.headerHash}:${candidateEndTimeMs.toString()}:${Math.min(
-    candidateWatermarks.depositMs,
-    candidateWatermarks.withdrawalMs,
-    candidateWatermarks.txOrderMs,
-  ).toString()}`;
   return {
     schemaVersion: "midgard-architecture-g-commit-candidate-probe-v1",
     probePath: "/probes/mpf-commit-candidate-probe.js",
@@ -204,7 +180,8 @@ const candidateProbeResult = () => {
     binarySha256: input.binarySha256,
     cpuAffinity: "2-3",
     durationMs: 10,
-    confirmedLedgerFullScans: 0,
+    confirmedLedgerFullScans: 1,
+    userEventRows: { deposits: 0, forcedTransactions: 0, withdrawals: 0 },
     journalRowsBefore: 0,
     journalRowsAfter: 0,
     candidateConfig: {
@@ -218,30 +195,17 @@ const candidateProbeResult = () => {
       maxLedgerOpCount: 6,
       maxTransitionStepCount: 2,
     },
+    providerReads: 4,
     providerBoundaryAttempts: 0,
     submissionAttempts: 0,
     candidate: {
-      candidateId: "123e4567-e89b-42d3-a456-426614174000",
-      baseHeaderHash: input.workerInput.data.speculativeBuild.base.headerHash,
-      endTimeMs: candidateEndTimeMs,
-      builtAtMs: 2_001,
-      buildDurationMs: 9,
-      invalidationKey: candidateInvalidationKey,
-      watermarks: candidateWatermarks,
-      expectedUserEventCounts: {
-        deposits: 0,
-        forcedTransactions: 0,
-        withdrawals: 0,
-      },
-      expectedL2TransactionCount: 2,
+      endTimeMs: 2_000,
+      l2TransactionCount: 2,
       roots: Object.fromEntries(
         [
           "utxos",
           "rawTransactions",
           "transactions",
-          "deposits",
-          "forcedTransactions",
-          "withdrawals",
           "transitionTrace",
           "eventToStep",
         ].map((name, index) => [name, hash(40 + index)]),
@@ -295,24 +259,30 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
       assertArchitectureGCandidateSlotRuntimeIdentity({
         input: custom,
         runtimeNetwork: "Custom",
-        customGenesis,
+        ledgerSlotConfig: customLedgerSlotConfig,
       }),
     ).not.toThrow();
     expect(() =>
       assertArchitectureGCandidateSlotRuntimeIdentity({
         input: custom,
         runtimeNetwork: "Custom",
-        customGenesis: {
-          ...customGenesis,
-          configurationSha256: hash(99),
+        ledgerSlotConfig: {
+          ...customLedgerSlotConfig,
+          zeroTime: customLedgerSlotConfig.zeroTime + 1_000,
         },
       }),
-    ).toThrow(/does not match the live configured Ogmios genesis/u);
+    ).toThrow(/does not match the local node's ledger slot mapping/u);
+    expect(() =>
+      assertArchitectureGCandidateSlotRuntimeIdentity({
+        input: custom,
+        runtimeNetwork: "Custom",
+      }),
+    ).toThrow(/does not match the local node's ledger slot mapping/u);
   });
 
-  it("names the Custom chain by its genesis, never by the Ogmios endpoint", () => {
-    // The evidence carries no endpoint, so any Ogmios in front of the same
-    // genesis is admitted; a different genesis (another chain) never is.
+  it("checks the Custom chain by its ledger slot mapping, never by an endpoint", () => {
+    // The evidence carries no endpoint; the live check is the local node's
+    // ledger slot mapping, so a chain with another start never matches.
     expect(customSlotConfigDocument.source).toStrictEqual({
       kind: "local_ogmios_genesis",
       configurationSha256: customGenesis.configurationSha256,
@@ -341,22 +311,18 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
         },
       } as unknown as ReturnType<typeof candidateInput>;
     };
-    const otherChainGenesis = parseOgmiosShelleyGenesisSlotConfig({
-      ...customOgmiosPayload,
-      result: { ...customOgmiosPayload.result, networkMagic: 4242 },
-    });
-    expect(otherChainGenesis.configurationSha256).not.toBe(
-      customGenesis.configurationSha256,
-    );
     expect(() =>
       assertArchitectureGCandidateSlotRuntimeIdentity({
         input: decodeArchitectureGCommitCandidateInput(
           withSource(customSlotConfigDocument.source, "custom-same.json"),
         ),
         runtimeNetwork: "Custom",
-        customGenesis: otherChainGenesis,
+        ledgerSlotConfig: {
+          ...customLedgerSlotConfig,
+          zeroTime: customLedgerSlotConfig.zeroTime + 86_400_000,
+        },
       }),
-    ).toThrow(/does not match the live configured Ogmios genesis/u);
+    ).toThrow(/does not match the local node's ledger slot mapping/u);
     // An artifact that still names an endpoint is not this schema.
     expect(() =>
       decodeArchitectureGCommitCandidateInput(
@@ -387,19 +353,15 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
     (value: ReturnType<typeof candidateInput>) =>
       void (value.workerInput.data.baseSnapshotId = "candidate"),
     (value: ReturnType<typeof candidateInput>) =>
-      void (value.workerInput.data.speculativeBuild.base.headerHash = hash(
-        31,
-      ).slice(0, 56)),
+      void (value.workerInput.data.baseSnapshotId = `architecture-g-candidate:${hash(31).toUpperCase()}`),
     (value: ReturnType<typeof candidateInput>) =>
-      void (value.workerInput.data.speculativeBuild.base.blockEndTimeMs =
-        currentBlockStartTimeMs - 1),
+      void (value.baseUtxosRoot = "bad"),
     (value: ReturnType<typeof candidateInput>) =>
-      void (value.workerInput.data.speculativeBuild.watermarks.depositMs =
-        currentBlockStartTimeMs),
+      void delete (value as Partial<typeof value>).baseUtxosRoot,
     (value: ReturnType<typeof candidateInput>) =>
-      void value.workerInput.data.speculativeBuild.excludedMempoolTxIds.push(
-        hash(32),
-      ),
+      Object.assign(value.workerInput.data, {
+        speculativeBuild: { base: {} },
+      }),
     (value: ReturnType<typeof candidateInput>) =>
       void (value.baseUtxoPayloadAggregate.entryCount = 1),
     (value: ReturnType<typeof candidateInput>) =>
@@ -502,21 +464,45 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
       (value: ReturnType<typeof candidateProbeResult>) =>
         Object.assign(value.candidate, { unknown: true }),
       (value: ReturnType<typeof candidateProbeResult>) =>
-        void (value.candidate.baseHeaderHash = hash(81).slice(0, 56)),
+        Object.assign(value.candidate, { candidateId: "candidate-1" }),
       (value: ReturnType<typeof candidateProbeResult>) =>
-        void (value.candidate.watermarks.withdrawalMs = 1_001),
+        void (value.candidate.endTimeMs = 0),
       (value: ReturnType<typeof candidateProbeResult>) =>
-        void (value.candidate.invalidationKey = `${value.candidate.baseHeaderHash}:2000:1001`),
-      (value: ReturnType<typeof candidateProbeResult>) =>
-        void (value.candidate.endTimeMs = 2_001),
+        void (value.candidate.l2TransactionCount = 1),
       (value: ReturnType<typeof candidateProbeResult>) =>
         void (value.candidate.roots.utxos = "bad"),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void delete (value.candidate.roots as Record<string, unknown>)
+          .eventToStep,
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        Object.assign(value.candidate.roots, { deposits: hash(84) }),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void (value.userEventRows.deposits = 1),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void (value.userEventRows.forcedTransactions = 1),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void (value.userEventRows.withdrawals = 1),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void delete (value as Partial<ReturnType<typeof candidateProbeResult>>)
+          .userEventRows,
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void (value.confirmedLedgerFullScans = 0),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void (value.confirmedLedgerFullScans = 2),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void (value.providerReads = -1),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void (value.journalRowsAfter = 1),
       (value: ReturnType<typeof candidateProbeResult>) =>
         void (value.candidateConfig.maxLedgerOpCount = 5),
       (value: ReturnType<typeof candidateProbeResult>) =>
         void (value.providerBoundaryAttempts = 1),
       (value: ReturnType<typeof candidateProbeResult>) =>
         void (value.ownerAfter.durableRoot = hash(82)),
+      (value: ReturnType<typeof candidateProbeResult>) => {
+        value.ownerBefore.durableRoot = hash(83);
+        value.ownerAfter.durableRoot = hash(83);
+      },
     ]) {
       const invalid = structuredClone(valid);
       mutate(invalid);

@@ -3,13 +3,15 @@ import { isAbsolute, normalize } from "node:path";
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, Lucid, paymentCredentialOf } from "@lucid-evolution/lucid";
+import {
+  Data,
+  type Network,
+  paymentCredentialOf,
+  walletFromSeed,
+} from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
-import {
-  makeNodeKupmios,
-  nativeLedgerSettingsFromEnv,
-} from "../services/native-ledger.js";
+import { resolveNetwork } from "./address-from-seed.js";
 import { buildAvailabilityCommandTransaction } from "./availability-challenge.build-availability-command-transaction.js";
 import {
   type AvailabilityCommandAction,
@@ -18,9 +20,18 @@ import {
   planAvailabilityCommandAction,
 } from "./availability-challenge.plan-availability-command-action.js";
 import { availabilityDeploymentFromManifest } from "./availability-challenge-deployment.js";
-import { availabilityCommandCanonicalSource } from "./availability-challenge-source.js";
+import {
+  assertAvailabilityActionServed,
+  availabilityCommandCanonicalSource,
+} from "./availability-challenge-source.js";
 import { readDeploymentManifestFile } from "./contract-deployment-info.js";
-import { resolveKupmiosConfig } from "./l1-utxos.js";
+import {
+  commandLucid,
+  selectToolL1Access,
+  type ToolL1Access,
+  withCommandL1Access,
+} from "./l1-command-access.js";
+import { assertCommandPayerIsDedicated } from "./operational-wallet-refusal.js";
 
 export const runAvailabilityChallengeCommand = async (
   action: AvailabilityCommandAction,
@@ -54,21 +65,41 @@ export const runAvailabilityChallengeCommand = async (
     throw new Error(
       `Availability actor seed is missing from ${options.walletSeedEnv}`,
     );
+  // An action the selected access cannot observe is refused before anything
+  // is read, opened, built or submitted.
+  assertAvailabilityActionServed(action, { kind: selectToolL1Access(env) });
   const manifest = readDeploymentManifestFile(options.manifest);
   verifyFinalizedDeploymentManifest(manifest);
-  const connection = resolveKupmiosConfig({
-    kupoUrl: options.kupoUrl,
-    ogmiosUrl: options.ogmiosUrl,
-    network: manifest.network,
+  const network = resolveNetwork({ network: manifest.network, env });
+  // The node's operational wallets never pay for an availability action.
+  assertCommandPayerIsDedicated({
+    command: "availability",
+    walletSeedEnv: options.walletSeedEnv,
+    payerAddress: walletFromSeed(seed, { network, addressType: "Enterprise" })
+      .address,
+    referenceScriptDeployAddress: manifest.referenceScriptDeployAddress,
+    network,
     env,
   });
-  const provider = makeNodeKupmios({
-    kupoUrl: connection.kupoUrl,
-    ogmiosUrl: connection.ogmiosUrl,
-    network: connection.network,
-    nativeLedger: nativeLedgerSettingsFromEnv(env),
-  });
-  const lucid = await Lucid(provider, connection.network, {
+  return withCommandL1Access({ network, env }, (access) =>
+    runAvailabilityOnAccess(action, options, seed, manifest, network, access),
+  );
+};
+
+/**
+ * The command over the tool L1 access `--l1` selects: Lucid on the access's
+ * provider and slot mapping, the canonical source over the same access
+ * (`availability-challenge-source.ts`), submission through the provider.
+ */
+const runAvailabilityOnAccess = async (
+  action: AvailabilityCommandAction,
+  options: AvailabilityCommandOptions,
+  seed: string,
+  manifest: ReturnType<typeof readDeploymentManifestFile>,
+  network: Network,
+  access: ToolL1Access,
+): Promise<unknown> => {
+  const lucid = await commandLucid(access, network, {
     evaluator: createScalusEvaluator(),
   });
   lucid.selectWallet.fromSeed(seed, { addressType: "Enterprise" });
@@ -76,33 +107,8 @@ export const runAvailabilityChallengeCommand = async (
   const actor = paymentCredentialOf(actorAddress);
   if (actor.type !== "Key")
     throw new Error("Availability actuation requires a payment-key wallet");
-  const operationalSeeds = [
-    "L1_OPERATOR_SEED_PHRASE",
-    "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
-    "L1_REFERENCE_SCRIPT_SEED_PHRASE",
-  ];
-  if (operationalSeeds.includes(options.walletSeedEnv))
-    throw new Error(
-      "Availability requires a dedicated actor seed environment variable",
-    );
-  const operationalHashes = new Set<string>([
-    paymentCredentialOf(manifest.referenceScriptDeployAddress).hash,
-  ]);
-  for (const name of operationalSeeds) {
-    if (env[name]?.trim()) {
-      lucid.selectWallet.fromSeed(env[name]!.trim());
-      operationalHashes.add(
-        paymentCredentialOf(await lucid.wallet().address()).hash,
-      );
-    }
-  }
-  if (operationalHashes.has(actor.hash))
-    throw new Error(
-      "Availability actor payment credential overlaps an operational node wallet",
-    );
-  lucid.selectWallet.fromSeed(seed, { addressType: "Enterprise" });
   const deployment = await availabilityDeploymentFromManifest(lucid, manifest);
-  const source = availabilityCommandCanonicalSource({ lucid, ...connection });
+  const source = await availabilityCommandCanonicalSource({ lucid, access });
   const journal = openAvailabilityOperationJournal(options.journal);
   try {
     const canonicalAnchor = await source.readBoundary();
@@ -120,7 +126,7 @@ export const runAvailabilityChallengeCommand = async (
         await source.assertCanonicalAncestor(canonicalAnchor);
       },
       observe: source.observe,
-      submit: (cbor) => provider.submitTx(cbor),
+      submit: (cbor) => access.provider.submitTx(cbor),
     };
     if (action === "recover") {
       return {
@@ -238,7 +244,7 @@ export const runAvailabilityChallengeCommand = async (
         buildAvailabilityCommandTransaction(
           lucid,
           deployment,
-          availabilityCommandBuildContext(manifest, connection.kupoUrl),
+          availabilityCommandBuildContext(manifest, source.unitHistory),
           snapshot,
           operation,
           options,

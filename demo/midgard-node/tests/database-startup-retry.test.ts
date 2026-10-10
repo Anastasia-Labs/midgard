@@ -16,14 +16,18 @@ import {
 } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { assertCompatibleWithStartupRetry } from "../src/database/init.js";
-import { MigrationError } from "../src/database/migrations/runner.js";
 import { isConnectionClassError } from "../src/provider-retry.js";
 import {
   type DatabaseStartupRetryOptions,
   retryDatabaseConnectionAtStartup,
 } from "../src/services/database.js";
 import { databaseUpstreamSocket } from "../src/services/database-upstream-socket.js";
+import {
+  DATABASE_CONNECTION_FAILED,
+  DATABASE_UNREACHABLE,
+  StartupStepFailedError,
+  StartupWaitingReporter,
+} from "../src/services/startup-waiting.js";
 import {
   closedPort,
   PG_HOST,
@@ -41,7 +45,7 @@ import {
 const FAST = {
   baseDelay: Duration.millis(5),
   maxDelay: Duration.millis(20),
-  budget: Duration.seconds(20),
+  budget: Duration.minutes(15),
 } as const;
 
 class PoolInitError extends Data.TaggedError("PoolInitError")<{
@@ -67,6 +71,25 @@ const capture = <A, E>(effect: Effect.Effect<A, E>) => {
       Effect.provide(Logger.replace(Logger.defaultLogger, logger)),
     ),
   ).then((result) => ({ result, logs }));
+};
+
+/**
+ * Runs `effect` for `ms` under a startup reporter (`StartupWaitingReporter`)
+ * that records every report, then interrupts it: `result` is `None` when it
+ * was still waiting.
+ */
+const captureFor = <A, E>(effect: Effect.Effect<A, E>, ms: number) => {
+  const reported: [string, readonly string[]][] = [];
+  return capture(
+    effect.pipe(
+      Effect.timeoutOption(Duration.millis(ms)),
+      Effect.locally(StartupWaitingReporter, (key, reasons) =>
+        Effect.sync(() => {
+          reported.push([key, reasons]);
+        }),
+      ),
+    ),
+  ).then(({ result, logs }) => ({ result, logs, reported }));
 };
 
 const unready = (logs: readonly string[]) =>
@@ -235,23 +258,71 @@ describe("the database pool at startup", () => {
     );
 
     expect(result._tag).toBe("Left");
+    const error = result._tag === "Left" ? result.left : undefined;
+    expect(error).toBeInstanceOf(StartupStepFailedError);
+    expect(error).toMatchObject({
+      step: "database_pool:batch",
+      reason: DATABASE_CONNECTION_FAILED,
+      exhausted: false,
+      attempts: 1,
+    });
     expect(unready(logs)).toBe(0);
     expect(proxy.accepted()).toBe(1);
   });
 
-  it("gives up once the startup budget is spent", async () => {
-    const { result, logs } = await capture(
+  it("fails under database_unreachable once an unreachable Postgres outlives the budget", async () => {
+    const { result, logs, reported } = await captureFor(
       selectOne.pipe(
         Effect.provide(
           pool(await closedPort(), {
-            retry: { ...FAST, budget: Duration.millis(60) },
+            retry: { ...FAST, budget: Duration.millis(300) },
           }),
         ),
         Effect.scoped,
       ),
+      10_000,
     );
     expect(result._tag).toBe("Left");
-    expect(unready(logs)).toBeGreaterThan(1);
+    const error = result._tag === "Left" ? result.left : undefined;
+    expect(error).toBeInstanceOf(StartupStepFailedError);
+    expect(error).toMatchObject({
+      step: "database_pool:batch",
+      reason: DATABASE_UNREACHABLE,
+      exhausted: true,
+    });
+    expect(error?.message).toMatch(/ECONNREFUSED/u);
+    expect(unready(logs)).toBeGreaterThan(3);
+    expect(reported.at(-1)).toEqual(["database_pool:batch", []]);
+  });
+
+  it("keeps waiting on an unreachable Postgres within its budget, reporting the reason to the startup", async () => {
+    const { result, logs, reported } = await captureFor(
+      selectOne.pipe(Effect.provide(pool(await closedPort())), Effect.scoped),
+      1_000,
+    );
+    // Still waiting when the test stops it, after many attempts.
+    expect(result).toMatchObject({ _tag: "Right", right: { _tag: "None" } });
+    expect(unready(logs)).toBeGreaterThan(10);
+    expect(
+      new Set(reported.map(([key, reasons]) => `${key}=${reasons.join()}`)),
+    ).toEqual(new Set([`database_pool:batch=${DATABASE_UNREACHABLE}`]));
+  });
+
+  it("reports the reason while it waits and none once the pool opens", async () => {
+    const proxy = await startRestartingPostgres(2);
+    const { result, reported } = await captureFor(
+      selectOne.pipe(Effect.provide(pool(proxy.port)), Effect.scoped),
+      20_000,
+    );
+    expect(result).toMatchObject({
+      _tag: "Right",
+      right: { _tag: "Some", value: 1 },
+    });
+    expect(reported.at(-1)).toEqual(["database_pool:batch", []]);
+    expect(reported.slice(0, -1)).toEqual([
+      ["database_pool:batch", [DATABASE_UNREACHABLE]],
+      ["database_pool:batch", [DATABASE_UNREACHABLE]],
+    ]);
   });
 
   it("waits out a Postgres that closes connections before answering, then opens once", async () => {
@@ -269,30 +340,30 @@ describe("the database pool at startup", () => {
     expect(answersAgain(logs)).toBe(1);
   });
 
-  it("gives up on a Postgres that closes every connection once the budget is spent, at the retry pace", async () => {
+  it("keeps waiting on a Postgres that closes every connection, at the retry pace", async () => {
     const proxy = await startProxy(() => "close");
-    const started = performance.now();
-    const { result, logs } = await capture(
+    const { result, logs } = await captureFor(
       selectOne.pipe(
         Effect.provide(
           pool(proxy.port, {
             retry: {
               baseDelay: Duration.millis(50),
               maxDelay: Duration.millis(200),
-              budget: Duration.seconds(1),
+              budget: Duration.minutes(15),
             },
           }),
         ),
         Effect.scoped,
       ),
+      1_000,
     );
-    const elapsedMs = performance.now() - started;
 
-    expect(result._tag).toBe("Left");
-    expect(elapsedMs).toBeLessThan(3_000);
-    // One connection per startup attempt, each logged as unready: a 1 s
-    // budget at 50-200 ms spacing is under a dozen, not hundreds a second.
-    expect(proxy.accepted()).toBe(unready(logs));
+    expect(result).toMatchObject({ _tag: "Right", right: { _tag: "None" } });
+    // One connection per startup attempt, each logged as unready (the one
+    // the test stopped may not be): 1 s at 50-200 ms spacing is under a
+    // dozen, not hundreds a second.
+    expect(proxy.accepted() - unready(logs)).toBeGreaterThanOrEqual(0);
+    expect(proxy.accepted() - unready(logs)).toBeLessThanOrEqual(1);
     expect(proxy.accepted()).toBeLessThan(12);
     expect(drops(logs)).toBe(1);
   }, 10_000);
@@ -426,57 +497,4 @@ describe("a running database pool", () => {
       process.off("unhandledRejection", onRejection);
     }
   }, 30_000);
-});
-
-describe("the startup schema compatibility check", () => {
-  const scripted = (failures: readonly MigrationError[]) => {
-    let calls = 0;
-    const effect = Effect.suspend(() => {
-      const failure = failures[calls];
-      calls += 1;
-      return failure === undefined ? Effect.void : Effect.fail(failure);
-    });
-    return { effect, calls: () => calls };
-  };
-  const refused = (code: string) =>
-    new MigrationError({
-      code,
-      message: "Failed to reserve schema migration connection",
-      cause: Object.assign(new Error("connect ECONNREFUSED"), {
-        code: "ECONNREFUSED",
-      }),
-    });
-
-  it("waits out a dropped connection and a running migration, then passes once", async () => {
-    const check = scripted([
-      refused("schema_lock_failed"),
-      new MigrationError({
-        code: "schema_migration_in_progress",
-        message: "Could not acquire Midgard schema migration advisory lock",
-      }),
-    ]);
-    const { result, logs } = await capture(
-      assertCompatibleWithStartupRetry(check.effect, FAST),
-    );
-    expect(result._tag).toBe("Right");
-    expect(check.calls()).toBe(3);
-    expect(
-      logs.filter((line) => line.includes("Database unready")),
-    ).toHaveLength(2);
-  });
-
-  it.each([
-    "schema_not_migrated",
-    "schema_unversioned_database",
-    "schema_checksum_mismatch",
-  ])("fails a %s verdict at once", async (code) => {
-    const check = scripted([
-      new MigrationError({ code, message: "incompatible" }),
-    ]);
-    const { result } = await capture(
-      assertCompatibleWithStartupRetry(check.effect, FAST),
-    );
-    expect(result._tag).toBe("Left");
-    expect(check.calls()).toBe(1);
-  });
 });

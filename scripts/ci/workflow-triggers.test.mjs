@@ -15,6 +15,8 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { matchesFilter } from "./workflow-path-filters.mjs";
+
 const repositoryRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../..",
@@ -77,6 +79,7 @@ const scenarios = {
         "node-image",
         "golden-channels",
         "lucid-midgard",
+        "l1-node-transport",
         "midgard-core",
         "midgard-sdk",
         "midgard-validation",
@@ -88,6 +91,8 @@ const scenarios = {
         "native-mpf",
         "lint",
         "da-committee-node",
+        "midgard-l1-follower",
+        "l1-fork-simulator",
         "midgard-node-typecheck",
         "midgard-node",
         "midgard-node-tools",
@@ -108,6 +113,30 @@ const scenarios = {
       "agent-skills-ci:skills",
     ],
   },
+  // The watcher image ships the transport sidecar; watcher CI vets, tests and
+  // builds it.
+  "node transport pull request": {
+    event: "pull_request",
+    branch: "main",
+    files: ["demo/l1-node-transport/native/session.go"],
+    runs: [
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  "L1 follower pull request": {
+    event: "pull_request",
+    branch: "main",
+    files: ["demo/midgard-l1-follower/src/index.ts"],
+    runs: [
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
   "lifecycle-test-only pull request": {
     event: "pull_request",
     branch: workingBranch,
@@ -121,10 +150,30 @@ const scenarios = {
       "agent-skills-ci:skills",
     ],
   },
-  "runtime scheduling-only pull request": {
+  // Node CI and Aiken CI run checks by id, so a change to any module of the
+  // by-id runner re-runs them (preflight-runner-filters.test.mjs derives the
+  // list). runtime-owner.mjs schedules hosted work, but the runner imports
+  // it and runs it while building the registry, so it counts.
+  "by-id runner pull request": {
     event: "pull_request",
     branch: workingBranch,
     files: ["scripts/preflight/runtime-owner.mjs"],
+    runs: [
+      "aiken-ci:*",
+      "midgard-node-ci:*",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  // A preflight change the runner does not load (a spawned check command, a
+  // test) stays off them.
+  "preflight pull request outside the by-id runner": {
+    event: "pull_request",
+    branch: workingBranch,
+    files: [
+      "scripts/preflight/aiken-fmt-check.mjs",
+      "scripts/preflight/run.test.mjs",
+    ],
     runs: ["repo-tools-ci:repo-tools", "agent-skills-ci:skills"],
   },
   "watcher pull request": {
@@ -147,6 +196,8 @@ const scenarios = {
       "scripts/bin/pnpm",
     ],
     runs: [
+      // process.mjs is also a module of the by-id runner.
+      "aiken-ci:*",
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
       "docs-site-ci:build",
@@ -179,36 +230,6 @@ const scenarios = {
       "agent-skills-ci:skills",
     ],
   },
-};
-
-// GitHub filter glob: `**` crosses `/` (and `**/` may match no directory at
-// all), `*` and `?` do not.
-const globToRegExp = (glob) =>
-  new RegExp(
-    `^${glob
-      .split(/(\*\*\/|\*\*|\*|\?)/u)
-      .map((part) =>
-        part === "**/"
-          ? "(?:.*/)?"
-          : part === "**"
-            ? ".*"
-            : part === "*"
-              ? "[^/]*"
-              : part === "?"
-                ? "[^/]"
-                : part.replace(/[.+^${}()|[\]\\]/gu, "\\$&"),
-      )
-      .join("")}$`,
-    "u",
-  );
-const matchesFilter = (patterns, value) => {
-  let matched = false;
-  for (const pattern of patterns) {
-    if (pattern.startsWith("!")) {
-      if (globToRegExp(pattern.slice(1)).test(value)) matched = false;
-    } else if (globToRegExp(pattern).test(value)) matched = true;
-  }
-  return matched;
 };
 
 const understoodFilters = new Set(["branches", "paths", "paths-ignore"]);

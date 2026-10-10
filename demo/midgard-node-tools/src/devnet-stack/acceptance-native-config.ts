@@ -16,7 +16,7 @@ import {
   requireFreshDists,
   runtimeDistTargets,
 } from "./dist-freshness.js";
-import type { Layout } from "./layout.js";
+import { type Layout, readRunEnv } from "./layout.js";
 import { releasePaths } from "./watcher-release.js";
 
 export type AcceptanceNativeRunBinding = Readonly<{
@@ -29,9 +29,11 @@ export type AcceptanceNativeRunBinding = Readonly<{
 }>;
 
 export type AcceptanceNativeReadConfig = Readonly<{
-  native: typeof import("midgard-watcher/native-chain-sync");
+  native: typeof import("./native-chain-sync.js");
   watcher: typeof import("midgard-watcher");
   watcherConfig: WatcherConfig;
+  /** The run's loopback Ogmios endpoint, from its run.env port. */
+  ogmiosEndpoint: string;
   binaryPath: string;
   binding: AcceptanceNativeRunBinding;
   assertUnchanged(readScope?: DaAvailabilityReadScope): Promise<void>;
@@ -45,31 +47,20 @@ export const loadAcceptanceNativeReadConfig = async (
   scope.assertCurrent();
   const [watcher, native] = await Promise.all([
     import("midgard-watcher"),
-    import("midgard-watcher/native-chain-sync"),
+    import("./native-chain-sync.js"),
   ]);
   scope.assertCurrent();
-  for (const [specifier, file] of [
-    ["midgard-watcher", "index.js"],
-    ["midgard-watcher/native-chain-sync", "native-chain-sync.js"],
-  ]) {
-    if (
-      (await realpath(fileURLToPath(import.meta.resolve(specifier!)))) !==
-      (await realpath(join(layout.watcherRoot, "dist", file!)))
-    )
-      throw new Error(
-        "acceptance native reader resolved a different watcher distribution",
-      );
-  }
   if (
-    native.startWatcherNativeChainSync !== watcher.startWatcherNativeChainSync
+    (await realpath(fileURLToPath(import.meta.resolve("midgard-watcher")))) !==
+    (await realpath(join(layout.watcherRoot, "dist", "index.js")))
   )
     throw new Error(
-      "acceptance native reader has duplicate watcher receipt state",
+      "acceptance native reader resolved a different watcher distribution",
     );
   requireFreshDists(layout, "read-only payout acceptance");
   const stamp = codeStamp(runtimeDistTargets(layout));
   const paths = releasePaths(layout);
-  const binaryPath = join(layout.bin, "midgard-chain-sync");
+  const binaryPath = join(layout.bin, "midgard-l1-node-transport");
   const files = [
     layout.watcherProcessConfig,
     layout.watcherRuntimeConfig,
@@ -125,7 +116,7 @@ export const loadAcceptanceNativeReadConfig = async (
     watcherConfig.targetNetwork !== "Custom" ||
     watcherConfig.mode !== "acceptance" ||
     processConfig.watcherRuntimeConfigPath !== layout.watcherRuntimeConfig ||
-    processConfig.nativeChainSyncBinaryPath !== binaryPath ||
+    processConfig.l1NodeTransportBinaryPath !== binaryPath ||
     processConfig.deploymentAuthorityPath !== paths.authority ||
     processConfig.ruleBundlePath !== paths.rules ||
     processConfig.faultProofInfrastructure.manifestPath !== paths.manifest ||
@@ -161,7 +152,8 @@ export const loadAcceptanceNativeReadConfig = async (
     throw new Error(
       "acceptance native reader signed release belongs to another deployment",
     );
-  await native.deriveWatcherNativeGenesisIdentity({ watcherConfig });
+  await watcher.deriveWatcherNativeGenesisIdentity({ watcherConfig });
+  const ogmiosEndpoint = `http://127.0.0.1:${readRunEnv(layout).ogmiosPort}`;
   scope.assertCurrent();
   const assertUnchanged = async (readScope = scope): Promise<void> => {
     scope.assertCurrent();
@@ -181,6 +173,7 @@ export const loadAcceptanceNativeReadConfig = async (
     native,
     watcher,
     watcherConfig,
+    ogmiosEndpoint,
     binaryPath,
     assertUnchanged,
     binding: Object.freeze({

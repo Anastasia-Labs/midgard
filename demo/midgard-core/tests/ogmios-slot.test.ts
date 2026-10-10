@@ -7,9 +7,11 @@ import {
   ogmiosSlotEvidenceUnavailableCause,
   ogmiosTipMaxAgeMsFromShelleyGenesis,
   parseOgmiosShelleyGenesisSlotConfig,
+} from "../src/ogmios-slot.js";
+import {
   queryLocalOgmiosShelleyGenesisSlotConfig,
   queryLocalOgmiosSubmitSlotSnapshot,
-} from "../src/ogmios-slot.js";
+} from "../src/ogmios-slot-query.js";
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {

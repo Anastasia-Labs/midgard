@@ -28,8 +28,7 @@ negative passes, and its full correction lifecycle is exercised.
 | Reference output index out of range        | transaction/output-count opening                                | `referenceInputNoIdx`                          |
 | Invalid address signature                  | Ed25519 verification                                            | `invalidSignature`                             |
 | Missing required signature                 | required-signer/witness frontier                                | `missingSignature`                             |
-| Missing native script in transaction       | script credential/witness-set proof                             | `missingNativeScriptTx`                        |
-| Missing native script at predecessor UTxO  | predecessor membership plus script-material proof               | `missingNativeScriptUtxo`                      |
+| Missing script source                      | inline-witness and resolved reference-script scan               | `missingScriptSource`                          |
 | Invalid native script                      | bounded signer scan and resumable evaluator                     | `nativeScriptInvalid`                          |
 | Withdrawn spend/reference input            | withdrawal/event and ledger proofs                              | `withdrawnInput`, `withdrawnReferenceInput`    |
 | Duplicate/overlapping input sets           | ordered set scan                                                | `inputSetUniqueness`                           |
@@ -43,16 +42,15 @@ negative passes, and its full correction lifecycle is exercised.
 
 ## Transition and event rules
 
-| Rule or fault class                                                              | Category                   |
-| -------------------------------------------------------------------------------- | -------------------------- |
-| Trace boundary/link/source/event/count/duplicate/omission/window/one-step faults | `transitionTrace`          |
-| DA transaction key/preimage mismatch                                             | `daHashPreimage`           |
-| Fabricated deposit                                                               | `fabricatedDeposit`        |
-| Fabricated withdrawal                                                            | `fabricatedWithdrawal`     |
-| Withdrawal validity mistag                                                       | `withdrawalMistag`         |
-| Duplicate payable withdrawal                                                     | `doubleWithdraw`           |
-| Cross-block duplicate L1 event                                                   | `crossBlockDuplicateEvent` |
-| Normal L2 transaction mistagged invalid                                          | `l2TxMistag`               |
+| Rule or fault class                                                              | Category               |
+| -------------------------------------------------------------------------------- | ---------------------- |
+| Trace boundary/link/source/event/count/duplicate/omission/window/one-step faults | `transitionTrace`      |
+| DA transaction key/preimage mismatch                                             | `daHashPreimage`       |
+| Fabricated deposit                                                               | `fabricatedDeposit`    |
+| Fabricated withdrawal                                                            | `fabricatedWithdrawal` |
+| Withdrawal validity mistag                                                       | `withdrawalMistag`     |
+| Duplicate payable withdrawal                                                     | `doubleWithdraw`       |
+| Normal L2 transaction mistagged invalid                                          | `l2TxMistag`           |
 
 ## Structural non-categories
 

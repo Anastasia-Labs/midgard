@@ -1,7 +1,6 @@
 import {
   CANONICAL_DECODABILITY_VIOLATION_ID,
   COMMITTED_FIELD_SHAPE_VIOLATION_ID,
-  CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
   DA_HASH_PREIMAGE_VIOLATION_ID,
   DOUBLE_WITHDRAW_VIOLATION_ID,
   FABRICATED_DEPOSIT_VIOLATION_ID,
@@ -12,8 +11,6 @@ import {
   MIN_ADA_VIOLATION_ID,
   MIN_FEE_VIOLATION_ID,
   MINT_AUTHORIZATION_VIOLATION_ID,
-  MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID,
-  MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID,
   MISSING_SIGNATURE_VIOLATION_ID,
   NATIVE_SCRIPT_DECODING_VIOLATION_ID,
   NATIVE_SCRIPT_INVALID_VIOLATION_ID,
@@ -127,10 +124,6 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
     ],
   },
   {
-    category: "missingNativeScriptTx",
-    violationIds: [MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID],
-  },
-  {
     category: "withdrawnReferenceInput",
     violationIds: [WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID],
   },
@@ -154,10 +147,6 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   {
     category: "doubleWithdraw",
     violationIds: [DOUBLE_WITHDRAW_VIOLATION_ID],
-  },
-  {
-    category: "crossBlockDuplicateEvent",
-    violationIds: [CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID],
   },
   {
     category: "l2TxMistag",
@@ -191,10 +180,6 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   {
     category: "networkId",
     violationIds: [NETWORK_ID_VIOLATION_ID, "network-id-wrongful-rejection"],
-  },
-  {
-    category: "missingNativeScriptUtxo",
-    violationIds: [MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID],
   },
   {
     category: "nativeScriptInvalid",

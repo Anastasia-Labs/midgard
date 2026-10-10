@@ -2,7 +2,7 @@
 
 Status: Accepted
 
-Last reviewed: 2026-09-07 (implemented boundaries; not deployment acceptance).
+Last reviewed: 2026-10-08 (L1 follower migration; not deployment acceptance).
 
 ## Context
 
@@ -19,22 +19,23 @@ supervision. The DA committee owns retention, retrieval, and attestation.
 Neither operator-local SQL/MPF state nor operator admin endpoints are trusted
 substitutes for authenticated L1 observations and committee-retained DA.
 
-The production chain authority is the configured local Cardano node, admitted
-through native chain sync and cross-checked against local Kupo/Ogmios at the
-same chain point with exact transaction-byte agreement. A pathname or endpoint
-alone is not authenticated authority. Historical native-script retrieval is a
+The production chain authority is the configured local Cardano node, read by
+the watcher's L1 follower over native chain sync. Every L1 read is a pure read
+of the follower's facts and projections at one view point. The Kupo/Ogmios
+cross-check this decision first described was deleted with the follower
+migration. A pathname or endpoint alone is not authenticated authority. Historical native-script retrieval is a
 separate external-provider quorum with exact-byte agreement across independently
 identified providers; it does not replace the local chain authority or provide
 actuation failover. Accepted L1 transaction bytes are indexed deterministically;
 the watcher does not become a second implementation of Cardano's validator rules.
 
-Durable replay needs both integrity and freshness. Authenticate recovery state
-with a stable external key, commit state/revision atomically, and publish through
-compare-and-swap to an independently protected monotonic trusted head. A digest
-stored beside rollbackable data cannot prove freshness. Startup and recovery
-must reject mismatched state/head evidence before emitting actionable results.
-Transient provider disagreement quarantines the observation; an authenticated
-canonical replacement uses the bounded rollback/replay path.
+Durable replay needs integrity. Authenticate the watcher's durable journal
+with a stable external key and commit state atomically. A rollback
+rewinds the follower's facts and recomputes every projection in-process; no
+state is quarantined and nothing needs a restart. A rollback deeper than the
+security parameter k leaves the watcher up and unready (`rollback_beyond_k`).
+The independent trusted-head authority this decision first required was
+deleted with the follower migration.
 
 Bind L2 verification to the deployed format, source roots, event placement,
 transition trace, and validation material. Retain intermediate evidence needed
@@ -68,7 +69,7 @@ and review are not acceptance artifacts.
 
 - [Runtime composition](../../../demo/midgard-watcher/src/runtime/watcher-runtime.ts)
   and [configuration](../../../demo/midgard-watcher/src/runtime/config.ts).
-- [Trusted-head authority](../../../demo/midgard-watcher/src/runtime/trusted-head-authority.ts)
-  and [rollback engine](../../../demo/midgard-watcher/src/l1/rollback-engine.ts).
+- [L1 follower runtime](../../../demo/midgard-watcher/src/l1-follower/follower-runtime.ts);
+  it replaced the trusted-head authority and the rollback engine, both deleted.
 - [Workflow installation](../../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts).
 - [Slash/reward checks](../../../onchain/aiken/lib/midgard/operator-directory.ak).

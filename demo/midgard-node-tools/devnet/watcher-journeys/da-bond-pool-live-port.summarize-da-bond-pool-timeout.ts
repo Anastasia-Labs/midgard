@@ -95,12 +95,14 @@ export const decodeJourneyTransaction = (
 };
 
 /**
- * Canonical-source errors that clear once Kupo catches up with Ogmios, or once
- * the block that landed during an inclusion or foreign-spend read is indexed.
+ * Canonical-source errors that clear once the node's follower reaches the
+ * local node's tip (or the node, its transport or the store is reachable
+ * again), or once the block that landed during an inclusion or foreign-spend
+ * read is followed.
  */
 export const isTransientCanonicalError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error);
-  return /aligned at the same canonical tip|changed during canonical discovery|next stable point|could not read the canonical Kupo checkpoint|(?:inclusion|input spend) changed during its canonical read/u.test(
+  return /L1 provider [a-z_]+ unavailable|changed during canonical discovery|next stable point|(?:inclusion|input spend) changed during its canonical read/u.test(
     message,
   );
 };

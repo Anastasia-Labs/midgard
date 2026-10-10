@@ -1,6 +1,7 @@
 import "./utils.js";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -141,5 +142,21 @@ describe("CEK program material store configuration", () => {
     await expect(loadNodeConfig()).rejects.toThrow(
       "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES must be a safe integer at least",
     );
+  });
+});
+
+describe("commit-event depth configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is the deployment profile's commit-event depth, which no environment variable overrides", async () => {
+    const depth = DEPLOYMENT_MANIFEST_L1_FINALITY.commitEventDepth;
+    expect(Number.isSafeInteger(depth) && depth >= 0).toBe(true);
+    vi.stubEnv("COMMIT_EVENT_DEPTH", String(depth + 1));
+    vi.stubEnv("HISTORY_COMMIT_HORIZON_LAG_BLOCKS", String(depth + 1));
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      COMMIT_EVENT_DEPTH: depth,
+    });
   });
 });

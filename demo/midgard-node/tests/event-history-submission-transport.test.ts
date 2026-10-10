@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import type * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
@@ -35,7 +37,7 @@ describe("history exact-body transport", () => {
     const h = await setup();
     const restarted = await Lucid(h.provider, "Custom");
     restarted.selectWallet.fromSeed(h.wallet.seedPhrase);
-    const transport = historySubmissionTransport(restarted, h.wallet.address);
+    const transport = historySubmissionTransport(restarted);
     expect(
       await transport.submit(
         restarted.fromTx(h.attempt.transactionCbor),
@@ -49,7 +51,7 @@ describe("history exact-body transport", () => {
 
   it("does not treat absent, pending or failed provider status as permission to rebuild", async () => {
     const h = await setup();
-    const transport = historySubmissionTransport(h.lucid, h.wallet.address);
+    const transport = historySubmissionTransport(h.lucid);
     // One spy: on Vitest 4+, spying an already spied method returns that spy.
     const status = vi.spyOn(h.lucid, "transactionStatus");
     for (const reported of ["not_found", "pending", "failed"] as const) {
@@ -78,10 +80,7 @@ describe("history exact-body transport", () => {
     vi.spyOn(h.tx.sign, "withWallet").mockReturnValue(other.sign.withWallet());
     const submit = vi.spyOn(h.provider, "submitTx");
     await expect(
-      historySubmissionTransport(h.lucid, h.wallet.address).submit(
-        h.tx,
-        h.attempt,
-      ),
+      historySubmissionTransport(h.lucid).submit(h.tx, h.attempt),
     ).rejects.toThrow("Wallet changed");
     expect(submit).not.toHaveBeenCalled();
   });

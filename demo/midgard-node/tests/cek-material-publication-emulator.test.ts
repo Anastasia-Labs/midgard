@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { readFileSync } from "node:fs";
 
 import {
@@ -16,7 +18,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { publishedProgramMaterialEntries } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
+import { publishedProgramMaterialEntries } from "../src/forced-orders/index.js";
 
 describe("immutable CEK material publication", () => {
   it("publishes an ordinary blob chunk and ingests its exact typed material", async () => {

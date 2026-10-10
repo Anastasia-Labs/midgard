@@ -7,11 +7,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
 } from "../src/transactions/initialization.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   createMainnetEmulatorLucid,
   MAINNET_PROTOCOL_PARAMETERS,
@@ -78,13 +80,13 @@ export const buildAtomicInitializationTx = async (
   nonceUtxo: UTxO,
   operatorSeedPhrase: string,
 ) => {
-  const referenceScripts = await Effect.runPromise(
+  const referenceScripts = await runWithoutFollower(
     ensureAtomicProtocolInitReferenceScriptsProgram(
       referenceScriptsLucid,
       contracts,
     ),
   );
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensureEventHistoryRewardAccountsRegisteredProgram(lucid, contracts),
   );
   return Effect.runPromise(
@@ -101,7 +103,7 @@ export const buildAtomicInitializationTx = async (
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
       referenceScripts,
-    ),
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
 };
 

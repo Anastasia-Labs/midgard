@@ -1,6 +1,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, LucidEvolution } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect, type Exit, Metric, Option } from "effect";
 
 import {
@@ -8,11 +9,11 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
-import { type SubmitSlotSnapshot } from "../../local-ledger-slot.js";
 import { Database, Globals } from "../../services/index.js";
 import {
-  fetchL1ConfirmedState,
+  fetchLandedConfirmedState,
   finalizeConfirmedMergeProgram,
+  landedMergeOf,
   type LandedUnfinalizedMerge,
   MAX_LANDED_MERGE_CATCH_UP,
 } from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
@@ -107,10 +108,10 @@ const landedUnfinalizedMerges = (
       }
       if (
         journal.value[PendingBlockFinalizationsDB.Columns.STATUS] !==
-        PendingBlockFinalizationsDB.Status.Finalized
+        PendingBlockFinalizationsDB.Status.LocallyApplied
       ) {
-        // Its block rows are not local yet; clearing them now would leave the
-        // later block finalization to write them back after the merge.
+        // Its block's own local finalization (its bodies, its included
+        // rows) has not run yet; the merge finalizes after it.
         return yield* Effect.fail(
           new DatabaseError({
             table: PendingBlockFinalizationsDB.tableName,
@@ -120,7 +121,7 @@ const landedUnfinalizedMerges = (
           }),
         );
       }
-      pending.push({ headerHash, headerUtxosRoot: header.utxosRoot });
+      pending.push(landedMergeOf(headerHash, header));
       confirmedUtxosRoot = undefined;
       current = header.prevHeaderHash;
     }
@@ -171,18 +172,16 @@ export const finalizeMergesLandedThrough = (
  * recovery that revoked the permit before the finalization could write.
  */
 export const finalizeLandedMergesProgram = (
-  lucid: LucidEvolution,
   fetchConfig: SDK.StateQueueFetchConfig,
 ): Effect.Effect<
   readonly string[],
   | DatabaseError
   | SDK.HashingError
-  | SDK.LucidError
   | SDK.StateQueueError
   | SDK.DataCoercionError,
   Database | Globals
 > =>
-  fetchL1ConfirmedState(lucid, fetchConfig).pipe(
+  fetchLandedConfirmedState(fetchConfig).pipe(
     Effect.flatMap(finalizeMergesLandedThrough),
   );
 
@@ -228,9 +227,6 @@ export const mergeDurationTimer = Metric.timer(
   "Duration of one merge attempt in milliseconds",
 );
 
-// 30 minutes.
-export const MAX_LIFE_OF_LOCAL_SYNC: number = 1_800_000;
-
 export type MergeErrorCode =
   | "E_MERGE_LAYOUT_DERIVATION_FAILED"
   | "E_MERGE_REDEEMER_INDEX_MISMATCH"
@@ -270,7 +266,7 @@ export type MergeOptions = {
   /**
    * Checked immediately before the merge transaction is signed and submitted:
    * the caller re-proves every authority the local finalization will need (the
-   * state-queue lease and the history producer permit), so a revocation after
+   * state-queue lease and the follower write gate), so a revocation after
    * the merge started refuses the submission instead of stranding a confirmed
    * L1 merge whose local finalization cannot write.
    */

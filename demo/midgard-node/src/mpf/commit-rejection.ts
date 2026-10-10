@@ -12,12 +12,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Metric, Option } from "effect";
 
-import * as CekProgramMaterialDB from "../database/cekProgramMaterial.js";
 import * as DepositsDB from "../database/deposits.js";
-import * as MempoolDB from "../database/mempool.js";
 import * as MempoolLedgerDB from "../database/mempoolLedger.js";
 import * as MempoolTxDeltasDB from "../database/mempoolTxDeltas.js";
-import * as ProcessedMempoolDB from "../database/processedMempool.js";
 import * as TxRejectionsDB from "../database/txRejections.js";
 import {
   DatabaseError,
@@ -117,8 +114,8 @@ export const resolveTxDeltaForCommit = (
     };
   });
 
-/** The admitted ledger effects of a transaction the commit stage rejected. */
-export type CommitStageRejectedTxEffects = {
+/** The admitted ledger effects of a pending transaction. */
+export type CommitStageTxEffects = {
   readonly txId: Buffer;
   readonly spent: readonly Buffer[];
   readonly produced: readonly Ledger.MinimalEntry[];
@@ -133,15 +130,9 @@ export type CommitStageInputPostState = (
   outRefHex: string,
 ) => Buffer | null | undefined;
 
-export type CommitStageLedgerRevert = {
-  readonly rejected: readonly CommitStageRejectedTxEffects[];
-  readonly resolveInputPostState: CommitStageInputPostState;
-};
-
 /**
  * The block post-state over its base ledger and the outputs it inserts. Every
- * input of the reverted set resolves here, including the committed inputs of
- * pending descendants the revert rejects with it.
+ * input of a commit-stage rejection closure resolves here.
  */
 export const commitStageInputPostState =
   ({
@@ -221,52 +212,27 @@ const withDepositOrigin = (row: MempoolLedgerDB.EntryNoTimeStamp) =>
     };
   });
 
-/** Pending transactions outside `excluded`, with their spends and outputs. An
- * undecodable one spends nothing this node can name; the commit stage rejects
- * it on its own. */
-const loadPendingTxEffects = (excluded: ReadonlySet<string>) =>
-  Effect.gen(function* () {
-    const entries = [
-      ...(yield* Tx.retrieveAllEntries(MempoolDB.tableName)),
-      ...(yield* Tx.retrieveAllEntries(ProcessedMempoolDB.tableName)),
-    ].filter((entry) => !excluded.has(hex(entry[Tx.Columns.TX_ID])));
-    const deltas = yield* MempoolTxDeltasDB.retrieveByTxIds(
-      entries.map((entry) => entry[Tx.Columns.TX_ID]),
-    );
-    const pending: CommitStageRejectedTxEffects[] = [];
-    for (const entry of entries) {
-      const txId = entry[Tx.Columns.TX_ID];
-      const resolved = yield* resolveTxDeltaForCommit(
-        entry,
-        deltas.get(hex(txId)),
-      );
-      if (resolved._tag === "Decoded")
-        pending.push({
-          txId,
-          spent: resolved.spent,
-          produced: resolved.produced,
-        });
-    }
-    return pending;
-  });
-
 /**
- * Reverts the admitted `mempool_ledger` effects of commit-stage rejected
- * transactions, inside the caller's transaction. Every pending transaction
- * that spends one of their outputs, directly or transitively, is rejected with
- * them. Their outputs are deleted, and each input they spent from outside the
- * rejected set comes back when the block leaves it unspent, or when a pending
- * transaction produced it. Returns whether `mempool_ledger` changed.
+ * Reverts the admitted `mempool_ledger` effects of the transactions a
+ * commit-stage rejection closed over, inside the caller's transaction:
+ * `reverted` is the rejection closure, `remaining` every other pending
+ * transaction. Their outputs are deleted, and each input they spent from
+ * outside the closure comes back when the block leaves it unspent, or when a
+ * remaining transaction produced it. Returns whether `mempool_ledger`
+ * changed.
  */
 export const revertCommitStageRejectedLedgerEffects = ({
-  rejected,
+  reverted,
+  remaining,
   resolveInputPostState,
-}: CommitStageLedgerRevert): Effect.Effect<boolean, DatabaseError, Database> =>
+}: {
+  readonly reverted: readonly CommitStageTxEffects[];
+  readonly remaining: readonly CommitStageTxEffects[];
+  readonly resolveInputPostState: CommitStageInputPostState;
+}): Effect.Effect<boolean, DatabaseError, Database> =>
   Effect.gen(function* () {
-    if (rejected.length === 0) return false;
+    if (reverted.length === 0) return false;
     const sql = yield* SqlClient.SqlClient;
-    const reverted = [...rejected];
-    const revertedIds = new Set(reverted.map(({ txId }) => hex(txId)));
     const producerByOutRef = new Map(
       reverted.flatMap((tx) =>
         tx.produced.map(
@@ -277,54 +243,6 @@ export const revertCommitStageRejectedLedgerEffects = ({
     const spentByReverted = new Set(
       reverted.flatMap(({ spent }) => spent.map(hex)),
     );
-    const present = new Set(
-      (yield* MempoolLedgerDB.retrieveByTxOutRefs(
-        [...producerByOutRef.keys()].map((key) => Buffer.from(key, "hex")),
-      )).map((row) => hex(row[MempoolLedgerDB.Columns.OUTREF])),
-    );
-    // Pending transactions are needed only when one spent an output of the
-    // rejected set (it is neither in the ledger nor spent inside the set), or
-    // may have produced an input the block does not hold.
-    const needsPending =
-      [...producerByOutRef.keys()].some(
-        (key) => !present.has(key) && !spentByReverted.has(key),
-      ) ||
-      [...spentByReverted].some(
-        (key) =>
-          !producerByOutRef.has(key) &&
-          resolveInputPostState(key) === undefined,
-      );
-    const pending = needsPending
-      ? yield* loadPendingTxEffects(revertedIds)
-      : [];
-    const cascaded: TxRejectionsDB.EntryNoTimestamp[] = [];
-    for (let changed = true; changed; ) {
-      changed = false;
-      for (const tx of pending) {
-        if (revertedIds.has(hex(tx.txId))) continue;
-        const input = tx.spent.find((outRef) =>
-          producerByOutRef.has(hex(outRef)),
-        );
-        if (input === undefined) continue;
-        cascaded.push({
-          [TxRejectionsDB.Columns.TX_ID]: Buffer.from(tx.txId),
-          [TxRejectionsDB.Columns.REJECT_CODE]:
-            COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
-          [TxRejectionsDB.Columns.REJECT_DETAIL]:
-            `Transaction spends L2 outref ${hex(
-              input,
-            )}, an output of transaction ${hex(
-              producerByOutRef.get(hex(input))!,
-            )}, which was rejected at commit`,
-        });
-        reverted.push(tx);
-        revertedIds.add(hex(tx.txId));
-        for (const outRef of tx.spent) spentByReverted.add(hex(outRef));
-        for (const entry of tx.produced)
-          producerByOutRef.set(hex(entry[Ledger.Columns.OUTREF]), tx.txId);
-        changed = true;
-      }
-    }
 
     const produced = [...producerByOutRef.keys()].map((key) =>
       Buffer.from(key, "hex"),
@@ -338,7 +256,6 @@ export const revertCommitStageRejectedLedgerEffects = ({
           WHERE ${sql(MempoolLedgerDB.Columns.OUTREF)} IN ${sql.in(produced)}
           RETURNING ${sql(MempoolLedgerDB.Columns.OUTREF)}`;
 
-    const remaining = pending.filter(({ txId }) => !revertedIds.has(hex(txId)));
     const spentByRemaining = new Set(
       remaining.flatMap(({ spent }) => spent.map(hex)),
     );
@@ -382,15 +299,6 @@ export const revertCommitStageRejectedLedgerEffects = ({
       }),
     );
 
-    if (cascaded.length > 0) {
-      const cascadedIds = cascaded.map(
-        (entry) => entry[TxRejectionsDB.Columns.TX_ID],
-      );
-      yield* MempoolDB.clearTxs(cascadedIds);
-      yield* ProcessedMempoolDB.clearTxs(cascadedIds);
-      yield* TxRejectionsDB.insertMany(cascaded);
-      yield* CekProgramMaterialDB.releaseAdmissionOwnership(cascadedIds);
-    }
     return deleted.length > 0 || inserted.length > 0;
   }).pipe(
     sqlErrorToDatabaseError(
@@ -398,40 +306,3 @@ export const revertCommitStageRejectedLedgerEffects = ({
       "Failed to revert commit-stage rejected ledger effects",
     ),
   );
-
-/**
- * Applies a commit-stage rejection as one database mutation: the rejected
- * transactions leave both pending tables and their ledger effects are
- * reverted. CEK admission ownership is released only if all of it commits.
- * Returns whether `mempool_ledger` changed.
- */
-export const persistCommitStageRejectedTransactions = ({
-  rejectedTxHashes,
-  rejectionEntries,
-  ledgerRevert,
-}: {
-  readonly rejectedTxHashes: readonly Buffer[];
-  readonly rejectionEntries: readonly TxRejectionsDB.EntryNoTimestamp[];
-  readonly ledgerRevert: CommitStageLedgerRevert;
-}): Effect.Effect<boolean, DatabaseError, Database> => {
-  if (rejectedTxHashes.length === 0) return Effect.succeed(false);
-  return Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* MempoolDB.clearTxs([...rejectedTxHashes]);
-        yield* ProcessedMempoolDB.clearTxs([...rejectedTxHashes]);
-        yield* TxRejectionsDB.insertMany(rejectionEntries);
-        const reverted =
-          yield* revertCommitStageRejectedLedgerEffects(ledgerRevert);
-        yield* CekProgramMaterialDB.releaseAdmissionOwnership(rejectedTxHashes);
-        return reverted;
-      }),
-    );
-  }).pipe(
-    sqlErrorToDatabaseError(
-      MempoolDB.tableName,
-      "Failed to persist commit-stage transaction rejections",
-    ),
-  );
-};

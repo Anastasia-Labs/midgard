@@ -7,6 +7,9 @@
  * cadence and, while the reason stays raised, ticks again by that retry rather
  * than at the end of a long wait.
  */
+import "./helpers/follower-emulator-installed.js";
+
+import { SqlClient } from "@effect/sql";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { type Context, Effect, Layer, Ref } from "effect";
 import { describe, expect, it } from "vitest";
@@ -21,19 +24,25 @@ import {
   clearSlotAwareDueWork,
   listSlotAwareDueWork,
 } from "../src/fibers/slot-aware-due-work.js";
+import { Database } from "../src/services/database.js";
 import {
   Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
+import type { IntentJournal } from "../src/services/intent-journal.js";
 import { planTakeoverProgram } from "../src/transactions/operators/takeover.js";
+import { publishEmulatorOperatorSet } from "./helpers/emulator-operator-set.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
   fetchSchedulerDatum,
   initOperatorInactivityFixture,
+  submitNeglectedDeposit,
 } from "./helpers/operator-inactivity.js";
+import { resetApplicationTables } from "./utils.js";
 
 const SOURCE = "operator_watchdog_manifest";
 
@@ -47,8 +56,12 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
     const shiftOperator = fixture.operators.find(
       ({ keyHash }) => keyHash === appointed.operatorKeyHash,
     )!;
+    // The shift owes a deposit, so the successor has a threshold to wait for.
+    await submitNeglectedDeposit(fixture);
     const early = await Effect.runPromise(
-      planTakeoverProgram(fixture.lucid, fixture.contracts),
+      withoutFollowerJournal(
+        planTakeoverProgram(fixture.lucid, fixture.contracts),
+      ),
     );
     if (early.plan.kind !== "not-yet") {
       throw new Error(`Expected a not-yet plan, got ${early.plan.kind}`);
@@ -67,14 +80,21 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
       effect: Effect.Effect<
         A,
         never,
-        Globals | Lucid | MidgardContracts | NodeConfig
+        | Globals
+        | IntentJournal
+        | Lucid
+        | MidgardContracts
+        | NodeConfig
+        | SqlClient.SqlClient
       >,
     ) =>
       Effect.runPromise(
-        effect.pipe(
+        withoutFollowerJournal(effect).pipe(
           Effect.provide(
             Layer.mergeAll(
               Globals.Default,
+              // The follower facts the operator set reads.
+              Database.layer,
               Layer.succeed(Lucid, {
                 api: fixture.lucid,
                 operatorMainAddress: operator.address,
@@ -124,6 +144,17 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
         yield* gate.beforeStrike(15_000);
         return gate;
       });
+    /** The follower-change driver's operator set, as `operator`'s node
+     * publishes it; the tick plans from it. */
+    const publishSetAs = (operator: (typeof fixture.operators)[number]) =>
+      Effect.zipRight(
+        resetApplicationTables,
+        publishEmulatorOperatorSet(
+          fixture.lucid,
+          fixture.contracts,
+          operator.keyHash,
+        ),
+      ).pipe(Effect.orDie);
     const raisedIn = (globals: Globals) =>
       Ref.get(globals.LIVENESS_REASONS).pipe(
         Effect.map((reasons) => reasons.get(SOURCE)),
@@ -140,6 +171,7 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
     const outcome = await runAs(
       successor,
       Effect.gen(function* () {
+        yield* publishSetAs(successor);
         const globals = yield* Globals;
         const raised = raisedIn(globals);
         const gate = yield* raisedGate(globals, waiting.verify);
@@ -183,6 +215,7 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
     const idleOutcome = await runAs(
       shiftOperator,
       Effect.gen(function* () {
+        yield* publishSetAs(shiftOperator);
         const globals = yield* Globals;
         const gate = yield* raisedGate(globals, idle.verify);
         const tick = makeOperatorWatchdogTick(

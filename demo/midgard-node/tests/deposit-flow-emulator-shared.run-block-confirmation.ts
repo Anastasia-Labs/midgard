@@ -9,7 +9,7 @@ import {
   resolvePreBlockUtxos,
   verifyDaPayloadAgainstHeader,
 } from "da-committee-node/da/payload";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Option } from "effect";
 import { expect } from "vitest";
 
 import {
@@ -17,12 +17,11 @@ import {
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
-import type { SpeculativeCandidateSummary } from "../src/fibers/speculative-commit-state.js";
 import type { NodeConfigDep } from "../src/services/config.js";
 import {
-  HistoryProducer,
-  UnownedHistoryFixture,
-} from "../src/services/event-history-producer.js";
+  FollowerWriteFixture,
+  runAtFollowerView,
+} from "../src/services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -40,49 +39,17 @@ import {
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "../src/workers/utils/confirm-block-commitments.js";
 import {
+  getStateQueueDatumEndTime,
+  makeLucidRuntimeService,
+  type ProductionHistoryFixtureRuntime,
+} from "./deposit-flow-emulator-shared.commit-worker-program.js";
+import {
   type EmulatorFixture,
   isEmulatorProvider,
   runNodeDatabaseEffect,
 } from "./deposit-flow-emulator-shared.make-fixture.js";
-import {
-  getStateQueueDatumEndTime,
-  makeLucidRuntimeService,
-  type NormalizedT1RecoveryGlobals,
-  type ProductionHistoryFixtureRuntime,
-} from "./deposit-flow-emulator-shared.speculative-worker-input-from-active-journal.js";
 import { stripPlutusV3WitnessByHash } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
-
-export const normalizeT1RecoveryGlobals = (
-  globals: Globals,
-): Promise<NormalizedT1RecoveryGlobals> =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const availableConfirmedBlock = yield* Ref.get(
-        globals.AVAILABLE_CONFIRMED_BLOCK,
-      );
-      const availableLocalFinalizationBlock = yield* Ref.get(
-        globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-      );
-      return {
-        availableConfirmedBlockPresent: availableConfirmedBlock !== "",
-        availableLocalFinalizationBlockPresent:
-          availableLocalFinalizationBlock !== "",
-        blocksInQueue: yield* Ref.get(globals.BLOCKS_IN_QUEUE),
-        latestLocalBlockBoundaryPresent: Number.isFinite(
-          yield* Ref.get(globals.LATEST_LOCAL_BLOCK_END_TIME_MS),
-        ),
-        localFinalizationPending: yield* Ref.get(
-          globals.LOCAL_FINALIZATION_PENDING,
-        ),
-        unconfirmedSubmittedBlockSinceMs: yield* Ref.get(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
-        ),
-        unconfirmedSubmittedBlockTxHash: yield* Ref.get(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-        ),
-      };
-    }),
-  );
+import { withEmulatorChain } from "./helpers/emulator-l1-follower.js";
 
 export const withEmulatorExtraneousScriptRetry = async <A>(
   lucid: LucidEvolution,
@@ -135,6 +102,8 @@ export const runBlockConfirmation = (
         input: ConfirmationWorkerInput,
       ): Effect.Effect<ConfirmationWorkerOutput, WorkerError, never> =>
         runConfirmBlockCommitmentsWorkerProgram(input).pipe(
+          // As the worker thread does: its own pool on the node database.
+          Effect.provide(Database.workerLayer),
           Effect.provideService(LucidService, lucidService as any),
           Effect.provideService(MidgardContracts, contracts as any),
           nodeConfig === undefined
@@ -151,22 +120,13 @@ export const runBlockConfirmation = (
           ),
         ),
     ).pipe(
+      withEmulatorChain(lucidService.api),
       (program) =>
-        production === undefined
-          ? program
-          : production.owner.runProducer((token, assertCurrent, coverage) =>
-              assertCurrent.pipe(
-                Effect.zipRight(
-                  Effect.provideService(program, HistoryProducer, {
-                    token,
-                    coverage,
-                  }),
-                ),
-              ),
-            ),
+        // As the confirmation fiber runs it: at the driver's applied view.
+        production === undefined ? program : runAtFollowerView(program),
       Effect.provideService(Globals, globals),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       nodeConfig === undefined
         ? Effect.provide(NodeConfig.layer)
         : Effect.provideService(NodeConfig, nodeConfig),
@@ -345,18 +305,3 @@ export const expectedAuthenticatedEventRoot = (
       Effect.map((root) => root.root),
     ),
   );
-
-export const expectHeaderRootsToMatchCandidate = (
-  header: SDK.Header,
-  candidate: SpeculativeCandidateSummary,
-): void => {
-  expect(header.utxosRoot).toBe(candidate.roots.utxos);
-  expect(header.transactionsRoot).toBe(candidate.roots.transactions);
-  expect(header.depositsRoot).toBe(candidate.roots.deposits);
-  expect(header.forcedTransactionsRoot).toBe(
-    candidate.roots.forcedTransactions,
-  );
-  expect(header.withdrawalsRoot).toBe(candidate.roots.withdrawals);
-  expect(header.transitionTraceRoot).toBe(candidate.roots.transitionTrace);
-  expect(header.eventToStepRoot).toBe(candidate.roots.eventToStep);
-};

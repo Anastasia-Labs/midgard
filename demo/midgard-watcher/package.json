@@ -12,14 +12,6 @@
     ".": {
       "midgard-source": "./src/index.ts",
       "import": "./dist/index.js"
-    },
-    "./public-da-client": {
-      "midgard-source": "./src/public-da-client.ts",
-      "import": "./dist/public-da-client.js"
-    },
-    "./native-chain-sync": {
-      "midgard-source": "./src/l1/native-chain-sync.ts",
-      "import": "./dist/l1/native-chain-sync.js"
     }
   },
   "bin": {
@@ -30,24 +22,23 @@
     "README.md"
   ],
   "scripts": {
-    "authority": "node dist/cli.js authority",
+    "bench": "vitest run --config vitest.bench.config.ts",
     "build": "node ../../scripts/contrib.mjs build --package midgard-watcher",
     "clean": "rimraf dist",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" vitest.config.ts tsup.config.ts package.json tsconfig.json README.md",
     "format-check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" vitest.config.ts tsup.config.ts package.json tsconfig.json README.md",
     "lint": "eslint . --max-warnings=0",
-    "native:build": "node ../../scripts/contrib.mjs native --package midgard-watcher",
-    "native:build:contrib-raw": "mkdir -p dist/native && go -C native-chain-sync build -buildvcs=false -trimpath -o ../dist/native/midgard-chain-sync .",
-    "native:test": "go -C native-chain-sync test ./...",
     "replay": "env MALLOC_MMAP_THRESHOLD_=131072 node dist/cli.js replay",
     "start": "env MALLOC_MMAP_THRESHOLD_=131072 node dist/cli.js start",
     "test": "env MALLOC_MMAP_THRESHOLD_=131072 vitest run",
     "typecheck": "tsc --noEmit",
-    "build:contrib-raw": "tsup src/index.ts src/cli.ts src/public-da-client.ts src/l1/native-chain-sync.ts --format esm"
+    "build:contrib-raw": "tsup src/index.ts src/cli.ts --format esm"
   },
   "dependencies": {
+    "@al-ft/l1-node-transport": "workspace:*",
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-fault-proofs": "workspace:*",
+    "@al-ft/midgard-l1-follower": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
     "@chainsafe/libp2p-noise": "17.0.0",

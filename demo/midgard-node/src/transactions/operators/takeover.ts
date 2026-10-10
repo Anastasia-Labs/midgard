@@ -11,9 +11,17 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { type L1SlotUnknownError } from "../../l1-heads.js";
+import {
+  type IntentJournal,
+  type IntentPlan,
+  journaledIntent,
+  openPlan,
+} from "../../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
-import { currentTimeMsForLucidOrEmulatorFallback } from "../register-active-operator/clock.js";
+import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";
+import { readSelectedWalletViewInputs } from "../utils.wallet-view.js";
 import {
   OPERATOR_TX_VALIDITY_WINDOW_MS,
   type OperatorExitError,
@@ -53,29 +61,27 @@ export type TakeoverPlanning = {
   readonly nowMs: bigint;
   readonly snapshot: SDK.OperatorDirectorySnapshot;
   readonly plan: SDK.InactivityTakeoverPlan;
+  /** The intent plan (S5) opened before `snapshot` was read. */
+  readonly intentPlan: IntentPlan;
 };
 
 /**
- * Reads the directory and plans a takeover of the current shift as of the
- * chain clock. `neglectedEvent` narrows the threshold to a specific neglected
- * user event when the caller has one.
+ * Plans a takeover of the current shift in `snapshot` as of the chain clock.
+ * `neglectedEvent` is the undelivered user event the strike cites, or null
+ * when there is none, in which case nobody can be struck.
  */
-export const planTakeoverProgram = (
+export const planTakeoverFrom = (
   lucid: LucidEvolution,
-  contracts: SDK.OperatorDirectoryValidators,
+  snapshot: SDK.OperatorDirectorySnapshot,
+  intentPlan: IntentPlan,
   options: {
-    readonly neglectedEvent?: SDK.NeglectedUserEventClaim;
+    readonly neglectedEvent: SDK.NeglectedUserEventClaim | null;
     readonly params?: SDK.InactivityTimingParameters;
     readonly nowMs?: bigint;
-  } = {},
-): Effect.Effect<TakeoverPlanning, SDK.OperatorDirectorySnapshotError> =>
+  },
+): Effect.Effect<TakeoverPlanning, L1SlotUnknownError> =>
   Effect.gen(function* () {
-    const snapshot = yield* SDK.fetchOperatorDirectorySnapshotProgram(
-      lucid,
-      contracts,
-    );
-    const nowMs =
-      options.nowMs ?? currentTimeMsForLucidOrEmulatorFallback(lucid);
+    const nowMs = options.nowMs ?? (yield* resolveL1NowMs(lucid));
     const plan = SDK.planInactivityTakeover({
       snapshot,
       nowMs,
@@ -84,7 +90,41 @@ export const planTakeoverProgram = (
       validityWindowMs: OPERATOR_TX_VALIDITY_WINDOW_MS,
       alignValidFrom: (candidate) => alignedUnixTimeAtOrAfter(lucid, candidate),
     });
-    return { nowMs, snapshot, plan };
+    return { nowMs, snapshot, plan, intentPlan };
+  });
+
+/**
+ * Reads the directory and the user events from the provider and plans a
+ * takeover of the current shift (the CLI's read; the watchdog plans from the
+ * follower's operator set and projections). The strike cites the earliest
+ * user event after the directory's state-queue tail, if any.
+ */
+export const planTakeoverProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.OperatorDirectoryValidators &
+    Pick<SDK.MidgardValidators, "eventHistory" | "txOrder">,
+  options: Omit<Parameters<typeof planTakeoverFrom>[3], "neglectedEvent"> = {},
+): Effect.Effect<
+  TakeoverPlanning,
+  SDK.OperatorDirectorySnapshotError | SDK.LucidError | L1SlotUnknownError,
+  IntentJournal
+> =>
+  Effect.gen(function* () {
+    // S5: the plan opens before the directory read.
+    const intentPlan = yield* openPlan;
+    const snapshot = yield* SDK.fetchOperatorDirectorySnapshotProgram(
+      lucid,
+      contracts,
+    );
+    const neglectedEvent = yield* SDK.fetchNeglectedUserEventProgram(
+      lucid,
+      contracts,
+      snapshot.stateQueueTail.endTime,
+    );
+    return yield* planTakeoverFrom(lucid, snapshot, intentPlan, {
+      ...options,
+      neglectedEvent,
+    });
   });
 
 export type ReadyTakeoverPlan = Extract<
@@ -101,8 +141,8 @@ export type StrikeSubmission = {
 };
 
 /**
- * Builds, signs with the selected wallet, and submits the strike a ready plan
- * describes. The wallet only pays the fee.
+ * Builds, signs over the selected wallet's view, and submits the strike a
+ * ready plan describes. The wallet only pays the fee, from its view.
  */
 export const submitInactivityStrikeProgram = (
   lucid: LucidEvolution,
@@ -110,7 +150,7 @@ export const submitInactivityStrikeProgram = (
   referenceScriptsAddress: string,
   planning: TakeoverPlanning & { readonly plan: ReadyTakeoverPlan },
   options: { readonly label?: string } = {},
-): Effect.Effect<StrikeSubmission, TakeoverError> =>
+): Effect.Effect<StrikeSubmission, TakeoverError, IntentJournal> =>
   Effect.gen(function* () {
     const label = options.label ?? "strike-inactive-operator";
     yield* requireOperatorFundingProgram(lucid, {
@@ -137,19 +177,29 @@ export const submitInactivityStrikeProgram = (
       newOperatorKeyHash: plan.newOperatorKey,
       newStartTime: plan.newStartTime,
       witnesses: plan.witnesses,
-      neglectedEvent:
-        plan.neglectedEvent === undefined
-          ? undefined
-          : { kind: plan.neglectedEvent.kind, utxo: plan.neglectedEvent.utxo },
+      neglectedEvent: {
+        kind: plan.neglectedEvent.kind,
+        utxo: plan.neglectedEvent.utxo,
+      },
       validFrom: plan.validity.validFrom,
       validTo: plan.validity.validTo,
       schedulerSpendingScriptRef: scriptRefs.spending.scheduler,
       activeOperatorsSpendingScriptRef: scriptRefs.spending["active-operators"],
+      presetWalletInputs: yield* readSelectedWalletViewInputs(lucid, label),
     });
     yield* Effect.logInfo(
       `${label}: striking ${plan.currentOperator} (tier=${plan.tier}, strikes→${result.struckInactivityStrikes.toString()}, new_operator=${plan.newOperatorKey}, valid=[${plan.validity.validFrom.toString()},${plan.validity.validTo.toString()}))`,
     );
-    const txHash = yield* handleSignSubmit(lucid, result.tx, { label });
+    const txHash = yield* handleSignSubmit(
+      lucid,
+      result.tx,
+      journaledIntent(
+        "takeover",
+        `takeover:${plan.currentOperator}:${plan.newStartTime.toString()}`,
+        planning.intentPlan,
+      ),
+      { label },
+    );
     return {
       txHash,
       skippedOperator: plan.currentOperator,

@@ -13,6 +13,22 @@ RUN mkdir -p /native \
   && sha256sum /native/architecture-g-owner \
     | cut -d ' ' -f 1 > /native/architecture-g-owner.sha256
 
+# The node transport sidecar the node's L1 follower reads its local node
+# through; the same recipe as CI and the watcher image.
+FROM golang:1.26.5-bookworm AS l1-node-transport
+WORKDIR /src/native
+COPY l1-node-transport/native/go.mod l1-node-transport/native/go.sum ./
+RUN --mount=type=cache,id=midgard-l1-node-transport-go-mod,target=/go/pkg/mod \
+  go mod download && go mod verify
+COPY l1-node-transport/native ./
+RUN --mount=type=cache,id=midgard-l1-node-transport-go-mod,target=/go/pkg/mod \
+  --mount=type=cache,id=midgard-l1-node-transport-go-build,target=/root/.cache/go-build \
+  test "$(go version | awk '{print $3}')" = "go1.26.5" \
+  && go test ./... \
+  && CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -buildid=" \
+    -o /out/midgard-l1-node-transport .
+
 FROM base AS workspace
 WORKDIR /workspace/demo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -24,9 +40,11 @@ COPY vendor ./vendor
 # chain's sources are copied and built below, and `deploy --prod` ships only
 # that chain. midgard-node-tools is dev-only and never enters the image.
 COPY lucid-midgard/package.json ./lucid-midgard/package.json
+COPY l1-node-transport/package.json ./l1-node-transport/package.json
 COPY midgard-core/package.json ./midgard-core/package.json
 COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-fault-proofs/package.json ./midgard-fault-proofs/package.json
+COPY midgard-l1-follower/package.json ./midgard-l1-follower/package.json
 COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
 COPY da-committee-node/package.json ./da-committee-node/package.json
@@ -41,21 +59,22 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 # contributor builds, and the repository tooling is outside this demo context.
 FROM workspace AS build
 COPY lucid-midgard ./lucid-midgard
+COPY l1-node-transport ./l1-node-transport
 COPY midgard-core ./midgard-core
 COPY midgard-validation ./midgard-validation
 COPY midgard-fault-proofs ./midgard-fault-proofs
+COPY midgard-l1-follower ./midgard-l1-follower
 COPY midgard-sdk ./midgard-sdk
-COPY midgard-watcher ./midgard-watcher
 COPY midgard-node ./midgard-node
 # midgard-node's build compiles only itself, and its runtime imports each of
 # these packages' dist, so every one is built here, dependencies first.
 RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw
+RUN pnpm --filter @al-ft/l1-node-transport run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
-# The node reads foreign DA payloads through midgard-watcher/public-da-client.
-RUN pnpm --filter midgard-watcher run build:contrib-raw
+RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
 RUN pnpm --filter midgard-node run build:contrib-raw
 # Same store as the install step: `deploy --prod` re-resolves the git-hosted
 # merkle-patricia-forestry dependency, and only a store that already holds the
@@ -68,6 +87,8 @@ FROM base AS final
 WORKDIR /app
 COPY --from=build /prod/midgard-node ./
 COPY --from=native-mpf-owner /native /app/native
+# L1_NODE_TRANSPORT_BINARY_PATH (docker-compose.kupmios.yaml).
+COPY --from=l1-node-transport /out/midgard-l1-node-transport /usr/local/bin/midgard-l1-node-transport
 COPY --from=onchain /plutus.json /onchain/aiken/plutus.json
 COPY --from=onchain /plutus.json.deployment.json /onchain/aiken/plutus.json.deployment.json
 ENV NODE_ENV=production

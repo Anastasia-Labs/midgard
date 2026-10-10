@@ -10,13 +10,14 @@ service is a separate package, `demo/da-committee-node`.
 
 ## Runtime and commands
 
-From `demo/midgard-watcher`, run `pnpm run build` and `pnpm run native:build`
-before invoking the CLI. Configure `nativeChainSyncBinaryPath` to the resulting
-`dist/native/midgard-chain-sync` binary:
+From `demo/midgard-watcher`, run `pnpm run build` before invoking the CLI, and
+build the node transport sidecar with
+`pnpm --dir ../l1-node-transport run native:build`. Configure
+`l1NodeTransportBinaryPath` to the resulting
+`../l1-node-transport/dist/native/midgard-l1-node-transport` binary:
 
 ```sh
 export MALLOC_MMAP_THRESHOLD_=131072
-node dist/cli.js authority --config /absolute/path/authority.json
 node dist/cli.js start --config /absolute/path/watcher-process.json
 node dist/cli.js replay --config /absolute/path/watcher-process.json
 ```
@@ -31,22 +32,41 @@ slower. This setting is ignored by allocators that do not implement it. See the
 [GNU allocator documentation](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html)
 and [Node.js memory guidance](https://nodejs.org/api/process.html#processmemoryusage).
 
-`authority` runs the trusted-head authority until shutdown. `start` constructs
-the watcher runtime and runs until SIGINT/SIGTERM. `replay` constructs the same
+`start` constructs the watcher runtime and runs until SIGINT/SIGTERM. `replay` constructs the same
 runtime, waits for durable catch-up, and closes it; it is not an offline or
 transport-free command. Both may drive proof and availability workflows.
 
-Startup requires admitted proof runners, recovered workflows, an accepting
-supervisor, and safe proof deadlines before emitting `productionReady: true`.
+Startup requires admitted proof runners, recovered workflows, and an accepting
+supervisor before emitting `productionReady: true`. A proof deadline at risk or
+unsafe never stops the process (a restart would meet it again): the record
+carries it as `proofDeadlineHealth`, and `/readyz` names it
+(`deadline_at_risk`, `deadline_unsafe`) while the supervisor keeps proving.
 That field describes this runtime's readiness checks, not public-testnet launch
-approval. Invalid arguments exit 64; runtime failures fail closed with exit 70.
+approval. Invalid arguments exit 64. A process configuration refused before
+the operations server binds exits 78, since no `/readyz` could name it. A
+startup failure a restart may clear (L1 reads that outlasted the startup
+budget, a system error such as a port in use or a file not written yet)
+exits 70. Once the server is bound, any other startup failure holds the
+process up, unready with `startup_failed`, until the operator fixes it and
+restarts the watcher.
+An L1 read during startup that fails transiently is not a runtime failure: the
+node transport not ready, a sidecar exit, or a query the node did not answer
+in time (`node_timeout`), classified as the L1 follower's provider classifies
+a query's transport error. The stage reports `pending` and the read is
+repeated after a capped backoff. A transaction submission that times out stays
+a request error.
 
 Use `GET /readyz` for readiness: HTTP 200 carries `ready: true`; HTTP 503
-carries `ready: false` and current `reasons`. `GET /v1/status` remains the
-detailed runtime status and can return 200 while the watcher is held. The
+carries `ready: false` and current `reasons`. The operations server binds
+before the L1-dependent startup stages, so while they wait out an unanswering
+node `/readyz` names `startup:<stage>` and `/v1/status` answers 200. `GET /v1/status` remains the
+detailed runtime status and can return 200 while the watcher is held. Its
+`l1Degradations` are named L1 conditions that never fail readiness; among them
+`l1_user_event_refused` counts, by reason, the user orders the follower
+refused to admit within k (malformed or key-reusing) and names the newest, so
+no user can hold the watcher unready. The
 operations endpoint is loopback and currently has no application bearer gate;
-keep it internal. An alive process or authority identity endpoint does not
-establish watcher readiness. A held runtime must remain visible for diagnosis
+keep it internal. An alive process does not establish watcher readiness. A held runtime must remain visible for diagnosis
 without admitting proof or availability work. Readiness must come from a live
 runtime snapshot, never a persisted supervisor status file.
 
@@ -62,8 +82,8 @@ recovery, launch scope, proof deadlines, L1 source freshness, active alerts
 and the shared retained-DA transport, which starts on the first fault
 classification and is reported as `retained_da_transport_failed` if that start
 fails. Starting builds the local libp2p node without contacting a peer, so a
-failure is local; the classification that needed it fails closed, the process
-exits 70, and a restart owns a fresh transport. There is no in-process retry.
+failure is local; the classification that needed it defers and asks again,
+and the start is tried again after a growing delay.
 Peers are dialed per retrieval request, and a retrieval failure for an attested
 header is answered by an availability challenge, not by the transport status.
 Dependency health belongs to the live surface, not to startup readiness.
@@ -90,9 +110,86 @@ head is published. Ordinary event-history restart restores its authenticated
 semantic validation and corroborates the exact current native head. Full replay
 remains an explicit recovery operation.
 
-Earlier development formats have no automatic compatibility fallback. A
-format refusal requires explicit audited recovery or a separately authorized
-fresh deployment; it does not authorize discarding an existing deployment's
+The fault decision, proof queue and proof objective journals are tables in
+`watcher-journals.sqlite` inside the workflow journal directory. Each record is
+one row, authenticated with the rollback key, and each commit is one chained
+revision, so a persist writes only the rows it changes. Startup verifies every
+row and the latest 64 revisions, and refuses a tampered, deleted, replayed or
+reordered record; so does any later read of a row that fails its MAC, does not
+parse, or differs from its key. A refusal holds for the rest of the process:
+the watcher stays up, `/readyz` reports `journal_integrity`, and `/v1/status`
+names the failure in `supervisor.journalIntegrity` until an operator repairs
+the journals (below) and restarts the watcher. A journal migration whose SQL
+changed after it was applied is such a refusal (`migrations`). If the journals cannot be opened at
+all (a busy, locked or unreadable file), the watcher stays up, `/readyz`
+reports `journal_unavailable` and `supervisor.journalUnavailable` names the
+failure, while the watcher retries the open, backing off from 1 s to 30 s; the
+reason clears without a restart once an open succeeds. If a write to an open
+watcher SQLite file meets another connection's lock past the busy timeout
+(SQLITE_BUSY or SQLITE_LOCKED), the write commits nothing and the watcher
+stays up: `/readyz` reports `journal_busy` and `supervisor.journalBusy` names
+the failure. After the same 1 s to 30 s backoff the watcher drops its
+in-memory proof work, rebuilds it from the journals as a restart would, and
+lets the next decision pass dispatch it again; the reason clears then. A journal directory
+that cannot be used, or a rollback key the journals were not written under, is
+a configuration error: the watcher exits before the operations server binds.
+An objective that is released (its header left the finalized state queue)
+or whose completion is final is cleaned up in process: the watcher removes its
+workflow directory (`fault-proofs/<category>/<header>` in the workflow journal
+directory, refusing one that resolves through a symlink) and then forgets its
+rows, once no job of the objective is queued, running or awaiting a retry in
+this process. A final completion is cleaned up once an observation no longer
+queues its header. A released objective that holds a signed attempt keeps its
+directory, which the funding sweep reads. Queue rows a previous process left
+queued or active do not defer the cleanup, and a row a crash left with no
+execution is forgotten once its header leaves the queue. A removal that fails
+keeps the rows, is retried by every admission, and is listed in
+`supervisor.objectiveCleanupFailures` in `/v1/status`; it is not a readiness
+reason. Only open objectives count toward the cap of 2,048; at the cap the
+watcher stays up and `/readyz` reports `journal_capacity` until objectives
+complete.
+
+To repair refused journals: stop the watcher, move `watcher-journals.sqlite`
+and its `-wal` and `-shm` files aside (never delete them), and start it again.
+The new journals start empty. The workflow journals, the funding store and
+the L1 follower's facts survive, so proofs and funding reservations may name
+fault decisions the new journals do not hold. The watcher never runs such work
+again and never exits over it: it holds each item, `/readyz` reports
+`journal_decision_missing`, and `supervisor.journalDecisionMissing` in
+`/v1/status` names each held objective or reservation with its decision.
+
+- A held proof objective clears once its header leaves the finalized state
+  queue: its proof, or another one, landed and is final, or the header merged.
+  A fresh detection of the same fault does not restart it.
+- A held funding reservation is read again on every follower change. If every
+  input is spent at or below the release-final point (`automaticRecoveryMaxDepth
+  - 2` blocks deep), it is dropped. If its inputs are unspent there and still
+    unspent at the tip, and it holds no signed transaction, its inputs return to
+    the wallet. Otherwise it stays held.
+
+A validation-trace transcript archived before user events were read from the
+follower's facts is captured again from the facts and re-keyed on top of the
+old one, unless a proof started from it is still open: its workflow journaled a
+challenge digest the new transcript cannot reproduce. That objective is held
+the same way, listed in `supervisor.journalDecisionMissing` with `readiness`
+`validation_transcript_pre_follower`, which `/readyz` reports instead of
+`journal_decision_missing`. It clears once its header leaves the finalized
+state queue.
+
+Retention handles the rest. Workflow directories, follower pins of objectives
+that are never admitted again, and the leases of reservations that hold a
+signed transaction stay in place. The moved-aside file is never read again.
+
+Every watcher SQLite file, the journals included, must sit on a local disk,
+never a network filesystem (NFS, SMB and the like): those break SQLite's file
+locking and its write-ahead log.
+
+The file journals of earlier development formats (`fault-decisions/`,
+`fault-proof-queue-v1/` and `fault-proof-completions-v1/` in the workflow
+journal directory) are ignored, not refused: nothing imports them, the
+journals start fresh, and readiness never waits on them. At start the watcher
+logs one `legacy_journal_ignored` warning naming each non-empty one. Ignoring
+them neither deletes them nor authorizes discarding an existing deployment's
 durable state. Follow [state reset rules](../../docs/agents/state-reset.md). Evidence remains pinned by event, recovery, and
 proof dependencies; this change does not delete archives. See the
 [persistence record inventory](../../docs/midgard/decisions/watcher-persistence.md)
@@ -100,8 +197,7 @@ for consumers and retention rules.
 
 ## Configuration and trust boundaries
 
-CLI configuration uses `midgard-watcher-production-process-config-v1`; the
-separate authority uses `midgard-watcher-trusted-head-authority-process-config-v1`.
+CLI configuration uses `midgard-watcher-production-process-config-v1`.
 The nested watcher configuration uses `midgard-watcher-config-v1`. A nested
 configuration by itself is not a complete CLI process configuration.
 
@@ -109,7 +205,7 @@ The exact schemas and validation rules live in
 [src/runtime/process-config.ts](src/runtime/process-config.ts) and
 [src/runtime/config.ts](src/runtime/config.ts). Unknown/missing fields fail
 closed. Process configuration binds deployment identity, durable storage,
-trusted-head authority, transports, proof funding, and operational endpoints.
+transports, proof funding, and operational endpoints.
 Keep secrets in the supported environment/file references.
 
 ### Local credential file
@@ -264,17 +360,27 @@ holds back a challenge action. `daBondPool` keeps the last good readout, whose
 good read sets it back to `null`. Funding, top-up and the owner-quorum withdrawal are operator commands; see
 [DA bond pool commands](../midgard-node/docs/da-bond-commands.md).
 
-The nested wire parser accepts both `local_node` and `external_providers`.
-External-provider mode requires independent provider identities. The installed
-CLI process parser is narrower: it requires `mode: "acceptance"`,
-`targetNetwork` of `"Preprod"` or `"Custom"`, and `local_node` authority, with
-confirmation depth and prefinality rollback depth equal to the compiled
+`$.l1.source` names one source, `local_node`: the Cardano node the L1
+follower reads over its socket. `$.l1.finality` holds only `depth`. The
+installed CLI process parser requires `mode: "acceptance"`, `targetNetwork` of
+`"Preprod"` or `"Custom"`, and a finality depth equal to the compiled
 deployment profile's `l1_finality.confirmation_depth` (10 for the live testing
 profiles, 3 for `preprod-emulator-testing`, 30 for `mainnet` and
-`preprod-public`), and postfinality recovery
-bound 2160. `Custom` admits an explicitly bound isolated devnet, the network the
-automatic watcher journeys run against; it is not a relaxation of finality or
-rollback policy. The authority process enforces the same policy.
+`preprod-public`). Rollback handling is the follower's: it rewinds and
+recomputes every projection, and a rollback deeper than the security parameter
+k leaves the watcher up and unready with the `/readyz` reason
+`rollback_beyond_k`. `Custom` admits an explicitly bound isolated devnet, the
+network the automatic watcher journeys run against; it is not a relaxation of
+finality.
+
+`$.l1.origin` is the deployment's L1 origin,
+`{"slot": <n>, "blockHash": "<64 lowercase hex>"}`: the point immediately
+before the block holding the `prepareHubOracleNonce` tx, where the L1 follower
+starts. `midgard-l1-follower find-origin` prints it (see
+[the follower README](../midgard-l1-follower/README.md#origin)). Without it the
+follower holds the watcher unready (`l1_origin_not_configured`). It is operator
+configuration only: it is not part of any profile or manifest and changes no
+deployment identity.
 
 `$.l1.finality.depth` stays the manifest's release depth and governs anchoring:
 finalized audit anchors, incident records and evidence stamps. Fault-proof
@@ -288,12 +394,13 @@ state until anchoring. Wallet selection excludes unresolved attempts; it does
 not assume all old-fork inputs are available or hold all capital until finality.
 
 Local authority binds the Cardano node socket, node/genesis configuration, and
-genesis identity; the native chain-sync process provides ordered chain evidence.
-Exact-point queries run as framed sessions of one persistent helper process per
-binary (`--exact-point-service`); a helper crash, hang or protocol violation
-kills it and fails every in-flight query, and the next query starts a new one.
-Configured query services are subordinate to that authority. Authenticated
-rollback recovery and the independent trusted head protect durable replay.
+genesis identity; the node transport sidecar (`demo/l1-node-transport`) provides
+ordered chain evidence and checks each block's body against its header's body
+hash. Every node request is bounded by `l1.requestTimeoutMs`. The process runs one sidecar on one node connection for
+its chain-sync streams and exact-point queries; a sidecar crash, hang or
+protocol violation fails every open stream and in-flight query, and the
+transport restarts it.
+Authenticated rollback recovery protects durable replay.
 DA retrieval authenticates the configured peer and payload commitments.
 Acceptance of a generic nested configuration does not establish support by the
 installed process launcher.
@@ -317,87 +424,41 @@ committee and the node never prune those payloads: their retention is exactly
 the L1 confirmed head, the headers live in the L1 queue, and payloads still
 inside the challengeability horizon. Merged blocks older than the horizon can no
 longer be challenged, so a late watcher needs nothing from before the confirmed
-state, with one exception: the `missing-native-script-tx` family still builds
-its historical native-script corpus by walking retained DA from genesis
-(`resolveHistoricalNativeScriptCorpus` in
-[historical-native-script-corpus.ts](../midgard-fault-proofs/src/workflow/historical-native-script-corpus.ts)),
-so that family depends on payloads outside the retained set until its redesign
-lands.
+state.
 
 ## Running with compose
 
-[compose.yaml](compose.yaml) runs the two processes as two services from one
-image: `watcher-authority` (`authority --config /etc/midgard/authority.json`)
-and `watcher` (the image's default `start`). The split is a key-custody
-boundary: the authority holds the record key that chains trusted-head records,
-`start` holds the signing keys, and neither holds the other's. Both services
-use `network_mode: host` because the authority endpoint, the operations
-endpoint and every L1 query service must be loopback.
+[compose.yaml](compose.yaml) runs the watcher as one service, `watcher` (the
+image's default `start`). It uses `network_mode: host` because the operations
+endpoint and every L1 endpoint the watcher dials must be loopback.
 
 Prerequisites on the host:
 
-- A Cardano L1 stack publishing Ogmios on `127.0.0.1:1337` and Kupo on
-  `127.0.0.1:1442`, with its node socket directory (default
+- A Cardano node with its socket directory (default
   `../midgard-node/cardano/ipc`, override with `MIDGARD_L1_IPC_DIR`) and a
   directory holding the node config and Shelley genesis
-  (`MIDGARD_L1_CONFIG_DIR`), mounted at `/ipc` and `/cardano-config`.
+  (`MIDGARD_L1_CONFIG_DIR`), mounted at `/ipc` and `/cardano-config`. The
+  watcher reads L1 only through its follower over the node socket; it dials
+  no Ogmios or Kupo. A socket path that exists but is not a socket (a file or
+  a directory) is refused at config load; a missing one holds the watcher
+  unready until the node creates it.
 - `config/watcher-process.json` from
-  [watcher-process.example.json](watcher-process.example.json);
+  [watcher-process.example.json](watcher-process.example.json) and
   `config/watcher-runtime.json` holding exactly its `watcherConfig` object
-  (startup refuses any difference); `config/authority.json` from
-  [authority.example.json](authority.example.json). The authority's `policy`
-  must be the finality policy `start` derives from the same `watcherConfig`
-  and the verified deployment identity; the template's policy is built from
-  the start template with placeholder deployment hashes, and a unit test keeps
-  the two templates consistent.
+  (startup refuses any difference).
 - `bundles/` holding the six release artifacts the process config names:
   deployment authority, rule bundle, funding profiles, deployment manifest,
   blueprint and contract deployment info.
-- Two disjoint secret sets, as regular files (the loader refuses a symlinked
-  secret, so compose `secrets:` are not used), without a trailing newline and
-  pairwise distinct. The authority gets the record key and the bearer; `start`
-  gets the rollback key, prover key, availability key and the same bearer
-  value. Copy [.env.example](.env.example) to `.env` and point each variable at
-  its file.
+- The rollback key, prover key and availability key as regular files (the
+  loader refuses a symlinked secret, so compose `secrets:` are not used),
+  without a trailing newline and pairwise distinct. Startup refuses a shared
+  value, and two secrets that resolve to one wallet, before the operations
+  server binds; no restart clears that. Copy
+  [.env.example](.env.example) to `.env` and point each variable at its file.
 
-Before starting the sidecar, explicitly provision its independently owned authority
-volume with `initializeSelectedAuthorityStore` from `midgard-watcher`, supplying
-the verified policy, authority record key, a persisted `generation-<UUID>` attempt
-identity, and the chosen `liveRecordLimit`. For an existing legacy authority,
-stop every old writer and prevent restart, then use `importLegacyAuthorityStore`
-with a separate legacy archive directory. Both operations are offline ownership
-contracts; their source recheck does not fence an old writer. Preserve the legacy
-bytes and the initialization attempt identity. A torn, unparseable final legacy
-record can be removed only with the explicit offline
-`repairLegacyWatcherTrustedHeadAuthorityFinalRecord` helper: supply the exact
-expected prior head, final filename/raw digest, stable repair UUID and reason,
-and retain its separate evidence directory. It verifies the complete prior chain,
-keeps original torn bytes plus authenticated intent/completion receipts, and resumes
-only that exact repair after interruption. Parseable invalid records and interior
-corruption remain held. Every old writer must stay quiescent with restart excluded;
-this helper does not provide a live fleet fence. Ordinary `authority` startup only
-opens the authenticated selected backend. Missing or corrupt state fails closed;
-it never initializes, repairs, or falls back to the archive.
-
-`liveRecordLimit` is mandatory, counts authority revisions, and must match the
-initialized store. The example's explicit value `1` illustrates the smallest
-supported geometry; it is not a production default or a block rollback horizon.
-Choose a deployed value from measurements of the intended storage and workload.
-The live SQLite store retains the exact current head, one authenticated boundary
-checkpoint, and the latest `min(liveRecordLimit, revision + 1)` records. Current
-reads verify that entire live suffix. Retired archive edits are detected by
-`auditLegacyWatcherTrustedHeadAuthority`, not current reads. Keep the selected
-authority volume, selector, SQLite DB/WAL/SHM, and record key outside watcher write
-ownership. Whole-volume replay remains outside this independent freshness trust
-assumption. Filesystem deletion or replacement concurrent with SQLite access is
-outside the supported storage contract.
-
-Then `docker compose up -d`. `watcher` starts only once `watcher-authority`
-answers `/v1/identity`. Both restart `unless-stopped`: if the authority dies,
-`start` fails closed with exit 70, compose restarts it, and it keeps exiting
-70 at `/v1/identity` until the authority is healthy again, then re-reads the
-trusted head and resumes. Exit 70 is the intended failure signal, so do not
-cap restarts. The healthchecks treat a 401 as alive; they carry no bearer.
+Then `docker compose up -d`. The service restarts `unless-stopped`: restarting
+is the supervision, so do not cap restarts. The healthcheck treats a 401 as
+alive; it carries no bearer.
 
 Known gap (belongs to the shared L1 stack work): on public networks the
 Mithril-bootstrapped node image keeps its node config and genesis inside the
@@ -456,8 +517,8 @@ measurement does not establish a public-network deadline guarantee. See the
   The interactive `validationTraceDispute` family is installed but outside
   that harness.
 - `pnpm run typecheck`, `pnpm run lint`, and `pnpm test` check this package.
-  `pnpm test` also drives the compiled helper, so run `pnpm run native:build`
-  first.
+  The tests drive a scripted fake node transport; the sidecar itself is tested
+  in `demo/l1-node-transport`.
   The journey harness runs the built `dist`; rebuild before a live run or the
   child process executes stale code while the test process reads source.
 

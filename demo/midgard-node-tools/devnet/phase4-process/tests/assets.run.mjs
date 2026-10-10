@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -62,17 +63,71 @@ export const run = (
     else child.stdin.end(input);
   });
 
+export const NONCE_TX_HASH = "ab".repeat(32);
+export const L1_ORIGIN = `1234.${"cd".repeat(32)}`;
+
+/** What `midgard-l1-follower find-origin` prints for NONCE_TX_HASH. */
+export const FIND_ORIGIN_OUTPUT = {
+  l1Origin: L1_ORIGIN,
+  origin: { slot: 1234, blockHash: "cd".repeat(32) },
+  prepareHubOracleNonceBlock: {
+    slot: 1240,
+    blockHash: "ef".repeat(32),
+    height: 7,
+  },
+  txIndex: 0,
+  depth: 1,
+};
+
+/**
+ * The node L1 follower inputs protocol-bootstrap.sh leaves in a run: the
+ * transport binary, the host node config, the origin record for the nonce,
+ * and the node.env lines naming them.
+ */
+export const followerInputFixture = (runDir) => {
+  for (const directory of ["bin", "config", "work"])
+    mkdirSync(join(runDir, directory), { recursive: true });
+  writeFileSync(
+    join(runDir, "bin/midgard-l1-node-transport"),
+    "stand-in transport\n",
+    { mode: 0o755 },
+  );
+  writeFileSync(join(runDir, "config/host-config.json"), "{}\n");
+  writeFileSync(
+    join(runDir, "work/l1-origin.json"),
+    `${JSON.stringify({ l1Origin: L1_ORIGIN, nonceTxHash: NONCE_TX_HASH })}\n`,
+  );
+  return {
+    L1_ORIGIN,
+    L1_NODE_SOCKET_PATH: join(runDir, "cardano/ipc/node.socket"),
+    L1_NODE_CONFIG_PATH: join(runDir, "config/host-config.json"),
+    L1_NODE_TRANSPORT_BINARY_PATH: join(
+      runDir,
+      "bin/midgard-l1-node-transport",
+    ),
+    HUB_ORACLE_ONE_SHOT_TX_HASH: NONCE_TX_HASH,
+    HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0",
+  };
+};
+
 /**
  * A run directory that write-acceptance-env.sh accepts, with `nodeEnv` as the
- * operator's private node.env and a stand-in owner binary whose hash the
+ * operator's private node.env (after the follower inputs bootstrap writes,
+ * unless `follower` is false) and a stand-in owner binary whose hash the
  * script must pin.
  */
-export const acceptanceEnvRun = (nodeEnv) => {
-  const runDir = mkdtempSync(
-    join(temporaryRoot, "midgard-phase4-acceptance-env-"),
+export const acceptanceEnvRun = (nodeEnv, { follower = true } = {}) => {
+  // Symlink-free, as the node requires of its local-node paths.
+  const runDir = realpathSync(
+    mkdtempSync(join(temporaryRoot, "midgard-phase4-acceptance-env-")),
   );
   mkdirSync(join(runDir, "secrets"), { recursive: true });
   mkdirSync(join(runDir, "deploymentInfo"), { recursive: true });
+  const followerLines = follower
+    ? Object.entries(followerInputFixture(runDir))
+        .map(([key, value]) => `${key}=${value}\n`)
+        .join("")
+    : "";
   const ownerBinary = join(runDir, "architecture-g-owner");
   writeFileSync(ownerBinary, "stand-in owner binary\n");
   writeFileSync(
@@ -91,7 +146,10 @@ export const acceptanceEnvRun = (nodeEnv) => {
       "",
     ].join("\n"),
   );
-  writeFileSync(join(runDir, "secrets/node.env"), nodeEnv(ownerBinary));
+  writeFileSync(
+    join(runDir, "secrets/node.env"),
+    `${followerLines}${nodeEnv(ownerBinary)}`,
+  );
   writeFileSync(
     join(runDir, "secrets/wallets.env"),
     "TESTNET_GENESIS_WALLET_SEED_PHRASE_A=test-a\nTESTNET_GENESIS_WALLET_SEED_PHRASE_B=test-b\n",
@@ -129,6 +187,7 @@ export const unbuiltOwnerCheckout = () => {
     "common.sh",
     "write-acceptance-env.sh",
     "native-owner.mjs",
+    "l1-follower-inputs.mjs",
   ])
     copyFileSync(join(root, "scripts", name), join(scripts, name));
   symlinkSync(

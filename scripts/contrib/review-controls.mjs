@@ -45,11 +45,8 @@ const controls = [
     name: "native-output-partition",
     file: "files.mjs",
     change: (text) =>
-      text.replace(
-        /!Object\.entries\(NATIVE_RECIPES\)\.some\([\s\S]*?\) &&/u,
-        "true &&",
-      ),
-    match: "watcher native outputs have separate ownership",
+      text.replace(/!nativeOutputs\.some\([\s\S]*?\) &&/u, "true &&"),
+    match: "native outputs have separate ownership",
     failure: /adding the separately guarded Go binary/u,
     testFile: "identity.test.mjs",
   },
@@ -291,11 +288,10 @@ try {
       cpSync(resolve(root, "scripts"), resolve(scratch, "scripts"), {
         recursive: true,
       });
-      cpSync(
-        resolve(root, "onchain/aiken/scripts"),
-        resolve(scratch, "onchain/aiken/scripts"),
-        { recursive: true },
-      );
+      for (const directory of ["onchain/aiken/scripts", "demo/scripts/lib"])
+        cpSync(resolve(root, directory), resolve(scratch, directory), {
+          recursive: true,
+        });
       if (control.file) {
         const path = resolve(scratch, "scripts/contrib", control.file);
         const original = readFileSync(path, "utf8");

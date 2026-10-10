@@ -1,8 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 
-import { promiseCanonicalPointReader } from "../l1/promise-capacity-point.js";
-import type { ChainSyncCursor } from "../l1/provider.js";
+import type { CommitteeAvailabilityReads } from "../l1/follower/availability-reads.js";
 import type { availabilityResponderOperations } from "./factory.availability-responder-operations.js";
 import { discoverAvailabilityResponderChallenges } from "./factory.discover-availability-responder-challenges.js";
 import type { PromiseCapacityPoint } from "./promise-capacity-evidence.js";
@@ -11,27 +10,17 @@ import {
   promiseCurrentSchedulingDigest,
   type PromiseSchedulingLiability,
 } from "./promise-current-scheduling.js";
-import {
-  committeeScopedWebSocketFactory,
-  type CommitteeSourceReadLimits,
-} from "./scoped-transports.js";
 
 /** Keeps only one outstanding source certificate. Concurrent replacement
- * invalidates an older permit rather than letting it use another candidate's view. */
+ * invalidates an older permit rather than letting it use another candidate's view.
+ * Every canonical point is read from the committee follower under the
+ * certificate's boundary; `generation` is the follower view's (plan §8.1). */
 export const promiseSchedulingSource = (
   args: Readonly<{
     lucid: LucidEvolution;
     deployment: SDK.DaAvailabilityDeployment;
-    ogmiosUrl: string;
     openWindowMs: number;
-    limits?: CommitteeSourceReadLimits;
-    readUtxos?: (
-      address: string,
-      scope: SDK.DaAvailabilityReadScope,
-    ) => Promise<UTxO[]>;
-    currentCursor: (
-      scope?: SDK.DaAvailabilityReadScope,
-    ) => Promise<ChainSyncCursor>;
+    reads: Pick<CommitteeAvailabilityReads, "canonicalPoint">;
     readBoundary: ReturnType<
       typeof availabilityResponderOperations
     >["readBoundary"];
@@ -46,8 +35,7 @@ export const promiseSchedulingSource = (
         digest: string;
         liabilities: readonly PromiseSchedulingLiability[];
         point: PromiseCapacityPoint;
-        sequence: number;
-        rollbackGeneration: number;
+        generation: number;
       }>
     | undefined;
   const capture = async (
@@ -56,23 +44,21 @@ export const promiseSchedulingSource = (
       rawSnapshot?: SDK.DaAvailabilitySnapshotUtxos;
       complete: boolean;
       point: PromiseCapacityPoint;
-      cursor: ChainSyncCursor;
+      generation: number;
       scope?: SDK.DaAvailabilityReadScope;
     }>,
   ) => {
     const { scope } = input;
-    if (!scope || !args.limits || !args.readUtxos || !input.rawSnapshot)
-      throw new Error("Scoped complete scheduling transport is unavailable");
+    if (!scope || !input.rawSnapshot)
+      throw new Error("Scoped complete scheduling evidence is unavailable");
     const assertCurrent = async () => {
       await args.assertActuationCurrent(scope);
       const boundary = await args.readBoundary(scope);
-      const cursor = await scope.read(() => args.currentCursor(scope));
       if (
         boundary.slot !== input.point.slot ||
         boundary.blockHash !== input.point.blockHash ||
         boundary.blockNo !== input.point.blockNo ||
-        cursor.sequence !== input.cursor.sequence ||
-        cursor.rollbackGeneration !== input.cursor.rollbackGeneration
+        boundary.generation !== input.generation
       )
         throw new Error(
           "Scheduling canonical boundary or consumed generation changed",
@@ -89,11 +75,10 @@ export const promiseSchedulingSource = (
       liabilities: input.liabilities,
       readCanonicalPoint: (point) =>
         scope.read(() =>
-          promiseCanonicalPointReader(
-            args.ogmiosUrl,
-            committeeScopedWebSocketFactory(scope, args.limits!),
-            input.point,
-          )(point),
+          args.reads.canonicalPoint(point, {
+            ...input.point,
+            generation: input.generation,
+          }),
         ),
       assertCurrent,
     });
@@ -101,7 +86,7 @@ export const promiseSchedulingSource = (
       current,
       digest: promiseCurrentSchedulingDigest({
         boundary: input.point,
-        rollbackGeneration: input.cursor.rollbackGeneration,
+        rollbackGeneration: input.generation,
         current,
         liabilities: input.liabilities,
         rawSnapshot: input.rawSnapshot,
@@ -119,8 +104,7 @@ export const promiseSchedulingSource = (
         digest: result.digest,
         liabilities: input.liabilities,
         point: input.point,
-        sequence: input.cursor.sequence,
-        rollbackGeneration: input.cursor.rollbackGeneration,
+        generation: input.generation,
       };
       return result;
     },
@@ -143,14 +127,12 @@ export const promiseSchedulingSource = (
         },
         {
           scope,
-          readUtxos: args.readUtxos,
           onSnapshot: (snapshot) => {
             rawSnapshot = snapshot;
           },
         },
       );
       const boundary = await args.readBoundary(scope);
-      const cursor = await scope.read(() => args.currentCursor(scope));
       const fresh = await capture({
         liabilities: prior.liabilities,
         rawSnapshot,
@@ -160,13 +142,12 @@ export const promiseSchedulingSource = (
           blockHash: boundary.blockHash,
           blockNo: boundary.blockNo,
         },
-        cursor,
+        generation: boundary.generation,
         scope,
       });
       if (
         certificate !== prior ||
-        prior.sequence !== cursor.sequence ||
-        prior.rollbackGeneration !== cursor.rollbackGeneration ||
+        prior.generation !== boundary.generation ||
         fresh.digest !== prior.digest
       )
         throw new Error(

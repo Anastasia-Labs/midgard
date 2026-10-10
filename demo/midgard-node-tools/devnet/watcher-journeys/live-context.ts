@@ -6,17 +6,14 @@ import {
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  Lucid,
-  type UTxO,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
-import { WatcherLocalKupmios } from "midgard-watcher";
 
+import { journeyLucid } from "./journey-lucid.js";
 import { postOgmiosQuery, readOgmiosTipSlot } from "./ledger-tip.js";
 import { createLiveWorkflowChain } from "./live-chain.js";
+import { JourneyLocalKupmios } from "./local-kupmios.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 type Deployment = Awaited<ReturnType<typeof publishWorkflowDeploymentOnChain>>;
@@ -78,7 +75,7 @@ export const loadJourneyContext = async (runDirectory: string) => {
   };
   const kupoUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_KUPO_PORT}`;
   const ogmiosUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_OGMIOS_PORT}`;
-  const provider = new WatcherLocalKupmios(
+  const provider = new JourneyLocalKupmios(
     kupoUrl,
     ogmiosUrl,
     await journeyNativeNodeQuery(runDirectory),
@@ -126,14 +123,17 @@ export const loadJourneyContext = async (runDirectory: string) => {
       throw new Error(`Stored reference changed: ${receipt.role}`);
     }
   }
-  const operatorLucid = await Lucid(provider, "Custom", {
-    slotConfig: customNetwork.slotConfig,
-    evaluator: createScalusEvaluator(),
-  });
-  const publisherLucid = await Lucid(provider, "Custom", {
-    slotConfig: customNetwork.slotConfig,
-    evaluator: createScalusEvaluator(),
-  });
+  const network = { kupoUrl, ogmiosUrl, customNetwork };
+  const operatorLucid = await journeyLucid(
+    provider,
+    network,
+    createScalusEvaluator(),
+  );
+  const publisherLucid = await journeyLucid(
+    provider,
+    network,
+    createScalusEvaluator(),
+  );
   operatorLucid.selectWallet.fromSeed(accounts.operator.seedPhrase);
   publisherLucid.selectWallet.fromSeed(accounts.publisher.seedPhrase);
   const deployment: Deployment = {

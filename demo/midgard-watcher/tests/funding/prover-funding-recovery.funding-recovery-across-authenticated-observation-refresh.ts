@@ -29,6 +29,7 @@ import {
   setupFundingRecoveryFixture as setup,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { fundingTerminal } from "./funding-handoff-fixture.js";
 import { registerConfirmedFundingRefillTest } from "./prover-funding-recovery.authenticated-confirmed-refill.js";
 // The setup uses the production classifier, opaque permits, actual signed bytes,
@@ -1012,6 +1013,7 @@ describe("funding recovery across authenticated observation refresh", () => {
     });
     await authorizeWatcherProverFundingRecovery({
       journalRoot: test.journalRoot,
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
       deploymentIdentity,
       actuationPermit: controller.permit,
       category: "doubleSpend",

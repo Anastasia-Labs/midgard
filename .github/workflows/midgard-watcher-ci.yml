@@ -9,6 +9,8 @@ on:
       - "scripts/pnpm.mjs"
       - "scripts/bin/**"
       - "demo/midgard-watcher/**"
+      - "demo/l1-node-transport/**"
+      - "demo/midgard-l1-follower/**"
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-sdk/**"
       - "demo/midgard-core/**"
@@ -28,6 +30,8 @@ on:
       - "scripts/pnpm.mjs"
       - "scripts/bin/**"
       - "demo/midgard-watcher/**"
+      - "demo/l1-node-transport/**"
+      - "demo/midgard-l1-follower/**"
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-sdk/**"
       - "demo/midgard-core/**"
@@ -56,22 +60,23 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.0"
-          cache-dependency-path: demo/midgard-watcher/native-chain-sync/go.sum
-      - name: Assert and test pinned native chain-sync helper
-        working-directory: demo/midgard-watcher/native-chain-sync
+          go-version: "1.26.5"
+          cache-dependency-path: demo/l1-node-transport/native/go.sum
+      - name: Assert and test the pinned node transport sidecar
+        working-directory: demo/l1-node-transport/native
         run: |
           set -euo pipefail
-          test "$(go version | awk '{print $3}')" = "go1.26.0"
+          test "$(go version | awk '{print $3}')" = "go1.26.5"
           go mod verify
+          go vet ./...
           go test ./...
-          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o /tmp/midgard-chain-sync .
-          test -x /tmp/midgard-chain-sync
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o /tmp/midgard-l1-node-transport .
+          test -x /tmp/midgard-l1-node-transport
       # The watcher's TypeScript build, typecheck, format check and test suite
       # run in midgard-node-ci.yml (its lint in that workflow's workspace lint
       # job), which triggers on a superset of these paths and builds the Aiken
       # blueprint those tests read. This job covers what that one does not:
-      # the native helper, the compose stack and the production image.
+      # the node transport sidecar, the compose stack and the production image.
       # The operator launch surface: the compose file must render from
       # `.env.example` alone, like the node stacks in midgard-node-ci.yml.
       - name: Render the watcher compose stack from .env.example
@@ -79,8 +84,8 @@ jobs:
         run: |
           set -euo pipefail
           docker compose --env-file .env.example -f compose.yaml config --quiet
-          # Both services run the locally built image; any pulled image must
-          # carry a tag other than latest.
+          # The watcher service runs the locally built image; any pulled image
+          # must carry a tag other than latest.
           images="$(docker compose --env-file .env.example -f compose.yaml config --images)"
           if grep -vE '^midgard-watcher:' <<<"$images" | grep -E ':latest$|^[^:@]+$'; then
             echo "unpinned image in compose.yaml" >&2
@@ -89,55 +94,3 @@ jobs:
       - name: Build watcher production image
         working-directory: demo
         run: docker build --file midgard-watcher/Dockerfile --tag midgard-watcher:ci .
-      # The only check of the image's `authority` path: start the compose
-      # service from the built image with throwaway secrets and a profile-bound
-      # copy of the shipped templates, then require 401 without the bearer
-      # and 200 with it.
-      - name: Smoke the trusted-head authority service from the built image
-        working-directory: demo/midgard-watcher
-        env:
-          MIDGARD_WATCHER_IMAGE_TAG: ci
-        run: |
-          set -euo pipefail
-          secrets="$RUNNER_TEMP/watcher-secrets"
-          mkdir -p "$secrets" config
-          openssl rand -hex 32 | tr -d '\n' >"$secrets/record_key"
-          bearer="$(openssl rand -hex 24)"
-          printf '%s' "$bearer" >"$secrets/bearer"
-          # Public templates retain depth 30; bind this throwaway smoke sample
-          # to the profile compiled into the image and recompute its policy.
-          docker run --rm --interactive --entrypoint node \
-            --mount "type=bind,src=$PWD,dst=/watcher-template,readonly" \
-            midgard-watcher:ci --input-type=module - <<'JS' >config/authority.json
-          import { readFileSync } from "node:fs";
-          import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-          import { makeWatcherFinalityPolicy, parseWatcherTrustedHeadAuthorityProcessConfig } from "./dist/index.js";
-          const read = (name) => JSON.parse(readFileSync(`/watcher-template/${name}`, "utf8"));
-          const authority = read("authority.example.json");
-          const { watcherConfig } = read("watcher-process.example.json");
-          const depth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
-          watcherConfig.l1.finality.depth = depth;
-          watcherConfig.l1.finality.rollback.maxDepth = depth;
-          const manifestId = authority.policy.deploymentMarker.manifestId;
-          const policy = makeWatcherFinalityPolicy(watcherConfig, {
-            manifestId,
-            network: authority.policy.network,
-            trustRootId: manifestId,
-            fundingProfileBundleDigest: manifestId,
-            blueprintHash: authority.policy.blueprintHash,
-            ruleBundleCommitment: manifestId,
-            programCommitments: {},
-            durableMarker: authority.policy.deploymentMarker,
-          });
-          if (policy === null) throw new Error("invalid profile-bound smoke policy");
-          console.log(JSON.stringify(parseWatcherTrustedHeadAuthorityProcessConfig({ ...authority, policy })));
-          JS
-          export WATCHER_RECORD_KEY_FILE="$secrets/record_key"
-          export WATCHER_BEARER_FILE="$secrets/bearer"
-          compose() { docker compose --env-file .env.example -f compose.yaml "$@"; }
-          trap 'compose logs watcher-authority; compose down --volumes' EXIT
-          compose up --detach --no-build --wait --wait-timeout 90 watcher-authority
-          identity=http://127.0.0.1:7401/v1/identity
-          test "$(curl -s -o /dev/null -w '%{http_code}' "$identity")" = 401
-          test "$(curl -s -o /dev/null -w '%{http_code}' \
-            -H "Authorization: Bearer $bearer" "$identity")" = 200

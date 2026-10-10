@@ -9,29 +9,20 @@ import {
   classifyHeader as classifyProductionHeaderV1,
   type CompleteCanonicalReplayContext,
   createCatalogueCompleteCanonicalReplay,
-  createCrossBlockSettlementAuthority,
-  createExternalHistoricalNativeScriptSourceRoster,
   createHeaderClassifier,
-  createHistoricalNativeScriptHistorySource,
-  createHistoricalNativeScriptProviderRoster,
-  createLocalKupmiosFraudProofRawL1SnapshotAuthority,
-  createLocalKupmiosHttpOgmiosRawSource,
   FAMILY_APPLICATION_REGISTRY,
   type FamilyValidationChallengePort,
+  FraudProofL1CheckpointChangedError,
   type HeaderDecision,
   headerDecisionReplayContext,
   installWorkflowApplicationRegistry,
   journalJsonDigest,
-  LocalKupmiosCheckpointChangedError,
-  LocalKupmiosExactPointNotCanonicalError,
   normalizeJournalJson,
-  requireHistoricalNativeScriptHistoryAuthority,
   resolveFamilyApplicationReferences,
   runFraudProofWorkflowCli,
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  CrossBlockDuplicateEventStep02DatumSchema,
   FabricatedDepositStep02Datum,
   FabricatedDepositStep03Datum,
   FabricatedDepositStep04Datum,
@@ -58,7 +49,6 @@ import {
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
-import { assertWatcherUserEventRuntime } from "../runtime/user-event-runtime.js";
 import {
   verifyCompletedWatcherReplayTranscriptWorkflow,
   watcherReplayTranscriptClassification,
@@ -81,6 +71,7 @@ import {
   buildCommonInfrastructure,
   predecessorObservationForClassifier,
   type WatcherFaultProofApplicationWithLoaderForTest,
+  watcherFaultProofSourceId,
 } from "./fault-proof-application.build-common-infrastructure.js";
 import {
   WATCHER_FAULT_PROOF_APPLICATION,
@@ -88,7 +79,6 @@ import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES,
   type WatcherFaultProofApplication,
-  type WatcherHistoricalNativeScriptAuthority,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.production-dependencies.js";
 import {
@@ -96,6 +86,7 @@ import {
   captureWatcherValidationReplayTranscript,
   refreshWatcherValidationReplayCapture,
 } from "./replay-transcript-capture.js";
+import { WatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
 
 export function createApplication(
   input: ApplicationConstruction &
@@ -123,38 +114,32 @@ export function createApplication({
   }
   const deploymentIdentity = options.deploymentIdentity;
   assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+  const l1 = options.l1;
   const deploymentAuthority = options.deploymentAuthority;
   const replayTranscriptStore = options.replayTranscriptStore;
-  const userEventRuntime = options.userEventRuntime;
+  const userEvents = options.userEvents;
   if (allowExecution) {
     if (
       deploymentAuthority === undefined ||
       replayTranscriptStore === undefined ||
-      userEventRuntime === undefined
+      userEvents === undefined
     ) {
       throw new Error(
         "watcher execution requires deployment/rule authority and durable replay transcripts",
       );
     }
     assertWatcherVerifiedDeploymentAuthority(deploymentAuthority);
-    assertWatcherUserEventRuntime(userEventRuntime);
     if (
-      userEventRuntime.deploymentFingerprint !==
-        deploymentIdentity.manifestId ||
-      userEventRuntime.blueprintHash !== deploymentIdentity.blueprintHash
+      userEvents.deploymentManifestId !== deploymentIdentity.manifestId ||
+      userEvents.blueprintHash !== deploymentIdentity.blueprintHash
     ) {
-      throw new Error("watcher event runtime deployment authority differs");
+      throw new Error("watcher user-event reads' deployment authority differs");
     }
     if (deploymentAuthority.deploymentIdentity !== deploymentIdentity) {
       throw new Error("watcher application deployment authorities differ");
     }
   }
   const infrastructure = admitInfrastructure(options.infrastructure);
-  if (options.historicalNativeScriptCheckpointStore === undefined) {
-    throw new Error(
-      "watcher application requires its historical native-script checkpoint store",
-    );
-  }
   if (allowExecution && options.fundingProfileOverlay === undefined) {
     throw new Error(
       "watcher application requires its signed funding-profile overlay",
@@ -182,44 +167,17 @@ export function createApplication({
     }
     return workflowFundingProfileFromOverlay({ overlay, category });
   };
-  const providerRoster = createHistoricalNativeScriptProviderRoster({
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    providers: infrastructure.historicalNativeScriptHistory.providers,
-  });
-  const historySource = createHistoricalNativeScriptHistorySource({
-    providerRoster,
-  });
-  if (allowExecution) {
-    requireHistoricalNativeScriptHistoryAuthority({
-      deploymentFingerprint: deploymentIdentity.manifestId,
-      checkpointStore: options.historicalNativeScriptCheckpointStore,
-      historySource,
-    });
-  }
-  const historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthority =
-    Object.freeze({
-      checkpointStore: options.historicalNativeScriptCheckpointStore,
-      providerRoster,
-      historySource,
-      l1SourceRoster: watcherDeploymentReleaseFinalityAuthority(
-        deploymentIdentity,
-      )
-        .verifyForWorkflow({
-          deploymentFingerprint: deploymentIdentity.manifestId,
-        })
-        .then((releaseFinality) =>
-          createExternalHistoricalNativeScriptSourceRoster({
-            providerRoster,
-            releaseFinality,
-          }),
-        ),
-    });
   const environmentSnapshot = Object.freeze({ ...environment });
   const replayContexts = new Map<string, CompleteCanonicalReplayContext>();
   let authorityGeneration = 0;
   const validationCaptures = new Map<
     string,
     Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
+  >();
+  /** Decisions held over a pre-follower transcript with an open proof. */
+  const heldValidationDecisions = new Map<
+    string,
+    Readonly<{ headerHash: string; detail: string }>
   >();
   const retainedDaOptions = {
     deploymentIdentity,
@@ -245,6 +203,16 @@ export function createApplication({
    */
   const validationChallenge: FamilyValidationChallengePort = Object.freeze({
     currentChallenge: async ({ headerHash, decisionDigest }) => {
+      const held = heldValidationDecisions.get(decisionDigest);
+      if (held !== undefined && held.headerHash === headerHash)
+        throw new WatcherProofDecisionMissingError({
+          kind: "objective",
+          category: "validationTraceDispute",
+          headerHash,
+          decisionDigest,
+          detail: held.detail,
+          readiness: "validation_transcript_pre_follower",
+        });
       const capture = validationCaptures.get(decisionDigest);
       if (
         capture === undefined ||
@@ -279,9 +247,9 @@ export function createApplication({
         invocation,
         infrastructure,
         deploymentIdentity,
-        historicalNativeScriptAuthority,
         replayContexts,
         validationChallenge,
+        l1,
         dependencies,
         environment: environmentSnapshot,
       }),
@@ -317,20 +285,6 @@ export function createApplication({
   const loadClassifier = (watcherConfigValue: unknown, headerHash: string) => {
     classifierPromise ??= (async () => {
       const watcherConfig = parseWatcherConfig(watcherConfigValue);
-      if (watcherConfig.l1.source.sourceMode !== "local_node")
-        throw new Error(
-          "cross-block settlement authority requires local-node source",
-        );
-      const kupo = watcherConfig.l1.source.queryServices.find(
-        (service) => service.kind === "kupo",
-      );
-      const ogmios = watcherConfig.l1.source.queryServices.find(
-        (service) => service.kind === "ogmios",
-      );
-      if (kupo === undefined || ogmios === undefined)
-        throw new Error(
-          "cross-block settlement authority requires Kupo and Ogmios",
-        );
       const [manifestJson, blueprintJson, deploymentInfoJson] =
         await Promise.all(
           [
@@ -344,31 +298,6 @@ export function createApplication({
               ),
           ),
         );
-      const binding = await bindFraudProofWorkflowDeployment({
-        manifest: JSON.parse(manifestJson!),
-        blueprintJson: blueprintJson!,
-        deploymentInfo: JSON.parse(deploymentInfoJson!),
-        category: "crossBlockDuplicateEvent",
-        headerHash,
-        proverCredential: "00".repeat(28),
-        stepDatumSchemas: [
-          FraudProofComputationThreadStepDatum,
-          CrossBlockDuplicateEventStep02DatumSchema,
-        ],
-      });
-      if (binding.deploymentFingerprint !== deploymentIdentity.manifestId)
-        throw new Error("cross-block settlement classifier changed deployment");
-      const settlementAuthority = createCrossBlockSettlementAuthority({
-        binding,
-        source: {
-          sourceId: `watcher-settlement-history/${deploymentIdentity.manifestId}`,
-          kupoHttpUrl: kupo.endpoint,
-          ogmiosUrl: ogmios.endpoint,
-          timeoutMs: watcherConfig.l1.requestTimeoutMs,
-        },
-        historySource: historicalNativeScriptAuthority.historySource,
-        checkpointStore: historicalNativeScriptAuthority.checkpointStore,
-      });
       const transitionBinding = await bindFraudProofWorkflowDeployment({
         manifest: JSON.parse(manifestJson!),
         blueprintJson: blueprintJson!,
@@ -386,12 +315,9 @@ export function createApplication({
       const transitionTraceEventAuthority = createTransitionTraceEventAuthority(
         {
           binding: transitionBinding,
-          source: {
-            sourceId: `watcher-transition-events/${deploymentIdentity.manifestId}`,
-            kupoHttpUrl: kupo.endpoint,
-            ogmiosUrl: ogmios.endpoint,
-            timeoutMs: watcherConfig.l1.requestTimeoutMs,
-          },
+          l1: l1.source(
+            `watcher-transition-events/${deploymentIdentity.manifestId}`,
+          ),
         },
       );
       await watcherDeploymentReleaseFinalityAuthority(
@@ -402,8 +328,7 @@ export function createApplication({
       const lucid = await dependencies.makeLucid({
         network: watcherConfig.targetNetwork,
         slotConfig: watcherConfig.customNetwork?.slotConfig,
-        kupoHttpUrl: kupo.endpoint,
-        ogmiosUrl: ogmios.endpoint,
+        provider: l1.provider,
       });
       const proverSecret = await readSecret({
         source: watcherConfig.proverWallet.keySource,
@@ -488,11 +413,6 @@ export function createApplication({
         replayer,
         releaseFinalityAuthority:
           watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
-        settlementAuthority,
-        historicalReplayAuthority: Object.freeze({
-          checkpointStore: historicalNativeScriptAuthority.checkpointStore,
-          historySource: historicalNativeScriptAuthority.historySource,
-        }),
       });
     })();
     return classifierPromise;
@@ -503,6 +423,7 @@ export function createApplication({
       authorityGeneration += 1;
       replayContexts.clear();
       validationCaptures.clear();
+      heldValidationDecisions.clear();
       await retainedDaOwner.close();
     },
     schemaVersion: WATCHER_FAULT_PROOF_APPLICATION,
@@ -512,7 +433,8 @@ export function createApplication({
     applicationRegistry,
     retainedDaTransportStatus: retainedDaOwner.transportStatus,
     decisionUsesLocalEventHistory: (decisionDigest) =>
-      validationCaptures.has(decisionDigest),
+      validationCaptures.has(decisionDigest) ||
+      heldValidationDecisions.has(decisionDigest),
     retainDecisionAuthorities: (decisionDigest) => {
       authorityGeneration += 1;
       for (const digest of replayContexts.keys()) {
@@ -520,6 +442,9 @@ export function createApplication({
       }
       for (const digest of validationCaptures.keys()) {
         if (digest !== decisionDigest) validationCaptures.delete(digest);
+      }
+      for (const digest of heldValidationDecisions.keys()) {
+        if (digest !== decisionDigest) heldValidationDecisions.delete(digest);
       }
     },
     classifyHeader: async (request) => {
@@ -572,6 +497,7 @@ export function createApplication({
       let pendingCapture:
         | Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
         | undefined;
+      let pendingHold: string | undefined;
       try {
         if (
           retainedDa.deploymentFingerprint !== deploymentIdentity.manifestId
@@ -621,20 +547,22 @@ export function createApplication({
           if (
             deploymentAuthority === undefined ||
             replayTranscriptStore === undefined ||
-            userEventRuntime === undefined
+            userEvents === undefined
           ) {
             throw new Error(
               "validation classification requires live deployment authority and transcript storage",
             );
           }
-          pendingCapture = await archiveWatcherValidationCapture({
+          const archived = await archiveWatcherValidationCapture({
             deploymentAuthority,
             replayTranscriptStore,
             stateQueueObservation: input.stateQueueObservation,
             header: input.header,
             decision,
-            userEventRuntime,
+            userEvents,
           });
+          if (archived.kind === "captured") pendingCapture = archived.capture;
+          else pendingHold = archived.detail;
         }
         completedDecision = decision;
       } finally {
@@ -658,10 +586,18 @@ export function createApplication({
           watcherReplayTranscriptClassification(pendingCapture),
         );
         assertWatcherValidationReplayCaptureCurrent(pendingCapture);
+        heldValidationDecisions.delete(completedDecision.decisionDigest);
         validationCaptures.set(
           completedDecision.decisionDigest,
           pendingCapture,
         );
+      }
+      if (pendingHold !== undefined) {
+        validationCaptures.delete(completedDecision.decisionDigest);
+        heldValidationDecisions.set(completedDecision.decisionDigest, {
+          headerHash: completedDecision.headerHash,
+          detail: pendingHold,
+        });
       }
       const replayContext = headerDecisionReplayContext(completedDecision);
       if (replayContext !== undefined) {
@@ -686,8 +622,8 @@ export function createApplication({
       // Readiness binds the deployment and resolves the family's whole roster,
       // then stops: it binds no config, constructs no workflow and reads no
       // secret, so it can neither act nor need the optional infrastructure an
-      // acting invocation must hold. The prover wallet is proven present by
-      // the trusted-head startup phase, not here.
+      // acting invocation must hold. Runtime startup resolves the prover
+      // wallet's secret before the operations server binds, not here.
       const watcherConfig = await readAdmittedWatcherRuntimeConfig({
         runtimeConfigPath: invocation.runtimeConfigPath,
         deploymentFingerprint: invocation.deploymentFingerprint,
@@ -696,6 +632,7 @@ export function createApplication({
       const { resolveReferenceScript } = await bindWatcherDeploymentAuthority({
         watcherConfig,
         infrastructure,
+        l1,
         dependencies,
       });
       const { referenceScriptOutRefs } =
@@ -731,18 +668,6 @@ export function createApplication({
           ),
         );
       const config = parseWatcherConfig(JSON.parse(runtimeJson!));
-      if (config.l1.source.sourceMode !== "local_node")
-        throw new Error(
-          "completed workflow verification requires local-node authority",
-        );
-      const kupo = config.l1.source.queryServices.find(
-        ({ kind }) => kind === "kupo",
-      );
-      const ogmios = config.l1.source.queryServices.find(
-        ({ kind }) => kind === "ogmios",
-      );
-      if (kupo === undefined || ogmios === undefined)
-        throw new Error("completed workflow authority omitted Kupo or Ogmios");
       const binding = await bindFraudProofTerminalDeployment({
         manifest: JSON.parse(manifestJson!),
         blueprintJson: blueprintJson!,
@@ -764,25 +689,18 @@ export function createApplication({
         throw new Error(
           "completed workflow changed its verified deployment release",
         );
-      const source = createLocalKupmiosHttpOgmiosRawSource({
-        sourceId: [
-          "watcher-fault-proof",
-          input.category,
-          deploymentIdentity.manifestId,
-          config.l1.source.authorityNodeId,
-          config.l1.source.chainSync.genesisIdentitySha256,
-        ].join("/"),
-        kupoHttpUrl: kupo.endpoint,
-        ogmiosUrl: ogmios.endpoint,
-        timeoutMs: config.l1.requestTimeoutMs,
-        releaseFinality: binding.releaseFinality,
-        observationDepth: "inclusion",
-      });
-      const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthority({
-        source,
-        releaseFinality: binding.releaseFinality,
-        observationDepth: "inclusion",
-      });
+      const authority = l1
+        .source(
+          watcherFaultProofSourceId({
+            category: input.category,
+            manifestId: deploymentIdentity.manifestId,
+            localL1Source: config.l1.source,
+          }),
+        )
+        .snapshotAuthority({
+          releaseFinality: binding.releaseFinality,
+          observationDepth: "inclusion",
+        });
       try {
         return await verifyCompletedWatcherReplayTranscriptWorkflow({
           ...(replayTranscriptStore === undefined
@@ -795,10 +713,7 @@ export function createApplication({
           decisionDigest: input.decisionDigest,
         });
       } catch (error) {
-        if (
-          error instanceof LocalKupmiosCheckpointChangedError ||
-          error instanceof LocalKupmiosExactPointNotCanonicalError
-        )
+        if (error instanceof FraudProofL1CheckpointChangedError)
           return { kind: "pending", reason: "checkpoint_changed" };
         throw error;
       }

@@ -52,18 +52,14 @@ async function fixture() {
   sample.watcher.configDirectory = join(directory, "logs/run/watcher");
   sample.watcher.releaseDirectory = join(directory, "logs/run/release");
   await writeFile(sample.watcher.processTemplate, "{}");
-  await writeFile(sample.watcher.authorityTemplate, "{}");
   const secretNames = [
-    "WATCHER_RECORD_KEY_FILE",
     "WATCHER_ROLLBACK_KEY_FILE",
     "WATCHER_PROVER_KEY_FILE",
     "WATCHER_AVAILABILITY_KEY_FILE",
-    "WATCHER_BEARER_FILE",
   ];
   const secretFiles = Object.fromEntries(
     secretNames.map((key, index) => [key, join(directory, `secret-${index}`)]),
   );
-  sample.watcher.bearerFile = secretFiles.WATCHER_BEARER_FILE;
   for (const path of Object.values(secretFiles))
     await writeFile(path, "a".repeat(64));
   await writeFile(
@@ -88,10 +84,7 @@ async function fixture() {
   const env: Record<string, string> = {
     NETWORK: "Preprod",
     MIDGARD_DEPLOYMENT_PROFILE: "preprod-testing",
-    L1_PROVIDER: "Kupmios",
     RUN_GENESIS_ON_STARTUP: "false",
-    L1_KUPO_KEY: "http://127.0.0.1:1442",
-    L1_OGMIOS_KEY: "http://127.0.0.1:1337",
     MIN_FEE_A: "10",
     MIN_FEE_B: "10",
     DA_THRESHOLD: "2",
@@ -149,7 +142,7 @@ describe("stack intent", () => {
     const watcherEnv = parse(
       await readFile(value.config.watcher.composeEnvFile),
     );
-    await writeFile(watcherEnv.WATCHER_RECORD_KEY_FILE!, "c".repeat(64));
+    await writeFile(watcherEnv.WATCHER_ROLLBACK_KEY_FILE!, "c".repeat(64));
     expect((await loadStackConfig(value.path)).intentDigest).not.toBe(second);
   });
   it("lets operational settings change between runs", async () => {
@@ -161,7 +154,6 @@ describe("stack intent", () => {
     await value.writeConfig();
     value.env.MIN_FEE_A = "11";
     await writeFile(value.config.envFile, value.envText());
-    await writeFile(value.config.watcher.bearerFile, "b".repeat(64));
     expect((await loadStackConfig(value.path)).intentDigest).toBe(first);
   });
 });
@@ -187,18 +179,8 @@ it("permits measured profiles to be corrected before signing while binding the s
     first.intentDigest,
   );
 });
-it("rejects failover, wrong Compose ports and invalid wallet seeds before spending", async () => {
+it("rejects invalid wallet seeds before spending", async () => {
   const value = await fixture();
-  value.env.L1_PROVIDER_FAILOVER = "remote";
-  await writeFile(value.config.envFile, value.envText());
-  await expect(loadStackConfig(value.path)).rejects.toThrow("no failover");
-  delete value.env.L1_PROVIDER_FAILOVER;
-  value.env.L1_KUPO_KEY = "http://127.0.0.1:9999";
-  await writeFile(value.config.envFile, value.envText());
-  await expect(loadStackConfig(value.path)).rejects.toThrow(
-    "Compose provider port",
-  );
-  value.env.L1_KUPO_KEY = "http://127.0.0.1:1442";
   value.env[value.config.wallets.user!.seedEnv] = "invalid wallet words";
   await writeFile(value.config.envFile, value.envText());
   await expect(loadStackConfig(value.path)).rejects.toThrow(
@@ -236,17 +218,6 @@ it("refuses duplicate committee keys, governed threshold violations and malforme
   await expect(
     configureStackCommittee(value.config, value.env),
   ).rejects.toThrow("Invalid DA owner configuration");
-});
-
-it("accepts L1_PROVIDER_FAILOVER written as off", async () => {
-  for (const off of ["false", "", " FALSE "]) {
-    const value = await fixture();
-    value.env.L1_PROVIDER_FAILOVER = off;
-    await writeFile(value.config.envFile, value.envText());
-    await expect(loadStackConfig(value.path)).resolves.toHaveProperty(
-      "intentDigest",
-    );
-  }
 });
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;

@@ -3,12 +3,14 @@ import { Effect, Metric, Option } from "effect";
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { publishMempoolLedgerDelta } from "../services/globals.js";
 import { Database, Globals } from "../services/index.js";
+import type { UnwrittenHold } from "../services/intent-journal.holds.js";
 import type {
   NativeMpfGenerationHandle,
   NativeMpfOwnerService,
   PersistedNativeMpfReplay,
 } from "../services/mpf-native-owner/index.js";
 import {
+  type IntentRefusalHoldsNotice,
   type MempoolLedgerRevertedNotice,
   type SerializedStateQueueUTxO,
   WorkerOutput,
@@ -108,14 +110,6 @@ export const resolveAuthoritativeLocalFinalizationPreflight = ({
       (!localFinalizationPending || availableLocalFinalizationBlock === ""),
   };
 };
-
-export const foreignTipReconciliationAwaitingGauge = Metric.gauge(
-  "foreign_tip_reconciliation_awaiting",
-  {
-    description:
-      "Number of durable foreign-tip evidence windows still blocking commit reconciliation",
-  },
-);
 
 export const BLOCK_COMMITMENT_DUE_WORK_KIND =
   "commit_scheduler_refresh" as const;
@@ -278,7 +272,8 @@ export const publishFullMempoolLedgerReload = (
 export type CommitWorkerMessage =
   | WorkerOutput
   | MempoolLedgerRevertedNotice
-  | CommitDaFrameNotice;
+  | CommitDaFrameNotice
+  | IntentRefusalHoldsNotice;
 
 /**
  * Applies a notice the commit worker posts while it still runs and returns
@@ -288,13 +283,20 @@ export type CommitWorkerMessage =
  * reloads the cache from the durable table. A DA frame notice raises or
  * clears the commit DA frame liveness reason; the worker's output never does,
  * because a "nothing to commit" output also ends a tick whose step-down
- * dropped every transaction from an over-frame ledger.
+ * dropped every transaction from an over-frame ledger. A notice of refusal
+ * holds the worker could not write goes to `adoptRefusalHolds` (the node
+ * journal's `adopt`), which names them on `/readyz` and writes them.
  */
 export const takeCommitWorkerOutput = (
   globals: Globals,
   message: CommitWorkerMessage,
   deltaLogMax: number,
+  adoptRefusalHolds?: (holds: readonly UnwrittenHold[]) => void,
 ): WorkerOutput | undefined => {
+  if (message.type === "IntentRefusalHoldsNotice") {
+    adoptRefusalHolds?.(message.holds);
+    return undefined;
+  }
   if (message.type === "CommitDaFrameNotice") {
     Effect.runSync(applyCommitDaFrameNotice(globals, message));
     return undefined;

@@ -15,13 +15,21 @@ import {
   NATIVE_MPF_RPC_SCHEMA,
   type NativeMpfApplyResult,
   type NativeMpfCanonicalRootRecovery,
+  type NativeMpfFullIndexHealth,
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerDiagnostics,
   type NativeMpfOwnerService,
+  type NativeMpfPromotionIndexCapExceeded,
   NativeMpfRpcKind,
   type PersistedNativeMpfReplay,
 } from "./protocol.js";
 import { assertStoredNode } from "./service.encode-stored-node.js";
+import {
+  candidateFullIndexSize,
+  type FullIndexSize,
+  fullIndexSizeOf,
+  promotionIndexCapBreach,
+} from "./service.full-index-accounting.js";
 import {
   assertPinnedOwnerBinary,
   NativeChildRpc,
@@ -46,6 +54,7 @@ import {
   buildOrReadFullIndex,
   keyNibbles,
   parsePromotionRecords,
+  restoreIndexRefusal,
 } from "./service.parse-promotion-records.js";
 import {
   type NativeOwnerRestartHealth,
@@ -71,12 +80,14 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   private restoration: Promise<void> | undefined;
   private recoveryFailure: Error | undefined;
   private lastChildError: Error | undefined;
+  private promotionRefusal: NativeMpfPromotionIndexCapExceeded | undefined;
 
   private constructor(
     private readonly db: Level<string, StoredValue>,
     private rpc: NativeChildRpc,
     private readonly binarySha256: string,
     private durableRoot: string,
+    private fullIndexSize: FullIndexSize,
     private readonly options: NormalizedNativeMpfOwnerServiceOptions,
   ) {
     this.restartPolicy = new NativeOwnerRestartPolicy(options);
@@ -115,6 +126,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         rpc,
         normalized.binarySha256,
         marker,
+        fullIndexSizeOf(fullIndex),
         normalized,
       );
       service.installFailureHandler(rpc);
@@ -298,6 +310,21 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         handle.baseRoot,
         records,
       );
+      // The next start loads the durable root under the full-index caps, so a
+      // root over either is refused here, with nothing written.
+      const candidateSize = await candidateFullIndexSize({
+        db: this.db,
+        baseRoot: handle.baseRoot,
+        base: this.fullIndexSize,
+        candidateRoot,
+        records,
+      });
+      const breach = promotionIndexCapBreach(candidateRoot, candidateSize);
+      if (breach !== undefined) {
+        this.promotionRefusal = breach;
+        await this.discard(handle).catch(() => undefined);
+        throw breach;
+      }
       await this.options.faultInjectionForTests?.("before_promotion_batch");
       await this.db.batch([
         ...records.map((record) => ({
@@ -319,6 +346,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         throw new Error("Native MPF PromotionCommitted root mismatch");
       }
       this.durableRoot = candidateRoot;
+      this.fullIndexSize = candidateSize;
+      this.promotionRefusal = undefined;
       this.workerGenerationLeases.delete(this.generationKey(handle));
     });
   }
@@ -498,18 +527,15 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     // Never use a sidecar as authority for a different canonical root. Read the
     // retained content-addressed closure, then let the pinned native loader
     // verify every hash, path and child before changing the durable marker.
-    // A target whose closure is not fully retained is refused here, before any
-    // marker change: restoring onto a partial trie would commit on a wrong base.
+    // A target that cannot be loaded is refused here by cause, before any marker
+    // change: restoring onto a partial trie would commit on a wrong base.
     const fullIndex = await buildOrReadFullIndex({
       db: this.db,
       marker: plan.targetRoot,
       options: { ...this.options, sidecarPath: undefined },
       binarySha256: this.binarySha256,
     }).catch((cause: unknown) => {
-      throw new Error(
-        `Native MPF canonical recovery target root ${plan.targetRoot} is not retained in full; refusing to restore`,
-        { cause },
-      );
+      throw restoreIndexRefusal(plan.targetRoot, cause);
     });
     let replacement: NativeChildRpc | undefined;
     let committed = false;
@@ -545,6 +571,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       );
       this.rpc = replacement;
       this.durableRoot = plan.targetRoot;
+      this.fullIndexSize = fullIndexSizeOf(fullIndex);
+      this.promotionRefusal = undefined;
       this.workerGenerationLeases.clear();
       this.childRestarts += 1;
       this.installFailureHandler(replacement);
@@ -559,12 +587,11 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     }
   }
 
-  /** Why every operation refuses right now, or undefined: failed child
-   * restarts have exhausted the window (see `NativeOwnerRestartPolicy`), or a
-   * committed canonical recovery has not been installed yet. Neither is
-   * terminal: each call also starts a restart that is due, which loads the
-   * child from the durable root marker exactly as a process start does, and a
-   * restart that succeeds clears both. */
+  /** Why every operation refuses right now, or undefined: the owner holds
+   * until the node restarts (`NativeOwnerRestartPolicy`), or a committed
+   * canonical recovery is not installed yet. Each call also starts a restart
+   * that is due, which loads the child from the durable root marker as a
+   * process start does; one that succeeds clears a pending recovery. */
   public terminalFailure(): Error | undefined {
     this.resumeRestart();
     return this.refusal();
@@ -574,9 +601,16 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     return this.restartPolicy.health();
   }
 
+  /** The durable root's full-index size and the promotion last refused over
+   * a full-index cap, which a later promotion or restore that succeeds
+   * clears. */
+  public fullIndexHealth(): NativeMpfFullIndexHealth {
+    return { ...this.fullIndexSize, promotionRefusal: this.promotionRefusal };
+  }
+
   private refusal(): Error | undefined {
-    const exhaustion = this.restartPolicy.exhaustion();
-    if (exhaustion !== undefined) return exhaustion;
+    const held = this.restartPolicy.held();
+    if (held !== undefined) return held;
     if (this.recoveryFailure !== undefined)
       return new Error(
         "Native MPF canonical recovery is not installed yet; the owner restarts from its durable root",
@@ -587,14 +621,14 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
 
   /** Starts a child restart from the durable root when one is due: the child
    * is gone or a committed recovery was not installed, and neither a restart,
-   * a restoration nor an exhausted window is in the way. */
+   * a restoration nor a hold is in the way. */
   private resumeRestart(): void {
     if (
       this.closing ||
       this.restartPromise !== undefined ||
       this.restoration !== undefined ||
       (this.recoveryFailure === undefined && !this.rpc.isClosed) ||
-      this.restartPolicy.exhaustion() !== undefined
+      this.restartPolicy.held() !== undefined
     )
       return;
     void this.scheduleRestart().catch(() => undefined);
@@ -672,20 +706,21 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     rpc.setFailureHandler((error) => {
       this.lastChildError = error;
       this.workerGenerationLeases.clear();
+      if (this.restartPolicy.recordFailure(error, "death")) return;
       if (this.restoration === undefined && this.recoveryFailure === undefined)
         void this.scheduleRestart().catch(() => undefined);
     });
   }
 
   /** Restarts the child from the durable root marker after the policy's
-   * backoff; refused while failed restarts exhaust the window. */
+   * backoff; refused once the owner holds. */
   private scheduleRestart(): Promise<void> {
     if (this.closing) {
       return Promise.reject(new Error("Native MPF owner service is closing"));
     }
     if (this.restartPromise !== undefined) return this.restartPromise;
-    const exhaustion = this.restartPolicy.exhaustion();
-    if (exhaustion !== undefined) return Promise.reject(exhaustion);
+    const held = this.restartPolicy.held();
+    if (held !== undefined) return Promise.reject(held);
     const delayMs = this.restartPolicy.startRestart();
     // A close during the backoff ends the wait; it must not start a child.
     const restart = this.restartPolicy.wait(delayMs).then(() => {
@@ -698,7 +733,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     this.restartPromise = restart;
     void restart.then(
       () => {
-        this.restartPolicy.recordSuccess();
+        this.restartPolicy.recordStarted();
         if (this.restartPromise === restart) this.restartPromise = undefined;
       },
       (restartError: unknown) => {
@@ -706,7 +741,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           restartError instanceof Error
             ? restartError
             : new Error(String(restartError));
-        this.restartPolicy.recordFailure(this.lastChildError);
+        this.restartPolicy.recordFailure(this.lastChildError, "restart");
         if (this.restartPromise === restart) this.restartPromise = undefined;
       },
     );
@@ -737,6 +772,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     }
     this.rpc = rpc;
     this.durableRoot = marker;
+    this.fullIndexSize = fullIndexSizeOf(fullIndex);
     this.workerGenerationLeases.clear();
     this.recoveryFailure = undefined;
     this.childRestarts += 1;

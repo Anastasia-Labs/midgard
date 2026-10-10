@@ -27,6 +27,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { failWith500 } from "./listen-response.js";
 import {
   getBlockHandler,
@@ -133,6 +134,7 @@ export const buildListenRouter = (
   | SqlClient
   | HttpServerRequest.HttpServerRequest
   | Globals
+  | IntentJournal
 > =>
   HttpRouter.empty
     .pipe(

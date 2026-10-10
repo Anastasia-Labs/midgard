@@ -10,8 +10,8 @@ vi.mock("../src/devnet-stack/identities.js", () => ({ walletInfos: vi.fn() }));
 vi.mock("../src/devnet-stack/watcher.js", () => ({
   watcherServiceSpecs: () => [],
 }));
-vi.mock("../src/devnet-stack/history-pin.js", () => ({
-  recordedHistoryGenesisPin: () => ({}),
+vi.mock("../src/devnet-stack/deployment-origin.js", () => ({
+  recordedL1Origin: () => ({}),
 }));
 vi.mock("../src/devnet-stack/reserve-float-chain.js", () => ({
   enduranceReasons: vi.fn(),
@@ -79,7 +79,7 @@ const context: DeployContext = {
   artifacts: {
     nativeOwnerBinary: "/synthetic/owner",
     nativeOwnerSha256: "synthetic",
-    chainSyncBinary: "/synthetic/chain-sync",
+    transportBinary: "/synthetic/chain-sync",
   },
 };
 

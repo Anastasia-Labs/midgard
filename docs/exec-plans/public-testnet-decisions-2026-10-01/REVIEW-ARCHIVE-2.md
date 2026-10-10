@@ -173,7 +173,7 @@ concurrently with the parent preflight/build work. No package build was launched
    returned EPERM. This is environment access failure, not a passed doctor.
 2. `PATH=/tmp/midgard-toolchain-20261001:$PATH env MALLOC_MMAP_THRESHOLD_=131072 MIDGARD_WATCHER_FORKS=2 pnpm --dir demo/midgard-watcher exec vitest run tests/storage/replay-transcript-store.test.ts tests/storage/replay-transcript-classification-retirement.test.ts tests/runtime/replay-transcript-retirement.test.ts tests/fault-proofs/fault-proof-supervisor-runner-completion.test.ts tests/runtime/deployment-identity.test.ts --reporter=default --reporter=json --outputFile=/tmp/archive-pass2-focused.json`
    — native escalation, exit 0; 5 files, 48 collected/passed, no skipped tests,
-   23.03s. This run predates off-grid/depth/absence/completed-recovery fixes.
+   23.03s. This run predates off-grid/depth/absence/completed-recovery fixes. <!-- doc-links:historical -->
 3. `PATH=/tmp/midgard-toolchain-20261001:$PATH env MALLOC_MMAP_THRESHOLD_=131072 MIDGARD_WATCHER_FORKS=2 pnpm --dir demo/midgard-watcher exec vitest run tests/fault-proofs/fault-proof-progress-authority.test.ts tests/fault-proofs/fault-proof-supervisor-completed-resume.test.ts tests/fault-proofs/fault-proof-objective-progress.test.ts tests/fault-proofs/fault-proof-execution.test.ts --reporter=default --reporter=json --outputFile=/tmp/archive-pass2-recovery.json`
    — native escalation, exit 1; 4 files, 39 collected, 38 passed, 1 failed,
    no skipped tests, 44.30s. The coalesced-generation test at objective-progress
@@ -194,12 +194,12 @@ concurrently with the parent preflight/build work. No package build was launched
    a synthetic block hash across two block numbers: refresh correctly did not
    re-query that same hash and then refused the mismatched block number. The
    fixture was changed to give each checkpoint a distinct hash; no production
-   exact-point gate was relaxed.
+   exact-point gate was relaxed. <!-- doc-links:historical -->
 6. `PATH=/tmp/midgard-toolchain-20261001:$PATH env MALLOC_MMAP_THRESHOLD_=131072 MIDGARD_WATCHER_FORKS=2 pnpm --dir demo/midgard-watcher exec vitest run tests/storage/replay-transcript-store.test.ts tests/storage/replay-transcript-classification-retirement.test.ts tests/runtime/replay-transcript-retirement.test.ts tests/fault-proofs/fault-proof-objective-progress.test.ts --reporter=default --reporter=json --outputFile=/tmp/archive-pass2-final-rerun.json`
    — native escalation, exit 0; 4 files, 39 collected/passed, no skipped tests,
    54.22s. All changed fixture/objective tests were rerun after the correction.
    Together with the five unaffected files in run 5 this independently covers
-   all 95 final focused tests; this is not a claimed single 95-test green run.
+   all 95 final focused tests; this is not a claimed single 95-test green run. <!-- doc-links:historical -->
 7. `PATH=/tmp/midgard-toolchain-20261001:$PATH node --version` and
    `PATH=/tmp/midgard-toolchain-20261001:$PATH pnpm --version`
    — each exit 0; observed Node v22.22.2 and pnpm 9.15.4.

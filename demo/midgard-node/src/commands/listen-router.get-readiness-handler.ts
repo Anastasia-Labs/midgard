@@ -3,15 +3,12 @@ import "./listen-router.post-tx-status-batch-handler.js";
 import { HttpServerResponse } from "@effect/platform";
 import { Effect, Option, Ref } from "effect";
 
-import * as HistoryAuthority from "../database/eventHistoryAuthority.js";
-import {
-  DaPayloadTerminalOutcomesDB,
-  StateQueueMutationLeasesDB,
-} from "../database/index.js";
+import { StateQueueMutationLeasesDB } from "../database/index.js";
 import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js";
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness-probe.js";
-import { localOgmiosSubmitSlotEvidence } from "../local-ogmios-slot.js";
-import { foreignBaseVerificationForAuthority } from "../services/foreign-base-verification.js";
+import { submitSlotEvidence } from "../l1-provider-view.js";
+import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
+import { followerWriteGateReasons } from "../services/follower-write-gate.local.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   ValidationPool,
@@ -22,7 +19,12 @@ import {
   Lucid,
   NodeConfig,
 } from "../services/index.js";
+import { l1FollowerReadiness } from "../services/l1-follower.readiness.js";
 import { activeLivenessReasons } from "../services/liveness-halt.js";
+import {
+  fullIndexHealthOf,
+  fullIndexNearCapDetails,
+} from "../services/mpf-native-owner/service.full-index-accounting.js";
 import { settlementReadinessReason } from "../services/settlement-readiness.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
@@ -30,7 +32,9 @@ import {
 } from "../transactions/state-queue/merge-readiness.js";
 import { runL1ProviderPreflight } from "./l1-provider-preflight.js";
 import {
+  L1_TRANSPORT_UNREADY,
   l1ProviderReadiness,
+  ownLandedForcedOrphanDetail,
   pendingFinalizationAgeDetail,
   readinessDatabaseError,
   readinessL1ProviderUnhealthyAfterMs,
@@ -65,9 +69,7 @@ export const getReadinessHandler = Effect.gen(function* () {
 
   const databaseState = yield* Effect.either(
     readReadinessDatabaseState(
-      DaPayloadTerminalOutcomesDB.deploymentIdentityDigestOf(
-        yield* ContractDeploymentIdentity,
-      ),
+      deploymentIdentityDigestOf(yield* ContractDeploymentIdentity),
     ),
   );
   if (databaseState._tag === "Left") {
@@ -87,19 +89,11 @@ export const getReadinessHandler = Effect.gen(function* () {
     durableAdmissionOldestAgeMs,
     unfinishedMutationJobs,
     daPublicationConflicts,
-    awaitingForeignTipReconciliations,
     mempoolTxCount,
     leaseInspection,
     journalAges,
-    foreignVerificationAuthority,
+    ownLandedForcedOrphans,
   } = databaseState.right;
-  const foreignBaseVerification = foreignBaseVerificationForAuthority(
-    yield* Ref.get(globals.FOREIGN_BASE_VERIFICATION),
-    Option.isSome(foreignVerificationAuthority) &&
-      foreignVerificationAuthority.value.state === "ready"
-      ? HistoryAuthority.tokenFromRow(foreignVerificationAuthority.value)
-      : undefined,
-  );
   const nowMillis = Date.now();
   const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
   const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
@@ -133,7 +127,21 @@ export const getReadinessHandler = Effect.gen(function* () {
       ? 0
       : nowMillis - unconfirmedSubmittedBlockSinceMs;
 
-  const lucidService = yield* Effect.serviceOption(Lucid);
+  const lucidService = Option.getOrUndefined(
+    yield* Effect.serviceOption(Lucid),
+  );
+  // The live node's L1 access: its transport and its ledger-tip read. A
+  // hand-built service without them reads as an access not yet open.
+  const l1Access =
+    lucidService?.l1TransportReadiness === undefined ||
+    lucidService.readSubmitSlotSnapshotOnce === undefined ||
+    lucidService.l1Endpoint === undefined
+      ? undefined
+      : {
+          endpoint: lucidService.l1Endpoint,
+          transportReadiness: lucidService.l1TransportReadiness,
+          readSubmitSlotSnapshotOnce: lucidService.readSubmitSlotSnapshotOnce,
+        };
   const providerHealthBefore = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
   const cachedProviderEvidenceIsFresh = l1ProviderReadinessEvidenceIsFresh({
     evidence: providerHealthBefore,
@@ -156,21 +164,23 @@ export const getReadinessHandler = Effect.gen(function* () {
     : yield* runExactGatedDirectL1ProviderProbe({
         globals,
         directProbe: runBoundedDirectL1ProviderPreflight({
-          runPreflight: (signal) =>
-            runL1ProviderPreflight({
+          runPreflight: async (signal) => {
+            if (l1Access === undefined)
+              throw new Error(
+                "The node's L1 access is not open yet (the Lucid service is starting)",
+              );
+            return runL1ProviderPreflight({
               config: {
-                L1_PROVIDER: nodeConfig.L1_PROVIDER,
-                L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: providerProbeTimeoutMs,
-                L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS:
-                  nodeConfig.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
-                L1_OGMIOS_KEY: nodeConfig.L1_OGMIOS_KEY,
-                L1_KUPO_KEY: nodeConfig.L1_KUPO_KEY,
-                NETWORK: nodeConfig.NETWORK,
-                L1_OGMIOS_TIP_MAX_AGE_MS:
-                  Option.getOrUndefined(lucidService)?.ogmiosTipMaxAgeMs,
+                network: nodeConfig.NETWORK,
+                endpoint: l1Access.endpoint,
+                timeoutMs: providerProbeTimeoutMs,
+                transportReadiness: l1Access.transportReadiness,
+                readSubmitSlotSnapshot: () =>
+                  Effect.runPromise(l1Access.readSubmitSlotSnapshotOnce()),
               },
               signal,
-            }),
+            });
+          },
           timeoutMs: providerProbeTimeoutMs,
         }),
         now: Date.now,
@@ -210,9 +220,7 @@ export const getReadinessHandler = Effect.gen(function* () {
     unresolvedBlockSubmissionAgeMs,
     maxUnresolvedBlockSubmissionAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
     dbHealthy: true,
-    awaitingForeignTipReconciliations,
     operatorMembership,
-    foreignBaseVerification,
     validationPool: {
       configuredWorkers: validationPool.poolSize,
       liveWorkers: validationPoolStats.liveWorkers,
@@ -242,26 +250,17 @@ export const getReadinessHandler = Effect.gen(function* () {
   // only a settlement worker that keeps dying does.
   const settlementReason = settlementReadinessReason(settlement, Date.now());
   if (settlementReason !== undefined) reasons.push(settlementReason);
-  // Informational: pending signed-header recovery holding history retention
-  // more than the rollback horizon back grows the journal until it resolves.
-  const historyOwner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
-  const eventHistoryRetentionHold =
-    historyOwner === undefined
-      ? null
-      : ((yield* historyOwner.retentionHold) ?? null);
-  // The history gate: closed while recovering, and named when an open gate's
-  // follower falls further behind the source tip than it may.
-  const eventHistoryFrontier =
-    historyOwner === undefined ? null : yield* historyOwner.frontier;
-  if (eventHistoryFrontier !== null) {
-    if (!eventHistoryFrontier.ready) reasons.push("history_owner_not_ready");
-    else if (
-      eventHistoryFrontier.lagBlocks > eventHistoryFrontier.maximumLagBlocks
-    )
-      reasons.push(
-        `history_follower_lagging:${eventHistoryFrontier.lagBlocks}:${eventHistoryFrontier.maximumLagBlocks}`,
-      );
-  }
+  // The follower write gate (plan §8.1): unready until this process's
+  // follower-change driver published a view, and while its recompute is
+  // under way or held (the driver's holds below name why).
+  const gateLocal = yield* Ref.get(globals.FOLLOWER_WRITE_GATE);
+  for (const reason of followerWriteGateReasons(gateLocal))
+    if (!reasons.includes(reason)) reasons.push(reason);
+  const followerWriteGate = {
+    epoch: gateLocal.epoch ?? null,
+    recomputing: gateLocal.recomputing,
+    producers: gateLocal.producers.size,
+  };
   const nativeMpfOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
   const nativeMpfDiagnostics =
     nativeMpfOwner === undefined
@@ -277,7 +276,12 @@ export const getReadinessHandler = Effect.gen(function* () {
   } else if (nativeMpfDiagnostics?._tag === "Left") {
     reasons.push("native_mpf_owner_unhealthy");
   }
-  const details: string[] = [];
+  // The L1 follower (N1): every named reason of the follow loop and of the
+  // follower-change driver fails readiness; the process stays up.
+  const l1Follower = l1FollowerReadiness(yield* Ref.get(globals.L1_FOLLOWER));
+  for (const reason of l1Follower.reasons)
+    if (!reasons.includes(reason)) reasons.push(reason);
+  const details: string[] = [...l1Follower.details];
   const daFramePressure = yield* Ref.get(globals.COMMIT_DA_FRAME_PRESSURE);
   const commitDaFramePressure =
     daFramePressure === null
@@ -298,21 +302,36 @@ export const getReadinessHandler = Effect.gen(function* () {
     }
   }
 
-  // No membership check has authenticated yet (or none can): duties run, so
-  // this is reported but leaves the node ready. Removal is a liveness reason.
+  // The operator set has not shown this operator in any state yet (or it
+  // cannot read the key): duties run, so this is reported but leaves the
+  // node ready. Removal is a liveness reason (`operator_removed`).
   if (operatorMembership === "unknown")
     details.push("operator_membership_unavailable");
+  // The live root's full index is past the warning fraction of a full-index
+  // cap: promotions still succeed, but one over the cap will be refused.
+  const nativeMpfFullIndex =
+    nativeMpfOwner === undefined
+      ? undefined
+      : fullIndexHealthOf(nativeMpfOwner);
+  if (nativeMpfFullIndex !== undefined)
+    details.push(...fullIndexNearCapDetails(nativeMpfFullIndex));
   const providerReadiness = l1ProviderReadiness({
     healthy: providerProbe.healthy,
     lastSuccessAtMs: providerHealthAfter.lastSuccessAtMs,
     lastExactSuccessAtMs: providerHealthAfter.lastExactSuccessAtMs,
     nowMs: providerEvidenceObservedAtMs,
     unhealthyAfterMs: readinessL1ProviderUnhealthyAfterMs(
-      Option.getOrUndefined(lucidService)?.ogmiosTipMaxAgeMs,
+      nodeConfig.L1_NODE_BEHIND_MAX_MS,
     ),
   });
   if (providerReadiness.reason !== undefined)
     reasons.push(providerReadiness.reason);
+  // The local node transport the node's Lucid reads and submits through: an
+  // unreachable node or sidecar is named at once; the process stays up and
+  // the transport's supervisor retries.
+  const l1Transport = l1Access?.transportReadiness();
+  if (l1Transport !== undefined && !l1Transport.ready)
+    reasons.push(`${L1_TRANSPORT_UNREADY}:${l1Transport.reason}`);
   // A raised reason holds the fibers its source halts for as long as it is
   // raised, possibly for good, while every heartbeat stays fresh.
   const livenessReasons = yield* activeLivenessReasons(globals);
@@ -325,6 +344,10 @@ export const getReadinessHandler = Effect.gen(function* () {
   );
   if (pendingFinalizationDetail !== undefined)
     details.push(pendingFinalizationDetail);
+  const forcedOrphanDetail = ownLandedForcedOrphanDetail(
+    ownLandedForcedOrphans,
+  );
+  if (forcedOrphanDetail !== undefined) details.push(forcedOrphanDetail);
   if (
     durableAdmissionOldestAgeMs >
     nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS
@@ -368,16 +391,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     mempoolTxCount: mempoolTxCount.toString(),
     unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
     daPublicationConflicts,
-    awaitingForeignTipReconciliations,
-    foreignBaseVerification:
-      foreignBaseVerification.status === "unobserved"
-        ? foreignBaseVerification
-        : {
-            status: foreignBaseVerification.status,
-            foreignHeaderHash: foreignBaseVerification.foreignHeaderHash,
-            reason: foreignBaseVerification.reason,
-            generation: foreignBaseVerification.scope.generation,
-          },
     unresolvedBlockSubmissionAgeMs,
     providerQueryHealthy: providerProbe.healthy,
     providerQueryMode: providerProbe.mode,
@@ -394,11 +407,15 @@ export const getReadinessHandler = Effect.gen(function* () {
         ? null
         : Math.max(0, Date.now() - providerHealthAfter.lastExactSuccessAtMs),
     providerQueryError: providerProbe.error,
-    localOgmiosSlot:
-      providerProbe.ogmiosSlot !== null
+    l1Transport:
+      l1Access === undefined
+        ? null
+        : { endpoint: l1Access.endpoint, readiness: l1Transport ?? null },
+    localLedgerSlot:
+      providerProbe.ledgerSlot !== null
         ? {
-            ...providerProbe.ogmiosSlot,
-            evidence: localOgmiosSubmitSlotEvidence(providerProbe.ogmiosSlot),
+            ...providerProbe.ledgerSlot,
+            evidence: submitSlotEvidence(providerProbe.ledgerSlot),
             mode: providerProbe.mode,
             evidenceAgeMs: providerProbe.evidenceAgeMs,
           }
@@ -425,8 +442,8 @@ export const getReadinessHandler = Effect.gen(function* () {
                 nativeMpfDiagnostics.right.ownerEpoch,
               ).toString("hex"),
             },
-    eventHistoryRetentionHold,
-    eventHistoryFrontier,
+    followerWriteGate,
+    l1Follower: l1Follower.report,
     livenessReasons,
     commitDaFramePressure,
     mergeReadiness,

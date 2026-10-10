@@ -1,10 +1,27 @@
+import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { Effect, Option } from "effect";
 import { describe, expect } from "vitest";
 
 import { WithdrawalsDB } from "../../src/database/index.js";
 import { resolveIncludedWithdrawalEntriesForWindow } from "../../src/mpf/event-window.js";
+import { insertWithdrawals } from "../helpers/event-rows.js";
 import { isolatedDb, makeHistoryWithdrawalEntry } from "./fixtures.js";
+
+/** A withdrawal reopened from `header`, as a disposed block's journal
+ * leaves it (`disposeJournals`): unclassified, awaiting, its revision
+ * bumped. */
+const reopenFrom = (id: Buffer, header: Buffer) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE withdrawal_utxos d SET status = 'awaiting',
+      projected_header_hash = NULL, reopened_from_header_hash = ${header},
+      validity = NULL, validity_detail = '{}'::jsonb,
+      settlement_event_info = NULL,
+      classification_revision = d.classification_revision + 1,
+      updated_at = NOW()
+      WHERE d.event_id = ${id}`;
+  });
 
 export const registerWithdrawalRecoveryTests = () => {
   describe("withdrawal correction classification recovery", () => {
@@ -24,15 +41,12 @@ export const registerWithdrawalRecoveryTests = () => {
               validity: WithdrawalsDB.Validity.WithdrawalIsValid,
               validityDetail: { checked: { z: 1, a: 2 } },
             };
-            yield* WithdrawalsDB.insertEntries([entry]);
+            yield* insertWithdrawals([entry]);
             yield* WithdrawalsDB.setSettlementInfoForEventIds([original]);
             yield* WithdrawalsDB.markAwaitingAsProjected([original]);
             yield* WithdrawalsDB.markProjectedByEventIds([original], header);
             yield* WithdrawalsDB.markFinalizedByEventIds([id], header);
-            yield* WithdrawalsDB.reopenAfterStateQueueCorrectionByEventIds(
-              [id],
-              header,
-            );
+            yield* reopenFrom(id, header);
             let row = Option.getOrThrow(
               yield* WithdrawalsDB.retrieveByEventId(id),
             );
@@ -125,7 +139,7 @@ export const registerWithdrawalRecoveryTests = () => {
               validity: WithdrawalsDB.Validity.WithdrawalIsValid,
               validityDetail: {},
             };
-            yield* WithdrawalsDB.insertEntries([entry]);
+            yield* insertWithdrawals([entry]);
             expect(
               (yield* Effect.either(
                 resolveIncludedWithdrawalEntriesForWindow({
@@ -137,10 +151,7 @@ export const registerWithdrawalRecoveryTests = () => {
             yield* WithdrawalsDB.setSettlementInfoForEventIds([assignment]);
             yield* WithdrawalsDB.markAwaitingAsProjected([assignment]);
             yield* WithdrawalsDB.markProjectedByEventIds([assignment], header);
-            yield* WithdrawalsDB.reopenAfterStateQueueCorrectionByEventIds(
-              [id],
-              header,
-            );
+            yield* reopenFrom(id, header);
             const next = { ...assignment, expectedClassificationRevision: 1 };
             yield* WithdrawalsDB.setSettlementInfoForEventIds([next]);
             yield* WithdrawalsDB.markAwaitingAsProjected([next]);

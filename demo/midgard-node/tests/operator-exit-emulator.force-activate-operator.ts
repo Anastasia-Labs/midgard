@@ -14,7 +14,6 @@ import {
   alignMs,
   completeTx,
   fetchDirectorySnapshot,
-  resyncWallet,
   submitSigned,
 } from "./operator-exit-emulator.build-retire-tx.js";
 
@@ -34,7 +33,6 @@ export const forceRegisterOperator = async ({
   readonly operatorKeyHash: string;
 }): Promise<{ readonly nodeKey: string; readonly txHash: string }> => {
   const { contracts, emulator, scriptRefs } = fixture;
-  await resyncWallet(operatorLucid);
   const snapshot = await fetchDirectorySnapshot(operatorLucid, contracts);
   const registeredRootNode = SDK.findRootNode(snapshot.registered);
   const activeNotMemberWitness = snapshot.active.find(({ datum }) =>
@@ -126,7 +124,6 @@ export const forceActivateOperator = async ({
   readonly registeredNodeKey: string;
 }): Promise<string> => {
   const { contracts, emulator, scriptRefs } = fixture;
-  await resyncWallet(operatorLucid);
   const snapshot = await fetchDirectorySnapshot(operatorLucid, contracts);
   const registeredNode = SDK.findNodeByKey(
     snapshot.registered,
@@ -222,7 +219,6 @@ export const slashDuplicateOperator = async ({
   readonly overrides?: Partial<SDK.SlashDuplicateOperatorTxConfig>;
 }): Promise<{ readonly txHash: string; readonly fee: bigint }> => {
   const { contracts, scriptRefs } = fixture;
-  await resyncWallet(submitterLucid);
   const snapshot = await fetchDirectorySnapshot(submitterLucid, contracts);
   const duplicateRegisteredNode = SDK.findNodeByKey(
     snapshot.registered,

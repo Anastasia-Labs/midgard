@@ -11,8 +11,8 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { fetchRetentionL1View } from "../fibers/retention-sweeper.js";
-import { ContractDeploymentIdentity } from "../services/index.js";
-import { parseNonNegativeIntegerOption } from "./cli-runtime.js";
+import { newestTerminalOutcome } from "../l1-queue-terminals/index.js";
+import { parseNonNegativeIntegerOption } from "./cli-options.js";
 
 /**
  * Executable retention deadline alert (GOAL_SPEC 9.4 / Q54).
@@ -194,28 +194,22 @@ export const retentionCheckExitCode = (result: RetentionCheckResult): number =>
   result.ok ? 0 : 1;
 
 /**
- * Reads every retained DA payload, its authenticated terminal outcome under
- * this deployment, and its place in the live L1 state queue, then evaluates.
+ * Reads every retained DA payload, the newest terminal outcome a landed tx
+ * gave its header (`node_l1_queue_terminals`), and its place in the landed
+ * L1 state queue, then evaluates.
  */
 export const retentionCheckProgram = (alertThresholdMs?: number) =>
   Effect.gen(function* () {
     const view = yield* fetchRetentionL1View;
-    const deploymentIdentity = yield* ContractDeploymentIdentity;
     const sql = yield* SqlClient.SqlClient;
-    const deploymentIdentityDigest =
-      deploymentIdentity.manifestId === undefined
-        ? null
-        : Buffer.from(deploymentIdentity.manifestId, "hex");
     const rows = yield* sql<{
       readonly header_hash: Buffer;
       readonly block_end_time: Date;
       readonly terminal_outcome: "merged" | "removed" | null;
     }>`
-      SELECT payload.header_hash, payload.block_end_time, terminal.terminal_outcome
-      FROM da_payloads payload
-      LEFT JOIN da_payload_terminal_outcomes terminal
-        ON terminal.header_hash = payload.header_hash
-       AND terminal.deployment_identity_digest = ${deploymentIdentityDigest}`;
+      SELECT payload.header_hash, payload.block_end_time,
+        ${newestTerminalOutcome(sql, "payload.header_hash")} AS terminal_outcome
+      FROM da_payloads payload`;
     const confirmedHeadHash = view.confirmedHeadHash.toString("hex");
     const liveQueueHeaderHashes = new Set(
       view.liveQueueHeaderHashes.map((hash) => hash.toString("hex")),

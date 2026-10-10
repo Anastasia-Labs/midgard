@@ -101,6 +101,7 @@ import { type ContinueLayout } from "./redeemers.js";
 import {
   deriveScriptSourcesItemSubmissionPlan,
   hasValidationAuxiliaryShape,
+  isSplitScriptSourcesItemRoute,
   requirePublishedValidationSemanticReferenceScriptUtxo,
   requireStagedOneStepArgument,
   requireValidationCekSemanticReferenceScriptUtxo,
@@ -965,6 +966,11 @@ export const submitValidationDisputeSemanticResolution = async ({
   const range = requireValidityRange(
     validityRange ?? validationDisputeValidityRange(Date.now()),
   );
+  const getStageValidityRange = () =>
+    refreshExpiredValidationDisputeValidityRange({
+      range,
+      currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
+    });
   const outputDatum = Data.to(
     {
       fraud_prover: inputDatum.fraud_prover,
@@ -1041,11 +1047,8 @@ export const submitValidationDisputeSemanticResolution = async ({
       auxiliary: staged.auxiliaryData,
       successorWorkWitnessCbor,
       awardDatum: outputDatum,
-      getValidityRange: () =>
-        refreshExpiredValidationDisputeValidityRange({
-          range,
-          currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
-        }),
+      getValidityRange: getStageValidityRange,
+      preSubmitBoundary,
     });
     const last = result.transactions.at(-1)!;
     return {
@@ -1104,11 +1107,8 @@ export const submitValidationDisputeSemanticResolution = async ({
       transition: staged.transitionData,
       step,
       awardDatum: outputDatum,
-      getValidityRange: () =>
-        refreshExpiredValidationDisputeValidityRange({
-          range,
-          currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
-        }),
+      getValidityRange: getStageValidityRange,
+      preSubmitBoundary,
     });
     const last = result.transactions.at(-1)!;
     return {
@@ -1125,14 +1125,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       stageTransactions: result.transactions,
     };
   }
-  const isSplitScriptSourcesStageOne =
-    resolverIndex === 8 &&
-    staged.semanticResolverIndex === 28 &&
-    hasValidationAuxiliaryShape(
-      staged.auxiliary,
-      VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
-    );
-  if (isSplitScriptSourcesStageOne) {
+  if (isSplitScriptSourcesItemRoute({ resolverIndex }, staged)) {
     if (proofItemReferenceUtxo !== undefined) {
       throw new Error(
         "ScriptSources split stage-one route does not accept a proof-item reference",

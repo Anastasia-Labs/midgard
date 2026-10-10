@@ -29,7 +29,6 @@ import {
   evaluateWatcherBlockReplayCandidates,
   WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
   WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT,
-  type WatcherBlockReplayEventAuthority,
   watcherBlockReplayPriorState,
   watcherBlockReplayRejectionProjection,
 } from "../../src/verification/block-replay.js";
@@ -38,23 +37,24 @@ import {
   CHAIN_POINT,
   type CommittedEffectGroup,
   committedStepsForEffects,
-  depositEffectFromLocal,
+  depositEffectFromOrigin,
   entries,
-  localEventAuthority,
-  localEventWindow,
+  type FixtureEventAuthority,
   nativeEffect,
-  publicEventFromLocal,
+  originEventAuthority,
+  originEventWindow,
+  publicEventFromOrigin,
   type PublicFixtureEvent,
   publicInput,
   type PublicReplayFixture,
   RULE_BUNDLE_COMMITMENT,
-  withdrawalEffectFromLocal,
+  withdrawalEffectFromOrigin,
 } from "../support/block-replay-public-fixture.js";
 import { userEventForcedOperatorVerdictForClassification } from "../support/user-event-forced-order-fixture.js";
 import {
   config,
   depositEvent,
-  depositLocal,
+  depositOrigin,
   FIXED_ADDRESS,
   FIXED_KEY,
   FIXED_TWO_TX_ROOTS,
@@ -62,21 +62,20 @@ import {
   FORCED_FLOW_INPUT,
   FORCED_FLOW_NATIVE,
   FORCED_INVALID_CASES,
-  forcedLocal,
-  forcedVariantLocal,
-  localAuthorities,
+  forcedOrigin,
+  forcedVariantOrigins,
   outputReference,
   replay,
   WITHDRAWAL_FLOW_INPUT,
   WITHDRAWAL_FLOW_NATIVE,
-  withdrawalLocal,
+  withdrawalOrigin,
 } from "./block-replay.registration.js";
 
 describe("W25 roots and deterministic replay", () => {
   it("replays a locally published Deposit before an L2 spend", async () => {
-    const local = depositLocal;
-    const event = publicEventFromLocal(local);
-    const effect = depositEffectFromLocal(local);
+    const origin = depositOrigin;
+    const event = publicEventFromOrigin(origin);
+    const effect = depositEffectFromOrigin(origin);
     const inserted = effect.operations[0];
     if (inserted === undefined || inserted.type !== "insert") {
       throw new Error("genuine deposit did not derive one canonical insert");
@@ -103,17 +102,16 @@ describe("W25 roots and deterministic replay", () => {
       },
     ];
     const steps = await committedStepsForEffects([], groups);
-    const authority = localEventAuthority({ event, local, effect });
     const fixture = await buildPublicReplayFixture({
       txCbors: [native.txCbor],
       events: [event],
       steps,
       priorState: [],
       postState: entries([[produced, inserted.outputCbor]]),
-      eventAuthorities: [authority],
-      eventWindow: localEventWindow(local),
-      ruleBundle: localAuthorities.ruleBundle,
+      eventAuthorities: [originEventAuthority({ event, origin, effect })],
+      eventWindow: originEventWindow(origin),
     });
+    const authority = fixture.eventAuthorities[0]!;
     const result = await evaluateWatcherBlockReplay(publicInput(fixture));
     expect(result.action).toBe("accept");
     expect(result.reasonCodes).toStrictEqual([]);
@@ -241,15 +239,15 @@ describe("W25 roots and deterministic replay", () => {
   });
 
   it("replays the committed withdrawal claim after an L2 transaction without settlement authority", async () => {
-    const local = withdrawalLocal;
-    const event = publicEventFromLocal(local);
-    const eventWindow = localEventWindow(local);
+    const origin = withdrawalOrigin;
+    const event = publicEventFromOrigin(origin);
+    const eventWindow = originEventWindow(origin);
     const l2Effect = nativeEffect({
       spent: [WITHDRAWAL_FLOW_INPUT],
       native: WITHDRAWAL_FLOW_NATIVE,
       outputs: [FLOW_OUTPUT],
     });
-    const effect = withdrawalEffectFromLocal(local, true);
+    const effect = withdrawalEffectFromOrigin(origin, true);
     const priorState = entries([[WITHDRAWAL_FLOW_INPUT, FLOW_OUTPUT]]);
     const groups: readonly CommittedEffectGroup[] = [
       {
@@ -264,7 +262,6 @@ describe("W25 roots and deterministic replay", () => {
       { eventKey: event.eventKey, phase: "Withdrawal", effect },
     ];
     const steps = await committedStepsForEffects(priorState, groups);
-    const authority = localEventAuthority({ event, local, effect });
     const fixture = await buildPublicReplayFixture({
       txCbors: [WITHDRAWAL_FLOW_NATIVE.txCbor],
       eventWindow,
@@ -272,8 +269,7 @@ describe("W25 roots and deterministic replay", () => {
       steps,
       priorState,
       postState: [],
-      eventAuthorities: [authority],
-      ruleBundle: localAuthorities.ruleBundle,
+      eventAuthorities: [originEventAuthority({ event, origin, effect })],
     });
     const result = await evaluateWatcherBlockReplay(publicInput(fixture));
     expect(result.action).toBe("accept");
@@ -324,10 +320,10 @@ describe("W25 roots and deterministic replay", () => {
       },
     ]);
 
-    const refundEvent = publicEventFromLocal(local, {
+    const refundEvent = publicEventFromOrigin(origin, {
       withdrawalValidity: "NonExistentWithdrawalUtxo",
     });
-    const refundEffect = withdrawalEffectFromLocal(local, false);
+    const refundEffect = withdrawalEffectFromOrigin(origin, false);
     const refundGroups: readonly CommittedEffectGroup[] = [
       groups[0]!,
       { eventKey: event.eventKey, phase: "Withdrawal", effect: refundEffect },
@@ -345,13 +341,12 @@ describe("W25 roots and deterministic replay", () => {
       priorState,
       postState: entries([[refundedProduced, FLOW_OUTPUT]]),
       eventAuthorities: [
-        localEventAuthority({
+        originEventAuthority({
           event: refundEvent,
-          local,
+          origin,
           effect: refundEffect,
         }),
       ],
-      ruleBundle: localAuthorities.ruleBundle,
     });
     const refund = await evaluateWatcherBlockReplay(publicInput(refundFixture));
     expect(refund).toMatchObject({ action: "accept", reasonCodes: [] });
@@ -424,9 +419,8 @@ describe("W25 roots and deterministic replay", () => {
   });
 
   it("replays a ForcedTransaction before a later L2 spend without stale-state batching", async () => {
-    const local = forcedLocal;
-    expect("terminalClassification" in local.event).toBe(false);
-    const event = publicEventFromLocal(local, {
+    const origin = forcedOrigin;
+    const event = publicEventFromOrigin(origin, {
       forcedNative: FORCED_FLOW_NATIVE,
     });
     const forcedProduced = outRefFromTxId(FORCED_FLOW_NATIVE.txId);
@@ -462,22 +456,23 @@ describe("W25 roots and deterministic replay", () => {
       },
     ];
     const steps = await committedStepsForEffects(priorState, groups);
-    const authority = localEventAuthority({
-      event,
-      local,
-      effect: forcedEffect,
-      forcedNative: FORCED_FLOW_NATIVE,
-    });
     const fixture = await buildPublicReplayFixture({
       txCbors: [laterNative.txCbor],
       events: [event],
       steps,
       priorState,
       postState: entries([[laterProduced, FLOW_OUTPUT]]),
-      eventAuthorities: [authority],
-      eventWindow: localEventWindow(local),
-      ruleBundle: localAuthorities.ruleBundle,
+      eventAuthorities: [
+        originEventAuthority({
+          event,
+          origin,
+          effect: forcedEffect,
+          forcedNative: FORCED_FLOW_NATIVE,
+        }),
+      ],
+      eventWindow: originEventWindow(origin),
     });
+    const authority = fixture.eventAuthorities[0]!;
     const result = await evaluateWatcherBlockReplay(publicInput(fixture));
     expect(result.action).toBe("accept");
     expect(result.reasonCodes).toStrictEqual([]);
@@ -621,7 +616,7 @@ describe("W25 roots and deterministic replay", () => {
         keyof typeof FORCED_INVALID_CASES,
         Readonly<{
           fixture: PublicReplayFixture;
-          authority: WatcherBlockReplayEventAuthority;
+          authority: FixtureEventAuthority;
           event: PublicFixtureEvent;
           result: Awaited<ReturnType<typeof evaluateWatcherBlockReplay>>;
         }>
@@ -636,8 +631,8 @@ describe("W25 roots and deterministic replay", () => {
       expect(
         decodeMidgardForcedTxFullFromCanonicalCbor(invalidCase.native.txCbor),
       ).not.toHaveProperty("validity");
-      const invalidLocal = forcedVariantLocal[category];
-      const invalidEvent = publicEventFromLocal(invalidLocal, {
+      const invalidOrigin = forcedVariantOrigins[category];
+      const invalidEvent = publicEventFromOrigin(invalidOrigin, {
         forcedNative: invalidCase.native,
         forcedVerdict: userEventForcedOperatorVerdictForClassification(
           invalidCase.operatorValidity,
@@ -654,9 +649,9 @@ describe("W25 roots and deterministic replay", () => {
           effect: noOpEffect,
         },
       ]);
-      const invalidAuthority = localEventAuthority({
+      const invalidAuthority = originEventAuthority({
         event: invalidEvent,
-        local: invalidLocal,
+        origin: invalidOrigin,
         effect: noOpEffect,
         forcedNative: invalidCase.native,
       });
@@ -666,8 +661,7 @@ describe("W25 roots and deterministic replay", () => {
         priorState: invalidPriorState,
         postState: invalidPriorState,
         eventAuthorities: [invalidAuthority],
-        eventWindow: localEventWindow(invalidLocal),
-        ruleBundle: localAuthorities.ruleBundle,
+        eventWindow: originEventWindow(invalidOrigin),
         ...(category === "FeeBelowMinimum" ? { minFeeB: 1n } : {}),
       });
       const invalidResult = await evaluateWatcherBlockReplay(
@@ -713,15 +707,18 @@ describe("W25 roots and deterministic replay", () => {
     });
     const duplicateAuthority = await evaluateWatcherBlockReplay({
       ...publicInput(restartEvidence.fixture),
-      eventAuthorities: [restartEvidence.authority, restartEvidence.authority],
+      eventAuthorities: [
+        restartEvidence.fixture.eventAuthorities[0]!,
+        restartEvidence.fixture.eventAuthorities[0]!,
+      ],
     });
     expect(duplicateAuthority).toMatchObject({
       action: "error",
       reasonCodes: ["duplicate_event_authority"],
     });
 
-    const mismatchLocal = forcedVariantLocal.Mismatch;
-    const mismatchEvent = publicEventFromLocal(mismatchLocal, {
+    const mismatchOrigin = forcedVariantOrigins.Mismatch;
+    const mismatchEvent = publicEventFromOrigin(mismatchOrigin, {
       forcedNative: FORCED_INVALID_CASES.ValueNotPreserved.native,
       forcedVerdict: "ForcedTxValid",
     });
@@ -735,9 +732,9 @@ describe("W25 roots and deterministic replay", () => {
         effect: noOpEffect,
       },
     ]);
-    const mismatchAuthority = localEventAuthority({
+    const mismatchAuthority = originEventAuthority({
       event: mismatchEvent,
-      local: mismatchLocal,
+      origin: mismatchOrigin,
       effect: noOpEffect,
       forcedNative: FORCED_INVALID_CASES.ValueNotPreserved.native,
     });
@@ -747,8 +744,7 @@ describe("W25 roots and deterministic replay", () => {
       priorState: mismatchPriorState,
       postState: mismatchPriorState,
       eventAuthorities: [mismatchAuthority],
-      eventWindow: localEventWindow(mismatchLocal),
-      ruleBundle: localAuthorities.ruleBundle,
+      eventWindow: originEventWindow(mismatchOrigin),
     });
     const mismatchResult = await evaluateWatcherBlockReplay(
       publicInput(mismatchFixture),
@@ -876,8 +872,7 @@ describe("W25 roots and deterministic replay", () => {
         invalidSignatureEvidence.authority,
         inputNotFoundEvidence.authority,
       ],
-      eventWindow: localEventWindow(forcedLocal),
-      ruleBundle: localAuthorities.ruleBundle,
+      eventWindow: originEventWindow(forcedOrigin),
     });
     const orderedResult = await evaluateWatcherBlockReplay(
       publicInput(orderedFixture),
@@ -897,8 +892,7 @@ describe("W25 roots and deterministic replay", () => {
         inputNotFoundEvidence.authority,
         invalidSignatureEvidence.authority,
       ],
-      eventWindow: localEventWindow(forcedLocal),
-      ruleBundle: localAuthorities.ruleBundle,
+      eventWindow: originEventWindow(forcedOrigin),
     });
     const reversedResult = await evaluateWatcherBlockReplay(
       publicInput(reversedFixture),

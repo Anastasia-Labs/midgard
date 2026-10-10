@@ -50,7 +50,6 @@ import "./field-opening.certify-fault-proof-field-carriage.js";
 export {
   type CertifiedFaultProofFieldCarriage,
   certifyFaultProofFieldCarriage,
-  faultProofFieldCarriageReferenceOrder,
   fieldPreimageCertificateAddress,
   resolveFaultProofFieldPreimageCertificate,
 } from "./field-opening.certify-fault-proof-field-carriage.js";

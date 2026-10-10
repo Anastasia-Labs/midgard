@@ -173,14 +173,12 @@ describe("fault-proof contract builder", () => {
     expect(contracts.fabricatedWithdrawal.steps).toHaveLength(4);
     expect(contracts.nativeScriptDecoding.steps).toHaveLength(6);
     expect(contracts.missingSignature.steps).toHaveLength(4);
-    expect(contracts.missingNativeScriptTx.steps).toHaveLength(8);
     expect(contracts.withdrawnReferenceInput.steps).toHaveLength(3);
     expect(contracts.canonicalDecodability.steps).toHaveLength(2);
     expect(contracts.committedFieldShape.steps).toHaveLength(2);
     expect(contracts.minFee.steps).toHaveLength(2);
     expect(contracts.withdrawalMistag.steps).toHaveLength(5);
     expect(contracts.doubleWithdraw.steps).toHaveLength(2);
-    expect(contracts.crossBlockDuplicateEvent.steps).toHaveLength(2);
     expect(contracts.l2TxMistag.steps).toHaveLength(2);
     expect(contracts.withdrawnInput.steps).toHaveLength(3);
     expect(fraudProofContractsToFirstSteps(contracts)).toMatchObject({

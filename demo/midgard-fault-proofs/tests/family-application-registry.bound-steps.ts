@@ -188,13 +188,6 @@ export const DECISION_DIGEST = "44".repeat(32);
  */
 const REPLAY_CONTEXT = Object.freeze({ sentinel: "replayContext" });
 
-export const HISTORICAL_AUTHORITY = Object.freeze({
-  checkpointStore: Object.freeze({ sentinel: "checkpointStore" }),
-  providerRoster: Object.freeze({ sentinel: "providerRoster" }),
-  historySource: Object.freeze({ sentinel: "historySource" }),
-  l1SourceRoster: Object.freeze({ sentinel: "l1SourceRoster" }),
-});
-
 /** A challenge port whose challenge records the coordinates it was asked for. */
 const VALIDATION_CHALLENGE_PORT = Object.freeze({
   currentChallenge: async (input: {
@@ -210,11 +203,10 @@ export const infrastructure = {
   headerHash: "aa".repeat(28),
   lucid: {} as never,
   signer: {} as never,
-  source: {} as never,
+  l1Source: {} as never,
   stateQueueMutationLeaseCoordinator: {} as never,
   decisionDigest: DECISION_DIGEST,
   replayContext: REPLAY_CONTEXT as never,
-  historicalNativeScriptAuthority: HISTORICAL_AUTHORITY as never,
   validationChallenge: VALIDATION_CHALLENGE_PORT as never,
 } satisfies FamilyCommonInfrastructure;
 
@@ -223,14 +215,13 @@ export const { decisionDigest: _undecided, ...undecidedInfrastructure } =
 
 export const {
   replayContext: _replay,
-  historicalNativeScriptAuthority: _authority,
   validationChallenge: _challenge,
   ...plainInfrastructure
 } = infrastructure;
 
 /**
  * The sentinel parts a bound config carries at any depth: the replay context
- * and each of the historical authority's parts, named by their sentinel.
+ * and the challenge, named by their sentinel.
  */
 export const boundSentinels = (value: unknown, found = new Set<string>()) => {
   if (typeof value !== "object" || value === null) return found;
@@ -250,10 +241,7 @@ export const NO_DIGEST_FAMILIES = [
   "mintAuthorization",
   "withdrawalMistag",
   "minAda",
-  "missingNativeScriptTx",
-  "missingNativeScriptUtxo",
   "transitionTrace",
-  "crossBlockDuplicateEvent",
   "executionNativeScriptInvalid",
   "missingSignature",
   "networkId",
@@ -266,6 +254,11 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "nativeScriptDecoding",
   "mintAuthorization",
   "withdrawalMistag",
+  "minAda",
+  "transitionTrace",
+  "resolvedOutputNonCanonical",
+  "spendInputSignerMissing",
+  "executionNativeScriptInvalid",
 ];
 
 /**
@@ -284,15 +277,4 @@ export const VALIDATION_CHALLENGE_FAMILIES = ["validationTraceDispute"];
 export const HAND_WRITTEN_REMOVAL_FAMILIES = [
   "valueNotPreserved",
   "validationTraceDispute",
-];
-
-export const HISTORICAL_AUTHORITY_FAMILIES = [
-  "minAda",
-  "missingNativeScriptTx",
-  "missingNativeScriptUtxo",
-  "transitionTrace",
-  "crossBlockDuplicateEvent",
-  "resolvedOutputNonCanonical",
-  "spendInputSignerMissing",
-  "executionNativeScriptInvalid",
 ];

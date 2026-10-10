@@ -35,18 +35,17 @@ There is no rekey. A new key is a new operator: it registers a new bond.
 All values come from the deployed protocol parameters
 (`onchain/aiken/env/testnet.ak`, mirrored in `midgard-sdk` `protocol-parameters.ts`).
 
-| Parameter                                  | Value   | Where it bites                                                                      |
-| ------------------------------------------ | ------- | ----------------------------------------------------------------------------------- |
-| `required_bond`                            | 900 ADA | Locked in the operator's list node at registration.                                 |
-| `slashing_penalty`                         | 500 ADA | Fee of a duplicate-registration slash; the remaining 400 ADA rewards the submitter. |
-| `inactivity_slashing_penalty`              | 100 ADA | Fee of a forced retirement; the retired node keeps 800 ADA.                         |
-| `max_inactivity_strikes`                   | 5       | Strike count at which anyone may force-retire the operator.                         |
-| `shift_duration`                           | 30 min  | Length of one scheduler shift.                                                      |
-| `new_shift_inactivity_grace_period`        | 5 min   | Minimum idle time after a shift starts before a strike is possible.                 |
-| `max_inactivity_between_block_commitments` | 20 min  | Idle time after the last committed block before a strike is possible.               |
-| `user_events_negligence_timeout`           | 20 min  | Time a deposit, withdrawal, or tx-order may wait for inclusion.                     |
-| `max_validity_range_length`                | 8 min   | Every lifecycle transaction must use a closed validity range this short.            |
-| `registration_duration`                    | 30 s    | Delay between registration and earliest activation.                                 |
+| Parameter                           | Value   | Where it bites                                                                      |
+| ----------------------------------- | ------- | ----------------------------------------------------------------------------------- |
+| `required_bond`                     | 900 ADA | Locked in the operator's list node at registration.                                 |
+| `slashing_penalty`                  | 500 ADA | Fee of a duplicate-registration slash; the remaining 400 ADA rewards the submitter. |
+| `inactivity_slashing_penalty`       | 100 ADA | Fee of a forced retirement; the retired node keeps 800 ADA.                         |
+| `max_inactivity_strikes`            | 5       | Strike count at which anyone may force-retire the operator.                         |
+| `shift_duration`                    | 30 min  | Length of one scheduler shift.                                                      |
+| `new_shift_inactivity_grace_period` | 5 min   | Minimum idle time after a shift starts before a strike is possible.                 |
+| `user_events_negligence_timeout`    | 20 min  | Time a deposit, withdrawal, or tx order may wait for inclusion before a strike.     |
+| `max_validity_range_length`         | 8 min   | Every lifecycle transaction must use a closed validity range this short.            |
+| `registration_duration`             | 30 s    | Delay between registration and earliest activation.                                 |
 
 A bond is never fully lost through inactivity. The only full-bond forfeit is a
 fraud proof or duplicate-registration slash.
@@ -67,7 +66,7 @@ prints the exact amount missing and exits without building a transaction.
 | `retire-operator` (alias `deactivate-operator`)      | the operator              | Voluntary exit. Moves the `active` node to `retired` with the full 900 ADA. Advances or rewinds the scheduler if the operator holds the shift.                                                    |
 | `recover-operator-bond` (alias `unlock-operator`)    | the operator              | Burns the `retired` node and returns the bond to the wallet. Refused before `bond_unlock_time`; the refusal prints the unlock time.                                                               |
 | `deregister-operator`                                | the operator              | Removes a `registered` node that was never activated and returns the bond.                                                                                                                        |
-| `strike-inactive-operator`                           | anyone                    | Strikes the scheduled operator for a missed shift and hands the shift to the next operator. Refused before the inactivity threshold.                                                              |
+| `strike-inactive-operator`                           | anyone                    | Strikes the scheduled operator for neglected L1 work and hands the shift to the next operator. Refused when no user event is undelivered, and before the inactivity threshold.                    |
 | `force-retire-operator --operator-key-hash <hex>`    | anyone                    | Retires an operator with 5 strikes. Pays 100 ADA of the bond as the transaction fee; the retired node keeps 800 ADA.                                                                              |
 | `slash-duplicate-operator --operator-key-hash <hex>` | anyone                    | Removes a `registered` node whose operator is already registered, active, or retired. Fee is 500 ADA of the bond; 400 ADA goes to the submitter.                                                  |
 
@@ -111,8 +110,9 @@ is built.
     "shiftAgeMs": 412000
   },
   "inactivity": {
+    "neglectedEvent": { "kind": "Deposit", "inclusionTime": "1757979100000" },
     "thresholdTime": "1757980300000",
-    "thresholdSource": "shift-grace",
+    "thresholdSource": "new-shift-grace-period",
     "missedAgeMs": 112000,
     "nextTakeoverTime": "1757980300001",
     "nextPatienceTakeoverTime": "1757980420001",
@@ -136,8 +136,12 @@ is built.
 when the key appears in more than one list or twice in `registered`;
 `memberships` lists every list the key occupies. `bondRecoverableFrom` is the
 earliest validity lower bound a bond-recovery transaction may carry once the
-bond hold has passed. `inactivity` is `null` when the scheduler names nobody;
-`thresholdSource` says which rule set the threshold and `blocked` names the
+bond hold has passed. `inactivity` is `null` when the scheduler names nobody.
+`neglectedEvent` is the earliest undelivered deposit, withdrawal or tx order
+(`Deposit`, `Withdrawal` or `TxOrder`), the event a strike cites; when it is
+`null` nobody can strike the shift, and every time field is `null`.
+`thresholdSource` (`new-shift-grace-period` or `neglected-user-event`) says
+which rule set the threshold and `blocked` names the
 reason when no strike can be built right now. `missedAgeMs` is how long the
 shift has been strikable; it is `0` before the threshold. `nextTakeoverTime`
 is the earliest validity lower bound the successor's strike may carry; it is
@@ -149,44 +153,52 @@ submitted (`strike` or `force_retire`) and the last tick it skipped, with the
 reason. Times other than `asOf` are POSIX milliseconds as strings;
 `lastTakeoverAt`, `lastSkipAt`, and `asOf` are ISO-8601.
 
-## Missed shifts and takeover
+## Neglected work and takeover
 
-Layer 1 does nothing on its own. A missed shift stays missed until someone
-submits a strike transaction. The transaction spends the scheduler and the
-skipped operator's `active` node together, reproduces the node with one more
-strike, and names the next operator as the shift holder.
+An operator is struck only for neglected L1 work: a deposit, withdrawal or tx
+order that waits past `user_events_negligence_timeout` without a block that
+delivers it. A shift with no undelivered user event cannot be struck, however
+long it goes without a block, so an idle network needs no block commitments.
+Its shifts rotate when they end: anyone may advance the scheduler once a shift
+is over.
+
+Layer 1 does nothing on its own. A neglected event stays neglected until
+someone submits a strike transaction. The transaction spends the scheduler and
+the skipped operator's `active` node together, reproduces the node with one
+more strike, names the next operator as the shift holder, and references the
+neglected event. The event is undelivered when its inclusion time is after the
+end time of the state queue's last block: a block delivers the events with
+`start_time < inclusion_time <= end_time`.
 
 The inactivity threshold is the later of:
 
 - shift start plus `new_shift_inactivity_grace_period`, and
-- the last committed block's end time plus
-  `max_inactivity_between_block_commitments`, or, when a specific user event
-  was neglected, that event's inclusion time plus
-  `user_events_negligence_timeout`.
+- the cited event's inclusion time plus `user_events_negligence_timeout`.
 
 The threshold must fall strictly before the shift would have ended anyway, and
 the strike transaction's validity range must lie entirely after the threshold.
+A strike cites the earliest undelivered event, which gives the earliest
+threshold.
 
 ### The watchdog fiber
 
 Every node runs an operator watchdog on the same slot-aware due-work cadence as
 block commitment. It is on by default. A tick with nothing to act on, because
-the node holds the shift itself, is not active, the scheduler names nobody, or
-the provider could not be read, defers the next directory read by one minute.
+the node holds the shift itself, is not active, the scheduler names nobody, no
+user event is undelivered, or the provider could not be read, defers the next
+directory read by one minute.
 A tick that finds a strikable shift in the future defers until the moment the
 node may act. After the watchdog submits a takeover it ignores a provider that
 still serves the scheduler UTxO it spent, so a lagging provider cannot make it
 resubmit the same transaction.
 
-The watchdog acts on the commitment-gap threshold only. A neglected deposit,
-withdrawal or transaction order never makes a shift strikable earlier under
-the shipped parameters: the validator requires the event's inclusion time to be
-at or after the last committed block's end time, and
-`user_events_negligence_timeout` (20 min) is at least
-`max_inactivity_between_block_commitments` (20 min), so the event's threshold is
-never before the commitment-gap one. A neglected-event strike also needs the
-event as a witness; the node does not select one, and
-`strike-inactive-operator` has no option to name one.
+The watchdog reads the earliest undelivered deposit, withdrawal and tx order
+from its L1 follower's store at the follower's tip, and cites the earliest of
+them. `strike-inactive-operator` and `operator-status` read the same events
+from the provider. Both refuse to strike when there is none. The strike's
+state-queue reference input pins the tail it was planned against, so a block
+that lands first makes the strike fail phase-1 validation rather than strike
+for delivered work.
 
 | Variable                        | Default  | Meaning                                                                                                                                                                              |
 | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -211,7 +223,9 @@ The fee comes from the node's configured operator wallet.
 ## Forced retirement (partial slash)
 
 At 5 strikes the operator can no longer take shifts and cannot retire
-voluntarily. Anyone may run `force-retire-operator`. The bond moves to the
+voluntarily. Anyone may run `force-retire-operator`. The watchdog force-retires
+a capped operator only while it holds the shift and a user event is
+undelivered. The bond moves to the
 `retired` list minus 100 ADA, which is consumed as the transaction fee. The
 operator recovers the remaining 800 ADA after `bond_unlock_time` with
 `recover-operator-bond`.

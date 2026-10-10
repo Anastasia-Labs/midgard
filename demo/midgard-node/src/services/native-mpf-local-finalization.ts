@@ -7,7 +7,7 @@ import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,
 } from "../workers/utils/commit-block-header.js";
-import { withHistoryWrite } from "./event-history-producer.js";
+import { withFollowerWrite } from "./follower-write-gate.js";
 import type {
   NativeMpfOwnerService,
   PersistedNativeMpfReplay,
@@ -32,7 +32,7 @@ export const recoverNativeMpfForLocalFinalization = (
           cause: headerHash,
         }),
       );
-    const readReplay = withHistoryWrite(
+    const readReplay = withFollowerWrite(
       Effect.gen(function* () {
         const pending = yield* Pending.retrieveByHeaderHash(
           Buffer.from(headerHash, "hex"),
@@ -46,7 +46,7 @@ export const recoverNativeMpfForLocalFinalization = (
         const status = record[Pending.Columns.STATUS];
         const observed =
           status === Pending.Status.ObservedWaitingStability ||
-          status === Pending.Status.Finalized;
+          status === Pending.Status.LocallyApplied;
         const acknowledged =
           record[Pending.Columns.SUBMITTED_TX_HASH] !== null &&
           (status === Pending.Status.SubmittedUnconfirmed ||

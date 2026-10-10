@@ -8,6 +8,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
+import type {
+  IntentJournal,
+  SubmissionIntent,
+} from "../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -18,6 +22,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
+import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
 
 const UTXO_VISIBILITY_RETRY_DELAY = "2 seconds";
 
@@ -25,6 +30,7 @@ export const UTXO_VISIBILITY_RETRY_COUNT = 12;
 
 type CompleteOptions = {
   readonly localUPLCEval: boolean;
+  readonly presetWalletInputs?: UTxO[];
 };
 
 type CompletableTx = {
@@ -69,24 +75,41 @@ const decodeDatum = <T>(
       }),
   });
 
+/** Completes `tx` with local UPLC evaluation, funded from the wallet view. */
 export const completeWithLocalUplc = (
+  lucid: LucidEvolution,
   tx: CompletableTx,
   label: string,
-): Effect.Effect<TxSignBuilder, SDK.LucidError> =>
-  Effect.tryPromise({
-    try: () => tx.complete({ localUPLCEval: true }),
-    catch: (cause) =>
-      new SDK.LucidError({
-        message: `Failed to build ${label} transaction with local UPLC evaluation: ${String(cause)}`,
-        cause,
+): Effect.Effect<TxSignBuilder, SDK.LucidError, IntentJournal> =>
+  readSelectedWalletViewInputs(lucid, `${label} transaction`).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SDK.LucidError({
+          message: `Failed to build ${label} transaction: ${cause.message}`,
+          cause,
+        }),
+    ),
+    Effect.flatMap((presetWalletInputs) =>
+      Effect.tryPromise({
+        try: () => tx.complete({ localUPLCEval: true, presetWalletInputs }),
+        catch: (cause) =>
+          new SDK.LucidError({
+            message: `Failed to build ${label} transaction with local UPLC evaluation: ${String(cause)}`,
+            cause,
+          }),
       }),
-  });
+    ),
+  );
 
 export const submitCompletedTx = (
   lucid: LucidEvolution,
   tx: TxSignBuilder,
-): Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError> =>
-  handleSignSubmit(lucid, tx);
+  intent: SubmissionIntent,
+): Effect.Effect<
+  string,
+  TxConfirmError | TxSignError | TxSubmitError,
+  IntentJournal
+> => handleSignSubmit(lucid, tx, intent);
 
 export const fetchDaParamsUtxo = (
   lucid: LucidEvolution,

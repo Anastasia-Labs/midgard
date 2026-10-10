@@ -2,26 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  type MidgardValidationTraceProof,
-  selectMidgardValidationDisputeReveal,
-} from "@al-ft/midgard-core";
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  FraudProofComputationThreadStepDatum,
-  validationDisputeCoreFromData,
-  ValidationDisputeDatum,
-} from "@al-ft/midgard-sdk";
-import {
-  Data,
-  toUnit,
-  type UTxO,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { toUnit } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../../src/evidence/canonical-block-evidence.js";
-import { submitValidationDisputeReveal } from "../../src/index.js";
 import {
   createManifestBoundValidationTraceDisputeWorkflow,
   executeManifestBoundValidationTraceDisputeWorkflow,
@@ -29,18 +13,9 @@ import {
 } from "../../src/validation-dispute/workflow-v1.js";
 import { admitValidationTraceChallenge } from "../../src/workflow/challenge-authority.js";
 import { DirectoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.js";
-import {
-  computeFraudProofReleaseEconomicsPolicyDigest,
-  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-} from "../../src/workflow/release-economics-policy.js";
-import {
-  computeFraudProofReleaseFinalityPolicyDigest,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-} from "../../src/workflow/release-finality-policy.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import {
   alwaysSucceedsBlueprintPath,
-  network,
   readBlueprint,
   realBlueprintPath,
 } from "./emulator/blueprints.js";
@@ -62,24 +37,67 @@ import {
   publishOperatorLifecycleReferenceScripts,
   publishPlainReferenceScriptUtxo,
 } from "./emulator/reference-scripts.js";
-import { submitSetupTx } from "./emulator/setup-tx.js";
+import { submitSecondHeaderTx, submitSetupTx } from "./emulator/setup-tx.js";
 import { buildAcceptedClaimOverMinAdaRejectingTransactionFixture } from "./emulator/validation-dispute-fixtures.js";
 import { buildInstalledSignatureFixture } from "./installed-signature-fixture.js";
 import { stageInstalledValidationResolutionReferences } from "./installed-validation-resolution-references.js";
+import { buildInstalledValidationWorkflowBinding } from "./installed-validation-trace-dispute-journey.build-workflow-binding.js";
+import { installedValidationOperatorCounterparty } from "./installed-validation-trace-dispute-journey.operator-counterparty.js";
+import type {
+  InstalledValidationChallengeSupply,
+  InstalledValidationJourneyFixture,
+  InstalledValidationJourneyStaged,
+} from "./installed-validation-trace-dispute-journey.types.js";
 import { installedWorkflowEmulatorClock } from "./installed-workflow.advance-emulator-observation.js";
 import { useCanonicalValidationDisputeCursorReads } from "./validation-trace-dispute-canonical-cursor.js";
+
+export type * from "./installed-validation-trace-dispute-journey.types.js";
+
 const DEPLOYMENT = "11".repeat(32);
 const PAYLOAD_ENVELOPE_SHA = "ab".repeat(32);
 const PAYLOAD_SHA = "cd".repeat(32);
-const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
-const economicsPolicy = {
-  profile: "bounded-acceptance-v1",
-  requiredBondLovelace: "900000000",
-  slashingPenaltyLovelace: "500000000",
-  fraudProverRewardLovelace: "400000000",
-  inactivitySlashingPenaltyLovelace: "100000000",
-  proverCollateralFloorLovelace: "5000000",
-} as const;
+
+/**
+ * The fixture's challenge, admitted by the production challenge authority at
+ * a fixed payload coordinate (the replay input is the fixture's own).
+ */
+export const admitFixedCoordinateChallenge = async ({
+  fixture,
+  setup,
+}: Readonly<{
+  fixture: Readonly<{
+    header: InstalledValidationJourneyFixture["header"];
+    claim: Parameters<typeof admitValidationTraceChallenge>[0]["claim"];
+    challengerReplayInput: Parameters<
+      typeof admitValidationTraceChallenge
+    >[0]["challengerReplayInput"];
+  }>;
+  setup: Readonly<{ headerHash: string }>;
+}>): Promise<InstalledValidationChallengeSupply> => ({
+  deploymentFingerprint: DEPLOYMENT,
+  challenge: await admitValidationTraceChallenge({
+    coordinate: {
+      schemaVersion: "midgard-production-w25-challenge-coordinate-v1",
+      deploymentFingerprint: DEPLOYMENT,
+      stateQueueObservationDigest: "22".repeat(32),
+      headerHash: setup.headerHash,
+      payloadEnvelopeSha256: PAYLOAD_ENVELOPE_SHA,
+      payloadSha256: PAYLOAD_SHA,
+      transcriptDigest: "33".repeat(32),
+      blockReplayResultDigest: "44".repeat(32),
+      coordinate: { domain: "transaction", index: "0" },
+    },
+    evidence: {
+      headerHash: setup.headerHash,
+      payloadEnvelopeSha256: PAYLOAD_ENVELOPE_SHA,
+      payloadSha256: PAYLOAD_SHA,
+      header: fixture.header,
+    } as unknown as CanonicalBlockEvidence,
+    claim: fixture.claim,
+    challengerReplayInput: fixture.challengerReplayInput,
+    exactL1ReferenceOutRefs: [],
+  }),
+});
 
 /**
  * Stages the complete installed-workflow ledger for the sole interactive
@@ -100,6 +118,75 @@ export const stageInstalledValidationTraceDisputeJourney = async (
   repeatedRequiredSigners = false,
   fixtureBuilder?: typeof buildInstalledSignatureFixture,
 ) => {
+  const journey = await stageJourney<
+    | Awaited<ReturnType<typeof buildInstalledSignatureFixture>>
+    | Awaited<
+        ReturnType<
+          typeof buildAcceptedClaimOverMinAdaRejectingTransactionFixture
+        >
+      >
+  >({
+    hooks,
+    certifiedSignatures,
+    buildFixture: async ({ operatorVkey, now }) =>
+      await (
+        fixtureBuilder ??
+        (certifiedSignatures
+          ? buildInstalledSignatureFixture
+          : buildAcceptedClaimOverMinAdaRejectingTransactionFixture)
+      )({
+        operatorVkey,
+        now,
+        terminalCounterMismatch,
+        repeatedRequiredSigners,
+      }),
+    supplyChallenge: async (staged) =>
+      await admitFixedCoordinateChallenge(staged),
+  });
+  return { ...journey, challenge: journey.challenge!, config: journey.config! };
+};
+
+/**
+ * The same staged journey over a supplied fixture and challenge: the
+ * supplier reads the staged ledger (for example to capture the challenge
+ * from an L1 follower fed with the emulator's transactions) and names the
+ * deployment the challenge is bound to.
+ */
+export const stageSuppliedValidationTraceDisputeJourney = async <
+  Fixture extends InstalledValidationJourneyFixture,
+>(
+  hooks: { binding: unknown; authority: unknown },
+  supply: Readonly<{
+    fixture: (
+      input: Readonly<{ operatorVkey: string; now: number }>,
+    ) => Promise<Fixture>;
+    challenge: (
+      staged: InstalledValidationJourneyStaged<Fixture>,
+    ) => Promise<InstalledValidationChallengeSupply>;
+  }>,
+) =>
+  await stageJourney({
+    hooks,
+    certifiedSignatures: false,
+    buildFixture: supply.fixture,
+    supplyChallenge: supply.challenge,
+  });
+
+const stageJourney = async <Fixture extends InstalledValidationJourneyFixture>({
+  hooks,
+  certifiedSignatures,
+  buildFixture,
+  supplyChallenge,
+}: {
+  readonly hooks: { binding: unknown; authority: unknown };
+  readonly certifiedSignatures: boolean;
+  readonly buildFixture: (
+    input: Readonly<{ operatorVkey: string; now: number }>,
+  ) => Promise<Fixture>;
+  readonly supplyChallenge: (
+    staged: InstalledValidationJourneyStaged<Fixture>,
+  ) => Promise<InstalledValidationChallengeSupply>;
+}) => {
   const recorder = recordCrossBlockRawEmulator();
   hooks.authority = recorder.authority;
   const realBlueprint = readBlueprint(realBlueprintPath);
@@ -151,29 +238,47 @@ export const stageInstalledValidationTraceDisputeJourney = async (
       operatorLucid,
       emulator.now() + 120_000,
     ) - 1;
-  const fixture = await (
-    fixtureBuilder ??
-    (certifiedSignatures
-      ? buildInstalledSignatureFixture
-      : buildAcceptedClaimOverMinAdaRejectingTransactionFixture)
-  )({
+  const fixture = await buildFixture({
     operatorVkey: operatorSigner.paymentKeyHash,
     now: headerStartTime,
-    terminalCounterMismatch,
-    repeatedRequiredSigners,
   });
   emulator.awaitSlot(
     Math.max(0, Math.ceil((headerStartTime - 120_000 - emulator.now()) / 1000)),
   );
-  const setup = await runEmulatorLifecycleStage("setup", () =>
+  const firstSetup = await runEmulatorLifecycleStage("setup", () =>
     submitSetupTx({
       lucid: operatorLucid,
       contracts,
       nonceUtxo,
       catalogue,
-      header: fixture.header,
+      header: fixture.predecessorHeader ?? fixture.header,
     }),
   );
+  const setup =
+    fixture.predecessorHeader === undefined
+      ? firstSetup
+      : await runEmulatorLifecycleStage("second header", async () => {
+          // The challenged header extends the committed predecessor; its
+          // commit window opens at the predecessor's end.
+          emulator.awaitSlot(
+            Math.max(
+              0,
+              Math.ceil(
+                (Number(fixture.header.startTime) - emulator.now()) / 1000,
+              ) + 1,
+            ),
+          );
+          const second = await submitSecondHeaderTx({
+            lucid: operatorLucid,
+            contracts,
+            header: fixture.header,
+          });
+          return {
+            ...firstSetup,
+            fraudulentBlockOutRef: second.blockOutRef,
+            headerHash: second.headerHash,
+          };
+        });
   const {
     referenceScriptPublisherLucid,
     validationDisputePublication,
@@ -207,33 +312,22 @@ export const stageInstalledValidationTraceDisputeJourney = async (
     challenger,
     referenceScriptPublisherLucid,
     validationDisputePublication,
+    referenceScriptAuth,
+    referenceScriptPublisher,
   });
   const restoreCursorReads = useCanonicalValidationDisputeCursorReads(
     targetChallengerLucid,
     emulator,
   );
-  const challenge = await admitValidationTraceChallenge({
-    coordinate: {
-      schemaVersion: "midgard-production-w25-challenge-coordinate-v1",
-      deploymentFingerprint: DEPLOYMENT,
-      stateQueueObservationDigest: "22".repeat(32),
-      headerHash: setup.headerHash,
-      payloadEnvelopeSha256: PAYLOAD_ENVELOPE_SHA,
-      payloadSha256: PAYLOAD_SHA,
-      transcriptDigest: "33".repeat(32),
-      blockReplayResultDigest: "44".repeat(32),
-      coordinate: { domain: "transaction", index: "0" },
-    },
-    evidence: {
-      headerHash: setup.headerHash,
-      payloadEnvelopeSha256: PAYLOAD_ENVELOPE_SHA,
-      payloadSha256: PAYLOAD_SHA,
-      header: fixture.header,
-    } as unknown as CanonicalBlockEvidence,
-    claim: fixture.claim,
-    challengerReplayInput: fixture.challengerReplayInput,
-    exactL1ReferenceOutRefs: [],
-  });
+  const { challenge, deploymentFingerprint, decisionDigest } =
+    await supplyChallenge({
+      emulator,
+      recorder,
+      contracts,
+      nonceUtxo,
+      fixture,
+      setup,
+    });
   const referenceScripts = {
     control: {
       opener: validationDisputeControlPublications.dispute.utxo,
@@ -259,14 +353,12 @@ export const stageInstalledValidationTraceDisputeJourney = async (
         }),
       )
     : undefined;
-  const referenceScriptsByContract = Object.fromEntries(
-    Object.entries({
-      validationTraceDispute: referenceScripts.control.opener,
-      validationTraceDisputeSource: referenceScripts.control.source,
-      validationTraceDisputeGame: referenceScripts.control.game,
-      validationTraceDisputeBoundary: referenceScripts.control.boundary,
-      validationTraceDisputeTimeout: referenceScripts.control.timeout,
-      validationTraceDisputeAward: referenceScripts.control.award,
+  const binding = buildInstalledValidationWorkflowBinding({
+    deploymentFingerprint,
+    realBlueprint,
+    deploymentInfo,
+    referenceScripts,
+    stagedReferences: {
       validationSelectedSemantic: semanticPublication.utxo,
       validationSelectedPrepare: prepareResolverPublication.utxo,
       ...Object.fromEntries(
@@ -278,101 +370,25 @@ export const stageInstalledValidationTraceDisputeJourney = async (
       ...(certificatePublication === undefined
         ? {}
         : { fieldPreimageCertificateMint: certificatePublication.utxo }),
-      ...referenceScripts.witnesses,
-      ...referenceScripts.removal,
-    }).map(([name, utxo]) => [
-      name,
-      {
-        outRef: `${utxo.txHash}#${utxo.outputIndex.toString()}`,
-        scriptHash: validatorToScriptHash((utxo as UTxO).scriptRef!),
-      },
-    ]),
-  );
-  const binding = {
-    deploymentFingerprint: DEPLOYMENT,
-    blueprintHash: "bb".repeat(32),
-    network,
-    blueprint: realBlueprint,
-    deploymentInfo,
-    releaseFinality: {
-      schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-      deploymentIdentityDigest: DEPLOYMENT,
-      blueprintHash: "bb".repeat(32),
-      policyDigest:
-        computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
-      policy: finalityPolicy,
     },
-    releaseEconomics: {
-      schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-      deploymentIdentityDigest: DEPLOYMENT,
-      blueprintHash: "bb".repeat(32),
-      policyDigest:
-        computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
-      policy: economicsPolicy,
-    },
-    referenceScriptsByContract,
-    fieldPreimageCertificate: contracts.fieldPreimageCertificate,
-    contractEntries: Object.fromEntries(
-      Object.entries(referenceScriptsByContract).map(([name, entry]) => [
-        name,
-        {
-          scriptHash: entry.scriptHash,
-          refScriptUTxO: {
-            txHash: entry.outRef.split("#")[0],
-            outputIndex: Number(entry.outRef.split("#")[1]),
-          },
-        },
-      ]),
-    ),
-    definition: {
-      category: "validationTraceDispute" as const,
-      categoryId: "00000006",
-      headerHash: setup.headerHash,
-      proverCredential: challengerSigner.paymentKeyHash,
-      stateQueue: {
-        policyId: contracts.stateQueue.policyId,
-        address: contracts.stateQueue.spendingScriptAddress,
-      },
-      computationThread: {
-        policyId: resolvedContracts.contracts.computationThread.policyId,
-        steps: [
-          {
-            role: "computation_thread_step_01",
-            address:
-              resolvedContracts.contracts.validationTraceDispute.opener
-                .spendingScriptAddress,
-            datumSchema: FraudProofComputationThreadStepDatum,
-          },
-        ],
-      },
-      proofToken: {
-        policyId: resolvedContracts.contracts.fraudProof.policyId,
-        address: resolvedContracts.contracts.fraudProof.spendingScriptAddress,
-      },
-      operatorDirectory: {
-        activePolicyId: contracts.activeOperators.policyId,
-        activeAddress: contracts.activeOperators.spendingScriptAddress,
-        retiredPolicyId: contracts.retiredOperators.policyId,
-        retiredAddress: contracts.retiredOperators.spendingScriptAddress,
-      },
-      schedulerAddress: contracts.scheduler.spendingScriptAddress,
-    },
+    contracts,
+    headerHash: setup.headerHash,
+    proverCredential: challengerSigner.paymentKeyHash,
     resolvedContracts,
-  };
+  });
   hooks.binding = binding;
   const directory = await mkdtemp(
     join(tmpdir(), "validation-trace-installed-"),
   );
-  const config: ManifestBoundValidationTraceDisputeWorkflowConfig = {
+  const context = {
     manifest: {},
     blueprintJson: JSON.stringify(realBlueprint),
     deploymentInfo,
     headerHash: setup.headerHash,
     lucid: targetChallengerLucid,
     signer: challengerSigner,
-    source: {} as never,
-    decisionDigest: "dd".repeat(32),
-    challenge,
+    l1Source: {} as never,
+    decisionDigest: decisionDigest ?? "dd".repeat(32),
     referenceScripts,
     stateQueueMutationLeaseCoordinator: {
       acquire: async () => ({
@@ -383,7 +399,12 @@ export const stageInstalledValidationTraceDisputeJourney = async (
         fail: async () => {},
       }),
     },
-  };
+  } satisfies Omit<
+    ManifestBoundValidationTraceDisputeWorkflowConfig,
+    "challenge"
+  >;
+  const config: ManifestBoundValidationTraceDisputeWorkflowConfig | undefined =
+    challenge === undefined ? undefined : { ...context, challenge };
   const workflowClock = installedWorkflowEmulatorClock(emulator);
   workflowClock.awaitReleaseDepth();
   const clock = vi.spyOn(Date, "now").mockImplementation(() => emulator.now());
@@ -398,6 +419,8 @@ export const stageInstalledValidationTraceDisputeJourney = async (
    * dispute position is re-derived from live chain state only (ruling R2).
    */
   const runCold = async () => {
+    if (config === undefined)
+      throw new Error("The journey was staged without a challenge");
     const workflow =
       await createManifestBoundValidationTraceDisputeWorkflow(config);
     return {
@@ -410,63 +433,17 @@ export const stageInstalledValidationTraceDisputeJourney = async (
       }),
     };
   };
-  const gameDispute = async () => {
-    const thread = await targetOperatorLucid.utxoByUnit(threadUnit);
-    if (thread.datum == null) {
-      throw new Error("operator found the dispute thread without a datum");
-    }
-    const datum = Data.from(thread.datum, ValidationDisputeDatum);
-    if (datum.data === null) {
-      throw new Error("operator found a null dispute state");
-    }
-    return {
-      threadOutRef: `${thread.txHash}#${thread.outputIndex.toString()}`,
-      dispute: validationDisputeCoreFromData(datum.data.dispute),
-    };
-  };
-  /** The counterparty: the operator answers with its own committed trace. */
-  const operatorResponds = async (
-    overrideProof?: MidgardValidationTraceProof,
-  ) => {
-    const { threadOutRef, dispute } = await gameDispute();
-    const move = selectMidgardValidationDisputeReveal({
-      dispute,
-      role: "operator",
-      proofs: fixture.operatorTrace.tree.proofs,
-    });
-    if (move.type !== "revealOperator") {
-      throw new Error(
-        `operator asked to respond while the dispute is ${move.type}`,
-      );
-    }
-    return await submitValidationDisputeReveal({
+  const { operatorResponds, honestOperatorMove } =
+    installedValidationOperatorCounterparty({
       lucid: targetOperatorLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: operatorSigner,
-      threadOutRef,
-      role: "operator",
-      proof: overrideProof ?? move.proof,
-      gameReferenceScriptUtxo: referenceScripts.control.game,
-      validityRange: validityRange(),
-      awaitConfirmation: true,
-    });
-  };
-  const honestOperatorMove = async () => {
-    const { dispute } = await gameDispute();
-    const move = selectMidgardValidationDisputeReveal({
-      dispute,
-      role: "operator",
+      threadUnit,
       proofs: fixture.operatorTrace.tree.proofs,
+      realBlueprint,
+      deploymentInfo,
+      signer: operatorSigner,
+      gameReferenceScriptUtxo: referenceScripts.control.game,
+      validityRange,
     });
-    if (move.type !== "revealOperator") {
-      throw new Error(
-        `operator asked for a move while the dispute is ${move.type}`,
-      );
-    }
-    return move.proof;
-  };
   return {
     emulator,
     /** One block, or to and across the recovery horizon once the terminal is
@@ -479,8 +456,21 @@ export const stageInstalledValidationTraceDisputeJourney = async (
     setup,
     challenge,
     config,
+    /** The workflow configuration without the challenge. */
+    context,
+    /** The staged validator references, by role. */
+    referenceScripts,
+    realBlueprint,
     binding,
     contracts,
+    deploymentInfo,
+    witnessReferenceScripts,
+    operatorLucid,
+    targetOperatorLucid,
+    targetChallengerLucid,
+    operatorSigner,
+    challengerSigner,
+    validityRange,
     resolvedContracts,
     threadUnit,
     runCold,

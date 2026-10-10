@@ -46,10 +46,8 @@ import {
   type CompleteCanonicalReplayContext,
   type CompleteCanonicalReplayDecision,
   replayContextIdentity,
-  requireReplayHistoricalCorpus,
 } from "./complete-replay.replay-context-identity.js";
 import { subjectOf } from "./detection-subject.js";
-import { type HistoricalNativeScriptCorpus } from "./historical-native-script-corpus.js";
 import {
   assertReplayPrerequisiteCovered,
   CanonicalReplayPrerequisiteError,
@@ -62,7 +60,10 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) =>
       detectExecutionNativeScriptInvalidCanonicalViolations({
         block: evidence,
-        corpus: requireReplayHistoricalCorpus({ evidence, context }),
+        predecessor: completeCanonicalReplayPredecessorEvidence({
+          evidence,
+          context,
+        }),
       }),
   );
 
@@ -304,16 +305,16 @@ export const MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     }),
 );
 
-/** Complete transition replay derives every witness from freshly admitted history and raw L1. */
+/** Complete transition replay derives every witness from the admitted predecessor and freshly admitted raw L1. */
 export const createTransitionTraceCompleteCanonicalReplayFromRetainedHistory = (
-  corpus: HistoricalNativeScriptCorpus | (() => HistoricalNativeScriptCorpus),
-  l1Events: TransitionTraceL1Events | (() => TransitionTraceL1Events),
+  predecessor: () => CanonicalBlockEvidence | undefined,
+  l1Events: () => TransitionTraceL1Events,
 ): CompleteCanonicalReplay =>
   completeReplayer(["transitionTrace"], async (evidence) => {
     const replay = await replayTransitionTraceFromRetainedHistory({
       evidence,
-      corpus: typeof corpus === "function" ? corpus() : corpus,
-      l1Events: typeof l1Events === "function" ? l1Events() : l1Events,
+      predecessor: predecessor(),
+      l1Events: l1Events(),
     });
     return transitionTraceCanonicalDetections(evidence, replay.detections);
   });
@@ -325,10 +326,12 @@ export const TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
       throw new Error(
         "Transition complete replay requires freshly admitted raw L1 events",
       );
-    const corpus = requireReplayHistoricalCorpus({ evidence, context });
     const replay = await replayTransitionTraceFromRetainedHistory({
       evidence,
-      corpus,
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence,
+        context,
+      }),
       l1Events: context.transitionTraceEvents,
     });
     return transitionTraceCanonicalDetections(evidence, replay.detections);

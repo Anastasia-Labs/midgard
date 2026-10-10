@@ -1,5 +1,5 @@
 import { VALIDATION_TRACE_DISPUTE_STEP_COUNT } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
@@ -15,10 +15,10 @@ import {
 } from "../workflow/deployment-manifest-binding.js";
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  createFraudProofFamilyL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowTerminalVerifier,
@@ -47,6 +47,7 @@ import {
   VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
 } from "./workflow-family.js";
 import { createValidationTraceFieldCarriageProvider } from "./workflow-field-carriage.js";
+import { recoverStagedRoutePreparationFromHistory } from "./workflow-staged-route-preparation.js";
 import { createValidationTraceDisputeRecoveryAdapter } from "./workflow-v1.recovery-adapter.js";
 
 export const VALIDATION_TRACE_DISPUTE_WORKFLOW =
@@ -82,7 +83,7 @@ export const VALIDATION_TRACE_DISPUTE_CONFIG_KEYS = Object.freeze([
   "headerHash",
   "lucid",
   "signer",
-  "source",
+  "l1Source",
   "decisionDigest",
   "referenceScripts",
   "stateQueueMutationLeaseCoordinator",
@@ -107,7 +108,7 @@ export type ManifestBoundValidationTraceDisputeWorkflowConfig = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   decisionDigest: string;
   /**
    * The freshly admitted W25 validation-trace challenge: the operator's
@@ -245,8 +246,8 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
         role as keyof ValidationTraceDisputeRemovalReferences
       ],
     );
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
+  const l1 = createFraudProofFamilyL1ObservationPort({
+    l1: config.l1Source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
@@ -267,23 +268,40 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     definition: binding.definition,
     releaseFinality: binding.releaseFinality,
   });
+  const threadHistory = async () =>
+    admitFraudProofRawL1Snapshot({
+      value: await rawL1.capture(snapshotRequest),
+      request: snapshotRequest,
+      releaseFinality: binding.releaseFinality,
+      observationDepth: "inclusion",
+    });
   const operatorProofs = Object.freeze({
     /**
      * Operator bisection reveals harvested from the admitted raw thread-unit
      * transaction history: every `Continue(RevealOperator)` redeemer the
      * operator has published on-chain for this dispute.
      */
-    collect: async () => {
-      const snapshot = admitFraudProofRawL1Snapshot({
-        value: await rawL1.capture(snapshotRequest),
-        request: snapshotRequest,
-        releaseFinality: binding.releaseFinality,
-        observationDepth: "inclusion",
-      });
-      return snapshot.transactions.flatMap((transaction) =>
+    collect: async () =>
+      (await threadHistory()).transactions.flatMap((transaction) =>
         decodeOperatorRevealProofsFromWitnessSet(transaction.witnessSetCbor),
-      );
-    },
+      ),
+  });
+  const threadUnit = toUnit(
+    binding.resolvedContracts.contracts.computationThread.policyId,
+    `${VALIDATION_TRACE_DISPUTE_CATEGORY_ID}${config.headerHash}`,
+  );
+  const preparationAddresses = new Set(
+    chain.semanticResolvers.map((resolver) => resolver.spendingScriptAddress),
+  );
+  const stagedPreparations = Object.freeze({
+    /** A staged route's preparation, from the same authenticated history. */
+    recover: async (thread: UTxO) =>
+      recoverStagedRoutePreparationFromHistory({
+        snapshot: await threadHistory(),
+        thread,
+        threadUnit,
+        preparationAddresses,
+      }),
   });
   const fieldCarriage = createValidationTraceFieldCarriageProvider({
     binding,
@@ -291,6 +309,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     signer: config.signer,
     l1,
     material,
+    stagedPreparations,
   });
   const actuator = createValidationTraceDisputeActuator({
     fieldCarriage,
@@ -312,6 +331,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       witnesses,
     },
     operatorProofs,
+    stagedPreparations,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
     fraudProverRewardLovelace: BigInt(

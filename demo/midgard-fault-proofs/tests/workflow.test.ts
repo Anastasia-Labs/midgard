@@ -19,7 +19,6 @@ import "../src/workflow/detection-subject.js";
 import "../src/workflow/double-spend-adapter.js";
 import "../src/workflow/funding-reservation-permit.js";
 import "../src/workflow/journal.js";
-import "../src/workflow/local-kupmios-raw-l1-authority.js";
 import "../src/workflow/orchestrator.js";
 import "../src/workflow/raw-l1-family-derivation.js";
 import "../src/workflow/release-finality-policy.js";

@@ -13,6 +13,8 @@ import { classifyDaAttestationMarker } from "../l1/attestation-marker.js";
 import type { DaAttestationValidatorSet } from "../l1/deployment.js";
 import type { DaAttestationReferenceScripts } from "../l1/reference-scripts.js";
 import {
+  type InFlightSubmissionStatus,
+  inFlightSubmissionStatus,
   type L1SubmitterReadinessSummary,
   refreshL1SubmitterPlainAdaUtxos,
   signSubmitAndConfirm,
@@ -101,6 +103,10 @@ export class LucidDaAttestationSubmitter
         deps.currentTime ??
         (() => BigInt(deps.lucid.slotToUnixTime(deps.lucid.currentSlot()))),
     };
+  }
+
+  submissionStatus(txHash: string): Promise<InFlightSubmissionStatus> {
+    return inFlightSubmissionStatus(this.deps.lucid, txHash);
   }
 
   async initAttestation(record: {

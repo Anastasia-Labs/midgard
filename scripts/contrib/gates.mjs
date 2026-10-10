@@ -37,8 +37,8 @@ export const GATES = {
       "midgard-node",
       [
         "tests/canonical-journal-recovery.test.ts",
-        "tests/event-history-recovery-plans.test.ts",
-        "tests/history-dependent-recovery-ordering.test.ts",
+        "tests/correction-admission-rollback-emulator.test.ts",
+        "tests/landed-blocks-fork-sim.test.ts",
         "tests/commit-recovery-planner.test.ts",
       ],
     ],
@@ -46,7 +46,7 @@ export const GATES = {
       "midgard-watcher",
       [
         "tests/funding/prover-funding-recovery.test.ts",
-        "tests/runtime/history-recovery-durable.test.ts",
+        "tests/l1-follower/decision-driver-fork-sim.test.ts",
       ],
     ],
   ],
@@ -56,10 +56,14 @@ export const GATES = {
       [
         "tests/commit-worker-failure-lease-classification.test.ts",
         "tests/validation-worker-pool.test.ts",
-        "tests/l1-event-history-parent-lease-emulator.test.ts",
+        "tests/commit-parent-lease-emulator.test.ts",
       ],
     ],
     ["@al-ft/midgard-fault-proofs", ["tests/workflow-runtime.test.ts"]],
+    [
+      "@al-ft/l1-node-transport",
+      ["tests/frame.test.ts", "tests/transport.test.ts"],
+    ],
   ],
   lifecycle: [
     [
@@ -67,7 +71,6 @@ export const GATES = {
       [
         "tests/provider-retry.test.ts",
         "tests/startup-protocol-status-retry.test.ts",
-        "tests/history-source-owner-streaming.test.ts",
       ],
     ],
     [
@@ -75,17 +78,15 @@ export const GATES = {
       [
         "tests/process-ownership.test.ts",
         "tests/e2e-service-supervisor.test.ts",
-        "tests/phase4-process-output.test.ts",
       ],
     ],
-    ["@al-ft/midgard-fault-proofs", ["tests/workflow-kupmios-source.test.ts"]],
   ],
   "runtime-progress": [
     [
       "midgard-node",
       [
         "tests/readiness.test.ts",
-        "tests/readiness-history-frontier-route.test.ts",
+        "tests/readiness-follower-write-gate-route.test.ts",
         "tests/pipeline-status-route.test.ts",
       ],
     ],
@@ -93,7 +94,6 @@ export const GATES = {
       "midgard-watcher",
       [
         "tests/runtime/startup-progress.test.ts",
-        "tests/runtime/chain-coordinator-progress.test.ts",
         "tests/fault-proofs/fault-proof-objective-progress.test.ts",
       ],
     ],
@@ -118,7 +118,7 @@ export const GATES = {
       "midgard-watcher",
       [
         "tests/funding/workflow-funding-profile-overlay.test.ts",
-        "tests/storage/durable-runtime.test.ts",
+        "tests/runtime/process-config.test.ts",
       ],
     ],
   ],
@@ -156,8 +156,8 @@ export const gatePlan = (root, name) => {
     throw new Error(
       `unknown gate ${name}; choose ${Object.keys(GATES).join(", ")}`,
     );
-  return GATES[name].map(([name, patterns]) => {
-    const pkg = packageByName(root, name);
+  return GATES[name].map(([packageName, patterns]) => {
+    const pkg = packageByName(root, packageName);
     const all = filesUnder(resolve(root, pkg.directory)).map((file) =>
       file.slice(resolve(root, pkg.directory).length + 1),
     );
@@ -165,7 +165,7 @@ export const gatePlan = (root, name) => {
       if (!pattern.includes("*")) {
         if (!existsSync(resolve(root, pkg.directory, pattern)))
           throw new Error(
-            `gate ${name} has a missing owner: ${pattern}; repair its registry`,
+            `gate ${name} names ${packageName} ${pattern}, which does not exist; repair GATES (node scripts/ci/check-registry-paths.mjs lists every such entry)`,
           );
         return [pattern];
       }
@@ -178,7 +178,9 @@ export const gatePlan = (root, name) => {
       );
       const matching = all.filter((file) => regex.test(file));
       if (!matching.length)
-        throw new Error(`gate pattern collected no files: ${pattern}`);
+        throw new Error(
+          `gate ${name} pattern ${packageName} ${pattern} collected no files`,
+        );
       return matching;
     });
     return { package: pkg.name, files: [...new Set(selected)].sort() };

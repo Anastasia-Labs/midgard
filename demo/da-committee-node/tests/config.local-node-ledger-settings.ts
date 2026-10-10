@@ -5,13 +5,12 @@ import {
   parseNativeLedgerConfig,
   rejectRetiredWatcherEnvNames,
 } from "../src/config.js";
-import { externalProviderConfigEnv } from "./config.deployment-manifest-id-from-file.js";
+import { tempDir } from "./helpers.js";
 import {
   libp2pConfigEnv,
   libp2pManifest,
   writeConfigFiles,
-} from "./config.load-committee-config.js";
-import { tempDir } from "./helpers.js";
+} from "./helpers/committee-config-files.js";
 
 describe("rejectRetiredWatcherEnvNames", () => {
   it("refuses the pre-split WATCHER_* names and points at the DA_COMMITTEE_* replacements", () => {
@@ -29,7 +28,7 @@ describe("rejectRetiredWatcherEnvNames", () => {
   it("accepts an environment that uses only the current names", () => {
     expect(() =>
       rejectRetiredWatcherEnvNames({
-        DA_COMMITTEE_DB_PATH: "/tmp/db",
+        DA_COMMITTEE_DATABASE_URL: "postgres://committee",
         DA_COMMITTEE_API_PORT: "8787",
         WATCHER_UNRELATED_PREFIX_ELSEWHERE: "ignored",
       }),
@@ -41,7 +40,8 @@ describe("local node ledger settings", () => {
   const nativeLedgerEnv = {
     CARDANO_LOCAL_NODE_SOCKET_PATH: "/run/cardano/node.socket",
     CARDANO_LOCAL_NODE_CONFIG_PATH: "/etc/cardano/config.json",
-    CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: "/opt/midgard/midgard-chain-sync",
+    CARDANO_L1_NODE_TRANSPORT_BINARY_PATH:
+      "/opt/midgard/midgard-l1-node-transport",
   } as const;
 
   it("is absent when none of the settings is present", () => {
@@ -61,7 +61,7 @@ describe("local node ledger settings", () => {
           nativeLedgerEnv.CARDANO_LOCAL_NODE_SOCKET_PATH,
       }),
     ).toThrow(
-      /all-or-none; missing CARDANO_LOCAL_NODE_CONFIG_PATH, CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH$/u,
+      /all-or-none; missing CARDANO_LOCAL_NODE_CONFIG_PATH, CARDANO_L1_NODE_TRANSPORT_BINARY_PATH$/u,
     );
     expect(() =>
       parseNativeLedgerConfig({
@@ -77,8 +77,8 @@ describe("local node ledger settings", () => {
       ["CARDANO_LOCAL_NODE_SOCKET_PATH", "./run/node.socket"],
       ["CARDANO_LOCAL_NODE_CONFIG_PATH", "/etc/cardano/../cardano/config.json"],
       ["CARDANO_LOCAL_NODE_CONFIG_PATH", "/etc//cardano/config.json"],
-      ["CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH", "/opt/midgard/./chain-sync"],
-      ["CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH", "/opt/midgard/"],
+      ["CARDANO_L1_NODE_TRANSPORT_BINARY_PATH", "/opt/midgard/./chain-sync"],
+      ["CARDANO_L1_NODE_TRANSPORT_BINARY_PATH", "/opt/midgard/"],
     ] as const) {
       expect(() =>
         parseNativeLedgerConfig({ ...nativeLedgerEnv, [name]: value }),
@@ -93,7 +93,7 @@ describe("local node ledger settings", () => {
       authorityNodeId: "local-cardano-node",
       socketPath: "/run/cardano/node.socket",
       nodeConfigPath: "/etc/cardano/config.json",
-      binaryPath: "/opt/midgard/midgard-chain-sync",
+      binaryPath: "/opt/midgard/midgard-l1-node-transport",
     });
     expect(
       parseNativeLedgerConfig({
@@ -111,42 +111,52 @@ describe("local node ledger settings", () => {
     );
   });
 
-  it("is loaded in both L1 source modes", async () => {
+  it("is loaded all-or-none", async () => {
     const dir = await tempDir();
     const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
       dir,
       libp2pManifest("01".repeat(32)),
     );
-    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    const baseEnv = libp2pConfigEnv(manifestPath, deploymentInfoPath);
 
     expect((await loadCommitteeConfig(baseEnv)).nativeLedger).toBeUndefined();
     await expect(
       loadCommitteeConfig({ ...baseEnv, ...nativeLedgerEnv }),
     ).resolves.toMatchObject({
       nativeLedger: {
-        authorityNodeId: "test-cardano-node",
+        authorityNodeId: "local-cardano-node",
         socketPath: nativeLedgerEnv.CARDANO_LOCAL_NODE_SOCKET_PATH,
       },
     });
     await expect(
       loadCommitteeConfig({
         ...baseEnv,
-        ...externalProviderConfigEnv(),
-        ...nativeLedgerEnv,
-      }),
-    ).resolves.toMatchObject({
-      cardanoL1Source: { sourceMode: "external_providers" },
-      nativeLedger: {
-        authorityNodeId: "local-cardano-node",
-        binaryPath: nativeLedgerEnv.CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH,
-      },
-    });
-    await expect(
-      loadCommitteeConfig({
-        ...baseEnv,
-        CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH:
-          nativeLedgerEnv.CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH,
+        CARDANO_L1_NODE_TRANSPORT_BINARY_PATH:
+          nativeLedgerEnv.CARDANO_L1_NODE_TRANSPORT_BINARY_PATH,
       }),
     ).rejects.toThrow(/all-or-none/u);
+  });
+});
+
+describe("the committee node's L1 access is its follower only", () => {
+  it("refuses at start, by name, a Kupmios, Blockfrost or tool L1 setting", async () => {
+    const refused = loadCommitteeConfig({
+      L1_KUPO_URL: "http://kupo:1442",
+      L1_BLOCKFROST_PROJECT_ID: "preprodX",
+    });
+    await expect(refused).rejects.toMatchObject({
+      name: "RoleL1AccessRefusedError",
+      reason: "role_non_follower_l1_config",
+      keys: ["L1_KUPO_URL", "L1_BLOCKFROST_PROJECT_ID"],
+    });
+    await expect(refused).rejects.toThrow(
+      /da-committee-node reads L1 only through its follower/u,
+    );
+  });
+
+  it("passes the follower's own access on to the rest of the configuration", async () => {
+    await expect(
+      loadCommitteeConfig({ L1_ACCESS: "follower" }),
+    ).rejects.toThrow(/MIDGARD_DEPLOYMENT_MANIFEST_PATH/u);
   });
 });

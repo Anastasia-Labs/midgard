@@ -307,15 +307,14 @@ describe("operational availability commands", () => {
       responseGeometry: parameters.response_geometry,
     });
     const policy = "ab".repeat(28);
-    const requested: string[] = [];
-    const kupo =
-      (matches: unknown, ok = true) =>
-      async (url: string) => {
-        requested.push(url);
-        return { ok, status: ok ? 200 : 503, json: async () => matches };
+    const requested: unknown[] = [];
+    const history =
+      (datums: readonly (string | null)[]) =>
+      async (query: { policyId: string; assetName: string }) => {
+        requested.push(query);
+        return datums;
       };
     const input = {
-      kupoUrl: "http://kupo.test/",
       daAttestationPolicyId: policy,
       headerHash: hash,
       commitmentHash,
@@ -325,42 +324,42 @@ describe("operational availability commands", () => {
     await expect(
       recoverAvailabilityOpenCommitment({
         ...input,
-        fetch: kupo([
-          { datum: null },
-          { datum: "d87980" },
-          { datum: attestation(other) },
-          { datum: attestation(commitment, "99".repeat(28)) },
-          { datum: attestation(commitment) },
+        unitHistory: history([
+          null,
+          "d87980",
+          attestation(other),
+          attestation(commitment, "99".repeat(28)),
+          attestation(commitment),
         ]),
       }),
     ).resolves.toEqual(commitment);
     expect(requested).toEqual([
-      `http://kupo.test/matches/${policy}.${SDK.daAttestationAssetName(hash)}?resolve_hashes`,
+      { policyId: policy, assetName: SDK.daAttestationAssetName(hash) },
     ]);
     await expect(
       recoverAvailabilityOpenCommitment({
         ...input,
-        fetch: kupo([{ datum: attestation(other) }]),
+        unitHistory: history([attestation(other)]),
       }),
     ).rejects.toThrow(/holds a commitment hashing to/);
     await expect(
       recoverAvailabilityOpenCommitment({
         ...input,
-        fetch: kupo([{ datum: attestation(commitment, "99".repeat(28)) }]),
+        unitHistory: history([attestation(commitment, "99".repeat(28))]),
       }),
-    ).rejects.toThrow(/holds a commitment hashing to/);
-    await expect(
-      recoverAvailabilityOpenCommitment({ ...input, fetch: kupo([]) }),
     ).rejects.toThrow(/holds a commitment hashing to/);
     await expect(
       recoverAvailabilityOpenCommitment({
         ...input,
-        fetch: kupo([{ datum_hash: null }, { datum: attestation(commitment) }]),
+        unitHistory: history([]),
       }),
-    ).rejects.toThrow(/did not resolve datums/);
+    ).rejects.toThrow(/retention window/);
     await expect(
-      recoverAvailabilityOpenCommitment({ ...input, fetch: kupo([], false) }),
-    ).rejects.toThrow(/HTTP 503/);
+      recoverAvailabilityOpenCommitment({
+        ...input,
+        unitHistory: () => Promise.reject(new Error("not_initialized")),
+      }),
+    ).rejects.toThrow(/not_initialized/);
   });
 
   it("sizes timeout collateral to the ledger percentage of penalty plus the timeout fee cap", () => {
@@ -413,8 +412,8 @@ describe("operational availability commands", () => {
     const header = f.target.headerHash;
     const attested = await attestAvailability(f);
     f.lucid.selectWallet.fromPrivateKey(f.challenger.privateKey);
-    // Apply spent the attestation output; the Kupo index still holds its
-    // datum, and the command takes the commitment that hashes to the node's.
+    // Apply spent the attestation output; the follower store still retains
+    // its datum, and the command takes the commitment that hashes to the node's.
     const attestationDatum = Data.to(
       {
         header_hash: header,
@@ -430,15 +429,11 @@ describe("operational availability commands", () => {
       },
       SDK.DaAttestationDatum,
     );
-    const kupoRequests: string[] = [];
-    vi.stubGlobal("fetch", async (url: string) => {
-      kupoRequests.push(url);
-      return {
-        ok: true,
-        status: 200,
-        json: async () => [{ datum: attestationDatum }],
-      };
-    });
+    const historyRequests: unknown[] = [];
+    const unitHistory = async (query: unknown) => {
+      historyRequests.push(query);
+      return [attestationDatum];
+    };
     // The command reads wall time; the emulator keeps its own clock.
     const clock = vi
       .spyOn(Date, "now")
@@ -447,7 +442,7 @@ describe("operational availability commands", () => {
       const context = {
         daChallengeWindowMs: f.timing.daChallengeWindowMs,
         daAttestationPolicyId: f.contracts.daAttestation.policyId,
-        kupoUrl: "http://kupo.test/",
+        unitHistory,
       };
       const openingLovelace =
         parameters.challenger_bond_lovelace +
@@ -500,8 +495,11 @@ describe("operational availability commands", () => {
       let snapshot = await snapshotNow();
       expect(snapshot.recordDatum).toBeUndefined();
       await submitBuilt(await build(snapshot, "open"));
-      expect(kupoRequests).toEqual([
-        `http://kupo.test/matches/${f.contracts.daAttestation.policyId}.${SDK.daAttestationAssetName(header)}?resolve_hashes`,
+      expect(historyRequests).toEqual([
+        {
+          policyId: f.contracts.daAttestation.policyId,
+          assetName: SDK.daAttestationAssetName(header),
+        },
       ]);
       snapshot = await snapshotNow();
       const record = snapshot.recordDatum!;
@@ -556,7 +554,6 @@ describe("operational availability commands", () => {
       expect((await snapshotNow()).queue).toBeUndefined();
     } finally {
       clock.mockRestore();
-      vi.unstubAllGlobals();
     }
   }, 300_000);
 });

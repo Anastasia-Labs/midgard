@@ -6,8 +6,8 @@ import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { resolveWatcherCanonicalRetentionWindow } from "../../src/storage/canonical-block-store.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { resolveWatcherCanonicalRetentionWindow } from "../../src/storage/retention-window.js";
 import { watcherBlockReplayPriorState } from "../../src/verification/block-replay.js";
 import {
   computeWatcherRuleBundleCommitment,

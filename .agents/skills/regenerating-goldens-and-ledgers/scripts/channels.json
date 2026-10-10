@@ -537,21 +537,18 @@
     {
       "id": "resolver-proof-fit-sweep-v1",
       "kind": "golden",
-      "summary": "Resolver proof-fit sweep fixture. Frozen: the generator fails closed because its emulator worker was removed on 2026-09-09.",
-      "generators": [
-        "demo/midgard-validation/scripts/generate-resolver-proof-fit-sweep-v1.mjs"
-      ],
-      "writerEnv": ["MIDGARD_REGENERATE_RESOLVER_SWEEP"],
+      "summary": "Resolver proof-fit sweep fixture. Frozen: it has no generator; its emulator worker was removed on 2026-09-09 and the wrapper script that could only fail was deleted on 2026-10-08.",
+      "generators": [],
       "producers": ["demo/midgard-fault-proofs"],
       "inputs": [],
       "outputs": [
         "demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json"
       ],
       "sync": {
-        "manual": "Frozen. The generator throws before it runs anything; re-create the worker under demo/midgard-fault-proofs/scripts first."
+        "manual": "Frozen. No generator exists; write one under demo/midgard-fault-proofs/scripts before regenerating."
       },
       "check": {
-        "none": "--check also fails closed, so nothing can show the fixture is current."
+        "none": "No generator exists, so nothing can show the fixture is current."
       },
       "ci": {
         "none": "No workflow step runs this generator."
@@ -823,7 +820,7 @@
       },
       "ci": {
         "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the \u00a78.10 carriage execution ledger"
+        "step": "Pin the §8.10 carriage execution ledger"
       }
     },
     {
@@ -969,7 +966,8 @@
         "run": "cd onchain/aiken && node scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs"
       },
       "ci": {
-        "none": "No workflow step runs this verifier."
+        "workflow": ".github/workflows/aiken-ci.yml",
+        "step": "Pin the native-script decoding-engine execution ledger"
       }
     },
     {
@@ -991,7 +989,8 @@
         "run": "cd onchain/aiken && node scripts/verify-native-script-scan-exec-ledger-v1.mjs"
       },
       "ci": {
-        "none": "No workflow step runs this verifier."
+        "workflow": ".github/workflows/aiken-ci.yml",
+        "step": "Pin the native-script scan execution ledger"
       }
     },
     {
@@ -1013,7 +1012,8 @@
         "run": "cd onchain/aiken && MIDGARD_AIKEN_ENV=testnet node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs"
       },
       "ci": {
-        "none": "No workflow step runs this verifier."
+        "workflow": ".github/workflows/aiken-ci.yml",
+        "step": "Pin the transition-trace descriptor execution ledger"
       }
     },
     {

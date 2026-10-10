@@ -18,7 +18,7 @@ import {
 import { createDoubleSpendConstrainedWorkflowAdapter } from "./double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
 import {
   createDoubleSpendAuthenticatedL1TerminalVerifier,
-  createDoubleSpendLocalKupmiosL1ObservationPort,
+  createDoubleSpendL1ObservationPort,
 } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import {
   type DoubleSpendConstrainedWorkflowAdapterConfig,
@@ -115,8 +115,8 @@ export const createManifestBoundDoubleSpendWorkflow = async (
     contractName: "fieldPreimageCertificateMint",
     utxo: config.fieldPreimageCertificateReferenceScript,
   });
-  const l1 = createDoubleSpendLocalKupmiosL1ObservationPort({
-    source: config.source,
+  const l1 = createDoubleSpendL1ObservationPort({
+    l1: config.l1Source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,

@@ -1,17 +1,18 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
+import { SqlClient } from "@effect/sql";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
 import { MidgardMpf } from "../mpf/index.js";
+import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
-  Database,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+  findLandedBlock,
+  requireLandedStateQueue,
+} from "../services/landed-state-queue.js";
 import {
   awaitExactTransactionConfirmation,
   type TxSignError,
@@ -23,15 +24,14 @@ import {
   EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS,
   EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
-import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.select-authenticated-foreign-base-candidate.js";
+import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
 import { buildUnsignedCommitTx } from "./commit-block-header/build-unsigned-tx.js";
 import { fetchLatestCommittedBlockLocal } from "./commit-block-header/state-queue.js";
 import { makeEventCommitments } from "./commit-block-header/transition-commitments.js";
 import {
+  type IntentRefusalHoldsNotice,
   type MempoolLedgerRevertedNotice,
   type RegisteredDueWorkOutput,
-  type SpeculativeCandidateReadyOutput,
-  type SpeculativeCommitWorkerInstruction,
   type SuccessfulLocalFinalizationRecoveryOutput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
@@ -83,11 +83,10 @@ export const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
       // the transactions MPF root; rolling back would undo recovery.
       return true;
     case "FailureOutput":
-    case "AwaitingForeignDaOutput":
+    case "AwaitingCommitBaseOutput":
+    case "AwaitingNextCommitWindowOutput":
     case "RegisteredDueWorkOutput":
     case "NothingToCommitOutput":
-    case "SpeculativeCandidateReadyOutput":
-    case "SpeculativeCandidateInvalidatedOutput":
       return false;
   }
 };
@@ -168,38 +167,26 @@ const waitForTxConfirmation = (
       }),
   });
 
+/** The committed block's outref, once the landed queue holds it. */
 const fetchCommittedBlockOutRef = ({
-  lucid,
   contracts,
   headerHash,
 }: {
-  readonly lucid: LucidEvolution;
   readonly contracts: SDK.MidgardValidators;
   readonly headerHash: string;
-}): Effect.Effect<string, SDK.LucidError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const unit = toUnit(
-        contracts.stateQueue.policyId,
-        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
-      );
-      const utxos = await lucid.utxosAtWithUnit(
-        contracts.stateQueue.spendingScriptAddress,
-        unit,
-      );
-      if (utxos.length !== 1) {
-        throw new Error(
-          `expected exactly one committed state_queue block UTxO for ${headerHash}, found ${utxos.length}`,
-        );
-      }
-      return `${utxos[0].txHash}#${utxos[0].outputIndex}`;
-    },
-    catch: (cause) =>
-      new SDK.LucidError({
-        message: "Failed to resolve committed state_queue block outref",
-        cause,
-      }),
-  }).pipe(
+}): Effect.Effect<string, SDK.StateQueueError, SqlClient.SqlClient> =>
+  requireLandedStateQueue(contracts.stateQueue, "the explicit commit").pipe(
+    Effect.flatMap((queue) => {
+      const block = findLandedBlock(queue, headerHash);
+      return block === undefined
+        ? Effect.fail(
+            new SDK.StateQueueError({
+              message: "The committed block is not in the landed state queue",
+              cause: `header_hash=${headerHash}`,
+            }),
+          )
+        : Effect.succeed(block.outRef);
+    }),
     Effect.retry(
       Schedule.intersect(
         Schedule.fixed(EXPLICIT_COMMIT_BLOCK_VISIBILITY_DELAY),
@@ -226,7 +213,7 @@ export const commitExplicitBlockHeaderProgram = (
   | SDK.HashingError
   | TxSignError
   | TxSubmitError,
-  Lucid | MidgardContracts | NodeConfig
+  Lucid | MidgardContracts | NodeConfig | SqlClient.SqlClient | IntentJournal
 > =>
   Effect.gen(function* () {
     const lucidService = yield* Lucid;
@@ -237,10 +224,7 @@ export const commitExplicitBlockHeaderProgram = (
       stateQueuePolicyId: contracts.stateQueue.policyId,
     };
 
-    const latestBlock = yield* fetchLatestCommittedBlockLocal(
-      lucid,
-      fetchConfig,
-    );
+    const latestBlock = yield* fetchLatestCommittedBlockLocal(fetchConfig);
     const endTime = new Date(
       resolveExplicitCommitCandidateEndTimeMs(params.endTimeMs),
     );
@@ -296,7 +280,6 @@ export const commitExplicitBlockHeaderProgram = (
     }
     const blockOutRef = shouldAwait
       ? yield* fetchCommittedBlockOutRef({
-          lucid,
           contracts,
           headerHash: newHeaderHash,
         })
@@ -317,16 +300,13 @@ export const commitExplicitBlockHeaderProgram = (
     };
   });
 
-export type AwaitSpeculativeCommitInstruction = (
-  candidate: SpeculativeCandidateReadyOutput["candidate"],
-) => Effect.Effect<SpeculativeCommitWorkerInstruction, unknown, Database>;
-
 /** Posts a message to the parent ahead of the worker's output. */
 export type NotifyCommitWorkerParent = (
   message:
     | SuccessfulLocalFinalizationRecoveryOutput
     | MempoolLedgerRevertedNotice
-    | CommitDaFrameNotice,
+    | CommitDaFrameNotice
+    | IntentRefusalHoldsNotice,
 ) => Effect.Effect<void>;
 
 export const MEMPOOL_LEDGER_REVERTED_NOTICE: MempoolLedgerRevertedNotice = {

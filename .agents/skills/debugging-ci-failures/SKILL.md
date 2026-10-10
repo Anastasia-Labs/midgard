@@ -31,14 +31,23 @@ node .agents/skills/debugging-ci-failures/scripts/ci-status.mjs <pr-number|branc
 each workflow's triggers at the head commit, decides which workflows should
 have run, and lists every one that did not, with the reason.
 
-| Exit | Meaning                                                                             |
-| ---: | ----------------------------------------------------------------------------------- |
-|    0 | Every expected workflow ran on the head and passed                                  |
-|    1 | A run on the head failed; its failing step and hidden steps are listed              |
-|    2 | A workflow that is or may be expected has no run on the head; absence is not a pass |
-|    3 | Could not query GitHub; this says nothing about CI                                  |
-|    4 | Nothing failed or missing yet, but runs are still in progress                       |
-|   64 | Usage error                                                                         |
+To wait for runs, add `--wait [--timeout 90|90m|2h]` instead of writing a
+`gh`/`sleep` loop. It looks again every minute while a run on the head is in
+progress, and for five minutes while an expected run has not appeared. It
+stops at the first failed run, and gives up at the timeout (bare digits are
+minutes; default 60, at most 360 minutes). Its exit code is the table's verdict for its last look; a timeout
+with runs in progress is 4. A hand-written loop waits forever on a run that
+never starts, and its ending reads as a pass
+[script: .agents/skills/debugging-ci-failures/scripts/ci-status.test.mjs]
+
+| Exit | Meaning                                                                                       |
+| ---: | --------------------------------------------------------------------------------------------- |
+|    0 | Every expected workflow ran on the head and passed                                            |
+|    1 | A run on the head failed; its failing step and hidden steps are listed                        |
+|    2 | A workflow that is or may be expected has no run on the head; absence is not a pass           |
+|    3 | Could not query GitHub; this says nothing about CI                                            |
+|    4 | Nothing failed or missing yet, but runs are still in progress (with `--wait`: at the timeout) |
+|   64 | Usage error                                                                                   |
 
 Blind spots: it reads only the `push` and `pull_request` triggers, and it
 cannot decide a `paths:` filter over a pull request of more than 300 changed
@@ -99,8 +108,9 @@ as "not measured" `[review]`.
 
 ## 3. Classify the failing step's log
 
-Search only the failing step's output: the text between its `##[group]Run`
-line and the first `##[error]` `[review]`. Counts: the last 60 failed runs of aiken-ci
+Read the log with `gh run view <run-id> -R Anastasia-Labs/midgard --log-failed`
+(the failed jobs only). Search only the failing step's output: the text
+between its `##[group]Run` line and the first `##[error]` `[review]`. Counts: the last 60 failed runs of aiken-ci
 (2026-08-10 to 09-04) and node CI (2026-08-28 to 09-22), and all 46 failed
 runs of watcher CI (2026-08-31 to 09-22), as of 2026-09-26.
 

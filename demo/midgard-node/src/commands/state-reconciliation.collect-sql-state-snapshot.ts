@@ -1,12 +1,11 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 
 import {
   ConfirmedLedgerDB,
   DepositsDB,
   MempoolDB,
+  MempoolInclusionsDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
   PendingBlockFinalizationsDB,
@@ -24,25 +23,19 @@ import {
 } from "./state-reconciliation.check-ledger-cache.js";
 import {
   entriesMap,
-  type ForeignRow,
   headerEndTimeMs,
   type JournalRow,
 } from "./state-reconciliation.collect-l1-state-view.js";
 import {
-  type ForeignSummary,
   type JournalSummary,
   type L1StateView,
   type LedgerPointResult,
-  type ObserverSnapshot,
   type PendingTxDelta,
   type SqlDepositRow,
   type SqlStateSnapshot,
   type SqlWithdrawalRow,
 } from "./state-reconciliation.compares.js";
-import {
-  decodeObserverState,
-  materializePoint,
-} from "./state-reconciliation.materialize-point.js";
+import { materializePoint } from "./state-reconciliation.materialize-point.js";
 import {
   ACTIVE_JOURNAL_STATUSES,
   describeError,
@@ -62,12 +55,10 @@ import {
  */
 export const collectSqlStateSnapshot = ({
   committedTipHeaderHash,
-  stateQueuePolicyId,
 }: {
   readonly committedTipHeaderHash: (
     journals: ReadonlyMap<string, JournalSummary>,
   ) => string | null;
-  readonly stateQueuePolicyId: string;
 }): Effect.Effect<SqlStateSnapshot, unknown, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -197,7 +188,9 @@ export const collectSqlStateSnapshot = ({
             row[MempoolLedgerDB.Columns.SOURCE_EVENT_ID],
           ),
         }));
-        const mempoolTxs = yield* Tx.retrieveAllEntries(MempoolDB.tableName);
+        const mempoolTxs = yield* MempoolInclusionsDB.retrievePendingEntries(
+          MempoolDB.tableName,
+        );
         const processedTxs = yield* ProcessedMempoolDB.retrieve;
         const allPending = [
           ...mempoolTxs.map((entry) => ({ entry, source: "mempool" as const })),
@@ -242,56 +235,24 @@ export const collectSqlStateSnapshot = ({
               ),
             ),
         );
+        // An own block's rows stay until its fold is final
+        // (`releaseFinalFolds`): rows a retained fold holds are expected.
         const blockRows = yield* sql<{ readonly header_hash: Buffer }>`
-          SELECT DISTINCT header_hash FROM blocks`;
-        const foreignRows = yield* sql<ForeignRow>`SELECT
-            foreign_header_hash, status, foreign_header_cbor,
-            deposits_root, withdrawals_root, forced_transactions_root
-          FROM foreign_tip_reconciliations`;
-        const foreign = foreignRows.map((row): ForeignSummary => {
-          let header: SDK.Header | null = null;
-          try {
-            header = LucidData.from(
-              toHex(row.foreign_header_cbor),
-              SDK.Header,
-            ) as SDK.Header;
-          } catch {
-            header = null;
-          }
-          return {
-            headerHash: toHex(row.foreign_header_hash),
-            status: row.status,
-            prevHeaderHash: header?.prevHeaderHash ?? null,
-            roots: {
-              deposits: row.deposits_root,
-              withdrawals: row.withdrawals_root,
-              forcedTransactions: row.forced_transactions_root,
-            },
-            transactionsRoot: header?.transactionsRoot ?? null,
-            utxosRoot: header?.utxosRoot ?? null,
-          };
-        });
-        const observerRows = yield* sql<{ readonly state_record: unknown }>`
-          SELECT state_record FROM state_queue_terminal_observer_states
-          WHERE state_queue_policy_id = ${Buffer.from(stateQueuePolicyId, "hex")}`;
-        let observer: ObserverSnapshot;
-        if (observerRows.length === 0) {
-          observer = { kind: "absent" };
-        } else if (observerRows.length > 1) {
-          observer = {
-            kind: "invalid",
-            reason: "more than one observer state row for this policy",
-          };
-        } else {
-          try {
-            observer = decodeObserverState(
-              observerRows[0]!.state_record,
-              stateQueuePolicyId,
-            );
-          } catch (error) {
-            observer = { kind: "invalid", reason: describeError(error) };
-          }
-        }
+          SELECT DISTINCT b.header_hash FROM blocks b
+          WHERE NOT EXISTS (SELECT 1 FROM node_confirmed_merges m
+            WHERE m.header_hash = b.header_hash)`;
+        // A header whose newest terminal row is a removal: a landed tx
+        // took it out of the queue, and no later tx put it back and took it
+        // out again.
+        const removalRows = yield* sql<{
+          readonly header_hash: Buffer;
+          readonly transaction_hash: Buffer;
+          readonly terminal_outcome: string;
+        }>`
+          SELECT DISTINCT ON (terminal.header_hash)
+            terminal.header_hash, terminal.transaction_hash, terminal.terminal_outcome
+          FROM node_l1_queue_terminals terminal
+          ORDER BY terminal.header_hash, terminal.height DESC, terminal.tx_index DESC`;
         return {
           confirmedRoot,
           confirmedRootError,
@@ -305,8 +266,16 @@ export const collectSqlStateSnapshot = ({
           mempoolLedger,
           pendingTxs,
           blockHeaderHashes: blockRows.map((row) => toHex(row.header_hash)),
-          foreign,
-          observer,
+          queueRemovals: removalRows.flatMap((row) =>
+            row.terminal_outcome === "removed"
+              ? [
+                  {
+                    headerHash: toHex(row.header_hash),
+                    transactionHash: toHex(row.transaction_hash),
+                  },
+                ]
+              : [],
+          ),
         } satisfies SqlStateSnapshot;
       }),
     );
@@ -323,7 +292,8 @@ export const committedTipSelector =
     if (l1 !== null) {
       for (const header of [...l1.unmerged].reverse()) {
         if (
-          journals.get(header.headerHash)?.status === JOURNAL_STATUS.Finalized
+          journals.get(header.headerHash)?.status ===
+          JOURNAL_STATUS.LocallyApplied
         ) {
           return header.headerHash;
         }
@@ -331,7 +301,7 @@ export const committedTipSelector =
       return null;
     }
     const finalized = [...journals.values()].filter(
-      (j) => j.status === JOURNAL_STATUS.Finalized,
+      (j) => j.status === JOURNAL_STATUS.LocallyApplied,
     );
     const referenced = new Set(finalized.map((j) => j.baseTailHeaderHash));
     const leaves = finalized.filter((j) => !referenced.has(j.headerHash));

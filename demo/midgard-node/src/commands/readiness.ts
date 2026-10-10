@@ -1,4 +1,4 @@
-import type { ForeignBaseVerificationState } from "../services/foreign-base-verification.js";
+import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 
 /** Path segment of the node's readiness route, `GET /readyz`. */
 export const READINESS_ENDPOINT = "readyz";
@@ -26,16 +26,10 @@ export type ReadinessInput = {
   readonly unresolvedBlockSubmissionAgeMs: number;
   readonly maxUnresolvedBlockSubmissionAgeMs: number;
   readonly dbHealthy: boolean;
-  readonly awaitingForeignTipReconciliations: number;
   /** Only a registered key awaiting activation is unready here: removal
-   * arrives as a liveness reason, and `unknown` is a readiness detail. */
-  readonly operatorMembership?:
-    | "unknown"
-    | "active"
-    | "awaiting_activation"
-    | "removal_pending"
-    | "removed";
-  readonly foreignBaseVerification: ForeignBaseVerificationState;
+   * arrives as the liveness reason `operator_removed`, and `unknown` is a
+   * readiness detail. */
+  readonly operatorMembership?: OperatorMembershipState;
   readonly validationPool?: {
     readonly configuredWorkers: number;
     readonly liveWorkers: number;
@@ -97,20 +91,6 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
   if (!input.dbHealthy) {
     reasons.push("db_unhealthy");
   }
-
-  if (input.awaitingForeignTipReconciliations > 0) {
-    reasons.push(
-      `foreign_tip_reconciliation_awaiting:${input.awaitingForeignTipReconciliations.toString()}`,
-    );
-  }
-
-  const foreignBase = input.foreignBaseVerification;
-  if (foreignBase.status === "unobserved")
-    reasons.push("foreign_base_verification_unobserved");
-  else if (foreignBase.status !== "verified")
-    reasons.push(
-      `foreign_base_verification_${foreignBase.status}:${foreignBase.foreignHeaderHash ?? "initial"}${foreignBase.reason === null ? "" : `:${foreignBase.reason}`}`,
-    );
 
   const heartbeatThreshold = Math.max(1, input.maxHeartbeatAgeMs);
   const heartbeatEntries: readonly [string, number][] = [

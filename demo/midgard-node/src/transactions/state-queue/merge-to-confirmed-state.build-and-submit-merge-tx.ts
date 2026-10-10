@@ -10,11 +10,12 @@ import { Duration, Effect, Metric, Ref } from "effect";
 
 import { DatabaseError } from "../../database/utils/common.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
-import {
-  availableOperatorWalletUtxos,
-  fetchOperatorWalletView,
-} from "../../operator-wallet-view.js";
 import { Database, Globals, NodeConfig } from "../../services/index.js";
+import {
+  type IntentJournal,
+  journaledIntent,
+  openPlan,
+} from "../../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -26,6 +27,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "../utils.js";
+import { readSelectedWalletView } from "../utils.wallet-view.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeSubmitValidityEvidence,
@@ -46,6 +48,7 @@ import {
 } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 import {
   finalizeConfirmedMergeProgram,
+  landedMergeOf,
   mergeBlockCounter,
 } from "./merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import {
@@ -84,16 +87,15 @@ export const buildAndSubmitMergeTx = (
   | TxSubmitError
   | TxConfirmError
   | TxSignError,
-  Database | Globals | NodeConfig
+  Database | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     const mergeStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
-    const currentStateQueueLength = yield* getStateQueueLength(
-      lucid,
-      fetchConfig.stateQueueAddress,
-    );
+    // S5: the plan opens before the merge's first L1 read.
+    const plan = yield* openPlan;
+    const currentStateQueueLength = yield* getStateQueueLength(fetchConfig);
     const minQueueLengthForMerging =
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING;
@@ -158,6 +160,12 @@ export const buildAndSubmitMergeTx = (
         ) {
           yield* Effect.logInfo(
             `🔸 Skipping merge because completed fraud requires state correction (${oldestBlockReadiness.reason}).`,
+          );
+        } else if (
+          oldestBlockReadiness.status === "skipped_oldest_block_event_orphaned"
+        ) {
+          yield* Effect.logInfo(
+            `🔸 Skipping merge because the oldest block's event left the chain; it waits for a landed correction or a rollback that removes it (${oldestBlockReadiness.reason}).`,
           );
         } else {
           yield* Effect.logInfo(
@@ -231,7 +239,6 @@ export const buildAndSubmitMergeTx = (
 
       const localLedgerGate = yield* captureMergeLocalLedgerGate({
         lucid,
-        nodeConfig,
         validFromUnixTime: mergeMaturity.validFromUnixTime,
         leaseToken: options?.leaseToken,
         headerHash: recomputedHeaderHash,
@@ -244,7 +251,7 @@ export const buildAndSubmitMergeTx = (
           headerHash: recomputedHeaderHash,
           reason: localLedgerGate.reason,
           readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
-          nowUnixTime: Date.now(),
+          nowUnixTime: oldestBlockReadiness.nowUnixTime,
         } satisfies MergeTxResult;
       }
 
@@ -353,20 +360,21 @@ export const buildAndSubmitMergeTx = (
         "state-queue merge withdrawal",
       );
 
-      const operatorWalletView = yield* Effect.tryPromise({
-        try: () => fetchOperatorWalletView(lucid),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message: "Failed to initialize merge wallet view",
-            cause,
-          }),
-      });
+      const operatorWalletView = yield* readSelectedWalletView(lucid).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: `Failed to read the merge wallet view: ${cause.message}`,
+              cause,
+            }),
+        ),
+      );
       const presetWalletInputs = yield* SDK.requireOperatorWalletInputs(
-        availableOperatorWalletUtxos(operatorWalletView),
+        operatorWalletView.utxos,
         "state_queue merge tx",
       );
       yield* Effect.logInfo(
-        `🔸 Using ${presetWalletInputs.length.toString()} preset operator wallet input(s) for merge tx (known_wallet_utxos=${operatorWalletView.knownUtxos.length.toString()}).`,
+        `🔸 Using ${presetWalletInputs.length.toString()} operator wallet view input(s) for merge tx (source=${operatorWalletView.source}, held=${operatorWalletView.held.size.toString()}).`,
       );
 
       const builtMerge = yield* SDK.buildMergeToConfirmedStateTxProgram({
@@ -427,7 +435,6 @@ export const buildAndSubmitMergeTx = (
         candidateIdentity: oldestBlockReadiness.candidateIdentity,
       });
       const submitRecoveryOptions = mergeSubmitRecoveryOptions(
-        nodeConfig,
         submitDueWorkEvidence,
         options?.submitSlotSnapshot,
         options?.confirmationDeadlineMs,
@@ -435,10 +442,9 @@ export const buildAndSubmitMergeTx = (
       if (options?.assertSubmitAuthority !== undefined) {
         yield* options.assertSubmitAuthority();
       }
-      const finalizeLocalMergeLogged = finalizeConfirmedMergeProgram({
-        headerHash,
-        headerUtxosRoot: blockHeader.utxosRoot,
-      }).pipe(
+      const finalizeLocalMergeLogged = finalizeConfirmedMergeProgram(
+        landedMergeOf(headerHash, blockHeader),
+      ).pipe(
         Effect.tapError((error) =>
           Effect.gen(function* () {
             yield* Metric.increment(mergeLocalFinalizationFailureCounter);
@@ -466,7 +472,17 @@ export const buildAndSubmitMergeTx = (
       // what actually happened.
       const submitOutcome = yield* Effect.uninterruptibleMask((restore) =>
         restore(
-          handleSignSubmit(lucid, txBuilder, submitRecoveryOptions).pipe(
+          handleSignSubmit(
+            lucid,
+            txBuilder,
+            journaledIntent(
+              "merge",
+              `merge:head=${headerHash.toString("hex")}`,
+              plan,
+              headerHash,
+            ),
+            submitRecoveryOptions,
+          ).pipe(
             Effect.as({ status: "submitted" } as const),
             Effect.catchTag("NoInlineSubmitDefer", (defer) =>
               Effect.succeed({ status: "deferred", defer } as const),
@@ -503,7 +519,7 @@ export const buildAndSubmitMergeTx = (
       if (submitOutcome.status === "deferred") {
         const dueWork = yield* registerMergeNoInlineSubmitDueWork(
           submitOutcome.defer,
-          nodeConfig,
+          lucid,
           options?.submitSlotSnapshot,
         );
         yield* Effect.logInfo(
@@ -514,7 +530,7 @@ export const buildAndSubmitMergeTx = (
           headerHash: recomputedHeaderHash,
           reason: `no_inline_submit_defer,kind=${submitOutcome.defer.kind},current_slot=${submitOutcome.defer.currentSlot.toString()},target_slot=${submitOutcome.defer.targetSlot.toString()},due_slot=${submitOutcome.defer.dueSlot.toString()},wait_ms=${submitOutcome.defer.waitMs.toString()},slot_source=${submitOutcome.defer.slotSource}`,
           readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
-          nowUnixTime: Date.now(),
+          nowUnixTime: oldestBlockReadiness.nowUnixTime,
         } satisfies MergeTxResult;
       }
       yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
@@ -535,10 +551,6 @@ export const buildAndSubmitMergeTx = (
       } satisfies MergeTxResult;
     } else {
       yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
-      yield* Ref.set(
-        globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
-        Date.now(),
-      );
       yield* emitQueueStateMetrics;
       yield* Effect.logInfo("🔸 No blocks found in queue.");
       yield* mergeDurationTimer(

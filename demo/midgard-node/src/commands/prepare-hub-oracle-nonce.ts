@@ -5,6 +5,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { IntentJournal } from "../services/intent-journal.js";
+import { unjournaledSubmission } from "../services/intent-journal.js";
 import { Lucid } from "../services/lucid.js";
 import {
   awaitExactTransactionConfirmation,
@@ -309,7 +311,7 @@ export const inspectOperatorWalletForNonceProgram = (
 export const prepareHubOracleOneShotNonceProgram = (
   amountLovelace: bigint,
   options: PrepareHubOracleNonceOptions = {},
-): Effect.Effect<PreparedHubOracleNonce, unknown, Lucid> =>
+): Effect.Effect<PreparedHubOracleNonce, unknown, Lucid | IntentJournal> =>
   Effect.gen(function* () {
     const lucidService = yield* Lucid;
     yield* lucidService.switchToOperatorsMainWallet;
@@ -346,7 +348,11 @@ export const prepareHubOracleOneShotNonceProgram = (
           )}`,
         ),
     });
-    const submit = signSubmitTransaction(lucid, unsigned);
+    const submit = signSubmitTransaction(
+      lucid,
+      unsigned,
+      unjournaledSubmission("no_follower", "hub_oracle_nonce:prepare"),
+    );
     const { beforeSubmission } = options;
     const submission = yield* beforeSubmission === undefined
       ? submit

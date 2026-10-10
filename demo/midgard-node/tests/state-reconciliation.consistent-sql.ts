@@ -82,7 +82,6 @@ export const depositPayload = {
   eventId: "d8799f58200101",
   info: "d87980",
   inclusionTimeMs: 1_000,
-  l1TxHash: h32("01"),
   ledgerTxId: h32("02"),
   ledgerOutput: "b0b0",
   ledgerAddress: "addr_test1",
@@ -108,7 +107,7 @@ export const journal = (
   overrides: Partial<JournalSummary>,
 ): JournalSummary => ({
   headerHash: TIP,
-  status: "finalized",
+  status: "locally_applied",
   baseTailHeaderHash: CONFIRMED,
   baseUtxosRoot: R0,
   expected: { utxos: R1, ...ROOTS },
@@ -239,19 +238,7 @@ const consistentSql = (): SqlStateSnapshot => ({
     },
   ],
   blockHeaderHashes: [TIP],
-  foreign: [],
-  observer: {
-    kind: "present",
-    admitted: [
-      {
-        transactionHash: h32("78"),
-        transitionKind: "timeout_correction",
-        removedHeaderHashes: [REMOVED],
-        transitionDigest: DIGEST,
-      },
-    ],
-    pendingCount: 0,
-  },
+  queueRemovals: [{ headerHash: REMOVED, transactionHash: h32("78") }],
 });
 
 const consistentNative = (): NativeRootObservation => ({

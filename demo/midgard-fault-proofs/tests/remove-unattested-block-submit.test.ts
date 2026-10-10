@@ -14,16 +14,19 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeEach, expect, it, vi } from "vitest";
 
+import { STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS } from "../src/remove-fraudulent-block.js";
 import {
   createFileTimeoutCorrectionJournalStore,
   submitUnattestedTimeoutCorrection,
+  TimeoutCorrectionAttemptInFlightError,
+  type TimeoutCorrectionAttemptObservation,
   type TimeoutCorrectionJournal,
   type TimeoutCorrectionRecovery,
 } from "../src/remove-unattested-block.js";
 import { assertTimeoutCorrectionExclusion } from "../src/remove-unattested-block.supersede-timeout-correction-attempts.js";
-import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
-import { reconcileSignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
+import { DEFAULT_CONFIRMATION_POLL_MS } from "../src/runtime.js";
 import { createSupersededAttemptReadSchedule } from "../src/workflow/superseded-attempt-read-schedule.js";
+import { emulatorDoubleSpendRefusal } from "./support/emulator/double-spend-refusal.js";
 
 const seams = vi.hoisted(() => ({
   queue: vi.fn(),
@@ -92,21 +95,27 @@ const root: SDK.StateQueueUTxO = {
   assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
   datum: { key: "Empty", next: { Key: { key: h("01") } }, data: "root" },
 };
-const chainPoint = (blockNo: number, slot: number, byte: string) => {
-  const value = {
-    blockNo: String(blockNo),
-    slot: String(slot),
-    blockHash: tx(byte),
-  };
-  return { ...value, pointId: computeFraudProofRawL1PointId(value) };
-};
-const point = chainPoint(100, 9999, "77");
-const heldPoint = chainPoint(2260, 12159, "78");
-const finalPoint = chainPoint(2261, 12160, "79");
+const point = { slot: 9999, hash: tx("77") };
+type Status = TimeoutCorrectionAttemptObservation["status"];
+/** An observation; `final` marks a dead reason beyond every legal rollback. */
+const observation = (
+  status: Status,
+  final = false,
+  reason = "unresolved",
+): TimeoutCorrectionAttemptObservation => ({
+  status,
+  final,
+  canonicalPoint: point,
+  releaseFinalPoint: point,
+  reason,
+});
 
-const setup = () => {
+/** `ttl: "validity"` signs each attempt valid to the upper bound it was
+ * built with (on the mocked 1 s slot clock); otherwise to slot 20. */
+const setup = ({ ttl = 20n }: { readonly ttl?: bigint | "validity" } = {}) => {
   let retained: TimeoutCorrectionJournal | undefined;
   let wallet = [utxo("dd")];
+  let txStatus: (txHash: string) => string = () => "not_found";
   const save = vi.fn(async (journal: TimeoutCorrectionJournal) => {
     retained = structuredClone(journal);
   });
@@ -145,6 +154,7 @@ const setup = () => {
         predecessorUTxO: SDK.StateQueueUTxO;
         additionalInputs: UTxO[];
         correctionLockInput: { utxo: UTxO };
+        validTo: bigint;
       },
     ) => {
       const inputs = CML.TransactionInputList.new();
@@ -167,7 +177,7 @@ const setup = () => {
         1n,
       );
       body.set_validity_interval_start(10n);
-      body.set_ttl(20n);
+      body.set_ttl(ttl === "validity" ? params.validTo / 1000n : ttl);
       const signed = CML.Transaction.new(
         body,
         CML.TransactionWitnessSet.new(),
@@ -197,30 +207,16 @@ const setup = () => {
     overrideUTxOs: (values: UTxO[]) => {
       wallet = values;
     },
-    transactionStatus: async () => ({ status: "not_found" }),
+    transactionStatus: async (txHash: string) => ({
+      status: txStatus(txHash),
+    }),
     unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1000),
     slotToUnixTime: (slot: number) => slot * 1000,
   } as unknown as LucidEvolution;
-  const observed =
-    vi.fn<TimeoutCorrectionRecovery["observeSignedTransaction"]>();
-  const observe = (
-    status: Awaited<
-      ReturnType<TimeoutCorrectionRecovery["observeSignedTransaction"]>
-    >["status"],
-    canonicalPoint = point,
-    reason = "unresolved",
-  ) =>
-    observed.mockImplementation(async (signed) => ({
-      ...signed,
-      status,
-      reason,
-      canonicalPoint,
-      releaseFinalPoint: point,
-      inputs: [],
-    }));
+  const observed = vi.fn<TimeoutCorrectionRecovery["observeAttempt"]>();
+  const observe = (status: Status, final = false, reason = "unresolved") =>
+    observed.mockImplementation(async () => observation(status, final, reason));
   observe("unknown");
-  const rebroadcast =
-    vi.fn<TimeoutCorrectionRecovery["rebroadcastSignedTransaction"]>();
   const params = {
     lucid,
     deploymentInfo: {},
@@ -234,13 +230,16 @@ const setup = () => {
     journalStore: { load: async () => retained, save },
     nowMs: () => 4_000_000,
     awaitConfirmation: false,
-    recovery: {
-      observeSignedTransaction: observed,
-      rebroadcastSignedTransaction: rebroadcast,
-    },
+    recovery: { observeAttempt: observed } as TimeoutCorrectionRecovery,
   };
+  const { recovery: _recovery, ...cliParams } = params;
   return {
     params,
+    /** A CLI run: no follower, so no recovery reader. */
+    cliParams,
+    setTxStatus: (status: (txHash: string) => string) => {
+      txStatus = status;
+    },
     submit,
     save,
     observed,
@@ -278,7 +277,7 @@ it("journals signed bytes before an ambiguous submit and resumes exact inclusion
   expect(seams.build).toHaveBeenCalledOnce();
   const retainedBytes = f.retained()!.steps[0]!.signedCbor;
   f.removeTarget();
-  f.observe("included", point, "exact canonical body");
+  f.observe("included", false, "landed at depth 1");
   const resumed = await submitUnattestedTimeoutCorrection(f.params);
   expect(resumed.status).toBe("complete");
   expect(f.retained()?.completed).toBe(true);
@@ -287,7 +286,7 @@ it("journals signed bytes before an ambiguous submit and resumes exact inclusion
   expect(f.submit).toHaveBeenCalledOnce();
 });
 
-it("keeps unknown attempts intact, then re-signs at once when canonical invalidation is still within k", async () => {
+it("keeps unknown attempts intact, then re-signs at once when an invalidation is still within k", async () => {
   const f = setup();
   f.submit.mockRejectedValueOnce(new Error("unknown acknowledgement"));
   await submitUnattestedTimeoutCorrection(f.params);
@@ -296,14 +295,7 @@ it("keeps unknown attempts intact, then re-signs at once when canonical invalida
   expect(seams.build).toHaveBeenCalledOnce();
   expect(f.retained()!.steps).toEqual([original]);
   f.changeFee();
-  f.observe("invalidated", heldPoint, "fee input canonically spent");
-  await expect(
-    reconcileSignedWorkflowTransaction({
-      transactionHash: original.txHash,
-      signedTransactionCborHex: original.signedCbor,
-      observe: f.observed,
-    }),
-  ).resolves.toEqual({ kind: "not_found" });
+  f.observe("invalidated", false, "fee input spent within k");
   // No wait for a retirement receipt: the attempt is abandoned and replaced.
   const replaced = await submitUnattestedTimeoutCorrection(f.params);
   expect(replaced.status).toBe("pending");
@@ -404,7 +396,7 @@ it("archives resolved displaced attempts before writing the locked target and re
   await submitUnattestedTimeoutCorrection(f.params);
   const original = structuredClone(f.retained()!);
   f.takeLock();
-  f.observe("invalidated", finalPoint, "correction input canonically consumed");
+  f.observe("invalidated", true, "correction input consumed beyond k");
   const archive = vi.fn(async (journal: TimeoutCorrectionJournal) => {
     expect(f.retained()?.targetHeaderHash).toBe(h("11"));
     expect(journal.steps).toEqual([
@@ -431,7 +423,7 @@ it("does not switch objectives when archival fails", async () => {
   const ttl = CML.Transaction.from_cbor_hex(signed).body().ttl();
   expect(ttl).toBeLessThan(BigInt(point.slot));
   f.takeLock();
-  f.observe("expired", finalPoint, "stable expiry");
+  f.observe("expired", true, "expiry beyond k");
   const archive = vi.fn(async () => {
     throw new Error("archive disk unavailable");
   });
@@ -445,12 +437,15 @@ it("does not switch objectives when archival fails", async () => {
   expect(seams.build).toHaveBeenCalledOnce();
 });
 
-it("never rebroadcasts an unresolved displaced attempt or switches to another correction kind", async () => {
+it("never resubmits an unresolved displaced attempt or switches to another correction kind", async () => {
   const f = competingTimeout();
   await submitUnattestedTimeoutCorrection(f.params);
   const original = structuredClone(f.retained());
   f.takeLock();
-  f.observe("rebroadcast", point, "inputs still available");
+  f.observed.mockImplementation(async () => ({
+    ...observation("pending", false, "live, inputs unspent"),
+    inputsAvailable: true,
+  }));
   const archive = vi.fn(async () => undefined);
   const params = {
     ...f.params,
@@ -459,7 +454,7 @@ it("never rebroadcasts an unresolved displaced attempt or switches to another co
   expect((await submitUnattestedTimeoutCorrection(params)).status).toBe(
     "pending",
   );
-  expect(f.params.recovery.rebroadcastSignedTransaction).not.toHaveBeenCalled();
+  expect(f.submit).toHaveBeenCalledOnce();
   expect(archive).not.toHaveBeenCalled();
   expect(f.retained()).toEqual(original);
   seams.lock.mockReturnValue({
@@ -506,19 +501,16 @@ it("archives the exact journal idempotently and refuses to overwrite conflicting
 
 const statusByHash = (
   f: ReturnType<typeof setup>,
-  statuses: Readonly<Record<string, string>>,
-  fallback = "unknown",
+  statuses: Readonly<Record<string, Status>>,
+  fallback: Status = "unknown",
 ) =>
-  f.observed.mockImplementation(async (signed) => ({
-    ...signed,
-    status: (statuses[signed.transactionHash] ?? fallback) as Awaited<
-      ReturnType<TimeoutCorrectionRecovery["observeSignedTransaction"]>
-    >["status"],
-    reason: "per attempt",
-    canonicalPoint: point,
-    releaseFinalPoint: point,
-    inputs: [],
-  }));
+  f.observed.mockImplementation(async (signed) =>
+    observation(
+      statuses[signed.transactionHash] ?? fallback,
+      false,
+      "per attempt",
+    ),
+  );
 const funded = (byte: string, lovelace: bigint): UTxO => ({
   ...utxo(byte),
   assets: { lovelace },
@@ -546,7 +538,7 @@ it("draws a replacement onto an abandoned attempt's wallet input when no protoco
   moveProtocolInputs();
   // The old fee input is still unspent but no longer the largest.
   f.setWallet([funded("dd", 2_000_000n), funded("de", 90_000_000n)]);
-  statusByHash(f, { [original.txHash]: "expired_at_tip" });
+  statusByHash(f, { [original.txHash]: "expired" });
   await submitUnattestedTimeoutCorrection(f.params);
   expect(seams.build).toHaveBeenCalledTimes(2);
   expect(f.retained()!.steps[0]!.status).toBe("abandoned");
@@ -562,7 +554,7 @@ it("admits a replacement with no shared input only when none of the abandoned at
   const original = structuredClone(f.retained()!.steps[0]!);
   moveProtocolInputs();
   f.changeFee();
-  statusByHash(f, { [original.txHash]: "invalidated_at_tip" });
+  statusByHash(f, { [original.txHash]: "invalidated" });
   await submitUnattestedTimeoutCorrection(f.params);
   const replacement = f.retained()!.steps[1]!;
   expect(
@@ -587,7 +579,7 @@ it("adopts an abandoned attempt that a rollback lands, and completes without wai
   await submitUnattestedTimeoutCorrection(params);
   const original = structuredClone(f.retained()!.steps[0]!);
   f.changeFee();
-  statusByHash(f, { [original.txHash]: "expired_at_tip" });
+  statusByHash(f, { [original.txHash]: "expired" });
   await submitUnattestedTimeoutCorrection(params);
   const replacement = structuredClone(f.retained()!.steps[1]!);
   expect(f.retained()!.steps.map(({ status }) => status)).toEqual([
@@ -599,7 +591,7 @@ it("adopts an abandoned attempt that a rollback lands, and completes without wai
   f.removeTarget();
   statusByHash(f, {
     [original.txHash]: "included",
-    [replacement.txHash]: "invalidated_at_tip",
+    [replacement.txHash]: "invalidated",
   });
   const result = await submitUnattestedTimeoutCorrection(params);
   expect(result.status).toBe("complete");
@@ -624,7 +616,7 @@ it("re-reads abandoned attempts on a backoff schedule, a bounded number per pass
   await submitUnattestedTimeoutCorrection(params);
   const original = structuredClone(f.retained()!.steps[0]!);
   f.changeFee();
-  statusByHash(f, { [original.txHash]: "expired_at_tip" }, "pending");
+  statusByHash(f, { [original.txHash]: "expired" }, "pending");
   await submitUnattestedTimeoutCorrection(params);
   const reads = () =>
     f.observed.mock.calls.filter(
@@ -649,18 +641,109 @@ it("re-reads abandoned attempts on a backoff schedule, a bounded number per pass
   await submitUnattestedTimeoutCorrection(params);
   expect(reads()).toBe(before + 3);
   // Past k the read retires it and it leaves the schedule.
-  f.observed.mockImplementation(async (signed) => ({
-    ...signed,
-    status: signed.transactionHash === original.txHash ? "expired" : "pending",
-    reason: "stable expiry",
-    canonicalPoint: finalPoint,
-    releaseFinalPoint: point,
-    inputs: [],
-  }));
+  f.observed.mockImplementation(async (signed) =>
+    signed.transactionHash === original.txHash
+      ? observation("expired", true, "expiry beyond k")
+      : observation("pending"),
+  );
   now += 80_000;
   await submitUnattestedTimeoutCorrection(params);
   expect(f.retained()!.steps[0]!.status).toBe("retired");
   now += 600_000;
   await submitUnattestedTimeoutCorrection(params);
   expect(reads()).toBe(before + 4);
+});
+
+it("a CLI run abandons a prior run's attempt it cannot observe, and the ledger's refusal of the replacement is the named in-flight error", async () => {
+  const f = setup();
+  const release = vi.fn(async () => undefined);
+  const fail = vi.fn(async () => undefined);
+  const lease = {
+    acquire: async () => ({
+      token: "t",
+      source: "test",
+      release,
+      fail,
+      renew: vi.fn(async () => undefined),
+    }),
+  };
+  const params = {
+    ...f.cliParams,
+    stateQueueMutationLeaseCoordinator: lease,
+    attemptReadSchedule: createSupersededAttemptReadSchedule(),
+  };
+  expect((await submitUnattestedTimeoutCorrection(params)).status).toBe(
+    "pending",
+  );
+  const prior = structuredClone(f.retained()!.steps[0]!);
+  expect(prior.status).toBe("submitted");
+  // The next run cannot tell whether the prior attempt is in flight. Its
+  // replacement shares the prior's inputs; the ledger refuses it.
+  f.changeFee();
+  const refusal = await emulatorDoubleSpendRefusal();
+  f.submit.mockRejectedValueOnce(refusal);
+  const refused = await submitUnattestedTimeoutCorrection(params).catch(
+    (error: unknown) => error,
+  );
+  expect(refused).toBeInstanceOf(TimeoutCorrectionAttemptInFlightError);
+  expect((refused as Error).cause).toBe(refusal);
+  expect(f.submit).toHaveBeenCalledTimes(2);
+  const steps = f.retained()!.steps;
+  expect(steps.map(({ status }) => status)).toEqual(["abandoned", "abandoned"]);
+  expect(steps[0]).toEqual({ ...prior, status: "abandoned" });
+  expect(
+    steps[1]!.inputOutRefs.filter((outRef) =>
+      prior.inputOutRefs.includes(outRef),
+    ),
+  ).toEqual([`${tx("01")}#0`, `${tx("11")}#0`, `${tx("cc")}#0`]);
+  // A named refusal, not a failed run: the lease is released, not failed.
+  expect(release).toHaveBeenCalledTimes(2);
+  expect(fail).not.toHaveBeenCalled();
+  // The prior attempt lands: the provider confirms it and the queue shows its
+  // effect, so it is adopted and the correction completes with no new build.
+  f.removeTarget();
+  f.setTxStatus((txHash) =>
+    txHash === prior.txHash ? "confirmed" : "not_found",
+  );
+  const done = await submitUnattestedTimeoutCorrection(params);
+  expect(done.status).toBe("complete");
+  expect(done.removedHeaderHashes).toEqual([prior.removedHeaderHash]);
+  expect(seams.build).toHaveBeenCalledTimes(2);
+});
+
+it("a CLI run waits on its own submission while it is valid, and abandons it once its validity has passed", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  try {
+    const f = setup({ ttl: "validity" });
+    let now = 4_000_000;
+    const run = submitUnattestedTimeoutCorrection({
+      ...f.cliParams,
+      attemptReadSchedule: createSupersededAttemptReadSchedule(),
+      nowMs: () => now,
+      awaitConfirmation: true,
+    });
+    await vi.advanceTimersByTimeAsync(DEFAULT_CONFIRMATION_POLL_MS * 3);
+    expect(seams.build).toHaveBeenCalledOnce();
+    expect(f.retained()!.steps.map(({ status }) => status)).toEqual([
+      "submitted",
+    ]);
+    // Past its validity it can no longer land: replaced, sharing its inputs.
+    now += Number(STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS);
+    f.changeFee();
+    await vi.advanceTimersByTimeAsync(DEFAULT_CONFIRMATION_POLL_MS);
+    expect(seams.build).toHaveBeenCalledTimes(2);
+    expect(f.retained()!.steps.map(({ status }) => status)).toEqual([
+      "abandoned",
+      "submitted",
+    ]);
+    const replacement = f.retained()!.steps[1]!.txHash;
+    f.removeTarget();
+    f.setTxStatus((txHash) =>
+      txHash === replacement ? "confirmed" : "not_found",
+    );
+    await vi.advanceTimersByTimeAsync(DEFAULT_CONFIRMATION_POLL_MS);
+    expect((await run).status).toBe("complete");
+  } finally {
+    vi.useRealTimers();
+  }
 });

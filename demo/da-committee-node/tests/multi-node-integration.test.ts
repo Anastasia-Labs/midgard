@@ -2,11 +2,11 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import { CommitteeService } from "../src/committee-service.js";
+import { l1SourceAuthorityDigest } from "../src/config.js";
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import type { DaAttestationCandidateRecord } from "../src/domain.js";
 import { deriveExpectedDaAvailabilityCommitment } from "../src/peer/signatures.js";
 import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import {
   makeObservedNode,
@@ -15,7 +15,11 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from "./helpers.js";
-import { withFinalSnapshot } from "./helpers/final-snapshot.js";
+import {
+  openTestCommitteeStore,
+  saveHealthyL1SourceState,
+} from "./helpers/committee-store.js";
+import { fakeL1Source } from "./helpers/fake-l1-source.js";
 
 describe("multi-node DA committee integration", () => {
   it("uses a peer signature to init, add, and apply threshold DA attestation without HTTP DA transport", async () => {
@@ -31,7 +35,6 @@ describe("multi-node DA committee integration", () => {
       blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
     );
     const baseConfig = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: coordinatorSeed,
@@ -62,11 +65,18 @@ describe("multi-node DA committee integration", () => {
       signer: peerSigner,
       signerIndex: 1,
     });
-    const coordinatorStore = await JsonFileCommitteeStore.open(
-      `${dir}/coordinator-store`,
+    // The peer publishes into the coordinator's store before the coordinator
+    // service starts: give it the source state that service would save.
+    const coordinatorStore = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+      {
+        sourceMode: "local_node",
+        network: coordinatorConfig.network,
+        authoritySha256: l1SourceAuthorityDigest(coordinatorConfig),
+      },
     );
-    const peerStore = await JsonFileCommitteeStore.open(`${dir}/peer-store`);
-    const observedHeaderProvider = withFinalSnapshot({
+    const peerStore = await openTestCommitteeStore();
+    const observedHeaderProvider = fakeL1Source({
       fetchStateQueueNodes: async () => [
         makeObservedNode({ header, headerHash, depth: 10 }),
       ],
@@ -75,7 +85,7 @@ describe("multi-node DA committee integration", () => {
     const peerService = new CommitteeService({
       config: peerConfig,
       store: peerStore,
-      stateQueueProvider: observedHeaderProvider,
+      l1: observedHeaderProvider,
       payloadSource,
       signer: peerSigner,
       signerValidation: peerValidation,
@@ -169,7 +179,7 @@ describe("multi-node DA committee integration", () => {
     const coordinatorService = new CommitteeService({
       config: coordinatorConfig,
       store: coordinatorStore,
-      stateQueueProvider: observedHeaderProvider,
+      l1: observedHeaderProvider,
       payloadSource,
       signer: coordinatorSigner,
       signerValidation: coordinatorValidation,

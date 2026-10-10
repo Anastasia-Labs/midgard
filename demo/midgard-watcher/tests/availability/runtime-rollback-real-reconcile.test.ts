@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import type { LocalKupmiosFraudProofRawSource } from "@al-ft/midgard-fault-proofs";
 import {
   buildDaAvailabilityFundingPreparationTx,
   type DaAvailabilityOperationObservation,
@@ -61,9 +60,6 @@ vi.mock("@lucid-evolution/lucid", async (original) => {
 });
 vi.mock("@lucid-evolution/scalus-uplc", () => ({
   createScalusEvaluator: () => ({}),
-}));
-vi.mock("../../src/l1/native-reward-account.js", () => ({
-  WatcherLocalKupmios: class {},
 }));
 vi.mock("../../src/runtime/process-config.js", () => ({
   loadWatcherSecretText: async () => "seed",
@@ -179,10 +175,6 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
             requestTimeoutMs: 10_000,
             source: {
               sourceMode: "local_node",
-              queryServices: [
-                { kind: "kupo", endpoint: "http://kupo" },
-                { kind: "ogmios", endpoint: "http://ogmios" },
-              ],
             },
           },
         },
@@ -192,7 +184,14 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
         network: "Custom",
         manifestId: DEPLOYMENT,
       } as VerifiedWatcherDeploymentIdentity,
-      rawSource: {} as LocalKupmiosFraudProofRawSource,
+      l1: {
+        reads: {},
+        store: {},
+        provider: {},
+      } as unknown as Parameters<
+        typeof createWatcherAvailabilityRuntime
+      >[0]["l1"],
+      confirmationDepth: 17,
       proverWalletAddress: "prover",
       onDaBondPool: () => undefined,
       onDaBondPoolReadFailure: () => undefined,
@@ -238,9 +237,6 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
   });
 });
 
-vi.mock("../../src/l1/local-kupmios-raw-source.js", () => ({
-  createWatcherLocalKupmiosRawSource: () => ({}),
-}));
 vi.mock("../../src/storage/retained-da-runtime.read-scope.js", () => ({
   withWatcherRetainedDaReadScope: async (
     input: { scope: SDKScope },

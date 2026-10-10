@@ -10,7 +10,7 @@
  * anything that could validate them. Those live here now, in the same
  * injectable shape.
  *
- * The per-command gates in `commands/e2e-pipelined-commit-process-acceptance.ts`
+ * The per-command gates in `commands/e2e-journal-kill-recovery-acceptance.ts`
  * are deliberately not moved: they are that one command's authorization
  * preconditions, they are already parsed through local `requiredEnv` and
  * `positiveIntegerEnv` helpers, and hoisting them here would put a destructive
@@ -18,30 +18,25 @@
  */
 
 export type L1KupmiosEnvironment = {
-  readonly provider: string | undefined;
   readonly providerFailover: string | undefined;
   readonly kupoUrl: string;
   readonly ogmiosUrl: string;
 };
 
 /**
- * The four L1 provider variables, read exactly as the local state-correction
- * authority consumes them: the provider names stay optional strings because the
- * consumer normalizes them itself (it treats blank and `"false"` as off), and
- * the two URLs collapse an unset value to `""`.
- *
- * `midgard-node`'s own `services/config.ts` reads the same four through Effect
- * `Config` and rejects a provider other than `Kupmios`. This reader is
- * deliberately more permissive, because the tools CLI passes them through to a
- * summary rather than driving a node with them.
+ * The local state-correction authority's Kupo and Ogmios endpoints and its
+ * failover switch, read exactly as it consumes them: the failover stays an
+ * optional string because the consumer normalizes it itself (it treats blank
+ * and `"false"` as off). The endpoints are the local Compose stack's loopback
+ * host ports (`KUPO_PORT`, `OGMIOS_PORT`, defaulting as the Compose file
+ * publishes them); the node itself reads neither.
  */
 export const l1KupmiosEnvironment = (
   env: NodeJS.ProcessEnv = process.env,
 ): L1KupmiosEnvironment => ({
-  provider: env.L1_PROVIDER,
   providerFailover: env.L1_PROVIDER_FAILOVER,
-  kupoUrl: env.L1_KUPO_KEY ?? "",
-  ogmiosUrl: env.L1_OGMIOS_KEY ?? "",
+  kupoUrl: `http://127.0.0.1:${env.KUPO_PORT ?? "1442"}`,
+  ogmiosUrl: `http://127.0.0.1:${env.OGMIOS_PORT ?? "1337"}`,
 });
 
 /** L1_PROVIDER_FAILOVER is off when unset, blank or "false" in any case. */

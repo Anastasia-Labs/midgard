@@ -184,7 +184,7 @@ export const decodePhase4EnvironmentDocumentV1 = (value) => {
   }
   if (
     !exactKeys(value.provider, ["kind", "routeSha256"]) ||
-    value.provider.kind !== "Kupmios" ||
+    value.provider.kind !== "l1_node" ||
     !sha256Hex(value.provider.routeSha256)
   ) {
     throw new Error("provider does not match the exact V1 schema");

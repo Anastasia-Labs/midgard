@@ -12,24 +12,6 @@ import { Database } from "../../services/database.js";
  * these helpers so they surface a consistent tagged error type and logging
  * shape no matter which table fails underneath.
  */
-export const retrieveNumberOfEntries = (
-  tableName: string,
-): Effect.Effect<bigint, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    yield* Effect.logDebug(`${tableName} db: attempt to get number of entries`);
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{
-      // sql treats COUNT(*) as a `string`, regardless of any type annotations.
-      count: string;
-    }>`SELECT COUNT(*) FROM ${sql(tableName)}`;
-    return BigInt(rows[0].count);
-  }).pipe(
-    Effect.withLogSpan(`retrieveNumberOfEntries ${tableName}`),
-    Effect.tapErrorTag("SqlError", (e) =>
-      logDatabaseError(tableName, "retrieveNumberOfEntries", e),
-    ),
-    sqlErrorToDatabaseError(tableName, "Failed to retrieve row count"),
-  );
 
 /**
  * Removes every row from a table while preserving the table definition and

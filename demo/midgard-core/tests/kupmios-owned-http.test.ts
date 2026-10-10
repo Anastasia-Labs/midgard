@@ -9,7 +9,7 @@ import { type Socket } from "node:net";
 import { Kupmios, type KupmiosOptions, Lucid } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { NativeLedgerKupmios } from "../src/native-reward-account.js";
+import { NativeLedgerKupmios } from "../src/native-ledger-kupmios.js";
 
 const baseProtocolParameters = {
   minFeeCoefficient: 44,

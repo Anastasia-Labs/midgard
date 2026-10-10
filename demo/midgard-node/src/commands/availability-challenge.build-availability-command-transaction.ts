@@ -152,13 +152,13 @@ export const buildAvailabilityCommandTransaction = async (
     const status = node.da_attestation;
     if (typeof status !== "object" || !("Attested" in status))
       throw new Error("Availability open requires an Attested queue node");
-    const { daChallengeWindowMs, kupoUrl } = context;
+    const { daChallengeWindowMs, unitHistory } = context;
     // The validator requires the inclusive upper bound, validTo - 1, to fall
     // before the window's end.
     const windowEnd = node.header.endTime + daChallengeWindowMs;
     if (validTo > windowEnd) validTo = windowEnd;
     const commitment = await recoverAvailabilityOpenCommitment({
-      kupoUrl,
+      unitHistory,
       daAttestationPolicyId: required(
         context.daAttestationPolicyId,
         "the deployment's DA attestation policy",

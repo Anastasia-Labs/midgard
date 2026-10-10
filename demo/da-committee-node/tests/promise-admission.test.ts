@@ -3,10 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CommitteeService } from "../src/committee-service.js";
 import { deriveExpectedDaAvailabilityCommitment } from "../src/peer/signatures.js";
 import { retainedSignedPayload } from "./committee-service.test/fixtures.js";
-import {
-  promiseAdmissionFixture as fixture,
-  stores,
-} from "./helpers/promise-admission.js";
+import { promiseAdmissionFixture as fixture } from "./helpers/promise-admission.js";
 
 describe("committee fresh promise admission", () => {
   it("persists the first liability and refuses a second after restart and failed publication", async () => {
@@ -37,7 +34,6 @@ describe("committee fresh promise admission", () => {
       },
     });
     await f.store.close();
-    stores.delete(f.store);
     const reopened = await f.open();
     const restarted = f.service(reopened);
     await restarted.initialize();
@@ -78,7 +74,7 @@ describe("committee fresh promise admission", () => {
         },
       },
       store: f.store,
-      stateQueueProvider: f.provider,
+      l1: f.provider,
       payloadSource: f.payloadSource,
       signer: {
         publicKeyHex: f.signerValidation.signerPublicKeyHex,

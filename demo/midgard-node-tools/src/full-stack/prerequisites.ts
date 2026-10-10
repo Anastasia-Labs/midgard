@@ -50,10 +50,13 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
   );
   for (const name of [
     "@al-ft/lucid-midgard",
+    "@al-ft/l1-node-transport",
     "@al-ft/midgard-core",
     "@al-ft/midgard-sdk",
     "@al-ft/midgard-validation",
     "@al-ft/midgard-fault-proofs",
+    // The node's L1 follower, and the origin scan of the deployment steps.
+    "@al-ft/midgard-l1-follower",
     "midgard-node",
     "midgard-watcher",
   ])
@@ -66,10 +69,10 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
       "host",
     );
   await processes.command(
-    "native-chain-sync-build",
+    "native-l1-node-transport-build",
     "pnpm",
-    ["--filter", "midgard-watcher", "native:build"],
-    { CGO_ENABLED: "0", GOTOOLCHAIN: "go1.25.7" },
+    ["--filter", "@al-ft/l1-node-transport", "native:build"],
+    { CGO_ENABLED: "0", GOTOOLCHAIN: "go1.26.5" },
     workspace,
     "host",
   );
@@ -94,22 +97,12 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
   configureHostNativeLedger(processes);
   await processes.compose("base-compose-check", ["config", "--quiet"]);
   const { readReleaseInput, releasePaths } = await import("./release.js");
-  const {
-    loadWatcherSecretText,
-    decodeWatcherAuthenticationKey32,
-    decodeWatcherHttpBearerSecret,
-  } = await import("midgard-watcher");
-  for (const key of ["WATCHER_RECORD_KEY_FILE", "WATCHER_ROLLBACK_KEY_FILE"])
-    decodeWatcherAuthenticationKey32(
-      await loadWatcherSecretText({
-        kind: "file",
-        path: watcherEnv[key]!,
-      }),
-    );
-  decodeWatcherHttpBearerSecret(
+  const { loadWatcherSecretText, decodeWatcherAuthenticationKey32 } =
+    await import("midgard-watcher");
+  decodeWatcherAuthenticationKey32(
     await loadWatcherSecretText({
       kind: "file",
-      path: watcherEnv.WATCHER_BEARER_FILE!,
+      path: watcherEnv.WATCHER_ROLLBACK_KEY_FILE!,
     }),
   );
   const { walletFromSeed } = await import("@lucid-evolution/lucid");

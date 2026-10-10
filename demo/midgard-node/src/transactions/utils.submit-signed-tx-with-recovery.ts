@@ -1,8 +1,15 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import { type SubmitSlotSnapshot } from "../local-ledger-slot.js";
+import { findSubmitOutcomeUnknown } from "../provider-retry.js";
+import {
+  IntentJournal,
+  type JournalInsert,
+  type SubmissionIntent,
+} from "../services/intent-journal.js";
 import {
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,
@@ -15,7 +22,6 @@ import {
   DEFAULT_SIGNED_TX_INLINE_WAIT_MS,
   EARLY_VALIDITY_RETRY_SLOT_BUFFER,
   INIT_RETRY_AFTER_MILLIS,
-  isUnknownOutputReferenceSubmitError,
   parseOutsideValidityIntervalDetails,
   resolveEarlyValidityRetry,
   RETRY_ATTEMPTS,
@@ -34,15 +40,33 @@ import {
   resolvePreSubmitSlotSnapshot,
   type SubmitRecoveryOptions,
   submitRecoverySleep,
-} from "./utils.reconcile-wallet-utxos-from-signed-tx.js";
+} from "./utils.submit-recovery-options.js";
 
+/**
+ * Submits signed bytes with recovery for provider races and early-validity
+ * failures. The intent journal (§8.2) records the exact bytes immediately
+ * before the first submission; a refusal stops the submission
+ * (`IntentJournalRefused`). Every send here, retries included, follows S6's
+ * decision taken in the record's transaction (§8.1); a held one stops the
+ * submission (`IntentSubmitHeld`) and S6's reconciler decides it under the
+ * current view. Every retry here sends the same bytes; after a send whose
+ * outcome is unknown (the provider's `L1SubmitOutcomeUnknownError`) it first
+ * reads the exact id's status and sends nothing once the transaction landed,
+ * and that error, not a later retry's, is the one reported.
+ */
 export const submitSignedTxWithRecovery = (
   lucid: LucidEvolution,
   signed: Awaited<ReturnType<TxSignBuilder["complete"]>>,
   txHash: string,
+  intent: SubmissionIntent,
   options: SubmitRecoveryOptions = {},
-): Effect.Effect<void, unknown> =>
+): Effect.Effect<void, unknown, IntentJournal> =>
   Effect.gen(function* () {
+    const journal = yield* IntentJournal;
+    const purpose = {
+      kind: "send",
+      slotTime: (slot: number) => lucid.slotToUnixTime(slot),
+    } as const;
     const sleep = options.sleep ?? submitRecoverySleep(lucid);
     let providerRetryAttempts = 0;
     let outsideValidityRecoveryAttempts = 0;
@@ -54,7 +78,15 @@ export const submitSignedTxWithRecovery = (
       Math.ceil(maxOutsideValidityRecoveryWaitMs / SLOT_LENGTH_MS),
     );
 
+    let outcomeUnknown: unknown;
+
     for (;;) {
+      if (
+        outcomeUnknown !== undefined &&
+        (yield* landedAfterOutcomeUnknown(lucid, txHash, outcomeUnknown))
+      ) {
+        return;
+      }
       const preSubmitValidity = yield* preSubmitValidityCheck(
         lucid,
         signed,
@@ -135,19 +167,33 @@ export const submitSignedTxWithRecovery = (
           );
         }
       }
-      // The callback must finish its durable commit before any provider call.
-      // It runs for each attempt so a generation change also fences retries.
-      const intent = yield* Effect.serviceOption(
+      // The pre-broadcast gate owns one outermost transaction and runs the
+      // journal's insert inside it, so a refused gate leaves no journal row,
+      // and a row never outlives a gate that did not pass. The record and
+      // S6's send decision run for each attempt, so a rewind also fences
+      // retries; the row itself is written once (a second insert is
+      // `already_recorded`). The send follows the commit.
+      const durable = yield* Effect.serviceOption(
         BeforeSignedTransactionSubmission,
       );
-      if (Option.isSome(intent))
-        yield* intent.value.persist({ txHash, signedTxCbor: signed.toCBOR() });
+      const gate = Option.isSome(durable)
+        ? (journal: JournalInsert) =>
+            durable.value.persist({
+              txHash,
+              signedTxCbor: signed.toCBOR(),
+              journal,
+            })
+        : undefined;
+      yield* journal.record(intent, signed.toCBOR(), txHash, purpose, gate);
       const submitResult = yield* Effect.either(signed.submitProgram());
       if (submitResult._tag === "Right") {
         return;
       }
 
       const e = submitResult.left;
+      if (outcomeUnknown === undefined && findSubmitOutcomeUnknown(e)) {
+        outcomeUnknown = e;
+      }
       const submitError = formatUnknownError(e, { includeCause: true });
       const outsideValidityDetails =
         parseOutsideValidityIntervalDetails(e) ??
@@ -356,7 +402,7 @@ export const submitSignedTxWithRecovery = (
       }
 
       if (
-        isUnknownOutputReferenceSubmitError(e) &&
+        isSpentInputSubmitRejection(e) &&
         options.inlineWaitPolicy === "defer_positive_wait" &&
         options.unknownInputsFailFast === true
       ) {
@@ -371,7 +417,7 @@ export const submitSignedTxWithRecovery = (
         );
       }
 
-      if (isUnknownOutputReferenceSubmitError(e)) {
+      if (isSpentInputSubmitRejection(e)) {
         yield* Effect.logWarning(
           `Tx submit reported unknown inputs for ${txHash}; verifying the exact transaction through provider-neutral status before failing: ${submitError}`,
         );
@@ -396,6 +442,7 @@ export const submitSignedTxWithRecovery = (
         return yield* Effect.fail(
           new Error(
             `Tx ${txHash} submit failed with provider error in no-inline mode; refusing provider retry sleep under ownership: ${submitError}`,
+            { cause: e },
           ),
         );
       }
@@ -410,6 +457,43 @@ export const submitSignedTxWithRecovery = (
         continue;
       }
 
-      return yield* Effect.fail(e);
+      return yield* Effect.fail(outcomeUnknown ?? e);
     }
+  });
+
+/**
+ * Whether `txHash`, sent once with an unknown outcome, landed: its status on
+ * the provider (the follower's view of the exact id). A transaction that
+ * landed phase-2 invalid fails here: its collateral is gone and resending
+ * cannot change that. An unreadable status resends the same bytes, which
+ * cannot land twice.
+ */
+const landedAfterOutcomeUnknown = (
+  lucid: Pick<LucidEvolution, "transactionStatus">,
+  txHash: string,
+  outcomeUnknown: unknown,
+): Effect.Effect<boolean, Error> =>
+  Effect.gen(function* () {
+    const read = yield* Effect.either(
+      Effect.tryPromise(() => lucid.transactionStatus(txHash)),
+    );
+    if (read._tag === "Left") {
+      yield* Effect.logWarning(
+        `Tx ${txHash} status unreadable after a submit with an unknown outcome; sending the same bytes again: ${formatUnknownError(read.left, { includeCause: true })}`,
+      );
+      return false;
+    }
+    if (read.right.status === "failed") {
+      return yield* Effect.fail(
+        new Error(
+          `Tx ${txHash} landed phase-2 invalid after a submit with an unknown outcome`,
+          { cause: outcomeUnknown },
+        ),
+      );
+    }
+    if (read.right.status !== "confirmed") return false;
+    yield* Effect.logInfo(
+      `Tx ${txHash} landed after a submit with an unknown outcome; not sending it again.`,
+    );
+    return true;
   });

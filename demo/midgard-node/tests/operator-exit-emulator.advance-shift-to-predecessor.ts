@@ -16,7 +16,6 @@ import {
   fetchDirectorySnapshot,
   fundAccount,
   registerAndActivate,
-  resyncWallet,
   submitSigned,
 } from "./operator-exit-emulator.build-retire-tx.js";
 
@@ -54,7 +53,6 @@ export const advanceShiftToPredecessor = async ({
   if (nextLucid === undefined) {
     throw new Error("Expected to know the incoming operator's wallet");
   }
-  await resyncWallet(nextLucid);
   const validFrom = alignMs(lucid, shiftStart + SHIFT_DURATION_MS + 30_000n);
   const { tx } = await runProgram(
     SDK.buildUnsignedSchedulerRefreshTxProgram({

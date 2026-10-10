@@ -1,21 +1,10 @@
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Metric } from "effect";
-
-import type { SubmitSlotSnapshot } from "../local-ogmios-slot.js";
-import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 
 export type CommitPipelinePhase =
   | "idle"
   | "scheduler_alignment"
-  | "speculative_build"
   | "mutation_worker";
-
-export type CommitSubmitWake = {
-  readonly confirmedHeaderHash: string;
-  /** Canonical latest state-queue tip observed with confirmedHeaderHash. */
-  readonly confirmedTip: SerializedStateQueueUTxO;
-  readonly confirmationObservedAtMs: number;
-  readonly confirmationWaitMs: number;
-};
 
 export type AdmissionBacklogGaugeState = {
   readonly ADMISSION_BACKLOG_BASE: bigint;
@@ -52,14 +41,14 @@ export type L1ProviderHealthEvidence = {
   readonly lastExactEvidenceRevision: number;
   readonly lastExactObservationKind: "exact_success" | "exact_failure" | null;
   readonly lastSuccessAtMs: number;
-  /** Last success from the exact HubOracle + local-Ogmios readiness query. */
+  /** Last success from the exact HubOracle + local-ledger readiness query. */
   readonly lastExactSuccessAtMs: number;
   readonly lastExactFailureAtMs: number;
   readonly lastExactFailure: string | null;
   readonly lastSuccessKind: "exact" | "direct" | null;
   readonly lastFailureAtMs: number;
   readonly lastFailure: string | null;
-  readonly lastOgmiosSlot: SubmitSlotSnapshot | null;
+  readonly lastLedgerSlot: SubmitSlotSnapshot | null;
 };
 
 export const nextL1ProviderHealthEvidence = ({
@@ -67,14 +56,14 @@ export const nextL1ProviderHealthEvidence = ({
   healthy,
   error,
   observedAtMs,
-  ogmiosSlot,
+  ledgerSlot,
   successKind,
 }: {
   readonly current: L1ProviderHealthEvidence;
   readonly healthy: boolean;
   readonly error?: string;
   readonly observedAtMs: number;
-  readonly ogmiosSlot?: SubmitSlotSnapshot;
+  readonly ledgerSlot?: SubmitSlotSnapshot;
   readonly successKind: "exact" | "direct";
 }): L1ProviderHealthEvidence => {
   const evidenceRevision = current.evidenceRevision + 1;
@@ -115,7 +104,7 @@ export const nextL1ProviderHealthEvidence = ({
           lastFailure: exactFailureIsUnrecovered
             ? current.lastExactFailure
             : null,
-          lastOgmiosSlot: ogmiosSlot ?? current.lastOgmiosSlot,
+          lastLedgerSlot: ledgerSlot ?? current.lastLedgerSlot,
         };
       })()
     : (() => {

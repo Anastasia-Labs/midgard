@@ -19,6 +19,7 @@ import {
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   SchedulerSpendRedeemer,
+  TxOrderDatum,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -42,11 +43,69 @@ import {
 } from "./submit-init-emulator-shared.js";
 
 /**
+ * A tx order the state-queue tail has not delivered (`inclusion_time` one past
+ * the tail's end time), which every strike below cites. The fixture's tx-order
+ * policy always succeeds, so the order is minted directly; the scheduler reads
+ * only its policy token and its datum's `inclusion_time`.
+ */
+const submitNeglectedFixtureTxOrder = async (
+  fixture: ProvedDoubleSpendFixture,
+  tailEndTimeMs: bigint,
+): Promise<UTxO> => {
+  const { txOrder } = fixture.contracts;
+  const unit = toUnit(txOrder.policyId, "5e");
+  const datum: TxOrderDatum = {
+    event: {
+      id: { transactionId: "5e".repeat(32), outputIndex: 0n },
+      tx: {
+        tx_id: "5f".repeat(32),
+        transaction_commitment: "60".repeat(32),
+        submitted_source: {
+          compact_cbor: "",
+          witness_set_compact_cbor: "",
+          field_preimage_lengths_cbor: "",
+        },
+      },
+    },
+    inclusion_time: tailEndTimeMs + 1n,
+    witness: "61".repeat(28),
+    refund_address: {
+      paymentCredential: { PublicKeyCredential: ["62".repeat(28)] },
+      stakeCredential: null,
+    },
+    refund_datum: "NoDatum",
+  };
+  const signed = await (
+    await fixture.funderLucid
+      .newTx()
+      .mintAssets({ [unit]: 1n }, Data.void())
+      .pay.ToContract(
+        txOrder.spendingScriptAddress,
+        { kind: "inline", value: Data.to(datum, TxOrderDatum) },
+        { lovelace: 5_000_000n, [unit]: 1n },
+      )
+      .attach.MintingPolicy(txOrder.mintingScript)
+      .complete()
+  ).sign
+    .withWallet()
+    .complete();
+  await fixture.funderLucid.awaitTx(await signed.submit());
+  return requireCurrentUnitUtxo({
+    lucid: fixture.funderLucid,
+    address: txOrder.spendingScriptAddress,
+    unit,
+    label: "neglected tx order",
+  });
+};
+
+/**
  * Drive the fixture's sole active operator through the canonical five-strike
  * inactivity path and transfer its exact remaining bond to the retired set.
  * This is deliberately a real validator lifecycle, not a fabricated retired
  * datum, so the partial Q53 tranche reaches fraud removal with authenticated
- * provenance from the active-operator and scheduler contracts.
+ * provenance from the active-operator and scheduler contracts. Every strike
+ * cites one tx order the tail has not delivered: an operator with no neglected
+ * L1 work cannot be struck.
  */
 export const retireFixtureOperatorAfterInactivity = async (
   fixture: ProvedDoubleSpendFixture,
@@ -63,6 +122,14 @@ export const retireFixtureOperatorAfterInactivity = async (
     fixture.successors.at(-1)?.successorBlockUnit ??
     fixture.setup.stateQueueBlockUnit;
   const protocolParameters = getProtocolParameters(network);
+  const tailEndTimeMs = BigInt(
+    fixture.successors.at(-1)?.header.endTime ??
+      fixture.fraudulentHeader.endTime,
+  );
+  const neglectedTxOrder = await submitNeglectedFixtureTxOrder(
+    fixture,
+    tailEndTimeMs,
+  );
 
   for (
     let expectedInputStrikes = 0n;
@@ -118,10 +185,8 @@ export const retireFixtureOperatorAfterInactivity = async (
 
     const threshold = computeInactivityThreshold({
       shiftStartMs: BigInt(schedulerDatum.ActiveOperator.start_time),
-      stateQueueTailEndTimeMs: BigInt(
-        fixture.successors.at(-1)?.header.endTime ??
-          fixture.fraudulentHeader.endTime,
-      ),
+      stateQueueTailEndTimeMs: tailEndTimeMs,
+      neglectedEvent: { kind: "TxOrder", inclusionTimeMs: tailEndTimeMs + 1n },
     });
     if (threshold.kind !== "threshold") {
       throw new Error(
@@ -190,7 +255,15 @@ export const retireFixtureOperatorAfterInactivity = async (
                 registeredOperatorsRoot,
                 "inactivity strike registered-operators root",
               ),
-              neglected_user_event: "NoNeglectedUserEvent",
+              neglected_user_event: {
+                NeglectedTxOrder: {
+                  tx_order_ref_input_index: requireReferenceInputIndex(
+                    ctx,
+                    neglectedTxOrder,
+                    "inactivity strike neglected tx order",
+                  ),
+                },
+              },
             },
           },
         } satisfies SchedulerSpendRedeemer,
@@ -243,6 +316,7 @@ export const retireFixtureOperatorAfterInactivity = async (
         activeOperatorsRoot,
         registeredOperatorsRoot,
         tailStateQueueNode,
+        neglectedTxOrder,
         fixture.removalReferenceScriptPublications.published
           .activeOperatorsSpend,
         fixture.removalReferenceScriptPublications.published.schedulerSpend,
@@ -290,6 +364,7 @@ export const retireFixtureOperatorAfterInactivity = async (
       activeOperatorsRoot,
       registeredOperatorsRoot,
       tailStateQueueNode,
+      neglectedTxOrder,
       fixture.removalReferenceScriptPublications.published.activeOperatorsSpend,
       fixture.removalReferenceScriptPublications.published.schedulerSpend,
     ];

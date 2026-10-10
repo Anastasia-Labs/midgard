@@ -37,12 +37,6 @@ export {
   type CommittedFieldShapeFaultProofContracts,
 } from "./families/committed-field-shape.js";
 export {
-  buildCrossBlockDuplicateEventFaultProofContracts,
-  type BuildCrossBlockDuplicateEventFaultProofContractsParams,
-  CROSS_BLOCK_DUPLICATE_EVENT_FAULT_PROOF_TITLES,
-  type CrossBlockDuplicateEventFaultProofContracts,
-} from "./families/cross-block-duplicate-event.js";
-export {
   buildDaHashPreimageFaultProofContracts,
   type BuildDaHashPreimageFaultProofContractsParams,
   DA_HASH_PREIMAGE_FAULT_PROOF_TITLES,
@@ -169,18 +163,6 @@ export {
   MINT_ITEM_NON_CANONICAL_FAULT_PROOF_TITLES,
   type MintItemNonCanonicalFaultProofContracts,
 } from "./families/mint-item-non-canonical.js";
-export {
-  buildMissingNativeScriptTxFaultProofContracts,
-  type BuildMissingNativeScriptTxFaultProofContractsParams,
-  MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES,
-  type MissingNativeScriptTxFaultProofContracts,
-} from "./families/missing-native-script-tx.js";
-export {
-  buildMissingNativeScriptUtxoFaultProofContracts,
-  type BuildMissingNativeScriptUtxoFaultProofContractsParams,
-  MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES,
-  type MissingNativeScriptUtxoFaultProofContracts,
-} from "./families/missing-native-script-utxo.js";
 export {
   buildMissingRedeemerChain,
   buildMissingRedeemerFaultProofContracts,

@@ -5,11 +5,11 @@ import { setTimeout as pause } from "node:timers/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Kupmios, Lucid } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { expect, it } from "vitest";
 
-import { synchronizePublicationIndexer } from "../src/transactions/reference-publication-provider.js";
 import { ensureReferenceScriptTargetsProgram } from "../src/transactions/reference-scripts.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
+import { synchronizePublicationIndexer } from "./helpers/publication-indexer-barrier.js";
 
 const runDirectory = process.env.MIDGARD_PUBLICATION_LOCAL_DEVNET_DIR;
 const mode = process.env.MIDGARD_PUBLICATION_LOCAL_DEVNET_MODE ?? "chained";
@@ -88,8 +88,7 @@ it.skipIf(runDirectory === undefined)(
     );
     const compiledCode: string = blueprint.validators.find(
       (validator: { title: string }) =>
-        validator.title ===
-        "fraud_proofs/cross_block_duplicate_event/step_01.main.spend",
+        validator.title === "fraud_proofs/missing_redeemer/step_02a.main.spend",
     ).compiledCode;
     const script = { type: "PlutusV3" as const, script: compiledCode };
     const targets = Object.keys(SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)
@@ -276,7 +275,7 @@ it.skipIf(runDirectory === undefined)(
       }
       return slot;
     };
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       ensureReferenceScriptTargetsProgram(
         lucid,
         "local-devnet-publication",

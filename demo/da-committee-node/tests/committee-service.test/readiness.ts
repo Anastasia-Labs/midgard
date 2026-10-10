@@ -1,4 +1,10 @@
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
+import {
+  FOLLOWER_CATCHING_UP,
+  FOLLOWER_NODE_BEHIND,
+  FOLLOWER_NODE_UNAVAILABLE,
+  WALLET_SEED_PENDING,
+} from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect, it, vi } from "vitest";
 
@@ -11,17 +17,16 @@ import {
   type DaBondPoolEvent,
 } from "../../src/coordinator/pool-monitor.js";
 import { DaPeerRegistry } from "../../src/da/libp2p/DaPeerRegistry.js";
-import { type StateQueueProvider } from "../../src/l1/state-queue-scanner.js";
+import { type CommitteeL1Readiness } from "../../src/l1/follower/l1-follower.js";
 import { loadDaSigner } from "../../src/signer.js";
-import { JsonFileCommitteeStore } from "../../src/store.js";
 import { createCommitteeTickRunner } from "../../src/tick-runner.js";
 import {
   minimalConfig,
   payloadSourceFromBytes,
   tempDir,
 } from ".././helpers.js";
-import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
-import { openJsonCommitteeStore } from "./fixtures.js";
+import { fakeL1Source } from ".././helpers/fake-l1-source.js";
+import { openTestCommitteeStore } from "./fixtures.js";
 
 export const registerReadinessTests = () => {
   it("registers the store-backed conflict handler before libp2p startup", async () => {
@@ -29,7 +34,6 @@ export const registerReadinessTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -40,8 +44,8 @@ export const registerReadinessTests = () => {
 
     new CommitteeService({
       config,
-      store: await JsonFileCommitteeStore.open(dir),
-      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({ fetchStateQueueNodes: async () => [] }),
       payloadSource: {
         fetchPayloadCandidates: async () => ({
           ok: false,
@@ -58,27 +62,24 @@ export const registerReadinessTests = () => {
     );
   });
 
-  it("is not ready while local chain-sync is still catching up to the tip", async () => {
+  it("is not ready, and decides nothing, while the L1 follower names a reason", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
       signerPublicKey: signer.publicKeyHex,
     });
-    let catchUp:
-      | { events: number; cursorSlot: number; tipSlot: number }
-      | undefined;
+    let following: CommitteeL1Readiness[] = [];
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
-      stateQueueProvider: {
-        ...withFinalSnapshot({ fetchStateQueueNodes: async () => [] }),
-        chainSyncCatchUpProgress: () => catchUp,
-      } as StateQueueProvider,
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () => [],
+        readiness: () => following,
+      }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
     });
     await service.initialize();
@@ -87,16 +88,57 @@ export const registerReadinessTests = () => {
       ready: true,
     });
 
-    // A later sync that is still catching up leaves the last tick's view
-    // behind: the member reports not ready until it reaches the tip.
-    catchUp = { events: 4_096, cursorSlot: 1_000, tipSlot: 90_000 };
+    // A follower catching up holds the tick and names itself in readiness;
+    // it is ready again the moment the follower is.
+    following = [
+      { reason: FOLLOWER_CATCHING_UP, detail: "cursor 1000, tip 90000" },
+    ];
+    await expect(service.tick()).resolves.toMatchObject({
+      held: [`${FOLLOWER_CATCHING_UP}: cursor 1000, tip 90000`],
+    });
     await expect(service.readinessSnapshot()).resolves.toMatchObject({
       ready: false,
+      reasons: [`${FOLLOWER_CATCHING_UP}: cursor 1000, tip 90000`],
+    });
+
+    // A lost L1 node is named, and is transient: no intervention.
+    following = [
+      {
+        reason: FOLLOWER_NODE_UNAVAILABLE,
+        detail: "node_unreachable: dial: no such file",
+      },
+    ];
+    await service.tick();
+    const lost = await service.readinessSnapshot();
+    expect(lost).toMatchObject({
+      ready: false,
       reasons: [
-        "l1_chain_sync_catching_up: events=4096, cursorSlot=1000, tipSlot=90000",
+        `${FOLLOWER_NODE_UNAVAILABLE}: node_unreachable: dial: no such file`,
       ],
     });
-    catchUp = undefined;
+    expect(lost.l1Source).not.toHaveProperty("intervention");
+
+    // A node behind wall-clock time holds the tick (nothing is submitted),
+    // is named with its lag, and is transient: no intervention.
+    const lag = "node tip slot 1000 is 600 s behind (bound 300 s)";
+    following = [{ reason: FOLLOWER_NODE_BEHIND, detail: lag }];
+    const held = [`${FOLLOWER_NODE_BEHIND}: ${lag}`];
+    await expect(service.tick()).resolves.toMatchObject({ held });
+    const behind = await service.readinessSnapshot();
+    expect(behind).toMatchObject({ ready: false, reasons: held });
+    expect(behind.l1Source).not.toHaveProperty("intervention");
+
+    // An owed own-wallet seed is unready but holds no decision.
+    following = [{ reason: WALLET_SEED_PENDING, detail: "not seeded yet" }];
+    const result = await service.tick();
+    expect(result.held).toBeUndefined();
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: false,
+      reasons: [`${WALLET_SEED_PENDING}: not seeded yet`],
+    });
+
+    following = [];
+    await service.tick();
     await expect(service.readinessSnapshot()).resolves.toMatchObject({
       ready: true,
     });
@@ -107,7 +149,6 @@ export const registerReadinessTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -115,8 +156,8 @@ export const registerReadinessTests = () => {
     });
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
-      stateQueueProvider: withFinalSnapshot({
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [],
       }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
@@ -150,12 +191,76 @@ export const registerReadinessTests = () => {
     ).resolves.toMatchObject({ ready: true, reasons: [] });
   });
 
+  it("shows a retirement hold as detail while ready, and is not ready on a pin failure or a failed compaction", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const service = new CommitteeService({
+      config: minimalConfig({
+        manifestPath: `${dir}/manifest.json`,
+        deploymentInfoPath: `${dir}/deployment.json`,
+        signerSeed: seed,
+        signerPublicKey: signer.publicKeyHex,
+      }),
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({ fetchStateQueueNodes: async () => [] }),
+      payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
+    });
+    await service.initialize();
+    await service.tick();
+    const retention = {
+      status: "ok",
+      checkedAt: "2026-10-08T00:00:00.000Z",
+      scanned: 1,
+      retained: 1,
+      prunable: 0,
+      alerting: 0,
+    } as const;
+    const hold = `committee_retirement_held: header ${"bb".repeat(28)}: submission_without_valid_landing: its submission has no valid landing`;
+
+    const pinPruned = `committee_retention_pin_pruned: retirement need 1 pruned item(s): block ${"cc".repeat(32)}`;
+    const pinFailed = "committee_retention_pin_failed: connection refused";
+    const compaction = "committee_retirement_compaction_failed: disk full";
+
+    // A hold no rule releases is detail on /readyz, never a readiness failure.
+    await expect(
+      service.readinessSnapshot({ retention: { ...retention, holds: [hold] } }),
+    ).resolves.toMatchObject({
+      ready: true,
+      reasons: [],
+      retention: { holds: [hold] },
+    });
+    for (const pin of [pinPruned, pinFailed]) {
+      await expect(
+        service.readinessSnapshot({
+          retention: { ...retention, holds: [hold], pinFailures: [pin] },
+        }),
+      ).resolves.toMatchObject({
+        ready: false,
+        reasons: [pin],
+        retention: { holds: [hold], pinFailures: [pin] },
+      });
+    }
+    await expect(
+      service.readinessSnapshot({
+        retention: { ...retention, status: "failed", error: compaction },
+      }),
+    ).resolves.toMatchObject({
+      ready: false,
+      reasons: [`retention check failed: ${compaction}`],
+    });
+    await expect(
+      service.readinessSnapshot({
+        retention: { ...retention, holds: [], pinFailures: [] },
+      }),
+    ).resolves.toMatchObject({ ready: true, reasons: [] });
+  });
+
   it("is not ready while the pooled DA bond is short or Withdrawing, and ready again after a top-up or cancel", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -163,8 +268,8 @@ export const registerReadinessTests = () => {
     });
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
-      stateQueueProvider: withFinalSnapshot({
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [],
       }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
@@ -227,7 +332,6 @@ export const registerReadinessTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -235,8 +339,8 @@ export const registerReadinessTests = () => {
     });
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
-      stateQueueProvider: withFinalSnapshot({
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [],
       }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
@@ -331,37 +435,39 @@ export const registerReadinessTests = () => {
     ]);
   });
 
-  it("keeps a tick whose local chain-sync is still moving toward the tip clear of the L1-view deadline", async () => {
+  it("keeps a member whose L1 follower is still moving toward the tip clear of the L1-view deadline", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
       signerPublicKey: signer.publicKeyHex,
     });
     let nowMs = Date.parse("2026-09-26T00:00:00.000Z");
-    let catchUp:
-      | { events: number; cursorSlot: number; tipSlot: number }
-      | undefined;
+    let cursorSlot: number | null = null;
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
-      stateQueueProvider: {
-        ...withFinalSnapshot({ fetchStateQueueNodes: async () => [] }),
-        chainSyncCatchUpProgress: () => catchUp,
-      } as StateQueueProvider,
+      store: await openTestCommitteeStore(),
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () => [],
+        readiness: () => [
+          { reason: FOLLOWER_CATCHING_UP, detail: "far behind the tip" },
+        ],
+        cursorSlot: () => cursorSlot,
+      }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
       now: () => new Date(nowMs),
     });
     await service.initialize();
+    // Catching up is a wait, not an intervention.
+    const snapshot = await service.readinessSnapshot();
+    expect(snapshot.l1Source?.status).not.toBe("intervention");
+    expect(snapshot.l1Source?.intervention).toBeUndefined();
     const fatalMs = 240_000;
     const runner = createCommitteeTickRunner({
-      // The first tick of a member far behind: synchronizeToTip walks
-      // chain-sync for longer than the deadline before any view exists.
-      tick: () => new Promise<never>(() => undefined),
+      tick: async () => service.tick(),
       runAvailabilityResponse: async () => undefined,
       runRetention: async () => undefined,
       latestL1View: () => service.latestL1View(),
@@ -372,18 +478,14 @@ export const registerReadinessTests = () => {
       nowMs: () => nowMs,
       write: () => undefined,
     });
-    void runner.runTick();
 
     for (let chunk = 1; chunk <= 3; chunk += 1) {
       nowMs += fatalMs;
-      catchUp = {
-        events: chunk * 4_096,
-        cursorSlot: chunk * 1_000,
-        tipSlot: 90_000,
-      };
+      cursorSlot = chunk * 1_000;
       await runner.runTick();
       expect(runner.liveness().l1ViewUnavailable).toBeUndefined();
     }
+    expect(service.latestL1View()).toBeUndefined();
     // A cursor that stops moving is no progress.
     nowMs += fatalMs + 1;
     await runner.runTick();

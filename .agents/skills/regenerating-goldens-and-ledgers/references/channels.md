@@ -86,9 +86,9 @@ Notes a reader needs:
 
 ## Frozen
 
-| Channel                       | Output                                                                              | Why                                                                                                                                                                                                                                                           |
-| ----------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolver-proof-fit-sweep-v1` | `demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json` | Its generator (`demo/midgard-validation/scripts/generate-resolver-proof-fit-sweep-v1.mjs:61-70`) throws in both modes because its vitest worker was removed on 2026-09-09. The fixture cannot be regenerated or checked until a worker exists again [review]. |
+| Channel                       | Output                                                                              | Why                                                                                                                                                                                                                               |
+| ----------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resolver-proof-fit-sweep-v1` | `demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json` | It has no generator: its vitest worker was removed on 2026-09-09, and the wrapper script, which could only fail, was deleted on 2026-10-08. The fixture cannot be regenerated or checked until a generator exists again [review]. |
 
 ## Documentation and configuration
 
@@ -155,6 +155,18 @@ change that moves compiled validator bytes makes them stale.
 | -------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `da-deployment-fixture`          | `demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json` | `MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts` | the same test without the flag compares the whole fixture, `blueprintHash` included (`demo/midgard-node/tests/da-deployment-fixture-generation.test.ts:75-85`) [ci: Midgard Node CI/Test Midgard node]                     |
 | `watcher-initialization-fixture` | `demo/midgard-watcher/tests/fixtures/user-event-initialization.json`     | `MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/initialization-emulator.test.ts` | none. The consumer says "Regenerate after validator changes" (`demo/midgard-watcher/tests/support/user-event-origin-fixture.ts:142`), and no test compares its recorded `blueprintSha256` with the current build [review]. |
+
+Run one writer at a time per checkout. A raw `pnpm exec vitest` uses the
+checkout's default test database, so two writers started together race on
+migrations and fail with `Failed to install the L1 follower schema`.
+`node scripts/contrib.mjs artifacts sync --channel da-deployment-fixture` avoids
+the race: it writes in a scratch checkout with its own databases, runs the
+check, then copies the output back. It refuses `watcher-initialization-fixture`,
+which has no check. `contrib test` with the `MIDGARD_WRITE_*` variable also
+writes the fixture against isolated databases, but its receipt reads failed
+when the fixture changes (`native artifact changed during test`), because the
+watcher fixture is one of midgard-node's own inputs and a receipt only proves a
+run whose inputs held still [review].
 
 ## Unchecked
 

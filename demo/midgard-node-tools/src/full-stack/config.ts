@@ -6,7 +6,6 @@ import { promisify } from "node:util";
 
 import { parse } from "dotenv";
 
-import { l1ProviderFailoverEnabled } from "../environment.js";
 import { checkStackEnvironment, stackIntentDigest } from "./preflight.js";
 
 export type StackConfig = {
@@ -32,10 +31,8 @@ export type StackConfig = {
   };
   watcher: {
     processTemplate: string;
-    authorityTemplate: string;
     releaseDirectory: string;
     releaseInput: string | null;
-    bearerFile: string;
     configDirectory: string;
     composeEnvFile: string;
   };
@@ -208,10 +205,8 @@ export function parseStackConfig(value: unknown): StackConfig {
     input.watcher,
     [
       "processTemplate",
-      "authorityTemplate",
       "releaseDirectory",
       "releaseInput",
-      "bearerFile",
       "configDirectory",
       "composeEnvFile",
     ],
@@ -276,25 +271,14 @@ export async function loadStackConfig(path: string) {
     Number(env.MIDGARD_NODE_API_HOST_PORT ?? env.PORT ?? 3000)
   )
     throw new Error("Node endpoint does not match Compose host port");
-  for (const [key, port] of [
-    ["L1_KUPO_KEY", env.KUPO_PORT ?? 1442],
-    ["L1_OGMIOS_KEY", env.OGMIOS_PORT ?? 1337],
-  ] as const)
-    if (Number(new URL(env[key]!).port || 80) !== Number(port))
-      throw new Error(`${key} does not match the local Compose provider port`);
-
   if (
     env.NETWORK !== "Preprod" ||
     env.MIDGARD_DEPLOYMENT_PROFILE !== "preprod-testing" ||
-    env.L1_PROVIDER !== "Kupmios" ||
-    l1ProviderFailoverEnabled(env.L1_PROVIDER_FAILOVER) ||
     env.RUN_GENESIS_ON_STARTUP !== "false"
   )
     throw new Error(
-      "Require Preprod with preprod-testing profile, local Kupmios, no failover, and RUN_GENESIS_ON_STARTUP=false",
+      "Require Preprod with preprod-testing profile and RUN_GENESIS_ON_STARTUP=false",
     );
-  localUrl(env.L1_KUPO_KEY!);
-  localUrl(env.L1_OGMIOS_KEY!);
   for (const key of ["MIN_FEE_A", "MIN_FEE_B"])
     if (!/^[0-9]+$/.test(env[key] ?? ""))
       throw new Error(`Set exact ${key} in the node environment`);
@@ -333,11 +317,9 @@ export async function loadStackConfig(path: string) {
     throw new Error("User funding budget must cover all deposits and fees");
   const watcherSecrets = parse(await readFile(config.watcher.composeEnvFile));
   for (const key of [
-    "WATCHER_RECORD_KEY_FILE",
     "WATCHER_ROLLBACK_KEY_FILE",
     "WATCHER_PROVER_KEY_FILE",
     "WATCHER_AVAILABILITY_KEY_FILE",
-    "WATCHER_BEARER_FILE",
   ]) {
     const path = watcherSecrets[key];
     if (!path || !isAbsolute(path))

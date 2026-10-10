@@ -14,29 +14,16 @@
           "nodeConfigPath": "/cardano-config/config.json",
           "genesisConfigPath": "/cardano-config/shelley-genesis.json",
           "genesisIdentitySha256": "0000000000000000000000000000000000000000000000000000000000000000"
-        },
-        "queryServices": [
-          {
-            "kind": "ogmios",
-            "identity": "local-ogmios",
-            "endpoint": "ws://127.0.0.1:1337"
-          },
-          {
-            "kind": "kupo",
-            "identity": "local-kupo",
-            "endpoint": "http://127.0.0.1:1442"
-          }
-        ]
+        }
+      },
+      "origin": {
+        "slot": 0,
+        "blockHash": "0000000000000000000000000000000000000000000000000000000000000000"
       },
       "requestTimeoutMs": 10000,
       "maxConcurrency": 4,
       "finality": {
-        "depth": 30,
-        "rollback": {
-          "beforeFinality": "rewind",
-          "afterFinality": "quarantine",
-          "maxDepth": 30
-        }
+        "depth": 30
       }
     },
     "da": {
@@ -74,13 +61,8 @@
   "deploymentAuthorityPath": "/etc/midgard/bundles/deployment-authority.json",
   "ruleBundlePath": "/etc/midgard/bundles/rule-bundle.json",
   "fundingProfileBundlePath": "/etc/midgard/bundles/funding-profiles.json",
-  "nativeChainSyncBinaryPath": "/usr/local/bin/midgard-chain-sync",
-  "trustedHeadAuthorityEndpoint": "http://127.0.0.1:7401",
+  "l1NodeTransportBinaryPath": "/usr/local/bin/midgard-l1-node-transport",
   "operationsEndpoint": "http://127.0.0.1:7402",
-  "httpBearerSecretSource": {
-    "kind": "file",
-    "path": "/run/secrets/bearer"
-  },
   "workflowJournalDirectory": "/var/lib/midgard-watcher/workflows",
   "availability": {
     "keySource": {
@@ -93,22 +75,6 @@
   "faultProofInfrastructure": {
     "manifestPath": "/etc/midgard/bundles/deployment-manifest.json",
     "blueprintPath": "/etc/midgard/bundles/plutus.json",
-    "deploymentInfoPath": "/etc/midgard/bundles/contract-deployment-info.json",
-    "historicalNativeScriptHistory": {
-      "sourceMode": "external_provider_quorum",
-      "consistencyPolicy": "exact_bytes_all_providers_v1",
-      "providers": [
-        {
-          "sourceId": "history-a",
-          "operatorIdentitySha256": "1111111111111111111111111111111111111111111111111111111111111111",
-          "authorityEndpoint": "https://history-a.example"
-        },
-        {
-          "sourceId": "history-b",
-          "operatorIdentitySha256": "2222222222222222222222222222222222222222222222222222222222222222",
-          "authorityEndpoint": "https://history-b.example"
-        }
-      ]
-    }
+    "deploymentInfoPath": "/etc/midgard/bundles/contract-deployment-info.json"
   }
 }

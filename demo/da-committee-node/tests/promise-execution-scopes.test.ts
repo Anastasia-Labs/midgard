@@ -4,46 +4,22 @@ import {
   committeePromiseExecutionScopes,
   committeePromiseOwnedStage,
 } from "../src/availability/promise-execution-scopes.js";
-import type { ChainSyncReplayProvider } from "../src/l1/provider.js";
 
 const fixture = () => {
   vi.useFakeTimers();
   let monotonic = 0;
   vi.spyOn(performance, "now").mockImplementation(() => monotonic);
-  const cursor = {
-    sequence: 1,
-    rollbackGeneration: 0,
-    point: {
-      network: "Custom",
-      slot: 1,
-      blockHash: "ab".repeat(32),
-      providerSource: "fixture",
-      observedAt: "2026-10-02T00:00:00Z",
-    },
-  };
-  const provider: ChainSyncReplayProvider = {
-    currentChainSyncCursor: async () => cursor,
-    loadConsumedChainSyncCursor: async () => cursor,
-    replayChainSyncEvents: async () => [],
-    acknowledgeChainSyncCursor: async () => ({ rollbackSinceCapture: false }),
-    refreshAvailabilityCursor: async () => cursor,
-  };
+  const follower = { readView: async (): Promise<unknown> => ({}) };
   const breach = vi.fn();
   const scopes = committeePromiseExecutionScopes({
-    provider,
+    readCursor: () => follower.readView(),
     breach,
-    limits: {
-      requestRefusalMs: 10000,
-      rawUtxos: 1024,
-      httpResponseBytes: 4194304,
-      webSocketMessageBytes: 4194304,
-    },
   });
   const advance = async (ms: number) => {
     monotonic += ms;
     await vi.advanceTimersByTimeAsync(ms);
   };
-  return { cursor, provider, breach, scopes, advance };
+  return { follower, breach, scopes, advance };
 };
 afterEach(() => {
   vi.restoreAllMocks();
@@ -69,27 +45,50 @@ describe("installed cursor/source and owned critical-stage deadlines", () => {
       scope.close();
     }
   });
-  it("waits for the cursor owner's physical append callback before returning an expired attempt", async () => {
+  it("refuses a follower view read past the 5 s cursor cap with a breach; the read writes nothing, so nothing is joined", async () => {
     const f = fixture();
     let finish!: () => void;
-    f.provider.refreshAvailabilityCursor = async () => {
+    f.follower.readView = async () => {
       await new Promise<void>((resolve) => {
         finish = resolve;
       });
-      return f.cursor;
+      return {};
     };
     const scope = f.scopes.open();
-    let returned = false;
-    const refreshing = f.scopes.refresh(scope).catch(() => {
-      returned = true;
+    let refused: unknown;
+    const refreshing = f.scopes.refresh(scope).catch((error: unknown) => {
+      refused = error;
     });
     await Promise.resolve();
-    await f.advance(5000);
-    expect(returned).toBe(false);
-    finish();
+    await f.advance(4999);
+    expect(refused).toBeUndefined();
+    await f.advance(1);
     await refreshing;
-    expect(returned).toBe(true);
+    expect(refused).toBeInstanceOf(Error);
+    expect(f.breach).toHaveBeenCalledWith("cursor_budget_exceeded");
+    finish();
+    // The source phase never started: no complete-source breach follows.
+    await f.advance(20000);
+    expect(f.breach).toHaveBeenCalledTimes(1);
     scope.close();
+  });
+  it("refuses the source phase while the follower holds the committee, with no breach", async () => {
+    const f = fixture();
+    f.follower.readView = async () => {
+      throw new Error("rollback_beyond_k: deep");
+    };
+    const scope = f.scopes.open();
+    try {
+      await expect(f.scopes.refresh(scope)).rejects.toThrow(
+        "rollback_beyond_k",
+      );
+      expect(f.breach).not.toHaveBeenCalled();
+      // Nothing started: once the follower is ready the same scope refreshes.
+      f.follower.readView = async () => ({});
+      await expect(f.scopes.refresh(scope)).resolves.toBeUndefined();
+    } finally {
+      scope.close();
+    }
   });
   it("latches a breached stage while joining its durable callback rather than racing its write", async () => {
     const f = fixture();

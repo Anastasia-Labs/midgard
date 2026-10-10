@@ -153,7 +153,7 @@ export const finalizeE2ESummaryProgram = (
                     (SELECT COUNT(*) FROM local_mutation_jobs
                       WHERE status <> 'completed') AS unfinished_mutation_jobs,
                     (SELECT COUNT(*) FROM pending_block_finalizations
-                      WHERE status <> 'finalized') AS pending_finalizations
+                      WHERE status <> 'locally_applied') AS pending_finalizations
                 `);
                 if (row === undefined) {
                   throw new Error(

@@ -48,14 +48,12 @@ export type FraudProofs = {
   fabricatedWithdrawal: SpendingValidator;
   nativeScriptDecoding: SpendingValidator;
   missingSignature: SpendingValidator;
-  missingNativeScriptTx: SpendingValidator;
   withdrawnReferenceInput: SpendingValidator;
   canonicalDecodability: SpendingValidator;
   committedFieldShape: SpendingValidator;
   minFee: SpendingValidator;
   withdrawalMistag: SpendingValidator;
   doubleWithdraw: SpendingValidator;
-  crossBlockDuplicateEvent: SpendingValidator;
   l2TxMistag: SpendingValidator;
   withdrawnInput: SpendingValidator;
   /**
@@ -78,8 +76,6 @@ export type FraudProofs = {
    * protected output addresses targets a network other than the deployment.
    */
   networkId: SpendingValidator;
-  /** Q33: a consumed UTxO requires a native script absent from tx witnesses. */
-  missingNativeScriptUtxo: SpendingValidator;
   /** Q34: an authenticated native script evaluates false in tx context. */
   nativeScriptInvalid: SpendingValidator;
   /** Q27: an accepted output or newly introduced UTxO is below min-Ada. */

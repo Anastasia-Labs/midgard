@@ -3,20 +3,17 @@ import {
   generateSeedPhrase,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { SettlementAttempt } from "../src/database/settlement.js";
 import type { NodeConfigDep } from "../src/services/config.js";
 import {
   canExpireSettlementAttempt,
   inspectSettlementAttempt,
+  settlementLevel,
   settlementNextPhase,
   settlementWalletAddress,
 } from "../src/services/settlement.js";
-import {
-  readSettlementOutputEvidence,
-  settlementOutputsMatch,
-} from "../src/services/settlement-output.js";
 
 // These tests pin the new scheduler's replay boundary, which the synchronous
 // reserve/payout builder tests do not exercise.
@@ -80,7 +77,31 @@ describe("automatic settlement recovery", () => {
       settlementWalletAddress({ ...config, L1_SETTLEMENT_SEED_PHRASE: "" }),
     ).toThrow("requires a funded");
   });
-  it("checks body identity, finite validity and reserved inputs on every replay", async () => {
+  it("reads an attempt confirmed only once it landed cd deep, and final only past k", () => {
+    const depths = { confirmationDepth: 3, securityParameter: 10 };
+    const landed = (depth: number) =>
+      ({ kind: "landed", slot: 100, height: 50, depth }) as const;
+    expect(settlementLevel(landed(1), depths)).toBe("open");
+    expect(settlementLevel(landed(2), depths)).toBe("open");
+    expect(settlementLevel(landed(3), depths)).toBe("safe");
+    expect(settlementLevel(landed(10), depths)).toBe("safe");
+    expect(settlementLevel(landed(11), depths)).toBe("final");
+    // Landed failing phase 2, live, dead or not journaled: never confirmed.
+    expect(
+      settlementLevel(
+        { kind: "failed_landed", slot: 100, height: 50, depth: 11 },
+        depths,
+      ),
+    ).toBe("open");
+    expect(
+      settlementLevel({ kind: "live", inputsAvailable: true }, depths),
+    ).toBe("open");
+    expect(settlementLevel({ kind: "expired", validToSlot: 120 }, depths)).toBe(
+      "open",
+    );
+    expect(settlementLevel(null, depths)).toBe("open");
+  });
+  it("checks body identity, finite validity and reserved inputs on every replay", () => {
     const inputs = CML.TransactionInputList.new();
     inputs.add(
       CML.TransactionInput.new(
@@ -111,55 +132,8 @@ describe("automatic settlement recovery", () => {
       required_outputs: [0],
       fee_inputs: [`${"ab".repeat(32)}#0`],
       status: "pending",
-      recovery: false,
     };
     expect(inspectSettlementAttempt(attempt).validToSlot).toBe(120);
-    const historical = [
-      {
-        transaction_id: attempt.tx_hash,
-        output_index: 0,
-        address,
-        value: { coins: "2000000", assets: {} },
-        datum_hash: null,
-        script_hash: null,
-        created_at: { slot_no: 110, header_hash: "ef".repeat(32) },
-        spent_at: { slot_no: 115, header_hash: "fe".repeat(32) },
-      },
-    ];
-    expect(settlementOutputsMatch(attempt, "ef".repeat(32), historical)).toBe(
-      true,
-    );
-    expect(settlementOutputsMatch(attempt, "ee".repeat(32), historical)).toBe(
-      false,
-    );
-    expect(
-      settlementOutputsMatch(attempt, "ef".repeat(32), [
-        { ...historical[0], value: { coins: "1999999", assets: {} } },
-      ]),
-    ).toBe(false);
-    // A restart can observe an output already consumed by a later transaction.
-    // Kupo's unspent query would lose this evidence and block the entire queue.
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async (url) =>
-        Response.json(String(url).includes("unspent") ? [] : historical),
-      );
-    try {
-      expect(
-        await readSettlementOutputEvidence(
-          "http://kupo.invalid",
-          attempt,
-          "ef".repeat(32),
-        ),
-      ).toBe(true);
-      expect(fetch).toHaveBeenCalledWith(
-        `http://kupo.invalid/matches/*@${attempt.tx_hash}`,
-        expect.anything(),
-      );
-    } finally {
-      fetch.mockRestore();
-    }
-
     expect(() =>
       inspectSettlementAttempt({ ...attempt, tx_hash: "00".repeat(32) }),
     ).toThrow("hash mismatch");

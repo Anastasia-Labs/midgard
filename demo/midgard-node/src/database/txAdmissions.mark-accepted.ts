@@ -9,15 +9,11 @@ import { Duration, Effect } from "effect";
 import { emitPhase1AcceptCommitCheckpoint } from "../e2e/phase1-accept-crash-checkpoint.js";
 import { NodeConfig } from "../services/config.js";
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { WriteBehind } from "../services/write-behind.js";
 import { ProcessedTx } from "../utils.js";
 import * as CekProgramMaterialDB from "./cekProgramMaterial.js";
 import * as DepositsDB from "./deposits.js";
-import {
-  beginAcceptedLedgerReceipt,
-  finishAcceptedLedgerReceipt,
-} from "./eventHistoryLedgerReceipts.js";
 import * as MempoolDB from "./mempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import {
@@ -59,7 +55,7 @@ export const markAccepted = ({
     const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
     const sql = yield* SqlClient.SqlClient;
     const pg = sql as PgClient;
-    yield* withHistoryWrite(
+    yield* withFollowerWrite(
       sql.withTransaction(
         Effect.gen(function* () {
           const acceptedPayloads = yield* sql<{
@@ -116,7 +112,6 @@ export const markAccepted = ({
             { discard: true },
           );
 
-          const ledgerReceipt = yield* beginAcceptedLedgerReceipt(processedTxs);
           const mempoolStartedAt = Date.now();
           const { produced, spent } =
             MempoolDB.compactLedgerEffects(processedTxs);
@@ -357,7 +352,6 @@ export const markAccepted = ({
               }),
             );
           }
-          yield* finishAcceptedLedgerReceipt(ledgerReceipt);
           // Accepted rows retain the original sidecar digest for exact duplicate
           // identity but no longer retain attacker-sized sidecar bytes. Global
           // material promotion above and this tombstone update share the terminal

@@ -24,19 +24,3 @@ export const compareOutRefs = compareCoreOutRefs;
  * Formats an outref as `txHash#outputIndex`.
  */
 export const outRefLabel = coreOutRefLabel;
-
-/**
- * Removes duplicate outrefs while preserving first-seen order.
- */
-export const dedupeByOutRef = <T extends OutRefLike>(
-  outRefs: readonly T[],
-): readonly T[] => {
-  const byOutRef = new Map<string, T>();
-  for (const outRef of outRefs) {
-    const label = outRefLabel(outRef);
-    if (!byOutRef.has(label)) {
-      byOutRef.set(label, outRef);
-    }
-  }
-  return [...byOutRef.values()];
-};

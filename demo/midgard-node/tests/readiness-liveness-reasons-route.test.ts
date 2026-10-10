@@ -3,12 +3,12 @@ import "./utils.js";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
-import { ForeignTipReconciliationsDB } from "../src/database/index.js";
 import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.js";
+import { LANDED_BLOCK_REBASE_SOURCE } from "../src/landed-blocks/holds.js";
 import { NodeConfig } from "../src/services/config.js";
 import {
   Globals,
@@ -33,63 +33,19 @@ import {
   MidgardContracts,
 } from "../src/services/midgard-contracts.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/protocol.js";
-import {
-  SIGNED_INTENT_UNDECIDED,
-  SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
-} from "../src/services/signed-intent-undecided.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
 import {
   COMMIT_DA_FRAME_FITS_NOTICE,
   commitDaFrameNoticeForOutcome,
 } from "../src/workers/utils/commit-block-planner.commit-da-frame-notice.js";
-import {
-  nonEmptyWindowHeader,
-  recordForeignTip,
-} from "./foreign-tip-gate.fixtures.js";
-import { seedVerifiedForeignBase } from "./readiness-verified-foreign-base.fixture.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { seedCaughtUpL1Follower } from "./readiness-l1-follower.fixture.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /**
  * A raised liveness reason holds block production while the node keeps
  * serving, so `/readyz` must name it: unready (503) while it is raised, with
  * its source, age and escalation, and ready again once it clears.
  */
-
-// Stable valid headers are recorded through the public DB API, not raw inserts.
-const seedAwaitingForeignTips = Effect.forEach(["31", "32"], (byte) =>
-  Effect.gen(function* () {
-    const id = yield* recordForeignTip(
-      nonEmptyWindowHeader({
-        prevHeaderHash: byte.repeat(28),
-        startTime: 1n,
-        endTime: 2n,
-      }),
-    );
-    const retained =
-      yield* ForeignTipReconciliationsDB.retrieveAwaitingByForeignHeaderHash(
-        id,
-      );
-    expect(Option.isSome(retained)).toBe(true);
-    const row = Option.getOrThrow(retained);
-    const status = row[ForeignTipReconciliationsDB.Columns.STATUS];
-    expect(status).toBe(ForeignTipReconciliationsDB.Status.Awaiting);
-    return {
-      id,
-      status,
-      evidenceKind: row[ForeignTipReconciliationsDB.Columns.EVIDENCE_KIND],
-    };
-  }),
-);
-const inspectForeignTips = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{ readonly database: string }>`
-    SELECT current_database() AS database
-  `;
-  return {
-    database: rows[0]!.database,
-    awaiting: yield* ForeignTipReconciliationsDB.countAwaiting,
-  };
-});
 
 // Only the settings /readyz reads. Provider evidence is published before
 // every request, so the handler never probes a real provider.
@@ -137,22 +93,19 @@ type Node = {
 };
 
 /** Runs `scenario` against one node's globals, which every `readyz` of it
- * reads. The tables /readyz reads are cleared before and after, so a row
- * another file left cannot turn a ready answer unready, and none leaks on. */
+ * reads. The database is reset before and after, so a row another file
+ * left cannot turn a ready answer unready, and none leaks on. */
 const onNode = <A, E>(
   scenario: (node: Node) => Effect.Effect<A, E, SqlClient.SqlClient>,
 ): Promise<A> =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const clear = sql`TRUNCATE TABLE pending_block_finalizations,
-          state_queue_mutation_leases, event_history_authority, foreign_tip_reconciliations
-          RESTART IDENTITY CASCADE`;
+        const clear = resetApplicationTables;
         return yield* Effect.gen(function* () {
           yield* clear;
           const globals = yield* Globals;
-          yield* seedVerifiedForeignBase(globals);
+          yield* seedCaughtUpL1Follower(globals);
           yield* Ref.set(globals.NATIVE_MPF_OWNER, responsiveOwner);
           const readyz = Effect.gen(function* () {
             yield* Ref.update(globals.L1_PROVIDER_HEALTH, (current) =>
@@ -204,56 +157,11 @@ const onNode = <A, E>(
     ),
   );
 
-const SOURCE = HaltSource.blockConfirmationSignedIntent;
+const SOURCE = HaltSource.operatorMembership;
+const REASON = "operator_removed";
+const ESCALATE_AFTER_MS = 10 * 60_000;
 
 describe("GET /readyz liveness reasons", () => {
-  it("isolates incoming Awaiting foreign-tip rows before and after a healthy request", async () => {
-    const trace = await Effect.runPromise(
-      provideDatabaseLayers(
-        Effect.gen(function* () {
-          yield* ForeignTipReconciliationsDB.clear;
-          const seeds = yield* seedAwaitingForeignTips;
-          const before = yield* inspectForeignTips;
-          const consumer = yield* Effect.promise(() =>
-            onNode(({ readyz }) =>
-              Effect.gen(function* () {
-                return {
-                  entry: yield* inspectForeignTips,
-                  response: yield* readyz,
-                };
-              }),
-            ),
-          );
-          return {
-            seeds,
-            before,
-            ...consumer,
-            after: yield* inspectForeignTips,
-          };
-        }).pipe(
-          Effect.ensuring(Effect.orDie(ForeignTipReconciliationsDB.clear)),
-        ),
-      ),
-    );
-    console.info(
-      "readiness liveness SQL isolation trace",
-      JSON.stringify(trace),
-    );
-    expect(new Set(trace.seeds.map((seed) => seed.id)).size).toBe(2);
-    expect(trace.before.awaiting).toBe(2);
-    expect(trace.response.status).toBe(200);
-    expect(trace.response.ready).toBe(true);
-    expect(trace.response.reasons).toEqual([]);
-    expect(trace.entry).toEqual({
-      database: trace.before.database,
-      awaiting: 0,
-    });
-    expect(trace.after).toEqual({
-      database: trace.before.database,
-      awaiting: 0,
-    });
-  });
-
   it.each([50, 75, 90])(
     "serves measured stage %i as a readiness detail without failing readiness",
     async (stage) => {
@@ -378,9 +286,9 @@ describe("GET /readyz liveness reasons", () => {
         yield* raiseLivenessIncident(
           globals,
           SOURCE,
-          SIGNED_INTENT_UNDECIDED,
-          "replaced block holds its base's slot",
-          { escalateAfterMs: SIGNED_INTENT_UNDECIDED_ESCALATION_MS },
+          REASON,
+          "removal disagrees with L1",
+          { escalateAfterMs: ESCALATE_AFTER_MS },
         );
         const raised = yield* readyz;
         yield* clearLivenessIncident(globals, SOURCE);
@@ -392,13 +300,13 @@ describe("GET /readyz liveness reasons", () => {
 
     expect(raised.status).toBe(503);
     expect(raised.ready).toBe(false);
-    expect(raised.reasons).toEqual([SIGNED_INTENT_UNDECIDED]);
+    expect(raised.reasons).toEqual([REASON]);
     expect(raised.livenessReasons).toEqual([
       {
         source: SOURCE,
-        reason: SIGNED_INTENT_UNDECIDED,
+        reason: REASON,
         ageMs: expect.any(Number),
-        escalateAfterMs: SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
+        escalateAfterMs: ESCALATE_AFTER_MS,
         escalated: false,
       },
     ]);
@@ -414,21 +322,19 @@ describe("GET /readyz liveness reasons", () => {
       Effect.gen(function* () {
         yield* raiseLivenessIncident(
           globals,
-          HaltSource.stateQueueCorrectionRewind,
-          "state_queue_correction_rewind_conflict",
-          "removal disagrees with L1",
+          HaltSource.operatorMembership,
+          "operator_removed",
+          "this operator is retired in the follower's operator set",
           { escalateAfterMs: 0 },
         );
         return yield* readyz;
       }),
     );
     expect(escalated.status).toBe(503);
-    expect(escalated.reasons).toEqual([
-      "state_queue_correction_rewind_conflict",
-    ]);
+    expect(escalated.reasons).toEqual(["operator_removed"]);
     expect(escalated.livenessReasons).toEqual([
       expect.objectContaining({
-        source: HaltSource.stateQueueCorrectionRewind,
+        source: HaltSource.operatorMembership,
         escalateAfterMs: 0,
         escalated: true,
       }),
@@ -460,24 +366,19 @@ describe("GET /readyz liveness reasons", () => {
   it("lists one reason two sources raise once, with both sources", async () => {
     const both = await onNode(({ globals, readyz }) =>
       Effect.gen(function* () {
+        yield* raiseLivenessIncident(globals, SOURCE, REASON, "confirmation");
         yield* raiseLivenessIncident(
           globals,
-          SOURCE,
-          SIGNED_INTENT_UNDECIDED,
-          "confirmation",
-        );
-        yield* raiseLivenessIncident(
-          globals,
-          "history_signed_intent_release",
-          SIGNED_INTENT_UNDECIDED,
+          LANDED_BLOCK_REBASE_SOURCE,
+          REASON,
           "history",
         );
         return yield* readyz;
       }),
     );
-    expect(both.reasons).toEqual([SIGNED_INTENT_UNDECIDED]);
+    expect(both.reasons).toEqual([REASON]);
     expect(
       (both.livenessReasons ?? []).map((entry) => entry.source).sort(),
-    ).toEqual([SOURCE, "history_signed_intent_release"].sort());
+    ).toEqual([SOURCE, LANDED_BLOCK_REBASE_SOURCE].sort());
   });
 });

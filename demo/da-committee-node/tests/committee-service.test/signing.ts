@@ -13,15 +13,15 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from ".././helpers.js";
-import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
+import { fakeL1Source } from ".././helpers/fake-l1-source.js";
 import { terminateInstanceLockSessions } from ".././helpers/postgres-database.js";
 import {
   attestedDaStatus,
   expectedCommitment,
   failPayloadSource,
-  openJsonCommitteeStore,
+  openTestCommitteeStore,
   postgresDatabases,
-  runAnchorAheadOfObservations,
+  testStoreDatabase,
 } from "./fixtures.js";
 
 export const registerSigningTests = () => {
@@ -31,7 +31,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -51,12 +50,12 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -141,7 +140,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "61";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -161,7 +159,8 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const firstStore = await openJsonCommitteeStore(dir);
+    const database = await testStoreDatabase();
+    const firstStore = await openTestCommitteeStore(database);
     const completeDecisionEffect =
       firstStore.completeDecisionEffect.bind(firstStore);
     let failAcknowledgement = true;
@@ -176,7 +175,7 @@ export const registerSigningTests = () => {
     const first = new CommitteeService({
       config: configured,
       store: firstStore,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -237,11 +236,11 @@ export const registerSigningTests = () => {
     ]);
 
     await firstStore.close();
-    const restartedStore = await openJsonCommitteeStore(dir);
+    const restartedStore = await openTestCommitteeStore(database);
     const restarted = new CommitteeService({
       config: configured,
       store: restartedStore,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -284,7 +283,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "64";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -304,7 +302,7 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const stateQueueProvider = withFinalSnapshot({
+    const l1 = fakeL1Source({
       fetchStateQueueNodes: async () => [
         makeObservedNode({ header, headerHash, depth: 10 }),
       ],
@@ -327,7 +325,7 @@ export const registerSigningTests = () => {
       const crashed = new CommitteeService({
         config: configured,
         store: crashedStore,
-        stateQueueProvider,
+        l1,
         payloadSource: payloadSourceFromBytes(payloadCbor),
         signer,
         signerValidation,
@@ -359,7 +357,7 @@ export const registerSigningTests = () => {
       const restarted = new CommitteeService({
         config: configured,
         store: restartedStore,
-        stateQueueProvider,
+        l1,
         payloadSource: failPayloadSource(
           "durable local signature must suppress payload refetch",
         ),
@@ -407,7 +405,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "62";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -427,7 +424,7 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     let publishCalls = 0;
     let enteredPublish!: () => void;
     let releasePublish!: () => void;
@@ -449,7 +446,7 @@ export const registerSigningTests = () => {
       new CommitteeService({
         config: configured,
         store,
-        stateQueueProvider: withFinalSnapshot({
+        l1: fakeL1Source({
           fetchStateQueueNodes: async () => [
             makeObservedNode({ header, headerHash, depth: 10 }),
           ],
@@ -488,7 +485,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "63";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -508,7 +504,7 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const nodes = fixtures.map(({ header, headerHash }, index) =>
       makeObservedNode({
         header,
@@ -553,7 +549,7 @@ export const registerSigningTests = () => {
       new CommitteeService({
         config: configured,
         store,
-        stateQueueProvider: withFinalSnapshot({
+        l1: fakeL1Source({
           fetchStateQueueNodes: async () => nodes,
         }),
         payloadSource,
@@ -621,13 +617,12 @@ export const registerSigningTests = () => {
     ]);
   });
 
-  it("quarantines an attested replacement of a signed header that authenticated replay from the durable anchor does not explain", async () => {
+  it("follows an attested replacement of a signed header to its new output, keeping the one signature", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const seed = "00".repeat(31) + "31";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -650,11 +645,11 @@ export const registerSigningTests = () => {
     const firstOutRef = `${"ab".repeat(32)}#0`;
     const attestedOutRef = `${"ac".repeat(32)}#1`;
     let sourceView: "unattested" | "attested" = "unattested";
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configured,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           sourceView === "attested"
             ? makeObservedNode({
@@ -689,36 +684,29 @@ export const registerSigningTests = () => {
       errors: [],
     });
 
-    // The scan of the replaced output succeeds from an anchor already past
-    // it, but no authenticated step leads from the signed output to it.
-    await expect(store.getL1SourceState()).resolves.toMatchObject({
-      stateQueueReplayAnchor: {
-        queue: [
-          { headerHash: null, outRef: `${"00".repeat(32)}#0` },
-          { headerHash, outRef: firstOutRef },
-        ],
-      },
-    });
-    await runAnchorAheadOfObservations(store, [
-      { headerHash: null, outRef: `${"00".repeat(32)}#0` },
-      { headerHash, outRef: attestedOutRef },
-    ]);
+    const signatures = await store.listDaSignatures(headerHash);
+    expect(signatures).toHaveLength(1);
     sourceView = "attested";
     await expect(service.tick()).resolves.toMatchObject({
       signedHeaders: 0,
-      errors: [expect.stringContaining("decision_forked")],
+      errors: [],
+    });
+    await expect(store.getStateQueueHeader(headerHash)).resolves.toMatchObject({
+      stateQueueOutRef: attestedOutRef,
+      finalized: true,
     });
     await expect(store.getL1SourceState()).resolves.toMatchObject({
-      status: "quarantined",
-      quarantineReason: expect.stringContaining("decision_forked"),
+      status: "healthy",
       observations: [
         {
           headerHash,
-          stateQueueOutRef: firstOutRef,
-          stateQueueStatus: "unattested",
+          stateQueueOutRef: attestedOutRef,
           hasPersistedDecision: true,
         },
       ],
     });
+    await expect(store.listDaSignatures(headerHash)).resolves.toEqual(
+      signatures,
+    );
   });
 };

@@ -1,14 +1,14 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import {
   type LucidEvolution,
-  toUnit,
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Effect, Either, Option, Ref } from "effect";
 import { expect, it, vi } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import {
   DepositsDB,
   MutationJobsDB,
@@ -17,10 +17,10 @@ import {
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
 import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
-import { HistoryProducer } from "../src/services/event-history-producer.js";
+import { DRIVER_RECOMPUTE_PENDING } from "../src/services/follower-write-gate.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
-import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -30,6 +30,7 @@ import {
   attestQueuedStateQueueHeader,
   ContractDeploymentIdentity,
   Database,
+  emulatorStateQueueSnapshot,
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
   Globals,
@@ -37,15 +38,16 @@ import {
   mergeMaturityWindow,
   MidgardContracts,
   NodeConfig,
-  refreshWalletUtxosFromProvider,
   runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
   runLocalFinalizationRecoveryWorker,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
-import { dropPendingEmulatorTransaction } from "./helpers/correction-rewind-scenario.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { syncEmulatorChain } from "./helpers/emulator-l1-follower.js";
+import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
+import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { assertLandedMergeParentRefusal } from "./helpers/merge-landed-finalization-parent-refusal.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 // Every confirmed merge's in-flight local-finalization outcome as the merge
 // builder reports it, and an optional confirmation window replacing the
@@ -56,7 +58,29 @@ const mergeHooks = vi.hoisted(() => ({
     readonly succeeded: boolean;
   }[],
   confirmationWindowMs: undefined as number | undefined,
+  /** Runs once, right after the next direct read of the landed queue (P1). */
+  afterLandedQueueRead: undefined as
+    | (() => import("effect").Effect.Effect<void, unknown, any>)
+    | undefined,
 }));
+// The merge's landed-merge catch-up reads P1 directly (`readLandedStateQueue`);
+// a test can act right after that read, before the attempt reads P1 again.
+vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
+  const { Effect: E } = await import("effect");
+  const actual =
+    await importOriginal<
+      typeof import("../src/services/landed-state-queue.js")
+    >();
+  const readLandedStateQueue: typeof actual.readLandedStateQueue = (
+    stateQueue,
+  ) =>
+    E.tap(actual.readLandedStateQueue(stateQueue), () => {
+      const after = mergeHooks.afterLandedQueueRead;
+      mergeHooks.afterLandedQueueRead = undefined;
+      return after === undefined ? E.void : E.orDie(after());
+    });
+  return { ...actual, readLandedStateQueue };
+});
 vi.mock(
   "../src/transactions/state-queue/merge-to-confirmed-state.js",
   async (importOriginal) => {
@@ -98,7 +122,7 @@ const CATCH_UP_ONLY = { expectedHeaderHash: "ff".repeat(28) };
 const openMergeLifecycle = async () => {
   mergeHooks.confirmedFinalizations.length = 0;
   mergeHooks.confirmationWindowMs = undefined;
-  const initial = await openHistoryProductionOwnerLifecycle();
+  const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
   const wallet = fixture.depositorLucid;
@@ -123,6 +147,7 @@ const openMergeLifecycle = async () => {
         Effect.provideService(NodeConfig, h.production.nodeConfig),
         Effect.provideService(MempoolLedgerCache, h.production.cache),
         Effect.provide(Database.layer),
+        Effect.provide(IntentJournalWithoutFollower),
       ) as Effect.Effect<A, E, never>,
     );
   const sqlRun = <A>(
@@ -131,13 +156,13 @@ const openMergeLifecycle = async () => {
   const queuedBlocks = async () =>
     (
       await Effect.runPromise(
-        fetchStateQueueSnapshotProgram(
+        emulatorStateQueueSnapshot(
           fixture.operatorLucid,
           fixture.contracts.stateQueue,
           "startup",
-        ),
+        ).pipe(Effect.provide(Database.layer)),
       )
-    ).topology.parsedNodeCount - 1;
+    ).blockCount;
   const mergeJob = (headerHash: string) =>
     run(
       MutationJobsDB.retrieveByJobId(
@@ -170,22 +195,22 @@ const openMergeLifecycle = async () => {
       PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
     ];
   };
-  const authorityState = async () =>
+  /** The recompute the follower write gate holds writes for, if any. */
+  const gatePending = async () =>
     (
       await sqlRun(
         (sql) =>
           sql<{
-            readonly state: string;
-          }>`SELECT state FROM event_history_authority`,
+            readonly reason: string | null;
+          }>`SELECT pending_reason AS reason FROM node_follower_write_gate`,
       )
-    )[0]!.state;
+    )[0]!.reason;
   const catchUp = () => run(mergeAction(true, CATCH_UP_ONLY));
 
   const submit = async (built: { tx: TxSignBuilder }) => {
     const signed = await built.tx.sign.withWallet().complete();
     const hash = await signed.submit();
     expect(await wallet.awaitTx(hash)).toBe(true);
-    await refreshWalletUtxosFromProvider(wallet);
     await h.synchronize();
     return hash;
   };
@@ -263,11 +288,11 @@ const openMergeLifecycle = async () => {
     expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
     const tail = (
       await Effect.runPromise(
-        fetchStateQueueSnapshotProgram(
+        emulatorStateQueueSnapshot(
           fixture.operatorLucid,
           fixture.contracts.stateQueue,
           "startup",
-        ),
+        ).pipe(Effect.provide(Database.layer)),
       )
     ).tailCommitBase;
     expect(tail.headerHash).not.toBeNull();
@@ -308,34 +333,23 @@ const openMergeLifecycle = async () => {
     }
     throw new Error("Merge did not submit after three rounds");
   };
-  // The Lucid service with its L1 client's confirmation wait replaced; the
-  // merging-wallet switch runs under the merge's producer permit, which it
-  // hands to the replacement.
+  // The Lucid service with its L1 client's confirmation wait replaced.
   const withConfirmationWait = (
     awaitTx: (
       txHash: string,
       land: LucidEvolution["awaitTx"],
-      permit: Authority.Token,
     ) => Promise<boolean>,
   ) => {
-    let permit: Authority.Token | undefined;
     const api = new Proxy(lucidService.api, {
       get(target, property) {
         if (property === "awaitTx")
           return (txHash: string) =>
-            awaitTx(txHash, target.awaitTx.bind(target), permit!);
+            awaitTx(txHash, target.awaitTx.bind(target));
         const value = Reflect.get(target, property, target);
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    return {
-      ...lucidService,
-      api,
-      switchToOperatorsMergingWallet: Effect.gen(function* () {
-        permit = (yield* HistoryProducer).token;
-        yield* lucidService.switchToOperatorsMergingWallet;
-      }),
-    };
+    return { ...lucidService, api };
   };
 
   // A forced merge of the oldest block whose confirmation wait never sees the
@@ -392,9 +406,6 @@ const openMergeLifecycle = async () => {
     return { txHash: heldTxHash!, txCbor: heldTxCbor! };
   };
 
-  // The shared worker shard keeps earlier suites' recovery plan rows, which
-  // the production lifecycle reset does not own.
-  await sqlRun((sql) => sql`DELETE FROM event_history_recovery_plans`);
   await advanceEmulatorPastLatestBlockEndTime(fixture);
 
   return {
@@ -408,7 +419,7 @@ const openMergeLifecycle = async () => {
     mergeJob,
     expectDeposits,
     expectedRoot,
-    authorityState,
+    gatePending,
     catchUp,
     commitDepositBlock,
     mergeUntilSubmitted,
@@ -445,7 +456,7 @@ const expectFinalizedOnce = async (
   expect(audit.diverged).toBe(false);
 };
 
-it("finalizes a landed merge whose local finalization failed or was refused by history recovery, exactly once", async () => {
+it("finalizes a landed merge whose local finalization failed or was held by a driver recompute, exactly once", async () => {
   const m = await openMergeLifecycle();
   const { fixture } = m;
   try {
@@ -504,24 +515,21 @@ it("finalizes a landed merge whose local finalization failed or was refused by h
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
     await expectFinalizedOnce(m, first, 2);
 
-    // --- B: history recovery revokes Ready while the merge lands. ---------
+    // --- B: a driver recompute holds the gate while the merge lands. ------
     const second = await m.commitDepositBlock(9_000_000n);
     expect(await m.queuedBlocks()).toBe(1);
-    let revocations = 0;
-    const revokingLucid = m.withConfirmationWait(
-      async (txHash, land, permit) => {
-        await m.run(
-          Authority.beginRecovery(
-            permit,
-            "test: history recovery began while the merge confirmed",
-          ),
-        );
-        revocations += 1;
-        return land(txHash);
-      },
-    );
-    const refused = await m.mergeUntilSubmitted(revokingLucid);
-    expect(revocations).toBe(1);
+    let holds = 0;
+    const holdingLucid = m.withConfirmationWait(async (txHash, land) => {
+      await m.run(
+        holdFollowerWriteGate(
+          "test: a recompute began while the merge confirmed",
+        ),
+      );
+      holds += 1;
+      return land(txHash);
+    });
+    const refused = await m.mergeUntilSubmitted(holdingLucid);
+    expect(holds).toBe(1);
     expect(Either.isLeft(refused)).toBe(true);
     expect(await m.queuedBlocks()).toBe(0);
     expect(mergeHooks.confirmedFinalizations.at(-1)).toEqual({
@@ -534,36 +542,27 @@ it("finalizes a landed merge whose local finalization failed or was refused by h
       [MutationJobsDB.Columns.ATTEMPTS]: 1,
     });
     expect(refusedJob?.[MutationJobsDB.Columns.LAST_ERROR]).toContain(
-      "History authority generation or owner changed",
+      DRIVER_RECOMPUTE_PENDING,
     );
     await m.expectDeposits(second, DepositsDB.Status.Projected);
-    expect(await m.authorityState()).toBe("recovering");
-    // No merge attempt, and so no catch-up, runs while the owner is not
-    // Ready.
-    const whileRecovering = await m.run(
+    expect(await m.gatePending()).toBe(DRIVER_RECOMPUTE_PENDING);
+    // No merge attempt, and so no catch-up, runs while the gate is held.
+    const whileHeld = await m.run(
       Effect.either(mergeAction(true, CATCH_UP_ONLY)),
     );
     expect(
-      Either.isLeft(whileRecovering) &&
-        (whileRecovering.left as { readonly _tag?: string })._tag,
+      Either.isLeft(whileHeld) &&
+        (whileHeld.left as { readonly _tag?: string })._tag,
     ).toBe("MergeProducerPermitUnavailable");
     expect(await m.mergeJob(second)).toMatchObject({
       [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Failed,
       [MutationJobsDB.Columns.ATTEMPTS]: 1,
     });
 
-    // The revoked owner's lease lapses (expired here, not waited out) and the
-    // node restarts: startup leaves the failed job to the runtime.
-    await m.restart(async () => {
-      await m.run(
-        Effect.flatMap(
-          SqlClient.SqlClient,
-          (sql) => sql`UPDATE event_history_authority
-            SET lease_until = clock_timestamp()`,
-        ),
-      );
-    });
-    expect(await m.authorityState()).toBe("ready");
+    // The node restarts: the fresh driver's first view recomputes and
+    // reopens the gate, and startup leaves the failed job to the runtime.
+    await m.restart();
+    expect(await m.gatePending()).toBeNull();
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
     await expectFinalizedOnce(m, second, 2);
     // Finalized once: a further attempt finds nothing left to do.
@@ -617,10 +616,7 @@ it("finalizes a merge that lands after its confirmation wait gave up, across a r
 it("refuses to fold a landed merge whose retained journal names a different canonical parent", async () => {
   const m = await openMergeLifecycle();
   try {
-    await assertLandedMergeParentRefusal(
-      m,
-      () => mergeHooks.confirmedFinalizations,
-    );
+    await assertLandedMergeParentRefusal(m, mergeHooks, expectFinalizedOnce);
   } finally {
     await m.close();
   }
@@ -658,35 +654,21 @@ it("finalizes a merge that lands between an attempt's catch-up and its build bef
     }
 
     // The held merge lands just after the next attempt's catch-up read the
-    // state-queue root, so that catch-up still sees the second block queued.
-    const rootUnit = toUnit(
-      fixture.contracts.stateQueue.policyId,
-      SDK.STATE_QUEUE_ROOT_ASSET_NAME,
-    );
+    // landed queue (P1), so that catch-up still sees the second block
+    // queued; the follower then sees the landing before the attempt's next
+    // read.
     let landings = 0;
-    const api = new Proxy(m.h.lucidService.api, {
-      get(target, property) {
-        if (property === "utxosAtWithUnit")
-          return async (address: string, unit: string) => {
-            const utxos = await target.utxosAtWithUnit(address, unit);
-            if (unit === rootUnit && landings === 0) {
-              landings += 1;
-              expect(await fixture.emulator.submitTx(held.txCbor)).toBe(
-                held.txHash,
-              );
-              fixture.emulator.awaitBlock(1);
-              expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
-            }
-            return utxos;
-          };
-        const value = Reflect.get(target, property, target);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
-    const merged = await m.run(Effect.either(mergeAction(true)), {
-      ...m.h.lucidService,
-      api,
-    });
+    mergeHooks.afterLandedQueueRead = () =>
+      Effect.gen(function* () {
+        landings += 1;
+        expect(
+          yield* Effect.promise(() => fixture.emulator.submitTx(held.txCbor)),
+        ).toBe(held.txHash);
+        fixture.emulator.awaitBlock(1);
+        expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
+        yield* syncEmulatorChain(fixture.operatorLucid);
+      });
+    const merged = await m.run(Effect.either(mergeAction(true)));
     expect(landings).toBe(1);
     expect(Either.isRight(merged) && merged.right).toMatchObject({
       status: "merged",

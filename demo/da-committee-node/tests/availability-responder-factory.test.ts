@@ -5,6 +5,7 @@ import {
   Emulator,
   generateEmulatorAccountFromPrivateKey,
   Lucid,
+  type LucidEvolution,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -13,12 +14,11 @@ import {
   availabilityResponderFromConfig,
 } from "../src/availability/factory.js";
 import type { CommitteeL1ClientConfig } from "../src/config.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
 import { minimalConfig, tempDir } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
 const configFor = (dir: string): CommitteeL1ClientConfig => ({
   ...minimalConfig({
-    dir,
     manifestPath: join(dir, "manifest.json"),
     deploymentInfoPath: join(dir, "deployment.json"),
     signerSeed: "00".repeat(32),
@@ -29,58 +29,54 @@ const configFor = (dir: string): CommitteeL1ClientConfig => ({
   availabilitySubmitterKeySource: "private-key:test-responder-key",
   l1SubmitterKeySource: "private-key:test-attestation-key",
   cardanoL1Source: { networkMagic: 1 },
-  cardanoProviderUrls: ["kupmios:http://kupo|http://ogmios"],
-  l1Source: {
-    sourceMode: "local_node",
-    authorityNodeId: "test-authority",
-    chainSyncProviderUrl: "ogmios:http://ogmios",
-    queryProviderUrls: ["kupmios:http://kupo|http://ogmios"],
-  },
 });
 
-const chainProvider = {
-  fetchStateQueueNodes: async () => [],
-  currentChainSyncCursor: async () => {
-    throw new Error(
-      "Canonical queries must not run before startup guard checks",
-    );
+type FollowerArg = Parameters<typeof availabilityResponderFromConfig>[2];
+
+/** A follower whose reads must not run before the startup guard checks. */
+const followerFor = (lucid?: LucidEvolution): FollowerArg => ({
+  source: { readiness: () => [] } as unknown as FollowerArg["source"],
+  store: {} as NonNullable<FollowerArg["store"]>,
+  provider: {} as NonNullable<FollowerArg["provider"]>,
+  retention: null,
+  lucid: async () => {
+    if (lucid === undefined)
+      throw new Error("Follower reads must not run before the guard checks");
+    return lucid;
   },
-};
+});
 
 describe("availability responder production factory", () => {
   it("requires explicit durable journal and independent wallet configuration", async () => {
     const dir = await tempDir();
     const config = configFor(dir);
-    const store = await JsonFileCommitteeStore.open(join(dir, "store.json"));
+    const store = await openTestCommitteeStore();
     await expect(
       availabilityResponderFromConfig(
         { ...config, availabilityJournalPath: undefined },
         store,
-        chainProvider,
+        followerFor(),
       ),
     ).rejects.toThrow(/DA_AVAILABILITY_JOURNAL_PATH/);
     await expect(
       availabilityResponderFromConfig(
         { ...config, availabilitySubmitterKeySource: undefined },
         store,
-        chainProvider,
+        followerFor(),
       ),
     ).rejects.toThrow(/dedicated DA_AVAILABILITY_SUBMITTER_KEY_SOURCE/);
   });
 
-  it("requires a canonical local node before any signing work", async () => {
+  it("requires the committee's L1 follower before any signing work", async () => {
     const dir = await tempDir();
-    const store = await JsonFileCommitteeStore.open(join(dir, "store.json"));
+    const store = await openTestCommitteeStore();
     await expect(
-      availabilityResponderFromConfig(
-        {
-          ...configFor(dir),
-          l1Source: { sourceMode: "external_providers", providers: [] },
-        },
-        store,
-        chainProvider,
-      ),
-    ).rejects.toThrow(/local_node canonical/);
+      availabilityResponderFromConfig(configFor(dir), store, {
+        ...followerFor(),
+        store: null,
+        provider: null,
+      }),
+    ).rejects.toThrow(/requires the committee's L1 follower/);
   });
 
   it("rejects the attestation payment key even under a different file-backed key source", async () => {
@@ -91,7 +87,7 @@ describe("availability responder production factory", () => {
     const lucid = await Lucid(new Emulator([account]), "Custom");
     const keyFile = join(dir, "responder.key");
     await writeFile(keyFile, `private-key:${account.privateKey}`);
-    const store = await JsonFileCommitteeStore.open(join(dir, "store.json"));
+    const store = await openTestCommitteeStore();
     await expect(
       availabilityResponderFromConfig(
         {
@@ -100,13 +96,7 @@ describe("availability responder production factory", () => {
           l1SubmitterKeySource: `private-key:${account.privateKey}`,
         },
         store,
-        chainProvider,
-        {
-          lucidFromProviderUrl: async () => ({
-            lucid,
-            providerSource: "emulator",
-          }),
-        },
+        followerFor(lucid),
       ),
     ).rejects.toThrow(/different payment credentials/);
   });

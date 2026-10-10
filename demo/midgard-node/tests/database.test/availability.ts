@@ -1,21 +1,17 @@
 import { createHash } from "node:crypto";
 
-import {
-  MIDGARD_CONSENSUS_PROFILE,
-  MIDGARD_CONSENSUS_PROFILE_ID,
-} from "@al-ft/midgard-core/consensus-profile";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
 import {
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,
   DaPayloadsDB,
-  ForeignTipReconciliationsDB,
   PendingBlockFinalizationsDB,
 } from "../../src/database/index.js";
 import {
@@ -548,8 +544,14 @@ export const registerAvailabilityTests = () => {
             yield* sql`INSERT INTO ${sql(
               PendingBlockFinalizationsDB.tableName,
             )} ${sql.insert([
-              row(missingHeader, PendingBlockFinalizationsDB.Status.Finalized),
-              row(coveredHeader, PendingBlockFinalizationsDB.Status.Finalized),
+              row(
+                missingHeader,
+                PendingBlockFinalizationsDB.Status.LocallyApplied,
+              ),
+              row(
+                coveredHeader,
+                PendingBlockFinalizationsDB.Status.LocallyApplied,
+              ),
               row(
                 activeHeader,
                 PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
@@ -613,145 +615,6 @@ export const registerAvailabilityTests = () => {
                 },
               );
             expect(covered).toEqual([]);
-          }),
-        ),
-    );
-  });
-
-  describe("ForeignTipReconciliationsDB", () => {
-    it.effect(
-      "round-trips exact V1 deployment/DA identity and rejects substitutions",
-      () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const header: SDK.Header = {
-              prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-              utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-              withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-              forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-              transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-              depositsRoot: "11".repeat(32),
-              transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-              eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-              validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-              withdrawalCount: 0n,
-              forcedTransactionCount: 0n,
-              l2TransactionCount: 0n,
-              depositCount: 1n,
-              totalEventCount: 1n,
-              transitionStepCount: 1n,
-              validationTraceCount: 0n,
-              startTime: 1n,
-              endTime: 2n,
-              blockSlot: 0n,
-              expectedNetworkId: 0n,
-              minFeeA: 0n,
-              minFeeB: 0n,
-              prevHeaderHash: "21".repeat(28),
-              operatorVkey: "22".repeat(28),
-              protocolVersion: 1n,
-            };
-            const foreignHeaderHash = yield* SDK.hashBlockHeader(header);
-            const replacedBaseHeaderHash = "23".repeat(28);
-            const deploymentMarker = makeDeploymentMarker("de".repeat(32));
-            yield* ForeignTipReconciliationsDB.recordMismatch({
-              foreignHeaderHash,
-              replacedBaseHeaderHash,
-              foreignHeader: header,
-              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-              deploymentMarker,
-            });
-
-            const awaiting =
-              yield* ForeignTipReconciliationsDB.retrieveByForeignHeaderHash(
-                foreignHeaderHash,
-              );
-            expect(awaiting._tag).toBe("Some");
-            if (Option.isNone(awaiting)) return;
-            expect(
-              awaiting.value[
-                ForeignTipReconciliationsDB.Columns.FORMAT_VERSION
-              ],
-            ).toBe(1);
-            expect(
-              awaiting.value[
-                ForeignTipReconciliationsDB.Columns.DEPLOYMENT_MANIFEST_ID
-              ],
-            ).toBe(deploymentMarker.manifestId);
-            expect(
-              awaiting.value[ForeignTipReconciliationsDB.Columns.EVIDENCE_KIND],
-            ).toBe(ForeignTipReconciliationsDB.EvidenceKind.Pending);
-
-            const payload = Buffer.from("d8799f4101ff", "hex");
-            const daIdentity = {
-              headerHash: Buffer.from(foreignHeaderHash, "hex"),
-              schemaVersion: 1 as const,
-              consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
-              payloadCbor: payload,
-              payloadSha256: createHash("sha256").update(payload).digest(),
-            };
-            yield* ForeignTipReconciliationsDB.markResolved({
-              foreignHeaderHash,
-              deploymentMarker,
-              evidence: {
-                kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
-                daIdentity,
-              },
-            });
-            yield* ForeignTipReconciliationsDB.markResolved({
-              foreignHeaderHash,
-              deploymentMarker,
-              evidence: {
-                kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
-                daIdentity,
-              },
-            });
-
-            const resolved =
-              yield* ForeignTipReconciliationsDB.retrieveByForeignHeaderHash(
-                foreignHeaderHash,
-              );
-            expect(resolved._tag).toBe("Some");
-            if (Option.isNone(resolved)) return;
-            expect(
-              resolved.value[ForeignTipReconciliationsDB.Columns.EVIDENCE_KIND],
-            ).toBe(ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa);
-            expect(
-              resolved.value[
-                ForeignTipReconciliationsDB.Columns.VERIFIED_DA_PAYLOAD_SHA256
-              ],
-            ).toEqual(daIdentity.payloadSha256);
-
-            const substitutedPayload = Buffer.from("d8799f4102ff", "hex");
-            const substituted = yield* Effect.either(
-              ForeignTipReconciliationsDB.markResolved({
-                foreignHeaderHash,
-                deploymentMarker,
-                evidence: {
-                  kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
-                  daIdentity: {
-                    ...daIdentity,
-                    payloadCbor: substitutedPayload,
-                    payloadSha256: createHash("sha256")
-                      .update(substitutedPayload)
-                      .digest(),
-                  },
-                },
-              }),
-            );
-            expect(substituted._tag).toBe("Left");
-
-            const wrongDeployment = yield* Effect.either(
-              ForeignTipReconciliationsDB.markResolved({
-                foreignHeaderHash,
-                deploymentMarker: makeDeploymentMarker("ff".repeat(32)),
-                evidence: {
-                  kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
-                  daIdentity,
-                },
-              }),
-            );
-            expect(wrongDeployment._tag).toBe("Left");
           }),
         ),
     );

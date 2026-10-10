@@ -1,11 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-
 import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core";
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -25,20 +21,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
 
 const transport = vi.hoisted(() => ({ raw: undefined as unknown }));
-// Same raw transport seam as transition-trace-installed-lifecycle.test.ts.
-// Every snapshot, origin, replay, detector and classifier admission remains real.
-vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
-  const actual =
-    await load<typeof import("../src/workflow/family-l1-observation.js")>();
-  return {
-    ...actual,
-    createFraudProofFamilyLocalKupmiosL1ObservationPort: () => ({
-      rawL1: transport.raw,
-    }),
-  };
-});
 
-import { unsafeCreateCrossBlockSettlementAuthorityFromRawForTest } from "../src/cross-block-duplicate-event/settlement-authority.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
   createTransitionTraceEventAuthority,
@@ -64,11 +47,6 @@ import {
   headerDecisionReplayContext,
 } from "../src/workflow/header-classifier.js";
 import {
-  createHistoricalNativeScriptHistorySource,
-  createHistoricalNativeScriptProviderRoster,
-  createSqliteHistoricalNativeScriptCheckpointStore,
-} from "../src/workflow/historical-native-script-corpus.js";
-import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
 } from "../src/workflow/raw-l1-snapshot.js";
@@ -76,12 +54,14 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  RELEASE_L1_FINALITY_POLICY,
 } from "../src/workflow/release-finality-policy.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { fraudProofL1SourceForTest } from "./support/fraud-proof-l1-source.js";
 import {
   buildRetainedPlutusIdentityFixture,
   buildRetainedPlutusUnboundVariableFixture,
@@ -90,7 +70,7 @@ import {
 
 const DEPLOYMENT = "d1".repeat(32);
 const RELEASE = "e1".repeat(32);
-const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
+const policy = { ...RELEASE_L1_FINALITY_POLICY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,
@@ -102,10 +82,7 @@ const releaseFinalityAuthority = {
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => releaseFinality,
 };
-const directories: string[] = [];
 afterEach(() => {
-  for (const directory of directories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
   transport.raw = undefined;
 });
 
@@ -138,8 +115,8 @@ const setup = async (
   const hubScope = seed.scopes.find(({ role }) => role === "hub_oracle")!;
   const hubOraclePolicyId = getAddressDetails(hubScope.address)
     .paymentCredential!.hash;
-  // Adapt only the requested raw address/history coverage. Empty settlement
-  // coverage is explicit; the same raw body authenticates hub and forced NFT.
+  // Adapt only the requested raw address/history coverage; the same raw body
+  // authenticates hub and forced NFT.
   const raw: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
     capture: async (request) => ({
@@ -164,29 +141,6 @@ const setup = async (
     }),
   };
   transport.raw = raw;
-  const historySource = createHistoricalNativeScriptHistorySource({
-    providerRoster: createHistoricalNativeScriptProviderRoster({
-      deploymentFingerprint: DEPLOYMENT,
-      providers: [
-        {
-          sourceId: "archive-a",
-          authorityEndpoint: "https://archive-a.example.test",
-          operatorIdentitySha256: "aa".repeat(32),
-        },
-        {
-          sourceId: "archive-b",
-          authorityEndpoint: "https://archive-b.example.test",
-          operatorIdentitySha256: "bb".repeat(32),
-        },
-      ],
-    }),
-  });
-  const directory = mkdtempSync("/var/tmp/midgard-catalogue-retained-");
-  directories.push(directory);
-  const checkpointStore = createSqliteHistoricalNativeScriptCheckpointStore({
-    path: join(directory, "history.sqlite"),
-    rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
-  });
   const bindingFields = {
     deploymentFingerprint: DEPLOYMENT,
     blueprintHash: RELEASE,
@@ -207,16 +161,8 @@ const setup = async (
   >[0]["binding"];
   const transitionTraceEventAuthority = createTransitionTraceEventAuthority({
     binding: transitionBinding,
-    source: {} as never,
+    l1: fraudProofL1SourceForTest({ authority: () => transport.raw }),
   });
-  const settlementAuthority =
-    unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
-      binding: bindingFields as Parameters<
-        typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
-      >[0]["binding"],
-      raw,
-      historySource,
-    });
   const history = {
     inlineLimitBytes: 512n,
     maxPayloadBytes: 5000n,
@@ -238,8 +184,6 @@ const setup = async (
     deploymentFingerprint: DEPLOYMENT,
     replayer,
     releaseFinalityAuthority,
-    historicalReplayAuthority: { checkpointStore, historySource },
-    settlementAuthority,
     transitionTraceEventAuthority,
   };
   const classifier = await createHeaderClassifier(classifierInput);
@@ -315,8 +259,7 @@ describe("installed catalogue retained classification", replayBudget, () => {
     expect(context?.validationTraceReplay?.eventSnapshotDigest).toBe(
       context?.transitionTraceEvents?.snapshotDigest,
     );
-    expect(context?.historicalCorpus).toBeDefined();
-    expect(context?.settlements).toBeDefined();
+    expect(context?.predecessor).toBeDefined();
     const copy = await headerDecisionCanonicalEvidence(decision);
     expect(copy?.headerHash).toBe(fixture.block.headerHash);
     copy!.reconstruction.payloadEnvelopeCbor.fill(0);
@@ -799,7 +742,7 @@ describe("installed catalogue retained classification", replayBudget, () => {
         ...transitionBinding,
         deploymentFingerprint: "f1".repeat(32),
       },
-      source: {} as never,
+      l1: fraudProofL1SourceForTest({ authority: () => transport.raw }),
     });
     await expect(
       createHeaderClassifier({

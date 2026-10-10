@@ -6,7 +6,7 @@ Last reviewed: 2026-09-07 (source inventory and installation scope).
 
 ## Source inventory
 
-The 55 source catalogue categories and all 55 watcher installations are listed
+The 52 source catalogue categories and all 52 watcher installations are listed
 below. This is source coverage, not a claim that a particular network has these
 contracts deployed or that every acceptance suite passed on this revision.
 
@@ -38,21 +38,18 @@ them when you edit it.
 | `0000000c` | `fabricatedWithdrawal`                | Yes               |
 | `0000000d` | `nativeScriptDecoding`                | Yes               |
 | `0000000e` | `missingSignature`                    | Yes               |
-| `0000000f` | `missingNativeScriptTx`               | Yes               |
 | `00000010` | `withdrawnReferenceInput`             | Yes               |
 | `00000011` | `canonicalDecodability`               | Yes               |
 | `00000012` | `committedFieldShape`                 | Yes               |
 | `00000013` | `minFee`                              | Yes               |
 | `00000014` | `withdrawalMistag`                    | Yes               |
 | `00000015` | `doubleWithdraw`                      | Yes               |
-| `00000016` | `crossBlockDuplicateEvent`            | Yes               |
 | `00000017` | `l2TxMistag`                          | Yes               |
 | `00000018` | `withdrawnInput`                      | Yes               |
 | `00000019` | `valueNotPreserved`                   | Yes               |
 | `0000001a` | `inputSetUniqueness`                  | Yes               |
 | `0000001b` | `mintAuthorization`                   | Yes               |
 | `0000001c` | `networkId`                           | Yes               |
-| `0000001d` | `missingNativeScriptUtxo`             | Yes               |
 | `0000001e` | `nativeScriptInvalid`                 | Yes               |
 | `0000001f` | `minAda`                              | Yes               |
 | `00000020` | `fieldPreimageLengthMismatch`         | Yes               |

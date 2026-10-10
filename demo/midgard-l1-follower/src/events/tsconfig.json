@@ -1,0 +1,12 @@
+{
+  // The event projection reads the deployment through @al-ft/midgard-sdk,
+  // whose sources (resolved through the midgard-source condition) are not
+  // written for noUncheckedIndexedAccess. Everything else in the package
+  // keeps it; these modules take the SDK's and the node's settings.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["."],
+  "exclude": []
+}

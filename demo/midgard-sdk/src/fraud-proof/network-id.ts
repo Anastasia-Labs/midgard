@@ -6,7 +6,7 @@
  * former convicts only an explicit transaction-body mismatch (native scalar
  * 255 is Cardano's absent value); the latter names one output-address item.
  *
- * Catalogue registration is append-only at category id `0000001c`; the shared
+ * The category is registered in the catalogue at id `0000001c`; the shared
  * contract loader applies the deployment network id to step 01.
  */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";

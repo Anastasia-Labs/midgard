@@ -17,32 +17,108 @@ and the existing **30 millisecond** registration interval. Mainnet's former
 30 millisecond operator shift is replaced by the one-hour shift used off chain.
 Testing economics remain explicit; selecting a test network does not select them.
 
-Every profile allows twenty minutes without a block commitment, and twenty
-minutes for a deposit, withdrawal or transaction order to be included, before an
-operator can be struck for inactivity. Validation requires the negligence timeout
-to be at least the commitment gap, so a neglected event never licenses an earlier
-strike than the gap, and the gap to be shorter than the operator shift, so an
-operator whose shift starts at the last block's end time (its commit's validity
-upper bound) can still be struck.
+Every profile allows twenty minutes for a deposit, withdrawal or transaction
+order to be included before an operator can be struck for inactivity. A strike
+always cites such an undelivered event; a shift with none cannot be struck, so
+an idle network need not commit blocks. Validation requires the negligence
+timeout to be shorter than the operator shift, so an event included as a shift
+starts can make that shift's operator strikable before the shift ends.
 
 `timing.event_wait_ms` is the delay between a user event's transaction
 valid-to and its on-chain `inclusion_time`; no block may include the event
 earlier. The public profiles use the worst-case wall time for N Cardano blocks,
-3N/f slots at f = 0.05 and one-second slots: 36 hours on `mainnet` (N = k = 2160)
-and 30 minutes on `preprod-public` (N = 30). Both live testing profiles use a fixed
-five minutes.
+3N/f slots at f = 0.05 and one-second slots, 60 seconds per block. `mainnet`
+adds the maximum validity range: 3k/f slots + 480 s = 129,600,000 + 480,000 ms,
+36 hours 8 minutes (N = k = 2160). A commit lands no earlier than one maximum
+validity range before its header end time, so when the commit that includes a
+due event lands, the event is at least 3k/f slots old, k blocks deep under the
+guaranteed chain-growth bound. `preprod-public` waits 30 minutes (N = 30), which
+leaves 22 blocks after the eight-minute validity range. Both live testing
+profiles use a fixed five minutes and `preprod-emulator-testing` ten.
 Validation requires each public profile's event wait to be at least the maximum
 validity range plus confirmation-depth blocks at twice the 20-second mean block
 time: 28 minutes for `mainnet` and `preprod-public`. Every event a block must
 include was on L1 at least that validity range less than the event wait before
 the commit became valid, so an honest block omits one only if L1 rolls back past
-that span. Under the 3N/f standard above, `preprod-public`'s 30 minutes leave 22
-blocks after the eight-minute validity range, not 30. The live testing profiles are
-exempt: a short L1 fork there can make an honest block omit an event.
+that span. The live testing profiles are exempt: a short L1 fork there can make
+an honest block omit an event.
+
 The existing economics schedule identifiers are retained as manifest data, not
 runtime selectors. Profiles sharing a schedule identifier must have identical
 economics. Settle launch parameter choices before deploying; generation does not
 authorize deployment or alter an existing deployment.
+
+### Commit-event depth
+
+`l1_finality.commit_event_depth` is the commit-event depth d: an event is
+committed only below the commit anchor, the follower block d below the view a
+commit is planned at. The profile binds d; the finalized manifest carries it as
+`l1Finality.commitEventDepth`, and the node reads it from the profile, not from
+an environment variable. Three more `l1_finality` keys give the Cardano
+consensus the bounds assume: `security_parameter` (k = 2160),
+`active_slot_coeff` (f = `"0.05"`) and `slot_length_ms` (1,000), the
+Preprod-like values of every profile. `active_slot_coeff` is a decimal string,
+not a number, because the deployment identity's canonical JSON admits only
+safe-integer numbers; validation requires its one canonical spelling (no sign,
+exponent, leading or trailing zero) and a value in (0, 1]. Under the guaranteed
+chain-growth bound, n blocks take at most 3n/f slots, 60,000 ms per block here.
+Validation reads k, f and the slot length from the profile, turns f into an
+exact rational (`"0.05"` is 5/100) and compares in integers. With W =
+`event_wait_ms`, N = `user_events_negligence_timeout_ms` and L =
+`max_validity_range_ms`, it requires:
+
+- `0 ≤ d ≤ k`. The follower keeps k blocks of history, and the block just
+  above the anchor must not be final.
+- On every profile, no inactivity strike. A strike cites one undelivered
+  event, with inclusion time I = valid_to + W after the state queue's tail end,
+  and its validity range must lie after max(shift start + grace, I + N)
+  (`scheduler.ak`, `validate_operator_inactivity_and_get_its_link`). With no
+  such event there is no constraint. A commit whose header end E reaches I
+  moves the tail end to at least I, after which the event cannot be cited, so
+  it suffices that each event's covering commit lands by I + N. E is capped
+  at time(A) + W − 1 with A the commit anchor (`commit-anchor.ts`), so the
+  event is includable once A is dated after its valid_to, which needs d + 1
+  blocks, at most 3(d + 1)·slot/f.
+  A commit lands by its TTL E, which is capped at the submit slot's start
+  plus L − 61 s (`commitValidityEndTimeCapMs`), so within L of its planning.
+  Three bounds follow:
+  - W + N ≥ 3(d + 1)·slot/f + L, for an event that is due before it is
+    includable;
+  - N ≥ L, for an event that is includable before it is due: no commit
+    planned more than L − 61 s before I reaches it, and the commit then in
+    flight lands before I, so the covering commit is planned by I;
+  - grace ≥ L (`new_shift_inactivity_grace_period_ms`), for an event already
+    overdue at a shift boundary (I + N ≤ shift start). The threshold there is
+    shift start + grace, and the successor that inherits the event can plan
+    its covering commit only once its shift starts, so the commit lands within
+    L of the shift start, by the threshold. Every profile sets grace = L =
+    480,000 ms. After a fraud removal rolls the tail end back, an event the
+    removal re-exposes is held only to shift start + grace, which may already
+    have passed; this is by design.
+- On every profile, a plannable commit: W − B − slot ≥ 3(d + 1)·slot/f, with
+  B = 30,000 ms (`COMMIT_TTL_FUTURE_BUFFER_MS`, the history-commit TTL floor).
+  A commit's end time E is capped at time(A) + W − 1 with A the commit anchor,
+  and must be at least now + B rounded up to the next slot. When a commit is
+  planned, the view's tip is d blocks above A and the next block has not
+  arrived, so now is at most 3(d + 1)·slot/f after A; the cap reaches the
+  floor whenever the bound holds.
+- On `mainnet` and `preprod-public`: W − L ≥ 3d·slot/f, so a due event is d
+  blocks deep when the commit that includes it lands.
+
+Each profile uses the largest d all bounds admit:
+
+| Profile                    | No-strike largest d | W − B − slot | Plannable largest d | Production largest d | d    |
+| -------------------------- | ------------------- | ------------ | ------------------- | -------------------- | ---- |
+| `mainnet`                  | 2,180 − 1 = 2,179   | 130,049,000  | 2,167 − 1 = 2,166   | 2,160 (tight)        | 2160 |
+| `preprod-public`           | 42 − 1 = 41         | 1,769,000    | 29 − 1 = 28         | 22                   | 22   |
+| `preprod-testing`          | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
+| `local-devnet-testing`     | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
+| `preprod-emulator-testing` | 22 − 1 = 21         | 569,000      | 9 − 1 = 8           | —                    | 8    |
+
+The no-strike column divides W + N − L by 60,000 ms, the plannable column
+divides W − B − slot and the production column W − L; each rounds down.
+Mainnet's d also meets d ≤ k with equality. Every profile has N = 1,200,000
+and L = 480,000, so N ≥ L holds with 720,000 ms to spare.
 
 ### Interactive emulator tests
 
@@ -234,11 +310,12 @@ generated environments or `demo/midgard-core/src/generated-deployment-profiles.t
 
 Validation rejects unknown fields, incorrect network/name combinations, unsafe or
 nonpositive integers, inconsistent bond/reward values, invalid DA timing order,
-operator shifts shorter than grace/validity windows or the commitment gap, incompatible dispute
+operator shifts shorter than grace/validity windows or the negligence timeout, incompatible dispute
 schedules (with the explicit non-interactive testing rule above), and pooled DA
 bond values that break the relations above (challenge window order, slash
 penalty inside the DA bond, withdrawal delay, and the public challenge-window
-margin). Digests use SHA-256 over recursively
+margin), and a commit-event depth outside the bounds in
+[Commit-event depth](#commit-event-depth). Digests use SHA-256 over recursively
 key-sorted JSON, independent of YAML formatting and key order.
 
 ## Runtime and manifests

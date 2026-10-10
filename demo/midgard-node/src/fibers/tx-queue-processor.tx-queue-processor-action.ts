@@ -4,7 +4,8 @@ import { Duration, Effect, Exit, Metric, Ref } from "effect";
 
 import { TxAdmissionsDB, WithdrawalsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { runHistoryProducer } from "../services/event-history-producer.js";
+import { l1SlotNow } from "../l1-heads.js";
+import { runAtFollowerView } from "../services/follower-write-gate.js";
 import {
   Globals,
   Lucid,
@@ -114,6 +115,16 @@ export const txQueueProcessorAction = (
       nodeConfig.VALIDATION_MIN_BATCH,
     );
 
+    // Validity intervals are judged at the L1 `slotNow` (plan §3.6), read
+    // before any row is claimed: while no L1 tip has been read the tick claims
+    // nothing and the next tick retries.
+    const nowSlot = yield* Effect.either(l1SlotNow(lucid));
+    if (nowSlot._tag === "Left") {
+      yield* Effect.logWarning(
+        `tx-queue processor waiting for the L1 slot: ${nowSlot.left.message}`,
+      );
+      return { processed: false, claimedCount: 0, batchSize: 0 };
+    }
     const leaseOwner = `tx-queue-processor:${process.pid}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
     const claimStartedAt = Date.now();
     return yield* Effect.acquireUseRelease(
@@ -218,7 +229,7 @@ export const txQueueProcessorAction = (
                     pendingWithdrawalOutRefHexes,
                     ledgerState: cachedState,
                     phaseBConfig: {
-                      nowCardanoSlotNo: BigInt(lucid.currentSlot()),
+                      nowCardanoSlotNo: BigInt(nowSlot.right),
                       bucketConcurrency:
                         nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
                       enforceScriptBudget: true,
@@ -328,4 +339,4 @@ export const txQueueProcessorAction = (
         );
       },
     );
-  }).pipe(runHistoryProducer);
+  }).pipe(runAtFollowerView);

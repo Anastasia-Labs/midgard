@@ -42,8 +42,9 @@ probe.
    It derives all three ports from checkout plus invocation and refuses occupied
    ports. The underlying generator
    (`demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh`)
-   keeps the main checkout on Ogmios 2337, Kupo 2442, Postgres 5544 and
-   project `midgard_phase4_process_<run id>`; a linked worktree gets
+   keeps the main checkout on Ogmios 2337, Kupo 2442 (harness services; the
+   node, watcher and committee do not read them), Postgres 5544 and project
+   `midgard_phase4_process_<run id>`; a linked worktree gets
    `midgard_phase4_process_<hash>_<run id>` and ports shifted by its own
    offset, and it prints both. Two runs in one checkout still collide: set
    `MIDGARD_PHASE4_RUN_ID` and all three `MIDGARD_PHASE4_*_PORT` variables. [review]
@@ -89,9 +90,8 @@ not obviously one row, or when a node refuses to attach.
    soon as its HTTP server runs, the DA committee 200 `{"ok":true}`. Neither
    looks at the chain or the database.
 3. **Ready**: `/readyz` answers 200 with `"ready": true`; otherwise 503 with
-   `reasons`. The node's check covers workers, admission backlog, database, L1
-   provider, history owner and MPF owner. Kupo's `/health` is 200 only once it
-   has caught up; it answers 202 while replaying.
+   `reasons`. The node's check covers workers, admission backlog, database,
+   its L1 follower and node transport, and the MPF owner.
 4. **Working**: ready, and the thing you care about is advancing. Blocks
    committing, DA members attesting and merges landing are absent from
    `/readyz`. Watch the node's `/pipeline-status` and the DA committee's
@@ -111,12 +111,12 @@ node .agents/skills/running-the-devnet/scripts/devnet-wait.mjs \
 
 It polls every `--url` until all are ready, and exits with:
 
-| Exit | Meaning                                                                                                                                                   |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Ready: every URL answered HTTP 200 and no body said `ready: false` or a disconnected Kupo                                                                 |
-| 1    | Crashed: a `--pid` is gone, a `--log` gained a known fatal line, or a DA committee reported a quarantined L1 source. The tail of every `--log` is printed |
-| 2    | Timed out: every URL answered, not all became ready. The last reasons are printed                                                                         |
-| 3    | Unreachable: a URL never answered, no `--url` was given, or the arguments were unusable. Never a pass                                                     |
+| Exit | Meaning                                                                                                                                                         |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Ready: every URL answered HTTP 200 and no body said `ready: false` or a disconnected harness Kupo                                                               |
+| 1    | Crashed: a `--pid` is gone, a `--log` gained a known fatal line, or a DA committee is held on an L1 follower intervention. The tail of every `--log` is printed |
+| 2    | Timed out: every URL answered, not all became ready. The last reasons are printed                                                                               |
+| 3    | Unreachable: a URL never answered, no `--url` was given, or the arguments were unusable. Never a pass                                                           |
 
 Enforced by `.agents/skills/running-the-devnet/scripts/devnet-wait.mjs` and its
 tests [ci: Agent Skills CI/Test scripts shipped inside skills]. Blind spots, stated
@@ -148,7 +148,10 @@ something else started.
 3. Read the first fatal line, not the last. The node logs startup refusals as
    `Startup protocol initialization failed: …` with the mismatch list;
    `Database schema is not compatible: …` means run `db:migrate`; a manifest
-   refusal says `cannot be used as contract source`. A DA committee that lost
-   its L1 view writes `{"event":"l1_view_unavailable_exit",…}` and exits 70,
-   which its supervisor restarts by design.
+   refusal says `cannot be used as contract source`. A failed startup step
+   logs `node_startup_failed stage=… step=… reason=…; <outcome>`: the node
+   stays up and unready (`startup_failed`, which `devnet-wait` reports as
+   crashed) unless a transient outlived its budget, when it exits. A DA
+   committee that lost its L1 view stays up: its `/readyz` reports
+   `l1_view_unavailable:<ms>` and it keeps ticking until a view returns.
 4. Decide relaunch or redeploy from the table above before restarting.

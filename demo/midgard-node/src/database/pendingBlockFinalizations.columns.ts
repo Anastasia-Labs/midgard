@@ -79,6 +79,9 @@ export enum Columns {
   MPF_REPLAY_EVENT_COUNT = "mpf_replay_event_count",
   STATUS = "status",
   OBSERVED_CONFIRMED_AT_MS = "observed_confirmed_at_ms",
+  COMMIT_ANCHOR_HASH = "commit_anchor_hash",
+  COMMIT_ANCHOR_HEIGHT = "commit_anchor_height",
+  COMMIT_ANCHOR_SLOT = "commit_anchor_slot",
   CREATED_AT = "created_at",
   UPDATED_AT = "updated_at",
 }
@@ -113,7 +116,11 @@ export const Status = {
   SubmittedLocalFinalizationPending: "submitted_local_finalization_pending",
   SubmittedUnconfirmed: "submitted_unconfirmed",
   ObservedWaitingStability: "observed_waiting_stability",
-  Finalized: "finalized",
+  /**
+   * The node applied the block locally (plan §13.1: formerly `finalized`).
+   * Whether it is final on L1 is derived from the follower's facts.
+   */
+  LocallyApplied: "locally_applied",
   Abandoned: "abandoned",
 } as const;
 
@@ -180,6 +187,10 @@ export type Row = {
   [Columns.MPF_REPLAY_EVENT_COUNT]?: number | null;
   [Columns.STATUS]: Status;
   [Columns.OBSERVED_CONFIRMED_AT_MS]: bigint | null;
+  /** The commit anchor (see `commit-anchor.ts`); all three or none. */
+  [Columns.COMMIT_ANCHOR_HASH]?: Buffer | null;
+  [Columns.COMMIT_ANCHOR_HEIGHT]?: PgBigInt | null;
+  [Columns.COMMIT_ANCHOR_SLOT]?: PgBigInt | null;
   [Columns.CREATED_AT]: Date;
   [Columns.UPDATED_AT]: Date;
 };
@@ -216,8 +227,9 @@ export type RawRow = Omit<
 };
 
 export type MemberRecord = {
-  readonly history_binding_digest?: Buffer | null;
-  readonly history_incarnation_id?: Buffer | null;
+  /** The follower admission identity of a deposit or withdrawal member. */
+  readonly l1_event_key?: Buffer | null;
+  readonly l1_origin_outref?: Buffer | null;
   [MemberColumns.HEADER_HASH]: Buffer;
   [MemberColumns.MEMBER_ID]: Buffer;
   [MemberColumns.ORDINAL]: number;

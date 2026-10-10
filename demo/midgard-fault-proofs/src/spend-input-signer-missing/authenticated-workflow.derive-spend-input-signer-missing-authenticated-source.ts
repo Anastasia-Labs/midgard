@@ -15,11 +15,10 @@ import {
   requireProof,
   transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
-import { deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { deriveResolvedOutputPriorLedgerReplay } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import { resolveHistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import {
   type ManifestBoundSpendInputSignerMissingConfig,
@@ -166,13 +165,12 @@ export const spendInputSignerStageFromL1 = (
 export const prepareSpendInputSignerMissingRecoveryMaterial = async (
   canonical: CanonicalBlockEvidence,
   detectionId: string,
-  corpus: Awaited<ReturnType<typeof resolveHistoricalNativeScriptCorpus>>,
+  predecessor: CanonicalBlockEvidence | undefined,
 ) => {
-  const priorLedger =
-    await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
-      block: canonical,
-      corpus: corpus,
-    });
+  const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+    block: canonical,
+    predecessor,
+  });
   const findings = detectSpendInputSignerMissingCompleteReplay({
     block: canonical,
     priorLedger,

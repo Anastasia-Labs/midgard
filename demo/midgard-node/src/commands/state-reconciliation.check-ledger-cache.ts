@@ -268,7 +268,6 @@ export const depositPayloadOf = (entry: DepositsDB.Entry): DepositPayload => ({
   eventId: toHex(entry[DepositsDB.Columns.ID]),
   info: toHex(entry[DepositsDB.Columns.INFO]),
   inclusionTimeMs: new Date(entry[DepositsDB.Columns.INCLUSION_TIME]).getTime(),
-  l1TxHash: toHex(entry[DepositsDB.Columns.DEPOSIT_L1_TX_HASH]),
   ledgerTxId: toHex(entry[DepositsDB.Columns.LEDGER_TX_ID]),
   ledgerOutput: toHex(entry[DepositsDB.Columns.LEDGER_OUTPUT]),
   ledgerAddress: String(entry[DepositsDB.Columns.LEDGER_ADDRESS]),

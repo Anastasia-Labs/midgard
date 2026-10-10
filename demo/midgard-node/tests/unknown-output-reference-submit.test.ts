@@ -1,11 +1,11 @@
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  isUnknownOutputReferenceSubmitError,
-  submitSignedTxWithRecovery,
-} from "../src/transactions/utils.js";
+import { submitSignedTxWithRecovery } from "../src/transactions/utils.js";
+import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
+import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
 /** The Ogmios 3117 rejection a devnet node logged for a signed commit whose
  * base tail another transaction had spent. The only unknown-input evidence
@@ -43,16 +43,12 @@ const noInline = {
 
 describe("unknown output reference submit errors", () => {
   it("matches the live Ogmios 3117 rejection carried only as text", () => {
-    expect(isUnknownOutputReferenceSubmitError(LIVE_3117_SUBMIT_ERROR)).toBe(
+    expect(isSpentInputSubmitRejection(LIVE_3117_SUBMIT_ERROR)).toBe(true);
+    expect(isSpentInputSubmitRejection(LIVE_3117_WRAPPER)).toBe(true);
+    expect(isSpentInputSubmitRejection(new Error(LIVE_3117_WRAPPER))).toBe(
       true,
     );
-    expect(isUnknownOutputReferenceSubmitError(LIVE_3117_WRAPPER)).toBe(true);
-    expect(
-      isUnknownOutputReferenceSubmitError(new Error(LIVE_3117_WRAPPER)),
-    ).toBe(true);
-    expect(isUnknownOutputReferenceSubmitError(live3117ErrorChain())).toBe(
-      true,
-    );
+    expect(isSpentInputSubmitRejection(live3117ErrorChain())).toBe(true);
   });
 
   it("does not match validity-interval or generic provider errors", () => {
@@ -76,7 +72,7 @@ describe("unknown output reference submit errors", () => {
       '{"code":31171,"message":"unrelated"}',
       new Error("socket hang up", { cause: new Error("ECONNRESET") }),
     ]) {
-      expect(isUnknownOutputReferenceSubmitError(error)).toBe(false);
+      expect(isSpentInputSubmitRejection(error)).toBe(false);
     }
   });
 
@@ -99,15 +95,16 @@ describe("unknown output reference submit errors", () => {
         txHash: LIVE_3117_TX_HASH,
       }));
 
-      const result = await Effect.runPromise(
+      const result = await runWithoutFollower(
         Effect.either(
           submitSignedTxWithRecovery(
             {
               config: () => ({ provider: undefined }),
               awaitTxConfirmation,
             } as never,
-            { submitProgram } as never,
+            { submitProgram, toCBOR: () => signedTxCbor({}) } as never,
             LIVE_3117_TX_HASH,
+            TEST_INTENT,
             {
               ...noInline,
               sleep: (milliseconds) =>
@@ -136,15 +133,16 @@ describe("unknown output reference submit errors", () => {
     }));
     const { unknownInputsFailFast: _, ...otherCaller } = noInline;
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           {
             config: () => ({ provider: undefined }),
             awaitTxConfirmation,
           } as never,
-          { submitProgram } as never,
+          { submitProgram, toCBOR: () => signedTxCbor({}) } as never,
           LIVE_3117_TX_HASH,
+          TEST_INTENT,
           { ...otherCaller, sleep: () => Effect.void },
         ),
       ),
@@ -159,15 +157,16 @@ describe("unknown output reference submit errors", () => {
     const submitProgram = vi.fn(() => Effect.fail(new Error("fetch failed")));
     const awaitTxConfirmation = vi.fn();
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           {
             config: () => ({ provider: undefined }),
             awaitTxConfirmation,
           } as never,
-          { submitProgram } as never,
+          { submitProgram, toCBOR: () => signedTxCbor({}) } as never,
           LIVE_3117_TX_HASH,
+          TEST_INTENT,
           { ...noInline, sleep: () => Effect.void },
         ),
       ),

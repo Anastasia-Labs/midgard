@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -11,27 +9,24 @@ import {
 import { Effect } from "effect";
 import { expect, vi } from "vitest";
 
-import { type StateQueueCorrectionObserverSource } from "../../src/services/state-queue-correction-observer.js";
 import type { EmulatorFixture } from "../deposit-flow-emulator-shared.js";
-import { submitHistoryObservation } from "./history-projection-observations.js";
+import { submitObservedTransaction } from "./confirmed-transaction-observations.js";
 
 const outRef = (utxo: { txHash: string; outputIndex: number }) =>
   `${utxo.txHash}#${utxo.outputIndex}`;
 
-/** Real deployed validators, signed removal transaction and emulator-confirmed
- * inputs / outputs for the timed-out state-queue tail. Only block/chain-point
- * names and observer transport are synthetic; depth is counted from actual
- * emulator block advancement. The returned source reports nothing until
- * `submit` has been ledger-accepted, so an observer can bootstrap its cursor
- * on the pre-removal queue first. */
+/** A removal of the timed-out state-queue tail `targetHeaderHash` by the
+ * attestation-timeout correction: the deployed validators, a signed
+ * transaction from the operator's wallet, accepted by the emulator.
+ * `submit` waits until the tail is removable, lands the removal and checks
+ * the queue it leaves; it returns the signed bytes, so a test can land the
+ * same removal again after a rollback discarded it. */
 export const prepareTimedOutTailRemoval = async ({
   fixture,
   targetHeaderHash,
-  deploymentIdentityDigest,
 }: {
   fixture: EmulatorFixture;
   targetHeaderHash: string;
-  deploymentIdentityDigest: string;
 }) => {
   const { contracts, emulator, operatorLucid: lucid } = fixture;
   const config = {
@@ -40,16 +35,6 @@ export const prepareTimedOutTailRemoval = async ({
   };
   const fetchQueue = () =>
     Effect.runPromise(SDK.fetchSortedStateQueueUTxOsProgram(lucid, config));
-  const queueNodes = async (queue: readonly SDK.StateQueueUTxO[]) =>
-    Promise.all(
-      queue.map(async (node, index) => ({
-        headerHash:
-          index === 0
-            ? null
-            : await Effect.runPromise(SDK.headerHashFromStateQueueUTxO(node)),
-        outRef: outRef(node.utxo),
-      })),
-    );
   const beforeQueue = await fetchQueue();
   const target = beforeQueue.at(-1)!;
   const predecessor = beforeQueue.at(-2)!;
@@ -58,37 +43,10 @@ export const prepareTimedOutTailRemoval = async ({
   ).toBe(targetHeaderHash);
   expect(target.datum.next).toBe("Empty");
   expect(predecessor.datum.next).toEqual({ Key: { key: targetHeaderHash } });
-  const previousQueue = await queueNodes(beforeQueue);
-  const recorded: {
-    checkpoint?: SDK.StateQueueAuthenticatedReplayCheckpoint;
-    acceptedHeight?: number;
-  } = {};
-  const source: StateQueueCorrectionObserverSource = {
-    readQueue: async () => queueNodes(await fetchQueue()),
-    observeTransitions: async (previous, next) => {
-      const { checkpoint } = recorded;
-      if (checkpoint === undefined)
-        throw new Error("Correction was not ledger-accepted");
-      expect(previous).toEqual(checkpoint.previousQueue);
-      expect(next).toEqual(checkpoint.nextQueue);
-      return [checkpoint];
-    },
-    canonicalDepth: async (transition) => {
-      const { checkpoint, acceptedHeight } = recorded;
-      if (checkpoint === undefined || acceptedHeight === undefined)
-        throw new Error("Missing accepted correction receipt");
-      expect(transition.transactionHash).toBe(checkpoint.transactionHash);
-      const status = await lucid.transactionStatus(transition.transactionHash);
-      if (status.status !== "confirmed") return null;
-      expect(await queueNodes(await fetchQueue())).toEqual(
-        checkpoint.nextQueue,
-      );
-      return BigInt(emulator.blockHeight - acceptedHeight + 1);
-    },
-  };
+  let submitted = false;
   const submit = async () => {
-    if (recorded.checkpoint !== undefined)
-      throw new Error("The timed-out tail was already removed");
+    if (submitted) throw new Error("The timed-out tail was already removed");
+    submitted = true;
     const header = await Effect.runPromise(
       SDK.getHeaderFromStateQueueDatum(target.datum),
     );
@@ -149,12 +107,11 @@ export const prepareTimedOutTailRemoval = async ({
         },
       },
     );
-    const accepted = await submitHistoryObservation(
+    const accepted = await submitObservedTransaction(
       lucid,
       await builder.complete({ localUPLCEval: true }),
     );
     const acceptedHeight = emulator.blockHeight;
-    const acceptedSlot = emulator.slot;
     const parameters = await lucid.config().provider!.getProtocolParameters();
     expect(accepted.measurement.completeSignedBytes).toBeLessThanOrEqual(
       parameters.maxTxSize,
@@ -195,63 +152,12 @@ export const prepareTimedOutTailRemoval = async ({
         (output) => outRef(output) === outRef(nextLock.utxo),
       )?.datum,
     ).toBe(Data.to(nextLock.datum, SDK.CorrectionLockDatum));
-    const blockHash = createHash("sha256")
-      .update(
-        `emulator-correction:${acceptedHeight}:${acceptedSlot}:${accepted.transaction.txHash}`,
-      )
-      .digest("hex");
-    const checkpoint =
-      SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
-        deploymentIdentityDigest,
-        stateQueuePolicyId: contracts.stateQueue.policyId,
-        transactionHash: accepted.transaction.txHash,
-        blockHash,
-        slot: acceptedSlot.toString(),
-        blockNo: acceptedHeight.toString(),
-        transactionIndex: "0",
-        chainPointId: blockHash,
-        finalityDepth: "1",
-        mintPolicyIds: [
-          ...new Set(
-            Object.keys(accepted.transaction.mint).map((unit) =>
-              unit.slice(0, 56),
-            ),
-          ),
-        ].sort(),
-        redeemers: accepted.transaction.redeemers.map((redeemer) => ({
-          purpose: redeemer.purpose,
-          index: redeemer.index.toString(),
-          cborHex: redeemer.cbor,
-        })),
-        spentInputOutRefs: spent,
-        referenceInputOutRefs: accepted.transaction.references.map(outRef),
-        correctionLockWitness: {
-          kind: "correction_transition",
-          consumedOutRef: outRef(lock.utxo),
-          continuedOutRef: outRef(nextLock.utxo),
-          targetHeaderHash,
-          correctionIdentity: "AttestationTimeout",
-          previousDatum: lock.datum,
-          nextDatum: nextLock.datum,
-        },
-        previousQueue,
-        nextQueue: await queueNodes(afterQueue),
-      }) ?? undefined;
-    if (checkpoint === undefined)
-      throw new Error("Accepted removal has no authenticated checkpoint");
-    recorded.checkpoint = checkpoint;
-    recorded.acceptedHeight = acceptedHeight;
-    expect(checkpoint.checkpointKind).toBe("timeout_correction");
-    expect(checkpoint.terminalTransition?.removedHeaderHashes).toEqual([
-      targetHeaderHash,
-    ]);
     return {
       accepted,
       acceptedHeight,
-      checkpoint,
       correctedPredecessor,
-      nextQueue: await queueNodes(afterQueue),
+      signedCbor: accepted.signedCbor,
     };
   };
-  return { source, submit, previousQueue };
+  return { submit };
 };

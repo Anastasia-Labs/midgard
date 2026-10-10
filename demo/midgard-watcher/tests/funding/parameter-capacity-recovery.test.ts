@@ -16,6 +16,7 @@ import {
   setupFundingRecoveryFixture,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { capacityTransition } from "./parameter-capacity-transition.js";
 import { runtimeAuthority } from "./prover-funding-calculation.runtime-authority.js";
 afterEach(async () => {
@@ -41,6 +42,7 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
   const before = await fixture.records();
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: fixture.old.launchScope,
     deploymentIdentity,
     protocolParameters: current,
@@ -136,6 +138,7 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
     });
     const factory = createWatcherProverFundingAuthorityFactory({
       journalRoot: fixture.journalRoot,
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
       launchScope: fixture.old.launchScope,
       deploymentIdentity,
       protocolParameters: decreased,

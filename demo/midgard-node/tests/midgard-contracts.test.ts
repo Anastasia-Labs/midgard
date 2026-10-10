@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -55,7 +55,10 @@ import {
   collectScriptInventory,
   scriptInventoryId,
 } from "./helpers/script-inventory.js";
-import { registerBlueprintProfileBindingTests } from "./midgard-contracts.blueprint-binding.js";
+import {
+  realBlueprintBytes,
+  registerBlueprintProfileBindingTests,
+} from "./midgard-contracts.blueprint-binding.js";
 
 describe("midgard contracts registry", () => {
   registerBlueprintProfileBindingTests();
@@ -118,15 +121,19 @@ describe("midgard contracts registry", () => {
         },
       );
 
-      // Applied recipes include the completed-fraud queue marker and explicit
-      // history bounds/retention metadata, both authenticated timing yields, and
-      // the paired list/retention/retirement deployment recipes;
-      // normalize bigint parameters as decimal strings. Re-pinned by #689:
-      // the pooled DA bond validator was added, the per-block availability
-      // bond yield removed, and the availability-challenge and DA-attestation
-      // parameters changed (pool policy, commitment-bound challenges). MPF
-      // fixes (leaf fold, terminal neighbour, deletion Branch, emptied ledger
-      // root, disjoint leaf and branch node preimages) change proofs.
+      // Applied recipes include the completed-fraud queue marker, explicit
+      // history bounds/retention metadata, both authenticated timing yields and
+      // the paired list/retention/retirement recipes; bigint parameters are
+      // decimal strings. Re-pinned by #689 (pooled DA bond added, per-block
+      // availability bond yield removed, availability-challenge and
+      // DA-attestation parameters changed), by MPF fixes (leaf fold, terminal
+      // neighbour, deletion Branch, emptied ledger root, disjoint node
+      // preimages), by removing missingNativeScriptTx/Utxo (superseded by
+      // missingScriptSource), by deleting the cross-block family, by the
+      // neglected-event strike rule (scheduler, so active operators and the
+      // state queue built on it), by the forced due-window fix
+      // (transition trace) and by raising the new-shift inactivity grace to
+      // the maximum validity range (scheduler spend only).
       expect
         .soft(
           createHash("sha256")
@@ -136,13 +143,15 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "03f98ad101599f6b458dcf5a328a4ffd7eb67059ea5600c17f9c372d94fef08b",
+          "248d28ac5e0730f685256aafbc64909962fc1cbfe935b0028d48796856fb65f1",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       // Re-pinned by #689: the state queue and correction lock are applied over
       // the availability-challenge policy, whose parameters now include the
-      // pooled DA bond policy, and again for disjoint MPF node preimages.
+      // pooled DA bond policy, and again for disjoint MPF node preimages and
+      // for the neglected-event strike rule (the state queue is applied over
+      // the scheduler and active-operator scripts).
       expect
         .soft(
           createHash("sha256")
@@ -155,7 +164,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "45ba1c1bb4baf099d347af5b85c2c5fc105871cecf81ffb1d050e023fe61a852",
+          "1b5667707317f450979f8bf401d6c627726e2d8ed3b62519adb1e628e50efa81",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
@@ -308,12 +317,7 @@ describe("midgard contracts registry", () => {
     async ({ title, mutation, error }) => {
       const dir = await mkdtemp(join(tmpdir(), "midgard-queue-blueprint-"));
       const blueprintPath = join(dir, "plutus.json");
-      const raw = JSON.parse(
-        await readFile(
-          new URL("../../../onchain/aiken/plutus.json", import.meta.url),
-          "utf8",
-        ),
-      ) as {
+      const raw = JSON.parse((await realBlueprintBytes()).toString("utf8")) as {
         validators: {
           title: string;
           compiledCode: string;

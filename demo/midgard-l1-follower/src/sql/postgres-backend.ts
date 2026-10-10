@@ -1,0 +1,187 @@
+import pg from "pg";
+
+import {
+  type Dialect,
+  RollbackWith,
+  type SqlBackend,
+  type SqlRow,
+  type SqlTx,
+  type SqlValue,
+  toNumberedPlaceholders,
+  type WriterLease,
+} from "./backend.js";
+
+export const postgresDialect: Dialect = {
+  name: "postgres",
+  bool: (value) => value,
+  readBool: (value) => {
+    if (typeof value !== "boolean")
+      throw new Error("expected a boolean column");
+    return value;
+  },
+  json: (text) => text,
+  outRefList: (encoded) => [...encoded],
+  readOutRefList: (value) => {
+    if (!Array.isArray(value)) throw new Error("expected a bytea[] column");
+    return value.map((item: unknown) => {
+      if (!Buffer.isBuffer(item)) throw new Error("expected bytea elements");
+      return item;
+    });
+  },
+  lockClause: (mode) => (mode === "update" ? " FOR UPDATE" : " FOR SHARE"),
+  rowId: "ctid",
+};
+
+const executor = (client: pg.PoolClient): SqlTx => ({
+  query: async (sql, params = []) => {
+    const result = await client.query<SqlRow>(
+      toNumberedPlaceholders(sql),
+      params as SqlValue[],
+    );
+    return result.rows;
+  },
+  exec: async (sql) => {
+    await client.query(sql);
+  },
+});
+
+export type PostgresConnection =
+  /**
+   * A pool the caller owns; `close()` leaves it open. The caller attaches
+   * the pool's `'error'` listener.
+   */
+  | { pool: pg.Pool }
+  /** A connection string; the backend owns and closes its pool. */
+  | {
+      connectionString: string;
+      maxConnections?: number;
+      /**
+       * Told about a connection Postgres dropped (a restart, a failover, an
+       * idle reaper). Nothing else is needed: the pool discards the client
+       * and the next query opens a new connection or fails like any other.
+       */
+      onConnectionError?: (error: Error) => void;
+    };
+
+/**
+ * The writer lease key, as a SQL expression: one per database and schema.
+ * The committee's instance lock takes it on its own session beside its own
+ * key (`da-committee-node/src/store/postgres.instance-lock.ts`), so that
+ * process's follower and its store are held and lost together.
+ */
+export const POSTGRES_WRITER_LEASE_KEY_SQL = `('x' || left(md5(
+    'midgard-l1-follower:writer:' || coalesce(current_schema(), '')
+  ), 15))::bit(60)::bigint`;
+
+const WRITER_LEASE_SQL = `SELECT pg_try_advisory_lock(${POSTGRES_WRITER_LEASE_KEY_SQL}) AS acquired`;
+
+/**
+ * Takes the writer lease on a dedicated connection outside the pool, so it
+ * never costs the store a pooled connection and lives exactly as long as
+ * that session: a dropped connection or a dead process releases it.
+ */
+const acquirePostgresLease = async (
+  config: pg.ClientConfig,
+): Promise<WriterLease | null> => {
+  const client = new pg.Client({ ...config, keepAlive: true });
+  let lost = false;
+  // An unhandled 'error' on an idle client would crash the process.
+  client.on("error", () => {
+    lost = true;
+  });
+  client.on("end", () => {
+    lost = true;
+  });
+  try {
+    await client.connect();
+    const rows = await client.query<{ acquired: boolean }>(WRITER_LEASE_SQL);
+    if (rows.rows[0]?.acquired !== true) {
+      await client.end();
+      return null;
+    }
+  } catch (error) {
+    await client.end().catch(() => undefined);
+    throw error;
+  }
+  let released = false;
+  return {
+    lost: () => lost && !released,
+    release: async () => {
+      if (released) return;
+      released = true;
+      // Ending the session releases its advisory lock.
+      await client.end().catch(() => undefined);
+    },
+  };
+};
+
+/**
+ * The Postgres backend. Write transactions are plain `BEGIN`: the follower
+ * serialises writers on the cursor row (`SELECT … FOR UPDATE`, §7.1). Read
+ * transactions are `REPEATABLE READ READ ONLY` snapshots.
+ */
+export const openPostgresBackend = (
+  connection: PostgresConnection,
+): SqlBackend => {
+  const owned = !("pool" in connection);
+  const onConnectionError =
+    "pool" in connection
+      ? () => undefined
+      : (connection.onConnectionError ?? (() => undefined));
+  let pool: pg.Pool;
+  if ("pool" in connection) pool = connection.pool;
+  else {
+    pool = new pg.Pool({
+      connectionString: connection.connectionString,
+      max: connection.maxConnections ?? 4,
+    });
+    // pg re-emits an idle client's error on its pool; with no listener it
+    // is an uncaught exception that exits the process.
+    pool.on("error", onConnectionError);
+  }
+  return {
+    dialect: postgresDialect,
+    transaction: async <T>(
+      mode: "write" | "read",
+      run: (tx: SqlTx) => Promise<T>,
+    ): Promise<T> => {
+      const client = await pool.connect();
+      // While checked out the pool's idle listener is detached, so a dropped
+      // connection's 'error' needs one here; the pending query rejects.
+      client.on("error", onConnectionError);
+      let released = false;
+      try {
+        await client.query(
+          mode === "read"
+            ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
+            : "BEGIN",
+        );
+        const value = await run(executor(client));
+        await client.query("COMMIT");
+        return value;
+      } catch (error) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (rollbackError) {
+          // A connection that cannot roll back is discarded, not reused.
+          client.release(rollbackError instanceof Error ? rollbackError : true);
+          released = true;
+        }
+        if (error instanceof RollbackWith) return error.value as T;
+        throw error;
+      } finally {
+        client.off("error", onConnectionError);
+        if (!released) client.release();
+      }
+    },
+    acquireWriterLease: () =>
+      acquirePostgresLease(
+        "pool" in connection
+          ? connection.pool.options
+          : { connectionString: connection.connectionString },
+      ),
+    close: async () => {
+      if (owned) await pool.end();
+    },
+  };
+};

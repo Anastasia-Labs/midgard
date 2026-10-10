@@ -1,17 +1,11 @@
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as pause } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
+import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
 import {
-  createLocalKupmiosHttpOgmiosRawSource,
-  readAdmittedLocalKupmiosSignedTransactionRecovery,
-  resolveProverSigner,
-} from "@al-ft/midgard-fault-proofs";
-import {
-  makeWatcherFinalityPolicy,
   parseWatcherConfig,
   parseWatcherProcessConfig,
   WATCHER_CONFIG_SCHEMA_VERSION,
@@ -21,12 +15,12 @@ import {
 import { createPublishedWatcherDeploymentAuthority } from "midgard-watcher/tests/support/published-deployment-authority";
 
 import { sourceFacetPaths } from "../../../../scripts/lib/source-facets.mjs";
+import { deriveL1Origin } from "../../src/l1-origin.js";
 import { writeJourneyArtifact } from "./artifacts.js";
-import { startJourneyHistoryArchives } from "./history-archives.js";
 import {
-  journeyAuthorityKeySources,
-  provisionJourneyAuthority,
-} from "./journey-authority-provisioning.js";
+  ensureJourneyWatcherSecrets,
+  journeyWatcherKeySources,
+} from "./journey-secrets.js";
 import {
   WATCHER_FAILED_CLOSED_EXIT_CODE,
   WATCHER_RESTART_LIMIT,
@@ -42,14 +36,12 @@ import {
 import { journeyPorts, launchJourneyWatcherProcess } from "./process.js";
 import { startJourneyRetainedDa } from "./retained-da.js";
 import type { SignedCommitAttempt } from "./signed-commit-reconciliation.js";
+import { readSignedTransactionRecovery } from "./signed-transaction-recovery.js";
 import { measureJourneyStage } from "./stage-timing.js";
 import { verifyJourneyWorkflowBindings } from "./workflow-binding-preflight.js";
 
 /** One immutable deployment and service lifetime, explicitly owned by its suite. */
-export const openJourneySession = async (
-  runDirectory: string,
-  options: { initializeAuthority?: boolean } = {},
-) => {
+export const openJourneySession = async (runDirectory: string) => {
   const context = await loadJourneyContext(runDirectory);
   const { deployment, provider, accounts, runEnv } = context;
   const runtimeDirectory = join(context.runDirectory, "work/journeys/runtime");
@@ -81,21 +73,6 @@ export const openJourneySession = async (
     })());
   const stage = <T>(name: string, action: () => Promise<T>) =>
     measureJourneyStage(directory, name, action);
-  const poll = async <T>(
-    name: string,
-    action: () => Promise<T | undefined>,
-    timeoutMs: number,
-  ) =>
-    stage(name, async () => {
-      const deadline = performance.now() + timeoutMs;
-      for (;;) {
-        const result = await action();
-        if (result !== undefined) return result;
-        if (performance.now() >= deadline)
-          throw new Error(`Timed out waiting for ${name}`);
-        await pause(1000);
-      }
-    });
   try {
     const authority = await stage("signed deployment authority", () =>
       createPublishedWatcherDeploymentAuthority({
@@ -131,54 +108,37 @@ export const openJourneySession = async (
       deploymentFingerprint: deployment.manifest.manifestId,
     });
     cleanup.push(retainedDa.close);
-    const archives = await startJourneyHistoryArchives({
-      releaseFinality,
-      runDirectory: context.runDirectory,
-      composeProject: runEnv.MIDGARD_PHASE4_COMPOSE_PROJECT,
-      deploymentFingerprint: deployment.manifest.manifestId,
-    });
-    cleanup.push(archives.close);
     const {
       rollback: rollbackKey,
       prover: proverKey,
       availability: availabilityKey,
-      bearer: bearerKey,
-      record: recordKey,
-    } = journeyAuthorityKeySources(context.runDirectory);
+    } = journeyWatcherKeySources(context.runDirectory);
     const nativeQuery = await journeyNativeNodeQuery(context.runDirectory);
     if (nativeQuery.watcherConfig.l1.source.sourceMode !== "local_node")
       throw new Error("Native node source required");
+    // The run watcher follows from the deployment's origin, the point before
+    // its hub-oracle nonce's block; without one it holds unready.
+    const { origin } = await stage("deployment L1 origin", () =>
+      deriveL1Origin({
+        node: {
+          socketPath: nativeQuery.watcherConfig.l1.source.chainSync.socketPath,
+          binaryPath: nativeQuery.binaryPath,
+          networkMagic: context.customNetwork.networkMagic,
+        },
+        nonceTxHash: deployment.manifest.hubOracleOneShot.txHash,
+      }),
+    );
     const watcherInput = {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
       mode: "acceptance",
       targetNetwork: "Custom",
       customNetwork: context.customNetwork,
       l1: {
-        source: {
-          ...nativeQuery.watcherConfig.l1.source,
-          queryServices: [
-            {
-              kind: "ogmios",
-              identity: "journey-ogmios",
-              endpoint: context.ogmiosUrl,
-            },
-            {
-              kind: "kupo",
-              identity: "journey-kupo",
-              endpoint: context.kupoUrl,
-            },
-          ],
-        },
+        source: nativeQuery.watcherConfig.l1.source,
+        origin: { slot: origin.slot, blockHash: origin.blockHash },
         requestTimeoutMs: 30_000,
         maxConcurrency: 8,
-        finality: {
-          depth: JOURNEY_FINALITY_DEPTH,
-          rollback: {
-            beforeFinality: "rewind",
-            afterFinality: "quarantine",
-            maxDepth: JOURNEY_FINALITY_DEPTH,
-          },
-        },
+        finality: { depth: JOURNEY_FINALITY_DEPTH },
       },
       da: {
         peers: [retainedDa.peer],
@@ -199,60 +159,43 @@ export const openJourneySession = async (
       },
     };
     const watcherConfig = parseWatcherConfig(watcherInput);
-    const policy = makeWatcherFinalityPolicy(
-      watcherConfig,
-      authority.deploymentAuthority.deploymentIdentity,
-    );
-    if (policy === null) throw new Error("Finality policy was not admitted");
-    const [authorityPort, operationsPort] = await journeyPorts(2);
-    const trustedHeadAuthorityEndpoint = `http://127.0.0.1:${authorityPort}`;
+    const [operationsPort] = await journeyPorts(1);
     const operationsEndpoint = `http://127.0.0.1:${operationsPort}`;
-    const authorityConfigPath = join(directory, "authority-process.json");
-    await stage("explicit trusted-head authority provisioning", () =>
-      provisionJourneyAuthority({
+    await stage("journey watcher secrets", () =>
+      ensureJourneyWatcherSecrets({
         runDirectory: context.runDirectory,
         runtimeDirectory,
-        configPath: authorityConfigPath,
-        endpoint: trustedHeadAuthorityEndpoint,
-        policy,
         publisherSeed: accounts.publisher.seedPhrase,
         availabilitySeed: accounts.availability.seedPhrase,
-        initialize: options.initializeAuthority === true,
       }),
     );
-    const signedCommitSource = createLocalKupmiosHttpOgmiosRawSource({
-      sourceId: "journey-signed-header-recovery",
-      kupoHttpUrl: context.kupoUrl,
-      ogmiosUrl: context.ogmiosUrl,
-      releaseFinality,
-      timeoutMs: watcherConfig.l1.requestTimeoutMs,
-    });
-    const readSignedCommitRecovery = (attempt: SignedCommitAttempt) => {
-      if (closed) throw new Error("Journey session is closed");
-      return readAdmittedLocalKupmiosSignedTransactionRecovery({
-        source: signedCommitSource,
-        transactionHash: attempt.txHash,
-        signedTransactionCborHex: attempt.signedCbor,
-      });
-    };
 
     const native = await stage("independent native chain recorder", () =>
       startJourneyNativeRecorder({
         directory,
         watcherConfig,
         binaryPath: nativeQuery.binaryPath,
-        onBlock: archives.retainNativeBlock,
-        onRollback: archives.rollbackNativeBlocks,
       }),
     );
     cleanup.push(native.close);
+    // Inclusion comes from the recorder's canonical chain; the local node's
+    // ledger settles expiry and spent inputs.
+    const readSignedCommitRecovery = (attempt: SignedCommitAttempt) => {
+      if (closed) throw new Error("Journey session is closed");
+      return readSignedTransactionRecovery({
+        ogmiosUrl: context.ogmiosUrl,
+        timeoutMs: watcherConfig.l1.requestTimeoutMs,
+        transactionHash: attempt.txHash,
+        signedTransactionCborHex: attempt.signedCbor,
+        includedThrough: native.includedThrough,
+      });
+    };
     const retain = async (
       block: { headerHash: string; payloadEnvelopeCbor: Uint8Array },
       txHash: string,
     ) => {
-      const actual = await native.transaction(txHash);
+      await native.transaction(txHash);
       await retainedDa.retain(block);
-      await archives.retain(block, actual.point);
     };
     await stage("independent actor funding", async () => {
       const fundingPath = join(runtimeDirectory, "actor-funding.txt");
@@ -284,41 +227,13 @@ export const openJourneySession = async (
         .pay.ToAddress(prover, { lovelace: 100_000_000n })
         .pay.ToAddress(availability, { lovelace: 40_000_000_000n })
         .pay.ToAddress(availability, { lovelace: 10_000_000n })
-        .complete({ localUPLCEval: true });
+        .complete({ localUPLCEval: true })
+        .finally(() => deployment.publisherLucid.clearUTxOOverride());
       const txHash = await (await built.sign.withWallet().complete()).submit();
       await provider.awaitTx(txHash, 500);
       await native.transaction(txHash);
       await writeFile(fundingPath, txHash);
-      deployment.publisherLucid.overrideUTxOs(
-        await provider.getUtxos(publisherAddress),
-      );
     });
-    const authorityProcess = launchJourneyWatcherProcess({
-      command: "authority",
-      configPath: authorityConfigPath,
-      directory,
-      caPath: archives.caPath,
-      transportEnvironment: archives.transportEnvironment,
-    });
-    cleanup.push(authorityProcess.close);
-    const bearer = (await readFile(bearerKey.path, "utf8")).trim();
-    await poll(
-      "trusted-head authority process",
-      async () => {
-        authorityProcess.assertHealthy();
-        const ready = await fetch(
-          `${trustedHeadAuthorityEndpoint}/v1/identity`,
-          {
-            headers: { authorization: `Bearer ${bearer}` },
-            signal: AbortSignal.timeout(5000),
-          },
-        )
-          .then((response) => response.ok)
-          .catch(() => false);
-        return ready ? true : undefined;
-      },
-      30_000,
-    );
     const launch = async () => {
       const processInput = {
         schemaVersion: WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
@@ -327,10 +242,8 @@ export const openJourneySession = async (
         deploymentAuthorityPath: authority.authorityPath,
         ruleBundlePath: authority.ruleBundlePath,
         fundingProfileBundlePath: authority.fundingProfileBundlePath,
-        nativeChainSyncBinaryPath: nativeQuery.binaryPath,
-        trustedHeadAuthorityEndpoint,
+        l1NodeTransportBinaryPath: nativeQuery.binaryPath,
         operationsEndpoint,
-        httpBearerSecretSource: bearerKey,
         workflowJournalDirectory: join(runtimeDirectory, "workflows"),
         availability: {
           keySource: availabilityKey,
@@ -341,7 +254,6 @@ export const openJourneySession = async (
           manifestPath: authority.manifestPath,
           blueprintPath: authority.blueprintPath,
           deploymentInfoPath: authority.deploymentInfoPath,
-          historicalNativeScriptHistory: archives.configuration,
         },
       };
       const config = parseWatcherProcessConfig(processInput);
@@ -371,15 +283,11 @@ export const openJourneySession = async (
             fileURLToPath(new URL("./journey-runner.ts", import.meta.url)),
           ),
           configPath,
-          authorityConfigPath,
           nativeQuery.binaryPath,
           process.execPath,
-          archives.caPath,
           rollbackKey.path,
           proverKey.path,
           availabilityKey.path,
-          bearerKey.path,
-          recordKey.path,
         ].map((path) => ({
           path,
           sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
@@ -416,13 +324,11 @@ export const openJourneySession = async (
         command: "start" as const,
         configPath,
         directory,
-        caPath: archives.caPath,
-        transportEnvironment: archives.transportEnvironment,
       };
       let watcher = launchJourneyWatcherProcess(watcherLaunch);
       cleanup.push(() => watcher.close());
-      // The watcher fails closed on transient L1 conditions (Kupo checkpoint
-      // churn, Ogmios disconnects, retained-DA fetches) and exits 70. Its
+      // The watcher fails closed on transient conditions (local node
+      // disconnects, retained-DA fetches) and exits 70. Its
       // journal makes a restart resume the same workflow, so relaunch a bounded
       // number of times; a stalled workflow still ends the journey through the
       // journal, and any other exit remains fatal.
@@ -431,7 +337,6 @@ export const openJourneySession = async (
       const requireLive = () => {
         if (closed) throw new Error("Watcher journey session is closed");
         native.assertHealthy();
-        authorityProcess.assertHealthy();
         const observed = watcher.observe();
         if (
           observed.state === "exited" &&
@@ -483,29 +388,21 @@ export const openJourneySession = async (
       };
       const diagnostics = async () => ({
         process: watcher.observe(),
-        authorityProcess: authorityProcess.observe(),
         status: await readOperations("/v1/status").catch(String),
         metrics: await readOperations("/v1/metrics").catch(String),
       });
-      const trustedHeadRevision = async (): Promise<string | null> => {
-        try {
-          const response = await fetch(
-            `${trustedHeadAuthorityEndpoint}/v1/trusted-head`,
-            {
-              headers: { authorization: `Bearer ${bearer}` },
-              signal: AbortSignal.timeout(5000),
-            },
-          );
-          if (!response.ok) return null;
-          const body = (await response.json()) as {
-            head?: { revision?: unknown };
-          };
-          return typeof body.head?.revision === "string"
-            ? body.head.revision
-            : null;
-        } catch {
-          return null;
-        }
+      // Progress while the watcher serves operations: the chain the recorder
+      // admitted and the watcher's own named L1 readiness reasons. Null while
+      // the operations endpoint does not answer.
+      const watcherProgress = async (): Promise<string | null> => {
+        const status = (await readOperations("/v1/status").catch(
+          () => undefined,
+        )) as { l1Readiness?: unknown } | undefined;
+        if (status === undefined) return null;
+        return JSON.stringify({
+          recordedBlockNo: native.observedBlockNo()?.toString() ?? null,
+          l1Readiness: status.l1Readiness ?? null,
+        });
       };
 
       return {
@@ -515,7 +412,7 @@ export const openJourneySession = async (
         assertIdentity,
         operations,
         diagnostics,
-        trustedHeadRevision,
+        watcherProgress,
         observe: () => watcher.observe(),
       };
     };
@@ -524,7 +421,6 @@ export const openJourneySession = async (
       if (closed) throw new Error("Watcher journey session is closed");
       try {
         native.assertHealthy();
-        authorityProcess.assertHealthy();
         if (started !== undefined) {
           const running = await started;
           running.assertIdentity();
@@ -550,14 +446,12 @@ export const openJourneySession = async (
       releaseFinality,
       watcherConfig,
       readSignedCommitRecovery,
-      archives,
       native,
       retain,
       retainPayload: retainedDa.retain,
       workflowJournalDirectory: join(runtimeDirectory, "workflows"),
       ensureWatcher,
       watcherStarted: () => started !== undefined,
-      authorityObserve: authorityProcess.observe,
       assertHealthy,
       close,
     };

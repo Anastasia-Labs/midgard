@@ -40,21 +40,18 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "fabricatedWithdrawal",
   "nativeScriptDecoding",
   "missingSignature",
-  "missingNativeScriptTx",
   "withdrawnReferenceInput",
   "canonicalDecodability",
   "committedFieldShape",
   "minFee",
   "withdrawalMistag",
   "doubleWithdraw",
-  "crossBlockDuplicateEvent",
   "l2TxMistag",
   "withdrawnInput",
   "valueNotPreserved",
   "inputSetUniqueness",
   "mintAuthorization",
   "networkId",
-  "missingNativeScriptUtxo",
   "nativeScriptInvalid",
   "minAda",
   "fieldPreimageLengthMismatch",
@@ -87,7 +84,7 @@ export type FraudProofCatalogueCategoryName =
 
 /**
  * Canonical four-byte big-endian category identifiers. The mapping is pinned
- * next to the append-only order so registration, thread-token construction,
+ * next to the presentation order so registration, thread-token construction,
  * deployment manifests, and catalogue proofs share one authority.
  */
 export const FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = {
@@ -106,21 +103,18 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = {
   fabricatedWithdrawal: "0000000c",
   nativeScriptDecoding: "0000000d",
   missingSignature: "0000000e",
-  missingNativeScriptTx: "0000000f",
   withdrawnReferenceInput: "00000010",
   canonicalDecodability: "00000011",
   committedFieldShape: "00000012",
   minFee: "00000013",
   withdrawalMistag: "00000014",
   doubleWithdraw: "00000015",
-  crossBlockDuplicateEvent: "00000016",
   l2TxMistag: "00000017",
   withdrawnInput: "00000018",
   valueNotPreserved: "00000019",
   inputSetUniqueness: "0000001a",
   mintAuthorization: "0000001b",
   networkId: "0000001c",
-  missingNativeScriptUtxo: "0000001d",
   nativeScriptInvalid: "0000001e",
   minAda: "0000001f",
   fieldPreimageLengthMismatch: "00000020",
@@ -199,8 +193,6 @@ export const NATIVE_SCRIPT_DECODING_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.nativeScriptDecoding;
 export const MISSING_SIGNATURE_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingSignature;
-export const MISSING_NATIVE_SCRIPT_TX_FRAUD_CATEGORY_ID =
-  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingNativeScriptTx;
 export const WITHDRAWN_REFERENCE_INPUT_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawnReferenceInput;
 export const CANONICAL_DECODABILITY_FRAUD_CATEGORY_ID =
@@ -225,8 +217,6 @@ export const MINT_AUTHORIZATION_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.mintAuthorization;
 export const NETWORK_ID_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.networkId;
-export const MISSING_NATIVE_SCRIPT_UTXO_FRAUD_CATEGORY_ID =
-  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingNativeScriptUtxo;
 export const NATIVE_SCRIPT_INVALID_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.nativeScriptInvalid;
 export const MIN_ADA_FRAUD_CATEGORY_ID =

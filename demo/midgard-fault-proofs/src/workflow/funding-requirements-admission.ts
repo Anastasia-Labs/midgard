@@ -30,16 +30,6 @@ export const bindWorkflowFundingRequirementsToRunner = ({
   admittedFundingRequirements.add(requirements);
 };
 
-/** Internal-only fixed Q58 application admission. */
-export const admitAvailabilityFundingRequirements = (
-  requirements: WorkflowFundingRequirements,
-): void => {
-  if (requirements.scope.kind !== "da_availability_lifecycle") {
-    throw new Error("availability funding requirements have another scope");
-  }
-  admittedFundingRequirements.add(requirements);
-};
-
 export const fundingRequirementsForRunnerIdentity = (
   runner: object,
 ): WorkflowFundingRequirements | null => fundingByRunner.get(runner) ?? null;

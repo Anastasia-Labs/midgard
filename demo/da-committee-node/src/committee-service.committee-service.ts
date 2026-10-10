@@ -1,21 +1,14 @@
 import type { AvailabilityResponseAdmissionDecision } from "@al-ft/midgard-core";
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { WALLET_SEED_PENDING } from "@al-ft/midgard-l1-follower";
 
 import { committeePromisePolicyStatus } from "./availability/promise-profile-selection.js";
-import {
-  acknowledgeL1RollbackFeed,
-  checkL1RollbackFeed,
-  createDaConflictEvidenceGossipHandler,
-  l1ObservationTransitionFailure,
-  type L1RollbackFeedCheck,
-  payloadFetchObservation,
-  quarantinedTickResult,
-} from "./committee-service.check-l1-rollback-feed.js";
 import {
   coordinatorPostFailedMessage,
   shouldRepublishSignatureForHeader,
 } from "./committee-service.coordinator-post-failed-message.js";
+import { pruneDecisions } from "./committee-service.decision-pruning.js";
 import {
   type CommitteeL1SubmitterPreflightSnapshot,
   type CommitteeL1View,
@@ -25,9 +18,24 @@ import {
   type CommitteeServiceDeps,
   type CommitteeTickResult,
   type CoordinatorPublishResult,
-  DA_PARAMS_STARTUP_RETRY,
+  createDaConflictEvidenceGossipHandler,
+  payloadFetchObservation,
   type SignedHeaderResult,
 } from "./committee-service.ingest-da-conflict-evidence.js";
+import {
+  daParamsMismatch,
+  headerRecordOf,
+  heldTickResult,
+  L1_DA_PARAMS_MISMATCH,
+  L1_DA_PARAMS_UNAVAILABLE,
+  L1_FOLLOWER_NOT_INITIALIZED,
+  L1_STATE_QUEUE_UNHEALTHY,
+  reconcileStandingOf,
+  retirementFloorHold,
+  statusIdentityMismatch,
+  STORE_INTEGRITY,
+  terminalRecordOf,
+} from "./committee-service.l1-tick.js";
 import { signVerifiedCommitteePayload } from "./committee-service.sign-verified-payload.js";
 import { l1SourceAuthorityDigest } from "./config.js";
 import type { DaSubmitterFundingCheck } from "./coordinator/lucid-submitter.js";
@@ -48,22 +56,7 @@ import type {
   DaSignatureRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
-import type {
-  DaAttestationChainReader,
-  OnChainDaParams,
-} from "./l1/da-attestation-reader.js";
-import type {
-  ChainSyncCursor,
-  ChainSyncReplayProvider,
-} from "./l1/provider.js";
-import { L1SourceIntegrityError } from "./l1/source-integrity.js";
-import {
-  scanStateQueue,
-  type StateQueueCatchUp,
-  type StateQueueL1View,
-  type StateQueueReplayAnchor,
-} from "./l1/state-queue-scanner.js";
-import type { StateQueueOutputStep } from "./l1/terminal-retention-observation.js";
+import { committeeL1InterventionReason } from "./l1/follower/l1-follower.js";
 import {
   buildDaSignatureConflictEvidence,
   classifyDaLocalSigningCommitment,
@@ -76,12 +69,19 @@ import {
   type DecisionOutboxRecord,
   hasPayloadBytes,
   type L1ObservedDecision,
-  type L1ObservedStatus,
-  type L1SourceState,
-  UNKNOWN_STATE_QUEUE_STATUS,
-  withObservedStatus,
 } from "./store.js";
 import { hexToBytes } from "./utils/hex.js";
+
+/** The fields of a header record a tick re-writes when they change. */
+const recordIdentity = (record: StateQueueHeaderRecord): string =>
+  JSON.stringify([
+    record.stateQueueOutRef,
+    record.status,
+    record.finalized,
+    record.observedChainPoint.blockHash,
+    record.observedChainPoint.providerSource,
+    record.validationErrors,
+  ]);
 
 export class CommitteeService {
   private readonly deps: CommitteeServiceDeps;
@@ -89,44 +89,30 @@ export class CommitteeService {
   private tickInFlight?: Promise<CommitteeTickResult>;
   private l1View: CommitteeL1View | undefined;
   /**
-   * Not-yet-final bootstrap replay anchor, held in memory only until a final
-   * queue can be recorded as the durable anchor.
+   * Headers whose payloads retirement must keep: the landed queue, the queue
+   * at the latest final block, and every signed header whose commit is not
+   * yet final or provably unable to land. Set by the last tick that read a
+   * view.
    */
-  private replayAnchorCandidate: StateQueueReplayAnchor | undefined;
-  /**
-   * A durable (final) replay anchor a scan established that no healthy
-   * state write has persisted yet. Held in memory so that a tick failing
-   * between its scan and that write does not lose it; it is what decisions
-   * made before the write bind to.
-   */
-  private unpersistedReplayAnchor: StateQueueReplayAnchor | undefined;
-  /**
-   * The final authenticated replay steps of the tick in flight (ticks are
-   * single-flight), attached to every decision observation the tick writes
-   * so the store can check an output change against them.
-   */
-  private retirementDeferredHeaders: ReadonlySet<string> = new Set();
+  private retirementPins: ReadonlySet<string> = new Set();
   readRetirementOperationalPins(): readonly string[] {
-    return [
-      ...new Set([
-        ...this.retirementDeferredHeaders,
-        ...(this.l1View?.liveQueueHeaderHashes ?? []),
-      ]),
-    ];
+    return [...this.retirementPins];
   }
-  private authenticatedSteps: ReadonlyMap<
-    string,
-    readonly StateQueueOutputStep[]
-  > = new Map();
   /**
-   * When a tick last moved the durable replay anchor forward while catching
-   * up on history too long for one tick, or was seen moving the chain-sync
-   * cursor toward the tip. Such a tick accepts no L1 view, but it is progress
-   * on one.
+   * Why the last tick that read a view made no decision (the follower's own
+   * reasons are read live). Empty when it decided.
    */
+  private holdReasons: readonly string[] = [];
+  /**
+   * A stored record the facts contradict. Sticky for the life of the
+   * process: nothing is written or decided until an operator looks.
+   */
+  private storeIntegrity: string | undefined;
+  /** A stored L1 source state for another network; sticky like the above. */
+  private l1SourceMismatch: string | undefined;
+  /** When the follower's cursor last moved, seen by `latestL1ProgressAtMs`. */
   private l1ProgressAtMs: number | undefined;
-  /** The chain-sync catch-up cursor slot `latestL1ProgressAtMs` last saw. */
-  private chainSyncCatchUpCursorSlot: number | undefined;
+  private l1ProgressCursorSlot: number | null = null;
   /**
    * Stored payloads (`headerHash:payloadSha256`) whose cached malformed or
    * root-mismatch verdict this process has already re-checked. A cached
@@ -174,22 +160,15 @@ export class CommitteeService {
   }
 
   /**
-   * When a tick last made authenticated progress toward an L1 view without
-   * reaching one: it moved the durable replay anchor while catching up, or
-   * local chain-sync, still short of the tip inside one tick, moved its cursor
-   * since the previous call.
+   * When the follower's cursor was last seen moving. A follower catching up
+   * accepts no view, but it is progress toward one.
    */
   latestL1ProgressAtMs(): number | undefined {
-    const chainSyncCatchUp = (
-      this.deps.stateQueueProvider as Partial<ChainSyncReplayProvider>
-    ).chainSyncCatchUpProgress?.();
-    if (
-      chainSyncCatchUp !== undefined &&
-      chainSyncCatchUp.cursorSlot !== this.chainSyncCatchUpCursorSlot
-    ) {
+    const cursorSlot = this.deps.l1.cursorSlot();
+    if (cursorSlot !== null && cursorSlot !== this.l1ProgressCursorSlot) {
       this.l1ProgressAtMs = (this.deps.now?.() ?? new Date()).getTime();
     }
-    this.chainSyncCatchUpCursorSlot = chainSyncCatchUp?.cursorSlot;
+    this.l1ProgressCursorSlot = cursorSlot;
     return this.l1ProgressAtMs;
   }
 
@@ -205,90 +184,37 @@ export class CommitteeService {
         this.deps.config.contractDeploymentInfoSha256,
       manifestRaw: this.deps.config.deploymentManifestRaw,
     });
+    // The on-chain DA params are checked on every tick against the
+    // follower's facts, never here: a startup read could only fail closed.
     const l1State = await this.deps.store.getL1SourceState();
+    if (l1State !== undefined && l1State.network !== this.deps.config.network) {
+      this.l1SourceMismatch = `l1_source_configuration_changed: stored network ${l1State.network}, configured ${this.deps.config.network}`;
+      this.writeEvent({
+        event: "l1_source_configuration_changed",
+        detail: this.l1SourceMismatch,
+      });
+      return;
+    }
     if (
-      l1State !== undefined &&
-      (l1State.network !== this.deps.config.network ||
-        l1State.sourceMode !== this.l1SourceMode() ||
-        l1State.authoritySha256 !== this.l1SourceAuthoritySha256())
+      l1State === undefined ||
+      l1State.authoritySha256 !== this.l1SourceAuthoritySha256()
     ) {
-      await this.quarantineL1Source(
-        `l1_source_configuration_changed: stored=${l1State.sourceMode}/${l1State.network}/${l1State.authoritySha256}, configured=${this.l1SourceMode()}/${this.deps.config.network}/${this.l1SourceAuthoritySha256()}`,
-        l1State,
-      );
-      throw new Error(
-        "persisted L1 source state does not match configured source mode/network",
-      );
-    }
-    if (this.deps.daChainReader !== undefined) {
-      try {
-        const daParams = await this.fetchDaParamsAtStartup(
-          this.deps.daChainReader,
-        );
-        if (daParams.committeeHex !== this.deps.config.daParams.committeeHex) {
-          throw new L1SourceIntegrityError(
-            "on-chain DA committee does not match committee node config",
-          );
-        }
-        if (
-          daParams.committeeSignersHash !==
-          this.deps.config.daParams.committeeSignersHash
-        ) {
-          throw new L1SourceIntegrityError(
-            "on-chain DA committee_signers_hash does not match committee node config",
-          );
-        }
-        if (daParams.threshold !== this.deps.config.daParams.threshold) {
-          throw new L1SourceIntegrityError(
-            "on-chain DA threshold does not match committee node config",
-          );
-        }
-      } catch (error) {
-        return this.quarantineOnIntegrityFailure(
-          "l1_da_params_mismatch",
-          error,
-          l1State,
-        );
+      if (l1State !== undefined) {
+        this.writeEvent({
+          event: "l1_source_configuration_changed",
+          stored: l1State.authoritySha256,
+          configured: this.l1SourceAuthoritySha256(),
+        });
       }
-    }
-    if (l1State === undefined) {
       await this.deps.store.saveL1SourceState({
         schemaVersion: 1,
-        sourceMode: this.l1SourceMode(),
+        sourceMode: "local_node",
         network: this.deps.config.network,
         authoritySha256: this.l1SourceAuthoritySha256(),
         status: "healthy",
-        observations: [],
+        observations: l1State?.observations ?? [],
         observedAt: this.nowIso(),
       });
-    }
-  }
-
-  private async fetchDaParamsAtStartup(
-    reader: DaAttestationChainReader,
-  ): Promise<OnChainDaParams> {
-    const { attempts, initialDelayMs, maxDelayMs } =
-      this.deps.daParamsStartupRetry ?? DA_PARAMS_STARTUP_RETRY;
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        return await reader.fetchDaParams();
-      } catch (error) {
-        if (error instanceof L1SourceIntegrityError || attempt >= attempts) {
-          throw error;
-        }
-        const delayMs = Math.min(
-          maxDelayMs,
-          initialDelayMs * 2 ** (attempt - 1),
-        );
-        this.writeEvent({
-          event: "da_params_startup_read_retry",
-          attempt,
-          attempts,
-          delayMs,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
     }
   }
 
@@ -320,37 +246,8 @@ export class CommitteeService {
   ): Promise<CommitteeReadinessSnapshot> {
     const deployment = await this.deps.store.getDeployment();
     const l1SourceState = await this.deps.store.getL1SourceState();
-    const headers = await this.deps.store.listStateQueueHeaders();
-    const payloads = await Promise.all(
-      headers.map((header) => this.deps.store.getDaPayload(header.headerHash)),
-    );
-    const signatures = await this.deps.store.listDaSignatures();
-    const l1Submissions = await this.deps.store.listL1Submissions();
-    const l1SubmittedOrConfirmedHeaders = new Set(
-      l1Submissions
-        .filter(
-          (record) =>
-            record.resultStatus === "submitted" ||
-            record.resultStatus === "confirmed",
-        )
-        .map((record) => record.headerHash),
-    );
-    const verifiedPayloads = payloads.filter(
-      (payload) => payload?.validationStatus === "verified",
-    );
-    const missingPayloads = headers.filter((header, index) => {
-      const payload = payloads[index];
-      return (
-        (header.status === "unattested" || header.status === "attesting") &&
-        payload?.validationStatus !== "verified"
-      );
-    }).length;
-    const verifiedPayloadsMissingL1Attestation = headers.filter(
-      (header, index) =>
-        payloads[index]?.validationStatus === "verified" &&
-        (header.status === "unattested" || header.status === "attesting") &&
-        !l1SubmittedOrConfirmedHeaders.has(header.headerHash),
-    ).length;
+    // Indexed counters and the open-header slice; never a full table scan.
+    const counts = await this.deps.store.readinessCounts();
     const producerPeerIds = this.deps.config.daTransport.peers
       .filter((peer) => peer.roles.includes("producer"))
       .map((peer) => peer.peerId);
@@ -414,34 +311,15 @@ export class CommitteeService {
     if (scanner.status === "degraded") {
       reasons.push("last committee node tick completed with errors");
     }
-    // Until chain-sync reaches the tip nothing is decided, whatever the last
-    // tick reported.
-    const chainSyncCatchUp = (
-      this.deps.stateQueueProvider as Partial<ChainSyncReplayProvider>
-    ).chainSyncCatchUpProgress?.();
-    if (chainSyncCatchUp !== undefined) {
-      reasons.push(
-        `l1_chain_sync_catching_up: events=${chainSyncCatchUp.events.toString()}, cursorSlot=${chainSyncCatchUp.cursorSlot.toString()}, tipSlot=${chainSyncCatchUp.tipSlot.toString()}`,
-      );
-    }
-    if (
-      scanner.status !== "not_started" &&
-      l1SourceState?.status !== "quarantined" &&
-      (l1SourceState?.stateQueueReplayAnchor ??
-        this.unpersistedReplayAnchor) === undefined
-    ) {
-      reasons.push(
-        "L1 state queue has no durable replay anchor yet: no decision is made until its history is final",
-      );
-    }
-    if (
-      l1SourceState?.status === "quarantined" &&
-      scanner.status !== "failed"
-    ) {
-      reasons.push(
-        `L1 source is quarantined: ${l1SourceState.quarantineReason ?? "unknown reason"}`,
-      );
-    }
+    // The follower's named reasons, read live, then why the last tick that
+    // read a view decided nothing.
+    const l1Held = this.deps.l1.readiness();
+    const l1Intervention = committeeL1InterventionReason(l1Held);
+    reasons.push(
+      ...l1Held.map(({ reason, detail }) => `${reason}: ${detail}`),
+      ...(this.l1SourceMismatch === undefined ? [] : [this.l1SourceMismatch]),
+      ...this.holdReasons,
+    );
     if (
       this.deps.config.l1SubmissionEnabled &&
       l1SubmitterPreflight.status === "not_run"
@@ -462,14 +340,14 @@ export class CommitteeService {
     if (args.daBondPool !== undefined) {
       reasons.push(...daBondPoolReadinessReasons(args.daBondPool));
     }
-    if (args.retention?.status === "not_checked") {
+    if (args.retention?.status === "not_checked")
       reasons.push("retention check has not completed");
-    }
     if (args.retention?.status === "failed") {
       reasons.push(
         `retention check failed: ${args.retention.error ?? "unknown error"}`,
       );
     }
+    reasons.push(...(args.retention?.pinFailures ?? []));
     if (args.retention?.status === "l1_view_stale") {
       reasons.push(
         `l1_view_stale:${(args.retention.l1ViewAgeMs ?? 0).toString()}`,
@@ -501,14 +379,16 @@ export class CommitteeService {
         ? {}
         : { promiseAdmission: this.promiseAdmission }),
       l1Source: {
-        sourceMode: this.l1SourceMode(),
-        status: l1SourceState?.status ?? "uninitialized",
+        sourceMode: "local_node",
+        ...(l1Intervention === undefined
+          ? { status: l1SourceState?.status ?? "uninitialized" }
+          : {
+              status: "intervention" as const,
+              intervention: `${l1Intervention.reason}: ${l1Intervention.detail}`,
+            }),
         ...(l1SourceState?.observedAt === undefined
           ? {}
           : { observedAt: l1SourceState.observedAt }),
-        ...(l1SourceState?.quarantineReason === undefined
-          ? {}
-          : { quarantineReason: l1SourceState.quarantineReason }),
       },
       deployment: {
         configuredFingerprint: this.deps.config.deploymentFingerprint,
@@ -562,15 +442,7 @@ export class CommitteeService {
       },
       scanner,
       ...(args.retention === undefined ? {} : { retention: args.retention }),
-      counts: {
-        discoveredHeaders: headers.length,
-        missingPayloads,
-        verifiedPayloads: verifiedPayloads.length,
-        verifiedPayloadsMissingL1Attestation,
-        signatures: signatures.length,
-        l1AttestationSubmissions: l1Submissions.length,
-        submittedOrConfirmedL1Attestations: l1SubmittedOrConfirmedHeaders.size,
-      },
+      counts,
       reasons,
     };
   }
@@ -598,142 +470,100 @@ export class CommitteeService {
     }
   }
   private async tickOnce(): Promise<CommitteeTickResult> {
-    const priorL1State = await this.deps.store.getL1SourceState();
-    if (priorL1State?.status === "quarantined") {
-      return quarantinedTickResult(priorL1State);
+    const l1 = this.deps.l1;
+    // The follower's own reasons are reported live; nothing is read or
+    // decided until it is ready. An owed own-wallet seed holds submission
+    // only, not decisions.
+    const following = l1
+      .readiness()
+      .filter(({ reason }) => reason !== WALLET_SEED_PENDING);
+    if (this.l1SourceMismatch !== undefined || following.length > 0) {
+      this.holdReasons = [];
+      return heldTickResult([
+        ...(this.l1SourceMismatch === undefined ? [] : [this.l1SourceMismatch]),
+        ...following.map(({ reason, detail }) => `${reason}: ${detail}`),
+      ]);
     }
-    let records: Awaited<ReturnType<typeof scanStateQueue>>;
-    let replayAnchor: StateQueueReplayAnchor | undefined;
-    let replayAnchorCandidate: StateQueueReplayAnchor | undefined;
-    let deferredHeaders: ReadonlySet<string> = new Set();
-    let authenticatedSteps: ReadonlyMap<
-      string,
-      readonly StateQueueOutputStep[]
-    > = new Map();
-    this.authenticatedSteps = authenticatedSteps;
-    let scannedL1View: StateQueueL1View | undefined;
-    let catchUp: StateQueueCatchUp | undefined;
-    let snapshotChainSyncCursor: ChainSyncCursor | undefined;
-    const durableReplayAnchor =
-      priorL1State?.stateQueueReplayAnchor ?? this.unpersistedReplayAnchor;
-    try {
-      const previousHeaders = await this.deps.store.listStateQueueHeaders();
-      records = await scanStateQueue(this.deps.stateQueueProvider, {
-        deploymentFingerprint: this.deps.config.deploymentFingerprint,
-        deploymentIdentityDigest: this.deps.config.deploymentFingerprint,
-        stateQueuePolicyId: this.deps.config.stateQueuePolicyId,
-        daAttestationPolicyId: this.deps.config.daAttestationPolicyId,
-        finalityDepth: this.deps.config.finalityDepth,
-        automaticRecoveryMaxDepth: this.deps.config.automaticRecoveryMaxDepth,
-        consensusProfile: this.deps.config.consensusProfile,
-        previousHeaders,
-        ...(durableReplayAnchor === undefined
-          ? {}
-          : { terminalReplayAnchor: durableReplayAnchor }),
-        ...(this.replayAnchorCandidate === undefined
-          ? {}
-          : { provisionalReplayAnchor: this.replayAnchorCandidate }),
-        recordReplayAnchor: (anchor) => {
-          replayAnchor = anchor;
-        },
-        recordProvisionalReplayAnchor: (anchor) => {
-          replayAnchorCandidate = anchor;
-        },
-        recordDiscardedReplayAnchorCandidate: (candidate, reason) => {
-          this.writeEvent({
-            event: "l1_replay_anchor_candidate_discarded",
-            reason,
-            candidateBlockNo: candidate.blockNo,
-            candidateTransactionIndex: candidate.transactionIndex,
-          });
-        },
-        recordReplayedHeaderSteps: ({ deferredHeaderHashes, finalSteps }) => {
-          deferredHeaders = new Set(deferredHeaderHashes);
-          authenticatedSteps = finalSteps;
-        },
-        recordL1View: (view) => {
-          scannedL1View = view;
-        },
-        recordCatchUp: (progress) => {
-          catchUp = progress;
-        },
-        recordChainSyncCursor: (cursor) => {
-          snapshotChainSyncCursor = cursor;
-        },
-      });
-      this.replayAnchorCandidate = replayAnchorCandidate;
-      this.unpersistedReplayAnchor = replayAnchor;
-      this.authenticatedSteps = authenticatedSteps;
-      this.retirementDeferredHeaders = deferredHeaders;
-    } catch (error) {
-      return this.quarantineOnIntegrityFailure(
-        "l1_source_integrity_failed",
-        error,
-        priorL1State,
+    const floorHold = await retirementFloorHold(this.deps.store, l1);
+    const stored = await this.deps.store.listUnsettledStateQueueHeaders();
+    const signed = await this.deps.store.listSignedDecisions();
+    const view = await l1.readView({
+      signed,
+      exitsOf: stored.map(({ headerHash }) => headerHash),
+    });
+    if (view === null) {
+      this.holdReasons = [
+        `${L1_FOLLOWER_NOT_INITIALIZED}: the follower store holds no cursor yet`,
+      ];
+      return heldTickResult(this.holdReasons);
+    }
+    const now = this.nowIso();
+    const fingerprint = this.deps.config.deploymentFingerprint;
+    const records = view.queue.nodes.flatMap((node) => {
+      const record = headerRecordOf(
+        node,
+        view,
+        l1.parameters,
+        fingerprint,
+        now,
       );
+      return record === null ? [] : [record];
+    });
+    const live = new Set(records.map(({ headerHash }) => headerHash));
+    const exits = new Map(view.exits.map((exit) => [exit.headerHash, exit]));
+    const terminal = stored.flatMap((record) => {
+      const exit = live.has(record.headerHash)
+        ? undefined
+        : exits.get(record.headerHash);
+      const settled =
+        exit === undefined
+          ? null
+          : terminalRecordOf(record, exit, l1.parameters, now);
+      return settled === null ? [] : [settled];
+    });
+    const mismatch = statusIdentityMismatch(stored, records);
+    if (mismatch !== undefined && this.storeIntegrity === undefined) {
+      this.storeIntegrity = `${STORE_INTEGRITY}: ${mismatch}`;
+      this.writeEvent({ event: "committee_store_integrity", detail: mismatch });
     }
-    let rollbackCheck: L1RollbackFeedCheck;
-    try {
-      rollbackCheck = await checkL1RollbackFeed(
-        priorL1State,
-        this.deps.stateQueueProvider,
-        snapshotChainSyncCursor,
-        this.deps.store,
-      );
-    } catch (error) {
-      return this.quarantineOnIntegrityFailure(
-        "l1_source_rollback_feed_failed",
-        error,
-        priorL1State,
-      );
+    this.holdReasons = [
+      ...(this.storeIntegrity === undefined ? [] : [this.storeIntegrity]),
+      ...(floorHold === undefined ? [] : [floorHold]),
+      ...(view.queue.healthy
+        ? []
+        : [
+            `${L1_STATE_QUEUE_UNHEALTHY}: ${view.queue.reason ?? ""} ${view.queue.detail ?? ""}`,
+          ]),
+      ...(await this.daParamsHold()),
+    ];
+    if (this.storeIntegrity !== undefined) {
+      return heldTickResult(this.holdReasons);
     }
-    if (rollbackCheck.failure !== undefined) {
-      const quarantined = await this.quarantineL1Source(
-        rollbackCheck.failure,
-        priorL1State,
-      );
-      return quarantinedTickResult(quarantined);
-    }
-    if (catchUp !== undefined) {
-      return this.catchUpL1Source(catchUp, priorL1State, rollbackCheck);
-    }
-    const transitionFailure = l1ObservationTransitionFailure(
-      priorL1State,
-      new Map(
-        records.map((record) => [
-          record.headerHash,
-          this.observedDecision(record, true),
-        ]),
-      ),
-      deferredHeaders,
+    const storedIdentity = new Map(
+      stored.map((record) => [record.headerHash, recordIdentity(record)]),
     );
-    if (transitionFailure !== undefined) {
-      const quarantined = await this.quarantineL1Source(
-        transitionFailure,
-        priorL1State,
-      );
-      return quarantinedTickResult(quarantined);
+    for (const record of [...records, ...terminal]) {
+      if (storedIdentity.get(record.headerHash) !== recordIdentity(record)) {
+        await this.deps.store.upsertStateQueueHeader(record);
+      }
     }
-    if (
-      records.some(
-        (record) =>
-          record.finalized &&
-          (record.observedChainPoint.slot === undefined ||
-            record.observedChainPoint.blockHash === undefined),
-      )
-    ) {
-      const quarantined = await this.quarantineL1Source(
-        "l1_source_finalized_decision_missing_canonical_chain_point",
-        priorL1State,
-      );
-      return quarantinedTickResult(quarantined);
-    }
-    if (scannedL1View !== undefined) {
+    this.retirementPins = new Set([
+      ...live,
+      ...view.finalQueueHeaderHashes,
+      ...view.obligations
+        .filter(({ retainCommitRecord }) => retainCommitRecord)
+        .map(({ headerHash }) => headerHash),
+    ]);
+    const decisionsAllowed = this.holdReasons.length === 0;
+    if (decisionsAllowed && view.queue.root !== null) {
       this.l1View = {
         observedAtMs: (this.deps.now?.() ?? new Date()).getTime(),
-        confirmedHeadHash: scannedL1View.confirmedHeaderHash,
-        liveQueueHeaderHashes: new Set(scannedL1View.liveQueueHeaderHashes),
-        recoveryProofUnavailable: scannedL1View.recoveryProofUnavailable,
+        confirmedHeadHash: view.queue.root.headerHash,
+        liveQueueHeaderHashes: new Set([
+          ...live,
+          ...view.finalQueueHeaderHashes,
+        ]),
+        finalBlockTimeMs: view.finalBlockTimeMs,
       };
     }
     const errors: string[] = [];
@@ -741,23 +571,8 @@ export class CommitteeService {
     let signedHeaders = 0;
     let reconciledHeaders = 0;
     let skippedHeaders = 0;
-    // Decisions bind to outputs whose later moves only authenticated replay
-    // from a durable anchor can explain, so none is made before one exists.
-    const decisionsAllowed = replayAnchor !== undefined;
     for (const record of records) {
-      // A header a young checkpoint moved has no canonical output until that
-      // checkpoint is final: its stored record keeps its last final output
-      // until then, and no decision may bind to it yet.
-      if (deferredHeaders.has(record.headerHash)) {
-        skippedHeaders += 1;
-        continue;
-      }
-      await this.deps.store.upsertStateQueueHeader(record);
-      if (
-        !decisionsAllowed ||
-        record.status === "merged" ||
-        record.status === "removed"
-      ) {
+      if (!decisionsAllowed) {
         skippedHeaders += 1;
         continue;
       }
@@ -937,226 +752,114 @@ export class CommitteeService {
         errors.push(error instanceof Error ? error.message : String(error));
       }
     }
-    const result = {
+    await this.persistL1SourceState(
+      [...records, ...terminal],
+      new Set(signed.map(({ headerHash }) => headerHash)),
+    );
+    // Under promise adoption retirement is the only deleter of these rows.
+    if (
+      decisionsAllowed &&
+      this.deps.config.availabilityPromiseAdoption === undefined
+    ) {
+      const settled = new Set(terminal.map(({ headerHash }) => headerHash));
+      const pruneErrors = await pruneDecisions(this.deps.store, {
+        obligations: view.obligations,
+        signed,
+        live,
+        finalQueue: view.finalQueueHeaderHashes,
+        unsettled: new Set(
+          stored
+            .map(({ headerHash }) => headerHash)
+            .filter((headerHash) => !settled.has(headerHash)),
+        ),
+        finalBlockTimeMs: view.finalBlockTimeMs,
+      });
+      errors.push(...pruneErrors);
+    }
+    return {
       scannedHeaders: records.length,
       signedHeaders,
       reconciledHeaders,
       skippedHeaders,
       payloadFetches,
       errors,
+      ...(decisionsAllowed ? {} : { held: this.holdReasons }),
     };
-    await this.persistHealthyL1SourceState(
-      records.filter(({ headerHash }) => !deferredHeaders.has(headerHash)),
-      replayAnchor,
-    );
-    this.unpersistedReplayAnchor = undefined;
-    if (rollbackCheck.cursor !== undefined) {
-      await acknowledgeL1RollbackFeed(
-        this.deps.stateQueueProvider,
-        rollbackCheck.cursor,
-        (event) => this.writeEvent(event),
-      );
-    }
-    return result;
   }
 
-  private l1SourceMode(): L1SourceState["sourceMode"] {
-    return this.deps.config.l1Source.sourceMode;
+  /**
+   * Why the on-chain DA params hold decisions this tick: they differ from
+   * the configured ones, or the follower's facts could not be read.
+   */
+  private async daParamsHold(): Promise<readonly string[]> {
+    const reader = this.deps.daChainReader;
+    if (reader === undefined) return [];
+    try {
+      const mismatch = daParamsMismatch(
+        await reader.fetchDaParams(),
+        this.deps.config.daParams,
+      );
+      return mismatch === undefined
+        ? []
+        : [`${L1_DA_PARAMS_MISMATCH}: ${mismatch}`];
+    } catch (error) {
+      return [
+        `${L1_DA_PARAMS_UNAVAILABLE}: ${error instanceof Error ? error.message : String(error)}`,
+      ];
+    }
   }
 
   private l1SourceAuthoritySha256(): string {
-    return l1SourceAuthorityDigest(
-      this.deps.config.network,
-      this.deps.config.l1Source,
-    );
+    return l1SourceAuthorityDigest(this.deps.config);
   }
 
   /**
-   * Quarantines the L1 source when `error` is an integrity failure, then
-   * rethrows it. Any other error is an observation failure: it fails this
-   * tick without touching durable state, the L1 view keeps ageing, and the
-   * next tick retries.
+   * Records where this tick saw each header, when that changed. Informational:
+   * a decision is bound by its own signature row, and an observation of a
+   * header with a persisted decision is kept by the store's merge.
    */
-  private async quarantineOnIntegrityFailure(
-    reasonPrefix: string,
-    error: unknown,
-    previous: L1SourceState | undefined,
-  ): Promise<never> {
-    if (error instanceof L1SourceIntegrityError) {
-      await this.quarantineL1Source(
-        `${reasonPrefix}: ${error.message}`,
-        previous,
-      );
-    }
-    throw error;
-  }
-
-  private async quarantineL1Source(
-    reason: string,
-    previous?: L1SourceState,
-  ): Promise<L1SourceState> {
-    const now = new Date().toISOString();
-    const state: L1SourceState = {
-      schemaVersion: 1,
-      sourceMode: this.l1SourceMode(),
-      network: this.deps.config.network,
-      authoritySha256: this.l1SourceAuthoritySha256(),
-      status: "quarantined",
-      observations: previous?.observations ?? [],
-      observedAt: previous?.observedAt ?? now,
-      ...(previous?.stateQueueReplayAnchor === undefined
-        ? {}
-        : { stateQueueReplayAnchor: previous.stateQueueReplayAnchor }),
-      quarantineReason: reason,
-      quarantinedAt: now,
-    };
-    await this.deps.store.quarantineL1Decisions(state);
-    return state;
-  }
-
-  /**
-   * Records a scan that walked only the first part of a history too long for
-   * one tick: the durable anchor moves past the final checkpoints it walked,
-   * and every persisted observation follows its header's final steps there,
-   * so the next tick resumes from that anchor. An observation's status comes
-   * from the snapshot when the snapshot shows its header at the output it
-   * landed on, and is otherwise recorded as unknown; nothing is decided on an
-   * unknown status, and a later tick fills it in. The snapshot was not reached,
-   * so no decision is made and no L1 view is accepted; the tick fails as an
-   * observation failure, and a later tick finishes the walk.
-   */
-  private async catchUpL1Source(
-    catchUp: StateQueueCatchUp,
-    prior: L1SourceState | undefined,
-    rollbackCheck: L1RollbackFeedCheck,
-  ): Promise<CommitteeTickResult> {
-    // Replay names each header's outputs but not their datums, so a status
-    // is known only at an output the snapshot shows the header at: an
-    // output's datum never changes. Anywhere else it is unknown, never
-    // guessed; a later tick fills it in (see `persistedDecisionTransition`).
-    const snapshotRecords = new Map(
-      catchUp.snapshotRecords.map((record) => [record.headerHash, record]),
+  private async persistL1SourceState(
+    records: readonly StateQueueHeaderRecord[],
+    signed: ReadonlySet<string>,
+  ): Promise<void> {
+    const prior = await this.deps.store.getL1SourceState();
+    const known = new Map(
+      (prior?.observations ?? []).map((observation) => [
+        observation.headerHash,
+        observation,
+      ]),
     );
-    const statusAt = (headerHash: string, outRef: string): L1ObservedStatus => {
-      const record = snapshotRecords.get(headerHash);
-      return record?.stateQueueOutRef === outRef
-        ? record.status
-        : UNKNOWN_STATE_QUEUE_STATUS;
-    };
-    const observations = (prior?.observations ?? []).map(
-      (observation): L1ObservedDecision => {
-        const steps = catchUp.finalSteps.get(observation.headerHash);
-        if (steps === undefined) {
-          return observation.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS
-            ? withObservedStatus(
-                observation,
-                statusAt(observation.headerHash, observation.stateQueueOutRef),
-              )
-            : observation;
-        }
-        const last = steps.at(-1)!;
-        return {
-          ...withObservedStatus(
-            observation,
-            last.toOutRef === undefined
-              ? (catchUp.terminalStatuses.get(observation.headerHash) ??
-                  UNKNOWN_STATE_QUEUE_STATUS)
-              : statusAt(observation.headerHash, last.toOutRef),
-          ),
-          stateQueueOutRef: last.toOutRef ?? last.fromOutRef,
-          slot: last.slot,
-          blockHash: last.blockHash,
-          finalized: true,
-          authenticatedSteps: steps,
-        };
-      },
-    );
-    const transitionFailure = l1ObservationTransitionFailure(
-      prior,
-      new Map(
-        observations.map((observation) => [
-          observation.headerHash,
-          observation,
-        ]),
-      ),
-      new Set(),
-    );
-    if (transitionFailure !== undefined) {
-      return quarantinedTickResult(
-        await this.quarantineL1Source(transitionFailure, prior),
-      );
-    }
-    for (const record of catchUp.terminalRecords) {
-      await this.deps.store.upsertStateQueueHeader(record);
-    }
+    const observations = records
+      .map((record) =>
+        this.observedDecision(
+          record,
+          signed.has(record.headerHash) ||
+            known.get(record.headerHash)?.hasPersistedDecision === true,
+        ),
+      )
+      .sort((left, right) => left.headerHash.localeCompare(right.headerHash));
+    const proposed = new Set(observations.map(({ headerHash }) => headerHash));
+    if (
+      prior !== undefined &&
+      observations.every(
+        (observation) =>
+          JSON.stringify(known.get(observation.headerHash)) ===
+          JSON.stringify(observation),
+      ) &&
+      prior.observations.every(
+        ({ headerHash, hasPersistedDecision }) =>
+          hasPersistedDecision || proposed.has(headerHash),
+      )
+    )
+      return;
     await this.deps.store.saveL1SourceState({
       schemaVersion: 1,
-      sourceMode: this.l1SourceMode(),
+      sourceMode: "local_node",
       network: this.deps.config.network,
       authoritySha256: this.l1SourceAuthoritySha256(),
       status: "healthy",
       observations,
-      observedAt: new Date().toISOString(),
-      stateQueueReplayAnchor: catchUp.anchor,
-    });
-    this.unpersistedReplayAnchor = undefined;
-    if (rollbackCheck.cursor !== undefined) {
-      await acknowledgeL1RollbackFeed(
-        this.deps.stateQueueProvider,
-        rollbackCheck.cursor,
-        (event) => this.writeEvent(event),
-      );
-    }
-    this.l1ProgressAtMs = (this.deps.now?.() ?? new Date()).getTime();
-    this.writeEvent({
-      event: "l1_state_queue_replay_catching_up",
-      walkedCheckpoints: catchUp.walkedCheckpoints,
-      anchorBlockNo: catchUp.anchor.blockNo,
-      anchorTransactionIndex: catchUp.anchor.transactionIndex,
-    });
-    throw new Error(
-      `state-queue replay is catching up: walked ${catchUp.walkedCheckpoints.toString()} checkpoints and moved the durable anchor to block ${catchUp.anchor.blockNo}; no decision is made until the replay reaches the L1 snapshot`,
-    );
-  }
-
-  private async persistHealthyL1SourceState(
-    records: Awaited<ReturnType<typeof scanStateQueue>>,
-    stateQueueReplayAnchor: StateQueueReplayAnchor | undefined,
-  ): Promise<void> {
-    const submissions = await this.deps.store.listL1Submissions();
-    const submittedHeaders = new Set(
-      submissions.map(({ headerHash }) => headerHash),
-    );
-    // Without a durable anchor no decision was made, and none can be
-    // checked against authenticated replay: a peer's signature alone does
-    // not make one.
-    const observations = await Promise.all(
-      records.map(
-        async (record): Promise<L1ObservedDecision> =>
-          this.observedDecision(
-            record,
-            stateQueueReplayAnchor !== undefined &&
-              (submittedHeaders.has(record.headerHash) ||
-                (await this.deps.store.listDaSignatures(record.headerHash))
-                  .length > 0 ||
-                (await this.deps.store.listDecisionOutbox(record.headerHash))
-                  .length > 0),
-          ),
-      ),
-    );
-    await this.deps.store.saveL1SourceState({
-      schemaVersion: 1,
-      sourceMode: this.l1SourceMode(),
-      network: this.deps.config.network,
-      authoritySha256: this.l1SourceAuthoritySha256(),
-      status: "healthy",
-      observations: observations.sort((left, right) =>
-        left.headerHash.localeCompare(right.headerHash),
-      ),
-      observedAt: new Date().toISOString(),
-      ...(stateQueueReplayAnchor === undefined
-        ? {}
-        : { stateQueueReplayAnchor }),
+      observedAt: this.nowIso(),
     });
   }
 
@@ -1174,7 +877,6 @@ export class CommitteeService {
     record: StateQueueHeaderRecord,
     hasPersistedDecision: boolean,
   ): L1ObservedDecision {
-    const steps = this.authenticatedSteps.get(record.headerHash);
     return {
       headerHash: record.headerHash,
       stateQueueOutRef: record.stateQueueOutRef,
@@ -1187,12 +889,11 @@ export class CommitteeService {
         : { blockHash: record.observedChainPoint.blockHash }),
       finalized: record.finalized,
       hasPersistedDecision,
-      ...(steps === undefined ? {} : { authenticatedSteps: steps }),
     };
   }
 
   private async fetchVerifyAndSign(
-    record: Awaited<ReturnType<typeof scanStateQueue>>[number],
+    record: StateQueueHeaderRecord,
     payloadFetches: CommitteePayloadFetchObservation[],
   ): Promise<SignedHeaderResult | undefined> {
     const verified = await this.fetchVerifyPayload(record, payloadFetches);
@@ -1211,7 +912,7 @@ export class CommitteeService {
   }
 
   private async fetchVerifyPayload(
-    record: Awaited<ReturnType<typeof scanStateQueue>>[number],
+    record: StateQueueHeaderRecord,
     payloadFetches: CommitteePayloadFetchObservation[],
   ): Promise<VerifiedDaPayload | undefined> {
     const existing = await this.deps.store.getDaPayload(record.headerHash);
@@ -1286,7 +987,7 @@ export class CommitteeService {
   }
 
   private async verifyStoredPayload(
-    record: Awaited<ReturnType<typeof scanStateQueue>>[number],
+    record: StateQueueHeaderRecord,
     payloadRecord: DaPayloadRecord,
   ): Promise<VerifiedDaPayload> {
     if (payloadRecord.validationStatus === "conflicted") {
@@ -1401,7 +1102,7 @@ export class CommitteeService {
 
   private async verifyAndStorePayload(
     payloadCbor: Buffer,
-    record: Awaited<ReturnType<typeof scanStateQueue>>[number],
+    record: StateQueueHeaderRecord,
     payloadRecord: DaPayloadRecord,
   ): Promise<VerifiedDaPayload> {
     // Established before verification: an unavailable parent state is not a
@@ -1475,12 +1176,13 @@ export class CommitteeService {
     errors: string[],
   ): Promise<boolean> {
     const reconciler = this.deps.submitterReconciler;
-    if (reconciler === undefined || !record.finalized) {
+    if (reconciler === undefined) {
       return false;
     }
-    const existing = await this.decisionOutboxFor(record, "l1_reconcile");
-    if (existing?.status === "reconciled") {
-      return true;
+    // The tick's facts decide; the stored l1_reconcile record never does.
+    const standing = reconcileStandingOf(record, this.deps.l1.parameters);
+    if (standing !== "owed") {
+      return standing !== "waiting";
     }
     const effect = await this.beginDecisionEffectUnlessInFlight(
       record,
@@ -1559,10 +1261,13 @@ export class CommitteeService {
   ): Promise<CoordinatorPublishResult | "deferred"> {
     // The witness signs the availability commitment only; the L1 output and
     // point are where the header was observed. A signature validated on an
-    // output that final authenticated replay has since moved the header from
-    // follows the header, as its decision observation did this tick.
+    // output the header has since moved from follows the header, as its
+    // decision observation does this tick.
     const signature: DaSignatureRecord =
-      validatedSignature.validation.stateQueueOutRef === record.stateQueueOutRef
+      validatedSignature.validation.stateQueueOutRef ===
+        record.stateQueueOutRef &&
+      validatedSignature.l1ChainPoint.blockHash ===
+        record.observedChainPoint.blockHash
         ? validatedSignature
         : {
             ...validatedSignature,
@@ -1593,22 +1298,6 @@ export class CommitteeService {
       },
     });
     return published;
-  }
-
-  private async decisionOutboxFor(
-    record: StateQueueHeaderRecord,
-    effectKind: DecisionOutboxRecord["effectKind"],
-    signerIndex?: number,
-  ): Promise<DecisionOutboxRecord | undefined> {
-    return this.deps.store.getDecisionOutbox(
-      decisionEffectId({
-        deploymentFingerprint: this.deps.config.deploymentFingerprint,
-        headerHash: record.headerHash,
-        stateQueueOutRef: record.stateQueueOutRef,
-        effectKind,
-        ...(signerIndex === undefined ? {} : { signerIndex }),
-      }),
-    );
   }
 
   /**
@@ -1682,7 +1371,7 @@ export class CommitteeService {
       schemaVersion: 1,
       effectId,
       deploymentFingerprint: this.deps.config.deploymentFingerprint,
-      sourceMode: this.l1SourceMode(),
+      sourceMode: "local_node",
       network: this.deps.config.network,
       effectKind,
       headerHash: record.headerHash,
@@ -1701,20 +1390,6 @@ export class CommitteeService {
       updatedAt: now,
     };
     const prior = await this.deps.store.getL1SourceState();
-    if (prior?.status === "quarantined") {
-      throw new Error(
-        `cannot begin decision effect while L1 source is quarantined: ${
-          prior.quarantineReason ?? "unknown reason"
-        }`,
-      );
-    }
-    const replayAnchor =
-      prior?.stateQueueReplayAnchor ?? this.unpersistedReplayAnchor;
-    if (replayAnchor === undefined) {
-      throw new Error(
-        "cannot begin decision effect without a durable state-queue replay anchor",
-      );
-    }
     const observation = this.observedDecision(record, true);
     const observations = [
       ...(prior?.observations.filter(
@@ -1726,15 +1401,12 @@ export class CommitteeService {
       effect,
       sourceState: {
         schemaVersion: 1,
-        sourceMode: this.l1SourceMode(),
+        sourceMode: "local_node",
         network: this.deps.config.network,
         authoritySha256: this.l1SourceAuthoritySha256(),
         status: "healthy",
         observations,
         observedAt: now,
-        // The anchor this decision's later moves are replayed from, written
-        // with the decision when no healthy write has persisted one yet.
-        stateQueueReplayAnchor: replayAnchor,
       },
       ...(signature === undefined ? {} : { signature }),
     });

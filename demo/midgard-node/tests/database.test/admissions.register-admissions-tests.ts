@@ -95,6 +95,10 @@ import {
   makeMidgardTxOutput,
   makeOutRefCbor,
 } from ".././midgard-output-helpers.js";
+import { insertDeposits } from "../helpers/event-rows.js";
+import { writeFollowerTip } from "../helpers/follower-view.js";
+import { openFollowerWriteGateAt } from "../helpers/follower-write-gate.js";
+import { attachTestL1Access } from "../helpers/l1-tip.js";
 import { databaseTestDirectory } from "./admissions.database-test-directory.js";
 import {
   address1,
@@ -499,14 +503,10 @@ export const registerAdmissionsTests = () => {
               [TxRejectionsDB.Columns.REJECT_DETAIL]: detail,
             });
             yield* persistCommitStageRejectedTransactions({
-              rejectedTxHashes: [successful.txId],
               rejectionEntries: [
                 rejectionFor(successful.txId, "commit-stage rejection"),
               ],
-              ledgerRevert: {
-                rejected: [],
-                resolveInputPostState: () => undefined,
-              },
+              resolveInputPostState: () => undefined,
             });
             expect(
               yield* MempoolDB.retrieveTxCborByHash(successful.txId).pipe(
@@ -524,14 +524,10 @@ export const registerAdmissionsTests = () => {
             );
             const failed = yield* Effect.either(
               persistCommitStageRejectedTransactions({
-                rejectedTxHashes: [conflicting.txId],
                 rejectionEntries: [
                   rejectionFor(conflicting.txId, "duplicate conflict"),
                 ],
-                ledgerRevert: {
-                  rejected: [],
-                  resolveInputPostState: () => undefined,
-                },
+                resolveInputPostState: () => undefined,
               }),
             );
             expect(failed._tag).toBe("Left");
@@ -596,7 +592,7 @@ export const registerAdmissionsTests = () => {
             // spends the other beside the rejected output.
             const deposit = projectedDeposit(0x13);
             const childDeposit = projectedDeposit(0x15);
-            yield* DepositsDB.insertEntries([deposit, childDeposit]);
+            yield* insertDeposits([deposit, childDeposit]);
             const depositSource =
               yield* DepositsDB.toMempoolLedgerEntry(deposit);
             const childDepositSource =
@@ -645,7 +641,7 @@ export const registerAdmissionsTests = () => {
             });
             yield* MempoolDB.applyLedgerEffectsCore([child]);
             yield* MempoolTxDeltasDB.upsertMany(
-              [child, unrelated].map(({ txId, spent, produced }) => ({
+              [rejected, child, unrelated].map(({ txId, spent, produced }) => ({
                 txId,
                 spent,
                 produced,
@@ -665,8 +661,7 @@ export const registerAdmissionsTests = () => {
               yield* depositStatus(childDeposit[DepositsDB.Columns.ID]),
             ).toEqual(Option.some(DepositsDB.Status.Consumed));
 
-            const reverted = yield* persistCommitStageRejectedTransactions({
-              rejectedTxHashes: [rejected.txId],
+            const outcome = yield* persistCommitStageRejectedTransactions({
               rejectionEntries: [
                 {
                   [TxRejectionsDB.Columns.TX_ID]: rejected.txId,
@@ -675,26 +670,26 @@ export const registerAdmissionsTests = () => {
                   [TxRejectionsDB.Columns.REJECT_DETAIL]: "withdrawn input",
                 },
               ],
-              ledgerRevert: {
-                rejected: [rejected],
-                // The block consumes `spentByBlock` and leaves every other
-                // committed output unspent.
-                resolveInputPostState: commitStageInputPostState({
-                  baseLedgerOutputs: new Map(
-                    committed.map((e) => [
-                      outRef(e).toString("hex"),
-                      e[LedgerUtils.Columns.OUTPUT],
-                    ]),
-                  ),
-                  insertedOutputs: new Map(),
-                  spentOutRefHexes: new Set([
-                    outRef(spentByBlock).toString("hex"),
+              // The block consumes `spentByBlock` and leaves every other
+              // committed output unspent.
+              resolveInputPostState: commitStageInputPostState({
+                baseLedgerOutputs: new Map(
+                  committed.map((e) => [
+                    outRef(e).toString("hex"),
+                    e[LedgerUtils.Columns.OUTPUT],
                   ]),
-                }),
-              },
+                ),
+                insertedOutputs: new Map(),
+                spentOutRefHexes: new Set([
+                  outRef(spentByBlock).toString("hex"),
+                ]),
+              }),
             });
 
-            expect(reverted).toBe(true);
+            expect(outcome).toMatchObject({
+              _tag: "Persisted",
+              ledgerChanged: true,
+            });
             const ledger = (yield* MempoolLedgerDB.retrieve)
               .map((row) => ({
                 [MempoolLedgerDB.Columns.TX_ID]:
@@ -1510,6 +1505,7 @@ export const registerAdmissionsTests = () => {
             const lucid = {
               api: { currentSlot: () => 0 },
             } as unknown as Lucid;
+            attachTestL1Access(lucid.api, 0); // the processor reads l1SlotNow
             const submit = (
               txCanonicalCbor: Buffer,
               wake: Effect.Effect<void, never, TxQueueWakeRequirements>,
@@ -1546,14 +1542,15 @@ export const registerAdmissionsTests = () => {
                 { concurrency: "unbounded" },
               );
 
-            const { makePoolIsolationHistoryOwner } = yield* Effect.promise(
-              () => import("../helpers/pool-isolation-history-owner.js"),
-            );
-            const history = yield* makePoolIsolationHistoryOwner({
-              globals,
-              cache,
-            });
-
+            // The driver applied a view: the drain holds a follower permit.
+            const gate = yield* Effect.flatMap(
+              writeFollowerTip(10),
+              openFollowerWriteGateAt,
+            ).pipe(Effect.provideService(SqlClient.SqlClient, batchSql));
+            yield* Ref.update(globals.FOLLOWER_WRITE_GATE, (local) => ({
+              ...local,
+              epoch: gate.epoch,
+            }));
             yield* measure(24, Effect.void);
             const releases = yield* Effect.forEach(
               Array.from({ length: nodeConfig.POSTGRES_BATCH_POOL_SIZE }),
@@ -1658,10 +1655,7 @@ export const registerAdmissionsTests = () => {
                 Stream.runHead,
               );
               expect(yield* Ref.get(globals.TX_QUEUE_PROCESSOR_ACTIVE)).toBe(0);
-            }).pipe(
-              Effect.ensuring(releaseHolders),
-              Effect.ensuring(history.close),
-            );
+            }).pipe(Effect.ensuring(releaseHolders));
           }).pipe(Effect.scoped, Effect.provide(Globals.Default)),
         ),
     );
@@ -2976,7 +2970,7 @@ export const registerAdmissionsTests = () => {
               ),
               [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
             });
-            yield* DepositsDB.insertEntries([deposit]);
+            yield* insertDeposits([deposit]);
             const depositSource =
               yield* DepositsDB.toMempoolLedgerEntry(deposit);
             const normalSource = {
@@ -3085,7 +3079,7 @@ export const registerAdmissionsTests = () => {
               ),
               [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
             });
-            yield* DepositsDB.insertEntries([deposit]);
+            yield* insertDeposits([deposit]);
             const depositSource =
               yield* DepositsDB.toMempoolLedgerEntry(deposit);
             const normalSource = {

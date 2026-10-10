@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -11,7 +12,14 @@ import {
   unsafeCreateWatcherFaultProofSupervisorForTest,
   type WatcherFaultProofJob,
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { storelessProofRetention } from "../support/proof-retention.js";
+import {
+  recordObjectives,
+  recordRawObjectiveRow,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 
 const directories: string[] = [];
 const DEPLOYMENT_FINGERPRINT = "dd".repeat(32);
@@ -64,6 +72,8 @@ describe("production fault-proof supervisor", () => {
   it("does not expose caller-selected category dispatch in production", async () => {
     const root = await directory();
     const supervisor = createWatcherFaultProofSupervisor({
+      reservationDecisionHolds: () => [],
+      proofRetention: storelessProofRetention,
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       deadlineAlertHeadroomMs:
@@ -98,19 +108,17 @@ describe("production fault-proof supervisor", () => {
     await supervisor.close();
   });
 
-  it("recovers canonical journals in installed category and header order", async () => {
+  it("recovers recorded objectives in installed category and header order, never scanning directories", async () => {
     const root = await directory();
-    await Promise.all([
-      mkdir(join(root, "fault-proofs", "networkId", h28(0xbb)), {
-        recursive: true,
-      }),
-      mkdir(join(root, "fault-proofs", "doubleSpend", h28(0xcc)), {
-        recursive: true,
-      }),
-      mkdir(join(root, "fault-proofs", "doubleSpend", h28(0xaa)), {
-        recursive: true,
-      }),
+    recordObjectives(root, [
+      { category: "networkId", headerHash: h28(0xbb) },
+      { category: "doubleSpend", headerHash: h28(0xcc) },
+      { category: "doubleSpend", headerHash: h28(0xaa) },
     ]);
+    // A workflow directory without an objective row is not recovered.
+    await mkdir(join(root, "fault-proofs", "doubleSpend", h28(0xdd)), {
+      recursive: true,
+    });
     const observed: string[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
@@ -136,10 +144,11 @@ describe("production fault-proof supervisor", () => {
     });
   });
 
-  it("rejects unknown, malformed, and symlinked journal targets", async () => {
+  it("rejects unknown and malformed objectives, and holds a symlinked one without failing", async () => {
     const unknownRoot = await directory();
-    await mkdir(join(unknownRoot, "fault-proofs", "forgedFamily"), {
-      recursive: true,
+    recordRawObjectiveRow(unknownRoot, {
+      category: "forgedFamily",
+      headerHash: h28(0xaa),
     });
     const unknown = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: unknownRoot,
@@ -147,25 +156,28 @@ describe("production fault-proof supervisor", () => {
       run: async () => undefined,
     });
     await expect(unknown.recoverExisting(null)).rejects.toThrow(
-      "unknown category forgedFamily",
+      "proof objective row is malformed",
     );
 
     const malformedRoot = await directory();
-    await mkdir(join(malformedRoot, "fault-proofs", "doubleSpend", h28(0xaa)), {
-      recursive: true,
+    recordRawObjectiveRow(malformedRoot, {
+      category: "doubleSpend",
+      headerHash: "not-hex",
     });
-    await mkdir(join(malformedRoot, "fault-proofs", "doubleSpend", "not-hex"));
     const malformed = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: malformedRoot,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       run: async () => undefined,
     });
     await expect(malformed.recoverExisting(null)).rejects.toThrow(
-      "invalid doubleSpend target not-hex",
+      "proof objective row is malformed",
     );
 
     const symlinkRoot = await directory();
     const outside = await directory();
+    recordObjectives(symlinkRoot, [
+      { category: "doubleSpend", headerHash: h28(0xbb) },
+    ]);
     await mkdir(join(symlinkRoot, "fault-proofs", "doubleSpend"), {
       recursive: true,
     });
@@ -173,14 +185,45 @@ describe("production fault-proof supervisor", () => {
       outside,
       join(symlinkRoot, "fault-proofs", "doubleSpend", h28(0xbb)),
     );
-    const linked = unsafeCreateWatcherFaultProofSupervisorForTest({
+    const linked = createWatcherFaultProofSupervisor({
+      reservationDecisionHolds: () => [],
       journalRoot: symlinkRoot,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      run: async () => undefined,
+      deadlineAlertHeadroomMs:
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
+      queueAuthenticationKey: TEST_JOURNAL_KEY,
+      proofRetention: storelessProofRetention,
+      execution: {
+        verifyCompleted: async () => {
+          throw new Error("unexpected completed execution");
+        },
+        execute: async () => {
+          throw new Error("unexpected execution");
+        },
+      },
     });
-    await expect(linked.recoverExisting(null)).rejects.toThrow(
-      `invalid doubleSpend target ${h28(0xbb)}`,
-    );
+    // Startup holds the unreadable objective by name rather than failing;
+    // its header is not queued, so the same admission releases it: its row
+    // goes and the link and what it points at stay.
+    await expect(
+      linked.requestProgress({
+        observation: progressObservation({
+          deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        }),
+        rollbackGeneration: "0",
+      }),
+    ).resolves.toBeUndefined();
+    expect(linked.status()).toMatchObject({
+      phase: "accepting",
+      journalDecisionMissing: [],
+      objectiveCleanupFailures: [],
+      unfinishedObjectiveCount: 0,
+    });
+    expect(
+      existsSync(join(symlinkRoot, "fault-proofs", "doubleSpend", h28(0xbb))),
+    ).toBe(true);
+    expect(existsSync(outside)).toBe(true);
+    await linked.close().catch(() => undefined);
   });
 
   it("keeps one pending update per objective and serializes other targets", async () => {
@@ -423,6 +466,57 @@ describe("production fault-proof supervisor", () => {
     ).rejects.toThrow("supervisor is blocked");
   });
 
+  it("holds a job whose recorded decision is missing by name and keeps running later targets", async () => {
+    const root = await directory();
+    const hold = {
+      kind: "objective",
+      category: "doubleSpend",
+      headerHash: h28(0x33),
+      decisionDigest: "33".repeat(32),
+      detail: "proof progress has no exact recorded execution decision",
+    } as const;
+    const ran: string[] = [];
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async ({ category }) => {
+        ran.push(category);
+        if (category === "doubleSpend")
+          throw new WatcherProofDecisionMissingError(hold);
+        return { kind: "completed" };
+      },
+    });
+    await supervisor.recoverExisting(null);
+    const held = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x33),
+      decisionDigest: "33".repeat(32),
+      rollbackGeneration: "0",
+    });
+    await expect(held).resolves.toMatchObject({
+      kind: "pending",
+      resume: "await_observation",
+    });
+    await expect(
+      supervisor.unsafeRunOrResumeForTest({
+        mode: "run",
+        category: "networkId",
+        headerHash: h28(0x44),
+        decisionDigest: "44".repeat(32),
+        rollbackGeneration: "0",
+      }),
+    ).resolves.toEqual({ kind: "completed" });
+    expect(ran).toEqual(["doubleSpend", "networkId"]);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      journalDecisionMissing: [hold],
+    });
+    await supervisor.close();
+    await expect(supervisor.done).resolves.toBeUndefined();
+  });
+
   it("runs queued jobs by earliest authenticated safe-start deadline", async () => {
     const root = await directory();
     const active = deferred<void>();
@@ -517,23 +611,31 @@ describe("production fault-proof supervisor", () => {
     await supervisor.close();
   });
 
-  it("reports at-risk headroom and fails closed before an unsafe job starts", async () => {
+  it("reports at-risk headroom and holds an unsafe job by name while later work runs, again after a restart", async () => {
     const root = await directory();
     const gate = deferred<void>();
     const started = deferred<void>();
     const starts: string[] = [];
     let nowMs = latestSafeStartOffsetMs - 500;
-    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
-      journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      deadlineAlertHeadroomMs: 1_000,
-      unsafeNowMsForTest: () => nowMs,
-      run: async (job) => {
-        starts.push(job.headerHash);
-        started.resolve();
-        await gate.promise;
-      },
-    });
+    const create = () =>
+      unsafeCreateWatcherFaultProofSupervisorForTest({
+        journalRoot: root,
+        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        deadlineAlertHeadroomMs: 1_000,
+        unsafeNowMsForTest: () => nowMs,
+        run: async (job) => {
+          starts.push(job.headerHash);
+          started.resolve();
+          if (job.headerHash === h28(0x91)) await gate.promise;
+          return { kind: "completed" };
+        },
+      });
+    const supervisor = create();
+    let settled = false;
+    void supervisor.done.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
     await supervisor.recoverExisting(null);
     const run = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
@@ -551,25 +653,73 @@ describe("production fault-proof supervisor", () => {
       remainingSafeStartMs: "500",
     });
     nowMs = latestSafeStartOffsetMs;
-    const unsafe = supervisor.unsafeRunOrResumeForTest({
+    const late = {
       mode: "run",
       category: "networkId",
       headerHash: h28(0x92),
       decisionDigest: "92".repeat(32),
       rollbackGeneration: "0",
       deadline: deadline(h28(0x92), 0),
-    });
-    const unsafeRejected = expect(unsafe).rejects.toThrow("deadline is unsafe");
+    } as const;
+    const unsafe = supervisor.unsafeRunOrResumeForTest(late);
     await waitUntil(() => supervisor.status().queuedJobCount === 1);
-    gate.resolve();
-    await expect(run).resolves.toBeUndefined();
-    await unsafeRejected;
-    await expect(supervisor.done).rejects.toThrow("deadline is unsafe");
-    expect(supervisor.status()).toMatchObject({
-      phase: "blocked",
-      deadlineHealth: "unsafe",
+    const later = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "invalidRange",
+      headerHash: h28(0x93),
+      decisionDigest: "93".repeat(32),
+      rollbackGeneration: "0",
+      deadline: deadline(h28(0x93), 10_000),
     });
-    expect(starts).toEqual([h28(0x91)]);
+    await waitUntil(() => supervisor.status().queuedJobCount === 2);
+    gate.resolve();
+    const hold = {
+      kind: "objective",
+      category: "networkId",
+      headerHash: h28(0x92),
+      decisionDigest: "92".repeat(32),
+      detail: `networkId/${h28(0x92)}`,
+      readiness: "fault_proof_start_deadline_passed",
+    } as const;
+    await expect(run).resolves.toEqual({ kind: "completed" });
+    // The late objective never starts; it is held by name and the next
+    // objective, queued behind it, still runs.
+    await expect(unsafe).resolves.toEqual({
+      kind: "pending",
+      resume: "await_observation",
+      reason: hold.detail,
+    });
+    await expect(later).resolves.toEqual({ kind: "completed" });
+    expect(starts).toEqual([h28(0x91), h28(0x93)]);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      deadlineHealth: "safe",
+      journalDecisionMissing: [hold],
+    });
+    expect(settled).toBe(false);
     await supervisor.close();
+
+    // A restart over the same journals meets the same objective and holds it
+    // again under the same name, instead of failing on it.
+    const restarted = create();
+    let restartSettled = false;
+    void restarted.done.then(
+      () => (restartSettled = true),
+      () => (restartSettled = true),
+    );
+    await expect(restarted.unsafeRunOrResumeForTest(late)).resolves.toEqual({
+      kind: "pending",
+      resume: "await_observation",
+      reason: hold.detail,
+    });
+    expect(restarted.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      journalDecisionMissing: [hold],
+    });
+    expect(starts).toEqual([h28(0x91), h28(0x93)]);
+    expect(restartSettled).toBe(false);
+    await restarted.close();
   });
 });

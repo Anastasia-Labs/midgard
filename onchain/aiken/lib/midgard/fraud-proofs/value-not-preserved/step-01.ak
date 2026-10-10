@@ -70,17 +70,11 @@ use midgard/fraud_proofs/common.{NativeTxInclusionArgs}
 
 /// Catalogue identifier of the `valueNotPreserved` category.
 ///
-/// A category id is the `fraud_proof_catalogue.id_byte_count`-byte big-endian
-/// index of the category's position in the append-only
-/// `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`
-/// (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`), the same derivation
-/// `transition_trace`'s `#"00000004"` follows.
-///
-/// The category is **not registered yet**: catalogue registration is
-/// parent-owned integration work. Id `0x19` (25) is the reserved
-/// pre-registration id for this family; until registration it appears only in
-/// emulator wiring (an `extraCategories` sidecar), never in the canonical
-/// order and never through the deployment manifest.
+/// A category id is the explicit `fraud_proof_catalogue.id_byte_count`-byte
+/// big-endian value pinned for the category in
+/// `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS`
+/// (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`); this constant is the byte
+/// twin of `valueNotPreserved` there.
 pub const value_not_preserved_fraud_category_id: ByteArray = #"00000019"
 
 /// A value-not-preserved computation-thread token's asset name is this

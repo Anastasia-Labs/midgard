@@ -78,12 +78,11 @@ flowchart TB
 
 subgraph node [midgard-node process]
 H[HTTP API server<br/>listen-router.ts]
-HO[history owner<br/>event-history runtime]
+FL[L1 follower and<br/>follower-change driver]
 subgraph fibers [Background fibers]
 FC[block-commitment]
 FK[block-confirmation]
 FM[merge]
-FT[fetch-and-insert tx-order]
 FR[retention-sweeper]
 FQ[tx-queue-processor]
 FMM[monitor-mempool<br/>--with-monitoring only]
@@ -94,7 +93,7 @@ MPF[(LevelDB MPF roots)]
 end
 end
 
-L1[(Cardano L1<br/>via Kupmios)]
+L1[(Cardano L1<br/>via the local cardano-node)]
 
 W -->|POST /submit, GET /utxos| H
 B -->|/submit, /tx-status| H
@@ -105,9 +104,8 @@ FC --> PG
 FC -->|commit block header| L1
 FK -->|confirm commitment| L1
 FM -->|merge to confirmed| L1
-FT -->|read tx-order UTxOs| L1
-HO -->|read deposit and withdrawal events| L1
-HO -->|materialize history, project due deposits| PG
+FL -->|follow the chain| L1
+FL -->|write deposit, withdrawal and tx-order events, project due deposits| PG
 FR --> PG
 `} />
 

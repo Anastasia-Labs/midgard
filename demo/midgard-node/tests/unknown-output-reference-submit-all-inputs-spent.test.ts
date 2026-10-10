@@ -1,23 +1,24 @@
 /**
  * Ogmios refuses a body whose inputs its mempool view already consumed with
  * JSON-RPC 3997 "All inputs are spent. Transaction has probably already been
- * included". On lc1 that was the node's own pending settlement body, resubmitted
- * while it sat in the mempool. It is not the ledger's unknown-input failure
- * (3117): the commit submitters abandon their attempt and rebuild over a tail
- * the unknown-input error names, which is wrong while their own transaction may
- * still land, so the unknown-input matcher leaves 3997 alone. Settlement reads
- * 3997 through its own rule (services/settlement-call.ts).
+ * included", as it did to a node's own pending body resubmitted while it sat
+ * in the mempool. It is not the ledger's unknown-input failure (3117): the
+ * commit submitters abandon their attempt and rebuild over a tail the
+ * unknown-input error names, which is wrong while their own transaction may
+ * still land, so the unknown-input matcher leaves 3997 alone.
  */
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  isUnknownOutputReferenceSubmitError,
   submitSignedTxWithRecovery,
   TxSubmitError,
 } from "../src/transactions/utils.js";
-import { submitErrorReferencesOutRef } from "../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js";
+import { submitErrorReferencesOutRef } from "../src/workers/commit-block-header/submission.commit-event-sources.js";
+import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
+import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
 const TX_HASH =
   "378e3ff088ab820ca7454704bb9ba6c1584c6df8e33eddaa59982995750fff09";
@@ -72,9 +73,9 @@ describe("Ogmios 3997 'All inputs are spent' submit errors", () => {
       ALL_INPUTS_SPENT_BODY,
       `TxSubmitError: OgmiosJsonRpcError: ${ALL_INPUTS_SPENT_TEXT}; cause=${ALL_INPUTS_SPENT_BODY}`,
     ]) {
-      expect(isUnknownOutputReferenceSubmitError(error)).toBe(false);
+      expect(isSpentInputSubmitRejection(error)).toBe(false);
     }
-    expect(isUnknownOutputReferenceSubmitError(unknownTail())).toBe(true);
+    expect(isSpentInputSubmitRejection(unknownTail())).toBe(true);
   });
 
   it("never make a commit submitter abandon its attempt over the tail, even when the text names it", () => {
@@ -96,15 +97,16 @@ describe("Ogmios 3997 'All inputs are spent' submit errors", () => {
     const submitProgram = vi.fn(() => Effect.fail(allInputsSpent()));
     const awaitTxConfirmation = vi.fn();
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           {
             config: () => ({ provider: undefined }),
             awaitTxConfirmation,
           } as never,
-          { submitProgram } as never,
+          { submitProgram, toCBOR: () => signedTxCbor({}) } as never,
           TX_HASH,
+          TEST_INTENT,
           { ...noInlineCommit, sleep: () => Effect.void },
         ),
       ),
