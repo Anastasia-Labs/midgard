@@ -781,8 +781,8 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/journey-session.test.ts",
-    "max": 582,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 587,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. D3 (+5): the session derives the run watcher's L1 origin from the local node, which the suite mocks."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts",

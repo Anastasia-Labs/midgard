@@ -36,7 +36,7 @@ vi.mock("./live-context.js", async (original) => ({
   loadJourneyContext: async () => ({
     runDirectory: state.runDirectory,
     deployment: {
-      manifest: { manifestId: "ab".repeat(32) },
+      manifest: { manifestId: "ab".repeat(32), hubOracleOneShot: {} },
       contracts: { computationThread: { policyId: "cd".repeat(28) } },
     },
     provider: {},
@@ -89,9 +89,14 @@ vi.mock("./retained-da.js", () => ({
 }));
 vi.mock("./native-node.js", () => ({
   journeyNativeNodeQuery: async () => ({
-    watcherConfig: { l1: { source: { sourceMode: "local_node" } } },
+    watcherConfig: {
+      l1: { source: { sourceMode: "local_node", chainSync: {} } },
+    },
     binaryPath: join(state.runDirectory, "binding.json"),
   }),
+}));
+vi.mock("../../src/l1-origin.js", () => ({
+  deriveL1Origin: async () => ({ origin: { slot: 7, blockHash: "34" } }),
 }));
 vi.mock("./native-recorder.js", () => ({
   startJourneyNativeRecorder: async ({ directory }: { directory: string }) => ({
