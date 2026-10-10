@@ -50,8 +50,8 @@ export type WatcherProofObjectiveRow = Readonly<{
 }>;
 
 /** A completion deeper than the deployment's k (the security parameter the
- * watcher's follower rewinds and prunes with) cannot be undone by any
- * rollback the watcher recovers from automatically. */
+ * watcher's follower rewinds with, automaticRecoveryMaxDepth) cannot be
+ * undone by any rollback the watcher recovers from automatically. */
 export const isBeyondWatcherRollbackRecovery = (
   confirmationDepth: number,
   securityParameter: number,

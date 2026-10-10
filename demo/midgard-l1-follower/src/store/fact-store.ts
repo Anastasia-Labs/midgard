@@ -44,7 +44,7 @@ import {
   runInvariantChecks,
 } from "./invariants.js";
 import { type PinResult, pinRetainedIn, type RetainedPin } from "./pin.js";
-import { pruneIn, type PruneResult } from "./prune.js";
+import { pruneIn, type PruneResult, retainedDepthOf } from "./prune.js";
 import * as reads from "./reads.js";
 import {
   type RewindFault,
@@ -117,6 +117,8 @@ export type InitializeResult =
 export type FactStoreOptions = Readonly<{
   /** The security parameter k in blocks (2,160 on mainnet and preprod). */
   securityParameter: number;
+  /** The depth prune keeps facts down to, in blocks (`retainedDepthOf`). */
+  retainedDepth?: number;
   /** The role's protocol tracked set (§5.2), any-case hex, recorded (`tracked-set-record.ts`). */
   trackedSet: TrackedSet;
   /** Own wallets: tracked by address, seeded (§5.3 step 4), never recorded. */
@@ -142,7 +144,7 @@ export type GenerationListener = (
 export type FactStore = Readonly<{
   dialect: SqlBackend["dialect"];
   registry: TemporalRegistry;
-  /** The security parameter k this store rewinds and prunes with, in blocks. */
+  /** The security parameter k this store rewinds with, in blocks. */
   securityParameter: number;
   /**
    * Takes the writer lease (`store_locked` while another process holds it;
@@ -255,6 +257,10 @@ export const createFactStore = (
     options.securityParameter < 1
   )
     throw new Error("securityParameter must be a positive integer");
+  const retainedDepth = retainedDepthOf(
+    options.securityParameter,
+    options.retainedDepth,
+  );
   const registry = createTemporalRegistry(options.temporalTables ?? []);
   const derivations = options.derivations ?? [];
   for (const derivation of derivations)
@@ -267,6 +273,7 @@ export const createFactStore = (
     backend,
     dialect: backend.dialect,
     k: options.securityParameter,
+    retainedDepth,
     registry,
     derivations,
     pins: options.retentionPins ?? {},

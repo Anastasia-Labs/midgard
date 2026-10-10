@@ -142,11 +142,14 @@ export const parseHubOracleOneShot = (
 };
 
 /**
- * The store keeps every fact the deepest read needs: recovery reads sit
+ * How deep below the cursor the store keeps every fact, in blocks: the
+ * watcher's recovery reads (the release-final boundary) sit
  * automaticRecoveryMaxDepth + 2 blocks below the tip (one block of slack
- * for the predecessor of the deepest boundary).
+ * for the predecessor of the deepest boundary). Retention only: the store's
+ * k, the deepest rollback it rewinds, is automaticRecoveryMaxDepth itself,
+ * so a deeper rollback is `rollback_beyond_k`, never rewound.
  */
-export const watcherSecurityParameter = (
+export const watcherRetainedDepth = (
   automaticRecoveryMaxDepth: number,
 ): number => automaticRecoveryMaxDepth + 2;
 
@@ -213,9 +216,8 @@ export const openWatcherFollowerRuntime = (
     ...projectionStoreOptions(
       watcherFollowerProjections(input.deployment, input.eventProjection),
       {
-        securityParameter: watcherSecurityParameter(
-          input.automaticRecoveryMaxDepth,
-        ),
+        securityParameter: input.automaticRecoveryMaxDepth,
+        retainedDepth: watcherRetainedDepth(input.automaticRecoveryMaxDepth),
         trackedSet: {
           addresses: new Set(),
           paymentCredentials: new Set(),

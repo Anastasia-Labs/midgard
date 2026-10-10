@@ -66,7 +66,11 @@ export const mergeTrackedSets = (
 /** Store options carrying every projection's tracked set, tables and hooks. */
 export const projectionStoreOptions = (
   projections: readonly FollowerProjection[],
-  base: Readonly<{ securityParameter: number; trackedSet: TrackedSet }>,
+  base: Readonly<{
+    securityParameter: number;
+    retainedDepth?: number;
+    trackedSet: TrackedSet;
+  }>,
   dialect: DialectName,
 ): FactStoreOptions => {
   const pins = projections.flatMap((p) =>
@@ -74,6 +78,9 @@ export const projectionStoreOptions = (
   );
   return {
     securityParameter: base.securityParameter,
+    ...(base.retainedDepth === undefined
+      ? {}
+      : { retainedDepth: base.retainedDepth }),
     trackedSet: mergeTrackedSets(
       base.trackedSet,
       ...projections.flatMap((p) =>

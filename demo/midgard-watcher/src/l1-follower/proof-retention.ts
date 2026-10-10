@@ -21,8 +21,9 @@ import type { WatcherL1Degradation } from "./tx-inputs.js";
 /**
  * Proof retention (E1 ruling, option (a)): while a proof objective over a
  * header is open, the header's L1 history is pinned past the follower's
- * k-deep pruning; once its completion marker is verified past k the pin
- * releases and normal pruning applies. Never a time window.
+ * pruning (at its retained depth, never less than k); once its completion
+ * marker is verified past k the pin releases and normal pruning applies.
+ * Never a time window.
  *
  * A pin row (header, category) holds the header's queue unit history and
  * its departed-header row (registered row pins), and through the history
@@ -50,17 +51,18 @@ import type { WatcherL1Degradation } from "./tx-inputs.js";
  * a partial one.
  *
  * The deposit and withdrawal events a capture reads (the shared event
- * projection's `node_l1_events`, whose retired rows prune once retired k
- * deep) are held the same way by event rows, written when a capture names
- * them and only while the header holds a pin. An event whose row is gone
- * while its key stays in the follower's never-reuse key set was pruned
- * first: nothing holds it, and the objective is the named readiness reason
- * `l1_proof_event_pruned` until it is released (or a later hold finds the
- * row again). A capture whose header holds no pin reads for no open
- * objective (header classification reads every finalized header before any
- * objective exists; an open objective's header holds a pin or is named
- * pruned), so it writes no hold and reads as before: within k the rows are
- * stored, and past k the raw reads refuse it `beyond_retention`.
+ * projection's `node_l1_events`, whose retired rows prune once retired as
+ * deep as the store's retained depth) are held the same way by event rows,
+ * written when a capture names them and only while the header holds a pin. An
+ * event whose row is gone while its key stays in the follower's never-reuse
+ * key set was pruned first: nothing holds it, and the objective is the named
+ * readiness reason `l1_proof_event_pruned` until it is released (or a later
+ * hold finds the row again). A capture whose header holds no pin reads for no
+ * open objective (header classification reads every finalized header before
+ * any objective exists; an open objective's header holds a pin or is named
+ * pruned), so it writes no hold and reads as before: within the retained
+ * depth the rows are stored, and past it the raw reads refuse it
+ * `beyond_retention`.
  */
 
 /** An open objective whose history pruning removed before a pin held it. */
@@ -121,8 +123,9 @@ export type WatcherProofEventHoldResult =
 
 export type WatcherProofRetention = Readonly<{
   /**
-   * The k the follower store rewinds and prunes with, in blocks: a proof
-   * completion is final, and its hold may be released, only k deep.
+   * The k the follower store rewinds with, in blocks (it prunes at least
+   * this deep): a proof completion is final, and its hold may be released,
+   * only beyond k, since the store refuses any deeper rollback.
    */
   securityParameter: number;
   /** Holds the target's history under the follower's cursor lock; idempotent. */

@@ -25,7 +25,7 @@ import {
 } from "@al-ft/midgard-l1-follower/testing";
 import { expect } from "vitest";
 
-import { watcherSecurityParameter } from "../../src/l1-follower/follower-runtime.js";
+import { watcherRetainedDepth } from "../../src/l1-follower/follower-runtime.js";
 import type { WatcherObservationAuthority } from "../../src/l1-follower/observation.js";
 import { watcherProjection } from "../../src/l1-follower/projection.js";
 import { createWatcherDecisionDriver } from "../../src/runtime/watcher-runtime.decision-driver.js";
@@ -39,7 +39,9 @@ import {
 
 export const D = SIM_WATCHER_DEPLOYMENT;
 export const RECOVERY_DEPTH = 4;
-export const K = watcherSecurityParameter(RECOVERY_DEPTH);
+/** The store's k is automaticRecoveryMaxDepth; it retains two blocks more. */
+export const K = RECOVERY_DEPTH;
+export const RETAINED_DEPTH = watcherRetainedDepth(RECOVERY_DEPTH);
 export const RELEASE_DEPTH = 2;
 export const SOURCE_ID = "tracked-set-reset";
 export const ONE_SHOT: SimUtxo = {
@@ -87,6 +89,7 @@ export const until = async (
 export const openStore = (path: string) =>
   openSqliteFactStore({
     ...simStoreOptions([watcherProjection(D)], K, "sqlite"),
+    retainedDepth: RETAINED_DEPTH,
     path,
   });
 

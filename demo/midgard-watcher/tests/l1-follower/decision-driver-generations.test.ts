@@ -207,8 +207,9 @@ const unheardRewind = async (name: string) => {
 describe("the decision driver's handled generation", () => {
   it("handles a pulled generation once: a push of the next generation that lands first covers it", async () => {
     const s = await decidedStore("merge-before-dedupe", 8);
-    // Generation 1, unheard, to a low target; the chain grows again.
-    const low = await s.rewind(5);
+    // Generation 1, unheard, to a low target (as deep as k allows); the
+    // chain grows again.
+    const low = await s.rewind(K);
     for (let i = 0; i < 5; i += 1) await s.forward();
     const rewound: number[] = [];
     const driver = driverOn(s.store, s.c, {

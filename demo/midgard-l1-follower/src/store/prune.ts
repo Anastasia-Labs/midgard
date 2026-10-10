@@ -12,7 +12,10 @@ export const ROLLBACK_LOG_ROWS = 1000;
 export type PruneFloorLag = Readonly<{
   /** The declaring floor's name (`PruneFloor.name`). */
   floor: string;
-  /** How many slots it holds the boundary below the block k below the cursor. */
+  /**
+   * How many slots it holds the boundary below the block the retained depth
+   * below the cursor.
+   */
   lagSlots: number;
 }>;
 
@@ -24,12 +27,27 @@ export type PruneResult = Readonly<{
   /** The slot facts are complete from after this step. */
   prunedThroughSlot: number;
   /**
-   * Every role floor that holds the boundary below the block k below the
-   * cursor, in declaration order, each with its own lag (the lowest floor's
-   * is the boundary's); empty when none does.
+   * Every role floor that holds the boundary below the block the retained
+   * depth below the cursor, in declaration order, each with its own lag (the
+   * lowest floor's is the boundary's); empty when none does.
    */
   floorLags: readonly PruneFloorLag[];
 }>;
+
+/**
+ * The depth below the cursor prune keeps every fact at, in blocks:
+ * `retainedDepth`, k when absent. A role whose reads sit deeper than k
+ * keeps those facts without widening the rollbacks the store rewinds (k
+ * still bounds them). Never less than k: a rewind of depth k must find its
+ * target and its facts.
+ */
+export const retainedDepthOf = (k: number, retainedDepth = k): number => {
+  if (!Number.isSafeInteger(retainedDepth) || retainedDepth < k)
+    throw new Error(
+      "retainedDepth must be an integer no smaller than securityParameter",
+    );
+  return retainedDepth;
+};
 
 const pinClauses = (
   pins: readonly RetentionPin[] | undefined,
@@ -44,7 +62,8 @@ const pinClauses = (
 
 /**
  * One budgeted retention step (§11), in the caller's write transaction. The
- * boundary is the block k below the cursor: a rewind of depth k lands on it,
+ * boundary is the block the retained depth below the cursor (k unless the
+ * role keeps more, never less): a rewind of depth k lands at or above it,
  * so nothing at or above it is touched. Order: spent outputs whose spend is
  * at or below the boundary, closed D-t rows (children first), txs nothing
  * retained refers to, unreferenced blocks (keeping checkpoints and the
@@ -58,7 +77,7 @@ export const pruneIn = async (
   context: StoreContext,
   budget: number,
 ): Promise<PruneResult> => {
-  const { dialect, registry, k, pins } = context;
+  const { dialect, registry, retainedDepth, pins } = context;
   const cursor = await readCursor(tx, dialect, "update");
   if (cursor === null)
     return {
@@ -83,7 +102,7 @@ export const pruneIn = async (
     if (rows.length >= budget) done = false;
   };
   // The rollback log is bounded by count, not by depth: pruned even while
-  // the chain above the origin is shorter than k.
+  // the chain above the origin is shorter than the retained depth.
   const pruneRollbackLog = (): Promise<void> =>
     step(
       "l1_rollbacks",
@@ -92,7 +111,7 @@ export const pruneIn = async (
     );
   const boundaryRows = await tx.query(
     "SELECT slot, height FROM l1_blocks WHERE height = ?",
-    [cursor.height - k],
+    [cursor.height - retainedDepth],
   );
   const boundary = boundaryRows[0];
   if (boundary === undefined) {
@@ -106,7 +125,7 @@ export const pruneIn = async (
   }
   // A role's floor holds the boundary at or below its slot: the boundary
   // block becomes the last one at or below it.
-  const kSlot = asNumber(boundary.slot);
+  const retainedSlot = asNumber(boundary.slot);
   let floor: number | null = null;
   const floors: { name: string; slot: number }[] = [];
   for (const role of context.pruneFloors) {
@@ -115,7 +134,7 @@ export const pruneIn = async (
     floors.push({ name: role.name, slot });
     if (floor === null || slot < floor) floor = slot;
   }
-  const held = floor !== null && floor < kSlot;
+  const held = floor !== null && floor < retainedSlot;
   let boundaryHeight = asNumber(boundary.height);
   if (held) {
     const below = await tx.query(
@@ -125,12 +144,12 @@ export const pruneIn = async (
     boundaryHeight = below[0] === undefined ? 0 : asNumber(below[0].height);
   }
   const boundarySlot = Math.max(
-    held ? floor! : kSlot,
+    held ? floor! : retainedSlot,
     cursor.prunedThroughSlot,
   );
   // Each floor's own lag: what the boundary would be were it the only one.
   const floorLags: PruneFloorLag[] = floors.flatMap(({ name, slot }) => {
-    const lagSlots = kSlot - Math.max(slot, cursor.prunedThroughSlot);
+    const lagSlots = retainedSlot - Math.max(slot, cursor.prunedThroughSlot);
     return lagSlots > 0 ? [{ floor: name, lagSlots }] : [];
   });
   if (boundarySlot > cursor.prunedThroughSlot)

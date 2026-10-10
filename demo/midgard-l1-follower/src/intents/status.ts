@@ -68,10 +68,10 @@ export type IntentState = Readonly<{
   status: IntentStatus;
   /**
    * The slot from which the intent is terminal: the retention boundary (the
-   * block k below the tip) at or past it means it has been terminal for k
-   * blocks and may be pruned. Null while it may still change (live). An
-   * abandoned intent is terminal from the tip slot its abandon event was
-   * written at.
+   * block the store's retained depth, at least k, below the tip) at or past
+   * it means it has been terminal for k blocks and may be pruned. Null while
+   * it may still change (live). An abandoned intent is terminal from the tip
+   * slot its abandon event was written at.
    */
   terminalSlot: number | null;
 }>;

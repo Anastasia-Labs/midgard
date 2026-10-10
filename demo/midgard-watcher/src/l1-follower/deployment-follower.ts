@@ -16,7 +16,7 @@ import {
   parseHubOracleOneShot,
   type WatcherFollowerRuntime,
   type WatcherFollowerRuntimeInput,
-  watcherSecurityParameter,
+  watcherRetainedDepth,
 } from "./follower-runtime.js";
 import { createWatcherFundingInputFacts } from "./funding-input-facts.js";
 
@@ -130,7 +130,7 @@ export const openWatcherDeploymentFollower = (
     }),
     fundingInputFacts: createWatcherFundingInputFacts({
       store: follower.store,
-      recoveryDepth: watcherSecurityParameter(input.automaticRecoveryMaxDepth),
+      recoveryDepth: watcherRetainedDepth(input.automaticRecoveryMaxDepth),
     }),
   });
 };

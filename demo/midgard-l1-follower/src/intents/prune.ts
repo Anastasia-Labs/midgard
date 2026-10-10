@@ -78,14 +78,15 @@ const fullRunDue = async (
 
 /**
  * Deletes every intent terminal for k blocks (§8.2 retention): its
- * `terminalSlot` is at or below the prune boundary (the block k below the
- * cursor). Runs in the follower's prune step before spent outputs are
- * deleted at the same boundary, so a retained intent never loses a fact its
- * status reads; a dependant whose only dead reason is a pruned dependency
- * shares that dependency's terminal slot and goes in the same step. Events
- * and spend rows go with their intent (cascade). Reads only the candidates
- * (`candidatesIn`) and their dependencies, but on a run `fullRunDue` names,
- * which derives every retained intent. Returns the number deleted.
+ * `terminalSlot` is at or below the prune boundary (the block the store's
+ * retained depth, at least k, below the cursor). Runs in the follower's prune
+ * step before spent outputs are deleted at the same boundary, so a retained
+ * intent never loses a fact its status reads; a dependant whose only dead
+ * reason is a pruned dependency shares that dependency's terminal slot and
+ * goes in the same step. Events and spend rows go with their intent
+ * (cascade). Reads only the candidates (`candidatesIn`) and their
+ * dependencies, but on a run `fullRunDue` names, which derives every retained
+ * intent. Returns the number deleted.
  */
 export const pruneIntentsIn = async (
   tx: SqlTx,

@@ -107,12 +107,12 @@ const MAX_POINTS = 256;
 /**
  * The intersection candidates for (re)opening chain-sync from the store
  * (§4.2), best first: the cursor and the 63 blocks below it, then blocks at
- * exponentially growing distances and the block at the retained boundary
- * (cursor - k, the deepest legal rewind target, which prune always keeps),
- * in descending height, then the origin. The boundary makes every fork up
- * to k deep intersect inside the window: without it a fork deeper than the
- * last gap below k would intersect below k. Empty when the store has no
- * cursor (it was never initialized).
+ * exponentially growing distances and the block at the rewind limit (cursor -
+ * k, the deepest legal rewind target, which prune always keeps: the retained
+ * depth is never below k), in descending height, then the origin. The limit
+ * makes every fork up to k deep intersect inside the window: without it a
+ * fork deeper than the last gap below k would intersect below k. Empty when
+ * the store has no cursor (it was never initialized).
  */
 export const intersectionPoints = async (
   store: Pick<

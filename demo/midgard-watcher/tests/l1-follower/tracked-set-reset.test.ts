@@ -40,6 +40,7 @@ import {
   openStore,
   RECOVERY_DEPTH,
   RELEASE_DEPTH,
+  RETAINED_DEPTH,
   scriptedTransport,
   SOURCE_ID,
   until,
@@ -183,6 +184,7 @@ describe("the decision driver over a tracked-set reset", () => {
         [watcherProjection(D)],
         {
           securityParameter: K,
+          retainedDepth: RETAINED_DEPTH,
           trackedSet: {
             addresses: new Set(),
             paymentCredentials: new Set(),

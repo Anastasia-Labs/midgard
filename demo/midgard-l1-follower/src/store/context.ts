@@ -91,8 +91,10 @@ export type PruneFloor = Readonly<{
 export type StoreContext = Readonly<{
   backend: SqlBackend;
   dialect: Dialect;
-  /** The security parameter k, in blocks. */
+  /** The security parameter k, in blocks: no rewind deeper than k is taken. */
   k: number;
+  /** How deep below the cursor prune keeps every fact, in blocks; at least k. */
+  retainedDepth: number;
   registry: TemporalRegistry;
   derivations: readonly DerivationHook[];
   pins: RetentionPins;

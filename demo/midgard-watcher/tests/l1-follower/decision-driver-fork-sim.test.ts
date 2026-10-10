@@ -15,10 +15,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
-import {
-  openWatcherFollowerRuntime,
-  watcherSecurityParameter,
-} from "../../src/l1-follower/follower-runtime.js";
+import { openWatcherFollowerRuntime } from "../../src/l1-follower/follower-runtime.js";
 import {
   readWatcherObservation,
   type WatcherObservationAuthority,
@@ -40,16 +37,17 @@ import {
 } from "../support/l1-follower-state-queue-traffic.js";
 
 // W3/L3 acceptance (ticket W1): the watcher's decisions follow the
-// follower through rollbacks. A rollback below k, even past the release
-// depth, rewinds the store and the next pass recomputes every decision
-// in-process: nothing is quarantined and nothing restarts. A rollback
-// beyond k stops the follower with an intervention: /readyz names it, the
-// process stays up and the driver keeps serving the last facts.
+// follower through rollbacks. A rollback of at most k, even past the
+// release depth, rewinds the store and the next pass recomputes every
+// decision in-process: nothing is quarantined and nothing restarts. A
+// rollback beyond k (automaticRecoveryMaxDepth, though the store retains
+// two blocks more) stops the follower with an intervention: /readyz names
+// it, the process stays up and the driver keeps serving the last facts.
 
 const D = SIM_WATCHER_DEPLOYMENT;
-/** automaticRecoveryMaxDepth: the store's k is this plus two. */
+/** automaticRecoveryMaxDepth: the store's k. */
 const RECOVERY_DEPTH = 4;
-const K = watcherSecurityParameter(RECOVERY_DEPTH);
+const K = RECOVERY_DEPTH;
 const RELEASE_DEPTH = 2;
 const SOURCE_ID = "decision-driver-fork-sim";
 const ONE_SHOT: SimUtxo = {
@@ -283,17 +281,17 @@ afterEach(async () => {
 });
 
 describe("decision driver over the follower: rollbacks (W3/L3)", () => {
-  it("recomputes every decision in-process after rollbacks below k, the deep ones past the release depth included", async () => {
+  it("recomputes every decision in-process after rollbacks of at most k, the deep ones past the release depth included", async () => {
     const { events, pauses } = nodeScript((chain, events, pause) => {
       events.push(chain.forward([initTx(D)]).event);
       forward(chain, events, 6, true);
       pause();
-      // Past the release depth (2), below k (6).
+      // Past the release depth (2), below k (4).
       events.push(chain.backward(3));
       forward(chain, events, 4, true);
       pause();
-      // As deep as the store allows below k.
-      events.push(chain.backward(K - 1));
+      // As deep as the store allows: exactly k.
+      events.push(chain.backward(K));
       forward(chain, events, K + 1, true);
       pause();
     });
@@ -331,11 +329,13 @@ describe("decision driver over the follower: rollbacks (W3/L3)", () => {
     expect(exit).not.toHaveBeenCalled();
   });
 
-  it("holds /readyz with rollback_beyond_k on a rollback deeper than k, and the process stays live", async () => {
+  it("holds /readyz with rollback_beyond_k on a rollback of automaticRecoveryMaxDepth + 1, though the store retains it, and the process stays live", async () => {
     const { events, pauses } = nodeScript((chain, events, pause) => {
       events.push(chain.forward([initTx(D)]).event);
       forward(chain, events, K + 3, true);
       pause();
+      // One block past k, inside the retained depth (k + 2): the rows are
+      // there to rewind, and the store refuses all the same.
       events.push(chain.backward(K + 1));
       forward(chain, events, 2);
       pause();
@@ -385,6 +385,17 @@ describe("decision driver over the follower: rollbacks (W3/L3)", () => {
         (entry) => entry.reason === "rollback_beyond_k",
       ),
     );
+    // Refused for its depth (k + 1 = 5), the target block still retained.
+    expect(watcher.follower.status()?.interventions).toContainEqual({
+      reason: "rollback_beyond_k",
+      detail: expect.stringMatching(
+        /^rollback of 5 blocks .* k = 4 /u,
+      ) as unknown,
+    });
+    const cursor = (await watcher.follower.store.cursor())!;
+    expect(
+      await watcher.follower.store.blockAtHeight(cursor.height - (K + 1)),
+    ).not.toBeNull();
     await watcher.l1.refresh();
     expect(watcher.l1.read().map(({ reason }) => reason)).toContain(
       "rollback_beyond_k",
