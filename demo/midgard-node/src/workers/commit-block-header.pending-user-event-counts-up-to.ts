@@ -1,4 +1,4 @@
-import { Data, Effect, pipe } from "effect";
+import { Context, Data, Effect, Layer, pipe, type Scope } from "effect";
 
 import {
   DepositsDB,
@@ -64,9 +64,31 @@ export const provideCommitBlockWorkerServices = <A, E>(
  */
 export type CommitLucidFactory = () => Effect.Effect<Lucid, ConfigError>;
 
-/** The role factory: the commit worker thread's follower Lucid. */
-export const followerCommitLucidFactory: CommitLucidFactory = () =>
-  Effect.provide(Lucid, FollowerLucidLive);
+/**
+ * A factory that builds `layer`'s Lucid in the caller's scope. The Lucid's
+ * L1 access (its store pool and node transport) stays open until that scope
+ * closes; a Lucid provided and returned out of its own scope would read
+ * through a closed access, so its L1 slot would never be known.
+ */
+export const scopedCommitLucidFactory = (
+  layer: Layer.Layer<Lucid, ConfigError>,
+): Effect.Effect<CommitLucidFactory, never, Scope.Scope> =>
+  Effect.map(
+    Effect.scope,
+    (scope): CommitLucidFactory =>
+      () =>
+        Effect.map(Layer.buildWithScope(layer, scope), (context) =>
+          Context.get(context, Lucid),
+        ),
+  );
+
+/** The role factory: the commit worker thread's follower Lucid, open for
+ * the worker run's scope. */
+export const followerCommitLucidFactory: Effect.Effect<
+  CommitLucidFactory,
+  never,
+  Scope.Scope
+> = scopedCommitLucidFactory(FollowerLucidLive);
 
 /** A command's factory: the Lucid service its layers already provide (the
  * tool access `--l1` selects, from `cli-runtime`). */

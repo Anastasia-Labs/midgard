@@ -185,11 +185,15 @@ if (parentPort !== null) {
   const notifyParent: NotifyCommitWorkerParent = (message) =>
     Effect.sync(() => workerParentPort.postMessage(message));
 
-  const program = provideCommitBlockWorkerServices(
-    runCommitBlockHeaderWorkerProgram(
-      inputData,
-      notifyParent,
-      followerCommitLucidFactory,
+  const program = Effect.scoped(
+    Effect.flatMap(followerCommitLucidFactory, (commitLucidFactory) =>
+      provideCommitBlockWorkerServices(
+        runCommitBlockHeaderWorkerProgram(
+          inputData,
+          notifyParent,
+          commitLucidFactory,
+        ),
+      ),
     ),
   );
 
