@@ -5,6 +5,8 @@ import {
   TransportUnavailableError,
 } from "@al-ft/l1-node-transport";
 
+import { describeLedgerRejection } from "./rejection.js";
+
 /**
  * Typed failures of the follower's Lucid provider. None of them ends the
  * process: a transient one is retried by the caller with backoff, every other
@@ -68,17 +70,27 @@ export class L1ProviderRequestError extends L1ProviderError {
   }
 }
 
-/** The ledger rejected a submitted transaction; `rejection` is the node's raw `ApplyTxErr`. */
+/**
+ * The ledger rejected a submitted transaction; `rejection` is the node's raw
+ * `ApplyTxErr`. The message leads with the decoded failures and ends with the
+ * raw bytes, which stay authoritative.
+ */
 export class L1SubmitRejectedError extends L1ProviderError {
   override readonly name = "L1SubmitRejectedError";
   readonly rejectionHex: string;
+  /** The decoded failures, one line (see {@link describeLedgerRejection}). */
+  readonly reason: string;
   constructor(
     readonly txHash: string,
     readonly rejection: Uint8Array,
   ) {
     const rejectionHex = Buffer.from(rejection).toString("hex");
-    super(`the ledger rejected transaction ${txHash}: ${rejectionHex}`);
+    const reason = describeLedgerRejection(rejection);
+    super(
+      `the ledger rejected transaction ${txHash}: ${reason} [ApplyTxErr ${rejectionHex}]`,
+    );
     this.rejectionHex = rejectionHex;
+    this.reason = reason;
   }
 }
 

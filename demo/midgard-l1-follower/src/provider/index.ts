@@ -32,4 +32,5 @@ export {
   L1FollowerProvider,
   type L1FollowerProviderOptions,
 } from "./provider.js";
+export { describeLedgerRejection } from "./rejection.js";
 export { addressText, toLucidUtxo } from "./utxo.js";

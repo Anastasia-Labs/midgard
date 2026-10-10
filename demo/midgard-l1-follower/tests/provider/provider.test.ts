@@ -396,6 +396,9 @@ describe.each(providerAdapters(databases, scratch))(
       expect(Buffer.from((error as L1SubmitRejectedError).rejection)).toEqual(
         REJECTION,
       );
+      expect((error as L1SubmitRejectedError).message).toContain(
+        "WithdrawalsNotInRewardsCERTS {}",
+      );
       await expect(provider.submitTx("ff00")).rejects.toMatchObject({
         constructor: L1ProviderRequestError,
         code: "tx_undecodable",

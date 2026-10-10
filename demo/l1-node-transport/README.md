@@ -317,6 +317,8 @@ Parameter lists hold 1..4,096 items.
   `era`, the sidecar reads the era from the transaction's own encoding; an
   undeterminable era answers `error tx_undecodable`.
 - **Rejection.** A rejection's payload is the node's raw `ApplyTxErr` bytes.
+  The transport does not read them; the follower's provider names the
+  ledger failures in `L1SubmitRejectedError` (`describeLedgerRejection`).
 - **Undecodable transactions.** A transaction the node cannot decode makes
   the node close the connection. The sidecar then ends with `fatal
 node_connection_lost` and the supervisor restarts it.
