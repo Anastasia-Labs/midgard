@@ -25,6 +25,7 @@ import {
   buildJourneyWithdrawalEvent,
   captureStagedHistoryEvent,
 } from "./history-events.js";
+import { buildPastProtectedPredecessor } from "./history-predecessor-hold.js";
 
 // Pure content fixtures: these checks do not claim a deployed chain, a new L1
 // observation, or live journey acceptance. Both carriage modes use the shared reader.
@@ -434,3 +435,42 @@ it.each([false, true])(
     );
   },
 );
+
+it("holds an event build until its lower bound clears a protected predecessor, boundedly", async () => {
+  let now = 1_000_000;
+  const slept: number[] = [];
+  const clock = {
+    nowMs: () => now,
+    sleep: async (ms: number) => {
+      slept.push(ms);
+      now += ms;
+    },
+  };
+  const refusal = (until: bigint) =>
+    Effect.runPromise(
+      Effect.fail(
+        new SDK.UserEventBuildError({
+          message: "Failed to build authenticated event history transaction",
+          cause: new SDK.EventHistoryPredecessorProtectedError(until),
+        }),
+      ),
+    );
+  let builds = 0;
+  const built = await buildPastProtectedPredecessor(async () => {
+    builds += 1;
+    if (builds === 1) await refusal(1_030_000n);
+    return "built";
+  }, clock);
+  expect(built).toBe("built");
+  // protectedUntil + the builders' 60 s validFrom backoff + one slot - now.
+  expect(slept).toEqual([91_000]);
+  await expect(
+    buildPastProtectedPredecessor(() => refusal(BigInt(now)), clock),
+  ).rejects.toThrow(/Failed to build authenticated event history/);
+  expect(slept).toHaveLength(3);
+  const other = new Error("not a protected predecessor");
+  await expect(
+    buildPastProtectedPredecessor(() => Promise.reject(other), clock),
+  ).rejects.toBe(other);
+  expect(slept).toHaveLength(3);
+});

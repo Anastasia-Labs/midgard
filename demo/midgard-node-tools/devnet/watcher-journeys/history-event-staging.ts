@@ -32,6 +32,7 @@ import {
   journeyWithdrawalBody,
   type StagedHistoryEvent,
 } from "./history-events.js";
+import { buildPastProtectedPredecessor } from "./history-predecessor-hold.js";
 import {
   createPreparedJourneyFixture,
   decodeJourneyRetainedBlock,
@@ -163,9 +164,9 @@ const publishEvent = async (
     if (funding.length === 0)
       throw new Error("No ordinary funding inputs for event publication");
     lucid.overrideUTxOs(funding);
-    const built = await request
-      .build()
-      .finally(() => lucid.clearUTxOOverride());
+    const built = await buildPastProtectedPredecessor(() =>
+      request.build(),
+    ).finally(() => lucid.clearUTxOOverride());
     const signed = await built.tx.sign.withWallet().complete();
     checkpoint = {
       deploymentFingerprint: deployment.manifest.manifestId,
