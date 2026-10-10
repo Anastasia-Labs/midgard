@@ -611,7 +611,7 @@ describe("--wait", () => {
       err: () => {},
     };
     assert.equal(main(["7", "--timeout", "5"], quiet), EXIT.usage);
-    for (const value of ["0", "1.5", "abc", "361"])
+    for (const value of ["0", "1.5", "abc", "361", "7h", "30s", "5mm"])
       assert.equal(
         main(["7", "--wait", "--timeout", value], quiet),
         EXIT.usage,
@@ -619,5 +619,31 @@ describe("--wait", () => {
       );
     assert.equal(main(["7", "--wait", "--timeout"], quiet), EXIT.usage);
     assert.equal(DEFAULT_TIMEOUT_MINUTES, 60);
+  });
+
+  test("--timeout reads bare digits and m as minutes and h as hours, and says when a number looks like seconds", () => {
+    const errors = [];
+    const usage = {
+      run: () => assert.fail("no gh call"),
+      out: () => {},
+      err: (t) => errors.push(t),
+    };
+    assert.equal(main(["7", "--wait", "--timeout", "7200"], usage), EXIT.usage);
+    assert.match(errors.join("\n"), /for 7200 seconds write 120/u);
+    for (const [value, minutes] of [
+      ["90", 90],
+      ["90m", 90],
+      ["2h", 120],
+      ["6h", 360],
+    ]) {
+      const { report } = waiting(baseWorld({ runs: pendingRuns() }), {
+        argv: ["--timeout", value],
+      });
+      assert.match(
+        report.notes.join("\n"),
+        new RegExp(`\\(--timeout ${String(minutes)}\\)`, "u"),
+        value,
+      );
+    }
   });
 });

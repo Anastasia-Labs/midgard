@@ -78,7 +78,7 @@ export const renderText = (report, code) => {
 };
 
 export const USAGE =
-  "usage: ci-status.mjs <pr-number|branch> [--repo owner/name] [--json] [--wait [--timeout <minutes>]]";
+  "usage: ci-status.mjs <pr-number|branch> [--repo owner/name] [--json] [--wait [--timeout <minutes>|<N>m|<N>h]]";
 
 export const main = (
   argv,
@@ -101,14 +101,21 @@ export const main = (
     else if (arg === "--wait") wait = true;
     else if (arg === "--timeout") {
       const value = args.shift();
-      timeoutMinutes = Number(value);
-      if (
-        !/^\d+$/u.test(value ?? "") ||
-        timeoutMinutes < 1 ||
-        timeoutMinutes > MAX_TIMEOUT_MINUTES
-      ) {
+      // Bare digits are minutes; `m` and `h` may say so explicitly.
+      const match = /^(\d+)([mh]?)$/u.exec(value ?? "");
+      timeoutMinutes = match
+        ? Number(match[1]) * (match[2] === "h" ? 60 : 1)
+        : Number.NaN;
+      if (!(timeoutMinutes >= 1 && timeoutMinutes <= MAX_TIMEOUT_MINUTES)) {
+        const seconds =
+          match &&
+          match[2] === "" &&
+          timeoutMinutes > MAX_TIMEOUT_MINUTES &&
+          timeoutMinutes % 60 === 0
+            ? ` (${String(value)} reads as minutes; for ${String(value)} seconds write ${String(Number(match[1]) / 60)})`
+            : "";
         err(
-          `--timeout takes whole minutes from 1 to ${String(MAX_TIMEOUT_MINUTES)}\n${USAGE}`,
+          `--timeout takes whole minutes (90 or 90m) or hours (2h), from 1 minute to ${String(MAX_TIMEOUT_MINUTES)}${seconds}\n${USAGE}`,
         );
         return EXIT.usage;
       }

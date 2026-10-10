@@ -31,11 +31,11 @@ node .agents/skills/debugging-ci-failures/scripts/ci-status.mjs <pr-number|branc
 each workflow's triggers at the head commit, decides which workflows should
 have run, and lists every one that did not, with the reason.
 
-To wait for runs, add `--wait [--timeout <minutes>]` instead of writing a
+To wait for runs, add `--wait [--timeout 90|90m|2h]` instead of writing a
 `gh`/`sleep` loop. It looks again every minute while a run on the head is in
 progress, and for five minutes while an expected run has not appeared. It
-stops at the first failed run, and gives up at the timeout (default 60, at
-most 360). Its exit code is the table's verdict for its last look; a timeout
+stops at the first failed run, and gives up at the timeout (bare digits are
+minutes; default 60, at most 360 minutes). Its exit code is the table's verdict for its last look; a timeout
 with runs in progress is 4. A hand-written loop waits forever on a run that
 never starts, and its ending reads as a pass
 [script: .agents/skills/debugging-ci-failures/scripts/ci-status.test.mjs]

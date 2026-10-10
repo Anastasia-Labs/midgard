@@ -10,13 +10,14 @@
 //
 // Usage:
 //   node ci-status.mjs <pr-number|branch> [--repo owner/name] [--json]
-//                      [--wait [--timeout <minutes>]]
+//                      [--wait [--timeout <minutes>|<N>m|<N>h]]
 //
 // --wait looks again every minute while runs on the head are in progress (and
 // for the first five minutes while an expected run has not appeared), stops at
-// the first failure, and gives up after --timeout minutes (default 60, at most
-// 360). It exits with the code below for its last look; progress goes to
-// stderr. See ci-status.wait.mjs.
+// the first failure, and gives up after --timeout (bare digits or `m` are
+// minutes, `h` hours; default 60 minutes, at most 360). It exits with the
+// code below for its last look; progress goes to stderr. See
+// ci-status.wait.mjs.
 //
 // Exit codes (distinct, so a caller never mistakes "could not look" for
 // "looked and found nothing"):
