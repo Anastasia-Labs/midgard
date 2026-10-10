@@ -23,15 +23,19 @@ import {
   committeeL1Source,
   L1_FOLLOWER_UNCONFIGURED,
   L1_NODE_HANDSHAKE_FAILED,
-  untilCommitteeL1SourceReady,
 } from "../../src/l1/follower/l1-follower.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
+import {
+  untilCommitteeL1SourceReady,
+  untilCommitteeL1SourceSeeded,
+} from "../../src/l1/follower/source-wait.js";
 import { SIM_QUEUE, SIM_SLOT_TIME } from "./queue-sim.js";
 const status = (fields: Partial<FollowStatus>): FollowStatus =>
   ({ readiness: [], cursor: null, ...fields }) as FollowStatus;
 
+/** A seeder answering each step with the next of `answers`, then the last. */
 const fakeSeeder = (
-  answer: WalletSeedStatus,
+  ...answers: WalletSeedStatus[]
 ): WalletSeeder & { steps: number; seeded: boolean } => {
   const seeder = {
     steps: 0,
@@ -40,6 +44,7 @@ const fakeSeeder = (
     ready: () => seeder.seeded,
     addWallets: () => undefined,
     step: async () => {
+      const answer = answers[Math.min(seeder.steps, answers.length - 1)]!;
       seeder.steps += 1;
       if (answer.kind === "ready") seeder.seeded = true;
       return answer;
@@ -157,6 +162,45 @@ describe("the committee's L1 source over the follower", () => {
       expect(ready.l1.readiness()).toEqual([]);
     } finally {
       await ready.store.close();
+    }
+  });
+
+  it("holds a startup that needs the wallets until the follower is ready and the seed settles", async () => {
+    // The seed fails once, then lands.
+    const seeder = fakeSeeder(
+      {
+        kind: "pending",
+        reason: "seed_query_failed" as never,
+        detail: "ledger state unavailable",
+        wallets: [],
+      },
+      { kind: "ready" },
+    );
+    let polls = 0;
+    const { l1, store } = await source(
+      () => (polls < 2 ? null : status({})),
+      seeder,
+    );
+    const held: string[][] = [];
+    try {
+      await untilCommitteeL1SourceSeeded(l1, {
+        pollMs: 1,
+        onHeld: (reasons) => {
+          polls += 1;
+          held.push(reasons.map(({ reason }) => reason));
+        },
+      });
+      // No seed step while the follower had not started; one failed step and
+      // one that landed once it had.
+      expect(seeder.steps).toBe(2);
+      expect(held).toEqual([
+        [FOLLOWER_CATCHING_UP, WALLET_SEED_PENDING],
+        [FOLLOWER_CATCHING_UP, WALLET_SEED_PENDING],
+        [WALLET_SEED_PENDING],
+      ]);
+      expect(l1.readiness()).toEqual([]);
+    } finally {
+      await store.close();
     }
   });
 

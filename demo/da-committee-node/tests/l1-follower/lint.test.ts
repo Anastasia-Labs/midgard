@@ -25,13 +25,14 @@ import {
 /**
  * Every committee derivation over the facts (plan §6: pure functions of
  * them) and every module it imports: each follower module except the
- * process that runs the follower and its configuration.
+ * process that runs the follower, its startup waits and its configuration.
  */
 const LINTED = lintDeterminismModules({
   root: fileURLToPath(new URL("../..", import.meta.url)),
   include: ["src/l1/follower/*.ts"],
   exclude: [
     "src/l1/follower/l1-follower.ts",
+    "src/l1/follower/source-wait.ts",
     "src/l1/follower/committee-follower-config.ts",
   ],
 });

@@ -95,6 +95,7 @@ export const fakeL1Source = (chain: FakeL1Chain): CommitteeL1Source => {
     parameters,
     readiness: () => chain.readiness?.() ?? [],
     cursorSlot: () => chain.cursorSlot?.() ?? FAKE_TIP_HEIGHT,
+    seedWallets: async () => undefined,
     pointStatus:
       chain.pointStatus ??
       (async () => ({ kind: "canonical", depth: 1 }) as never),

@@ -82,6 +82,12 @@ export type CommitteeL1Source = Readonly<{
       exitsOf: readonly string[];
     }>,
   ): Promise<CommitteeView | null>;
+  /**
+   * Settles owed own-wallet seeds once the follower is ready (a seed is read
+   * at the store's cursor); does nothing before then. Throws on a transient
+   * read failure.
+   */
+  seedWallets(): Promise<void>;
   /** Where `point` stands on the follower's chain. */
   pointStatus(
     point: Readonly<{ slot: number; blockHash: string }>,
@@ -129,6 +135,7 @@ const unconfiguredSource = (
   readiness: () => [{ reason: L1_FOLLOWER_UNCONFIGURED, detail: reason }],
   cursorSlot: () => null,
   readView: async () => null,
+  seedWallets: async () => undefined,
   pointStatus: async () => ({ kind: "not_initialized", detail: reason }),
 });
 
@@ -170,6 +177,17 @@ export const committeeL1Source = (
             : entry,
         );
   };
+  const seedWallets = async (): Promise<void> => {
+    if (
+      parts.seeder === undefined ||
+      parts.seeder.ready() ||
+      followerReadiness().length > 0
+    )
+      return;
+    const seeded = await parts.seeder.step();
+    if (seeded.kind === "pending")
+      seedDetail = `${seeded.reason}: ${seeded.detail}`;
+  };
   const seedPending = (): CommitteeL1Readiness[] =>
     parts.seeder === undefined || parts.seeder.ready()
       ? []
@@ -178,17 +196,9 @@ export const committeeL1Source = (
     parameters: parts.parameters,
     readiness: () => [...followerReadiness(), ...seedPending()],
     cursorSlot: () => parts.status()?.cursor?.slot ?? null,
+    seedWallets,
     readView: async (options) => {
-      // A seed is read at the store's cursor, so it waits for the follower.
-      if (
-        parts.seeder !== undefined &&
-        !parts.seeder.ready() &&
-        followerReadiness().length === 0
-      ) {
-        const seeded = await parts.seeder.step();
-        if (seeded.kind === "pending")
-          seedDetail = `${seeded.reason}: ${seeded.detail}`;
-      }
+      await seedWallets();
       return readCommitteeView(parts.store, {
         parameters: parts.parameters,
         slotTime: await parts.slotTime(),
@@ -223,33 +233,6 @@ export const committeeL1InterventionReason = (
       reason !== FOLLOWER_TRACKED_SET_CHANGED &&
       reason !== WALLET_SEED_PENDING,
   );
-
-/**
- * Resolves once the follower holds the committee for nothing but an owed
- * wallet seed (the committee's next view read settles it). Never gives up:
- * while any other reason holds, it reports the reasons to `onHeld` on every
- * poll and waits, so a rollback beyond k or a missing configuration holds
- * the committee unready with the process up. `onHeld` may throw to stop the
- * wait (a one-shot run does on a reason no wait clears).
- */
-export const untilCommitteeL1SourceReady = async (
-  source: Pick<CommitteeL1Source, "readiness">,
-  options: Readonly<{
-    onHeld?: (reasons: readonly CommitteeL1Readiness[]) => void;
-    pollMs?: number;
-  }> = {},
-): Promise<void> => {
-  for (;;) {
-    const reasons = source
-      .readiness()
-      .filter(({ reason }) => reason !== WALLET_SEED_PENDING);
-    if (reasons.length === 0) return;
-    options.onHeld?.(reasons);
-    await new Promise((resolve) =>
-      setTimeout(resolve, options.pollMs ?? 1_000),
-    );
-  }
-};
 
 /** The writer lease the committee holds for its follower, or null. */
 type CommitteeWriterLease = () => Promise<WriterLease | null>;

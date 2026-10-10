@@ -28,8 +28,11 @@ import { followerDaAttestationReader } from "./l1/da-attestation-reader.js";
 import {
   type CommitteeL1Readiness,
   startCommitteeL1Follower,
-  untilCommitteeL1SourceReady,
 } from "./l1/follower/l1-follower.js";
+import {
+  untilCommitteeL1SourceReady,
+  untilCommitteeL1SourceSeeded,
+} from "./l1/follower/source-wait.js";
 import { PeerSignatureCoordinator } from "./peer/coordinator.js";
 import { PeerSignaturePoller } from "./peer/poller.js";
 import { daAvailabilityCommitmentAuthorityFromConfig } from "./peer/signatures.js";
@@ -81,6 +84,9 @@ export const COMMITTEE_RETIREMENT_COMPACTION_FAILED =
  * only an operator clears, such as `rollback_beyond_k`), the attempt waits
  * and reports the reasons to `onL1Held` on every poll, the process up. The
  * non-adopted responder is built on its first drain the follower is ready for.
+ * L1 submission builds its submitter from the follower's facts and the
+ * submitter wallet's outputs, so the attempt first waits the same way for the
+ * follower to be ready and the own wallets seeded.
  * `onFollowerExhausted` hears the follower stop on an exhausted transient
  * budget (`startCommitteeL1Follower`).
  */
@@ -204,6 +210,10 @@ export const openCommitteeNodeRuntime = async (
         process.stderr.write(`${JSON.stringify(event)}\n`);
       },
     });
+    if (config.l1SubmissionEnabled)
+      await untilCommitteeL1SourceSeeded(follower.source, {
+        ...(onL1Held === undefined ? {} : { onHeld: onL1Held }),
+      });
     const onChainCoordinator = config.l1SubmissionEnabled
       ? await onChainCoordinatorFromConfig(
           config,

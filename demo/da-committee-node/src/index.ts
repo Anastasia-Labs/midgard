@@ -18,8 +18,8 @@ import {
   committeeL1InterventionReason,
   type CommitteeL1Readiness,
   openCommitteeL1Reader,
-  untilCommitteeL1SourceReady,
 } from "./l1/follower/l1-follower.js";
+import { untilCommitteeL1SourceReady } from "./l1/follower/source-wait.js";
 import { l1SubmitterPreflightResultToJson } from "./l1/submitter.js";
 import { createL1SubmitterPreflightMonitor } from "./l1-submitter-preflight-monitor.js";
 import {
