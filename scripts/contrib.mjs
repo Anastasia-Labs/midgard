@@ -182,6 +182,8 @@ const flagOptions = new Set([
 ]);
 // Vitest's own flags, passed through `contrib test` under Vitest's spelling.
 const vitestOptions = ["maxWorkers", "exclude", "disableConsoleIntercept"];
+// Options that may repeat or list several values, and where each collects.
+const listOptions = { file: "files", related: "related", exclude: "excludes" };
 export const parse = (argv) => {
   const options = { files: [], related: [], excludes: [], words: [] };
   for (let index = 0; index < argv.length; index += 1) {
@@ -204,10 +206,14 @@ export const parse = (argv) => {
         : !value || value.startsWith("--")
     )
       throw new Error(`${argument} requires a value`);
-    if (key === "file") options.files.push(value);
-    else if (key === "related") options.related.push(value);
-    else if (key === "exclude") options.excludes.push(value);
-    else if (options[key] !== undefined)
+    const list = listOptions[key];
+    if (list) {
+      // A list option also takes the words after its value, up to the next
+      // option: `--file a.test.ts b.test.ts` names both files.
+      options[list].push(value);
+      while (index + 1 < argv.length && !argv[index + 1].startsWith("--"))
+        options[list].push(argv[++index]);
+    } else if (options[key] !== undefined)
       throw new Error(`duplicate ${argument}`);
     else options[key] = value;
   }

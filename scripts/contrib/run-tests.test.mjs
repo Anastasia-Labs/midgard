@@ -127,6 +127,31 @@ test("only Vitest's own flag spellings pass, and only to test", () => {
   assert.match(HELP, /--maxWorkers N\] \[--exclude GLOB\]/u);
 });
 
+test("a list option takes every word up to the next option", () => {
+  const options = parse([
+    "test",
+    "--file",
+    "tests/a.test.ts",
+    "tests/b.test.ts",
+    "--name",
+    "x",
+    "--file",
+    "tests/c.test.ts",
+  ]);
+  assert.deepEqual(options.words, ["test"]);
+  assert.deepEqual(options.files, [
+    "tests/a.test.ts",
+    "tests/b.test.ts",
+    "tests/c.test.ts",
+  ]);
+  assert.equal(options.name, "x");
+  assert.deepEqual(
+    parse(["test", "--related", "src/a.ts", "src/b.ts"]).related,
+    ["src/a.ts", "src/b.ts"],
+  );
+  assert.deepEqual(parse(["test", "--exclude", "a", "b"]).excludes, ["a", "b"]);
+});
+
 test("the failure summary names each failed test and each file that failed to load", () => {
   const report = {
     testResults: [
