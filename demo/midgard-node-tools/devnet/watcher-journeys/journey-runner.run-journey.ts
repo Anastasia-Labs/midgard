@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, copyFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
@@ -206,7 +206,9 @@ export const runJourney = async (
       nativeEvidencePath: native.nativeEvidencePath,
       process: running.observe(),
     });
-    await writeJourneyArtifact(join(directory, "watcher-process.json"), config);
+    // Keep the process config the watcher was launched with: the parsed config
+    // carries derived fields (each DA peer's peerId) that the parser refuses.
+    await copyFile(running.configPath, join(directory, "watcher-process.json"));
     let nextStartupReport = 0;
     await pollWhileReplaying(
       reusedWatcher ? "shared watcher availability" : "normal watcher launcher",
