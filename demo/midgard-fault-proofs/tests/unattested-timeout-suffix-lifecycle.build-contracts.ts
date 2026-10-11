@@ -80,4 +80,10 @@ export type SetupOptions = {
    * target's deadline instead of far past it.
    */
   readonly liveBlockEndTimes?: boolean;
+  /**
+   * Fund the correction lock with only the ledger minimum for its Idle datum,
+   * as a lock minted outside atomic initialization may be. The first
+   * correction must then add ADA for the larger Locked datum.
+   */
+  readonly lockAtIdleMinimum?: boolean;
 };

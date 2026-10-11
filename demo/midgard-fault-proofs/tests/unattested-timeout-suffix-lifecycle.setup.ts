@@ -1,5 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  calculateMinLovelaceFromUTxO,
   credentialToAddress,
   Data,
   Emulator,
@@ -34,7 +35,7 @@ import {
 export const setup = async (
   descendantCount: number,
   attestedTarget = false,
-  { liveBlockEndTimes = false }: SetupOptions = {},
+  { liveBlockEndTimes = false, lockAtIdleMinimum = false }: SetupOptions = {},
 ) => {
   const contracts = await contractsPromise;
   const account = generateEmulatorAccount({ lovelace: 40_000_000_000n });
@@ -156,6 +157,19 @@ export const setup = async (
   };
   const hubUnit = hubPolicy + SDK.HUB_ORACLE_ASSET_NAME;
   const lockUnit = hubPolicy + SDK.CORRECTION_LOCK_ASSET_NAME;
+  const idleLockDatum = Data.to("Idle", SDK.CorrectionLockDatum);
+  const lockLovelace = lockAtIdleMinimum
+    ? calculateMinLovelaceFromUTxO(
+        EMULATOR_PROTOCOL_PARAMETERS.coinsPerUtxoByte,
+        {
+          address: lockAddress,
+          assets: { [lockUnit]: 1n },
+          txHash: "00".repeat(32),
+          outputIndex: 0,
+          datum: idleLockDatum,
+        },
+      )
+    : rent;
   const yieldUnit = SDK.referenceScriptAuthUnit(
     referencePolicy,
     "state-queue unattested-timeout withdrawal",
@@ -180,8 +194,8 @@ export const setup = async (
       ),
       seed(
         lockAddress,
-        { lovelace: rent, [lockUnit]: 1n },
-        { inline: Data.to("Idle", SDK.CorrectionLockDatum) },
+        { lovelace: lockLovelace, [lockUnit]: 1n },
+        { inline: idleLockDatum },
       ),
       ...(["mint", "spend", "lock"] as const).map((role) =>
         seed(
