@@ -27,6 +27,7 @@ import {
 import {
   ensureCommitteeDatabases,
   ensureDaManifests,
+  loadCommitteeConfigModule,
 } from "./devnet-stack/da.js";
 import {
   type DeployContext,
@@ -53,6 +54,7 @@ import { provisionReserveFloat } from "./devnet-stack/reserve-float-chain.js";
 import { registerServiceRecovery } from "./devnet-stack/service-recovery-cli.js";
 import {
   enduranceReport,
+  preflightServiceConfigs,
   serviceSpecs,
   supervisorMaintainers,
   supervisorPaths,
@@ -71,10 +73,7 @@ import {
   supervisorRuns,
 } from "./devnet-stack/stack.js";
 import { superviseWithMaintainers } from "./devnet-stack/supervisor.js";
-import {
-  ensureWatcherRelease,
-  preflightWatcherConfigs,
-} from "./devnet-stack/watcher.js";
+import { ensureWatcherRelease } from "./devnet-stack/watcher.js";
 import { loadWatcherModule } from "./devnet-stack/watcher-release.js";
 
 const layoutFor = (runDir: string) => {
@@ -108,7 +107,10 @@ const resumeUp = async (
   const context: DeployContext = { layout, run, identities, artifacts };
   // Before anything touches L1: a configuration mistake fails in seconds,
   // not after funding and deploy.
-  preflightWatcherConfigs(context, await loadWatcherModule(layout));
+  await preflightServiceConfigs(context, {
+    watcher: await loadWatcherModule(layout),
+    committee: await loadCommitteeConfigModule(layout),
+  });
   // A drill run killed mid-outage left an L1 container stopped or paused; a
   // live drill run restores its own.
   if (lockOwner(runLockPaths(layout).drill) === undefined) {

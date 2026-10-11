@@ -6,8 +6,10 @@ import { assertRoleL1Env } from "@al-ft/midgard-l1-follower";
 
 import {
   COMMITTEE_SIZE,
+  type CommitteeConfigModule,
   committeeEnvironment,
   grantPublicReader,
+  preflightCommitteeConfigs,
   publicRetainedDaEnvironment,
 } from "./da.js";
 import type { DeployContext } from "./deploy.js";
@@ -15,7 +17,11 @@ import { recordedL1Origin } from "./deployment-origin.js";
 import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
 import { walletInfos } from "./identities.js";
 import { servicePorts } from "./layout.js";
-import { type HubOracleOneShot, nodeEnvironment } from "./node-env.js";
+import {
+  type HubOracleOneShot,
+  nodeEnvironment,
+  preflightNodeConfig,
+} from "./node-env.js";
 import {
   enduranceReasons,
   runEnduranceMaintainer,
@@ -25,7 +31,8 @@ import type {
   ServiceSpec,
   SupervisorPaths,
 } from "./supervisor.js";
-import { watcherServiceSpecs } from "./watcher.js";
+import { preflightWatcherConfigs, watcherServiceSpecs } from "./watcher.js";
+import type { WatcherModule } from "./watcher-release.js";
 
 /**
  * The node publishes readiness once startup is done. Its startup steps ride
@@ -120,6 +127,24 @@ export const serviceSpecs = (
     },
     ...watcherServiceSpecs(context),
   ]);
+};
+
+/**
+ * Runs every service's own configuration parsers over this run's
+ * configurations before L1 starts: the watcher's, the node's, and the DA
+ * committee's and its public reader's. Facts only the deployment fixes are
+ * stand-ins; each service parses the real ones again when it starts.
+ */
+export const preflightServiceConfigs = async (
+  context: DeployContext,
+  parsers: {
+    readonly watcher: WatcherModule;
+    readonly committee: CommitteeConfigModule;
+  },
+): Promise<void> => {
+  preflightWatcherConfigs(context, parsers.watcher);
+  await preflightNodeConfig(context);
+  preflightCommitteeConfigs(context, parsers.committee);
 };
 
 /**

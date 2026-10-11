@@ -7,6 +7,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +16,11 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { campaignPlan, pinCheck, runCampaign } from "./campaign.mjs";
-import { parseCampaign, stageCommand } from "./campaign-definition.mjs";
+import {
+  definitionDigest,
+  parseCampaign,
+  stageCommand,
+} from "./campaign-definition.mjs";
 import { sha256 } from "./files.mjs";
 
 // Campaigns run against a throwaway git checkout whose devnet-stack entry
@@ -69,10 +74,21 @@ if (mode === "record") {
   process.on("SIGTERM", () => console.log("journaled on SIGTERM"));
   setInterval(() => {}, 1000);
   console.log("hanging");
+} else if (mode === "up" || mode === "down") {
+  if (rest[2] === "--slow")
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 700);
+  else if (rest[2] && !fs.existsSync(rest[2])) {
+    console.error(mode + " not yet");
+    process.exit(1);
+  }
+  fs.appendFileSync(rest[0], rest[1] + "\\n");
 } else if (mode === "env") {
   console.log(process.env.CAMPAIGN_SECRET ? "secret visible" : "no secret");
 }
 `;
+
+const TRANSPORT =
+  "demo/l1-node-transport/dist/native/midgard-l1-node-transport";
 
 let fixtureIndex = 0;
 // A checkout at one commit, with a ready blueprint and its build record.
@@ -91,6 +107,11 @@ const fixture = (t) => {
     join(root, "demo/midgard-node-tools/dist/devnet-stack.js"),
     FAKE_STACK,
   );
+  // The campaign's build of the transport binary the journeys start.
+  mkdirSync(join(root, "demo/l1-node-transport/dist/native"), {
+    recursive: true,
+  });
+  writeFileSync(join(root, TRANSPORT), "transport build\n");
   const head = commitAll(root, "base");
   // Untracked, as in a real checkout.
   writeFileSync(join(root, "onchain/aiken/plutus.json"), '{"validators":[]}\n');
@@ -114,6 +135,21 @@ const stack = (id, args, timeoutSeconds = 30) => ({
   timeoutSeconds,
   args,
 });
+const teardown = (id, args) => ({
+  ...stack(id, ["down", ...args]),
+  always: true,
+});
+
+// A run directory as the watcher-journeys generator leaves it.
+const journeyRun = (f, name = "journey-run") => {
+  const runDir = join(f.base, name);
+  mkdirSync(join(runDir, "config"), { recursive: true });
+  mkdirSync(join(runDir, "work"), { recursive: true });
+  writeFileSync(join(runDir, "run.env"), `MIDGARD_PHASE4_RUN_DIR=${runDir}\n`);
+  writeFileSync(join(runDir, "config/config.json"), "{}\n");
+  writeFileSync(join(runDir, "compose.host-paths.json"), "{}\n");
+  return runDir;
+};
 
 const campaignFile = (f, stages, overrides = {}) => {
   const path = join(f.base, `campaign-${(fixtureIndex += 1)}.json`);
@@ -269,6 +305,47 @@ test("validation refuses unknown fields, bad values and kind mismatches", () => 
       /unknown field extra/.test(error.message) &&
       /stages\[0\]\.timeoutSeconds/.test(error.message),
   );
+});
+
+test("always is allowed only on a teardown stage and is part of its definition", () => {
+  const withTeardowns = structuredClone(valid);
+  withTeardowns.stages.push(
+    {
+      id: "l1-down",
+      kind: "phase4",
+      action: "down",
+      runDir: "/absolute/run",
+      timeoutSeconds: 600,
+      always: true,
+    },
+    teardown("stack-down", ["--run-dir", "/absolute/stack", "--l1"]),
+  );
+  assert.equal(parseCampaign(withTeardowns).stages.length, 5);
+  for (const value of [false, "true", 1])
+    refuses(
+      (c) =>
+        (c.stages[0] = {
+          ...teardown("down", ["--run-dir", "/x"]),
+          always: value,
+        }),
+      /stages\[0\]\.always must be true; leave it out for an ordinary stage/,
+    );
+  refuses(
+    (c) => (c.stages[0].always = true),
+    /stages\[0\]\.always is allowed only on a teardown stage \(phase4 action down, or devnet-stack down\)/,
+  );
+  refuses(
+    (c) => (c.stages[1].always = true),
+    /stages\[1\]\.always is allowed only on a teardown stage/,
+  );
+  refuses(
+    (c) => (c.stages[2].always = true),
+    /\(watcher-journeys\) has unknown field always/,
+  );
+  // Marking a stage always reruns it: the digest covers the field.
+  const down = teardown("down", ["--run-dir", "/x"]);
+  const { always: _always, ...ordinary } = down;
+  assert.notEqual(definitionDigest(down), definitionDigest(ordinary));
 });
 
 test("a checkout at another commit or with changes is refused, never moved", async (t) => {
@@ -455,6 +532,177 @@ test("a failed stage stops the campaign; a rerun resumes from the first stage no
   ]);
 });
 
+test("a failed stage still runs the teardown block after it and exits with the failure", async (t) => {
+  const f = fixture(t);
+  const path = campaignFile(f, [
+    stack("first", ["up", f.marks, "first"]),
+    stack("fails", ["fail"]),
+    stack("skipped", ["record", f.marks, "skipped"]),
+    teardown("stack-down", [f.marks, "stack-down"]),
+    teardown("l1-down", [f.marks, "l1-down"]),
+    stack("after", ["up", f.marks, "after"]),
+    teardown("after-down", [f.marks, "after-down"]),
+  ]);
+  const result = await run(f, path);
+  assert.equal(result.status, "failed");
+  assert.equal(result.exitCode, 1);
+  // Ordinary stages after the failure are skipped; the always-stages that
+  // close its segment run; nothing after them runs.
+  assert.deepEqual(marks(f), ["first", "stack-down", "l1-down"]);
+  assert.deepEqual(
+    result.stages.map((entry) => [entry.id, entry.status]),
+    [
+      ["first", "passed"],
+      ["fails", "failed"],
+      ["stack-down", "passed"],
+      ["l1-down", "passed"],
+    ],
+  );
+  assert.deepEqual(result.invocations.at(-1).stagesRun, [
+    "first",
+    "fails",
+    "stack-down",
+    "l1-down",
+  ]);
+
+  // A failed teardown does not stop the rest of its block.
+  const g = fixture(t);
+  const failing = campaignFile(g, [
+    stack("up", ["up", g.marks, "up"]),
+    teardown("stack-down", [g.marks, "stack-down", join(g.base, "never")]),
+    teardown("l1-down", [g.marks, "l1-down"]),
+    stack("after", ["up", g.marks, "after"]),
+  ]);
+  const second = await run(g, failing);
+  assert.equal(second.exitCode, 1);
+  assert.deepEqual(marks(g), ["up", "l1-down"]);
+  assert.deepEqual(
+    second.stages.map((entry) => [entry.id, entry.status]),
+    [
+      ["up", "passed"],
+      ["stack-down", "failed"],
+      ["l1-down", "passed"],
+    ],
+  );
+});
+
+test("a resume after a teardown restarts its segment's services, skips passed work and tears down again", async (t) => {
+  const f = fixture(t);
+  const ready = join(f.base, "ready");
+  const stages = [
+    stack("stack-up", ["up", f.marks, "stack-up"]),
+    stack("work", ["record", f.marks, "work"]),
+    stack("flaky", ["flaky", ready, f.marks]),
+    teardown("stack-down", [f.marks, "stack-down"]),
+  ];
+  const path = campaignFile(f, stages);
+  assert.equal((await run(f, path)).exitCode, 1);
+  assert.deepEqual(marks(f), ["stack-up", "work", "flaky", "stack-down"]);
+
+  writeFileSync(ready, "");
+  const plan = campaignPlan(f.root, path, {
+    profileCheck: () => true,
+    buildSteps: () => [],
+  });
+  assert.deepEqual(
+    plan.stages.map((stage) => [stage.id, stage.action]),
+    [
+      ["stack-up", "run: an always-stage stopped its services after it passed"],
+      ["work", "skip: passed"],
+      ["flaky", "run"],
+      ["stack-down", "run"],
+    ],
+  );
+  assert.equal(plan.stages[3].always, true);
+  const resumed = await run(f, path);
+  assert.equal(resumed.exitCode, 0);
+  assert.deepEqual(marks(f), [
+    "stack-up",
+    "work",
+    "flaky",
+    "stack-down",
+    "stack-up",
+    "flaky",
+    "stack-down",
+  ]);
+  assert.deepEqual(resumed.invocations.at(-1).skipped, ["work"]);
+
+  // Everything passed, teardown last: a rerun runs nothing.
+  assert.equal((await run(f, path)).exitCode, 0);
+  assert.equal(marks(f).length, 7);
+
+  // A teardown that failed is retried alone: nothing it would stop runs
+  // again first.
+  const g = fixture(t);
+  const later = join(g.base, "later");
+  const failing = campaignFile(g, [
+    stack("stack-up", ["up", g.marks, "stack-up"]),
+    teardown("stack-down", [g.marks, "stack-down", later]),
+  ]);
+  assert.equal((await run(g, failing)).exitCode, 1);
+  writeFileSync(later, "");
+  assert.equal((await run(g, failing)).exitCode, 0);
+  assert.deepEqual(marks(g), ["stack-up", "stack-down"]);
+});
+
+test("cancellation stops the running stage, still runs the teardown, and leaves the campaign incomplete", async (t) => {
+  const f = fixture(t);
+  const path = campaignFile(f, [
+    stack("hangs", ["hang"], 60),
+    stack("after", ["up", f.marks, "after"]),
+    teardown("stack-down", [f.marks, "stack-down"]),
+  ]);
+  const until = async (predicate) => {
+    const deadline = Date.now() + 10_000;
+    while (!predicate()) {
+      assert.ok(Date.now() < deadline, "the stage never started");
+      await new Promise((done) => setTimeout(done, 20));
+    }
+  };
+  const controller = new AbortController();
+  const pending = run(f, path, { signal: controller.signal });
+  const log = join(f.directory, "logs/hangs.log");
+  await until(
+    () => existsSync(log) && /hanging/.test(readFileSync(log, "utf8")),
+  );
+  controller.abort();
+  const result = await pending;
+  assert.equal(result.status, "incomplete");
+  assert.equal(result.exitCode, 3);
+  assert.deepEqual(
+    result.stages.map((entry) => [entry.id, entry.status]),
+    [
+      ["hangs", "cancelled"],
+      ["stack-down", "passed"],
+    ],
+  );
+  assert.deepEqual(marks(f), ["stack-down"]);
+
+  // Cancelled during a teardown: it finishes, and the next segment, which
+  // started nothing, is neither run nor torn down.
+  const g = fixture(t);
+  const boundary = campaignFile(g, [
+    stack("l1-up", ["up", g.marks, "l1-up"]),
+    teardown("l1-down", [g.marks, "l1-down", "--slow"]),
+    stack("stack-up", ["up", g.marks, "stack-up"]),
+    teardown("stack-down", [g.marks, "stack-down"]),
+  ]);
+  const second = new AbortController();
+  const running = run(g, boundary, { signal: second.signal });
+  await until(() => existsSync(join(g.directory, "logs/l1-down.log")));
+  second.abort();
+  const stopped = await running;
+  assert.equal(stopped.exitCode, 3);
+  assert.deepEqual(
+    stopped.stages.map((entry) => [entry.id, entry.status]),
+    [
+      ["l1-up", "passed"],
+      ["l1-down", "passed"],
+    ],
+  );
+  assert.deepEqual(marks(g), ["l1-up", "l1-down"]);
+});
+
 test("a receipt from another commit or profile is refused: a code change needs a new directory", async (t) => {
   const f = fixture(t);
   const path = campaignFile(f, [stack("one", ["record", f.marks, "one"])]);
@@ -503,7 +751,7 @@ test("a campaign directory inside the checkout is refused", async (t) => {
 
 test("a watcher-journeys stage runs contrib test with the frozen blueprint and journey environment", async (t) => {
   const f = fixture(t);
-  const runDir = join(f.base, "journey-run");
+  const runDir = journeyRun(f);
   const path = campaignFile(f, [
     {
       id: "deployment",
@@ -590,13 +838,99 @@ test("a watcher-journeys stage runs contrib test with the frozen blueprint and j
   assert.doesNotMatch(text, /supersecret-campaign-value/);
 });
 
+test("a journey stage refuses a run directory the watcher-journeys generator did not prepare, by path, before running anything", async (t) => {
+  const f = fixture(t);
+  const runDir = join(f.base, "bare-run");
+  mkdirSync(join(runDir, "config"), { recursive: true });
+  writeFileSync(join(runDir, "config/config.json"), "{}\n");
+  const path = campaignFile(f, [
+    {
+      id: "journey",
+      kind: "watcher-journeys",
+      runDir,
+      files: ["devnet/watcher-journeys/journey.test.ts"],
+      timeoutSeconds: 60,
+    },
+  ]);
+  const plan = campaignPlan(f.root, path, {
+    profileCheck: () => true,
+    buildSteps: () => [],
+  });
+  assert.deepEqual(plan.stages[0].missingInputs, [
+    join(runDir, "run.env"),
+    join(runDir, "compose.host-paths.json"),
+  ]);
+  const calls = [];
+  const result = await run(f, path, {
+    run: async (options) => calls.push(options),
+  });
+  assert.equal(calls.length, 0, "no journey started");
+  assert.equal(result.exitCode, 1);
+  const [entry] = result.stages;
+  assert.equal(entry.status, "failed");
+  const generate = `MIDGARD_WATCHER_JOURNEY_RUN_DIR=${runDir} sh demo/midgard-node-tools/devnet/watcher-journeys/scripts/generate.sh`;
+  assert.equal(
+    entry.reason,
+    `the journey run directory ${runDir} lacks ${join(runDir, "run.env")}, ${join(runDir, "compose.host-paths.json")}; generate the run first with \`${generate}\` and start its L1 services with a phase4 up stage`,
+  );
+  assert.match(readFileSync(entry.logPath, "utf8"), /lacks/);
+});
+
+test("a journey stage copies the campaign's transport binary into the run once, and refuses another build's", async (t) => {
+  const f = fixture(t);
+  const runDir = journeyRun(f);
+  const path = campaignFile(f, [
+    {
+      id: "journey",
+      kind: "watcher-journeys",
+      runDir,
+      files: ["devnet/watcher-journeys/journey.test.ts"],
+      timeoutSeconds: 60,
+    },
+  ]);
+  const binary = join(runDir, "work/midgard-l1-node-transport");
+  const seen = [];
+  const fakeRun = async (options) => {
+    seen.push(readFileSync(binary, "utf8"));
+    writeFileSync(options.logPath, "");
+    const output = options.argv[options.argv.indexOf("--output") + 1];
+    mkdirSync(resolve(output, ".."), { recursive: true });
+    writeFileSync(output, JSON.stringify({ status: "failed", exitCode: 1 }));
+    return { exitCode: 1, signal: null };
+  };
+  const first = await run(f, path, { run: fakeRun });
+  assert.deepEqual(seen, ["transport build\n"]);
+  assert.equal(statSync(binary).mode & 0o777, 0o755);
+  assert.deepEqual(first.stages[0].transportBinary, {
+    path: binary,
+    sha256: sha256("transport build\n"),
+    staged: "copied",
+  });
+  // A resume finds the same build already in place.
+  const again = await run(f, path, { run: fakeRun });
+  assert.equal(again.stages.at(-1).transportBinary.staged, "present");
+  assert.equal(seen.length, 2);
+
+  writeFileSync(binary, "another build\n");
+  const refused = await run(f, path, { run: fakeRun });
+  assert.equal(seen.length, 2, "no journey started");
+  assert.equal(refused.exitCode, 1);
+  assert.match(
+    refused.stages.at(-1).reason,
+    new RegExp(
+      `${binary} is another build's transport binary \\(sha256 ${sha256("another build\n")}; this campaign built ${sha256("transport build\n")}\\)`,
+    ),
+  );
+  assert.equal(readFileSync(binary, "utf8"), "another build\n");
+});
+
 test("a journey stage whose tests were skipped leaves the campaign incomplete", async (t) => {
   const f = fixture(t);
   const path = campaignFile(f, [
     {
       id: "journey",
       kind: "watcher-journeys",
-      runDir: join(f.base, "run"),
+      runDir: journeyRun(f),
       files: ["devnet/watcher-journeys/journey.test.ts"],
       timeoutSeconds: 60,
     },

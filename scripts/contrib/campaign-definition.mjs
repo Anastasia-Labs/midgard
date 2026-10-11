@@ -1,10 +1,12 @@
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { json, sha256 } from "./files.mjs";
+import { NATIVE_RECIPES } from "./native-recipes.mjs";
 
 // The definition of a devnet campaign (midgard-devnet-campaign/v1): its
-// validation, the digest that decides whether a stage reruns on resume, and
-// the command each stage runs. Pure: running a campaign is campaign.mjs.
+// validation, the digest and receipt reading that decide which stages a
+// resume runs, the command each stage runs and the run-directory inputs a
+// journey stage needs. Pure: running a campaign is campaign.mjs.
 
 export const CAMPAIGN_SCHEMA = "midgard-devnet-campaign/v1";
 
@@ -13,6 +15,22 @@ const JOURNEYS_CONFIG = "vitest.watcher-journeys.config.ts";
 // Node timers fire at once beyond 2^31-1 ms.
 const MAX_TIMEOUT_SECONDS = 2_147_483;
 const PHASE4_ACTIONS = ["up", "down"];
+// A watcher-journeys run directory as its generator leaves it: the phase4
+// run environment, and the node config with host genesis paths plus the
+// compose overlay that only the watcher-journeys wrapper writes.
+const JOURNEY_RUN_FILES = [
+  "run.env",
+  "config/config.json",
+  "compose.host-paths.json",
+];
+const JOURNEY_GENERATOR = `${TOOLS}/devnet/watcher-journeys/scripts/generate.sh`;
+// The journeys start the run's copy of the campaign-built transport binary.
+const TRANSPORT_PACKAGE = "@al-ft/l1-node-transport";
+const TRANSPORT_BUILD = join(
+  "demo/l1-node-transport",
+  NATIVE_RECIPES[TRANSPORT_PACKAGE].output,
+);
+const JOURNEY_TRANSPORT = "work/midgard-l1-node-transport";
 // What the campaign itself sets for a watcher-journeys stage.
 const JOURNEY_ENV_KEYS = [
   "MIDGARD_DEPLOYMENT_PROFILE",
@@ -39,11 +57,23 @@ const TOP_FIELDS = [
   "stages",
 ];
 const STAGE_FIELDS = {
-  "devnet-stack": { required: ["args"], optional: [] },
-  phase4: { required: ["action", "runDir"], optional: [] },
+  "devnet-stack": { required: ["args"], optional: ["always"] },
+  phase4: { required: ["action", "runDir"], optional: ["always"] },
   "watcher-journeys": { required: ["runDir", "files"], optional: ["env"] },
 };
 const COMMON_STAGE_FIELDS = ["id", "kind", "timeoutSeconds"];
+
+/** Whether a stage starts services: phase4 up, or devnet-stack up. */
+export const startsServices = (stage) =>
+  stage.kind === "phase4"
+    ? stage.action === "up"
+    : stage.kind === "devnet-stack" && stage.args?.[0] === "up";
+
+/** Whether a stage stops services (keeping their state): a teardown. */
+export const stopsServices = (stage) =>
+  stage.kind === "phase4"
+    ? stage.action === "down"
+    : stage.kind === "devnet-stack" && stage.args?.[0] === "down";
 
 const isObject = (value) =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -99,6 +129,18 @@ const validateStage = (stage, where, problems) => {
     if (stage.action !== undefined && !PHASE4_ACTIONS.includes(stage.action))
       problems.push(
         `${where}.action must be one of ${PHASE4_ACTIONS.join(", ")}`,
+      );
+  }
+  // An always-stage runs even after an earlier stage did not pass; only a
+  // teardown may, so a failure never starts anything.
+  if (stage.always !== undefined && fields.optional.includes("always")) {
+    if (stage.always !== true)
+      problems.push(
+        `${where}.always must be true; leave it out for an ordinary stage`,
+      );
+    else if (!stopsServices(stage))
+      problems.push(
+        `${where}.always is allowed only on a teardown stage (phase4 action down, or devnet-stack down)`,
       );
   }
   if (stage.runDir !== undefined && !isAbsolutePath(stage.runDir))
@@ -195,6 +237,88 @@ const canonical = (value) =>
 /** A digest of everything a stage's definition says; a change reruns it. */
 export const definitionDigest = (stage) => sha256(canonical(stage));
 
+const latestIndex = (receipt, predicate) =>
+  receipt?.stages.findLastIndex(predicate) ?? -1;
+
+/** Index of the first stage not recorded as passed, or -1 when all are. */
+export const resumePoint = (campaign, receipt) =>
+  campaign.stages.findIndex((stage) => {
+    const entry =
+      receipt?.stages[latestIndex(receipt, (entry) => entry.id === stage.id)];
+    return !(
+      entry?.status === "passed" &&
+      entry.definitionSha256 === definitionDigest(stage)
+    );
+  });
+
+/**
+ * Indices of the always-stages a non-pass at stage `index` still runs: the
+ * rest of its block when it is itself an always-stage, else the block of
+ * consecutive always-stages that closes its segment. Later segments started
+ * nothing, so their teardowns do not run.
+ */
+export const teardownAfter = (campaign, index) => {
+  const { stages } = campaign;
+  let next = index + 1;
+  if (!stages[index].always)
+    while (next < stages.length && !stages[next].always) next += 1;
+  const block = [];
+  while (next < stages.length && stages[next].always) block.push(next++);
+  return block;
+};
+
+/**
+ * The stages a run or resume runs, in order, as `{ index, stage, restart }`:
+ * every stage from the first not passed, after the service-starting stages
+ * of its segment (the stages since the previous always-stage) that the
+ * always-stages closing the segment ran after: they stopped those services,
+ * so they start again, while passed work, whose state a teardown keeps, is
+ * skipped. A first stage that is itself an always-stage restarts nothing.
+ */
+export const resumeStages = (campaign, receipt) => {
+  const { stages } = campaign;
+  const start = resumePoint(campaign, receipt);
+  if (start === -1) return [];
+  const restarts = new Set();
+  if (!stages[start].always) {
+    let first = start;
+    while (first > 0 && !stages[first - 1].always) first -= 1;
+    const block = teardownAfter(campaign, start).map(
+      (index) => stages[index].id,
+    );
+    const tornDown = latestIndex(receipt, (entry) => block.includes(entry.id));
+    for (let index = first; index < start; index += 1)
+      if (
+        startsServices(stages[index]) &&
+        latestIndex(
+          receipt,
+          (entry) => entry.id === stages[index].id && entry.status === "passed",
+        ) < tornDown
+      )
+        restarts.add(index);
+  }
+  return stages.flatMap((stage, index) =>
+    index >= start || restarts.has(index)
+      ? [{ index, stage, restart: restarts.has(index) }]
+      : [],
+  );
+};
+
+/**
+ * What a watcher-journeys stage needs in its run directory: the files only
+ * the watcher-journeys generator writes (a person runs it: `generate`), and
+ * the transport binary the journeys start, which the stage copies from the
+ * campaign's build.
+ */
+export const journeyInputs = (root, stage) => ({
+  generated: JOURNEY_RUN_FILES.map((file) => join(stage.runDir, file)),
+  generate: `MIDGARD_WATCHER_JOURNEY_RUN_DIR=${stage.runDir} sh ${JOURNEY_GENERATOR}`,
+  transport: {
+    source: resolve(root, TRANSPORT_BUILD),
+    target: join(stage.runDir, JOURNEY_TRANSPORT),
+  },
+});
+
 export const receiptPath = (campaign) =>
   resolve(campaign.directory, "campaign-receipt.json");
 export const frozenBlueprintPath = (campaign) =>
@@ -260,6 +384,3 @@ export const stageCommand = (root, campaign, stage, name = stage.id) => {
     output,
   };
 };
-
-// A hook exports GIT_DIR and friends; with them git would act on the hook's
-// repository instead of the checkout.

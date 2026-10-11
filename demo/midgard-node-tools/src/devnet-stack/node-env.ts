@@ -2,11 +2,15 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
+import { Cause, ConfigProvider, Effect, Exit } from "effect";
+import { NodeConfig } from "midgard-node/services/config";
 
 import {
   assertNodeFollowerEnvironment,
   L1OriginUndeterminedError,
 } from "../l1-origin.js";
+import type { DeployContext } from "./deploy.js";
+import { PREFLIGHT_L1_ORIGIN } from "./deployment-origin.js";
 import type { Identities } from "./identities.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 
@@ -130,4 +134,50 @@ export const nodeEnvironment = (input: {
   };
   if (role === "listen") assertNodeFollowerEnvironment(env);
   return env;
+};
+
+/**
+ * A shape-only stand-in for the run's hub-oracle nonce, so the preflight can
+ * run the node's parser before the deployment exists. Never written; the node
+ * reads the real nonce from the run's records when the supervisor starts it.
+ */
+const PREFLIGHT_ONE_SHOT: HubOracleOneShot = {
+  txHash: "00".repeat(32),
+  outputIndex: 0,
+};
+
+/**
+ * Runs the node's own configuration parser (`NodeConfig.layer`) over this
+ * run's `listen` environment before L1 starts, so a configuration mistake
+ * fails in seconds rather than after funding and deploy. A command's
+ * environment adds `L1_ACCESS` and names the contract manifest, neither of
+ * which that parser reads. The hub-oracle nonce and the L1 origin are
+ * stand-ins; `listen` parses the real ones when it starts. Reads no file,
+ * chain or service. One gap: the parser reads the DA publish settings
+ * (`readDaHardeningConfig`) from the process environment, so those come from
+ * this controller's environment; the run sets none of them.
+ */
+export const preflightNodeConfig = async (
+  context: DeployContext,
+): Promise<void> => {
+  const env = nodeEnvironment({
+    ...context,
+    oneShot: PREFLIGHT_ONE_SHOT,
+    l1Origin: PREFLIGHT_L1_ORIGIN,
+    role: "listen",
+  });
+  const parsed = await Effect.runPromiseExit(
+    Effect.provide(NodeConfig, NodeConfig.layer).pipe(
+      Effect.withConfigProvider(
+        ConfigProvider.fromMap(new Map(Object.entries(env))),
+      ),
+    ),
+  );
+  if (Exit.isFailure(parsed)) {
+    const reason = Cause.squash(parsed.cause);
+    throw new Error(
+      `node refuses its configuration: ${reason instanceof Error ? reason.message : String(reason)}`,
+      { cause: reason },
+    );
+  }
 };
