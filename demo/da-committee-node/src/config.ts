@@ -16,6 +16,8 @@ import "./config.parse-l1-source-config.js";
 import "./config.l1-submitter-preflight-config.js";
 import "./config.parse-libp2p-da-committee-peers.js";
 import "./config.libp2p-da-transport-config.js";
+import "./config.parse-committee-environment.js";
+import "./config.parse-public-retained-da-environment.js";
 import "./config.load-committee-config.js";
 export {
   type CardanoL1SourceConfig,
@@ -49,6 +51,14 @@ export {
 } from "./config.l1-submitter-preflight-config.js";
 export { loadCommitteeConfig } from "./config.load-committee-config.js";
 export {
+  type CommitteeEnvironmentConfig,
+  parseCommitteeEnvironment,
+} from "./config.parse-committee-environment.js";
+export {
   assertLibp2pDaRetentionDays,
   DaRetentionWindowConfigError,
 } from "./config.parse-libp2p-da-committee-peers.js";
+export {
+  parsePublicRetainedDaEnvironment,
+  type PublicRetainedDaEnvironmentConfig,
+} from "./config.parse-public-retained-da-environment.js";
