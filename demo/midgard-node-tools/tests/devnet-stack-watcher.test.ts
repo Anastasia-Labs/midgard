@@ -47,6 +47,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { DeployContext } from "../src/devnet-stack/deploy.js";
 import { loadIdentities } from "../src/devnet-stack/identities.js";
+import { Journal } from "../src/devnet-stack/journal.js";
 import {
   type Layout,
   makeLayout,
@@ -70,6 +71,7 @@ const scratchRoot =
   join(toolsRoot, "node_modules/.cache/devnet-stack-watcher-test");
 const runDir = join(scratchRoot, `run-${randomBytes(4).toString("hex")}`);
 const PEER_ID = "12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
+const RECORDED_ORIGIN = { slot: 4242, blockHash: "cd".repeat(32) };
 
 /**
  * A finalized deployment manifest over the real contracts, as
@@ -242,6 +244,13 @@ beforeAll(async () => {
   oneShot = { txHash: txHash!, outputIndex: Number(outputIndex) };
 
   writeJson(layout.contractManifest, manifest);
+  // The run's recorded L1 origin, as `ensureL1Origin` records it after deploy.
+  new Journal(layout.journal).set("l1Origin", {
+    origin: RECORDED_ORIGIN,
+    nonceTxHash: oneShot.txHash.toLowerCase(),
+    nonceBlock: { slot: RECORDED_ORIGIN.slot + 1, blockHash: "ef".repeat(32) },
+    recordedAt: "2026-09-30T00:00:00.000Z",
+  });
   writeJson(layout.shelleyGenesis, {
     networkMagic: run.networkMagic,
     systemStart: "2026-09-30T00:00:00Z",
@@ -293,10 +302,15 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
         processConfig.watcherConfig,
       );
 
-      const l1 = runtime.l1 as { finality: unknown; source: object };
+      const l1 = runtime.l1 as {
+        finality: unknown;
+        source: object;
+        origin: unknown;
+      };
       expect(l1.finality).toEqual({
         depth: manifest.l1Finality.confirmationDepth,
       });
+      expect(l1.origin).toEqual(RECORDED_ORIGIN);
       expect(l1.source).not.toHaveProperty("queryServices");
       expect(processConfig).not.toHaveProperty("trustedHeadAuthorityEndpoint");
       expect(processConfig).not.toHaveProperty("httpBearerSecretSource");

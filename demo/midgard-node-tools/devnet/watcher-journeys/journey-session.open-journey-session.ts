@@ -16,6 +16,10 @@ import { createPublishedWatcherDeploymentAuthority } from "midgard-watcher/tests
 
 import { sourceFacetPaths } from "../../../../scripts/lib/source-facets.mjs";
 import { deriveL1Origin } from "../../src/l1-origin.js";
+import {
+  buildWatcherConfig,
+  DEVNET_WATCHER_LIMITS,
+} from "../../src/watcher-config.js";
 import { writeJourneyArtifact } from "./artifacts.js";
 import {
   ensureJourneyWatcherSecrets,
@@ -117,7 +121,7 @@ export const openJourneySession = async (runDirectory: string) => {
     if (nativeQuery.watcherConfig.l1.source.sourceMode !== "local_node")
       throw new Error("Native node source required");
     // The run watcher follows from the deployment's origin, the point before
-    // its hub-oracle nonce's block; without one it holds unready.
+    // its hub-oracle nonce's block.
     const { origin } = await stage("deployment L1 origin", () =>
       deriveL1Origin({
         node: {
@@ -128,37 +132,24 @@ export const openJourneySession = async (runDirectory: string) => {
         nonceTxHash: deployment.manifest.hubOracleOneShot.txHash,
       }),
     );
-    const watcherInput = {
-      schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-      mode: "acceptance",
-      targetNetwork: "Custom",
-      customNetwork: context.customNetwork,
-      l1: {
+    const { input: watcherInput, config: watcherConfig } = buildWatcherConfig(
+      { WATCHER_CONFIG_SCHEMA_VERSION, parseWatcherConfig },
+      {
+        mode: "acceptance",
+        network: {
+          targetNetwork: "Custom",
+          customNetwork: context.customNetwork,
+        },
         source: nativeQuery.watcherConfig.l1.source,
-        origin: { slot: origin.slot, blockHash: origin.blockHash },
-        requestTimeoutMs: 30_000,
-        maxConcurrency: 8,
-        finality: { depth: JOURNEY_FINALITY_DEPTH },
-      },
-      da: {
-        peers: [retainedDa.peer],
-        requestTimeoutMs: 30_000,
-        maxConcurrency: 8,
-      },
-      storage: {
-        driver: "sqlite",
-        path: join(runtimeDirectory, "watcher.sqlite"),
+        origin,
+        finalityDepth: JOURNEY_FINALITY_DEPTH,
+        daPeers: [retainedDa.peer],
+        storagePath: join(runtimeDirectory, "watcher.sqlite"),
         rollbackAuthorityKeySource: rollbackKey,
+        proverKeySource: proverKey,
+        limits: DEVNET_WATCHER_LIMITS,
       },
-      proverWallet: { keySource: proverKey },
-      deadlines: {
-        daFetchMs: 60_000,
-        daPublishMs: 60_000,
-        proofConstructMs: 300_000,
-        proofSubmitMs: 120_000,
-      },
-    };
-    const watcherConfig = parseWatcherConfig(watcherInput);
+    );
     const [operationsPort] = await journeyPorts(1);
     const operationsEndpoint = `http://127.0.0.1:${operationsPort}`;
     await stage("journey watcher secrets", () =>

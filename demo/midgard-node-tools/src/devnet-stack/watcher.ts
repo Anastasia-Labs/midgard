@@ -4,6 +4,10 @@ import { join } from "node:path";
 
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 
+import {
+  buildWatcherConfig,
+  DEVNET_WATCHER_LIMITS,
+} from "../watcher-config.js";
 import { LOCAL_AUTHORITY_ID } from "./da.js";
 import type { DeployContext } from "./deploy.js";
 import { recordedL1Origin } from "./deployment-origin.js";
@@ -16,6 +20,7 @@ import {
   loadWatcherModule,
   readFinalizedManifest,
   releasePaths,
+  type WatcherModule,
 } from "./watcher-release.js";
 
 type SecretSource = { readonly kind: "file"; readonly path: string };
@@ -114,114 +119,58 @@ const retainedDaPeer = (layout: Layout) => {
 const operationsEndpoint = (run: RunEnv) =>
   `http://127.0.0.1:${servicePorts(run).watcherOperations}`;
 
-/** The watcher's runtime configuration, exactly as its process config embeds it. */
-const watcherConfigInput = (
-  context: DeployContext,
-  schemaVersion: string,
-  confirmationDepth: number,
-  secrets: ReturnType<typeof ensureSecrets>,
-  origin: L1Origin,
-) => {
-  const { layout } = context;
-  return {
-    schemaVersion,
-    mode: "acceptance",
-    targetNetwork: "Custom",
-    customNetwork: customNetwork(layout),
-    l1: {
-      source: {
-        sourceMode: "local_node",
-        authorityNodeId: LOCAL_AUTHORITY_ID,
-        chainSync: {
-          kind: "cardano_node_socket",
-          socketPath: layout.cardanoSocket,
-          nodeConfigPath: layout.hostCardanoConfig,
-          genesisConfigPath: layout.shelleyGenesis,
-          genesisIdentitySha256: createHash("sha256")
-            .update(readFileSync(layout.shelleyGenesis))
-            .digest("hex"),
-        },
-      },
-      origin: { slot: origin.slot, blockHash: origin.blockHash },
-      requestTimeoutMs: 30_000,
-      maxConcurrency: 8,
-      finality: { depth: confirmationDepth },
-    },
-    da: {
-      peers: [retainedDaPeer(layout)],
-      requestTimeoutMs: 30_000,
-      maxConcurrency: 8,
-    },
-    storage: {
-      driver: "sqlite",
-      path: join(layout.watcherData, "watcher.sqlite"),
-      rollbackAuthorityKeySource: secrets.rollback,
-    },
-    proverWallet: { keySource: secrets.prover },
-    deadlines: {
-      daFetchMs: 60_000,
-      daPublishMs: 60_000,
-      proofConstructMs: 300_000,
-      proofSubmitMs: 120_000,
-    },
-  };
-};
-
-const configText = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-
-/**
- * Everything the watcher reads, generated once under the run's stack
- * directory: the trust-root key, the secrets, the signed release bundle, and
- * the runtime and process configurations. Every configuration is checked by the watcher's
- * own parser before it is written. A second call verifies and changes
- * nothing; a release signed for another deployment, or a configuration that
- * would now come out differently, is refused rather than replaced. Secrets
- * are generated only for a fresh watcher (no configuration and no data yet);
- * an established watcher's missing secret is refused, never regenerated.
- */
-export const ensureWatcherRelease = async (
-  context: DeployContext,
-  oneShot: HubOracleOneShot,
-): Promise<void> => {
-  const { layout, run, artifacts } = context;
-  const manifest = readFinalizedManifest(layout);
-  if (
-    manifest.hubOracleOneShot.outRef !==
-    `${oneShot.txHash}#${oneShot.outputIndex}`
-  )
-    throw new Error(
-      `${layout.contractManifest} belongs to another hub-oracle nonce`,
-    );
-  const watcher = await loadWatcherModule(layout);
-  const identity = await ensureWatcherReleaseBundle(layout, watcher, manifest);
-  await watcher
-    .watcherDeploymentReleaseFinalityAuthority(identity)
-    .verifyForWorkflow({ deploymentFingerprint: manifest.manifestId });
-  const secrets = Object.fromEntries(
+/** Where the watcher's secrets live; `ensureSecrets` writes them. */
+const secretSources = (layout: Layout) =>
+  Object.fromEntries(
     Object.entries(SECRETS).map(([name, file]) => [
       name,
       { kind: "file" as const, path: layout.watcherSecret(file) },
     ]),
   ) as Record<keyof typeof SECRETS, SecretSource>;
-  const paths = releasePaths(layout);
 
-  const watcherInput = watcherConfigInput(
-    context,
-    watcher.WATCHER_CONFIG_SCHEMA_VERSION,
-    manifest.l1Finality.confirmationDepth,
-    secrets,
-    // The follower starts at the run's recorded origin; without one the
-    // watcher holds unready (l1_origin_not_configured).
-    recordedL1Origin(layout, oneShot),
-  );
-  watcher.parseWatcherConfig(watcherInput);
-  const fresh = ![
-    layout.watcherRuntimeConfig,
-    layout.watcherProcessConfig,
-    layout.watcherData,
-  ].some(existsSync);
-  ensureSecrets(context, fresh);
-  mkdirSync(layout.watcherData, { recursive: true, mode: 0o700 });
+/** The watcher configuration facts only the deployment fixes. */
+type DeploymentFacts = {
+  readonly origin: L1Origin | undefined;
+  readonly confirmationDepth: number;
+  readonly retainedDaPeer: { identity: string; multiaddr: string };
+};
+
+/**
+ * The watcher's runtime and process configurations for this run, each
+ * checked by the watcher's own parser.
+ */
+const watcherConfigs = (
+  context: Pick<DeployContext, "layout" | "run" | "artifacts">,
+  watcher: WatcherModule,
+  deployment: DeploymentFacts,
+) => {
+  const { layout, run, artifacts } = context;
+  const secrets = secretSources(layout);
+  const paths = releasePaths(layout);
+  const { input: watcherInput } = buildWatcherConfig(watcher, {
+    mode: "acceptance",
+    network: { targetNetwork: "Custom", customNetwork: customNetwork(layout) },
+    source: {
+      sourceMode: "local_node",
+      authorityNodeId: LOCAL_AUTHORITY_ID,
+      chainSync: {
+        kind: "cardano_node_socket",
+        socketPath: layout.cardanoSocket,
+        nodeConfigPath: layout.hostCardanoConfig,
+        genesisConfigPath: layout.shelleyGenesis,
+        genesisIdentitySha256: createHash("sha256")
+          .update(readFileSync(layout.shelleyGenesis))
+          .digest("hex"),
+      },
+    },
+    origin: deployment.origin,
+    finalityDepth: deployment.confirmationDepth,
+    daPeers: [deployment.retainedDaPeer],
+    storagePath: join(layout.watcherData, "watcher.sqlite"),
+    rollbackAuthorityKeySource: secrets.rollback,
+    proverKeySource: secrets.prover,
+    limits: DEVNET_WATCHER_LIMITS,
+  });
   const processInput = {
     schemaVersion: watcher.WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
     watcherConfig: watcherInput,
@@ -244,6 +193,52 @@ export const ensureWatcherRelease = async (
     },
   };
   watcher.parseWatcherProcessConfig(processInput);
+  return { watcherInput, processInput };
+};
+
+const configText = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+
+/**
+ * Everything the watcher reads, generated once under the run's stack
+ * directory: the trust-root key, the secrets, the signed release bundle, and
+ * the runtime and process configurations. Every configuration is checked by the watcher's
+ * own parser before it is written. A second call verifies and changes
+ * nothing; a release signed for another deployment, or a configuration that
+ * would now come out differently, is refused rather than replaced. Secrets
+ * are generated only for a fresh watcher (no configuration and no data yet);
+ * an established watcher's missing secret is refused, never regenerated.
+ */
+export const ensureWatcherRelease = async (
+  context: DeployContext,
+  oneShot: HubOracleOneShot,
+): Promise<void> => {
+  const { layout } = context;
+  const manifest = readFinalizedManifest(layout);
+  if (
+    manifest.hubOracleOneShot.outRef !==
+    `${oneShot.txHash}#${oneShot.outputIndex}`
+  )
+    throw new Error(
+      `${layout.contractManifest} belongs to another hub-oracle nonce`,
+    );
+  const watcher = await loadWatcherModule(layout);
+  const identity = await ensureWatcherReleaseBundle(layout, watcher, manifest);
+  await watcher
+    .watcherDeploymentReleaseFinalityAuthority(identity)
+    .verifyForWorkflow({ deploymentFingerprint: manifest.manifestId });
+  const { watcherInput, processInput } = watcherConfigs(context, watcher, {
+    // The follower starts at the run's recorded origin.
+    origin: recordedL1Origin(layout, oneShot),
+    confirmationDepth: manifest.l1Finality.confirmationDepth,
+    retainedDaPeer: retainedDaPeer(layout),
+  });
+  const fresh = ![
+    layout.watcherRuntimeConfig,
+    layout.watcherProcessConfig,
+    layout.watcherData,
+  ].some(existsSync);
+  ensureSecrets(context, fresh);
+  mkdirSync(layout.watcherData, { recursive: true, mode: 0o700 });
   writeOnceFile(layout.watcherRuntimeConfig, configText(watcherInput));
   writeOnceFile(layout.watcherProcessConfig, configText(processInput));
 };
