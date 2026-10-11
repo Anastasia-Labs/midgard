@@ -28,6 +28,7 @@ import {
   buildContractDeploymentInfoFromContracts,
   buildDeploymentManifest,
 } from "../../src/commands/contract-deployment-info.js";
+import { canonicalSlotConfigForLucid } from "../../src/lucid-time.js";
 import { IntentJournalWithoutFollower } from "../../src/services/intent-journal.js";
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../../src/transactions/availability-challenge-registration.js";
 import {
@@ -162,10 +163,18 @@ export const publishWorkflowDeploymentOnChain = async ({
     postTimelockAuditRequired: authPolicyMetadata.postTimelockAudit.required,
   });
   await onPrepared({ nonce, authPolicy });
+  // The scripts and the manifest take the deployment network's slot mapping:
+  // Preprod's constants, or for a Custom devnet the mapping of the chain it
+  // lands on, which anchors slot 0 at its genesis.
+  const l1SlotConfig =
+    network === "Custom"
+      ? canonicalSlotConfigForLucid(operatorLucid)
+      : NAMED_NETWORK_L1_SLOT_CONFIGS[network];
   const contracts = await loadRealMidgardContractsForTest(
     nonce,
     authPolicy,
     eventHistoryProtectionDurationMs,
+    l1SlotConfig,
   );
   const catalogue = await Effect.runPromise(
     buildFraudProofCatalogueDeploymentInfo(
@@ -387,7 +396,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   );
   const daParams = await Effect.runPromise(deriveOperatorDaParams(nodeConfig));
   const manifest = buildDeploymentManifest(deploymentInfo, {
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+    l1SlotConfig,
     network,
     referenceScriptDeployAddress: walletAddress,
     hubOracleOneShotTxHash: nonce.txHash,
