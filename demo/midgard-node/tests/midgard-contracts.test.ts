@@ -136,9 +136,9 @@ describe("midgard contracts registry", () => {
       // neglected-event strike rule (scheduler, so active operators and the
       // state queue built on it), by the forced due-window fix
       // (transition trace), by raising the new-shift inactivity grace to
-      // the maximum validity range (scheduler spend only) and by applying the
-      // validation-trace txInfo stage with the L1 slot mapping (POSIX-ms
-      // validity ranges; the stages and dispute roles bound to it).
+      // the maximum validity range (scheduler spend only), by the txInfo
+      // stage's L1 slot mapping (POSIX-ms validity ranges), and by the
+      // exclusive upper bound and refusing bounds below -1 (native-tx decode).
       expect
         .soft(
           createHash("sha256")
@@ -148,7 +148,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "115a1b208da69d48abb7fb6939c3cb6be12056b2eb24769d3a6191a1c5f97b58",
+          "c0fa946255c46dce611f88da028ff74d2ac06a7417bd74d1a467b891a9b82f76",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
