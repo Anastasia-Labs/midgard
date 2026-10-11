@@ -862,6 +862,97 @@ test declared_length_of_an_empty_field_other_than_one_is_refused() fail {
   )
 }
 
+// -- The submitted body's validity bounds (#817) ----------------------------
+
+/// The canonically-empty transaction's forced source with its two validity
+/// bounds written raw, so a bound the encoder refuses still reaches the mint's
+/// decoder. In the forced envelope `83 01 ‖ body ‖ bytes(witness_set_hash)` the
+/// bounds follow the body's `8c` head, three 34-byte hashes and the one-byte zero
+/// fee; the empty transaction's own `-1, -1` are two bytes.
+fn forced_source_with_raw_bounds(start: Int, end: Int) -> ForcedTxProofSourceV1 {
+  let honest = source(empty_v1_transaction())
+  let offset = 2 + 1 + 3 * 34 + 1
+  ForcedTxProofSourceV1 {
+    ..honest,
+    compact_cbor: bytearray.take(honest.compact_cbor, offset)
+      |> bytearray.concat(cbor.serialise(start))
+      |> bytearray.concat(cbor.serialise(end))
+      |> bytearray.concat(bytearray.drop(honest.compact_cbor, offset + 2)),
+  }
+}
+
+/// A payload over `forced_source_with_raw_bounds`, with `tx_id` taken over the
+/// raw body bytes and `transaction_commitment` over the raw source, so the
+/// payload is internally consistent everywhere except possibly in the bounds.
+fn payload_with_raw_bounds(start: Int, end: Int) -> TxOrderPayloadV1 {
+  let submitted = forced_source_with_raw_bounds(start, end)
+  let compact_cbor = submitted.compact_cbor
+  let body_cbor = bytearray.take(
+    bytearray.drop(compact_cbor, 2),
+    bytearray.length(compact_cbor) - 36,
+  )
+  TxOrderPayloadV1 {
+    tx_id: native_tx_id_for_version(native_tx_version_v1, body_cbor),
+    transaction_commitment: forced_tx_proof_commitment_v1(
+      compact_cbor,
+      submitted.witness_set_compact_cbor,
+      submitted.field_preimage_lengths_cbor,
+    ),
+    submitted_source: submitted,
+  }
+}
+
+fn empty_v1_transaction_with_bounds(start: Int, end: Int) -> MidgardTransaction {
+  let empty = empty_v1_transaction()
+  MidgardTransaction {
+    ..empty,
+    body: MidgardTransactionBody {
+      ..empty.body,
+      validity_interval_start: start,
+      validity_interval_end: end,
+    },
+  }
+}
+
+/// Control for the refusals below: for bounds in the language (`-1` or a slot)
+/// the raw construction is byte-for-byte the encoder's payload, and the mint
+/// admits it. So the only thing the refusals change is the bound itself.
+test raw_bound_payload_matches_the_encoder_and_activates_the_order() {
+  list.all(
+    [Pair(-1, -1), Pair(0, -1), Pair(-1, 5), Pair(5, 100)],
+    fn(bounds) {
+      let Pair(start, end) = bounds
+      let raw = payload_with_raw_bounds(start, end)
+      and {
+        raw == payload(empty_v1_transaction_with_bounds(start, end)),
+        verify_order_material(raw, [], [], certificate_policy_id),
+      }
+    },
+  )
+}
+
+/// A body bound is `-1` (absent) or a non-negative slot (`docs/spec/midgard-tx.md`
+/// §2.1). The order mint decodes the submitted body through the same codec as
+/// every other reader, so an order whose body carries a bound below `-1` cannot
+/// be minted, and no forced leaf or order a proof reads ever carries one.
+test tx_order_mint_refuses_a_submitted_start_below_the_sentinel() fail {
+  verify_order_material(
+    payload_with_raw_bounds(-2, 5),
+    [],
+    [],
+    certificate_policy_id,
+  )
+}
+
+test tx_order_mint_refuses_a_submitted_end_below_the_sentinel() fail {
+  verify_order_material(
+    payload_with_raw_bounds(-1, -5),
+    [],
+    [],
+    certificate_policy_id,
+  )
+}
+
 // -- The burn's empty-vector rule ------------------------------------------
 
 /// A burn reads no material, so it must carry no vector rather than carry one

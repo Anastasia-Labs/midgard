@@ -570,7 +570,7 @@ fn authenticated_forced_tx(
 }
 
 /// The authenticated empty forced transaction, carrying the given native
-/// validity interval scalars (slots; a negative scalar is open).
+/// validity interval scalars (slots; `-1` is open).
 fn authenticated_forced_tx_with_interval(
   verdict: rejection_reason_v1.OperatorVerdictV1,
   validity_interval_start: Int,
@@ -3693,11 +3693,10 @@ test forced_order_with_unbounded_interval_is_due_by_inclusion_time() {
   interval_forced_order_due_by_inclusion_time_only(-1, -1)
 }
 
-// A scalar below -1 decodes and authenticates at order mint; the machine
-// rejects it as `ValidityIntervalMalformed`, so the order is still due.
-test forced_order_with_malformed_negative_interval_is_due_by_inclusion_time() {
-  interval_forced_order_due_by_inclusion_time_only(-2, 5)
-}
+// No case for a bound below -1: the order mint decodes the submitted body and
+// refuses one (`docs/spec/midgard-tx.md` §2.1, #817), so no such order exists
+// for these proofs to read. `tx_order_mint_refuses_a_submitted_start_below_the_sentinel`
+// in `user-events/tx-order-v1.test.ak` pins that.
 
 test forced_order_with_inverted_interval_is_due_by_inclusion_time() {
   interval_forced_order_due_by_inclusion_time_only(
