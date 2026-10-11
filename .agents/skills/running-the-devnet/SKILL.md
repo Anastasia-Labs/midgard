@@ -11,6 +11,11 @@ Before assembling allocation, process cleanup or status scripts, read
 checks ownership/availability and calls the existing generator. Inspect
 `contrib resources list` and `workspace inspect` for other owners. Diagnosis
 collects redacted observations without opening/migrating protocol stores.
+For an acceptance rerun at one pinned commit (devnet-stack stages, phase4
+`up.sh`/`down.sh`, watcher journeys), write a campaign file and use
+`contrib devnet campaign run --input FILE` (`--plan` first) instead of
+hand-written stage scripts; it builds once, freezes the blueprint, bounds and
+logs each stage, and resumes.
 
 A local devnet is **three stacks**, and the first job is naming which one you
 mean. Live Preprod acceptance is a different job: use
