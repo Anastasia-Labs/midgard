@@ -35,7 +35,8 @@ package's pretest builds, makes the blueprint ready where the package reads it
 (copied from a checkout with identical inputs and profile, else built with
 `deployment:build`), requires the local test Postgres where the package's
 tests read it, and assigns an invocation-specific disposable database family,
-dropped when the run ends. Both file and test ordering use the recorded seed.
+dropped when the run ends. File order uses the recorded seed; tests within a
+file run in their declared order, as in CI.
 A name selector records filtered assertions separately from skipped selected
 assertions.
 

@@ -371,8 +371,17 @@ test("a whole-package run is the package's test script: its environment, flags a
     "--exclude=tests/slow*",
     "--exclude=tests/skip*",
     "--maxWorkers=1",
+    "--sequence.seed=1",
+    "--sequence.shuffle.files",
   ])
     assert.ok(run.vitest.includes(flag), flag);
+  // Tests in a file run in their declared order, as in CI: suites whose last
+  // test checks what the earlier ones recorded (the fault-proof lifecycle
+  // coverage gates) failed only under contrib while tests were shuffled.
+  assert.ok(
+    !run.vitest.some((arg) => arg.startsWith("--sequence.shuffle.tests")),
+    run.vitest.join(" "),
+  );
 });
 
 test("a focused run skips the preludes and defaults to the test runtime", async (t) => {
