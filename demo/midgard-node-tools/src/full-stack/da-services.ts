@@ -2,7 +2,7 @@ import { chmod, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { formatL1Origin, parseL1Origin } from "@al-ft/midgard-core/l1-origin";
+import { formatL1Origin } from "@al-ft/midgard-core/l1-origin";
 import {
   generateDaLibp2pRuntimeManifest,
   writeDaLibp2pRuntimeManifest,
@@ -14,6 +14,7 @@ import { configureStackCommittee } from "./committee.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
 import { containerChainSync, shareWithContainers } from "./native-ledger.js";
+import { runL1Origin } from "./origin.js";
 import type { StackProcesses } from "./process.js";
 
 /** Project-scoped, so two stacks on one host never overwrite each other's image. */
@@ -80,18 +81,12 @@ export async function generateDaServices(processes: StackProcesses) {
     );
   // Each committee follower starts from the run's origin, which the origin
   // step restored; without it no committee environment is written.
-  const committeeL1Origin = (() => {
-    const text = env.L1_ORIGIN ?? "";
-    if (text === "")
-      throw new L1OriginUndeterminedError(
-        "the run has no L1 origin yet, so no committee environment is written",
-      );
-    try {
-      return formatL1Origin(parseL1Origin(text, "L1_ORIGIN"));
-    } catch (error) {
-      throw new L1OriginUndeterminedError((error as Error).message);
-    }
-  })();
+  const origin = runL1Origin(env);
+  if (origin === undefined)
+    throw new L1OriginUndeterminedError(
+      "the run has no L1 origin yet, so no committee environment is written",
+    );
+  const committeeL1Origin = formatL1Origin(origin);
   const members = (await configureStackCommittee(config, env)).map((member) => {
     const { signerIndex } = member;
     return {

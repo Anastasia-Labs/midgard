@@ -64,6 +64,22 @@ export async function restoreL1Origin(
   if (origin !== undefined) processes.env.L1_ORIGIN = formatL1Origin(origin);
 }
 
+/**
+ * The run's L1 origin as the origin step restored it into `env`, or
+ * `undefined` before that step; a malformed value is refused.
+ */
+export function runL1Origin(
+  env: Readonly<Record<string, string>>,
+): L1Origin | undefined {
+  const text = env.L1_ORIGIN ?? "";
+  if (text === "") return undefined;
+  try {
+    return parseL1Origin(text, "L1_ORIGIN");
+  } catch (error) {
+    throw new L1OriginUndeterminedError((error as Error).message);
+  }
+}
+
 const requireNonce = (processes: StackProcesses) => {
   const nonceTxHash = processes.env.HUB_ORACLE_ONE_SHOT_TX_HASH;
   if (nonceTxHash === undefined || nonceTxHash === "")

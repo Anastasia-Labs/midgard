@@ -3,13 +3,20 @@ import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { parse } from "dotenv";
-import { parseWatcherProcessConfig } from "midgard-watcher";
+import {
+  parseWatcherConfig,
+  parseWatcherProcessConfig,
+  WATCHER_CONFIG_SCHEMA_VERSION,
+} from "midgard-watcher";
 
+import { buildWatcherConfig } from "../watcher-config.js";
 import { localUrl } from "./config.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { nativeLedgerPaths } from "./native-ledger.js";
+import { runL1Origin } from "./origin.js";
 import type { StackProcesses } from "./process.js";
 import { prepareStackRelease } from "./release.js";
 
@@ -54,26 +61,11 @@ export async function generateWatcherServices(
   const genesisIdentitySha256 = createHash("sha256")
     .update(genesis)
     .digest("hex");
-  const watcherConfig = {
-    ...template.watcherConfig,
-    l1: {
-      ...template.watcherConfig.l1,
-      source: {
-        ...template.watcherConfig.l1.source,
-        chainSync: {
-          ...template.watcherConfig.l1.source.chainSync,
-          genesisIdentitySha256,
-        },
-      },
-    },
-    da: {
-      ...template.watcherConfig.da,
-      peers: [{ identity: "public-retained-da", multiaddr: publicDaMultiaddr }],
-    },
-  };
-  const processConfig = parseWatcherProcessConfig({
-    ...template,
-    watcherConfig,
+  const processConfig = stackWatcherProcessConfig(template, {
+    genesisIdentitySha256,
+    publicDaMultiaddr,
+    // The origin step restored the run's origin before this step runs.
+    l1Origin: runL1Origin(processes.env),
   });
   localUrl(processConfig.operationsEndpoint);
   await writeDurableJson(
@@ -90,6 +82,47 @@ export async function generateWatcherServices(
     l1Directory,
   });
   return { ...source, operationsEndpoint: processConfig.operationsEndpoint };
+}
+
+type WatcherProcessTemplate = ReturnType<typeof parseWatcherProcessConfig>;
+
+/**
+ * The stack watcher's process configuration: the operator template, bound to
+ * this run's genesis, public retained-DA peer and L1 origin.
+ */
+export function stackWatcherProcessConfig(
+  template: WatcherProcessTemplate,
+  run: {
+    genesisIdentitySha256: string;
+    publicDaMultiaddr: string;
+    l1Origin: L1Origin | undefined;
+  },
+) {
+  const base = template.watcherConfig;
+  const { input } = buildWatcherConfig(
+    { WATCHER_CONFIG_SCHEMA_VERSION, parseWatcherConfig },
+    {
+      mode: base.mode,
+      network: base,
+      source: {
+        ...base.l1.source,
+        chainSync: {
+          ...base.l1.source.chainSync,
+          genesisIdentitySha256: run.genesisIdentitySha256,
+        },
+      },
+      origin: run.l1Origin,
+      finalityDepth: base.l1.finality.depth,
+      daPeers: [
+        { identity: "public-retained-da", multiaddr: run.publicDaMultiaddr },
+      ],
+      storagePath: base.storage.path,
+      rollbackAuthorityKeySource: base.storage.rollbackAuthorityKeySource,
+      proverKeySource: base.proverWallet.keySource,
+      limits: base,
+    },
+  );
+  return parseWatcherProcessConfig({ ...template, watcherConfig: input });
 }
 
 const SECRET_MOUNTS = {

@@ -11,6 +11,7 @@ import {
   originStep,
   recordOriginStartHint,
   restoreL1Origin,
+  runL1Origin,
 } from "../src/full-stack/origin.js";
 import { L1OriginUndeterminedError } from "../src/l1-origin.js";
 import {
@@ -149,6 +150,14 @@ describe("full-stack L1 origin", () => {
       L1OriginUndeterminedError,
     );
     await expect(step.reconcile(undefined)).rejects.toThrow(
+      L1OriginUndeterminedError,
+    );
+  });
+
+  it("reads the restored origin the generated configurations start from", () => {
+    expect(runL1Origin({ L1_ORIGIN: ORIGIN_TEXT })).toEqual(origin);
+    expect(runL1Origin({})).toBeUndefined();
+    expect(() => runL1Origin({ L1_ORIGIN: "141" })).toThrow(
       L1OriginUndeterminedError,
     );
   });
