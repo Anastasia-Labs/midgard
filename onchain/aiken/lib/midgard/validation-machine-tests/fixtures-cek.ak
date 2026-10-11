@@ -96,8 +96,8 @@ use midgard/validation_machine_tests/constants.{
   maximum_spend_input_terminal_terminal_chunk_index,
   maximum_spend_input_terminal_transaction_commitment,
   maximum_spend_input_terminal_transaction_id,
-  maximum_spend_input_terminal_witness_set_compact_cbor, validation_context_cbor,
-  zero,
+  maximum_spend_input_terminal_witness_set_compact_cbor, test_l1_slot_config,
+  validation_context_cbor, zero,
 }
 use midgard/validation_machine_tests/fixture_types.{
   CekSelectionFixtureV1, MaximumFieldTerminalFixtureV1,
@@ -288,7 +288,12 @@ pub fn maximum_program_envelope_selection_is_exact() -> Bool {
   let f = maximum_program_envelope_selection_fixture()
   and {
     bytearray.length(cbor.serialise(f.evidence)) < 16_384,
-    vm_one_step.verify_one_step_evidence(f.pre, f.evidence, inline_field_door()),
+    vm_one_step.verify_one_step_evidence(
+      f.pre,
+      f.evidence,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
     !vm_one_step.verify_one_step_evidence(
       f.pre,
       vm_machine_types.ValidationOneStepEvidenceV1 {
@@ -299,6 +304,7 @@ pub fn maximum_program_envelope_selection_is_exact() -> Bool {
         auxiliary: f.evidence.auxiliary,
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }

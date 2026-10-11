@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { inspectContracts } from "@al-ft/midgard-fault-proofs";
 import {
   createReferenceScriptAuthPolicy,
@@ -53,13 +54,18 @@ const buildInspectionFixture = async () => {
     ),
   );
   // This is the production output before reference publication. The inspector
-  // reports identities; live publication admission is tested separately.
-  const deploymentInfo = buildContractDeploymentInfoFromContracts(
-    appliedContracts,
-    referenceScriptAuthPolicyDeploymentInfo(authPolicy),
-    undefined,
-    fraudProofCatalogue,
-  );
+  // reports identities; live publication admission is tested separately. The
+  // manifest wrapping it records the L1 slot mapping the contracts were applied
+  // with (Preprod's).
+  const deploymentInfo = {
+    ...buildContractDeploymentInfoFromContracts(
+      appliedContracts,
+      referenceScriptAuthPolicyDeploymentInfo(authPolicy),
+      undefined,
+      fraudProofCatalogue,
+    ),
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+  };
   return {
     blueprintJson,
     contracts: appliedContracts.fraudProofContracts,

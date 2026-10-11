@@ -10,6 +10,12 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   verifyDeploymentProfileBinding,
 } from ".././deployment-profile.js";
+import {
+  formatL1SlotConfig,
+  l1SlotConfigsEqual,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+  parseL1SlotConfig,
+} from ".././l1-slot-config.js";
 import { prototypeOf } from ".././narrowing.js";
 import {
   parseDeploymentManifestAvailabilityChallenge,
@@ -141,6 +147,25 @@ export const computeDeploymentManifestId = (
   return bytesToHex(sha256(new TextEncoder().encode(stableJson(normalized))));
 };
 
+/**
+ * A named network's manifest must carry that network's static mapping; a
+ * Custom network's is its genesis anchor, checked only for shape here.
+ */
+export const verifyDeploymentManifestL1SlotConfig = (
+  network: unknown,
+  value: unknown,
+): void => {
+  const config = parseL1SlotConfig(value, "Deployment manifest l1SlotConfig");
+  if (network === "Mainnet" || network === "Preprod" || network === "Preview") {
+    const expected = NAMED_NETWORK_L1_SLOT_CONFIGS[network];
+    if (!l1SlotConfigsEqual(config, expected)) {
+      throw new Error(
+        `Deployment manifest l1SlotConfig must equal ${network}'s ${formatL1SlotConfig(expected)}, found ${formatL1SlotConfig(config)}`,
+      );
+    }
+  }
+};
+
 export const verifyDeploymentManifestIdentity = (
   value: unknown,
 ): Record<string, unknown> => {
@@ -175,6 +200,10 @@ export const verifyDeploymentManifestIdentity = (
     );
   }
   parseDeploymentManifestAvailabilityChallenge(candidate.availabilityChallenge);
+  verifyDeploymentManifestL1SlotConfig(
+    candidate.network,
+    candidate.l1SlotConfig,
+  );
   if (
     typeof candidate.manifestId !== "string" ||
     !/^[0-9a-f]{64}$/u.test(candidate.manifestId)

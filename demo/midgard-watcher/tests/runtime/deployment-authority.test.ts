@@ -2,6 +2,7 @@ import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -33,6 +34,7 @@ const TARGET_PARAMETERS = {
 const construction = makeWatcherDeploymentAuthorityFixture();
 const ruleBundle = makeWatcherCanonicalRuleBundle({
   constructionIdentity: {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     manifestId: construction.result.manifestId,
     network: construction.result.network,
     blueprintHash: construction.result.blueprintHash,

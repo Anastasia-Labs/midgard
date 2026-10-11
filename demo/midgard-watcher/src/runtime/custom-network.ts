@@ -1,5 +1,10 @@
 import { isProxy } from "node:util/types";
 
+import {
+  type L1SlotConfig,
+  l1SlotConfigMismatch,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+} from "@al-ft/midgard-core/l1-slot-config";
 import type { SlotConfig } from "@lucid-evolution/lucid";
 
 export type WatcherCustomNetwork = Readonly<{
@@ -61,4 +66,35 @@ export const parseWatcherCustomNetwork = (
       slotLength: clock.slotLength,
     }),
   });
+};
+
+/**
+ * The slot mapping this watcher runs with: Lucid's static mapping for a named
+ * network, the configured genesis clock for a Custom one.
+ */
+export const watcherRuntimeL1SlotConfig = (input: {
+  readonly targetNetwork: "Mainnet" | "Preprod" | "Preview" | "Custom";
+  readonly customNetwork?: WatcherCustomNetwork;
+}): L1SlotConfig => {
+  if (input.targetNetwork !== "Custom")
+    return NAMED_NETWORK_L1_SLOT_CONFIGS[input.targetNetwork];
+  if (input.customNetwork === undefined)
+    throw new Error("Custom network metadata is missing its slot clock");
+  return input.customNetwork.slotConfig;
+};
+
+/**
+ * Refuses a watcher whose slot mapping differs from the deployment's: the
+ * script contexts it replays would carry different validity ranges than the
+ * ones the deployed validator builds.
+ */
+export const assertWatcherL1SlotConfigMatchesDeployment = (
+  deployed: L1SlotConfig,
+  input: Parameters<typeof watcherRuntimeL1SlotConfig>[0],
+): void => {
+  const mismatch = l1SlotConfigMismatch(
+    deployed,
+    watcherRuntimeL1SlotConfig(input),
+  );
+  if (mismatch !== null) throw new Error(mismatch);
 };

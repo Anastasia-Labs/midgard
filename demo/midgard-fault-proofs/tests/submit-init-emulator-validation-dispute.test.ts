@@ -12,6 +12,7 @@ import {
   MIDGARD_ENVELOPE_MEASUREMENTS,
   outRefLabel,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildValidationTraceDisputeFaultProofContracts,
   createReferenceScriptAuthPolicy,
@@ -184,6 +185,7 @@ describe("fault-proof emulator integration", () => {
     lucid.selectWallet.fromSeed(publisher.seedPhrase);
     const contracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
         network,
         hubOraclePolicyId: "11".repeat(28),
@@ -359,6 +361,7 @@ describe("fault-proof emulator integration", () => {
       // transactions.
       const validationDisputeSdkContracts = await Effect.runPromise(
         buildValidationTraceDisputeFaultProofContracts({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
           network,
           hubOraclePolicyId: contracts.hubOracle.policyId,

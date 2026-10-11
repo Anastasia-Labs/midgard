@@ -1,6 +1,10 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
+  type L1SlotConfig,
+  parseL1SlotConfig,
+} from "@al-ft/midgard-core/l1-slot-config";
+import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
@@ -26,6 +30,19 @@ import {
   trieRootHex,
 } from "./inspect-contracts.parse-contract-deployment-info.js";
 import { requireRecord } from "./json-file.js";
+
+/**
+ * The deployment manifest's L1 slot mapping, the parameter the
+ * validation-trace txInfo stage was applied with. Contract deployment info is
+ * the manifest itself, so it carries the root field.
+ */
+export const parseContractDeploymentL1SlotConfig = (
+  value: unknown,
+): L1SlotConfig =>
+  parseL1SlotConfig(
+    requireRecord(value, "Contract deployment info").l1SlotConfig,
+    "Contract deployment info.l1SlotConfig",
+  );
 
 export const parseContractDeploymentReferenceScriptAuthPolicyId = (
   value: unknown,

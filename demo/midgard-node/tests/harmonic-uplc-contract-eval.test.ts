@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import { CEKConst, Machine } from "@harmoniclabs/plutus-machine";
@@ -100,6 +101,7 @@ const loadRealContracts = () =>
         placeholderContracts,
         oneShotOutRef,
         {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           referenceScriptAuth: placeholderContracts.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
           eventHistoryProtectionDurationMs: 2_000n,

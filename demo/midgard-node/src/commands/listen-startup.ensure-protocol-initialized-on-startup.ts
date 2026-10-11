@@ -3,12 +3,20 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect } from "effect";
 
 import { isRetryableProviderError } from "../provider-retry.js";
-import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
+import {
+  assertLucidL1SlotConfigMatchesDeployment,
+  ContractDeploymentIdentity,
+  deploymentL1SlotConfig,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "../services/index.js";
 import {
   AVAILABILITY_REWARD_ACCOUNT_UNREGISTERED,
   DEPLOYMENT_MANIFEST_MISMATCH,
   DEPLOYMENT_MANIFEST_MISSING,
   DEPLOYMENT_MANIFEST_UNVERIFIABLE,
+  L1_SLOT_CONFIG_MISMATCH,
   PROTOCOL_DEPLOYMENT_PARTIAL,
   PROTOCOL_DEPLOYMENT_STATUS_UNAVAILABLE,
   PROTOCOL_INITIALIZATION_FAILED,
@@ -189,7 +197,8 @@ const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
  * Verifies the protocol deployment at startup and, where configured,
  * initializes an empty one. Only the provider reads (the deployment status,
  * the reward accounts) wait out a transient failure, each under its budget.
- * A deployment or manifest verdict, an unregistered reward account, a
+ * A slot mapping other than the deployment's (`l1_slot_config_mismatch`),
+ * a deployment or manifest verdict, an unregistered reward account, a
  * failed reference-script preflight and a failed initialization each fail
  * the startup with its named reason (`StartupStepFailedError`): none of
  * them clears by checking again, and the process's restart runs the whole
@@ -202,6 +211,16 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
     retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
   };
+  // Phase-B and the validation trace build script contexts from the Lucid
+  // slot mapping; the deployed txInfo validator builds them from its own.
+  const identity = yield* ContractDeploymentIdentity;
+  const lucid = yield* Lucid;
+  yield* Effect.try(() =>
+    assertLucidL1SlotConfigMatchesDeployment(
+      deploymentL1SlotConfig(identity, nodeConfig.NETWORK),
+      lucid.api,
+    ),
+  ).pipe(asProtocolStartupStep(L1_SLOT_CONFIG_MISMATCH));
   const manifestReport =
     yield* ContractDeploymentInfo.verifyConfiguredDeploymentManifestIfPresentProgram.pipe(
       asProtocolStartupStep(DEPLOYMENT_MANIFEST_UNVERIFIABLE),
@@ -220,7 +239,6 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     network: nodeConfig.NETWORK,
     runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
   });
-  const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
   const deploymentStatus = yield* fetchProtocolDeploymentStatusWithStartupRetry(
     () => Initialization.fetchProtocolDeploymentStatus(lucid.api, contracts),

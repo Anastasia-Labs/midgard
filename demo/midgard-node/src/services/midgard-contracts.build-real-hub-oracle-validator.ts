@@ -1,3 +1,4 @@
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -22,6 +23,8 @@ export type RealContractDeploymentParameters = {
   readonly availabilityChallengeParameters: SDK.DaAvailabilityParameters;
   readonly eventHistoryBounds: SDK.EventHistoryPayloadBounds;
   readonly eventHistoryProtectionDurationMs: bigint;
+  /** The deployment's L1 slot mapping, a validation-trace validator parameter. */
+  readonly l1SlotConfig: L1SlotConfig;
   readonly daParamsGovernorInitOutRef?: HubOracleOneShotOutRef;
   readonly daParamsMaxCommitteeSize?: number;
   readonly daParamsMaxOwnerCount?: number;

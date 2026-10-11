@@ -32,6 +32,7 @@ export {
   computeDeploymentManifestJsonDigest,
   normalizeDeploymentManifestJsonValue,
   verifyDeploymentManifestIdentity,
+  verifyDeploymentManifestL1SlotConfig,
 } from "./deployment-manifest-identity/identity.js";
 export {
   assertDeploymentMarkerMatches,

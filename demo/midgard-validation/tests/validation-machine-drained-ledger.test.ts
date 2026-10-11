@@ -1,5 +1,6 @@
 import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
@@ -35,6 +36,7 @@ const buildDrainTrace = async (postUtxosRoot: string) => {
   });
   return await Effect.runPromiseExit(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x73)]),
       sourceKind: "forced",

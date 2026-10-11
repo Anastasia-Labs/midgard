@@ -160,6 +160,7 @@ export const authorWatcherDeploymentRelease = async ({
       manifestId: manifest.manifestId,
       network: manifest.network,
       blueprintHash,
+      l1SlotConfig: manifest.l1SlotConfig,
       programCommitments,
     },
     targetParameterSnapshot: manifest.cardanoProtocolParameters.snapshot,

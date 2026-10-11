@@ -12,7 +12,7 @@ Users' L2 transactions follow the data structure defined in \cref{h:midgard-tran
 In particular, users can freely set transaction time-validity intervals according to their preferences.
 The original interval-overlap design permits inclusion when the transaction interval overlaps the block event interval.
 Current transaction validation instead requires the selected \code{block\_slot} to lie inside the transaction interval, and the node derives that slot from the block end time.
-This is a conformance difference, including the POSIX-versus-slot unit issue in \cref{h:deviations-from-cardano-transaction-types}; overlap alone is not sufficient for current admission.
+This is a conformance difference; the interval is in L1 slots, and scripts see it in POSIX milliseconds (\cref{h:deviations-from-cardano-transaction-types}); overlap alone is not sufficient for current admission.
 
 Durable submission does not guarantee validation, inclusion, or confirmation.
 A request can be rejected for ledger or execution rules, conflict with another request, outlive its validity interval, remain queued under capacity constraints, or be censored.

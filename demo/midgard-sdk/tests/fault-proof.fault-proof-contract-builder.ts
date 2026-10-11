@@ -2,6 +2,7 @@ import "./fault-proof.double-spend-fault-proof-contract-builder.js";
 
 import { readFileSync } from "node:fs";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, validatorToAddress } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -56,6 +57,7 @@ describe("fault-proof contract builder", () => {
 
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -743,6 +745,7 @@ describe("fault-proof contract builder", () => {
 
     const contracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28b,

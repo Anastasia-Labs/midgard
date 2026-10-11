@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -23,6 +24,7 @@ export const loadRealMidgardContractsForTest = (
         placeholder,
         oneShotOutRef,
         {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           referenceScriptAuth:
             referenceScriptAuth ?? placeholder.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,

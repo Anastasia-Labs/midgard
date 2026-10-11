@@ -2,6 +2,7 @@
  * Configuration of the commit-time MPF pipeline.
  */
 
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { Effect } from "effect";
 
 import { DatabaseError } from "../database/utils/common.js";
@@ -23,6 +24,8 @@ export type ProcessMpfsConfig = {
     readonly minFeeB: bigint;
     readonly bucketConcurrency: number;
     readonly slotForUnixTime: (unixTimeMs: number) => bigint;
+    /** The slot mapping script contexts carry their validity range in. */
+    readonly l1SlotConfig: L1SlotConfig;
   };
   readonly currentBlockStartTime?: Date;
   /** Fixed source-owned header end, shared by event selection and validation. */

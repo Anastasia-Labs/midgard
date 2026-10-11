@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { expect } from "vitest";
 
@@ -266,6 +267,7 @@ export const admitL2Tx = async (
       pendingWithdrawalOutRefHexes,
       ledgerState,
       phaseBConfig: {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         nowCardanoSlotNo: BigInt(fixture.operatorLucid.currentSlot()),
         bucketConcurrency: 1,
         enforceScriptBudget: true,

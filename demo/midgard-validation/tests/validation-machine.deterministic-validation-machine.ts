@@ -21,6 +21,7 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -96,6 +97,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -359,6 +361,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       const unchangedRoot = root(3);
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...context,
           transactionId: transaction.txId,
           canonicalTransactionCbor: transaction.txCbor,
@@ -440,6 +443,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -766,6 +770,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -852,6 +857,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -976,6 +982,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         });
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...context,
           transactionId: transaction.txId,
           canonicalTransactionCbor: transaction.txCbor,
@@ -1065,6 +1072,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -1163,6 +1171,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -1263,6 +1272,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const unchangedRoot = root(0x35);
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -1339,6 +1349,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -1472,6 +1483,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -1529,6 +1541,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const unchangedRoot = root(0x23);
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -1584,6 +1597,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         sourceKind: "forced",
         transactionId: transaction.txId,
@@ -1641,6 +1655,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -1687,6 +1702,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         sourceKind: "forced",
         transactionId: transaction.txId,
@@ -1778,6 +1794,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       const transaction = makeTransaction();
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...context,
           sourceKind: "forced",
           transactionId: transaction.txId,
@@ -1835,6 +1852,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         sourceKind: "forced",
         transactionId: transaction.txId,
@@ -1908,6 +1926,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const unchangedRoot = root(3);
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
@@ -1969,6 +1988,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     const fundedTrace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...context,
         transactionId: fundedTransaction.txId,
         canonicalTransactionCbor: fundedTransaction.txCbor,
@@ -2003,6 +2023,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     await expect(
       Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...context,
           sourceKind: "forced",
           transactionId: transaction.txId,
@@ -2042,6 +2063,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     await expect(
       Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...base,
           expectedLedgerOps: [],
           expectedVerdict: "rejected",
@@ -2053,6 +2075,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     await expect(
       Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...base,
           expectedLedgerOps: [],
           expectedVerdict: "accepted",
@@ -2069,6 +2092,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
     });
     const input = {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...context,
       sourceKind: "forced" as const,
       transactionId: transaction.txId,
@@ -2204,12 +2228,14 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const [normalTrace, forcedTrace] = await Promise.all([
       Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...fixture.replayBase,
           sourceKind: "normal",
         }),
       ),
       Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...fixture.replayBase,
           canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
             materializeMidgardForcedTxFromCanonical(fixture.transaction.tx),

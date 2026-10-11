@@ -20,6 +20,8 @@ import {
 } from "../deployment-manifest.js";
 import { deploymentEconomicsFromEnvironment } from "../environment.js";
 import {
+  assertLucidL1SlotConfigMatchesDeployment,
+  l1SlotConfigForDerivedDeployment,
   loadRealBlueprintSha256,
   Lucid,
   NodeConfig,
@@ -153,11 +155,25 @@ export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
       new Error("DA threshold does not fit the V1 manifest integer envelope"),
     );
   }
+  // The manifest records the slot mapping the scripts were derived with,
+  // refused unless the ledger Lucid reads runs with the same one.
+  const l1SlotConfig = yield* Effect.try({
+    try: () => {
+      const config = l1SlotConfigForDerivedDeployment(nodeConfig.NETWORK);
+      assertLucidL1SlotConfigMatchesDeployment(config, lucidService.api);
+      return config;
+    },
+    catch: (cause) =>
+      new Error(
+        `Failed to bind the deployment-manifest L1 slot mapping: ${String(cause)}`,
+      ),
+  });
   const blueprintHash = yield* loadRealBlueprintSha256();
   const genesisSnapshot = genesisUtxoIdentitySnapshot(nodeConfig.GENESIS_UTXOS);
   return {
     economics: deploymentEconomicsFromEnvironment(),
     availabilityChallenge: configuredAvailabilityChallenge(),
+    l1SlotConfig,
     cardanoProtocolParameters,
     genesis: {
       headerHash: GENESIS_HEADER_HASH,

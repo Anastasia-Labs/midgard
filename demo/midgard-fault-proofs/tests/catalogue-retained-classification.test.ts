@@ -2,6 +2,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -181,6 +182,7 @@ const setup = async (
     owner: "b1".repeat(28),
   });
   const classifierInput = {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: DEPLOYMENT,
     replayer,
     releaseFinalityAuthority,

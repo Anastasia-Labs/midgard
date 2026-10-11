@@ -5,6 +5,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type QueuedTx,
   RejectCodes,
@@ -163,6 +164,7 @@ describe("phase-a converted fixture signature bridge", () => {
     ]);
     const { accepted, rejected } = await Effect.runPromise(
       runPhaseBValidationWithPatch(phaseA.accepted, preState, {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         nowCardanoSlotNo: 0n,
         bucketConcurrency: 1,
       }),

@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { isMidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   LedgerColumns,
   type PhaseAResult,
@@ -52,6 +53,12 @@ export type LocalPreflightOptions = {
   readonly localPreState?: LocalValidationPreState;
   readonly localPreStateSource?: LocalValidationPreStateSource;
   readonly nowCardanoSlotNo?: bigint | number;
+  /**
+   * The deployment manifest's L1 slot mapping (`l1SlotConfig`). Phase-B
+   * preflight needs it to build Plutus contexts whose `validRange` is in POSIX
+   * time, as the deployment builds them.
+   */
+  readonly l1SlotConfig?: L1SlotConfig;
   readonly validationConcurrency?: number;
   readonly enforceScriptBudget?: boolean;
 };

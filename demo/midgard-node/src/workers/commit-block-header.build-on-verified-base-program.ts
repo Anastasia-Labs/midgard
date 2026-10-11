@@ -613,6 +613,7 @@ export const buildOnVerifiedCommitBaseProgram = (
               BigInt(
                 unixTimeToSlotForConfig(unixTimeMs, proofValidationSlotConfig),
               ),
+            l1SlotConfig: proofValidationSlotConfig,
           },
           selectedBaseUtxoRoot: commitBase.root,
           payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,

@@ -32,8 +32,8 @@ use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
   h_28_a, h_28_b, h_a, h_b, h_c, reject_min_ada_code,
   reject_value_not_preserved_code, target_snapshot_coins_per_utxo_byte,
-  target_snapshot_min_fee_a, target_snapshot_min_fee_b, validation_context_cbor,
-  value_output_descriptor_total_length, zero,
+  target_snapshot_min_fee_a, target_snapshot_min_fee_b, test_l1_slot_config,
+  validation_context_cbor, value_output_descriptor_total_length, zero,
 }
 use midgard/validation_machine_tests/fixtures_ledger.{
   compact_ledger_delta_control, compact_ledger_delta_state,
@@ -788,6 +788,7 @@ test value_and_mint_authenticates_output_descriptor_on_l1() {
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -815,6 +816,7 @@ test value_and_mint_replays_output_descriptor_asset_on_l1() {
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1010,11 +1012,13 @@ test value_and_mint_output_descriptor_admits_exact_min_ada_floor() {
       f.pre,
       value_output_descriptor_advance_evidence(f),
       inline_field_door(),
+      test_l1_slot_config,
     ),
     !vm_one_step.verify_one_step_evidence(
       f.pre,
       value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -1032,11 +1036,13 @@ test value_and_mint_output_descriptor_rejects_min_ada_short_by_one_lovelace() {
       f.pre,
       value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
       inline_field_door(),
+      test_l1_slot_config,
     ),
     !vm_one_step.verify_one_step_evidence(
       f.pre,
       value_output_descriptor_advance_evidence(f),
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -1051,11 +1057,13 @@ test value_and_mint_output_descriptor_rejects_zero_lovelace_output() {
       f.pre,
       value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
       inline_field_door(),
+      test_l1_slot_config,
     ),
     !vm_one_step.verify_one_step_evidence(
       f.pre,
       value_output_descriptor_advance_evidence(f),
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -1076,6 +1084,7 @@ test value_and_mint_output_descriptor_min_ada_code_is_not_interchangeable() {
       reject_value_not_preserved_code,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 

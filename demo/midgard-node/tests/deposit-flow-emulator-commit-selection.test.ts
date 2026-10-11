@@ -4,6 +4,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { describe, expect, it, vi } from "vitest";
 
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
@@ -271,6 +272,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       );
       const phaseB = await Effect.runPromise(
         runPhaseBValidationWithPatch(phaseA.accepted, initialLedger, {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           nowCardanoSlotNo: 0n,
           bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
           enforceScriptBudget: true,
@@ -545,6 +547,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       );
       const phaseB = await Effect.runPromise(
         runPhaseBValidationWithPatch(phaseA.accepted, initialLedger, {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           nowCardanoSlotNo: 0n,
           bucketConcurrency: 1,
           enforceScriptBudget: true,

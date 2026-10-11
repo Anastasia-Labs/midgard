@@ -111,6 +111,7 @@ export const buildDeploymentManifest = (
     l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
     economics: context.economics,
     availabilityChallenge: context.availabilityChallenge,
+    l1SlotConfig: context.l1SlotConfig,
   });
   return parseDeploymentManifestValue(manifest);
 };

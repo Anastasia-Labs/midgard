@@ -356,6 +356,7 @@ export const replayForeignBlock = (deps: {
             canonicalSlotConfigForLucid(lucid.api),
           ),
         ),
+        l1SlotConfig: canonicalSlotConfigForLucid(lucid.api),
       });
       // Only a block that replayed keeps the payload it fetched.
       if (acquired !== undefined)

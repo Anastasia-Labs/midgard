@@ -7,6 +7,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   validateMidgardConsensusForcedTxCbor,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   EventKey,
   validationTraceDescriptorDataFromCore,
@@ -75,6 +76,7 @@ it.each([16384, 16385])(
       },
     };
     const context = {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       blockEndTimeMs: 1750000000000,
       expectedNetworkId: 0n,

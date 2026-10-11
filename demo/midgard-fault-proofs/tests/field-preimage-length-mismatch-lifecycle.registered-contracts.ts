@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildFaultProofContracts,
   buildFieldPreimageLengthMismatchFaultProofContracts,
@@ -155,7 +156,12 @@ export const registeredContracts = async (harness: Harness) => {
   expect(family.fieldPreimageCertificate.policyId).toBe(
     harness.contracts.fieldPreimageCertificate.policyId,
   );
-  const central = await Effect.runPromise(buildFaultProofContracts(params()));
+  const central = await Effect.runPromise(
+    buildFaultProofContracts({
+      ...params(),
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+    }),
+  );
   expectRegisteredChainParity({
     registered,
     applied: central.fieldPreimageLengthMismatch.steps,

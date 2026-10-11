@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   DataConstr,
   DataI,
@@ -79,6 +80,7 @@ export const orderingView = (): {
   );
   return {
     view: {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       txId: Buffer.alloc(32, 0),
       inputs: [],
       referenceInputs: [],

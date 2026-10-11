@@ -1823,6 +1823,7 @@ fn verify_cek_tx_info_finalize(
   execution_cursor: Int,
   completed_cpu: Int,
   completed_memory: Int,
+  slot_config: script_context_v1.L1SlotConfigV1,
 ) -> Bool {
   expect CekTxInfoFinalizeWitness { control } = auxiliary
   let compact = decode_tx_compact_view_v1(
@@ -1830,6 +1831,7 @@ fn verify_cek_tx_info_finalize(
     native_control.compact_cbor,
   )
   let tx_info = script_context_v1.tx_info_from_tail_summary_v1(
+    slot_config,
     context_control.language_tag == 128,
     context_control.spend_items,
     context_control.reference_items,
@@ -1907,6 +1909,7 @@ fn verify_cek_context_step(
   completed_cpu: Int,
   completed_memory: Int,
   door: field_door.MachineFieldDoorV1,
+  slot_config: script_context_v1.L1SlotConfigV1,
 ) -> Bool {
   if context_control.stage == 0 {
     verify_cek_redeemer_selection(
@@ -2042,6 +2045,7 @@ fn verify_cek_context_step(
       execution_cursor,
       completed_cpu,
       completed_memory,
+      slot_config,
     )
   } else if context_control.stage == 13 {
     verify_cek_context_seed(
@@ -2114,6 +2118,7 @@ fn cek_context_v1(
   auxiliary: ValidationAuxiliaryWitnessV1,
   cek: CekWitnessControlV1,
   door: field_door.MachineFieldDoorV1,
+  slot_config: script_context_v1.L1SlotConfigV1,
 ) -> Bool {
   let control = cek.control
   let context_control = cek_context_control_from_cbor(cek.context_control_cbor)
@@ -2135,6 +2140,7 @@ fn cek_context_v1(
       cek.completed_cpu,
       cek.completed_memory,
       door,
+      slot_config,
     ),
   }
 }
@@ -2169,6 +2175,7 @@ pub fn verify_cek(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   door: field_door.MachineFieldDoorV1,
+  slot_config: script_context_v1.L1SlotConfigV1,
 ) -> Bool {
   let cek = cek_witness_control_v1(witness)
   and {
@@ -2176,7 +2183,7 @@ pub fn verify_cek(
     if cek_control_is_core_step_v1(cek) {
       cek_core_v1(pre, witness, auxiliary, cek)
     } else if cek_control_is_context_step_v1(cek) {
-      cek_context_v1(pre, witness, auxiliary, cek, door)
+      cek_context_v1(pre, witness, auxiliary, cek, door, slot_config)
     } else if cek_control_is_finish_v1(cek) {
       cek_finish_v1(pre, witness, auxiliary, cek)
     } else {
@@ -2217,6 +2224,7 @@ pub fn verify_cek_context_step_semantics_v1(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   door: field_door.MachineFieldDoorV1,
+  slot_config: script_context_v1.L1SlotConfigV1,
 ) -> Bool {
   let cek = cek_witness_control_v1(witness)
   and {
@@ -2227,7 +2235,7 @@ pub fn verify_cek_context_step_semantics_v1(
     // instead of being refused, and the four resolvers would not partition
     // the step space by a clean `False`.
     cek_control_is_context_step_v1(cek),
-    cek_context_v1(pre, witness, auxiliary, cek, door),
+    cek_context_v1(pre, witness, auxiliary, cek, door, slot_config),
   }
 }
 

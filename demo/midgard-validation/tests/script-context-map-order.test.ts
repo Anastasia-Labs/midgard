@@ -9,6 +9,7 @@ import {
   encodeMidgardTxOutput,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   Application,
   Builtin,
@@ -295,7 +296,11 @@ const nodeVerdict = async (scenario: Scenario) => {
     runPhaseBValidationWithPatch(
       [candidate],
       new Map([[spent.toString("hex"), spentOutput]]),
-      { nowCardanoSlotNo: 100n, bucketConcurrency: 1 },
+      {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        nowCardanoSlotNo: 100n,
+        bucketConcurrency: 1,
+      },
     ),
   );
   return result.accepted.length === 1
@@ -324,6 +329,7 @@ const proofVerdict = async (
   const preRoot = steps[0]!.preRoot.toString("hex");
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
       sourceKind: "normal",

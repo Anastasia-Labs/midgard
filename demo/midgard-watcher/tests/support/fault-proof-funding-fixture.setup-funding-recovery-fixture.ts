@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   acceptedTransactionSubject,
   authenticatedStateQueueObservationDigest,
@@ -106,6 +107,7 @@ export const setupFundingRecoveryFixture = async (
   });
   const observation = authenticatedHeaderObservation(fixture);
   const classifier = await createHeaderClassifier({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: deploymentIdentity.manifestId,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: finality,

@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   AddressData,
   addressDataFromBech32,
@@ -411,6 +412,7 @@ export const buildMinimalFaultProofContracts = async (
         maxPayloadBytes: bigint;
         maxPayloadNodes: bigint;
       };
+      readonly l1SlotConfig: typeof NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
     }) => Effect.Effect<T, E>,
   ): Promise<T | undefined> => {
     if (!enabled) {
@@ -419,6 +421,7 @@ export const buildMinimalFaultProofContracts = async (
     const familyContracts = await Effect.runPromise(
       build({
         eventHistoryBounds,
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
         network,
         hubOraclePolicyId: hubOracle.policyId,

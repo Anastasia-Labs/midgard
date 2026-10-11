@@ -1,4 +1,5 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { CML } from "@lucid-evolution/lucid";
 
 import { createWorkflowActuationPermitController } from "../src/workflow/actuation-permit.js";
@@ -45,6 +46,7 @@ export const admittedActuation = async () => {
   });
   const observation = authenticatedHeaderObservation(fixture);
   const classifier = await createHeaderClassifier({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: DEPLOYMENT,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: {

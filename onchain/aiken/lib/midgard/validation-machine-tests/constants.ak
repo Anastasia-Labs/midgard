@@ -1,4 +1,5 @@
 use env
+use midgard/script_context_v1
 
 pub const h_a =
   #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -323,3 +324,12 @@ pub const differential_invalid_field_type_code: ByteArray =
 /// `(h_28_a, "beef", 7)` and three lovelace.
 pub const replayed_input_key =
   #"8258200101010101010101010101010101010101010101010101010101010101010101010100"
+
+/// The fixtures' L1 slot config: Preprod's Shelley anchor, matching the
+/// TypeScript fixture generators' slot config.
+pub const test_l1_slot_config =
+  script_context_v1.L1SlotConfigV1 {
+    zero_time: 1655769600000,
+    zero_slot: 86400,
+    slot_length: 1000,
+  }

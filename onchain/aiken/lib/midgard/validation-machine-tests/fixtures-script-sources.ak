@@ -32,7 +32,7 @@ use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
   h_28_a, h_a, maximum_input_schedule_last_key,
   maximum_input_schedule_last_value, maximum_mint_policy_item_cbor,
-  network_mismatch_rejection_code, validation_context_cbor,
+  network_mismatch_rejection_code, test_l1_slot_config, validation_context_cbor,
 }
 use midgard/validation_machine_tests/fixture_types.{
   ResolutionScheduleTerminalVectorV1,
@@ -859,6 +859,7 @@ pub fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
           },
         },
         inline_field_door(),
+        test_l1_slot_config,
       ),
     }
   } else if step_to_verify == 1 {
@@ -874,6 +875,7 @@ pub fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
           auxiliary: vm_machine_types.NoAuxiliaryWitness,
         },
         inline_field_door(),
+        test_l1_slot_config,
       ),
     }
   } else if step_to_verify == 2 {
@@ -900,6 +902,7 @@ pub fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
           },
         },
         inline_field_door(),
+        test_l1_slot_config,
       ),
     }
   } else {
@@ -916,6 +919,7 @@ pub fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
           auxiliary: vm_machine_types.NoAuxiliaryWitness,
         },
         inline_field_door(),
+        test_l1_slot_config,
       ),
     }
   }
@@ -1193,6 +1197,7 @@ pub fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
           },
         },
         inline_field_door(),
+        test_l1_slot_config,
       ),
     }
   } else {
@@ -1209,6 +1214,7 @@ pub fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
           auxiliary: vm_machine_types.NoAuxiliaryWitness,
         },
         inline_field_door(),
+        test_l1_slot_config,
       ),
     }
   }

@@ -12,6 +12,7 @@ use midgard/redeemer_item_proof_v1.{RedeemerItemProofAdvanced}
 use midgard/rejection_reason_v1
 use midgard/validation_machine/machine_types
 use midgard/validation_machine/one_step
+use midgard/validation_machine_tests/constants.{test_l1_slot_config}
 use midgard/validation_machine_tests/fixtures_phase_a.{
   empty_v1_transaction, exact_rejection_post, inline_field_door,
   script_sources_pending_redeemer_item_fixture, singleton_field_item_chunk_proof,
@@ -158,7 +159,12 @@ fn refusal_evidence(data: ByteArray) {
 test constructor_data_refusal_has_one_exact_rejected_successor() {
   let Pair(pre, evidence) = refusal_evidence(#"d8798101")
   and {
-    one_step.verify_one_step_evidence(pre, evidence, inline_field_door()),
+    one_step.verify_one_step_evidence(
+      pre,
+      evidence,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
     !one_step.verify_one_step_evidence(
       pre,
       machine_types.ValidationOneStepEvidenceV1 {
@@ -172,6 +178,7 @@ test constructor_data_refusal_has_one_exact_rejected_successor() {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
     !one_step.verify_one_step_evidence(
       pre,
@@ -183,13 +190,19 @@ test constructor_data_refusal_has_one_exact_rejected_successor() {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
 
 test honest_constructor_cannot_take_refusal_rejected_successor() {
   let Pair(pre, evidence) = refusal_evidence(#"d8799f01ff")
-  !one_step.verify_one_step_evidence(pre, evidence, inline_field_door())
+  !one_step.verify_one_step_evidence(
+    pre,
+    evidence,
+    inline_field_door(),
+    test_l1_slot_config,
+  )
 }
 
 test nested_sequence_refusal_has_exact_successor_and_refuses_truncated_view() {
@@ -206,7 +219,12 @@ test nested_sequence_refusal_has_exact_successor_and_refuses_truncated_view() {
       traversal,
       Some(#"8101"),
     ),
-    one_step.verify_one_step_evidence(pre, evidence, inline_field_door()),
+    one_step.verify_one_step_evidence(
+      pre,
+      evidence,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
     !one_step.verify_one_step_evidence(
       pre,
       machine_types.ValidationOneStepEvidenceV1 {
@@ -217,13 +235,19 @@ test nested_sequence_refusal_has_exact_successor_and_refuses_truncated_view() {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
 
 test honest_nested_sequence_cannot_take_refusal_successor() {
   let Pair(pre, evidence) = refusal_evidence(#"d8799f9f01ffff")
-  !one_step.verify_one_step_evidence(pre, evidence, inline_field_door())
+  !one_step.verify_one_step_evidence(
+    pre,
+    evidence,
+    inline_field_door(),
+    test_l1_slot_config,
+  )
 }
 
 test later_nested_sequence_refusal_has_exact_successor_and_refuses_truncated_view() {
@@ -241,7 +265,12 @@ test later_nested_sequence_refusal_has_exact_successor_and_refuses_truncated_vie
       traversal,
       Some(#"8101"),
     ),
-    one_step.verify_one_step_evidence(pre, evidence, inline_field_door()),
+    one_step.verify_one_step_evidence(
+      pre,
+      evidence,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
     !one_step.verify_one_step_evidence(
       pre,
       machine_types.ValidationOneStepEvidenceV1 {
@@ -252,6 +281,7 @@ test later_nested_sequence_refusal_has_exact_successor_and_refuses_truncated_vie
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -271,7 +301,12 @@ test honest_later_nested_sequence_cannot_take_refusal_successor() {
       traversal,
       Some(#"8101"),
     ),
-    !one_step.verify_one_step_evidence(pre, evidence, inline_field_door()),
+    !one_step.verify_one_step_evidence(
+      pre,
+      evidence,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
   }
 }
 
@@ -282,7 +317,12 @@ fn exact_malformed_successor(data: ByteArray, offset: Int, stage: Int) -> Bool {
   and {
     traversal.offset == offset,
     traversal.stage == stage,
-    one_step.verify_one_step_evidence(pre, evidence, inline_field_door()),
+    one_step.verify_one_step_evidence(
+      pre,
+      evidence,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
     !one_step.verify_one_step_evidence(
       pre,
       machine_types.ValidationOneStepEvidenceV1 {
@@ -296,6 +336,7 @@ fn exact_malformed_successor(data: ByteArray, offset: Int, stage: Int) -> Bool {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
     redeemer_item_proof_v1.step_v1(
       control,
@@ -321,6 +362,7 @@ fn exact_malformed_successor(data: ByteArray, offset: Int, stage: Int) -> Bool {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -357,8 +399,18 @@ test canonical_scalar_and_map_cannot_take_refusal_successor() {
   let Pair(scalar_pre, scalar) = refusal_evidence(#"01")
   let Pair(map_pre, map) = refusal_evidence(#"a10101")
   and {
-    !one_step.verify_one_step_evidence(scalar_pre, scalar, inline_field_door()),
-    !one_step.verify_one_step_evidence(map_pre, map, inline_field_door()),
+    !one_step.verify_one_step_evidence(
+      scalar_pre,
+      scalar,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
+    !one_step.verify_one_step_evidence(
+      map_pre,
+      map,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
   }
 }
 
@@ -366,8 +418,18 @@ test canonical_later_scalar_and_large_fields_cannot_take_refusal_successor() {
   let Pair(scalar_pre, scalar) = refusal_evidence(#"d8799f0101ff")
   let Pair(large_pre, large) = refusal_evidence(#"d8668218809f01ff")
   and {
-    !one_step.verify_one_step_evidence(scalar_pre, scalar, inline_field_door()),
-    !one_step.verify_one_step_evidence(large_pre, large, inline_field_door()),
+    !one_step.verify_one_step_evidence(
+      scalar_pre,
+      scalar,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
+    !one_step.verify_one_step_evidence(
+      large_pre,
+      large,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
   }
 }
 
@@ -419,8 +481,23 @@ test canonical_byte_map_and_tag_cannot_take_refusal_successor() {
   let Pair(map_pre, map) = refusal_evidence(#"a0")
   let Pair(tag_pre, tag) = refusal_evidence(#"d87980")
   and {
-    !one_step.verify_one_step_evidence(bytes_pre, bytes, inline_field_door()),
-    !one_step.verify_one_step_evidence(map_pre, map, inline_field_door()),
-    !one_step.verify_one_step_evidence(tag_pre, tag, inline_field_door()),
+    !one_step.verify_one_step_evidence(
+      bytes_pre,
+      bytes,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
+    !one_step.verify_one_step_evidence(
+      map_pre,
+      map,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
+    !one_step.verify_one_step_evidence(
+      tag_pre,
+      tag,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
   }
 }

@@ -730,25 +730,64 @@ fn bool_data(value: Bool) -> Data {
   )
 }
 
-fn interval_bound_data(value: Int) -> Data {
-  if value < 0 {
-    builtin.constr_data(0, [])
-  } else {
-    builtin.constr_data(1, [builtin.i_data(value)])
-  }
+/// The deployment's L1 slot-to-time mapping, fixed at deploy time as a
+/// parameter of the validator that builds the transaction info. The fields are
+/// those of Lucid's `SlotConfig`: the Shelley-era anchor slot `zero_slot`, its
+/// POSIX time `zero_time` in milliseconds, and the slot length in milliseconds.
+pub type L1SlotConfigV1 {
+  zero_time: Int,
+  zero_slot: Int,
+  slot_length: Int,
 }
 
+/// POSIX milliseconds of an L1 slot on the affine Shelley anchor:
+/// `zero_time + (slot - zero_slot) * slot_length`. This is the ledger's
+/// `slotToPOSIXTime` for every slot from the anchor on; it carries no Byron
+/// segment, so it differs from the ledger only for pre-Shelley slots (see the
+/// time-domain note in `docs/spec/midgard-tx.md`).
+pub fn slot_to_posix_time_v1(slot_config: L1SlotConfigV1, slot: Int) -> Int {
+  slot_config.zero_time + ( slot - slot_config.zero_slot ) * slot_config.slot_length
+}
+
+/// The PlutusV3 `validRange` of a committed body interval, as Cardano's
+/// `transValidityInterval` builds it: finite bounds in POSIX milliseconds, an
+/// inclusive finite lower bound, a strict finite upper bound, and an absent
+/// bound (`-1`) as `NegInf`/`PosInf`, both inclusive (`PV1.from`,
+/// `PV1.always`).
 pub fn validity_interval_summary_v1(
+  slot_config: L1SlotConfigV1,
   start: Int,
   end: Int,
 ) -> cek_data_v1.DataSummaryV1 {
-  builtin.constr_data(
-    0,
-    [
-      builtin.constr_data(0, [interval_bound_data(start), bool_data(True)]),
-      builtin.constr_data(0, [interval_bound_data(end), bool_data(False)]),
-    ],
-  )
+  let lower = if start < 0 {
+    builtin.constr_data(0, [builtin.constr_data(0, []), bool_data(True)])
+  } else {
+    builtin.constr_data(
+      0,
+      [
+        builtin.constr_data(
+          1,
+          [builtin.i_data(slot_to_posix_time_v1(slot_config, start))],
+        ),
+        bool_data(True),
+      ],
+    )
+  }
+  let upper = if end < 0 {
+    builtin.constr_data(0, [builtin.constr_data(2, []), bool_data(True)])
+  } else {
+    builtin.constr_data(
+      0,
+      [
+        builtin.constr_data(
+          1,
+          [builtin.i_data(slot_to_posix_time_v1(slot_config, end))],
+        ),
+        bool_data(False),
+      ],
+    )
+  }
+  builtin.constr_data(0, [lower, upper])
     |> cek_data_v1.semantic_data_summary_v1
 }
 
@@ -888,6 +927,7 @@ pub fn tx_info_tail_fields_summary_v1(
 /// Exact PlutusV3 or MidgardV1 transaction-info root from independently
 /// authenticated field summaries and a previously committed tail fold.
 pub fn tx_info_from_tail_summary_v1(
+  slot_config: L1SlotConfigV1,
   midgard_encoding: Bool,
   inputs: cek_data_v1.DataSequenceSummaryV1,
   reference_inputs: cek_data_v1.DataSequenceSummaryV1,
@@ -903,7 +943,11 @@ pub fn tx_info_from_tail_summary_v1(
   let reference_list = cek_data_v1.list_data_summary_v1(reference_inputs)
   let output_list = cek_data_v1.list_data_summary_v1(outputs)
   let fee_data = fee_summary_v1(fee)
-  let validity = validity_interval_summary_v1(validity_start, validity_end)
+  let validity = validity_interval_summary_v1(
+    slot_config,
+    validity_start,
+    validity_end,
+  )
   let head_fields = if midgard_encoding {
     [input_list, reference_list, output_list, fee_data, validity]
   } else {
@@ -930,6 +974,7 @@ pub fn tx_info_from_tail_summary_v1(
 
 /// Convenience composition used by off-chain mirrors and exactness tests.
 pub fn tx_info_summary_v1(
+  slot_config: L1SlotConfigV1,
   midgard_encoding: Bool,
   inputs: cek_data_v1.DataSequenceSummaryV1,
   reference_inputs: cek_data_v1.DataSequenceSummaryV1,
@@ -944,6 +989,7 @@ pub fn tx_info_summary_v1(
   transaction_id: ByteArray,
 ) -> cek_data_v1.DataSummaryV1 {
   tx_info_from_tail_summary_v1(
+    slot_config,
     midgard_encoding,
     inputs,
     reference_inputs,

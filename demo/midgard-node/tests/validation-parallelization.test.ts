@@ -12,6 +12,7 @@ import {
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildPhaseAValidatedTx,
   decodeMidgardSubmittedTxFromCanonicalCbor,
@@ -310,6 +311,7 @@ describe("validation parallelization", () => {
 
     const { accepted, rejected } = await Effect.runPromise(
       runPhaseBValidationWithPatch([txA, txB, txC], preState, {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         nowCardanoSlotNo: 0n,
         bucketConcurrency: 8,
       }),
@@ -354,6 +356,7 @@ describe("validation parallelization", () => {
     const { accepted: expiredAccepted, rejected: expiredRejected } =
       await Effect.runPromise(
         runPhaseBValidationWithPatch([expired], preState, {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           nowCardanoSlotNo: 120n,
           bucketConcurrency: 1,
         }),
@@ -366,6 +369,7 @@ describe("validation parallelization", () => {
     const { accepted: activeAccepted, rejected: activeRejected } =
       await Effect.runPromise(
         runPhaseBValidationWithPatch([active], preState, {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           nowCardanoSlotNo: 120n,
           bucketConcurrency: 1,
         }),

@@ -12,6 +12,7 @@ import {
   type DeploymentProfile,
   SELECTED_DEPLOYMENT_PROFILE,
 } from ".././deployment-profile.js";
+import type { L1SlotConfig } from ".././l1-slot-config.js";
 import { type DeploymentManifestFraudProofCatalogueIdentity } from "./catalogue-roles.js";
 import {
   type DeploymentManifestEventHistoryRecipe,
@@ -247,6 +248,13 @@ export type DeploymentManifest = {
   readonly deploymentProfile: DeploymentProfile;
   readonly deploymentProfileDigest: string;
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
+  /**
+   * The L1 slot-to-time mapping applied to the transaction-info validator
+   * and required of every role that builds script contexts. A named network
+   * carries Lucid's static mapping; a Custom network anchors slot 0 at its
+   * Shelley genesis start.
+   */
+  readonly l1SlotConfig: L1SlotConfig;
 };
 
 export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
@@ -273,6 +281,7 @@ export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
   "deploymentProfile",
   "deploymentProfileDigest",
   "availabilityChallenge",
+  "l1SlotConfig",
 ] as const);
 
 export type DeploymentManifestJsonValue =

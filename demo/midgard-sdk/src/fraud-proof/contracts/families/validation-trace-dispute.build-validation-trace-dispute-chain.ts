@@ -1,3 +1,4 @@
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -46,6 +47,7 @@ export const buildValidationTraceDisputeChain = ({
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
   referenceScriptAuthPolicyId,
+  l1SlotConfig,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -56,6 +58,7 @@ export const buildValidationTraceDisputeChain = ({
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly referenceScriptAuthPolicyId: string;
+  readonly l1SlotConfig: L1SlotConfig;
 }): Effect.Effect<
   ValidationTraceDisputeFaultProofContracts["validationTraceDispute"],
   Error
@@ -146,6 +149,7 @@ export const buildValidationTraceDisputeChain = ({
           award.spendingScriptHash,
           computationThread.policyId,
           fieldPreimageCertificatePolicyId,
+          l1SlotConfig,
         ),
     );
     const cekContextItemStages = yield* tryBuild(

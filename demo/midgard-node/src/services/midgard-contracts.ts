@@ -36,11 +36,14 @@ export {
   type TxOrderContracts,
 } from "./midgard-contracts.build-real-no-reference-input-first-step-validator.js";
 export {
+  assertLucidL1SlotConfigMatchesDeployment,
   availabilityParametersFromExplicitEnvironment,
   availabilityParametersFromManifest,
   type ContractDeploymentIdentityValue,
+  deploymentL1SlotConfig,
   eventHistoryBoundsFromExplicitEnvironment,
   eventHistoryProtectionDurationFromExplicitEnvironment,
+  l1SlotConfigForDerivedDeployment,
   loadRealBlueprintSha256,
   parseRuntimeDeploymentManifest,
   readRuntimeDeploymentManifestFile,

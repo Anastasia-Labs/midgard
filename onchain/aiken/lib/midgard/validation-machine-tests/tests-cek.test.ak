@@ -50,8 +50,8 @@ use midgard/validation_machine_tests/constants.{
   maximum_observer_terminal_field_preimage_lengths_cbor,
   maximum_observer_terminal_transaction_commitment,
   maximum_observer_terminal_transaction_id,
-  maximum_observer_terminal_witness_set_compact_cbor, validation_context_cbor,
-  zero,
+  maximum_observer_terminal_witness_set_compact_cbor, test_l1_slot_config,
+  validation_context_cbor, zero,
 }
 use midgard/validation_machine_tests/fixtures_cek.{
   cek_active_core_step_fixture, exact_output_descriptor_fixture,
@@ -901,6 +901,7 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1043,6 +1044,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
         },
       ),
       inline_field_door(),
+      test_l1_slot_config,
     ),
     vm_one_step.verify_one_step_evidence(
       opened,
@@ -1056,6 +1058,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
         },
       ),
       inline_field_door(),
+      test_l1_slot_config,
     ),
     vm_one_step.verify_one_step_evidence(
       tail,
@@ -1069,6 +1072,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
         },
       ),
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -1855,6 +1859,7 @@ test cek_context_observer_complete_summary_relation_is_exact() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1914,6 +1919,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
   let asset_items = cek_data_v1.prepend_data_pair_summary_v1(
     builtin.b_data(#"01") |> cek_data_v1.semantic_data_summary_v1,
@@ -1955,6 +1961,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
   let policy_items = cek_data_v1.prepend_data_pair_summary_v1(
     builtin.b_data(h_28_a) |> cek_data_v1.semantic_data_summary_v1,
@@ -1991,6 +1998,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
   and {
     init_step,
@@ -2243,6 +2251,7 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -2372,6 +2381,7 @@ fn cek_context_finalize_with_redeemer_count(redeemer_count: Int) -> Bool {
         vm_machine_types.CekContextFinalizeWitness { redeemer_control },
       ),
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -2524,6 +2534,7 @@ test cek_context_seed_fits_one_step() {
     False,
   )
   let tx_info = script_context_v1.tx_info_summary_v1(
+    test_l1_slot_config,
     False,
     empty_items,
     empty_items,
@@ -2753,6 +2764,7 @@ test cek_context_tx_info_finalize_fits_one_step() {
   )
   let final_context = vm_machine_types.CekFinalContextControlV1 {
     tx_info: script_context_v1.tx_info_from_tail_summary_v1(
+      test_l1_slot_config,
       False,
       empty_items,
       empty_items,
@@ -2847,6 +2859,7 @@ test cek_context_maximum_mint_initializes_from_authenticated_frontier() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -2914,13 +2927,19 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
 test cek_active_core_step_replays_exact_machine_transition() {
   let Pair(pre, evidence) = cek_active_core_step_fixture()
   and {
-    vm_one_step.verify_one_step_evidence(pre, evidence, inline_field_door()),
+    vm_one_step.verify_one_step_evidence(
+      pre,
+      evidence,
+      inline_field_door(),
+      test_l1_slot_config,
+    ),
     !vm_one_step.verify_one_step_evidence(
       pre,
       vm_machine_types.ValidationOneStepEvidenceV1 {
@@ -2934,6 +2953,7 @@ test cek_active_core_step_replays_exact_machine_transition() {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -3096,6 +3116,7 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
         },
       ),
       inline_field_door(),
+      test_l1_slot_config,
     ),
     !vm_one_step.verify_one_step_evidence(
       pre,
@@ -3114,6 +3135,7 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
         },
       ),
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }

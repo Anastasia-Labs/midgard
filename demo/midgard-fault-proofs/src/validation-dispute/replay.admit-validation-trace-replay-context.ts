@@ -13,6 +13,7 @@ import {
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   classifyWithdrawalFromLedger,
@@ -77,10 +78,13 @@ export const admitValidationTraceReplayContext = async ({
   evidence,
   predecessor,
   transitionTraceEvents,
+  l1SlotConfig,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly predecessor?: CompleteCanonicalReplayPredecessor;
   readonly transitionTraceEvents?: TransitionTraceL1Events;
+  /** The deployment manifest's slot mapping, which Plutus contexts use. */
+  readonly l1SlotConfig: L1SlotConfig;
 }): Promise<ValidationTraceReplayContext> => {
   const predecessorEvidence = completeCanonicalReplayPredecessorEvidence({
     evidence,
@@ -385,6 +389,7 @@ export const admitValidationTraceReplayContext = async ({
           minFeeA: current.header.minFeeA,
           minFeeB: current.header.minFeeB,
           blockSlot: current.header.blockSlot,
+          l1SlotConfig,
         }),
       ),
     );

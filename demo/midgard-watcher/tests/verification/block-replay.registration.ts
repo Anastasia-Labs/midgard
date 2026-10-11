@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import {
@@ -32,7 +33,10 @@ const header = { blockSlot: 0n } as Parameters<
   typeof makeWatcherPhaseBConfig
 >[0];
 
-export const config = makeWatcherPhaseBConfig(header);
+export const config = makeWatcherPhaseBConfig(
+  header,
+  NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+);
 
 export const FIXED_KEY = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 7));
 

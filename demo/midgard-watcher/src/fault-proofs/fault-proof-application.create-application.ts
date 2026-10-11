@@ -64,6 +64,7 @@ import {
   bindWatcherDeploymentAuthority,
   readSecret,
   requireCanonicalFile,
+  watcherManifestL1SlotConfig,
 } from "./fault-proof-application.bind-watcher-deployment-authority.js";
 import {
   admittedApplications,
@@ -410,6 +411,10 @@ export function createApplication({
       return await createHeaderClassifier({
         transitionTraceEventAuthority,
         deploymentFingerprint: deploymentIdentity.manifestId,
+        l1SlotConfig: watcherManifestL1SlotConfig(
+          JSON.parse(manifestJson!) as unknown,
+          lucid,
+        ),
         replayer,
         releaseFinalityAuthority:
           watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),

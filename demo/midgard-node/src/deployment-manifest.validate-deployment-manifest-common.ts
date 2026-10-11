@@ -226,6 +226,7 @@ export const parseDeploymentManifestValue = (
       "deploymentProfile",
       "deploymentProfileDigest",
       "availabilityChallenge",
+      "l1SlotConfig",
     ],
     [],
     "value",

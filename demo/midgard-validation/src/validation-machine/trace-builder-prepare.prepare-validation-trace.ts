@@ -264,6 +264,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         ledgerState,
         {
           nowCardanoSlotNo: input.blockSlot,
+          l1SlotConfig: input.l1SlotConfig,
           bucketConcurrency: 1,
           enforceScriptBudget: true,
           maxScriptExecutionSteps:

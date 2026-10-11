@@ -1,3 +1,8 @@
+import {
+  type L1SlotConfig,
+  l1SlotConfigMismatch,
+  parseL1SlotConfig,
+} from "@al-ft/midgard-core/l1-slot-config";
 import { parseContractDeploymentInfo } from "@al-ft/midgard-fault-proofs";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
@@ -72,6 +77,29 @@ export const readSecret = async ({
 };
 
 /**
+ * The deployment manifest's L1 slot mapping, refused unless the watcher's own
+ * Lucid instance runs with exactly that mapping: the script contexts the
+ * watcher replays carry validity ranges in POSIX milliseconds through it, and
+ * a different mapping would replay a different verdict than the deployed
+ * validator reaches.
+ */
+export const watcherManifestL1SlotConfig = (
+  manifest: unknown,
+  lucid: LucidEvolution,
+): L1SlotConfig => {
+  const deployed = parseL1SlotConfig(
+    plainRecord(manifest, "deployment manifest").l1SlotConfig,
+    "deployment manifest l1SlotConfig",
+  );
+  const mismatch = l1SlotConfigMismatch(
+    deployed,
+    parseL1SlotConfig(lucid.config().slotConfig, "watcher L1 slot mapping"),
+  );
+  if (mismatch !== null) throw new Error(mismatch);
+  return deployed;
+};
+
+/**
  * What binds the invocation to the verified deployment and reaches its
  * published scripts: the admitted local-node authority, the manifest,
  * blueprint and deployment info, a Lucid instance over the chain follower and the
@@ -87,6 +115,7 @@ type WatcherDeploymentBinding = Readonly<{
   deploymentInfo: unknown;
   localL1Source: WatcherConfig["l1"]["source"];
   lucid: LucidEvolution;
+  l1SlotConfig: L1SlotConfig;
   resolveReferenceScript: WatcherWorkflowInfrastructure["resolveReferenceScript"];
 }>;
 
@@ -136,12 +165,14 @@ export const bindWatcherDeploymentAuthority = async ({
     slotConfig: watcherConfig.customNetwork?.slotConfig,
     provider: l1.provider,
   });
+  const l1SlotConfig = watcherManifestL1SlotConfig(manifest, lucid);
   return Object.freeze({
     manifest,
     blueprintJson,
     deploymentInfo: deploymentInfoValue,
     localL1Source,
     lucid,
+    l1SlotConfig,
     resolveReferenceScript: async ({ contractName }) =>
       await dependencies.resolveReferenceScript({
         lucid,

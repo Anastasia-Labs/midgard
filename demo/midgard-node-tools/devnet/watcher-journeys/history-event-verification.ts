@@ -115,6 +115,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
   const classifier = await createHeaderClassifier({
     deploymentFingerprint,
     replayer,
+    l1SlotConfig: deployment.manifest.l1SlotConfig,
     releaseFinalityAuthority: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => releaseFinality,

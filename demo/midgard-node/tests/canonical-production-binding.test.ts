@@ -140,6 +140,7 @@ it("binds the eight canonical roles through the closed production manifest and a
     deploymentInfo: {
       contracts: manifest.contracts,
       referenceScriptAuthPolicy: manifest.referenceScriptAuthPolicy,
+      l1SlotConfig: manifest.l1SlotConfig,
     },
     headerHash: "99".repeat(28),
     proverCredential: "aa".repeat(28),
@@ -209,6 +210,7 @@ it("binds the eight canonical roles through the closed production manifest and a
     deploymentInfo: {
       contracts: substituted.contracts,
       referenceScriptAuthPolicy: substituted.referenceScriptAuthPolicy,
+      l1SlotConfig: substituted.l1SlotConfig,
     },
   }).then(
     () => undefined,

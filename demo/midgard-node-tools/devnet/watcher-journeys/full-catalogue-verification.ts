@@ -6,6 +6,7 @@ import {
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -226,6 +227,8 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
   const classifier = await createHeaderClassifier({
     deploymentFingerprint,
     replayer,
+    // The fixture's synthetic network is Preprod (above).
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     releaseFinalityAuthority: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => releaseFinality,

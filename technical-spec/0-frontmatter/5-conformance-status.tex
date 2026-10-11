@@ -20,7 +20,7 @@ Known launch-critical work includes complete and correctly bound proof coverage 
 \paragraph{Source-review differences requiring resolution.}
 The relevant sections distinguish retained requirements from current behavior:
 \begin{itemize}
-  \item Transaction validity: POSIX interval wording, interval containment, and the implemented block-slot test are not interchangeable; see \cref{h:midgard-native-transaction-wire-format,rule:transaction-validity-range}.
+  \item Transaction validity: interval containment and the implemented block-slot test are not interchangeable; interval scalars are L1 slots and scripts see them in POSIX milliseconds; see \cref{h:deviations-from-cardano-transaction-types,rule:transaction-validity-range}.
   \item Scheduler advancement: current permissionless catch-up differs from the original contiguous-shift and early-consent conditions; see \cref{h:scheduler}.
   \item User-event witness authorization: current certificate-index checks differ from the original mutual redeemer-coupling description; see \cref{h:witness}.
   \item Transaction-order settlement: the current spend-side burn-redeemer decoding does not match the mint wrapper; see \cref{h:transaction-order}.

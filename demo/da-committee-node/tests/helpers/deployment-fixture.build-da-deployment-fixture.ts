@@ -25,6 +25,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -278,6 +279,7 @@ export const buildDaDeploymentFixture = async (
     deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
     deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
     network: "Preprod",
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     cardanoProtocolParameters: {
       snapshot: cardanoProtocolParameterSnapshot,
       digest: computeDeploymentManifestJsonDigest(

@@ -1,4 +1,5 @@
 import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { LedgerEntry } from "@al-ft/midgard-validation";
 
 import type { ProtocolScriptLanguage } from "../provider.js";
@@ -89,6 +90,12 @@ export type CompleteOptions = {
   readonly localPreState?: LocalValidationPreState;
   readonly localPreStateSource?: LocalValidationPreStateSource;
   readonly nowCardanoSlotNo?: bigint | number;
+  /**
+   * The deployment manifest's L1 slot mapping (`l1SlotConfig`). Phase-B
+   * preflight needs it to build Plutus contexts whose `validRange` is in POSIX
+   * time, as the deployment builds them.
+   */
+  readonly l1SlotConfig?: L1SlotConfig;
   readonly validationConcurrency?: number;
   readonly enforceScriptBudget?: boolean;
   readonly maxFeeIterations?: number;

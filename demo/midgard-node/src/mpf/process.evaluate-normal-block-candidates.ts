@@ -1,4 +1,5 @@
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type LocalScriptEvaluation,
   type PhaseAValidatedTx,
@@ -14,12 +15,14 @@ export const evaluateNormalBlockCandidates = (input: {
   readonly candidates: readonly PhaseAValidatedTx[];
   readonly state: Map<string, Buffer>;
   readonly blockSlot: bigint;
+  readonly l1SlotConfig: L1SlotConfig;
   readonly bucketConcurrency: number;
   readonly consensusProfile: MidgardConsensusProfile;
   readonly scriptEvaluationsByTxId: Map<string, LocalScriptEvaluation[]>;
 }) =>
   runPhaseBValidationWithPatch(input.candidates, input.state, {
     nowCardanoSlotNo: input.blockSlot,
+    l1SlotConfig: input.l1SlotConfig,
     bucketConcurrency: input.bucketConcurrency,
     enforceScriptBudget: true,
     maxScriptExecutionSteps:

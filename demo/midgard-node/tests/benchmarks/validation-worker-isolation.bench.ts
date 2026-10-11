@@ -23,6 +23,7 @@ import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   processedTxFromValidatedTx,
   runPhaseAValidation,
@@ -119,6 +120,7 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
       expect(inline.rejected).toHaveLength(0);
       const inlinePhaseB = await Effect.runPromise(
         runPhaseBValidationWithPatch(inline.accepted, preState, {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           nowCardanoSlotNo: 0n,
           bucketConcurrency: 1,
         }),
@@ -171,6 +173,7 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
         const warmPhaseA = await runPoolPhaseA(pool, queued);
         const warmPhaseB = await Effect.runPromise(
           runPhaseBValidationWithPatch(warmPhaseA.result.accepted, preState, {
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             nowCardanoSlotNo: 0n,
             bucketConcurrency: poolSize,
           }),
@@ -195,6 +198,7 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
                 warmupWorker.result.accepted,
                 preState,
                 {
+                  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
                   nowCardanoSlotNo: 0n,
                   bucketConcurrency: poolSize,
                 },
@@ -261,6 +265,7 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
           );
           const phaseB = await Effect.runPromise(
             runPhaseBValidationWithPatch(worker.result.accepted, preState, {
+              l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
               nowCardanoSlotNo: 0n,
               bucketConcurrency: poolSize,
             }),
@@ -528,6 +533,7 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
                 phaseA.result.accepted,
                 databasePreState,
                 {
+                  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
                   nowCardanoSlotNo: 0n,
                   bucketConcurrency: poolSize,
                 },

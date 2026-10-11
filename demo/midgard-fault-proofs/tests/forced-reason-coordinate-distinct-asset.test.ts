@@ -3,6 +3,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   RejectCodes,
@@ -93,7 +94,12 @@ const nodeNormalRejection = async (crossing: CrossingScenario) => {
           output,
         ]),
       ),
-      { nowCardanoSlotNo: 0n, bucketConcurrency: 1, enforceScriptBudget: true },
+      {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        nowCardanoSlotNo: 0n,
+        bucketConcurrency: 1,
+        enforceScriptBudget: true,
+      },
     ),
   );
   expect(phaseB.rejected).toHaveLength(1);

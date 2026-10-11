@@ -232,6 +232,7 @@ export const classifyForcedTransactions = <R>({
               effectiveEndTime.getTime(),
             ),
             bucketConcurrency: validation.bucketConcurrency,
+            l1SlotConfig: validation.l1SlotConfig,
             enforceScriptBudget: true,
             maxScriptExecutionSteps:
               consensusProfile.limits.maxValidationMachineStepCount,

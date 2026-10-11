@@ -7,6 +7,7 @@ import {
   assertNodeFollowerEnvironment,
   L1OriginUndeterminedError,
 } from "../l1-origin.js";
+import { readDevnetCustomNetwork } from "./chain.js";
 import type { Identities } from "./identities.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 
@@ -72,6 +73,11 @@ export const nodeEnvironment = (input: {
     : undefined;
   const deploymentManifest =
     role === "listen" ? layout.producerManifest : contractManifest;
+  // A derived deployment on a Custom network takes the run's genesis slot
+  // mapping; the node has no default for it.
+  const l1SlotConfig = existsSync(layout.shelleyGenesis)
+    ? readDevnetCustomNetwork(layout).slotConfig
+    : undefined;
   const env: Record<string, string> = {
     MIDGARD_DOTENV_MODE: "disabled",
     NETWORK: "Custom",
@@ -94,6 +100,9 @@ export const nodeEnvironment = (input: {
     DA_THRESHOLD: String(DA_THRESHOLD),
     DA_LIBP2P_PRIVATE_KEY_SOURCE: `seed:${identities.libp2p.producer}`,
     ...DEPLOYMENT_PARAMETERS,
+    ...(l1SlotConfig === undefined
+      ? {}
+      : { MIDGARD_L1_SLOT_CONFIG: JSON.stringify(l1SlotConfig) }),
     POSTGRES_HOST: "127.0.0.1",
     POSTGRES_PORT: String(run.postgresPort),
     POSTGRES_USER: run.postgresUser,

@@ -15,6 +15,7 @@ import {
   verifyFinalizedDeploymentManifest,
   verifyReferenceScriptPublicationAuthority,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
@@ -386,6 +387,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   );
   const daParams = await Effect.runPromise(deriveOperatorDaParams(nodeConfig));
   const manifest = buildDeploymentManifest(deploymentInfo, {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     network,
     referenceScriptDeployAddress: walletAddress,
     hubOracleOneShotTxHash: nonce.txHash,

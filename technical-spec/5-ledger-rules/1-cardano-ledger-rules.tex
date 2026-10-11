@@ -164,7 +164,7 @@ Fraud proof construction:
 \end{enumerate}
 
 \subsection{Rule: Transaction validity range}
-\label{rule:transaction-validity-range}\paragraph{Conformance gap.} The formula below requires interval containment, whereas the accompanying original violation prose used non-overlap. Current validation tests the authenticated \code{block\_slot} against transaction validity scalars. These are distinct predicates; the POSIX/slot boundary noted in \cref{h:midgard-native-transaction-wire-format} must be reconciled rather than assuming this formula is enforced.
+\label{rule:transaction-validity-range}\paragraph{Conformance gap.} The formula below requires interval containment, whereas the accompanying original violation prose used non-overlap. Current validation tests the authenticated \code{block\_slot} against transaction validity scalars, which are L1 slots (scripts see them in POSIX milliseconds; see \cref{h:deviations-from-cardano-transaction-types}). These are distinct predicates; this formula must not be assumed enforced.
 Every valid transaction in the ledger must be included at a timestamp that conforms to the validity range that the transaction prescribes.
 Formal specification:
 \begin{empheq}[box=\ledgerRuleBox]{equation*}

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   admitAuthenticatedStateQueueHeaderObservation,
   type AuthenticatedStateQueueHeaderObservation,
@@ -202,6 +203,7 @@ export const admittedClassifiers = new WeakMap<
     replayer: CompleteCanonicalReplay;
     confirmationDepth: number;
     transitionTraceEventAuthority?: TransitionTraceEventAuthority;
+    l1SlotConfig: L1SlotConfig;
   }>
 >();
 

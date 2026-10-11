@@ -20,6 +20,7 @@ import {
   expectScriptHash,
   inspectEmbeddedDeploymentScriptIdentity,
   optionalDeploymentScriptHash,
+  parseContractDeploymentL1SlotConfig,
   parseContractDeploymentReferenceScriptAuthPolicyId,
   requireDeploymentScriptHash,
 } from "./inspect-contracts.inspect-fraud-proof-catalogue-category-readiness.js";
@@ -139,6 +140,7 @@ export const inspectContracts = ({
           deploymentInfo,
           "V1 fraud-proof min-ada step-02",
         ),
+      l1SlotConfig: parseContractDeploymentL1SlotConfig(deploymentInfo),
     });
 
     for (const [category, entry] of [

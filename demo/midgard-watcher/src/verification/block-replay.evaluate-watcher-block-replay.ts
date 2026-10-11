@@ -210,7 +210,7 @@ export const evaluateWatcherBlockReplay = async (
       transitionTrace: evidence.reconstruction.transitionTrace,
       eventToStep: evidence.reconstruction.eventToStep,
     });
-    config = makeWatcherPhaseBConfig(evidence.header);
+    config = makeWatcherPhaseBConfig(evidence.header, ruleBundle.l1SlotConfig);
   } catch (error) {
     return admitFullBlockReplayResult(
       errorResult([reasonCodeOf(error)], context, transactionCount),

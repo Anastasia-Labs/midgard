@@ -39,6 +39,7 @@ import {
   bindWatcherRetainedDaOperations,
   type WatcherRetainedDaOperationsBinding,
 } from "../storage/retained-da-runtime.js";
+import { assertWatcherL1SlotConfigMatchesDeployment } from "./custom-network.js";
 import {
   readWatcherUserEventScriptBinding,
   verifyWatcherUserEventScriptBinding,
@@ -182,6 +183,12 @@ export const startWatcherRuntime = async (
       watcherDeploymentProtocolScriptAuthority(deploymentIdentity);
     const blueprintBytes = await readFile(
       input.config.faultProofInfrastructure.blueprintPath,
+    );
+    await refusePermanently("l1_slot_config", () =>
+      assertWatcherL1SlotConfigMatchesDeployment(
+        deploymentAuthority.ruleBundle.ruleBundle.l1SlotConfig,
+        watcherConfig,
+      ),
     );
     const userEventScripts = await refusePermanently("user_event_scripts", () =>
       readWatcherUserEventScriptBinding({

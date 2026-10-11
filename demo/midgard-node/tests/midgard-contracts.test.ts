@@ -13,6 +13,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import {
@@ -69,6 +70,7 @@ describe("midgard contracts registry", () => {
   const cardanoSnapshot = TEST_CARDANO_PROTOCOL_PARAMETERS;
   const daVkey = "11".repeat(32);
   const manifestIdentityContext: DeploymentManifestIdentityContext = {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
     economics:
       DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
@@ -110,6 +112,7 @@ describe("midgard contracts registry", () => {
         placeholderContracts,
         { ...oneShotOutRef },
         {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           referenceScriptAuth: placeholderContracts.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
           eventHistoryProtectionDurationMs: 2_000n,
@@ -132,8 +135,10 @@ describe("midgard contracts registry", () => {
       // missingScriptSource), by deleting the cross-block family, by the
       // neglected-event strike rule (scheduler, so active operators and the
       // state queue built on it), by the forced due-window fix
-      // (transition trace) and by raising the new-shift inactivity grace to
-      // the maximum validity range (scheduler spend only).
+      // (transition trace), by raising the new-shift inactivity grace to
+      // the maximum validity range (scheduler spend only) and by applying the
+      // validation-trace txInfo stage with the L1 slot mapping (POSIX-ms
+      // validity ranges; the stages and dispute roles bound to it).
       expect
         .soft(
           createHash("sha256")
@@ -143,7 +148,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "248d28ac5e0730f685256aafbc64909962fc1cbfe935b0028d48796856fb65f1",
+          "115a1b208da69d48abb7fb6939c3cb6be12056b2eb24769d3a6191a1c5f97b58",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
@@ -271,6 +276,7 @@ describe("midgard contracts registry", () => {
             outputIndex: -1,
           },
           {
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             referenceScriptAuth: placeholderContracts.referenceScriptAuth,
             availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
             eventHistoryProtectionDurationMs: 2_000n,
@@ -364,6 +370,7 @@ describe("midgard contracts registry", () => {
               contracts,
               oneShotOutRef,
               {
+                l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
                 referenceScriptAuth: contracts.referenceScriptAuth,
                 availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
                 eventHistoryProtectionDurationMs: 2_000n,

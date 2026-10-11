@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -45,6 +46,7 @@ export const classifyDoubleSpend = async (seed = 91) => {
     confirmationDepth: 30,
   };
   const classifier = await createHeaderClassifier({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: deploymentIdentity.manifestId,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority:

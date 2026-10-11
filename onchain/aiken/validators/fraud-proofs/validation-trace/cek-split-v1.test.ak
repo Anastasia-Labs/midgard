@@ -102,6 +102,7 @@ use midgard/validation_machine/shared.{
 }
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
+use midgard/validation_machine_tests/constants.{test_l1_slot_config}
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1.{
   PreparedValidationResolutionStateV1, ValidationResolutionStateV1,
@@ -1504,6 +1505,7 @@ fn run_context_step(
         reference_inputs: tx.reference_inputs,
         certificate_policy_id: fixture.test_certificate_policy_id,
       },
+      test_l1_slot_config,
     ),
     fixture.own_out_ref(),
     tx,
@@ -1851,6 +1853,7 @@ test native_only_selection_is_an_honest_machine_step() {
       reference_inputs: [],
       certificate_policy_id: #"",
     },
+    test_l1_slot_config,
   )
 }
 
@@ -1950,6 +1953,7 @@ test every_fixture_is_an_honest_machine_step() {
         auxiliary: NoAuxiliaryWitness,
       },
       door,
+      test_l1_slot_config,
     ),
     vm_one_step.verify_cek_one_step_v1(
       selection_fixture().pre,
@@ -1958,6 +1962,7 @@ test every_fixture_is_an_honest_machine_step() {
         auxiliary: selection_fixture().auxiliary,
       },
       door,
+      test_l1_slot_config,
     ),
     vm_one_step.verify_cek_one_step_v1(
       context_step_fixture().pre,
@@ -1966,6 +1971,7 @@ test every_fixture_is_an_honest_machine_step() {
         auxiliary: NoAuxiliaryWitness,
       },
       door,
+      test_l1_slot_config,
     ),
     vm_one_step.verify_cek_one_step_v1(
       core_step_fixture().pre,
@@ -1974,6 +1980,7 @@ test every_fixture_is_an_honest_machine_step() {
         auxiliary: core_step_fixture().auxiliary,
       },
       door,
+      test_l1_slot_config,
     ),
   }
 }

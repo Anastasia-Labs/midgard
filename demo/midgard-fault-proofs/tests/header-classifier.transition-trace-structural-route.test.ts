@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -181,6 +182,7 @@ const classify = async ({
   const classifier = await createHeaderClassifier(
     installed
       ? {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           deploymentFingerprint: DEPLOYMENT,
           replayer: createCatalogueCompleteCanonicalReplay({
             history: { deposit: history, withdrawal: history },
@@ -203,6 +205,7 @@ const classify = async ({
             }),
         }
       : {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           deploymentFingerprint: DEPLOYMENT,
           replayer: NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
           releaseFinalityAuthority,

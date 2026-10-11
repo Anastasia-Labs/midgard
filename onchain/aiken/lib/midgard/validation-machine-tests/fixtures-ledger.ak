@@ -26,7 +26,8 @@ use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
   h_28_a, h_28_b, h_a, h_b, h_c, reject_min_fee_code,
   reject_value_not_preserved_code, target_snapshot_validation_context_cbor,
-  validation_context_cbor, value_output_descriptor_total_length, zero,
+  test_l1_slot_config, validation_context_cbor,
+  value_output_descriptor_total_length, zero,
 }
 use midgard/validation_machine_tests/fixture_types.{
   ValueOutputDescriptorFixture,
@@ -593,6 +594,7 @@ pub fn target_snapshot_min_fee_step_is_provable(
       claimed_successor,
     },
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 

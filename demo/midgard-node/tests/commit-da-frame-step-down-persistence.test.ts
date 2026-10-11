@@ -5,6 +5,7 @@ import {
   encodeMidgardTxOutput,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
@@ -310,6 +311,7 @@ const build = (txs: readonly EntryWithTimeStamp[]) =>
         selectedBaseUtxoRoot: "11".repeat(32),
         nativeMpf: { handle: { baseRoot: "22".repeat(32) } } as never,
         forcedValidation: {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,

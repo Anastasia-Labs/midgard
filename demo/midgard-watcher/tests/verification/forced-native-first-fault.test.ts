@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { forcedRejectionReason } from "@al-ft/midgard-fault-proofs";
 import {
   nativeFaultContext,
@@ -45,6 +46,7 @@ it.each([
         strictnessProfile: "phase1_midgard",
       },
       phaseBConfig: {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         nowCardanoSlotNo: 100n,
         bucketConcurrency: 1,
         enforceScriptBudget: true,

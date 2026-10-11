@@ -9,6 +9,7 @@ import {
   buildWatcherConfig,
   DEVNET_WATCHER_LIMITS,
 } from "../watcher-config.js";
+import { readDevnetCustomNetwork } from "./chain.js";
 import { LOCAL_AUTHORITY_ID } from "./da.js";
 import type { DeployContext } from "./deploy.js";
 import { recordedL1Origin } from "./deployment-origin.js";
@@ -78,30 +79,6 @@ const ensureSecrets = (context: DeployContext, allowMissing: boolean) => {
   return secrets;
 };
 
-const customNetwork = (layout: Layout) => {
-  const genesis = JSON.parse(readFileSync(layout.shelleyGenesis, "utf8")) as {
-    networkMagic: number;
-    systemStart: string;
-    slotLength: number;
-  };
-  const slotLength = Math.round(genesis.slotLength * 1000);
-  if (
-    Math.abs(slotLength - genesis.slotLength * 1000) > 1e-6 ||
-    slotLength <= 0
-  )
-    throw new Error(
-      "the shelley genesis slot length is not a whole number of milliseconds",
-    );
-  return {
-    networkMagic: genesis.networkMagic,
-    slotConfig: {
-      zeroTime: Date.parse(genesis.systemStart),
-      zeroSlot: 0,
-      slotLength,
-    },
-  };
-};
-
 /** The public retained-DA reader, as the committee's runtime manifest announces it. */
 const retainedDaPeer = (layout: Layout) => {
   const manifest = JSON.parse(
@@ -163,7 +140,10 @@ const watcherConfigs = (
   const paths = releasePaths(layout);
   const { input: watcherInput } = buildWatcherConfig(watcher, {
     mode: "acceptance",
-    network: { targetNetwork: "Custom", customNetwork: customNetwork(layout) },
+    network: {
+      targetNetwork: "Custom",
+      customNetwork: readDevnetCustomNetwork(layout),
+    },
     source: {
       sourceMode: "local_node",
       authorityNodeId: LOCAL_AUTHORITY_ID,

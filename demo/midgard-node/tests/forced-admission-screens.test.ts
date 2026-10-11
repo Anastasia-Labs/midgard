@@ -15,6 +15,7 @@ import {
   validateMidgardConsensusForcedTxCbor,
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   hashMidgardValidationRejectionCode,
   MidgardValidationPhase,
@@ -50,6 +51,7 @@ import {
 const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
 const time = new Date("2026-07-23T12:01:00.000Z");
 const validation = {
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   expectedNetworkId: 0n,
   minFeeA: 0n,
   minFeeB: 0n,
@@ -214,6 +216,7 @@ describe("forced admission screens", () => {
         priorRoot;
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
           transactionId: transaction.transactionId,
@@ -292,6 +295,7 @@ describe("forced admission screens", () => {
       if (shape === "malformed native") {
         const [retained] = await Effect.runPromise(
           buildDeterministicValidationTraceMembers({
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             blockEndTime: time,
             expectedNetworkId: 0n,
@@ -326,6 +330,7 @@ describe("forced admission screens", () => {
       const mismatched = await Effect.runPromise(
         Effect.either(
           buildDeterministicValidationMachineTrace({
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
             transactionId: transaction.transactionId,

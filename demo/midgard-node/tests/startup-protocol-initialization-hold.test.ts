@@ -5,18 +5,29 @@
  * unregistered availability-challenge reward account is a verdict and fails
  * the startup at once under `availability_reward_account_unregistered`; a
  * reward-account read that stays unavailable past the budget fails it under
- * `reward_account_status_unavailable`. The deployment's reads are stubbed;
- * the check's own logic runs.
+ * `reward_account_status_unavailable`. A Lucid slot mapping other than the
+ * deployment's fails it at once under `l1_slot_config_mismatch`, before any
+ * read. The deployment's reads are stubbed; the check's own logic runs.
  */
+import {
+  type L1SlotConfig,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+} from "@al-ft/midgard-core/l1-slot-config";
 import { Effect, Exit } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ensureProtocolInitializedOnStartup } from "../src/commands/listen-startup.js";
-import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
+import {
+  ContractDeploymentIdentity,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "../src/services/index.js";
 import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import {
   AVAILABILITY_REWARD_ACCOUNT_UNREGISTERED,
   findStartupStepFailure,
+  L1_SLOT_CONFIG_MISMATCH,
   REWARD_ACCOUNT_STATUS_UNAVAILABLE,
   StartupWaitingReporter,
 } from "../src/services/startup-waiting.js";
@@ -112,8 +123,17 @@ vi.mock("../src/transactions/reference-scripts.js", async (original) => {
 
 const MAX_ATTEMPTS = 4;
 
+const PREPROD = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
+
 /** Runs the check with every startup report recorded. */
-const runCheck = async () => {
+const runCheck = async (
+  slots: {
+    /** The mapping the node's Lucid reads from the ledger. */
+    readonly lucid?: L1SlotConfig;
+    /** The manifest's mapping; absent selects a derived Preprod bundle. */
+    readonly manifest?: L1SlotConfig;
+  } = { lucid: PREPROD, manifest: PREPROD },
+) => {
   const reported: [string, readonly string[]][] = [];
   const exit = await Effect.runPromiseExit(
     ensureProtocolInitializedOnStartup.pipe(
@@ -125,9 +145,18 @@ const runCheck = async () => {
         STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS: 0,
       } as unknown as NodeConfig["Type"]),
       Effect.provideService(Lucid, {
-        api: {},
+        api: { config: () => ({ slotConfig: slots.lucid ?? PREPROD }) },
         referenceScriptsAddress: "addr_test",
       } as unknown as Lucid),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        (slots.manifest === undefined
+          ? { kind: "derived" }
+          : {
+              kind: "manifest",
+              manifest: { l1SlotConfig: slots.manifest },
+            }) as unknown as ContractDeploymentIdentity,
+      ),
       Effect.provideService(
         MidgardContracts,
         {} as unknown as MidgardContracts,
@@ -154,6 +183,38 @@ beforeEach(() => {
 });
 
 describe("the startup protocol check", () => {
+  it("fails the startup at once under l1_slot_config_mismatch when Lucid's slot mapping differs from the manifest's, reading nothing", async () => {
+    stub.failures = 0;
+    const { exit, reported, failure } = await runCheck({
+      lucid: { ...PREPROD, zeroTime: PREPROD.zeroTime + 1_000 },
+      manifest: PREPROD,
+    });
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(failure).toMatchObject({
+      step: "protocol_initialization",
+      reason: L1_SLOT_CONFIG_MISMATCH,
+      exhausted: false,
+    });
+    expect(failure?.message).toMatch(/l1_slot_config_mismatch: runtime/u);
+    expect(stub.statusReads).toBe(0);
+    expect(stub.registrationChecks).toBe(0);
+    expect(reported).toEqual([]);
+  });
+
+  it("checks the deployment when Lucid's slot mapping is the manifest's or, for a derived bundle, the network's", async () => {
+    stub.failures = 0;
+    expect(Exit.isSuccess((await runCheck()).exit)).toBe(true);
+    expect(Exit.isSuccess((await runCheck({ lucid: PREPROD })).exit)).toBe(
+      true,
+    );
+    const derivedMismatch = await runCheck({
+      lucid: NAMED_NETWORK_L1_SLOT_CONFIGS.Preview,
+    });
+    expect(derivedMismatch.failure).toMatchObject({
+      reason: L1_SLOT_CONFIG_MISMATCH,
+    });
+  });
+
   it("fails the startup at once on an unregistered reward account, without checking again", async () => {
     stub.failure = "unregistered";
     stub.failures = 2;

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { keyValuePhasRootWithCount } from "@al-ft/midgard-fault-proofs";
 import type { EventKey } from "@al-ft/midgard-sdk";
 import {
@@ -107,16 +108,20 @@ export const watcherBlockReplayPriorState = async (
 export const WATCHER_BLOCK_REPLAY_BUCKET_CONCURRENCY = 1 as const;
 
 /**
- * Builds the canonical `PhaseBConfig` from the L1-committed header. Nothing
- * here is a policy choice by the watcher: the slot is a header field and the
- * other two values are pinned constants that cannot change a verdict's
- * direction.
+ * Builds the canonical `PhaseBConfig` from the L1-committed header and the
+ * signed rule bundle. Nothing here is a policy choice by the watcher: the slot
+ * is a header field, the slot mapping is the deployment's, and the other two
+ * values are pinned constants that cannot change a verdict's direction.
  */
-export const makeWatcherPhaseBConfig = (header: Header): PhaseBConfig =>
+export const makeWatcherPhaseBConfig = (
+  header: Header,
+  l1SlotConfig: L1SlotConfig,
+): PhaseBConfig =>
   Object.freeze({
     nowCardanoSlotNo: header.blockSlot,
     bucketConcurrency: WATCHER_BLOCK_REPLAY_BUCKET_CONCURRENCY,
     enforceScriptBudget: true,
+    l1SlotConfig,
   });
 
 export const eventKeyTxId = (eventKey: EventKey): string | null =>

@@ -1,3 +1,4 @@
+use midgard/script_context_v1.{L1SlotConfigV1}
 use midgard/validation_machine/canonical_decode.{
   verify_canonical_decode, verify_compact_binding,
 }
@@ -37,6 +38,7 @@ fn verify_one_step_with_auxiliary(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   door: field_door.MachineFieldDoorV1,
+  slot_config: L1SlotConfigV1,
 ) -> Bool {
   and {
     structural_transition_is_valid(pre, witness),
@@ -69,7 +71,8 @@ fn verify_one_step_with_auxiliary(
         verify_phase_a_script_preconditions(pre, witness, auxiliary, door)
       validation_trace_v1.ScriptIntegrity ->
         verify_script_integrity(pre, witness, auxiliary)
-      validation_trace_v1.Cek -> verify_cek(pre, witness, auxiliary, door)
+      validation_trace_v1.Cek ->
+        verify_cek(pre, witness, auxiliary, door, slot_config)
       validation_trace_v1.LedgerDelta ->
         verify_ledger_delta(pre, witness, auxiliary)
       validation_trace_v1.Terminal -> False
@@ -81,20 +84,29 @@ pub fn verify_one_step(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   door: field_door.MachineFieldDoorV1,
+  slot_config: L1SlotConfigV1,
 ) -> Bool {
-  verify_one_step_with_auxiliary(pre, witness, NoAuxiliaryWitness, door)
+  verify_one_step_with_auxiliary(
+    pre,
+    witness,
+    NoAuxiliaryWitness,
+    door,
+    slot_config,
+  )
 }
 
 pub fn verify_one_step_evidence(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
   door: field_door.MachineFieldDoorV1,
+  slot_config: L1SlotConfigV1,
 ) -> Bool {
   verify_one_step_with_auxiliary(
     pre,
     evidence.transition,
     evidence.auxiliary,
     door,
+    slot_config,
   )
 }
 
@@ -201,11 +213,12 @@ pub fn verify_cek_one_step_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
   door: field_door.MachineFieldDoorV1,
+  slot_config: L1SlotConfigV1,
 ) -> Bool {
   and {
     pre.phase == validation_trace_v1.Cek,
     structural_transition_is_valid(pre, evidence.transition),
-    verify_cek(pre, evidence.transition, evidence.auxiliary, door),
+    verify_cek(pre, evidence.transition, evidence.auxiliary, door, slot_config),
   }
 }
 

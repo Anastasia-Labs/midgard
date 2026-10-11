@@ -76,6 +76,10 @@ export const DEPLOYMENT_MANIFEST_MISMATCH = "deployment_manifest_mismatch";
 export const DEPLOYMENT_MANIFEST_UNVERIFIABLE =
   "deployment_manifest_unverifiable";
 
+/** The L1 slot mapping the node's Lucid reads from the ledger differs from
+ * the one the deployment's scripts were built with. */
+export const L1_SLOT_CONFIG_MISMATCH = "l1_slot_config_mismatch";
+
 /** The deployment is complete but no deployment manifest is configured. */
 export const DEPLOYMENT_MANIFEST_MISSING = "deployment_manifest_missing";
 

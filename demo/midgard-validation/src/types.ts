@@ -1,6 +1,7 @@
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { Effect } from "effect";
 
 import type {
@@ -241,6 +242,12 @@ export type LocalScriptEvalResult =
  */
 export type PhaseBConfig = {
   readonly nowCardanoSlotNo: bigint;
+  /**
+   * The deployment manifest's slot mapping. Plutus contexts carry the body's
+   * slot interval in POSIX milliseconds through it, as the deployed
+   * transaction-info validator does.
+   */
+  readonly l1SlotConfig: L1SlotConfig;
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
   readonly maxScriptExecutionSteps?: number;

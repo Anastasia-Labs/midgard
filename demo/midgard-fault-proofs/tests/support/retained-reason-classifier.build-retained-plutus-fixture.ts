@@ -17,6 +17,7 @@ import {
   materializeMidgardForcedTxFromCanonical as forcedTraceView,
 } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   encodeDaPayload,
@@ -158,6 +159,7 @@ const buildRetainedPlutusFixture = async (
   const material = [...program.material.values()];
   const replay = await Effect.runPromise(
     replayValidationMachineEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: Buffer.from(
         Data.to(eventKey, asLucidSchema(EventKeySchema)),

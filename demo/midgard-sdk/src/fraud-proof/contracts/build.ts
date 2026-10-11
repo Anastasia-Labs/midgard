@@ -2,6 +2,7 @@
  * Building the full FaultProofContracts set from a blueprint and mapping chains to first steps.
  */
 
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { Effect } from "effect";
 
 import { type FraudProofs } from "../../common.js";
@@ -70,6 +71,8 @@ import {
 export const buildFaultProofContracts = (
   params: BuildMinAdaFaultProofContractsParams & {
     readonly eventHistoryBounds: EventHistoryPayloadBounds;
+    /** The deployment's L1 slot mapping (validation-trace txInfo stage). */
+    readonly l1SlotConfig: L1SlotConfig;
   },
 ): Effect.Effect<FaultProofContracts, Error> =>
   Effect.gen(function* () {

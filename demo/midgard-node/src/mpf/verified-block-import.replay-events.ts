@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type RejectedTx,
@@ -32,6 +33,8 @@ export type ImportedBlockReplayContext = {
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
   readonly blockSlot: bigint;
+  /** The slot mapping script contexts carry their validity range in. */
+  readonly l1SlotConfig: L1SlotConfig;
   /** Observation only: emitted after a transition matches canonical replay.
    * The caller keeps it private until the entire block and prefix validate. */
   readonly onReplayedEvent?: (input: {
@@ -191,6 +194,7 @@ export const replayImportedBlockEvents = (
           minFeeA: input.minFeeA,
           minFeeB: input.minFeeB,
           blockSlot: input.blockSlot,
+          l1SlotConfig: input.l1SlotConfig,
           sourceKind: step.phase === "L2Transaction" ? "normal" : "forced",
         });
         if (

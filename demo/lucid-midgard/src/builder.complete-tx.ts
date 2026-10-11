@@ -9,6 +9,7 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { parseL1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type PhaseAConfig,
   type PhaseBConfig,
@@ -885,6 +886,11 @@ export const runSharedLocalPreflight = async ({
   if (phase === "phase-b" && options.localPreState === undefined) {
     throw new BuilderInvariantError(missingPreStateMessage);
   }
+  if (phase === "phase-b" && options.l1SlotConfig === undefined) {
+    throw new BuilderInvariantError(
+      "phase-b local preflight requires l1SlotConfig, the deployment manifest's L1 slot mapping",
+    );
+  }
 
   const params = await provider.getProtocolParameters();
   const protocolInfo = await provider.getProtocolInfo();
@@ -918,6 +924,7 @@ export const runSharedLocalPreflight = async ({
         );
   const phaseBConfig: PhaseBConfig = {
     nowCardanoSlotNo,
+    l1SlotConfig: parseL1SlotConfig(options.l1SlotConfig),
     bucketConcurrency: concurrency,
     enforceScriptBudget: options.enforceScriptBudget ?? true,
   };

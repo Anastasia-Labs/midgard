@@ -29,8 +29,8 @@ use midgard/validation_machine/value_and_mint as vm_value_and_mint
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_machine_tests/constants.{
-  h_28_a, h_28_b, h_a, h_b, h_c, replayed_input_key, validation_context_cbor,
-  zero,
+  h_28_a, h_28_b, h_a, h_b, h_c, replayed_input_key, test_l1_slot_config,
+  validation_context_cbor, zero,
 }
 use midgard/validation_machine_tests/fixture_types.{
   CekKindFixtureV1, ValueAndMintKindFixtureV1,
@@ -415,6 +415,7 @@ pub fn cek_kind_route(
       witness,
       auxiliary,
       inline_field_door(),
+      test_l1_slot_config,
     )
   } else {
     expect vm_machine_types.CekCoreStepWitness { step } = auxiliary
@@ -434,6 +435,7 @@ pub fn cek_aggregate_route(
       auxiliary,
     },
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1104,7 +1106,12 @@ pub fn verify_bounded_context_parity(
   evidence: vm_machine_types.ValidationOneStepEvidenceV1,
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  if !vm_one_step.verify_one_step_evidence(pre, evidence, door) {
+  if !vm_one_step.verify_one_step_evidence(
+    pre,
+    evidence,
+    door,
+    test_l1_slot_config,
+  ) {
     False
   } else {
     let cek = vm_witness.cek_witness_control_v1(evidence.transition)
@@ -1137,6 +1144,7 @@ pub fn verify_bounded_context_parity(
           bounded_context.next_assemble(context, pre.transaction_id, auxiliary)
         12 ->
           bounded_context.next_tx_info(
+            test_l1_slot_config,
             pre.source_kind,
             context,
             native,

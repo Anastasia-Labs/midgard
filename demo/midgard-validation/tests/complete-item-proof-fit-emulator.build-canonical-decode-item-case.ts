@@ -1,5 +1,6 @@
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   deriveCanonicalDecodeItemStageData,
   validationOneStepEvidenceHash,
@@ -269,6 +270,7 @@ export const loadContracts =
   async (): Promise<ValidationTraceDisputeFaultProofContracts> => {
     cachedContracts ??= await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         blueprint: parseFaultProofBlueprint(blueprintJson),
         network: "Custom",
         hubOraclePolicyId: HUB_ORACLE_POLICY_ID,

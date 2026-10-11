@@ -8,6 +8,7 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { EventKey } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -127,6 +128,7 @@ export async function nativeFaultFixture(
   );
   const result = await Effect.runPromise(
     replayValidationMachineEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...nativeFaultContext,
       blockEndTimeMs: now + 1000,
       blockSlot,
@@ -200,6 +202,7 @@ export async function redeemerFaultFixture(missingScript: boolean) {
   ];
   return Effect.runPromise(
     replayValidationMachineEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...nativeFaultContext,
       sourceKind: "forced",
       eventKeyCbor: Buffer.from(

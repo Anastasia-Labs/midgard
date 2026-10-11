@@ -21,6 +21,7 @@ import {
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   deriveCanonicalDecodeItemStageData,
   validationOneStepEvidenceHash,
@@ -193,6 +194,7 @@ const buildTraceWithOutputs = async (
   });
   return Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...traceContext,
       transactionId: transaction.txId,
       canonicalTransactionCbor: transaction.txCbor,
@@ -237,6 +239,7 @@ const loadContracts =
   async (): Promise<ValidationTraceDisputeFaultProofContracts> => {
     cachedContracts ??= await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         blueprint: parseFaultProofBlueprint(
           JSON.parse(JSON.stringify(blueprintJson)),
         ),

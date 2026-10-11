@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   applyFamilyApplicationRecord,
   type CompleteCanonicalReplayContext,
@@ -435,7 +436,16 @@ const dependencies = (): WatcherFaultProofApplicationDependencies => {
       throw new Error(`unexpected read ${path}`);
     }),
     canonicalPath: vi.fn(async (path: string) => path),
-    makeLucid: vi.fn(async () => ({}) as LucidEvolution),
+    // The fixture deployment is on Preprod, and the watcher refuses a Lucid
+    // whose L1 slot mapping differs from the manifest's.
+    makeLucid: vi.fn(
+      async () =>
+        ({
+          config: () => ({
+            slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
+          }),
+        }) as unknown as LucidEvolution,
+    ),
     resolveSigner: vi.fn(() => signer),
     resolveReferenceScript: vi.fn(async ({ contractName }) => {
       const referenceIndex = Object.keys(AUTHORITY.contracts).indexOf(

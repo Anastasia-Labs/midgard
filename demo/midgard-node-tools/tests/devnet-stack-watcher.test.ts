@@ -18,6 +18,7 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
@@ -126,6 +127,7 @@ const makeDevnetManifest = async (
         catalogue,
       ),
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         network: SELECTED_DEPLOYMENT_PROFILE.network,
         availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
         economics: SELECTED_DEPLOYMENT_PROFILE.economics,

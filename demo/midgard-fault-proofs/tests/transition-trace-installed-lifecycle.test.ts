@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -672,6 +673,7 @@ describe("transition trace installed retained-history workflow", () => {
           "freshly admitted",
         );
         const classifier = await createHeaderClassifier({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           deploymentFingerprint: DEPLOYMENT,
           replayer: TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
           releaseFinalityAuthority: workflow.releaseFinalityAuthority,

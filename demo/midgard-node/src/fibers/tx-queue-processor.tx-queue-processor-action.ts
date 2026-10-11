@@ -5,6 +5,7 @@ import { Duration, Effect, Exit, Metric, Ref } from "effect";
 import { TxAdmissionsDB, WithdrawalsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { l1SlotNow } from "../l1-heads.js";
+import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 import { runAtFollowerView } from "../services/follower-write-gate.js";
 import {
   Globals,
@@ -125,6 +126,17 @@ export const txQueueProcessorAction = (
       );
       return { processed: false, claimedCount: 0, batchSize: 0 };
     }
+    // Script contexts carry the validity range in this mapping; startup has
+    // already matched it against the deployment manifest.
+    const l1SlotConfig = yield* Effect.either(
+      Effect.try(() => canonicalSlotConfigForLucid(lucid)),
+    );
+    if (l1SlotConfig._tag === "Left") {
+      yield* Effect.logWarning(
+        `tx-queue processor waiting for the L1 slot mapping: ${String(l1SlotConfig.left.error)}`,
+      );
+      return { processed: false, claimedCount: 0, batchSize: 0 };
+    }
     const leaseOwner = `tx-queue-processor:${process.pid}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
     const claimStartedAt = Date.now();
     return yield* Effect.acquireUseRelease(
@@ -230,6 +242,7 @@ export const txQueueProcessorAction = (
                     ledgerState: cachedState,
                     phaseBConfig: {
                       nowCardanoSlotNo: BigInt(nowSlot.right),
+                      l1SlotConfig: l1SlotConfig.right,
                       bucketConcurrency:
                         nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
                       enforceScriptBudget: true,

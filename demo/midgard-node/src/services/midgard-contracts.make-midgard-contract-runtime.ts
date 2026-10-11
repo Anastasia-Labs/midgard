@@ -23,6 +23,7 @@ import {
   availabilityParametersFromExplicitEnvironment,
   eventHistoryBoundsFromExplicitEnvironment,
   eventHistoryProtectionDurationFromExplicitEnvironment,
+  l1SlotConfigForDerivedDeployment,
   loadReferenceScriptAuthValidator,
   type MidgardContractRuntimeValue,
   readConfiguredDeploymentManifest,
@@ -159,6 +160,13 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
   };
   const referenceScriptAuth = yield* loadReferenceScriptAuthValidator();
+  const l1SlotConfig = yield* Effect.try({
+    try: () => l1SlotConfigForDerivedDeployment(nodeConfig.NETWORK),
+    catch: (cause) =>
+      new Error(
+        `Derived contract bundle has no L1 slot mapping: ${formatUnknownError(cause)}`,
+      ),
+  });
   const resolvedContracts = yield* withRealStateQueueAndOperatorContracts(
     nodeConfig.NETWORK,
     baseContracts,
@@ -170,6 +178,7 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
         eventHistoryProtectionDurationFromExplicitEnvironment(),
       availabilityChallengeParameters:
         availabilityParametersFromExplicitEnvironment(),
+      l1SlotConfig,
     },
   );
   yield* Effect.logInfo(

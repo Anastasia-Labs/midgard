@@ -1,5 +1,6 @@
 import { MIDGARD_PROTOCOL_VERSION } from "@al-ft/midgard-core";
 import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
@@ -30,6 +31,9 @@ export const deploymentManifest = (
 ) => ({
   referenceScriptAuthPolicy,
   economics: DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+  // The mapping the emulator families' validation-trace contexts are built
+  // with (the fixtures' synthetic network is Preprod).
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   contracts,
 });
 

@@ -271,6 +271,7 @@ export type DeploymentManifestBuildContext = {
   readonly artifacts: DeploymentManifest["artifacts"];
   readonly economics: DeploymentManifestEconomics;
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
+  readonly l1SlotConfig: DeploymentManifest["l1SlotConfig"];
   readonly referenceScriptDeployAddress: string;
   readonly hubOracleOneShotTxHash: string;
   readonly hubOracleOneShotOutputIndex: number;
@@ -288,6 +289,7 @@ export type DeploymentManifestIdentityContext = Pick<
   | "artifacts"
   | "economics"
   | "availabilityChallenge"
+  | "l1SlotConfig"
 >;
 
 export const configuredAvailabilityChallenge =

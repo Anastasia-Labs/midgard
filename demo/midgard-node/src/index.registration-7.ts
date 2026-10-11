@@ -104,6 +104,23 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               },
             );
           const baseContracts = yield* Services.AlwaysSucceedsContract;
+          // The scripts take the network's slot mapping; the ledger Lucid
+          // reads must agree with it, or the published scripts would build
+          // contexts this deployment's roles refuse.
+          const l1SlotConfig = yield* Effect.try({
+            try: () => {
+              const config = Services.l1SlotConfigForDerivedDeployment(
+                nodeConfig.NETWORK,
+              );
+              Services.assertLucidL1SlotConfigMatchesDeployment(
+                config,
+                lucidService.api,
+              );
+              return config;
+            },
+            catch: (cause) =>
+              cause instanceof Error ? cause : new Error(String(cause)),
+          });
           const contracts =
             yield* Services.withRealStateQueueAndOperatorContracts(
               nodeConfig.NETWORK,
@@ -120,6 +137,7 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                   Services.eventHistoryProtectionDurationFromExplicitEnvironment(),
                 eventHistoryBounds:
                   Services.eventHistoryBoundsFromExplicitEnvironment(),
+                l1SlotConfig,
               },
             );
           yield* Effect.try({

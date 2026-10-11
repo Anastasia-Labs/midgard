@@ -17,7 +17,7 @@ use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
-  h_a, h_c, validation_context_cbor, zero,
+  h_a, h_c, test_l1_slot_config, validation_context_cbor, zero,
 }
 use midgard/validation_machine_tests/fixtures_phase_a.{
   canonical_step_fixture, empty_v1_transaction, exact_rejection_post,
@@ -525,6 +525,7 @@ test compact_binding_is_independently_verified_on_l1() {
       claimed_successor: input_post,
     },
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -632,5 +633,6 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
       claimed_successor: terminal,
     },
     inline_field_door(),
+    test_l1_slot_config,
   )
 }

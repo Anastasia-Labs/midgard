@@ -250,6 +250,7 @@ pub fn next_assemble(
 }
 
 pub fn next_tx_info(
+  slot_config: script_context_v1.L1SlotConfigV1,
   source_kind: ValidationSourceKind,
   context: CekContextControlV1,
   native: NativeFacts,
@@ -261,6 +262,7 @@ pub fn next_tx_info(
     witness.hash_cek_tx_info_assembly_control_v1(control) == context.redeemer_context_control_hash
   let compact = decode_tx_compact_view_v1(source_kind, native.compact_cbor)
   let tx_info = script_context_v1.tx_info_from_tail_summary_v1(
+    slot_config,
     context.language_tag == 128,
     context.spend_items,
     context.reference_items,

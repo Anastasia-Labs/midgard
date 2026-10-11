@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildValidationTraceDisputeFaultProofContracts,
   parseFaultProofBlueprint,
@@ -35,6 +36,7 @@ describe("ValueAndMint specialized branch publication", () => {
     const harness = await makeFaultProofEmulatorHarness();
     const family = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         blueprint: parseFaultProofBlueprint(readBlueprint(realBlueprintPath)),
         network,
         hubOraclePolicyId: harness.contracts.hubOracle.policyId,

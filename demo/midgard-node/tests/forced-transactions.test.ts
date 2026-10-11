@@ -39,6 +39,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
@@ -434,6 +435,7 @@ describe("V1 forced transaction material", () => {
     };
     const members = await Effect.runPromise(
       buildDeterministicValidationTraceMembers({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         blockEndTime: new Date("2026-07-23T12:00:00.000Z"),
         expectedNetworkId: 0n,
@@ -592,6 +594,7 @@ describe("V1 forced transaction material", () => {
     };
     const [member] = await Effect.runPromise(
       buildDeterministicValidationTraceMembers({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         blockEndTime: new Date("2026-07-23T12:00:00.000Z"),
         expectedNetworkId: 0n,
@@ -727,6 +730,7 @@ describe("V1 forced transaction material", () => {
         effectiveEndTime: new Date("2026-07-23T12:01:00.000Z"),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,
@@ -791,6 +795,7 @@ describe("V1 forced transaction material", () => {
     });
     const members = await Effect.runPromise(
       buildDeterministicValidationTraceMembers({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         blockEndTime: new Date("2026-07-23T12:01:00.000Z"),
         expectedNetworkId: 0n,
@@ -906,6 +911,7 @@ describe("V1 forced transaction material", () => {
         effectiveEndTime: new Date("2026-07-23T12:01:00.000Z"),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,
@@ -973,6 +979,7 @@ describe("forced transaction program material at its position", () => {
     },
   });
   const validation = {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,

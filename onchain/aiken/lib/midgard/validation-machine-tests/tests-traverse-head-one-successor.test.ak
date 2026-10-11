@@ -55,7 +55,7 @@ use midgard/validation_machine/resolve_inputs as vm_resolve_inputs
 use midgard/validation_machine/script_sources as vm_script_sources
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
-  h_28_a, h_a, validation_context_cbor,
+  h_28_a, h_a, test_l1_slot_config, validation_context_cbor,
 }
 use midgard/validation_machine_tests/fixtures_phase_a.{
   empty_v1_transaction, inline_field_door, one_step_evidence,
@@ -364,6 +364,7 @@ fn mono_accepts(
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 

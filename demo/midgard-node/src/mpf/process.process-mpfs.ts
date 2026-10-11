@@ -756,6 +756,7 @@ export const processMpfs = (
             candidates,
             state: proofPreState,
             blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
+            l1SlotConfig: validation.l1SlotConfig,
             bucketConcurrency: validation.bucketConcurrency,
             consensusProfile,
             scriptEvaluationsByTxId: proofScriptEvaluationsByTxId,
@@ -1355,6 +1356,7 @@ export const processMpfs = (
           minFeeA: validation.minFeeA,
           minFeeB: validation.minFeeB,
           blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
+          l1SlotConfig: validation.l1SlotConfig,
           transactions: validationInputs,
         });
         yield* validateValidationTraceEventKeySet({

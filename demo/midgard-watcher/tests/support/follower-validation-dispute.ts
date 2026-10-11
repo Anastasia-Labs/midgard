@@ -9,6 +9,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { FollowerValidationDisputeFixture } from "@al-ft/midgard-fault-proofs/test-support/installed-validation-follower-fixture";
 import type { InstalledValidationJourneyStaged } from "@al-ft/midgard-fault-proofs/test-support/installed-validation-trace-dispute-journey";
 
@@ -51,6 +52,7 @@ export const loadJourneyWatcherDeployment = async (
   const identity = makeOriginDeployment(undefined, scripts).result;
   const ruleBundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       manifestId: identity.manifestId,
       network: identity.network,
       blueprintHash: identity.blueprintHash,

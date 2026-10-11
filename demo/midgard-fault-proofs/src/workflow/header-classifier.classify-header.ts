@@ -313,6 +313,7 @@ export const classifyHeader = async ({
         evidence: routed.evidence,
         predecessor: admittedReplayContext?.predecessor,
         transitionTraceEvents: admittedReplayContext?.transitionTraceEvents,
+        l1SlotConfig: authority.l1SlotConfig,
       }),
     });
   }

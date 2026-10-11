@@ -9,6 +9,7 @@ import {
   encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildValidationMachineLedgerInsertOp,
@@ -173,6 +174,7 @@ export const fixture = async (
         effectiveEndTime: new Date(1_750_000_000_000),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,
@@ -213,6 +215,7 @@ export const fixture = async (
   const eventCbor = Data.to(eventKey, SDK.EventKey);
   const [member] = await Effect.runPromise(
     buildDeterministicValidationTraceMembers({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       blockEndTime: new Date(Number(base.header.endTime)),
       expectedNetworkId: base.header.expectedNetworkId,

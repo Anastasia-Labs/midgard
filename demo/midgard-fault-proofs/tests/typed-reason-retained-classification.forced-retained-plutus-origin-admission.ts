@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { describe, expect, it } from "vitest";
 
 import { computeTransitionTraceL1EventEvidenceDigest } from "../src/transition-trace/replay-authority.js";
@@ -59,6 +60,7 @@ describe("forced retained Plutus origin admission", () => {
       context.transitionTraceEvents!.evidenceDigest,
     );
     const validationTraceReplay = await admitValidationTraceReplayContext({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       evidence,
       predecessor: context.predecessor,
       transitionTraceEvents,
@@ -198,6 +200,7 @@ describe("forced retained Plutus origin admission", () => {
     );
     await expect(
       admitValidationTraceReplayContext({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         evidence,
         predecessor: context.predecessor,
         transitionTraceEvents: { ...context.transitionTraceEvents! },

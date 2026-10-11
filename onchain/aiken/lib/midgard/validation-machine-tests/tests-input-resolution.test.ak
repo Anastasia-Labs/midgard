@@ -25,7 +25,7 @@ use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/signatures as vm_signatures
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
-  h_28_a, h_a, h_b, h_c, network_mismatch_rejection_code,
+  h_28_a, h_a, h_b, h_c, network_mismatch_rejection_code, test_l1_slot_config,
   validation_context_cbor, zero,
 }
 use midgard/validation_machine_tests/fixtures_input_resolution.{
@@ -70,6 +70,7 @@ test rejection_is_provable_from_a_non_empty_claimed_delta_root() {
         claimed_successor: terminal,
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -95,6 +96,7 @@ test rejection_successor_that_clears_the_claimed_delta_is_rejected() {
       claimed_successor: cleared_terminal,
     },
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -116,6 +118,7 @@ test rejection_successor_that_rewrites_the_claimed_delta_is_rejected() {
       claimed_successor: rewritten_terminal,
     },
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -141,6 +144,7 @@ test a_valid_static_rules_transition_cannot_be_proven_rejected() {
       ),
     },
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -168,6 +172,7 @@ test an_honest_forced_invalid_trace_may_carry_an_empty_claimed_delta() {
         claimed_successor: terminal,
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -1255,6 +1260,7 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
         auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -1353,11 +1359,13 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
       pre,
       first_evidence,
       inline_field_door(),
+      test_l1_slot_config,
     ),
     vm_one_step.verify_one_step_evidence(
       next,
       second_evidence,
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -1397,6 +1405,7 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1456,6 +1465,7 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1533,6 +1543,7 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1578,6 +1589,7 @@ test resolve_inputs_rejects_an_invalid_validity_interval_exactly() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1648,6 +1660,7 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 

@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type Data,
   DataB,
@@ -44,6 +45,7 @@ const spend: MidgardScriptPurpose = {
 };
 
 const view: ScriptContextView = {
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   txId: Buffer.alloc(32, 0x44),
   inputs: [],
   referenceInputs: [],

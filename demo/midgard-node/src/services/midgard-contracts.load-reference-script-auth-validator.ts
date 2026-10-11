@@ -16,8 +16,20 @@ import {
   verifyDeploymentProfileBinding,
 } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import {
+  formatL1SlotConfig,
+  type L1SlotConfig,
+  l1SlotConfigMismatch,
+  l1SlotConfigsEqual,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+  parseL1SlotConfig,
+} from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
-import { MintingPolicy, mintingPolicyToId } from "@lucid-evolution/lucid";
+import {
+  type LucidEvolution,
+  MintingPolicy,
+  mintingPolicyToId,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { parseDeploymentManifestValue } from "../deployment-manifest.js";
@@ -30,6 +42,7 @@ import {
   daAvailabilityChallengeEnvironmentInput,
   realBlueprintPathOverride,
 } from "../environment.js";
+import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 
 /**
  * Contract-loading service for Midgard validators.
@@ -113,6 +126,77 @@ export const eventHistoryProtectionDurationFromExplicitEnvironment =
       );
     return BigInt(value);
   };
+
+/**
+ * The slot mapping a fresh deployment's validation-trace validators take.
+ * A named network's is Lucid's static one; a Custom network has no default
+ * and takes `MIDGARD_L1_SLOT_CONFIG`, a JSON `{ zeroTime, zeroSlot,
+ * slotLength }` record of its genesis anchor. A value set for a named
+ * network must equal the static one.
+ */
+export const l1SlotConfigForDerivedDeployment = (
+  network: string,
+): L1SlotConfig => {
+  const raw = process.env.MIDGARD_L1_SLOT_CONFIG;
+  const explicit =
+    raw === undefined || raw.trim().length === 0
+      ? undefined
+      : parseL1SlotConfig(
+          (() => {
+            try {
+              return JSON.parse(raw) as unknown;
+            } catch (cause) {
+              throw new Error("MIDGARD_L1_SLOT_CONFIG must be JSON", { cause });
+            }
+          })(),
+          "MIDGARD_L1_SLOT_CONFIG",
+        );
+  if (network === "Mainnet" || network === "Preprod" || network === "Preview") {
+    const named = NAMED_NETWORK_L1_SLOT_CONFIGS[network];
+    if (explicit !== undefined && !l1SlotConfigsEqual(explicit, named))
+      throw new Error(
+        `MIDGARD_L1_SLOT_CONFIG ${formatL1SlotConfig(explicit)} differs from ${network}'s ${formatL1SlotConfig(named)}`,
+      );
+    return named;
+  }
+  if (explicit === undefined)
+    throw new Error(
+      `MIDGARD_L1_SLOT_CONFIG must be set to the ${network} network's genesis slot mapping before deriving scripts without a finalized manifest`,
+    );
+  return explicit;
+};
+
+/**
+ * The slot mapping the selected contracts were built with: the manifest's,
+ * or for a derived bundle the one `l1SlotConfigForDerivedDeployment` gives.
+ */
+export const deploymentL1SlotConfig = (
+  identity: ContractDeploymentIdentityValue,
+  network: string,
+): L1SlotConfig =>
+  identity.kind === "manifest" && identity.manifest !== undefined
+    ? identity.manifest.l1SlotConfig
+    : l1SlotConfigForDerivedDeployment(network);
+
+/**
+ * Refuses (`l1_slot_config_mismatch: ...`) a Lucid instance whose slot
+ * mapping, read from the L1 ledger, differs from the deployment's: the
+ * script contexts this process would build off chain would not be the ones
+ * the deployed validator builds.
+ */
+export const assertLucidL1SlotConfigMatchesDeployment = (
+  deployment: L1SlotConfig,
+  lucid: LucidEvolution,
+): void => {
+  const mismatch = l1SlotConfigMismatch(
+    deployment,
+    parseL1SlotConfig(
+      canonicalSlotConfigForLucid(lucid),
+      "Lucid slot configuration",
+    ),
+  );
+  if (mismatch !== null) throw new Error(mismatch);
+};
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 

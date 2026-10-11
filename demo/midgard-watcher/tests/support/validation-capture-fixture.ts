@@ -6,6 +6,7 @@ import {
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -66,6 +67,7 @@ export const setupValidationCapture = async (kind: "normal" | "forced") => {
   const identity = followerUserEventsDeployment().deploymentIdentity;
   const ruleBundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       manifestId: identity.manifestId,
       network: identity.network,
       blueprintHash: identity.blueprintHash,
@@ -249,6 +251,7 @@ export const classifyRetainedValidationHeader = async (
     });
   }
   const classifier = await createHeaderClassifier({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: deploymentAuthority.deploymentIdentity.manifestId,
     replayer: VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority,

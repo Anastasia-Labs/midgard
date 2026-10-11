@@ -1,5 +1,6 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -22,6 +23,7 @@ export const makeWatcherTranscriptArchiveFixture = async () => {
   const baseAuthority = makeWatcherDeploymentAuthorityFixture();
   const bundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       manifestId: baseAuthority.result.manifestId,
       network: baseAuthority.result.network,
       blueprintHash: baseAuthority.result.blueprintHash,

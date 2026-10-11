@@ -12,6 +12,7 @@ use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
+use midgard/validation_machine_tests/constants.{test_l1_slot_config}
 use midgard/validation_merkle_v1
 
 const output_cbor =
@@ -436,7 +437,7 @@ test composed_transaction_info_and_context_match_direct_plutus_data() {
       ),
       builtin.constr_data(
         0,
-        [builtin.constr_data(0, []), builtin.constr_data(0, [])],
+        [builtin.constr_data(2, []), builtin.constr_data(1, [])],
       ),
     ],
   )
@@ -444,6 +445,7 @@ test composed_transaction_info_and_context_match_direct_plutus_data() {
   let empty_items = cek_data_v1.empty_data_list_summary_v1()
   let empty_pairs = cek_data_v1.empty_data_pair_summary_v1()
   let cardano_tx_info = script_context_v1.tx_info_summary_v1(
+    test_l1_slot_config,
     False,
     empty_items,
     empty_items,
@@ -458,6 +460,7 @@ test composed_transaction_info_and_context_match_direct_plutus_data() {
     tx_id,
   )
   let midgard_tx_info = script_context_v1.tx_info_summary_v1(
+    test_l1_slot_config,
     True,
     empty_items,
     empty_items,
@@ -830,4 +833,130 @@ test consolidated_ledger_output_summaries_match_the_separate_entry_points() {
     // Not a canonical output at all.
     agrees(#"00"),
   }
+}
+
+// The PlutusV3 `validRange` of a committed slot interval, against
+// `transValidityInterval` in cardano-ledger-conway: POSIX milliseconds, an
+// inclusive finite lower bound, a strict finite upper bound, and absent bounds
+// as `PV1.from`/`PV1.always` encode them.
+
+const preprod_slot_config =
+  script_context_v1.L1SlotConfigV1 {
+    zero_time: 1655769600000,
+    zero_slot: 86400,
+    slot_length: 1000,
+  }
+
+const devnet_slot_config =
+  script_context_v1.L1SlotConfigV1 {
+    zero_time: 1760000000000,
+    zero_slot: 0,
+    slot_length: 1000,
+  }
+
+fn finite_bound(time: Int, closure: Bool) -> Data {
+  builtin.constr_data(
+    0,
+    [
+      builtin.constr_data(1, [builtin.i_data(time)]),
+      builtin.constr_data(
+        if closure {
+          1
+        } else {
+          0
+        },
+        [],
+      ),
+    ],
+  )
+}
+
+fn neg_inf_bound() -> Data {
+  builtin.constr_data(
+    0,
+    [builtin.constr_data(0, []), builtin.constr_data(1, [])],
+  )
+}
+
+fn pos_inf_bound() -> Data {
+  builtin.constr_data(
+    0,
+    [builtin.constr_data(2, []), builtin.constr_data(1, [])],
+  )
+}
+
+fn interval(lower: Data, upper: Data) -> cek_data_v1.DataSummaryV1 {
+  builtin.constr_data(0, [lower, upper]) |> cek_data_v1.semantic_data_summary_v1
+}
+
+test slot_to_posix_time_is_the_affine_shelley_anchor() {
+  and {
+    script_context_v1.slot_to_posix_time_v1(preprod_slot_config, 86400) == 1655769600000,
+    script_context_v1.slot_to_posix_time_v1(preprod_slot_config, 86401) == 1655769601000,
+    script_context_v1.slot_to_posix_time_v1(preprod_slot_config, 112000000) == 1767683200000,
+    script_context_v1.slot_to_posix_time_v1(devnet_slot_config, 0) == 1760000000000,
+    script_context_v1.slot_to_posix_time_v1(
+      script_context_v1.L1SlotConfigV1 {
+        ..devnet_slot_config,
+        slot_length: 200,
+      },
+      5,
+    ) == 1760000001000,
+  }
+}
+
+test slot_to_posix_time_carries_no_byron_segment() {
+  // Mainnet's Shelley anchor. Byron slots were 20 s long, so the ledger puts
+  // slot 0 at 1506203091000; the affine anchor puts it 4492800 one-second
+  // slots before the anchor instead.
+  let mainnet = script_context_v1.L1SlotConfigV1 {
+    zero_time: 1596059091000,
+    zero_slot: 4492800,
+    slot_length: 1000,
+  }
+  and {
+    script_context_v1.slot_to_posix_time_v1(mainnet, 4492800) == 1596059091000,
+    script_context_v1.slot_to_posix_time_v1(mainnet, 0) == 1591566291000,
+  }
+}
+
+test absent_bounds_are_always() {
+  script_context_v1.validity_interval_summary_v1(preprod_slot_config, -1, -1) == interval(
+    neg_inf_bound(),
+    pos_inf_bound(),
+  )
+}
+
+test absent_upper_bound_is_from() {
+  script_context_v1.validity_interval_summary_v1(preprod_slot_config, 86400, -1) == interval(
+    finite_bound(1655769600000, True),
+    pos_inf_bound(),
+  )
+}
+
+test absent_lower_bound_is_negative_infinity_to_strict_upper() {
+  script_context_v1.validity_interval_summary_v1(preprod_slot_config, -1, 86460) == interval(
+    neg_inf_bound(),
+    finite_bound(1655769660000, False),
+  )
+}
+
+test finite_bounds_are_posix_milliseconds_inclusive_then_strict() {
+  script_context_v1.validity_interval_summary_v1(
+    devnet_slot_config,
+    0,
+    9223372036854775807,
+  ) == interval(
+    finite_bound(1760000000000, True),
+    finite_bound(9223372036854775807000 + 1760000000000, False),
+  )
+}
+
+test slot_domain_interval_is_not_the_valid_range() {
+  // The committed slot numbers themselves are not the context's bounds.
+  script_context_v1.validity_interval_summary_v1(
+    preprod_slot_config,
+    100000,
+    200000,
+  ) != interval(finite_bound(100000, True), finite_bound(200000, False))
 }

@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
@@ -30,6 +31,7 @@ export const writeWatcherRuntimeProcessConfig = async (
   const construction = makeWatcherDeploymentAuthorityFixture();
   const ruleBundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       manifestId: construction.result.manifestId,
       network: construction.result.network,
       blueprintHash: construction.result.blueprintHash,

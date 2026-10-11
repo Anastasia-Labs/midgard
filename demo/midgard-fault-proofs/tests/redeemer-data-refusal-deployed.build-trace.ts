@@ -7,6 +7,7 @@ import {
   encodeMidgardForcedTxCanonical,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildDeterministicValidationMachineTrace } from "@al-ft/midgard-validation";
 import {
@@ -98,6 +99,7 @@ export const buildDataRefusalTrace = async (
   // Exposed so the production challenge authority can rebuild the identical
   // trace from the exact replay input.
   const replayInput = {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     eventKeyCbor: Buffer.from(
       Data.to(eventKey as never, SDK.EventKeySchema as never),

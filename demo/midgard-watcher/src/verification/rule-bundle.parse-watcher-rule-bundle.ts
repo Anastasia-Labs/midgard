@@ -8,7 +8,12 @@ import {
 import {
   computeDeploymentManifestJsonDigest,
   type DeploymentManifestJsonValue,
+  verifyDeploymentManifestL1SlotConfig,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  type L1SlotConfig,
+  parseL1SlotConfig,
+} from "@al-ft/midgard-core/l1-slot-config";
 
 import {
   verifyWatcherDeploymentIdentity,
@@ -73,6 +78,23 @@ const parseTargetParameters = (
   return Object.freeze({ snapshot, digest });
 };
 
+/**
+ * The bundle's slot mapping: exact in shape and, for a named network, that
+ * network's static mapping, as the deployment manifest's must be.
+ */
+const parseRuleBundleL1SlotConfig = (
+  value: unknown,
+  path: string,
+  network: WatcherRuleBundle["network"],
+): L1SlotConfig => {
+  try {
+    verifyDeploymentManifestL1SlotConfig(network, value);
+    return Object.freeze(parseL1SlotConfig(value, path));
+  } catch {
+    return fail("invalid_field", path);
+  }
+};
+
 const parseExactPriority = <T extends string>(
   value: unknown,
   path: string,
@@ -96,6 +118,7 @@ export const parseWatcherRuleBundle = (value: unknown): WatcherRuleBundle => {
     "deploymentManifestId",
     "network",
     "blueprintHash",
+    "l1SlotConfig",
     "consensusProfileId",
     "consensusProfileDigest",
     "protocolVersion",
@@ -140,6 +163,7 @@ export const parseWatcherRuleBundle = (value: unknown): WatcherRuleBundle => {
   ) {
     fail("validation_priority_mismatch", "$.validation.rejectionSelection");
   }
+  const network = exactNetwork(bundle.network, "$.network");
   return Object.freeze({
     schemaVersion: WATCHER_RULE_BUNDLE_SCHEMA_VERSION,
     ruleBundleVersion: WATCHER_RULE_BUNDLE_VERSION,
@@ -147,8 +171,13 @@ export const parseWatcherRuleBundle = (value: unknown): WatcherRuleBundle => {
       bundle.deploymentManifestId,
       "$.deploymentManifestId",
     ),
-    network: exactNetwork(bundle.network, "$.network"),
+    network,
     blueprintHash: exactHex32(bundle.blueprintHash, "$.blueprintHash"),
+    l1SlotConfig: parseRuleBundleL1SlotConfig(
+      bundle.l1SlotConfig,
+      "$.l1SlotConfig",
+      network,
+    ),
     consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     protocolVersion: MIDGARD_PROTOCOL_VERSION,
@@ -187,18 +216,28 @@ const parseConstructionIdentity = (
     "manifestId",
     "network",
     "blueprintHash",
+    "l1SlotConfig",
     "programCommitments",
   ]);
   const manifestId = exactHex32(
     identity.manifestId,
     "$.constructionIdentity.manifestId",
   );
+  const network = exactNetwork(
+    identity.network,
+    "$.constructionIdentity.network",
+  );
   return Object.freeze({
     manifestId,
-    network: exactNetwork(identity.network, "$.constructionIdentity.network"),
+    network,
     blueprintHash: exactHex32(
       identity.blueprintHash,
       "$.constructionIdentity.blueprintHash",
+    ),
+    l1SlotConfig: parseRuleBundleL1SlotConfig(
+      identity.l1SlotConfig,
+      "$.constructionIdentity.l1SlotConfig",
+      network,
     ),
     programCommitments: parseProgramCommitments(
       identity.programCommitments,
@@ -235,6 +274,7 @@ export const makeWatcherCanonicalRuleBundle = (input: {
     deploymentManifestId: identity.manifestId,
     network: identity.network,
     blueprintHash: identity.blueprintHash,
+    l1SlotConfig: identity.l1SlotConfig,
     consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     protocolVersion: MIDGARD_PROTOCOL_VERSION,

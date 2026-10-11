@@ -14,6 +14,7 @@ import {
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   decodeRetainedValidationWitnessKey,
@@ -447,6 +448,7 @@ describe("ordinary retained classification polarities", () => {
       const priorLedgerRoot = mutations[0]!.preRoot.toString("hex");
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           eventKeyCbor: Buffer.from(
             Data.to(eventKey, asLucidSchema(EventKeySchema)),

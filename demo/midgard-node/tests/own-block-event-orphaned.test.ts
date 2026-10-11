@@ -15,6 +15,7 @@
  * - a foreign landed block with an orphan keeps the base behaviour, the gate
  *   pending as `l1_events_orphan_recovery` (`follower-driver-recompute.test.ts`).
  */
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { type FactStore, type OutRef } from "@al-ft/midgard-l1-follower";
 import {
   eventProjection,
@@ -262,6 +263,7 @@ const admit = (
             cache.currentState.pipe(Effect.map(snapshot)),
           );
           return yield* runPhaseBValidationWithPatch([candidate], state, {
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             nowCardanoSlotNo: 0n,
             bucketConcurrency: 1,
           });

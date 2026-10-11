@@ -12,6 +12,7 @@ import {
   validateMidgardConsensusForcedTxCbor,
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   daPayloadEntryEncodedSize,
   deriveTxOrderMaterial,
@@ -138,6 +139,7 @@ describe("deterministic signature consume order", { timeout: 60_000 }, () => {
       const started = performance.now();
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...context,
           transactionId: transaction.txId,
           canonicalTransactionCbor: transaction.txCbor,

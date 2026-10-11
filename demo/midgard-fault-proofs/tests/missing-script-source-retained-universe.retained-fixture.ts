@@ -7,6 +7,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   encodeRetainedValidationWitness,
   encodeRetainedValidationWitnessKey,
@@ -111,6 +112,7 @@ export const retainedFixture = async (
   );
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor,
       sourceKind: presentAt === null ? "normal" : "forced",

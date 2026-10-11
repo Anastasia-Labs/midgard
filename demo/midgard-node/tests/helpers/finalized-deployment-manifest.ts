@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type MidgardValidators,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
@@ -37,6 +38,7 @@ import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 const DA_VKEY = "44".repeat(32);
 const CARDANO_PARAMETERS = TEST_CARDANO_PROTOCOL_PARAMETERS;
 const IDENTITY: DeploymentManifestIdentityContext = {
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
   economics: DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
   cardanoProtocolParameters: {

@@ -4,6 +4,7 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -101,6 +102,7 @@ describe("production authenticated-header classifier V1", () => {
     };
     await expect(
       createHeaderClassifier({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         replayer: forged,
         releaseFinalityAuthority: finalityAuthority(),
@@ -118,6 +120,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
@@ -187,6 +190,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
@@ -231,6 +235,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer:
         OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
@@ -281,6 +286,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer: createCompleteCanonicalReplayUnion([
         MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
@@ -334,6 +340,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer: PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
@@ -367,6 +374,7 @@ describe("production authenticated-header classifier V1", () => {
     const fixture = await buildCanonicalBlockFixture({ transactions: [] });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
@@ -408,6 +416,7 @@ describe("production authenticated-header classifier V1", () => {
     const fixture = await buildCanonicalBlockFixture({ transactions: [] });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
@@ -455,6 +464,7 @@ describe("production authenticated-header classifier V1", () => {
       chainPoint: { slot: 4241n, blockHash: "06".repeat(32) },
     });
     const classifier = await createHeaderClassifier({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer: NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),

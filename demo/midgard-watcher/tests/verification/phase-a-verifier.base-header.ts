@@ -5,6 +5,7 @@ import {
   hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import type { MidgardNativeScript } from "@al-ft/midgard-core/codec/native-script";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import {
@@ -56,6 +57,7 @@ export const CHAIN_POINT = { slot: 4242n, blockHash: h32(7) } as const;
 
 export const RULE_BUNDLE: WatcherRuleBundle = makeWatcherCanonicalRuleBundle({
   constructionIdentity: {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     manifestId: h32(0x21),
     network: "Preprod",
     blueprintHash: h32(0x22),

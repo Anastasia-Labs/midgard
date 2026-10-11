@@ -17,6 +17,7 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import { type PgClient } from "@effect/sql-pg/PgClient";
@@ -1503,7 +1504,13 @@ export const registerAdmissionsTests = () => {
                 ),
             };
             const lucid = {
-              api: { currentSlot: () => 0 },
+              api: {
+                currentSlot: () => 0,
+                // The processor builds script contexts in this slot mapping.
+                config: () => ({
+                  slotConfig: { ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod },
+                }),
+              },
             } as unknown as Lucid;
             attachTestL1Access(lucid.api, 0); // the processor reads l1SlotNow
             const submit = (
