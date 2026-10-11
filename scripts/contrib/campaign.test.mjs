@@ -14,13 +14,8 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import {
-  campaignPlan,
-  parseCampaign,
-  pinCheck,
-  runCampaign,
-  stageCommand,
-} from "./campaign.mjs";
+import { campaignPlan, pinCheck, runCampaign } from "./campaign.mjs";
+import { parseCampaign, stageCommand } from "./campaign-definition.mjs";
 import { sha256 } from "./files.mjs";
 
 // Campaigns run against a throwaway git checkout whose devnet-stack entry
