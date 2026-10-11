@@ -80,7 +80,9 @@ const prepare = (
                   outputIndex: withdrawal.outputIndex ?? 0n,
                 },
                 l2_owner: "44".repeat(28),
-                l2_value: SDK.assetsToValue({ lovelace: 7_000_000n }),
+                l2_value: SDK.assetsToValue(
+                  withdrawal.l2Assets ?? { lovelace: 7_000_000n },
+                ),
                 l1_address: address,
                 l1_datum: withdrawal.l1Datum ?? "NoDatum",
               },

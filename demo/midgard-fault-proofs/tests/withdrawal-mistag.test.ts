@@ -19,9 +19,15 @@ import { withdrawalMistagStates } from "../src/withdrawal-mistag/submit-withdraw
 const makeEvidence = async ({
   lovelace,
   validity,
+  outputAssets = new Map(),
+  l2Value,
 }: {
   readonly lovelace: bigint;
   readonly validity: SDK.WithdrawalValidity;
+  /** The ledger output's non-ADA assets. */
+  readonly outputAssets?: Map<string, Map<string, bigint>>;
+  /** The requested value; by default exactly the ledger output's value. */
+  readonly l2Value?: SDK.Value;
 }) => {
   const privateKey = CML.PrivateKey.generate_ed25519();
   const publicKey = privateKey.to_public();
@@ -33,7 +39,8 @@ const makeEvidence = async ({
   const body: SDK.WithdrawalBody = {
     l2_outref: withdrawalId,
     l2_owner: owner,
-    l2_value: new Map([["", new Map([["", lovelace]])]]),
+    l2_value:
+      l2Value ?? new Map([["", new Map([["", lovelace]])], ...outputAssets]),
     l1_address: {
       paymentCredential: { PublicKeyCredential: [owner] },
       stakeCredential: null,
@@ -56,7 +63,7 @@ const makeEvidence = async ({
   };
   const outputCbor = encodeMidgardTxOutput({
     address: Buffer.concat([Buffer.from([0x60]), Buffer.from(owner, "hex")]),
-    value: { lovelace, assets: new Map() },
+    value: { lovelace, assets: outputAssets },
   });
   const material = buildCanonicalMidgardLedgerOutputMaterial({
     outputIndex: 0,
@@ -173,6 +180,21 @@ const makeEvidence = async ({
   };
 };
 
+const policy = "0a".repeat(28);
+/** `count` distinct one-unit assets under `policy`. */
+const tokens = (count: number): Map<string, Map<string, bigint>> =>
+  new Map([
+    [
+      policy,
+      new Map(
+        Array.from(
+          { length: count },
+          (_, index) => [index.toString(16).padStart(4, "0"), 1n] as const,
+        ),
+      ),
+    ],
+  ]);
+
 describe("withdrawal-mistag preparation and lifecycle handoffs", () => {
   it("prepares a valid withdrawal marked invalid through the terminal state", async () => {
     const prepared = await prepareWithdrawalMistag(
@@ -217,5 +239,71 @@ describe("withdrawal-mistag preparation and lifecycle handoffs", () => {
         }),
       ),
     ).rejects.toThrow(/honestly tagged/u);
+  });
+
+  // The proof judges the requested value by step-03's
+  // `output_value_matches_v1` and asset-count bound.
+  it("judges a second asset name under the ADA policy invalid", async () => {
+    const prepared = await prepareWithdrawalMistag(
+      await makeEvidence({
+        lovelace: 2_000_000n,
+        validity: "WithdrawalIsValid",
+        l2Value: new Map([
+          [
+            "",
+            new Map([
+              ["", 2_000_000n],
+              ["01", 1n],
+            ]),
+          ],
+        ]),
+      }),
+    );
+    expect(prepared.direction).toBe("invalid-marked-valid");
+    expect(prepared.coreValid).toBe(false);
+  });
+
+  it("judges mixed-width asset names in byte order valid", async () => {
+    const prepared = await prepareWithdrawalMistag(
+      await makeEvidence({
+        lovelace: 5_000_000n,
+        validity: "IncorrectWithdrawalValue",
+        outputAssets: new Map([
+          [
+            policy,
+            new Map([
+              ["0000", 2n],
+              ["ff", 1n],
+            ]),
+          ],
+        ]),
+      }),
+    );
+    expect(prepared.direction).toBe("valid-marked-invalid");
+    expect(prepared.coreValid).toBe(true);
+  });
+
+  it("does not count lovelace toward the asset-count bound", async () => {
+    const prepared = await prepareWithdrawalMistag(
+      await makeEvidence({
+        lovelace: 50_000_000n,
+        validity: "TooManyTokensInWithdrawal",
+        outputAssets: tokens(SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT),
+      }),
+    );
+    expect(prepared.direction).toBe("valid-marked-invalid");
+    expect(prepared.coreValid).toBe(true);
+  });
+
+  it("judges one asset over the bound invalid", async () => {
+    const prepared = await prepareWithdrawalMistag(
+      await makeEvidence({
+        lovelace: 50_000_000n,
+        validity: "WithdrawalIsValid",
+        outputAssets: tokens(SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT + 1),
+      }),
+    );
+    expect(prepared.direction).toBe("invalid-marked-valid");
+    expect(prepared.coreValid).toBe(false);
   });
 });

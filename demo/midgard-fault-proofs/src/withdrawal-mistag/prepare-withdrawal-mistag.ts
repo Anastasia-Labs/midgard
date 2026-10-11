@@ -111,27 +111,6 @@ const verifyCountedMembership = async <K, V>({
   });
 };
 
-const valuesEqual = (
-  output: ReturnType<typeof decodeMidgardTxOutput>["value"],
-  expected: SDK.WithdrawalBody["l2_value"],
-): boolean => {
-  if (output.lovelace !== (expected.get("")?.get("") ?? 0n)) return false;
-  const expectedPolicies = [...expected.entries()].filter(
-    ([policy]) => policy !== "",
-  );
-  if (expectedPolicies.length !== output.assets.size) return false;
-  return expectedPolicies.every(([policy, assets]) => {
-    const actual = output.assets.get(policy);
-    return (
-      actual !== undefined &&
-      actual.size === assets.size &&
-      [...assets.entries()].every(
-        ([assetName, quantity]) => actual.get(assetName) === quantity,
-      )
-    );
-  });
-};
-
 const signatureIsValid = (info: SDK.WithdrawalInfo): boolean => {
   try {
     const [publicKeyHex, signatureHex] = info.signature;
@@ -276,10 +255,7 @@ export const prepareWithdrawalMistag = async ({
     });
     const output = decodeMidgardTxOutput(outputCbor);
     const address = decodeMidgardAddressBytes(output.address);
-    const assetCount = [...output.value.assets.values()].reduce(
-      (total, assets) => total + assets.size,
-      0,
-    );
+    const assetCount = SDK.withdrawalLedgerAssetCount(output.value);
     outputLovelace = output.value.lovelace;
     outputAssetCount = BigInt(material.descriptor.assetCount);
     outputAssetFrontierCommitment =
@@ -294,7 +270,10 @@ export const prepareWithdrawalMistag = async ({
     coreValid =
       address.paymentCredential.kind === "PubKey" &&
       address.paymentCredential.hash.toString("hex") === info.body.l2_owner &&
-      valuesEqual(output.value, info.body.l2_value) &&
+      SDK.withdrawalValueMatchesLedgerOutput(
+        info.body.l2_value,
+        output.value,
+      ) &&
       assetCount <= SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT &&
       signatureIsValid(info);
     authenticatedLedgerEvidence = {

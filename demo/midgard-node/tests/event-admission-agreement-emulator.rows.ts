@@ -2,7 +2,7 @@
  * shape admission must refuse because the node cannot decode or process it,
  * each next to an accepted control. */
 import * as SDK from "@al-ft/midgard-sdk";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import { type Assets, Constr, Data } from "@lucid-evolution/lucid";
 
 import type { Group } from "./event-admission-agreement-emulator.node-decodes.js";
 import type { Swap } from "./event-admission-agreement-emulator.sdk-reading.js";
@@ -20,11 +20,20 @@ export type Row = Readonly<{
     outputIndex?: bigint;
     l1Datum?: SDK.CardanoDatum;
     refundDatum?: SDK.CardanoDatum;
+    /** The assets the SDK writes into the body's `l2_value`. */
+    l2Assets?: Assets;
   }>;
   swap?: Swap;
 }>;
 
 const hash28 = "a7".repeat(28);
+/** A withdrawal `l2_value` of 7 ADA and one token under `hash28` named "ff",
+ * written in definite-length CBOR with the token's policy before the ADA
+ * policy, an order the SDK's encoder never writes. */
+const tokenPolicyFirstValue = `a2581c${hash28}a141ff0140a1401a006acfc0`;
+/** A withdrawal `l2_value` of 7 ADA that also holds a second asset name under
+ * the ADA policy. */
+const extraAdaNameValue = "a140a2401a006acfc0410101";
 const datumHash = (bytes: number): SDK.CardanoDatum => ({
   DatumHash: { hash: "a8".repeat(bytes) },
 });
@@ -50,6 +59,7 @@ const pointerAddress = Data.to(
 // Withdrawal: payload.event.info.body = [0, 1, 0]; refund_address = [1].
 const L2_ADDRESS = [0, 1, 0];
 const BODY = [0, 1, 0];
+const L2_VALUE = [...BODY, 2];
 const L1_ADDRESS = [...BODY, 3];
 const REFUND_ADDRESS = [1];
 
@@ -90,6 +100,35 @@ export const ROWS: readonly Row[] = [
     fields: [[L2_ADDRESS, pointerAddress]],
   },
   { group: "withdrawal", name: "the SDK's withdrawal", admitted: true },
+  {
+    // The names are given length-first, the Midgard L2 codec's order; the
+    // `l2_value` the SDK writes holds them in byte order, which admission's
+    // `from_asset_list` requires.
+    group: "withdrawal",
+    name: "SDK-built asset names ff and 0000 under one policy",
+    admitted: true,
+    withdrawal: {
+      l2Assets: {
+        lovelace: 7_000_000n,
+        [`${hash28}ff`]: 1n,
+        [`${hash28}0000`]: 2n,
+      },
+    },
+  },
+  {
+    group: "withdrawal",
+    name: "a value with its policies out of byte order",
+    admitted: true,
+    // The SDK funds the same value, written in byte order.
+    withdrawal: { l2Assets: { lovelace: 7_000_000n, [`${hash28}ff`]: 1n } },
+    fields: [[L2_VALUE, tokenPolicyFirstValue]],
+  },
+  {
+    group: "withdrawal",
+    name: "a second asset name under the ADA policy",
+    admitted: true,
+    fields: [[L2_VALUE, extraAdaNameValue]],
+  },
   {
     group: "withdrawal",
     name: "an L1 address without stake credential",
