@@ -344,7 +344,7 @@ describe("validation parallelization", () => {
     const expired = makeCandidate({
       arrivalSeq: 0n,
       spent: [spent],
-      validityIntervalEnd: 119n,
+      validityIntervalEnd: 120n,
     });
     const active = makeCandidate({
       arrivalSeq: 1n,
@@ -364,7 +364,7 @@ describe("validation parallelization", () => {
     expect(expiredAccepted).toHaveLength(0);
     expect(expiredRejected).toHaveLength(1);
     expect(expiredRejected[0].code).toBe(RejectCodes.ValidityIntervalMismatch);
-    expect(expiredRejected[0].detail).toBe("120 > 119");
+    expect(expiredRejected[0].detail).toBe("120 >= 120");
 
     const { accepted: activeAccepted, rejected: activeRejected } =
       await Effect.runPromise(

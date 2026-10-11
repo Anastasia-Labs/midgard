@@ -79,6 +79,13 @@ Twelve fields, in declaration and wire order:
 | 10  | `auxiliary_data_hash`     | 32-byte hash                     |
 | 11  | `network_id`              | uint (`0`, `1`, or `255` = none) |
 
+The validity interval is half-open, as Cardano's: `validity_interval_start` is
+inclusive (`invalid_before`) and `validity_interval_end` is exclusive
+(`invalid_hereafter`). A transaction is valid at block slot `s` iff
+`start <= s < end`, where an absent bound (`-1`) is unbounded. With both bounds
+present, `start >= end` contains no slot and is malformed
+(`E_INVALID_VALIDITY_INTERVAL_FORMAT`).
+
 Canonical encoding (`encode_native_tx_body_compact`): `8c` (array(12))
 followed by the twelve elements in order — every 32-byte hash as
 `58 20 ‖ h32`, the integers as canonical minimal CBOR.

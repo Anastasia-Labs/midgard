@@ -404,6 +404,8 @@ pub const max_tx_size_derived_collection_item_count: Int =
 
 pub const max_serialized_output_preimage_bytes: Int = 16384
 
+/// `-1` marks an absent bound. With both bounds present the interval is
+/// `[start, end)`, so `start >= end` contains no slot and is malformed.
 pub fn validity_interval_is_malformed(
   validity_interval_start: Int,
   validity_interval_end: Int,
@@ -414,13 +416,17 @@ pub fn validity_interval_is_malformed(
     and {
       validity_interval_start >= 0,
       validity_interval_end >= 0,
-      validity_interval_start > validity_interval_end,
+      validity_interval_start >= validity_interval_end,
     },
   }
 }
 
 pub const max_aggregate_field_preimage_bytes: Int = 32768
 
+/// Cardano's `inInterval`: the lower bound (`invalid_before`) is inclusive and
+/// the upper bound (`invalid_hereafter`) is exclusive, so the transaction is
+/// valid at `block_slot` iff `start <= block_slot < end`. An absent bound is
+/// unbounded.
 pub fn validity_interval_contains_slot(
   body: NativeTxBodyCompact,
   block_slot: Int,
@@ -432,7 +438,7 @@ pub fn validity_interval_contains_slot(
     },
     or {
       body.validity_interval_end < 0,
-      block_slot <= body.validity_interval_end,
+      block_slot < body.validity_interval_end,
     },
   }
 }

@@ -311,11 +311,11 @@ export const assertValidityInterval = (state: BuilderState): void => {
   if (
     state.validityIntervalStart !== undefined &&
     state.validityIntervalEnd !== undefined &&
-    state.validityIntervalStart > state.validityIntervalEnd
+    state.validityIntervalStart >= state.validityIntervalEnd
   ) {
     throw new BuilderInvariantError(
-      "validityIntervalStart must be less than or equal to validityIntervalEnd",
-      `${state.validityIntervalStart.toString()} > ${state.validityIntervalEnd.toString()}`,
+      "validityIntervalStart must be less than validityIntervalEnd",
+      `${state.validityIntervalStart.toString()} >= ${state.validityIntervalEnd.toString()}`,
     );
   }
 };

@@ -168,6 +168,7 @@ Midgard's transaction types deviate from Cardano's in the following ways:
       The current canonical mint format carries 28-byte policy IDs without a new L1/L2 origin prefix.
     \item[Time domains.] Native transaction interval scalars are L1 slots, as Cardano's \code{invalid\_before} and \code{invalid\_hereafter} are.
       Current \code{validation-machine/shared.ak} compares them directly with \code{block\_slot}, and the node derives that slot with its L1 slot conversion.
+      That comparison follows Cardano's half-open interval: the transaction is valid iff $\T{validity\_interval\_start} \le \T{block\_slot} < \T{validity\_interval\_end}$, with an absent side unbounded.
       A script sees them as Cardano's \code{transValidityInterval} presents them, in POSIX milliseconds, in the PlutusV3 and MidgardV1 contexts alike: a finite lower bound is inclusive, a finite upper bound is strict, and an absent bound is an inclusive \code{NegInf} or \code{PosInf}.
       The conversion uses the deployment's L1 slot mapping, an affine anchor at the Shelley start that is a deploy-time parameter and is recorded in the deployment manifest; \code{docs/spec/midgard-tx.md}, Section~2.1, gives the mapping per network and why its missing Byron segment and absent forecast horizon are safe.
       Transaction-order due checks use only the order's inclusion time and never compare the interval with block event times.
@@ -212,6 +213,8 @@ The body is embedded as a twelve-element array, not replaced by its hash:
 \end{split}
 \end{equation*}
 An unbounded interval side uses the integer sentinel \code{-1}.
+The interval is half-open, as in Cardano: \T{validity\_interval\_start} is inclusive and \T{validity\_interval\_end} is exclusive.
+When both sides are present, $\T{validity\_interval\_start} \ge \T{validity\_interval\_end}$ contains no slot and the interval is malformed.
 The witness compact is the ordered triple of address-witness, script-witness, and redeemer-witness field hashes.
 Its canonical CBOR bytes are hashed with Blake2b-256 to obtain \code{witness\_set\_hash}.
 

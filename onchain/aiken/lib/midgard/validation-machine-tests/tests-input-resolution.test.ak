@@ -400,6 +400,19 @@ test input_sets_proves_spend_reference_overlap_unilaterally() {
 }
 
 test input_sets_proves_a_malformed_validity_interval_after_the_final_item() {
+  input_sets_proves_a_malformed_validity_interval(10, 9)
+}
+
+// `invalid_hereafter` is exclusive, so `[10, 10)` contains no slot and is
+// malformed exactly like a reversed interval.
+test input_sets_proves_an_empty_validity_interval_malformed() {
+  input_sets_proves_a_malformed_validity_interval(10, 10)
+}
+
+fn input_sets_proves_a_malformed_validity_interval(
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+) -> Bool {
   let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
   let key = encode_midgard_tx_input(input)
   let base = empty_v1_transaction()
@@ -408,8 +421,8 @@ test input_sets_proves_a_malformed_validity_interval_after_the_final_item() {
     body: MidgardTransactionBody {
       ..base.body,
       inputs: [input],
-      validity_interval_start: 10,
-      validity_interval_end: 9,
+      validity_interval_start,
+      validity_interval_end,
     },
   }
   let work_witness_cbor = input_sets_scan_witness(
@@ -1410,12 +1423,32 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
 }
 
 test resolve_inputs_checks_validity_before_ledger_lookups() {
+  resolve_inputs_passes_the_validity_check(-1, -1)
+}
+
+// The fixture's block slot is 100. `invalid_hereafter` is exclusive, so an
+// upper bound of 101 admits slot 100 and the one-slot interval `[100, 101)`
+// contains it.
+test resolve_inputs_accepts_a_block_slot_one_below_the_upper_bound() {
+  resolve_inputs_passes_the_validity_check(-1, 101)
+}
+
+test resolve_inputs_accepts_a_block_slot_inside_a_one_slot_interval() {
+  resolve_inputs_passes_the_validity_check(100, 101)
+}
+
+fn resolve_inputs_passes_the_validity_check(
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+) -> Bool {
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
     body: MidgardTransactionBody {
       ..base.body,
       inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
+      validity_interval_start,
+      validity_interval_end,
     },
   }
   let accumulator = vm_witness.initial_resolution_accumulator()
@@ -1548,13 +1581,27 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
 }
 
 test resolve_inputs_rejects_an_invalid_validity_interval_exactly() {
+  resolve_inputs_rejects_the_validity_interval_exactly(101, -1)
+}
+
+// The fixture's block slot is 100, which an exclusive upper bound of 100 does
+// not contain.
+test resolve_inputs_rejects_a_block_slot_at_the_exclusive_upper_bound() {
+  resolve_inputs_rejects_the_validity_interval_exactly(-1, 100)
+}
+
+fn resolve_inputs_rejects_the_validity_interval_exactly(
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+) -> Bool {
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
     body: MidgardTransactionBody {
       ..base.body,
       inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
-      validity_interval_start: 101,
+      validity_interval_start,
+      validity_interval_end,
     },
   }
   let accumulator = vm_witness.initial_resolution_accumulator()

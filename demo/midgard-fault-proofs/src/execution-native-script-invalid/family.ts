@@ -112,7 +112,11 @@ export const prepareExecutionNativeScriptInvalidEvidence = (
     32,
     "script item hash",
   );
-  if (input.validityIntervalEnd < input.validityIntervalStart)
+  if (
+    input.validityIntervalStart >= 0n &&
+    input.validityIntervalEnd >= 0n &&
+    input.validityIntervalStart >= input.validityIntervalEnd
+  )
     return fail("validity interval is malformed");
   const actualScriptHash = computeHash32(input.scriptBytes);
   if (!actualScriptHash.equals(scriptItemHash))

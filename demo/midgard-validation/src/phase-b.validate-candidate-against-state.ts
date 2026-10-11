@@ -165,11 +165,11 @@ export const validateCandidateAgainstState = (
 
     if (
       ledgerTx.validityIntervalEnd !== undefined &&
-      config.nowCardanoSlotNo > ledgerTx.validityIntervalEnd
+      config.nowCardanoSlotNo >= ledgerTx.validityIntervalEnd
     ) {
       return fail(
         RejectCodes.ValidityIntervalMismatch,
-        `${config.nowCardanoSlotNo} > ${ledgerTx.validityIntervalEnd}`,
+        `${config.nowCardanoSlotNo} >= ${ledgerTx.validityIntervalEnd}`,
       );
     }
 

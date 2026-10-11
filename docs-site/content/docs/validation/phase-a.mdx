@@ -84,7 +84,8 @@ resolution. Configurable strictness does not bypass these checks.
 ### 4. Validity interval: `validateValidityInterval`
 
 Rejects `E_INVALID_VALIDITY_INTERVAL_FORMAT` when a bound is negative, or when
-`validityIntervalStart > validityIntervalEnd`.
+both bounds are present and `validityIntervalStart >= validityIntervalEnd`. The
+upper bound is exclusive, so such an interval contains no slot.
 
 ### 5. Required signers: `validateRequiredSigners`
 

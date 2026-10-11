@@ -43,6 +43,8 @@
 ;   (hash, preimage_cbor) pairs in full transactions and as hashes in compact
 ;   transactions. Witness fields are represented the same way.
 ; - validity_interval_start / validity_interval_end use -1 as "unbounded".
+;   The interval is half-open, as Cardano's: start is inclusive and end is
+;   exclusive. With both present, start >= end is malformed.
 
 midgard_tx_validity_code = 0 / 1 / 2 / 3 / 4 / 5
 

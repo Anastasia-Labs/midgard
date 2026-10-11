@@ -30,8 +30,10 @@ use midgard/validation_trace_v1
 test native_v1_optional_posix_time_sentinel_and_adjacent_invalid_are_exact() {
   and {
     !vm_shared.validity_interval_is_malformed(-1, -1),
-    !vm_shared.validity_interval_is_malformed(0, 0),
+    vm_shared.validity_interval_is_malformed(0, 0),
     !vm_shared.validity_interval_is_malformed(0, 1),
+    !vm_shared.validity_interval_is_malformed(5, -1),
+    !vm_shared.validity_interval_is_malformed(-1, 5),
     vm_shared.validity_interval_is_malformed(-2, -1),
     vm_shared.validity_interval_is_malformed(-1, -2),
     vm_shared.validity_interval_is_malformed(1, 0),

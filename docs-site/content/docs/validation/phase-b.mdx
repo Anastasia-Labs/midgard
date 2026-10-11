@@ -86,7 +86,7 @@ state view (base state plus the accumulating patch):
 
 | Check                                        | Reject code                                           |
 | -------------------------------------------- | ----------------------------------------------------- |
-| Validity interval vs. `nowCardanoSlotNo`     | `E_VALIDITY_INTERVAL_MISMATCH`                        |
+| `start <= nowCardanoSlotNo < end`            | `E_VALIDITY_INTERVAL_MISMATCH`                        |
 | Double-spend against already-accepted spends | `E_DOUBLE_SPEND`                                      |
 | Input resolves in current state              | `E_INPUT_NOT_FOUND`                                   |
 | Missing witness / observer authorization     | `E_MISSING_REQUIRED_WITNESS`                          |

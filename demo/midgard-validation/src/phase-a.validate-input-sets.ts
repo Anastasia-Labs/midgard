@@ -281,12 +281,12 @@ export const validateValidityInterval = (
   if (
     tx.validityIntervalStart !== undefined &&
     tx.validityIntervalEnd !== undefined &&
-    tx.validityIntervalStart > tx.validityIntervalEnd
+    tx.validityIntervalStart >= tx.validityIntervalEnd
   ) {
     return reject(
       tx.txId,
       RejectCodes.InvalidValidityIntervalFormat,
-      `${tx.validityIntervalStart} > ${tx.validityIntervalEnd}`,
+      `${tx.validityIntervalStart} >= ${tx.validityIntervalEnd}`,
       "inputSets",
     );
   }
