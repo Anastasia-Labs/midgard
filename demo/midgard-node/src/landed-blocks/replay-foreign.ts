@@ -134,7 +134,7 @@ const depositLedgerKey = (idCbor: string) => {
 };
 
 /** The user-event and forced-source checks of the replay. */
-const material = (
+export const foreignReplayMaterial = (
   deposits: ReadonlyMap<string, { key: string; output: Buffer; info: string }>,
   withdrawals: ReadonlyMap<
     string,
@@ -340,7 +340,7 @@ export const replayForeignBlock = (deps: {
       if (mismatch !== undefined) return yield* Effect.fail(mismatch);
       const memberships: WithdrawalMembership[] = [];
       const imported = yield* verifyAndImportBlock({
-        ...material(deposits, withdrawals, forced, memberships),
+        ...foreignReplayMaterial(deposits, withdrawals, forced, memberships),
         header,
         headerHash,
         parentHeaderHash: input.parentHeaderHash,

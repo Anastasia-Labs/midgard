@@ -40,6 +40,13 @@ The family proves that one block commits two distinct payable withdrawal events
 which drain the same L2 output reference. Both leaves must be tagged
 `WithdrawalIsValid`; an honest non-payable duplicate does not convict.
 
+Every due withdrawal event must be included, so two orders naming one L2 output
+reference land in the same block. The operator classifies withdrawals in trace
+order, each against the ledger the earlier payable withdrawals leave: the first
+valid order drains the output, and the later one finds it absent and is tagged
+`NonExistentWithdrawalUtxo`. That is the honest tag; foreign-block replay and
+the withdrawal-mistag family derive the same verdict from the step's pre-state.
+
 The technical specification's [DOUBLE-WITHDRAW rule](../../technical-spec/5-ledger-rules/1-cardano-ledger-rules.tex)
 still omits the two `WithdrawalIsValid` preconditions from its displayed formula.
 That is an outstanding specification reconciliation item; the implemented

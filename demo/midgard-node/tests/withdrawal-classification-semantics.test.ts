@@ -9,7 +9,10 @@ import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
-import { classifyWithdrawal } from "../src/workers/utils/mpf/withdrawal-classification.js";
+import {
+  classifyWithdrawal,
+  classifyWithdrawalsInOrder,
+} from "../src/workers/utils/mpf/withdrawal-classification.js";
 
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",
@@ -237,5 +240,63 @@ describe("withdrawal classification semantics", () => {
       table: WithdrawalsDB.tableName,
       message,
     });
+  });
+});
+
+describe("withdrawal classification in trace order", () => {
+  type Options = Parameters<typeof fixture>[0];
+  // Each order gets its own event id; all name the same L2 outref.
+  const orders = async (...options: Options[]) => {
+    const built = await Promise.all(options.map((option) => fixture(option)));
+    const entries = built.map(({ input }, index) => ({
+      ...input.entry,
+      [WithdrawalsDB.Columns.ID]: Buffer.alloc(32, index + 1),
+    }));
+    const { ledgerOutRef, ledgerOutput } = built[0]!.input;
+    const baseOutputs = new Map(
+      Option.isSome(ledgerOutput)
+        ? [[ledgerOutRef.toString("hex"), ledgerOutput.value]]
+        : [],
+    );
+    return { entries, baseOutputs };
+  };
+  const verdicts = async (...options: Options[]) => {
+    const { entries, baseOutputs } = await orders(...options);
+    const classified = await Effect.runPromise(
+      classifyWithdrawalsInOrder({ entries, baseOutputs }),
+    );
+    expect(classified.map(({ entry }) => entry)).toEqual(entries);
+    for (const { validity, shouldDeleteLedgerUtxo } of classified)
+      expect(shouldDeleteLedgerUtxo).toBe(validity === "WithdrawalIsValid");
+    return classified.map(({ validity }) => validity);
+  };
+
+  it("finds the outref gone for a second valid order on it", async () => {
+    expect(await verdicts({}, {})).toEqual([
+      "WithdrawalIsValid",
+      "NonExistentWithdrawalUtxo",
+    ]);
+  });
+
+  it("lets a valid order follow a non-payable one on the same outref", async () => {
+    expect(await verdicts({ badSignature: true }, {})).toEqual([
+      "IncorrectWithdrawalSignature",
+      "WithdrawalIsValid",
+    ]);
+  });
+
+  it("finds a missing outref missing for every order", async () => {
+    expect(await verdicts({ missing: true }, { missing: true })).toEqual([
+      "NonExistentWithdrawalUtxo",
+      "NonExistentWithdrawalUtxo",
+    ]);
+  });
+
+  it("drains the outref once across three orders", async () => {
+    expect(await verdicts({ wrongValue: true }, {}, {})).toEqual([
+      "IncorrectWithdrawalValue",
+      "WithdrawalIsValid",
+      "NonExistentWithdrawalUtxo",
+    ]);
   });
 });

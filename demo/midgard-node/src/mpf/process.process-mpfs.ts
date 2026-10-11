@@ -14,7 +14,7 @@ import {
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
 } from "@al-ft/midgard-validation";
-import { Effect, Fiber, Metric, Option } from "effect";
+import { Effect, Fiber, Metric } from "effect";
 import * as FS from "fs";
 
 import * as ConfirmedLedgerDB from "../database/confirmedLedger.js";
@@ -34,7 +34,7 @@ import { Database } from "../services/index.js";
 import { type NativeMpfGenerationHandle } from "../services/mpf-native-owner/index.js";
 import {
   type ClassifiedWithdrawal,
-  classifyWithdrawal,
+  classifyWithdrawalsInOrder,
   indexSelectedLedgerOutputs,
 } from "../workers/utils/mpf/withdrawal-classification.js";
 import {
@@ -375,45 +375,12 @@ export const processMpfs = (
           effectiveEndTime,
         });
 
-      const seenWithdrawalTarget = new Map<string, Buffer>();
-      const mutableClassifiedWithdrawals: ClassifiedWithdrawal[] = [];
-      for (const entry of includedWithdrawalEntries) {
-        const ledgerOutRef = yield* WithdrawalsDB.toLedgerOutRef(entry);
-        const ledgerOutRefHex = ledgerOutRef.toString("hex");
-        const priorWithdrawalEventId =
-          seenWithdrawalTarget.get(ledgerOutRefHex);
-        if (priorWithdrawalEventId !== undefined) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: WithdrawalsDB.tableName,
-              message:
-                "Refusing to build a block because multiple withdrawals target the same L2 outref in one candidate window",
-              cause: `l2_outref=${ledgerOutRefHex},first_event_id=${priorWithdrawalEventId.toString(
-                "hex",
-              )},duplicate_event_id=${entry[WithdrawalsDB.Columns.ID].toString(
-                "hex",
-              )}`,
-            }),
-          );
-        }
-
-        const selectedLedgerOutput = selectedLedgerOutputs.get(ledgerOutRefHex);
-        const rawLedgerOutput =
-          selectedLedgerOutput === undefined
-            ? Option.none<Buffer>()
-            : Option.some(Buffer.from(selectedLedgerOutput));
-        const classifiedWithdrawal = yield* classifyWithdrawal({
-          entry,
-          ledgerOutRef,
-          ledgerOutput: rawLedgerOutput,
-        });
-        mutableClassifiedWithdrawals.push(classifiedWithdrawal);
-        seenWithdrawalTarget.set(
-          ledgerOutRefHex,
-          entry[WithdrawalsDB.Columns.ID],
-        );
-      }
-      classifiedWithdrawals = mutableClassifiedWithdrawals;
+      // Two orders may name one L2 outref; each is judged against the ledger
+      // the earlier payable ones leave, exactly as replay derives it.
+      classifiedWithdrawals = yield* classifyWithdrawalsInOrder({
+        entries: includedWithdrawalEntries,
+        baseOutputs: selectedLedgerOutputs,
+      });
 
       yield* WithdrawalsDB.setSettlementInfoForEventIds(
         classifiedWithdrawals.map((classified) => ({

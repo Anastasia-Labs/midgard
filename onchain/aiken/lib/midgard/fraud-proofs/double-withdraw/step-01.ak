@@ -27,11 +27,13 @@
 //// operators out of reach: every due L1 withdrawal event MUST be included in
 //// the block that covers its inclusion time, so when two users (or one user
 //// twice) submit withdrawal orders against the same L2 UTxO, the honest block
-//// commits both leaves and tags the duplicate with a non-payable verdict
-//// (`SpentWithdrawalUtxo`/`NonExistentWithdrawalUtxo`). Convicting on the bare
-//// predicate would convict that honest block. Two `WithdrawalIsValid` leaves
-//// over one `l2_outref`, by contrast, pay the same funds out twice — the fund
-//// theft this family proves.
+//// commits both leaves. The operator classifies withdrawals in trace-step
+//// order, each against the ledger the earlier payable ones leave, so the later
+//// order finds the L2 UTxO already drained and is tagged
+//// `NonExistentWithdrawalUtxo`, the non-payable verdict foreign replay and
+//// withdrawal-mistag derive. Convicting on the bare predicate would convict
+//// that honest block. Two `WithdrawalIsValid` leaves over one `l2_outref`, by
+//// contrast, pay the same funds out twice — the fund theft this family proves.
 ////
 //// ### Scope boundary
 ////
@@ -267,20 +269,6 @@ pub fn payable_withdrawal_info_v1(
   }
 }
 
-/// The same order with the honest duplicate verdict: the second event over an
-/// already-drained L2 UTxO is included (due L1 events MUST be) but tagged
-/// non-payable, so it never pays out.
-pub fn honest_duplicate_withdrawal_info_v1(
-  l2_outref: transaction.OutputReference,
-) -> ledger_state.WithdrawalInfo {
-  ledger_state.WithdrawalInfo {
-    ..payable_withdrawal_info_v1(l2_outref),
-    validity: ledger_state.SpentWithdrawalUtxo {
-      l2_tx_id: #"5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
-    },
-  }
-}
-
 /// A single-transaction native-V1 block whose header commits exactly two
 /// withdrawal leaves under its counted `withdrawals_root`.
 pub type DoubleWithdrawBlockV1 {
@@ -378,14 +366,22 @@ pub fn fraudulent_double_withdraw_block_v1() -> DoubleWithdrawBlockV1 {
 }
 
 /// An **honest** challenged block with a same-outref duplicate: the second
-/// event is included (as it must be) but tagged non-payable. Nothing in this
+/// event is included (due L1 events MUST be) but tagged with the non-payable
+/// `validity`, so it never pays out. The node tags it
+/// `NonExistentWithdrawalUtxo`, because the first order already drained the L2
+/// UTxO; the family refuses every other non-payable tag too. Nothing in this
 /// family may convict it.
-pub fn honest_duplicate_block_v1() -> DoubleWithdrawBlockV1 {
+pub fn honest_duplicate_block_v1(
+  validity: ledger_state.WithdrawalValidity,
+) -> DoubleWithdrawBlockV1 {
   double_withdraw_block_v1(
     first_withdrawal_id_v1(),
     payable_withdrawal_info_v1(shared_l2_outref_v1()),
     second_withdrawal_id_v1(),
-    honest_duplicate_withdrawal_info_v1(shared_l2_outref_v1()),
+    ledger_state.WithdrawalInfo {
+      ..payable_withdrawal_info_v1(shared_l2_outref_v1()),
+      validity,
+    },
   )
 }
 

@@ -192,12 +192,30 @@ test double_withdraw_step_01_binds_a_payable_leaf() {
   }
 }
 
-/// Honest-block negative selector: the honest duplicate leaf is tagged
-/// non-payable (`SpentWithdrawalUtxo`), so it cannot enter the family as a
-/// first subject — the entry that keeps the bare same-outref predicate from
-/// convicting honest operators.
+/// Non-payable negative selector: a duplicate leaf tagged
+/// `SpentWithdrawalUtxo` (non-payable, though not the tag the node emits)
+/// cannot enter the family as a first subject — the entry that keeps the bare
+/// same-outref predicate from convicting honest operators.
 test double_withdraw_step_01_rejects_a_non_payable_leaf() fail {
-  let block = step_01.honest_duplicate_block_v1()
+  let block = step_01.honest_duplicate_block_v1(
+    ledger_state.SpentWithdrawalUtxo {
+      l2_tx_id: #"5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+    },
+  )
+  run_step_01(
+    block,
+    step_01.second_withdrawal_membership_v1(block),
+    step_01.block_thread_asset_name_v1(block),
+  )
+}
+
+/// The honest node's own duplicate tag: classified after the first order
+/// drained the L2 UTxO, the duplicate is `NonExistentWithdrawalUtxo`, so it
+/// cannot enter the family as a first subject either.
+test double_withdraw_step_01_rejects_a_drained_duplicate_leaf() fail {
+  let block = step_01.honest_duplicate_block_v1(
+    ledger_state.NonExistentWithdrawalUtxo,
+  )
   run_step_01(
     block,
     step_01.second_withdrawal_membership_v1(block),
