@@ -88,7 +88,7 @@ vi.mock("../src/services/index.js", async (importOriginal) => {
         }),
       ),
     },
-    MidgardContractServices: Layer.empty,
+    FollowerMidgardContractServices: Layer.empty,
     AdmissionWriterLive: Layer.empty,
     WriteBehindLive: Layer.empty,
   };

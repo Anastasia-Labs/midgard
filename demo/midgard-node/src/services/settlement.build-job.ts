@@ -30,7 +30,7 @@ import {
 import { FollowerLucidLive, Lucid } from "./lucid.js";
 import {
   ContractDeploymentIdentity,
-  MidgardContractServices,
+  FollowerMidgardContractServices,
 } from "./midgard-contracts.js";
 import {
   inspectSettlementAttempt,
@@ -353,7 +353,7 @@ export const settlementProgram = (
   });
 
 export const settlementWorkerLayer = Layer.mergeAll(
-  MidgardContractServices,
+  FollowerMidgardContractServices,
   FollowerLucidLive,
   IntentJournalLive,
 ).pipe(

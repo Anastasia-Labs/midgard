@@ -217,7 +217,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   const lucid = yield* Lucid;
   yield* Effect.try(() =>
     assertLucidL1SlotConfigMatchesDeployment(
-      deploymentL1SlotConfig(identity, nodeConfig.NETWORK),
+      deploymentL1SlotConfig(identity),
       lucid.api,
     ),
   ).pipe(asProtocolStartupStep(L1_SLOT_CONFIG_MISMATCH));

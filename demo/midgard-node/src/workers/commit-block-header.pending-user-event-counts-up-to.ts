@@ -21,6 +21,7 @@ import {
   type IntentJournal,
   IntentJournalLive,
 } from "../services/intent-journal.js";
+import type { L1Adapter } from "../services/l1-adapter.js";
 
 export const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 
@@ -36,6 +37,11 @@ export class CommitWorkerInvariantError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+/**
+ * The commit program's services. `adapter` is the L1 access a derived
+ * contract bundle reads its slot mapping through: the follower in the
+ * worker thread `listen` starts, a tool access in a probe or command.
+ */
 export const provideCommitBlockWorkerServices = <A, E>(
   effect: Effect.Effect<
     A,
@@ -46,12 +52,13 @@ export const provideCommitBlockWorkerServices = <A, E>(
     | NodeConfig
     | IntentJournal
   >,
+  adapter: Layer.Layer<L1Adapter>,
 ): Effect.Effect<A, E | ConfigError | DatabaseInitializationError, never> =>
   pipe(
     effect,
     // The worker journals in the node database; the node's S6 reconciles.
     Effect.provide(IntentJournalLive),
-    Effect.provide(MidgardContractServices),
+    Effect.provide(MidgardContractServices.pipe(Layer.provide(adapter))),
     Effect.provide(Database.workerLayer),
     Effect.provide(NodeConfig.layer),
   );

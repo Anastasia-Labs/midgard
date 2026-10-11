@@ -130,7 +130,8 @@ const runCheck = async (
   slots: {
     /** The mapping the node's Lucid reads from the ledger. */
     readonly lucid?: L1SlotConfig;
-    /** The manifest's mapping; absent selects a derived Preprod bundle. */
+    /** The manifest's mapping; absent selects a derived bundle built with
+     * Preprod's. */
     readonly manifest?: L1SlotConfig;
   } = { lucid: PREPROD, manifest: PREPROD },
 ) => {
@@ -151,7 +152,7 @@ const runCheck = async (
       Effect.provideService(
         ContractDeploymentIdentity,
         (slots.manifest === undefined
-          ? { kind: "derived" }
+          ? { kind: "derived", l1SlotConfig: PREPROD }
           : {
               kind: "manifest",
               manifest: { l1SlotConfig: slots.manifest },
@@ -201,7 +202,7 @@ describe("the startup protocol check", () => {
     expect(reported).toEqual([]);
   });
 
-  it("checks the deployment when Lucid's slot mapping is the manifest's or, for a derived bundle, the network's", async () => {
+  it("checks the deployment when Lucid's slot mapping is the manifest's or, for a derived bundle, the one it was built with", async () => {
     stub.failures = 0;
     expect(Exit.isSuccess((await runCheck()).exit)).toBe(true);
     expect(Exit.isSuccess((await runCheck({ lucid: PREPROD })).exit)).toBe(

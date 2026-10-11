@@ -129,8 +129,8 @@ genesis `systemStart` with the genesis `slotLength`:
 The node, watcher and prover build the same contexts off chain, so each
 refuses to start (`l1_slot_config_mismatch`, never a crash loop) when the
 mapping its L1 view reports differs from the deployment's. A manifest-less
-node takes a named network's constants, or `MIDGARD_L1_SLOT_CONFIG` on a
-Custom network.
+node derives its scripts with the mapping its L1 access reads off the
+ledger, refusing on a named network one that differs from its constants.
 
 **Pre-Shelley slots.** Cardano converts through the full era history, so
 a mainnet or Preprod slot before `zeroSlot` falls in the Byron era's

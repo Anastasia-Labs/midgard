@@ -15,6 +15,7 @@ import { formatJson } from "./commands/command-utils.js";
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import * as DeploymentRunStateCommand from "./commands/deployment-run-state.js";
 import { program } from "./index.registration.js";
+import { canonicalSlotConfigForLucid } from "./lucid-time.js";
 import * as Services from "./services/index.js";
 import {
   planReferenceScriptCommandProgram,
@@ -104,20 +105,14 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               },
             );
           const baseContracts = yield* Services.AlwaysSucceedsContract;
-          // The scripts take the network's slot mapping; the ledger Lucid
-          // reads must agree with it, or the published scripts would build
-          // contexts this deployment's roles refuse.
+          // The scripts take the slot mapping Lucid reads through the L1
+          // access, a named network's only when it equals its static one.
           const l1SlotConfig = yield* Effect.try({
-            try: () => {
-              const config = Services.l1SlotConfigForDerivedDeployment(
+            try: () =>
+              Services.derivedDeploymentL1SlotConfig(
                 nodeConfig.NETWORK,
-              );
-              Services.assertLucidL1SlotConfigMatchesDeployment(
-                config,
-                lucidService.api,
-              );
-              return config;
-            },
+                canonicalSlotConfigForLucid(lucidService.api),
+              ),
             catch: (cause) =>
               cause instanceof Error ? cause : new Error(String(cause)),
           });

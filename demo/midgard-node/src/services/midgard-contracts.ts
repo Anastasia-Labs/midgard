@@ -41,15 +41,16 @@ export {
   availabilityParametersFromManifest,
   type ContractDeploymentIdentityValue,
   deploymentL1SlotConfig,
+  derivedDeploymentL1SlotConfig,
   eventHistoryBoundsFromExplicitEnvironment,
   eventHistoryProtectionDurationFromExplicitEnvironment,
-  l1SlotConfigForDerivedDeployment,
   loadRealBlueprintSha256,
   parseRuntimeDeploymentManifest,
   readRuntimeDeploymentManifestFile,
 } from "./midgard-contracts.load-reference-script-auth-validator.js";
 export {
   ContractDeploymentIdentity,
+  FollowerMidgardContractServices,
   MidgardContracts,
   MidgardContractServices,
 } from "./midgard-contracts.make-midgard-contract-runtime.js";

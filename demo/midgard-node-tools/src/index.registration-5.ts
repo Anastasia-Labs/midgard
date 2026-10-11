@@ -6,6 +6,7 @@ import {
   assertUserCliWalletIsOperationallyIsolated,
   failCli,
   ToolLucidLive,
+  ToolMidgardContractServices,
   writeJson,
 } from "midgard-node/commands/cli-runtime";
 import {
@@ -262,7 +263,7 @@ program
             Effect.provide(ToolLucidLive),
             Effect.provide(Services.Database.layer),
             Effect.provide(Services.NodeConfig.layer),
-            Effect.provide(Services.MidgardContractServices),
+            Effect.provide(ToolMidgardContractServices),
           ),
         );
         writeJson(result);

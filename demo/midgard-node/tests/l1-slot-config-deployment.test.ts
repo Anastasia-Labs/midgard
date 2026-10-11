@@ -1,120 +1,75 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { LucidEvolution, SlotConfig } from "@lucid-evolution/lucid";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   assertLucidL1SlotConfigMatchesDeployment,
   deploymentL1SlotConfig,
-  l1SlotConfigForDerivedDeployment,
+  derivedDeploymentL1SlotConfig,
 } from "../src/services/midgard-contracts.load-reference-script-auth-validator.js";
 
 // A deployment's cek-context validator is applied with one L1 slot mapping,
 // and every process building script contexts off chain must use the same
-// one. A derived (manifest-less) bundle takes a named network's static
-// mapping, or `MIDGARD_L1_SLOT_CONFIG` for a Custom one; a process whose
-// Lucid reads a different mapping off the ledger is refused.
+// one. A derived (manifest-less) bundle takes the mapping its L1 access reads
+// off the ledger, which on a named network must be its static one; a
+// process whose Lucid reads a different mapping is refused.
 
 const DEVNET = { zeroTime: 1_789_056_000_000, zeroSlot: 0, slotLength: 1000 };
-const ENV = "MIDGARD_L1_SLOT_CONFIG";
-const saved = process.env[ENV];
-
-afterEach(() => {
-  if (saved === undefined) delete process.env[ENV];
-  else process.env[ENV] = saved;
-});
 
 const lucidWith = (slotConfig: SlotConfig | undefined): LucidEvolution =>
   ({ config: () => ({ slotConfig }) }) as unknown as LucidEvolution;
 
-describe("l1SlotConfigForDerivedDeployment", () => {
-  it("takes a named network's static mapping with no environment value", () => {
-    delete process.env[ENV];
-    expect(l1SlotConfigForDerivedDeployment("Preprod")).toEqual(
-      NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-    );
-    expect(l1SlotConfigForDerivedDeployment("Mainnet")).toEqual(
-      NAMED_NETWORK_L1_SLOT_CONFIGS.Mainnet,
+describe("derivedDeploymentL1SlotConfig", () => {
+  it("takes a Custom network's mapping as the L1 access reads it", () => {
+    expect(derivedDeploymentL1SlotConfig("Custom", { ...DEVNET })).toEqual(
+      DEVNET,
     );
   });
 
-  it("accepts an environment value equal to the named network's mapping", () => {
-    process.env[ENV] = JSON.stringify(NAMED_NETWORK_L1_SLOT_CONFIGS.Preview);
-    expect(l1SlotConfigForDerivedDeployment("Preview")).toEqual(
-      NAMED_NETWORK_L1_SLOT_CONFIGS.Preview,
+  it("takes a named network's static mapping when the ledger reports it", () => {
+    for (const network of ["Mainnet", "Preprod", "Preview"] as const)
+      expect(
+        derivedDeploymentL1SlotConfig(network, {
+          ...NAMED_NETWORK_L1_SLOT_CONFIGS[network],
+        }),
+      ).toEqual(NAMED_NETWORK_L1_SLOT_CONFIGS[network]);
+  });
+
+  it("refuses a named network whose ledger reports another mapping", () => {
+    expect(() => derivedDeploymentL1SlotConfig("Preprod", DEVNET)).toThrow(
+      /^l1_slot_config_mismatch: the L1 access reports zeroTime=1789056000000,zeroSlot=0,slotLength=1000, not Preprod's zeroTime=1655769600000,zeroSlot=86400,slotLength=1000$/u,
     );
   });
 
-  it("refuses an environment value that differs from the named network's mapping", () => {
-    process.env[ENV] = JSON.stringify(DEVNET);
-    expect(() => l1SlotConfigForDerivedDeployment("Preprod")).toThrow(
-      /MIDGARD_L1_SLOT_CONFIG zeroTime=1789056000000,zeroSlot=0,slotLength=1000 differs from Preprod's/u,
-    );
-  });
-
-  it("requires the environment value for a Custom network and takes it exactly", () => {
-    delete process.env[ENV];
-    expect(() => l1SlotConfigForDerivedDeployment("Custom")).toThrow(
-      /MIDGARD_L1_SLOT_CONFIG must be set to the Custom network's genesis slot mapping/u,
-    );
-    process.env[ENV] = "   ";
-    expect(() => l1SlotConfigForDerivedDeployment("Custom")).toThrow(
-      /must be set/u,
-    );
-    process.env[ENV] = JSON.stringify(DEVNET);
-    expect(l1SlotConfigForDerivedDeployment("Custom")).toEqual(DEVNET);
-  });
-
-  it.each([
-    ["not JSON", "{zeroTime: 1}", /must be JSON/u],
-    [
-      "an extra key",
-      JSON.stringify({ ...DEVNET, era: 1 }),
-      /^MIDGARD_L1_SLOT_CONFIG: must have exactly the keys/u,
-    ],
-    [
-      "a zero slot length",
-      JSON.stringify({ ...DEVNET, slotLength: 0 }),
-      /^MIDGARD_L1_SLOT_CONFIG\.slotLength: must be positive/u,
-    ],
-  ])("refuses an environment value that is %s", (_label, raw, message) => {
-    process.env[ENV] = raw;
-    expect(() => l1SlotConfigForDerivedDeployment("Custom")).toThrow(message);
-    expect(() => l1SlotConfigForDerivedDeployment("Preprod")).toThrow(message);
+  it("refuses a malformed ledger mapping", () => {
+    expect(() =>
+      derivedDeploymentL1SlotConfig("Custom", { ...DEVNET, slotLength: 0 }),
+    ).toThrow(/slotLength: must be positive/u);
   });
 });
 
 describe("deploymentL1SlotConfig", () => {
-  it("reads a finalized manifest's mapping and ignores the environment", () => {
-    process.env[ENV] = JSON.stringify(NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod);
+  it("reads a finalized manifest's mapping", () => {
     expect(
-      deploymentL1SlotConfig(
-        {
-          kind: "manifest",
-          manifest: { l1SlotConfig: DEVNET },
-        } as unknown as Parameters<typeof deploymentL1SlotConfig>[0],
-        "Custom",
-      ),
+      deploymentL1SlotConfig({
+        kind: "manifest",
+        manifest: { l1SlotConfig: DEVNET },
+      } as unknown as Parameters<typeof deploymentL1SlotConfig>[0]),
     ).toEqual(DEVNET);
   });
 
-  it("derives a manifest-less bundle's mapping from the network", () => {
-    delete process.env[ENV];
+  it("reads the mapping a derived bundle recorded, and refuses one with none", () => {
     expect(
-      deploymentL1SlotConfig(
-        { kind: "derived" } as unknown as Parameters<
-          typeof deploymentL1SlotConfig
-        >[0],
-        "Preprod",
-      ),
-    ).toEqual(NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod);
+      deploymentL1SlotConfig({
+        kind: "derived",
+        l1SlotConfig: DEVNET,
+      } as unknown as Parameters<typeof deploymentL1SlotConfig>[0]),
+    ).toEqual(DEVNET);
     expect(() =>
-      deploymentL1SlotConfig(
-        { kind: "derived" } as unknown as Parameters<
-          typeof deploymentL1SlotConfig
-        >[0],
-        "Custom",
-      ),
-    ).toThrow(/MIDGARD_L1_SLOT_CONFIG must be set/u);
+      deploymentL1SlotConfig({ kind: "derived" } as unknown as Parameters<
+        typeof deploymentL1SlotConfig
+      >[0]),
+    ).toThrow(/records no L1 slot mapping/u);
   });
 });
 

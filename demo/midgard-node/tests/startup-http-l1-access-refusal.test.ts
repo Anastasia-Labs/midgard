@@ -75,7 +75,7 @@ vi.mock("../src/services/index.js", async (importOriginal) => {
   return {
     ...original,
     Database: { ...original.Database, layer: Layer.empty },
-    MidgardContractServices: Layer.empty,
+    FollowerMidgardContractServices: Layer.empty,
     AdmissionWriterLive: Layer.empty,
     WriteBehindLive: Layer.empty,
   };

@@ -44,7 +44,7 @@ const provideListenRuntimeServices = <A, E>(
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
-    Effect.provide(Services.MidgardContractServices),
+    Effect.provide(Services.FollowerMidgardContractServices),
     Effect.provide(Services.FollowerLucidLive),
     Effect.provide(Services.Globals.Default),
   );

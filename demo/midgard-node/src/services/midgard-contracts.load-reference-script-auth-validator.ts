@@ -29,6 +29,7 @@ import {
   type LucidEvolution,
   MintingPolicy,
   mintingPolicyToId,
+  type SlotConfig,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -62,6 +63,11 @@ export type ContractDeploymentIdentityValue = {
   readonly l1Finality?: DeploymentManifestL1Finality;
   /** Exact parser-admitted manifest; absent for derived/dev contract bundles. */
   readonly manifest?: DeploymentManifest;
+  /**
+   * The slot mapping a derived bundle was built with, read through the
+   * process's L1 access; a manifest's is `manifest.l1SlotConfig`.
+   */
+  readonly l1SlotConfig?: L1SlotConfig;
 };
 
 export type MidgardContractRuntimeValue = {
@@ -128,55 +134,52 @@ export const eventHistoryProtectionDurationFromExplicitEnvironment =
   };
 
 /**
- * The slot mapping a fresh deployment's validation-trace validators take.
- * A named network's is Lucid's static one; a Custom network has no default
- * and takes `MIDGARD_L1_SLOT_CONFIG`, a JSON `{ zeroTime, zeroSlot,
- * slotLength }` record of its genesis anchor. A value set for a named
- * network must equal the static one.
+ * The slot mapping a fresh (manifest-less) deployment's validation-trace
+ * validators take: the one the process's L1 access reads off the ledger
+ * (`ledger`). A Custom network takes it as read, its genesis anchor; a
+ * named network's must equal Lucid's static one, or this refuses
+ * (`l1_slot_config_mismatch: ...`): scripts derived with another mapping
+ * would build contexts the network's other deployments do not.
  */
-export const l1SlotConfigForDerivedDeployment = (
+export const derivedDeploymentL1SlotConfig = (
   network: string,
+  ledger: SlotConfig,
 ): L1SlotConfig => {
-  const raw = process.env.MIDGARD_L1_SLOT_CONFIG;
-  const explicit =
-    raw === undefined || raw.trim().length === 0
-      ? undefined
-      : parseL1SlotConfig(
-          (() => {
-            try {
-              return JSON.parse(raw) as unknown;
-            } catch (cause) {
-              throw new Error("MIDGARD_L1_SLOT_CONFIG must be JSON", { cause });
-            }
-          })(),
-          "MIDGARD_L1_SLOT_CONFIG",
-        );
+  const runtime = parseL1SlotConfig(
+    {
+      zeroTime: ledger.zeroTime,
+      zeroSlot: ledger.zeroSlot,
+      slotLength: ledger.slotLength,
+    },
+    "L1 access slot configuration",
+  );
   if (network === "Mainnet" || network === "Preprod" || network === "Preview") {
     const named = NAMED_NETWORK_L1_SLOT_CONFIGS[network];
-    if (explicit !== undefined && !l1SlotConfigsEqual(explicit, named))
+    if (!l1SlotConfigsEqual(named, runtime))
       throw new Error(
-        `MIDGARD_L1_SLOT_CONFIG ${formatL1SlotConfig(explicit)} differs from ${network}'s ${formatL1SlotConfig(named)}`,
+        `l1_slot_config_mismatch: the L1 access reports ${formatL1SlotConfig(runtime)}, not ${network}'s ${formatL1SlotConfig(named)}`,
       );
     return named;
   }
-  if (explicit === undefined)
-    throw new Error(
-      `MIDGARD_L1_SLOT_CONFIG must be set to the ${network} network's genesis slot mapping before deriving scripts without a finalized manifest`,
-    );
-  return explicit;
+  return runtime;
 };
 
 /**
  * The slot mapping the selected contracts were built with: the manifest's,
- * or for a derived bundle the one `l1SlotConfigForDerivedDeployment` gives.
+ * or for a derived bundle the one its runtime read through the L1 access
+ * (`derivedDeploymentL1SlotConfig`).
  */
 export const deploymentL1SlotConfig = (
   identity: ContractDeploymentIdentityValue,
-  network: string,
-): L1SlotConfig =>
-  identity.kind === "manifest" && identity.manifest !== undefined
-    ? identity.manifest.l1SlotConfig
-    : l1SlotConfigForDerivedDeployment(network);
+): L1SlotConfig => {
+  if (identity.kind === "manifest" && identity.manifest !== undefined)
+    return identity.manifest.l1SlotConfig;
+  if (identity.l1SlotConfig === undefined)
+    throw new Error(
+      "The derived contract bundle records no L1 slot mapping to check against",
+    );
+  return identity.l1SlotConfig;
+};
 
 /**
  * Refuses (`l1_slot_config_mismatch: ...`) a Lucid instance whose slot

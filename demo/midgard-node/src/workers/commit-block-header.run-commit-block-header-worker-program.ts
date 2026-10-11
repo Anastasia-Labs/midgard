@@ -15,6 +15,7 @@ import {
   NodeConfig,
 } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
+import { FollowerL1AdapterLive } from "../services/l1-adapter.js";
 import {
   type NotifyCommitWorkerParent,
   shouldPreserveCommitMpfRoots,
@@ -193,6 +194,7 @@ if (parentPort !== null) {
           notifyParent,
           commitLucidFactory,
         ),
+        FollowerL1AdapterLive,
       ),
     ),
   );

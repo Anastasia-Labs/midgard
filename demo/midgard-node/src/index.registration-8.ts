@@ -10,6 +10,7 @@ import {
   runCliEffect,
   tapJson,
   ToolLucidLive,
+  ToolMidgardContractServices,
 } from "./commands/cli-runtime.js";
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import { program } from "./index.registration.js";
@@ -148,7 +149,7 @@ program
       RegisterActiveOperator.program,
       Effect.provide(IntentJournalWithoutFollower),
       Effect.provide(Services.NodeConfig.layer),
-      Effect.provide(Services.MidgardContracts.Default),
+      Effect.provide(ToolMidgardContractServices),
       Effect.provide(ToolLucidLive),
       Effect.tap((result) =>
         Effect.logInfo(

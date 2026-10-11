@@ -19,9 +19,9 @@ import {
   normalizeDeploymentManifestJsonValue,
 } from "../deployment-manifest.js";
 import { deploymentEconomicsFromEnvironment } from "../environment.js";
+import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 import {
-  assertLucidL1SlotConfigMatchesDeployment,
-  l1SlotConfigForDerivedDeployment,
+  derivedDeploymentL1SlotConfig,
   loadRealBlueprintSha256,
   Lucid,
   NodeConfig,
@@ -155,14 +155,15 @@ export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
       new Error("DA threshold does not fit the V1 manifest integer envelope"),
     );
   }
-  // The manifest records the slot mapping the scripts were derived with,
-  // refused unless the ledger Lucid reads runs with the same one.
+  // The manifest records the slot mapping the scripts were derived with:
+  // the one Lucid reads through the L1 access, a named network's only when
+  // it equals its static one.
   const l1SlotConfig = yield* Effect.try({
-    try: () => {
-      const config = l1SlotConfigForDerivedDeployment(nodeConfig.NETWORK);
-      assertLucidL1SlotConfigMatchesDeployment(config, lucidService.api);
-      return config;
-    },
+    try: () =>
+      derivedDeploymentL1SlotConfig(
+        nodeConfig.NETWORK,
+        canonicalSlotConfigForLucid(lucidService.api),
+      ),
     catch: (cause) =>
       new Error(
         `Failed to bind the deployment-manifest L1 slot mapping: ${String(cause)}`,

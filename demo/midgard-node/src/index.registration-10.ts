@@ -12,6 +12,7 @@ import {
   runCliEffect,
   tapJson,
   ToolLucidLive,
+  ToolMidgardContractServices,
   writeJson,
 } from "./commands/cli-runtime.js";
 import {
@@ -156,7 +157,7 @@ program
         ),
         Effect.provide(ToolLucidLive),
         Effect.provide(Services.NodeConfig.layer),
-        Effect.provide(Services.MidgardContractServices),
+        Effect.provide(ToolMidgardContractServices),
       );
 
       runCliEffect(mainEffect);

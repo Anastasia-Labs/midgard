@@ -25,10 +25,13 @@ import {
 } from "../services/intent-journal.js";
 import { errorMessage } from "./cli-options.js";
 import { formatJson } from "./command-utils.js";
-import { ToolLucidLive } from "./l1-tool-adapter.js";
+import {
+  ToolLucidLive,
+  ToolMidgardContractServices,
+} from "./l1-tool-adapter.js";
 import { assertPayerIsNotOperationalWallet } from "./operational-wallet-refusal.js";
 
-export { ToolLucidLive };
+export { ToolLucidLive, ToolMidgardContractServices };
 
 export {
   errorMessage,
@@ -177,7 +180,7 @@ export const provideTxServices = <A, E>(
     effect,
     Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.NodeConfig.layer),
-    Effect.provide(Services.MidgardContracts.Default),
+    Effect.provide(ToolMidgardContractServices),
     Effect.provide(ToolLucidLive),
   );
 
@@ -250,7 +253,7 @@ export const provideNodeRuntimeServices = <A, E>(
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
-    Effect.provide(Services.MidgardContractServices),
+    Effect.provide(ToolMidgardContractServices),
     Effect.provide(ToolLucidLive),
     Effect.provide(Services.Globals.Default),
   );
@@ -278,7 +281,7 @@ export const provideDatabaseTxServices = <A, E>(
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
-    Effect.provide(Services.MidgardContractServices),
+    Effect.provide(ToolMidgardContractServices),
     Effect.provide(ToolLucidLive),
   );
 
