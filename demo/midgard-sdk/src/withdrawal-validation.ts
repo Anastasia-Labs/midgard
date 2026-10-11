@@ -1,23 +1,27 @@
-import { assetUnitParts, normalizeAssets } from "@al-ft/midgard-core/assets";
+import { assetUnitFromParts } from "@al-ft/midgard-core/assets";
 import {
   decodeMidgardAddressText,
   decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
-  midgardValueToCmlValue,
+  type MidgardValue,
 } from "@al-ft/midgard-core/codec";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import type { Assets, UTxO } from "@lucid-evolution/lucid";
-import { Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
+import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect, type Either } from "effect";
 
 import { Value } from "./common.js";
+import { WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT } from "./fraud-proof/withdrawal-mistag.js";
 import { WithdrawalInfo, WithdrawalValidity } from "./ledger-state.js";
 import { verifyWithdrawalSignatureCbor } from "./withdrawal-signature.js";
+import {
+  withdrawalLedgerAssetCount,
+  withdrawalValueMatchesLedgerOutput,
+} from "./withdrawal-value.js";
 
 /** A deterministic computation over caller-authenticated event and selected-base ledger bytes.
  * Callers must bind the projected owner/value to the originating event. This
@@ -41,17 +45,6 @@ export type WithdrawalLedgerClassification = Readonly<{
 export class WithdrawalValidationError extends EffectData.TaggedError(
   "WithdrawalValidationError",
 )<{ readonly message: string; readonly cause: unknown }> {}
-
-const assetsToValue = (assets: Assets): Value => {
-  const outer = new Map<string, Map<string, bigint>>();
-  for (const [unit, quantity] of Object.entries(normalizeAssets(assets))) {
-    const { policyId, assetName } = assetUnitParts(unit);
-    const inner = outer.get(policyId) ?? new Map<string, bigint>();
-    inner.set(assetName, (inner.get(assetName) ?? 0n) + quantity);
-    outer.set(policyId, inner);
-  }
-  return outer;
-};
 
 const decodeWithdrawalInfo = (
   input: WithdrawalLedgerClassificationInput,
@@ -92,33 +85,28 @@ const encodeWithdrawalSettlementInfo = (
     });
   });
 
-const decodeLedgerUtxo = ({
+const decodeLedgerOutput = ({
   outRef,
   output,
 }: {
   readonly outRef: Buffer;
   readonly output: Buffer;
-}): Effect.Effect<UTxO, WithdrawalValidationError, never> =>
+}): Effect.Effect<
+  { readonly address: string; readonly value: MidgardValue },
+  WithdrawalValidationError,
+  never
+> =>
   Effect.try({
     try: () => {
       // Ledger out-refs are the §5.3 field-0/1 item form — 38 bytes,
       // `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` — matching on-chain
       // `ledger_outref_key`, not CML's minimal-index `TransactionInput` CBOR.
-      // The decoder bounds the index to a CBOR uint16, so no safe-integer
-      // check is needed on the way out.
-      const input = decodeMidgardSpendInputItem(outRef);
+      decodeMidgardSpendInputItem(outRef);
       const decodedOutput = decodeMidgardTxOutput(output);
       return {
-        txHash: Buffer.from(input.txId).toString("hex"),
-        outputIndex: input.outputIndex,
         address: encodeMidgardAddressText(decodedOutput.address),
-        assets: valueToAssets(
-          midgardValueToCmlValue(decodedOutput.value),
-        ) as Assets,
-        ...(decodedOutput.datum === undefined
-          ? {}
-          : { datum: decodedOutput.datum.cbor.toString("hex") }),
-      } satisfies UTxO;
+        value: decodedOutput.value,
+      };
     },
     catch: (cause) =>
       new WithdrawalValidationError({
@@ -127,21 +115,19 @@ const decodeLedgerUtxo = ({
       }),
   });
 
-const valuesEqual = (
-  left: Value,
-  right: Value,
-): Effect.Effect<boolean, WithdrawalValidationError, never> =>
-  Effect.try({
-    try: () =>
-      Buffer.from(LucidData.to(left, Value), "hex").equals(
-        Buffer.from(LucidData.to(right, Value), "hex"),
-      ),
-    catch: (cause) =>
-      new WithdrawalValidationError({
-        message: "Failed to compare withdrawal value CBOR",
-        cause,
-      }),
-  });
+/** The ledger output's assets by unit, for the mismatch detail. */
+const assetQuantities = (value: MidgardValue): Record<string, string> =>
+  Object.fromEntries([
+    ...(value.lovelace === 0n
+      ? []
+      : [[assetUnitFromParts("", ""), value.lovelace.toString()]]),
+    ...[...value.assets.entries()].flatMap(([policy, assets]) =>
+      [...assets.entries()].map(([name, quantity]) => [
+        assetUnitFromParts(policy, name),
+        quantity.toString(),
+      ]),
+    ),
+  ]);
 
 export const classifyWithdrawalFromLedger = (
   input: WithdrawalLedgerClassificationInput,
@@ -158,12 +144,12 @@ export const classifyWithdrawalFromLedger = (
     if (ledgerOutput === null) {
       validity = "NonExistentWithdrawalUtxo";
     } else {
-      const utxo = yield* decodeLedgerUtxo({
+      const ledger = yield* decodeLedgerOutput({
         outRef: ledgerOutRef,
         output: ledgerOutput,
       });
       const paymentCredential = decodeMidgardAddressText(
-        utxo.address,
+        ledger.address,
       ).paymentCredential;
       if (paymentCredential.hash.toString("hex") !== input.l2Owner) {
         validity = "IncorrectWithdrawalOwner";
@@ -176,21 +162,18 @@ export const classifyWithdrawalFromLedger = (
               cause,
             }),
         });
-        const actualAssets = normalizeAssets(utxo.assets);
-        const actualValue = assetsToValue(actualAssets);
-        const valueMatches = yield* valuesEqual(requestedValue, actualValue);
-        if (!valueMatches) {
+        // The chain's rule (withdrawal-mistag step-03): decoded values
+        // compared as sets, and lovelace excluded from the asset count.
+        if (!withdrawalValueMatchesLedgerOutput(requestedValue, ledger.value)) {
           validity = "IncorrectWithdrawalValue";
           validityDetail = {
             requested_value_cbor: input.l2ValueCbor,
-            actual_assets: Object.fromEntries(
-              Object.entries(actualAssets).map(([unit, quantity]) => [
-                unit,
-                quantity.toString(),
-              ]),
-            ),
+            actual_assets: assetQuantities(ledger.value),
           };
-        } else if (Object.keys(actualAssets).length > 100) {
+        } else if (
+          withdrawalLedgerAssetCount(ledger.value) >
+          WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT
+        ) {
           validity = "TooManyTokensInWithdrawal";
         } else {
           const withdrawalInfo = yield* decodeWithdrawalInfo(input);

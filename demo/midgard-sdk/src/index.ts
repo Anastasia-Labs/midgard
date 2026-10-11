@@ -48,3 +48,4 @@ export * from "./user-events/index.js";
 export * from "./validity-range.js";
 export * from "./withdrawal-signature.js";
 export * from "./withdrawal-validation.js";
+export * from "./withdrawal-value.js";
