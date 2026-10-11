@@ -17,6 +17,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import { buildPastProtectedPredecessor } from "midgard-watcher/tests/support/history-predecessor-hold";
 import { expect, it } from "vitest";
 
 import {
@@ -25,7 +26,6 @@ import {
   buildJourneyWithdrawalEvent,
   captureStagedHistoryEvent,
 } from "./history-events.js";
-import { buildPastProtectedPredecessor } from "./history-predecessor-hold.js";
 
 // Pure content fixtures: these checks do not claim a deployed chain, a new L1
 // observation, or live journey acceptance. Both carriage modes use the shared reader.

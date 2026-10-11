@@ -20,6 +20,10 @@ import { activateRegisteredOperatorProgram } from "midgard-node/transactions/reg
 import { canActivateRegisteredOperatorImmediately } from "midgard-node/transactions/register-active-operator/activation";
 
 import {
+  buildPastProtectedPredecessor,
+  ledgerClock,
+} from "./history-predecessor-hold.js";
+import {
   createPublishedWatcherBlockActor,
   PublishedTransactionExpiredError,
   type PublishedWatcherBlock,
@@ -294,14 +298,19 @@ export const stagePublishedDepositTrace = async (
       type: "Key",
       hash: operatorVkey,
     });
-    const deposit = await Effect.runPromise(
-      SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
-        l2Address,
-        l2Datum: null,
-        lovelace: 10_000_000n,
-        additionalAssets: {},
-        referenceScripts: { depositMinting: reference("depositMint") },
-      }),
+    // A fresh deployment's deposit-history root is still protected.
+    const deposit = await buildPastProtectedPredecessor(
+      () =>
+        Effect.runPromise(
+          SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
+            l2Address,
+            l2Datum: null,
+            lovelace: 10_000_000n,
+            additionalAssets: {},
+            referenceScripts: { depositMinting: reference("depositMint") },
+          }),
+        ),
+      ledgerClock(chain),
     );
     onStage("deposit publication");
     const signedDeposit = await deposit.tx.sign.withWallet().complete();

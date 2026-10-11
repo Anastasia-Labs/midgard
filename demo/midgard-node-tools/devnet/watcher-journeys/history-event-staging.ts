@@ -18,6 +18,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
+import { buildPastProtectedPredecessor } from "midgard-watcher/tests/support/history-predecessor-hold";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import {
@@ -32,7 +33,6 @@ import {
   journeyWithdrawalBody,
   type StagedHistoryEvent,
 } from "./history-events.js";
-import { buildPastProtectedPredecessor } from "./history-predecessor-hold.js";
 import {
   createPreparedJourneyFixture,
   decodeJourneyRetainedBlock,

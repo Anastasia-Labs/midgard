@@ -63,3 +63,16 @@ export const buildPastProtectedPredecessor = async <T>(
     }
   }
 };
+
+/** The hold's clock on a chain's ledger time, for emulator and live chains. */
+export const ledgerClock = (
+  chain: Readonly<{
+    now: () => number;
+    awaitLedgerTime: (targetUnixTimeMs: number) => void | Promise<void>;
+  }>,
+) => ({
+  nowMs: () => chain.now(),
+  sleep: async (ms: number) => {
+    await chain.awaitLedgerTime(chain.now() + ms);
+  },
+});
