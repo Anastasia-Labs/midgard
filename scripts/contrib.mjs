@@ -48,7 +48,7 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs native --package NAME
   node scripts/contrib.mjs test --package NAME [--file PATH... | --related PATH...] [--name REGEX]
       [--seed N] [--source-only] [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
-      [--config FILE (with --file)]
+      [--config FILE (with --file)] [--timeout-seconds N]
   node scripts/contrib.mjs mutate --target PATH --from TEXT --to TEXT [--package NAME]
       [--file TEST...] [--name REGEX] [--expect REGEX] [--seed N]
   node scripts/contrib.mjs mutate restore
@@ -170,6 +170,7 @@ const valueOptions = new Set([
   "from",
   "to",
   "expect",
+  "timeout-seconds",
 ]);
 // Mutation text is taken verbatim: it may be empty or start with "--".
 const verbatimOptions = new Set(["from", "to"]);
@@ -295,6 +296,13 @@ export const main = async (argv) => {
       throw new Error(`--${vitestOption} is supported only for test`);
     if (options.related.length && command !== "test")
       throw new Error("--related is supported only for test");
+    if (options["timeout-seconds"] !== undefined && command !== "test")
+      throw new Error("--timeout-seconds is supported only for test");
+    if (
+      options["timeout-seconds"] !== undefined &&
+      !/^[1-9][0-9]*$/u.test(options["timeout-seconds"])
+    )
+      throw new Error("--timeout-seconds must be a positive whole number");
     const mutateOption = mutateOptions.find(
       (key) => options[key] !== undefined,
     );
@@ -366,6 +374,9 @@ export const main = async (argv) => {
     else if (command === "test" && !action)
       result = await runTests(root, required("package"), {
         ...execution,
+        ...(options["timeout-seconds"] === undefined
+          ? {}
+          : { timeoutMs: Number(options["timeout-seconds"]) * 1000 }),
         files: options.files,
         related: options.related,
         testName: options.name,

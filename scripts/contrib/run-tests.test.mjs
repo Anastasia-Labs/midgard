@@ -621,3 +621,41 @@ test("--config runs named files of another package config, and only named files"
     /duplicate --config/u,
   );
 });
+
+test("--timeout-seconds bounds the Vitest step, and only as whole seconds", async (t) => {
+  const { root, env, calls } = workspace(t, "vitest run", { "a.test.ts": "" });
+  for (const timeoutMs of [0, -1000, 2 ** 31, 1.5])
+    await assert.rejects(
+      runTests(root, "example", { sourceOnly: true, env, timeoutMs }),
+      /--timeout-seconds must be a positive whole number/u,
+    );
+  assert.deepEqual(calls(), []);
+  // A deadline shorter than the fake runner's start-up stops the step.
+  const receipt = await runTests(root, "example", {
+    files: ["tests/a.test.ts"],
+    sourceOnly: true,
+    env,
+    timeoutMs: 1,
+  });
+  assert.equal(receipt.status, "failed");
+  assert.match(JSON.stringify(receipt.steps), /deadline exceeded 1 ms/u);
+  assert.equal(
+    parse(["test", "--timeout-seconds", "60"])["timeout-seconds"],
+    "60",
+  );
+});
+
+test("a blueprint override is refused unless it is this checkout's own ready blueprint", async (t) => {
+  const { root, env, calls } = workspace(t, "vitest run", { "a.test.ts": "" });
+  const copy = resolve(root, "frozen-plutus.json");
+  writeFileSync(copy, "{}\n");
+  await assert.rejects(
+    runTests(root, "example", {
+      files: ["tests/a.test.ts"],
+      sourceOnly: true,
+      env: { ...env, MIDGARD_REAL_BLUEPRINT_PATH: copy },
+    }),
+    /refuse MIDGARD_REAL_BLUEPRINT_PATH=.*byte-identical copy of this checkout's ready blueprint/u,
+  );
+  assert.deepEqual(calls(), []);
+});

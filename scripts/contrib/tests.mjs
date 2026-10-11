@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 
 import { packageNeedsPostgres } from "../preflight/derive.mjs";
 import { probePostgres } from "../preflight/probes.mjs";
-import { ensureBlueprint } from "./blueprint.mjs";
+import { blueprintReadiness, ensureBlueprint } from "./blueprint.mjs";
 import { dropTestDatabases, invocationDatabasePrefix } from "./databases.mjs";
 import { buildPackage, checkBuild, runDirectory } from "./build.mjs";
 import {
@@ -186,15 +186,31 @@ export const prepareArtifacts = async (
   return { blueprintAction, built };
 };
 
+// A blueprint override passes only as a byte-identical copy of this
+// checkout's own ready blueprint: a devnet campaign freezes one for the
+// journeys, which require the variable. Anything else tests other contracts.
+const requireOwnBlueprint = (root, env) => {
+  const override = resolve(env.MIDGARD_REAL_BLUEPRINT_PATH);
+  const readiness = blueprintReadiness(root);
+  if (
+    !readiness.ready ||
+    !existsSync(override) ||
+    sha256(readFileSync(override)) !== blueprintHash(root)
+  )
+    throw new Error(
+      `guarded runs refuse MIDGARD_REAL_BLUEPRINT_PATH=${override} unless it is a byte-identical copy of this checkout's ready blueprint: they test this checkout's own contracts${readiness.ready ? "" : ` (${readiness.reason})`}; unset it`,
+    );
+};
+
 export const prepare = async (
   root,
   name,
   { signal, env = process.env, sourceOnly = false } = {},
 ) => {
   const plan = preparationPlan(root, name, { sourceOnly });
-  if (env.MIDGARD_REAL_BLUEPRINT_PATH || env.MIDGARD_BLUEPRINT_STAMP === "warn")
+  if (env.MIDGARD_BLUEPRINT_STAMP === "warn")
     throw new Error(
-      "guarded runs refuse MIDGARD_REAL_BLUEPRINT_PATH and MIDGARD_BLUEPRINT_STAMP=warn: they test this checkout's own blueprint, which contrib prepare copies or builds; unset both",
+      "guarded runs refuse MIDGARD_BLUEPRINT_STAMP=warn: they test this checkout's own blueprint, which contrib prepare copies or builds; unset it",
     );
   if (plan.postgres && env.MIDGARD_SKIP_DB_TESTS !== "1") {
     if (
@@ -211,6 +227,7 @@ export const prepare = async (
     env,
     sourceOnly,
   });
+  if (env.MIDGARD_REAL_BLUEPRINT_PATH) requireOwnBlueprint(root, env);
   return { ...preparationPlan(root, name, { sourceOnly }), blueprintAction };
 };
 
@@ -257,6 +274,7 @@ export const runTests = async (
     sourceOnly = false,
     proofKind,
     flags = {},
+    timeoutMs,
     reach: findReach = reachedTests,
   } = {},
 ) => {
@@ -285,6 +303,14 @@ export const runTests = async (
   }
   if (!Number.isSafeInteger(seed) || seed < 0)
     throw new Error("--seed must be a nonnegative integer");
+  // Node timers fire at once beyond 2^31-1 ms (about 24.8 days).
+  if (
+    timeoutMs !== undefined &&
+    !(Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs < 2 ** 31)
+  )
+    throw new Error(
+      "--timeout-seconds must be a positive whole number of seconds below 2147484",
+    );
   if (
     (env.POSTGRES_PORT && env.POSTGRES_PORT !== "5433") ||
     (env.POSTGRES_HOST &&
@@ -466,8 +492,13 @@ export const runTests = async (
         signal,
         logPath: resolve(directory, "test.log"),
         echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
-        // A whole package is what CI shards; give it room to finish.
-        ...(whole ? { timeoutMs: 3 * 3_600_000, maxBytes: 256 << 20 } : {}),
+        // A whole package is what CI shards, and a caller's deadline (a
+        // devnet journey) can be longer still; give either room to finish.
+        ...(timeoutMs !== undefined
+          ? { timeoutMs, maxBytes: 256 << 20 }
+          : whole
+            ? { timeoutMs: 3 * 3_600_000, maxBytes: 256 << 20 }
+            : {}),
       }),
     );
   } finally {
