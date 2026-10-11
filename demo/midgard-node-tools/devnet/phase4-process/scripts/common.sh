@@ -64,6 +64,48 @@ compose() {
   docker compose --project-name "$MIDGARD_PHASE4_COMPOSE_PROJECT" --file "$compose_file" "$@"
 }
 
+# up.sh and down.sh take the run directory as their only argument and read
+# every other setting from its run.env: a value left in the caller's
+# environment (another run's project or password) must not reach compose.
+use_run_dir() {
+  for inherited in $(env | sed -n 's/^\(MIDGARD_PHASE4_[A-Za-z0-9_]*\)=.*/\1/p'); do
+    unset "$inherited"
+  done
+  MIDGARD_PHASE4_RUN_DIR=$1
+  require_run_dir
+}
+
+# Compose for the run, with the watcher-journey host-path overlay
+# (compose.host-paths.json) when the run has one.
+run_compose() {
+  if [ -f "$MIDGARD_PHASE4_RUN_DIR/compose.host-paths.json" ]; then
+    compose --file "$MIDGARD_PHASE4_RUN_DIR/compose.host-paths.json" "$@"
+  else
+    compose "$@"
+  fi
+}
+
+# Stop the `compose logs --follow` processes up.sh left for this run. A pid
+# is signalled only while it is still a log follower of this compose
+# project, so a reused pid is never killed.
+stop_log_followers() {
+  for pid_file in "$MIDGARD_PHASE4_RUN_DIR"/logs/*.follower.pid; do
+    [ -f "$pid_file" ] || continue
+    follower=$(cat "$pid_file")
+    case "$follower" in
+      "" | *[!0-9]*) ;;
+      *)
+        if [ -r "/proc/$follower/cmdline" ] \
+          && tr '\0' ' ' <"/proc/$follower/cmdline" | grep -F -- "$MIDGARD_PHASE4_COMPOSE_PROJECT" | grep -q -- ' logs '; then
+          # Each follower leads its own process group (setsid).
+          kill -TERM -"$follower" 2>/dev/null || kill -TERM "$follower" 2>/dev/null || true
+        fi
+        ;;
+    esac
+    rm -f "$pid_file"
+  done
+}
+
 # The reset and recovery commands have a machine-readable stdout contract: on
 # success they emit exactly one JSON attestation. Docker Compose writes normal
 # progress messages to stderr, and the acceptance runner intentionally combines

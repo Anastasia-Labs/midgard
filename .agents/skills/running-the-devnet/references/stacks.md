@@ -96,10 +96,18 @@ crashed container stays down and keeps its log.
 - Because that drift check binds the source and `dist` of both `midgard-node`
   and `midgard-node-tools`, a code change needs a **new run**: generate,
   bootstrap and snapshot again in a fresh directory.
-- There is no teardown script. To discard a run, stop its compose project
-  (`... compose.yaml down` with `run.env` sourced) and remove the run directory
-  as a whole. Removing only `postgres/`, `kupo/` or `cardano/` would pair new
-  local state with old chain state, which
+- `scripts/up.sh <run dir>` starts the run's four L1 services as a block
+  producer (or again after `down.sh`), appends each service's log to
+  `<run dir>/logs/<service>.log` through a detached `compose logs --follow`,
+  opens the node socket to the host user and waits for Ogmios and Kupo
+  `/health`. `scripts/down.sh <run dir>` runs `compose down` without
+  `--volumes` and stops those followers; the run directory and its state stay.
+  Both read every setting from the run's `run.env`, never from the caller's
+  shell, and add `compose.host-paths.json` when the run has one
+  [script: `up.sh`, `down.sh`].
+- To discard a run, `down.sh` it and remove the run directory as a whole.
+  Removing only `postgres/`, `kupo/` or `cardano/` would pair new local state
+  with old chain state, which
   [state-reset](../../../../docs/agents/state-reset.md) forbids. `[review]`
 
 ## Watcher-journey devnet
@@ -115,7 +123,8 @@ sh devnet/watcher-journeys/scripts/generate.sh
 It sets `MIDGARD_PHASE4_RUN_ID=watcher_journeys_<basename>`, runs the phase4
 generator, rewrites genesis paths in `<run dir>/config/config.json`, and writes
 `compose.host-paths.json`. It prints `servicesStarted=false`. The comment in the
-script says: never change genesis after starting these services.
+script says: never change genesis after starting these services. Start and
+stop the services with the phase4 `up.sh` / `down.sh` above.
 
 The journeys themselves run as a vitest suite over
 `devnet/watcher-journeys/**/*.test.ts` with
