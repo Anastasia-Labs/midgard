@@ -134,3 +134,49 @@ test("broken relative links are refused; external, anchor and fenced links are n
     },
   );
 });
+
+test("a raw Vitest command in a fenced block is refused; prose, contrib and a justified line are not", () => {
+  const body = [
+    "Prose may name `vitest run` and pnpm exec vitest.",
+    "```sh",
+    "node scripts/contrib.mjs test --package midgard-node --file tests/a.test.ts",
+    "pnpm --dir demo/midgard-node exec vitest run tests/a.test.ts",
+    "npx vitest tests/b.test.ts",
+    "pnpm vitest",
+    "pnpm exec vitest run x # raw-vitest-ok: contrib cannot load this config",
+    "pnpm exec vitest run x # raw-vitest-ok:",
+    "```",
+    "1. A step.",
+    "",
+    "   ```bash",
+    '   MIDGARD_X=1 pnpm --dir "$ROOT/demo/x" \\',
+    "     exec vitest run tests/c.test.ts",
+    "   ```",
+  ].join("\n");
+  withRepo(
+    { "testing-things": skill("testing-things", "Use when.", body) },
+    (root) => {
+      writeFileSync(
+        join(root, ".agents/skills/testing-things/references/notes.md"),
+        "```\nvitest run tests/d.test.ts\n```\n",
+      );
+      const problems = checkAgentSkills(root);
+      assert.deepEqual(
+        problems.map((problem) => problem.split(": raw Vitest")[0]),
+        [
+          ".agents/skills/testing-things/SKILL.md:9",
+          ".agents/skills/testing-things/SKILL.md:10",
+          ".agents/skills/testing-things/SKILL.md:11",
+          ".agents/skills/testing-things/SKILL.md:13",
+          ".agents/skills/testing-things/SKILL.md:19",
+          ".agents/skills/testing-things/references/notes.md:2",
+        ],
+        problems.join("\n"),
+      );
+      assert.match(
+        problems[0],
+        /node scripts\/contrib\.mjs test --package NAME/u,
+      );
+    },
+  );
+});
