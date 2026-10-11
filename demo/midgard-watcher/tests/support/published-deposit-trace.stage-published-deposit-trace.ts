@@ -500,6 +500,14 @@ export const stagePublishedDepositTrace = async (
   };
   await onCheckpoint(checkpoint);
   const commit = async (block: Pick<typeof empty, "header" | "headerHash">) => {
+    // A block whose end has passed (a resumed one) can no longer be committed.
+    const expiryMs = Number(block.header.endTime) + 1;
+    if (chain.now() >= expiryMs)
+      throw new PublishedTransactionExpiredError(
+        `header commit ${block.headerHash}`,
+        "unbuilt",
+        expiryMs,
+      );
     const txHash = await actor.commit(block, anchor, head);
     commits.push(txHash);
     anchor = await one(
