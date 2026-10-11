@@ -960,3 +960,57 @@ test slot_domain_interval_is_not_the_valid_range() {
     200000,
   ) != interval(finite_bound(100000, True), finite_bound(200000, False))
 }
+
+// Cross-language goldens: demo/midgard-validation's
+// tests/script-context.valid-range.test.ts asserts that the TypeScript
+// `validRange` encoder produces these same bytes under the same mapping.
+const golden_slot_config =
+  script_context_v1.L1SlotConfigV1 {
+    zero_time: 1700000000000,
+    zero_slot: 4492800,
+    slot_length: 200,
+  }
+
+fn valid_range_matches_golden(start: Int, end: Int, golden: ByteArray) -> Bool {
+  expect Some(data) = cbor.deserialise(golden)
+  and {
+    builtin.serialise_data(data) == golden,
+    script_context_v1.validity_interval_summary_v1(
+      golden_slot_config,
+      start,
+      end,
+    ) == cek_data_v1.semantic_data_summary_v1(data),
+  }
+}
+
+test valid_range_golden_finite_finite() {
+  valid_range_matches_golden(
+    4500000,
+    4500600,
+    #"d8799fd8799fd87a9f1b0000018bcffb6100ffd87a80ffd8799fd87a9f1b0000018bcffd35c0ffd87980ffff",
+  )
+}
+
+test valid_range_golden_absent_finite() {
+  valid_range_matches_golden(
+    -1,
+    4500600,
+    #"d8799fd8799fd87980d87a80ffd8799fd87a9f1b0000018bcffd35c0ffd87980ffff",
+  )
+}
+
+test valid_range_golden_finite_absent() {
+  valid_range_matches_golden(
+    4500000,
+    -1,
+    #"d8799fd8799fd87a9f1b0000018bcffb6100ffd87a80ffd8799fd87b80d87a80ffff",
+  )
+}
+
+test valid_range_golden_absent_absent() {
+  valid_range_matches_golden(
+    -1,
+    -1,
+    #"d8799fd8799fd87980d87a80ffd8799fd87b80d87a80ffff",
+  )
+}

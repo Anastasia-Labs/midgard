@@ -127,16 +127,11 @@ export const txQueueProcessorAction = (
       return { processed: false, claimedCount: 0, batchSize: 0 };
     }
     // Script contexts carry the validity range in this mapping; startup has
-    // already matched it against the deployment manifest.
-    const l1SlotConfig = yield* Effect.either(
-      Effect.try(() => canonicalSlotConfigForLucid(lucid)),
-    );
-    if (l1SlotConfig._tag === "Left") {
-      yield* Effect.logWarning(
-        `tx-queue processor waiting for the L1 slot mapping: ${String(l1SlotConfig.left.error)}`,
-      );
-      return { processed: false, claimedCount: 0, batchSize: 0 };
-    }
+    // already matched it against the deployment manifest, so a Lucid without
+    // one is a defect, never a state to wait out.
+    const l1SlotConfig = yield* Effect.try(() =>
+      canonicalSlotConfigForLucid(lucid),
+    ).pipe(Effect.orDie);
     const leaseOwner = `tx-queue-processor:${process.pid}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
     const claimStartedAt = Date.now();
     return yield* Effect.acquireUseRelease(
@@ -242,7 +237,7 @@ export const txQueueProcessorAction = (
                     ledgerState: cachedState,
                     phaseBConfig: {
                       nowCardanoSlotNo: BigInt(nowSlot.right),
-                      l1SlotConfig: l1SlotConfig.right,
+                      l1SlotConfig,
                       bucketConcurrency:
                         nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
                       enforceScriptBudget: true,

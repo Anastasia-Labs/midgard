@@ -2,7 +2,12 @@ import {
   type L1SlotConfig,
   NAMED_NETWORK_L1_SLOT_CONFIGS,
 } from "@al-ft/midgard-core/l1-slot-config";
-import { type Data, DataConstr, DataI } from "@harmoniclabs/plutus-data";
+import {
+  type Data,
+  DataConstr,
+  DataI,
+  dataToCbor,
+} from "@harmoniclabs/plutus-data";
 import { slotToUnixTime } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -202,3 +207,50 @@ describe.each(builders)("%s validRange", (_name, build) => {
       expect(bound).not.toMatchObject({ time: interval.start });
   });
 });
+
+// Shared with `validity_interval_summary_v1` in
+// onchain/aiken/lib/midgard/script-context-v1.test.ak: the same config and
+// bounds must give these exact `serialise_data` bytes on both sides.
+const GOLDEN_SLOT_CONFIG: L1SlotConfig = {
+  zeroTime: 1_700_000_000_000,
+  zeroSlot: 4_492_800,
+  slotLength: 200,
+};
+const VALID_RANGE_GOLDENS = [
+  {
+    start: 4_500_000n,
+    end: 4_500_600n,
+    cbor: "d8799fd8799fd87a9f1b0000018bcffb6100ffd87a80ffd8799fd87a9f1b0000018bcffd35c0ffd87980ffff",
+  },
+  {
+    end: 4_500_600n,
+    cbor: "d8799fd8799fd87980d87a80ffd8799fd87a9f1b0000018bcffd35c0ffd87980ffff",
+  },
+  {
+    start: 4_500_000n,
+    cbor: "d8799fd8799fd87a9f1b0000018bcffb6100ffd87a80ffd8799fd87b80d87a80ffff",
+  },
+  {
+    cbor: "d8799fd8799fd87980d87a80ffd8799fd87b80d87a80ffff",
+  },
+] as const;
+
+describe.each(builders)(
+  "%s validRange cross-language golden",
+  (_name, build) => {
+    it.each(VALID_RANGE_GOLDENS)(
+      "encodes start=$start end=$end as the Aiken golden bytes",
+      (golden) => {
+        const interval = {
+          ...("start" in golden ? { start: golden.start } : {}),
+          ...("end" in golden ? { end: golden.end } : {}),
+        };
+        expect(
+          Buffer.from(
+            dataToCbor(build(view(interval, GOLDEN_SLOT_CONFIG))!),
+          ).toString("hex"),
+        ).toBe(golden.cbor);
+      },
+    );
+  },
+);
