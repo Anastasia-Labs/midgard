@@ -5,7 +5,11 @@ import {
   TransportUnavailableError,
 } from "@al-ft/l1-node-transport";
 
-import { describeLedgerRejection } from "./rejection.js";
+import {
+  describeLedgerRejection,
+  type RejectedSpentInputs,
+  rejectedSpentInputs,
+} from "./rejection.js";
 
 /**
  * Typed failures of the follower's Lucid provider. None of them ends the
@@ -80,6 +84,11 @@ export class L1SubmitRejectedError extends L1ProviderError {
   readonly rejectionHex: string;
   /** The decoded failures, one line (see {@link describeLedgerRejection}). */
   readonly reason: string;
+  /**
+   * The spent-input refusal among them, decoded for decisions
+   * (`isSpentInputSubmitRejection` in midgard-core reads its `bad_inputs`).
+   */
+  readonly spentInputs: RejectedSpentInputs | undefined;
   constructor(
     readonly txHash: string,
     readonly rejection: Uint8Array,
@@ -91,6 +100,7 @@ export class L1SubmitRejectedError extends L1ProviderError {
     );
     this.rejectionHex = rejectionHex;
     this.reason = reason;
+    this.spentInputs = rejectedSpentInputs(rejection);
   }
 }
 

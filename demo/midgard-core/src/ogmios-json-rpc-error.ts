@@ -176,8 +176,12 @@ const SPENT_INPUT_REJECTION =
  * exist or was already spent". It is searched through the error's message,
  * its cause chain and its structured fields, because a provider wrapper can
  * carry the answer only as formatted text (an `Error.cause` is not
- * enumerable). Ogmios 3997 ("All inputs are spent", a mempool view of the
- * submitter's own transaction) is not this refusal and does not match.
+ * enumerable). The L1 follower's `L1SubmitRejectedError` decodes the ledger's
+ * bytes itself and names a `BadInputsUTxO` refusal in its `spentInputs`
+ * (`{ kind: "bad_inputs" }`), read here as a field rather than from its text.
+ * Ogmios 3997 ("All inputs are spent", a mempool view of the submitter's own
+ * transaction) is not this refusal and does not match, nor does the
+ * follower's form of it (`spentInputs` of kind `mempool`).
  */
 export const isSpentInputSubmitRejection = (error: unknown): boolean => {
   const seen = new Set<unknown>();
@@ -192,9 +196,18 @@ export const isSpentInputSubmitRejection = (error: unknown): boolean => {
     )
       return true;
     const record = value as Record<string, unknown>;
-    if ("unknownOutputReferences" in record || "badInputs" in record)
+    if (
+      "unknownOutputReferences" in record ||
+      "badInputs" in record ||
+      isDecodedBadInputs(record.spentInputs)
+    )
       return true;
     return Object.values(record).some(search);
   };
   return search(error);
 };
+
+const isDecodedBadInputs = (value: unknown): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  (value as { kind?: unknown }).kind === "bad_inputs";

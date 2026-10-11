@@ -37,6 +37,111 @@ export const describeLedgerRejection = (rejection: Uint8Array): string => {
   return clip(renderEnvelope(item));
 };
 
+/** A validity interval the ledger refused, and the slot it judged it at. */
+export type RejectedValidityInterval = Readonly<{
+  invalidBefore?: bigint;
+  invalidHereafter?: bigint;
+  ledgerSlot: bigint;
+}>;
+
+/**
+ * The `OutsideValidityIntervalUTxO` failure of a Conway rejection (LEDGER →
+ * UTXOW → UTXO, tag 2): the transaction's interval and the ledger slot, or
+ * `undefined` when the rejection has no such failure or does not decode.
+ * Unlike {@link describeLedgerRejection} this feeds a decision (a bounded
+ * wait for the lower bound), so it reads only that exact shape. It never
+ * throws.
+ */
+export const rejectedValidityInterval = (
+  rejection: Uint8Array,
+): RejectedValidityInterval | undefined => {
+  try {
+    for (const failure of conwayFailures(rejection) ?? []) {
+      const utxo = armFields(armFields(failure, 1n)?.[0], 0n)?.[0];
+      const fields = armFields(utxo, 2n);
+      if (fields?.length !== 2) continue;
+      const [before, hereafter] = expectArray(fields[0]);
+      const bound = (item: Item | undefined) => {
+        const value = expectArray(item);
+        return value.length === 0 ? undefined : int(value[0]);
+      };
+      return {
+        ...optional("invalidBefore", bound(before)),
+        ...optional("invalidHereafter", bound(hereafter)),
+        ledgerSlot: int(fields[1]),
+      };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+};
+
+/**
+ * A refusal that says the transaction's inputs are spent, from a Conway
+ * rejection: the ledger's `BadInputsUTxO` (LEDGER → UTXOW → UTXO, tag 1) with
+ * its inputs as `txId#index`, or the mempool's `ConwayMempoolFailure` (LEDGER
+ * tag 7) with its text. The MEMPOOL rule raises that only when every input is
+ * already spent in the mempool's view ("All inputs are spent. Transaction has
+ * probably already been included"), so it is a view of a transaction that may
+ * still land, often the submitter's own, and not a ledger verdict. The first
+ * such failure wins; `undefined` when there is none or the bytes do not
+ * decode. It never throws.
+ */
+export type RejectedSpentInputs = Readonly<
+  | { kind: "bad_inputs"; inputs: readonly string[] }
+  | { kind: "mempool"; reason: string }
+>;
+
+export const rejectedSpentInputs = (
+  rejection: Uint8Array,
+): RejectedSpentInputs | undefined => {
+  try {
+    for (const failure of conwayFailures(rejection) ?? []) {
+      const mempool = armFields(failure, 7n);
+      if (mempool?.length === 1 && mempool[0]?.kind === "text")
+        return { kind: "mempool", reason: mempool[0].value };
+      const utxo = armFields(armFields(failure, 1n)?.[0], 0n)?.[0];
+      const badInputs = armFields(utxo, 1n);
+      if (badInputs?.length === 1)
+        return {
+          kind: "bad_inputs",
+          inputs: expectArray(badInputs[0]).map(txIn),
+        };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+};
+
+/** The failures of a Conway `ApplyTxErr` (`[[6, failures]]`), if it is one. */
+const conwayFailures = (rejection: Uint8Array): readonly Item[] | undefined => {
+  const decoded = decodeCborItem(rejection, 0);
+  if (decoded.next !== rejection.length) return undefined;
+  const era = arrayOf(arrayOf(decoded.item)?.[0]);
+  return era?.length === 2 &&
+    era[0]?.kind === "int" &&
+    era[0].value === CONWAY_ERA
+    ? arrayOf(era[1])
+    : undefined;
+};
+
+/** The fields after the tag of a `[tag, ...fields]` sum arm, if it is `tag`. */
+const armFields = (
+  item: Item | undefined,
+  tag: bigint,
+): readonly Item[] | undefined => {
+  const parts = arrayOf(item);
+  const head = parts?.[0];
+  return head?.kind === "int" && head.value === tag
+    ? parts?.slice(1)
+    : undefined;
+};
+
+const optional = <K extends string>(key: K, value: bigint | undefined) =>
+  (value === undefined ? {} : { [key]: value }) as { [P in K]?: bigint };
+
 const MAX_LINE = 4_096;
 const CONWAY_ERA = 6n;
 const ERA_NAMES = [

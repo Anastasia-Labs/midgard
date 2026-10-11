@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   describeLedgerRejection,
   L1SubmitRejectedError,
+  rejectedSpentInputs,
+  rejectedValidityInterval,
 } from "../../src/provider/index.js";
 import {
   array,
@@ -202,4 +204,101 @@ it("renders an unlabelled map structurally", () => {
       ),
     ),
   ).toBe("ConwayIncompleteWithdrawals {e001: [1, 2]}");
+});
+
+describe("rejectedValidityInterval", () => {
+  const fromHex = (hex: string) =>
+    rejectedValidityInterval(Buffer.from(hex, "hex"));
+
+  it("reads the interval and ledger slot of real devnet refusals", () => {
+    // A merge (no upper bound) and a scheduler refresh, devnet run r4.
+    expect(fromHex("81820681820182008302828119fb688019fb55")).toEqual({
+      invalidBefore: 64_360n,
+      ledgerSlot: 64_341n,
+    });
+    expect(fromHex("81820681820182008302828119dbd38119ddb319dbd1")).toEqual({
+      invalidBefore: 56_275n,
+      invalidHereafter: 56_755n,
+      ledgerSlot: 56_273n,
+    });
+  });
+
+  it("finds the validity failure among others", () => {
+    const rejection = conway(
+      utxo(array(uint(1), tag(258, array(array(hash(1, 32), uint(0)))))),
+      utxo(array(uint(2), array(array(), array(uint(100))), uint(104))),
+    );
+    expect(rejectedValidityInterval(rejection)).toEqual({
+      invalidHereafter: 100n,
+      ledgerSlot: 104n,
+    });
+  });
+
+  it.each([
+    [
+      "a spent input only",
+      "81820684820182008201d90102818258205aabeb87fda9424f6be6669f1d9b15f3f519b5143109356ce085398d3a2253cd008201820083061b000046e71af4b3cd821b000046e71b086e95a1581c50bcd6fdccb571a0c90e63a0dc9c81c19dc4d3794b5e2ba12c6ce436a1514d4944474152445f5343484544554c4552018201831282815820b78fcf7fc71b5e46a01235ec40d98c0dbc6b4e0871f03771cc8bc2aebece0b9c81582053649b6e51217dcf0f698622efe62fbd4c46f3b649c4101f017cf2a2acbc89de81581d81840000d8799f0000d87a9f020103ffff821a00053c8c1a06fe8bbba08201820f81820000",
+    ],
+    [
+      "the mempool's text",
+      "8182068182077844416c6c20696e7075747320617265207370656e742e205472616e73616374696f6e206861732070726f6261626c7920616c7265616479206265656e20696e636c75646564",
+    ],
+    ["another era", array(array(uint(5), array())).toString("hex")],
+    [
+      "a malformed interval",
+      conway(utxo(array(uint(2), uint(7), uint(104)))).toString("hex"),
+    ],
+    ["empty bytes", ""],
+  ])("is undefined for %s", (_name, hex) => {
+    expect(fromHex(hex)).toBeUndefined();
+  });
+});
+
+describe("rejectedSpentInputs", () => {
+  const BAD_INPUTS_HEX =
+    "81820684820182008201d90102818258205aabeb87fda9424f6be6669f1d9b15f3f519b5143109356ce085398d3a2253cd008201820083061b000046e71af4b3cd821b000046e71b086e95a1581c50bcd6fdccb571a0c90e63a0dc9c81c19dc4d3794b5e2ba12c6ce436a1514d4944474152445f5343484544554c4552018201831282815820b78fcf7fc71b5e46a01235ec40d98c0dbc6b4e0871f03771cc8bc2aebece0b9c81582053649b6e51217dcf0f698622efe62fbd4c46f3b649c4101f017cf2a2acbc89de81581d81840000d8799f0000d87a9f020103ffff821a00053c8c1a06fe8bbba08201820f81820000";
+  const ALL_INPUTS_SPENT_HEX =
+    "8182068182077844416c6c20696e7075747320617265207370656e742e205472616e73616374696f6e206861732070726f6261626c7920616c7265616479206265656e20696e636c75646564";
+  const fromHex = (hex: string) => rejectedSpentInputs(Buffer.from(hex, "hex"));
+
+  it("reads the spent inputs of a real BadInputsUTxO refusal, among its other failures", () => {
+    expect(fromHex(BAD_INPUTS_HEX)).toEqual({
+      kind: "bad_inputs",
+      inputs: [
+        "5aabeb87fda9424f6be6669f1d9b15f3f519b5143109356ce085398d3a2253cd#0",
+      ],
+    });
+  });
+
+  it("reads the mempool's real 'All inputs are spent' refusal as a mempool view", () => {
+    expect(fromHex(ALL_INPUTS_SPENT_HEX)).toEqual({
+      kind: "mempool",
+      reason:
+        "All inputs are spent. Transaction has probably already been included",
+    });
+  });
+
+  it("is carried, decoded, on the error the provider throws", () => {
+    const error = new L1SubmitRejectedError(
+      "aa".repeat(32),
+      Buffer.from(ALL_INPUTS_SPENT_HEX, "hex"),
+    );
+    expect(error.spentInputs).toMatchObject({ kind: "mempool" });
+  });
+
+  it.each([
+    ["a validity refusal", "81820681820182008302828119fb688019fb55"],
+    [
+      "a fee refusal",
+      conway(utxo(array(uint(5), uint(2), uint(1)))).toString("hex"),
+    ],
+    [
+      "a malformed input set",
+      conway(utxo(array(uint(1), uint(7)))).toString("hex"),
+    ],
+    ["another era", array(array(uint(5), array())).toString("hex")],
+    ["empty bytes", ""],
+  ])("is undefined for %s", (_name, hex) => {
+    expect(fromHex(hex)).toBeUndefined();
+  });
 });

@@ -1,6 +1,9 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
-import { L1TxStatusUnknownError } from "@al-ft/midgard-l1-follower/provider";
+import {
+  L1SubmitRejectedError,
+  L1TxStatusUnknownError,
+} from "@al-ft/midgard-l1-follower/provider";
 import { CML, type LucidEvolution, type OutRef } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -68,13 +71,45 @@ const ogmiosSubmitFailureCode = (error: unknown): number | undefined => {
 };
 
 /**
+ * The local node's refusal under `--l1 node` (the follower's
+ * `L1SubmitRejectedError`, matched by name too for a second loaded copy of
+ * the package): a ledger verdict, as Ogmios's 3000–3999 are.
+ */
+const nodeLedgerRejection = (
+  error: unknown,
+): Pick<L1SubmitRejectedError, "spentInputs"> | undefined => {
+  let current = error;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
+    if (
+      current instanceof L1SubmitRejectedError ||
+      current.name === "L1SubmitRejectedError"
+    )
+      return current as Pick<L1SubmitRejectedError, "spentInputs">;
+    current = current.cause;
+  }
+  return undefined;
+};
+
+/** Ogmios's code for the mempool's "All inputs are spent". */
+const OGMIOS_MEMPOOL_INPUTS_SPENT = 3997;
+
+/**
  * A resubmission that fails because the same transaction already consumed the
  * inputs (in a mempool, or on chain since the check) or has yet to enter its
  * validity interval can still land; any other ledger refusal is final for
- * these bytes. Transport failures carry no ledger verdict.
+ * these bytes. The mempool's "All inputs are spent" (Ogmios 3997, or the
+ * local node's `ConwayMempoolFailure`) is that mempool view. Transport
+ * failures carry no ledger verdict.
  */
 const isDefiniteLedgerRejection = (error: unknown) => {
-  if (ogmiosSubmitFailureCode(error) === undefined) return false;
+  const ogmiosCode = ogmiosSubmitFailureCode(error);
+  const nodeRejection = nodeLedgerRejection(error);
+  if (ogmiosCode === undefined && nodeRejection === undefined) return false;
+  if (
+    ogmiosCode === OGMIOS_MEMPOOL_INPUTS_SPENT ||
+    nodeRejection?.spentInputs?.kind === "mempool"
+  )
+    return false;
   if (isSpentInputSubmitRejection(error)) return false;
   const validity = parseOutsideValidityIntervalDetails(error);
   return !(

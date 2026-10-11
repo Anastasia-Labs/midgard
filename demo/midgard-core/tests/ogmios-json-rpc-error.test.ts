@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   decodeOgmiosJsonRpcError,
   formatOgmiosJsonRpcError,
+  isSpentInputSubmitRejection,
   isTransientOgmiosJsonRpcErrorCode,
   isTransientOgmiosJsonRpcFailure,
   OgmiosJsonRpcError,
@@ -81,5 +82,42 @@ describe("Ogmios JSON-RPC error classification", () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+// The L1 follower's L1SubmitRejectedError, by shape (core cannot import the
+// follower package): its message carries no failure names here, so only the
+// decoded `spentInputs` field can classify it.
+describe("spent-input classification of a decoded follower refusal", () => {
+  const followerRefusal = (spentInputs: unknown) =>
+    new Error("submit failed", {
+      cause: Object.assign(
+        new Error("the ledger rejected transaction ab: [ApplyTxErr 00]"),
+        { name: "L1SubmitRejectedError", spentInputs },
+      ),
+    });
+
+  it("reads a decoded BadInputsUTxO as a spent input", () => {
+    expect(
+      isSpentInputSubmitRejection(
+        followerRefusal({
+          kind: "bad_inputs",
+          inputs: [`${"5a".repeat(32)}#0`],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves the mempool's 'All inputs are spent' and other refusals alone", () => {
+    expect(
+      isSpentInputSubmitRejection(
+        followerRefusal({
+          kind: "mempool",
+          reason:
+            "All inputs are spent. Transaction has probably already been included",
+        }),
+      ),
+    ).toBe(false);
+    expect(isSpentInputSubmitRejection(followerRefusal(undefined))).toBe(false);
   });
 });

@@ -2,6 +2,10 @@ import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
 } from "@al-ft/midgard-core/ogmios-slot";
+import {
+  L1SubmitRejectedError,
+  rejectedValidityInterval,
+} from "@al-ft/midgard-l1-follower/provider";
 
 /**
  * Shared transaction signing, submission, confirmation, and recovery helpers.
@@ -70,7 +74,10 @@ const outsideValidityDetails = (
     : null;
 
 /**
- * Extracts slot-boundary details from an `OutsideValidityIntervalUTxO` error.
+ * Extracts slot-boundary details from an `OutsideValidityIntervalUTxO` error:
+ * the follower or local-node access's `L1SubmitRejectedError` (its ledger
+ * bytes decoded), Ogmios's structured 3118 answer, or the ledger's or the
+ * emulator's text.
  */
 export const parseOutsideValidityIntervalDetails = (
   error: unknown,
@@ -168,6 +175,10 @@ const parseStructuredOutsideValidityIntervalDetails = (
     return null;
   }
   seen.add(value);
+  const rejection = ledgerRejectionBytes(value);
+  if (rejection !== undefined) {
+    return detailsFromLedgerRejection(rejection);
+  }
   if (value instanceof Error) {
     const fromCause = parseStructuredOutsideValidityIntervalDetails(
       value.cause,
@@ -199,6 +210,37 @@ const parseStructuredOutsideValidityIntervalDetails = (
     }
   }
   return null;
+};
+
+/**
+ * The ledger bytes of the follower or local-node access's refusal. Matched by
+ * name too, so a second loaded copy of the follower package is recognised.
+ */
+const ledgerRejectionBytes = (value: object): Uint8Array | undefined => {
+  if (
+    !(value instanceof L1SubmitRejectedError) &&
+    (value as { name?: unknown }).name !== "L1SubmitRejectedError"
+  ) {
+    return undefined;
+  }
+  const { rejection } = value as { rejection?: unknown };
+  return rejection instanceof Uint8Array ? rejection : undefined;
+};
+
+const detailsFromLedgerRejection = (
+  rejection: Uint8Array,
+): OutsideValidityIntervalDetails | null => {
+  const interval = rejectedValidityInterval(rejection);
+  const invalidBeforeSlot = numberFromUnknown(interval?.invalidBefore);
+  const currentSlot = numberFromUnknown(interval?.ledgerSlot);
+  if (invalidBeforeSlot === null || currentSlot === null) {
+    return null;
+  }
+  return outsideValidityDetails(
+    invalidBeforeSlot,
+    numberFromUnknown(interval?.invalidHereafter) ?? undefined,
+    currentSlot,
+  );
 };
 
 const detailsFromStructuredRecord = (
