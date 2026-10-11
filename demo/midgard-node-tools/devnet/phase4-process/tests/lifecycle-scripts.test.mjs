@@ -33,7 +33,9 @@ after(async () => {
     if (!existsSync(pidFile)) continue;
     try {
       process.kill(-Number(readFileSync(pidFile, "utf8")), "SIGKILL");
-    } catch {}
+    } catch {
+      // Already gone.
+    }
   }
   await new Promise((done) => (socket ? socket.close(done) : done()));
   rmSync(work, { recursive: true, force: true });
@@ -110,6 +112,18 @@ const compose = [
   "--file",
   join(runDir, "compose.host-paths.json"),
 ];
+// up.sh returns once it has started the followers; each records its docker
+// call a moment later, so wait for all four rather than race them.
+const followCalls = async () => {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const follows = dockerCalls().filter((call) =>
+      call.argv.includes("--follow"),
+    );
+    if (follows.length >= 4 || Date.now() > deadline) return follows;
+    await new Promise((done) => setTimeout(done, 50));
+  }
+};
 const alive = (pid) => {
   try {
     process.kill(pid, 0);
@@ -144,6 +158,7 @@ test("up starts the run's services from its run.env and follows their logs", asy
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /servicesStarted=true/);
+  const follows = await followCalls();
   const [up, ...rest] = dockerCalls();
   assert.deepEqual(up.argv, [
     ...compose,
@@ -158,12 +173,9 @@ test("up starts the run's services from its run.env and follows their logs", asy
   assert.equal(up.env.MIDGARD_PHASE4_COMPOSE_PROJECT, project);
   assert.equal(up.env.MIDGARD_PHASE4_POSTGRES_PASSWORD, "run-password");
   assert.equal(up.env.MIDGARD_PHASE4_BLOCK_PRODUCER, "true");
-  const followed = rest
-    .filter((call) => call.argv.includes("--follow"))
-    .map((call) => call.argv.at(-1))
-    .sort();
+  const followed = follows.map((call) => call.argv.at(-1)).sort();
   assert.deepEqual(followed, ["cardano-node", "kupo", "ogmios", "postgres"]);
-  for (const call of rest.filter((entry) => entry.argv.includes("--follow")))
+  for (const call of follows)
     assert.deepEqual(call.argv.slice(0, compose.length), compose);
   // The socket is opened to the host user through a pinned helper image.
   assert.ok(rest.some((call) => call.argv[0] === "run"));
