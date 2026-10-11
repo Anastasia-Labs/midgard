@@ -61,6 +61,19 @@ const table = "l1_blocks";
 export const commitAnchorHeight = (viewHeight: number, depth: number): number =>
   heightAtDepth(viewHeight, depth + 1);
 
+/**
+ * The depth the node's follower store retains, in blocks: k + d. Prune keeps
+ * every block at or above cursor height - retained depth, and a commit
+ * planned at view P reads its anchor at h(P) - d (`commitAnchorHeight`), so
+ * the anchor block stays stored while the cursor is at most k blocks past P.
+ * At the store's default depth (k) an anchor at d = k leaves the window as
+ * soon as the cursor passes P, and the commit holds on `outside_history`.
+ */
+export const followerRetainedDepth = (
+  securityParameter: number,
+  commitEventDepth: number,
+): number => securityParameter + commitEventDepth;
+
 /** The header-end cap an anchor dated `anchorTimeMs` sets. */
 export const commitAnchorCapMs = (anchorTimeMs: number): number =>
   anchorTimeMs + EVENT_WAIT_DURATION_MS - 1;

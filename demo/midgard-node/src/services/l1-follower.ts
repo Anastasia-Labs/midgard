@@ -67,6 +67,7 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import { Effect, Ref, Runtime } from "effect";
 
+import { followerRetainedDepth } from "../database/commit-anchor.js";
 import {
   forcedOrderIngestionHook,
   NO_CONTENT_SOURCE,
@@ -169,6 +170,12 @@ const followL1 = <R>(
               projections.projections,
               {
                 securityParameter: plan.securityParameter,
+                // Keeps every commit's anchor block while the follower runs
+                // up to k blocks past the commit's planning view.
+                retainedDepth: followerRetainedDepth(
+                  plan.securityParameter,
+                  config.COMMIT_EVENT_DEPTH,
+                ),
                 // The protocol-init tx qualifies through the hub oracle mint;
                 // the rest is the intent journal's invariant (§8.2).
                 trackedSet: nodeIntentTrackedSet({
