@@ -248,9 +248,16 @@ export const main = async (argv) => {
     console.log(HELP);
     return 0;
   }
-  const root = realpathSync(
-    options.root ?? fileURLToPath(new URL("..", import.meta.url)),
-  );
+  let root;
+  try {
+    root = realpathSync(
+      options.root ?? fileURLToPath(new URL("..", import.meta.url)),
+    );
+  } catch {
+    // --root names the checkout to act on, never a path to create.
+    console.error(`--root ${options.root} is not an existing checkout`);
+    return 2;
+  }
   const [command, action, ...extra] = options.words;
   // `devnet campaign run` is the one three-word command.
   const campaign = command === "devnet" && action === "campaign";

@@ -9,7 +9,7 @@ import {
   channelIdentity,
   dependencyPins,
 } from "./artifacts.mjs";
-import { compact, parse } from "../contrib.mjs";
+import { compact, main, parse } from "../contrib.mjs";
 import { classifyProgress, redact } from "./diagnostics.mjs";
 import { enrollBuilds } from "./enroll-builds.mjs";
 import { fixture } from "./fixture.test-support.mjs";
@@ -41,6 +41,23 @@ test("argument parsing rejects ambiguous shell-like options and keeps file selec
   assert.deepEqual(
     compact({ inputs: { sha256: "abc", files: { "a.ts": "xyz" } } }),
     { inputs: { sha256: "abc", fileCount: 1 } },
+  );
+});
+
+test("a --root that is not an existing checkout is a usage error, not a stack trace", async (t) => {
+  const errors = [];
+  t.mock.method(console, "error", (text) => errors.push(text));
+  const missing = resolve(
+    fileURLToPath(new URL(".", import.meta.url)),
+    "no-such-checkout",
+  );
+  assert.equal(
+    await main(["worktree", "create", "--branch", "x", "--root", missing]),
+    2,
+  );
+  assert.match(
+    errors.join("\n"),
+    /--root .*no-such-checkout is not an existing checkout/u,
   );
 });
 
