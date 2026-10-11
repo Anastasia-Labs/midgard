@@ -12,7 +12,7 @@ import {
 import { readDevnetCustomNetwork } from "./chain.js";
 import { LOCAL_AUTHORITY_ID } from "./da.js";
 import type { DeployContext } from "./deploy.js";
-import { recordedL1Origin } from "./deployment-origin.js";
+import { PREFLIGHT_L1_ORIGIN, recordedL1Origin } from "./deployment-origin.js";
 import { writeDurableFile, writeOnceFile } from "./durable.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 import type { HubOracleOneShot } from "./node-env.js";
@@ -118,7 +118,7 @@ type DeploymentFacts = {
  * the watcher's parsers before the deployment exists. Never written.
  */
 const PREFLIGHT_DEPLOYMENT_FACTS = (run: RunEnv): DeploymentFacts => ({
-  origin: { slot: 1, blockHash: "00".repeat(32) },
+  origin: PREFLIGHT_L1_ORIGIN,
   confirmationDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
   retainedDaPeer: {
     identity: "devnet-public-retained-da",

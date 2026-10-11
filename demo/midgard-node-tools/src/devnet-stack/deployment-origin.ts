@@ -14,6 +14,16 @@ const JOURNAL_KEY = "l1Origin";
 
 type OriginRecord = DerivedL1Origin & { readonly recordedAt: string };
 
+/**
+ * A shape-only stand-in for the run's recorded origin, so the configuration
+ * preflights can run the services' parsers before the deployment exists.
+ * Never written; each service reads the recorded origin when it starts.
+ */
+export const PREFLIGHT_L1_ORIGIN: L1Origin = {
+  slot: 1,
+  blockHash: "00".repeat(32),
+};
+
 const recordFor = (
   layout: Layout,
   oneShot: HubOracleOneShot,
