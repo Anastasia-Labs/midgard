@@ -138,7 +138,7 @@ describe("midgard contracts registry", () => {
       // (transition trace), by raising the new-shift inactivity grace to
       // the maximum validity range (scheduler spend only), by the txInfo
       // stage's L1 slot mapping (POSIX-ms validity ranges), and by the
-      // exclusive upper bound and refusing bounds below -1 (native-tx decode).
+      // exclusive upper bound, bounds below -1, admission and the lock top-up.
       expect
         .soft(
           createHash("sha256")
@@ -148,7 +148,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "c0fa946255c46dce611f88da028ff74d2ac06a7417bd74d1a467b891a9b82f76",
+          "c2eb25cf45a4208bff40157fe5107dadbdf16d4101f2edd283605d24b41f1ec5",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
@@ -156,7 +156,7 @@ describe("midgard contracts registry", () => {
       // the availability-challenge policy, whose parameters now include the
       // pooled DA bond policy, and again for disjoint MPF node preimages and
       // for the neglected-event strike rule (the state queue is applied over
-      // the scheduler and active-operator scripts).
+      // the scheduler and active-operator scripts), and the lock ADA top-up.
       expect
         .soft(
           createHash("sha256")
@@ -169,7 +169,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "1b5667707317f450979f8bf401d6c627726e2d8ed3b62519adb1e628e50efa81",
+          "db216a117ef1c0ef7585310ebd6ef93cf20f663a133b6a6db1cea0ffcdc865ca",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

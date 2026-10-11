@@ -64,7 +64,9 @@ describe("devnet node and DA configuration preflight", () => {
 
   // The node refuses a profile other than the compiled one, so a clean run of
   // its whole parser needs the profile the controller builds.
-  it.skipIf(SELECTED_DEPLOYMENT_PROFILE.name !== DEPLOYMENT_PROFILE)(
+  // Widened: the compiled profile's literal type depends on the build.
+  const compiledProfile: string = SELECTED_DEPLOYMENT_PROFILE.name;
+  it.skipIf(compiledProfile !== DEPLOYMENT_PROFILE)(
     `checks the run's node configuration before any chain or deployment exists (needs ${DEPLOYMENT_PROFILE} compiled)`,
     async () => {
       const context = generatedRun();

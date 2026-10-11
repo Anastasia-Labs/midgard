@@ -891,8 +891,8 @@
   },
   {
     "file": "midgard-node/src/mpf/process.process-mpfs.ts",
-    "max": 1570,
-    "reason": "processMpfs is the dominant indivisible declaration (1445 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T161 (+15): the block commits its normal transactions in exactly the order Phase B applied them, and an accepted transaction's ledger witnesses fail closed on a missing input; a split of this module is a separate proven pure move. VR (+2): normal-block phase-B and the validation trace take the deployment's L1 slot mapping."
+    "max": 1537,
+    "reason": "processMpfs is the dominant indivisible declaration (1445 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T161 (+15): the block commits its normal transactions in exactly the order Phase B applied them, and an accepted transaction's ledger witnesses fail closed on a missing input; a split of this module is a separate proven pure move. VR (+2): normal-block phase-B and the validation trace take the deployment's L1 slot mapping. Duplicate withdrawals (-33): the block-wide duplicate-outref refusal is replaced by in-order classification in withdrawal-classification.ts."
   },
   {
     "file": "midgard-node/src/mpf/root-view-store.ts",
