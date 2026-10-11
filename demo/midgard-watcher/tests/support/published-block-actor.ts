@@ -14,6 +14,7 @@ import "./published-block-actor.is-unanswered-submission.js";
 import "./published-block-actor.create-published-watcher-block-actor.js";
 export { createPublishedWatcherBlockActor } from "./published-block-actor.create-published-watcher-block-actor.js";
 export {
+  isLateSubmission,
   isUnansweredSubmission,
   type PublishedDaAttestationOutcome,
   type PublishedDaAttestOptions,

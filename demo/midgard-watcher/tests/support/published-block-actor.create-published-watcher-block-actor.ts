@@ -30,6 +30,7 @@ import {
   DA_SUBMISSION_TIMEOUT_MS,
   EXPIRY_GRACE_MS,
   FRESH_TIP_MS,
+  isLateSubmission,
   isUnansweredSubmission,
   OWN_SPEND_VISIBILITY_GRACE_MS,
   type PublishedDaAttestationOutcome,
@@ -474,6 +475,13 @@ export const createPublishedWatcherBlockActor = async ({
     try {
       submittedHash = await signed.submit();
     } catch (cause) {
+      // Refused past its bound (the block's end passed while it was built).
+      if (isLateSubmission(cause))
+        throw new PublishedTransactionExpiredError(
+          `header commit ${block.headerHash}`,
+          txHash,
+          Number(block.header.endTime) + 1,
+        );
       if (!isUnansweredSubmission(cause))
         throw new PublishedTransactionSubmissionError(txHash, cause);
       // The node may hold it; only its landing or expiry settles the attempt.
