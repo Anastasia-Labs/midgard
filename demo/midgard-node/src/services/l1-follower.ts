@@ -60,14 +60,12 @@ import {
   type FollowStatus,
   httpTxContentSource,
   openPostgresFactStore,
-  projectionStoreOptions,
   storeTxContentSource,
   transportLedgerOutputs,
   type WriterLease,
 } from "@al-ft/midgard-l1-follower";
 import { Effect, Ref, Runtime } from "effect";
 
-import { followerRetainedDepth } from "../database/commit-anchor.js";
 import {
   forcedOrderIngestionHook,
   NO_CONTENT_SOURCE,
@@ -96,10 +94,7 @@ import { coalescedRunner } from "./l1-follower.coalesced-runner.js";
 import { driverSink } from "./l1-follower.driver-sink.js";
 import { failureHold } from "./l1-follower.failure-hold.js";
 import { nodeFamilyPredicate } from "./l1-follower.intent-predicates.js";
-import {
-  createNodeIntentStage,
-  nodeIntentTrackedSet,
-} from "./l1-follower.intents.js";
+import { createNodeIntentStage } from "./l1-follower.intents.js";
 import {
   message,
   recordUnconfigured,
@@ -116,6 +111,7 @@ import {
   startingStatus,
 } from "./l1-follower.readiness.js";
 import { makeDriverRecompute } from "./l1-follower.recompute.js";
+import { nodeFollowerStoreOptions } from "./l1-follower.store-options.js";
 import { followerTick } from "./l1-follower.tick.js";
 import { publishL1HeadChange } from "./l1-head-trigger.js";
 import { Lucid } from "./lucid.js";
@@ -166,26 +162,13 @@ const followL1 = <R>(
         let store: FactStore;
         try {
           store = openPostgresFactStore({
-            ...projectionStoreOptions(
-              projections.projections,
-              {
-                securityParameter: plan.securityParameter,
-                // Keeps every commit's anchor block while the follower runs
-                // up to k blocks past the commit's planning view.
-                retainedDepth: followerRetainedDepth(
-                  plan.securityParameter,
-                  config.COMMIT_EVENT_DEPTH,
-                ),
-                // The protocol-init tx qualifies through the hub oracle mint;
-                // the rest is the intent journal's invariant (§8.2).
-                trackedSet: nodeIntentTrackedSet({
-                  protocolPaymentCredentials:
-                    protocolPaymentCredentials(contracts),
-                  hubOraclePolicyId: plan.hubOraclePolicyId,
-                }),
-              },
-              "postgres",
-            ),
+            ...nodeFollowerStoreOptions({
+              projections: projections.projections,
+              securityParameter: plan.securityParameter,
+              commitEventDepth: config.COMMIT_EVENT_DEPTH,
+              protocolPaymentCredentials: protocolPaymentCredentials(contracts),
+              hubOraclePolicyId: plan.hubOraclePolicyId,
+            }),
             // Seeded (§5.3 step 4), never in the tracked-set record.
             wallets: seededAddresses,
             connection: {
