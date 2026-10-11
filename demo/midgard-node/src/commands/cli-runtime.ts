@@ -156,6 +156,9 @@ export const runCliEffect = <A, E>(
   process.once("SIGINT", record);
   process.once("SIGTERM", record);
   NodeRuntime.runMain(effect, {
+    // Keep Effect's logfmt logger, which worker threads also use: its UTC
+    // timestamp carries the date, where the pretty one is local time only.
+    disablePrettyLogger: true,
     teardown: (exit, onExit) => onExit(cliExitCode(exit, signal)),
   });
 };
