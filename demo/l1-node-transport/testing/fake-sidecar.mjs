@@ -65,12 +65,16 @@ export const samePoint = (a, b) =>
  * - ignoreInputEnd: true keeps the process running after stdin closes.
  */
 export const serveFakeSidecar = (handler) => {
+  // Frames written while `batch` is set leave in one write.
+  let batch;
   const write = (header, payload = new Uint8Array()) => {
     const encoded = encodeCbor(header);
     const lengths = Buffer.alloc(8);
     lengths.writeUInt32BE(encoded.length, 0);
     lengths.writeUInt32BE(payload.length, 4);
-    process.stdout.write(Buffer.concat([lengths, encoded, payload]));
+    const frame = Buffer.concat([lengths, encoded, payload]);
+    if (batch === undefined) process.stdout.write(frame);
+    else batch.push(frame);
   };
   const fatal = (code, message, status = 1) => {
     write({ type: "fatal", code, message });
@@ -244,6 +248,9 @@ export const serveFakeSidecar = (handler) => {
           streams.delete(header.stream);
           return refuse(id, result.error.code, result.error.message);
         }
+        // The answer and the events it releases leave in one write, so the
+        // client reads them in one chunk, as it does from a busy sidecar.
+        batch = [];
         answer(id, {
           type: "cs_opened",
           stream: header.stream,
@@ -259,6 +266,8 @@ export const serveFakeSidecar = (handler) => {
           });
         state.opened = true;
         flush();
+        process.stdout.write(Buffer.concat(batch));
+        batch = undefined;
         return;
       }
       case "cs_ack": {

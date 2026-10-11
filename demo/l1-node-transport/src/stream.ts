@@ -262,6 +262,7 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
     const stream = this.host.nextStreamId();
     this.#streamId = stream;
     sidecar.registerStream(stream, (frame) => this.#frame(sidecar, frame));
+    const seqAtOpen = this.#lastSeq;
     try {
       // A resume lists the last delivered point first: the consumer's
       // position, so the sidecar delivers a rollback exactly when that point
@@ -283,10 +284,12 @@ export class ChainSyncStream implements AsyncIterable<ChainSyncEvent> {
         return;
       }
       const intersection = decodePoint(answer.header.point, "intersection");
-      this.#tip = tip;
+      // Events read in the same chunk as the answer were handled before this
+      // continuation, and are newer than it: a resume starts from them.
+      if (this.#lastSeq === seqAtOpen) this.#tip = tip;
       if (!resuming) {
         this.#intersection = intersection;
-        this.#lastPoint = intersection;
+        this.#lastPoint ??= intersection;
         this.#resolveOpened({ intersection, tip });
       }
       if (this.#closed) await this.#sendClose(sidecar, stream);
