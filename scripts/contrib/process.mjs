@@ -6,6 +6,8 @@ import { pinnedPnpmEnvironment } from "./pnpm.mjs";
 
 // Each invocation owns a process group; the close event joins stdio as well
 // as the direct child. Grandchildren cannot keep a cancelled run alive.
+// A deadline, cancellation or output overflow sends SIGTERM to the group and
+// SIGKILL `graceMs` later, so a child that journals on SIGTERM can finish.
 export const runProcess = async ({
   argv,
   cwd,
@@ -14,6 +16,7 @@ export const runProcess = async ({
   signal,
   timeoutMs = 1_800_000,
   maxBytes = 16 * 1024 * 1024,
+  graceMs = 1500,
   echo = false,
 }) => {
   if (
@@ -57,7 +60,7 @@ export const runProcess = async ({
     if (reason) return;
     reason = why;
     kill("SIGTERM");
-    escalation = setTimeout(() => kill("SIGKILL"), 1500);
+    escalation = setTimeout(() => kill("SIGKILL"), graceMs);
   };
   const collect = (chunk) => {
     const remaining = Math.max(0, maxBytes - bytes);
