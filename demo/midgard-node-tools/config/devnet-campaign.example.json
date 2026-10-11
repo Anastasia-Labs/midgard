@@ -27,6 +27,7 @@
       "id": "stack-down",
       "kind": "devnet-stack",
       "timeoutSeconds": 900,
+      "always": true,
       "args": ["down", "--run-dir", "/absolute/devnets/stack", "--l1"]
     },
     {
@@ -62,7 +63,8 @@
       "kind": "phase4",
       "action": "down",
       "runDir": "/absolute/devnets/watcher-journeys",
-      "timeoutSeconds": 600
+      "timeoutSeconds": 600,
+      "always": true
     }
   ]
 }

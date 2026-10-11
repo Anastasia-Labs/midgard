@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -7,6 +8,7 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  writeFileSync,
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -21,9 +23,13 @@ import { withResource } from "./resources.mjs";
 import {
   definitionDigest,
   frozenBlueprintPath,
+  journeyInputs,
   readCampaign,
   receiptPath,
+  resumePoint,
+  resumeStages,
   stageCommand,
+  teardownAfter,
 } from "./campaign-definition.mjs";
 
 // A devnet campaign runs an ordered list of devnet stages (devnet-stack
@@ -32,7 +38,8 @@ import {
 // the blueprint, runs each stage under its own deadline and log, and keeps
 // one receipt in the campaign directory. Rerunning the same file resumes:
 // stages the receipt records as passed with the same definition are skipped.
-// It never moves HEAD and never deletes a run's state.
+// After a stage does not pass, the always-stages (teardowns) that close its
+// segment still run. It never moves HEAD and never deletes a run's state.
 
 export const CAMPAIGN_RECEIPT_SCHEMA = "midgard-devnet-campaign-receipt/v1";
 export const CAMPAIGN_PLAN_SCHEMA = "midgard-devnet-campaign-plan/v1";
@@ -156,19 +163,6 @@ export const loadReceipt = (campaign) => {
     );
   return receipt;
 };
-
-const latestEntry = (receipt, id) =>
-  receipt?.stages.filter((entry) => entry.id === id).at(-1);
-
-/** Index of the first stage not recorded as passed, or -1 when all are. */
-export const resumePoint = (campaign, receipt) =>
-  campaign.stages.findIndex((stage) => {
-    const entry = latestEntry(receipt, stage.id);
-    return !(
-      entry?.status === "passed" &&
-      entry.definitionSha256 === definitionDigest(stage)
-    );
-  });
 
 // Each attempt of a stage gets its own log; a rerun never truncates the log
 // of the attempt it replaces.
@@ -315,9 +309,10 @@ export const runBuild = async (
 
 const fileSha256 = (path) => sha256(readFileSync(path));
 
-const copyAtomically = (source, destination) => {
+const copyAtomically = (source, destination, mode) => {
   const temporary = `${destination}.${randomUUID()}.tmp`;
   copyFileSync(source, temporary);
+  if (mode !== undefined) chmodSync(temporary, mode);
   renameSync(temporary, destination);
 };
 
@@ -381,7 +376,7 @@ export const campaignPlan = (root, inputPath, overrides = {}) => {
   checkDirectory(root, campaign, inputPath);
   const receipt = loadReceipt(campaign);
   const { head, refusal } = pinCheck(root, campaign, deps);
-  const start = resumePoint(campaign, receipt);
+  const planned = resumeStages(campaign, receipt);
   return {
     schema: CAMPAIGN_PLAN_SCHEMA,
     id: campaign.id,
@@ -393,7 +388,7 @@ export const campaignPlan = (root, inputPath, overrides = {}) => {
     receipt: receiptPath(campaign),
     ...(refusal ? { refusal } : {}),
     build:
-      start === -1
+      planned.length === 0
         ? []
         : deps.buildSteps(root, campaign).map((step) => ({
             ...step,
@@ -409,13 +404,25 @@ export const campaignPlan = (root, inputPath, overrides = {}) => {
           status: "frozen after the build",
         },
     stages: campaign.stages.map((stage, index) => {
-      const skip = start === -1 || index < start;
+      const run = planned.find((entry) => entry.index === index);
       const { name } = attemptName(campaign, receipt, stage);
       const command = stageCommand(root, campaign, stage, name);
+      const missing =
+        stage.kind === "watcher-journeys"
+          ? journeyInputs(root, stage).generated.filter(
+              (path) => !existsSync(path),
+            )
+          : [];
       return {
         id: stage.id,
         kind: stage.kind,
-        action: skip ? "skip: passed" : "run",
+        action: !run
+          ? "skip: passed"
+          : run.restart
+            ? "run: an always-stage stopped its services after it passed"
+            : "run",
+        ...(stage.always ? { always: true } : {}),
+        ...(missing.length ? { missingInputs: missing } : {}),
         timeoutSeconds: stage.timeoutSeconds,
         argv: command.argv,
         cwd: command.cwd,
@@ -425,6 +432,39 @@ export const campaignPlan = (root, inputPath, overrides = {}) => {
     }),
     exitCode: refusal ? 1 : 0,
   };
+};
+
+/**
+ * Before a watcher-journeys stage: `{ refusal }` when its run directory was
+ * not generated (a person runs the watcher-journeys generator) or holds
+ * another build's transport binary, else `{ transport }`: the campaign's
+ * build, copied into the run once, as devnet-stack snapshots its binaries.
+ * A campaign never replaces a binary a run already has.
+ */
+export const prepareJourneyRun = (root, stage) => {
+  const inputs = journeyInputs(root, stage);
+  const missing = inputs.generated.filter((path) => !existsSync(path));
+  if (missing.length)
+    return {
+      refusal: `the journey run directory ${stage.runDir} lacks ${missing.join(", ")}; generate the run first with \`${inputs.generate}\` and start its L1 services with a phase4 up stage`,
+    };
+  const { source, target } = inputs.transport;
+  if (!existsSync(source))
+    return {
+      refusal: `no transport binary to copy into the run: ${source} is missing after the build`,
+    };
+  const built = fileSha256(source);
+  if (existsSync(target)) {
+    const present = fileSha256(target);
+    if (present !== built)
+      return {
+        refusal: `${target} is another build's transport binary (sha256 ${present}; this campaign built ${built}); a campaign never replaces a run's binary: use a new run directory, or copy ${source} over it if this run should take this build`,
+      };
+    return { transport: { path: target, sha256: built, staged: "present" } };
+  }
+  mkdirSync(dirname(target), { recursive: true });
+  copyAtomically(source, target, 0o755);
+  return { transport: { path: target, sha256: built, staged: "copied" } };
 };
 
 const save = (receipt) => {
@@ -488,6 +528,24 @@ const runStage = async (
   };
   receipt.stages.push(entry);
   save(receipt);
+  if (stage.kind === "watcher-journeys") {
+    const prepared = prepareJourneyRun(root, stage);
+    if (prepared.refusal) {
+      writeFileSync(entry.logPath, `${prepared.refusal}\n`, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      Object.assign(entry, {
+        status: "failed",
+        reason: prepared.refusal,
+        endedAt: new Date().toISOString(),
+        logSha256: fileSha256(entry.logPath),
+      });
+      save(receipt);
+      return entry;
+    }
+    entry.transportBinary = prepared.transport;
+  }
   let result;
   try {
     result = await run({
@@ -553,9 +611,12 @@ const finish = (receipt, campaign, outcome) => {
 /**
  * Run (or resume) a campaign: refuse a checkout that is not the pinned
  * commit, build what the stages need once, freeze the blueprint, then run
- * each stage not yet passed in order, stopping at the first that does not
- * pass. Exit 0 when every stage passed, 1 on a failure, 3 when incomplete
- * (cancelled, or a journey that skipped tests).
+ * each stage not yet passed in order. At the first stage that does not pass
+ * (or a cancellation) the ordinary stages stop; the next block of
+ * consecutive always-stages still runs, never cancelled, each under its own
+ * deadline, and then the campaign stops. Exit 0 when every stage passed, or
+ * the first non-pass: 1 on a failure, 3 when incomplete (cancelled, or a
+ * journey that skipped tests).
  */
 export const runCampaign = async (
   root,
@@ -591,15 +652,17 @@ export const runCampaign = async (
           // campaign process that died; it did not pass.
           for (const entry of receipt.stages)
             if (entry.status === "running") entry.status = "interrupted";
-          const start = resumePoint(campaign, receipt);
-          if (start === -1) return finish(receipt, campaign);
+          const planned = resumeStages(campaign, receipt);
+          if (planned.length === 0) return finish(receipt, campaign);
           const pin = pinCheck(root, campaign, deps);
           if (pin.refusal) throw new Error(pin.refusal);
           const invocation = {
             startedAt: new Date().toISOString(),
             input: resolve(inputPath),
             inputSha256: fileSha256(resolve(inputPath)),
-            skipped: campaign.stages.slice(0, start).map((stage) => stage.id),
+            skipped: campaign.stages
+              .filter((stage) => !planned.some((run) => run.stage === stage))
+              .map((stage) => stage.id),
             stagesRun: [],
           };
           receipt.invocations.push(invocation);
@@ -645,8 +708,7 @@ export const runCampaign = async (
             );
             save(receipt);
           }
-          for (const stage of campaign.stages.slice(start)) {
-            if (signal?.aborted) break;
+          const runOne = async (stage) => {
             // HEAD or the tree may have moved under a long campaign.
             const again = pinCheck(root, campaign, deps);
             if (again.refusal) {
@@ -654,20 +716,34 @@ export const runCampaign = async (
               throw new Error(again.refusal);
             }
             invocation.stagesRun.push(stage.id);
-            const entry = await runStage(root, campaign, stage, receipt, {
+            // A teardown is never cancelled; its deadline bounds it.
+            return runStage(root, campaign, stage, receipt, {
               run: deps.run,
               env: ownedEnv,
-              signal,
+              signal: stage.always ? undefined : signal,
               graceMs: deps.graceMs,
             });
-            if (entry.status !== "passed")
-              return finish(
-                receipt,
-                campaign,
-                entry.status === "failed" ? "failed" : "incomplete",
-              );
+          };
+          // The first stage that did not pass ("failed" or "incomplete"),
+          // and the last stage this invocation started.
+          let outcome;
+          let last;
+          for (const { index, stage } of planned) {
+            if (signal?.aborted) {
+              outcome = "incomplete";
+              break;
+            }
+            last = index;
+            const entry = await runOne(stage);
+            if (entry.status !== "passed") {
+              outcome = entry.status === "failed" ? "failed" : "incomplete";
+              break;
+            }
           }
-          return finish(receipt, campaign);
+          if (outcome && last !== undefined)
+            for (const index of teardownAfter(campaign, last))
+              await runOne(campaign.stages[index]);
+          return finish(receipt, campaign, outcome);
         },
         { signal, env: campaignEnv },
       ),
