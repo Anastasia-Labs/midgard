@@ -7,9 +7,11 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash, blake2b_256}
 use aiken/primitive/bytearray
-use cardano/address.{Address, Pointer}
+use cardano/address.{Address, Credential, Pointer, Script, VerificationKey}
 use cardano/assets.{PolicyId, Value}
-use cardano/transaction.{Datum, Input, OutputReference, Transaction}
+use cardano/transaction.{
+  Datum, InlineDatum, Input, OutputReference, Transaction,
+}
 use env
 use midgard/common/utils
 use midgard/event_history/data_budget
@@ -117,6 +119,47 @@ pub fn open_payload(
   payload
 }
 
+/// Admission accepts only orders the node's decoder accepts: every credential
+/// hash is 28 bytes.
+fn decodable_credential(credential: Credential) -> Bool {
+  when credential is {
+    VerificationKey(hash) | Script(hash) -> bytearray.length(hash) == 28
+  }
+}
+
+/// Admission accepts only orders the node's decoder accepts: credential hashes
+/// of 28 bytes and a stake credential that is absent or inline.
+fn decodable_address(address: Address) -> Bool {
+  and {
+    decodable_credential(address.payment_credential),
+    when address.stake_credential is {
+      None -> True
+      Some(address.Inline(credential)) -> decodable_credential(credential)
+      Some(Pointer { .. }) -> False
+    },
+  }
+}
+
+/// The node also decodes the retention datum an external payload is read
+/// from, so its reclamation credential must be one the decoder accepts. The
+/// datum was already authenticated by `open_payload`.
+fn decodable_location(
+  location: Location,
+  reference_inputs: List<Input>,
+  external_reference_index: Option<Int>,
+) -> Bool {
+  when location is {
+    Inline { .. } -> True
+    External { .. } -> {
+      expect Some(index) = external_reference_index
+      expect Some(input) = list.at(reference_inputs, index)
+      expect InlineDatum(raw) = input.output.datum
+      expect data: retained_data.EventData = raw
+      decodable_credential(data.reclaim_auth)
+    }
+  }
+}
+
 /// Called after structural insertion/promotion has authenticated the output.
 /// Actual assets are derived from that output, never from a claimed payload.
 pub fn admit(
@@ -160,39 +203,45 @@ pub fn admit(
     external_reference_index,
   )
   expect
+    decodable_location(
+      facts.location,
+      tx.reference_inputs,
+      external_reference_index,
+    )
+  expect
     when kind is {
       Deposit -> {
         expect DepositPayload { event } = payload
         let l2_network_id = event.info.l2_network_id
         // Preserve the existing deposit limit, including ADA when present.
         // Admission accepts only addresses the L2 projection maps: Midgard's
-        // L2 network ids, testnet 0 and mainnet 1, and a stake credential
-        // that is absent or inline.
+        // L2 network ids, testnet 0 and mainnet 1, and an address the node's
+        // decoder accepts.
         and {
           list.length(assets.flatten(original_assets)) <= env.max_tokens_allowed_in_deposits,
           funding.deposit_is_funded(original_assets),
           l2_network_id == 0 || l2_network_id == 1,
-          when event.info.l2_address.stake_credential is {
-            Some(Pointer { .. }) -> False
-            _ -> True
-          },
+          decodable_address(event.info.l2_address),
         }
       }
       Withdrawal -> {
-        expect WithdrawalPayload { event, refund_datum, .. } = payload
+        expect WithdrawalPayload { event, refund_address, refund_datum } = payload
+        let body = event.info.body
         let expected_value = assets.from_lovelace(
           assets.lovelace_of(output.value),
         )
           |> assets.add(policy, user_events.out_ref_to_nonce(facts.event_id), 1)
+        // Admission accepts only orders the node's decoder accepts: a 32-byte
+        // L2 transaction id, a 28-byte owner and decodable addresses.
         and {
           facts.structural_lovelace == 0,
           output.value == expected_value,
           event.info.validity == ledger_state.WithdrawalIsValid,
-          funding.withdrawal_is_funded(
-            original_assets,
-            event.info.body,
-            refund_datum,
-          ),
+          bytearray.length(body.l2_outref.transaction_id) == 32,
+          bytearray.length(body.l2_owner) == 28,
+          decodable_address(body.l1_address),
+          decodable_address(refund_address),
+          funding.withdrawal_is_funded(original_assets, body, refund_datum),
         }
       }
     }

@@ -2,7 +2,9 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/interval
 use aiken/primitive/bytearray
-use cardano/address.{Address, StakeCredential, VerificationKey}
+use cardano/address.{
+  Address, Credential, Script, StakeCredential, VerificationKey,
+}
 use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, placeholder,
@@ -676,4 +678,211 @@ test referenced_rejects_a_legacy_optimistic_deposit_datum() fail {
   let order = order_output(facts(), None, 600)
   let old = Output { ..order, datum: InlineDatum(legacy) }
   read_order([reference(old, 0)], 0).inclusion_time == 400 + env.event_wait_duration
+}
+
+// Admission accepts only orders the node's decoder accepts: 28-byte credential
+// hashes and owner, 32-byte transaction ids and no pointer stake credential.
+// Each refusal below differs from an accepted control in one field only.
+
+const short_hash = #"333333333333333333333333333333333333333333333333333333"
+
+const long_hash = #"3333333333333333333333333333333333333333333333333333333333"
+
+const pointer: StakeCredential =
+  address.Pointer { slot_number: 1, transaction_index: 2, certificate_index: 3 }
+
+/// The admission fixture with only the deposit's L2 address replaced.
+fn admit_with_l2_address(l2_address: Address) -> Payload {
+  expect DepositPayload { event } = payload()
+  let changed = DepositPayload {
+    event: DepositEvent {
+      ..event,
+      info: DepositInfo { ..event.info, l2_address },
+    },
+  }
+  let (_, admitted, _) = admit(
+    admission(Facts { ..facts(), location: Inline { payload: changed } }),
+    1000,
+    None,
+  )
+  expect admitted == changed
+  admitted
+}
+
+test admission_accepts_script_l2_payment_credential() {
+  let l2_address = address.from_script(owner)
+  expect DepositPayload { event } = admit_with_l2_address(l2_address)
+  event.info.l2_address == l2_address
+}
+
+test admission_rejects_short_l2_payment_hash() fail {
+  expect _ = admit_with_l2_address(address.from_verification_key(short_hash))
+  True
+}
+
+test admission_rejects_long_l2_script_hash() fail {
+  expect _ = admit_with_l2_address(address.from_script(long_hash))
+  True
+}
+
+test admission_rejects_short_inline_l2_stake_hash() fail {
+  expect _ = admit_with_l2_stake_credential(
+    Some(address.Inline(VerificationKey(short_hash))),
+  )
+  True
+}
+
+/// The withdrawal admission fixture with its body and refund address edited.
+fn admit_withdrawal_with(
+  edit: fn(WithdrawalBody) -> WithdrawalBody,
+  refund_address: Address,
+) -> Payload {
+  expect order_facts.WithdrawalPayload { event, refund_datum, .. } = withdrawal_payload()
+  let changed = order_facts.WithdrawalPayload {
+    event: WithdrawalEvent {
+      ..event,
+      info: WithdrawalInfo { ..event.info, body: edit(event.info.body) },
+    },
+    refund_address,
+    refund_datum,
+  }
+  let (_, admitted, _) = admit_withdrawal(
+    admission(
+      Facts { ..withdrawal_facts(), location: Inline { payload: changed } },
+    ),
+  )
+  expect admitted == changed
+  admitted
+}
+
+fn with_l1_address(l1_address: Address) -> fn(WithdrawalBody) -> WithdrawalBody {
+  fn(body) { WithdrawalBody { ..body, l1_address } }
+}
+
+fn unchanged(body: WithdrawalBody) -> WithdrawalBody {
+  body
+}
+
+fn staked(stake_credential: StakeCredential) -> Address {
+  Address {
+    ..address.from_verification_key(owner),
+    stake_credential: Some(stake_credential),
+  }
+}
+
+test withdrawal_admission_accepts_inline_stake_addresses() {
+  let inline = staked(address.Inline(VerificationKey(owner)))
+  expect order_facts.WithdrawalPayload { event, refund_address, .. } = admit_withdrawal_with(
+    with_l1_address(inline),
+    inline,
+  )
+  and {
+    event.info.body.l1_address == inline,
+    refund_address == inline,
+  }
+}
+
+test withdrawal_admission_rejects_short_l2_owner() fail {
+  expect _ = admit_withdrawal_with(
+    fn(body) { WithdrawalBody { ..body, l2_owner: short_hash } },
+    address.from_verification_key(owner),
+  )
+  True
+}
+
+test withdrawal_admission_rejects_short_l2_transaction_id() fail {
+  expect _ = admit_withdrawal_with(
+    fn(body) {
+      WithdrawalBody {
+        ..body,
+        l2_outref: OutputReference {
+          transaction_id: bytearray.drop(tx_id, 1),
+          output_index: 0,
+        },
+      }
+    },
+    address.from_verification_key(owner),
+  )
+  True
+}
+
+test withdrawal_admission_rejects_pointer_l1_address() fail {
+  expect _ = admit_withdrawal_with(
+    with_l1_address(staked(pointer)),
+    address.from_verification_key(owner),
+  )
+  True
+}
+
+test withdrawal_admission_rejects_short_l1_payment_hash() fail {
+  expect _ = admit_withdrawal_with(
+    with_l1_address(address.from_verification_key(short_hash)),
+    address.from_verification_key(owner),
+  )
+  True
+}
+
+test withdrawal_admission_rejects_short_inline_l1_stake_hash() fail {
+  expect _ = admit_withdrawal_with(
+    with_l1_address(staked(address.Inline(Script(short_hash)))),
+    address.from_verification_key(owner),
+  )
+  True
+}
+
+test withdrawal_admission_rejects_pointer_refund_address() fail {
+  expect _ = admit_withdrawal_with(unchanged, staked(pointer))
+  True
+}
+
+test withdrawal_admission_rejects_short_refund_payment_hash() fail {
+  expect _ = admit_withdrawal_with(
+    unchanged,
+    address.from_verification_key(short_hash),
+  )
+  True
+}
+
+test withdrawal_admission_rejects_long_inline_refund_stake_hash() fail {
+  expect _ = admit_withdrawal_with(
+    unchanged,
+    staked(address.Inline(VerificationKey(long_hash))),
+  )
+  True
+}
+
+/// An external admission whose retention datum carries `reclaim_auth`.
+fn admit_external_with_reclaim_auth(reclaim_auth: Credential) -> Payload {
+  let event_payload: Data = payload()
+  let data = EventData {
+    event_key: user_events.out_ref_to_nonce(nonce),
+    event_payload,
+    reclaim_auth,
+  }
+  let raw: Data = data
+  let publication = Input {
+    ..data_output(),
+    output: Output { ..data_output().output, datum: InlineDatum(raw) },
+  }
+  let tx = admission(
+    Facts {
+      ..facts(),
+      location: External { storage_datum_hash: retained_data.datum_hash(data) },
+    },
+  )
+  let (_, opened, _) = admit(
+    Transaction { ..tx, reference_inputs: [publication] },
+    1,
+    Some(0),
+  )
+  opened
+}
+
+test external_admission_accepts_script_reclaim_credential() {
+  admit_external_with_reclaim_auth(Script(owner)) == payload()
+}
+
+test external_admission_rejects_short_reclaim_credential_hash() fail {
+  expect _ = admit_external_with_reclaim_auth(VerificationKey(short_hash))
+  True
 }

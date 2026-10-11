@@ -121,17 +121,19 @@ const UNPROJECTABLE_DEPOSITS = [
     detail: "unsupported committed deposit L2 network id",
   },
   {
-    // Written in the SDK's AddressData shape, which the follower decodes, so
-    // the node's projection sees the pointer and refuses it rather than
-    // dropping the stake credential.
+    // Written in the ledger's flat pointer shape, the only one the chain
+    // could carry, so the node's projection sees the pointer and refuses it
+    // rather than dropping the stake credential.
     name: "a pointer L2 stake credential",
     options: {
       l2Address: {
         paymentCredential: { PublicKeyCredential: ["cd".repeat(28)] },
         stakeCredential: {
-          Pointer: [
-            { slotNumber: 1n, transactionIndex: 2n, certificateIndex: 3n },
-          ],
+          Pointer: {
+            slotNumber: 1n,
+            transactionIndex: 2n,
+            certificateIndex: 3n,
+          },
         },
       },
     },

@@ -7,7 +7,9 @@ import { Bech32DeserializationError, LucidError } from "./errors.js";
 import { RetiredOperatorUTxO } from "./retired-operators.js";
 
 /**
- * TODO: Note that this function does not support pointer addresses.
+ * The address's ledger data. A pointer address fails: event-history admission
+ * accepts only orders the node decodes, and the node does not map a pointer
+ * stake credential, so an order carrying one would never be admitted.
  */
 export const addressDataFromBech32 = (
   address: Address,
@@ -21,7 +23,16 @@ export const addressDataFromBech32 = (
           cause: error,
         }),
     });
-    const { paymentCredential, stakeCredential } = addressDetails;
+    const { paymentCredential, stakeCredential, type } = addressDetails;
+
+    if (type === "Pointer") {
+      return yield* Effect.fail(
+        new Bech32DeserializationError({
+          message: "Pointer addresses are not supported",
+          cause: `Invalid address: ${address}`,
+        }),
+      );
+    }
 
     if (!paymentCredential) {
       return yield* Effect.fail(

@@ -4,7 +4,7 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { CredentialSchema, POSIXTimeSchema } from "../common.js";
+import { AddressSchema, POSIXTimeSchema } from "../common.js";
 import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
 import {
   CardanoDatum,
@@ -23,23 +23,7 @@ import {
   UserEventMintRedeemerSchema,
 } from "./internals.js";
 
-export const TxOrderRefundAddressSchema = Data.Object({
-  paymentCredential: CredentialSchema,
-  stakeCredential: Data.Nullable(
-    Data.Enum([
-      Data.Object({
-        Inline: Data.Tuple([CredentialSchema]),
-      }),
-      Data.Object({
-        Pointer: Data.Object({
-          slotNumber: Data.Integer(),
-          transactionIndex: Data.Integer(),
-          certificateIndex: Data.Integer(),
-        }),
-      }),
-    ]),
-  ),
-});
+export const TxOrderRefundAddressSchema = AddressSchema;
 
 export type TxOrderRefundAddress = Data.Static<
   typeof TxOrderRefundAddressSchema

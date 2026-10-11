@@ -44,13 +44,11 @@ export type CanonicalDepositAddressData = Readonly<{
         Inline: readonly [CanonicalDepositAddressCredential];
       }>
     | Readonly<{
-        Pointer: readonly [
-          Readonly<{
-            slotNumber: bigint;
-            transactionIndex: bigint;
-            certificateIndex: bigint;
-          }>,
-        ];
+        Pointer: Readonly<{
+          slotNumber: bigint;
+          transactionIndex: bigint;
+          certificateIndex: bigint;
+        }>;
       }>
     | null;
 }>;

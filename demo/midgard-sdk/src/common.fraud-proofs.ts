@@ -263,19 +263,19 @@ export type CredentialD = Data.Static<typeof CredentialSchema>;
 
 export const CredentialD = asDataType<CredentialD>(CredentialSchema);
 
+/** The ledger's `Address`. A pointer stake credential is `Constr 1` of its
+ * three integers, flat, as the ledger and the Aiken stdlib encode it. */
 export const AddressSchema = Data.Object({
   paymentCredential: CredentialSchema,
   stakeCredential: Data.Nullable(
     Data.Enum([
       Data.Object({ Inline: Data.Tuple([CredentialSchema]) }),
       Data.Object({
-        Pointer: Data.Tuple([
-          Data.Object({
-            slotNumber: Data.Integer(),
-            transactionIndex: Data.Integer(),
-            certificateIndex: Data.Integer(),
-          }),
-        ]),
+        Pointer: Data.Object({
+          slotNumber: Data.Integer(),
+          transactionIndex: Data.Integer(),
+          certificateIndex: Data.Integer(),
+        }),
       }),
     ]),
   ),
