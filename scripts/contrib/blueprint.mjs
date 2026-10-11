@@ -80,9 +80,13 @@ export const syncCandidates = (root, checkouts = listCheckouts(root)) => {
     .map(({ checkout }) => checkout);
 };
 
-const deploymentBuild = async (root, profile, { signal, env }) => {
+/** `pnpm --dir demo deployment:build <profile>`: compile the profile's blueprint. */
+export const deploymentBuild = async (
+  root,
+  profile,
+  { signal, env, logPath = resolve(runDirectory(), "deployment-build.log") },
+) => {
   requireInstalled(root);
-  const logPath = resolve(runDirectory(), "deployment-build.log");
   const step = await withResource(
     "memory-heavy-build",
     (ownedEnv) =>

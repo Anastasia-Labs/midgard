@@ -4,6 +4,11 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { artifactChannels, runArtifact } from "./contrib/artifacts.mjs";
+import {
+  campaignPlan,
+  campaignView,
+  runCampaign,
+} from "./contrib/campaign.mjs";
 import { reproduce } from "./contrib/reproduction.mjs";
 import { buildPackage, checkBuild } from "./contrib/build.mjs";
 import { captureHttp, diagnostics } from "./contrib/diagnostics.mjs";
@@ -69,6 +74,7 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs diagnose --url LOCAL_URL [--output FILE]
   node scripts/contrib.mjs reproduce [--plan | --execute]
   node scripts/contrib.mjs devnet plan | generate --run-id ID
+  node scripts/contrib.mjs devnet campaign run --input CAMPAIGN_JSON [--plan]
   node scripts/contrib.mjs acceptance --input STACK_CONFIG [--plan]
 Global: --root CHECKOUT, --output JSON_FILE. Exit 0 passed/planned, 1 failed,
 2 invalid usage, 3 incomplete/skipped. Plans never execute prerequisites.
@@ -246,6 +252,13 @@ export const main = async (argv) => {
     options.root ?? fileURLToPath(new URL("..", import.meta.url)),
   );
   const [command, action, ...extra] = options.words;
+  // `devnet campaign run` is the one three-word command.
+  const campaign = command === "devnet" && action === "campaign";
+  if (campaign && extra.length === 1 && extra[0] === "run") extra.length = 0;
+  else if (campaign) {
+    console.error("usage: devnet campaign run --input CAMPAIGN_JSON [--plan]");
+    return 2;
+  }
   if (extra.length) {
     console.error("unexpected positional arguments");
     return 2;
@@ -277,7 +290,8 @@ export const main = async (argv) => {
       throw new Error("unknown or non-synthetic proof kind");
     if (
       options.plan &&
-      !["prepare", "gate", "reproduce", "acceptance"].includes(command)
+      !["prepare", "gate", "reproduce", "acceptance"].includes(command) &&
+      !campaign
     )
       throw new Error(
         `--plan is not supported for ${command}; no command was executed`,
@@ -315,7 +329,8 @@ export const main = async (argv) => {
     )
       throw new Error(`--force is not supported for ${command}`);
     if (
-      [
+      (campaign && !options.plan) ||
+      ([
         "build",
         "native",
         "prepare",
@@ -328,12 +343,12 @@ export const main = async (argv) => {
         "worktree",
         "mutate",
       ].includes(command) &&
-      action !== "remove" &&
-      !options.plan &&
-      !(command === "prepare" && !options.execute) &&
-      !(command === "artifacts" && ["list", "builds"].includes(action)) &&
-      !(command === "reproduce" && !options.execute) &&
-      action !== "list"
+        action !== "remove" &&
+        !options.plan &&
+        !(command === "prepare" && !options.execute) &&
+        !(command === "artifacts" && ["list", "builds"].includes(action)) &&
+        !(command === "reproduce" && !options.execute) &&
+        action !== "list")
     ) {
       const pnpm = checkPnpm({ root, run: pinnedPnpmVersion });
       if (pnpm.status !== "ok") throw new Error(`${pnpm.detail}; ${pnpm.fix}`);
@@ -485,6 +500,10 @@ export const main = async (argv) => {
         action === "plan"
           ? devnetPlan(root, required("run-id"))
           : await generateDevnet(root, required("run-id"), execution);
+    else if (campaign)
+      result = options.plan
+        ? campaignPlan(root, required("input"))
+        : await runCampaign(root, required("input"), execution);
     else if (command === "acceptance" && !action)
       result = options.plan
         ? acceptancePlan(root, required("input"))
@@ -516,7 +535,7 @@ export const main = async (argv) => {
     console.log(
       typeof result === "string"
         ? result
-        : JSON.stringify(compact(testView(result)), null, 2),
+        : JSON.stringify(compact(campaignView(testView(result))), null, 2),
     );
     return result?.exitCode ?? 0;
   } catch (error) {
