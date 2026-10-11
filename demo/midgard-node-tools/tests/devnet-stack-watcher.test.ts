@@ -43,6 +43,7 @@ import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
 } from "midgard-node/transactions/initialization";
+import * as watcherPackage from "midgard-watcher";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { DeployContext } from "../src/devnet-stack/deploy.js";
@@ -57,6 +58,7 @@ import {
 import type { HubOracleOneShot } from "../src/devnet-stack/node-env.js";
 import {
   ensureWatcherRelease,
+  preflightWatcherConfigs,
   watcherServiceSpecs,
 } from "../src/devnet-stack/watcher.js";
 import {
@@ -405,3 +407,52 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
     });
   },
 );
+
+describe("devnet watcher configuration preflight", () => {
+  /** A generated run with nothing but its genesis: no chain, no deployment. */
+  const generatedRun = (genesis: Record<string, unknown>) => {
+    const preflightLayout = makeLayout(
+      join(scratchRoot, `preflight-${randomBytes(4).toString("hex")}`),
+    );
+    writeJson(preflightLayout.shelleyGenesis, {
+      networkMagic: 424242,
+      systemStart: "2026-09-30T00:00:00Z",
+      slotLength: 0.1,
+      ...genesis,
+    });
+    return {
+      layout: preflightLayout,
+      run: {
+        portOffset: 0,
+        ogmiosPort: 2337,
+        kupoPort: 1442,
+        postgresPort: 5432,
+      } as RunEnv,
+      artifacts: {
+        nativeOwnerBinary: join(preflightLayout.bin, "native-owner"),
+        nativeOwnerSha256: "00".repeat(32),
+        transportBinary: join(preflightLayout.bin, "midgard-l1-node-transport"),
+      },
+    };
+  };
+  afterAll(() => {
+    for (const name of existsSync(scratchRoot) ? readdirSync(scratchRoot) : [])
+      if (name.startsWith("preflight-"))
+        rmSync(join(scratchRoot, name), { recursive: true, force: true });
+  });
+
+  it("checks the run's watcher configurations before any chain or deployment exists", () => {
+    const context = generatedRun({});
+    preflightWatcherConfigs(context, watcherPackage);
+    // Nothing is written: the real configurations come after the deployment.
+    expect(existsSync(context.layout.watcher)).toBe(false);
+  });
+
+  it("refuses a run whose watcher configuration the watcher's parser rejects", () => {
+    const context = generatedRun({ networkMagic: -1 });
+    // The watcher's own custom-network parser refuses the magic.
+    expect(() => preflightWatcherConfigs(context, watcherPackage)).toThrow(
+      "Custom network magic or genesis slot clock is invalid",
+    );
+  });
+});

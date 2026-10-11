@@ -71,7 +71,11 @@ import {
   supervisorRuns,
 } from "./devnet-stack/stack.js";
 import { superviseWithMaintainers } from "./devnet-stack/supervisor.js";
-import { ensureWatcherRelease } from "./devnet-stack/watcher.js";
+import {
+  ensureWatcherRelease,
+  preflightWatcherConfigs,
+} from "./devnet-stack/watcher.js";
+import { loadWatcherModule } from "./devnet-stack/watcher-release.js";
 
 const layoutFor = (runDir: string) => {
   if (!isAbsolute(runDir))
@@ -100,6 +104,11 @@ const resumeUp = async (
   const journal = new Journal(layout.journal);
   const identities = loadIdentities(layout);
   const wallets = walletInfos(identities);
+  const artifacts = ensureArtifacts(layout);
+  const context: DeployContext = { layout, run, identities, artifacts };
+  // Before anything touches L1: a configuration mistake fails in seconds,
+  // not after funding and deploy.
+  preflightWatcherConfigs(context, await loadWatcherModule(layout));
   // A drill run killed mid-outage left an L1 container stopped or paused; a
   // live drill run restores its own.
   if (lockOwner(runLockPaths(layout).drill) === undefined) {
@@ -117,8 +126,6 @@ const resumeUp = async (
   console.log("l1: ready");
   const funding = await ensureFunded(layout, run, journal, wallets);
   console.log(`funding: confirmed ${funding.txId}`);
-  const artifacts = ensureArtifacts(layout);
-  const context: DeployContext = { layout, run, identities, artifacts };
   const oneShot = await ensureDeployed(context);
   console.log(
     `deploy: complete (hub oracle ${oneShot.txHash}#${oneShot.outputIndex})`,

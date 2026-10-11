@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import {
@@ -136,6 +137,19 @@ type DeploymentFacts = {
 };
 
 /**
+ * Shape-only stand-ins for the deployment's facts, so the preflight can run
+ * the watcher's parsers before the deployment exists. Never written.
+ */
+const PREFLIGHT_DEPLOYMENT_FACTS = (run: RunEnv): DeploymentFacts => ({
+  origin: { slot: 1, blockHash: "00".repeat(32) },
+  confirmationDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+  retainedDaPeer: {
+    identity: "devnet-public-retained-da",
+    multiaddr: `/ip4/127.0.0.1/tcp/${servicePorts(run).retainedLibp2p}/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN`,
+  },
+});
+
+/**
  * The watcher's runtime and process configurations for this run, each
  * checked by the watcher's own parser.
  */
@@ -194,6 +208,22 @@ const watcherConfigs = (
   };
   watcher.parseWatcherProcessConfig(processInput);
   return { watcherInput, processInput };
+};
+
+/**
+ * Runs the watcher's own parsers over this run's watcher configurations
+ * before L1 starts, so a configuration mistake fails in seconds rather than
+ * after funding and deploy. Everything but the deployment's facts (origin,
+ * confirmation depth, retained-DA peer) is the run's own; those are
+ * stand-ins here, and `ensureWatcherRelease` checks the real ones again when
+ * it writes the configurations. Reads only the run's files: no chain, no
+ * service. `up` passes the watcher's built dist (`loadWatcherModule`).
+ */
+export const preflightWatcherConfigs = (
+  context: Pick<DeployContext, "layout" | "run" | "artifacts">,
+  watcher: WatcherModule,
+): void => {
+  watcherConfigs(context, watcher, PREFLIGHT_DEPLOYMENT_FACTS(context.run));
 };
 
 const configText = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
