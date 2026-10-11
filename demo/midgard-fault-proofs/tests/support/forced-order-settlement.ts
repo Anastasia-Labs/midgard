@@ -242,11 +242,6 @@ export const makeForcedOrderSettlementScenario = async (
     const refundAddress = await Effect.runPromise(
       SDK.addressDataFromBech32(await wallet.wallet().address()),
     );
-    if (
-      refundAddress.stakeCredential !== null &&
-      "Pointer" in refundAddress.stakeCredential
-    )
-      throw new Error("fixture requires a non-pointer wallet");
     const clock = vi
       .spyOn(Date, "now")
       .mockImplementation(() => h.emulator.now());
@@ -257,10 +252,7 @@ export const makeForcedOrderSettlementScenario = async (
         carriageReferenceInputs: carriage[index]!.referenceInputs,
         fieldPreimageCertificatePolicyId:
           h.contracts.fieldPreimageCertificate.policyId,
-        refundAddress: {
-          ...refundAddress,
-          stakeCredential: refundAddress.stakeCredential,
-        },
+        refundAddress,
         lovelace: 3_000_000n,
       }),
     ).finally(() => clock.mockRestore());

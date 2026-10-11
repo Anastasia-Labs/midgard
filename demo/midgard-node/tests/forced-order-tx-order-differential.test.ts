@@ -283,11 +283,6 @@ const buildOrder = async (
   const refundAddress = await Effect.runPromise(
     SDK.addressDataFromBech32(h.creatorAddress),
   );
-  if (
-    refundAddress.stakeCredential !== null &&
-    "Pointer" in refundAddress.stakeCredential
-  )
-    throw new Error("the emulator creator must not hold a pointer address");
   const encode = Data.to.bind(Data);
   let redeemer: Buffer | undefined;
   const to = vi.spyOn(Data, "to").mockImplementation(((
@@ -319,10 +314,7 @@ const buildOrder = async (
           carriageReferenceInputs: [],
           fieldPreimageCertificatePolicyId:
             h.contracts.fieldPreimageCertificate.policyId,
-          refundAddress: {
-            ...refundAddress,
-            stakeCredential: refundAddress.stakeCredential,
-          },
+          refundAddress,
           lovelace: 3_000_000n,
         }),
       ),

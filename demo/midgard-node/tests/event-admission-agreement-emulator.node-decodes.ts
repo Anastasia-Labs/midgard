@@ -5,17 +5,29 @@ import {
   type ProjectedEvent,
 } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import { addressDataToBech32 } from "../src/commands/withdrawal-utils.js";
+import * as WithdrawalsDB from "../src/database/withdrawals.js";
 import { userEventEntry } from "../src/l1-events/entries.js";
 import type { makeUserEventBuilderFixture } from "./reserve-payout-builders.make-user-event-builder-fixture.js";
 
 export type Fixture = Awaited<ReturnType<typeof makeUserEventBuilderFixture>>;
 export type Group = "deposit" | "withdrawal" | "external deposit";
 
+/** Reads a payout or refund datum the way the settlement builders pay to it:
+ * a datum hash becomes the output's CML datum hash. */
+const payableDatum = (datumCbor: string): void => {
+  const datum =
+    SDK.__reservePayoutTest.cardanoDatumCborToOutputDatum(datumCbor);
+  if (datum?.kind === "hash") CML.DatumHash.from_hex(datum.value).free();
+};
+
 /** Whether the node decodes the admitted order: the follower's `openOrder`,
- * the node's user-event entry, and for a withdrawal its L1 address mapping. */
+ * the node's user-event entry, and for a withdrawal its L1 address mapping,
+ * the ledger key of its L2 output reference and its payout and refund
+ * datums. */
 export const nodeDecodes = (
   fixture: Fixture,
   group: Group,
@@ -57,6 +69,16 @@ export const nodeDecodes = (
         network,
         Data.from(entry.entry.refundAddress, SDK.AddressData),
       );
+      Effect.runSync(
+        WithdrawalsDB.toLedgerOutRef({
+          [WithdrawalsDB.Columns.L2_OUTREF]: Buffer.from(
+            entry.entry.l2Outref,
+            "hex",
+          ),
+        }),
+      );
+      payableDatum(entry.entry.l1Datum);
+      payableDatum(entry.entry.refundDatum);
     }
     return true;
   } catch {

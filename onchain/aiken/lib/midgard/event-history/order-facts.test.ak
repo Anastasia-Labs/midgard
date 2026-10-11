@@ -7,7 +7,8 @@ use cardano/address.{
 }
 use cardano/assets
 use cardano/transaction.{
-  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, placeholder,
+  Datum, DatumHash, InlineDatum, Input, NoDatum, Output, OutputReference,
+  Transaction, placeholder,
 }
 use env
 use midgard/event_history/node_role.{Order}
@@ -847,6 +848,113 @@ test withdrawal_admission_rejects_long_inline_refund_stake_hash() fail {
   expect _ = admit_withdrawal_with(
     unchanged,
     staked(address.Inline(VerificationKey(long_hash))),
+  )
+  True
+}
+
+/// The withdrawal admission fixture with only its L2 outref's index replaced.
+fn admit_withdrawal_with_l2_output_index(output_index: Int) -> Payload {
+  admit_withdrawal_with(
+    fn(body) {
+      WithdrawalBody {
+        ..body,
+        l2_outref: OutputReference { ..body.l2_outref, output_index },
+      }
+    },
+    address.from_verification_key(owner),
+  )
+}
+
+test withdrawal_admission_accepts_l2_output_index_zero() {
+  expect order_facts.WithdrawalPayload { event, .. } = admit_withdrawal_with_l2_output_index(
+    0,
+  )
+  event.info.body.l2_outref.output_index == 0
+}
+
+test withdrawal_admission_accepts_largest_u16_l2_output_index() {
+  expect order_facts.WithdrawalPayload { event, .. } = admit_withdrawal_with_l2_output_index(
+    65535,
+  )
+  event.info.body.l2_outref.output_index == 65535
+}
+
+test withdrawal_admission_rejects_l2_output_index_past_u16() fail {
+  expect _ = admit_withdrawal_with_l2_output_index(65536)
+  True
+}
+
+test withdrawal_admission_rejects_negative_l2_output_index() fail {
+  expect _ = admit_withdrawal_with_l2_output_index(-1)
+  True
+}
+
+const datum_hash_32 =
+  #"7777777777777777777777777777777777777777777777777777777777777777"
+
+/// The withdrawal admission fixture with only its L1 payout datum and refund
+/// datum replaced.
+fn admit_withdrawal_with_datums(l1_datum: Datum, refund_datum: Datum) -> Payload {
+  expect order_facts.WithdrawalPayload { event, refund_address, .. } = withdrawal_payload()
+  let changed = order_facts.WithdrawalPayload {
+    event: WithdrawalEvent {
+      ..event,
+      info: WithdrawalInfo {
+        ..event.info,
+        body: WithdrawalBody { ..event.info.body, l1_datum },
+      },
+    },
+    refund_address,
+    refund_datum,
+  }
+  let (_, admitted, _) = admit_withdrawal(
+    admission(
+      Facts { ..withdrawal_facts(), location: Inline { payload: changed } },
+    ),
+  )
+  expect admitted == changed
+  admitted
+}
+
+test withdrawal_admission_accepts_32_byte_datum_hashes() {
+  expect order_facts.WithdrawalPayload { event, refund_datum, .. } = admit_withdrawal_with_datums(
+    DatumHash(datum_hash_32),
+    DatumHash(datum_hash_32),
+  )
+  and {
+    event.info.body.l1_datum == DatumHash(datum_hash_32),
+    refund_datum == DatumHash(datum_hash_32),
+  }
+}
+
+test withdrawal_admission_rejects_short_l1_datum_hash() fail {
+  expect _ = admit_withdrawal_with_datums(
+    DatumHash(bytearray.drop(datum_hash_32, 1)),
+    NoDatum,
+  )
+  True
+}
+
+test withdrawal_admission_rejects_long_l1_datum_hash() fail {
+  expect _ = admit_withdrawal_with_datums(
+    DatumHash(bytearray.push(datum_hash_32, 0)),
+    NoDatum,
+  )
+  True
+}
+
+test withdrawal_admission_rejects_short_refund_datum_hash() fail {
+  expect _ = admit_withdrawal_with_datums(
+    NoDatum,
+    DatumHash(bytearray.drop(datum_hash_32, 1)),
+  )
+  True
+}
+
+test withdrawal_admission_rejects_long_refund_datum_hash() fail {
+  expect _ = admit_withdrawal_with_datums(
+    NoDatum,
+    DatumHash(bytearray.push(datum_hash_32, 0)),
   )
   True
 }

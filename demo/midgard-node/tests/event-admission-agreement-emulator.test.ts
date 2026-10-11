@@ -1,10 +1,11 @@
 /**
  * Admission accepts only orders the node decodes. One case table drives both
  * sides: each row's order is built through the real event-history observer in
- * the emulator (one InsertOrder per row) and decoded the way the node decodes
- * an admitted order (the follower's `openOrder`, the node's user-event entry
- * and its L1 address mapping). The two verdicts must agree with each other and
- * with the row.
+ * the emulator (one InsertOrder per row) and read the way the node reads an
+ * admitted order (the follower's `openOrder`, the node's user-event entry, and
+ * for a withdrawal its L1 addresses, L2 output reference ledger key and payout
+ * and refund datums). The two verdicts must agree with each other and with the
+ * row.
  */
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
@@ -15,7 +16,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Assets,
   CML,
-  Constr,
   Data,
   datumToHash,
   type UTxO,
@@ -28,167 +28,9 @@ import {
   type Group,
   nodeDecodes,
 } from "./event-admission-agreement-emulator.node-decodes.js";
-import {
-  type Swap,
-  withSdkReading,
-} from "./event-admission-agreement-emulator.sdk-reading.js";
+import { type Row, ROWS } from "./event-admission-agreement-emulator.rows.js";
+import { withSdkReading } from "./event-admission-agreement-emulator.sdk-reading.js";
 import { makeUserEventBuilderFixture } from "./reserve-payout-builders.make-user-event-builder-fixture.js";
-
-type Row = Readonly<{
-  group: Group;
-  name: string;
-  admitted: boolean;
-  /** Field replacements in the payload, by constructor-field path. */
-  fields?: readonly (readonly [readonly number[], string])[];
-  /** The external payload's reclamation credential. */
-  reclaimAuth?: SDK.CredentialD;
-  swap?: Swap;
-}>;
-
-const hash28 = "a7".repeat(28);
-const shortHash: Swap = { short: "a5".repeat(27), padded: "a5".repeat(28) };
-const shortTxId: Swap = { short: "a6".repeat(31), padded: "a6".repeat(32) };
-const key = (hash: string) => Data.to(new Constr(0, [hash]));
-const script = (hash: string) => Data.to(new Constr(1, [hash]));
-const noStake = Data.to(new Constr(1, []));
-const inlineStake = (hash: string) =>
-  Data.to(new Constr(0, [new Constr(0, [new Constr(0, [hash])])]));
-/** An address with a pointer stake credential, in the SDK's (ledger) shape. */
-const pointerAddress = Data.to(
-  {
-    paymentCredential: { PublicKeyCredential: [hash28] },
-    stakeCredential: {
-      Pointer: { slotNumber: 1n, transactionIndex: 2n, certificateIndex: 3n },
-    },
-  },
-  SDK.AddressData,
-);
-
-// Payload paths. Deposit: payload.event.info.l2_address = [0, 1, 0].
-// Withdrawal: payload.event.info.body = [0, 1, 0]; refund_address = [1].
-const L2_ADDRESS = [0, 1, 0];
-const BODY = [0, 1, 0];
-const L1_ADDRESS = [...BODY, 3];
-const REFUND_ADDRESS = [1];
-
-/** Every order shape admission must refuse because the node cannot decode it,
- * each next to an accepted control that differs from it in one field. */
-const ROWS: readonly Row[] = [
-  { group: "deposit", name: "the SDK's deposit", admitted: true },
-  {
-    group: "deposit",
-    name: "a script payment credential",
-    admitted: true,
-    fields: [[[...L2_ADDRESS, 0], script(hash28)]],
-  },
-  {
-    group: "deposit",
-    name: "no stake credential",
-    admitted: true,
-    fields: [[[...L2_ADDRESS, 1], noStake]],
-  },
-  {
-    group: "deposit",
-    name: "a 27-byte payment key hash",
-    admitted: false,
-    fields: [[[...L2_ADDRESS, 0], key(shortHash.short)]],
-    swap: shortHash,
-  },
-  {
-    group: "deposit",
-    name: "a 27-byte inline stake key hash",
-    admitted: false,
-    fields: [[[...L2_ADDRESS, 1], inlineStake(shortHash.short)]],
-    swap: shortHash,
-  },
-  {
-    group: "deposit",
-    name: "a pointer stake credential",
-    admitted: false,
-    fields: [[L2_ADDRESS, pointerAddress]],
-  },
-  { group: "withdrawal", name: "the SDK's withdrawal", admitted: true },
-  {
-    group: "withdrawal",
-    name: "an L1 address without stake credential",
-    admitted: true,
-    fields: [[[...L1_ADDRESS, 1], noStake]],
-  },
-  {
-    group: "withdrawal",
-    name: "a script refund credential",
-    admitted: true,
-    fields: [[[...REFUND_ADDRESS, 0], script(hash28)]],
-  },
-  {
-    group: "withdrawal",
-    name: "a 31-byte L2 transaction id",
-    admitted: false,
-    fields: [[[...BODY, 0, 0], Data.to(shortTxId.short)]],
-    swap: shortTxId,
-  },
-  {
-    group: "withdrawal",
-    name: "a 27-byte L2 owner",
-    admitted: false,
-    fields: [[[...BODY, 1], Data.to(shortHash.short)]],
-    swap: shortHash,
-  },
-  {
-    group: "withdrawal",
-    name: "a 27-byte L1 payment key hash",
-    admitted: false,
-    fields: [[[...L1_ADDRESS, 0], key(shortHash.short)]],
-    swap: shortHash,
-  },
-  {
-    group: "withdrawal",
-    name: "a 27-byte L1 inline stake key hash",
-    admitted: false,
-    fields: [[[...L1_ADDRESS, 1], inlineStake(shortHash.short)]],
-    swap: shortHash,
-  },
-  {
-    group: "withdrawal",
-    name: "a pointer L1 stake credential",
-    admitted: false,
-    fields: [[L1_ADDRESS, pointerAddress]],
-  },
-  {
-    group: "withdrawal",
-    name: "a 27-byte refund payment script hash",
-    admitted: false,
-    fields: [[[...REFUND_ADDRESS, 0], script(shortHash.short)]],
-    swap: shortHash,
-  },
-  {
-    group: "withdrawal",
-    name: "a 27-byte refund inline stake key hash",
-    admitted: false,
-    fields: [[[...REFUND_ADDRESS, 1], inlineStake(shortHash.short)]],
-    swap: shortHash,
-  },
-  {
-    group: "withdrawal",
-    name: "a pointer refund stake credential",
-    admitted: false,
-    fields: [[REFUND_ADDRESS, pointerAddress]],
-  },
-  { group: "external deposit", name: "the SDK's payload", admitted: true },
-  {
-    group: "external deposit",
-    name: "a script reclamation credential",
-    admitted: true,
-    reclaimAuth: { ScriptCredential: [hash28] },
-  },
-  {
-    group: "external deposit",
-    name: "a 27-byte reclamation key hash",
-    admitted: false,
-    reclaimAuth: { PublicKeyCredential: [shortHash.short] },
-    swap: shortHash,
-  },
-];
 
 /** The emulator's clock moves with its blocks, not with wall time. */
 const validity = (fixture: Fixture) => {
@@ -219,6 +61,7 @@ const prepare = (
   fixture: Fixture,
   group: Group,
   options: SDK.UserHistoryBuildOptions,
+  withdrawal: Row["withdrawal"] = {},
 ) =>
   Effect.runPromise(
     group === "withdrawal"
@@ -232,13 +75,17 @@ const prepare = (
             {
               ...options,
               body: {
-                l2_outref: { transactionId: "33".repeat(32), outputIndex: 0n },
+                l2_outref: {
+                  transactionId: "33".repeat(32),
+                  outputIndex: withdrawal.outputIndex ?? 0n,
+                },
                 l2_owner: "44".repeat(28),
                 l2_value: SDK.assetsToValue({ lovelace: 7_000_000n }),
                 l1_address: address,
-                l1_datum: "NoDatum",
+                l1_datum: withdrawal.l1Datum ?? "NoDatum",
               },
               refundAddress: address,
+              refundDatum: withdrawal.refundDatum ?? "NoDatum",
               referenceScripts: {
                 withdrawalMinting: fixture.withdrawalMintingReference,
               },
@@ -345,7 +192,7 @@ const buildRow = async (
   const external =
     retained[0] === undefined ? {} : { externalData: retained[0] };
   const prepared = await withSdkReading(row.swap, () =>
-    prepare(fixture, row.group, { ...options, ...external }),
+    prepare(fixture, row.group, { ...options, ...external }, row.withdrawal),
   );
   const payloadCbor = withFields(prepared.request.payloadCbor, row.fields);
   const chain = await chainVerdict(() =>
