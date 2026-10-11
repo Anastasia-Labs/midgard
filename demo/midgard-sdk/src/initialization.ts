@@ -215,9 +215,9 @@ export const incompleteInitializationTxProgram = (
         "Protocol initialization requires live UTxO cost parameters",
       );
     }
-    // Correct preserves the lock's value. Reserve rent for the largest Locked
-    // datum now, so an Idle lock can enter a correction without a forbidden top-up.
-    // FraudProof and AvailabilityChallenge carry equal-width 32-byte identities;
+    // Fund the lock for the largest Locked datum now. Lucid's automatic minimum
+    // would fund only Idle, and the first correction would then have to top the
+    // lock up (a correction may add ADA to the lock, never remove it). FraudProof and AvailabilityChallenge carry equal-width 32-byte identities;
     // AttestationTimeout is smaller. All target header hashes are 28 bytes.
     const correctionLockAssets = { [correctionLockUnit]: 1n };
     const correctionLockLovelace = calculateMinLovelaceFromUTxO(
