@@ -18,14 +18,15 @@ import {
  * depth 1,523 — below the depth-4,043 maximum that a 16,384-byte signed
  * transaction admits. That was bridged by a hash-pinned install-time binary
  * patch (`demo/scripts/patch-cml-wasm-stack.mjs`, retired with this suite's
- * predecessor `cml-wasm-stack-patch-v1.test.ts`). The defect is now fixed at
- * source: CML `6.2.0-2` is built with `-C link-arg=-zstack-size=16777216`
- * (Anastasia-Labs/cardano-multiplatform-lib PR #6), and the workspace pins it
- * via the `pnpm.overrides` entries in `demo/package.json`.
+ * predecessor `cml-wasm-stack-patch-v1.test.ts`), then by a workspace override
+ * to CML `6.2.0-2`. Lucid Evolution 0.8.0 now vendors CML as
+ * `@lucid-evolution/cml`, whose Node build links a 16 MiB shadow stack
+ * (`-C link-arg=-zstack-size=16777216`); Lucid and every sibling package
+ * depend on it, so no override is needed.
  *
  * This suite establishes, on every run:
  *
- *   1. lucid-evolution resolves the published `6.2.0-2` artifact;
+ *   1. lucid-evolution resolves the published `@lucid-evolution/cml` artifact;
  *   2. the binary's `__stack_pointer` global is 16 MiB, i.e. the fix is
  *      structural in the artifact, not an environment accident;
  *   3. the old depth ceiling is gone: the first previously-trapping depth
@@ -39,7 +40,8 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const PINNED_VERSION = "6.2.0-2";
+const PINNED_PACKAGE = "@lucid-evolution/cml";
+const PINNED_VERSION = "0.1.0";
 const SHADOW_STACK_POINTER = 16_777_216;
 const MAXIMUM_UNARY_DEPTH = 4_043;
 const OLD_STOCK_TRAP_DEPTH = 1_523;
@@ -49,9 +51,13 @@ const BEYOND_MAXIMUM_CONTROL_DEPTH = 4_044;
 const BELOW_FLOOR_V8_STACK_SIZE_KB = 600;
 
 const require_ = createRequire(join(HERE, "placeholder.cjs"));
-const installedCmlMainPath = createRequire(
+const requireFromLucid = createRequire(
   require_.resolve("@lucid-evolution/lucid"),
-).resolve("@anastasia-labs/cardano-multiplatform-lib-nodejs");
+);
+const installedCmlMainPath = requireFromLucid.resolve(PINNED_PACKAGE);
+const installedCmlManifestPath = requireFromLucid.resolve(
+  `${PINNED_PACKAGE}/package.json`,
+);
 const installedCmlDir = dirname(installedCmlMainPath);
 
 /**
@@ -93,14 +99,12 @@ const readStackPointerGlobal = (wasm: Buffer): number => {
   throw new Error("no global section found in wasm binary");
 };
 
-describe("C26 CML wasm shadow stack (source-fixed 6.2.0-2)", () => {
+describe("C26 CML wasm shadow stack (@lucid-evolution/cml)", () => {
   it("resolves the pinned published artifact through lucid-evolution", () => {
     const manifest = JSON.parse(
-      readFileSync(join(installedCmlDir, "package.json"), "utf8"),
+      readFileSync(installedCmlManifestPath, "utf8"),
     ) as { name: string; version: string };
-    expect(manifest.name).toBe(
-      "@anastasia-labs/cardano-multiplatform-lib-nodejs",
-    );
+    expect(manifest.name).toBe(PINNED_PACKAGE);
     expect(manifest.version).toBe(PINNED_VERSION);
   });
 

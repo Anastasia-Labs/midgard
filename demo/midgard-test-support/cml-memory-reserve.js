@@ -95,8 +95,8 @@ const collectOnResidentGrowth = () => {
 };
 
 /**
- * True for the wasm-bindgen instance behind
- * `@anastasia-labs/cardano-multiplatform-lib-nodejs`. The other wasm-bindgen
+ * True for the wasm-bindgen instance behind `@lucid-evolution/cml`, the
+ * cardano-multiplatform-lib build Lucid vendors. The other wasm-bindgen
  * modules in the workspace (`@lucid-evolution/uplc`, message signing) do not
  * export CML's class finalizers.
  */

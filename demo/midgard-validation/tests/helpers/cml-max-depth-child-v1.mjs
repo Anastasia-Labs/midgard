@@ -3,10 +3,11 @@
  *
  * Two reasons this is a separate process rather than inline test code:
  *
- *  1. `--stack-size`. Past the 16 MiB CML wasm shadow stack (built into CML
- *     `6.2.0-2` at source; previously the retired install-time patcher raised
- *     it), a second, independent limit applies: V8 executes wasm frames on the
- *     real machine stack, so depth 4,043 also needs `--stack-size >= 1400`
+ *  1. `--stack-size`. Past the 16 MiB CML wasm shadow stack (built into the
+ *     Node build of `@lucid-evolution/cml`; previously CML `6.2.0-2` and,
+ *     before it, the retired install-time patcher raised it), a second,
+ *     independent limit applies: V8 executes wasm frames on the real machine
+ *     stack, so depth 4,043 also needs `--stack-size >= 1400`
  *     (2,000 is used for headroom). Setting that per-suite in a child process
  *     keeps default vitest execution — every other suite in every package —
  *     completely unchanged.

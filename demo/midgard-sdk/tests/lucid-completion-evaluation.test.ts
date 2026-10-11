@@ -18,7 +18,7 @@ type EvaluationReport = {
   second: Completion;
   changed: Completion;
   changedCollateral: Completion;
-  finalFeeCollateralError: string | undefined;
+  zeroCollateral: Completion;
   lowCollateral: Completion;
   customRequests: string[];
   configuredCustomRequests: string[];
@@ -32,7 +32,7 @@ describe.each(["esm", "cjs"])(
     let report: EvaluationReport;
     beforeAll(async () => {
       // Each format gets a fresh child so external module caches cannot mask a
-      // missing patch or retain another test's evaluator hook.
+      // missing behavior or retain another test's evaluator hook.
       const { stdout } = await promisify(execFile)(
         process.execPath,
         [
@@ -96,10 +96,10 @@ describe.each(["esm", "cjs"])(
       );
     });
 
-    it("refuses collateral below the final fee's percentage", () => {
+    it("tops collateral up to the final fee's percentage", () => {
       // 150% of the returned fee, rounded up, is the ledger's requirement.
-      expect(report.finalFeeCollateralError).toMatch(
-        /Final transaction requires \d+ Lovelace collateral, but only \d+ was selected/,
+      expect(BigInt(report.zeroCollateral.collateral)).toBe(
+        (BigInt(report.zeroCollateral.fee) * 150n + 99n) / 100n,
       );
       expect(report.lowCollateral.collateral).toBe("1000000");
       expect(
@@ -109,16 +109,18 @@ describe.each(["esm", "cjs"])(
     });
 
     it("preserves repeated custom evaluator calls and their deliberate failure", () => {
-      expect(report.customRequests).toHaveLength(4);
-      expect(new Set(report.customRequests).size).toBe(3);
-      expect(report.customRequests[3]).toBe(report.customRequests[2]);
+      // Draft once, then the final context and its repeat: a custom evaluator
+      // sees the repeated request instead of a reused result.
+      expect(report.customRequests).toHaveLength(3);
+      expect(new Set(report.customRequests).size).toBe(2);
+      expect(report.customRequests[2]).toBe(report.customRequests[1]);
     });
 
     it("preserves the Lucid-configured custom evaluator's repeated calls", () => {
-      expect(report.configuredCustomRequests).toHaveLength(4);
-      expect(new Set(report.configuredCustomRequests).size).toBe(3);
-      expect(report.configuredCustomRequests[3]).toBe(
-        report.configuredCustomRequests[2],
+      expect(report.configuredCustomRequests).toHaveLength(3);
+      expect(new Set(report.configuredCustomRequests).size).toBe(2);
+      expect(report.configuredCustomRequests[2]).toBe(
+        report.configuredCustomRequests[1],
       );
     });
 

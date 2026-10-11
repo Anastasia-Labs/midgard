@@ -20,7 +20,7 @@ RUN corepack enable
 WORKDIR /workspace/demo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
-# The vendored uplc build that package.json overrides resolve to.
+# The vendored MPF package that a package.json override resolves to.
 COPY vendor ./vendor
 COPY lucid-midgard/package.json ./lucid-midgard/package.json
 COPY l1-node-transport/package.json ./l1-node-transport/package.json

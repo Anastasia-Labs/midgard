@@ -19,16 +19,18 @@ describe.each(["esm", "cjs"])(
       expect(report.static.requestCount).toBe(2);
       expect(report.staticSubmitted).toBe(true);
       expect(report.insufficientFundsRefused).toBe(true);
-      expect(report.finalFeeCollateralRefused).toBe(true);
+      expect(BigInt(report.finalFeeCollateralTopUp.collateral)).toBe(
+        (BigInt(report.finalFeeCollateralTopUp.fee) * 150n + 99n) / 100n,
+      );
       expect(report.feeSensitive.requestCount).toBeGreaterThanOrEqual(3);
       expect(report.feeSensitiveSubmitted).toBe(true);
-      expect(report.feeSensitiveCollateralError).toContain(
-        "Final transaction requires",
+      expect(BigInt(report.feeSensitiveCollateralTopUp.collateral)).toBe(
+        (BigInt(report.feeSensitiveCollateralTopUp.fee) * 150n + 99n) / 100n,
       );
       expect(report.feeSensitiveCollateralRetry.collateral).toBe(1_000_000);
-      expect(report.customRequests).toBe(3);
-      expect(report.configuredRequests).toBe(3);
-      expect(report.coinSelection.requestCount).toBe(3);
+      expect(report.customRequests).toBe(2);
+      expect(report.configuredRequests).toBe(2);
+      expect(report.coinSelection.requestCount).toBe(2);
     });
   },
 );

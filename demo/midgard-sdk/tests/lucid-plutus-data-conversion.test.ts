@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 describe.each(["esm", "cjs"])("Lucid Plutus Data conversion (%s)", (format) => {
-  it("matches the unpatched conversion on random and boundary values", async () => {
+  it("matches the original conversion on random and boundary values", async () => {
     // Separate processes prove both installed module formats independently.
     const { stdout } = await promisify(execFile)(
       process.execPath,

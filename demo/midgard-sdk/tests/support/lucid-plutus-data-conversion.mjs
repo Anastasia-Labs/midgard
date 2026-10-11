@@ -1,6 +1,7 @@
-// Differential for the @lucid-evolution/plutus Data.to/Data.from patch: the
-// installed (patched) conversion against the unpatched algorithm, which is
-// restated below over the same CML, on random and boundary Data and CBOR.
+// Differential for the @lucid-evolution/plutus Data.to/Data.from JavaScript
+// codec (released in plutus 0.1.37): the installed conversion against the
+// original CML-node algorithm, which is restated below over the same CML, on
+// random and boundary Data and CBOR.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -16,7 +17,7 @@ const { CML, Constr, Data, fromHex, toHex } =
     ? require(lucidRequirePath)
     : await import(pathToFileURL(lucidPath).href);
 
-// ---------- the unpatched conversion (@lucid-evolution/plutus@0.1.36) ----------
+// ---------- the original conversion (@lucid-evolution/plutus@0.1.36) ----------
 const withScope = (body) => {
   const owned = [];
   try {

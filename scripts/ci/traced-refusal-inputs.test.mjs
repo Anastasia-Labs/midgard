@@ -73,7 +73,7 @@ test("a pull request touching any input runs the check", () => {
     "demo/midgard-test-support/interactive-emulator.js",
     "demo/scripts/lib/blueprint-stamp.mjs",
     "demo/pnpm-lock.yaml",
-    "demo/vendor/uplc-0.2.23-midgard.1.tgz",
+    "demo/vendor/mpf-1.3.1-midgard.1.tgz",
   ]) {
     const verdict = decide({
       event: "pull_request",

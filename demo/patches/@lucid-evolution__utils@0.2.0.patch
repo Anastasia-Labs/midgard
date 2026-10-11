@@ -1,7 +1,7 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
-@@ -430,7 +430,7 @@
+@@ -689,7 +689,7 @@
    }, program.body);
    return applyDoubleCborEncoding(
      (0, import_core_utils2.toHex)(
@@ -13,7 +13,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
 diff --git a/dist/index.js b/dist/index.js
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -341,7 +341,7 @@
+@@ -598,7 +598,7 @@
    }, program.body);
    return applyDoubleCborEncoding(
      toHex2(
