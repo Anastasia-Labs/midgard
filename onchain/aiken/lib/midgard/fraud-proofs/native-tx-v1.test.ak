@@ -241,7 +241,9 @@ test v1_n11_out_of_range_compact_validity_code_rejects() fail {
 
 // ── Validity bounds (`docs/spec/midgard-tx.md` §2.1, #817) ─────────────────
 // A bound is `-1` (absent) or a non-negative slot. Every body decoder and
-// encoder refuses anything below `-1`, so no committed body carries one.
+// encoder refuses anything below `-1`, so no decoded body carries one. A
+// committed `transactions_root` leaf with such a bound is convicted by the DA
+// hash-preimage family.
 
 const u64_max_slot: Int = 18446744073709551615
 

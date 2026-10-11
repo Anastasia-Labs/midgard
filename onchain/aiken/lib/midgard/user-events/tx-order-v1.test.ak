@@ -934,7 +934,8 @@ test raw_bound_payload_matches_the_encoder_and_activates_the_order() {
 /// A body bound is `-1` (absent) or a non-negative slot (`docs/spec/midgard-tx.md`
 /// §2.1). The order mint decodes the submitted body through the same codec as
 /// every other reader, so an order whose body carries a bound below `-1` cannot
-/// be minted, and no forced leaf or order a proof reads ever carries one.
+/// be minted. This alone does not keep such a body out of a forced leaf: a
+/// forced leaf is not yet proven equal to its order's body (NIFP-04).
 test tx_order_mint_refuses_a_submitted_start_below_the_sentinel() fail {
   verify_order_material(
     payload_with_raw_bounds(-2, 5),

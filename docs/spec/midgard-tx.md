@@ -81,7 +81,11 @@ Twelve fields, in declaration and wire order:
 
 A validity bound is `-1` (absent) or a non-negative slot. Any other integer,
 that is anything below `-1`, is not a decodable body: every decoder and encoder
-of fields 4 and 5 refuses it, so no committed body carries one.
+of fields 4 and 5 refuses it, so no decoded body carries one. An operator can
+still commit such bytes as a leaf. Under `transactions_root` the DA
+hash-preimage family convicts the leaf as a malformed source; an undecodable
+leaf outside `transactions_root` is open gap NIFP-08
+(`docs/fault-proofs/remaining-gaps.md`).
 
 The validity interval is half-open, as Cardano's: `validity_interval_start` is
 inclusive (`invalid_before`) and `validity_interval_end` is exclusive
