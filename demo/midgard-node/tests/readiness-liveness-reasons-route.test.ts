@@ -305,6 +305,7 @@ describe("GET /readyz liveness reasons", () => {
       {
         source: SOURCE,
         reason: REASON,
+        detail: "removal disagrees with L1",
         ageMs: expect.any(Number),
         escalateAfterMs: ESCALATE_AFTER_MS,
         escalated: false,

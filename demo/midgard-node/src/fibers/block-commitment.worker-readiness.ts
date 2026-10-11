@@ -9,6 +9,11 @@ import type { WorkerOutput } from "../workers/utils/commit-block-header.js";
 
 export const COMMIT_WORKER_SOURCE = "commit_worker";
 export const COMMIT_WORKER_FAILED = "commit_worker_failed";
+/** How long `commit_worker_failed` stays raised before it is escalated: ten
+ * minutes (thirty nominal L1 blocks). The worker retries on every commit
+ * tick, so a failure that outlasts this is a stalled commit pipeline, not a
+ * passing one. */
+export const COMMIT_WORKER_FAILED_ESCALATION_MS = 10 * 60_000;
 /** The liveness source `commit_base_pending` is raised under. */
 export const COMMIT_BASE_SOURCE = "commit_base";
 /**
@@ -27,7 +32,8 @@ export const COMMIT_WINDOW_SOURCE = "commit_window";
 export const COMMIT_WINDOW_PENDING = "commit_window_pending";
 
 /** Reports worker failure without holding the commit fibers: they must retry
- * through their ordinary journal and lease gates. Only actual worker success
+ * through their ordinary journal and lease gates. A failure is escalated
+ * after `COMMIT_WORKER_FAILED_ESCALATION_MS`. Only actual worker success
  * or an independent empty-work preflight clears this reason. A heartbeat,
  * scheduler deferral or worker no-op does not prove outstanding work recovered.
  *
@@ -83,6 +89,7 @@ const workerOutcomeReadiness = (
         COMMIT_WORKER_SOURCE,
         COMMIT_WORKER_FAILED,
         output.error,
+        { escalateAfterMs: COMMIT_WORKER_FAILED_ESCALATION_MS },
       );
     case "SuccessfulSubmissionOutput":
     case "SubmittedAwaitingConfirmationOutput":

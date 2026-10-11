@@ -57,8 +57,8 @@ import { evaluateReadiness } from "./readiness.js";
  * answer is `db_unhealthy` (503), never a server error. `details` names
  * degradations that do not stop admission, so they leave the node ready.
  * Every raised liveness reason (a hold on block production, or a stalled
- * fiber) is a reason, and `livenessReasons` gives each one's source, age and
- * escalation. Readiness only reports: no admission route reads it.
+ * fiber) is a reason, and `livenessReasons` gives each one's source, detail,
+ * age and escalation. Readiness only reports: no admission route reads it.
  */
 export const getReadinessHandler = Effect.gen(function* () {
   const globals = yield* Globals;

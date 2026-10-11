@@ -17,6 +17,7 @@ import {
   COMMIT_WINDOW_PENDING,
   COMMIT_WINDOW_SOURCE,
   COMMIT_WORKER_FAILED,
+  COMMIT_WORKER_FAILED_ESCALATION_MS,
   COMMIT_WORKER_SOURCE,
 } from "../src/fibers/block-commitment.worker-readiness.js";
 import { Globals } from "../src/services/globals.js";
@@ -135,5 +136,49 @@ describe("commit window readiness", () => {
       }).pipe(Effect.provide(Globals.Default)),
     );
     expect(reasons).toEqual([]);
+  });
+});
+
+// A worker that fails every tick for longer than the bound is escalated, so a
+// stalled commit pipeline is named as one on /readyz, with the failure's first
+// line, instead of only as a reason that is always raised.
+describe("commit worker failure readiness", () => {
+  it("names the failure and escalates it once it outlasts the bound", async () => {
+    const failure: WorkerOutput = {
+      type: "FailureOutput",
+      error:
+        "Block commitment worker failure: StateQueueError: Commit paused until the L1 slot is known\n    at file:///dist/chunk.js:1:1283",
+    };
+    const [inside, past] = await Effect.runPromise(
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        const startMs = Date.now();
+        yield* applyCommitWorkerReadiness(globals, failure);
+        yield* applyCommitWorkerReadiness(globals, failure);
+        return [
+          yield* activeLivenessReasons(globals, startMs + 60_000),
+          yield* activeLivenessReasons(
+            globals,
+            startMs + COMMIT_WORKER_FAILED_ESCALATION_MS + 1_000,
+          ),
+        ] as const;
+      }).pipe(Effect.provide(Globals.Default)),
+    );
+    expect(inside).toEqual([
+      expect.objectContaining({
+        source: COMMIT_WORKER_SOURCE,
+        reason: COMMIT_WORKER_FAILED,
+        detail:
+          "Block commitment worker failure: StateQueueError: Commit paused until the L1 slot is known",
+        escalateAfterMs: COMMIT_WORKER_FAILED_ESCALATION_MS,
+        escalated: false,
+      }),
+    ]);
+    expect(past).toEqual([
+      expect.objectContaining({
+        reason: COMMIT_WORKER_FAILED,
+        escalated: true,
+      }),
+    ]);
   });
 });

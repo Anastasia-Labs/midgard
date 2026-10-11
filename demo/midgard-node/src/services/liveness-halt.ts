@@ -90,9 +90,23 @@ export const livenessIncidentCounter = Metric.counter(
 
 type Incident = {
   reason: string;
+  /** The latest raise's detail, as `readinessDetail` shortens it. */
+  detail: string;
   since: number;
   escalated: boolean;
   escalateAfterMs: number | undefined;
+};
+
+/** The most of a detail readiness reports. */
+const READINESS_DETAIL_MAX = 500;
+
+/** A detail's first line, clipped: a raised error's message without its
+ * stack, short enough to repeat on every readiness read. */
+const readinessDetail = (detail: string): string => {
+  const line = detail.split("\n", 1)[0]!;
+  return line.length > READINESS_DETAIL_MAX
+    ? `${line.slice(0, READINESS_DETAIL_MAX)}…`
+    : line;
 };
 
 type LivenessGlobals = Pick<Globals, "LIVENESS_REASONS">;
@@ -113,7 +127,8 @@ const incidentsOf = (globals: LivenessGlobals) => {
  * Raises `reason` under `source` in `LIVENESS_REASONS`. A new or changed reason counts
  * once in `midgard_liveness_incident_total` and logs one warning; while it
  * persists it logs at debug, except once at error when it is still raised
- * `escalateAfterMs` after it was first raised. Never fails.
+ * `escalateAfterMs` after it was first raised. Readiness reports the first
+ * line of the latest `detail`. Never fails.
  */
 export const raiseLivenessIncident = (
   globals: LivenessGlobals,
@@ -129,6 +144,7 @@ export const raiseLivenessIncident = (
     if (current === undefined || current.reason !== reason) {
       map.set(source, {
         reason,
+        detail: readinessDetail(detail),
         since: now,
         escalated: false,
         escalateAfterMs: options.escalateAfterMs,
@@ -147,8 +163,10 @@ export const raiseLivenessIncident = (
         `${reason} unresolved for ${(now - current.since).toString()} ms: ${detail}`,
       );
     } else yield* Effect.logDebug(`${reason}: ${detail}`);
-    if (current !== undefined && current.reason === reason)
+    if (current !== undefined && current.reason === reason) {
       current.escalateAfterMs = options.escalateAfterMs;
+      current.detail = readinessDetail(detail);
+    }
     yield* setLivenessReason(globals, source, reason);
   });
 
@@ -171,6 +189,9 @@ export const clearLivenessIncident = (
 export type ActiveLivenessReason = Readonly<{
   source: string;
   reason: string;
+  /** The first line of the detail its latest raise gave; null when no raise
+   * gave one (a derived reason, or one written straight into the Ref). */
+  detail: string | null;
   /** Since the source last went from no raised reason to one; null when it
    * is not known (a derived reason, or one written straight into the Ref). */
   ageMs: number | null;
@@ -200,11 +221,12 @@ export const activeLivenessReasons = (
       const ageMs = sinceMs === undefined ? null : Math.max(0, nowMs - sinceMs);
       if (ageMs !== null) yield* publishLivenessReasonAge(source, ageMs);
       const incident = map.get(source);
-      const escalateAfterMs =
-        incident?.reason === reason ? (incident.escalateAfterMs ?? null) : null;
+      const current = incident?.reason === reason ? incident : undefined;
+      const escalateAfterMs = current?.escalateAfterMs ?? null;
       active.push({
         source,
         reason,
+        detail: current?.detail ?? null,
         ageMs,
         escalateAfterMs,
         escalated:
@@ -217,6 +239,7 @@ export const activeLivenessReasons = (
       active.push({
         source: L1_CONTROL_PLANE_LIVENESS_SOURCE,
         reason,
+        detail: null,
         ageMs: null,
         escalateAfterMs: null,
         escalated: false,
