@@ -1,6 +1,6 @@
 ---
 name: debugging-ci-failures
-description: Use when a GitHub Actions run on Anastasia-Labs/midgard is red, when asked whether CI passed on a branch or pull request, when a pull request shows no checks or stale checks, or before calling a CI failure flaky, transient or infrastructure. Covers aiken-ci, midgard-node-ci and midgard-watcher-ci - which workflows ran on the head commit, the first red step and the gates it hid, classifying the failing step's log, the failure base rate, and an evidence-gated verdict.
+description: Use when a GitHub Actions run on Anastasia-Labs/midgard is red, when asked whether CI passed on a branch or pull request, when waiting for CI to finish after a push (ci-status.mjs --wait, not a gh run watch or sleep loop), when a pull request shows no checks or stale checks, or before calling a CI failure flaky, transient or infrastructure. Covers aiken-ci, midgard-node-ci and midgard-watcher-ci - which workflows ran on the head commit, the first red step and the gates it hid, classifying the failing step's log, the failure base rate, and an evidence-gated verdict.
 ---
 
 # Debugging CI failures
