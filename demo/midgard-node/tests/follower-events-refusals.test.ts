@@ -112,56 +112,90 @@ const identityOf = (event: ProjectedEvent) => ({
   l1_origin_outref: encodeOutRef(event.admission.outRef),
 });
 
+// On-chain admission accepts only addresses the L2 projection maps; the node
+// still refuses any other deposit defensively.
+const UNPROJECTABLE_DEPOSITS = [
+  {
+    name: "a foreign L2 network id",
+    options: { l2NetworkId: 7n },
+    detail: "unsupported committed deposit L2 network id",
+  },
+  {
+    // Written in the SDK's AddressData shape, which the follower decodes, so
+    // the node's projection sees the pointer and refuses it rather than
+    // dropping the stake credential.
+    name: "a pointer L2 stake credential",
+    options: {
+      l2Address: {
+        paymentCredential: { PublicKeyCredential: ["cd".repeat(28)] },
+        stakeCredential: {
+          Pointer: [
+            { slotNumber: 1n, transactionIndex: 2n, certificateIndex: 3n },
+          ],
+        },
+      },
+    },
+    detail: "unsupported committed deposit L2 stake credential",
+  },
+] as const satisfies readonly {
+  name: string;
+  options: Parameters<typeof eventOrder>[2];
+  detail: string;
+}[];
+
 describe("follower event ingestion refusals (Postgres)", () => {
-  it("refuses an undecodable deposit by name and ingests the rest of the run", async () => {
-    const store = await storeOpener("sqlite", databases)(
-      [eventProjection(EVENTS_CONFIG)],
-      4,
-    );
-    opened.push(store);
-    const d = new ChainDriver(store, eventTrackedSet(EVENTS_CONFIG));
-    await d.init();
-    // On-chain admission accepts only Midgard's L2 network ids; the node still
-    // refuses any other id defensively.
-    const foreign = eventOrder("deposit", nonceRef(), { l2NetworkId: 7n });
-    const honest = eventOrder("deposit", nonceRef(), { inclusionTime: 2_000n });
-    await d.forward([admissionTx(foreign, 1), admissionTx(honest, 2)]);
-    const read = await eventsAt(store, listOf("deposit"), d.tip.point);
-    if (read.kind !== "ok") throw new Error(JSON.stringify(read));
-    const byKey = (key: string) =>
-      read.value.find((event) => event.key === key)!;
-    const result = await run(
-      Effect.gen(function* () {
-        yield* resetApplicationTables;
-        const plan = yield* writeFollowerView(VIEW_SLOT, [
-          byKey(foreign.key),
-          byKey(honest.key),
-        ]);
-        const first = applied(yield* ingest(plan, 60_000));
-        const again = applied(yield* ingest(plan, 60_000));
-        return { first, again, rows: yield* eventRows };
-      }),
-    );
-    const refusal = {
-      kind: "deposit",
-      key: foreign.key,
-      idCbor: byKey(foreign.key).idCbor,
-      reason: EVENT_UNDECODABLE,
-      detail: "unsupported committed deposit L2 network id",
-    };
-    expect(result.first).toMatchObject({ inserted: 1, projected: 1 });
-    expect(result.first.refused).toEqual([refusal]);
-    // Refusals are re-derived each run: the event stays refused, never adopted.
-    expect(result.again).toMatchObject({ inserted: 0 });
-    expect(result.again.refused).toEqual([refusal]);
-    expect(result.rows.deposits).toHaveLength(1);
-    expect(result.rows.deposits[0]).toMatchObject(
-      identityOf(byKey(honest.key)),
-    );
-    expect(result.rows.mempool).toEqual([
-      { source_event_id: identityOf(byKey(honest.key)).event_id },
-    ]);
-  });
+  it.each(UNPROJECTABLE_DEPOSITS)(
+    "refuses a deposit with $name by name and ingests the rest of the run",
+    async ({ options, detail }) => {
+      const store = await storeOpener("sqlite", databases)(
+        [eventProjection(EVENTS_CONFIG)],
+        4,
+      );
+      opened.push(store);
+      const d = new ChainDriver(store, eventTrackedSet(EVENTS_CONFIG));
+      await d.init();
+      const foreign = eventOrder("deposit", nonceRef(), options);
+      const honest = eventOrder("deposit", nonceRef(), {
+        inclusionTime: 2_000n,
+      });
+      await d.forward([admissionTx(foreign, 1), admissionTx(honest, 2)]);
+      const read = await eventsAt(store, listOf("deposit"), d.tip.point);
+      if (read.kind !== "ok") throw new Error(JSON.stringify(read));
+      const byKey = (key: string) =>
+        read.value.find((event) => event.key === key)!;
+      const result = await run(
+        Effect.gen(function* () {
+          yield* resetApplicationTables;
+          const plan = yield* writeFollowerView(VIEW_SLOT, [
+            byKey(foreign.key),
+            byKey(honest.key),
+          ]);
+          const first = applied(yield* ingest(plan, 60_000));
+          const again = applied(yield* ingest(plan, 60_000));
+          return { first, again, rows: yield* eventRows };
+        }),
+      );
+      const refusal = {
+        kind: "deposit",
+        key: foreign.key,
+        idCbor: byKey(foreign.key).idCbor,
+        reason: EVENT_UNDECODABLE,
+        detail,
+      };
+      expect(result.first).toMatchObject({ inserted: 1, projected: 1 });
+      expect(result.first.refused).toEqual([refusal]);
+      // Refusals are re-derived each run: the event stays refused, never adopted.
+      expect(result.again).toMatchObject({ inserted: 0 });
+      expect(result.again.refused).toEqual([refusal]);
+      expect(result.rows.deposits).toHaveLength(1);
+      expect(result.rows.deposits[0]).toMatchObject(
+        identityOf(byKey(honest.key)),
+      );
+      expect(result.rows.mempool).toEqual([
+        { source_event_id: identityOf(byKey(honest.key)).event_id },
+      ]);
+    },
+  );
 });
 
 describe("a block journal's event members (Postgres)", () => {

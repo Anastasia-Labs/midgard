@@ -39,7 +39,10 @@ export const ELSEWHERE = Buffer.from(`70${repeat("ee", 28)}`, "hex");
 
 const owner = repeat("cd", 28);
 const auth = { PublicKeyCredential: [owner] as [string] };
-const address = { paymentCredential: auth, stakeCredential: null };
+const address: SDK.AddressData = {
+  paymentCredential: auth,
+  stakeCredential: null,
+};
 const BOUNDS = {
   inlineLimitBytes: 512n,
   maxPayloadBytes: 15_000n,
@@ -60,6 +63,7 @@ const payloadOf = (
   id: SDK.OutputReference,
   external: boolean,
   l2NetworkId: bigint,
+  l2Address: SDK.AddressData,
 ): SDK.EventHistoryPayload => {
   const data = external ? "ab".repeat(600) : "ab";
   return kind === "deposit"
@@ -68,7 +72,7 @@ const payloadOf = (
           event: {
             id,
             info: {
-              l2_address: address,
+              l2_address: l2Address,
               l2_network_id: l2NetworkId,
               l2_datum: data,
             },
@@ -117,13 +121,21 @@ export const eventOrder = (
     next?: string | null;
     /** A deposit's L2 network id; 0 unless set. */
     l2NetworkId?: bigint;
+    /** A deposit's L2 address; the owner's enterprise address unless set. */
+    l2Address?: SDK.AddressData;
   }> = {},
 ): EventOrder => {
   const config = listOf(kind);
   const id = eventIdOf(nonce);
   const key = eventKeyOf(nonce);
   const plan = SDK.prepareEventHistoryPayload(
-    payloadOf(kind, id, options.external === true, options.l2NetworkId ?? 0n),
+    payloadOf(
+      kind,
+      id,
+      options.external === true,
+      options.l2NetworkId ?? 0n,
+      options.l2Address ?? address,
+    ),
     auth,
     BOUNDS,
   );

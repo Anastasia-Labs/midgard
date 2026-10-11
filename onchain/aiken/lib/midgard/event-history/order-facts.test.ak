@@ -2,7 +2,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/interval
 use aiken/primitive/bytearray
-use cardano/address.{VerificationKey}
+use cardano/address.{Address, StakeCredential, VerificationKey}
 use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, placeholder,
@@ -168,6 +168,57 @@ test admission_rejects_negative_l2_network_id() fail {
 
 test admission_rejects_large_l2_network_id() fail {
   expect _ = admit_with_l2_network_id(18_446_744_073_709_551_616)
+  True
+}
+
+/// The admission fixture with only the deposit L2 address's stake credential
+/// replaced.
+fn admit_with_l2_stake_credential(
+  stake_credential: Option<StakeCredential>,
+) -> Payload {
+  expect DepositPayload { event } = payload()
+  let l2_address = event.info.l2_address
+  let changed = DepositPayload {
+    event: DepositEvent {
+      ..event,
+      info: DepositInfo {
+        ..event.info,
+        l2_address: Address { ..l2_address, stake_credential },
+      },
+    },
+  }
+  let (_, admitted, _) = admit(
+    admission(Facts { ..facts(), location: Inline { payload: changed } }),
+    1000,
+    None,
+  )
+  expect admitted == changed
+  admitted
+}
+
+test admission_accepts_absent_l2_stake_credential() {
+  expect DepositPayload { event } = admit_with_l2_stake_credential(None)
+  event.info.l2_address.stake_credential == None
+}
+
+test admission_accepts_inline_l2_stake_credential() {
+  let stake_credential = Some(address.Inline(VerificationKey(owner)))
+  expect DepositPayload { event } = admit_with_l2_stake_credential(
+    stake_credential,
+  )
+  event.info.l2_address.stake_credential == stake_credential
+}
+
+test admission_rejects_pointer_l2_stake_credential() fail {
+  expect _ = admit_with_l2_stake_credential(
+    Some(
+      address.Pointer {
+        slot_number: 1,
+        transaction_index: 2,
+        certificate_index: 3,
+      },
+    ),
+  )
   True
 }
 
