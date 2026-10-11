@@ -482,9 +482,11 @@ export const runTests = async (
           "--reporter=default",
           "--reporter=json",
           `--outputFile=${reportPath}`,
+          // Files run in seeded order, which exposes state leaking between
+          // files; tests in a file keep their declared order, as in CI, since
+          // a lifecycle suite's last test checks what the earlier ones did.
           `--sequence.seed=${seed}`,
           "--sequence.shuffle.files",
-          "--sequence.shuffle.tests",
           ...(testName ? ["--testNamePattern", testName] : []),
         ],
         cwd,
