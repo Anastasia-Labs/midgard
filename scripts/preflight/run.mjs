@@ -389,6 +389,15 @@ export const spawnStep = async (root, step, env, log, signal) =>
           receipt: receipt.path,
           ...(sdkEvidence ? { sdkSuite: sdkEvidence } : {}),
           ...(run.reason ? { error: new Error(run.reason) } : {}),
+          // A command that exited 0 can still fail its receipt; say why
+          // rather than report an exit code it never had.
+          ...(run.exitCode === 0 && receipt.exitCode !== 0
+            ? {
+                failure:
+                  receipt.reason ??
+                  `its execution receipt is ${receipt.status} (${receipt.path})`,
+              }
+            : {}),
         };
       } finally {
         process.off("SIGINT", abort);
@@ -598,7 +607,9 @@ export const runPreflight = async ({
             reason:
               run.error !== undefined
                 ? `${formatCommand(step)} could not start: ${run.error.message}`
-                : `${formatCommand(step)} exited ${String(run.status)}`,
+                : run.failure !== undefined
+                  ? `${formatCommand(step)} exited 0, but ${run.failure}`
+                  : `${formatCommand(step)} exited ${String(run.status)}`,
           };
           break;
         }

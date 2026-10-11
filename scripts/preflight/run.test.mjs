@@ -90,6 +90,41 @@ test("a contrib suite step that skipped tests passes as CI's does; any other exi
   assert.match(report.results[0].reason, /skipped by their own conditions/u);
 });
 
+test("a step that exited 0 but failed its receipt reports the receipt's reason, not an exit code", async () => {
+  const plan = planPreflight(
+    {
+      checks: [
+        {
+          id: "repo-tooling-tests",
+          title: "repo tooling tests",
+          triggers: ["x"],
+          capabilities: [],
+          plan: () => [{ argv: ["node", "--test"], cwd: "." }],
+        },
+      ],
+    },
+    ["x"],
+  );
+  const report = await runPreflight({
+    root: ".",
+    base: "HEAD",
+    plan,
+    probes: { get: async () => ({ status: "available" }), invalidate() {} },
+    log() {},
+    runStep: async () => ({
+      status: 1,
+      output: "",
+      durationMs: 1,
+      failure: "inputs changed while it ran (a.mjs); rerun its exact command",
+    }),
+  });
+  assert.equal(report.results[0].status, "failed");
+  assert.equal(
+    report.results[0].reason,
+    "node --test exited 0, but inputs changed while it ran (a.mjs); rerun its exact command",
+  );
+});
+
 const GIT_ENV = {
   ...process.env,
   GIT_CONFIG_NOSYSTEM: "1",

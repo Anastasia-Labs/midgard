@@ -99,6 +99,45 @@ test("receipt rejects zero tests, missing report, source edits and substituted l
   assert.throws(() => verifyReceipt(root, receipt.path), /stale/u);
 });
 
+test("a receipt whose inputs changed while it ran says so and names the paths", (t) => {
+  const root = fixture(t);
+  const directory = resolve(root, "run");
+  mkdirSync(directory);
+  const logPath = resolve(directory, "test.log");
+  writeFileSync(logPath, "actual execution");
+  const before = inputIdentity(root, "@repository");
+  writeFileSync(resolve(root, "demo/example/src/index.ts"), "edited mid-run");
+  writeFileSync(resolve(root, "demo/example/src/added.ts"), "new");
+  const receipt = writeReceipt({
+    root,
+    pkg: { name: "@repository" },
+    directory,
+    kind: "preflight-step",
+    before,
+    after: inputIdentity(root, "@repository"),
+    steps: [
+      {
+        argv: ["node", "--test"],
+        cwd: root,
+        exitCode: 0,
+        startedAt: "2026-10-03T00:00:00Z",
+        endedAt: "2026-10-03T00:00:01Z",
+        durationMs: 1000,
+        logPath,
+      },
+    ],
+  });
+  assert.equal(receipt.status, "failed");
+  assert.deepEqual(receipt.changedInputs, [
+    "demo/example/src/added.ts",
+    "demo/example/src/index.ts",
+  ]);
+  assert.equal(
+    receipt.reason,
+    "inputs changed while it ran (demo/example/src/added.ts, demo/example/src/index.ts); rerun its exact command",
+  );
+});
+
 test("a compiler version probe cannot be reclassified as a build", (t) => {
   const root = fixture(t);
   const logPath = resolve(root, "probe.log");
