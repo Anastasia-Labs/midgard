@@ -26,6 +26,7 @@ import {
   SUBMISSION_MARKER_ENV,
   SUBMISSION_RUN_ENV,
 } from "./journey-cli.js";
+import { describeNodeReadiness } from "./journey-node-readiness.js";
 import {
   DEFAULT_DEADLINES,
   type JourneyDeadlines,
@@ -399,10 +400,26 @@ export class JourneyRuntime {
       : `${state}: ${detail} (worker failed ${failedRuns} runs in a row)`;
   }
 
+  /** What /readyz says is wrong with the node; never throws. */
+  async nodeReadiness() {
+    try {
+      return describeNodeReadiness(
+        (await this.http("/readyz", this.nodeUrl, true)).body,
+      );
+    } catch (error) {
+      return {
+        summary: `node readiness unreadable (${describeError(error)})`,
+        escalated: [],
+      };
+    }
+  }
+
   /**
    * Polls `check` until it returns a value. Errors are retried (a service
    * may be restarting); a FatalJourneyError ends the wait at once, and so
-   * does the deadline.
+   * does the deadline. Every report while it waits, and the deadline's
+   * error, name what the node's /readyz says is wrong; a reason the node
+   * escalated ends the wait as a FatalJourneyError.
    */
   async until<T>(
     what: string,
@@ -424,11 +441,16 @@ export class JourneyRuntime {
         lastError === undefined ? "" : `: ${describeError(lastError)}`;
       if (Date.now() >= deadline)
         throw new JourneyDeadlineError(
-          `timed out after ${timeoutMs / 1000} s waiting for ${what}${lastProblem}`,
+          `timed out after ${timeoutMs / 1000} s waiting for ${what}${lastProblem} (${(await this.nodeReadiness()).summary})`,
         );
       if (Date.now() - lastReport >= 120_000) {
         lastReport = Date.now();
-        this.log(`still waiting for ${what}${lastProblem}`);
+        const node = await this.nodeReadiness();
+        if (node.escalated.length > 0)
+          throw new FatalJourneyError(
+            `the node escalated ${node.escalated.join("; ")} while the journey waited for ${what}`,
+          );
+        this.log(`still waiting for ${what}${lastProblem} (${node.summary})`);
       }
       await this.wait(Math.min(this.pollMs, deadline - Date.now()));
     }

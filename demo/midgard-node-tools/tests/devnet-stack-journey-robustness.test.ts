@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   definitiveCliFailure,
@@ -7,6 +7,7 @@ import {
   FatalJourneyError,
   type WithdrawalRecord,
 } from "../src/devnet-stack/journey.js";
+import { describeNodeReadiness } from "../src/devnet-stack/journey-node-readiness.js";
 import {
   argAfter,
   crash,
@@ -274,5 +275,106 @@ describe("journey drain and payout name the settlement worker's state", () => {
       `settlement job withdrawal event-cc#0 is in phase fund after 4 failed attempts: ${unpayable}`,
     );
     expect(argAfter(cli.calls[0]!, "--withdrawal-event-id")).toBe("event-cc#0");
+  });
+});
+
+// A wait that outlasts the commit pipeline would otherwise report only its
+// own last error (#816): it names what the node's /readyz says is wrong, and
+// gives up once the node escalates a reason as needing an operator.
+const stalledCommit = (escalated: boolean) => ({
+  ready: false,
+  reasons: ["commit_worker_failed", "l1_transport_unready:refused"],
+  livenessReasons: [
+    {
+      source: "commit_worker",
+      reason: "commit_worker_failed",
+      detail:
+        "Block commitment worker failure: StateQueueError: Commit paused until the L1 slot is known",
+      ageMs: escalated ? 720_000 : 240_000,
+      escalateAfterMs: 600_000,
+      escalated,
+    },
+  ],
+});
+const stalledText =
+  "commit_worker_failed for 240 s: Block commitment worker failure: StateQueueError: Commit paused until the L1 slot is known; l1_transport_unready:refused";
+
+describe("node readiness in long waits", () => {
+  it.each([
+    ["a ready node", { ready: true, reasons: [] }, "node ready", []],
+    [
+      "raised reasons, with a liveness reason's age and detail",
+      stalledCommit(false),
+      `node not ready: ${stalledText}`,
+      [],
+    ],
+    [
+      "an escalated reason",
+      stalledCommit(true),
+      "node not ready: commit_worker_failed for 720 s (escalated): Block commitment worker failure: StateQueueError: Commit paused until the L1 slot is known; l1_transport_unready:refused",
+      [
+        "commit_worker_failed for 720 s (escalated): Block commitment worker failure: StateQueueError: Commit paused until the L1 slot is known",
+      ],
+    ],
+    ["an unready node that names nothing", {}, "node not ready", []],
+  ])("describes %s", (_name, body, summary, escalated) => {
+    expect(describeNodeReadiness(body)).toEqual({ summary, escalated });
+  });
+
+  it("names the node's reasons when a wait times out", async () => {
+    const fetch = (async (url: string) =>
+      url.endsWith("/readyz")
+        ? json(503, stalledCommit(false))
+        : json(503, {})) as unknown as typeof globalThis.fetch;
+    const { journey } = makeJourney(fakeContext(), { fetch });
+    await expect(journey.waitTx("t1", "committed", 0)).rejects.toThrow(
+      `timed out after 0 s waiting for L2 tx t1 to be committed: GET /tx-status?tx_hash=t1 answered 503: {} (node not ready: ${stalledText})`,
+    );
+  });
+
+  describe("on a clock that advances a minute per poll", () => {
+    beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
+    afterEach(() => vi.useRealTimers());
+    const minutePolls = {
+      sleep: async () => {
+        vi.advanceTimersByTime(60_000);
+      },
+    };
+
+    it("reports the node's reasons while it keeps waiting", async () => {
+      let readyz = 0;
+      const fetch = (async () => {
+        readyz += 1;
+        return readyz < 6 ? json(503, stalledCommit(false)) : json(200, {});
+      }) as unknown as typeof globalThis.fetch;
+      const { journey, logs } = makeJourney(fakeContext(), {
+        fetch,
+        ...minutePolls,
+      });
+      await journey.waitReady(3_600_000);
+      expect(logs).toContainEqual(
+        expect.stringMatching(
+          /^still waiting for the node to be ready: GET \/readyz answered 503: .* \(node not ready: commit_worker_failed for 240 s: .*Commit paused until the L1 slot is known; l1_transport_unready:refused\)$/u,
+        ),
+      );
+    });
+
+    it("gives up once the node escalates a reason, long before its deadline", async () => {
+      let polls = 0;
+      const fetch = (async () => {
+        polls += 1;
+        return json(503, stalledCommit(true));
+      }) as unknown as typeof globalThis.fetch;
+      const { journey } = makeJourney(fakeContext(), {
+        fetch,
+        ...minutePolls,
+      });
+      const waiting = journey.waitReady(3_600_000);
+      await expect(waiting).rejects.toBeInstanceOf(FatalJourneyError);
+      await expect(waiting).rejects.toThrow(
+        "the node escalated commit_worker_failed for 720 s (escalated): Block commitment worker failure: StateQueueError: Commit paused until the L1 slot is known while the journey waited for the node to be ready",
+      );
+      expect(polls).toBeLessThan(10);
+    });
   });
 });
