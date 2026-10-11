@@ -5,24 +5,39 @@ import { PlutusDataStructureIds } from "./plutus-data-lucid-iterative.structure-
 /**
  * Lucid `Data.to(data)` (no schema, not canonical), without recursion.
  *
- * Lucid builds a CML `PlutusData` and writes it in the cardano-node format:
+ * Lucid tries its own encoder first and, when that one declines, builds a
+ * CML `PlutusData` instead (`encodePlutusData(d) ?? cmlDataToCbor(d)`). Both
+ * write the cardano-node format:
  *
  * - integers in minimal heads within 64 bits, otherwise as bignums (tags 2
  *   and 3) over their big-endian magnitude;
  * - byte strings of at most 64 bytes as one string, longer ones as an
- *   indefinite string of 64-byte chunks; hex is read case-insensitively;
+ *   indefinite string of 64-byte chunks; hex (even length) is read
+ *   case-insensitively;
  * - non-empty lists, maps and constructor fields indefinite, empty ones as
  *   `80` / `a0`;
  * - constructors under tags 121 to 127 (alternatives 0 to 6), 1280 to 1400
  *   (7 to 127), or 102 over an indefinite `[alternative, fields]` array;
- * - map entries set one by one as CML's `PlutusMap.set` does (an entry whose
- *   key equals an earlier one replaces it; maps inside keys compare in their
- *   insertion order), then written sorted by CML's order on keys;
- * - arrays and constructor fields read with `forEach` (holes skipped), and a
- *   constructor index parsed from `index.toString()` as an unsigned 64-bit
- *   decimal, as CML's `BigInteger.from_str(...).as_u64()` parses it.
+ * - of map entries with structurally equal keys (maps inside keys compared in
+ *   their insertion order), only the last, at its own position; entries then
+ *   written sorted by CML's order on keys;
+ * - arrays and constructor fields read with `forEach` (holes skipped).
  *
- * Anything else Lucid refuses is refused here too.
+ * The two encoders accept different values, and where Lucid's own accepts,
+ * its result stands:
+ *
+ * - Lucid's own encoder reads a constructor index only from a number or a
+ *   bigint whose decimal string is all digits and at most 2^64 - 1, and
+ *   constructor fields only from an `Array`. It looks at the value of a map
+ *   entry only when no later entry has an equal key, so a replaced value is
+ *   never checked. Anything it cannot encode, including a cycle, declines.
+ * - CML parses the index from `index.toString()` as an unsigned 64-bit
+ *   decimal (`BigInteger.from_str(...).as_u64()`), takes fields from any
+ *   `forEach`, and converts every map entry before replacing any, so a
+ *   replaced value it cannot convert refuses the whole value.
+ *
+ * Unlike Lucid, this also encodes values nested deeper than Lucid's own
+ * recursion reaches.
  */
 
 type PlannedNode =
@@ -36,14 +51,25 @@ type PlannedNode =
       readonly children: readonly number[];
     };
 
+/** Lucid's own encoder, or the CML one it falls back to. */
+type Encoder = "lucid" | "cml";
+
 type PlanFrame = {
   readonly node: number;
   readonly value: object;
   readonly kind: "list" | "map" | "constr";
-  /** The children to plan, as values; for maps, keys and values alternate. */
-  readonly pending: readonly unknown[];
+  /**
+   * The children to plan, as values. For maps, CML's keys and values
+   * alternate; Lucid's own encoder plans every key first, then the values of
+   * the entries that survive.
+   */
+  pending: readonly unknown[];
   next: number;
-  readonly children: number[];
+  children: number[];
+  /** Lucid's own encoder, for a map: the values of all its entries. */
+  readonly values?: readonly unknown[];
+  /** Lucid's own encoder, for a map: the surviving keys, once planned. */
+  keys?: readonly number[];
 };
 
 const U64_MAX = (1n << 64n) - 1n;
@@ -86,6 +112,18 @@ const parseAlternative = (index: unknown): bigint => {
     return refuse("constructor index is not an unsigned 64-bit integer");
   }
   return value;
+};
+
+/** Lucid's own `constrAlternative`: digits from a number or bigint only. */
+const lucidAlternative = (index: unknown): bigint => {
+  if (typeof index !== "number" && typeof index !== "bigint") {
+    return refuse("invalid constructor index");
+  }
+  const text = String(index);
+  if (!/^\d+$/.test(text) || BigInt(text) > U64_MAX) {
+    return refuse("invalid constructor index");
+  }
+  return BigInt(text);
 };
 
 const collect = (items: { forEach?: unknown }): unknown[] => {
@@ -162,7 +200,26 @@ const comparePlanned = (
   return 0;
 };
 
-const planData = (root: unknown): PlannedNode[] => {
+/**
+ * The entries a map keeps, by index: of entries with equal keys, the last.
+ * Equal keys have equal ids in `rawIds`.
+ */
+const survivingEntries = (
+  rawIds: PlutusDataStructureIds,
+  keys: readonly number[],
+): number[] => {
+  const lastByKey = new Map<number, number>();
+  keys.forEach((key, entry) => lastByKey.set(rawIds.of(key), entry));
+  return keys.flatMap((key, entry) =>
+    lastByKey.get(rawIds.of(key)) === entry ? [entry] : [],
+  );
+};
+
+/**
+ * The tree as the given encoder sees it, with every value it reads checked.
+ * Throws where that encoder refuses (for Lucid's own, where it declines).
+ */
+const planData = (root: unknown, encoder: Encoder): PlannedNode[] => {
   const nodes: PlannedNode[] = [];
   // Equality as CML's `PlutusMap.set` sees it (maps in insertion order), and
   // equality of the written form (maps sorted), which the order relies on.
@@ -187,22 +244,32 @@ const planData = (root: unknown): PlannedNode[] => {
     }
     let kind: PlanFrame["kind"];
     let pending: unknown[];
+    let values: unknown[] | undefined;
     if (value instanceof Constr) {
       kind = "constr";
+      if (encoder === "lucid" && !(value.fields instanceof Array)) {
+        return refuse("constructor fields are not an array");
+      }
       pending = collect(value.fields as { forEach?: unknown });
     } else if (value instanceof Array) {
       kind = "list";
       pending = collect(value);
     } else if (value instanceof Map) {
       kind = "map";
-      pending = [...(value as Map<unknown, unknown>).entries()].flat();
+      const entries = [...(value as Map<unknown, unknown>).entries()];
+      if (encoder === "lucid") {
+        pending = entries.map(([key]) => key);
+        values = entries.map(([, entryValue]) => entryValue);
+      } else {
+        pending = entries.flat();
+      }
     } else {
       return refuse("Unsupported type");
     }
     if (onPath.has(value)) return refuse("Data contains itself");
     onPath.add(value);
     nodes.push({ kind: "list", children: [] });
-    stack.push({ node, value, kind, pending, next: 0, children: [] });
+    stack.push({ node, value, kind, pending, next: 0, children: [], values });
   };
   const close = (frame: PlanFrame): void => {
     onPath.delete(frame.value);
@@ -214,23 +281,26 @@ const planData = (root: unknown): PlannedNode[] => {
       return;
     }
     if (frame.kind === "constr") {
-      const alternative = parseAlternative((frame.value as Constr<Data>).index);
+      const index: unknown = (frame.value as Constr<Data>).index;
+      const alternative =
+        encoder === "lucid" ? lucidAlternative(index) : parseAlternative(index);
       nodes[frame.node] = { kind: "constr", alternative, children };
       rawIds.constr(frame.node, alternative, children);
       sortedIds.constr(frame.node, alternative, children);
       return;
     }
-    // `set` drops any entry with an equal key and appends the new one.
-    const pairs: (readonly [number, number] | undefined)[] = [];
-    const pairByKey = new Map<number, number>();
-    for (let entry = 0; entry < children.length; entry += 2) {
-      const keyId = rawIds.of(children[entry]!);
-      const previous = pairByKey.get(keyId);
-      if (previous !== undefined) pairs[previous] = undefined;
-      pairByKey.set(keyId, pairs.length);
-      pairs.push([children[entry]!, children[entry + 1]!]);
+    let live: (readonly [number, number])[];
+    if (frame.keys !== undefined) {
+      // Lucid's own encoder planned only the surviving values.
+      const keys = frame.keys;
+      live = children.map((child, entry) => [keys[entry]!, child] as const);
+    } else {
+      // CML's `set` drops any entry with an equal key and appends the new one.
+      const keys = children.filter((_, position) => position % 2 === 0);
+      live = survivingEntries(rawIds, keys).map(
+        (entry) => [children[2 * entry]!, children[2 * entry + 1]!] as const,
+      );
     }
-    const live = pairs.filter((pair) => pair !== undefined);
     rawIds.map(frame.node, live.flat());
     // Written sorted by key (a stable sort, so equal keys keep their order).
     const sorted = [...live]
@@ -250,6 +320,16 @@ const planData = (root: unknown): PlannedNode[] => {
       top.children.push(nodes.length);
       open(top.pending[top.next]);
       top.next += 1;
+      continue;
+    }
+    if (top.values !== undefined && top.keys === undefined) {
+      // Every key is planned: plan the values of the surviving entries only.
+      const values = top.values;
+      const surviving = survivingEntries(rawIds, top.children);
+      top.keys = surviving.map((entry) => top.children[entry]!);
+      top.pending = surviving.map((entry) => values[entry]);
+      top.children = [];
+      top.next = 0;
       continue;
     }
     stack.pop();
@@ -294,9 +374,19 @@ const integerParts = (value: bigint): Buffer[] => {
 
 const BREAK = Buffer.from([0xff]);
 
+/** The tree as Lucid encodes it: its own encoder's, or else CML's. */
+const planLucidData = (data: unknown): PlannedNode[] => {
+  try {
+    return planData(data, "lucid");
+  } catch {
+    // Lucid falls back to CML whatever its own encoder throws.
+    return planData(data, "cml");
+  }
+};
+
 /** Lucid `Data.to(data)` without a schema, as bytes. */
 export const lucidDataToCborIterative = (data: Data): Buffer => {
-  const nodes = planData(data);
+  const nodes = planLucidData(data);
   const out: Buffer[] = [];
   const tasks: (number | Buffer)[] = [0];
   const pushContainer = (
