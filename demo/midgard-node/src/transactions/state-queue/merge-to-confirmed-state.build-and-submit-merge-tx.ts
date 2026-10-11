@@ -35,6 +35,7 @@ import {
 import {
   captureMergeLocalLedgerGate,
   mergeSubmitRecoveryOptions,
+  ownMergeInFlightSkip,
   registerMergeNoInlineSubmitDueWork,
 } from "./merge-to-confirmed-state.capture-merge-local-ledger-gate.js";
 import {
@@ -369,6 +370,8 @@ export const buildAndSubmitMergeTx = (
             }),
         ),
       );
+      const inFlight = ownMergeInFlightSkip(operatorWalletView.held, candidate);
+      if (inFlight !== undefined) return yield* inFlight;
       const presetWalletInputs = yield* SDK.requireOperatorWalletInputs(
         operatorWalletView.utxos,
         "state_queue merge tx",

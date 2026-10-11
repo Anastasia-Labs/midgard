@@ -14,6 +14,7 @@ import {
   type ConfirmedMergeFinalization,
   mergeSemanticSkipResult,
 } from "../transactions/state-queue/merge-to-confirmed-state.js";
+import { submitLowerBoundSlot } from "../transactions/submit-timing.js";
 import {
   checkSlotAwareDueWork,
   clearSlotAwareDueWork,
@@ -112,9 +113,11 @@ export const registeredMergeDueWorkSkip = (
       const decision = checkSlotAwareDueWork({
         kind: entry.kind,
         key: entry.key,
+        // Merge due work waits for its validity lower bound, which the
+        // mempool judges at the ledger tip.
         currentSlot:
           slotSnapshot._tag === "Right"
-            ? slotSnapshot.right.currentSlot
+            ? submitLowerBoundSlot(slotSnapshot.right)
             : undefined,
         dependencyKey: currentEvidence.dependencyKey,
         invalidationKey: currentEvidence.invalidationKey,

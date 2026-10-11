@@ -3,7 +3,7 @@ import "./utils.js";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Globals, NodeConfig } from "../src/services/index.js";
@@ -20,6 +20,7 @@ const hashBlockHeaderMock = vi.hoisted(() => vi.fn());
 const fetchFirstBlockTxsMock = vi.hoisted(() => vi.fn());
 const breakDownTxMock = vi.hoisted(() => vi.fn());
 const localSlotSnapshotProviderMock = vi.hoisted(() => vi.fn());
+const buildMergeTxMock = vi.hoisted(() => vi.fn());
 // The poisoned own headers the readiness read returns (none by default).
 const poisonedHeaders = vi.hoisted(() => ({ value: new Set<string>() }));
 
@@ -33,6 +34,10 @@ vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
       getStateQueueNodeFromStateQueueDatumMock,
     getHeaderFromStateQueueDatum: getHeaderFromStateQueueDatumMock,
     hashBlockHeader: hashBlockHeaderMock,
+    // What a ready merge reads before its wallet view, and its build.
+    fetchCorrectionLockUTxOProgram: () =>
+      Effect.succeed({ txHash: "dd".repeat(32), outputIndex: 0 }),
+    buildMergeToConfirmedStateTxProgram: buildMergeTxMock,
   };
 });
 
@@ -78,6 +83,18 @@ vi.mock("../src/transactions/utils.js", async (importOriginal) => {
   };
 });
 
+// The merge withdrawal's reference script a ready merge resolves.
+vi.mock("../src/transactions/reference-scripts.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../src/transactions/reference-scripts.js")
+    >();
+  return {
+    ...actual,
+    referenceScriptByName: () => ({ txHash: "ab".repeat(32), outputIndex: 0 }),
+  };
+});
+
 vi.mock("../src/utils.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/utils.js")>();
   return {
@@ -86,6 +103,14 @@ vi.mock("../src/utils.js", async (importOriginal) => {
   };
 });
 
+import {
+  listSlotAwareDueWork,
+  slotAwareDueWorkRegistry,
+} from "../src/fibers/slot-aware-due-work.js";
+import {
+  IntentJournal,
+  IntentJournalWithoutFollower,
+} from "../src/services/intent-journal.js";
 import {
   buildAndSubmitMergeTx,
   mergeNoInlineSubmitDueWorkFromDefer,
@@ -105,7 +130,10 @@ const contracts = {
   stateQueue: {
     mintingScriptCBOR: "",
   },
-} as SDK.MidgardValidators;
+  settlement: { policyId: "33".repeat(28) },
+  hubOracle: { policyId: "44".repeat(28) },
+  correctionLock: { spendingScriptAddress: "addr_test1correctionlock" },
+} as unknown as SDK.MidgardValidators;
 
 const headerHash = "aa".repeat(28);
 
@@ -119,6 +147,8 @@ const fakeLucid = {
   slotToUnixTime: (slot: number) => slot * 1_000,
   unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
   utxosAt: fakeLucidUtxosAt,
+  utxosAtWithUnit: async () => [{ txHash: "ee".repeat(32), outputIndex: 0 }],
+  wallet: () => ({ address: async () => "addr_test1mergewallet" }),
 } as never;
 
 const makeLink = () =>
@@ -191,10 +221,28 @@ const configureCandidate = ({
   hashBlockHeaderMock.mockImplementation(() => Effect.succeed(headerHash));
 };
 
-const runBuilder = () =>
+// A follower journal whose wallet view holds `held` (live own intents' inputs).
+const holdingJournal = (held: readonly string[]) =>
+  Layer.succeed(IntentJournal, {
+    ...Effect.runSync(
+      Effect.provide(IntentJournal, IntentJournalWithoutFollower),
+    ),
+    walletView: (_lucid, address) =>
+      Effect.succeed({
+        address,
+        source: "follower" as const,
+        utxos: [{ txHash: "ff".repeat(32), outputIndex: 1 } as never],
+        predictedBy: new Map<string, string>(),
+        held: new Set(held),
+      }),
+  });
+
+const runBuilder = (held?: readonly string[]) =>
   Effect.runPromise(
     buildAndSubmitMergeTx(fakeLucid, fetchConfig, contracts).pipe(
-      withoutFollowerJournal,
+      held === undefined
+        ? withoutFollowerJournal
+        : Effect.provide(holdingJournal(held)),
       Effect.provide(Globals.Default),
       Effect.provide(NodeConfig.layer),
     ) as Effect.Effect<MergeTxResult, unknown, never>,
@@ -228,6 +276,8 @@ describe("merge builder maturity preflight", () => {
     fetchFirstBlockTxsMock.mockReset();
     breakDownTxMock.mockReset();
     localSlotSnapshotProviderMock.mockReset();
+    buildMergeTxMock.mockReset();
+    slotAwareDueWorkRegistry.clearAll();
     fakeLucidUtxosAt.mockReset();
     poisonedHeaders.value = new Set();
 
@@ -341,6 +391,66 @@ describe("merge builder maturity preflight", () => {
     expect(fetchFirstBlockTxsMock).toHaveBeenCalledTimes(1);
     expect(breakDownTxMock).not.toHaveBeenCalled();
     expect(localSlotSnapshotProviderMock).toHaveBeenCalledTimes(1);
+  });
+
+  // A local node between blocks: the wall-clock slot is past the merge's lower
+  // bound, its latest block is not (devnet r4: tip 20 short, wall 8 past).
+  const validFromSlot =
+    (500_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms) / 1_000;
+  const trailingTip = (ledgerTipSlot: number, currentSlot: number) =>
+    localSlotSnapshotProviderMock.mockImplementation(() =>
+      Effect.succeed({
+        source: "l1_node_tip",
+        currentSlot,
+        ledgerTipSlot,
+        observedAtMs: currentSlot * 1_000,
+        slotLengthMs: 1_000,
+      }),
+    );
+
+  it("defers a merge whose lower bound the ledger tip has not reached, though the wall-clock slot has, and builds nothing", async () => {
+    setNow(530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms);
+    trailingTip(validFromSlot - 20, validFromSlot + 8);
+
+    expect(await runBuilder()).toMatchObject({
+      status: "skipped_oldest_block_local_ledger_not_ready",
+      headerHash,
+      reason: expect.stringContaining(
+        `local_ledger_slot=${(validFromSlot - 20).toString()},target_slot=${(validFromSlot + 2).toString()}`,
+      ),
+    });
+    expect(buildMergeTxMock).not.toHaveBeenCalled();
+    expect(listSlotAwareDueWork()).toMatchObject([
+      {
+        kind: "merge_submit_validity",
+        observedSlot: validFromSlot - 20,
+        dueSlot: validFromSlot + 2,
+      },
+    ]);
+  });
+
+  it("builds a merge once the ledger tip reaches its bound, unless an own live merge intent spends its inputs", async () => {
+    // Devnet r4: a rebuild beside the refused, still-live merge spent its
+    // state-queue inputs and its predicted change again (BadInputsUTxO).
+    setNow(530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms);
+    trailingTip(validFromSlot + 2, validFromSlot + 8);
+    buildMergeTxMock.mockImplementation(() =>
+      Effect.fail(new Error("merge build reached")),
+    );
+    const held = [`${"cc".repeat(32)}#0`, `${"bb".repeat(32)}#0`];
+
+    expect(await runBuilder(held)).toMatchObject({
+      status: "skipped_own_merge_in_flight",
+      headerHash,
+      reason: `held_merge_inputs=${held.join("|")}`,
+    });
+    expect(buildMergeTxMock).not.toHaveBeenCalled();
+
+    await expect(runBuilder([])).rejects.toThrow("merge build reached");
+    expect(buildMergeTxMock).toHaveBeenCalledTimes(1);
+    expect(buildMergeTxMock.mock.calls[0]![0]).toMatchObject({
+      validFrom: validFromSlot * 1_000,
+    });
   });
 
   it("anchors provider-slot submit defers to local future slots", () => {

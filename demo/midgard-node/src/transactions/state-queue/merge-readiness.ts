@@ -33,7 +33,8 @@ export type MergeReadinessStatus =
   | "skipped_oldest_block_event_orphaned"
   | "skipped_oldest_block_not_mature"
   | "skipped_oldest_block_local_ledger_not_ready"
-  | "skipped_merge_candidate_changed";
+  | "skipped_merge_candidate_changed"
+  | "skipped_own_merge_in_flight";
 
 export type MergePreflightInput = {
   readonly force: boolean;
@@ -55,6 +56,7 @@ export type MergePreflightDecision = {
     | "skipped_oldest_block_event_orphaned"
     | "skipped_oldest_block_not_mature"
     | "skipped_merge_candidate_changed"
+    | "skipped_own_merge_in_flight"
   >;
   readonly reason: string;
   readonly queueLength: number;

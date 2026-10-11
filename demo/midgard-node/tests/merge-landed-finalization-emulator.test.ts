@@ -47,6 +47,7 @@ import { syncEmulatorChain } from "./helpers/emulator-l1-follower.js";
 import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
 import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { assertLandedMergeParentRefusal } from "./helpers/merge-landed-finalization-parent-refusal.js";
+import { assertMergeWaitsForLedgerTip } from "./helpers/merge-trailing-ledger-tip.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 // Every confirmed merge's in-flight local-finalization outcome as the merge
@@ -58,11 +59,25 @@ const mergeHooks = vi.hoisted(() => ({
     readonly succeeded: boolean;
   }[],
   confirmationWindowMs: undefined as number | undefined,
+  /** Slots the L1 clock runs ahead of the emulator's ledger tip. */
+  l1ClockLeadSlots: 0,
   /** Runs once, right after the next direct read of the landed queue (P1). */
   afterLandedQueueRead: undefined as
     | (() => import("effect").Effect.Effect<void, unknown, any>)
     | undefined,
 }));
+// Between blocks the L1 clock (`slotNow`: the last tip plus elapsed time)
+// runs ahead of the ledger tip; a test sets how far.
+vi.mock("../src/l1-heads.js", async (importOriginal) => {
+  const { Effect: E } = await import("effect");
+  const actual = await importOriginal<typeof import("../src/l1-heads.js")>();
+  const l1NowUnixTimeMs: typeof actual.l1NowUnixTimeMs = (api) =>
+    E.map(
+      actual.l1NowUnixTimeMs(api),
+      (ms) => ms + mergeHooks.l1ClockLeadSlots * 1_000,
+    );
+  return { ...actual, l1NowUnixTimeMs };
+});
 // The merge's landed-merge catch-up reads P1 directly (`readLandedStateQueue`);
 // a test can act right after that read, before the attempt reads P1 again.
 vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
@@ -216,7 +231,7 @@ const openMergeLifecycle = async () => {
   };
   // One deposit, committed, confirmed, locally finalized and attested: a
   // block the merge fiber may fold once it matures.
-  const commitDepositBlock = async (lovelace: bigint) => {
+  const commitDepositBlock = async (lovelace: bigint, mature = true) => {
     await ensureSeparateCollateralUtxo(wallet);
     await advanceHistoryAdmissionClock(fixture, "deposit");
     await alignCommitSchedulerBeforeTestWorker({
@@ -302,6 +317,7 @@ const openMergeLifecycle = async () => {
       globals: h.globals,
       headerHash: tail.headerHash!,
     });
+    if (!mature) return tail.headerHash!;
     await advanceEmulatorPastUnixTime(
       fixture,
       mergeMaturityWindow(fixture.operatorLucid, tail.blockEndTimeMs)
@@ -433,6 +449,7 @@ const openMergeLifecycle = async () => {
         await h.close();
       } finally {
         mergeHooks.confirmationWindowMs = undefined;
+        mergeHooks.l1ClockLeadSlots = 0;
         vi.useRealTimers();
       }
     },
@@ -692,6 +709,15 @@ it("finalizes a merge that lands between an attempt's catch-up and its build bef
     expect(await m.mergeJob(second)).toMatchObject({
       [MutationJobsDB.Columns.ATTEMPTS]: 1,
     });
+  } finally {
+    await m.close();
+  }
+});
+
+it("defers a merge while the ledger tip trails its lower bound, sends nothing, and merges once the tip reaches it", async () => {
+  const m = await openMergeLifecycle();
+  try {
+    await assertMergeWaitsForLedgerTip(m, mergeHooks, expectFinalizedOnce);
   } finally {
     await m.close();
   }

@@ -941,8 +941,8 @@
   },
   {
     "file": "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
-    "max": 566,
-    "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+13): the merge submission names its journaled intent and the header it merges. I2 (-2): merge funding reads the wallet view; no wallet pin. I5 (+4): the merge opens its intent plan before its L1 reads and records under it. ORPH3 (+6): logs the skip of an oldest block that is a landed own block whose event left the chain, or is built on one."
+    "max": 569,
+    "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+13): the merge submission names its journaled intent and the header it merges. I2 (-2): merge funding reads the wallet view; no wallet pin. I5 (+4): the merge opens its intent plan before its L1 reads and records under it. ORPH3 (+6): logs the skip of an oldest block that is a landed own block whose event left the chain, or is built on one. MTX (+3): a merge whose state-queue inputs an own live merge intent spends is skipped, not rebuilt."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
@@ -1126,8 +1126,8 @@
   },
   {
     "file": "midgard-node/tests/merge-landed-finalization-emulator.test.ts",
-    "max": 698,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. N2 (+11): the race seam moved from a Lucid read to the landed-queue (P1) read, a hoisted mock of that read. I1 (+2): its node programs run under the journal of a process with no follower. N5 (-3): the parent-refusal case passes its hooks and the finalization check whole. N1H (-25): a driver recompute holding the follower write gate replaces the history owner's recovery, so the producer-permit plumbing and the lease expiry left. N1U (-1): the follower store follows the emulator's chain instead of a mirrored state queue."
+    "max": 724,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. N2 (+11): the race seam moved from a Lucid read to the landed-queue (P1) read, a hoisted mock of that read. I1 (+2): its node programs run under the journal of a process with no follower. N5 (-3): the parent-refusal case passes its hooks and the finalization check whole. N1H (-25): a driver recompute holding the follower write gate replaces the history owner's recovery, so the producer-permit plumbing and the lease expiry left. N1U (-1): the follower store follows the emulator's chain instead of a mirrored state queue. MTX (+26): a hoisted L1-clock lead seam, an option to commit a block without maturing it, and the case of a merge deferred while the ledger tip trails its lower bound."
   },
   {
     "file": "midgard-node/tests/merge-maturity-preflight.test.ts",

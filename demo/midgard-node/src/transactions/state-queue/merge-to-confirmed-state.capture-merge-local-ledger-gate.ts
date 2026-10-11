@@ -12,6 +12,7 @@ import {
 } from "../../fibers/slot-aware-due-work.js";
 import { submitSlotEvidence } from "../../l1-provider-view.js";
 import { Database } from "../../services/index.js";
+import { submitLowerBoundSlot } from "../submit-timing.js";
 import { slotAwareDueWorkFromSubmitTiming } from "../submit-timing-due-work.js";
 import {
   type NoInlineSubmitDefer,
@@ -23,7 +24,11 @@ import {
   mergeSubmitValidityEvidence,
   planMergeLocalLedgerGate,
 } from "./merge-readiness.js";
-import { slotFromUnixTime } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
+import {
+  type CanonicalMergeCandidateReadiness,
+  type MergeTxResult,
+  slotFromUnixTime,
+} from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 import { MERGE_CONFIRMATION_PROVIDER_RETRIES } from "./merge-to-confirmed-state.landed-unfinalized-merges.js";
 
 /**
@@ -59,6 +64,7 @@ export const mergeNoInlineSubmitDueWorkFromDefer = ({
   readonly defer: NoInlineSubmitDefer;
   readonly localSubmitSlotSnapshot?: {
     readonly currentSlot: number;
+    readonly ledgerTipSlot?: number;
     readonly slotLengthMs: number;
     readonly source: string;
   };
@@ -88,15 +94,15 @@ export const mergeNoInlineSubmitDueWorkFromDefer = ({
     1,
     Math.floor(localSubmitSlotSnapshot.slotLengthMs || SUBMIT_SLOT_LENGTH_MS),
   );
+  const localLedgerSlot = submitLowerBoundSlot(localSubmitSlotSnapshot);
   return {
     kind: "merge_submit_validity",
     key: defer.key,
     callerLabel: defer.callerLabel,
     reason: `merge_submit_${defer.kind}_not_reached,provider_current_slot=${defer.currentSlot.toString()},provider_due_slot=${defer.dueSlot.toString()}`,
-    observedSlot: localSubmitSlotSnapshot.currentSlot,
+    observedSlot: localLedgerSlot,
     dueSlot:
-      localSubmitSlotSnapshot.currentSlot +
-      Math.max(1, Math.ceil(defer.waitMs / slotLengthMs)),
+      localLedgerSlot + Math.max(1, Math.ceil(defer.waitMs / slotLengthMs)),
     dueAtMs: (nowMs ?? Date.now()) + defer.waitMs,
     waitMs: defer.waitMs,
     slotSource: localSubmitSlotSnapshot.source,
@@ -179,9 +185,12 @@ export const captureMergeLocalLedgerGate = ({
           }),
       ),
     );
+    // The mempool judges the lower bound at the ledger tip, which trails the
+    // wall-clock slot between blocks.
+    const localLedgerSlot = submitLowerBoundSlot(snapshot);
     const gate = planMergeLocalLedgerGate({
       validFromSlot,
-      localLedgerSlot: snapshot.currentSlot,
+      localLedgerSlot,
       slotLengthMs: snapshot.slotLengthMs,
       slotSource: snapshot.source,
       observedAtMs: snapshot.observedAtMs,
@@ -196,7 +205,7 @@ export const captureMergeLocalLedgerGate = ({
       `headerHash=${headerHash}`,
       `candidateIdentity=${candidateIdentity ?? "none"}`,
       `targetSlot=${gate.targetSlot.toString()}`,
-      `localLedgerSlot=${snapshot.currentSlot.toString()}`,
+      `localLedgerSlot=${localLedgerSlot.toString()}`,
       `deltaSlots=${gate.deltaSlots.toString()}`,
       `waitMs=${gate.waitMs.toString()}`,
       `slotSource=${snapshot.source}`,
@@ -244,3 +253,39 @@ export const captureMergeLocalLedgerGate = ({
       }),
     );
   });
+
+/**
+ * Skips a merge whose state-queue inputs a live own intent already spends
+ * (the wallet view's `held`, `txHash#index`). That intent is the merge in
+ * flight: the journal resends it once per tip until it lands, or abandons it
+ * after bounded refusals, which releases its inputs. A rebuild would spend
+ * the same inputs again and fund itself from the live intent's predicted
+ * change, so it needs that intent to land and conflicts with it: the ledger
+ * refuses it whatever happens. The skip builds nothing and sends nothing.
+ */
+export const ownMergeInFlightSkip = (
+  held: ReadonlySet<string>,
+  candidate: Pick<
+    Extract<CanonicalMergeCandidateReadiness, { readonly status: "candidate" }>,
+    "confirmedUTxO" | "firstBlockUTxO" | "readiness"
+  >,
+): Effect.Effect<MergeTxResult> | undefined => {
+  const heldInputs = [candidate.confirmedUTxO, candidate.firstBlockUTxO]
+    .map(({ utxo }) => `${utxo.txHash}#${utxo.outputIndex.toString()}`)
+    .filter((outRef) => held.has(outRef));
+  if (heldInputs.length === 0) return undefined;
+  const { headerHash, readyAfterUnixTime, nowUnixTime } = candidate.readiness;
+  const reason = `held_merge_inputs=${heldInputs.join("|")}`;
+  return Effect.as(
+    Effect.logInfo(
+      `🔸 Skipping merge while an own merge intent spending its inputs is live (${reason},headerHash=${headerHash}).`,
+    ),
+    {
+      status: "skipped_own_merge_in_flight",
+      headerHash,
+      reason,
+      readyAfterUnixTime,
+      nowUnixTime,
+    } satisfies MergeTxResult,
+  );
+};
