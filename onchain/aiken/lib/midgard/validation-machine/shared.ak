@@ -406,19 +406,16 @@ pub const max_serialized_output_preimage_bytes: Int = 16384
 
 /// `-1` marks an absent bound. With both bounds present the interval is
 /// `[start, end)`, so `start >= end` contains no slot and is malformed.
+///
+/// Both bounds are already `-1` or non-negative: every body decoder and encoder
+/// refuses anything below `-1` (`native_tx/codec.expect_validity_bound`), so no
+/// body reaching the machine carries one. On that domain `end >= 0` and
+/// `start >= end` together also prove `start >= 0`.
 pub fn validity_interval_is_malformed(
   validity_interval_start: Int,
   validity_interval_end: Int,
 ) -> Bool {
-  or {
-    validity_interval_start < -1,
-    validity_interval_end < -1,
-    and {
-      validity_interval_start >= 0,
-      validity_interval_end >= 0,
-      validity_interval_start >= validity_interval_end,
-    },
-  }
+  validity_interval_end >= 0 && validity_interval_start >= validity_interval_end
 }
 
 pub const max_aggregate_field_preimage_bytes: Int = 32768

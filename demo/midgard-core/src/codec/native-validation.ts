@@ -1,7 +1,10 @@
 import { asArray, asBigInt, asBytes } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32, type Hash32 } from "./hash.js";
-import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
+import {
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "./native-constants.js";
 
 /**
  * The wire-normative Midgard native-V1 transaction validity language.
@@ -82,17 +85,32 @@ export const asUnsigned = (value: unknown, fieldName: string): bigint => {
   return intValue;
 };
 
-export const asSigned = (value: unknown, fieldName: string): bigint => {
+/**
+ * A body validity bound, `docs/spec/midgard-tx.md` §2.1: `-1` for an absent
+ * bound or a nonnegative slot. Anything below `-1` is not a decodable body, so
+ * every body decoder and encoder runs its two bounds through this, the twin of
+ * the Aiken `expect_validity_bound`.
+ */
+export const asValidityBound = (value: unknown, fieldName: string): bigint => {
+  let bound: bigint;
   if (typeof value === "bigint") {
-    return value;
+    bound = value;
+  } else if (typeof value === "number" && Number.isInteger(value)) {
+    bound = BigInt(value);
+  } else {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName} must be an integer`,
+    );
   }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return BigInt(value);
+  if (bound < MIDGARD_POSIX_TIME_NONE) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName} must be -1 or a nonnegative slot`,
+      bound.toString(),
+    );
   }
-  throw new MidgardTxCodecError(
-    MidgardTxCodecErrorCodes.InvalidFieldType,
-    `${fieldName} must be an integer`,
-  );
+  return bound;
 };
 
 export const decodeVersion = (value: unknown, fieldName: string): bigint => {

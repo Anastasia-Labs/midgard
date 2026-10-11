@@ -212,7 +212,8 @@ The body is embedded as a twelve-element array, not replaced by its hash:
 \T{network\_id}].
 \end{split}
 \end{equation*}
-An unbounded interval side uses the integer sentinel \code{-1}.
+An unbounded interval side uses the integer sentinel \code{-1}; a present side is a non-negative slot.
+Any bound below \code{-1} is not a decodable body, and every decoder and encoder of the two fields refuses it.
 The interval is half-open, as in Cardano: \T{validity\_interval\_start} is inclusive and \T{validity\_interval\_end} is exclusive.
 When both sides are present, $\T{validity\_interval\_start} \ge \T{validity\_interval\_end}$ contains no slot and the interval is malformed.
 The witness compact is the ordered triple of address-witness, script-witness, and redeemer-witness field hashes.

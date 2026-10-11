@@ -4,7 +4,7 @@ use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
   decode_canonical_int_at, decode_canonical_uint_at, encode_definite_bytes,
   expect_byte, expect_h32, expect_network_id, expect_non_negative,
-  expect_validity_code, slice_len,
+  expect_validity_bound, expect_validity_code, slice_len,
 }
 use midgard/fraud_proofs/native_tx/types.{
   ForcedTxCompact, NativeTxBodyCompact, NativeTxCompact,
@@ -67,6 +67,10 @@ pub fn encode_native_tx_body_compact(body: NativeTxBodyCompact) -> ByteArray {
   expect _reference_inputs_hash = expect_h32(reference_inputs_hash)
   expect _outputs_hash = expect_h32(outputs_hash)
   expect _fee = expect_non_negative(fee)
+  expect _validity_interval_start = expect_validity_bound(
+    validity_interval_start,
+  )
+  expect _validity_interval_end = expect_validity_bound(validity_interval_end)
   expect _required_observers_hash = expect_h32(required_observers_hash)
   expect _required_signers_hash = expect_h32(required_signers_hash)
   expect _mint_hash = expect_h32(mint_hash)
@@ -375,8 +379,8 @@ fn decode_native_tx_body_compact_cbor_at(
       reference_inputs_hash,
       outputs_hash,
       fee,
-      validity_interval_start,
-      validity_interval_end,
+      validity_interval_start: expect_validity_bound(validity_interval_start),
+      validity_interval_end: expect_validity_bound(validity_interval_end),
       required_observers_hash,
       required_signers_hash,
       mint_hash,

@@ -70,14 +70,18 @@ Twelve fields, in declaration and wire order:
 | 1   | `reference_inputs_hash`   | 32-byte hash                     |
 | 2   | `outputs_hash`            | 32-byte hash                     |
 | 3   | `fee`                     | uint                             |
-| 4   | `validity_interval_start` | int (`-1` = none)                |
-| 5   | `validity_interval_end`   | int (`-1` = none)                |
+| 4   | `validity_interval_start` | `-1` (none) or uint              |
+| 5   | `validity_interval_end`   | `-1` (none) or uint              |
 | 6   | `required_observers_hash` | 32-byte hash                     |
 | 7   | `required_signers_hash`   | 32-byte hash                     |
 | 8   | `mint_hash`               | 32-byte hash                     |
 | 9   | `script_integrity_hash`   | 32-byte hash                     |
 | 10  | `auxiliary_data_hash`     | 32-byte hash                     |
 | 11  | `network_id`              | uint (`0`, `1`, or `255` = none) |
+
+A validity bound is `-1` (absent) or a non-negative slot. Any other integer,
+that is anything below `-1`, is not a decodable body: every decoder and encoder
+of fields 4 and 5 refuses it, so no committed body carries one.
 
 The validity interval is half-open, as Cardano's: `validity_interval_start` is
 inclusive (`invalid_before`) and `validity_interval_end` is exclusive

@@ -7,7 +7,7 @@ use midgard/fraud_proofs/native_tx/codec.{
   decode_canonical_int_at, decode_canonical_uint_at,
   decode_definite_array_header_at, decode_definite_bytes_at,
   encode_definite_bytes, expect_h32, expect_network_id, expect_non_negative,
-  validity_from_code, validity_to_code,
+  expect_validity_bound, validity_from_code, validity_to_code,
 }
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_field_preimage_lengths_v1, encode_native_tx_body_compact,
@@ -134,6 +134,12 @@ pub fn encode_midgard_transaction_body_full(
   body: MidgardTransactionBody,
 ) -> ByteArray {
   expect _fee = expect_non_negative(body.fee)
+  expect _validity_interval_start = expect_validity_bound(
+    body.validity_interval_start,
+  )
+  expect _validity_interval_end = expect_validity_bound(
+    body.validity_interval_end,
+  )
   expect _script_integrity_hash = expect_h32(body.script_integrity_hash)
   expect _auxiliary_data_hash = expect_h32(body.auxiliary_data_hash)
   expect _network_id = expect_network_id(body.network_id)
@@ -743,8 +749,8 @@ fn decode_midgard_transaction_body_at(
         |> decode_midgard_tx_inputs_preimage_cbor,
       outputs: outputs_preimage_cbor |> decode_midgard_tx_outputs_preimage_cbor,
       fee: expect_non_negative(fee),
-      validity_interval_start,
-      validity_interval_end,
+      validity_interval_start: expect_validity_bound(validity_interval_start),
+      validity_interval_end: expect_validity_bound(validity_interval_end),
       required_observers: required_observers_preimage_cbor
         |> decode_midgard_tx_hash28_list_preimage_cbor,
       required_signers: required_signers_preimage_cbor

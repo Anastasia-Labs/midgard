@@ -15,32 +15,32 @@
       ],
       "rows": {
         "tier3_corner_fixture_only": {
-          "mem": 401937,
-          "cpu": 227660288
+          "mem": 406869,
+          "cpu": 228740146
         },
         "tier3_corner_open_only": {
-          "mem": 642673,
-          "cpu": 300391006
+          "mem": 647605,
+          "cpu": 301470864
         },
         "tier3_corner_one_read": {
-          "mem": 805027,
-          "cpu": 396372279
+          "mem": 809959,
+          "cpu": 397452137
         },
         "tier3_corner_two_reads": {
-          "mem": 968985,
-          "cpu": 492784900
+          "mem": 973917,
+          "cpu": 493864758
         },
         "tier3_corner_straddling_read": {
-          "mem": 842680,
-          "cpu": 423315024
+          "mem": 847612,
+          "cpu": 424394882
         },
         "tier3_corner_second_straddling_read": {
-          "mem": 865625,
-          "cpu": 417207328
+          "mem": 870557,
+          "cpu": 418287186
         },
         "tier3_corner_last_chunk_read": {
-          "mem": 837734,
-          "cpu": 366553045
+          "mem": 842666,
+          "cpu": 367632903
         }
       }
     },
@@ -52,28 +52,28 @@
       ],
       "rows": {
         "certificate_mint_fixture_only_smallest_tier3": {
-          "mem": 428459,
-          "cpu": 174578313
+          "mem": 433391,
+          "cpu": 175658171
         },
         "certificate_mint_cost_at_the_smallest_tier3": {
-          "mem": 1073685,
-          "cpu": 437254127
+          "mem": 1087081,
+          "cpu": 440269701
         },
         "certificate_mint_fixture_only_at_the_corner": {
-          "mem": 461145,
-          "cpu": 252874606
+          "mem": 466077,
+          "cpu": 253954464
         },
         "certificate_mint_cost_at_the_corner": {
-          "mem": 1204386,
-          "cpu": 611900960
+          "mem": 1217782,
+          "cpu": 614916534
         },
         "certificate_spend_fixture_only": {
-          "mem": 258535,
-          "cpu": 134044978
+          "mem": 263467,
+          "cpu": 135124836
         },
         "certificate_spend_cost": {
-          "mem": 486878,
-          "cpu": 259766844
+          "mem": 496542,
+          "cpu": 261894560
         }
       }
     }
@@ -125,22 +125,22 @@
       "claim": "mint (Certify) handler at K+1, two chunks",
       "minus": "certificate_mint_fixture_only_smallest_tier3",
       "from": "certificate_mint_cost_at_the_smallest_tier3",
-      "mem": 645226,
-      "cpu": 262675814
+      "mem": 653690,
+      "cpu": 264611530
     },
     {
       "claim": "mint (Certify) handler at the 32,763-byte corner, three chunks",
       "minus": "certificate_mint_fixture_only_at_the_corner",
       "from": "certificate_mint_cost_at_the_corner",
-      "mem": 743241,
-      "cpu": 359026354
+      "mem": 751705,
+      "cpu": 360962070
     },
     {
       "claim": "spend (Retire) handler",
       "minus": "certificate_spend_fixture_only",
       "from": "certificate_spend_cost",
-      "mem": 228343,
-      "cpu": 125721866
+      "mem": 233075,
+      "cpu": 126769724
     }
   ],
   "readBudget": {

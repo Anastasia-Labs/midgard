@@ -20,7 +20,8 @@ use midgard/bounded_item_v1
 
 use midgard/fraud_proofs/native_tx/codec as native_codec
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
+  decode_forced_tx_compact_v1, decode_native_tx_compact_v1,
+  decode_native_tx_field_preimage_lengths_v1,
   decode_native_tx_witness_set_compact, encode_native_tx_body_compact,
   encode_native_tx_compact_v1, encode_native_tx_field_preimage_lengths_v1,
   encode_native_tx_proof_source_v1, encode_native_tx_witness_set_compact,
@@ -39,10 +40,11 @@ use midgard/fraud_proofs/native_tx/preimages.{
 }
 use midgard/fraud_proofs/native_tx/transaction
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardAddressWitness, MidgardV1Script, MidgardVersionedScript,
-  NativeCardanoScript, NativeTxBodyCompact, NativeTxCompact,
-  NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, PlutusV3Script,
-  TxIsInvalid, TxIsValid, VerifiedTxSourceView, native_tx_version_v1,
+  MidgardAddressWitness, MidgardTransactionBody, MidgardV1Script,
+  MidgardVersionedScript, NativeCardanoScript, NativeTxBodyCompact,
+  NativeTxCompact, NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
+  PlutusV3Script, TxIsInvalid, TxIsValid, VerifiedTxSourceView,
+  native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1
 use midgard/native_tx_machine_walk_v1
@@ -235,6 +237,117 @@ test v1_n11_out_of_range_compact_validity_code_rejects() fail {
       #"02",
     ),
   ).validity_code == 2
+}
+
+// ── Validity bounds (`docs/spec/midgard-tx.md` §2.1, #817) ─────────────────
+// A bound is `-1` (absent) or a non-negative slot. Every body decoder and
+// encoder refuses anything below `-1`, so no committed body carries one.
+
+const u64_max_slot: Int = 18446744073709551615
+
+fn sample_compact_with_bounds(start: Int, end: Int) -> NativeTxCompact {
+  let compact = sample_compact()
+  NativeTxCompact {
+    ..compact,
+    body: NativeTxBodyCompact {
+      ..compact.body,
+      validity_interval_start: start,
+      validity_interval_end: end,
+    },
+  }
+}
+
+/// `sample_compact()`'s wire bytes with the two bounds written raw, so a bound
+/// the encoder refuses still reaches the decoder. The bounds follow `84 01 8c`,
+/// three 34-byte hashes and the one-byte zero fee; the sample's own `-1, -1`
+/// are two bytes.
+fn compact_cbor_with_raw_bounds(start: Int, end: Int) -> ByteArray {
+  let honest = encode_native_tx_compact_v1(sample_compact())
+  let offset = 3 + 3 * 34 + 1
+  bytearray.take(honest, offset)
+    |> bytearray.concat(cbor.serialise(start))
+    |> bytearray.concat(cbor.serialise(end))
+    |> bytearray.concat(bytearray.drop(honest, offset + 2))
+}
+
+/// The forced envelope `83 01 ‖ body ‖ bytes(witness_set_hash)` over the same
+/// raw-bound body: the normal envelope minus its `84` head and validity code.
+fn forced_compact_cbor_with_raw_bounds(start: Int, end: Int) -> ByteArray {
+  let normal = compact_cbor_with_raw_bounds(start, end)
+  bytearray.concat(
+    #"83",
+    bytearray.drop(bytearray.take(normal, bytearray.length(normal) - 1), 1),
+  )
+}
+
+/// `n01`'s full transaction with `validity_interval_start` replaced by
+/// `start`. The bound is byte 10: after `84 01 8c`, three empty `41 80`
+/// preimages and the fee `17`.
+fn full_cbor_with_raw_start(start: Int) -> ByteArray {
+  bytearray.take(n01_canonical_full_cbor, 10)
+    |> bytearray.concat(cbor.serialise(start))
+    |> bytearray.concat(bytearray.drop(n01_canonical_full_cbor, 11))
+}
+
+test v1_validity_bounds_admit_the_sentinel_zero_and_a_large_slot() {
+  list.all(
+    [
+      Pair(-1, -1),
+      Pair(0, -1),
+      Pair(-1, 0),
+      Pair(0, u64_max_slot),
+      Pair(u64_max_slot, -1),
+    ],
+    fn(bounds) {
+      let Pair(start, end) = bounds
+      let compact = sample_compact_with_bounds(start, end)
+      let compact_cbor = encode_native_tx_compact_v1(compact)
+      and {
+        compact_cbor == compact_cbor_with_raw_bounds(start, end),
+        decode_native_tx_compact_v1(compact_cbor) == compact,
+        decode_forced_tx_compact_v1(
+          forced_compact_cbor_with_raw_bounds(start, end),
+        ).body == compact.body,
+      }
+    },
+  )
+}
+
+test v1_compact_start_below_the_sentinel_rejects() fail {
+  decode_native_tx_compact_v1(compact_cbor_with_raw_bounds(-2, -1)).body.validity_interval_start == -2
+}
+
+test v1_compact_end_below_the_sentinel_rejects() fail {
+  decode_native_tx_compact_v1(compact_cbor_with_raw_bounds(-1, -5)).body.validity_interval_end == -5
+}
+
+test v1_forced_compact_start_below_the_sentinel_rejects() fail {
+  decode_forced_tx_compact_v1(forced_compact_cbor_with_raw_bounds(-5, -1)).body.validity_interval_start == -5
+}
+
+test v1_full_transaction_start_below_the_sentinel_rejects() fail {
+  transaction.decode_midgard_transaction_v1(full_cbor_with_raw_start(-5)).body.validity_interval_start == -5
+}
+
+test v1_compact_encoder_refuses_a_start_below_the_sentinel() fail {
+  bytearray.length(
+    encode_native_tx_body_compact(sample_compact_with_bounds(-2, -1).body),
+  ) > 0
+}
+
+test v1_compact_encoder_refuses_an_end_below_the_sentinel() fail {
+  bytearray.length(
+    encode_native_tx_body_compact(sample_compact_with_bounds(-1, -5).body),
+  ) > 0
+}
+
+test v1_full_body_encoder_refuses_a_start_below_the_sentinel() fail {
+  let tx = transaction.decode_midgard_transaction_v1(n01_canonical_full_cbor)
+  bytearray.length(
+    transaction.encode_midgard_transaction_body_full(
+      MidgardTransactionBody { ..tx.body, validity_interval_start: -5 },
+    ),
+  ) > 0
 }
 
 test v1_n01_canonical_full_transaction_exact_vector() {

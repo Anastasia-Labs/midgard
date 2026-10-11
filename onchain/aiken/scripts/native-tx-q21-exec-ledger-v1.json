@@ -22,13 +22,13 @@
       ],
       "rows": {
         "accepts_valid_l2_transaction_no_op_transition_fault": {
-          "mem": 9717925,
-          "cpu": 4264696819,
+          "mem": 9735053,
+          "cpu": 4268600251,
           "basisFit": "within"
         },
         "accepts_late_forced_order_as_out_of_window_source_event": {
-          "mem": 2404181,
-          "cpu": 1064115518,
+          "mem": 2440237,
+          "cpu": 1072210382,
           "basisFit": "within"
         }
       }

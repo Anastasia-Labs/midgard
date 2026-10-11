@@ -266,18 +266,10 @@ export const validateValidityInterval = (
     "txId" | "validityIntervalStart" | "validityIntervalEnd"
   >,
 ): RejectedTx | null => {
-  if (
-    (tx.validityIntervalStart !== undefined && tx.validityIntervalStart < 0n) ||
-    (tx.validityIntervalEnd !== undefined && tx.validityIntervalEnd < 0n)
-  ) {
-    return reject(
-      tx.txId,
-      RejectCodes.InvalidValidityIntervalFormat,
-      "validity bounds must be non-negative unless unbounded sentinel",
-      "inputSets",
-    );
-  }
-
+  // A present bound is already a nonnegative slot: the native body codec
+  // refuses any bound below the `-1` sentinel (`asValidityBound`,
+  // `docs/spec/midgard-tx.md` §2.1) and the ledger view maps `-1` to
+  // `undefined`. Mirrors `validity_interval_is_malformed` on-chain.
   if (
     tx.validityIntervalStart !== undefined &&
     tx.validityIntervalEnd !== undefined &&

@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
+use midgard/fraud_proofs/native_tx/codec as native_codec
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
@@ -34,10 +35,17 @@ test native_v1_optional_posix_time_sentinel_and_adjacent_invalid_are_exact() {
     !vm_shared.validity_interval_is_malformed(0, 1),
     !vm_shared.validity_interval_is_malformed(5, -1),
     !vm_shared.validity_interval_is_malformed(-1, 5),
-    vm_shared.validity_interval_is_malformed(-2, -1),
-    vm_shared.validity_interval_is_malformed(-1, -2),
+    !vm_shared.validity_interval_is_malformed(-1, 0),
     vm_shared.validity_interval_is_malformed(1, 0),
+    native_codec.expect_validity_bound(-1) == -1,
+    native_codec.expect_validity_bound(0) == 0,
   }
+}
+
+// The adjacent invalid bound, `-2`, never reaches the predicate above: the body
+// decoders refuse it (`docs/spec/midgard-tx.md` §2.1).
+test native_v1_validity_bound_below_the_sentinel_is_not_decodable() fail {
+  native_codec.expect_validity_bound(-2) == -2
 }
 
 test purpose_kind_to_redeemer_pointer_mapping_is_exact() {

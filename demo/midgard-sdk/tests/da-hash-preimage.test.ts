@@ -1,4 +1,5 @@
 /** Cross-language vectors for the total Q44 source-leaf adjudicator. */
+import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -27,6 +28,29 @@ const COMPACT_CBOR =
 const WITNESS_SET_CBOR =
   "835820689afcab7a4406fa8da9a4f97b325f34458bd2114d6b2ae9eb357e681acc0e97582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0";
 const FIELD_LENGTHS_CBOR = "89182901183001190e8a01011931e601";
+
+/**
+ * `COMPACT_CBOR` with its validity bounds written raw, so a bound the encoder
+ * refuses still reaches the adjudicator. The honest `-1, -1` bounds are the
+ * `2020` after the fee `1a000d5949`.
+ */
+const HONEST_BOUNDS = "1a000d59492020";
+const compactWithRawBounds = (start: bigint, end: bigint): string => {
+  const offset = COMPACT_CBOR.indexOf(HONEST_BOUNDS) + 10;
+  return `${COMPACT_CBOR.slice(0, offset)}${encodeCbor(start).toString(
+    "hex",
+  )}${encodeCbor(end).toString("hex")}${COMPACT_CBOR.slice(offset + 4)}`;
+};
+
+/** The V1 body id read off the raw body bytes of `84 01 ‖ body ‖ wsh ‖ code`. */
+const rawBodyTxId = (compactHex: string): string =>
+  computeHash32(
+    Buffer.concat([
+      Buffer.from("MidgardNativeTxBodyV1", "ascii"),
+      encodeCbor(1n),
+      Buffer.from(compactHex.slice(4, -(2 * 35)), "hex"),
+    ]),
+  ).toString("hex");
 
 const source = (
   overrides: Partial<L2TransactionSource> = {},
@@ -141,6 +165,62 @@ describe("Q44 da-hash-preimage total source verdict", () => {
       embeddedTxId: FOREIGN_TX_ID,
       derivedTxId: VALID_TX_ID,
     });
+  });
+
+  // `docs/spec/midgard-tx.md` §2.1: a bound below the `-1` sentinel is not a
+  // decodable body, so committing one under the id its bytes derive is a
+  // malformed proof source. Twin of the Aiken
+  // `da_hash_preimage_step_01_*_validity_bound_*` tests.
+  it.each([
+    ["start", -5n, -1n],
+    ["start", -2n, -1n],
+    ["end", -1n, -2n],
+  ])(
+    "convicts a validity %s below the sentinel as a malformed proof source",
+    (_label, start, end) => {
+      const compactCbor = compactWithRawBounds(start, end);
+      const txId = rawBodyTxId(compactCbor);
+      expect(
+        adjudicateCommittedSourceLeaf({
+          committedTxId: txId,
+          committedLeafValue: sourceBytes(
+            source({
+              tx_id: txId,
+              source: { ...source().source, compact_cbor: compactCbor },
+            }),
+          ),
+        }).verdict,
+      ).toBe("MalformedProofSource");
+    },
+  );
+
+  it.each([
+    ["absent bounds", -1n, -1n],
+    ["a zero start", 0n, -1n],
+    ["a large end", 0n, 18_446_744_073_709_551_615n],
+  ])("does not convict %s", (_label, start, end) => {
+    const compactCbor = compactWithRawBounds(start, end);
+    const txId = rawBodyTxId(compactCbor);
+    expect(
+      adjudicateCommittedSourceLeaf({
+        committedTxId: txId,
+        committedLeafValue: sourceBytes(
+          source({
+            tx_id: txId,
+            source: { ...source().source, compact_cbor: compactCbor },
+          }),
+        ),
+      }),
+    ).toEqual({
+      verdict: "NoViolation",
+      embeddedTxId: txId,
+      derivedTxId: txId,
+    });
+  });
+
+  it("derives the pinned id from the raw body bytes", () => {
+    expect(rawBodyTxId(COMPACT_CBOR)).toBe(VALID_TX_ID);
+    expect(compactWithRawBounds(-1n, -1n)).toBe(COMPACT_CBOR);
   });
 
   it("marks exactly the four accusation verdicts as violations", () => {

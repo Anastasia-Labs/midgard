@@ -19,23 +19,23 @@
       ],
       "rows": {
         "tx_order_mint_material_at_the_aggregate_bound": {
-          "mem": 2321455,
-          "cpu": 897004072,
+          "mem": 2334851,
+          "cpu": 900019646,
           "basisFit": "within"
         },
         "tx_order_mint_material_fixture_only_at_the_aggregate_bound": {
-          "mem": 752998,
-          "cpu": 385805023,
+          "mem": 762662,
+          "cpu": 387932739,
           "basisFit": "within"
         },
         "tx_order_mint_material_at_two_hundred_fifty_variable_width_items": {
-          "mem": 7270694,
-          "cpu": 2230775804,
+          "mem": 7284090,
+          "cpu": 2233791378,
           "basisFit": "within"
         },
         "tx_order_mint_material_at_five_hundred_variable_width_items": {
-          "mem": 12611202,
-          "cpu": 3811579317,
+          "mem": 12624598,
+          "cpu": 3814594891,
           "basisFit": "within"
         }
       }

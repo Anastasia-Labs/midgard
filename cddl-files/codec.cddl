@@ -42,11 +42,16 @@
 ; - Variable-size proof-critical body fields are represented as
 ;   (hash, preimage_cbor) pairs in full transactions and as hashes in compact
 ;   transactions. Witness fields are represented the same way.
-; - validity_interval_start / validity_interval_end use -1 as "unbounded".
+; - validity_interval_start / validity_interval_end use -1 as "unbounded";
+;   otherwise a bound is a non-negative slot. A bound below -1 is not a
+;   decodable body (validity_bound below).
 ;   The interval is half-open, as Cardano's: start is inclusive and end is
 ;   exclusive. With both present, start >= end is malformed.
 
 midgard_tx_validity_code = 0 / 1 / 2 / 3 / 4 / 5
+
+; -1 is an absent bound; anything else is a slot.
+validity_bound = -1 / uint
 
 midgard_tx_compact_v1 =
   [ version_v1
@@ -60,8 +65,8 @@ midgard_tx_body_compact_v1 =
   , reference_inputs_hash : $hash32
   , outputs_hash : $hash32
   , fee : coin
-  , validity_interval_start : int
-  , validity_interval_end : int
+  , validity_interval_start : validity_bound
+  , validity_interval_end : validity_bound
   , required_observers_hash : $hash32
   , required_signers_hash : $hash32
   , mint_hash : $hash32
@@ -84,8 +89,8 @@ midgard_tx_body_full_v1 =
   , outputs_hash : $hash32
   , outputs_preimage_cbor : bytes
   , fee : coin
-  , validity_interval_start : int
-  , validity_interval_end : int
+  , validity_interval_start : validity_bound
+  , validity_interval_end : validity_bound
   , required_observers_hash : $hash32
   , required_observers_preimage_cbor : bytes
   , required_signers_hash : $hash32
