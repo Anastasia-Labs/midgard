@@ -68,3 +68,41 @@ export const classifyWithdrawal = ({
         new DatabaseError({ table: WithdrawalsDB.tableName, message, cause }),
     ),
   );
+
+/**
+ * Classifies a block's withdrawals in trace-step order. Each one is judged
+ * against the ledger the earlier payable withdrawals leave: a payable
+ * withdrawal deletes its outref, a non-payable one changes nothing, and the
+ * withdrawal phase runs before any other phase. A later withdrawal of an
+ * outref an earlier one drained finds no output, so it is
+ * `NonExistentWithdrawalUtxo`, which is what foreign replay derives.
+ */
+export const classifyWithdrawalsInOrder = ({
+  entries,
+  baseOutputs,
+}: {
+  readonly entries: readonly WithdrawalsDB.Entry[];
+  readonly baseOutputs: ReadonlyMap<string, Buffer>;
+}): Effect.Effect<readonly ClassifiedWithdrawal[], DatabaseError, never> =>
+  Effect.gen(function* () {
+    const drained = new Set<string>();
+    const classified: ClassifiedWithdrawal[] = [];
+    for (const entry of entries) {
+      const ledgerOutRef = yield* WithdrawalsDB.toLedgerOutRef(entry);
+      const ledgerOutRefHex = ledgerOutRef.toString("hex");
+      const output = drained.has(ledgerOutRefHex)
+        ? undefined
+        : baseOutputs.get(ledgerOutRefHex);
+      const withdrawal = yield* classifyWithdrawal({
+        entry,
+        ledgerOutRef,
+        ledgerOutput:
+          output === undefined
+            ? Option.none<Buffer>()
+            : Option.some(Buffer.from(output)),
+      });
+      if (withdrawal.shouldDeleteLedgerUtxo) drained.add(ledgerOutRefHex);
+      classified.push(withdrawal);
+    }
+    return classified;
+  });
