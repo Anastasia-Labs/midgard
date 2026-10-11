@@ -16,7 +16,7 @@ import { NATIVE_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 
 /**
  * Execution-cost pins copied from the family exec ledger (compiler fork
- * `aiken v1.1.23+5adf783`, remeasured 2026-10-04).
+ * `aiken v1.1.23+5adf783`, remeasured 2026-10-10).
  * The unit-test suite cross-checks every value here against the ledger JSON
  * itself, so a ledger re-pin that moves a number goes red here instead of
  * silently splitting the planner from the measurement.
@@ -42,13 +42,13 @@ export const NATIVE_SCRIPT_DECODING_EXEC_PINS = {
    * CPU envelope: the pinned direction-B terminal close — a complete fixture
    * step including its own fold, so conservative for the shorter partial row.
    */
-  scanStepEnvelopeCpuUnits: 1_601_119_850,
+  scanStepEnvelopeCpuUnits: 1_603_247_566,
   /** `advance_or_close_closes_a_direction_a_refusal`. */
-  verdictWrongfulAcceptance: { mem: 3_057_449, cpu: 1_281_816_002 },
+  verdictWrongfulAcceptance: { mem: 3_067_113, cpu: 1_283_943_718 },
   /** `advance_or_close_closes_direction_b_at_the_exact_terminal`. */
-  verdictWrongfulRejection: { mem: 3_928_785, cpu: 1_601_119_850 },
+  verdictWrongfulRejection: { mem: 3_938_449, cpu: 1_603_247_566 },
   /** `bind_descriptor_closes_a_non_native_direction_b_descriptor`. */
-  descriptorContradictionClose: { mem: 2_747_060, cpu: 1_113_171_850 },
+  descriptorContradictionClose: { mem: 2_756_724, cpu: 1_115_299_566 },
 } as const;
 
 /**
