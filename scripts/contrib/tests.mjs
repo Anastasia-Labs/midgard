@@ -1,5 +1,5 @@
-import { existsSync, realpathSync, readFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { existsSync, readdirSync, realpathSync, readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
@@ -59,24 +59,78 @@ const readsBlueprint = (root, name, seen = new Set()) => {
   );
 };
 
+/**
+ * The builds a package's `pretest` declares. The same script runs before
+ * `pnpm test` (CI) and is what this planner prepares, so it is the one place
+ * a package says which dists its suites execute. It must be an `&&` chain of
+ * `pnpm run build` (the package itself) and `pnpm --dir ../SIBLING run build`;
+ * any other step is refused rather than skipped, so a build the planner
+ * cannot see is never silently left out.
+ */
+export const pretestBuilds = (root, pkg) => {
+  const pretest = pkg.scripts?.pretest;
+  if (!pretest) return [];
+  return pretest.split("&&").map((step) => {
+    const [, directory] =
+      /^\s*pnpm(?: --dir (\.\.\/[\w.-]+))? run build\s*$/u.exec(step) ?? [];
+    if (directory === undefined && !/^\s*pnpm run build\s*$/u.test(step))
+      throw new Error(
+        `${pkg.name}: pretest step \`${step.trim()}\` is not \`pnpm run build\` or \`pnpm --dir ../SIBLING run build\`; contrib cannot tell what it prepares`,
+      );
+    return directory === undefined
+      ? pkg.name
+      : packageByName(root, resolve(pkg.directory, directory).split("/").at(-1))
+          .name;
+  });
+};
+
+/**
+ * The first test-side file of a package that spells a relative path into its
+ * own `dist/` (`"dist/cli.js"`, `"../dist/index.js"`), as a test that spawns
+ * the package's CLI or loads its compiled worker does. Comments are skipped.
+ * A path assembled from separate segments is not seen.
+ */
+export const testRunningOwnDist = (root, pkg) => {
+  const tests = resolve(root, pkg.directory, "tests");
+  if (!existsSync(tests)) return undefined;
+  const visit = (path) => {
+    for (const entry of readdirSync(path, { withFileTypes: true }).sort(
+      (a, b) => a.name.localeCompare(b.name, "en"),
+    )) {
+      if (entry.name === "node_modules") continue;
+      const child = join(path, entry.name);
+      const found = entry.isDirectory()
+        ? visit(child)
+        : /\.[cm]?[jt]s$/u.test(entry.name) &&
+          /(["'`])(?:\.\.?\/)*dist\/[^"'`\s]+\1/u.test(
+            readFileSync(child, "utf8")
+              .replace(/\/\*[\s\S]*?\*\//gu, "")
+              .replace(/(^|[^:])\/\/.*$/gmu, "$1"),
+          ) &&
+          relative(root, child);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return visit(tests);
+};
+
 export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
   const pkg = packageByName(root, name);
   const closure = packageClosure(root, pkg.name);
   const pretest = pkg.scripts?.pretest;
+  const declared = pretestBuilds(root, pkg);
+  const runner = testRunningOwnDist(root, pkg);
+  if (runner && !declared.includes(pkg.name))
+    throw new Error(
+      `${pkg.name}: ${runner} runs the package's own dist/, but its pretest does not build it; end the pretest with \`pnpm run build\``,
+    );
   const prerequisites = new Set();
   // Build core first: several plain-Node generators and tsup configs load it.
   if (!sourceOnly) {
     if (closure.some((dependency) => dependency.name === "@al-ft/midgard-core"))
       prerequisites.add("@al-ft/midgard-core");
-    for (const [, directory] of (pretest ?? "").matchAll(
-      /pnpm --dir (\.\.\/[^ ]+) run build/gu,
-    )) {
-      prerequisites.add(
-        packageByName(root, resolve(pkg.directory, directory).split("/").at(-1))
-          .name,
-      );
-    }
-    if (pretest?.includes("pnpm run build")) prerequisites.add(pkg.name);
+    for (const build of declared) prerequisites.add(build);
   }
   const ordered = [
     ...new Set(

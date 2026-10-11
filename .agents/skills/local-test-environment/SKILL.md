@@ -83,12 +83,14 @@ export condition, and a single run bundles that source ([the workspace
 bundle](references/running-suites.md#the-workspace-bundle)). Plain `node`
 follows the `import` condition to `dist/`, so code run outside vitest needs it.
 
-`contrib prepare` expands declared pretest builds and their runtime dependency
-closure in order. Node suites need their bundled workers; tooling also needs
-plain-Node imports. `contrib test` owns these artifacts until the run joins.
+`contrib prepare` builds what each `pretest` declares (`pnpm run build`,
+`pnpm --dir ../SIBLING run build`; any other step is refused) and their runtime
+closure, in order. `contrib test` owns these artifacts until the run joins.
 
-- **A raw `vitest run` skips `pretest`.** `contrib test` rebuilds stale
-  compiled consumers before execution. [script: scripts/contrib.mjs]
+- **A raw `vitest run` skips `pretest`.** `contrib test` rebuilds each stale
+  declared dist, by digest, and nothing undeclared. A test spelling a relative
+  path into its own package's `dist/` makes the run refuse until `pretest`
+  ends with `pnpm run build` (blind spot: a path joined from segments). [script: scripts/contrib/tests.mjs]
 - **Build dist in each checkout; never copy it from another.** Guarded stamps
   authenticate checkout, source closure and emitted dependencies. [script: scripts/contrib/build.mjs]
 

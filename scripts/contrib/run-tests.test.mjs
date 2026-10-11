@@ -8,7 +8,13 @@ import { HELP, parse } from "../contrib.mjs";
 import { packageNeedsPostgres } from "../preflight/derive.mjs";
 import { atomicJson, workspacePackages } from "./files.mjs";
 import { fixture } from "./fixture.test-support.mjs";
-import { runTests, testCommand } from "./tests.mjs";
+import {
+  preparationPlan,
+  pretestBuilds,
+  runTests,
+  testCommand,
+  testRunningOwnDist,
+} from "./tests.mjs";
 import {
   failures,
   parseTestScript,
@@ -50,6 +56,67 @@ test("every package whose suites read the test Postgres is known to need it", ()
   ])
     assert.equal(needs[name], true, name);
   assert.equal(needs["@al-ft/midgard-core"], false);
+});
+
+test("a package whose tests run its own dist plans that dist as a prerequisite", () => {
+  // devnet-stack-acceptance-cli spawns dist/devnet-stack.js; the plan once
+  // built only the package's dependencies, so a focused run used a stale or
+  // missing dist.
+  const plan = preparationPlan(repository, "midgard-node-tools");
+  assert.ok(
+    plan.prerequisites.some(({ name }) => name === "midgard-node-tools"),
+    plan.prerequisites.map(({ name }) => name).join(", "),
+  );
+});
+
+test("every package whose tests run its own dist declares that build in its pretest", () => {
+  // `pnpm test` (CI) runs the pretest and contrib prepares what it declares,
+  // so the declaration must cover every dist the suites execute.
+  const runners = workspacePackages(repository).filter((pkg) =>
+    testRunningOwnDist(repository, pkg),
+  );
+  assert.deepEqual(runners.map(({ name }) => name).sort(), [
+    "midgard-node",
+    "midgard-node-tools",
+  ]);
+  for (const pkg of runners)
+    assert.ok(pretestBuilds(repository, pkg).includes(pkg.name), pkg.name);
+});
+
+test("a pretest step contrib cannot read is refused, and an undeclared own-dist runner stops the plan", (t) => {
+  const root = realpathSync(fixture(t));
+  const pkg = (pretest) => ({
+    name: "example",
+    directory: "demo/example",
+    scripts: { pretest },
+  });
+  assert.deepEqual(pretestBuilds(root, pkg("pnpm run build")), ["example"]);
+  assert.throws(
+    () => pretestBuilds(root, pkg("pnpm run build && tsc --noEmit")),
+    /pretest step `tsc --noEmit` is not/u,
+  );
+  assert.throws(
+    () => pretestBuilds(root, pkg("pnpm run build:all")),
+    /pretest step `pnpm run build:all` is not/u,
+  );
+  mkdirSync(resolve(root, "demo/example/tests"));
+  writeFileSync(
+    resolve(root, "demo/example/tests/notes.test.ts"),
+    '// spawns "dist/cli.js"\n/* "../dist/cli.js" */\nconst fake = "/repo/dist/cli.js";\n',
+  );
+  assert.equal(testRunningOwnDist(root, pkg()), undefined);
+  writeFileSync(
+    resolve(root, "demo/example/tests/cli.test.ts"),
+    'spawnSync(process.execPath, [resolve("dist/cli.js")]);\n',
+  );
+  assert.equal(
+    testRunningOwnDist(root, pkg()),
+    "demo/example/tests/cli.test.ts",
+  );
+  assert.throws(
+    () => preparationPlan(root, "example"),
+    /tests\/cli\.test\.ts runs the package's own dist\/, but its pretest does not build it/u,
+  );
 });
 
 test("a test script's environment, flags and preludes are read, quotes and all", () => {
