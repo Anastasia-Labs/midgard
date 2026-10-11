@@ -604,6 +604,9 @@ importers:
       '@aiken-lang/merkle-patricia-forestry':
         specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
         version: file:vendor/mpf-1.3.1-midgard.1.tgz
+      '@al-ft/l1-node-transport':
+        specifier: workspace:*
+        version: link:../l1-node-transport
       '@al-ft/lucid-midgard':
         specifier: workspace:*
         version: link:../lucid-midgard
@@ -751,6 +754,9 @@ importers:
       midgard-node:
         specifier: workspace:*
         version: link:../midgard-node
+      midgard-watcher:
+        specifier: workspace:^
+        version: link:../midgard-watcher
       postgres:
         specifier: 3.4.9
         version: 3.4.9(patch_hash=qmksmaj6uqhpu6mepouu5f27me)
@@ -758,9 +764,6 @@ importers:
         specifier: ^7.25.0
         version: 7.25.0
     devDependencies:
-      '@al-ft/l1-node-transport':
-        specifier: workspace:*
-        version: link:../l1-node-transport
       '@al-ft/midgard-test-support':
         specifier: workspace:*
         version: link:../midgard-test-support
@@ -773,9 +776,6 @@ importers:
       da-committee-node:
         specifier: workspace:*
         version: link:../da-committee-node
-      midgard-watcher:
-        specifier: workspace:^
-        version: link:../midgard-watcher
       prettier:
         specifier: ^3.5.2
         version: 3.5.2

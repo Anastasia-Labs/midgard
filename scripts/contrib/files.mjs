@@ -216,6 +216,30 @@ export const packageClosure = (root, name) => {
   return [...found.values()];
 };
 
+// The workspace packages a build keeps out of its bundle: named in a tsup
+// config's `external` list or by a `--external` flag. Blind spot: a name
+// computed rather than spelled.
+const externalWorkspacePackages = (root, pkg, packages) => {
+  const lists = [
+    ...buildConfigText(root, pkg).matchAll(/\bexternal\s*:\s*\[([^\]]*)\]/gu),
+    ...(pkg.scripts?.["build:contrib-raw"] ?? "").matchAll(
+      /--external[ =](\S+)/gu,
+    ),
+  ]
+    .map(([, list]) => list.replaceAll("\\", ""))
+    .join("\n");
+  return packages
+    .map((entry) => entry.name)
+    .filter(
+      (name) =>
+        name !== pkg.name &&
+        new RegExp(
+          `(?<![\\w@/-])${name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?![\\w-])`,
+          "u",
+        ).test(lists),
+    );
+};
+
 // Runtime imports consume emitted workspace artifacts. Unlike the source
 // closure, their dependency graph must be acyclic and built in dependency order.
 export const runtimeBuildClosure = (root, name) => {
@@ -227,6 +251,11 @@ export const runtimeBuildClosure = (root, name) => {
     if (visited.has(pkg.name)) return;
     if (visiting.has(pkg.name))
       throw new Error(`runtime build dependency cycle at ${pkg.name}`);
+    for (const external of externalWorkspacePackages(root, pkg, packages))
+      if (!pkg.dependencies?.[external])
+        throw new Error(
+          `${pkg.name}: its build keeps ${external} external, so its dist imports ${external}'s dist at runtime, but ${external} is not in its dependencies; move it there so that dist is built first`,
+        );
     visiting.add(pkg.name);
     for (const dependency of Object.keys(pkg.dependencies ?? {}).sort()) {
       const next = packages.find((entry) => entry.name === dependency);
