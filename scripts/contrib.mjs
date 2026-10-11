@@ -48,6 +48,7 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs native --package NAME
   node scripts/contrib.mjs test --package NAME [--file PATH... | --related PATH...] [--name REGEX]
       [--seed N] [--source-only] [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
+      [--config FILE (with --file)]
   node scripts/contrib.mjs mutate --target PATH --from TEXT --to TEXT [--package NAME]
       [--file TEST...] [--name REGEX] [--expect REGEX] [--seed N]
   node scripts/contrib.mjs mutate restore
@@ -164,6 +165,7 @@ const valueOptions = new Set([
   "branch",
   "maxWorkers",
   "exclude",
+  "config",
   "target",
   "from",
   "to",
@@ -181,7 +183,12 @@ const flagOptions = new Set([
   "disableConsoleIntercept",
 ]);
 // Vitest's own flags, passed through `contrib test` under Vitest's spelling.
-const vitestOptions = ["maxWorkers", "exclude", "disableConsoleIntercept"];
+const vitestOptions = [
+  "maxWorkers",
+  "exclude",
+  "disableConsoleIntercept",
+  "config",
+];
 // Options that may repeat or list several values, and where each collects.
 const listOptions = { file: "files", related: "related", exclude: "excludes" };
 export const parse = (argv) => {
@@ -363,6 +370,7 @@ export const main = async (argv) => {
         related: options.related,
         testName: options.name,
         flags: {
+          config: options.config,
           maxWorkers: options.maxWorkers,
           exclude: options.excludes,
           disableConsoleIntercept: options.disableConsoleIntercept,

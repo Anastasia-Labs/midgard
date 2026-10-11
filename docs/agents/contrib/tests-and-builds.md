@@ -7,6 +7,8 @@ node scripts/contrib.mjs test --package midgard-node --file tests/validation-wor
 node scripts/contrib.mjs test --package midgard-node --file tests/database.test.ts --seed 42
 node scripts/contrib.mjs test --package midgard-watcher --maxWorkers 2
 node scripts/contrib.mjs test --package midgard-node --related demo/midgard-core/src/canonical-json.ts
+node scripts/contrib.mjs test --package midgard-node-tools --config vitest.watcher-journeys.config.ts \
+  --file devnet/watcher-journeys/catalogue.test.ts
 node scripts/contrib.mjs build --package midgard-sdk
 node scripts/contrib.mjs native --package midgard-node
 node scripts/contrib.mjs boundary --package midgard-core
@@ -18,8 +20,11 @@ sets (`NODE_ENV=emulator` for node and node-tools, `NODE_ENV=test` where it
 sets none), its Vitest flags and, for a whole-package run without `--name`, its
 plain-Node preludes (`scripts/contrib/vitest-command.mjs`). A script flag the
 runner does not understand is refused, not dropped. The caller may add only
-Vitest's `--maxWorkers N`, `--exclude GLOB` (repeatable) and
-`--disableConsoleIntercept`, spelled as Vitest spells them.
+Vitest's `--maxWorkers N`, `--exclude GLOB` (repeatable),
+`--disableConsoleIntercept` and `--config FILE`, spelled as Vitest spells them.
+`--config` names another Vitest config in the package directory, for files the
+default config leaves out (the watcher journeys, some of which need a live
+devnet); it runs only the files `--file` names.
 
 `--file` takes package-relative test paths; without one, the run is the whole
 package. Before running, `vitest list` collects the files with the same

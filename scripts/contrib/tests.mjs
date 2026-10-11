@@ -211,6 +211,19 @@ export const runTests = async (
   const cwd = resolve(root, pkg.directory);
   if (related.length && files.length)
     throw new Error("--related and --file are exclusive");
+  // Another config is for a selection the default run leaves out on purpose
+  // (the watcher journeys, some of which need a live devnet): name its files.
+  if (flags.config !== undefined) {
+    if (
+      !/^vitest\.[\w-]+\.config\.[cm]?[jt]s$/u.test(flags.config) ||
+      !existsSync(resolve(cwd, flags.config))
+    )
+      throw new Error(
+        `--config takes a Vitest config file in ${pkg.directory}, such as vitest.watcher-journeys.config.ts: ${flags.config}`,
+      );
+    if (!files.length)
+      throw new Error("--config runs only the files --file names");
+  }
   for (const file of files) {
     const absolute = inside(cwd, file);
     if (!existsSync(absolute) || !/\.test\.[cm]?[jt]sx?$/u.test(file))

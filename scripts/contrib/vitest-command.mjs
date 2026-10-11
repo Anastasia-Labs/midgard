@@ -5,8 +5,11 @@ import { relative } from "node:path";
 // exports, the flags it passes Vitest and the plain-Node preludes it runs
 // first all come from the script itself. Only the Vitest flags below are
 // understood; any other flag in a script is refused rather than dropped.
+// `--config` selects one of the package's other Vitest configs (the watcher
+// journeys' `vitest.watcher-journeys.config.ts`), whose files the default
+// config does not collect.
 
-const VALUE_FLAGS = new Set(["exclude", "maxWorkers"]);
+const VALUE_FLAGS = new Set(["config", "exclude", "maxWorkers"]);
 const BOOLEAN_FLAGS = new Set(["disableConsoleIntercept"]);
 
 /** The flags a caller may add: Vitest's own spellings, nothing else. */
@@ -31,6 +34,7 @@ const assignment = (word) => {
 export const parseTestScript = (script) => {
   const command = {
     env: {},
+    config: undefined,
     exclude: [],
     maxWorkers: undefined,
     disableConsoleIntercept: false,
@@ -86,6 +90,7 @@ export const parseTestScript = (script) => {
 /** The script's command with the caller's flags added. */
 export const withCallerFlags = (command, flags = {}) => ({
   ...command,
+  config: flags.config ?? command.config,
   exclude: [...command.exclude, ...(flags.exclude ?? [])],
   maxWorkers: flags.maxWorkers ?? command.maxWorkers,
   disableConsoleIntercept:
@@ -94,6 +99,7 @@ export const withCallerFlags = (command, flags = {}) => ({
 
 /** Vitest argv flags for a command, in the `--flag=value` form. */
 export const vitestFlags = (command) => [
+  ...(command.config === undefined ? [] : [`--config=${command.config}`]),
   ...command.exclude.map((glob) => `--exclude=${glob}`),
   ...(command.maxWorkers === undefined
     ? []

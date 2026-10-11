@@ -59,6 +59,7 @@ test("a test script's environment, flags and preludes are read, quotes and all",
     ),
     {
       env: { NODE_ENV: "emulator" },
+      config: undefined,
       exclude: [],
       maxWorkers: undefined,
       disableConsoleIntercept: true,
@@ -205,8 +206,8 @@ test("the failure summary names each failed test and each file that failed to lo
   ]);
 });
 
-// A stand-in Vitest: `list` collects tests/*.test.ts under the file filters
-// and --exclude globs; `run` records what it was given, whether the
+// A stand-in Vitest: `list` collects tests/*.test.ts (journeys/*.test.ts
+// under any --config) under the file filters and --exclude globs; `run` records what it was given, whether the
 // checkout's workspace lease was held, and reports one test per file
 // (failing where the file says FAIL).
 const fakeVitest = `
@@ -217,7 +218,8 @@ const [mode, ...rest] = process.argv.slice(2);
 const value = (name) => rest.filter((arg) => arg.startsWith('--' + name + '=')).map((arg) => arg.slice(name.length + 3));
 const glob = (pattern) => new RegExp('^' + pattern.replace(/[.+?^$()|[\\]\\\\]/g, '\\\\$&').replace(/\\*\\*/g, '\\0').replace(/\\*/g, '[^/]*').replace(/\\0/g, '.*') + '$');
 const filters = rest.filter((arg) => arg.endsWith('.test.ts'));
-const collected = readdirSync('tests').map((name) => 'tests/' + name)
+const directory = value('config').length ? 'journeys' : 'tests';
+const collected = readdirSync(directory).map((name) => directory + '/' + name)
   .filter((file) => !filters.length || filters.some((filter) => file.includes(filter)))
   .filter((file) => !value('exclude').some((pattern) => glob(pattern).test(file)));
 if (mode === 'list') {
@@ -496,4 +498,59 @@ test("--related is a test option, exclusive with --file", async (t) => {
     /exclusive/u,
   );
   assert.deepEqual(calls(), []);
+});
+
+test("--config runs named files of another package config, and only named files", async (t) => {
+  const { root, env, calls } = workspace(
+    t,
+    "export NODE_ENV='emulator' && vitest run",
+    { "a.test.ts": "" },
+  );
+  mkdirSync(resolve(root, "demo/example/journeys"));
+  writeFileSync(resolve(root, "demo/example/journeys/j.test.ts"), "");
+  writeFileSync(resolve(root, "demo/example/vitest.journeys.config.ts"), "");
+  const config = "vitest.journeys.config.ts";
+  await assert.rejects(
+    runTests(root, "example", {
+      files: ["journeys/j.test.ts"],
+      sourceOnly: true,
+      env,
+    }),
+    /does not collect journeys\/j\.test\.ts/u,
+  );
+  await assert.rejects(
+    runTests(root, "example", { sourceOnly: true, env, flags: { config } }),
+    /--config runs only the files --file names/u,
+  );
+  for (const wrong of ["../vitest.journeys.config.ts", "vitest.gone.config.ts"])
+    await assert.rejects(
+      runTests(root, "example", {
+        files: ["journeys/j.test.ts"],
+        sourceOnly: true,
+        env,
+        flags: { config: wrong },
+      }),
+      /--config takes a Vitest config file in demo\/example/u,
+    );
+  assert.deepEqual(calls(), []);
+  const receipt = await runTests(root, "example", {
+    files: ["journeys/j.test.ts"],
+    sourceOnly: true,
+    env,
+    flags: { config },
+  });
+  assert.equal(receipt.status, "passed", receipt.reason ?? receipt.reportError);
+  assert.deepEqual(receipt.selectedFiles, [
+    resolve(root, "demo/example/journeys/j.test.ts"),
+  ]);
+  assert.deepEqual(receipt.flags, [`--config=${config}`]);
+  const [run, ...rest] = calls();
+  assert.deepEqual(rest, []);
+  assert.ok(run.vitest.includes(`--config=${config}`), run.vitest.join(" "));
+  assert.equal(run.NODE_ENV, "emulator");
+  assert.equal(parse(["test", "--config", config]).config, config);
+  assert.throws(
+    () => parse(["test", "--config", config, "--config", config]),
+    /duplicate --config/u,
+  );
 });
