@@ -15,7 +15,7 @@ import { constants as osConstants } from "node:os";
 
 import { NodeRuntime } from "@effect/platform-node";
 import { getAddressDetails, type Network } from "@lucid-evolution/lucid";
-import { Cause, Effect, Exit, pipe } from "effect";
+import { Cause, Effect, Exit, Logger, pipe } from "effect";
 
 import type { E2EEnvInheritance } from "../e2e/env.js";
 import * as Services from "../services/index.js";
@@ -149,6 +149,13 @@ export const cliExitCode = (
   return 1;
 };
 
+// Effect's default lines, written to stderr: a command's stdout carries only
+// its result (`writeJson`), so it can be piped to a parser.
+const stderrLogger = Logger.replace(
+  Logger.defaultLogger,
+  Logger.withConsoleError(Logger.stringLogger),
+);
+
 export const runCliEffect = <A, E>(
   effect: Effect.Effect<A, E, never>,
 ): void => {
@@ -158,10 +165,16 @@ export const runCliEffect = <A, E>(
   };
   process.once("SIGINT", record);
   process.once("SIGTERM", record);
-  NodeRuntime.runMain(effect, {
+  // The failure report runMain would add sits outside this logger, on
+  // stdout; this one is runMain's, inside it.
+  const reported = Effect.tapErrorCause(effect, (cause) =>
+    Cause.isInterruptedOnly(cause) ? Effect.void : Effect.logError(cause),
+  );
+  NodeRuntime.runMain(Effect.provide(reported, stderrLogger), {
     // Keep Effect's logfmt logger, which worker threads also use: its UTC
     // timestamp carries the date, where the pretty one is local time only.
     disablePrettyLogger: true,
+    disableErrorReporting: true,
     teardown: (exit, onExit) => onExit(cliExitCode(exit, signal)),
   });
 };
