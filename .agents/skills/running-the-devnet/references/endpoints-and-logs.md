@@ -155,6 +155,10 @@ deadline:
   deployment manifest does not match the deployment, cannot be read or
   verified, or is not configured though the deployment is complete. Fix the
   manifest path or the deployment configuration.
+- `l1_slot_config_mismatch` (a `failedReason`): the L1 node's slot mapping
+  differs from the one the deployment's scripts were built with (the
+  manifest's `l1SlotConfig`, or the named network's Shelley constants).
+  Point the node at the deployment's network, or deploy for this one.
 - `protocol_deployment_partial` (a `failedReason`): some, not all, of the
   protocol deployment is on chain. Finish the deployment.
 - `availability_reward_account_unregistered` (a `failedReason`): an
