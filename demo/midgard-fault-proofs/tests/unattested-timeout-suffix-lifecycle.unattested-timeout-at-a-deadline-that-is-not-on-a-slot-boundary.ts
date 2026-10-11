@@ -74,6 +74,34 @@ describe("real unattested timeout suffix lifecycle", () => {
     expect((await f.lucid.utxosAt(f.config.stateQueueAddress)).length).toBe(2);
   }, 120_000);
 
+  it("tops up a lock funded only for Idle when the correction locks it", async () => {
+    const f = await setup(1, false, { lockAtIdleMinimum: true });
+    const idleLock = await f.one(f.lockUnit);
+    await f.submit(
+      SDK.incompletePruneUnattestedBlockDescendantTxProgram(f.lucid, f.config, {
+        ...(await f.common()),
+        predecessorRefInput: await f.node(f.hashes[0]!),
+        removedDescendantUTxO: await f.node(f.hashes[2]!),
+      }),
+    );
+    const lockedLock = await f.one(f.lockUnit);
+    expect(Data.from(lockedLock.datum!, SDK.CorrectionLockDatum)).toEqual({
+      Locked: {
+        target_header_hash: f.hashes[1],
+        correction_identity: "AttestationTimeout",
+      },
+    });
+    expect(lockedLock.assets.lovelace).toBeGreaterThan(
+      idleLock.assets.lovelace!,
+    );
+    await f.submit(await f.terminal());
+    const releasedLock = await f.one(f.lockUnit);
+    expect(Data.from(releasedLock.datum!, SDK.CorrectionLockDatum)).toBe(
+      "Idle",
+    );
+    expect(releasedLock.assets).toEqual(lockedLock.assets);
+  }, 120_000);
+
   it("refuses premature and already-attested targets in the applied validators", async () => {
     const premature = await setup(0);
     const deadline =
