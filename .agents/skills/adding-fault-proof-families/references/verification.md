@@ -80,32 +80,35 @@ node scripts/contrib.mjs test --package midgard-node --file tests/da-deployment-
 The fixture lands in
 `demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json`.
 
-## 6. Devnet journey counts (no CI job runs this)
+## 6. Devnet journey counts
 
 ```bash
-pnpm --dir demo/midgard-node-tools exec vitest run --config vitest.watcher-journeys.config.ts devnet/watcher-journeys/catalogue.test.ts
+node scripts/contrib.mjs test --package midgard-node-tools \
+  --config vitest.watcher-journeys.config.ts --file devnet/watcher-journeys/catalogue.test.ts
 ```
 
-Name the file. The same config includes every `devnet/watcher-journeys`
-test, including the `*-live.test.ts` files, with a one-hour timeout.
-As of 2026-09-25 the catalogue file ran 10 tests in about 17 seconds.
+The journeys config includes every `devnet/watcher-journeys` test, including
+the `*-live.test.ts` files, with a one-hour timeout, so contrib runs only the
+files `--file` names. As of 2026-09-25 the catalogue file ran 10 tests in about
+17 seconds.
 
 ## 7. What CI runs
 
-| CI step                                                               | Covers                                         |
-| --------------------------------------------------------------------- | ---------------------------------------------- |
-| Aiken CI / Compile and run the Aiken test suite with the pinned fork  | every Aiken test                               |
-| Aiken CI / Run normalized Aiken auto-formatter check                  | `aiken fmt`                                    |
-| Midgard Node CI / Build testnet Aiken blueprint                       | `plutus.json` for later steps                  |
-| Midgard Node CI / Build and test Midgard core DA transport            | core identity tables                           |
-| Midgard Node CI / Build, typecheck, and test Midgard SDK              | catalogue, token names, contract chain         |
-| Midgard Node CI / Typecheck fault-proof tooling                       | registry category coverage                     |
-| Midgard Node CI / Test fault-proof tooling                            | registry, classification, adapters, lifecycles |
-| Midgard Node CI / Verify DA committee transport and admission         | DA fixture helper                              |
-| Midgard Node CI / Test Midgard watcher                                | watcher deployment identity                    |
-| Midgard Node CI / Typecheck Midgard node                              | node category tables                           |
-| Midgard Node CI / Test Midgard node                                   | role mirror, DA fixture drift                  |
-| Midgard Node CI / Typecheck, lint, build, and test Midgard node tools | journey owner entry (not the count test)       |
+| CI step                                                              | Covers                                         |
+| -------------------------------------------------------------------- | ---------------------------------------------- |
+| Aiken CI / Compile and run the Aiken test suite with the pinned fork | every Aiken test                               |
+| Aiken CI / Run normalized Aiken auto-formatter check                 | `aiken fmt`                                    |
+| Midgard Node CI / Build testnet Aiken blueprint                      | `plutus.json` for later steps                  |
+| Midgard Node CI / Build and test Midgard core DA transport           | core identity tables                           |
+| Midgard Node CI / Build, typecheck, and test Midgard SDK             | catalogue, token names, contract chain         |
+| Midgard Node CI / Typecheck fault-proof tooling                      | registry category coverage                     |
+| Midgard Node CI / Test fault-proof tooling                           | registry, classification, adapters, lifecycles |
+| Midgard Node CI / Verify DA committee transport and admission        | DA fixture helper                              |
+| Midgard Node CI / Test Midgard watcher                               | watcher deployment identity                    |
+| Midgard Node CI / Typecheck Midgard node                             | node category tables                           |
+| Midgard Node CI / Test Midgard node                                  | role mirror, DA fixture drift                  |
+| Midgard Node CI / Typecheck, build, and test Midgard node tools      | journey owner entry (not the count test)       |
+| Midgard Node CI / Test the watcher journeys that need no devnet      | the journey count test                         |
 
 Report which of these you ran locally, with their pass counts, and which you
 left to CI.

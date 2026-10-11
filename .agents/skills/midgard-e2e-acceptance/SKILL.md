@@ -121,12 +121,12 @@ pnpm run test:tx-prep:node
 pnpm run test:tx-prep:emulator
 ```
 
-For changes to the stack harness itself, run its focused tests:
+For changes to the stack harness itself, run its focused tests (they need the
+local test Postgres):
 
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-MIDGARD_SKIP_DB_TESTS=1 pnpm --dir "$REPO_ROOT/demo/midgard-node-tools" \
-  exec vitest run tests/full-stack
+cd "$(git rev-parse --show-toplevel)/demo/midgard-node-tools"
+node ../../scripts/contrib.mjs test --package midgard-node-tools --file tests/full-stack*.test.ts
 ```
 
 If a live run finds a deterministic defect, stop repeated live runs. Add a

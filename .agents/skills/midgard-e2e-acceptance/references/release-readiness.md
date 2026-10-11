@@ -91,10 +91,8 @@ The deterministic parser and gate rehearsal submits nothing and touches no
 deployment. Run it when the finalizer or state-correction sources change:
 
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT/demo/midgard-node-tools"
-NODE_ENV=emulator pnpm exec vitest run \
-  tests/e2e-state-correction-acceptance.test.ts \
+node scripts/contrib.mjs test --package midgard-node-tools \
+  --file tests/e2e-state-correction-acceptance.test.ts \
   tests/e2e-state-correction-reconciliation.test.ts \
   tests/e2e-state-correction-local-authority.test.ts
 ```
@@ -103,6 +101,7 @@ To re-derive a completed run, build the tooling and point the finalizer at
 the stack configuration. `--stack-config` must be an absolute path:
 
 ```bash
+REPO_ROOT="$(git rev-parse --show-toplevel)"
 pnpm --dir "$REPO_ROOT/demo/midgard-node-tools" run build
 cd "$REPO_ROOT"
 node demo/midgard-node-tools/dist/index.js e2e-finalize-summary \
