@@ -32,7 +32,6 @@
  * the host until `restore`. No emulator internals other than the ledger, the
  * transaction history and the reward-account chain are read.
  */
-import type { L1NodeTransport } from "@al-ft/l1-node-transport";
 import { type FactStore, mergeTrackedSets } from "@al-ft/midgard-l1-follower";
 import { Emulator } from "@lucid-evolution/lucid";
 
@@ -147,7 +146,7 @@ export const installFollowerEmulator = (): FollowerEmulatorInstallation => {
     });
     const provider = new NodeL1Provider({
       store,
-      transport: transport as unknown as L1NodeTransport,
+      transport,
       wallets: followerHostWallets(),
       awaitTxTimeoutMs: AWAIT_TX_TIMEOUT_MS,
     });

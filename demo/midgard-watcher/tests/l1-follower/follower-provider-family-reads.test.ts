@@ -14,7 +14,7 @@
  * a tracked-scope read never reaches it. Both reads follow the store
  * through a rewind.
  */
-import type { L1NodeTransport } from "@al-ft/l1-node-transport";
+import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
@@ -142,8 +142,8 @@ const transitionBinding = (headerHash: string) =>
 /** The node: every query is recorded; only `protocol_params` is ever answered. */
 const nodeDouble = () => {
   const queries: string[] = [];
-  const transport = {
-    query: async (query: { query: string }) => {
+  const transport = fakeL1NodeTransport({
+    query: async (query) => {
       queries.push(query.query);
       throw new Error(`the node was asked ${query.query}`);
     },
@@ -151,7 +151,7 @@ const nodeDouble = () => {
       throw new Error("the node was asked to submit");
     },
     hasTx: async () => false,
-  } as unknown as L1NodeTransport;
+  });
   return { transport, queries };
 };
 

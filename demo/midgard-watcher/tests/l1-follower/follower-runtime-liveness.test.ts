@@ -4,7 +4,7 @@
  * and a follow loop that throws is named in readiness and not restarted: a
  * throw is a defect, not a transient failure.
  */
-import type { L1NodeTransport } from "@al-ft/l1-node-transport";
+import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import type { FollowStatus } from "@al-ft/midgard-l1-follower";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -106,9 +106,9 @@ const open = (origin: boolean) =>
     },
     walletAddresses: [],
     eventProjection: { networkId: 0, lists: [] },
-    unsafeTransportForTest: {
+    unsafeTransportForTest: fakeL1NodeTransport({
       close: async () => undefined,
-    } as unknown as L1NodeTransport,
+    }),
   });
 
 const reasons = async (follower: ReturnType<typeof open>) =>

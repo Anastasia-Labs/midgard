@@ -11,6 +11,7 @@ import {
   type LedgerStateSession,
   TransportRequestError,
 } from "@al-ft/l1-node-transport";
+import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import {
   credentialToAddress,
   generateSeedPhrase,
@@ -162,7 +163,7 @@ class StubNode {
       const state = snapshot;
       return await use({ query: async (query) => this.answer(state, query) });
     };
-    return {
+    return fakeL1NodeTransport({
       withLedgerState,
       query: (query: LedgerQuery) =>
         withLedgerState("tip", (session) => session.query(query)),
@@ -171,7 +172,7 @@ class StubNode {
         return { accepted: true };
       },
       hasTx: async (txId: string) => this.mempool.has(txId),
-    } as unknown as L1NodeTransport;
+    });
   }
 }
 

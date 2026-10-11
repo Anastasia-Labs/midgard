@@ -6,6 +6,7 @@ import {
   type L1NodeTransport,
   TransportTimeoutError,
 } from "@al-ft/l1-node-transport";
+import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import {
   CML,
   credentialToAddress,
@@ -409,10 +410,11 @@ describe.each(providerAdapters(databases, scratch))(
       const txHash = CML.hash_transaction(
         CML.TransactionBody.from_cbor_bytes(BODY),
       ).to_hex();
-      // The accepting transport, but its submit is never answered.
-      const silent = Object.create(accepting) as L1NodeTransport;
-      silent.submit = () =>
-        Promise.reject(new TransportTimeoutError("submit had no answer"));
+      // A transport whose submit is never answered.
+      const silent = fakeL1NodeTransport({
+        submit: () =>
+          Promise.reject(new TransportTimeoutError("submit had no answer")),
+      });
       await expect(
         new L1FollowerProvider({ store, transport: silent }).submitTx(
           hex(SMALL_TX),

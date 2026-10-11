@@ -10,6 +10,7 @@ import type {
   ChainSyncStream,
   L1NodeTransport,
 } from "@al-ft/l1-node-transport";
+import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import {
   decodeBlock,
   type FactStore,
@@ -212,7 +213,7 @@ export const scriptedTransport = (
   events: readonly ChainSyncEvent[],
   state: { acked: number },
 ): L1NodeTransport =>
-  ({
+  fakeL1NodeTransport({
     openChainSync: (): ChainSyncStream => {
       let position = state.acked;
       let closed = false;
@@ -235,12 +236,10 @@ export const scriptedTransport = (
         },
       } as unknown as ChainSyncStream;
     },
-    withLedgerState: (
-      _at: unknown,
-      use: (session: { query: () => Promise<Uint8Array> }) => unknown,
-    ) => use({ query: () => Promise.resolve(encodeUtxoAnswer([ONE_SHOT])) }),
+    withLedgerState: (_at, use) =>
+      use({ query: () => Promise.resolve(encodeUtxoAnswer([ONE_SHOT])) }),
     // The scripted node is always reachable: no readiness change to report.
     readiness: { ready: true, nodeToClientVersion: 32784 },
-    onReadiness: (): (() => void) => () => undefined,
+    onReadiness: () => () => undefined,
     close: () => Promise.resolve(),
-  }) as unknown as L1NodeTransport;
+  });

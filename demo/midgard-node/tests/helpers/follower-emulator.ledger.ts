@@ -8,8 +8,10 @@ import {
   CborMap,
   CborTag,
   encodeCbor,
+  type L1NodeTransport,
   type LedgerQuery,
 } from "@al-ft/l1-node-transport";
+import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import {
   encodeCborArrayRaw,
   encodeCborBytes,
@@ -263,7 +265,7 @@ export const emulatorNodeTransport = ({
     Object.values(state.ledger).flatMap(({ utxo, spent }) =>
       spent ? [] : [utxo],
     );
-  const transport = {
+  const transport: L1NodeTransport = fakeL1NodeTransport({
     get readiness() {
       return { ready: true as const, nodeToClientVersion: 16 };
     },
@@ -360,12 +362,8 @@ export const emulatorNodeTransport = ({
           throw new Error(`the emulator's node was asked ${query.query}`);
       }
     },
-    withLedgerState: async <T>(
-      _at: unknown,
-      use: (session: {
-        query: (query: LedgerQuery) => Promise<Uint8Array>;
-      }) => Promise<T>,
-    ): Promise<T> => use({ query: (query) => transport.query(query) }),
+    withLedgerState: async (_at, use) =>
+      use({ query: (query) => transport.query(query) }),
     submit: async (bytes: Uint8Array) => {
       const cbor = Buffer.from(bytes).toString("hex");
       try {
@@ -383,6 +381,6 @@ export const emulatorNodeTransport = ({
     },
     hasTx: async (txHash: string) =>
       state.transactionHistory[txHash]?.status === "pending",
-  };
+  });
   return transport;
 };

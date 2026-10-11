@@ -1,8 +1,5 @@
-import type {
-  ChainSyncEvent,
-  ChainSyncStream,
-  L1NodeTransport,
-} from "@al-ft/l1-node-transport";
+import type { ChainSyncEvent, ChainSyncStream } from "@al-ft/l1-node-transport";
+import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import { decodeBlock, openSqliteFactStore } from "@al-ft/midgard-l1-follower";
 import {
   encodeUtxoAnswer,
@@ -129,7 +126,7 @@ const scriptedNode = (
   ledger: readonly SimUtxo[] = [ONE_SHOT],
 ) => {
   const state = { limit: 0, acked: 0 };
-  const transport = {
+  const transport = fakeL1NodeTransport({
     openChainSync: (): ChainSyncStream => {
       let position = state.acked;
       let closed = false;
@@ -155,15 +152,13 @@ const scriptedNode = (
     },
     // Its ledger state holds the one-shot the init spends (created before
     // the scripted chain), which the follower stores at ingest.
-    withLedgerState: (
-      _at: unknown,
-      use: (session: { query: () => Promise<Uint8Array> }) => unknown,
-    ) => use({ query: () => Promise.resolve(encodeUtxoAnswer([...ledger])) }),
+    withLedgerState: (_at, use) =>
+      use({ query: () => Promise.resolve(encodeUtxoAnswer([...ledger])) }),
     // The scripted node is always reachable: no readiness change to report.
     readiness: { ready: true, nodeToClientVersion: 32784 },
-    onReadiness: (): (() => void) => () => undefined,
+    onReadiness: () => () => undefined,
     close: () => Promise.resolve(),
-  } as unknown as L1NodeTransport;
+  });
   return { state, transport };
 };
 
