@@ -151,21 +151,19 @@ differs from goldens, so they have their own page: [ledgers.md](ledgers.md).
 These record the SHA-256 of the blueprint they were captured against, so any
 change that moves compiled validator bytes makes them stale.
 
-| Channel                          | Output                                                                   | Sync                                                                                                                                               | Check (CI)                                                                                                                                                                                                                                                                                          |
-| -------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `da-deployment-fixture`          | `demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json` | `node scripts/contrib.mjs artifacts sync --channel da-deployment-fixture`                                                                          | `node scripts/contrib.mjs artifacts check --channel da-deployment-fixture` runs the generating test without the flag, which compares the whole fixture, `blueprintHash` included (`demo/midgard-node/tests/da-deployment-fixture-generation.test.ts:75-85`) [ci: Midgard Node CI/Test Midgard node] |
-| `watcher-initialization-fixture` | `demo/midgard-watcher/tests/fixtures/user-event-initialization.json`     | `MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE=1 node scripts/contrib.mjs test --package midgard-node --file tests/initialization-emulator.test.ts` | none. The consumer says "Regenerate after validator changes" (`demo/midgard-watcher/tests/support/user-event-origin-fixture.ts:142`), and no test compares its recorded `blueprintSha256` with the current build [review].                                                                          |
+| Channel                          | Output                                                                   | Sync                                                                               | Check (CI)                                                                                                                                                                                                                                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `da-deployment-fixture`          | `demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json` | `node scripts/contrib.mjs artifacts sync --channel da-deployment-fixture`          | `node scripts/contrib.mjs artifacts check --channel da-deployment-fixture` runs the generating test without the flag, which compares the whole fixture, `blueprintHash` included (`demo/midgard-node/tests/da-deployment-fixture-generation.test.ts:75-85`) [ci: Midgard Node CI/Test Midgard node]             |
+| `watcher-initialization-fixture` | `demo/midgard-watcher/tests/fixtures/user-event-initialization.json`     | `node scripts/contrib.mjs artifacts sync --channel watcher-initialization-fixture` | `node scripts/contrib.mjs artifacts check --channel watcher-initialization-fixture` runs the generating test without the flag, which compares the recorded `blueprintSha256` with the current build (`demo/midgard-node/tests/initialization-emulator.test.ts:483-492`) [ci: Midgard Node CI/Test Midgard node] |
 
-Both writers run through contrib, which gives each run its own databases. A
-raw `pnpm exec vitest` uses the checkout's default test database, so two raw
-writers started together race on migrations and fail with `Failed to install
-the L1 follower schema`. `artifacts sync` writes `da-deployment-fixture` in a
-scratch checkout, runs the check, then copies the output back. It refuses
-`watcher-initialization-fixture`, which has no check, so `contrib test` with the
-`MIDGARD_WRITE_*` variable writes that one. Its receipt reads failed when the
-fixture changes (`native artifact changed during test`), because the watcher
-fixture is one of midgard-node's own inputs and a receipt only proves a run
-whose inputs held still: judge the write by the fixture's diff [review].
+Sync both through `artifacts sync`, which writes the fixture in a scratch
+checkout, runs the check, then copies the output back. A raw
+`pnpm exec vitest` with the `MIDGARD_WRITE_*` variable in your own checkout
+uses its default test database, so two raw writers started together race on
+migrations and fail with `Failed to install the L1 follower schema`. Under
+`contrib test`, a write that changes the watcher fixture leaves a failed
+receipt (`native artifact changed during test`), because that fixture is one
+of midgard-node's own inputs [review].
 
 ## Unchecked
 

@@ -1112,13 +1112,15 @@
         "demo/midgard-watcher/tests/fixtures/user-event-initialization.json"
       ],
       "sync": {
-        "run": "MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE=1 node scripts/contrib.mjs test --package midgard-node --file tests/initialization-emulator.test.ts"
+        "run": "MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/initialization-emulator.test.ts"
       },
       "check": {
-        "none": "No test compares the fixture's recorded blueprintSha256 with the current blueprint."
+        "run": "pnpm --dir demo/midgard-node exec vitest run tests/initialization-emulator.test.ts"
       },
       "ci": {
-        "none": "Nothing in CI detects a stale capture."
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Test Midgard node",
+        "via": "demo/midgard-node/tests/initialization-emulator.test.ts"
       }
     },
     {
