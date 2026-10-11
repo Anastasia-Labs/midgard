@@ -245,6 +245,16 @@ const describeMode = (entry) =>
   entry.run ??
   (entry.manual ? `manual: ${entry.manual}` : `none: ${entry.none}`);
 
+// What a contributor runs for a channel's check or sync. Where contrib can run
+// the channel (a sync needs a check to validate it), that is contrib's
+// guarded command: it executes the registry's `run` with prepared
+// prerequisites and isolated databases, and keeps a receipt. Otherwise it is
+// the registry's own recipe or reason.
+export const channelCommand = (channel, mode) =>
+  channel.check?.run && channel[mode]?.run
+    ? `node scripts/contrib.mjs artifacts ${mode} --channel ${channel.id}`
+    : describeMode(channel[mode]);
+
 export const renderMapping = ({ source, files, affected, problems }) => {
   const lines = [
     `affected-channels: ${files.length} changed file(s) ${source}`,
@@ -259,8 +269,8 @@ export const renderMapping = ({ source, files, affected, problems }) => {
       for (const reason of shown) lines.push(`  because  ${reason}`);
       if (reasons.length > shown.length)
         lines.push(`  because  ... and ${reasons.length - shown.length} more`);
-      lines.push(`  check    ${describeMode(channel.check)}`);
-      lines.push(`  sync     ${describeMode(channel.sync)}`);
+      lines.push(`  check    ${channelCommand(channel, "check")}`);
+      lines.push(`  sync     ${channelCommand(channel, "sync")}`);
       lines.push(`  ci       ${describeCi(channel.ci)}`);
     }
   }

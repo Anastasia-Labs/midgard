@@ -1516,7 +1516,7 @@
   },
   {
     "file": "../.agents/skills/regenerating-goldens-and-ledgers/scripts/affected-channels.test.mjs",
-    "max": 509,
+    "max": 513,
     "reason": "Channel selection tests share one channel-table/checker fixture and scratch Git histories. Preserve fixture construction and cleanup; this small overage requires a test-harness split to reduce further."
   },
   {
