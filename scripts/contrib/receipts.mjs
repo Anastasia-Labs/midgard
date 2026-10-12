@@ -4,9 +4,11 @@ import { artifactChannels, channelIdentity } from "./channels.mjs";
 
 import {
   atomicJson,
+  changedInputs,
   hashFiles,
   inputIdentity,
   json,
+  nameChangedInputs,
   outputIdentity,
   packageByName,
   sha256,
@@ -78,14 +80,6 @@ export const countsFromVitest = (report, testName, selectedFiles) => {
   return counts;
 };
 
-// The repository-relative inputs that differ between two identities, sorted.
-const changedInputs = (before, after) =>
-  [...new Set([...Object.keys(before.files), ...Object.keys(after.files)])]
-    .filter((path) => before.files[path] !== after.files[path])
-    .sort();
-
-const CHANGED_INPUTS_NAMED = 5;
-
 export const writeReceipt = ({
   root,
   pkg,
@@ -130,12 +124,7 @@ export const writeReceipt = ({
   const reason =
     changed === undefined
       ? undefined
-      : `inputs changed while it ran (${[
-          ...changed.slice(0, CHANGED_INPUTS_NAMED),
-          ...(changed.length > CHANGED_INPUTS_NAMED
-            ? [`${String(changed.length - CHANGED_INPUTS_NAMED)} more`]
-            : []),
-        ].join(", ")}); rerun its exact command`;
+      : `inputs changed while it ran (${nameChangedInputs(changed)}); rerun its exact command`;
   const receipt = {
     schema: "midgard-contrib-receipt/v1",
     kind,

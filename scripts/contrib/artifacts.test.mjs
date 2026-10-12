@@ -235,10 +235,20 @@ test("artifact sync refuses destination input drift instead of rebinding uncheck
     readFileSync(resolve(root, "demo/example/generated.json"), "utf8"),
     "42",
   );
+  // A test leaves ignored output beside the sources; no checkout carries it.
   writeFileSync(
     resolve(root, ".gitignore"),
-    "demo/example/src/ignored-input.ts\n",
+    "demo/example/.probe-dist/\ndemo/example/src/ignored-input.ts\n",
   );
+  mkdirSync(resolve(root, "demo/example/.probe-dist"));
+  writeFileSync(
+    resolve(root, "demo/example/.probe-dist/probe.mjs"),
+    "leftover",
+  );
+  const leftover = await runArtifact(root, "sync-race", { sync: true, env });
+  assert.equal(leftover.status, "passed", leftover.reason);
+  // An ignored file in a source tree may be imported; the scratch build
+  // never saw it, so the sync refuses and names it.
   writeFileSync(
     resolve(root, "demo/example/src/ignored-input.ts"),
     "candidate input omitted by Git",
@@ -249,7 +259,10 @@ test("artifact sync refuses destination input drift instead of rebinding uncheck
     "failed",
     "unexecuted package inputs cannot earn a pass",
   );
-  assert.match(incomplete.reason, /scratch build inputs differ/u);
+  assert.match(
+    incomplete.reason,
+    /scratch build inputs differ from destination inputs \(demo\/example\/src\/ignored-input\.ts\)/u,
+  );
 });
 
 test("artifact checks reject self-mutating compiled consumers and receipts bind later dist changes", async (t) => {

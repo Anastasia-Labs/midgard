@@ -122,7 +122,31 @@ export const sourceInput = (root, path) => {
   }
   return true;
 };
-export const filesUnder = (root, { outputs = false } = {}) => {
+// Untracked paths Git ignores, absolute; a wholly ignored directory is one
+// entry. Outside a checkout nothing is ignored, so every file still counts.
+const gitIgnored = (root) =>
+  scoped(`ignored\0${root}`, () =>
+    existsSync(resolve(root, ".git"))
+      ? new Set(
+          execFileSync(
+            "git",
+            [
+              "ls-files",
+              "-z",
+              "--others",
+              "--ignored",
+              "--exclude-standard",
+              "--directory",
+            ],
+            { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
+          )
+            .split("\0")
+            .filter(Boolean)
+            .map((path) => resolve(root, path)),
+        )
+      : new Set(),
+  );
+export const filesUnder = (root, { outputs = false, ignored } = {}) => {
   const files = [];
   if (!existsSync(root)) return files;
   const visit = (directory, source) => {
@@ -131,6 +155,9 @@ export const filesUnder = (root, { outputs = false } = {}) => {
     )) {
       if (!outputs && excludedInput(directory, entry.name, source)) continue;
       const path = resolve(directory, entry.name);
+      // Ignored files in a source tree may still be imported, so only
+      // ignored paths outside one (test leftovers, local state) are skipped.
+      if (!source && ignored?.has(path)) continue;
       // Linked source inputs cannot be silently omitted from an identity.
       if (entry.isSymbolicLink())
         throw new Error(`symlink in input/output tree: ${path}`);
@@ -422,11 +449,16 @@ const uncachedInputIdentity = (root, name) => {
       ),
     };
   }
-  const directories = packageClosure(root, name).map((pkg) => pkg.directory);
-  const paths = directories.flatMap((path) => filesUnder(resolve(root, path)));
-  for (const directory of SHARED_INPUT_DIRECTORIES) {
-    paths.push(...filesUnder(resolve(root, directory)));
-  }
+  // No checkout carries ignored leftovers, so they must not move the
+  // identity a scratch or fresh checkout is compared against.
+  const ignored = gitIgnored(root);
+  const directories = [
+    ...packageClosure(root, name).map((pkg) => pkg.directory),
+    ...SHARED_INPUT_DIRECTORIES,
+  ];
+  const paths = directories.flatMap((path) =>
+    filesUnder(resolve(root, path), { ignored }),
+  );
   const shared = SHARED_INPUT_FILES;
   const missing = shared.filter((path) => !existsSync(resolve(root, path)));
   paths.push(
@@ -452,6 +484,20 @@ const uncachedInputIdentity = (root, name) => {
     arch: process.arch,
   };
 };
+
+// The repository-relative inputs that differ between two identities, sorted.
+export const changedInputs = (before, after) =>
+  [...new Set([...Object.keys(before.files), ...Object.keys(after.files)])]
+    .filter((path) => before.files[path] !== after.files[path])
+    .sort();
+const CHANGED_INPUTS_NAMED = 5;
+export const nameChangedInputs = (changed) =>
+  [
+    ...changed.slice(0, CHANGED_INPUTS_NAMED),
+    ...(changed.length > CHANGED_INPUTS_NAMED
+      ? [`${String(changed.length - CHANGED_INPUTS_NAMED)} more`]
+      : []),
+  ].join(", ");
 
 export const outputIdentity = (root, directory) =>
   scoped(`output\0${root}\0${directory}`, () =>

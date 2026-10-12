@@ -113,7 +113,10 @@ recipes likewise enter `contrib native`. Build freshness binds the checkout,
 source/dependency/configuration/lock/native/generated-input closure and emitted
 file contents; timestamps cannot establish freshness. Doctor and preflight use
 the same dist verdict. Inputs conservatively include dependency tests and
-fixtures, so some unrelated edits can require an extra rebuild.
+fixtures, so some unrelated edits can require an extra rebuild. Gitignored
+paths outside source directories (`src/`, `tests/`, `scripts/` and the like),
+such as test leftovers and local config, are not inputs; ignored files inside
+a source directory still are.
 
 The closure also binds the installed packages
 (`demo/node_modules/.pnpm/lock.yaml`), the variables a recipe names, and the

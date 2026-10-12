@@ -12,7 +12,7 @@ import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-prof
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { beforeAll } from "vitest";
+import { beforeAll, onTestFinished } from "vitest";
 
 import {
   DaPayloadsDB,
@@ -71,6 +71,11 @@ export const bundleChildProcessHelper = (
     outputDirectory,
     `${path.basename(relativeSourcePath, ".ts")}-${process.pid.toString()}.mjs`,
   );
+  // The bundle, and a log its caller writes beside it, end with the test.
+  onTestFinished(() => {
+    fs.rmSync(outputPath, { force: true });
+    fs.rmSync(`${outputPath}.log`, { force: true });
+  });
   const esbuild = path.resolve(cwd, "node_modules/.bin/esbuild");
   const result = spawnSync(
     esbuild,

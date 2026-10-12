@@ -7,7 +7,13 @@ import {
   withScratchCheckout,
 } from "./artifacts.mjs";
 import { checkBuild, runDirectory } from "./build.mjs";
-import { atomicJson, inputIdentity, workspacePackages } from "./files.mjs";
+import {
+  atomicJson,
+  changedInputs,
+  inputIdentity,
+  nameChangedInputs,
+  workspacePackages,
+} from "./files.mjs";
 import { buildNative, checkNative, NATIVE_RECIPES } from "./native.mjs";
 import { runProcess } from "./process.mjs";
 import { writeReceipt } from "./receipts.mjs";
@@ -45,8 +51,11 @@ export const reproduce = async (
   let error;
   try {
     await withScratchCheckout(root, directory, async (scratch) => {
-      if (inputIdentity(scratch, pkg.name).sha256 !== before.sha256)
-        throw new Error("scratch repository inputs differ from candidate");
+      const scratchInputs = inputIdentity(scratch, pkg.name);
+      if (scratchInputs.sha256 !== before.sha256)
+        throw new Error(
+          `scratch repository inputs differ from candidate (${nameChangedInputs(changedInputs(before, scratchInputs))})`,
+        );
       const run = async (argv, cwd = scratch) => {
         const step = await runProcess({
           argv,

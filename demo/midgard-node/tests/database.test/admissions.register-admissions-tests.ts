@@ -2914,10 +2914,7 @@ export const registerAdmissionsTests = () => {
                   PHASE1_WRITE_BEHIND_CRASH_INPUT: crashInput,
                 },
                 envInheritance: "none",
-                rawLogPath: path.resolve(
-                  databaseTestDirectory,
-                  "../.probe-dist/phase1-write-behind-crash.log",
-                ),
+                rawLogPath: `${helper}.log`,
                 timeoutMs: 10_000,
                 maxRestarts: 0,
                 terminateOnOutput: { marker: crashMarker, signal: "SIGKILL" },

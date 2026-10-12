@@ -115,7 +115,7 @@ const controls = [
     file: "artifacts.mjs",
     change: (text) =>
       text.replace(
-        /            if \(inputIdentity\(scratch, pkg.name\).sha256 !== before.sha256\)\s+throw new Error\(\s*"scratch build inputs differ from destination inputs",?\s*\);/u,
+        /            if \(scratchInputs\.sha256 !== before\.sha256\)\s+throw new Error\(\s*`scratch build inputs differ from destination inputs[^`]*`,?\s*\);/u,
         "",
       ),
     match: "artifact sync refuses destination input drift",

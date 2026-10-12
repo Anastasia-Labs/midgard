@@ -14,11 +14,13 @@ import { buildPackage, checkBuild, runDirectory } from "./build.mjs";
 import { runTests } from "./tests.mjs";
 import {
   atomicJson,
+  changedInputs,
   filesUnder,
   hashFiles,
   inputIdentity,
   inside,
   json,
+  nameChangedInputs,
   packageByName,
   packageClosure,
   outputIdentity,
@@ -286,9 +288,10 @@ export const runArtifact = async (
                 [process.execPath, "scripts/sync-blueprint-from.mjs", root],
                 scratch,
               );
-            if (inputIdentity(scratch, pkg.name).sha256 !== before.sha256)
+            const scratchInputs = inputIdentity(scratch, pkg.name);
+            if (scratchInputs.sha256 !== before.sha256)
               throw new Error(
-                "scratch build inputs differ from destination inputs",
+                `scratch build inputs differ from destination inputs (${nameChangedInputs(changedInputs(before, scratchInputs))})`,
               );
             const scratchArtifacts = await prepareArtifacts(scratch);
             const retainedRoot = resolve(directory, "compiled-inputs");
@@ -361,14 +364,8 @@ export const runArtifact = async (
       }
       const after = inputIdentity(root, pkg.name);
       if (sync && !error) {
-        const changed = [
-          ...new Set([
-            ...Object.keys(before.files),
-            ...Object.keys(after.files),
-          ]),
-        ].filter((file) => before.files[file] !== after.files[file]);
         if (
-          changed.some(
+          changedInputs(before, after).some(
             (file) =>
               !matchesAny(file, channel.outputs) ||
               after.files[file] !== checkedOutputs.files[file],

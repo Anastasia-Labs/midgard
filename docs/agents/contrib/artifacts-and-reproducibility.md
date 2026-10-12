@@ -21,9 +21,11 @@ publishes only declared output paths through a verified packet. Dirty output
 destinations are refused. The retained receipt records input/output ownership.
 
 Scratch preparation must match the destination's complete package input
-identity before compilation. A required ignored source that Git cannot overlay
-is refused instead of earning a pass from a different input. Commit or make
-that input reproducible through its declared owner before retrying.
+identity before compilation; the refusal names the paths that differ. An
+ignored file inside a source directory may be imported, and Git cannot overlay
+it, so it is refused instead of earning a pass from a different input. Commit
+or make that input reproducible through its declared owner before retrying.
+Ignored paths outside source directories are not inputs and do not block.
 
 The reproducibility lane resolves pinned Git commits from their public remotes,
 performs a frozen install and selected blueprint/workspace builds in a fresh

@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { default as fs } from "node:fs";
 import { default as path } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
@@ -662,61 +661,53 @@ export const registerFinalizationTests = () => {
         );
         const cwd = path.resolve(databaseTestDirectory, "..");
         const checkpoints = ["before", "during", "after"] as const;
-        try {
-          for (const [index, checkpoint] of checkpoints.entries()) {
-            const deposit = deposits[index]!;
-            const headerHash = databaseFixtureBytes(
-              `process-crash-${checkpoint}`,
-              28,
-            );
-            const child = spawn(
-              process.execPath,
-              [
-                helper,
-                checkpoint,
-                deposit[DepositsDB.Columns.ID].toString("hex"),
-                headerHash.toString("hex"),
-              ],
-              {
-                cwd,
-                env: databaseChildProcessEnv(),
-                shell: false,
-                stdio: ["ignore", "pipe", "pipe"],
-              },
-            );
-            const result = await collectChildProcess(child);
-            expect(result.signal, result.stderr).toBe("SIGKILL");
+        for (const [index, checkpoint] of checkpoints.entries()) {
+          const deposit = deposits[index]!;
+          const headerHash = databaseFixtureBytes(
+            `process-crash-${checkpoint}`,
+            28,
+          );
+          const child = spawn(
+            process.execPath,
+            [
+              helper,
+              checkpoint,
+              deposit[DepositsDB.Columns.ID].toString("hex"),
+              headerHash.toString("hex"),
+            ],
+            {
+              cwd,
+              env: databaseChildProcessEnv(),
+              shell: false,
+              stdio: ["ignore", "pipe", "pipe"],
+            },
+          );
+          const result = await collectChildProcess(child);
+          expect(result.signal, result.stderr).toBe("SIGKILL");
 
-            const snapshot = await Effect.runPromise(
-              provideDatabaseLayers(
-                Effect.all({
-                  rows: DepositsDB.retrieveAllEntries(),
-                  journal:
-                    PendingBlockFinalizationsDB.retrieveByHeaderHash(
-                      headerHash,
-                    ),
-                }),
-              ),
+          const snapshot = await Effect.runPromise(
+            provideDatabaseLayers(
+              Effect.all({
+                rows: DepositsDB.retrieveAllEntries(),
+                journal:
+                  PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash),
+              }),
+            ),
+          );
+          const persistedDeposit = snapshot.rows.find((entry) =>
+            entry[DepositsDB.Columns.ID].equals(deposit[DepositsDB.Columns.ID]),
+          );
+          if (checkpoint === "after") {
+            expect(persistedDeposit?.[DepositsDB.Columns.STATUS]).toBe(
+              DepositsDB.Status.Projected,
             );
-            const persistedDeposit = snapshot.rows.find((entry) =>
-              entry[DepositsDB.Columns.ID].equals(
-                deposit[DepositsDB.Columns.ID],
-              ),
+            expect(Option.isSome(snapshot.journal)).toBe(true);
+          } else {
+            expect(persistedDeposit?.[DepositsDB.Columns.STATUS]).toBe(
+              DepositsDB.Status.Awaiting,
             );
-            if (checkpoint === "after") {
-              expect(persistedDeposit?.[DepositsDB.Columns.STATUS]).toBe(
-                DepositsDB.Status.Projected,
-              );
-              expect(Option.isSome(snapshot.journal)).toBe(true);
-            } else {
-              expect(persistedDeposit?.[DepositsDB.Columns.STATUS]).toBe(
-                DepositsDB.Status.Awaiting,
-              );
-              expect(Option.isNone(snapshot.journal)).toBe(true);
-            }
+            expect(Option.isNone(snapshot.journal)).toBe(true);
           }
-        } finally {
-          fs.rmSync(helper, { force: true });
         }
       },
       30_000,
