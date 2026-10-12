@@ -95,6 +95,45 @@ export const isUnansweredSubmission = (error: unknown): boolean => {
   return visit(error);
 };
 
+/**
+ * Whether the node refused a submission because the transaction's validity
+ * upper bound had already passed (Ogmios 3118 at or past the bound). Such a
+ * transaction is in no mempool and can never land, so it counts as expired.
+ */
+export const isLateSubmission = (error: unknown): boolean => {
+  const seen = new Set<unknown>();
+  const visit = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null || seen.has(value))
+      return false;
+    seen.add(value);
+    const link = value as {
+      _tag?: unknown;
+      code?: unknown;
+      data?: {
+        currentSlot?: unknown;
+        validityInterval?: { invalidAfter?: unknown };
+      };
+      cause?: unknown;
+    };
+    if (link._tag === "OgmiosJsonRpcError") {
+      const current = link.data?.currentSlot;
+      const bound = link.data?.validityInterval?.invalidAfter;
+      return (
+        link.code === 3118 &&
+        typeof current === "number" &&
+        typeof bound === "number" &&
+        current >= bound
+      );
+    }
+    if (Runtime.isFiberFailure(value)) {
+      const cause = value[Runtime.FiberFailureCauseId];
+      return [...Cause.failures(cause), ...Cause.defects(cause)].some(visit);
+    }
+    return visit(link.cause);
+  };
+  return visit(error);
+};
+
 /** Grace after a validity upper bound for the indexer to publish the last eligible block. */
 export const EXPIRY_GRACE_MS = 60_000;
 

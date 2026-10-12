@@ -6,6 +6,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   EventKeySchema,
@@ -127,6 +128,7 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
   };
   const honestTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeData(eventKey, EventKeySchema),
       sourceKind: "forced",

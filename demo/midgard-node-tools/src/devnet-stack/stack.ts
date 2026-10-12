@@ -5,9 +5,6 @@ import { type DeployContext, nodeCli } from "./deploy.js";
 import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
 import { readJsonIfPresent, writeDurableFile } from "./durable.js";
 import { lastJsonValue, requireSuccess } from "./exec.js";
-import { historyDaemonReports } from "./history-daemon-discovery.js";
-import { HISTORY_DAEMON_QUERY_MS } from "./history-daemon-query.js";
-import { historyProofDeadline } from "./history-proof-deadline.js";
 import type { Layout } from "./layout.js";
 import { lockOwner } from "./lock.js";
 import type { HubOracleOneShot } from "./node-env.js";
@@ -271,23 +268,11 @@ export const serviceReport = async (
   };
 };
 
-/** One current complete history proof per poll; never four competing queries. */
-export const serviceReports = async (
+export const serviceReports = (
   layout: Layout,
   services: readonly ServiceSpec[],
-): Promise<readonly ServiceReport[]> => {
-  const history = historyDaemonReports(
-    layout,
-    services,
-    historyProofDeadline(HISTORY_DAEMON_QUERY_MS),
-  );
-  const reports = await Promise.all(
-    services.map((service) => serviceReport(layout, service)),
-  );
-  const unchanged = history.current();
-  const ready = await history.ready;
-  return history.map(reports, unchanged && ready);
-};
+): Promise<readonly ServiceReport[]> =>
+  Promise.all(services.map((service) => serviceReport(layout, service)));
 
 /**
  * Whether `report` is a running service still inside the start grace its spec

@@ -4,7 +4,7 @@ import * as TxAdmissionsDB from "../../src/database/txAdmissions.js";
 import type * as Ledger from "../../src/database/utils/ledger.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { Database } from "../../src/services/database.js";
-import { UnownedHistoryFixture } from "../../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../../src/services/follower-write-gate.js";
 import {
   WriteBehind,
   type WriteBehindService,
@@ -62,7 +62,7 @@ Effect.runPromise(
     processedTxs: [processedTx],
   }).pipe(
     Effect.provideService(WriteBehind, crashBoundaryWriteBehind),
-    Effect.provideService(UnownedHistoryFixture, true),
+    Effect.provideService(FollowerWriteFixture, true),
     Effect.provide(Database.layer),
     Effect.provide(NodeConfig.layer),
   ),

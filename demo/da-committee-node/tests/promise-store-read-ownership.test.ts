@@ -6,6 +6,7 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 
 import { createCommitteePromiseAdmissionSource } from "../src/availability/create-promise-admission-source.js";
+import { followerBoundary } from "./helpers/follower-boundary.js";
 import { promiseAdmissionFixture } from "./helpers/promise-admission.js";
 
 it("joins the actual JSON count before returning an expired snapshot", async () => {
@@ -42,12 +43,9 @@ it("joins the actual JSON count before returning an expired snapshot", async () 
     return pending as ReturnType<typeof realUsage>;
   };
   const actuation = vi.fn(async () => {});
-  const boundary = vi.fn(async () => ({
-    pointId: "1:point",
-    slot: 1,
-    blockHash: "12".repeat(32),
-    blockNo: 1,
-  }));
+  const boundary = vi.fn(async () =>
+    followerBoundary({ slot: 1, blockHash: "12".repeat(32), blockNo: 1 }),
+  );
   const source = createCommitteePromiseAdmissionSource({
     config: { ...f.config, cardanoL1Source: { networkMagic: 1 } },
     deployment: {} as SDK.DaAvailabilityDeployment,
@@ -57,10 +55,7 @@ it("joins the actual JSON count before returning an expired snapshot", async () 
     lucid: {
       wallet: () => ({ getUtxos: async () => [] }),
     } as unknown as LucidEvolution,
-    ogmiosUrl: "ws://unused",
-    currentCursor: async () => {
-      throw new Error("must not enter cursor after expired count");
-    },
+    reads: { canonicalPoint: async () => null },
     readBoundary: boundary,
     assertActuationCurrent: actuation,
     sourceResourceLimits: limits,

@@ -9,13 +9,10 @@ import {
 import { GENESIS_HEADER_HASH, Header } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  assertWatcherStateQueueObservation,
-  type WatcherStateQueueObservationSource,
-} from "../indexers/authenticated-state-queue-observation.js";
+import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
+import type { WatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
-import { watcherDeferredRetryDelayMs } from "./fault-decision-bridge.classification-miss.js";
 import { createBridge } from "./fault-decision-bridge.create-bridge.js";
 import {
   ACTION_CONFIRMATION_DEPTH,
@@ -23,7 +20,10 @@ import {
   type BridgeDependencies,
   type WatcherFaultDecisionBridge,
 } from "./fault-decision-bridge.selected-target.js";
-import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
+import {
+  openWatcherFaultDecisionJournal,
+  type WatcherFaultDecisionJournal,
+} from "./fault-decision-journal.js";
 import {
   assertWatcherFaultProofApplication,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -42,8 +42,10 @@ const writeWarning: NonNullable<BridgeDependencies["warn"]> = (warning) =>
 export const createWatcherFaultDecisionBridge = async (input: {
   readonly application: WatcherFaultProofApplication;
   readonly supervisor: WatcherFaultProofSupervisor;
-  readonly stateQueueSource: WatcherStateQueueObservationSource;
+  readonly stateQueueSource: WatcherQueueHeaderSource;
   readonly journalDirectory: string;
+  /** The 32-byte key the fault-proof journals' rows are authenticated with. */
+  readonly authenticationKey: Uint8Array;
   readonly runtimeConfigPath: string;
   readonly maximumClassificationConcurrency: number;
   readonly operationsSink?: WatcherOperationsSink;
@@ -53,11 +55,17 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly warn?: BridgeDependencies["warn"];
 }): Promise<WatcherFaultDecisionBridge> => {
   assertWatcherFaultProofApplication(input.application);
-  const journal = await openWatcherFaultDecisionJournal({
-    directory: input.journalDirectory,
-    deploymentFingerprint: input.application.deploymentFingerprint,
-    launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-  });
+  // The journal opens on a pass's first use, not here: a refused journal
+  // fails each pass (readiness reports journal_integrity) and never stops
+  // the operations server from binding.
+  let journal: WatcherFaultDecisionJournal | undefined;
+  const decisions = async (): Promise<WatcherFaultDecisionJournal> =>
+    (journal ??= await openWatcherFaultDecisionJournal({
+      directory: input.journalDirectory,
+      deploymentFingerprint: input.application.deploymentFingerprint,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+      authenticationKey: input.authenticationKey,
+    }));
   return createBridge({
     application: input.application,
     runtimeConfigPath: input.runtimeConfigPath,
@@ -84,8 +92,9 @@ export const createWatcherFaultDecisionBridge = async (input: {
           .update(contents)
           .digest("hex");
       },
-      readRecords: journal.readAll,
-      append: journal.appendLiveDecision,
+      readRecords: async () => await (await decisions()).readAll(),
+      append: async (decision) =>
+        await (await decisions()).appendLiveDecision(decision),
       assertActuationPermitIdentity: assertWorkflowActuationPermitIdentity,
       createActuationController: (decision, rollbackGeneration) =>
         createWorkflowActuationPermitController({
@@ -93,11 +102,8 @@ export const createWatcherFaultDecisionBridge = async (input: {
           rollbackGeneration,
         }),
       deadlineForHeader: watcherFaultProofDeadline,
-      deferredRetryDelayMs: watcherDeferredRetryDelayMs,
       mergedHeaders: async (observation) =>
-        (await input.stateQueueSource.resolveMergedHeaders?.({
-          observation,
-        })) ?? new Map(),
+        await input.stateQueueSource.resolveMergedHeaders({ observation }),
       resolvePredecessorHeader: async (header) => {
         const decoded = Data.from(header.headerCborHex, Header);
         if (decoded.prevHeaderHash === GENESIS_HEADER_HASH) return undefined;

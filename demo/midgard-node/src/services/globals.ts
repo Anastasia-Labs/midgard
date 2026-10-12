@@ -1,5 +1,4 @@
 import "effect";
-import "../fibers/speculative-commit-state.js";
 import "./globals.next-l1-provider-health-evidence.js";
 import "./globals.globals.js";
 import "./globals.with-l1-control-plane-held.js";
@@ -8,7 +7,6 @@ export {
   type AdmissionBacklogGaugeState,
   type AttestationTimeoutCorrectionHealth,
   type CommitPipelinePhase,
-  type CommitSubmitWake,
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   L1ControlPlaneTimeoutError,
   type L1ProviderHealthEvidence,

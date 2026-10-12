@@ -22,7 +22,6 @@ export {
   type Header,
   type L1SubmissionRecord,
   type ObservedStateQueueNode,
-  type ObservedStateQueueSnapshot,
   type PayloadCountSet,
   type PayloadRootSet,
   type StateQueueHeaderRecord,

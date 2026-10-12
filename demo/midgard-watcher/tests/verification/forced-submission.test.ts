@@ -11,7 +11,7 @@ import {
   outRefFromTxId,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { CML, Data } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { evaluateWatcherBlockReplay } from "../../src/verification/block-replay.js";
 import {
@@ -21,18 +21,13 @@ import {
 import {
   buildPublicReplayFixture,
   committedStepsForEffects,
-  localEventAuthority,
-  localEventWindow,
-  type LocalReplayEvent,
-  publicEventFromLocal,
+  originEventAuthority,
+  originEventWindow,
+  publicEventFromOrigin,
   publicInput,
-  readLocalReplayEvent,
 } from "../support/block-replay-public-fixture.js";
 import { makeForcedTxFixture } from "../support/forced-submission-fixture.js";
-import {
-  createLocalReplayUserEventAuthorities,
-  type LocalReplayUserEventAuthorities,
-} from "../support/local-user-event-authority-fixture.js";
+import { fixtureForcedOrderEvent } from "../support/user-event-authority-fixture.js";
 import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-forced-order-fixture.js";
 
 const key = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 7));
@@ -62,26 +57,9 @@ const effect = buildCanonicalTransitionEffect([
   { type: "insert", outRefCbor: next, outputCbor: output },
 ]);
 const noOp = buildCanonicalTransitionEffect([]);
-let authorities: LocalReplayUserEventAuthorities;
-let forcedOrigin: LocalReplayEvent;
-
-beforeAll(async () => {
-  authorities = await createLocalReplayUserEventAuthorities({
-    forcedOrders: [
-      {
-        key: "submitted",
-        nonceByte: "e1",
-        payload: genuineUserEventForcedPayloadForCanonicalTx(submitted.txCbor),
-      },
-    ],
-  });
-  const capability = authorities.forcedOrders.submitted;
-  if (capability === undefined)
-    throw new Error("local forced order was not published");
-  forcedOrigin = await readLocalReplayEvent(capability);
-}, 120_000);
-afterAll(async () => {
-  await authorities?.close();
+const forcedOrigin = fixtureForcedOrderEvent({
+  nonceByte: "e1",
+  payload: genuineUserEventForcedPayloadForCanonicalTx(submitted.txCbor),
 });
 
 const claim = (
@@ -108,7 +86,7 @@ const replay = async (verdict: SDK.OperatorVerdict, missingInput = false) => {
   const accepted = verdict === "ForcedTxValid";
   const transitionEffect = accepted && !missingInput ? effect : noOp;
   const priorState = missingInput ? [] : prior;
-  const event = publicEventFromLocal(forcedOrigin, {
+  const event = publicEventFromOrigin(forcedOrigin, {
     forcedNative: submitted,
     forcedVerdict: verdict,
   });
@@ -124,20 +102,19 @@ const replay = async (verdict: SDK.OperatorVerdict, missingInput = false) => {
     priorState,
     postState: missingInput ? [] : accepted ? entries(next) : prior,
     eventAuthorities: [
-      localEventAuthority({
+      originEventAuthority({
         event,
-        local: forcedOrigin,
+        origin: forcedOrigin,
         effect: transitionEffect,
         forcedNative: submitted,
       }),
     ],
-    eventWindow: localEventWindow(forcedOrigin),
-    ruleBundle: authorities.ruleBundle,
+    eventWindow: originEventWindow(forcedOrigin),
   });
   return evaluateWatcherBlockReplay(publicInput(fixture));
 };
 
-describe("immutable forced submission through local watcher authority", () => {
+describe("immutable forced submission through the watcher's user-event authority", () => {
   it("reconstructs the unchanged L1 submission and applies the exact independently accepted DA effect", async () => {
     const bound = bindWatcherOriginEventClaim(forcedOrigin.event, claim());
     expect(bound.phase).toBe("ForcedTransaction");

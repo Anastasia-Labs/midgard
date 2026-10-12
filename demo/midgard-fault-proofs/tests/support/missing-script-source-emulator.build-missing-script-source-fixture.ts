@@ -12,6 +12,7 @@ import {
   encodeMidgardForcedTxCanonical as forcedTraceBytes,
   materializeMidgardForcedTxFromCanonical as forcedTraceView,
 } from "@al-ft/midgard-core/codec/forced";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   encodeRetainedValidationWitness,
   encodeRetainedValidationWitnessKey,
@@ -252,6 +253,7 @@ export const buildMissingScriptSourceFixture = async (
     : FAKE_LEDGER_ROOT;
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor,
       sourceKind: direction === "accepted" ? "normal" : "forced",

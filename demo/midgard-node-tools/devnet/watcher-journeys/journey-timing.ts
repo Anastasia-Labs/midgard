@@ -18,12 +18,10 @@ export {
   type ReadJourneyTimingOptions,
   requireHealthyReplayFitsDeadline,
   TRANSITION_TRACE_JOURNEY_PLAN,
-  type TransitionTraceJourneyCadence,
   transitionTraceJourneyTiming,
   verifyTransitionTraceJourneyOutputPlan,
 } from "./journey-timing.journey-timing-for-plan.js";
 export {
-  type JourneyExecutionTiming,
   journeyExecutionTiming,
   type JourneyTimingTip,
   readJourneyCadence,
@@ -31,6 +29,5 @@ export {
   readJourneyTiming,
   readTransitionTraceJourneyExecutionTiming,
   readTransitionTraceJourneyTiming,
-  type TransitionTraceJourneyExecutionTiming,
   transitionTraceJourneyExecutionTiming,
 } from "./journey-timing.read-journey-timing-tip.js";

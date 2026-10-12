@@ -24,6 +24,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import { type WatcherDeploymentIdentityPolicy } from "../../src/runtime/deployment-identity.js";
@@ -152,6 +153,7 @@ export const canonicalIdentity = (): MutableRecord => {
     deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
     deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
     network: "Preprod",
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     cardanoProtocolParameters: {
       snapshot: parameters,
       digest: computeDeploymentManifestJsonDigest(parameters),

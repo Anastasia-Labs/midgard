@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { delimiter } from "node:path";
+import { existsSync } from "node:fs";
+import { delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const pinnedPnpmEnvironment = (env) => ({
@@ -13,6 +14,16 @@ export const pinnedPnpm = (cwd, args) => ({
   argv: ["corepack", "pnpm", ...args],
   cwd,
 });
+// A recipe run in a checkout nobody installed fails deep inside its first
+// import (ERR_MODULE_NOT_FOUND). Name the cause and the one command that
+// fixes it instead.
+export const requireInstalled = (root) => {
+  if (!existsSync(resolve(root, "demo/node_modules")))
+    throw new Error(
+      `demo/node_modules is missing in ${root}: the workspace was never installed. ` +
+        "Run `node scripts/contrib.mjs worktree setup` there (install, blueprint, prerequisite builds), then retry",
+    );
+};
 export const pinnedPnpmVersion = (cwd) => {
   const step = pinnedPnpm(cwd, ["--version"]);
   const result = spawnSync(step.argv[0], step.argv.slice(1), {

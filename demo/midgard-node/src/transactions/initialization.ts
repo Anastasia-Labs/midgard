@@ -10,7 +10,7 @@ import "../phas-membership.js";
 import "../services/config.js";
 import "../services/lucid.js";
 import "../services/midgard-contracts.js";
-import "../services/state-queue-topology.js";
+import "../services/landed-state-queue.js";
 import "../tx-context.js";
 import "./availability-challenge-registration.js";
 import "./phas-membership-registration.js";

@@ -53,8 +53,6 @@ const cli = (
     run: runner.run,
     command: ["node", "/repo/demo/midgard-node/dist/index.js"],
     manifestPath: "/run/deploymentInfo/manifest.json",
-    kupoUrl: "http://127.0.0.1:1442",
-    ogmiosUrl: "http://127.0.0.1:1337",
     env: { PATH: "/usr/bin" },
     workDirectory: (label) => `/run/cli/${label.replace(/ /gu, "-")}`,
     confirm: async (txHash) => {
@@ -66,14 +64,7 @@ const cli = (
     },
   });
 
-const CHAIN = [
-  "--manifest",
-  "/run/deploymentInfo/manifest.json",
-  "--kupo-url",
-  "http://127.0.0.1:1442",
-  "--ogmios-url",
-  "http://127.0.0.1:1337",
-];
+const CHAIN = ["--manifest", "/run/deploymentInfo/manifest.json"];
 
 describe("the da-bond CLI chain (P18, P27(6))", () => {
   it("tops up through status, top-up and status, with the seed only in the top-up's env", async () => {

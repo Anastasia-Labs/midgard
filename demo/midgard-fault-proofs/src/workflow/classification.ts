@@ -8,7 +8,6 @@ export {
   type CanonicalBlockClassification,
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
-  FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE,
   type UnprovableGap,
 } from "./classification.classify-canonical-block-violations.js";
 export {

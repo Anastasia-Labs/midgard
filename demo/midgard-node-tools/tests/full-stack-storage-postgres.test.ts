@@ -41,6 +41,11 @@ const onMigratedDatabase = (
             "DROP TABLE IF EXISTS full_stack_controller_identity",
           );
           yield* resetApplicationTables;
+          // The reset keeps the follower's writer row; a never-deployed
+          // database holds it at its migrated seed.
+          yield* sql.unsafe(
+            "UPDATE l1_follower_writer SET writer_epoch = 0, next_generation = 0",
+          );
         });
         yield* clean;
         yield* body(sql).pipe(Effect.ensuring(Effect.orDie(clean)));
@@ -77,13 +82,19 @@ describe.skipIf(!dbEnabled)(
         Effect.gen(function* () {
           yield* sql.unsafe(FRESH_STORAGE_QUERY);
           yield* sql.unsafe(
-            `INSERT INTO event_history_authority (deployment_identity, owner_token, generation, state, reason, lease_until) VALUES (decode('${marker.manifestId}', 'hex'), '${marker.runId}', 0, 'recovering', 'test', now())`,
+            `INSERT INTO node_deployment (deployment_id) VALUES ('${marker.manifestId}')`,
           );
           expect(yield* failure(sql, FRESH_STORAGE_QUERY)).toContain(
-            "Fresh deployment requires empty local storage: event_history_authority",
+            "Fresh deployment requires empty local storage: node_deployment",
           );
           expect(yield* json(sql, ATTACHMENT_QUERY)).toEqual({
-            manifestId: marker.manifestId,
+            initTxHashes: [],
+          });
+          yield* sql.unsafe(
+            `INSERT INTO l1_protocol_init (one_shot, tx_hash, slot) VALUES (decode('${"01".repeat(34)}', 'hex'), decode('${"ab".repeat(32)}', 'hex'), 7)`,
+          );
+          expect(yield* json(sql, ATTACHMENT_QUERY)).toEqual({
+            initTxHashes: ["ab".repeat(32)],
           });
         }),
       ));
@@ -95,6 +106,17 @@ describe.skipIf(!dbEnabled)(
           );
           expect(yield* failure(sql, FRESH_STORAGE_QUERY)).toContain(
             "Fresh deployment requires empty local storage: commit_build_calibration",
+          );
+        }),
+      ));
+    it("accepts the L1 follower's writer seed only before a follower has run", () =>
+      onMigratedDatabase((sql) =>
+        Effect.gen(function* () {
+          yield* sql.unsafe(
+            "UPDATE l1_follower_writer SET writer_epoch = writer_epoch + 1",
+          );
+          expect(yield* failure(sql, FRESH_STORAGE_QUERY)).toContain(
+            "Fresh deployment requires empty local storage: l1_follower_writer",
           );
         }),
       ));

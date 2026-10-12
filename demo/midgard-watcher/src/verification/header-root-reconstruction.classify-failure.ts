@@ -285,7 +285,7 @@ export type EvaluateWatcherHeaderRootReconstructionInput = {
    * rejected rather than trusted.
    */
   readonly observation: AuthenticatedStateQueueHeaderObservation;
-  /** Exact public `DaPayloadEnvelopeV1` bytes, from the W21 store. */
+  /** Exact public `DaPayloadEnvelopeV1` bytes, from the header decision's canonical evidence. */
   readonly payloadEnvelopeCbor: Uint8Array;
   /** Provenance of those bytes; must be public/permissionless DA. */
   readonly daProvenance: EvidenceProvenance;

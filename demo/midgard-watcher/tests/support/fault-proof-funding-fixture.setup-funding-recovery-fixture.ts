@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   acceptedTransactionSubject,
   authenticatedStateQueueObservationDigest,
@@ -70,6 +71,10 @@ import {
   walletAddress,
 } from "./fault-proof-funding-fixture.sources-for.js";
 import { createFundingRecoveryDirectory } from "./test-storage-root.js";
+import {
+  recordObjectives,
+  TEST_JOURNAL_KEY,
+} from "./watcher-journal-fixture.js";
 
 export const setupFundingRecoveryFixture = async (
   interruptAfterPreparation: boolean | "after_preflight" = false,
@@ -102,6 +107,7 @@ export const setupFundingRecoveryFixture = async (
   });
   const observation = authenticatedHeaderObservation(fixture);
   const classifier = await createHeaderClassifier({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: deploymentIdentity.manifestId,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: finality,
@@ -129,10 +135,15 @@ export const setupFundingRecoveryFixture = async (
     directory: journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
     launchScope: old.launchScope,
+    authenticationKey: TEST_JOURNAL_KEY,
   });
   expect(old.detectionId).toContain("#");
   await decisionJournal.appendLiveDecision(old);
   await decisionJournal.appendLiveDecision(fresh);
+  // The queue records the objective before its workflow journal exists.
+  recordObjectives(journalRoot, [
+    { category: "doubleSpend", headerHash: old.headerHash },
+  ]);
   expect(
     (await decisionJournal.readAll()).map(({ decision }) => decision),
   ).toEqual([old, fresh]);
@@ -170,6 +181,7 @@ export const setupFundingRecoveryFixture = async (
     createWatcherProverFundingAuthorityFactory({
       launchScope: old.launchScope,
       journalRoot,
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
       deploymentIdentity,
       protocolParameters,
       protocolParameterHistory: database.protocolParameterHistory,

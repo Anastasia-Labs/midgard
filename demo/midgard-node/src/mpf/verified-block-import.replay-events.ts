@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type RejectedTx,
@@ -32,6 +33,8 @@ export type ImportedBlockReplayContext = {
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
   readonly blockSlot: bigint;
+  /** The slot mapping script contexts carry their validity range in. */
+  readonly l1SlotConfig: L1SlotConfig;
   /** Observation only: emitted after a transition matches canonical replay.
    * The caller keeps it private until the entire block and prefix validate. */
   readonly onReplayedEvent?: (input: {
@@ -83,13 +86,14 @@ export const replayImportedBlockEvents = (
         return { step, value };
       })
       .sort((a, b) => Number(a.step.step_index - b.step.step_index));
+    // The payload's own faults are defects: the importer calls them invalid.
     yield* assertCanonicalTransitionPhaseOrder(
       steps.map(({ step }) => ({
         eventKey: step.event_key,
         phase: step.phase,
         ledgerOps: [],
       })),
-    );
+    ).pipe(Effect.orDie);
     const expectedSources = new Map<
       string,
       { phase: SDK.TransitionPhase; source: SDK.DaPayloadEntry }
@@ -137,7 +141,9 @@ export const replayImportedBlockEvents = (
     for (const [index, { step, value }] of steps.entries()) {
       if (step.step_index !== BigInt(index) || step.schema_version !== 1n)
         throw new Error("foreign transition indices/schema mismatch");
-      const key = (yield* eventKeyCbor(step.event_key)).toString("hex");
+      const key = (yield* eventKeyCbor(step.event_key).pipe(
+        Effect.orDie,
+      )).toString("hex");
       const source = expectedSources.get(key);
       if (source === undefined || source.phase !== step.phase)
         throw new Error("foreign transition source coverage/phase mismatch");
@@ -188,6 +194,7 @@ export const replayImportedBlockEvents = (
           minFeeA: input.minFeeA,
           minFeeB: input.minFeeB,
           blockSlot: input.blockSlot,
+          l1SlotConfig: input.l1SlotConfig,
           sourceKind: step.phase === "L2Transaction" ? "normal" : "forced",
         });
         if (

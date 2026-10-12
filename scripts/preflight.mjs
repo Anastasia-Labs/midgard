@@ -6,6 +6,7 @@
 //
 // usage: node scripts/preflight.mjs [--strict | --pre-push] [--base <ref>]
 //                                   [--full] [--list] [--json]
+//        node scripts/preflight.mjs --run <check-id> [--run <check-id>...] [--list]
 //        node scripts/preflight.mjs --write-docs | --check-docs
 // Exit 0 all passed, 1 a check failed, 2 usage error, 3 a check was skipped
 // for a missing capability and nothing failed.
@@ -28,6 +29,7 @@ import {
 import {
   collectChanges,
   EXIT,
+  planNamedChecks,
   planPreflight,
   resolveBase,
   runPreflight,
@@ -37,6 +39,7 @@ import {
 export const JSON_SCHEMA = "midgard-preflight/v1";
 
 const USAGE = `usage: node scripts/preflight.mjs [--strict | --pre-push] [--base <target-ref>] [--ci-run <id>] [--full-local | --full] [--list] [--json]
+       node scripts/preflight.mjs --run <check-id> [--run <check-id>...] [--list]
        node scripts/preflight.mjs --write-docs | --check-docs`;
 
 export const parseArguments = (argv) => {
@@ -50,6 +53,7 @@ export const parseArguments = (argv) => {
     list: false,
     json: false,
     docs: undefined,
+    run: [],
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -81,12 +85,14 @@ export const parseArguments = (argv) => {
         options.docs = arg.slice(2, -"-docs".length);
         break;
       case "--ci-run":
+      case "--run":
       case "--base": {
         const value = argv[index + 1];
         if (value === undefined || value.startsWith("--")) {
           throw new UsageError(`${arg} needs a value`);
         }
         if (arg === "--base") options.base = value;
+        else if (arg === "--run") options.run.push(value);
         else options.ciRun = value;
         index += 1;
         break;
@@ -101,6 +107,19 @@ export const parseArguments = (argv) => {
   }
   if (options.docs !== undefined && argv.length !== 1) {
     throw new UsageError(`--${options.docs}-docs takes no other argument`);
+  }
+  // A named run has no base, diff or CI evidence to qualify it.
+  if (
+    options.run.length > 0 &&
+    argv.some(
+      (arg, index) =>
+        arg.startsWith("--") &&
+        arg !== "--run" &&
+        arg !== "--list" &&
+        argv[index - 1] !== "--run",
+    )
+  ) {
+    throw new UsageError("--run combines only with --run and --list");
   }
   return options;
 };
@@ -145,6 +164,81 @@ const numbered = (steps) =>
 const summaryLine = (result) =>
   `${result.status.toUpperCase().padEnd(7)} ${result.id}${result.reason ? ` — ${result.reason}` : ""}${result.status === "failed" && result.fix ? `\n          fix: ${result.fix}` : ""}`;
 
+const verdictLine = (exitCode) =>
+  exitCode === EXIT.passed
+    ? "preflight passed\n"
+    : exitCode === EXIT.failed
+      ? "preflight FAILED\n"
+      : "preflight incomplete: nothing failed, but some checks could not run (exit 3)\n";
+
+const listPlan = (plan, say) => {
+  for (const { check, matched, steps } of plan.planned) {
+    say(
+      `would run ${check.id}${check.warnOnly ? " (warn only)" : ""}${check.capabilities.length > 0 ? ` [needs ${check.capabilities.join(", ")}]` : ""}\n`,
+    );
+    if (matched.length > 0 && !plan.full) {
+      say(
+        `    selected by ${matched.slice(0, 5).join(", ")}${matched.length > 5 ? `, and ${String(matched.length - 5)} more` : ""}\n`,
+      );
+    }
+    for (const step of steps) {
+      say(`    $ ${formatStep(step)}\n`);
+    }
+  }
+};
+
+const execute = async ({
+  root,
+  plan,
+  base,
+  env,
+  stderr,
+  probes,
+  runStep,
+  ciEvidence,
+}) => {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.on("SIGINT", abort);
+  process.on("SIGTERM", abort);
+  try {
+    return await runPreflight({
+      root,
+      plan,
+      probes: probes ?? createProbeSet({ root, env }),
+      base,
+      env,
+      log: stderr,
+      signal: controller.signal,
+      ciEvidence,
+      ...(runStep === undefined ? {} : { runStep }),
+    });
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
+  }
+};
+
+// `--run <id>...`: the named checks at full scope, as a CI step runs them.
+const runNamed = async (root, ids, list, io) => {
+  let plan;
+  try {
+    plan = planNamedChecks(buildRegistry(root), ids);
+  } catch (error) {
+    io.stderr(`preflight: ${error.message}\n`);
+    return EXIT.usage;
+  }
+  if (list) {
+    listPlan(plan, io.stdout);
+    return EXIT.passed;
+  }
+  const { results, exitCode } = await execute({ root, plan, ...io });
+  io.stdout("\npreflight summary\n");
+  for (const result of results) io.stdout(`  ${summaryLine(result)}\n`);
+  io.stdout(verdictLine(exitCode));
+  return exitCode;
+};
+
 export const main = async (
   argv,
   {
@@ -169,6 +263,15 @@ export const main = async (
   }
   if (options.docs !== undefined) {
     return docsCommand(root, options.docs, { stdout, stderr });
+  }
+  if (options.run.length > 0) {
+    return runNamed(root, options.run, options.list, {
+      env,
+      stdout,
+      stderr,
+      probes,
+      runStep,
+    });
   }
 
   // With --json, stdout carries exactly one JSON document; everything a human
@@ -226,41 +329,18 @@ export const main = async (
   }
   let exitCode = EXIT.passed;
   if (options.list) {
-    for (const { check, matched, steps } of plan.planned) {
-      say(
-        `would run ${check.id}${check.warnOnly ? " (warn only)" : ""}${check.capabilities.length > 0 ? ` [needs ${check.capabilities.join(", ")}]` : ""}\n`,
-      );
-      if (matched.length > 0 && !plan.full) {
-        say(
-          `    selected by ${matched.slice(0, 5).join(", ")}${matched.length > 5 ? `, and ${String(matched.length - 5)} more` : ""}\n`,
-        );
-      }
-      for (const step of steps) {
-        say(`    $ ${formatStep(step)}\n`);
-      }
-    }
+    listPlan(plan, say);
   } else {
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    process.on("SIGINT", abort);
-    process.on("SIGTERM", abort);
-    let run;
-    try {
-      run = await runPreflight({
-        root,
-        plan,
-        probes: probes ?? createProbeSet({ root, env }),
-        base,
-        env,
-        log: stderr,
-        signal: controller.signal,
-        ciEvidence,
-        ...(runStep === undefined ? {} : { runStep }),
-      });
-    } finally {
-      process.off("SIGINT", abort);
-      process.off("SIGTERM", abort);
-    }
+    const run = await execute({
+      root,
+      plan,
+      base,
+      env,
+      stderr,
+      probes,
+      runStep,
+      ciEvidence,
+    });
     results = run.results;
     exitCode = run.exitCode;
     say("\npreflight summary\n");
@@ -283,13 +363,7 @@ export const main = async (
     "\nSelection is not the final gate: required CI and distinct acceptance checks remain. See docs/agents/verification.md.\n",
   );
   if (!options.list) {
-    say(
-      exitCode === EXIT.passed
-        ? "preflight passed\n"
-        : exitCode === EXIT.failed
-          ? "preflight FAILED\n"
-          : "preflight incomplete: nothing failed, but some checks could not run (exit 3)\n",
-    );
+    say(verdictLine(exitCode));
   }
 
   if (options.json) {

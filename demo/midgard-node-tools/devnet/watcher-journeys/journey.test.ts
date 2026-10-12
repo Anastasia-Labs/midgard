@@ -35,10 +35,6 @@ for (const fixture of fixtures) {
     async () => {
       const activeSession = await (session ??= openJourneySession(
         runDirectory!,
-        {
-          initializeAuthority:
-            process.env.MIDGARD_WATCHER_JOURNEY_INITIALIZE_AUTHORITY === "1",
-        },
       ));
       await runAutonomousWatcherJourney(runDirectory!, fixture, {
         session: activeSession,

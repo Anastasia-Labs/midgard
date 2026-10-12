@@ -9,6 +9,16 @@ import {
   reconcileDaAttestedProgram,
 } from "../src/commands/reconcile.js";
 import { Lucid, MidgardContracts } from "../src/services/index.js";
+import { landedStateQueueUTxOs } from "../src/services/landed-state-queue.js";
+
+// The canonical queue is the landed state queue (P1); the stub stands in for
+// the follower's facts.
+vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/services/landed-state-queue.js")
+  >()),
+  landedStateQueueUTxOs: vi.fn(),
+}));
 
 vi.mock("@al-ft/midgard-sdk", async () => {
   const actual =
@@ -17,7 +27,6 @@ vi.mock("@al-ft/midgard-sdk", async () => {
     );
   return {
     ...actual,
-    fetchSortedStateQueueUTxOsProgram: vi.fn(),
     getStateQueueNodeFromStateQueueDatum: vi.fn(),
     hashBlockHeader: vi.fn(),
   };
@@ -159,7 +168,7 @@ describe("DA-attested reconciliation", () => {
   });
 
   it("uses configured Cardano state-queue evidence even when a committee node URL is supplied", async () => {
-    const fetchSorted = vi.mocked(SDK.fetchSortedStateQueueUTxOsProgram);
+    const landedQueue = vi.mocked(landedStateQueueUTxOs);
     const getNode = vi.mocked(SDK.getStateQueueNodeFromStateQueueDatum);
     const hashHeader = vi.mocked(SDK.hashBlockHeader);
     const committeeFetch = vi
@@ -179,7 +188,7 @@ describe("DA-attested reconciliation", () => {
       key: { Key: { key: HEADER_HASH } },
       data: "canonical-node",
     };
-    fetchSorted.mockReturnValue(
+    landedQueue.mockReturnValue(
       Effect.succeed([
         {
           utxo: {
@@ -229,6 +238,10 @@ describe("DA-attested reconciliation", () => {
           availabilityPolicyId: AVAILABILITY_CHALLENGE_POLICY_ID,
         }),
       }),
+    );
+    expect(landedQueue).toHaveBeenCalledWith(
+      contracts.stateQueue,
+      "reconciliation",
     );
     expect(committeeFetch).not.toHaveBeenCalled();
     committeeFetch.mockRestore();

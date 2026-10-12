@@ -1,23 +1,29 @@
 import { readFile } from "node:fs/promises";
 import { inspect } from "node:util";
 
-import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
-import { hexToBytes } from "@al-ft/midgard-core/hex";
+import { decodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import { Effect } from "effect";
 
 import { decodeNodeUtxo } from "../commands/command-utils.js";
 import {
   CommitBuildCalibrationDB,
+  ConfirmedLedgerDB,
   MempoolDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
   MigrationRunner,
+  ProcessedMempoolDB,
 } from "../database/index.js";
+import * as Ledger from "../database/utils/ledger.js";
 import * as Tx from "../database/utils/tx.js";
 import { Database, NodeConfig } from "../services/index.js";
 import { sha256Hex } from "../sha256.js";
 import { batchProgram, breakDownTx } from "../utils.js";
-import { decodeCanonicalProbeRow } from "./mpf-engine-probe-corpus.js";
+import {
+  buildCanonicalFixtureEntries,
+  canonicalOutrefCborFromLabel,
+  decodeCanonicalProbeRow,
+} from "./mpf-engine-probe-corpus.js";
 import {
   decodeArchitectureGCommitCandidateSeedInput,
   decodeArchitectureGCorpusFunding,
@@ -31,24 +37,13 @@ const inputPath =
   "";
 const batchSize = 1_000;
 
-const outrefCbor = (label: string): Buffer => {
-  const match = /^([0-9a-f]{64})#(0|[1-9]\d*)$/u.exec(label.toLowerCase());
-  if (match === null) throw new Error(`Invalid funding outref ${label}`);
-  // The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
-  // fixed 38 bytes — matching on-chain `ledger_outref_key`, not CML's
-  // minimal-index `TransactionInput` CBOR.
-  return encodeMidgardSpendInputItem({
-    txId: hexToBytes(match[1]!, { fieldName: "funding outref txHash" }),
-    outputIndex: Number(match[2]!),
-  });
-};
-
 const loadInput = async (): Promise<{
   readonly input: ReturnType<
     typeof decodeArchitectureGCommitCandidateSeedInput
   >;
   readonly rows: readonly { readonly txHash: string; readonly cbor: Buffer }[];
   readonly funding: readonly MempoolLedgerDB.EntryNoTimeStamp[];
+  readonly confirmedLedger: readonly Ledger.Entry[];
 }> => {
   if (inputPath.length === 0) throw new Error("Missing candidate seed input");
   const input = decodeArchitectureGCommitCandidateSeedInput(
@@ -85,7 +80,7 @@ const loadInput = async (): Promise<{
   });
   const funding = fundingMap.entries.map((entry) => {
     const label = String(entry.outref ?? "").toLowerCase();
-    const encodedOutref = outrefCbor(label);
+    const encodedOutref = canonicalOutrefCborFromLabel(label);
     const decoded = decodeNodeUtxo({
       outref: encodedOutref.toString("hex"),
       outputCbor: String(entry.outputCbor ?? "").toLowerCase(),
@@ -98,7 +93,38 @@ const loadInput = async (): Promise<{
       [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
     } satisfies MempoolLedgerDB.EntryNoTimeStamp;
   });
-  return { input, rows, funding };
+  // confirmed_ledger is the commit base the default build path hydrates: the
+  // exact entries the Level fixture was created from, so its root equals the
+  // fixture marker the native owner serves.
+  const addressByOutput = new Map<string, string>();
+  const confirmedLedger = buildCanonicalFixtureEntries(
+    new Map(
+      fundingMap.entries.map((entry) => [
+        String(entry.outref ?? "").toLowerCase(),
+        Buffer.from(String(entry.outputCbor ?? "").toLowerCase(), "hex"),
+      ]),
+    ),
+    input.fixtureInitialUtxoCount,
+  ).map(({ key, value }) => {
+    const outputHex = value.toString("hex");
+    let address = addressByOutput.get(outputHex);
+    if (address === undefined) {
+      address = decodeNodeUtxo({
+        outref: key.toString("hex"),
+        outputCbor: outputHex,
+      }).address;
+      addressByOutput.set(outputHex, address);
+    }
+    return {
+      [Ledger.Columns.TX_ID]: Buffer.from(
+        decodeMidgardSpendInputItem(key).txId,
+      ),
+      [Ledger.Columns.OUTREF]: key,
+      [Ledger.Columns.OUTPUT]: value,
+      [Ledger.Columns.ADDRESS]: address,
+    };
+  });
+  return { input, rows, funding, confirmedLedger };
 };
 
 void (async () => {
@@ -108,7 +134,7 @@ void (async () => {
       `Refusing candidate seed for non-benchmark POSTGRES_DB=${JSON.stringify(databaseName)}`,
     );
   }
-  const { input, rows, funding } = await loadInput();
+  const { input, rows, funding, confirmedLedger } = await loadInput();
   const firstTimestamp = new Date(input.firstTimestampIso);
   if (!Number.isFinite(firstTimestamp.getTime())) {
     throw new Error("Candidate seed firstTimestampIso is invalid");
@@ -139,7 +165,17 @@ void (async () => {
     yield* MempoolDB.clear;
     yield* MempoolLedgerDB.clear;
     yield* MempoolTxDeltasDB.clear;
+    yield* ProcessedMempoolDB.clear;
+    yield* ConfirmedLedgerDB.clear;
     yield* CommitBuildCalibrationDB.update(0.05);
+    yield* batchProgram(
+      batchSize,
+      confirmedLedger.length,
+      "candidate-confirmed-ledger",
+      (start, end) =>
+        ConfirmedLedgerDB.insertMultiple(confirmedLedger.slice(start, end)),
+      1,
+    );
     yield* batchProgram(
       batchSize,
       funding.length,
@@ -201,6 +237,7 @@ void (async () => {
       fundingCount: funding.length,
       terminalLedgerCount: net.produced.length,
       deltaCount: processed.length,
+      confirmedLedgerCount: confirmedLedger.length,
     };
   }).pipe(
     Effect.provide(Database.workerLayer),
@@ -217,6 +254,7 @@ void (async () => {
     expectedDatabaseName: databaseName,
     expectedCorpusSliceSha256: input.corpusSliceSha256,
     expectedTransactionCount: input.expectedTransactionCount,
+    expectedConfirmedLedgerCount: input.fixtureInitialUtxoCount,
   });
   process.stdout.write(`${JSON.stringify(artifact)}\n`);
 })().catch((error: unknown) => {

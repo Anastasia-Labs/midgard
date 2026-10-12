@@ -2,11 +2,6 @@ import type { Script } from "@lucid-evolution/lucid";
 
 export const DOUBLE_WITHDRAW_CATEGORY_LABEL = "double-withdraw";
 
-export const DOUBLE_WITHDRAW_BLUEPRINT_TITLES = {
-  step01: "fraud_proofs/double_withdraw/step_01.main.spend",
-  step02: "fraud_proofs/double_withdraw/step_02.main.spend",
-} as const;
-
 export type DoubleWithdrawStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;

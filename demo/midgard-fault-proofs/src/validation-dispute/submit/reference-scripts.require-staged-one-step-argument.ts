@@ -29,7 +29,11 @@ import {
   auxiliaryShape,
   validationSemanticResolverGlobalIndex,
 } from "./reference-scripts.auxiliary-shape.js";
-import { VALIDATION_SEMANTIC_RESOLVER_COUNTS } from "./reference-scripts.validation-auxiliary-shapes.js";
+import {
+  hasValidationAuxiliaryShape,
+  VALIDATION_AUXILIARY_SHAPES,
+  VALIDATION_SEMANTIC_RESOLVER_COUNTS,
+} from "./reference-scripts.validation-auxiliary-shapes.js";
 
 export const requireStagedOneStepArgument = (
   argument: ValidationOneStepSubmissionArgument,
@@ -112,6 +116,26 @@ export const requireStagedOneStepArgument = (
     ...validatedCekEvidence,
   };
 };
+
+/**
+ * The ScriptSources stage-one route (prepare resolver 8, semantic resolver 28)
+ * whose redeemer-item step is split over the shared redeemer-item stages: a
+ * chain of transactions, each resumed against the preparation its entry
+ * stage consumed.
+ */
+export const isSplitScriptSourcesItemRoute = (
+  argument: Pick<ValidationOneStepSubmissionArgument, "resolverIndex">,
+  staged: Pick<
+    ReturnType<typeof requireStagedOneStepArgument>,
+    "semanticResolverIndex" | "auxiliary"
+  >,
+): boolean =>
+  argument.resolverIndex === 8 &&
+  staged.semanticResolverIndex === 28 &&
+  hasValidationAuxiliaryShape(
+    staged.auxiliary,
+    VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
+  );
 
 /** Reconstruct immutable output bindings from the exact retained preparation and claim. */
 export const deriveScriptSourcesItemSubmissionPlan = ({

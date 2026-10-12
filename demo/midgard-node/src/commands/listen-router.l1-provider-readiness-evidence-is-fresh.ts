@@ -1,6 +1,6 @@
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Duration, Effect, Ref } from "effect";
 
-import { type SubmitSlotSnapshot } from "../local-ogmios-slot.js";
 import { type L1ProviderHealthEvidence } from "../services/index.js";
 import { Globals, nextL1ProviderHealthEvidence } from "../services/index.js";
 import { type L1ProviderPreflightReport } from "./l1-provider-preflight.js";
@@ -40,7 +40,7 @@ export type L1ProviderReadinessProbe =
   | {
       readonly mode: "exact_gated_direct_preflight";
       readonly healthy: true;
-      readonly ogmiosSlot: SubmitSlotSnapshot;
+      readonly ledgerSlot: SubmitSlotSnapshot;
       readonly publishedRevision: number;
     }
   | {
@@ -99,13 +99,13 @@ export const l1ProviderReadinessEvidenceIsFresh = ({
       maxAgeMs: maxExactAgeMs,
     }));
 
-export const localOgmiosSlotFromPreflight = (
+export const localLedgerSlotFromPreflight = (
   report: L1ProviderPreflightReport,
 ): SubmitSlotSnapshot => {
-  const localOgmiosSlot = report.sources.find(
+  const localLedgerSlot = report.sources.find(
     (source) => source.healthy && source.localLedgerSlot !== undefined,
   )?.localLedgerSlot;
-  if (!report.ok || localOgmiosSlot === undefined) {
+  if (!report.ok || localLedgerSlot === undefined) {
     const failures = report.sources
       .filter((source) => !source.healthy)
       .map((source) =>
@@ -125,10 +125,10 @@ export const localOgmiosSlotFromPreflight = (
     throw new Error(
       failures.length > 0
         ? `Direct L1 provider preflight failed (${failures})`
-        : "Direct L1 provider preflight returned no local Ogmios slot evidence",
+        : "Direct L1 provider preflight returned no local ledger slot evidence",
     );
   }
-  return localOgmiosSlot;
+  return localLedgerSlot;
 };
 
 export const runBoundedDirectL1ProviderPreflight = ({
@@ -146,7 +146,7 @@ export const runBoundedDirectL1ProviderPreflight = ({
   }).pipe(
     Effect.flatMap((report) =>
       Effect.try({
-        try: () => localOgmiosSlotFromPreflight(report),
+        try: () => localLedgerSlotFromPreflight(report),
         catch: (cause) => cause,
       }),
     ),
@@ -218,12 +218,12 @@ export const recordDirectProbeFailure = ({
 
 export const recordDirectProbeSuccess = ({
   globals,
-  ogmiosSlot,
+  ledgerSlot,
   observedAtMs,
   expectedRevision,
 }: {
   readonly globals: Globals;
-  readonly ogmiosSlot: SubmitSlotSnapshot;
+  readonly ledgerSlot: SubmitSlotSnapshot;
   readonly observedAtMs: number;
   readonly expectedRevision: number;
 }): Effect.Effect<L1ProviderReadinessProbe> =>
@@ -237,14 +237,14 @@ export const recordDirectProbeSuccess = ({
         current: latest,
         healthy: true,
         observedAtMs,
-        ogmiosSlot,
+        ledgerSlot,
         successKind: "direct",
       });
       return [
         {
           mode: "exact_gated_direct_preflight",
           healthy: true,
-          ogmiosSlot,
+          ledgerSlot,
           publishedRevision: updated.evidenceRevision,
         },
         updated,

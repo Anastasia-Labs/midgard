@@ -1,15 +1,10 @@
 import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core/codec/native-tx-carriage";
 import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core/consensus-profile";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import { Data, LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  CredentialSchema,
-  LucidError,
-  makeReturn,
-  POSIXTimeSchema,
-} from "../common.js";
+import { AddressSchema, POSIXTimeSchema } from "../common.js";
 import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
 import {
   CardanoDatum,
@@ -23,30 +18,12 @@ import { FieldCarriageSchema } from "../native-tx-field-access.js";
 import { OperatorVerdictSchema } from "../rejection-reason.js";
 import { RawRootMembershipProofSchema } from "../transition-trace.js";
 import {
-  fetchUserEventUTxOsProgram,
   userEventCborFieldsFromInlineDatum,
   UserEventExtraFields,
-  UserEventFetchConfig,
   UserEventMintRedeemerSchema,
 } from "./internals.js";
 
-export const TxOrderRefundAddressSchema = Data.Object({
-  paymentCredential: CredentialSchema,
-  stakeCredential: Data.Nullable(
-    Data.Enum([
-      Data.Object({
-        Inline: Data.Tuple([CredentialSchema]),
-      }),
-      Data.Object({
-        Pointer: Data.Object({
-          slotNumber: Data.Integer(),
-          transactionIndex: Data.Integer(),
-          certificateIndex: Data.Integer(),
-        }),
-      }),
-    ]),
-  ),
-});
+export const TxOrderRefundAddressSchema = AddressSchema;
 
 export type TxOrderRefundAddress = Data.Static<
   typeof TxOrderRefundAddressSchema
@@ -229,19 +206,6 @@ export const utxosToTxOrderUTxOs = (
       };
     },
   );
-
-export const fetchTxOrderUTxOsProgram = (
-  lucid: LucidEvolution,
-  config: UserEventFetchConfig,
-): Effect.Effect<TxOrderUTxOV1[], LucidError> =>
-  fetchUserEventUTxOsProgram(lucid, config, (utxos: UTxO[]) =>
-    utxosToTxOrderUTxOs(utxos, config.eventPolicyId),
-  );
-
-export const fetchTxOrderUTxOs = (
-  lucid: LucidEvolution,
-  config: UserEventFetchConfig,
-) => makeReturn(fetchTxOrderUTxOsProgram(lucid, config));
 
 export type SubmitTxOrderReferenceScripts = {
   readonly txOrderMinting: UTxO;

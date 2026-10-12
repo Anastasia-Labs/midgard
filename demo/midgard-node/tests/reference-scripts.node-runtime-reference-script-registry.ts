@@ -110,9 +110,6 @@ describe("node-runtime reference-script registry", () => {
     expect(registeredFraudProofNames).toContain(
       "V1 fraud-proof missing-signature step-04",
     );
-    expect(registeredFraudProofNames).toContain(
-      "V1 fraud-proof missing-native-script-tx step-06",
-    );
   });
 
   it("derives protocol-init as a strict subset of node-runtime", async () => {

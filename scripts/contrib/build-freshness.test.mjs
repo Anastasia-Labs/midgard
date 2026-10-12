@@ -58,7 +58,13 @@ const scratchCheckout = (t) => {
     "demo/pnpm-workspace.yaml",
   ])
     cpSync(resolve(checkout, path), resolve(scratch, path));
-  for (const name of ["midgard-core", "midgard-validation"])
+  // midgard-core inlines l1-node-transport's sources through the
+  // `midgard-source` condition, so its build needs that package too.
+  for (const name of [
+    "l1-node-transport",
+    "midgard-core",
+    "midgard-validation",
+  ])
     cpSync(resolve(checkout, "demo", name), resolve(scratch, "demo", name), {
       recursive: true,
       verbatimSymlinks: true,

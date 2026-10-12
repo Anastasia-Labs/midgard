@@ -1,3 +1,5 @@
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+
 import {
   AuthenticatedValidator,
   MintingValidator,
@@ -229,4 +231,9 @@ export type ValidationTraceDisputeFaultProofContracts = {
 export type BuildValidationTraceDisputeFaultProofContractsParams =
   BuildFaultProofContractsParams & {
     readonly referenceScriptAuthPolicyId: string;
+    /**
+     * The deployment's L1 slot mapping, applied to the txInfo stage and
+     * recorded in the deployment manifest.
+     */
+    readonly l1SlotConfig: L1SlotConfig;
   };

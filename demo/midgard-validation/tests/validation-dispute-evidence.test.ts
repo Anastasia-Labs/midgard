@@ -11,6 +11,7 @@ import {
   type MidgardValidationVerdictName,
 } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { parseExactAikenDataCbor } from "@al-ft/midgard-fault-proofs";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -151,6 +152,7 @@ const buildAcceptedForcedTrace =
     );
     return await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...baseContext,
         transactionId: transaction.txId,
         canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
@@ -176,6 +178,7 @@ const buildRejectedForcedTrace =
     });
     return await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...baseContext,
         transactionId: transaction.txId,
         canonicalTransactionCbor: encodeMidgardForcedTxCanonical(

@@ -53,9 +53,6 @@ describe("fault decision bridge over the retained-DA runtime owner", () => {
       operationsSink: observability.sink,
       nowMs: IN_WINDOW,
       monotonicNowMs: () => monotonic,
-      // The bridge wakes twice per owner start delay, so one wake meets the
-      // owner's in-backoff refusal as well as its failed start.
-      deferredRetryDelayMs: () => 500,
       warn,
       classifyOverride: async (fresh) => {
         const runtime = await owner.createRuntime(rawConfig());
@@ -70,7 +67,7 @@ describe("fault decision bridge over the retained-DA runtime owner", () => {
       expect(owner.transportStatus().state).toBe("failed");
       // Inside the owner's 1 s delay the lease is refused without a start.
       monotonic += 500;
-      await h.bridge.retryDeferredClassification(current);
+      await h.bridge.reconcileAndDispatch(current);
       expect(factory).toHaveBeenCalledOnce();
       expect(h.enqueued).toEqual([]);
       expect(records(observability).map(({ outcome }) => outcome)).toEqual([
@@ -85,7 +82,7 @@ describe("fault decision bridge over the retained-DA runtime owner", () => {
       // Once the delay has passed the transport starts and the fault is
       // classified and targeted once.
       monotonic += 500;
-      await h.bridge.retryDeferredClassification(current);
+      await h.bridge.reconcileAndDispatch(current);
       expect(factory).toHaveBeenCalledTimes(2);
       expect(owner.transportStatus()).toEqual({ state: "open", failure: null });
       expect(h.bridge.status().target?.headerHash).toBe(faulty!.headerHash);
@@ -93,9 +90,10 @@ describe("fault decision bridge over the retained-DA runtime owner", () => {
         faulty!.headerHash,
       ]);
       monotonic += 1_000_000;
-      await h.bridge.retryDeferredClassification(current);
+      await h.bridge.reconcileAndDispatch(current);
       expect(h.application.classifyHeader).toHaveBeenCalledTimes(3);
-      expect(h.enqueued).toHaveLength(1);
+      expect(h.enqueuedGenerations).toHaveLength(2);
+      expect(new Set(h.enqueuedGenerations).size).toBe(1);
     } finally {
       clock.mockRestore();
       await owner.close();

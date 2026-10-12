@@ -1,17 +1,17 @@
 import { DatabaseSync } from "node:sqlite";
 
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 
 import {
   assertWatcherProtocolParameterRuntimeAuthority,
   createWatcherProtocolParameterHistory,
+  createWatcherProtocolParameterRuntimeAuthority,
   refreshWatcherProtocolParameterRuntimeAuthority,
-  unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest,
 } from "../../src/funding/prover-funding.js";
 import type { WatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { ledgerParameterQuery } from "../support/ledger-protocol-parameters.js";
 import { runtimeAuthority } from "./prover-funding-calculation.runtime-authority.js";
-import { ogmiosParameters } from "./prover-funding-calculation.transaction-cbor.js";
 
 it("authenticates historical parameters and refuses disk tampering, identity substitution and authority clones", async () => {
   const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
@@ -36,22 +36,10 @@ it("authenticates historical parameters and refuses disk tampering, identity sub
     conflictCode: null,
     recordDigest: "55".repeat(32),
   };
-  const authority =
-    await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-      deploymentIdentity,
-      ogmiosUrl: "http://127.0.0.1:1337",
-      timeoutMs: 10_000,
-      fetchImpl: vi.fn(async (_url, init) => {
-        const { id } = JSON.parse(String(init?.body)) as { id: string };
-        return new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id,
-            result: { ...ogmiosParameters(), minFeeCoefficient: 45 },
-          }),
-        );
-      }) as unknown as typeof fetch,
-    });
+  const authority = await createWatcherProtocolParameterRuntimeAuthority({
+    deploymentIdentity,
+    query: ledgerParameterQuery({ minFeeA: 45n }),
+  });
   try {
     const history = createWatcherProtocolParameterHistory({
       database,

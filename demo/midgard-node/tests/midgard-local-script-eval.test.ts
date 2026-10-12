@@ -20,6 +20,7 @@ import {
   hashMidgardVersionedScript,
   ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   decodeMidgardRedeemers,
   MidgardRedeemerTag,
@@ -286,6 +287,7 @@ describe("Midgard local script evaluation primitives", () => {
     const context = lucidContext(
       buildMidgardScriptContext(
         {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           txId: Buffer.alloc(32, 0),
           inputs: [],
           referenceInputs: [],
@@ -339,6 +341,7 @@ describe("Midgard local script evaluation primitives", () => {
     });
     const midgardContext = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0),
         inputs: [],
         referenceInputs: [],
@@ -365,6 +368,7 @@ describe("Midgard local script evaluation primitives", () => {
     });
     const plutusContext = buildPlutusV3ScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0),
         inputs: [],
         referenceInputs: [],
@@ -426,6 +430,7 @@ describe("Midgard local script evaluation primitives", () => {
     });
     const context = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0x31),
         inputs: [{ outRefHex, output }],
         referenceInputs: [],
@@ -468,6 +473,7 @@ describe("Midgard local script evaluation primitives", () => {
     });
     const context = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0x32),
         inputs: [{ outRefHex, output }],
         referenceInputs: [],
@@ -517,6 +523,7 @@ describe("Midgard local script evaluation primitives", () => {
       dataCborHex: txOutRefDataCborHex(otherOutRefHex),
     });
     const contextView = {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       txId: Buffer.alloc(32, 0x34),
       inputs: [{ outRefHex, output }],
       referenceInputs: [],
@@ -630,6 +637,7 @@ describe("Midgard local script evaluation primitives", () => {
     });
     const keyHash = CML.Ed25519KeyHash.from_hex(signer);
     const contextView = {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       txId: Buffer.alloc(32, 0x36),
       inputs: [
         { outRefHex: firstInput, output: makeScriptContextOutput(probeHash) },
@@ -707,6 +715,7 @@ describe("Midgard local script evaluation primitives", () => {
     });
     const context = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0x33),
         inputs: [],
         referenceInputs: [],
@@ -738,6 +747,7 @@ describe("Midgard local script evaluation primitives", () => {
     });
     const context = buildMidgardScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0x34),
         inputs: [],
         referenceInputs: [],
@@ -779,6 +789,7 @@ describe("Midgard local script evaluation primitives", () => {
 
     const context = buildPlutusV3ScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0),
         inputs: [{ outRefHex, output }],
         referenceInputs: [],
@@ -832,6 +843,7 @@ describe("Midgard local script evaluation primitives", () => {
 
     const context = buildPlutusV3ScriptContext(
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         txId: Buffer.alloc(32, 0),
         inputs: [{ outRefHex, output }],
         referenceInputs: [],

@@ -33,6 +33,8 @@ import {
 } from "../src/transactions/register-active-operator.js";
 import * as LifecycleClock from "../src/transactions/register-active-operator/clock.js";
 import { inspectSignedTxValidityInterval } from "../src/transactions/utils.js";
+import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   EMULATOR_PROTOCOL_PARAMETERS,
   EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
@@ -71,7 +73,7 @@ describe("operator lifecycle emulator", () => {
     const secondLucid = await Lucid(emulator, "Custom");
     secondLucid.selectWallet.fromSeed(second.seedPhrase);
     for (const operatorLucid of [lucid, secondLucid]) {
-      await Effect.runPromise(
+      await runWithoutFollower(
         registerOperatorProgram(
           operatorLucid,
           contracts,
@@ -105,7 +107,7 @@ describe("operator lifecycle emulator", () => {
     const originalBuild = SDK.buildActivateOperatorTx;
     const rejectForcedEarlyActivation = async (expectedEmpty: boolean) => {
       const clock = vi
-        .spyOn(LifecycleClock, "resolveCurrentTimeMs")
+        .spyOn(LifecycleClock, "resolveL1NowMsOrRefuse")
         .mockImplementation((lucid) =>
           Effect.succeed(
             LifecycleClock.currentTimeMsForLucidOrEmulatorFallback(lucid) +
@@ -126,7 +128,7 @@ describe("operator lifecycle emulator", () => {
         });
       try {
         await expect(
-          Effect.runPromise(
+          runWithoutFollower(
             activateOperatorProgram(
               secondLucid,
               contracts,
@@ -148,7 +150,7 @@ describe("operator lifecycle emulator", () => {
 
     const submit = vi.spyOn(emulator, "submitTx");
     try {
-      const activated = await Effect.runPromise(
+      const activated = await runWithoutFollower(
         activateOperatorProgram(
           lucid,
           contracts,
@@ -207,7 +209,7 @@ describe("operator lifecycle emulator", () => {
       const account = accounts[index]!;
       const operatorLucid = await Lucid(emulator, "Custom");
       operatorLucid.selectWallet.fromSeed(account.seedPhrase);
-      const registered = await Effect.runPromise(
+      const registered = await runWithoutFollower(
         registerOperatorProgram(
           operatorLucid,
           contracts,
@@ -217,7 +219,7 @@ describe("operator lifecycle emulator", () => {
       );
       expect(registered.registerTxHash).toHaveLength(64);
       advanceEmulatorPastRegistrationDelay(emulator);
-      const activated = await Effect.runPromise(
+      const activated = await runWithoutFollower(
         activateOperatorProgram(
           operatorLucid,
           contracts,
@@ -263,7 +265,7 @@ describe("operator lifecycle emulator", () => {
       const priorOutRefs = activeUtxos
         .map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`)
         .sort();
-      const duplicate = await Effect.runPromise(
+      const duplicate = await runWithoutFollower(
         activateOperatorProgram(
           operatorLucid,
           contracts,
@@ -284,7 +286,7 @@ describe("operator lifecycle emulator", () => {
     }
   });
 
-  it("refreshes the dedicated reference-script wallet from provider state after external replenishment", async () => {
+  it("funds and signs the dedicated reference-script wallet from its view after external replenishment, whatever the instance pins", async () => {
     const operator = generateEmulatorAccount({
       lovelace: 200_000_000n,
     });
@@ -298,7 +300,7 @@ describe("operator lifecycle emulator", () => {
     const fundingLucid = await Lucid(emulator, "Custom");
     fundingLucid.selectWallet.fromSeed(operator.seedPhrase);
     const referenceScriptsLucid = await Lucid(emulator, "Custom");
-    referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
+    selectNodeWallet(referenceScriptsLucid, referenceScripts.seedPhrase);
 
     const oneShotNonce = (await fundingLucid.wallet().getUtxos())[0];
     if (!oneShotNonce) {
@@ -317,42 +319,48 @@ describe("operator lifecycle emulator", () => {
       referenceScriptAuth,
     );
 
+    // A stale pin on the instance: the view never reads it.
     referenceScriptsLucid.overrideUTxOs([]);
-    const staleReferenceWalletUtxos = await referenceScriptsLucid
-      .wallet()
-      .getUtxos();
-    const stalePlainBalance = staleReferenceWalletUtxos
-      .filter((utxo) => utxo.scriptRef === undefined)
-      .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
-    expect(stalePlainBalance).toEqual(0n);
+    try {
+      const staleReferenceWalletUtxos = await referenceScriptsLucid
+        .wallet()
+        .getUtxos();
+      const stalePlainBalance = staleReferenceWalletUtxos
+        .filter((utxo) => utxo.scriptRef === undefined)
+        .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
+      expect(stalePlainBalance).toEqual(0n);
 
-    const published = await Effect.runPromise(
-      deployReferenceScriptCommandProgram(
-        referenceScriptsLucid,
-        contracts,
-        "active-operators",
-        contracts.referenceScriptAuth,
-        fundingLucid,
-      ),
-    );
-    expect(published).toHaveLength(2);
+      const published = await runWithoutFollower(
+        deployReferenceScriptCommandProgram(
+          referenceScriptsLucid,
+          contracts,
+          "active-operators",
+          contracts.referenceScriptAuth,
+          fundingLucid,
+        ),
+      );
+      expect(published).toHaveLength(2);
 
-    const referenceScriptAddress = await referenceScriptsLucid
-      .wallet()
-      .address();
-    const liveReferenceWalletUtxos = await referenceScriptsLucid.utxosAt(
-      referenceScriptAddress,
-    );
-    const liveReferenceScriptCount = liveReferenceWalletUtxos.filter(
-      (utxo) => utxo.scriptRef !== undefined,
-    ).length;
-    const livePlainBalance = liveReferenceWalletUtxos
-      .filter((utxo) => utxo.scriptRef === undefined)
-      .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
+      const referenceScriptAddress = await referenceScriptsLucid
+        .wallet()
+        .address();
+      const liveReferenceWalletUtxos = await referenceScriptsLucid.utxosAt(
+        referenceScriptAddress,
+      );
+      const liveReferenceScriptCount = liveReferenceWalletUtxos.filter(
+        (utxo) => utxo.scriptRef !== undefined,
+      ).length;
+      const livePlainBalance = liveReferenceWalletUtxos
+        .filter((utxo) => utxo.scriptRef === undefined)
+        .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
 
-    expect(liveReferenceScriptCount).toBeGreaterThanOrEqual(2);
-    expect(livePlainBalance).toBeGreaterThan(0n);
-    expect(await referenceScriptsLucid.wallet().getUtxos()).not.toEqual([]);
+      expect(liveReferenceScriptCount).toBeGreaterThanOrEqual(2);
+      expect(livePlainBalance).toBeGreaterThan(0n);
+      // The node pins nothing: the stale pin is as the test left it.
+      expect(await referenceScriptsLucid.wallet().getUtxos()).toEqual([]);
+    } finally {
+      referenceScriptsLucid.clearUTxOOverride();
+    }
   }, 240_000);
 
   it("deep-clones the authenticated deployment snapshot for each scenario", async () => {
@@ -387,7 +395,7 @@ describe("operator lifecycle emulator", () => {
       operatorKeyHash,
     } = await initOperatorLifecycleFixture();
 
-    const registerResult = await Effect.runPromise(
+    const registerResult = await runWithoutFollower(
       registerOperatorProgram(
         lucid,
         contracts,
@@ -410,7 +418,7 @@ describe("operator lifecycle emulator", () => {
     expect(activeNodeUtxosBeforeActivate.length).toEqual(0);
 
     advanceEmulatorPastRegistrationDelay(emulator);
-    const activateResult = await Effect.runPromise(
+    const activateResult = await runWithoutFollower(
       activateOperatorProgram(
         lucid,
         contracts,
@@ -438,7 +446,7 @@ describe("operator lifecycle emulator", () => {
       operatorKeyHash,
     } = await initOperatorLifecycleFixture();
 
-    const registerResult = await Effect.runPromise(
+    const registerResult = await runWithoutFollower(
       registerOperatorProgram(
         lucid,
         contracts,
@@ -455,7 +463,7 @@ describe("operator lifecycle emulator", () => {
     expect(registeredNodeUtxosAfterRegister.length).toBeGreaterThan(0);
 
     advanceEmulatorPastRegistrationDelay(emulator);
-    const resumedResult = await Effect.runPromise(
+    const resumedResult = await runWithoutFollower(
       registerAndActivateOperatorProgram(
         lucid,
         contracts,
@@ -478,7 +486,7 @@ describe("operator lifecycle emulator", () => {
     const { lucid, referenceScriptsLucid, contracts } =
       await initOperatorLifecycleFixture();
 
-    const registerResult = await Effect.runPromise(
+    const registerResult = await runWithoutFollower(
       registerOperatorProgram(
         lucid,
         contracts,
@@ -494,7 +502,7 @@ describe("operator lifecycle emulator", () => {
     );
     expect(registeredNodeUtxos.length).toBeGreaterThan(0);
 
-    const deregisterResult = await Effect.runPromise(
+    const deregisterResult = await runWithoutFollower(
       deregisterOperatorProgram(
         lucid,
         contracts,
@@ -514,7 +522,7 @@ describe("operator lifecycle emulator", () => {
       await initOperatorLifecycleFixture();
 
     await expect(
-      Effect.runPromise(
+      runWithoutFollower(
         activateOperatorProgram(
           lucid,
           contracts,
@@ -536,7 +544,7 @@ describe("operator lifecycle emulator", () => {
 
     const submit = vi.spyOn(emulator, "submitTx");
     try {
-      const outcome = await Effect.runPromise(
+      const outcome = await runWithoutFollower(
         Effect.either(
           activateOperatorProgram(
             secondLucid,
@@ -590,7 +598,7 @@ describe("operator lifecycle emulator", () => {
     expect(nowMs).toBeGreaterThanOrEqual(activationTime);
     expect(nowMs - activationTime).toBeLessThan(1000n);
 
-    const activated = await Effect.runPromise(
+    const activated = await runWithoutFollower(
       activateOperatorProgram(
         secondLucid,
         contracts,
@@ -624,7 +632,7 @@ describe("operator lifecycle emulator", () => {
     const walletUtxosBeforeRegister = await lucid.wallet().getUtxos();
     expect(walletUtxosBeforeRegister.length).toBeGreaterThanOrEqual(12);
 
-    const registerResult = await Effect.runPromise(
+    const registerResult = await runWithoutFollower(
       registerOperatorProgram(
         lucid,
         contracts,
@@ -642,7 +650,7 @@ describe("operator lifecycle emulator", () => {
     expect(walletUtxosBeforeActivate.length).toBeGreaterThanOrEqual(14);
 
     advanceEmulatorPastRegistrationDelay(emulator);
-    const activateResult = await Effect.runPromise(
+    const activateResult = await runWithoutFollower(
       activateOperatorProgram(
         lucid,
         contracts,
@@ -677,7 +685,7 @@ describe("operator lifecycle emulator", () => {
     const walletUtxosBeforeOnboarding = await lucid.wallet().getUtxos();
     expect(walletUtxosBeforeOnboarding.length).toBeGreaterThanOrEqual(16);
 
-    const registerResult = await Effect.runPromise(
+    const registerResult = await runWithoutFollower(
       registerOperatorProgram(
         lucid,
         contracts,
@@ -687,7 +695,7 @@ describe("operator lifecycle emulator", () => {
     );
     expect(registerResult.registerTxHash).toHaveLength(64);
     advanceEmulatorPastRegistrationDelay(emulator);
-    const activateResult = await Effect.runPromise(
+    const activateResult = await runWithoutFollower(
       activateOperatorProgram(
         lucid,
         contracts,
@@ -748,7 +756,7 @@ describe("operator lifecycle emulator", () => {
         Math.max(8, Math.floor(profile.registerOutputs / 3)),
       );
 
-      const registerResult = await Effect.runPromise(
+      const registerResult = await runWithoutFollower(
         registerOperatorProgram(
           lucid,
           contracts,
@@ -768,7 +776,7 @@ describe("operator lifecycle emulator", () => {
       );
 
       advanceEmulatorPastRegistrationDelay(emulator);
-      const activateResult = await Effect.runPromise(
+      const activateResult = await runWithoutFollower(
         activateOperatorProgram(
           lucid,
           contracts,
@@ -819,7 +827,7 @@ describe("operator lifecycle emulator", () => {
         Math.max(8, Math.floor((profile.outputs + 6) / 2)),
       );
 
-      const registerResult = await Effect.runPromise(
+      const registerResult = await runWithoutFollower(
         registerOperatorProgram(
           lucid,
           contracts,
@@ -829,7 +837,7 @@ describe("operator lifecycle emulator", () => {
       );
       expect(registerResult.registerTxHash).toHaveLength(64);
       advanceEmulatorPastRegistrationDelay(emulator);
-      const activateResult = await Effect.runPromise(
+      const activateResult = await runWithoutFollower(
         activateOperatorProgram(
           lucid,
           contracts,
@@ -860,7 +868,7 @@ describe("operator lifecycle emulator", () => {
 
     await churnOperatorWalletUtxos(lucid, { seed: 0xa11ce, rounds: 2 });
 
-    const registerResult = await Effect.runPromise(
+    const registerResult = await runWithoutFollower(
       registerOperatorProgram(
         lucid,
         contracts,
@@ -873,7 +881,7 @@ describe("operator lifecycle emulator", () => {
     await churnOperatorWalletUtxos(lucid, { seed: 0xb0b, rounds: 2 });
 
     advanceEmulatorPastRegistrationDelay(emulator);
-    const activateResult = await Effect.runPromise(
+    const activateResult = await runWithoutFollower(
       activateOperatorProgram(
         lucid,
         contracts,
@@ -915,7 +923,7 @@ describe("operator lifecycle emulator", () => {
         rounds: profile.rounds,
       });
 
-      const registerResult = await Effect.runPromise(
+      const registerResult = await runWithoutFollower(
         registerOperatorProgram(
           lucid,
           contracts,
@@ -925,7 +933,7 @@ describe("operator lifecycle emulator", () => {
       );
       expect(registerResult.registerTxHash).toHaveLength(64);
       advanceEmulatorPastRegistrationDelay(emulator);
-      const activateResult = await Effect.runPromise(
+      const activateResult = await runWithoutFollower(
         activateOperatorProgram(
           lucid,
           contracts,

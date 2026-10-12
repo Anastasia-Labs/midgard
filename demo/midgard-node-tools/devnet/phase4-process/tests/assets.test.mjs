@@ -47,7 +47,6 @@ test("all shell assets parse", async () => {
     "native-owner-preflight.sh",
     "capture-snapshot.sh",
     "reset.sh",
-    "t1-recover.sh",
     "validate-custom-chain-config.sh",
   ]) {
     const result = await run("sh", ["-n", join(root, "scripts", name)]);
@@ -159,9 +158,8 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
   const output = readFileSync(join(runDir, "secrets/acceptance.env"), "utf8");
   for (const expected of [
     'NETWORK="Custom"',
-    'L1_PROVIDER="Kupmios"',
-    'L1_OGMIOS_KEY="http://127.0.0.1:2337"',
-    'L1_KUPO_KEY="http://127.0.0.1:2442"',
+    'MIDGARD_PHASE4_OGMIOS_PORT="2337"',
+    'MIDGARD_PHASE4_KUPO_PORT="2442"',
     'POSTGRES_HOST="127.0.0.1"',
     'POSTGRES_PORT="5544"',
     'POSTGRES_DB="midgard_phase4_process_asset_test"',
@@ -178,6 +176,7 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
     new RegExp(`^MPF_NATIVE_OWNER_BINARY_SHA256="${ownerSha256}"$`, "m"),
   );
   assert.doesNotMatch(output, /Blockfrost|POSTGRES_HOST="stale"/);
+  assert.doesNotMatch(output, /^L1_PROVIDER=/m);
   assert.doesNotMatch(output, /MPF_NATIVE_OWNER_SIDECAR_PATH/);
   rmSync(runDir, { recursive: true, force: true });
 });

@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { Logger } from "effect";
 import { failCli, writeJson } from "midgard-node/commands/cli-runtime";
+import { registerL1AccessOption } from "midgard-node/commands/l1-access-option";
 import { loadRuntimeDotenv } from "midgard-node/runtime-env";
 
 import packageJson from "../package.json" with { type: "json" };
@@ -18,6 +19,7 @@ program
   .description(
     "Midgard node e2e, stress, and acceptance tooling. Every command here drives a node from the outside; none of them ship in the operator binary.",
   );
+registerL1AccessOption(program);
 
 export const stressCliLoggerLayer = Logger.replace(
   Logger.defaultLogger,

@@ -8,6 +8,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -16,7 +17,6 @@ import {
   decodeDaPayloadStrict,
   verifyDaPayloadAgainstHeader,
 } from "da-committee-node/da/payload";
-import { hashBlockHeader } from "da-committee-node/l1/state-queue-scanner";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -62,6 +62,7 @@ const nodeTracedForcedPayload = async () => {
   };
   const [member] = await Effect.runPromise(
     buildDeterministicValidationTraceMembers({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       blockEndTime: new Date(Number(base.header.endTime)),
       expectedNetworkId: base.header.expectedNetworkId,
@@ -134,7 +135,7 @@ const nodeTracedForcedPayload = async () => {
   };
   const roots = await computeDaPayloadRoots(unhashed);
   const header = { ...unhashed.block_body.header, ...counts, ...roots };
-  const headerHash = hashBlockHeader(header);
+  const headerHash = Effect.runSync(SDK.hashBlockHeader(header));
   const payload: SDK.DaPayload = {
     ...unhashed,
     block_body: { ...unhashed.block_body, header, header_hash: headerHash },

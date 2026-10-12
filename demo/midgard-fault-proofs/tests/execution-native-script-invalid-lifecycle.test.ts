@@ -23,6 +23,7 @@ import {
   encodeMidgardForcedTxCanonical as forcedTraceBytes,
   materializeMidgardForcedTxFromCanonical as forcedTraceView,
 } from "@al-ft/midgard-core/codec/forced";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   acceptedVerdictSubject,
   AddressData,
@@ -154,6 +155,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         eventKeyCbor: encodeCbor([2n, transaction.txId]),
         sourceKind: "normal",
@@ -518,6 +520,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         direction === "forced"
           ? await Effect.runPromise(
               buildDeterministicValidationMachineTrace({
+                l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
                 consensusProfile: MIDGARD_CONSENSUS_PROFILE,
                 eventKeyCbor: Buffer.from(
                   Data.to(eventKey as never, EventKeySchema),

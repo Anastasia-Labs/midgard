@@ -27,7 +27,8 @@ export type RetainedDaFetchAttemptStatus =
   | "timeout"
   | "invalid_content"
   | "rejected"
-  | "conflict";
+  | "conflict"
+  | "failed_verification";
 
 export type RetainedDaFetchAttempt = {
   readonly sourceId: string;
@@ -85,10 +86,29 @@ export type RetainedDaPayloadSourceResult =
       readonly attempts: readonly RetainedDaFetchAttempt[];
     };
 
+/**
+ * A peer's payload hash is self-reported, so a well-formed response proves
+ * nothing about the requested header. A verifier judges one served copy;
+ * `reason` names why the copy is not the requested payload.
+ */
+export type RetainedDaPayloadVerdict =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string };
+
+export type RetainedDaPayloadVerifier = (
+  payloadEnvelopeCbor: Buffer,
+) => Promise<RetainedDaPayloadVerdict>;
+
+export type RetainedDaPayloadFetchOptions = {
+  /** A source that holds several peers tries the next one on a refusal. */
+  readonly verifyPayload?: RetainedDaPayloadVerifier;
+};
+
 export interface RetainedDaPayloadSource {
   readonly sourceId: string;
   fetchPayloadByHeaderHash(
     headerHash: string,
+    options?: RetainedDaPayloadFetchOptions,
   ): Promise<RetainedDaPayloadSourceResult>;
 }
 

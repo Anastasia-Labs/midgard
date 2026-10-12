@@ -88,11 +88,11 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
       sql<TxStatusBatchMembershipRow>`SELECT
           encode(tx_id, 'hex') AS tx_hash
         FROM mempool
-        WHERE ${sql.in("tx_id", txIds)}`,
+        WHERE ${sql.in("tx_id", txIds)} AND included_by IS NULL`,
       sql<TxStatusBatchMembershipRow>`SELECT
           encode(tx_id, 'hex') AS tx_hash
         FROM processed_mempool
-        WHERE ${sql.in("tx_id", txIds)}`,
+        WHERE ${sql.in("tx_id", txIds)} AND included_by IS NULL`,
       readTxStatusMergeEvidence(txIds),
     ],
     { concurrency: "unbounded" },

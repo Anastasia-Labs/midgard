@@ -17,14 +17,18 @@ export {
   COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
   COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
   commitStageInputPostState,
-  type CommitStageLedgerRevert,
+  type CommitStageTxEffects,
   commitTxDeltaCacheHitCounter,
   commitTxDeltaFallbackDecodedCounter,
-  persistCommitStageRejectedTransactions,
   type ResolvedTxDeltaForCommit,
   resolveTxDeltaForCommit,
   revertCommitStageRejectedLedgerEffects,
 } from "./commit-rejection.js";
+export {
+  type CommitStageRejectionOutcome,
+  persistCommitStageRejectedTransactions,
+  settleCommitStageRejections,
+} from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
 export {
   configureCommitMpfRuntime,
   configureMpfArenaLimits,

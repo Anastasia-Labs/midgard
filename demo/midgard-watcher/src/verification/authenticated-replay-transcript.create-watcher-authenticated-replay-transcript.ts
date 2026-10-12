@@ -7,7 +7,6 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import { assertWatcherLocalUserEventAuthorityCurrent } from "../indexers/user-event-indexer.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
@@ -20,7 +19,7 @@ import {
   coordinate,
   HEX_32,
   orderedPriorState,
-  readLocalEventAuthorityForHeader,
+  readUserEventAuthorityForHeader,
   sha256,
   WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT,
   type WatcherAuthenticatedReplayTranscript,
@@ -42,6 +41,7 @@ import {
   watcherReplayTranscriptSemanticProjection,
 } from "./replay-transcript-records.js";
 import type { WatcherRuleBundle } from "./rule-bundle.js";
+import { assertWatcherUserEventAuthorityCurrent } from "./user-event.js";
 
 /**
  * Recomputes W22, W24, and W25 from authenticated L1/public-DA/raw-event
@@ -175,14 +175,13 @@ export const createWatcherAuthenticatedReplayTranscript = async (input: {
     );
   }
   await Promise.all(
-    captured.eventAuthorities.map(async (authority) => {
-      if (authority.localUserEvent !== undefined) {
-        await readLocalEventAuthorityForHeader(
-          authority.localUserEvent,
+    captured.eventAuthorities.map(
+      async (authority) =>
+        await readUserEventAuthorityForHeader(
+          authority.userEvent,
           captured.header,
-        );
-      }
-    }),
+        ),
+    ),
   );
   const eventAuthorityRecordsCborHex = Object.freeze(
     readWatcherBlockReplayEventAuthorityRecords(blockReplay).map(
@@ -190,11 +189,8 @@ export const createWatcherAuthenticatedReplayTranscript = async (input: {
     ),
   );
   // No asynchronous work follows this all-handle fence before admission.
-  for (const authority of captured.eventAuthorities) {
-    if (authority.localUserEvent !== undefined) {
-      assertWatcherLocalUserEventAuthorityCurrent(authority.localUserEvent);
-    }
-  }
+  for (const authority of captured.eventAuthorities)
+    assertWatcherUserEventAuthorityCurrent(authority.userEvent);
   const transcriptInput = Object.freeze({
     schemaVersion: WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT,
     deploymentFingerprint: captured.deploymentIdentity.manifestId,
@@ -313,18 +309,16 @@ export const replayWatcherAuthenticatedReplayTranscript = async (input: {
     );
   }
   await Promise.all(
-    captured.eventAuthorities.map(async (authority) => {
-      if (authority.localUserEvent !== undefined)
-        await readLocalEventAuthorityForHeader(
-          authority.localUserEvent,
+    captured.eventAuthorities.map(
+      async (authority) =>
+        await readUserEventAuthorityForHeader(
+          authority.userEvent,
           captured.header,
-        );
-    }),
+        ),
+    ),
   );
-  for (const authority of captured.eventAuthorities) {
-    if (authority.localUserEvent !== undefined)
-      assertWatcherLocalUserEventAuthorityCurrent(authority.localUserEvent);
-  }
+  for (const authority of captured.eventAuthorities)
+    assertWatcherUserEventAuthorityCurrent(authority.userEvent);
   // The original CBOR string is unchanged. Only this fresh independently
   // admitted transcript is returned; its capture provenance and digest remain new.
   return recomputed;

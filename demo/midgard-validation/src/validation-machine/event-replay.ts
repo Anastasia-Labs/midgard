@@ -7,6 +7,10 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
+import {
+  type L1SlotConfig,
+  parseL1SlotConfig,
+} from "@al-ft/midgard-core/l1-slot-config";
 import { Effect } from "effect";
 
 import { validatePhaseASingle } from "../phase-a.js";
@@ -46,6 +50,8 @@ export type ValidationMachineEventReplayInput = Readonly<{
   minFeeA: bigint;
   minFeeB: bigint;
   blockSlot: bigint;
+  /** The deployment manifest's slot mapping (see `PhaseBConfig`). */
+  l1SlotConfig: L1SlotConfig;
   sourceKind: "normal" | "forced";
 }>;
 
@@ -116,6 +122,7 @@ export const replayValidationMachineEvent = (
         minFeeA: input.minFeeA,
         minFeeB: input.minFeeB,
         blockSlot: input.blockSlot,
+        l1SlotConfig: parseL1SlotConfig(input.l1SlotConfig),
         sourceKind: input.sourceKind,
       };
     });
@@ -168,6 +175,7 @@ export const replayValidationMachineEvent = (
         ),
         {
           nowCardanoSlotNo: snapshot.blockSlot,
+          l1SlotConfig: snapshot.l1SlotConfig,
           bucketConcurrency: 1,
           enforceScriptBudget: true,
           maxScriptExecutionSteps:

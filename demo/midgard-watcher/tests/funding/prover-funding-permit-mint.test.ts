@@ -10,7 +10,7 @@ import {
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest } from "../../src/funding/prover-funding.js";
+import { createWatcherProtocolParameterRuntimeAuthority } from "../../src/funding/prover-funding.js";
 import {
   createWatcherProverFundingAuthorityFactory,
   type WatcherProverFundingAuthorityFactory,
@@ -26,6 +26,8 @@ import {
   type WatcherProverFundingUtxoProvider,
 } from "../../src/runtime/watcher-runtime.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { ledgerParameterQuery } from "../support/ledger-protocol-parameters.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 const directories: string[] = [];
 
@@ -38,41 +40,6 @@ afterEach(async () => {
       ),
   );
 });
-
-const ogmiosParameters = () => ({
-  minFeeCoefficient: 44,
-  minFeeConstant: { ada: { lovelace: 155381 } },
-  scriptExecutionPrices: { memory: "577/10000", cpu: "721/10000000" },
-  minUtxoDepositCoefficient: 4310,
-  collateralPercentage: 150,
-  maxCollateralInputs: 3,
-  maxTransactionSize: { bytes: 16384 },
-  maxValueSize: { bytes: 5000 },
-  maxExecutionUnitsPerTransaction: {
-    memory: 16_500_000,
-    cpu: 10_000_000_000,
-  },
-  minFeeReferenceScripts: {
-    base: 15,
-    range: 25_600,
-    multiplier: 1.2,
-  },
-  maxReferenceScriptsSizePerTransaction: { bytes: 204_800 },
-});
-
-const fetchImpl = vi.fn(
-  async (_url: string | URL | Request, init?: RequestInit) => {
-    const request = JSON.parse(String(init?.body)) as { readonly id: string };
-    return new Response(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: request.id,
-        result: ogmiosParameters(),
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
-  },
-) as unknown as typeof fetch;
 
 const structuralRunner = Object.freeze({
   runnerVersion: "midgard-production-workflow-adapter-runner-v1",
@@ -251,14 +218,12 @@ describe("watcher production prover funding permit mint V1", () => {
     const admitted = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
       journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
       deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
-      protocolParameters:
-        await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-          deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
-          ogmiosUrl: "http://127.0.0.1:1337",
-          timeoutMs: 10_000,
-          fetchImpl,
-        }),
+      protocolParameters: await createWatcherProtocolParameterRuntimeAuthority({
+        deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
+        query: ledgerParameterQuery(),
+      }),
       store,
     });
     await expect(
@@ -278,14 +243,12 @@ describe("watcher production prover funding permit mint V1", () => {
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
       journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
       deploymentIdentity,
-      protocolParameters:
-        await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-          deploymentIdentity,
-          ogmiosUrl: "http://127.0.0.1:1337",
-          timeoutMs: 10_000,
-          fetchImpl,
-        }),
+      protocolParameters: await createWatcherProtocolParameterRuntimeAuthority({
+        deploymentIdentity,
+        query: ledgerParameterQuery(),
+      }),
       store,
     });
     await expect(mint({ factory })).rejects.toThrow(/fixed category runner/u);
@@ -296,15 +259,14 @@ describe("watcher production prover funding permit mint V1", () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const { store } = await openStore();
     const protocolParameters =
-      await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+      await createWatcherProtocolParameterRuntimeAuthority({
         deploymentIdentity,
-        ogmiosUrl: "http://127.0.0.1:1337",
-        timeoutMs: 10_000,
-        fetchImpl,
+        query: ledgerParameterQuery(),
       });
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
       journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
       deploymentIdentity,
       protocolParameters,
       store,

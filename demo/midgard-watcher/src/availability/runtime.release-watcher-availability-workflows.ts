@@ -13,7 +13,7 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherReleasedHeaderProof,
 } from "../indexers/authenticated-state-queue-observation.js";
-import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
+import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.exact-record.js";
 import { type WatcherDaBondPoolObservation } from "./pool-observation.js";
 
 /** Queued headers merged or removed on L1 at release finality, by hash. */

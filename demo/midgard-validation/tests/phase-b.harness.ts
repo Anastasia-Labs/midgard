@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
@@ -6,6 +7,7 @@ import type { PhaseBResultWithPatch } from "../src/phase-b.js";
 import type { PhaseBConfig, RejectCode, RejectedTx } from "../src/types.js";
 
 export const phaseBConfig: PhaseBConfig = {
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   nowCardanoSlotNo: 100n,
   bucketConcurrency: 1,
 };

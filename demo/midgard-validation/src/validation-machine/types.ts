@@ -15,6 +15,7 @@ import {
   type MidgardValidationPhaseName,
   type MidgardValidationTraceTree,
 } from "@al-ft/midgard-core";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 
 import {
   type MidgardCekContextPartsControl,
@@ -54,6 +55,8 @@ export type ValidationMachineReplayInput = {
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
   readonly blockSlot: bigint;
+  /** The deployment manifest's slot mapping (see `PhaseBConfig`). */
+  readonly l1SlotConfig: L1SlotConfig;
 };
 
 export type ValidationMachineWorkWitness = {

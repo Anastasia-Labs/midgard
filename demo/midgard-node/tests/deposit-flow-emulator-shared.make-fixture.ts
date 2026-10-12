@@ -1,10 +1,14 @@
+// Loaded before the deployment's first submission, so its capture and the
+// follower's record of its chain are complete.
+import "./helpers/emulator-chain-capture.js";
+import "./helpers/follower-emulator.chain.js";
+
 import { randomUUID } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -16,8 +20,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { DaPayloadsDB } from "../src/database/index.js";
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -31,9 +34,10 @@ import { type SubmitWithdrawalReferenceScripts } from "../src/transactions/submi
 import {
   type EmulatorState,
   emulatorState,
-  pinnedWalletUtxos,
   recreateLucid,
 } from "./helpers/emulator-snapshot.js";
+import { bindNodeFollower } from "./helpers/follower-emulator.host.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { loadOrCreateRunSharedFixture } from "./helpers/run-shared-fixture-directory.js";
 import { resetApplicationTables } from "./utils.js";
@@ -125,7 +129,7 @@ export const publishDepositFlowReferenceScripts = async ({
   const publications: readonly {
     readonly name: string;
     readonly utxo: UTxO;
-  }[] = await Effect.runPromise(
+  }[] = await runWithoutFollower(
     deployReferenceScriptCommandProgram(
       referenceScriptsLucid,
       contracts,
@@ -172,7 +176,7 @@ const makeCustomLucid = (emulator: Emulator) => makeLucid(emulator, "Custom");
 
 /** A deployed fixture as plain data: the emulator ledger the moment the
  * reference scripts are published, the accounts, contracts and published
- * references, and the wallet pins the deployment left. */
+ * references. */
 type DeployedFixture = {
   readonly emulator: EmulatorState;
   readonly creation: { readonly time: number; readonly slot: number };
@@ -183,9 +187,6 @@ type DeployedFixture = {
   readonly contracts: SDK.MidgardValidators;
   readonly referenceScripts: DepositFlowReferenceScripts;
   readonly operatorKeyHash: string;
-  readonly wallets: Readonly<
-    Record<"operator" | "depositor" | "referenceScripts", UTxO[] | undefined>
-  >;
 };
 
 const deployFixture = async (): Promise<{
@@ -250,14 +251,6 @@ const deployFixture = async (): Promise<{
     contracts: structuredClone(contracts),
     referenceScripts: structuredClone(referenceScripts),
     operatorKeyHash,
-    wallets: {
-      operator: await pinnedWalletUtxos(operatorLucid, emulator),
-      depositor: await pinnedWalletUtxos(depositorLucid, emulator),
-      referenceScripts: await pinnedWalletUtxos(
-        referenceScriptsLucid,
-        emulator,
-      ),
-    },
   };
 
   return {
@@ -278,9 +271,9 @@ const deployFixture = async (): Promise<{
   };
 };
 
-/** A fresh emulator and fresh lucid instances holding exactly the chain,
- * wallets and pins `deployed` captured; nothing is shared with any other
- * restored copy. */
+/** A fresh emulator and fresh lucid instances holding exactly the chain and
+ * wallets `deployed` captured; nothing is shared with any other restored
+ * copy. */
 const restoreFixture = async (
   deployed: DeployedFixture,
 ): Promise<EmulatorFixture> => {
@@ -288,14 +281,8 @@ const restoreFixture = async (
   Object.assign(emulator, structuredClone(deployed.emulator));
   const { operatorAccount, depositorAccount, referenceScriptsAccount } =
     structuredClone(deployed.accounts);
-  const recreate = (seedPhrase: string, pinned: UTxO[] | undefined) =>
-    recreateLucid(
-      emulator,
-      deployed.creation,
-      seedPhrase,
-      pinned,
-      makeCustomLucid,
-    );
+  const recreate = (seedPhrase: string) =>
+    recreateLucid(emulator, deployed.creation, seedPhrase, makeCustomLucid);
   return {
     emulator,
     emulatorCreationTimeMs: deployed.creation.time,
@@ -304,18 +291,9 @@ const restoreFixture = async (
     operatorAccount,
     depositorAccount,
     referenceScriptsAccount,
-    operatorLucid: await recreate(
-      operatorAccount.seedPhrase,
-      deployed.wallets.operator,
-    ),
-    depositorLucid: await recreate(
-      depositorAccount.seedPhrase,
-      deployed.wallets.depositor,
-    ),
-    referenceScriptsLucid: await recreate(
-      referenceScriptsAccount.seedPhrase,
-      deployed.wallets.referenceScripts,
-    ),
+    operatorLucid: await recreate(operatorAccount.seedPhrase),
+    depositorLucid: await recreate(depositorAccount.seedPhrase),
+    referenceScriptsLucid: await recreate(referenceScriptsAccount.seedPhrase),
     operatorKeyHash: deployed.operatorKeyHash,
   };
 };
@@ -346,16 +324,27 @@ export const makeFixture = async (): Promise<EmulatorFixture> => {
   // found by this one. Each fixture starts from freshly migrated application
   // tables, seed rows included, as `restoreHistorySource` does.
   await runNodeDatabaseEffect(resetApplicationTables);
-  if (deployedFixture !== undefined) return restoreFixture(deployedFixture);
-  const { shared, created } = await loadOrCreateRunSharedFixture(
-    SHARED_FIXTURE_NAME,
-    async () => {
-      const { fixture, deployed } = await deployFixture();
-      return { shared: deployed, created: fixture };
-    },
-  );
-  deployedFixture = shared;
-  return created ?? restoreFixture(shared);
+  if (deployedFixture === undefined) {
+    const { shared, created } = await loadOrCreateRunSharedFixture(
+      SHARED_FIXTURE_NAME,
+      async () => {
+        const { fixture, deployed } = await deployFixture();
+        return { shared: deployed, created: fixture };
+      },
+    );
+    deployedFixture = shared;
+    if (created !== undefined) return bindFollower(created);
+  }
+  return bindFollower(await restoreFixture(deployedFixture));
+};
+
+/** The node's follower over the fixture's deployment. */
+const bindFollower = (fixture: EmulatorFixture): EmulatorFixture => {
+  bindNodeFollower(fixture.emulator, {
+    contracts: fixture.contracts,
+    network: "Custom",
+  });
+  return fixture;
 };
 
 export const runNodeDatabaseEffect = <A, E>(
@@ -364,20 +353,9 @@ export const runNodeDatabaseEffect = <A, E>(
   Effect.runPromise(
     effect.pipe(
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provide(NodeConfig.layer),
     ),
-  );
-
-export const countDaPayloadRows = (): Promise<number> =>
-  runNodeDatabaseEffect(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const rows = yield* sql<{ readonly count: string }>`
-        SELECT COUNT(*)::text AS count FROM ${sql(DaPayloadsDB.tableName)}
-      `;
-      return Number(rows[0]?.count ?? "0");
-    }),
   );
 
 /**
@@ -402,15 +380,6 @@ export const isEmulatorProvider = (
   typeof (provider as { submitTx?: unknown }).submitTx === "function" &&
   (provider as { constructor?: { name?: string } }).constructor?.name ===
     "Emulator";
-
-export type HarnessSignedTx = {
-  readonly submitSafe: () => Promise<
-    | { readonly _tag: "Left"; readonly left: { readonly message: string } }
-    | { readonly _tag: "Right"; readonly right: string }
-  >;
-  readonly toHash: () => string;
-  readonly toCBOR: () => string;
-};
 
 export const describeProviderOutRefStates = (
   lucid: LucidEvolution,

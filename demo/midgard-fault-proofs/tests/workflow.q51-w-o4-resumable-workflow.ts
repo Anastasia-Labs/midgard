@@ -47,7 +47,7 @@ import {
   normalizeJournalJson,
   validateFraudProofWorkflowJournal,
 } from "../src/workflow/journal.js";
-import { LocalKupmiosCheckpointChangedError } from "../src/workflow/local-kupmios-raw-l1-authority.js";
+import { FraudProofL1CheckpointChangedError } from "../src/workflow/l1-source.js";
 import {
   createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -672,8 +672,8 @@ describe("Q51/W-O4 resumable workflow", () => {
       reconcile: async ({ txHash }) => {
         reconciliations += 1;
         if (reconciliations === 1)
-          throw new LocalKupmiosCheckpointChangedError(
-            "Kupo advanced during canonical capture",
+          throw new FraudProofL1CheckpointChangedError(
+            "L1 advanced during canonical capture",
           );
         return { kind: "confirmed", txHash: txHash! };
       },
@@ -683,7 +683,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     expect(pending).toMatchObject({
       kind: "pending",
       resumeOnObservation: true,
-      reason: expect.stringContaining("Kupo advanced"),
+      reason: expect.stringContaining("L1 advanced"),
     });
     if (pending.kind !== "pending")
       throw new Error("expected reconciliation yield");

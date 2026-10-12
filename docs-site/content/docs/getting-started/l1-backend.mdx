@@ -1,36 +1,32 @@
 ---
 title: "L1 Backend"
-description: "Bring up the Cardano L1 stack Midgard depends on: a node bootstrapped from Mithril, with Ogmios and Kupo, from the node package's compose overlay."
+description: "Bring up the Cardano L1 stack Midgard depends on: a cardano-node bootstrapped from Mithril, from the node package's compose overlay."
 ---
 
-Midgard needs a synced Cardano Layer 1 backend to read chain state and submit
+Midgard needs a synced Cardano Layer 1 node to read chain state and submit
 transactions. The canonical L1 stack lives in `demo/midgard-node` as the
 `docker-compose.kupmios.yaml` overlay on `docker-compose.yaml`. It boots a
-Cardano node from a certified Mithril snapshot rather than syncing from genesis,
-restores an official Kupo snapshot, and starts Ogmios and Kupo with healthchecks
-the node waits on. Every Midgard role (node, DA committee, watcher) uses this
-stack; a host that runs no node starts only the L1 services from it.
+Cardano node from a certified Mithril snapshot rather than syncing from genesis
+and exports the node's config files. Every Midgard role (node, DA committee,
+watcher) reads and submits through the cardano-node's local socket with the
+`midgard-l1-node-transport` sidecar: the midgard-node follows the chain into
+its own store and its Lucid client answers from that store. A host that runs
+no node starts only the L1 services from it.
+
+The overlay still starts Ogmios and Kupo. They serve the node-tools devnet
+harness (and its stop-Kupo and stop-Ogmios drills) and the fault-proofs prover
+CLI (`--ogmios-url`, `--kupo-url`); no role reads them.
 
 ## Services
 
-| Service               | Image                                                      | Role                                                                                                                                                                                  |
-| --------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mithril-bootstrap`   | `ghcr.io/intersectmbo/mithril-client` (digest-pinned)      | One-shot: validates `NETWORK` against the Mithril endpoints and `CARDANO_NODE_IMAGE_TAG` against the certified snapshot, then restores the Cardano DB into `./cardano/db` when empty. |
-| `kupo-bootstrap`      | same image                                                 | One-shot: restores the official Kupo SQLite snapshot into `./cardano/kupo` when empty and verifies its MD5.                                                                           |
-| `cardano-node`        | `ghcr.io/intersectmbo/cardano-node:11.1.0` (digest-pinned) | Runs the Cardano node. Exposes its Unix socket under `./cardano/ipc`; healthy once `/ipc/node.socket` exists.                                                                         |
-| `cardano-node-ogmios` | `cardanosolutions/ogmios:v7.0.0` (digest-pinned)           | WebSocket/HTTP bridge to the node, started with `--include-transaction-cbor`. Listens on `1337`; healthy via `ogmios health-check`.                                                   |
-| `kupo`                | `cardanosolutions/kupo:v2.11.0` (digest-pinned)            | Chain indexer over Ogmios with `--match "*" --since origin`, **no** `--prune-utxo`. Listens on `1442`; healthy only once `/health` returns `200`.                                     |
-
-<Callout type="warn" title="Kupo must not prune">
-  The node's forced-order carriage reader reads spent carriage outputs, which a
-  pruning index deletes. The official Kupo snapshot the bootstrap restores was
-  itself built pruned, so outputs spent before its snapshot point are absent.
-  That is harmless for a deployment you initialise after bring-up. To join a
-  deployment whose L1 history predates the snapshot, set
-  `KUPO_BOOTSTRAP_MODE=origin` before the first start so Kupo syncs from origin
-  instead. Kupo `v2.10.0` or newer is required for the `?resolve_hashes` query
-  the same reader uses.
-</Callout>
+| Service                 | Image                                                      | Role                                                                                                                                                                                  |
+| ----------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mithril-bootstrap`     | `ghcr.io/intersectmbo/mithril-client` (digest-pinned)      | One-shot: validates `NETWORK` against the Mithril endpoints and `CARDANO_NODE_IMAGE_TAG` against the certified snapshot, then restores the Cardano DB into `./cardano/db` when empty. |
+| `kupo-bootstrap`        | same image                                                 | One-shot: restores the official Kupo SQLite snapshot into `./cardano/kupo` when empty and verifies its MD5.                                                                           |
+| `cardano-node`          | `ghcr.io/intersectmbo/cardano-node:11.1.0` (digest-pinned) | Runs the Cardano node. Exposes its Unix socket under `./cardano/ipc`; healthy once `/ipc/node.socket` exists. The midgard-node reads and submits through this socket.                 |
+| `cardano-config-export` | same image                                                 | One-shot: copies the node's config and genesis files to `./cardano/config`, which the midgard-node's L1 transport reads for its network.                                              |
+| `cardano-node-ogmios`   | `cardanosolutions/ogmios:v7.0.0` (digest-pinned)           | Harness and prover only. WebSocket/HTTP bridge to the node, started with `--include-transaction-cbor`. Listens on `1337`; healthy via `ogmios health-check`.                          |
+| `kupo`                  | `cardanosolutions/kupo:v2.11.0` (digest-pinned)            | Harness and prover only. Chain indexer over Ogmios with `--match "*" --since origin`, **no** `--prune-utxo`. Listens on `1442`; healthy only once `/health` returns `200`.            |
 
 ## Startup order
 
@@ -38,9 +34,10 @@ stack; a host that runs no node starts only the L1 services from it.
   chart={`flowchart TD
   A[mithril-bootstrap: validate network and node tag, restore DB] --> C[cardano-node: expose node.socket]
   B[kupo-bootstrap: restore Kupo snapshot] --> E
+  G[cardano-config-export: copy node config] --> F
+  C -->|healthy: socket present| F[midgard-node]
   C -->|healthy: socket present| D[cardano-node-ogmios: port 1337]
   D -->|healthy| E[kupo: port 1442]
-  E -->|healthy: /health 200| F[midgard-node]
 `}
 />
 
@@ -67,8 +64,8 @@ Before starting, have a [checkout of the repository](/docs/getting-started/local
 and Docker with the Compose v2 plugin. Plan for tens of gigabytes of disk under
 `demo/midgard-node/cardano` and expect the first start to spend a while
 downloading; later starts skip both bootstraps when data is already present. A
-socket or reachable indexer does not prove synchronization; verify that node
-and indexers have caught up before initializing Midgard.
+socket does not prove synchronization; verify that the node has caught up
+before initializing Midgard.
 
 <Steps>
 
@@ -83,28 +80,29 @@ cp .env.example .env
 </Step>
 
 <Step>
-Start only the L1 services. The bootstraps run to completion first, then the
-long-running services start in dependency order:
+Start only the L1 node. The bootstrap and the config export run to completion
+first, then the node starts:
 
 ```sh
 docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
-  up -d cardano-node-ogmios kupo
+  up -d cardano-node cardano-config-export
 ```
 
 </Step>
 
 <Step>
-Wait for `kupo` and `cardano-node-ogmios` to report healthy, then confirm the
-route the node will use:
+Wait for `cardano-node` to report healthy, then confirm the node's L1 route:
+the transport's readiness and the ledger tip against wall time.
 
 ```sh
 docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml ps
 node dist/index.js l1-provider-preflight --json
 ```
 
-Ogmios is reachable on `127.0.0.1:1337` and Kupo on `127.0.0.1:1442` from the
-host; inside the compose network they are `cardano-node-ogmios:1337` and
-`kupo:1442`, which the overlay injects into the node and migration containers.
+The node reads `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
+`L1_NODE_TRANSPORT_BINARY_PATH`; the overlay sets them for the node container
+(`/ipc/node.socket`, `/cardano-config/config.json` and the image's transport
+binary).
 
 </Step>
 

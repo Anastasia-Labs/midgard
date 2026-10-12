@@ -9,30 +9,43 @@ import {
 import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
 import {
+  landedLedger,
+  ledgerAt,
+  ledgerEntries,
+} from "../landed-blocks/ledger.js";
+import { retrieveRows } from "../landed-blocks/store.js";
+import {
   computeLedgerMpfRootFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
   utxoToLedgerInsertMaterial,
 } from "../mpf/index.js";
+import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
 import { Database, NodeConfig } from "../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
-import { resolveVerifiedCommitBase } from "./commit-block-header.resolve-verified-commit-base.js";
-import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.select-authenticated-foreign-base-candidate.js";
 import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,
-  WorkerInput,
 } from "./utils/commit-block-header.js";
+
+/** The ledger a block commit builds on, and where it came from. */
+export type ResolvedCommitBaseLedgerEntries = {
+  readonly source: string;
+  readonly entries?: readonly Ledger.MinimalEntry[];
+  readonly root: string;
+  readonly utxoPayloadAggregate: SDK.DaPayloadEntrySizeAggregate;
+};
+
+/** Why a commit waits on a foreign tail landed-block processing has not
+ * applied to the working ledger yet. */
+export const LANDED_COMMIT_BASE_PENDING =
+  "The foreign commit base is not a processed landed block the working ledger holds yet";
 
 export const resolveCommitBaseLedgerEntries = ({
   availableConfirmedBlock,
-  speculativeBase,
   nativeMpfRoot,
   requireEntries,
 }: {
   readonly availableConfirmedBlock: "" | SerializedStateQueueUTxO;
-  readonly speculativeBase?: NonNullable<
-    WorkerInput["data"]["speculativeBuild"]
-  >["base"];
   readonly nativeMpfRoot: string;
   readonly requireEntries: boolean;
 }): Effect.Effect<
@@ -41,65 +54,6 @@ export const resolveCommitBaseLedgerEntries = ({
   Database | NodeConfig
 > =>
   Effect.gen(function* () {
-    if (speculativeBase !== undefined) {
-      const currentLedgerRootHex = nativeMpfRoot;
-      const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-        Buffer.from(speculativeBase.headerHash, "hex"),
-      );
-      if (Option.isNone(journal)) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message: "Refusing to speculate without the submitted base journal",
-            cause: `base_header_hash=${speculativeBase.headerHash}`,
-          }),
-        );
-      }
-      if (
-        journal.value[
-          PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
-        ] !== speculativeBase.utxosRoot
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Speculative base root does not match its submitted journal",
-            cause: `base_header_hash=${speculativeBase.headerHash},input_root=${speculativeBase.utxosRoot},journal_root=${journal.value[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]}`,
-          }),
-        );
-      }
-      if (
-        !requireEntries &&
-        currentLedgerRootHex === speculativeBase.utxosRoot &&
-        journal.value.utxoPayloadAggregate !== undefined
-      ) {
-        return {
-          source: `speculative-parent:${speculativeBase.headerHash}`,
-          root: speculativeBase.utxosRoot,
-          utxoPayloadAggregate: journal.value.utxoPayloadAggregate,
-        } satisfies ResolvedCommitBaseLedgerEntries;
-      }
-      const snapshot = yield* materializeConfirmedLedgerSnapshot(journal.value);
-      if (snapshot.root !== speculativeBase.utxosRoot) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Submitted journal post-state cannot reproduce the speculative base root",
-            cause: `base_header_hash=${speculativeBase.headerHash},expected_root=${speculativeBase.utxosRoot},journal_root=${snapshot.root}`,
-          }),
-        );
-      }
-      return {
-        source: `speculative-journal:${speculativeBase.headerHash}`,
-        entries: snapshot.entries,
-        root: snapshot.root,
-        utxoPayloadAggregate:
-          journal.value.utxoPayloadAggregate ??
-          ledgerPayloadAggregateFromEntries(snapshot.entries),
-      } satisfies ResolvedCommitBaseLedgerEntries;
-    }
     if (availableConfirmedBlock !== "") {
       const latestBlock = yield* deserializeStateQueueUTxO(
         availableConfirmedBlock,
@@ -203,16 +157,31 @@ export const resolveCommitBaseLedgerEntries = ({
               ledgerPayloadAggregateFromEntries(snapshot.entries),
           } satisfies ResolvedCommitBaseLedgerEntries;
         }
-        // A root match cannot authenticate a foreign block. Preflight's
-        // complete-prefix verifier is mandatory even for unchanged UTxO roots.
-        const verified = yield* resolveVerifiedCommitBase(latestBlock);
+        // A foreign tail is built on only once landed-block processing
+        // replayed it to its header's root and the rebase applied it: its
+        // post-state is the processed landed ledger at that header.
+        const landed = yield* landedLedger(yield* retrieveRows);
+        const at =
+          landed === undefined ? undefined : ledgerAt(landed, headerHash);
+        if (
+          at === undefined ||
+          at.root !== header.utxosRoot ||
+          currentLedgerRootHex !== header.utxosRoot ||
+          (at.row !== undefined && !at.row.applied)
+        )
+          return yield* Effect.fail(
+            new ForeignBlockVerificationError({
+              foreignHeaderHash: headerHash,
+              reason: "missing",
+              detail: LANDED_COMMIT_BASE_PENDING,
+            }),
+          );
+        const entries = ledgerEntries(at.ledger);
         return {
-          source: `verified-foreign:${verified.headerHash}`,
-          entries: verified.entries,
-          root: verified.root,
-          utxoPayloadAggregate: ledgerPayloadAggregateFromEntries(
-            verified.entries,
-          ),
+          source: `landed:${headerHash}`,
+          entries,
+          root: at.root,
+          utxoPayloadAggregate: ledgerPayloadAggregateFromEntries(entries),
         } satisfies ResolvedCommitBaseLedgerEntries;
       }
     }

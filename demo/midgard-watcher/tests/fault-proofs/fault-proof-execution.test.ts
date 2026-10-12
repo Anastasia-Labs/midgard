@@ -2,14 +2,14 @@ import { join } from "node:path";
 
 import {
   createWorkflowActuationPermitController,
-  LocalKupmiosCheckpointChangedError,
-  LocalKupmiosTransportUnavailableError,
+  FraudProofL1CheckpointChangedError,
+  FraudProofL1UnavailableError,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
-import { KupmiosError } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
+import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
@@ -19,6 +19,7 @@ import {
   setupFundingRecoveryFixture,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 afterEach(cleanupFundingRecoveryFixtures);
 
@@ -34,6 +35,7 @@ const setup = async (newReservation = false) => {
   const fundingFactory = newReservation
     ? createWatcherProverFundingAuthorityFactory({
         journalRoot,
+        journalAuthenticationKey: TEST_JOURNAL_KEY,
         launchScope: fixture.fresh.launchScope,
         deploymentIdentity,
         protocolParameters: fixture.protocolParameters,
@@ -133,7 +135,7 @@ describe("supervisor execution adapter with durable funding", () => {
   it("waits for a fresh observation when a typed canonical capture changes", async () => {
     const test = await setup();
     test.runOrResume.mockRejectedValueOnce(
-      new LocalKupmiosCheckpointChangedError("checkpoint changed"),
+      new FraudProofL1CheckpointChangedError("checkpoint changed"),
     );
     expect(await test.execution.execute(test.input)).toEqual({
       kind: "pending",
@@ -157,6 +159,55 @@ describe("supervisor execution adapter with durable funding", () => {
     );
     expect(test.setAlert).not.toHaveBeenCalled();
     expect(test.getUtxos).not.toHaveBeenCalled();
+  });
+
+  it("waits on a fresh observation while a dispute awaits its counterparty", async () => {
+    const test = await setup();
+    const before = await test.fixture.records();
+    const reason =
+      "validationTraceDispute awaiting counterparty until 1767225600000";
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "awaiting_counterparty",
+      reason,
+      responseDeadline: 1_767_225_600_000,
+    });
+    expect(await test.execution.execute(test.input)).toEqual({
+      kind: "pending",
+      resume: "await_observation",
+      reason,
+    });
+    expect(test.recordProofStep).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "reconciling" }),
+    );
+    expect(test.setAlert).not.toHaveBeenCalled();
+    expect(await test.fixture.records()).toEqual(before);
+  });
+
+  it.each([
+    [
+      { kind: "awaiting_counterparty" },
+      "Watcher doubleSpend workflow did not progress: invalid execution outcome",
+    ],
+    [
+      { kind: "stalled", reason: "confirmed action still required" },
+      "Watcher doubleSpend workflow did not progress: confirmed action still required",
+    ],
+    [
+      { kind: "no_fault_detected", classification: {} },
+      "the family's own classification returned no_fault_detected for an admitted fault",
+    ],
+    [
+      { kind: "unprovable_gap", classification: {} },
+      "the family's own classification returned unprovable_gap for an admitted fault",
+    ],
+    [{ kind: "unknown_kind", reason: "x" }, "did not progress: x"],
+  ])("keeps %j fail-closed with a named reason", async (result, message) => {
+    const test = await setup();
+    test.runOrResume.mockResolvedValueOnce(result);
+    await expect(test.execution.execute(test.input)).rejects.toThrow(message);
+    expect(test.setAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "proof_submission_failure" }),
+    );
   });
 
   it("refuses existing-only recovery without a durable reservation before querying the wallet", async () => {
@@ -236,9 +287,7 @@ describe("supervisor execution adapter with durable funding", () => {
       test.fixture.initial.workflowId,
     );
     vi.mocked(test.fixture.adapter.reconcile).mockRejectedValueOnce(
-      new LocalKupmiosTransportUnavailableError(
-        "Ogmios connection unavailable",
-      ),
+      new FraudProofL1UnavailableError("the follower has no cursor yet"),
     );
     expect(await test.execution.execute(test.input)).toMatchObject({
       kind: "retryable",
@@ -255,15 +304,6 @@ describe("supervisor execution adapter with durable funding", () => {
   });
 
   it.each([
-    [
-      "a retryable Lucid Kupmios error",
-      () =>
-        new KupmiosError({
-          protocol: "kupo",
-          operation: "getUtxosByOutRef",
-          status: 503,
-        }),
-    ],
     [
       "a refused provider connection",
       () =>
@@ -301,21 +341,20 @@ describe("supervisor execution adapter with durable funding", () => {
     },
   );
 
-  it("keeps a provider error the provider does not mark retryable hard", async () => {
+  it("passes a missing recorded decision to the supervisor's hold without a failure alert", async () => {
     const test = await setup();
-    const failure = new KupmiosError({
-      protocol: "kupo",
-      operation: "getUtxosByOutRef",
-      status: 200,
+    const before = await test.fixture.records();
+    const missing = new WatcherProofDecisionMissingError({
+      kind: "objective",
+      category: "doubleSpend",
+      headerHash: test.fixture.old.headerHash,
+      decisionDigest: test.fixture.old.decisionDigest,
+      detail: "workflow recovery has no unique original fault decision",
     });
-    test.runOrResume.mockRejectedValueOnce(failure);
-    await expect(test.execution.execute(test.input)).rejects.toBe(failure);
-    expect(test.setAlert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        code: "proof_submission_failure",
-        active: true,
-      }),
-    );
+    test.runOrResume.mockRejectedValueOnce(missing);
+    await expect(test.execution.execute(test.input)).rejects.toBe(missing);
+    expect(test.setAlert).not.toHaveBeenCalled();
+    expect(await test.fixture.records()).toEqual(before);
   });
 
   it("backs off completed verification transport outages without funding or journal changes", async () => {
@@ -325,7 +364,7 @@ describe("supervisor execution adapter with durable funding", () => {
     );
     const before = await test.fixture.records();
     test.verifyCompleted.mockRejectedValueOnce(
-      new LocalKupmiosTransportUnavailableError("HTTP 503"),
+      new FraudProofL1UnavailableError("the follower has no cursor yet"),
     );
     const request = {
       job: test.input.job,

@@ -46,7 +46,7 @@ vi.mock("../src/database/index.js", async () => {
           submissionTrace.calls.push("prepare-journal");
           return submissionTrace.failJournalPreparation
             ? Effect.fail(new Error("journal insert refused"))
-            : Effect.void;
+            : Effect.succeed({ kind: "prepared" as const });
         }),
       ),
       retrieveByHeaderHash: vi.fn(() =>
@@ -77,27 +77,22 @@ vi.mock("../src/database/index.js", async () => {
   };
 });
 
-vi.mock("../src/fibers/fetch-and-insert-deposit-utxos.js", () => ({
-  fetchAndInsertDepositUTxOsForCommitBarrier: vi.fn((end: Date) =>
-    Effect.succeed(end),
-  ),
+// The commit anchor caps no planned end time.
+vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/services/history-commit-window.js")
+  >()),
+  commitEventHorizon: () =>
+    Effect.succeed({
+      horizonMs: Number.MAX_SAFE_INTEGER,
+      anchor: { hash: Buffer.alloc(32), height: 0, slot: 0 },
+    }),
 }));
-vi.mock("../src/fibers/fetch-and-insert-withdrawal-utxos.js", () => ({
-  fetchAndInsertWithdrawalUTxOsForCommitBarrier: vi.fn((end: Date) =>
-    Effect.succeed(end),
-  ),
+vi.mock("../src/forced-orders/horizon.js", () => ({
+  forcedOrderHorizon: Effect.succeed(null),
 }));
-vi.mock("../src/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
-  fetchAndInsertTxOrderUTxOsForCommitBarrier: vi.fn((end: Date) =>
-    Effect.succeed(end),
-  ),
-}));
-vi.mock("../src/e2e/pipelined-commit-crash-checkpoint.js", () => ({
-  reachPipelinedCommitCrashCheckpoint: vi.fn(() => Effect.void),
-}));
-vi.mock("../src/operator-wallet-view.js", () => ({
-  fetchOperatorWalletView: vi.fn(),
-  isPotentiallyStaleOperatorWalletViewError: vi.fn(() => false),
+vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
+  reachCommitCrashCheckpoint: vi.fn(() => Effect.void),
 }));
 vi.mock("../src/workers/commit-block-header/build-unsigned-tx.js", () => ({
   buildUnsignedCommitTx: vi.fn(),
@@ -146,8 +141,8 @@ import {
   classifyCommitWorkerOutputForMutationLease,
   type CommitWorkerFailureJournalEvidence,
 } from "../src/fibers/commit-worker-failure-classification.js";
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
-import { Lucid } from "../src/services/index.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
+import { Lucid, NodeConfig } from "../src/services/index.js";
 import { buildUnsignedCommitTx } from "../src/workers/commit-block-header/build-unsigned-tx.js";
 import {
   submitDepositOnlyCommit,
@@ -384,7 +379,6 @@ const baseCommitArgs = {
   utxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
   selectedBaseUtxosRoot: "33".repeat(32),
   implicitGenesisEntries: [],
-  beforePendingJournalInsert: () => Effect.void,
   nativeMpfReplay: undefined,
 } as const;
 
@@ -423,6 +417,9 @@ const processedMempoolTxs = [
   },
 ] as never;
 
+/** The final recheck reads the commit-event depth (a fixture has no permit). */
+const depthConfig = { COMMIT_EVENT_DEPTH: 0 } as never;
+
 const runDepositOnlyCommit = () =>
   Effect.runPromise(
     Effect.either(
@@ -433,7 +430,8 @@ const runDepositOnlyCommit = () =>
       ),
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(NodeConfig, depthConfig),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,
   );
@@ -451,7 +449,8 @@ const runTxBackedCommit = () =>
       } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(NodeConfig, depthConfig),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,
   );

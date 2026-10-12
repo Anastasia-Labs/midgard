@@ -136,6 +136,12 @@ export type WatcherProverFundingReservationStore = Readonly<{
   releaseUnused?(
     record: WatcherProverFundingReservationRecord,
   ): Promise<boolean>;
+  /** Clear an unused reservation whose inputs the follower shows spent at a
+   * final view, only if its complete snapshot still matches. Its signed
+   * history stays; spent inputs can fund nothing again. */
+  dropSpentUnused?(
+    record: WatcherProverFundingReservationRecord,
+  ): Promise<boolean>;
   reserve(
     plan: WatcherProverFundingReservationPlan,
     expectedIdleRevision?: string,

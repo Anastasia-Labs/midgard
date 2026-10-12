@@ -14,9 +14,9 @@ Completion: no new workflow can submit while reconciliation is in progress.
 
 ## 2. Reconcile every recorded transaction
 
-For each journaled transaction, query the configured local Kupo/Ogmios pair and
-classify it as confirmed, rolled back, definitely absent, or still ambiguous.
-Treat ambiguous as in flight. Never replace a hash or mark a step confirmed by
+For each journaled transaction, read the watcher's L1 follower and classify it
+as confirmed, rolled back, definitely absent, or still ambiguous. Treat
+ambiguous as in flight. Never replace a hash or mark a step confirmed by
 editing the journal.
 
 Completion: every attempted transaction has an authenticated terminal

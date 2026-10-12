@@ -141,8 +141,8 @@ Optional: DA_PUBLIC_RETAINED_DA_HEALTH_PORT (and _HOST, default 127.0.0.1)
 serves /healthz and /readyz for a supervisor.
 
 The database role must have SELECT and no DML privileges on
-committee_da_payloads and committee_state_queue_headers. File stores and the
-committee DA_COMMITTEE_DB_PATH/DA_COMMITTEE_DATABASE_URL credentials are refused.
+committee_da_payloads and committee_state_queue_headers, and no other table.
+The committee's DA_COMMITTEE_DATABASE_URL credentials are refused.
 `);
 };
 

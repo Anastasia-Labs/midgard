@@ -5,27 +5,19 @@ import {
   type TimeoutCorrectionJournalStore,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
-import { Effect, type Either, Ref, Runtime } from "effect";
+import { Effect, type Either, Ref } from "effect";
 
 import { ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD } from "../commands/readiness.js";
-import { DaPayloadTerminalOutcomesDB } from "../database/index.js";
-import { retrieveCorrectionObserverJournalDependencies } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import {
   type AttestationTimeoutObservation,
   observeAttestationTimeoutQueue,
 } from "../services/attestation-timeout-observation.js";
 import { type AttestationTimeoutCorrectionHealth } from "../services/globals.js";
 import {
-  authorizeStateQueueCorrectionReinclusion,
-  createDatabaseStateQueueCorrectionObserverStore,
-  Database,
-  Globals,
-  reconcileStateQueueCorrectionObserver,
-  refuseRewoundStateQueueCorrectionRollback,
-  type StateQueueCorrectionObserverResult,
-  type StateQueueCorrectionObserverSource,
-} from "../services/index.js";
+  type IntentJournalService,
+  type IntentPlan,
+  journaledIntent,
+} from "../services/intent-journal.js";
 
 export const ATTESTATION_TIMEOUT_ALERT_LEAD_MS =
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS;
@@ -83,23 +75,25 @@ export const attestationTimeoutCorrectionReadinessBounds = (
 /** Classifies the state queue once for the tick and records the result for
  * readiness. A classification failure is returned rather than raised, so the
  * tick raises it where it uses the classification and recording never moves
- * that failure ahead of the tick's earlier work. */
+ * that failure ahead of the tick's earlier work. The deadline is judged
+ * against `l1NowMs`, the L1 `slotNow` (plan §3.6); `readAtMs` is the local
+ * clock reading that readiness measures queue freshness with. */
 export const observeAndRecordAttestationTimeoutQueue = (
   health: Ref.Ref<AttestationTimeoutCorrectionHealth>,
   queue: readonly SDK.StateQueueUTxO[],
-  nowMs: number,
+  times: { readonly l1NowMs: number; readonly readAtMs: number },
 ): Effect.Effect<
   Either.Either<AttestationTimeoutObservation, SDK.DataCoercionError>
 > =>
   observeAttestationTimeoutQueue(
     queue,
-    BigInt(nowMs),
+    BigInt(times.l1NowMs),
     ATTESTATION_TIMEOUT_ALERT_LEAD_MS,
   ).pipe(
     Effect.tap((observation) =>
       Ref.update(health, (current) => ({
         ...current,
-        lastQueueReadAtMs: nowMs,
+        lastQueueReadAtMs: times.readAtMs,
         oldestUnattestedHeader:
           "headerHash" in observation
             ? {
@@ -156,82 +150,62 @@ export const withTimeoutCorrectionProgress = (
 });
 
 /**
- * Admits authenticated state-queue corrections into the durable observer.
+ * The journal store with the intent journal in front (§8.2, family
+ * `correction`). A step is journaled when the workflow decides to send it:
+ * the save that holds a `prepared` step whose bytes the journal last read
+ * or saved did not hold at that index (an appended step, or a replacement
+ * moved to the end). A step reopened in place by a rollback (`confirmed` or
+ * `superseded` back to `prepared`, same bytes) is not a send decision and
+ * is not journaled; its bytes were journaled when first prepared.
+ * Recording precedes the save, so a refusal fails it and nothing is sent.
+ * The record takes S6's send decision under the pass's `plan` (§8.1): a
+ * held one (`IntentSubmitHeld`) fails the save too, so the workflow sends
+ * nothing and S6's reconciler decides the journaled step.
  *
- * A removed block this node committed has already moved the native ledger
- * root, so its reinclusion is a rewind, not a forward write: the fiber only
- * admits the correction (the observer persists it) and the history owner's
- * recovery rewinds the native root and reincludes the payloads (see
- * state-queue-correction-rewind). The admission needs no producer, so a gate
- * the owner closed for an earlier removal of the same suffix never blocks
- * admitting the later one. The native rewind has no inverse, so a post-finality
- * rollback of a rewound removal is refused as an integrity failure.
+ * Key: `correction:<target header>:<kind>:<removed header>`; the content
+ * reference is the removed header.
  */
-export const reconcileStateQueueCorrections = ({
-  source,
-  deploymentIdentityDigest,
-  stateQueuePolicyId,
-  requiredFinalityDepth,
-  deploymentManifest,
-}: {
-  readonly source: StateQueueCorrectionObserverSource;
-  readonly deploymentIdentityDigest: string;
-  readonly stateQueuePolicyId: string;
-  readonly requiredFinalityDepth: bigint;
-  readonly deploymentManifest: unknown;
-}): Effect.Effect<
-  StateQueueCorrectionObserverResult,
-  unknown,
-  Database | Globals
-> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const run = Runtime.runPromise(yield* Effect.runtime<Database | Globals>());
-    const authority = {
-      expectedDeploymentIdentityDigest: deploymentIdentityDigest,
-      requiredFinalityDepth,
-    };
-    return yield* Effect.tryPromise({
-      try: () =>
-        reconcileStateQueueCorrectionObserver({
-          deploymentIdentityDigest,
-          stateQueuePolicyId,
-          requiredFinalityDepth,
-          source,
-          store: createDatabaseStateQueueCorrectionObserverStore({
-            sql,
-            deploymentManifest,
-          }),
-          reinclude: async (transition) => {
-            // Refuse an unauthorized transition before the observer admits it.
-            authorizeStateQueueCorrectionReinclusion(transition, authority);
-          },
-          // Refused before the terminal outcome is revoked, so the DA
-          // 'removed' authority of a rewound block survives the refusal.
-          assertRollbackPermitted: async (transition) => {
-            await run(
-              refuseRewoundStateQueueCorrectionRollback(transition, authority),
-            );
-          },
-          restoreAfterRollback: async (transition) => {
-            // The native rewind has no inverse: a rolled-back removal whose
-            // rewind ran is an explicit integrity failure, and one whose
-            // rewind never ran left nothing to restore.
-            await run(
-              refuseRewoundStateQueueCorrectionRollback(transition, authority),
-            );
-          },
-          revokeTerminal: async (transition) => {
-            await run(
-              DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
-                transition,
-                deploymentManifest,
-              ),
-            );
-          },
-          journalDependencies: () =>
-            run(retrieveCorrectionObserverJournalDependencies),
-        }),
-      catch: (cause) => cause,
+export const withCorrectionIntentJournal = (
+  store: TimeoutCorrectionJournalStore,
+  journal: IntentJournalService,
+  pass: Readonly<{
+    /** The workflow pass's plan, opened before its first L1 read. */
+    plan: IntentPlan;
+    slotTime: (slot: number) => number;
+  }>,
+): TimeoutCorrectionJournalStore => {
+  let last: TimeoutCorrectionJournal | undefined;
+  const decided = (
+    next: TimeoutCorrectionJournal,
+  ): TimeoutCorrectionJournal["steps"] =>
+    next.steps.filter((step, index) => {
+      if (step.status !== "prepared") return false;
+      const before = last?.steps[index];
+      return before === undefined || before.txHash !== step.txHash;
     });
-  });
+  return {
+    ...store,
+    load: async () => {
+      last = await store.load();
+      return last;
+    },
+    save: async (next) => {
+      for (const step of decided(next))
+        await Effect.runPromise(
+          journal.record(
+            journaledIntent(
+              "correction",
+              `correction:${next.targetHeaderHash}:${step.kind}:${step.removedHeaderHash}`,
+              pass.plan,
+              Buffer.from(step.removedHeaderHash, "hex"),
+            ),
+            step.signedCbor,
+            step.txHash,
+            { kind: "send", slotTime: pass.slotTime },
+          ),
+        );
+      await store.save(next);
+      last = next;
+    },
+  };
+};

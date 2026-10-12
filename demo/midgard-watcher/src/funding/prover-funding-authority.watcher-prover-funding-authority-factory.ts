@@ -6,6 +6,7 @@ import {
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
+import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import {
   parseWatcherProverFundingReservationRecord,
@@ -29,6 +30,10 @@ export type WatcherProverFundingAuthorityFactory = Readonly<{
   releaseUnused(input?: {
     readonly actuationPermit: WorkflowActuationPermit;
   }): Promise<void>;
+  /** Reads the held reservations' L1 facts again; safe beside live dispatch. */
+  recheckDecisionHolds(): Promise<void>;
+  /** Reservations held because their recorded decision is missing. */
+  decisionHolds(): readonly WatcherDecisionHold[];
   create(input: {
     readonly category: FraudProofCatalogueCategoryName;
     readonly runner: WorkflowAdapterRunner;

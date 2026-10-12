@@ -7,6 +7,7 @@ import {
   encodeMidgardForcedTxCanonical,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildDeterministicValidationMachineTrace } from "@al-ft/midgard-validation";
 import {
@@ -95,38 +96,43 @@ export const buildDataRefusalTrace = async (
   const eventKey = {
     ForcedTransactionEventKey: { tx_order_id: sourceKey },
   } as const;
+  // Exposed so the production challenge authority can rebuild the identical
+  // trace from the exact replay input.
+  const replayInput = {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    eventKeyCbor: Buffer.from(
+      Data.to(eventKey as never, SDK.EventKeySchema as never),
+      "hex",
+    ),
+    sourceKind: "forced",
+    blockEndTimeMs: now + 1_000,
+    expectedNetworkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
+    blockSlot: 0n,
+    transactionId: transaction.txId,
+    canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+      decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor),
+    ),
+    programMaterialSidecarCbor: sidecar,
+    priorUtxosRoot: "00".repeat(32),
+    postUtxosRoot: "00".repeat(32),
+    ledgerWitnessEntries,
+    expectedLedgerOps: [],
+    ledgerMutationSteps: [],
+    expectedVerdict: "rejected",
+    expectedRejectionCode: "E_INVALID_FIELD_TYPE",
+  } as const;
   const trace = await Effect.runPromise(
-    buildDeterministicValidationMachineTrace({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      eventKeyCbor: Buffer.from(
-        Data.to(eventKey as never, SDK.EventKeySchema as never),
-        "hex",
-      ),
-      sourceKind: "forced",
-      blockEndTimeMs: now + 1_000,
-      expectedNetworkId: 0n,
-      minFeeA: 0n,
-      minFeeB: 0n,
-      blockSlot: 0n,
-      transactionId: transaction.txId,
-      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
-        decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor),
-      ),
-      programMaterialSidecarCbor: sidecar,
-      priorUtxosRoot: "00".repeat(32),
-      postUtxosRoot: "00".repeat(32),
-      ledgerWitnessEntries,
-      expectedLedgerOps: [],
-      ledgerMutationSteps: [],
-      expectedVerdict: "rejected",
-      expectedRejectionCode: "E_INVALID_FIELD_TYPE",
-    }),
+    buildDeterministicValidationMachineTrace(replayInput),
   );
   const txCbor = encodeMidgardForcedTxCanonical(
     decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor),
   );
   return {
     trace,
+    replayInput,
     txCbor,
     eventKey,
     sourceKey,

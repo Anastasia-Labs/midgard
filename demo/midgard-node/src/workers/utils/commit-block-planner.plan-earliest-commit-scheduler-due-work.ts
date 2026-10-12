@@ -1,10 +1,10 @@
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Option } from "effect";
 
 import {
   Columns as TxColumns,
   EntryWithTimeStamp,
 } from "../../database/utils/tx.js";
-import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
 import { planSubmitTiming } from "../../transactions/submit-timing.js";
 import { slotAwareDueWorkFromSubmitTiming } from "../../transactions/submit-timing-due-work.js";
 import {

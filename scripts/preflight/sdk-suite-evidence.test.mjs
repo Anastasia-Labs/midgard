@@ -241,7 +241,7 @@ test("real preflight step produces reusable evidence only from completed unchang
   withFixture(async ({ root, write }) => {
     write(
       "bin/corepack",
-      `#!/usr/bin/env node\nimport fs from 'node:fs';\nimport path from 'node:path';\nconst args = process.argv.slice(2);\nconst name = args[args.indexOf('--filter')+1];\nconst directory = name === '@al-ft/lucid-midgard' ? 'lucid-midgard' : 'midgard-sdk';\nconst output = args.find(arg => arg.startsWith('--outputFile='))?.slice('--outputFile='.length);\nif (!output) throw new Error('standalone unexpectedly dispatched');\nconst status = process.env.SDK_FIXTURE_SKIP ? 'skipped' : 'passed';\nif (process.env.SDK_FIXTURE_DRIFT) fs.writeFileSync(path.resolve('node_modules/.pnpm/dependency/index.js'), 'changed during execution');\nfs.writeFileSync(output, JSON.stringify({success:true,numTotalTests:1,numPassedTests:status==='passed'?1:0,numFailedTests:0,testResults:[{name:path.resolve(directory,'tests/example.test.ts'),status:'passed',assertionResults:[{title:'case',status}]}]}));\n`,
+      `#!/usr/bin/env node\nimport fs from 'node:fs';\nimport path from 'node:path';\nconst args = process.argv.slice(2);\nconst name = args[args.indexOf('--filter')+1];\nconst directory = name === '@al-ft/lucid-midgard' ? 'lucid-midgard' : 'midgard-sdk';\nconst output = args.find(arg => arg.startsWith('--outputFile='))?.slice('--outputFile='.length);\nif (!output) throw new Error('standalone unexpectedly dispatched');\nconst status = process.env.SDK_FIXTURE_SKIP ? 'skipped' : 'passed';\nif (process.env.SDK_FIXTURE_DRIFT) fs.writeFileSync(path.resolve('node_modules/.pnpm/dependency/index.js'), 'changed during execution');\nif (process.env.SDK_FIXTURE_EDIT) fs.writeFileSync(process.env.SDK_FIXTURE_EDIT, 'edited during execution');\nfs.writeFileSync(output, JSON.stringify({success:true,numTotalTests:1,numPassedTests:status==='passed'?1:0,numFailedTests:0,testResults:[{name:path.resolve(directory,'tests/example.test.ts'),status:'passed',assertionResults:[{title:'case',status}]}]}));\n`,
     );
     chmodSync(resolve(root, "bin/corepack"), 0o755);
     const env = {
@@ -292,4 +292,17 @@ test("real preflight step produces reusable evidence only from completed unchang
       () => {},
     );
     assert.equal(drift.sdkSuite, undefined);
+    // A suite that passes while a source changes under it fails as a stale
+    // run, and says so, not as an exit code it never had (#816).
+    const edited = await spawnStep(
+      root,
+      step,
+      { ...env, SDK_FIXTURE_EDIT: resolve(root, "edited-mid-run.mjs") },
+      () => {},
+    );
+    assert.notEqual(edited.status, 0);
+    assert.equal(
+      edited.failure,
+      "inputs changed while it ran (edited-mid-run.mjs); rerun its exact command",
+    );
   }));

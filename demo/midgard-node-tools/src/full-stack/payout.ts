@@ -1,18 +1,15 @@
-import {
-  createLocalKupmiosHttpOgmiosRawSource,
-  readAdmittedLocalKupmiosSignedTransactionRecovery,
-} from "@al-ft/midgard-fault-proofs";
-import { watcherDeploymentReleaseFinalityAuthority } from "midgard-watcher";
+import { L1NodeTransport } from "@al-ft/l1-node-transport";
 
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
+import { hostL1Node } from "./native-ledger.js";
 import {
   includedPayout,
   payoutConclusion,
+  payoutOutRef,
   type SettlementObservation,
 } from "./payout-body.js";
 import { poll, type StackProcesses } from "./process.js";
-import { verifyStackRelease } from "./release.js";
 
 export async function settlementEvidence(
   processes: StackProcesses,
@@ -42,25 +39,37 @@ export async function settlementEvidence(
   ])) as SettlementObservation;
 }
 
+/** One bounded read of the payout output reference at the local node's tip. */
+async function queryPayoutOutput(
+  processes: StackProcesses,
+  outRef: { txHash: string; outputIndex: number },
+) {
+  const transport = new L1NodeTransport({
+    ...hostL1Node(processes),
+    requestTimeoutMs: 30_000,
+    readyTimeoutMs: 30_000,
+  });
+  try {
+    return await transport.query({
+      query: "utxo_by_txin",
+      txIns: [{ txId: outRef.txHash, index: outRef.outputIndex }],
+    });
+  } finally {
+    await transport.close();
+  }
+}
+
+/**
+ * Waits until the withdrawal's single confirmed conclusion is on L1 with the
+ * exact payout output. A provider that cannot answer yet is waited out, never
+ * a failure; a conclusion that is not the exact payout is refused.
+ */
 export async function awaitExactPayout(
   processes: StackProcesses,
   eventId: string,
   address: string,
   assets: Record<string, string>,
 ) {
-  const authority = await verifyStackRelease(processes);
-  const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
-    authority.deploymentIdentity,
-  ).verifyForWorkflow({
-    deploymentFingerprint: authority.deploymentIdentity.manifestId,
-  });
-  const source = createLocalKupmiosHttpOgmiosRawSource({
-    sourceId: "full-stack-payout-verification",
-    kupoHttpUrl: processes.env.L1_KUPO_KEY!,
-    ogmiosUrl: processes.env.L1_OGMIOS_KEY!,
-    releaseFinality,
-    timeoutMs: 30_000,
-  });
   return poll(
     "exact canonical withdrawal payout",
     processes.config.timeoutMs,
@@ -68,18 +77,12 @@ export async function awaitExactPayout(
       const status = await settlementEvidence(processes, "withdrawal", eventId);
       const attempt = payoutConclusion(status);
       if (attempt === undefined) return undefined;
-      const observation =
-        await readAdmittedLocalKupmiosSignedTransactionRecovery({
-          source,
-          transactionHash: attempt.txHash,
-          signedTransactionCborHex: attempt.signedCbor,
-        });
-      const output = includedPayout(
-        attempt,
-        observation.status,
-        address,
-        assets,
+      const outRef = payoutOutRef(attempt, address, assets);
+      const answer = await queryPayoutOutput(processes, outRef).catch(
+        () => undefined,
       );
+      if (answer === undefined) return undefined;
+      const output = includedPayout(outRef, answer);
       if (output === undefined) return undefined;
       return {
         eventId,
@@ -87,7 +90,6 @@ export async function awaitExactPayout(
         outputIndex: output.outputIndex,
         address,
         assets,
-        observation,
       };
     },
   );

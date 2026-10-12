@@ -6,6 +6,7 @@ import {
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
 } from "@al-ft/midgard-core/cek-proof";
 import { type DeploymentManifestEconomicsProfile } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config } from "effect";
 
@@ -67,7 +68,6 @@ export const validateDaKeySetEncoding = (
  * derived values that other services depend on. Keeping it in one place makes
  * production configuration easier to audit.
  */
-type Provider = "Kupmios";
 
 /**
  * The SQL quota counts each unique material entry (32-byte root plus at most
@@ -120,17 +120,11 @@ export const boundedValidationInteger = (
  * Fully-decoded runtime configuration required by the node.
  */
 export type NodeConfigDep = {
-  L1_PROVIDER: Provider;
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: number;
-  L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: number;
   L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: number;
   L1_RECENT_TX_404_MAX_DELAY_MS: number;
-  L1_OGMIOS_KEY: string;
-  L1_KUPO_KEY: string;
   /** Local ledger for reward-account reads; Ogmios cannot answer them. */
   L1_NATIVE_LEDGER: NativeLedgerSettings | undefined;
-  /** Operator-approved lossless Shelley query result hash; required by listen. */
-  L1_HISTORY_GENESIS_LOSSLESS_SHA256: string;
   L1_OPERATOR_SEED_PHRASE: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   /** Required by listen; optional for read-only and deployment commands. */
@@ -145,17 +139,11 @@ export type NodeConfigDep = {
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
-  SPECULATIVE_COMMIT_BUILD: boolean;
   OPERATOR_WATCHDOG_ENABLED: boolean;
   OPERATOR_WATCHDOG_PATIENCE_MS: number;
-  SPECULATIVE_REBUILD_MAX_ATTEMPTS: number;
-  USER_EVENT_BARRIER_REFRESH_MS: number;
-  USER_EVENT_BARRIER_MAX_STALENESS_MS: number;
-  USER_EVENT_INCLUSION_DEADLINE_MS: number;
   BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: number;
   BLOCK_CONFIRMATION_AWAIT_RETRIES: number;
   UNCONFIRMED_BLOCK_MAX_AGE_MS: number;
-  WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   MIN_QUEUE_LENGTH_FOR_MERGING: number;
   VALIDATION_BATCH_SIZE: number;
@@ -196,7 +184,14 @@ export type NodeConfigDep = {
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: number;
-  STATE_QUEUE_CORRECTION_FINALITY_DEPTH: number;
+  /** The commit-event depth d (plan §8.1): the deployment profile's
+   * `l1_finality.commit_event_depth`. A commit's anchor is the follower block
+   * d below the view it is planned at, and its header end is at most the
+   * anchor's time + event_wait - 1 (`database/commit-anchor.ts`). */
+  COMMIT_EVENT_DEPTH: number;
+  /** The node-behind bound in ms (`config.node-behind.ts`): the follower's
+   * `l1_node_behind` reason and the hold on the node's own sends. */
+  L1_NODE_BEHIND_MAX_MS: number;
   /** Explicit housekeeping window in days; undefined when unset, which means
    * the verified deployment manifest's window (`resolveHousekeepingRetentionDays`). */
   RETENTION_DAYS: number | undefined;
@@ -204,6 +199,10 @@ export type NodeConfigDep = {
   L1_VIEW_FATAL_MS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
+  /** The operator-configured L1 origin point; null when `L1_ORIGIN` is unset. */
+  L1_ORIGIN: L1Origin | null;
+  /** URL templates (`{txId}`) for by-id L1 tx fetches; empty when unset. */
+  L1_TX_CONTENT_SOURCES: readonly string[];
   OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
   DA_COMMITTEE_HEX: string;

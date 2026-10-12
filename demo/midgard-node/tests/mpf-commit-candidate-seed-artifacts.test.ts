@@ -54,6 +54,7 @@ const seedInput = () => ({
   fundingMapSha256: hash(12),
   expectedTransactionCount: 2,
   firstTimestampIso: "2026-07-27T00:00:00.000Z",
+  fixtureInitialUtxoCount: 4,
 });
 
 const funding = () => ({
@@ -110,6 +111,12 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
       void (value.firstTimestampIso = "2026-07-27T00:00:00Z"),
     (value: ReturnType<typeof seedInput>) =>
       void (value.firstTimestampIso = "2026-99-99T00:00:00.000Z"),
+    (value: ReturnType<typeof seedInput>) =>
+      void (value.fixtureInitialUtxoCount = 0),
+    (value: ReturnType<typeof seedInput>) =>
+      void (value.fixtureInitialUtxoCount = 1.5),
+    (value: ReturnType<typeof seedInput>) =>
+      void delete (value as Partial<typeof value>).fixtureInitialUtxoCount,
   ])("rejects an incomplete or noncanonical seed input %#", (mutate) => {
     const value = seedInput();
     mutate(value);
@@ -201,6 +208,7 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
       fundingCount: 2,
       terminalLedgerCount: 2,
       deltaCount: 2,
+      confirmedLedgerCount: 4,
     };
     const validate = (candidate: unknown) =>
       validateArchitectureGCommitCandidateSeedResult({
@@ -208,6 +216,7 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
         expectedDatabaseName: value.databaseName,
         expectedCorpusSliceSha256: hash(11),
         expectedTransactionCount: 2,
+        expectedConfirmedLedgerCount: 4,
       });
     expect(validate(value)).toBe(value);
     expect(() => validate({ ...value, unknown: true })).toThrow();
@@ -215,6 +224,10 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
     expect(() => validate({ ...value, fundingCount: 0 })).toThrow();
     expect(() => validate({ ...value, terminalLedgerCount: 0 })).toThrow();
     expect(() => validate({ ...value, deltaCount: 1 })).toThrow();
+    expect(() => validate({ ...value, confirmedLedgerCount: 3 })).toThrow();
+    expect(() =>
+      validate({ ...value, confirmedLedgerCount: undefined }),
+    ).toThrow();
     expect(() => validate({ ...value, databaseName: "midgard" })).toThrow();
     expect(() => validate({ ...value, corpusSliceSha256: hash(40) })).toThrow();
   });

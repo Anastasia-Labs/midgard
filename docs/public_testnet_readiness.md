@@ -123,7 +123,7 @@ Previously implemented portions of a combined gate still need release verificati
       Document CORS, timeout/abort, structured errors, and retry behavior for
       200/202/409/413/415/422/429/503 and provider failures.
 - [ ] Distinguish `/healthz` liveness from `/readyz` readiness. Readiness checks
-      provider freshness, Kupo coverage, Ogmios connection, node sync, deployment
+      the L1 follower's freshness over the cardano-node socket, node sync, deployment
       identity, successful first iterations of required workers, and recovery state.
       A temporary provider failure alone must not trigger restart loops.
 - [ ] Test SIGTERM drain: immediately become non-ready, stop admission and new
@@ -133,24 +133,26 @@ Previously implemented portions of a combined gate still need release verificati
 
 ## L1 authority, finality, time, and funding
 
-- [ ] Select exactly one source mode without inference or silent fallback.
-      `local_node` uses one watcher-operated Cardano full node and chain-sync as
-      authority; its Ogmios/Kupo/db-sync services are not independent quorum members.
-      Validate their network and compatible canonical chain point. In
-      `external_providers`, require at least two operationally independent operators
-      agreeing on network and compatible chain points; quarantine disagreement or
-      lost independence. Decode actual chain bytes deterministically, and propagate
-      rollback through every index without replaying Cardano validator semantics.
-- [ ] Apply source authority/agreement to commit, merge, deposit, withdrawal,
-      reserve/payout, scheduler, operator, proof, and init observations. Fault-proof
+- [ ] One source mode, no fallback: each role (node, watcher, DA committee)
+      reads L1 only through one ChainSync follower on its operator's own Cardano
+      node, started from the deployment's configured L1 origin. No role reads Kupo
+      or Ogmios, and the watcher refuses any other `sourceMode`. Validate the
+      node's network (the node-to-client handshake on the configured magic) and
+      that the origin is on its chain. Decode actual chain bytes deterministically.
+      A rollback rewinds the follower's facts to the intersection and every role
+      recomputes its derived state from them, without replaying Cardano validator
+      semantics.
+- [ ] Derive commit, merge, deposit, withdrawal, reserve/payout, scheduler,
+      operator, proof, and init observations from the follower's facts. Fault-proof
       actions proceed on authenticated inclusion at fixed depth 1; their configured
       release depth governs stable evidence.
       Preserve unrelated lifecycle finality requirements. Persist transaction and
-      chain-point identities, source authority, and observed depth. On rollback,
-      invalidate cached authority, re-observe canonical state, reconcile outstanding
-      submissions, then retry suitable signed bytes or rebuild under fresh authority.
-      Test provisional terminal disappearance, restart, unresolved wallet inputs,
-      and post-finalization incident recovery.
+      chain-point identities and observed depth. On rollback, recompute from the
+      rewound facts, reconcile outstanding submissions against them, then retry
+      suitable signed bytes or rebuild. A rollback deeper than k, or a node with
+      none of the store's intersection points, holds readiness under a named
+      reason with the process up. Test provisional terminal disappearance, restart,
+      unresolved wallet inputs, and post-finalization incident recovery.
 - [ ] Anchor deposit/withdrawal events and commit barriers to stable indexed
       chain points. Test appearance, disappearance, reappearance at another point,
       and conflicting same-event payloads before projection/finalization. Readiness
@@ -356,14 +358,17 @@ Previously implemented portions of a combined gate still need release verificati
       journey with exact all-asset L1 payout proof. On those same artifacts, run
       four independent unattended recovery drills: restart Cardano, stop Kupo,
       stop Ogmios, and lose public retained-DA retrieval. Show readiness becoming
-      held and recovering, with no manual commit, merge, live reset, or forced
-      quarantine clear. Record every actor's durable state and pending signed
+      held and recovering, with no manual commit, merge, live reset, or follower
+      store reset. Record every actor's durable state and pending signed
       attempts across recovery; a smoke test cannot replace this evidence.
 - [ ] Verify history readiness against the full configured recovery window and
-      live native lineage, including fresh process/run/deployment/code bindings.
+      the follower's chain, including fresh process/run/deployment/code bindings.
       A controller being alive, cached status file, or one matching endpoint row
-      is insufficient. Explicit quarantine recovery must first prove its cause
-      gone and enumerate retained residue; automatic timer-based clear is forbidden.
+      is insufficient. A follower intervention (`rollback_beyond_k`,
+      `intersection_outside_history`, `store_integrity`, `origin_mismatch`) is
+      cleared only by the operator's explicit
+      `midgard-l1-follower reset --to-origin` and a replay from the origin;
+      nothing clears it on a timer.
 - [ ] Build public artifacts from a tagged revision with immutable SHAs/digests
       for actions, base/service/compose images, and release inputs. Fail release CI
       on mutable runner/image/action selections, including `ubuntu-latest` and tags.

@@ -43,12 +43,6 @@ export const MISSING_SIGNATURE_TARGET_HASH = SDK.missingSignatureVkeyHash(
   MISSING_SIGNATURE_TARGET_VKEY,
 );
 
-/** First 103-byte-stride field-7 vector that crosses the tier-2 ceiling. */
-export const MISSING_SIGNATURE_FIRST_CERTIFIED_WITNESS_COUNT =
-  Math.floor(
-    (midgardFieldCarriageBounds.maxPublishableCarriageBytes - 3) / 103,
-  ) + 1;
-
 /** First field-7 vector that is too large for tier 1 and must publish. */
 export const MISSING_SIGNATURE_FIRST_RAW_WITNESS_COUNT =
   Math.floor(

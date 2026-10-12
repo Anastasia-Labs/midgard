@@ -1,9 +1,12 @@
 import "./utils.js";
 
-import { Effect } from "effect";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { Effect, Layer } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MIN_DA_PAYLOAD_RETENTION_DAYS } from "../src/database/retention-policy.js";
+import type { L1Access } from "../src/l1-access.js";
+import { L1Adapter } from "../src/services/l1-adapter.js";
 import {
   ContractDeploymentIdentity,
   MidgardContractServices,
@@ -40,10 +43,22 @@ vi.mock(
   }),
 );
 
+// The derived bundle reads its slot mapping through the L1 port: the test
+// network's static one.
+const preprodPort = Layer.succeed(L1Adapter, {
+  role: "tool",
+  open: () =>
+    Effect.succeed({
+      slotConfig: async () => ({ ...NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod }),
+    } as unknown as L1Access),
+});
+
 const start = (days: number | undefined) => {
   vi.stubEnv("RETENTION_DAYS", days?.toString());
   return Effect.runPromise(
-    ContractDeploymentIdentity.pipe(Effect.provide(MidgardContractServices)),
+    ContractDeploymentIdentity.pipe(
+      Effect.provide(MidgardContractServices.pipe(Layer.provide(preprodPort))),
+    ),
   );
 };
 

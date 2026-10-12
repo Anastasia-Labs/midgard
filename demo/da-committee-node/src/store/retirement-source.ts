@@ -2,12 +2,14 @@ import type {
   AvailabilityOperationActorSnapshot,
   AvailabilityOperationJournal,
 } from "@al-ft/midgard-core/availability-operation-journal";
+import { depth, isFinal } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { PromiseCapacityPoint } from "../availability/promise-capacity-evidence.js";
 import type { StateQueueHeaderRecord } from "../domain.js";
+import { FollowerPointBeyondRetentionError } from "../l1/follower/availability-reads.js";
 import type { CommitteeStore, StoreData } from "../store.committee-store.js";
 import { mintRetirementCertificate } from "./retirement-certificate.js";
 import {
@@ -25,6 +27,8 @@ import {
 import {
   assertRetirementBinding,
   planRetirement,
+  type RetirementHold,
+  retirementHoldReason,
   retirementPointKey,
   type RetirementVerifiedFacts,
 } from "./retirement-transition.js";
@@ -48,7 +52,7 @@ export type CommitteeRetirementSourceDependencies = Readonly<{
   ) => Promise<PromiseCapacityPoint>;
   /** Verified native genesis/era-history conversion, never a host clock. */
   slotTimeMs: (slot: number) => number;
-  /** Complete, byte/row-capped physical script reads at the current boundary. */
+  /** Complete script-address reads from the follower's facts at the current boundary. */
   readRawSnapshot: (
     scope: SDK.DaAvailabilityReadScope,
   ) => Promise<SDK.DaAvailabilitySnapshotUtxos>;
@@ -57,9 +61,19 @@ export type CommitteeRetirementSourceDependencies = Readonly<{
     boundary: PromiseCapacityPoint,
     scope: SDK.DaAvailabilityReadScope,
   ) => Promise<RetirementPointProof | null>;
-  /** The reader must verify the exact txHash in its native canonical block body. */
+  /** The block a valid stored transaction `txHash` landed in, on the follower's chain. */
   readSubmissionPoint: (
     txHash: string,
+    boundary: PromiseCapacityPoint,
+    scope: SDK.DaAvailabilityReadScope,
+  ) => Promise<RetirementPointProof | null>;
+  /**
+   * The block on the follower's chain carrying the transaction that put
+   * `headerHash`'s node in the state queue: the point its signatures are
+   * checked at.
+   */
+  readLandingPoint: (
+    headerHash: string,
     boundary: PromiseCapacityPoint,
     scope: SDK.DaAvailabilityReadScope,
   ) => Promise<RetirementPointProof | null>;
@@ -186,18 +200,30 @@ const pointRequests = (data: StoreData): readonly RetirementPointRequest[] => {
   };
   for (const h of Object.values(data.stateQueueHeaders))
     add(h.observedChainPoint);
-  for (const s of Object.values(data.daSignatures)) add(s.l1ChainPoint);
   for (const e of Object.values(data.decisionOutbox)) add(e);
   for (const c of Object.values(data.promiseCapacityEvidence)) {
     add(c.point);
     if (c.certifiedAt) add(c.certifiedAt);
   }
-  for (const o of data.chainCursor?.observations ?? []) {
-    add(o);
-    for (const step of o.authenticatedSteps ?? []) add(step);
-  }
+  for (const o of data.chainCursor?.observations ?? []) add(o);
   if (data.retirementFloor?.point) add(data.retirementFloor.point);
   return [...points.values()];
+};
+
+/**
+ * Runs a follower read; a block the follower no longer retains is
+ * `"beyond_retention"`, any other failure throws.
+ */
+const retained = async <T>(
+  read: () => Promise<T>,
+): Promise<T | "beyond_retention"> => {
+  try {
+    return await read();
+  } catch (error) {
+    if (error instanceof FollowerPointBeyondRetentionError)
+      return "beyond_retention";
+    throw error;
+  }
 };
 
 /** No adoption by omission. The runtime supplies the same owned SDK scope and
@@ -207,8 +233,14 @@ export const committeeRetirementSource = (
 ): CommitteeRetirementPort &
   Readonly<{
     compact: (scope: SDK.DaAvailabilityReadScope) => Promise<readonly string[]>;
+    /**
+     * The hold the last compaction stopped at, as its named retention
+     * reason (empty when none): the held header and its cause.
+     */
+    holds: () => readonly string[];
   }> => {
   const binding = parseRetirementBinding(args.binding);
+  let holds: readonly RetirementHold[] = [];
   const captures = new WeakMap<
     object,
     Readonly<{
@@ -276,7 +308,9 @@ export const committeeRetirementSource = (
       args.store.assertRetirementGuard(token);
     },
     assert: (token, record) => args.store.assertRetirementGuard(token, record),
+    holds: () => holds.map(retirementHoldReason),
     compact: async (scope) => {
+      holds = [];
       scope.assertCurrent();
       if (args.store.retirementDiscoveryActive()) return [];
       const snapshot = await args.store.readRetirementSnapshot(),
@@ -330,7 +364,12 @@ export const committeeRetirementSource = (
       }
       let checkpoint = prior.checkpoint;
       if (checkpoint) {
-        const proof = await args.readCanonicalPoint(checkpoint.point, c, scope);
+        const read = await retained(() =>
+          args.readCanonicalPoint(checkpoint!.point, c, scope),
+        );
+        // A checkpoint the follower no longer retains is taken again at the
+        // boundary, as one off the chain is: the expiry waits longer.
+        const proof = read === "beyond_retention" ? null : read;
         if (proof === null) {
           await assertCurrent();
           checkpoint = undefined;
@@ -356,7 +395,11 @@ export const committeeRetirementSource = (
           }),
         );
       }
-      if (c.blockNo - checkpoint.point.blockNo <= binding.recoveryDepth) {
+      if (
+        !isFinal(depth(c.blockNo, checkpoint.point.blockNo), {
+          securityParameter: binding.recoveryDepth,
+        })
+      ) {
         await assertCurrent();
         return [];
       }
@@ -374,19 +417,38 @@ export const committeeRetirementSource = (
       if (args.journal.retainedRecordCount() !== actor.retainedAttempts.length)
         for (const h of headers) financial.add(h.headerHash);
       const canonicalPoints = new Map<string, PromiseCapacityPoint>();
+      const pointsBeyondRetention = new Set<string>();
       for (const q of pointRequests(data)) {
-        const proof = await args.readCanonicalPoint(q, c, scope);
-        if (proof !== null)
+        const proof = await retained(() =>
+          args.readCanonicalPoint(q, c, scope),
+        );
+        if (proof === "beyond_retention")
+          pointsBeyondRetention.add(retirementPointKey(q));
+        else if (proof !== null)
           canonicalPoints.set(
             retirementPointKey(q),
             verifiedProof(proof, q, c),
           );
       }
       const transactions = new Map<string, PromiseCapacityPoint>();
+      const submissionsBeyondRetention = new Set<string>();
       for (const s of Object.values(data.l1Submissions)) {
-        const proof = await args.readSubmissionPoint(s.txHash, c, scope);
-        if (proof)
+        const proof = await retained(() =>
+          args.readSubmissionPoint(s.txHash, c, scope),
+        );
+        if (proof === "beyond_retention")
+          submissionsBeyondRetention.add(s.txHash);
+        else if (proof)
           transactions.set(s.txHash, verifiedProof(proof, proof.point, c));
+      }
+      const landings = new Map<string, PromiseCapacityPoint>();
+      const landingsBeyondRetention = new Set<string>();
+      for (const h of new Set(
+        Object.values(data.daSignatures).map((s) => s.headerHash),
+      )) {
+        const proof = await retained(() => args.readLandingPoint(h, c, scope));
+        if (proof === "beyond_retention") landingsBeyondRetention.add(h);
+        else if (proof) landings.set(h, verifiedProof(proof, proof.point, c));
       }
       const facts: RetirementVerifiedFacts = {
         binding,
@@ -398,10 +460,20 @@ export const committeeRetirementSource = (
         financialHeaderHashes: financial,
         canonicalPoints,
         submittedTransactionPoints: transactions,
+        pointsBeyondRetention,
+        headerLandingPoints: landings,
+        landingsBeyondRetention,
+        submissionsBeyondRetention,
       };
       // The backend independently checks current callback pins under its write lock.
-      const plan = planRetirement(data, facts, new Set(), () => false);
+      const { plan, hold } = planRetirement(
+        data,
+        facts,
+        new Set(),
+        () => false,
+      );
       await assertCurrent();
+      holds = hold === undefined ? [] : [hold];
       args.store.assertRetirementGuard(snapshot.guard);
       if (!plan) return [];
       return args.store.applyRetirementCertificate(

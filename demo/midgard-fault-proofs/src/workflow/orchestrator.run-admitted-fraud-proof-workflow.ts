@@ -42,8 +42,10 @@ import {
   normalizeJournalJson,
   validateFraudProofWorkflowJournal,
 } from "./journal.js";
-import { LocalKupmiosTransportUnavailableError } from "./local-kupmios-http-ogmios-source.js";
-import { LocalKupmiosCheckpointChangedError } from "./local-kupmios-raw-l1-authority.js";
+import {
+  FraudProofL1CheckpointChangedError,
+  isFraudProofL1WaitError,
+} from "./l1-source.js";
 import { adoptLandedSupersededAttempt } from "./orchestrator.adopt-landed-superseded-attempt.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
@@ -537,11 +539,11 @@ export const runAdmittedFraudProofWorkflow = async ({
         // A capture exhausted its bounded retries because the canonical head
         // moved. It establishes neither inclusion nor replacement authority;
         // retain the exact signed intent and yield for a fresh observation.
-        if (cause instanceof LocalKupmiosCheckpointChangedError)
+        if (cause instanceof FraudProofL1CheckpointChangedError)
           return resumeOnObservation(
             `reconciliation awaits a stable boundary for ${action.actionId}: ${cause.message}`,
           );
-        if (cause instanceof LocalKupmiosTransportUnavailableError) throw cause;
+        if (isFraudProofL1WaitError(cause)) throw cause;
         return await stalled(
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
@@ -733,7 +735,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           checkpoint: "before_terminal_verify",
         });
       } catch (cause) {
-        if (cause instanceof LocalKupmiosTransportUnavailableError) throw cause;
+        if (isFraudProofL1WaitError(cause)) throw cause;
         return await stalled(
           `terminal verification failed: ${formatUnknownError(cause)}`,
         );
@@ -844,7 +846,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         cause instanceof WorkflowFundingReservationUnavailableError
       )
         return resumeOnObservation(cause.message);
-      if (cause instanceof LocalKupmiosTransportUnavailableError) throw cause;
+      if (isFraudProofL1WaitError(cause)) throw cause;
       return await stalled(
         `preflight failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         adapterPreflightFailed ? "preflight" : undefined,
@@ -886,7 +888,7 @@ export const runAdmittedFraudProofWorkflow = async ({
     } catch (cause) {
       if (cause instanceof WorkflowFundingReservationUnavailableError)
         return resumeOnObservation(cause.message);
-      if (cause instanceof LocalKupmiosTransportUnavailableError) throw cause;
+      if (isFraudProofL1WaitError(cause)) throw cause;
       return await stalled(
         `funding reservation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
       );

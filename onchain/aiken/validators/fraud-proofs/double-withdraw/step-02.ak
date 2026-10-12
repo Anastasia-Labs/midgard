@@ -19,6 +19,7 @@ use midgard/fraud_proofs/double_withdraw/step_02.{
   Args, Datum, SpendRedeemer, State, double_withdraw_fault_is_established_v1,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/ledger_state
 use midgard/transition_trace
 
 validator main(
@@ -229,11 +230,26 @@ test double_withdraw_step_02_rejects_distinct_l2_outrefs() fail {
   run_own_thread(block, step_01.second_withdrawal_membership_v1(block))
 }
 
-/// Honest-block negative selector: the honest same-outref duplicate is tagged
-/// non-payable, so it cannot serve as the second leaf either — the family
-/// refuses the honest commitment at its exact decisive check.
+/// Non-payable negative selector: a same-outref duplicate tagged
+/// `SpentWithdrawalUtxo` (non-payable, though not the tag the node emits)
+/// cannot serve as the second leaf either — the family refuses it at its exact
+/// decisive check.
 test double_withdraw_step_02_rejects_the_honest_duplicate() fail {
-  let block = step_01.honest_duplicate_block_v1()
+  let block = step_01.honest_duplicate_block_v1(
+    ledger_state.SpentWithdrawalUtxo {
+      l2_tx_id: #"5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+    },
+  )
+  run_own_thread(block, step_01.second_withdrawal_membership_v1(block))
+}
+
+/// Honest-block negative selector for the node's own duplicate tag: the
+/// duplicate classified after the first order drained the L2 UTxO is
+/// `NonExistentWithdrawalUtxo`, so it cannot serve as the second leaf.
+test double_withdraw_step_02_rejects_the_drained_duplicate() fail {
+  let block = step_01.honest_duplicate_block_v1(
+    ledger_state.NonExistentWithdrawalUtxo,
+  )
   run_own_thread(block, step_01.second_withdrawal_membership_v1(block))
 }
 

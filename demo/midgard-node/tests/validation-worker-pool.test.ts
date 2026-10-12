@@ -12,6 +12,7 @@ import "./validation-worker-pool.build-adversarial-corpus.js";
 
 import { existsSync } from "node:fs";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   deserializePhaseACandidate,
   runPhaseAValidation,
@@ -195,6 +196,7 @@ describe("long-lived validation worker pool", () => {
           injectDefensiveCycle(inlinePhaseA.accepted, corpus.cycleTxIds),
           corpus.preState,
           {
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             nowCardanoSlotNo: 0n,
             bucketConcurrency: 1,
             enforceScriptBudget: true,
@@ -218,6 +220,7 @@ describe("long-lived validation worker pool", () => {
             injectDefensiveCycle(workerPhaseA.accepted, corpus.cycleTxIds),
             corpus.preState,
             {
+              l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
               nowCardanoSlotNo: 0n,
               bucketConcurrency: poolSize,
               enforceScriptBudget: true,

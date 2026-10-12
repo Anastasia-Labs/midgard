@@ -2,7 +2,7 @@ import { type AvailabilityResponseAdmissionPolicy } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { afterEach, vi } from "vitest";
+import { vi } from "vitest";
 
 import {
   committeePromiseAdmission,
@@ -10,16 +10,19 @@ import {
 } from "../../src/availability/promise-admission.js";
 import { CommitteeService } from "../../src/committee-service.js";
 import type { DaPayloadSource } from "../../src/da/source.js";
-import { hashBlockHeader } from "../../src/l1/state-queue-scanner.js";
+import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
-import { JsonFileCommitteeStore } from "../../src/store.js";
 import {
   makeObservedNode,
   makePayloadFixture,
   minimalConfig,
   tempDir,
 } from "../helpers.js";
-import { withFinalSnapshot } from "./final-snapshot.js";
+import {
+  openTestCommitteeStore,
+  testStoreDatabase,
+} from "./committee-store.js";
+import { fakeL1Source } from "./fake-l1-source.js";
 import { testPromiseRuntimePolicy } from "./promise-runtime-policy.js";
 
 // An explicit bounded test actor model; production has no inferred policy.
@@ -32,11 +35,6 @@ const policy: AvailabilityResponseAdmissionPolicy = {
   discoveryAndClockMarginMs: 0,
   supportedRecoveryMs: 0,
 };
-export const stores = new Set<JsonFileCommitteeStore>();
-afterEach(async () => {
-  for (const store of stores) await store.close();
-  stores.clear();
-});
 
 export const promiseAdmissionFixture = async () => {
   const dir = await tempDir();
@@ -44,7 +42,7 @@ export const promiseAdmissionFixture = async () => {
     base: Awaited<ReturnType<typeof makePayloadFixture>>,
     header: SDK.Header,
   ) => {
-    const headerHash = hashBlockHeader(header);
+    const headerHash = headerHashOf(header);
     const payload = {
       ...base.payload,
       block_body: {
@@ -80,7 +78,6 @@ export const promiseAdmissionFixture = async () => {
   const sign = vi.fn(signerBase.sign);
   const signer = { ...signerBase, sign };
   const rawConfig = minimalConfig({
-    dir,
     manifestPath: `${dir}/manifest.json`,
     deploymentInfoPath: `${dir}/deployment.json`,
     signerSeed: "00".repeat(31) + "01",
@@ -101,11 +98,8 @@ export const promiseAdmissionFixture = async () => {
     signer,
     signerIndex: 0,
   });
-  const open = async () => {
-    const store = await JsonFileCommitteeStore.open(dir);
-    stores.add(store);
-    return store;
-  };
+  const database = await testStoreDatabase();
+  const open = () => openTestCommitteeStore(database);
   const store = await open();
   const bytes = new Map([
     [first.headerHash, first.payloadCbor],
@@ -159,7 +153,7 @@ export const promiseAdmissionFixture = async () => {
       source,
       now: () => 1_000,
     });
-  const provider = withFinalSnapshot({
+  const provider = fakeL1Source({
     fetchStateQueueNodes: async () =>
       [first, second].map((item, index) =>
         makeObservedNode({
@@ -173,7 +167,7 @@ export const promiseAdmissionFixture = async () => {
     new CommitteeService({
       config,
       store: activeStore,
-      stateQueueProvider: provider,
+      l1: provider,
       payloadSource,
       signer,
       signerValidation,

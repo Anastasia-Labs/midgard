@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { type Network, type Script } from "@lucid-evolution/lucid";
+import { type Script } from "@lucid-evolution/lucid";
 
 import { realBlueprintPathOverride } from "./environment.js";
 
@@ -36,8 +36,3 @@ export const loadPhasMembershipWithdrawalScript = (): Script => {
     );
   }
 };
-
-export const phasMembershipRewardAddress = (
-  network: Network,
-  script: Script = loadPhasMembershipWithdrawalScript(),
-): string => SDK.phasMembershipRewardAddress(network, script);

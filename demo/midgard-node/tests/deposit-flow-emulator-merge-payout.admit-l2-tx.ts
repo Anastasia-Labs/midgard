@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { expect } from "vitest";
 
@@ -15,7 +16,7 @@ import {
   collectAcceptedProgramEnvelopes,
   decideAdmissionBatch,
 } from "../src/fibers/tx-queue-processor.js";
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   Database,
   Effect,
@@ -266,6 +267,7 @@ export const admitL2Tx = async (
       pendingWithdrawalOutRefHexes,
       ledgerState,
       phaseBConfig: {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         nowCardanoSlotNo: BigInt(fixture.operatorLucid.currentSlot()),
         bucketConcurrency: 1,
         enforceScriptBudget: true,
@@ -294,7 +296,7 @@ export const admitL2Tx = async (
           });
         }
       }).pipe(
-        Effect.provideService(UnownedHistoryFixture, true),
+        Effect.provideService(FollowerWriteFixture, true),
         Effect.provide(WriteBehindLive),
         Effect.provide(Database.layer),
         Effect.provide(NodeConfig.layer),

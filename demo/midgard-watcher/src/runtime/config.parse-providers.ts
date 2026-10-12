@@ -2,17 +2,12 @@ import { isIP } from "node:net";
 
 import {
   boundedArray,
-  enumValue,
   exactRecord,
   exactString,
   fail,
-  HEX_32_PATTERN,
   IDENTITY_PATTERN,
   WATCHER_CONFIG_BOUNDS,
-  type WatcherConfigMode,
   type WatcherDaPeerConfig,
-  type WatcherL1ProviderConfig,
-  type WatcherLocalNodeQueryServiceConfig,
   type WatcherTargetNetwork,
 } from "./config.watcher-config.js";
 
@@ -65,33 +60,6 @@ const isPublicHostname = (hostname: string): boolean => {
   );
 };
 
-const parseExternalProviderEndpoint = (
-  value: unknown,
-  path: string,
-  mode: WatcherConfigMode,
-): Readonly<{ endpoint: string; aliasKey: string }> => {
-  const endpoint = exactString(value, path, { maxLength: 2_048 });
-  let url: URL;
-  try {
-    url = new URL(endpoint);
-  } catch {
-    fail("invalid_endpoint", path);
-  }
-  if (
-    url.protocol !== "https:" ||
-    url.username.length > 0 ||
-    url.password.length > 0 ||
-    url.search.length > 0 ||
-    url.hash.length > 0 ||
-    (mode === "acceptance" && !isPublicHostname(url.hostname))
-  ) {
-    fail("invalid_endpoint", path);
-  }
-  url.hostname = url.hostname.toLowerCase().replace(/\.$/u, "");
-  const aliasKey = `${url.protocol}//${url.host.toLowerCase()}${url.pathname.replace(/\/+$/u, "")}`;
-  return { endpoint, aliasKey };
-};
-
 export const DA_MULTIADDR_PATTERN =
   /^\/dns(4|6)\/([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)\/tcp\/([1-9][0-9]{0,4})\/p2p\/([1-9A-HJ-NP-Za-km-z]{20,128})$/u;
 
@@ -137,140 +105,6 @@ const parseDaMultiaddr = (
     peerId,
     aliasKey: `${hostname}:${port.toString()}:${peerId}`,
   };
-};
-
-export const parseProviders = (
-  value: unknown,
-  mode: WatcherConfigMode,
-): readonly WatcherL1ProviderConfig[] => {
-  const values = boundedArray(
-    value,
-    "$.l1.source.providers",
-    WATCHER_CONFIG_BOUNDS.externalProviders,
-  );
-  const identities = new Set<string>();
-  const operatorIdentities = new Set<string>();
-  const endpoints = new Set<string>();
-  return Object.freeze(
-    values.map((entry, index) => {
-      const path = `$.l1.source.providers[${index.toString()}]`;
-      const record = exactRecord(entry, path, [
-        "identity",
-        "operatorIdentitySha256",
-        "endpoint",
-      ]);
-      const identity = exactString(record.identity, `${path}.identity`, {
-        maxLength: 32,
-        pattern: IDENTITY_PATTERN,
-      });
-      const operatorIdentitySha256 = exactString(
-        record.operatorIdentitySha256,
-        `${path}.operatorIdentitySha256`,
-        {
-          maxLength: 64,
-          pattern: HEX_32_PATTERN,
-        },
-      );
-      const endpoint = parseExternalProviderEndpoint(
-        record.endpoint,
-        `${path}.endpoint`,
-        mode,
-      );
-      if (
-        identities.has(identity) ||
-        operatorIdentities.has(operatorIdentitySha256) ||
-        endpoints.has(endpoint.aliasKey)
-      ) {
-        fail("provider_alias", path);
-      }
-      identities.add(identity);
-      operatorIdentities.add(operatorIdentitySha256);
-      endpoints.add(endpoint.aliasKey);
-      return Object.freeze({
-        identity,
-        operatorIdentitySha256,
-        endpoint: endpoint.endpoint,
-      });
-    }),
-  );
-};
-
-const parseLocalNodeEndpoint = (
-  value: unknown,
-  path: string,
-  kind: WatcherLocalNodeQueryServiceConfig["kind"],
-): string => {
-  const endpoint = exactString(value, path, { maxLength: 2_048 });
-  let url: URL;
-  try {
-    url = new URL(endpoint);
-  } catch {
-    fail("invalid_endpoint", path);
-  }
-  const protocols =
-    kind === "ogmios"
-      ? ["http:", "ws:"]
-      : kind === "kupo"
-        ? ["http:"]
-        : ["postgresql:"];
-  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/gu, "");
-  if (
-    !protocols.includes(url.protocol) ||
-    !["127.0.0.1", "localhost", "::1"].includes(hostname) ||
-    url.username.length > 0 ||
-    url.password.length > 0 ||
-    url.search.length > 0 ||
-    url.hash.length > 0
-  ) {
-    fail("invalid_endpoint", path);
-  }
-  return endpoint;
-};
-
-export const parseLocalNodeQueryServices = (
-  value: unknown,
-): readonly WatcherLocalNodeQueryServiceConfig[] => {
-  const services = boundedArray(
-    value,
-    "$.l1.source.queryServices",
-    WATCHER_CONFIG_BOUNDS.localNodeQueryServices,
-  );
-  const identities = new Set<string>();
-  const kinds = new Set<string>();
-  const endpoints = new Set<string>();
-  const parsed = services.map((entry, index) => {
-    const path = `$.l1.source.queryServices[${index.toString()}]`;
-    const service = exactRecord(entry, path, ["kind", "identity", "endpoint"]);
-    const kind = enumValue(service.kind, `${path}.kind`, [
-      "ogmios",
-      "kupo",
-      "db_sync",
-    ] as const);
-    const identity = exactString(service.identity, `${path}.identity`, {
-      maxLength: 32,
-      pattern: IDENTITY_PATTERN,
-    });
-    const endpoint = parseLocalNodeEndpoint(
-      service.endpoint,
-      `${path}.endpoint`,
-      kind,
-    );
-    if (
-      identities.has(identity) ||
-      kinds.has(kind) ||
-      endpoints.has(endpoint)
-    ) {
-      fail("provider_alias", path);
-    }
-    identities.add(identity);
-    kinds.add(kind);
-    endpoints.add(endpoint);
-    return Object.freeze({ kind, identity, endpoint });
-  });
-  if (!["ogmios", "kupo"].every((kind) => kinds.has(kind))) {
-    fail("missing_required_field", "$.l1.source.queryServices");
-  }
-  return Object.freeze(parsed);
 };
 
 export const parseDaPeers = (

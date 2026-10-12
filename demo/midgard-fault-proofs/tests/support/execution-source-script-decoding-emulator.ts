@@ -31,7 +31,6 @@ import "./execution-source-script-decoding-emulator.build-canonical-trace.js";
 import "./execution-source-script-decoding-emulator.build-subject-fixture.js";
 import "./execution-source-script-decoding-emulator.publish-family-references.js";
 import "./execution-source-script-decoding-emulator.make-execution-source-stages.js";
-import "./execution-source-script-decoding-emulator.types.js";
 
 import { network } from "./submit-init-emulator-shared.js";
 export {
@@ -68,7 +67,6 @@ export {
 } from "./execution-source-script-decoding-emulator.build-subject-fixture.js";
 export { makeExecutionSourceStages } from "./execution-source-script-decoding-emulator.make-execution-source-stages.js";
 export { publishFamilyReferences } from "./execution-source-script-decoding-emulator.publish-family-references.js";
-export { type ExecutionSourceStages } from "./execution-source-script-decoding-emulator.types.js";
 
 export { network };
 

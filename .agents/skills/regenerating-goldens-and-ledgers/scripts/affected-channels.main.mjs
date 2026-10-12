@@ -15,6 +15,7 @@ import {
 } from "./affected-channels.parse-arguments.mjs";
 import { affectedChannels } from "./affected-channels.verify-command.mjs";
 import {
+  channelCommand,
   renderMapping,
   verifyTable,
 } from "./affected-channels.verify-table.mjs";
@@ -80,6 +81,10 @@ export const main = (argv, io = { out: console.log, err: console.error }) => {
               reasons,
               check: channel.check,
               sync: channel.sync,
+              commands: {
+                check: channelCommand(channel, "check"),
+                sync: channelCommand(channel, "sync"),
+              },
               ci: channel.ci,
             })),
           },

@@ -1,8 +1,9 @@
+import type { LucidEvolution } from "@lucid-evolution/lucid";
+
 import { availabilityParametersFromConfig } from "../availability/factory.js";
 import type { CommitteeConfig, CommitteeL1ClientConfig } from "../config.js";
 import { type DaAttestationChainReader } from "../l1/da-attestation-reader.js";
 import { daAttestationValidatorsFromDeployment } from "../l1/deployment.js";
-import { lucidFromProviderUrl } from "../l1/lucid.js";
 import { fetchDaAttestationReferenceScripts } from "../l1/reference-scripts.js";
 import {
   assertL1SubmitterWalletPreflight,
@@ -20,8 +21,10 @@ import {
 import { OnChainLifecycleCoordinator } from "./on-chain.js";
 import type { DaBondPoolCheck } from "./pool-monitor.js";
 
+/** A Lucid client on the committee's L1 follower provider. */
+export type CommitteeLucidSource = () => Promise<LucidEvolution>;
+
 type OnChainCoordinatorFactoryDeps = {
-  readonly lucidFromProviderUrl: typeof lucidFromProviderUrl;
   readonly selectL1SubmitterWallet: typeof selectL1SubmitterWallet;
   readonly assertL1SubmitterWalletPreflight: typeof assertL1SubmitterWalletPreflight;
   readonly preflightL1SubmitterWallet: typeof preflightL1SubmitterWallet;
@@ -29,7 +32,6 @@ type OnChainCoordinatorFactoryDeps = {
 };
 
 const defaultDeps: OnChainCoordinatorFactoryDeps = {
-  lucidFromProviderUrl,
   selectL1SubmitterWallet,
   assertL1SubmitterWalletPreflight,
   preflightL1SubmitterWallet,
@@ -45,6 +47,7 @@ export type OnChainCoordinatorHooks = {
 
 export const onChainCoordinatorFromConfig = async (
   config: CommitteeL1ClientConfig,
+  lucidSource: CommitteeLucidSource,
   chainReader?: DaAttestationChainReader,
   store?: Pick<
     CommitteeStore,
@@ -61,12 +64,7 @@ export const onChainCoordinatorFromConfig = async (
       "L1 submission requires the canonical configured DA chain reader",
     );
   }
-  const { lucid } = await deps.lucidFromProviderUrl(
-    config.cardanoProviderUrls[0]!,
-    config.network,
-    config.nativeLedger,
-    config.cardanoL1Source.networkMagic,
-  );
+  const lucid = await lucidSource();
   await deps.selectL1SubmitterWallet(lucid, config.l1SubmitterKeySource);
   if (config.l1SubmitterPreflight.enabled) {
     await deps.assertL1SubmitterWalletPreflight(
@@ -125,11 +123,10 @@ export const onChainCoordinatorFromConfig = async (
 
 export const l1SubmitterWalletPreflightFromConfig = async (
   config: CommitteeL1ClientConfig,
+  lucidSource: CommitteeLucidSource,
   deps: Pick<
     OnChainCoordinatorFactoryDeps,
-    | "lucidFromProviderUrl"
-    | "selectL1SubmitterWallet"
-    | "preflightL1SubmitterWallet"
+    "selectL1SubmitterWallet" | "preflightL1SubmitterWallet"
   > = defaultDeps,
 ): Promise<L1SubmitterPreflightResult> => {
   if (!config.l1SubmissionEnabled) {
@@ -142,12 +139,7 @@ export const l1SubmitterWalletPreflightFromConfig = async (
       "L1_SUBMITTER_KEY_SOURCE is required for L1 wallet preflight",
     );
   }
-  const { lucid } = await deps.lucidFromProviderUrl(
-    config.cardanoProviderUrls[0]!,
-    config.network,
-    config.nativeLedger,
-    config.cardanoL1Source.networkMagic,
-  );
+  const lucid = await lucidSource();
   await deps.selectL1SubmitterWallet(lucid, config.l1SubmitterKeySource);
   return deps.preflightL1SubmitterWallet(
     lucid,

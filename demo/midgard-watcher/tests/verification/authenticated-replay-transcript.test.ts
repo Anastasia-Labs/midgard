@@ -1,6 +1,7 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
@@ -33,6 +34,7 @@ const genuineFixture = async () => {
   const baseAuthority = makeWatcherDeploymentAuthorityFixture();
   const bundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       manifestId: baseAuthority.result.manifestId,
       network: baseAuthority.result.network,
       blueprintHash: baseAuthority.result.blueprintHash,

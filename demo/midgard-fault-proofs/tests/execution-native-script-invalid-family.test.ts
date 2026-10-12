@@ -86,4 +86,21 @@ describe("executionNativeScriptInvalid authenticated family", () => {
       }),
     ).toThrow(/interval/u);
   });
+
+  it("refuses an empty interval, whose upper bound is exclusive", () => {
+    expect(() =>
+      prepareExecutionNativeScriptInvalidEvidence({
+        ...input(PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE, null, script(7)),
+        validityIntervalStart: 9n,
+      }),
+    ).toThrow(/validity interval is malformed/u);
+  });
+
+  it("treats an absent upper bound as unbounded rather than malformed", () => {
+    const evidence = prepareExecutionNativeScriptInvalidEvidence({
+      ...input(PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE, null, script(7)),
+      validityIntervalEnd: -1n,
+    });
+    expect(evidence.terminal.satisfied).toBe(false);
+  });
 });

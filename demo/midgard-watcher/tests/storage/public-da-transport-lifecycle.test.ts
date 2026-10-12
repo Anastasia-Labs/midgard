@@ -9,3 +9,4 @@ import "../../src/storage/public-da-libp2p-transport.js";
 import "./public-da-transport-lifecycle.public-da-negotiated-stream-lifecycle.js";
 import "./public-da-transport-lifecycle.scripted-transport.js";
 import "./public-da-transport-lifecycle.bounded-public-da-closed-stream-recovery.js";
+import "./public-da-transport-lifecycle.watcher-public-da-libp2p-transport.js";

@@ -3,21 +3,30 @@ import { createHash } from "node:crypto";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
-  getAddressDetails,
   type LucidEvolution,
   type Script,
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { exactObjectKeys } from "../exact-object-keys.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
+import {
+  type IntentJournal,
+  type IntentPlan,
+  journaledIntent,
+  openPlan,
+} from "../services/intent-journal.js";
+import {
+  decodePhasMembershipRegistrationTransactionBodyEvidence,
+  decodePhasMembershipRewardRegistrationResult,
+} from "./phas-membership-registration.decode.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
+import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
 
 export type PhasMembershipRewardRegistrationResult = {
   readonly rewardAddress: string;
@@ -70,11 +79,13 @@ export type PhasMembershipRegistrationOptions = {
     config: { readonly script: Script },
   ) => Effect.Effect<
     SDK.BuiltPhasMembershipRewardRegistrationTx,
-    SDK.LucidError | SDK.UnspecifiedNetworkError
+    SDK.LucidError | SDK.UnspecifiedNetworkError,
+    IntentJournal
   >;
   readonly submitRegistrationTx?: (
     lucid: LucidEvolution,
     built: SDK.BuiltPhasMembershipRewardRegistrationTx,
+    plan: IntentPlan,
   ) => Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError>;
   readonly inspectRegistrationTx?: (
     built: SDK.BuiltPhasMembershipRewardRegistrationTx,
@@ -83,118 +94,6 @@ export type PhasMembershipRegistrationOptions = {
   readonly onSubmittedRegistrationTx?: (
     capture: CapturedPhasMembershipRegistrationTransaction,
   ) => void;
-};
-
-export const decodePhasMembershipRegistrationTransactionBodyEvidence = (
-  value: unknown,
-): PhasMembershipRegistrationTransactionBodyEvidence => {
-  if (
-    !exactObjectKeys(value, [
-      "schemaVersion",
-      "txHash",
-      "cborSha256",
-      "cborSizeBytes",
-      "certificate",
-    ]) ||
-    !exactObjectKeys(value.certificate, [
-      "kind",
-      "index",
-      "count",
-      "credentialType",
-      "scriptHash",
-    ])
-  ) {
-    throw new Error(
-      "PHAS registration transaction-body evidence fields do not match the exact V1 schema",
-    );
-  }
-  if (
-    value.schemaVersion !== "midgard-phas-registration-transaction-body-v1" ||
-    typeof value.txHash !== "string" ||
-    !/^[a-f0-9]{64}$/u.test(value.txHash) ||
-    typeof value.cborSha256 !== "string" ||
-    !/^[a-f0-9]{64}$/u.test(value.cborSha256) ||
-    !Number.isSafeInteger(value.cborSizeBytes) ||
-    (value.cborSizeBytes as number) <= 0 ||
-    value.certificate.kind !== "stake_registration" ||
-    value.certificate.index !== 0 ||
-    value.certificate.count !== 1 ||
-    value.certificate.credentialType !== "script" ||
-    typeof value.certificate.scriptHash !== "string" ||
-    !/^[a-f0-9]{56}$/u.test(value.certificate.scriptHash)
-  ) {
-    throw new Error(
-      "PHAS registration transaction-body evidence contains a noncanonical V1 value",
-    );
-  }
-  return value as PhasMembershipRegistrationTransactionBodyEvidence;
-};
-
-export const decodePhasMembershipRewardRegistrationResult = (
-  value: unknown,
-): PhasMembershipRewardRegistrationResult => {
-  if (
-    !exactObjectKeys(value, [
-      "status",
-      "rewardAddress",
-      "scriptHash",
-      "txHash",
-      "transactionBody",
-    ])
-  ) {
-    throw new Error(
-      "PHAS registration result fields do not match the exact V1 schema",
-    );
-  }
-  if (
-    typeof value.rewardAddress !== "string" ||
-    !/^stake(?:_test)?1[0-9a-z]+$/u.test(value.rewardAddress) ||
-    typeof value.scriptHash !== "string" ||
-    !/^[a-f0-9]{56}$/u.test(value.scriptHash)
-  ) {
-    throw new Error("PHAS registration result identity is noncanonical");
-  }
-  let rewardAddressDetails: ReturnType<typeof getAddressDetails>;
-  try {
-    rewardAddressDetails = getAddressDetails(value.rewardAddress);
-  } catch (cause) {
-    throw new Error("PHAS registration result reward address is invalid", {
-      cause,
-    });
-  }
-  if (
-    rewardAddressDetails.type !== "Reward" ||
-    rewardAddressDetails.stakeCredential?.type !== "Script" ||
-    rewardAddressDetails.stakeCredential.hash !== value.scriptHash
-  ) {
-    throw new Error(
-      "PHAS registration result reward address is not bound to its script hash",
-    );
-  }
-  if (value.status === "already_registered") {
-    if (value.txHash !== null || value.transactionBody !== null) {
-      throw new Error(
-        "PHAS already-registered result must not contain transaction evidence",
-      );
-    }
-    return value as PhasMembershipRewardRegistrationResult;
-  }
-  if (value.status !== "registration_submitted") {
-    throw new Error("PHAS registration result status is not canonical V1");
-  }
-  const transactionBody =
-    decodePhasMembershipRegistrationTransactionBodyEvidence(
-      value.transactionBody,
-    );
-  if (
-    value.txHash !== transactionBody.txHash ||
-    value.scriptHash !== transactionBody.certificate.scriptHash
-  ) {
-    throw new Error(
-      "PHAS registration result is not bound to its transaction evidence",
-    );
-  }
-  return value as PhasMembershipRewardRegistrationResult;
 };
 
 export const inspectPhasMembershipRegistrationTransaction = (
@@ -329,21 +228,54 @@ export const queryPhasMembershipRewardAccountRegisteredProgram = (
           }),
   });
 
+/** Builds the registration from the selected wallet's view (§8.5). */
 const defaultBuildRegistrationTx = (
   lucid: LucidEvolution,
   config: { readonly script: Script },
 ): Effect.Effect<
   SDK.BuiltPhasMembershipRewardRegistrationTx,
-  SDK.LucidError | SDK.UnspecifiedNetworkError
-> => SDK.buildPhasMembershipRewardRegistrationTxProgram(lucid, config);
+  SDK.LucidError | SDK.UnspecifiedNetworkError,
+  IntentJournal
+> =>
+  readSelectedWalletViewInputs(
+    lucid,
+    "the PHAS membership reward-account registration",
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SDK.LucidError({
+          message: `Failed to read the wallet view to fund the PHAS membership reward-account registration: ${cause.message}`,
+          cause,
+        }),
+    ),
+    Effect.flatMap((walletInputs) =>
+      SDK.buildPhasMembershipRewardRegistrationTxProgram(lucid, {
+        ...config,
+        walletInputs,
+      }),
+    ),
+  );
 
 const defaultSubmitRegistrationTx = (
   lucid: LucidEvolution,
   built: {
     readonly tx: TxSignBuilder;
   },
-): Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError> =>
-  handleSignSubmit(lucid, built.tx);
+  plan: IntentPlan,
+): Effect.Effect<
+  string,
+  TxConfirmError | TxSignError | TxSubmitError,
+  IntentJournal
+> =>
+  handleSignSubmit(
+    lucid,
+    built.tx,
+    journaledIntent(
+      "phas_membership",
+      "phas_membership:reward_registration",
+      plan,
+    ),
+  );
 
 export const ensurePhasMembershipRewardAccountRegisteredProgram = (
   lucid: LucidEvolution,
@@ -354,7 +286,8 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
   | SDK.UnspecifiedNetworkError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const script = loadPhasMembershipWithdrawalScript();
@@ -369,6 +302,8 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       );
     }
     const identity = SDK.phasMembershipIdentity(network, script);
+    // S5: the plan opens before the registration read it is built on.
+    const plan = yield* openPlan;
     const registered = yield* (
       options.queryRegistration ??
       ((input) =>
@@ -420,6 +355,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       (options.submitRegistrationTx ?? defaultSubmitRegistrationTx)(
         lucid,
         built,
+        plan,
       ),
     );
     if (submitted._tag === "Left") {

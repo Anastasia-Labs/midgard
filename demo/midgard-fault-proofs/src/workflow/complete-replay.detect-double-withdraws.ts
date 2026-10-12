@@ -25,10 +25,9 @@ import {
   detectCanonicalDecodability,
   detectCommittedFieldShape,
   detectInvalidRanges,
-  detectMissingNativeScriptTransactions,
   detectMissingSignatures,
   detectZeroInputs,
-} from "./complete-replay.detect-missing-native-script-transactions.js";
+} from "./complete-replay.detect-accepted-transaction-faults.js";
 import {
   admittedDecisions,
   admittedReplayers,
@@ -42,10 +41,6 @@ import {
   acceptedTransactionSubject,
   withdrawalSubject,
 } from "./detection-subject.js";
-import {
-  detectMissingNativeScriptUtxoFromHistoricalCorpus,
-  type HistoricalNativeScriptCorpus,
-} from "./historical-native-script-corpus.js";
 
 /** Complete same-block accepted reference-input/withdrawal intersection. */
 export const detectWithdrawnReferenceInputs = async (
@@ -316,27 +311,3 @@ export const MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     ...detectMissingSignatureWrongfulRejections({ block: evidence }),
   ],
 );
-
-/** Complete same-block missing-script-witness scan for every accepted input. */
-export const MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY =
-  completeReplayer(
-    ["missingNativeScriptTx"],
-    detectMissingNativeScriptTransactions,
-  );
-
-/**
- * Q33 is history-relative: a script credential alone cannot prove that the
- * preimage is native. This factory admits only the complete retained-history
- * capability derived for the exact challenged block.
- */
-export const createMissingNativeScriptUtxoCompleteCanonicalReplay = (
-  corpus: HistoricalNativeScriptCorpus | (() => HistoricalNativeScriptCorpus),
-): CompleteCanonicalReplay =>
-  completeReplayer(
-    ["missingNativeScriptUtxo"],
-    async (evidence) =>
-      await detectMissingNativeScriptUtxoFromHistoricalCorpus({
-        evidence,
-        corpus: typeof corpus === "function" ? corpus() : corpus,
-      }),
-  );

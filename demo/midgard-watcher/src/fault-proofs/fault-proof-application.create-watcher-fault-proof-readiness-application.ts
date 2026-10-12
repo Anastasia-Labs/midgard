@@ -14,13 +14,12 @@ export const createWatcherFaultProofApplication = (
 ): WatcherFaultProofApplication =>
   createApplication({
     options: Object.freeze({
+      l1: options.l1,
       deploymentIdentity: options.deploymentAuthority.deploymentIdentity,
       deploymentAuthority: options.deploymentAuthority,
       replayTranscriptStore: options.replayTranscriptStore,
-      userEventRuntime: options.userEventRuntime,
+      userEvents: options.userEvents,
       infrastructure: options.infrastructure,
-      historicalNativeScriptCheckpointStore:
-        options.historicalNativeScriptCheckpointStore,
       fundingProfileOverlay: options.fundingProfileOverlay,
     }),
     dependencies: productionDependencies,
@@ -32,10 +31,7 @@ export const createWatcherFaultProofApplication = (
 export const createWatcherFaultProofReadinessApplication = (
   options: Pick<
     WatcherFaultProofApplicationOptions,
-    | "deploymentAuthority"
-    | "infrastructure"
-    | "historicalNativeScriptCheckpointStore"
-    | "fundingProfileOverlay"
+    "l1" | "deploymentAuthority" | "infrastructure" | "fundingProfileOverlay"
   >,
 ): Pick<
   WatcherFaultProofApplication,

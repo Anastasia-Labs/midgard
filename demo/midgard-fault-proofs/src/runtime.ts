@@ -8,6 +8,7 @@ import "./inspect-contracts.js";
 import "./plutus-data-cbor.js";
 import "./transition-trace/yield-references.js";
 import "./runtime.resolve-prover-signer.js";
+import "./runtime.make-lucid-for-submit.js";
 import "./runtime.require-fault-proof-step-reference-script.js";
 import "./runtime.fraud-proof-deployment-entries-by-category.js";
 import "./runtime.category-label.js";
@@ -22,6 +23,11 @@ import {
   outRefsEqual,
 } from "@al-ft/midgard-core/out-ref";
 export { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "./runtime.fraud-proof-deployment-entries-by-category.js";
+export {
+  makeLucidForSubmit,
+  type ProviderKind,
+  type SubmitProviderConfig,
+} from "./runtime.make-lucid-for-submit.js";
 export {
   fetchUtxoByOutRef,
   NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY,
@@ -58,17 +64,14 @@ export {
 export {
   compareUtxoOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
-  makeLucidForSubmit,
   type ParsedOutRef,
   parseOutRef,
   type ProverSignerConfig,
-  type ProviderKind,
   requireDeploymentReferenceScriptOutRef,
   requireDeploymentScriptHash,
   requireMatchingScriptHash,
   type ResolvedProverSigner,
   resolveProverSigner,
-  type SubmitProviderConfig,
 } from "./runtime.resolve-prover-signer.js";
 export {
   faultProofCategoryLabel,

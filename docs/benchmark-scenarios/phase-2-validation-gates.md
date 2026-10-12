@@ -261,10 +261,15 @@ node demo/midgard-node/scripts/verify-phase2-benchmark-report.mjs full \
   demo/midgard-node/tests/benchmarks/output/phase2-full_five_minute.json
 ```
 
-For the full gate, each replica's deposit-projection fiber must remain active
-through the measured drain. At most five seconds may be attributed to the final
-write-behind flush, and the required five-second delta-bump count is derived
-from the replica duration minus only that bounded allowance.
+For the full gate, each replica ingests one deposit every five seconds, as
+follower ingestion does: a hidden `mempool_ledger` row, marked projected, with
+no validation-cache delta (`ledgerCacheDeltaApplies` must be 0). The ingestion
+fiber must remain active through the measured drain. At most five seconds may
+be attributed to the final write-behind flush, and the required deposit
+ingestion count is derived from the replica duration minus only that bounded
+allowance. The replica's average batch time divided by the average batch time
+in the second after each ingestion (`worstDepositWindowThroughputRatio`, the
+worst window) must be at least 0.95.
 
 Run the script-heavy UPLC gate in the same eight-core container. Every
 transaction is a real Plutus V3 spend, every UPLC evaluation uses the worker

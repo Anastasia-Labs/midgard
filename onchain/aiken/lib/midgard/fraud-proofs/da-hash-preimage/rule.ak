@@ -180,6 +180,11 @@ fn inspect_compact_body_v1(body_data: Data) -> Option<NativeTxBodyCompact> {
           bytearray.length(reference_inputs_hash) == 32,
           bytearray.length(outputs_hash) == 32,
           fee >= 0,
+          // §2.1: a bound is `-1` (absent) or a non-negative slot. Guarded here
+          // so the encoder's `expect_validity_bound` below never aborts this
+          // total inspector; an out-of-language bound is a malformed source.
+          validity_interval_start >= -1,
+          validity_interval_end >= -1,
           bytearray.length(required_observers_hash) == 32,
           bytearray.length(required_signers_hash) == 32,
           bytearray.length(mint_hash) == 32,

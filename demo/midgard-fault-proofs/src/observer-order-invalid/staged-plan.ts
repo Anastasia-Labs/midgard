@@ -1,32 +1,31 @@
 import { computeHash32, decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 
 import {
-  advanceMissingNativeScriptTxGrammarCheckpoint,
-  advanceMissingNativeScriptTxSemanticCheckpoint,
-  encodeMissingNativeScriptTxSemanticCheckpoint,
-  initialMissingNativeScriptTxGrammarCheckpoint,
-  initialMissingNativeScriptTxSemanticCheckpoint,
-  type MissingNativeScriptTxGrammarCheckpoint,
-  type MissingNativeScriptTxSemanticCheckpoint,
-} from "../missing-native-script-tx/staged-walk.js";
+  advanceFieldGrammarCheckpoint,
+  advanceFieldSemanticCheckpoint,
+  encodeFieldSemanticCheckpoint,
+  type FieldGrammarCheckpoint,
+  type FieldSemanticCheckpoint,
+  initialFieldGrammarCheckpoint,
+  initialFieldSemanticCheckpoint,
+} from "../staged-field-walk/index.js";
 import {
   OBSERVER_ORDER_INVALID_ITEM_BUDGET,
   scanObserverOrderInvalid,
 } from "./family.js";
 
 const WALK_DOMAIN = Buffer.from("MidgardFieldWalkCheckpointV1", "ascii");
-type ObserverOrderGrammarCheckpoint = MissingNativeScriptTxGrammarCheckpoint & {
+type ObserverOrderGrammarCheckpoint = FieldGrammarCheckpoint & {
   readonly fieldIndex: 3;
 };
-export type ObserverOrderWalkCheckpoint =
-  MissingNativeScriptTxSemanticCheckpoint & { readonly fieldIndex: 3 };
+export type ObserverOrderWalkCheckpoint = FieldSemanticCheckpoint & {
+  readonly fieldIndex: 3;
+};
 const grammar3 = (
-  value: MissingNativeScriptTxGrammarCheckpoint,
+  value: FieldGrammarCheckpoint,
 ): ObserverOrderGrammarCheckpoint =>
   ({ ...value, fieldIndex: 3 }) as ObserverOrderGrammarCheckpoint;
-const walk3 = (
-  value: MissingNativeScriptTxSemanticCheckpoint,
-): ObserverOrderWalkCheckpoint =>
+const walk3 = (value: FieldSemanticCheckpoint): ObserverOrderWalkCheckpoint =>
   ({ ...value, fieldIndex: 3 }) as ObserverOrderWalkCheckpoint;
 const grammar6 = (value: ObserverOrderGrammarCheckpoint) => ({
   ...value,
@@ -40,7 +39,7 @@ const walk6 = (value: ObserverOrderWalkCheckpoint) => ({
 export const encodeObserverOrderWalkCheckpoint = (
   value: ObserverOrderWalkCheckpoint,
 ): Buffer => {
-  const encoded = encodeMissingNativeScriptTxSemanticCheckpoint(walk6(value));
+  const encoded = encodeFieldSemanticCheckpoint(walk6(value));
   encoded[36] = 3;
   return encoded;
 };
@@ -77,7 +76,7 @@ export const planObserverOrderInvalidStagedWalk = ({
     Buffer.from(fieldPreimageCbor, "hex"),
   ).map(Buffer.from);
   const initialGrammar = grammar3(
-    initialMissingNativeScriptTxGrammarCheckpoint({
+    initialFieldGrammarCheckpoint({
       txId: transactionId,
       items,
     }),
@@ -85,7 +84,7 @@ export const planObserverOrderInvalidStagedWalk = ({
   let grammarCursor = initialGrammar;
   do {
     grammarCursor = grammar3(
-      advanceMissingNativeScriptTxGrammarCheckpoint({
+      advanceFieldGrammarCheckpoint({
         checkpoint: grammar6(grammarCursor),
         items,
         budget: itemBudget,
@@ -93,7 +92,7 @@ export const planObserverOrderInvalidStagedWalk = ({
     );
   } while (grammarCursor.nextItemIndex < items.length);
   const initialWalk = walk3(
-    initialMissingNativeScriptTxSemanticCheckpoint({
+    initialFieldSemanticCheckpoint({
       grammar: grammar6(grammarCursor),
       items,
     }),
@@ -107,7 +106,7 @@ export const planObserverOrderInvalidStagedWalk = ({
   while (walkCursor.nextItemIndex < target) {
     const remaining = target - walkCursor.nextItemIndex;
     walkCursor = walk3(
-      advanceMissingNativeScriptTxSemanticCheckpoint({
+      advanceFieldSemanticCheckpoint({
         checkpoint: walk6(walkCursor),
         txId: transactionId,
         items,

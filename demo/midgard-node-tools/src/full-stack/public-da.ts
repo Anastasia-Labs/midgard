@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { retainedDaPayloadHeaderVerifier } from "@al-ft/midgard-fault-proofs";
 import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 import {
   createWatcherRetainedDaRuntime,
@@ -47,7 +48,9 @@ export async function verifyPublicDa(
   try {
     const source = runtime.sources[0];
     if (!source) throw new Error("No public DA source");
-    const result = await source.fetchPayloadByHeaderHash(headerHash);
+    const result = await source.fetchPayloadByHeaderHash(headerHash, {
+      verifyPayload: retainedDaPayloadHeaderVerifier(headerHash),
+    });
     if (!result.ok)
       throw new Error(`Public DA retrieval failed for ${headerHash}`);
     await writeTextFileAtomic(`${path}.cbor`, result.payloadEnvelopeCbor, {

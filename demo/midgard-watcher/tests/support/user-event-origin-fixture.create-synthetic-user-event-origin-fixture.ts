@@ -1,32 +1,29 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
-  chmod,
   mkdtemp,
   readFile,
+  realpath,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { closeSharedL1NodeTransports } from "@al-ft/l1-node-transport";
+import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import { CML } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
-import { createWatcherLocalBackfillUserEventReferenceAuthority } from "../../src/indexers/user-event-reference-authority.js";
-import {
-  admitWatcherLocalBackfillFinality,
-  type WatcherLocalBackfillFinalityReceipt,
-} from "../../src/l1/finality-engine.js";
-import {
-  admitWatcherLocalBackfillObservation,
-  type WatcherLocalBackfillObservationReceipt,
-} from "../../src/l1/l1-adapter.js";
-import { openWatcherLocalHistoricalCapture } from "../../src/l1/local-historical-capture.js";
 import {
   verifyWatcherUserEventScriptBinding,
   type WatcherUserEventScriptBinding,
 } from "../../src/runtime/deployment-identity.js";
+import {
+  type LedgerProtocolParameterOverrides,
+  ledgerProtocolParameters,
+} from "./ledger-protocol-parameters.js";
 import {
   buildBlock,
   type OriginDeployment,
@@ -47,17 +44,24 @@ import {
   type SyntheticUserEventBlock,
   withFixtureCml,
 } from "./user-event-origin-fixture.make-config.js";
-import { syntheticNativeHelperScript } from "./user-event-origin-fixture.native-helper-script.js";
+
+const nativeHandlerModule = fileURLToPath(
+  new URL("./user-event-origin-fixture.native-handler.mjs", import.meta.url),
+);
 
 export const createSyntheticUserEventOriginFixture = async (
   options: Readonly<{
     queryEndpoints?: Readonly<{ ogmios: string; kupo: string }>;
     nativeTipBaseDepth?: number;
     nativeTipMode?: "query_counter" | "controlled";
-    nativeStreamInitialAcknowledgement?: boolean;
     blockSlotInterval?: number;
     ruleBundleCommitment?: string;
     protocolParameters?: unknown;
+    /**
+     * When given, the native node answers the `protocol_params` ledger
+     * query with these parameters (the follower's funding read).
+     */
+    nodeProtocolParameters?: LedgerProtocolParameterOverrides;
     /** Exact accepted transactions and identity from a live emulator deployment. */
     published?: Readonly<{
       deployment: OriginDeployment;
@@ -77,10 +81,6 @@ export const createSyntheticUserEventOriginFixture = async (
     throw new Error("Synthetic block slot interval is outside fixture bounds");
   }
   const nativeTipMode = options.nativeTipMode ?? "query_counter";
-  const nativeStreamInitialAcknowledgement =
-    options.nativeStreamInitialAcknowledgement ?? false;
-  if (typeof nativeStreamInitialAcknowledgement !== "boolean")
-    throw new Error("Synthetic stream acknowledgement option must be boolean");
   if (nativeTipMode !== "query_counter" && nativeTipMode !== "controlled")
     throw new Error("Unknown synthetic native tip mode");
   if (
@@ -91,15 +91,19 @@ export const createSyntheticUserEventOriginFixture = async (
     throw new Error(
       "Synthetic native tip base depth is outside fixture bounds",
     );
-  const dir = await mkdtemp(join("/var/tmp", "synthetic-user-event-origin-"));
+  // The transport binary path must be canonical.
+  const dir = await realpath(
+    await mkdtemp(join("/var/tmp", "synthetic-user-event-origin-")),
+  );
   const nodeConfig = join(dir, "node.json");
   const genesisConfig = join(dir, "genesis.json");
-  const binaryPath = join(dir, "helper.mjs");
+  const binaryPath = join(dir, "node-transport");
   const registryPath = join(dir, "blocks.json");
   const counterPath = join(dir, "counter");
   const tipPath = join(dir, "tip.json");
   const controlPath = join(dir, "native-control.json");
   const queryLogPath = join(dir, "native-queries.jsonl");
+  const ledgerPath = join(dir, "ledger-outputs.json");
   await writeFile(genesisConfig, GENESIS_BYTES);
   await writeFile(
     nodeConfig,
@@ -116,11 +120,7 @@ export const createSyntheticUserEventOriginFixture = async (
       deploymentIdentity,
       blueprintBytes,
     });
-  const watcherConfig = makeConfig(
-    nodeConfig,
-    genesisConfig,
-    options.queryEndpoints,
-  );
+  const watcherConfig = makeConfig(nodeConfig, genesisConfig);
   const blocks: SyntheticUserEventBlock[] = [];
   const creating: Creating[] = [];
   const creatingByHash = new Map<string, Creating>();
@@ -128,6 +128,18 @@ export const createSyntheticUserEventOriginFixture = async (
   const outputsByUnit = new Map<string, CreatingOutput[]>();
   const consumptionsByOutRef = new Map<string, Consumption[]>();
   const closed: (() => Promise<void>)[] = [];
+  // The node's ledger, for `utxo_by_address`: the outputs the initialization
+  // frames leave unspent, and each native block's spends and outputs.
+  type LedgerOutput = Readonly<{
+    outRef: string;
+    address: string;
+    cbor: string;
+  }>;
+  const ledger = {
+    preOrigin: new Map<string, LedgerOutput>(),
+    blocks: {} as Record<string, { spent: string[]; created: LedgerOutput[] }>,
+  };
+  let initializing = true;
   const initialization = options.published ?? INITIALIZATION;
   const initializationTransaction = CML.Transaction.from_cbor_hex(
     initialization.transactionCbor,
@@ -342,6 +354,28 @@ export const createSyntheticUserEventOriginFixture = async (
         outputs: Object.freeze(outputs),
       });
       creating.push(source);
+      const created = Array.from({ length: bodyOutputs.len() }, (_, index) => {
+        const output = own(bodyOutputs.get(index));
+        return {
+          outRef: `${txHash}#${index}`,
+          address: Buffer.from(own(output.address()).to_raw_bytes()).toString(
+            "hex",
+          ),
+          cbor: output.to_cbor_hex(),
+        };
+      });
+      if (knownBlock !== undefined) {
+        const entry = (ledger.blocks[knownBlock.point.blockHash] ??= {
+          spent: [],
+          created: [],
+        });
+        entry.spent.push(...inputOutRefs);
+        entry.created.push(...created);
+      } else if (initializing) {
+        for (const outRef of inputOutRefs) ledger.preOrigin.delete(outRef);
+        for (const output of created)
+          ledger.preOrigin.set(output.outRef, output);
+      }
       creatingByHash.set(txHash, source);
       for (const output of outputs) {
         const addressRows = outputsByAddress.get(output.address) ?? [];
@@ -377,22 +411,36 @@ export const createSyntheticUserEventOriginFixture = async (
   };
   for (const frame of initialization.creatingTransactions)
     registerCreating(frame.transactionCbor);
+  initializing = false;
   registerCreating(initialization.transactionCbor, activationBlock);
-  const persistBlocks = () => writeAtomic(registryPath, blocks);
+  const persistBlocks = async () => {
+    await writeAtomic(ledgerPath, {
+      preOrigin: [...ledger.preOrigin.values()],
+      blocks: ledger.blocks,
+    });
+    await writeAtomic(registryPath, blocks);
+  };
   await persistBlocks();
-  await writeFile(
-    binaryPath,
-    syntheticNativeHelperScript({
+  await writeFakeSidecar({
+    path: binaryPath,
+    handlerModule: nativeHandlerModule,
+    options: {
       controlPath,
       registryPath,
       counterPath,
       tipPath,
       queryLogPath,
+      ledgerPath,
       nativeTipBaseDepth,
-      nativeStreamInitialAcknowledgement,
-    }),
-  );
-  await chmod(binaryPath, 0o700);
+      ...(options.nodeProtocolParameters === undefined
+        ? {}
+        : {
+            protocolParametersHex: Buffer.from(
+              ledgerProtocolParameters(options.nodeProtocolParameters),
+            ).toString("hex"),
+          }),
+    },
+  });
   class BoundarySocket extends EventTarget {
     readyState = 0;
     intersection = { slot: Number(anchor.slot), id: anchor.blockHash };
@@ -505,7 +553,7 @@ export const createSyntheticUserEventOriginFixture = async (
   vi.stubGlobal("WebSocket", BoundarySocket);
   const originalFetch = globalThis.fetch;
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
-    // Other local services (trusted-head authority, mutation leases) retain
+    // Other local services (mutation leases) retain
     // their actual HTTP handlers when this fixture supplies chain transport.
     if (
       options.queryEndpoints !== undefined &&
@@ -882,61 +930,11 @@ export const createSyntheticUserEventOriginFixture = async (
         .map((line) => {
           const query = JSON.parse(line) as SyntheticNativeQuery;
           return Object.freeze({
-            startupDigest: query.startupDigest,
             target: snapshotTip(query.target),
             tip: snapshotTip(query.tip),
           });
         }),
     );
-  };
-  const openFinalizedBlock = async (block: SyntheticUserEventBlock) => {
-    const args = {
-      watcherConfig,
-      deploymentIdentity,
-      nativeChainSyncBinaryPath: binaryPath,
-      point: block.point,
-      limits: { timeoutMs: 60_000 },
-    };
-    const first = await openWatcherLocalHistoricalCapture(args);
-    closed.push(first.close);
-    const firstObservation = admitWatcherLocalBackfillObservation(
-      first.receipt,
-    );
-    const pending = admitWatcherLocalBackfillFinality({
-      ...args,
-      observation: firstObservation,
-      previous: null,
-    });
-    if (
-      pending.result.action !== "observe_pending" ||
-      pending.admitted === null
-    )
-      throw new Error("Synthetic W12 first capture did not become pending");
-    await first.close();
-    const current = await openWatcherLocalHistoricalCapture(args);
-    closed.push(current.close);
-    const observation: WatcherLocalBackfillObservationReceipt =
-      admitWatcherLocalBackfillObservation(current.receipt);
-    const result = admitWatcherLocalBackfillFinality({
-      ...args,
-      observation,
-      previous: pending.admitted,
-    });
-    if (result.result.action !== "finalize" || result.admitted === null)
-      throw new Error("Synthetic W12 deeper capture did not finalize");
-    const finality: WatcherLocalBackfillFinalityReceipt = result.admitted;
-    const referenceAuthority =
-      createWatcherLocalBackfillUserEventReferenceAuthority({
-        deploymentIdentity,
-        finality,
-        observation,
-      });
-    return {
-      finality,
-      observation,
-      referenceAuthority,
-      close: current.close,
-    };
   };
   let closing: Promise<void> | undefined;
   const close = () =>
@@ -950,12 +948,20 @@ export const createSyntheticUserEventOriginFixture = async (
           .reverse()
           .map((stop) => stop()),
       );
+      const transports = await Promise.allSettled([
+        closeSharedL1NodeTransports(),
+      ]);
       const cleanup = await Promise.allSettled([
         rm(dir, { recursive: true, force: true }),
         Promise.resolve().then(() => vi.unstubAllGlobals()),
       ]);
-      const errors = [...stopControl, ...outcomes, ...cleanup].flatMap(
-        (result) => (result.status === "rejected" ? [result.reason] : []),
+      const errors = [
+        ...stopControl,
+        ...outcomes,
+        ...transports,
+        ...cleanup,
+      ].flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : [],
       );
       if (errors.length > 0)
         throw new AggregateError(
@@ -968,13 +974,12 @@ export const createSyntheticUserEventOriginFixture = async (
     deploymentIdentity,
     scriptBinding,
     watcherConfig,
-    nativeChainSyncBinaryPath: binaryPath,
+    l1NodeTransportBinaryPath: binaryPath,
     activationBlock,
     emptySuccessorBlock,
     activationTransactionCbor: initialization.transactionCbor,
     initializationBodyCbor: initializationTransaction.body().to_cbor_hex(),
     makeBlock,
-    openFinalizedBlock,
     setNativeTip,
     appendNativeBlock,
     growNativeTip,

@@ -12,6 +12,11 @@ import {
 } from "./initialization-recovery.js";
 import { readJsonIfPresent } from "./journal.js";
 import { exportLocalCardanoConfig } from "./native-ledger.js";
+import {
+  originStep,
+  recordOriginStartHint,
+  restoreL1Origin,
+} from "./origin.js";
 import { StackProcesses } from "./process.js";
 import {
   assertHostDatabaseIsStackDatabase,
@@ -39,6 +44,7 @@ export async function restoreDeploymentEnvironment(processes: StackProcesses) {
   if (nonce) {
     processes.env.HUB_ORACLE_ONE_SHOT_TX_HASH = nonce.txHash;
     processes.env.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX = String(nonce.outputIndex);
+    await restoreL1Origin(processes, nonce.txHash);
   }
   // The node refuses a configured manifest that does not exist yet; empty means unset.
   // Before initialization, node commands derive contracts from MIDGARD_RUN_STATE_PATH.
@@ -200,6 +206,7 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
           : { status: "pending" };
       },
       execute: async () => {
+        await recordOriginStartHint(processes);
         await processes.node("nonce-create-or-resume", [
           "prepare-hub-oracle-one-shot-nonce",
           "--run-state",
@@ -211,6 +218,7 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
           .hubOracleOneShot;
       },
     },
+    originStep(processes, () => restoreDeploymentEnvironment(processes)),
     {
       id: "references",
       reconcile: async () => {

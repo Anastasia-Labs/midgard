@@ -5,13 +5,16 @@ import { describe, expect, it } from "vitest";
 
 import { pruneFinalizedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import {
+  deleteLiveQueueNode,
+  insertLiveQueueNode,
+  insertQueueTerminal,
+} from "./helpers/queue-terminal-rows.js";
+import {
   DAY_MS,
   DEPLOYMENT,
   journals,
   recordDepositMember,
-  recordMergedOutcome,
   recordMergeJob,
-  recordObserverState,
   remainingLabels,
   run,
 } from "./history-retention-prune.fixtures.js";
@@ -43,15 +46,19 @@ describe("pruning finalized journals beyond challengeability", () => {
     const result = await run(
       Effect.gen(function* () {
         yield* journals([
-          { label: "old-plain", status: "finalized", endedAgoMs: 10 * DAY_MS },
+          {
+            label: "old-plain",
+            status: "locally_applied",
+            endedAgoMs: 10 * DAY_MS,
+          },
           {
             label: "old-confirmed-head",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 10 * DAY_MS,
           },
           {
             label: "old-live-queue",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 9 * DAY_MS,
           },
           {
@@ -63,7 +70,7 @@ describe("pruning finalized journals beyond challengeability", () => {
           },
           {
             label: "recent-finalized",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 60_000,
           },
           {
@@ -74,7 +81,6 @@ describe("pruning finalized journals beyond challengeability", () => {
             mergeJob: "completed",
           },
         ]);
-        yield* recordObserverState();
         const removed = yield* prune({
           challengeableCutoff: new Date(Date.now() - DAY_MS),
           view: {
@@ -96,11 +102,10 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (20 - index) * DAY_MS,
           })),
         );
-        yield* recordObserverState();
         const view = {
           confirmedHeadHash: header("not-journaled"),
           liveQueueHeaderHashes: [],
@@ -151,19 +156,22 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals([
           {
             label: "merge-running",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 10 * DAY_MS,
             mergeJob: "running",
           },
           {
             label: "merge-unstarted",
-            status: "finalized",
+            status: "locally_applied",
             endedAgoMs: 9 * DAY_MS,
             mergeJob: "none",
           },
-          { label: "newest", status: "finalized", endedAgoMs: 8 * DAY_MS },
+          {
+            label: "newest",
+            status: "locally_applied",
+            endedAgoMs: 8 * DAY_MS,
+          },
         ]);
-        yield* recordObserverState();
         const whileUnmerged = yield* prune({
           challengeableCutoff: cutoff,
           view,
@@ -171,13 +179,6 @@ describe("pruning finalized journals beyond challengeability", () => {
         const keptWhileUnmerged = yield* remainingLabels(labels);
         yield* recordMergeJob(header("merge-running"), "completed");
         yield* recordMergeJob(header("merge-unstarted"), "completed");
-        // Folded locally after the observer last saved: kept until it has
-        // seen the queue again.
-        const beforeObserved = yield* prune({
-          challengeableCutoff: cutoff,
-          view,
-        });
-        yield* recordObserverState();
         const onceMerged = yield* prune({
           challengeableCutoff: cutoff,
           view,
@@ -185,7 +186,6 @@ describe("pruning finalized journals beyond challengeability", () => {
         return {
           whileUnmerged,
           keptWhileUnmerged,
-          beforeObserved,
           onceMerged,
           remaining: yield* remainingLabels(labels),
         };
@@ -193,7 +193,6 @@ describe("pruning finalized journals beyond challengeability", () => {
     );
     expect(result.whileUnmerged).toBe(0);
     expect(result.keptWhileUnmerged).toEqual(labels);
-    expect(result.beforeObserved).toBe(0);
     expect(result.onceMerged).toBe(2);
     expect(result.remaining).toEqual(["newest"]);
   });
@@ -210,14 +209,24 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (10 - index) * DAY_MS,
           })),
         );
-        yield* recordMergedOutcome(header("older-merge"), 10);
-        yield* recordMergedOutcome(header("latest-final-merge"), 11);
-        yield* recordObserverState();
-        const held = yield* prune({ challengeableCutoff: cutoff, view });
+        yield* insertQueueTerminal({
+          headerHash: header("older-merge"),
+          outcome: "merged",
+          height: 10,
+        });
+        yield* insertQueueTerminal({
+          headerHash: header("latest-final-merge"),
+          outcome: "merged",
+          height: 11,
+        });
+        const held = yield* prune({
+          challengeableCutoff: cutoff,
+          view: { ...view, finalThroughHeight: 11 },
+        });
         return { held, remaining: yield* remainingLabels(labels) };
       }),
     );
@@ -232,11 +241,10 @@ describe("pruning finalized journals beyond challengeability", () => {
         yield* journals(
           labels.map((label) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: DAY_MS / 2,
           })),
         );
-        yield* recordObserverState();
         const removed = yield* prune({
           challengeableCutoff: new Date(Date.now() - DAY_MS),
           view: {
@@ -252,105 +260,106 @@ describe("pruning finalized journals beyond challengeability", () => {
   });
 });
 
-describe("journals a recorded correction transition names", () => {
+describe("journals a landed tx took out of the queue, or the facts still queue", () => {
   const view = {
     confirmedHeadHash: header("not-journaled"),
     liveQueueHeaderHashes: [],
   };
-  const labels = ["admitted-merge", "pending-removal", "unnamed", "newest"];
+  const labels = ["landed-merge", "landed-removal", "unnamed", "newest"];
+  const cutoff = () => new Date(Date.now() - DAY_MS);
 
-  it("keeps a journal named by an admitted or a pending observer transition, past every horizon", async () => {
+  it("keeps a journal a landed merge or removal took out of the queue until that tx is final, past every horizon", async () => {
     const result = await run(
       Effect.gen(function* () {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
-        // Admitted at confirmation depth is not finality (k = 2160): the
-        // observer still records it, so the journal is kept.
-        yield* recordObserverState({
-          admitted: [header("admitted-merge")],
-          pending: [header("pending-removal")],
+        // Landed at height 50: a rollback of at most k can still undo both.
+        yield* insertQueueTerminal({
+          headerHash: header("landed-merge"),
+          outcome: "merged",
+          height: 50,
         });
-        const removed = yield* prune({
-          challengeableCutoff: new Date(Date.now() - DAY_MS),
-          view,
+        yield* insertQueueTerminal({
+          headerHash: header("landed-removal"),
+          outcome: "removed",
+          height: 50,
+          txIndex: 1,
         });
-        return { removed, remaining: yield* remainingLabels(labels) };
+        const whileNotFinal = yield* prune({
+          challengeableCutoff: cutoff(),
+          view: { ...view, finalThroughHeight: 49 },
+        });
+        const keptWhileNotFinal = yield* remainingLabels(labels);
+        // Final: the removal releases; the merge is the boundary.
+        const onceFinal = yield* prune({
+          challengeableCutoff: cutoff(),
+          view: { ...view, finalThroughHeight: 50 },
+        });
+        return {
+          whileNotFinal,
+          keptWhileNotFinal,
+          onceFinal,
+          remaining: yield* remainingLabels(labels),
+        };
       }),
     );
-    expect(result.removed).toBe(1);
-    expect(result.remaining).toEqual([
-      "admitted-merge",
-      "pending-removal",
+    expect(result.whileNotFinal).toBe(1);
+    expect(result.keptWhileNotFinal).toEqual([
+      "landed-merge",
+      "landed-removal",
       "newest",
     ]);
+    expect(result.onceFinal).toBe(1);
+    expect(result.remaining).toEqual(["landed-merge", "newest"]);
   });
 
-  it("reads an observer record stored unwrapped as well as string-wrapped", async () => {
+  it("keeps a journal the facts still queue, whatever the caller's view, until a later merge is final", async () => {
     const result = await run(
       Effect.gen(function* () {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
-        yield* recordObserverState({
-          admitted: [header("admitted-merge"), header("pending-removal")],
-          wrapped: false,
-        });
-        const removed = yield* prune({
-          challengeableCutoff: new Date(Date.now() - DAY_MS),
-          view,
-        });
-        return { removed, remaining: yield* remainingLabels(labels) };
-      }),
-    );
-    expect(result.removed).toBe(1);
-    expect(result.remaining).toEqual([
-      "admitted-merge",
-      "pending-removal",
-      "newest",
-    ]);
-  });
-
-  it("keeps a journal the observer's cursor still queues: its merge is not replayed yet", async () => {
-    const result = await run(
-      Effect.gen(function* () {
-        yield* journals(
-          labels.map((label, index) => ({
-            label,
-            status: "finalized" as const,
-            endedAgoMs: (40 - index) * DAY_MS,
-          })),
-        );
-        yield* recordObserverState({ cursorQueue: [header("unnamed")] });
+        // The caller's view misses it; the facts hold its live node.
+        yield* insertLiveQueueNode(header("unnamed"));
         const whileQueued = yield* prune({
-          challengeableCutoff: new Date(Date.now() - DAY_MS),
-          view,
+          challengeableCutoff: cutoff(),
+          view: { ...view, finalThroughHeight: 59 },
         });
         const keptWhileQueued = yield* remainingLabels(labels);
-        // The next reconcile replays the merge and admits it.
-        yield* recordObserverState({ admitted: [header("unnamed")] });
-        const whileAdmitted = yield* prune({
-          challengeableCutoff: new Date(Date.now() - DAY_MS),
-          view,
+        // Its merge lands at 60.
+        yield* deleteLiveQueueNode(header("unnamed"));
+        yield* insertQueueTerminal({
+          headerHash: header("unnamed"),
+          outcome: "merged",
+          height: 60,
         });
-        // Proven final beyond k and dropped from the admitted list.
-        yield* recordObserverState();
+        const whileMerging = yield* prune({
+          challengeableCutoff: cutoff(),
+          view: { ...view, finalThroughHeight: 59 },
+        });
+        // A later merge lands and is final: no longer the boundary.
+        yield* insertQueueTerminal({
+          headerHash: header("not-journaled-later"),
+          outcome: "merged",
+          height: 61,
+        });
         const oncePastK = yield* prune({
-          challengeableCutoff: new Date(Date.now() - DAY_MS),
-          view,
+          challengeableCutoff: cutoff(),
+          view: { ...view, finalThroughHeight: 61 },
         });
         return {
           whileQueued,
           keptWhileQueued,
-          whileAdmitted,
+          whileMerging,
           oncePastK,
           remaining: yield* remainingLabels(labels),
         };
@@ -358,42 +367,8 @@ describe("journals a recorded correction transition names", () => {
     );
     expect(result.whileQueued).toBe(2);
     expect(result.keptWhileQueued).toEqual(["unnamed", "newest"]);
-    expect(result.whileAdmitted).toBe(0);
+    expect(result.whileMerging).toBe(0);
     expect(result.oncePastK).toBe(1);
-    expect(result.remaining).toEqual(["newest"]);
-  });
-
-  it("removes no journal while the deployment has no correction-observer record", async () => {
-    const result = await run(
-      Effect.gen(function* () {
-        yield* journals(
-          labels.map((label, index) => ({
-            label,
-            status: "finalized" as const,
-            endedAgoMs: (40 - index) * DAY_MS,
-          })),
-        );
-        const unobserved = yield* prune({
-          challengeableCutoff: new Date(Date.now() - DAY_MS),
-          view,
-        });
-        const keptUnobserved = yield* remainingLabels(labels);
-        yield* recordObserverState();
-        const observed = yield* prune({
-          challengeableCutoff: new Date(Date.now() - DAY_MS),
-          view,
-        });
-        return {
-          unobserved,
-          keptUnobserved,
-          observed,
-          remaining: yield* remainingLabels(labels),
-        };
-      }),
-    );
-    expect(result.unobserved).toBe(0);
-    expect(result.keptUnobserved).toEqual(labels);
-    expect(result.observed).toBe(3);
     expect(result.remaining).toEqual(["newest"]);
   });
 
@@ -403,11 +378,10 @@ describe("journals a recorded correction transition names", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
-        yield* recordObserverState();
         const removed = yield* prune({
           challengeableCutoff: new Date(Date.now() - DAY_MS),
           view,
@@ -429,13 +403,12 @@ describe("journals with an orphaned event member", () => {
         yield* journals(
           labels.map((label, index) => ({
             label,
-            status: "finalized" as const,
+            status: "locally_applied" as const,
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
         yield* recordDepositMember("orphan-member", false);
         yield* recordDepositMember("canonical-member", true);
-        yield* recordObserverState();
         const removed = yield* prune({
           challengeableCutoff: new Date(Date.now() - DAY_MS),
           view: {

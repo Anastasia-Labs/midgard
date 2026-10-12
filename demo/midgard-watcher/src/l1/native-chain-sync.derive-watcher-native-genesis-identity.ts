@@ -1,4 +1,3 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, normalize, resolve } from "node:path";
@@ -7,7 +6,6 @@ import {
   parseWatcherStrictJsonValue,
   type WatcherConfig,
 } from "../runtime/config.js";
-import { watcherCanonicalJson } from "../storage/durable-store.js";
 import {
   exactRecord,
   HEX_32,
@@ -84,52 +82,6 @@ export const parseWatcherNativeChainSyncEvent = (
   });
 };
 
-export const parseJsonLine = (line: string): unknown => {
-  try {
-    const value = JSON.parse(line) as unknown;
-    if (watcherCanonicalJson(value) !== line) {
-      throw new Error("non-canonical JSON");
-    }
-    return value;
-  } catch {
-    throw new Error(
-      "native chain-sync emitted malformed or non-canonical JSON",
-    );
-  }
-};
-
-export const lines = async function* (
-  stream: AsyncIterable<Uint8Array>,
-  maxTotalBytes?: number,
-): AsyncGenerator<string> {
-  let totalBytes = 0;
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  let pending = "";
-  for await (const chunk of stream) {
-    totalBytes += chunk.byteLength;
-    if (maxTotalBytes !== undefined && totalBytes > maxTotalBytes) {
-      throw new Error("native exact-point query stdout exceeded its bound");
-    }
-    pending += decoder.decode(chunk, { stream: true });
-    if (pending.length > MAX_BLOCK_CBOR_HEX + 4_096) {
-      throw new Error("native chain-sync output line exceeds its bound");
-    }
-    let newline = pending.indexOf("\n");
-    while (newline >= 0) {
-      const line = pending.slice(0, newline);
-      pending = pending.slice(newline + 1);
-      if (line.length === 0)
-        throw new Error("native chain-sync emitted an empty line");
-      yield line;
-      newline = pending.indexOf("\n");
-    }
-  }
-  pending += decoder.decode();
-  if (pending.length !== 0) {
-    throw new Error("native chain-sync terminated with a partial line");
-  }
-};
-
 export const sha256 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
@@ -153,9 +105,6 @@ export const deriveWatcherNativeGenesisIdentity = async (input: {
   readonly watcherConfig: WatcherNativeNodeConfig;
   readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
 }): Promise<{ genesisIdentitySha256: string; networkMagic: number }> => {
-  if (input.watcherConfig.l1.source.sourceMode !== "local_node") {
-    throw new Error("native genesis identity requires local-node source");
-  }
   const source = input.watcherConfig.l1.source;
   const read = input.unsafeReadIdentityFileForTest ?? readIdentityFile;
   const [nodeConfigBytes, genesisBytes] = await Promise.all([
@@ -233,16 +182,6 @@ export const deriveWatcherNativeGenesisIdentity = async (input: {
   return { genesisIdentitySha256: derived, networkMagic: expectedMagic };
 };
 
-export type SpawnProcess = (
-  binaryPath: string,
-) => ChildProcessWithoutNullStreams;
-
-export const productionSpawn: SpawnProcess = (binaryPath) =>
-  spawn(binaryPath, [], {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: Object.freeze({ PATH: process.env.PATH ?? "/usr/bin:/bin" }),
-  });
-
 export type NativeStreamInput = {
   readonly binaryPath: string;
   readonly watcherConfig: WatcherConfig;
@@ -252,6 +191,5 @@ export type NativeStreamInput = {
   readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
   /** Private runtime lifetime hook, after native admission is revoked. */
   readonly onAuthorityRevoked?: () => void;
-  readonly unsafeSpawnForTest?: SpawnProcess;
   readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
 };

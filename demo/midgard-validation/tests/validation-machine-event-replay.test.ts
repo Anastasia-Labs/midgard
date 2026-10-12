@@ -8,6 +8,7 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { EventKey } from "@al-ft/midgard-sdk";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { Data } from "@lucid-evolution/lucid";
@@ -56,6 +57,7 @@ const replayInput = async (
   transaction: NativeTxFixture,
   entries: readonly ValidationMachineLedgerEntry[],
 ): Promise<ValidationMachineEventReplayInput> => ({
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   ...context,
   sourceKind: "normal",
   eventKeyCbor: Buffer.from(
@@ -213,12 +215,13 @@ describe("independent validation event replay", () => {
       const traceBytes = JSON.stringify(result.trace, (_, value: unknown) =>
         typeof value === "bigint" ? value.toString() : value,
       );
-      // Byte pin after uniform §5.1 byte-string item counting; emitted Phase A
-      // steps are independently checked by the Aiken one-step predicate.
+      // Byte pin after uniform §5.1 byte-string item counting and the Cardano
+      // `validRange` (an absent upper bound is an inclusive PosInf); emitted
+      // Phase A steps are independently checked by the Aiken one-step predicate.
       const expectedTraceHash =
         executionCount === 1
-          ? "dc65a2b492ada3851a462b60e7e7bcfbebf7b6713374a751cb3712d7bd933a3d"
-          : "c5c09e5732a87312fee52c44919cf7463f00db6337e930ea71f74d25b76f2e47";
+          ? "b9adac97c2c284b04647ed360addbb404250ca74509f4ad62b4b6ac81fb9b662"
+          : "62f309f67fa193af7fc01849e3985e6f80ddd8c6ba6cd6a2d791f2495079a110";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );
@@ -417,6 +420,7 @@ describe("independent validation event replay", () => {
             ]),
           ),
           {
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             nowCardanoSlotNo: 100n,
             bucketConcurrency: 1,
             enforceScriptBudget: true,
@@ -437,6 +441,7 @@ describe("independent validation event replay", () => {
         });
       const result = await Effect.runPromise(
         replayValidationMachineEvent({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...context,
           sourceKind: "forced",
           canonicalTransactionCbor: txCbor,

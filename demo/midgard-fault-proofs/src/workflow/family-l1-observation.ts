@@ -13,12 +13,10 @@ import {
   type FraudProofWorkflowTerminal,
 } from "./journal.js";
 import {
-  createLocalKupmiosHttpOgmiosRawSource,
-  type LocalKupmiosHttpOgmiosSourceConfig,
-  readAdmittedLocalKupmiosSignedTransactionRecovery,
-  rebroadcastAdmittedLocalKupmiosSignedTransaction,
-} from "./local-kupmios-http-ogmios-source.js";
-import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "./local-kupmios-raw-l1-authority.js";
+  type FraudProofL1Source,
+  fraudProofSignedTransactionRecovery,
+  withFraudProofL1Recovery,
+} from "./l1-source.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowTerminalVerifier,
@@ -125,7 +123,7 @@ export const observeFraudProofWorkflowHeader = async <
 };
 
 /**
- * Family-neutral strict admission over exact raw local Kupo/Ogmios bytes.
+ * Family-neutral strict admission over exact raw L1 bytes.
  * The provider never supplies a trusted stage or terminal: both are derived
  * locally after the snapshot and complete unit histories are admitted.
  */
@@ -221,61 +219,34 @@ export const createFraudProofFamilyRawL1ObservationPort = <
   return Object.freeze(port);
 };
 
-/** Concrete loopback Kupo HTTP + Ogmios WS construction for any family. */
-export const createFraudProofFamilyLocalKupmiosL1ObservationPort = <
+/** The family port over the fault-proof L1 source, at inclusion depth. */
+export const createFraudProofFamilyL1ObservationPort = <
   Category extends FraudProofCatalogueCategoryName,
 >({
-  source,
+  l1,
   releaseFinality,
   releaseEconomics,
   definition,
 }: {
-  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  readonly l1: FraudProofL1Source;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: Category;
   };
-}): FraudProofFamilyL1ObservationPort<Category> => {
-  const rawSource = createLocalKupmiosHttpOgmiosRawSource({
-    ...source,
-    releaseFinality,
-    observationDepth: "inclusion",
-  });
-  const port = createFraudProofFamilyRawL1ObservationPort({
-    authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
-      source: rawSource,
+}): FraudProofFamilyL1ObservationPort<Category> =>
+  withFraudProofL1Recovery(
+    createFraudProofFamilyRawL1ObservationPort({
+      authority: l1.snapshotAuthority({
+        releaseFinality,
+        observationDepth: "inclusion",
+      }),
       releaseFinality,
-      observationDepth: "inclusion",
+      releaseEconomics,
+      definition,
     }),
-    releaseFinality,
-    releaseEconomics,
-    definition,
-  });
-  const recovery = {
-    observeSignedTransaction: (input: SignedWorkflowTransaction) =>
-      readAdmittedLocalKupmiosSignedTransactionRecovery({
-        ...input,
-        source: rawSource,
-      }),
-    rebroadcastSignedTransaction: (
-      input: SignedWorkflowTransaction & {
-        readonly authorizeResubmission: (
-          input: SignedWorkflowTransaction,
-        ) => Promise<void>;
-      },
-    ) =>
-      rebroadcastAdmittedLocalKupmiosSignedTransaction({
-        ...input,
-        source: rawSource,
-      }),
-  };
-  return Object.freeze({
-    ...port,
-    ...recovery,
-    publications: Object.freeze({ ...port.publications, ...recovery }),
-  });
-};
+    fraudProofSignedTransactionRecovery(l1, releaseFinality),
+  );
 
 const sameTerminal = (
   left: FraudProofWorkflowTerminal,

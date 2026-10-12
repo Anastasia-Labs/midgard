@@ -167,7 +167,7 @@ describe("e2e-finalize-summary stack database (storage.ts, payout-body.ts)", () 
           attempts: [
             {
               phase: "conclude",
-              status: "confirmed",
+              status: "final",
               txHash: run.payout.txHash,
               signedCbor: run.payout.cbor,
             },
@@ -219,7 +219,7 @@ describe("e2e-finalize-summary stack database (storage.ts, payout-body.ts)", () 
   it("refuses a withdrawal with no confirmed payout", async () => {
     const value = await database((settlements) => {
       settlements.get(`withdrawal:${WITHDRAWAL_EVENT}`).attempts[0].status =
-        "pending";
+        "expired";
     });
     expect(gates(value)[1]).toMatchObject({
       status: "failed",
@@ -237,7 +237,7 @@ describe("e2e-finalize-summary stack database (storage.ts, payout-body.ts)", () 
       attempts.push({ ...attempts[0], txHash: "0f".repeat(32) });
     });
     expect(gates(value)[1].details["cycle-0"]).toBe(
-      "More than one confirmed payout transaction for the same withdrawal",
+      "More than one unexpired payout transaction for the same withdrawal",
     );
   });
   it("refuses a confirmed payout that is not the journal's", async () => {

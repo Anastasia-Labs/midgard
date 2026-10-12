@@ -77,7 +77,9 @@ export const readJourneySuccessorPredecessor = async (
  * watcher's bounded, in-memory verification diagnostics, so the journey reads
  * them as it goes and keeps each header's latest decided record for the whole
  * run. A restarted watcher numbers its diagnostics from one again, so a new
- * process id restarts the cursor.
+ * process id restarts the cursor. It never re-verifies a header it decided in
+ * an earlier process, so a resumed journey starts from the verified records an
+ * earlier attempt retained; each is still bound to its block's payload.
  */
 export const createJourneyVerifiedHeaders = (
   watcher: {
@@ -90,8 +92,17 @@ export const createJourneyVerifiedHeaders = (
   let cursor = "0";
   let processId: number | null | undefined;
   let healthy: WatcherVerificationDiagnostic[] | undefined;
+  let retained = false;
   /** Verified records of `blocks` once all are seen; any other decided outcome fails. */
   const collect = async (blocks: readonly JourneyBlock[]) => {
+    const retainedPath = join(directory, JOURNEY_VERIFIED_HEADERS_ARTIFACT);
+    if (!retained && existsSync(retainedPath))
+      for (const record of await readJourneyArtifact<
+        WatcherVerificationDiagnostic[]
+      >(retainedPath))
+        if (record.outcome === "verified" && record.headerHash !== undefined)
+          decided.set(record.headerHash, record);
+    retained = true;
     const current = watcher.observe().pid;
     if (current !== processId) {
       processId = current;

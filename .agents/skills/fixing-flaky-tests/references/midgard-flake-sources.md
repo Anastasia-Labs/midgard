@@ -46,8 +46,9 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
 - **Symptom:** the wrong failure classification under full-suite load
   (`all_peers_failed` where `deadline_exceeded` was expected), never alone.
 - **Evidence:** `15b30754d` added a `clock` seam (`now`, `setTimeout`,
-  `clearTimeout`) to `WatcherPublicDaClientV1` so the test drives time
-  instead of racing the global timer queue.
+  `clearTimeout`) to `WatcherPublicDaClientV1` so the test drove time
+  instead of racing the global timer queue. That client was deleted in W2b
+  (#797); the lesson stands for any budgeted retry loop.
 - **Fix:** inject the clock and decide by state, not by which timer fires
   first. `[review]`
 
@@ -68,10 +69,11 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
   between files. `midgard-node-tools` uses its own family, `midgard_tools_test`,
   unless the variable is already set
   (`demo/midgard-node-tools/vitest.config.ts:20`).
-- **Fix:** give a second checkout its own prefix for a single-package run:
-  `MIDGARD_TEST_DATABASE_PREFIX=midgard_test_<worktree> pnpm --dir demo/midgard-node exec vitest run ...`.
-  Setting it for the whole lane runner gives node and node-tools the same
-  family again. `[review]` Nothing detects two runs sharing a shard.
+- **Fix:** run suites through `node scripts/contrib.mjs test`, which gives
+  every invocation its own family, `midgard_contrib_<checkout hash>_<random>`,
+  and drops it when the run ends (`scripts/contrib/databases.mjs`). A raw
+  `vitest run` still shares the checkout's family; nothing detects two raw
+  runs sharing a shard.
 
 ### `synchronous_commit` is an environment difference, not a flake
 
@@ -130,14 +132,8 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
 
 - **Symptom:** `EADDRINUSE`, or a test talking to a service it never started.
 - **Evidence:** test servers bind port 0 and read the assigned port
-  (`demo/midgard-node/tests/helpers/local-l1-observation.ts:480`,
+  (`demo/midgard-node/tests/settlement-worker-heap.test.ts:115`,
   `demo/midgard-watcher/tests/support/state-queue-observation-fixture.ts:338`).
-  Separately, the node test defaults point the L1 provider at
-  `127.0.0.1:1337` and `127.0.0.1:1442`
-  (`demo/midgard-node/tests/test-env.ts:66-67`), the Ogmios and Kupo ports a
-  local devnet publishes (`demo/midgard-node/docker-compose.kupmios.yaml:113,169`),
-  so a test that reaches the provider without a double gets a different
-  answer depending on whether a devnet is up.
 - **Fix:** bind port 0; never pick a "free" port and bind it later. A test
   that must not reach L1 gets a double or an unroutable URL. `[review]`
 

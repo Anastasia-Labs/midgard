@@ -4,47 +4,39 @@ import { Duration, Effect } from "effect";
 import { startDaLibp2pRetainedPayloadServerFromEnv } from "../da/libp2p-producer.js";
 import { DaPayloadsDB } from "../database/index.js";
 import { isRetryableProviderError } from "../provider-retry.js";
+import {
+  retryStartupStep,
+  type StartupStepFailedError,
+} from "../services/startup-waiting.js";
 
 export const logStartupFailure = (message: string) => (error: unknown) =>
   Effect.logError(`${message}: ${formatUnknownError(error)}`);
 
+/**
+ * Runs a provider-backed startup step, waiting out a retryable provider
+ * failure (`isRetryableProviderError`) every `retryDelayMs` for at most
+ * `maxAttempts` attempts under the named reason. Any other failure, or the
+ * last attempt's, fails the step (`StartupStepFailedError`).
+ */
 export const runStartupProviderStepWithRetry = <A, E, R>(
-  label: string,
+  key: string,
   step: Effect.Effect<A, E, R>,
-  options: { readonly maxAttempts: number; readonly retryDelayMs: number },
-): Effect.Effect<A, E, R> =>
-  Effect.gen(function* () {
-    const maxAttempts = Math.max(1, Math.floor(options.maxAttempts));
-    const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
-    let lastError: E | undefined;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      const result = yield* Effect.either(step);
-      if (result._tag === "Right") {
-        if (attempt > 1) {
-          yield* Effect.logInfo(
-            `${label} became available after ${attempt.toString()} attempt(s).`,
-          );
-        }
-        return result.right;
-      }
-
-      lastError = result.left;
-      if (!isRetryableProviderError(lastError)) {
-        return yield* Effect.fail(lastError);
-      }
-      if (attempt < maxAttempts) {
-        yield* Effect.logWarning(
-          `${label} failed with a retryable provider error (attempt ${attempt.toString()}/${maxAttempts.toString()}); retrying in ${retryDelayMs.toString()}ms. cause=${formatUnknownError(lastError, { includeCause: true })}`,
-        );
-        if (retryDelayMs > 0) {
-          yield* Effect.sleep(Duration.millis(retryDelayMs));
-        }
-      }
-    }
-
-    return yield* Effect.fail(lastError as E);
+  options: Readonly<{
+    maxAttempts: number;
+    retryDelayMs: number;
+    reason: string | ((error: E) => string);
+  }>,
+): Effect.Effect<A, StartupStepFailedError, R> => {
+  const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
+  return retryStartupStep(step, {
+    key,
+    reason: options.reason,
+    retryable: isRetryableProviderError,
+    budget: { maxAttempts: options.maxAttempts },
+    initialMs: retryDelayMs,
+    maxMs: retryDelayMs,
   });
+};
 
 /** The retained-payload server's last known state. A start failure never
  * stops the node: the thread retries forever, warning on every attempt. */

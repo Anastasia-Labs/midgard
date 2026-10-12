@@ -14,8 +14,8 @@ import {
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import { type CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import { type HistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import type { MinAdaContracts } from "./contracts.js";
 import { admitMinAdaWorkflowArtifact as admitMinAdaArtifact } from "./workflow-artifact.js";
 
@@ -34,7 +34,8 @@ export type BoundConfig = Readonly<{
   signer: ResolvedProverSigner;
   contracts: MinAdaContracts;
   references: MinAdaWorkflowReferenceScripts;
-  historicalCorpus(): HistoricalNativeScriptCorpus;
+  /** The classifier-admitted context carrying the authenticated predecessor. */
+  replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 

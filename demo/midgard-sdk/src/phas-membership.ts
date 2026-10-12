@@ -3,6 +3,7 @@ import {
   type Network,
   type Script,
   type TxSignBuilder,
+  type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -13,7 +14,11 @@ import {
   getUnappliedScript,
   parseFaultProofBlueprint,
 } from "./fraud-proof/contracts/blueprint.js";
-import { completeTxWithLocalUPLCEvalProgram } from "./tx-completion.js";
+import {
+  completeTxWithLocalUPLCEvalProgram,
+  EMPTY_WALLET_INPUTS_CAUSE,
+  emptyWalletInputsRefusal,
+} from "./tx-completion.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE =
   "phas.membership.withdraw";
@@ -123,7 +128,15 @@ export const phasMembershipIdentity = (
 
 export const buildPhasMembershipRewardRegistrationTxProgram = (
   lucid: LucidEvolution,
-  config: { readonly script: Script },
+  config: {
+    readonly script: Script;
+    /**
+     * The submitting wallet's coins, as the caller's view holds them. When
+     * given, coin selection and collateral use exactly these and the provider
+     * is never read.
+     */
+    readonly walletInputs?: readonly UTxO[];
+  },
 ): Effect.Effect<
   BuiltPhasMembershipRewardRegistrationTx,
   PhasMembershipRewardRegistrationBuildError
@@ -140,6 +153,18 @@ export const buildPhasMembershipRewardRegistrationTxProgram = (
       );
     }
 
+    const emptyInputs = emptyWalletInputsRefusal(
+      config.walletInputs,
+      "the PHAS membership reward-account registration",
+    );
+    if (emptyInputs !== null) {
+      return yield* Effect.fail(
+        new LucidError({
+          message: emptyInputs,
+          cause: EMPTY_WALLET_INPUTS_CAUSE,
+        }),
+      );
+    }
     const identity = phasMembershipIdentity(network, config.script);
     const txBuilder = yield* Effect.try({
       try: () => lucid.newTx().register.Stake(identity.rewardAddress),
@@ -158,6 +183,7 @@ export const buildPhasMembershipRewardRegistrationTxProgram = (
             "Failed to complete PHAS membership reward-account registration transaction",
           cause,
         }),
+      config.walletInputs,
     );
     return {
       tx,

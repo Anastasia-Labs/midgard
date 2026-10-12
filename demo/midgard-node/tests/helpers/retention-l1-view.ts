@@ -1,8 +1,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
+import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { Lucid, MidgardContracts } from "../../src/services/index.js";
+import { MidgardContracts } from "../../src/services/index.js";
+import { seedLandedStateQueue } from "./landed-state-queue.js";
 
 const policyId = "aa".repeat(28);
 const stateQueueAddress =
@@ -49,11 +50,12 @@ const linkedUtxo = (
 });
 
 /**
- * An L1 state queue served by exact-unit lookups: a `ConfirmedState` root whose
- * datum names `confirmedHeadHash`, followed by one header node per
- * `liveUtxosRoots` entry (the last one carrying an attestation marker, so no
- * status filter can pass unnoticed). Returns the Lucid and contract services
- * the retention L1 view reads, and the live header hashes it must report.
+ * A landed state queue (P1 facts): a `ConfirmedState` root whose datum names
+ * `confirmedHeadHash`, followed by one header node per `liveUtxosRoots` entry
+ * (the last one carrying an attestation marker, so no status filter can pass
+ * unnoticed). `provide` seeds those facts in the node database and provides
+ * the contracts the retention L1 view reads; it returns the live header
+ * hashes the view must report.
  */
 export const makeRetentionL1Queue = async ({
   confirmedHeadHash,
@@ -66,11 +68,9 @@ export const makeRetentionL1Queue = async ({
   const liveHeaderHashes = await Promise.all(
     headers.map((value) => Effect.runPromise(SDK.hashBlockHeader(value))),
   );
-  const byUnit = new Map<string, UTxO[]>();
+  const utxos: UTxO[] = [];
   const put = (assetName: string, datum: SDK.LinkedListNodeView, i: number) =>
-    byUnit.set(toUnit(policyId, assetName), [
-      linkedUtxo(assetName, datum, (i + 16).toString(16)),
-    ]);
+    utxos.push(linkedUtxo(assetName, datum, (i + 16).toString(16)));
   const keyOf = (index: number): SDK.LinkedListNodeView["next"] =>
     index < liveHeaderHashes.length
       ? { Key: { key: liveHeaderHashes[index]! } }
@@ -110,18 +110,10 @@ export const makeRetentionL1Queue = async ({
       index + 1,
     );
   });
-  const api = {
-    utxosAt: () =>
-      Promise.reject(new Error("address-wide lookup must not be called")),
-    utxosAtWithUnit: (_address: string, unit: string) =>
-      Promise.resolve([...(byUnit.get(unit) ?? [])]),
-  } as unknown as LucidEvolution;
+  const stateQueue = { policyId, spendingScriptAddress: stateQueueAddress };
   const provide = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    effect.pipe(
-      Effect.provideService(Lucid, { api } as never),
-      Effect.provideService(MidgardContracts, {
-        stateQueue: { policyId, spendingScriptAddress: stateQueueAddress },
-      } as never),
-    ) as Effect.Effect<A, E, Exclude<R, Lucid | MidgardContracts>>;
+    Effect.zipRight(seedLandedStateQueue(stateQueue, utxos), effect).pipe(
+      Effect.provideService(MidgardContracts, { stateQueue } as never),
+    );
   return { liveHeaderHashes, provide };
 };

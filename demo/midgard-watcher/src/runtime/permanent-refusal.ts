@@ -1,8 +1,10 @@
 /**
- * Exit code for a refusal that no restart can clear: the configuration or the
- * verified deployment identity does not match what this release accepts. It is
- * sysexits' EX_CONFIG, so a supervisor can stop restarting the watcher on it
- * while it keeps restarting on exit code 70.
+ * Exit code for a refusal that no restart can clear, made before the
+ * operations server is bound (the process configuration file, its L1 socket
+ * path), so no `/readyz` can name it. It is sysexits' EX_CONFIG, so a
+ * supervisor can stop restarting the watcher on it while it keeps restarting
+ * on exit code 70. A refusal made once the server is bound holds the process
+ * up instead (`WatcherStartupHeldError`).
  */
 export const WATCHER_PERMANENT_REFUSAL_EXIT_CODE = 78;
 
@@ -18,7 +20,8 @@ export class WatcherPermanentRefusalError extends Error {
   }
 }
 
-const hasSystemErrorCode = (error: unknown): boolean => {
+/** Whether a system error (ENOENT, EIO, EADDRINUSE, ...) is on the cause chain. */
+export const hasSystemErrorCode = (error: unknown): boolean => {
   let current = error;
   for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
     const code = (current as { code?: unknown }).code;

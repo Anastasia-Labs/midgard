@@ -35,13 +35,6 @@ for the complete inventory.
 
 ## Native-script and minimum-Ada families
 
-### `missing-native-script-utxo` (`0000001d`)
-
-Seven steps bind the challenged transaction, select the spent input, prove the
-predecessor UTxO and credential, bind native-script material to that credential,
-and prove absence from the transaction's script witnesses through direct or
-bounded grammar/scan continuations. Only the absence verdict can finalize. Tests live in `staged-v1.test.ak`.
-
 ### `native-script-invalid` (`0000001e`)
 
 Five steps bind the transaction and native witness, scan the bounded address-

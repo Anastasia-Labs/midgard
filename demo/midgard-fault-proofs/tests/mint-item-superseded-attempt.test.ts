@@ -7,8 +7,8 @@ import type {
   FraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
 import * as signedReconciliation from "../src/workflow/signed-transaction-reconciliation.js";
+import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
 import { retiredNotFound } from "./workflow.make-adapter.js";
-import { signedRecoveryFixture } from "./workflow-kupmios-source.signed-recovery-fixture.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -16,7 +16,7 @@ afterEach(() => {
 
 /** A mint item whose step01 intent is recorded and absent at the tip. */
 const absentStep = async () => {
-  const fixture = await signedRecoveryFixture({ ttl: null });
+  const fixture = await signedWorkflowTransactionFixture({ ttl: null });
   const entries: FraudProofWorkflowJournalEntry[] = [];
   const store: FraudProofWorkflowJournalStore = {
     load: async () => entries,

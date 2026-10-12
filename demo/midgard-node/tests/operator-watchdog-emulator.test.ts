@@ -7,6 +7,8 @@
  * and signs with it later. The watchdog must neither select a wallet while a
  * merge holds the permit nor depend on the wallet a merge left selected.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   generateSeedPhrase,
@@ -18,6 +20,7 @@ import { describe, expect, it } from "vitest";
 
 import { operatorWatchdogTick } from "../src/fibers/operator-watchdog.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
+import { Database } from "../src/services/database.js";
 import {
   Globals,
   Lucid,
@@ -26,12 +29,16 @@ import {
   withL1ControlPlane,
 } from "../src/services/index.js";
 import { planTakeoverProgram } from "../src/transactions/operators/takeover.js";
+import { publishEmulatorOperatorSet } from "./helpers/emulator-operator-set.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
   fetchSchedulerDatum,
   initOperatorInactivityFixture,
+  submitNeglectedDeposit,
 } from "./helpers/operator-inactivity.js";
+import { resetApplicationTables } from "./utils.js";
 
 describe("operator watchdog wallet selection", () => {
   it("leaves a merge's wallet selected while the merge holds the control plane, then strikes with the operator wallet", async () => {
@@ -40,7 +47,9 @@ describe("operator watchdog wallet selection", () => {
     const successor = fixture.operators.find(
       ({ keyHash }) => keyHash !== appointed.operatorKeyHash,
     )!;
-    const early = await Effect.runPromise(
+    // The shift owes a deposit: the evidence every strike cites.
+    await submitNeglectedDeposit(fixture);
+    const early = await runWithoutFollower(
       planTakeoverProgram(fixture.lucid, fixture.contracts),
     );
     if (early.plan.kind !== "not-yet") {
@@ -75,10 +84,20 @@ describe("operator watchdog wallet selection", () => {
     } as unknown as Lucid;
     const selectedAddress = Effect.promise(() => shared.wallet().address());
 
-    const outcome = await Effect.runPromise(
+    const outcome = await runWithoutFollower(
       Effect.gen(function* () {
         const globals = yield* Globals;
         const lucid = yield* Lucid;
+        // The follower-change driver's operator set, which the tick plans
+        // from.
+        yield* Effect.zipRight(
+          resetApplicationTables,
+          publishEmulatorOperatorSet(
+            fixture.lucid,
+            fixture.contracts,
+            successor.keyHash,
+          ),
+        ).pipe(Effect.orDie);
         const selectedDuringMerge = yield* withL1ControlPlane(
           globals,
           { scope: "state_queue_merge" },
@@ -103,6 +122,8 @@ describe("operator watchdog wallet selection", () => {
         Effect.provide(
           Layer.mergeAll(
             Globals.Default,
+            // The follower facts the operator set reads.
+            Database.layer,
             Layer.succeed(Lucid, lucidService),
             Layer.succeed(
               MidgardContracts,

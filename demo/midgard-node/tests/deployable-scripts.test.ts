@@ -37,16 +37,29 @@ const ROLE_BY_CONTRACT = new Map(
 // order of `contract-deployment-info.json` (and so its digest), and the
 // publication order decides which reference scripts share a publication batch.
 // Script bytes are pinned by the bundle digests in `midgard-contracts.test.ts`.
+//
+// Every pin below, including the pre-history and pre-pool generations, was
+// re-derived from the current catalogue when the missingNativeScriptTx and
+// missingNativeScriptUtxo families (15 contracts and roles) were removed;
+// missingScriptSource supersedes these families. The earlier digests and
+// counts included those roles, so the older generations now describe the
+// catalogue as it was before each addition, less those 15 roles.
+//
+// They were re-derived the same way when the cross-block duplicate-event
+// family (two contracts and roles) was deleted. Inserting its two adjacent
+// step entries back at one position reproduced every previous digest of
+// every generation, so the deletion removed exactly those two entries and
+// moved nothing else.
 const PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST =
-  "c460b989ef9dd6547f1000710fcecf5ceced42ca7b35c6042467ea0965a2f811";
+  "bbee8d1d76441070434db5ae937ea1390aa4da47d4fb480a714c1ce02d2a5091";
 const PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST =
-  "8ac96b9961ba6f7a4ef0d8106873af671837fa072f5cdbeac89a5435279e20a0";
+  "19dfd605af1def772c8794633eaea4f44dd80585060aac6230aa56ae8ca76204";
 const PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST =
-  "1ef6485370b266f59efcd99a16f09fffa5d5f4fde003a2826b942a7129956537";
+  "2db10a0a52c10010f36754c6f29ead798bc79d536e0aea98f5aecd194e93d643";
 const PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "210e25d9bbc4d5eccff6abdb92c685383988695e8ba0e7477774e3694b2175a1";
+  "bc6a9bf24f4335b8e75da68f984735509d8a7127eca83fcc48d08760ba8b4def";
 const PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "3dc67cab67e108538859e783c53623c1a38c199dfad3f75b1d13b3980d7b7783";
+  "aeaa95a5474da44ed37646c211816b315ea7ec0699d5961970148547ccd72432";
 
 // The history pins were derived only after projecting out exactly these six
 // entries reproduced every original order digest and the original 528/521
@@ -57,31 +70,31 @@ const PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST =
 // the older contract-name pins are dropped: the older role pins still fix
 // every published entry, and the current contract-name pin fixes the rest.
 const PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST =
-  "a2e24084e3de768007b27ed80abab4251a853f878bb991e08053776467c32014";
+  "d8e94c904d7b7ea25bc492b52670149fc55cfd649c82ef9c1786bb11ce0dfe44";
 const PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST =
-  "14a252bc64c1f79cd33583c7dd277d0a0ded120f6a799f1e470049fea7ba6c8d";
+  "acf99dfd9ed3bbca455c67eab199b3d13b17c513b63807ae618ca8590fce2a00";
 const PRE_POOL_REAL_COMMAND_ORDER_DIGEST =
-  "67860e5e44507dbaff6bc705ceb6992ff11e993b74c28d1eeee4325f98231fd0";
+  "56a8aca3eea3b2b6898c4528efdb77a6c42d79d2f47b451dcaecd576e4792e4b";
 const PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "4983f9529c62525d4ec65b3e5c718d458d47c3d076f60ef9be46811e1c375a65";
+  "fff013aa671b61e577d461401700e9b9c0972f1dcc722bbc430f458bc75be89b";
 const PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "0dc4a59b6bb9b94cfb1487d65c5baba836c2a3e328ee106d78abc7183698dafe";
+  "992b1a93c40e28fedd81ea7fe432641cf098ca5c511daeaec24e4a361093ae72";
 
 // New pins are derived only after projecting out exactly the two pool entries
 // (with the retired bond yield restored) reproduces every pre-pool published
 // order digest and the pre-pool 534/527 counts.
 const MANIFEST_CONTRACT_ORDER_DIGEST =
-  "c0149c2cdccdbbeb77abd5f75e5b6734aba32a8f9c780d9a45481d657e19f653";
+  "9685ab8b5915b8cce1f58574f0006faf8f441319adfd30a0f31416d1e94c518d";
 const MANIFEST_ROLE_ORDER_DIGEST =
-  "403dbeb29e206d5f4dfe156ed62c86d3db8203adaafb0a130db2b3a7c1c0f8f6";
+  "fa22f3e94644d5fb2ddbbefa4745a2d5fafbd532ff0758772167d841ed5c93c6";
 const REAL_PUBLICATION_ORDER_DIGEST =
-  "eb32654b4a7fa1359dc5ac41cc4161c59add601ced82dfa380075053af8cff5e";
+  "fe19a1600a16eaec6ce0c53317a726b7e70fef3dd5d2a3d4904199d811419df5";
 const REAL_COMMAND_ORDER_DIGEST =
-  "68c83ce121d95d3fdf92fe894644fdaf1a08ef377926d450caba70248c15fa36";
+  "2560a8339cc871815068837a2d59a0faf94450e939df43c4df303399675b7cb1";
 const PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "ea31285345259f89fbe4cde8d95d6eba05c54932fe36abcacabbc2e85b60da8b";
+  "b41bc6fc818b3340a4bbb6dbe17b0b5607e44e98c7decd9d730c22c9c43e1e8f";
 const PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "31eee684c04a2d6ed5ac1cc0f777b56977f1e774b0cb3b62ba637b9607d61146";
+  "1ce0ad934ba2e5678178bf372e21e243a02723065930611310b1064c19830bb5";
 
 const HISTORY_CATALOGUE_ADDITIONS = [
   {
@@ -210,7 +223,7 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(535);
+      expect(manifest).toHaveLength(518);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -222,7 +235,7 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(528);
+    expect(realTargets).toHaveLength(511);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       REAL_PUBLICATION_ORDER_DIGEST,
     );
@@ -255,7 +268,7 @@ describe("deployable-script catalogue", () => {
       const roles = withRetiredBondRole(
         manifest.map(({ role }) => role ?? null),
       );
-      expect(roles).toHaveLength(528);
+      expect(roles).toHaveLength(511);
       expect(orderDigest(roles)).toEqual(
         PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
       );
@@ -264,7 +277,7 @@ describe("deployable-script catalogue", () => {
           .map(({ name }) => name)
           .filter((name) => !historyRoles.has(name) && !poolRoles.has(name)),
       );
-      expect(targets).toHaveLength(contracts === real ? 521 : 520);
+      expect(targets).toHaveLength(contracts === real ? 504 : 503);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST
@@ -300,14 +313,14 @@ describe("deployable-script catalogue", () => {
       const roles = withRetiredBondRole(
         manifest.map(({ role }) => role ?? null),
       );
-      expect(roles).toHaveLength(534);
+      expect(roles).toHaveLength(517);
       expect(orderDigest(roles)).toEqual(PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST);
       const targets = withRetiredBondRole(
         nodeRuntimeReferenceScriptTargets(contracts)
           .map(({ name }) => name)
           .filter((name) => !poolRoles.has(name)),
       );
-      expect(targets).toHaveLength(contracts === real ? 527 : 526);
+      expect(targets).toHaveLength(contracts === real ? 510 : 509);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST

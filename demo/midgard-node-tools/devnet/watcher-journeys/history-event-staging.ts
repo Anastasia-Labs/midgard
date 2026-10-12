@@ -18,6 +18,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
+import { buildPastProtectedPredecessor } from "midgard-watcher/tests/support/history-predecessor-hold";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import {
@@ -163,7 +164,9 @@ const publishEvent = async (
     if (funding.length === 0)
       throw new Error("No ordinary funding inputs for event publication");
     lucid.overrideUTxOs(funding);
-    const built = await request.build();
+    const built = await buildPastProtectedPredecessor(() =>
+      request.build(),
+    ).finally(() => lucid.clearUTxOOverride());
     const signed = await built.tx.sign.withWallet().complete();
     checkpoint = {
       deploymentFingerprint: deployment.manifest.manifestId,
@@ -217,7 +220,6 @@ const publishEvent = async (
   checkpoint.outcome = "confirmed";
   checkpoint.event = event;
   await writeJourneyArtifact(path, checkpoint);
-  lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
   onStage(`${request.name} inclusion interval`);
   await deployment.chain.awaitLedgerTime(checkpoint.metadata.inclusionTime);
   if (

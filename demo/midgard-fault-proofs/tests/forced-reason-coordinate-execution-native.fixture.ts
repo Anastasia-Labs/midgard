@@ -17,6 +17,7 @@ import {
   encodeMidgardForcedTxCompact,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   EventKeySchema,
   forcedVerdictSubject,
@@ -107,6 +108,7 @@ export const buildExecutionNativeFixture = async () => {
   } as const;
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: Buffer.from(
         Data.to(eventKey as never, EventKeySchema),

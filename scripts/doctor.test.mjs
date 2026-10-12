@@ -17,9 +17,11 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  checkCoreBare,
   checkHooks,
   checkNode,
   checkPnpm,
+  defaultChecks,
   EXIT,
   formatReport,
   main,
@@ -177,6 +179,40 @@ test("outside a repository the hooks check is unknown, not ok", () => {
     rmSync(scratch, { recursive: true, force: true });
   }
 });
+
+const config = (cwd, ...args) =>
+  spawnSync("git", ["config", ...args], { cwd, encoding: "utf8" });
+
+test("core.bare = true fails loudly from the main checkout and a linked worktree, and is left as it is", () =>
+  withRepo((repo, scratch) => {
+    const worktree = join(scratch, "worktree");
+    git(repo, "worktree", "add", "--quiet", "-b", "side", worktree);
+    assert.equal(checkCoreBare({ root: repo }).status, "ok");
+    git(repo, "config", "core.bare", "false");
+    assert.equal(checkCoreBare({ root: worktree }).status, "ok");
+    // What the f87d2c3f1 incident wrote: the shared configuration says bare.
+    git(repo, "config", "core.bare", "true");
+    for (const root of [repo, worktree]) {
+      const row = checkCoreBare({ root });
+      assert.equal(row.status, "failed", root);
+      assert.equal(row.name, "core-bare");
+      assert.match(row.detail, /core\.bare is true in .*\.git\/config/u);
+      assert.match(row.detail, /find what wrote it/u);
+      assert.equal(
+        row.fix,
+        `git config --file ${join(repo, ".git/config")} core.bare false`,
+      );
+    }
+    // Read-only: the doctor never repairs it.
+    assert.equal(config(repo, "--get", "core.bare").stdout, "true\n");
+  }));
+
+test("the core.bare check is one of the doctor's default checks", () =>
+  withRepo((repo) => {
+    git(repo, "config", "core.bare", "true");
+    const row = defaultChecks["core-bare"]({ root: repo });
+    assert.deepEqual([row.name, row.status], ["core-bare", "failed"]);
+  }));
 
 const withDemo = (body) => {
   const scratch = mkdtempSync(join(tmpdir(), "doctor-versions-"));

@@ -1,4 +1,8 @@
 import {
+  parsePromiseCapacityEvidence,
+  promiseCapacityEvidenceKey,
+} from "./availability/promise-capacity-evidence.js";
+import {
   parseDaSignatureRecord,
   parseDaStoredConflictEvidenceRecord,
   parseDaStoredPayloadRecord,
@@ -14,7 +18,6 @@ import {
 } from "./store.parse-decision-outbox-record.js";
 import { parseL1SourceState } from "./store.parse-l1-source-state.js";
 import { parseStoredRecordMap } from "./store.parse-stored-record-map.js";
-import { parseJsonCapacityMap } from "./store/promise-capacity-json.js";
 import { parseRetirementFloor } from "./store/retirement-model.js";
 
 export const normalizeStoreData = (value: unknown): StoreData => {
@@ -26,8 +29,11 @@ export const normalizeStoreData = (value: unknown): StoreData => {
     ...(record.retirementFloor === undefined
       ? {}
       : { retirementFloor: parseRetirementFloor(record.retirementFloor) }),
-    promiseCapacityEvidence: parseJsonCapacityMap(
+    promiseCapacityEvidence: parseStoredRecordMap(
       record.promiseCapacityEvidence,
+      parsePromiseCapacityEvidence,
+      promiseCapacityEvidenceKey,
+      "promise capacity evidence",
     ),
     ...(record.deployment === undefined
       ? {}

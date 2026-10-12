@@ -11,11 +11,12 @@ import {
   generateEmulatorAccount,
   Lucid,
 } from "@lucid-evolution/lucid";
-import { Cause, Effect, Runtime } from "effect";
+import { Cause, Runtime } from "effect";
 import { expect, it } from "vitest";
 
 import type { ProviderRetryOptions } from "../src/provider-retry.js";
 import { ensureReferenceScriptTargetsProgram } from "../src/transactions/reference-scripts.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const IMMEDIATE_RETRY: ProviderRetryOptions = {
   maxAttempts: 3,
@@ -72,7 +73,7 @@ const fixture = async (count: number) => {
     return submit(cbor);
   };
   const run = (roster = targets, minAuthPolicyRemainingMs = 1) =>
-    Effect.runPromise(
+    runWithoutFollower(
       ensureReferenceScriptTargetsProgram(
         lucid,
         "test",

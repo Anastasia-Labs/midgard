@@ -1,23 +1,16 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { CML } from "@lucid-evolution/lucid";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import * as SDK from "@al-ft/midgard-sdk";
 import {
-  CML,
-  Emulator,
-  generateEmulatorAccount,
-  Lucid,
-  type LucidEvolution,
-  paymentCredentialOf,
-  type UTxO,
-} from "@lucid-evolution/lucid";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { availabilityResponderOperations } from "../src/availability/factory.js";
-import { AvailabilityResponder } from "../src/availability/responder.js";
-import type { CanonicalChainPoint } from "../src/l1/provider.js";
+  expectAwaitingScan,
+  expectRefused,
+  expectStillPending,
+  FINALITY,
+  type Fixture,
+  fixture,
+  removeFixtureDirs,
+  TIP_BLOCK_NO,
+} from "./helpers/availability-foreign-spend.js";
 
 /**
  * A committee Publish, Settle or Close spends only protocol UTxOs; the
@@ -33,258 +26,7 @@ import type { CanonicalChainPoint } from "../src/l1/provider.js";
  * them.
  */
 
-const FINALITY = 10;
-const TIP_BLOCK_NO = 1_000;
-const TIP_HASH = "ab".repeat(32);
-const SPEND_POINT = { slot: 500, blockHash: "cd".repeat(32) };
-const DEPLOYMENT = "aa".repeat(32);
-const HEADER = "bb".repeat(28);
-
-const dirs: string[] = [];
-afterEach(() =>
-  dirs
-    .splice(0)
-    .forEach((dir) => rmSync(dir, { recursive: true, force: true })),
-);
-
-const outRef = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex.toString()}`;
-
-type Evidence = {
-  /** The transaction Kupo names as the spender, as Ogmios serves it. */
-  txHash: string;
-  cbor?: string;
-  blockNo: number;
-};
-
-const fixture = async (
-  action: "publish" | "settle" | "close",
-  normalInputs: number,
-) => {
-  const account = generateEmulatorAccount({ lovelace: 500_000_000n });
-  const emulator = new Emulator([account]);
-  emulator.awaitBlock(5);
-  const lucid = await Lucid(emulator, "Custom");
-  lucid.selectWallet.fromSeed(account.seedPhrase);
-  const address = await lucid.wallet().address();
-  const actor = paymentCredentialOf(address).hash;
-  const splitBuilder = lucid.newTx();
-  for (let index = 0; index <= normalInputs; index += 1)
-    splitBuilder.pay.ToAddress(address, { lovelace: 20_000_000n });
-  const split = await (await splitBuilder.complete()).sign
-    .withWallet()
-    .complete();
-  await split.submit();
-  emulator.awaitBlock();
-  const coins = (await lucid.wallet().getUtxos()).filter(
-    (utxo) =>
-      utxo.txHash === split.toHash() && utxo.assets.lovelace === 20_000_000n,
-  );
-  const normal = coins.slice(0, normalInputs);
-  const collateral = coins[normalInputs]!;
-  const spendNormal = async (lovelace: bigint, collateralInput?: UTxO) => {
-    const builder = lucid
-      .newTx()
-      .collectFrom(normal)
-      .pay.ToAddress(address, { lovelace });
-    // Only the committee's own step carries the validity window reconcile
-    // judges; the rival lands as an ordinary transaction.
-    if (collateralInput !== undefined)
-      builder
-        .validFrom(emulator.now() - 60_000)
-        .validTo(emulator.now() + 60_000);
-    const built = (
-      await builder.complete({ coinSelection: false })
-    ).toTransaction();
-    const body = built.body();
-    if (collateralInput !== undefined) {
-      const collateralInputs = CML.TransactionInputList.new();
-      collateralInputs.add(
-        CML.TransactionInput.new(
-          CML.TransactionHash.from_hex(collateralInput.txHash),
-          BigInt(collateralInput.outputIndex),
-        ),
-      );
-      body.set_collateral_inputs(collateralInputs);
-    }
-    return (
-      await lucid
-        .fromTx(
-          CML.Transaction.new(
-            body,
-            built.witness_set(),
-            true,
-            built.auxiliary_data(),
-          ).to_cbor_hex(),
-        )
-        .sign.withWallet()
-        .complete()
-    ).toCBOR();
-  };
-  // The committee signs and persists its step, as the operation executor does
-  // before its first submission.
-  const ours = SDK.inspectDaAvailabilitySignedIntent({
-    deploymentIdentity: DEPLOYMENT,
-    actor,
-    headerHash: HEADER,
-    action,
-    signedCbor: await spendNormal(10_000_000n, collateral),
-  });
-  const dir = mkdtempSync(join(tmpdir(), "committee-foreign-spend-"));
-  dirs.push(dir);
-  const journal = openAvailabilityOperationJournal(join(dir, "journal.sqlite"));
-  const lease = journal.acquire(actor, "setup", Date.now(), 60_000);
-  journal.persist(lease, ours, Date.now());
-  journal.release(lease);
-  // The rival wins: another transaction consumes every normal input.
-  const rivalCbor = await spendNormal(7_000_000n);
-  const rival = CML.hash_transaction(
-    CML.Transaction.from_cbor_hex(rivalCbor).body(),
-  ).to_hex();
-  await lucid.wallet().submitTx(rivalCbor);
-  emulator.awaitBlock();
-  expect(await lucid.utxosByOutRef(normal)).toEqual([]);
-  expect(await lucid.utxosByOutRef([collateral])).toHaveLength(1);
-
-  const chain = {
-    slot: ours.validUntilSlot,
-    /** Tip points served by successive tip reads, before the steady tip. */
-    tipOverrides: [] as (Partial<CanonicalChainPoint> | undefined)[],
-    evidence: {
-      txHash: rival,
-      cbor: rivalCbor,
-      blockNo: TIP_BLOCK_NO - FINALITY,
-    } as Evidence | undefined,
-  };
-  const tip = (): CanonicalChainPoint => ({
-    network: "Custom",
-    slot: chain.slot,
-    blockHash: TIP_HASH,
-    providerSource: "test",
-    observedAt: "test",
-  });
-  const observed: LucidEvolution = {
-    transactionStatus: async (txHash: string) => ({
-      txHash,
-      status: "not_found",
-    }),
-    utxosByOutRef: (refs: Parameters<LucidEvolution["utxosByOutRef"]>[0]) =>
-      lucid.utxosByOutRef(refs),
-  } as unknown as LucidEvolution;
-  const operations = availabilityResponderOperations({
-    lucid: observed,
-    readers: {
-      currentPoint: async () => ({ ...tip(), ...chain.tipOverrides.shift() }),
-      currentCursor: async () => ({
-        sequence: 1,
-        rollbackGeneration: 0,
-        point: tip(),
-      }),
-      tipBlockNo: async () => TIP_BLOCK_NO,
-      resolveInclusion: async () => ({}),
-      foreignSpend: {
-        fetchSpend: async (ref) =>
-          chain.evidence !== undefined &&
-          normal.some(
-            (utxo) =>
-              utxo.txHash === ref.txHash &&
-              utxo.outputIndex === ref.outputIndex,
-          )
-            ? { transactionId: chain.evidence.txHash, point: SPEND_POINT }
-            : undefined,
-        fetchAncestor: async (slot) => ({
-          slot: slot - 1,
-          blockHash: "00".repeat(32),
-        }),
-        readTransaction: async ({ point, txHash }) => ({
-          txHash,
-          point: { ...point, blockNo: chain.evidence!.blockNo },
-          ...(chain.evidence!.cbor === undefined
-            ? {}
-            : { cbor: chain.evidence!.cbor }),
-        }),
-      },
-    },
-    assertSourceHealthy: async () => {},
-    context: {
-      deploymentIdentity: DEPLOYMENT,
-      actor,
-      journal,
-      stateQueuePolicyId: "cc".repeat(28),
-      minimumConfirmationDepth: FINALITY,
-      transactionLimits: {
-        maxTxSize: 16_384,
-        maxTxExMem: 16_500_000n,
-        maxTxExSteps: 10_000_000_000n,
-        coinsPerUtxoByte: 4_310n,
-        feeCeilings: {},
-      },
-      submit: async () => {
-        throw new Error("reconcile must not resubmit a spent intent");
-      },
-    },
-  });
-  const discover = vi.fn(async () => []);
-  const execute = vi.fn(async () => "pending" as const);
-  const responder = new AvailabilityResponder({
-    deploymentFingerprint: "ff".repeat(32),
-    deploymentIdentity: "ee".repeat(28),
-    store: { getDaPayload: async () => undefined } as never,
-    discover,
-    reconcile: operations.reconcile,
-    execute,
-  });
-  const state = () => journal.get(ours.id)?.state;
-  return {
-    chain,
-    ours,
-    normal,
-    collateral,
-    split: { txHash: split.toHash(), cbor: split.toCBOR() },
-    rival: { txHash: rival, cbor: rivalCbor },
-    journal,
-    discover,
-    responder,
-    state,
-  };
-};
-
-type Fixture = Awaited<ReturnType<typeof fixture>>;
-
-const expectStillPending = async (f: Fixture) => {
-  await expect(f.responder.tick()).resolves.toStrictEqual({
-    challenges: 0,
-    status: "pending",
-  });
-  expect(f.discover).not.toHaveBeenCalled();
-  expect(f.state()).toBe("pending");
-  expect(f.journal.reservedOutRefs(f.ours.actor)).toEqual(
-    expect.arrayContaining(f.normal.map(outRef)),
-  );
-};
-
-const expectRefused = async (f: Fixture, message: string | RegExp) => {
-  await expect(f.responder.tick()).rejects.toThrow(message);
-  expectNothingReleased(f);
-};
-
-/** Aborted like a refusal, but reported as the wait it is, not thrown. */
-const expectAwaitingScan = async (f: Fixture) => {
-  await expect(f.responder.tick()).resolves.toStrictEqual({
-    challenges: 0,
-    status: "awaiting_scan",
-    detail:
-      "Availability responder awaits the next canonical committee node L1 scan before acting",
-  });
-  expectNothingReleased(f);
-};
-
-const expectNothingReleased = (f: Fixture) => {
-  expect(f.discover).not.toHaveBeenCalled();
-  expect(f.state()).toBe("pending");
-  expect(f.journal.reservedOutRefs(f.ours.actor)).toEqual(
-    expect.arrayContaining(f.normal.map(outRef)),
-  );
-};
+afterEach(removeFixtureDirs);
 
 const STEPS = [
   // A first-chunk Publish spends the tranche thread alone, so no other input
@@ -330,7 +72,7 @@ describe("committee responder after a rival spent its step's inputs", () => {
       },
     ],
     [
-      "the transaction Kupo names does not list the input",
+      "the stored spender transaction does not list the input",
       (f: Fixture) => {
         f.chain.evidence = { ...f.split, blockNo: TIP_BLOCK_NO - FINALITY };
       },
@@ -348,7 +90,7 @@ describe("committee responder after a rival spent its step's inputs", () => {
       },
     ],
     [
-      "Kupo reports no spend",
+      "the follower holds no spend",
       (f: Fixture) => {
         f.chain.evidence = undefined;
       },
@@ -383,7 +125,7 @@ describe("committee responder after a rival spent its step's inputs", () => {
       "Availability input spend lies above the canonical boundary",
     ],
     [
-      "Ogmios serves the spend without its raw transaction",
+      "the spend is served without its raw transaction",
       (f: Fixture) => {
         delete f.chain.evidence!.cbor;
       },
@@ -404,35 +146,46 @@ describe("committee responder after a rival spent its step's inputs", () => {
 
   it.each([
     [
-      "the tip moves during the height read",
+      "the follower holds the committee unready",
       (f: Fixture) => {
-        f.chain.tipOverrides = [
-          undefined,
-          undefined,
-          { slot: f.chain.slot + 1 },
-        ];
+        f.chain.held = "rollback_beyond_k: rolled back 7 blocks";
       },
+      "rollback_beyond_k: rolled back 7 blocks",
     ],
     [
-      "the height is read at a tip other than the cursor's point",
+      "a rollback undoes the reconciled view while the rival spend is read",
       (f: Fixture) => {
-        f.chain.tipOverrides = [
-          undefined,
-          { blockHash: "ef".repeat(32) },
-          { blockHash: "ef".repeat(32) },
-        ];
+        f.chain.onReadTransaction = () => {
+          f.chain.generation += 1;
+        };
       },
+      "its view rolled back since this pass reconciled; the next pass reconciles again",
     ],
   ])(
-    "awaits the next scan and releases nothing when %s",
-    async (_label, arrange) => {
+    "awaits the follower and releases nothing when %s",
+    async (_label, arrange, detail) => {
       const f = await fixture("settle", 3);
       try {
         arrange(f);
-        await expectAwaitingScan(f);
+        await expectAwaitingScan(f, detail);
       } finally {
         f.journal.close();
       }
     },
   );
+
+  it("awaits the next pass and releases nothing when the follower's view advances during the spend read", async () => {
+    const f = await fixture("settle", 3);
+    try {
+      f.chain.onReadTransaction = () => {
+        f.chain.slot += 1;
+      };
+      await expectAwaitingScan(
+        f,
+        "its view advanced during a canonical spend read; the next pass reads again",
+      );
+    } finally {
+      f.journal.close();
+    }
+  });
 });

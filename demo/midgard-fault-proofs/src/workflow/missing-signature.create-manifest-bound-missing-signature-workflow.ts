@@ -21,7 +21,7 @@ import {
 } from "./deployment-manifest-binding.js";
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  createFraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import { withFieldCarriagePrerequisite } from "./field-carriage-prerequisite.js";
@@ -174,8 +174,8 @@ export const createManifestBoundMissingSignatureWorkflow = async (
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: binding.fieldPreimageCertificate.policyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
+  const l1 = createFraudProofFamilyL1ObservationPort({
+    l1: config.l1Source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: {

@@ -60,9 +60,10 @@ if (args[0] === "--version") {
 const name = process.env.MIDGARD_STUB_MODULE ?? "";
 const selectors = args.filter((_, index) => args[index - 1] === "-m");
 appendFileSync(${JSON.stringify(log)}, selectors.join(" ") + "\\n");
-const tests = selectors.map((selector) => ({
+const tests = selectors.map((selector, index) => ({
   title: selector.replace(/^.*\\{(.*)\\}$/u, "$1"),
   status: "pass",
+  execution_units: { mem: 1_320_000 * (index + 1), cpu: 80_000_000 },
 }));
 const summary = {
   total: tests.length,
@@ -140,6 +141,20 @@ test("a hyphenated module runs and its result is reported", () => {
       JSON.parse(result.stdout).modules[0].name,
       toAikenModule(hyphenated),
     );
+  });
+});
+
+test("a passing run summarises its largest execution units on stderr, leaving stdout the report", () => {
+  withStub((run) => {
+    const result = run("midgard/state_queue", ["first", "second"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).summary.total, 2);
+    const { exUnits } = JSON.parse(result.stderr.trim().split("\n").at(-1));
+    assert.deepEqual(exUnits.maxMem, {
+      test: "midgard/state_queue.second",
+      mem: 2_640_000,
+      ofBasis: "20.0%",
+    });
   });
 });
 

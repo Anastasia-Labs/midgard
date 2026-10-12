@@ -72,8 +72,9 @@ export class DaBondPoolCommitteeProcessError extends Error {
  *   the port's pool snapshot (or the bound passes), and the stderr pool
  *   events and the availability responder reports on stderr and stdout
  *   since the last observation are taken, tied to the pid. An answer whose
- *   L1 source is quarantined is recorded, then fails the observation: the
- *   node reads no L1 again and exits once its L1 view goes stale.
+ *   L1 follower holds it on an intervention (`l1Source.status` is
+ *   `intervention`, such as `rollback_beyond_k`) is recorded, then fails the
+ *   observation: no wait clears it, and the node stays up and unready.
  * - `stop`: SIGTERM, exit 0 required; the submitter UTxOs stay unchanged
  *   for `daBondPoolCommitteeStopSettleMs(nodeCadence)` after the exit.
  */
@@ -238,9 +239,9 @@ export const createDaBondPoolCommitteeObserver = (deps: {
         reads: sync.reads,
       });
       const l1Source = sync.readyz.l1Source;
-      if (l1Source?.status === "quarantined")
+      if (l1Source?.status === "intervention")
         throw new DaBondPoolCommitteeProcessError(
-          `The committee node (pid ${node.pid.toString()}) quarantined its L1 source: ${l1Source.quarantineReason ?? "no reason given"}; /readyz: ${sync.read.body}`,
+          `The committee node (pid ${node.pid.toString()}) is held on an L1 follower intervention: ${l1Source.intervention ?? "no reason given"}; /readyz: ${sync.read.body}`,
         );
       return observation;
     },
@@ -285,7 +286,3 @@ export const createDaBondPoolCommitteeObserver = (deps: {
     },
   };
 };
-
-export type DaBondPoolCommitteeObserver = ReturnType<
-  typeof createDaBondPoolCommitteeObserver
->;

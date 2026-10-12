@@ -1,5 +1,4 @@
 import {
-  computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
   daDeploymentFingerprintFromHex,
   type DaPayloadChunkManifest,
@@ -27,6 +26,7 @@ import {
   type RetainedDaFetchAttemptStatus,
   type RetainedDaLibp2pPeer,
   type RetainedDaLibp2pTransport,
+  type RetainedDaPayloadFetchOptions,
   type RetainedDaPayloadSource,
   type RetainedDaPayloadSourceResult,
   type RetainedDaProofBundle,
@@ -34,6 +34,18 @@ import {
   type SourceFailure,
   type SourceSuccess,
 } from "./fetch.admit-retained-da-provenance.js";
+import {
+  assertHash,
+  InvalidRetainedDaResponseError,
+  PeerConflictDaResponseError,
+  PeerRejectedDaRequestError,
+  statusFromError,
+} from "./fetch.retained-da-response-errors.js";
+
+type PeerPayload = {
+  readonly payloadEnvelopeCbor: Buffer;
+  readonly metadata?: unknown;
+};
 
 export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
   readonly sourceId: string;
@@ -62,34 +74,16 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
 
   async fetchPayloadByHeaderHash(
     headerHash: string,
+    options: RetainedDaPayloadFetchOptions = {},
   ): Promise<RetainedDaPayloadSourceResult> {
     const normalizedHeaderHash = normalizeHeaderHash(headerHash);
     const headerHashBytes = Buffer.from(normalizedHeaderHash, "hex");
     const attempts: RetainedDaFetchAttempt[] = [];
 
     for (const peer of this.peers) {
+      let result: PeerPayload | undefined;
       try {
-        const result = await this.fetchPayloadFromPeer(peer, headerHashBytes);
-        if (result === undefined) {
-          attempts.push(
-            this.attempt({
-              peer,
-              protocol: DaRequestResponseProtocol.payloadByHeader,
-              status: "not_found",
-              detail: "payload not found",
-            }),
-          );
-          continue;
-        }
-        return {
-          ok: true,
-          provenance: admitRetainedDaProvenance(this.sourceId, peer.peerId),
-          sourceId: this.sourceId,
-          sourcePeerId: peer.peerId,
-          payloadEnvelopeCbor: result.payloadEnvelopeCbor,
-          metadata: result.metadata,
-          attempts,
-        };
+        result = await this.fetchPayloadFromPeer(peer, headerHashBytes);
       } catch (error) {
         attempts.push(
           this.attemptFromError(
@@ -98,7 +92,41 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
             error,
           ),
         );
+        continue;
       }
+      if (result === undefined) {
+        attempts.push(
+          this.attempt({
+            peer,
+            protocol: DaRequestResponseProtocol.payloadByHeader,
+            status: "not_found",
+            detail: "payload not found",
+          }),
+        );
+        continue;
+      }
+      // Outside the transport catch: a verifier fault is not a peer failure.
+      const verdict = await options.verifyPayload?.(result.payloadEnvelopeCbor);
+      if (verdict?.ok === false) {
+        attempts.push(
+          this.attempt({
+            peer,
+            protocol: DaRequestResponseProtocol.payloadByHeader,
+            status: "failed_verification",
+            detail: verdict.reason,
+          }),
+        );
+        continue;
+      }
+      return {
+        ok: true,
+        provenance: admitRetainedDaProvenance(this.sourceId, peer.peerId),
+        sourceId: this.sourceId,
+        sourcePeerId: peer.peerId,
+        payloadEnvelopeCbor: result.payloadEnvelopeCbor,
+        metadata: result.metadata,
+        attempts,
+      };
     }
 
     return { ok: false, sourceId: this.sourceId, attempts };
@@ -334,13 +362,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
   private async fetchPayloadFromPeer(
     peer: RetainedDaLibp2pPeer,
     headerHash: Buffer,
-  ): Promise<
-    | {
-        readonly payloadEnvelopeCbor: Buffer;
-        readonly metadata?: unknown;
-      }
-    | undefined
-  > {
+  ): Promise<PeerPayload | undefined> {
     const response = decodeDaPayloadByHeaderResponseCbor(
       await this.request(
         peer,
@@ -534,50 +556,3 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
     });
   }
 }
-
-class InvalidRetainedDaResponseError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InvalidRetainedDaResponseError";
-  }
-}
-
-class PeerRejectedDaRequestError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PeerRejectedDaRequestError";
-  }
-}
-
-class PeerConflictDaResponseError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PeerConflictDaResponseError";
-  }
-}
-
-const assertHash = (
-  bytes: Buffer,
-  expectedHash: Buffer,
-  message: string,
-): void => {
-  if (!computeDaSha256Hash(bytes).equals(expectedHash)) {
-    throw new InvalidRetainedDaResponseError(message);
-  }
-};
-
-const statusFromError = (error: unknown): RetainedDaFetchAttemptStatus => {
-  if (error instanceof PeerRejectedDaRequestError) {
-    return "rejected";
-  }
-  if (error instanceof PeerConflictDaResponseError) {
-    return "conflict";
-  }
-  if (error instanceof InvalidRetainedDaResponseError) {
-    return "invalid_content";
-  }
-  if (error instanceof Error && error.name === "TimeoutError") {
-    return "timeout";
-  }
-  return "transport_error";
-};

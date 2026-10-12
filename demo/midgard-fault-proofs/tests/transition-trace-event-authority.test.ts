@@ -1,4 +1,3 @@
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,6 +9,7 @@ import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-sn
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  RELEASE_L1_FINALITY_POLICY,
 } from "../src/workflow/release-finality-policy.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
 import {
@@ -26,7 +26,7 @@ describe("transition event authority raw test transport", () => {
       await captureRetainedPlutusIdentityOrigins(fixture, { omitEvent: true }),
     ).snapshot;
     // Must equal the retained fixture's policy, which follows the selected profile.
-    const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
+    const policy = { ...RELEASE_L1_FINALITY_POLICY };
     const binding = {
       deploymentFingerprint: "d1".repeat(32),
       network: "Preprod",

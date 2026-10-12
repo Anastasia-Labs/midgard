@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -583,22 +584,40 @@ const completedEntry = (value = terminal) =>
     terminalDigest: journalJsonDigest(value),
   });
 
-it("never promotes terminal inclusion into a finalized evidence stamp", () => {
-  const included = entry(8, {
+const includedEntry = (value = terminal) =>
+  entry(8, {
     kind: "terminal_included",
-    terminal,
-    terminalDigest: journalJsonDigest(terminal),
+    terminal: value,
+    terminalDigest: journalJsonDigest(value),
   });
-  expect(journeyAnchoredEvidence([...baseline, included])).toBeUndefined();
+
+it("anchors the last included terminal unless a completed one exists", () => {
+  const replaced = {
+    ...terminal,
+    observedAt: { ...terminal.observedAt, slot: "9999" },
+  };
+  expect(journeyAnchoredEvidence(baseline)).toBeUndefined();
   expect(
-    journeyAnchoredEvidence([...baseline, included, completedEntry()]),
-  ).toEqual(terminal);
+    journeyAnchoredEvidence([
+      ...baseline,
+      includedEntry(),
+      includedEntry(replaced),
+    ]),
+  ).toEqual({ kind: "terminal_included", terminal: replaced });
+  expect(
+    journeyAnchoredEvidence([
+      ...baseline,
+      includedEntry(replaced),
+      completedEntry(),
+    ]),
+  ).toEqual({ kind: "completed", terminal });
   expect(() =>
     journeyAnchoredEvidence([completedEntry(), completedEntry()]),
   ).toThrow();
 });
 
-it("resumes pending stamps across family boundaries and accepts a reauthenticated replacement point", async () => {
+/** One family's durable pending stamp over a stubbed workflow journal. */
+const pendingStampFixture = async () => {
   const directory = await mkdtemp(join(tmpdir(), "journey-anchor-"));
   const familyDirectory = join(directory, "transition-trace");
   const workflowJournalDirectory = join(directory, "workflows");
@@ -623,22 +642,29 @@ it("resumes pending stamps across family boundaries and accepts a reauthenticate
     terminalObservedAt: "2026-09-13T00:00:00Z",
     successorTxHash: "90".repeat(32),
   };
-  const input = {
-    ...request,
-    journeysDirectory: directory,
-    workflowJournalDirectory,
-    nativeEvidencePath: join(directory, "native-chain.ndjson"),
-    authenticate: vi.fn().mockResolvedValue(false),
-  };
-  const load = vi.spyOn(
-    DirectoryFraudProofWorkflowJournalStore.prototype,
-    "load",
+  await writeJourneyArtifact(
+    join(familyDirectory, "pending-evidence-stamp.json"),
+    request,
   );
+  return {
+    request,
+    stampPath: join(familyDirectory, "finalized-evidence-stamp.json"),
+    input: {
+      ...request,
+      journeysDirectory: directory,
+      workflowJournalDirectory,
+      nativeEvidencePath: join(directory, "native-chain.ndjson"),
+      authenticate: vi.fn().mockResolvedValue(false),
+    },
+    load: vi.spyOn(DirectoryFraudProofWorkflowJournalStore.prototype, "load"),
+    cleanup: () => rm(directory, { recursive: true, force: true }),
+  };
+};
+
+it("resumes pending stamps across family boundaries and accepts a reauthenticated replacement point", async () => {
+  const { request, stampPath, input, load, cleanup } =
+    await pendingStampFixture();
   try {
-    await writeJourneyArtifact(
-      join(familyDirectory, "pending-evidence-stamp.json"),
-      request,
-    );
     load.mockResolvedValue([]);
     expect(await finalizePendingJourneyEvidence(input)).toBe(1);
     const replacement = {
@@ -649,6 +675,7 @@ it("resumes pending stamps across family boundaries and accepts a reauthenticate
     expect(await finalizePendingJourneyEvidence(input)).toBe(1);
     // A resumed batch has its own complete raw capture; pending stamps may
     // use it, while a completed stamp keeps its original evidence path.
+    const directory = input.journeysDirectory;
     input.nativeEvidencePath = join(
       directory,
       "session-2",
@@ -656,10 +683,10 @@ it("resumes pending stamps across family boundaries and accepts a reauthenticate
     );
     input.authenticate.mockResolvedValue(true);
     expect(await finalizePendingJourneyEvidence(input)).toBe(0);
-    const stampPath = join(familyDirectory, "finalized-evidence-stamp.json");
     const stamp = await readJourneyArtifact(stampPath);
     expect(stamp).toMatchObject({
       ...request,
+      terminalKind: "completed",
       terminal: replacement,
       nativeEvidencePath: input.nativeEvidencePath,
     });
@@ -675,60 +702,66 @@ it("resumes pending stamps across family boundaries and accepts a reauthenticate
     expect(await readJourneyArtifact(stampPath)).toEqual(stamp);
   } finally {
     load.mockRestore();
-    await rm(directory, { recursive: true, force: true });
+    await cleanup();
   }
 });
 
-it("refuses a completed terminal below the bound release depth", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "journey-anchor-depth-"));
-  const familyDirectory = join(directory, "transition-trace");
-  const workflowJournalDirectory = join(directory, "workflows");
-  await mkdir(familyDirectory);
-  await mkdir(
-    join(
-      workflowJournalDirectory,
-      "fault-proofs",
-      identity.category,
-      identity.target.headerHash,
-      computeFraudProofWorkflowId(identity),
-    ),
-    { recursive: true },
-  );
-  const request = {
-    category: identity.category,
-    headerHash: identity.target.headerHash,
-    deploymentFingerprint: identity.deploymentFingerprint,
-    releaseFinalityPolicyDigest: "78".repeat(32),
-    finalityDepth: 30,
-    completedAtConfirmationDepth: 1,
-    terminalObservedAt: "2026-09-13T00:00:00Z",
-    successorTxHash: "90".repeat(32),
-  };
-  const load = vi
-    .spyOn(DirectoryFraudProofWorkflowJournalStore.prototype, "load")
-    .mockResolvedValue([
-      completedEntry({
-        ...terminal,
-        observedAt: { ...terminal.observedAt, confirmationDepth: 1 },
-      }),
-    ]);
-  try {
-    await writeJourneyArtifact(
-      join(familyDirectory, "pending-evidence-stamp.json"),
-      request,
-    );
-    await expect(
-      finalizePendingJourneyEvidence({
+it.each([true, false])(
+  "stamps a shallow included terminal only once the native recorder authenticates its release depth (%s)",
+  async (authenticated) => {
+    const { request, stampPath, input, load, cleanup } =
+      await pendingStampFixture();
+    const shallow = {
+      ...terminal,
+      observedAt: { ...terminal.observedAt, confirmationDepth: 1 },
+    };
+    const records = [...baseline, includedEntry(shallow)];
+    load.mockResolvedValue(records);
+    input.authenticate.mockResolvedValue(authenticated);
+    try {
+      expect(await finalizePendingJourneyEvidence(input)).toBe(
+        authenticated ? 0 : 1,
+      );
+      expect(input.authenticate).toHaveBeenCalledExactlyOnceWith(
+        request,
+        shallow,
+      );
+      if (!authenticated) {
+        expect(existsSync(stampPath)).toBe(false);
+        return;
+      }
+      expect(await readJourneyArtifact(stampPath)).toMatchObject({
         ...request,
-        journeysDirectory: directory,
-        workflowJournalDirectory,
-        nativeEvidencePath: join(directory, "native-chain.ndjson"),
-        authenticate: async () => true,
-      }),
-    ).rejects.toThrow();
+        terminalKind: "terminal_included",
+        terminal: shallow,
+      });
+      expect(
+        await readJourneyArtifact(
+          join(stampPath, "..", "finalized-workflow.json"),
+        ),
+      ).toEqual(records);
+    } finally {
+      load.mockRestore();
+      await cleanup();
+    }
+  },
+);
+
+it("refuses a completed terminal below the bound release depth", async () => {
+  const { stampPath, input, load, cleanup } = await pendingStampFixture();
+  load.mockResolvedValue([
+    completedEntry({
+      ...terminal,
+      observedAt: { ...terminal.observedAt, confirmationDepth: 1 },
+    }),
+  ]);
+  input.authenticate.mockResolvedValue(true);
+  try {
+    await expect(finalizePendingJourneyEvidence(input)).rejects.toThrow();
+    expect(existsSync(stampPath)).toBe(false);
   } finally {
     load.mockRestore();
-    await rm(directory, { recursive: true, force: true });
+    await cleanup();
   }
 });
 

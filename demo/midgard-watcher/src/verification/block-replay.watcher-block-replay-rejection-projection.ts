@@ -232,7 +232,7 @@ export const orderStageMismatches = (
 // Prior state
 // ---------------------------------------------------------------------------
 
-/** A prior-state ledger entry as the W21 store holds it: hex out-ref and output. */
+/** A prior-state ledger entry as the parent block's canonical reconstruction holds it: hex out-ref and output. */
 export type WatcherBlockReplayPriorUtxo = Readonly<{
   outRef: string;
   outputCbor: string;

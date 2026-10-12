@@ -4,6 +4,7 @@ import {
   computeDeploymentManifestJsonDigest,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { expect } from "vitest";
 
 import {
@@ -43,6 +44,7 @@ export const fixture = (network: "Preprod" | "Custom" = "Preprod") => {
   });
   const bundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       manifestId: manifest.manifestId,
       network,
       blueprintHash: BLUEPRINT_HASH,

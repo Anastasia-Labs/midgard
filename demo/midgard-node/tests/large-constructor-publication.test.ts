@@ -1,10 +1,10 @@
-import { Effect } from "effect";
 import { expect, it } from "vitest";
 
 import {
   ensureReferenceScriptTargetsProgram,
   nodeRuntimeReferenceScriptTargets,
 } from "../src/transactions/reference-scripts.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   initEmulatorLucid,
   loadContracts,
@@ -27,7 +27,7 @@ it("publishes large constructor via actual production authenticated publisher", 
     console.info("actual-production-publication", cbor.length / 2);
     return hash;
   };
-  const published = await Effect.runPromise(
+  const published = await runWithoutFollower(
     ensureReferenceScriptTargetsProgram(
       referenceScriptsLucid,
       "large constructor fit",

@@ -8,20 +8,6 @@ export type ValidatorScenarioPair = Readonly<{
 export const VALIDATOR_SCENARIOS: Readonly<
   Record<string, ValidatorScenarioPair>
 > = {
-  "fraud_proofs/missing_native_script_utxo/step_05.main": {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-native-script-utxo.test.ts",
-        test: "authenticates predecessor material through the $terminalPath path, cancels and resumes, removes the header, and retains permanent evidence",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-native-script-utxo.test.ts",
-        test: "refuses an authenticated present script at step-05 against the missing-script control",
-      },
-    ],
-  },
   "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1.main":
     {
       passing: [

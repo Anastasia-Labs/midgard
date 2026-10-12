@@ -1,5 +1,6 @@
 import "./mempool-ledger-cache.canonical-history-cache-retirement.js";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation";
 import { Deferred, Effect, Fiber, Metric, Ref } from "effect";
 import { describe, expect, it } from "vitest";
@@ -784,7 +785,11 @@ describe("mempool ledger cache", () => {
         const verdict = yield* runPhaseBValidationWithPatch(
           [candidate],
           cached,
-          { nowCardanoSlotNo: 0n, bucketConcurrency: 1 },
+          {
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+            nowCardanoSlotNo: 0n,
+            bucketConcurrency: 1,
+          },
         );
         expect(verdict.accepted.map((tx) => tx.ledgerTx.txId)).toStrictEqual([
           candidate.ledgerTx.txId,
@@ -823,7 +828,11 @@ describe("mempool ledger cache", () => {
               const verdict = yield* runPhaseBValidationWithPatch(
                 [candidate],
                 state,
-                { nowCardanoSlotNo: 0n, bucketConcurrency: 1 },
+                {
+                  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+                  nowCardanoSlotNo: 0n,
+                  bucketConcurrency: 1,
+                },
               );
               yield* service.applyPatchAndSync(verdict.statePatch);
               return verdict;

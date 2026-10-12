@@ -191,20 +191,20 @@ test("copying an identical dist from another checkout is refused", (t) => {
   assert.match(checkBuild(second, "example").reason, /another.*checkout/u);
 });
 
-test("watcher native outputs have separate ownership from compiled JavaScript", (t) => {
+test("native outputs have separate ownership from compiled JavaScript", (t) => {
   const root = fixture(t);
-  const directory = "demo/midgard-watcher/dist";
+  const directory = "demo/l1-node-transport/dist";
   renameSync(
     resolve(root, "demo/example"),
-    resolve(root, "demo/midgard-watcher"),
+    resolve(root, "demo/l1-node-transport"),
   );
-  atomicJson(resolve(root, "demo/midgard-watcher/package.json"), {
-    name: "midgard-watcher",
+  atomicJson(resolve(root, "demo/l1-node-transport/package.json"), {
+    name: "@al-ft/l1-node-transport",
   });
   const before = outputIdentity(root, directory).sha256;
   mkdirSync(resolve(root, directory, "native"));
   writeFileSync(
-    resolve(root, directory, "native/midgard-chain-sync"),
+    resolve(root, directory, "native/midgard-l1-node-transport"),
     "Go binary",
   );
   assert.equal(
@@ -225,12 +225,13 @@ test("watcher native outputs have separate ownership from compiled JavaScript", 
   writeFileSync(resolve(root, directory, "index.js"), "tampered JavaScript");
   assert.notEqual(outputIdentity(root, directory).sha256, withSibling);
   renameSync(
-    resolve(root, "demo/midgard-watcher"),
+    resolve(root, "demo/l1-node-transport"),
     resolve(root, "demo/example"),
   );
+  atomicJson(resolve(root, "demo/example/package.json"), { name: "example" });
   const ordinary = outputIdentity(root, "demo/example/dist").sha256;
   writeFileSync(
-    resolve(root, "demo/example/dist/native/midgard-chain-sync"),
+    resolve(root, "demo/example/dist/native/midgard-l1-node-transport"),
     "changed",
   );
   assert.notEqual(

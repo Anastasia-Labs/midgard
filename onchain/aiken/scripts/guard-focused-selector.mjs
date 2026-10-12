@@ -18,6 +18,9 @@
 // rules: it prints the collected count and fails on zero, on any failing
 // test, and on a missing report.
 //
+// Each passing selector's line also carries `exUnits`: its largest unit-test
+// memory and CPU readings, each as a share of the GOAL_SPEC §3.3 basis.
+//
 // Complete CI coverage uses a fresh source-derived module plan and raw reports:
 //   --plan-shards <count> [--seed <uint32>] --output <plan.json>
 //   --shard <index> --plan <plan.json> --output <artifact.json>
@@ -31,6 +34,7 @@ import { fileURLToPath } from "node:url";
 
 import { assertPinnedAiken, defaultAikenBinary } from "./pinned-compiler.mjs";
 import { runShardInvocation } from "./complete-test-shards.mjs";
+import { GOAL_SPEC_EXECUTION_BASIS_V1 } from "./exec-ledger-within-basis-v1.mjs";
 
 const MAX_SELECTOR_COUNT = 64;
 const MAX_SELECTOR_LENGTH = 256;
@@ -93,6 +97,49 @@ const listFailures = (report) => {
       ? `\n  ... and ${String(failures.length - MAX_LISTED_FAILURES)} more`
       : "";
   return `${listed}${more}`;
+};
+
+const share = (units, basis) => `${((100 * units) / basis).toFixed(1)}%`;
+
+// The largest execution units a report's unit tests measured, against the
+// GOAL_SPEC §3.3 basis. `aiken check` prints units per test and compares them
+// to nothing; a test is not a transaction, so this is a reading, not a gate.
+// Property tests report no units and are not counted.
+export const exUnitsSummary = (report) => {
+  const measured = (
+    Array.isArray(report?.modules) ? report.modules : []
+  ).flatMap((module) =>
+    (Array.isArray(module?.tests) ? module.tests : [])
+      .filter(
+        (test) =>
+          Number.isSafeInteger(test?.execution_units?.mem) &&
+          Number.isSafeInteger(test?.execution_units?.cpu),
+      )
+      .map((test) => ({
+        test: `${String(module.name)}.${String(test.title)}`,
+        ...test.execution_units,
+      })),
+  );
+  if (measured.length === 0) {
+    return { unitTests: 0 };
+  }
+  const largest = (key) =>
+    measured.reduce((top, next) => (next[key] > top[key] ? next : top));
+  const mem = largest("mem");
+  const cpu = largest("cpu");
+  return {
+    unitTests: measured.length,
+    maxMem: {
+      test: mem.test,
+      mem: mem.mem,
+      ofBasis: share(mem.mem, GOAL_SPEC_EXECUTION_BASIS_V1.memoryUnits),
+    },
+    maxCpu: {
+      test: cpu.test,
+      cpu: cpu.cpu,
+      ofBasis: share(cpu.cpu, GOAL_SPEC_EXECUTION_BASIS_V1.cpuUnits),
+    },
+  };
 };
 
 // `result` is the shape spawnSync returns: { stdout, status, error }.
@@ -165,7 +212,14 @@ export const evaluateSelectorReport = (selector, result) => {
     };
   }
 
-  return { selector, total, passed, failed, ok: true };
+  return {
+    selector,
+    total,
+    passed,
+    failed,
+    exUnits: exUnitsSummary(report),
+    ok: true,
+  };
 };
 
 export const runSelector = (
@@ -230,6 +284,7 @@ if (isMain) {
               collected: outcome.total,
               passed: outcome.passed,
               failed: outcome.failed,
+              exUnits: outcome.exUnits,
             })}\n`,
           );
         } else {

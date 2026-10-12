@@ -12,7 +12,7 @@ import {
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import { type FraudProofFamilyL1ObservationPort } from "./family-l1-observation.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 import {
   admitMissingSignatureArtifact,
   type BoundMissingSignatureTransactionsConfig,
@@ -292,7 +292,7 @@ export type ManifestBoundMissingSignatureWorkflowConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   referenceScripts: MissingSignatureWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 

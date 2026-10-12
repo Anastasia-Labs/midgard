@@ -20,6 +20,14 @@ pub fn expect_non_negative(value: Int) -> Int {
   value
 }
 
+/// A body validity bound (`docs/spec/midgard-tx.md` §2.1): `-1` for an absent
+/// bound or a non-negative slot. Anything below `-1` is not a decodable body,
+/// so every body decoder and encoder runs its two bounds through this.
+pub fn expect_validity_bound(value: Int) -> Int {
+  expect value >= -1
+  value
+}
+
 pub fn expect_validity_code(value: Int) -> Int {
   expect _non_negative = expect_non_negative(value)
   expect value <= 1

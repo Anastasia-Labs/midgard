@@ -14,7 +14,6 @@ export {
   deriveCalibratedClientCapacity,
   isDrainComplete,
   maxRollingRate,
-  quantile,
   rateBetweenCounters,
   summarizeCounterWindow,
   summarizeLatency,

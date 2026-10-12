@@ -6,6 +6,10 @@ import {
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  EMPTY_WALLET_INPUTS_CAUSE,
+  emptyWalletInputsRefusal,
+} from "../tx-completion.js";
 import { isPureAdaUtxo } from "./assets.js";
 import { fail, ReservePayoutTxError } from "./errors.js";
 import * as SDK from "./primitives.js";
@@ -104,14 +108,52 @@ export const fetchProviderVisibleWalletInputsProgram = (
     });
   });
 
+/**
+ * The wallet's coins for a reserve/payout build: exactly `walletInputs` when
+ * the caller hands them (its view of the wallet), otherwise the coins the
+ * provider shows at the selected wallet's address.
+ */
+export const fetchWalletInputsProgram = (
+  lucid: LucidEvolution,
+  walletInputs: readonly UTxO[] | undefined,
+): Effect.Effect<readonly UTxO[], SDK.LucidError> =>
+  walletInputs === undefined
+    ? fetchProviderVisibleWalletInputsProgram(lucid)
+    : Effect.succeed(walletInputs);
+
+/**
+ * Selects the transaction's disposable fee input. With `walletInputs` the
+ * input is chosen from exactly those (an empty set is refused by name, and an
+ * explicit fee input must be one of them); without them, from the provider's
+ * view of the selected wallet.
+ */
 export const selectFeeInputProgram = (
   lucid: LucidEvolution,
   explicitFeeInput: UTxO | undefined,
   excluded: readonly OutRefLike[],
+  walletInputs?: readonly UTxO[],
 ): Effect.Effect<UTxO, ReservePayoutTxError | SDK.LucidError> =>
   Effect.gen(function* () {
+    const emptyInputs = emptyWalletInputsRefusal(
+      walletInputs,
+      "the reserve/payout transaction",
+    );
+    if (emptyInputs !== null) {
+      return yield* fail(emptyInputs, EMPTY_WALLET_INPUTS_CAUSE);
+    }
     const excludedKeys = new Set(excluded.map(outRefLabel));
     if (explicitFeeInput !== undefined) {
+      if (
+        walletInputs !== undefined &&
+        !walletInputs.some(
+          (utxo) => outRefLabel(utxo) === outRefLabel(explicitFeeInput),
+        )
+      ) {
+        return yield* fail(
+          "Explicit fee input for reserve/payout transaction is not among the wallet inputs",
+          { feeInput: outRefLabel(explicitFeeInput) },
+        );
+      }
       if (excludedKeys.has(outRefLabel(explicitFeeInput))) {
         return yield* fail(
           "Explicit fee input overlaps a protected reserve/payout transaction input",
@@ -137,7 +179,7 @@ export const selectFeeInputProgram = (
       }
       return explicitFeeInput;
     }
-    const walletUtxos = yield* fetchProviderVisibleWalletInputsProgram(lucid);
+    const walletUtxos = yield* fetchWalletInputsProgram(lucid, walletInputs);
     const candidates = disposableFeeInputCandidates(walletUtxos, excluded);
     const selected = candidates[0];
     if (selected === undefined) {

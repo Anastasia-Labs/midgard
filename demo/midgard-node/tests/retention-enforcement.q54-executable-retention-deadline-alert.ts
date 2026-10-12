@@ -5,7 +5,6 @@ import {
   RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -16,10 +15,7 @@ import {
   parseRetentionAlertThresholdOption,
   retentionCheckExitCode,
 } from "../src/commands/retention-check.js";
-import {
-  DaPayloadsDB,
-  DaPayloadTerminalOutcomesDB,
-} from "../src/database/index.js";
+import { DaPayloadsDB } from "../src/database/index.js";
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { deterministicFixtureBytes } from "./utils.js";
 
@@ -211,32 +207,6 @@ describe("Q54 executable retention deadline alert", () => {
       );
     }
   });
-});
-
-describe("Q54 authenticated release retention authority", () => {
-  it("admits the deployment identity and finality depth", () => {
-    expect(
-      DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority(
-        deploymentManifest,
-      ),
-    ).toMatchObject({
-      minimumFinalityDepth: BigInt(
-        SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth,
-      ),
-    });
-  });
-
-  it.each(["active", "unknown"] as const)(
-    "rejects caller-authored Q58 %s state",
-    (state) => {
-      expect(
-        DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority({
-          ...deploymentManifest,
-          availabilityChallenges: { state },
-        }),
-      ).toBeNull();
-    },
-  );
 });
 
 export const dbEnabled = process.env.MIDGARD_SKIP_DB_TESTS !== "1";

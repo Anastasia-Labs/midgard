@@ -346,7 +346,12 @@ export const verifyFinalizedDeploymentManifest = (
   );
   requireExactKeys(
     l1Finality,
-    ["confirmationDepth", "automaticRecoveryMaxDepth", "deepRollbackPolicy"],
+    [
+      "confirmationDepth",
+      "commitEventDepth",
+      "automaticRecoveryMaxDepth",
+      "deepRollbackPolicy",
+    ],
     [],
     "l1Finality",
   );

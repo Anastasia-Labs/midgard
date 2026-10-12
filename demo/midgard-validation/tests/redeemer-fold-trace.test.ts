@@ -2,6 +2,7 @@ import {
   encodeMidgardCekProgramMaterialSidecar,
   MidgardRedeemerItemProofModes,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   hashMidgardRedeemerItemLeaf,
   hashMidgardScriptExecutionLeaf,
@@ -74,6 +75,7 @@ const acceptedTrace = async ({
   });
   return Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...context,
       transactionId: transaction.txId,
       canonicalTransactionCbor: transaction.txCbor,

@@ -57,7 +57,6 @@ export const publishJourneyForcedOrder = async (
           "Cannot replace a forced order bound by a signed or published fault commitment",
         );
     }
-    lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
     const nonceInput = (await lucid.wallet().getUtxos()).find(
       (utxo) =>
         utxo.datum == null &&
@@ -68,16 +67,9 @@ export const publishJourneyForcedOrder = async (
     if (nonceInput === undefined)
       throw new Error("No ordinary funding input for forced order");
     const mintingReference = deployment.references.get("txOrderMint");
-    const refund = await Effect.runPromise(
+    const refundAddress: SDK.TxOrderRefundAddress = await Effect.runPromise(
       SDK.addressDataFromBech32(await lucid.wallet().address()),
     );
-    const refundAddress: SDK.TxOrderRefundAddress = {
-      paymentCredential: refund.paymentCredential,
-      stakeCredential:
-        refund.stakeCredential !== null && "Pointer" in refund.stakeCredential
-          ? { Pointer: refund.stakeCredential.Pointer[0] }
-          : refund.stakeCredential,
-    };
     const order = await Effect.runPromise(
       SDK.buildUnsignedTxOrderTxWithMetadataProgram(lucid, contracts, {
         submittedTxCbor: submittedTxCbor.toString("hex"),
@@ -159,7 +151,6 @@ export const publishJourneyForcedOrder = async (
     if (disposition.kind === "included") {
       checkpoint.confirmed = true;
       await writeJourneyArtifact(checkpointPath, checkpoint);
-      lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
       break;
     }
     onStage(

@@ -127,12 +127,8 @@ try {
   const changedCollateral = await complete(10_000_000n, {
     setCollateral: 8_000_000n,
   });
-  // Collateral is sized from the collateral-free draft, whose fee is below the
-  // final one: without a floor it falls short of the final fee's percentage.
-  let finalFeeCollateralError;
-  await complete(10_000_000n, { setCollateral: 0n }).catch((error) => {
-    finalFeeCollateralError = String(error);
-  });
+  // Collateral set below the final fee's percentage is topped up in place.
+  const zeroCollateral = await complete(10_000_000n, { setCollateral: 0n });
   // Below the bootstrap replay's maximum-budget fee, above the final fee.
   const lowCollateral = await complete(10_000_000n, {
     setCollateral: 1_000_000n,
@@ -145,7 +141,7 @@ try {
     name: "stateful-callback-semantics",
     async evaluate({ tx, additionalUTxOs }) {
       recorded.push(digest(tx));
-      if (recorded.length === 4) throw new Error(customFailure);
+      if (recorded.length === 3) throw new Error(customFailure);
       return await emulator.evaluateTx(tx, additionalUTxOs);
     },
   });
@@ -175,7 +171,7 @@ try {
     second,
     changed,
     changedCollateral,
-    finalFeeCollateralError,
+    zeroCollateral,
     lowCollateral,
     customRequests,
     configuredCustomRequests,

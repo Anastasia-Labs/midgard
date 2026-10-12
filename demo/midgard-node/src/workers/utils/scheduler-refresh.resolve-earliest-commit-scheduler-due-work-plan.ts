@@ -1,8 +1,8 @@
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
 import { outRefLabel } from "../../tx-context.js";
 import {
   type CommitSchedulerDiscoveryStage,

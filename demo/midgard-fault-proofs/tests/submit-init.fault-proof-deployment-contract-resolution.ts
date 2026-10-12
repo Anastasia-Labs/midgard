@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildDoubleSpendFaultProofContracts,
   buildFaultProofContracts,
@@ -40,6 +41,7 @@ describe("fault-proof deployment contract resolution", () => {
     const blueprint = readBlueprint();
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -234,6 +236,7 @@ describe("fault-proof deployment contract resolution", () => {
     const blueprint = readBlueprint();
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -273,6 +276,7 @@ describe("fault-proof deployment contract resolution", () => {
     const blueprint = readBlueprint();
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -399,6 +403,7 @@ describe("fault-proof deployment contract resolution", () => {
     const blueprint = readBlueprint();
     const contracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28,
@@ -499,6 +504,7 @@ describe("fault-proof deployment contract resolution", () => {
     const blueprint = readBlueprint();
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -563,6 +569,7 @@ describe("fault-proof deployment contract resolution", () => {
     const blueprint = readBlueprint();
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,

@@ -1,5 +1,6 @@
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   admitCompleteCanonicalReplayPredecessor,
   admitValidationTraceReplayContext,
@@ -67,6 +68,7 @@ describe("dishonest normal redeemer block replay", () => {
           DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
       const validationTraceReplay = await admitValidationTraceReplayContext({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         evidence,
         predecessor,
       });

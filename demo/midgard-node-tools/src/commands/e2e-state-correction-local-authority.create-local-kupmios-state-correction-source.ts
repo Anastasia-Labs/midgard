@@ -1,11 +1,11 @@
+import { normalizeOgmiosHttpUrl } from "@al-ft/midgard-core/ogmios-slot";
 import {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
   normalizeKupoHttpUrl,
   readOgmiosBlockTransaction,
   type WebSocketFactory,
-} from "midgard-node/l1-tx-order-carriage";
-import { normalizeOgmiosHttpUrl } from "midgard-node/local-ledger-slot";
+} from "midgard-node/l1-external/kupmios-history";
 
 import {
   type ChainPoint,

@@ -91,7 +91,7 @@ reconcile
   .requiredOption("--header-hash <hex>", "28-byte block header hash")
   .option(
     "--repair",
-    "Merge the header if it is the oldest queued block; refused without the running node's history producer permit (use its admin GET /merge)",
+    "Merge the header if it is the oldest queued block; refused outside the running node's follower write gate (use its admin GET /merge)",
   )
   .option("--json", "Print machine-readable JSON output", true)
   .action(

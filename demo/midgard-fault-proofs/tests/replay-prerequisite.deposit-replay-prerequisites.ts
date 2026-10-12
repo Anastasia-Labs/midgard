@@ -1,5 +1,5 @@
 import {
-  CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
+  DOUBLE_WITHDRAW_VIOLATION_ID,
   EventKey,
   FABRICATED_DEPOSIT_VIOLATION_ID,
   FABRICATED_WITHDRAWAL_VIOLATION_ID,
@@ -12,6 +12,8 @@ import { describe, expect, it } from "vitest";
 import type { TransitionTraceDetection } from "../src/transition-trace/detect.js";
 import { provenTransitionEventKeyCbor } from "../src/transition-trace/replay-authority.js";
 import { type CanonicalViolationDetection } from "../src/workflow/classification.js";
+import { completeReplayer } from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.js";
 import {
   depositSubject,
   eventKeyCborSubject,
@@ -23,33 +25,85 @@ import {
 } from "../src/workflow/replay-prerequisite.js";
 import { depositEvidence } from "./replay-prerequisite.withdrawal-replay-prerequisites.js";
 
+const fabricatedDepositFinding = (
+  evidence: ReturnType<typeof depositEvidence>["evidence"],
+  depositId: ReturnType<typeof depositEvidence>["depositId"],
+  position: bigint,
+): CanonicalViolationDetection => ({
+  ...depositSubject(depositId(Number(position))),
+  headerHash: evidence.headerHash,
+  detectionId: `${FABRICATED_DEPOSIT_VIOLATION_ID}:${position.toString()}`,
+  violationId: FABRICATED_DEPOSIT_VIOLATION_ID,
+  position,
+});
+
 describe("deposit replay prerequisites", () => {
-  it("lets the cross-block duplicate finding at the source position cover a repeated deposit", () => {
+  it("lets only the fabricated-deposit finding at the exact leaf cover a repeated deposit", () => {
     const { evidence, eventKey, depositId } = depositEvidence();
     const failure = replayPrerequisiteFailure(
       evidence.headerHash,
       eventKey(1),
       "prior_transition_effect",
     ).failures[0]!;
-    const finding = (position: bigint): CanonicalViolationDetection => ({
-      ...depositSubject(depositId(Number(position))),
-      headerHash: evidence.headerHash,
-      violationId: CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
-      detectionId: `cross-block-duplicate-event:${position}`,
-      position,
-    });
+    const finding = (position: bigint) =>
+      fabricatedDepositFinding(evidence, depositId, position);
     expect(() =>
       assertReplayPrerequisiteCovered(evidence, failure, [finding(1n)]),
     ).not.toThrow();
+    // Without the fabricated-deposit finding at this leaf the repeated
+    // deposit stays undischarged and the block fails closed.
     for (const unrelated of [
       [],
       [finding(0n)],
       [{ ...finding(1n), headerHash: "99".repeat(28) }],
-      [{ ...finding(1n), violationId: "fabricated-deposit" }],
+      [{ ...finding(1n), violationId: FABRICATED_WITHDRAWAL_VIOLATION_ID }],
+      [{ ...finding(1n), violationId: DOUBLE_WITHDRAW_VIOLATION_ID }],
     ])
       expect(() =>
         assertReplayPrerequisiteCovered(evidence, failure, unrelated),
       ).toThrow(CanonicalReplayPrerequisiteError);
+  });
+
+  it("classifies a repeated deposit through the replay union only when the fabricated-deposit finding names its leaf", async () => {
+    const { evidence, eventKey, depositId } = depositEvidence();
+    // The transition replay finds the repeated deposit's output already in
+    // the ledger and records the prerequisite instead of a finding.
+    const transition = completeReplayer(["transitionTrace"], async () => {
+      throw replayPrerequisiteFailure(
+        evidence.headerHash,
+        eventKey(1),
+        "prior_transition_effect",
+      );
+    });
+    const fabricated = (findings: readonly CanonicalViolationDetection[]) =>
+      completeReplayer(["fabricatedDeposit"], async () => findings);
+    const finding = fabricatedDepositFinding(evidence, depositId, 1n);
+
+    const covered = createCompleteCanonicalReplayUnion([
+      transition,
+      fabricated([finding]),
+    ]);
+    const decision = await covered.replay(evidence);
+    expect(decision.detections).toEqual([finding]);
+
+    for (const findings of [
+      [],
+      [fabricatedDepositFinding(evidence, depositId, 0n)],
+    ]) {
+      const uncovered = createCompleteCanonicalReplayUnion([
+        transition,
+        fabricated(findings),
+      ]);
+      const refused = await uncovered.replay(evidence).catch((error) => error);
+      expect(refused).toBeInstanceOf(CanonicalReplayPrerequisiteError);
+      expect((refused as CanonicalReplayPrerequisiteError).failures).toEqual([
+        {
+          headerHash: evidence.headerHash,
+          eventKeyCbor: Data.to(eventKey(1), EventKey),
+          prerequisite: "prior_transition_effect",
+        },
+      ]);
+    }
   });
 
   it("names the committed event an out-of-window transition finding opens", () => {
@@ -130,19 +184,13 @@ describe("deposit replay prerequisites", () => {
       expect(() =>
         assertReplayPrerequisiteCovered(evidence, failure, [fabricated(1n)]),
       ).not.toThrow();
-      // An origin absent only because it was consumed or settled yields no
-      // fabricated finding, so the prerequisite stays undischarged and the
-      // block fails closed rather than being convicted.
+      // An origin the fabricated family does not convict yields no finding,
+      // so the prerequisite stays undischarged and the block fails closed
+      // rather than being convicted.
       for (const unrelated of [
         [],
         [fabricated(0n)],
         [{ ...fabricated(1n), headerHash: "99".repeat(28) }],
-        [
-          {
-            ...fabricated(1n),
-            violationId: CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
-          },
-        ],
         [
           {
             ...fabricated(1n),
@@ -154,14 +202,15 @@ describe("deposit replay prerequisites", () => {
           assertReplayPrerequisiteCovered(evidence, failure, unrelated),
         ).toThrow(CanonicalReplayPrerequisiteError);
     }
-    // The other prerequisite kinds are not dischargeable by this family.
+    // A deposit's other prerequisite kinds are not dischargeable by this
+    // family.
     expect(() =>
       assertReplayPrerequisiteCovered(
         evidence,
         replayPrerequisiteFailure(
           evidence.headerHash,
           eventKey(1),
-          "prior_transition_effect",
+          "present_spend_input",
         ).failures[0]!,
         [fabricated(1n)],
       ),

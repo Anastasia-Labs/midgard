@@ -1,5 +1,6 @@
 import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -101,6 +102,7 @@ describe("phase B validation", () => {
     const unchangedRoot = Buffer.alloc(32, 0x2e).toString("hex");
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
         sourceKind: "normal",

@@ -5,8 +5,7 @@ export const LINEAR_FAMILY_SPEC =
 
 /**
  * Categories whose production workflows use the linear adapter. A cursor
- * workflow stays in the cursor spec even when its chain has no self-loop,
- * as with cross-block-duplicate-event.
+ * workflow stays in the cursor spec even when its chain has no self-loop.
  */
 export const LINEAR_FAMILY_CATEGORIES = Object.freeze([
   "nonExistentInput",

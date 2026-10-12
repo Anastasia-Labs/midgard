@@ -1,3 +1,4 @@
+import "./helpers/follower-emulator-installed.js";
 import "@al-ft/midgard-core/codec";
 import "da-committee-node/da/payload";
 import "vitest";

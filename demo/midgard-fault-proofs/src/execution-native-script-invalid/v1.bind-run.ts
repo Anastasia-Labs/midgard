@@ -5,7 +5,7 @@ import {
   requireWorkflowArtifactMatches,
 } from "../workflow/artifact-codec.js";
 import {
-  admitCompleteCanonicalReplayHistoricalCorpus,
+  completeCanonicalReplayPredecessorEvidence,
   EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
 } from "../workflow/complete-replay.js";
 import {
@@ -13,7 +13,6 @@ import {
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
 import { defineFamily } from "../workflow/family-definition.js";
-import { resolveHistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
@@ -32,6 +31,7 @@ import {
   type BoundContext,
   contractNames,
   EXECUTION_NATIVE_SCRIPT_INVALID_CONFIG_KEYS,
+  EXECUTION_NATIVE_SCRIPT_INVALID_OPTIONAL_CONFIG_KEYS,
   EXECUTION_NATIVE_SCRIPT_INVALID_STEP_DATUM_SCHEMAS,
   type ExecutionNativeScriptInvalidWorkflowReferenceScripts,
   type ManifestBoundExecutionNativeScriptInvalidWorkflow,
@@ -62,9 +62,6 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION = defineFamily<
     stepContractNames: contractNames,
     transactionPort: (context) => runFor(context).transactions,
   },
-  extend: (context) => ({
-    resolveReplayContext: runFor(context).resolveReplayContext,
-  }),
 });
 
 /** Strict manifest/reference construction; no proof inputs or callbacks. */
@@ -72,7 +69,15 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
   config: ManifestBoundExecutionNativeScriptInvalidWorkflowConfig,
 ): Promise<ManifestBoundExecutionNativeScriptInvalidWorkflow> => {
   if (
-    Object.keys(config).sort().join("\0") !==
+    Object.keys(config)
+      .filter(
+        (key) =>
+          !(
+            EXECUTION_NATIVE_SCRIPT_INVALID_OPTIONAL_CONFIG_KEYS as readonly string[]
+          ).includes(key),
+      )
+      .sort()
+      .join("\0") !==
     [...EXECUTION_NATIVE_SCRIPT_INVALID_CONFIG_KEYS].sort().join("\0")
   )
     throw new Error(
@@ -122,11 +127,10 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
     binding,
     lucid: config.lucid,
     signer: config.signer,
-    source: config.source,
-    historicalNativeScriptCheckpointStore:
-      config.historicalNativeScriptCheckpointStore,
-    historicalNativeScriptHistorySource:
-      config.historicalNativeScriptHistorySource,
+    l1Source: config.l1Source,
+    ...(config.replayContext === undefined
+      ? {}
+      : { replayContext: config.replayContext }),
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
     contracts,
@@ -142,36 +146,40 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
 export type ExecutionNativeScriptInvalidRunResult = FraudProofWorkflowRunResult;
 
 const bindRun = (context: BoundContext) => {
-  const { workflow, sources } = context.runtime;
+  const { workflow } = context.runtime;
   let fresh: PreparedExecutionNativeScriptInvalid | undefined;
   const prepareArtifact = async (
     block: import("../evidence/canonical-block-evidence.js").CanonicalBlockEvidence,
   ) => {
-    const corpus = await resolveHistoricalNativeScriptCorpus({
-      deploymentFingerprint: workflow.binding.deploymentFingerprint,
-      checkpointStore: workflow.historicalNativeScriptCheckpointStore,
-      historySource: workflow.historicalNativeScriptHistorySource,
-      currentEvidence: block,
-      sources,
+    const predecessor = completeCanonicalReplayPredecessorEvidence({
+      evidence: block,
+      context: workflow.replayContext,
     });
     const detections = detectExecutionNativeScriptInvalidCanonicalViolations({
       block,
-      corpus,
+      predecessor,
     });
     const detection = detections[0];
     if (detection === undefined)
       throw new Error(
         "executionNativeScriptInvalid replay has no selected artifact",
       );
-    return { block, corpus, detection };
+    return { block, predecessor, detection };
   };
   // The canonical envelope records payload identity; the family artifact records
-  // exact selected proof material and the authenticated history corpus identity.
+  // exact selected proof material and the admitted predecessor's identity.
   const material = (prepared: PreparedExecutionNativeScriptInvalid) => ({
     header: prepared.block.header,
     headerHash: prepared.block.headerHash,
     detection: prepared.detection,
-    corpus: prepared.corpus,
+    predecessor:
+      prepared.predecessor === undefined
+        ? null
+        : {
+            headerHash: prepared.predecessor.headerHash,
+            payloadEnvelopeSha256: prepared.predecessor.payloadEnvelopeSha256,
+            payloadSha256: prepared.predecessor.payloadSha256,
+          },
   });
   const transactions: CursorFamilyTransactionPort<"executionNativeScriptInvalid"> =
     {
@@ -198,20 +206,7 @@ const bindRun = (context: BoundContext) => {
         });
       },
     };
-  const resolveReplayContext: NonNullable<
-    Parameters<
-      typeof executeManifestBoundFamilyRecovery
-    >[0]["resolveReplayContext"]
-  > = async (evidence) => {
-    fresh = await prepareArtifact(evidence);
-    return {
-      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
-        evidence,
-        corpus: fresh.corpus,
-      }),
-    };
-  };
-  return { transactions, resolveReplayContext };
+  return { transactions };
 };
 
 const runs = new WeakMap<BoundContext, ReturnType<typeof bindRun>>();
@@ -249,9 +244,8 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow =
       sources,
       journal,
       decisionDigest,
-      resolveReplayContext: (
-        assembled as typeof assembled &
-          Pick<ReturnType<typeof bindRun>, "resolveReplayContext">
-      ).resolveReplayContext,
+      ...(workflow.replayContext === undefined
+        ? {}
+        : { replayContext: workflow.replayContext }),
     });
   };

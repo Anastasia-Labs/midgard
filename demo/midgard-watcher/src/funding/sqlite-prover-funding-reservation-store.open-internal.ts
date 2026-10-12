@@ -809,6 +809,34 @@ export const openInternal = async (
 
   transaction(rebuildLeases, null);
 
+  const clearUnused = async (
+    expected: WatcherProverFundingReservationRecord,
+    refuseSignedHistory: boolean,
+  ): Promise<boolean> => {
+    const snapshot = parseWatcherProverFundingReservationRecord(expected);
+    return transaction(() => {
+      const current = readOne(snapshot.reservationId);
+      if (current === null)
+        throw new Error("unused prover reservation is missing");
+      if (
+        current.recordDigest !== snapshot.recordDigest ||
+        current.state !== "active" ||
+        current.activeInputs.length === 0 ||
+        current.pendingTransition !== null ||
+        current.lastConfirmedTransitionDigest !== null
+      )
+        return false;
+      // Preparation persists signed bytes before the journal intent. Absence
+      // from the journal alone never authorizes reclaiming those inputs.
+      if (refuseSignedHistory && hasSignedHistory(current.reservationId))
+        return false;
+      const next = nextRecord({ current, activeInputs: [] });
+      writeRecord(current.recordDigest, next);
+      rebuildLeases();
+      return true;
+    }, snapshot.reservationId);
+  };
+
   const store: WatcherProverFundingReservationStore = Object.freeze({
     readAll: async () => auditRead(),
     isReconciliationOnly: async ({ reservationId }) => {
@@ -1020,29 +1048,8 @@ export const openInternal = async (
         resolvedOutputCborHex: lineage.resolvedOutputCborHex,
       });
     },
-    releaseUnused: async (expected) => {
-      const snapshot = parseWatcherProverFundingReservationRecord(expected);
-      return transaction(() => {
-        const current = readOne(snapshot.reservationId);
-        if (current === null)
-          throw new Error("unused prover reservation is missing");
-        if (
-          current.recordDigest !== snapshot.recordDigest ||
-          current.state !== "active" ||
-          current.activeInputs.length === 0 ||
-          current.pendingTransition !== null ||
-          current.lastConfirmedTransitionDigest !== null
-        )
-          return false;
-        // Preparation persists signed bytes before the journal intent. Absence
-        // from the journal alone never authorizes reclaiming those inputs.
-        if (hasSignedHistory(current.reservationId)) return false;
-        const next = nextRecord({ current, activeInputs: [] });
-        writeRecord(current.recordDigest, next);
-        rebuildLeases();
-        return true;
-      }, snapshot.reservationId);
-    },
+    releaseUnused: async (expected) => clearUnused(expected, true),
+    dropSpentUnused: async (expected) => clearUnused(expected, false),
     reserve: async (plan, expectedIdleRevision) => {
       assertPlan(plan);
       return transaction(() => {

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { AvailabilityResponderAwaitingScanError } from "../src/availability/awaiting-scan-error.js";
 import {
   AvailabilityResponder,
-  AvailabilityResponderAwaitingScanError,
   availabilityResponderReportLine,
 } from "../src/availability/responder.js";
 import {
@@ -11,14 +11,15 @@ import {
   CommitteeService,
 } from "../src/committee-service.js";
 import { loadDaSigner } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
 import type { RetentionL1View } from "../src/store/retention.js";
 import {
   createCommitteeTickRunner,
   l1ViewStaleMs,
 } from "../src/tick-runner.js";
 import { minimalConfig, payloadSourceFromBytes, tempDir } from "./helpers.js";
-import { withFinalSnapshot } from "./helpers/final-snapshot.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
+import { fakeL1Source } from "./helpers/fake-l1-source.js";
 
 const POLL_MS = 2_000;
 const FATAL_MS = 600_000;
@@ -51,6 +52,7 @@ const harness = (
       observedAtMs: now,
       confirmedHeadHash: "aa".repeat(28),
       liveQueueHeaderHashes: new Set(["bb".repeat(28)]),
+      finalBlockTimeMs: null,
     };
   };
   let readiness: CommitteeRetentionReadinessSnapshot = {
@@ -142,24 +144,23 @@ const harness = (
 };
 
 let dir: string;
-let store: JsonFileCommitteeStore;
+let store: PostgresCommitteeStore;
 let service: CommitteeService;
 
 beforeAll(async () => {
   dir = await tempDir();
   const seed = "00".repeat(31) + "01";
   const signer = await loadDaSigner(`hex:${seed}`);
-  store = await JsonFileCommitteeStore.open(dir);
+  store = await openTestCommitteeStore();
   service = new CommitteeService({
     config: minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
       signerPublicKey: signer.publicKeyHex,
     }),
     store,
-    stateQueueProvider: withFinalSnapshot({
+    l1: fakeL1Source({
       fetchStateQueueNodes: async () => [],
     }),
     payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),

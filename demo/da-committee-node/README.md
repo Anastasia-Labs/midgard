@@ -67,39 +67,59 @@ its required reader configuration, rather than the committee's signer,
 database-writer, or L1 submitter credentials. YAML does not replace the bound
 deployment/runtime manifests, database privileges, or readiness checks.
 
-## JSON store ownership
+## Store ownership
 
-The file backend requires local storage with reliable SQLite/POSIX file locking
-and the declared Node 22 toolchain. A SQLite transaction holds a process mutex
-for the JSON store's entire lifetime, including queued asynchronous writes.
-Its persistent sidecar is `<store-file>.lock.mutex.sqlite`. Never remove or
-replace the mutex sidecar or its SQLite journal while a writer may be alive.
-Shared network filesystems, one store shared across kernels or virtual
-machines, and uncoordinated writers are outside this backend's storage
-boundary; use the PostgreSQL backend for shared multi-host deployment.
+The committee store is PostgreSQL, named by `DA_COMMITTEE_DATABASE_URL`. The
+L1 follower's tables live in the same database. One member may run
+active/passive across hosts against one store: the store's instance lock, a
+Postgres session advisory lock, admits one writer. The same session also
+holds the follower's writer lease, so the store and the follower are held,
+lost and retaken together, and `midgard-l1-follower reset` is refused while a
+committee process holds the store.
 
-The mutex is the only authority. A live writer, even a paused one, keeps it,
-so a successor is refused with `starting:store_instance_lock_held` and startup
-holds unready and retries. Process death, including a crash or a container
-restart, releases it, and the next process to start takes the store over at
-once: holding the mutex proves no other writer is alive, so whatever an
-earlier holder left in the lock file, `<store-file>.lock`, is overwritten
-without being judged. A crash never needs an operator to remove a lock.
+A process that starts while another live process holds the lock is refused
+with `starting:store_instance_lock_held`; startup holds unready and retries
+without a deadline. Other startup failures are classified. A dependency that
+is down or still starting (a refused, reset or timed-out connection, a
+Postgres connection-class error, a Cardano node socket not created yet) is
+retried with backoff for at most 15 minutes in a row, under
+`starting:<detail>`. Past that budget the process exits non-zero with
+`committee_startup_dependency_unavailable`, and the supervisor's restart is
+the backoff. Any other failure, such as a store holding another deployment's
+state (`stale_deployment_state_requires_fresh_redeploy`), bad credentials, a
+configuration or key-material refusal or an error it does not recognise, is
+one no restart is known to repair: the process logs `committee_startup_held`
+and stays up, `/readyz` naming `committee_startup_failed` with the failure's
+detail and `/healthz` live (`status: "held"`), until an operator restarts it.
+Only a configuration that does not load, before any port is known, and a
+`--once` run exit non-zero on such a failure.
+A process whose lock session ends (a lost connection, a restarted database)
+refuses every decision effect, logs `committee_store_instance_lock_suspended`
+and reconnects with backoff from 1 s, doubling to 30 s. If another process
+took the lock meanwhile, this one becomes the passive member: it logs
+`committee_store_instance_lock_passive`, keeps refusing every effect and keeps
+retrying, and takes over once the holder's session ends, logging
+`committee_store_instance_lock_restored`. Neither process exits: `/readyz`
+names `store_instance_lock_reacquiring` or
+`store_instance_lock_held_elsewhere`, and `/healthz` stays live. The wait on
+another holder has no deadline. A reconnect that fails is classified: a
+transient failure (Postgres unreachable, a dropped connection) is retried
+for at most 15 minutes in a row; any other failure (bad credentials, a
+missing database, an unclassified error), or the 15 minutes running out,
+stops the retries. The process then logs
+`committee_store_instance_lock_failed`. When the 15 minutes ran out it then
+logs `committee_transient_budget_exhausted` (source `store_instance_lock`)
+and exits non-zero, the supervisor's restart being the backoff; on any other
+failure it keeps refusing every effect and names `store_instance_lock_failed`
+on `/readyz` until it is restarted. The committee's L1 follower bounds its
+transient store failures the same way: past 15 minutes with no event applied
+it stops `l1_follower_transient_exhausted`, and the process logs
+`committee_transient_budget_exhausted` (source `l1_follower`) and exits
+non-zero. A Cardano node outage has no bound: `/readyz` names it while it
+lasts.
 
-The lock file is a stamp naming the current holder, published once by a
-rename when the mutex is taken, so a read-only or torn leftover never blocks
-it. The holder never writes it again; it reads it before every store write
-and every 10 s while idle. A read that fails for any reason other than a
-missing file refuses writes until a read succeeds, and the idle check logs
-each distinct error once as `committee_store_instance_lock_check_failed`.
-A missing stamp is not retried: the holder fails closed, as after a takeover
-below, with an error saying the stamp was removed.
-Within the storage boundary the stamp never changes under its holder.
-Outside the boundary, the mutex can fail (the sidecar removed or replaced, a
-network filesystem, a store shared across kernels, or the holder's own process
-opening and closing the sidecar by other means), and a successor can then get
-in while the old holder still runs. The successor's stamp replaces the old
-one, and the old holder fails closed at its next check or write: it refuses
-every write from then on, logs `committee_store_instance_lock_lost`, and exits
-for its supervisor to restart it. A write the old holder had already checked
-before the successor got in can still land.
+A decision effect the old holder began and never completed is redone by the
+new holder as the next attempt; a late completion of the old attempt is
+refused, so no effect is lost or run twice. Process death, including a crash
+or a container restart, ends its session and releases the lock: no operator
+ever removes a lock by hand.

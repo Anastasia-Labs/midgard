@@ -44,8 +44,8 @@ it("binds the eight canonical roles through the closed production manifest and a
   );
   expect(canonical).toHaveLength(8);
   const targets = nodeRuntimeReferenceScriptTargets(contracts);
-  expect(manifestDeployableScripts(contracts)).toHaveLength(544);
-  expect(targets).toHaveLength(537);
+  expect(manifestDeployableScripts(contracts)).toHaveLength(527);
+  expect(targets).toHaveLength(520);
   const invalidData = sharedRedeemerItemReferenceScripts(
     contracts.fraudProofContracts.validationTraceDispute
       .scriptSourcesStageOneRedeemerStages,
@@ -140,6 +140,7 @@ it("binds the eight canonical roles through the closed production manifest and a
     deploymentInfo: {
       contracts: manifest.contracts,
       referenceScriptAuthPolicy: manifest.referenceScriptAuthPolicy,
+      l1SlotConfig: manifest.l1SlotConfig,
     },
     headerHash: "99".repeat(28),
     proverCredential: "aa".repeat(28),
@@ -209,6 +210,7 @@ it("binds the eight canonical roles through the closed production manifest and a
     deploymentInfo: {
       contracts: substituted.contracts,
       referenceScriptAuthPolicy: substituted.referenceScriptAuthPolicy,
+      l1SlotConfig: substituted.l1SlotConfig,
     },
   }).then(
     () => undefined,

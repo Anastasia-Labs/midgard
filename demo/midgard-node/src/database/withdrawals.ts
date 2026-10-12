@@ -4,7 +4,7 @@ import "@al-ft/midgard-sdk";
 import "@effect/sql";
 import "@lucid-evolution/lucid";
 import "effect";
-import "../services/event-history-producer.js";
+import "../services/follower-write-gate.js";
 import "./utils/common.js";
 import "./utils/projected-events.js";
 import "./utils/user-events.js";
@@ -14,7 +14,6 @@ import "./withdrawals.restore-corrected-classification.js";
 export {
   Columns,
   type Entry,
-  insertEntries,
   retrieveAllEntries,
   retrieveByEventId,
   type SettlementInfoAssignment,
@@ -25,7 +24,6 @@ export {
 export {
   clear,
   markFinalizedByEventIds,
-  reopenAfterStateQueueCorrectionByEventIds,
   restoreCorrectedClassification,
   retrievePendingLedgerOutRefHexes,
   toLedgerOutRef,
@@ -36,7 +34,6 @@ export {
   clearProjectedHeaderAssignmentByEventIds,
   markAwaitingAsProjected,
   markProjectedByEventIds,
-  retrieveAwaitingEntriesDueBy,
   retrieveByCardanoTxHash,
   retrieveByEventIds,
   retrieveByProjectedHeaderHash,

@@ -25,6 +25,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import {
@@ -157,6 +158,7 @@ export const canonicalManifestIdentity = (): MutableRecord => {
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: "Preprod",
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     cardanoProtocolParameters: {
       snapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
       digest: computeDeploymentManifestJsonDigest(

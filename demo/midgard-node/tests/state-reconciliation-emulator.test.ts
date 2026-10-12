@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { Level } from "level";
 import { describe, expect, it, vi } from "vitest";
 

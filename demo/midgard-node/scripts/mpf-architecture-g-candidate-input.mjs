@@ -148,6 +148,7 @@ const seedInput = validateArchitectureGCommitCandidateSeedInputV1({
   fundingMapPath,
   fundingMapSha256,
   expectedTransactionCount,
+  fixtureInitialUtxoCount: fixtureCreation.initialUtxoCount,
   firstTimestampIso,
 });
 writeFileSync(seedInputPath, `${JSON.stringify(seedInput, null, 2)}\n`);
@@ -166,6 +167,7 @@ const candidateInput = validateArchitectureGCommitCandidateInputV1({
   fixtureCreationPath,
   fixtureCreationSha256,
   fixtureInitialUtxoCount: fixtureCreation.initialUtxoCount,
+  baseUtxosRoot: durableRoot,
   baseUtxoPayloadAggregate: { entryCount, encodedTupleBytes },
   forcedValidationSlotConfigArtifact: {
     path: slotConfigArtifactPath,
@@ -184,24 +186,6 @@ const candidateInput = validateArchitectureGCommitCandidateInputV1({
       sizeOfProcessedTxsSoFar: 0,
       baseSnapshotId: `architecture-g-candidate:${identity}`,
       stateQueueHasUnmergedTail: true,
-      speculativeBuild: {
-        base: {
-          headerHash: identity.slice(0, 56),
-          utxosRoot: durableRoot,
-          blockEndTimeMs: baseBlockEndTimeMs,
-          submittedTxHash: identity,
-        },
-        watermarks: {
-          depositMs: now,
-          withdrawalMs: now,
-          txOrderMs: now,
-          refreshedAtMs: now,
-        },
-        excludedMempoolTxIds: [],
-        excludedDepositEventIds: [],
-        excludedForcedTransactionEventIds: [],
-        excludedWithdrawalEventIds: [],
-      },
     },
   },
 });

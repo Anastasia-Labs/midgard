@@ -347,9 +347,9 @@ export const fixture = async ({
       trustClass: "authenticated_cardano_l1",
       sourceId: SOURCE,
       grade: "security",
-      sourceMode: "local_kupo_ogmios",
-      kupoCheckpoint: point,
-      ogmiosTip: tip,
+      sourceMode: "local_chain_follower",
+      boundaryPoint: point,
+      tipPoint: tip,
     },
     cursor: {
       point,

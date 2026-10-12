@@ -50,9 +50,11 @@ export const PAYABLE_INFO: SDK.WithdrawalInfo = {
   validity: "WithdrawalIsValid",
 };
 
+/** The duplicate as an honest operator tags it: the first order drained the
+ * shared outref, so the second finds no output there. */
 export const HONEST_DUPLICATE_INFO: SDK.WithdrawalInfo = {
   ...PAYABLE_INFO,
-  validity: { SpentWithdrawalUtxo: { l2_tx_id: "5a".repeat(32) } },
+  validity: "NonExistentWithdrawalUtxo",
 };
 
 const entry = (

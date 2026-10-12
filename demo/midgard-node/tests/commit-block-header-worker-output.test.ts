@@ -289,28 +289,19 @@ describe("commit block worker output handling", () => {
       output: { type: "NothingToCommitOutput" },
       preserve: false,
     },
-    AwaitingForeignDaOutput: {
+    AwaitingCommitBaseOutput: {
       output: {
-        type: "AwaitingForeignDaOutput",
-        foreignHeaderHash: "dd".repeat(28),
-        reason: "foreign DA payload not yet retrievable",
+        type: "AwaitingCommitBaseOutput",
+        baseHeaderHash: "dd".repeat(28),
+        detail: "the foreign commit base is not processed yet",
       },
       preserve: false,
     },
-    // Speculative candidates only ever exist in memory; only the `type` field
-    // takes part in the decision, so the payloads stay minimal.
-    SpeculativeCandidateReadyOutput: {
+    AwaitingNextCommitWindowOutput: {
       output: {
-        type: "SpeculativeCandidateReadyOutput",
-        candidate: {} as never,
-      },
-      preserve: false,
-    },
-    SpeculativeCandidateInvalidatedOutput: {
-      output: {
-        type: "SpeculativeCandidateInvalidatedOutput",
-        candidateId: "candidate-1",
-        reason: "T1" as never,
+        type: "AwaitingNextCommitWindowOutput",
+        heldHeaderHash: "ee".repeat(28),
+        detail: "a signed abandoned journal holds this header",
       },
       preserve: false,
     },

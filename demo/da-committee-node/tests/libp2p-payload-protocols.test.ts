@@ -49,8 +49,8 @@ import {
   processWideDaPayloadSubmitAdmission,
 } from "../src/da/libp2p/payload-source.js";
 import type { DaSignatureRecord } from "../src/domain.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
-import { makePayloadFixture, tempDir } from "./helpers.js";
+import { makePayloadFixture } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import {
   availabilityCommitmentAuthority,
   deploymentFingerprint,
@@ -116,8 +116,8 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       encodeSubmit(fixture.headerHash, fixture.payloadCbor),
       { maxFrameBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes },
     );
-    const firstStore = await JsonFileCommitteeStore.open(await tempDir());
-    const secondStore = await JsonFileCommitteeStore.open(await tempDir());
+    const firstStore = await openTestCommitteeStore();
+    const secondStore = await openTestCommitteeStore();
     const firstLimits = {
       ...DA_TRANSPORT_LIMITS,
       requestTimeoutMs: 1_000,
@@ -202,7 +202,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
   });
 
   it("aborts a stalled inbound submit, releases admission, and recovers", async () => {
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await openTestCommitteeStore();
     const admission = new DaPayloadSubmitAdmission(1);
     const limits = {
       ...DA_TRANSPORT_LIMITS,
@@ -276,7 +276,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
 
   it("rejects an incomplete frame without response or persistence and recovers", async () => {
     const fixture = await makePayloadFixture();
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await openTestCommitteeStore();
     const admission = new DaPayloadSubmitAdmission(1);
     const limits = {
       ...DA_TRANSPORT_LIMITS,
@@ -644,7 +644,6 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       availabilityCommitmentAuthority,
       store: {
         getDaPayload: async () => undefined,
-        getL1SourceState: async () => undefined,
         saveDaSignature: async () => undefined,
         listDaSignatures: async () => [{} as never],
         saveDaConflictEvidence: async () => true,

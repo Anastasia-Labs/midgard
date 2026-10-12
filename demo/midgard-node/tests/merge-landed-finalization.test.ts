@@ -104,7 +104,7 @@ const journal = ({
   readonly headerHash: string;
   readonly stored: SDK.Header;
   readonly status:
-    | typeof PendingBlockFinalizationsDB.Status.Finalized
+    | typeof PendingBlockFinalizationsDB.Status.LocallyApplied
     | typeof PendingBlockFinalizationsDB.Status.ObservedWaitingStability;
 }) =>
   Effect.gen(function* () {
@@ -150,7 +150,7 @@ const journal = ({
       Buffer.from(headerHash.padEnd(64, "7"), "hex"),
     );
     yield* PendingBlockFinalizationsDB.markObservedWaitingStability(hash, 1n);
-    if (status === PendingBlockFinalizationsDB.Status.Finalized)
+    if (status === PendingBlockFinalizationsDB.Status.LocallyApplied)
       yield* PendingBlockFinalizationsDB.markFinalized(hash);
     yield* BlocksDB.insert(hash, [
       Buffer.from(headerHash.padEnd(64, "0"), "hex"),
@@ -161,7 +161,7 @@ const finalizedJournal = ({ header, headerHash }: Block) =>
   journal({
     headerHash,
     stored: header,
-    status: PendingBlockFinalizationsDB.Status.Finalized,
+    status: PendingBlockFinalizationsDB.Status.LocallyApplied,
   });
 
 /** L1's confirmed state naming `headerHash`. */
@@ -188,14 +188,17 @@ const blockRows = (headerHash: string) =>
     (rows) => rows.length,
   );
 
-/** The job completed after `attempts` attempts and the block rows are gone. */
+/**
+ * The job completed after `attempts` attempts; the block rows stay until
+ * its fold is final (`releaseFinalFolds`).
+ */
 const expectFinalized = (headerHash: string, attempts: number) =>
   Effect.gen(function* () {
     expect(yield* mergeJob(headerHash)).toMatchObject({
       [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
       [MutationJobsDB.Columns.ATTEMPTS]: attempts,
     });
-    expect(yield* blockRows(headerHash)).toBe(0);
+    expect(yield* blockRows(headerHash)).toBe(1);
   });
 
 /** No job was started and the block rows are still there. */
@@ -248,7 +251,7 @@ describe("landed-merge finalization walk", () => {
           journal({
             headerHash: landed.headerHash,
             stored: forged.header,
-            status: PendingBlockFinalizationsDB.Status.Finalized,
+            status: PendingBlockFinalizationsDB.Status.LocallyApplied,
           }),
           confirmedAt(landed.headerHash),
         ),

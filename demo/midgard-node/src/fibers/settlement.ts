@@ -4,6 +4,8 @@ import { Worker } from "node:worker_threads";
 import { Duration, Effect, Ref, Runtime, Schedule } from "effect";
 
 import { Globals } from "../services/globals.js";
+import type { UnwrittenHold } from "../services/intent-journal.holds.js";
+import { IntentJournal } from "../services/intent-journal.js";
 import type { SettlementHealth } from "../services/settlement.js";
 import { SETTLEMENT_WORKER_RECOVERY_TICKS } from "../services/settlement-readiness.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
@@ -21,6 +23,16 @@ export type SettlementWorkerData = { readonly ownerToken: string };
 export type SettlementSupervision = {
   readonly spacing: Duration.DurationInput;
   readonly watchdogMs: number;
+  /**
+   * Takes over the refusal holds a worker run reports it could not write
+   * (the node journal's `adopt`, I1-H1).
+   */
+  readonly adoptRefusalHolds?: (holds: readonly UnwrittenHold[]) => void;
+};
+
+const DEFAULT_SETTLEMENT_SUPERVISION: SettlementSupervision = {
+  spacing: "10 seconds",
+  watchdogMs: 180_000,
 };
 
 const spawnSettlementWorker = (workerData: SettlementWorkerData) =>
@@ -38,10 +50,11 @@ const spawnSettlementWorker = (workerData: SettlementWorkerData) =>
 export const superviseSettlementWorker = (
   health: Ref.Ref<SettlementHealth>,
   spawn: (workerData: SettlementWorkerData) => Worker,
-  { spacing, watchdogMs }: SettlementSupervision = {
-    spacing: "10 seconds",
-    watchdogMs: 180_000,
-  },
+  {
+    spacing,
+    watchdogMs,
+    adoptRefusalHolds,
+  }: SettlementSupervision = DEFAULT_SETTLEMENT_SUPERVISION,
 ) =>
   Effect.gen(function* () {
     const runSync = Runtime.runSync(yield* Effect.runtime<never>());
@@ -86,9 +99,12 @@ export const superviseSettlementWorker = (
           );
           const onMessage = ({
             tickCompleted,
+            intentRefusalHolds,
             ...report
           }: SettlementHealth) => {
             lastProgress = Date.now();
+            if (intentRefusalHolds !== undefined)
+              adoptRefusalHolds?.(intentRefusalHolds);
             if (report.state === "error" && report.detail !== lastError)
               runSync(
                 Effect.logWarning(
@@ -173,8 +189,10 @@ export const superviseSettlementWorker = (
  * Node shutdown awaits termination; a replacement reconciles the same journal. */
 export const settlementFiber = Effect.gen(function* () {
   const globals = yield* Globals;
+  const journal = yield* IntentJournal;
   yield* superviseSettlementWorker(
     globals.SETTLEMENT_HEALTH,
     spawnSettlementWorker,
+    { ...DEFAULT_SETTLEMENT_SUPERVISION, adoptRefusalHolds: journal.adopt },
   );
 });

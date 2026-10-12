@@ -1,4 +1,3 @@
-import { CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION } from "../cross-block-duplicate-event/workflow.js";
 import { DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION } from "../distinct-asset-accumulation-limit/v1.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION } from "../execution-native-script-invalid/v1.js";
 import { EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../execution-source-script-decoding/v1.js";
@@ -7,8 +6,6 @@ import { FIELD_PREIMAGE_LENGTH_FAMILY_DEFINITION } from "../field-preimage-lengt
 import { MIN_ADA_FAMILY_DEFINITION } from "../min-ada/workflow.js";
 import { MINT_AUTHORIZATION_FAMILY_DEFINITION } from "../mint-authorization/workflow.js";
 import { MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION } from "../mint-declared-asset-limit/v1.js";
-import { MISSING_NATIVE_SCRIPT_TX_FAMILY_DEFINITION } from "../missing-native-script-tx/workflow.js";
-import { MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION } from "../missing-native-script-utxo/workflow.js";
 import { MISSING_REDEEMER_FAMILY_DEFINITION } from "../missing-redeemer/v1.js";
 import { MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION } from "../missing-script-source/v1.js";
 import { NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../native-script-decoding/workflow.js";
@@ -37,7 +34,6 @@ import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
  * table-driven assembly test checks each key against its definition.
  */
 type CursorFamilyDefinitions = Readonly<{
-  missingNativeScriptUtxo: typeof MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION;
   witnessScriptDecoding: typeof WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION;
   transactionOutputNonCanonical: typeof TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
   resolvedOutputNonCanonical: typeof RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION;
@@ -50,9 +46,7 @@ type CursorFamilyDefinitions = Readonly<{
   redeemerCanonicity: typeof REDEEMER_CANONICITY_FAMILY_DEFINITION;
   scriptIntegrityHashMismatch: typeof SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION;
   transitionTrace: typeof TRANSITION_TRACE_FAMILY_DEFINITION;
-  missingNativeScriptTx: typeof MISSING_NATIVE_SCRIPT_TX_FAMILY_DEFINITION;
   minAda: typeof MIN_ADA_FAMILY_DEFINITION;
-  crossBlockDuplicateEvent: typeof CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION;
   nativeScriptInvalid: typeof NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION;
   distinctAssetAccumulationLimit: typeof DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION;
   mintDeclaredAssetLimit: typeof MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION;
@@ -72,7 +66,6 @@ type CursorFamilyDefinitions = Readonly<{
 
 export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
   {
-    missingNativeScriptUtxo: MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION,
     witnessScriptDecoding: WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
     transactionOutputNonCanonical:
       TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
@@ -90,9 +83,7 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
     scriptIntegrityHashMismatch:
       SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
     transitionTrace: TRANSITION_TRACE_FAMILY_DEFINITION,
-    missingNativeScriptTx: MISSING_NATIVE_SCRIPT_TX_FAMILY_DEFINITION,
     minAda: MIN_ADA_FAMILY_DEFINITION,
-    crossBlockDuplicateEvent: CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION,
     nativeScriptInvalid: NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
     distinctAssetAccumulationLimit:
       DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION,

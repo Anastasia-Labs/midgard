@@ -3,13 +3,12 @@ import { fromHex } from "@lucid-evolution/lucid";
 import { Duration, Effect, Option } from "effect";
 
 import { seedDaPayloadPublicationOutboxFromEnv } from "../../da/libp2p-producer.js";
-import { currentOwnedTransaction } from "../../database/eventHistoryAuthority.js";
 import {
   BlocksDB,
   CekProgramMaterialDB,
   DaPayloadsDB,
   ImmutableDB,
-  MempoolDB,
+  MempoolInclusionsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
@@ -20,7 +19,10 @@ import {
 } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
 import type { MidgardMpf, MpfError } from "../../mpf/index.js";
-import { withHistoryWrite } from "../../services/event-history-producer.js";
+import {
+  inRuntimeFollowerWrite,
+  withFollowerWrite,
+} from "../../services/follower-write-gate.js";
 import { type Database } from "../../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
 import { buildDaPayloadInsert } from "../commit-block-header/da-payload.js";
@@ -151,7 +153,7 @@ export const finalizeCommittedBlockLocally = (
     }
 
     yield* Effect.logInfo(
-      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing included txs from MempoolDB/ProcessedMempoolDB, and resetting the transactions MPF root marker...",
+      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, marking included txs in MempoolDB/ProcessedMempoolDB, and resetting the transactions MPF root marker...",
     );
     const sql = yield* SqlClient.SqlClient;
     const transactionStartedAt = Date.now();
@@ -162,10 +164,7 @@ export const finalizeCommittedBlockLocally = (
             yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
               newHeaderHashBuffer,
             );
-          if (
-            Option.isNone(journal) &&
-            Option.isSome(yield* currentOwnedTransaction)
-          )
+          if (Option.isNone(journal) && (yield* inRuntimeFollowerWrite))
             return yield* Effect.fail(
               new DatabaseError({
                 table: PendingBlockFinalizationsDB.tableName,
@@ -182,11 +181,15 @@ export const finalizeCommittedBlockLocally = (
             filteredBatches,
             (batch, i) =>
               Effect.gen(function* () {
+                // The block's rows stay, marked by its header, until the
+                // block folds (or a rollback clears the mark).
                 const clearMempoolProgram =
                   batch.clearMempoolTxHashes.length === 0
                     ? Effect.void
-                    : MempoolDB.clearTxs([...batch.clearMempoolTxHashes]).pipe(
-                        Effect.withSpan(`mempool-db-clear-txs-batch-${i}`),
+                    : MempoolInclusionsDB.markIncluded(newHeaderHashBuffer, [
+                        ...batch.clearMempoolTxHashes,
+                      ]).pipe(
+                        Effect.withSpan(`mempool-db-mark-included-batch-${i}`),
                       );
                 yield* ImmutableDB.insertTxsValidatedNative([
                   ...batch.txsToInsertImmutable,
@@ -203,9 +206,10 @@ export const finalizeCommittedBlockLocally = (
           const processedTxHashes = processedMempoolTxs.map((entry) =>
             Buffer.from(entry[TxColumns.TX_ID]),
           );
-          if (processedTxHashes.length > 0) {
-            yield* ProcessedMempoolDB.clearTxs(processedTxHashes);
-          }
+          yield* MempoolInclusionsDB.markIncluded(
+            newHeaderHashBuffer,
+            processedTxHashes,
+          );
           const deletedOutRefHexes =
             yield* applyFinalizedWithdrawalLedgerEffects(
               includedWithdrawalEventIds,
@@ -224,7 +228,7 @@ export const finalizeCommittedBlockLocally = (
         }),
       )
       .pipe(
-        withHistoryWrite,
+        withFollowerWrite,
         sqlErrorToDatabaseError(
           "local_block_finalization",
           "Failed to finalize committed block locally",

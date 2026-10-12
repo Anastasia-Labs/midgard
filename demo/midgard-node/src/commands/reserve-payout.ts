@@ -3,7 +3,7 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../database/withdrawals.js";
-import "../local-ledger-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "../services/index.js";
 import "../transactions/reference-scripts.js";
 import "../transactions/reserve-payout.js";

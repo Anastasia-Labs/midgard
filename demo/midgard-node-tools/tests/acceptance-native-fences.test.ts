@@ -16,7 +16,7 @@ const scope = (signal?: AbortSignal, timeoutMs = 2000) =>
   });
 it("expires one absolute deadline during actual stalled I/O and joins native/TCP without renewing a budget", async () => {
   const server = await ogmiosFixture({ stallQuery: true });
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   vi.useFakeTimers({
     toFake: ["Date", "performance", "setTimeout", "clearTimeout"],
   });
@@ -24,7 +24,7 @@ it("expires one absolute deadline during actual stalled I/O and joins native/TCP
   const read = scope(undefined, 100);
   try {
     const result = captureAcceptanceNativeRead(
-      readConfig(server.endpoint),
+      readConfig(server.endpoint, helper),
       read,
       async (current) => await current.queryExactOutRefs(refs),
       helper,
@@ -50,7 +50,7 @@ it("expires one absolute deadline during actual stalled I/O and joins native/TCP
 
 it("rejects an already expired absolute scope before transport or native startup", async () => {
   const server = await ogmiosFixture();
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const read = createDaAvailabilityReadScope({
     deadlineEpochMs: 0,
     attemptTimeoutMs: 100,
@@ -58,7 +58,7 @@ it("rejects an already expired absolute scope before transport or native startup
   try {
     await expect(
       captureAcceptanceNativeRead(
-        readConfig(server.endpoint),
+        readConfig(server.endpoint, helper),
         read,
         async () => true,
         helper,
@@ -66,7 +66,7 @@ it("rejects an already expired absolute scope before transport or native startup
     ).rejects.toMatchObject({ name: "DaAvailabilityReadScopeExpiredError" });
     expect(server.requests).toEqual([]);
     expect(server.active()).toBe(0);
-    expect(helper.child()).toBeUndefined();
+    expect(helper.opened()).toBe(false);
   } finally {
     read.close();
     await server.close();
@@ -75,13 +75,13 @@ it("rejects an already expired absolute scope before transport or native startup
 
 it("refuses stale query-service success after consuming a genuine newer native forward", async () => {
   const server = await ogmiosFixture();
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const read = scope();
   let consumed!: () => void;
   const consumedForward = new Promise<void>((resolve) => {
     consumed = resolve;
   });
-  const config = readConfig(server.endpoint);
+  const config = readConfig(server.endpoint, helper);
   const observedConfig = {
     ...config,
     native: {
@@ -109,7 +109,7 @@ it("refuses stale query-service success after consuming a genuine newer native f
         read,
         async (current) => {
           await current.queryExactOutRefs(refs);
-          helper.child().send("forward");
+          helper.send("forward");
           await consumedForward;
           current.assertCurrent();
           return true;
@@ -126,13 +126,13 @@ it("refuses stale query-service success after consuming a genuine newer native f
 
 it("physically terminates a query peer that refuses the WebSocket close handshake", async () => {
   const server = await ogmiosFixture({ stallQuery: true });
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const controller = new AbortController();
   const read = scope(controller.signal);
   let result: Promise<unknown> | undefined;
   try {
     result = captureAcceptanceNativeRead(
-      readConfig(server.endpoint),
+      readConfig(server.endpoint, helper),
       read,
       async (current) => await current.queryExactOutRefs(refs),
       helper,

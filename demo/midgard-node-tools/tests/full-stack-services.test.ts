@@ -28,6 +28,7 @@ import {
   nativeLedgerPaths,
 } from "../src/full-stack/native-ledger.js";
 import { StackProcesses } from "../src/full-stack/process.js";
+import { L1OriginUndeterminedError } from "../src/l1-origin.js";
 import {
   RecordingProcesses,
   removeStackFixtures,
@@ -58,7 +59,7 @@ it("leaves the exported Cardano configuration readable to container users", asyn
     expect((await stat(path)).mode & 0o777).toBe(mode);
 });
 
-it("generates committee configurations accepted by the real loader with persistent local chain authority", async () => {
+it("generates committee configurations accepted by the real loader: the run's L1 origin and local node, no chain index", async () => {
   const directory = await mkdtemp(join(tmpdir(), "midgard-stack-services-"));
   try {
     const sample = JSON.parse(
@@ -80,15 +81,13 @@ it("generates committee configurations accepted by the real loader with persiste
       join(directory, "cardano/ipc/node.socket"),
     );
     expect(parseNativeLedgerSettings(containerLedger.env)?.binaryPath).toBe(
-      "/app/native-ledger/midgard-chain-sync",
+      "/app/native-ledger/midgard-l1-node-transport",
     );
     expect(containerLedger.volumes).toContain(
-      `${hostLedger!.binaryPath}:/app/native-ledger/midgard-chain-sync:ro`,
+      `${hostLedger!.binaryPath}:/app/native-ledger/midgard-l1-node-transport:ro`,
     );
     const env: Record<string, string> = {
       DA_THRESHOLD: "2",
-      L1_KUPO_KEY: "http://127.0.0.1:1442",
-      L1_OGMIOS_KEY: "http://127.0.0.1:1337",
       L1_OPERATOR_SEED_PHRASE: entropyToMnemonic("00".repeat(16)),
       DA_COSIGNER_SEED_PHRASE: entropyToMnemonic("ff".repeat(16)),
     };
@@ -125,9 +124,23 @@ it("generates committee configurations accepted by the real loader with persiste
       "deploymentInfo/contract-deployment-info.json",
     );
     await copyFile(fixture.path, manifest);
+    // Before the origin step restored the run's origin, no committee
+    // environment is written.
+    await expect(
+      generateDaServices(new StackProcesses(config, env)),
+    ).rejects.toBeInstanceOf(L1OriginUndeterminedError);
+    env.L1_ORIGIN = `100.${"ab".repeat(32)}`;
     const generated = await generateDaServices(
       new StackProcesses(config, env),
     ).finally(() => process.umask(umask));
+    // The init script runs before any table exists, so it grants the reader
+    // no table: no default privilege that would reach every future table.
+    const init = await readFile(
+      join(generated.directory, "da-postgres-init.sh"),
+      "utf8",
+    );
+    expect(init).toContain("CREATE ROLE midgard_da_reader");
+    expect(init).not.toMatch(/DEFAULT PRIVILEGES|GRANT SELECT/u);
     for (const name of ["da-postgres-init.sh", "committee-0.json"])
       expect((await stat(join(generated.directory, name))).mode & 0o044).toBe(
         0o044,
@@ -166,13 +179,23 @@ it("generates committee configurations accepted by the real loader with persiste
         ),
         MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: manifest,
       });
-      expect(loaded.l1Source.sourceMode).toBe("local_node");
+      expect(loaded.l1Origin).toEqual({
+        slot: 100,
+        blockHash: "ab".repeat(32),
+      });
+      expect(
+        Object.keys(serviceEnv).filter((name) =>
+          /KUPO|OGMIOS|PROVIDER_URL|L1_SOURCE_MODE|CHAIN_SYNC_(URL|CURSOR)/u.test(
+            name,
+          ),
+        ),
+      ).toEqual([]);
       expect(loaded.nativeLedger?.binaryPath).toBe(
-        "/app/native-ledger/midgard-chain-sync",
+        "/app/native-ledger/midgard-l1-node-transport",
       );
       // The host's pinned build, the same binary the node container mounts.
       expect(services[`da-committee-${member.signerIndex}`]!.volumes).toContain(
-        `${hostLedger!.binaryPath}:/app/native-ledger/midgard-chain-sync:ro`,
+        `${hostLedger!.binaryPath}:/app/native-ledger/midgard-l1-node-transport:ro`,
       );
       expect(loaded.signerIndex).toBe(member.signerIndex);
       expect(loaded.signerKeySource).toBe(

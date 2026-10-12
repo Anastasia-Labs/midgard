@@ -31,18 +31,16 @@ export const EXIT = Object.freeze({
 // the source that emits it; keep this list to messages that are only ever
 // written on the way to a process exit.
 export const DEFAULT_FATAL_PATTERNS = Object.freeze([
-  // demo/midgard-node/src/commands/listen-startup.ts: every startup
-  // deployment/initialization refusal is logged with this prefix, then dies.
+  // demo/midgard-node/src/commands/listen-startup.ensure-protocol-initialized-on-startup.ts:
+  // every startup deployment/initialization refusal is logged with this
+  // prefix, then dies.
   "Startup protocol initialization failed:",
   // demo/midgard-node/src/database/init.ts: `listen` refuses a schema that is
   // not exactly the version this binary supports.
   "Database schema is not compatible:",
-  // demo/midgard-node/src/services/midgard-contracts.ts: the configured
-  // deployment manifest does not match this build or config.
+  // demo/midgard-node/src/services/midgard-contracts.make-midgard-contract-runtime.ts:
+  // the configured deployment manifest does not match this build or config.
   "cannot be used as contract source",
-  // demo/da-committee-node/src/tick-runner.ts: the committee lost its L1 view
-  // and exits with code 70.
-  '"event":"l1_view_unavailable_exit"',
 ]);
 
 const USAGE = `usage: devnet-wait.mjs --url <url> [--url <url>]... [--timeout S]
@@ -136,12 +134,30 @@ export const classifyResponse = (status, bodyText) => {
     body = undefined;
   }
   const object = body !== null && typeof body === "object" ? body : undefined;
-  // A quarantined DA committee L1 source never becomes healthy again without
-  // an operator (demo/da-committee-node/src/store.ts, mergeL1SourceState).
-  if (object?.l1Source?.status === "quarantined")
+  // A DA committee whose L1 follower holds it on an intervention (such as
+  // rollback_beyond_k) stays up and unready until an operator clears it
+  // (demo/da-committee-node/src/l1/follower/l1-follower.ts,
+  // committeeL1InterventionReason), so no wait can pass.
+  if (object?.l1Source?.status === "intervention")
     return {
       state: "terminal",
-      detail: `l1Source quarantined: ${object.l1Source.quarantineReason ?? "no reason given"}`,
+      detail: `l1Source intervention: ${object.l1Source.intervention ?? "no reason given"}`,
+    };
+  // A process whose startup failed stays up and unready until an operator
+  // fixes the cause and restarts it, unless a transient outlived its budget,
+  // in which case it exits (node: listen.startup-http.ts; DA committee:
+  // startup.ts; watcher: watcher-runtime.startup-hold.ts). Either way no
+  // wait can pass.
+  const held = Array.isArray(object?.reasons)
+    ? object.reasons.find(
+        (reason) =>
+          reason === "startup_failed" || reason === "committee_startup_failed",
+      )
+    : undefined;
+  if (held !== undefined)
+    return {
+      state: "terminal",
+      detail: `${held}: ${[object.failedStage, object.failedStep, object.failedReason, object.detail].filter((part) => typeof part === "string").join(" ") || "no reason given"}`,
     };
   const reasons = Array.isArray(object?.reasons)
     ? ` reasons=${object.reasons.slice(0, 8).join(",")}`

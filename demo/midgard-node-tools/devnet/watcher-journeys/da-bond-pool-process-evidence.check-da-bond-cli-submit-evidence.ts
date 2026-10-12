@@ -200,8 +200,11 @@ export type DaBondPoolReadyz = Readonly<{
   poolReasons: readonly string[];
   /** `scanner.lastStartedAt`: when the node's last tick started, if any. */
   scannerLastStartedAt?: string;
-  /** `l1Source.status` and its `quarantineReason`, when the body has them. */
-  l1Source?: Readonly<{ status: string; quarantineReason?: string }>;
+  /**
+   * `l1Source.status` and, when it is `intervention`, the follower's reason
+   * no wait clears (`l1Source.intervention`), when the body has them.
+   */
+  l1Source?: Readonly<{ status: string; intervention?: string }>;
 }>;
 
 /**
@@ -244,8 +247,8 @@ export const parseDaBondPoolReadyz = (
       ? {
           l1Source: {
             status: l1Source.status,
-            ...(typeof l1Source.quarantineReason === "string"
-              ? { quarantineReason: l1Source.quarantineReason }
+            ...(typeof l1Source.intervention === "string"
+              ? { intervention: l1Source.intervention }
               : {}),
           },
         }

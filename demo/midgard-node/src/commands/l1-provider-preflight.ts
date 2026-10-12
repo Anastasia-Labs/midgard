@@ -1,31 +1,27 @@
-import { Effect } from "effect";
+/**
+ * The node's L1 preflight: the local node transport's readiness and one
+ * submit-slot snapshot from the node's ledger tip. Its one source is the local
+ * node (`l1_node`); a failure is named by the transport's unready reason
+ * (`transport:<reason>`) or by the read's (`l1_node_behind`,
+ * `<source>:<reason>` of a transient provider error, else `l1_read_failed`).
+ */
+import type { TransportReadiness } from "@al-ft/l1-node-transport";
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
+import type { Network } from "@lucid-evolution/lucid";
 
-import {
-  localOgmiosSubmitSlotEvidence,
-  readLocalOgmiosSubmitSlot,
-  type SubmitSlotSnapshot,
-} from "../local-ogmios-slot.js";
-import {
-  classifyProviderHttpResponse,
-  getProviderCooldown,
-  type L1ProviderSource,
-  markProviderCooldown,
-  providerRouteSummary,
-  redactEndpoint,
-  summarizeProviderBody,
-} from "../provider-diagnostics.js";
+import { submitSlotEvidence } from "../l1-provider-view.js";
+import { l1ReadFailureKind } from "../services/l1-provider.js";
 
-export type L1ProviderPreflightConfig = {
-  readonly L1_PROVIDER: "Kupmios";
-  readonly L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: number;
-  readonly L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: number;
-  readonly L1_OGMIOS_KEY: string;
-  readonly L1_KUPO_KEY: string;
-  readonly NETWORK: "Mainnet" | "Preprod" | "Preview" | "Custom";
-  /** Runtime callers share the genesis-derived submit bound. Standalone
-   * preflight keeps the slot reader's default until a mapping is resolved. */
-  readonly L1_OGMIOS_TIP_MAX_AGE_MS?: number;
-};
+export type L1ProviderSource = "l1_node";
+
+export type L1ProviderPreflightConfig = Readonly<{
+  network: Network;
+  /** The local node's socket, for the report. */
+  endpoint: string;
+  timeoutMs: number;
+  transportReadiness: () => TransportReadiness;
+  readSubmitSlotSnapshot: () => Promise<SubmitSlotSnapshot>;
+}>;
 
 export type L1ProviderHealth = {
   readonly source: L1ProviderSource;
@@ -33,296 +29,141 @@ export type L1ProviderHealth = {
   readonly healthy: boolean;
   readonly degraded: boolean;
   readonly latencyMs?: number;
-  readonly status?: number;
   readonly failureKind?: string;
   readonly bodySummary?: string;
   readonly localLedgerSlot?: SubmitSlotSnapshot;
-  readonly cooldown?: {
-    readonly reason: string;
-    readonly retryAtMs: number;
-    readonly remainingMs: number;
-  };
 };
 
 export type L1ProviderPreflightReport = {
   readonly ok: boolean;
   readonly degraded: boolean;
-  readonly route: ReturnType<typeof providerRouteSummary>;
+  readonly route: {
+    readonly primary: L1ProviderSource;
+    readonly network: Network;
+  };
   readonly checkedAtMs: number;
   readonly healthySources: readonly L1ProviderSource[];
   readonly unhealthySources: readonly L1ProviderSource[];
   readonly sources: readonly L1ProviderHealth[];
 };
 
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+const SUMMARY_MAX_CHARS = 240;
 
 /**
- * One line for an arbitrary thrown value.
- *
- * An `Error` is rendered as `name: message` rather than serialized: the
- * diagnostic content of a `fetch failed` is entirely in its nested cause's
- * message (`getaddrinfo EAI_AGAIN kupo`, `ECONNREFUSED 127.0.0.1:1442`), and
- * `JSON.stringify` of an Error is `{}` — Error's own properties are not
- * enumerable — which erases exactly the text an operator needs.
+ * One bounded line for a thrown value: `name: message`, with its cause's.
+ * `JSON.stringify` of an Error is `{}`, so an Error is never serialized.
  */
-const describeThrown = (value: unknown): string => {
-  if (value instanceof Error) {
-    return `${value.name}: ${value.message}`;
-  }
-  if (typeof value === "object" && value !== null) {
-    return JSON.stringify(value) ?? "undefined";
-  }
-  return typeof value === "symbol" ? value.toString() : String(value);
-};
-
-const summarizeFetchFailure = (cause: unknown): string => {
-  const primary = describeThrown(cause);
-  const nested = cause instanceof Error ? cause.cause : undefined;
-  return summarizeProviderBody(
+export const summarizeL1Failure = (value: unknown): string => {
+  const describe = (thrown: unknown): string =>
+    thrown instanceof Error
+      ? `${thrown.name}: ${thrown.message}`
+      : String(thrown);
+  const nested = value instanceof Error ? value.cause : undefined;
+  const text = (
     nested === undefined
-      ? primary
-      : `${primary}; cause=${describeThrown(nested)}`,
-  );
+      ? describe(value)
+      : `${describe(value)}; cause=${describe(nested)}`
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length <= SUMMARY_MAX_CHARS
+    ? text
+    : `${text.slice(0, SUMMARY_MAX_CHARS)}...`;
 };
 
-const joinUrl = (base: string, path: string): string =>
-  `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
-
-const fetchWithTimeout = async (
-  fetchImpl: FetchLike,
-  url: string,
-  init: RequestInit,
+const withTimeout = async <T>(
+  run: () => Promise<T>,
   timeoutMs: number,
-): Promise<Response> => {
-  const controller = new AbortController();
-  const upstreamSignal = init.signal;
-  const abortFromUpstream = () => controller.abort(upstreamSignal?.reason);
-  if (upstreamSignal?.aborted === true) {
-    abortFromUpstream();
-  } else {
-    upstreamSignal?.addEventListener("abort", abortFromUpstream, {
-      once: true,
-    });
-  }
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  signal: AbortSignal | undefined,
+): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   try {
-    return await fetchImpl(url, { ...init, signal: controller.signal });
+    return await Promise.race([
+      run(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(new Error(`the L1 read exceeded ${timeoutMs.toString()}ms`)),
+          timeoutMs,
+        );
+        if (signal !== undefined) {
+          onAbort = () => reject(new Error("the L1 read was aborted"));
+          if (signal.aborted) onAbort();
+          else signal.addEventListener("abort", onAbort, { once: true });
+        }
+      }),
+    ]);
   } finally {
-    clearTimeout(timeout);
-    upstreamSignal?.removeEventListener("abort", abortFromUpstream);
+    if (timer !== undefined) clearTimeout(timer);
+    if (onAbort !== undefined) signal?.removeEventListener("abort", onAbort);
   }
 };
 
-const checkHttpOk = async ({
-  fetchImpl,
-  url,
-  init,
-  source,
-  endpoint,
-  timeoutMs,
-  cooldownMs,
-  nowMs,
-}: {
-  readonly fetchImpl: FetchLike;
-  readonly url: string;
-  readonly init: RequestInit;
-  readonly source: L1ProviderSource;
-  readonly endpoint: string;
-  readonly timeoutMs: number;
-  readonly cooldownMs: number;
-  readonly nowMs: number;
-}): Promise<L1ProviderHealth> => {
-  const existingCooldown = getProviderCooldown(source, nowMs);
-  if (existingCooldown !== undefined) {
-    return {
-      source,
-      endpoint: redactEndpoint(endpoint),
-      healthy: false,
-      degraded: true,
-      failureKind: "rate_limited",
-      cooldown: {
-        reason: existingCooldown.reason,
-        retryAtMs: existingCooldown.retryAtMs,
-        remainingMs: existingCooldown.retryAtMs - nowMs,
-      },
-    };
-  }
-
+const checkLocalNode = async (
+  config: L1ProviderPreflightConfig,
+  signal: AbortSignal | undefined,
+): Promise<L1ProviderHealth> => {
+  const base = {
+    source: "l1_node",
+    endpoint: config.endpoint,
+    degraded: false,
+  } as const;
   const startedAt = Date.now();
   try {
-    const response = await fetchWithTimeout(fetchImpl, url, init, timeoutMs);
-    const body = await response.text();
-    const latencyMs = Date.now() - startedAt;
-    if (!response.ok) {
-      const classification = classifyProviderHttpResponse({
-        status: response.status,
-        body,
-        retryAfter: response.headers.get("retry-after"),
-      });
-      if (classification.rateLimitEligible) {
-        const cooldown = markProviderCooldown({
-          source,
-          reason: classification.kind,
-          cooldownMs: classification.retryAfterMs ?? cooldownMs,
-          nowMs,
-        });
-        return {
-          source,
-          endpoint: redactEndpoint(endpoint),
-          healthy: false,
-          degraded: true,
-          latencyMs,
-          status: response.status,
-          failureKind: classification.kind,
-          bodySummary: classification.summary,
-          cooldown: {
-            reason: cooldown.reason,
-            retryAtMs: cooldown.retryAtMs,
-            remainingMs: cooldown.retryAtMs - nowMs,
-          },
-        };
-      }
-      return {
-        source,
-        endpoint: redactEndpoint(endpoint),
-        healthy: false,
-        degraded: false,
-        latencyMs,
-        status: response.status,
-        failureKind: classification.kind,
-        bodySummary: classification.summary,
-      };
-    }
-    return {
-      source,
-      endpoint: redactEndpoint(endpoint),
-      healthy: true,
-      degraded: false,
-      latencyMs,
-      status: response.status,
-      ...(body.trim().length === 0
-        ? {}
-        : { bodySummary: summarizeProviderBody(body) }),
-    };
-  } catch (cause) {
-    return {
-      source,
-      endpoint: redactEndpoint(endpoint),
-      healthy: false,
-      degraded: false,
-      latencyMs: Date.now() - startedAt,
-      failureKind: "network_error",
-      bodySummary: summarizeFetchFailure(cause),
-    };
-  }
-};
-
-const checkKupmios = async (
-  config: L1ProviderPreflightConfig,
-  fetchImpl: FetchLike,
-  nowMs: number,
-  signal?: AbortSignal,
-): Promise<L1ProviderHealth> => {
-  const kupo = await checkHttpOk({
-    fetchImpl,
-    source: "kupmios",
-    endpoint: config.L1_KUPO_KEY,
-    url: joinUrl(config.L1_KUPO_KEY, "/health"),
-    init: { signal },
-    timeoutMs: config.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-    cooldownMs: config.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
-    nowMs,
-  });
-  if (!kupo.healthy) {
-    return kupo;
-  }
-  const ogmios = await checkHttpOk({
-    fetchImpl,
-    source: "kupmios",
-    endpoint: config.L1_OGMIOS_KEY,
-    url: joinUrl(config.L1_OGMIOS_KEY, "/health"),
-    init: { signal },
-    timeoutMs: config.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-    cooldownMs: config.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
-    nowMs,
-  });
-  if (!ogmios.healthy) {
-    return {
-      ...ogmios,
-      endpoint: `${redactEndpoint(config.L1_KUPO_KEY)},${redactEndpoint(
-        config.L1_OGMIOS_KEY,
-      )}`,
-    };
-  }
-  let slotSnapshot: SubmitSlotSnapshot;
-  try {
-    slotSnapshot = await Effect.runPromise(
-      readLocalOgmiosSubmitSlot({
-        ogmiosUrl: config.L1_OGMIOS_KEY,
-        fetchImpl,
-        nowMs,
-        timeoutMs: config.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-        maxHealthAgeMs: config.L1_OGMIOS_TIP_MAX_AGE_MS,
-        signal,
-      }),
+    const snapshot = await withTimeout(
+      config.readSubmitSlotSnapshot,
+      config.timeoutMs,
+      signal,
     );
-  } catch (cause) {
     return {
-      ...ogmios,
+      ...base,
+      healthy: true,
+      latencyMs: Date.now() - startedAt,
+      localLedgerSlot: snapshot,
+      bodySummary: submitSlotEvidence(snapshot),
+    };
+  } catch (cause) {
+    // A read that failed while the transport is not ready is named by the
+    // transport's reason: the node or its sidecar is not reachable.
+    const transport = config.transportReadiness();
+    return {
+      ...base,
       healthy: false,
-      degraded: false,
-      endpoint: `${redactEndpoint(config.L1_KUPO_KEY)},${redactEndpoint(
-        config.L1_OGMIOS_KEY,
-      )}`,
-      failureKind: "local_ogmios_slot_unavailable",
-      bodySummary: summarizeProviderBody(String(cause)),
+      latencyMs: Date.now() - startedAt,
+      ...(transport.ready
+        ? {
+            failureKind: l1ReadFailureKind(cause),
+            bodySummary: summarizeL1Failure(cause),
+          }
+        : {
+            failureKind: `transport:${transport.reason}`,
+            bodySummary: summarizeL1Failure(transport.detail),
+          }),
     };
   }
-  return {
-    ...ogmios,
-    endpoint: `${redactEndpoint(config.L1_KUPO_KEY)},${redactEndpoint(
-      config.L1_OGMIOS_KEY,
-    )}`,
-    localLedgerSlot: slotSnapshot,
-    bodySummary: [
-      ogmios.bodySummary,
-      localOgmiosSubmitSlotEvidence(slotSnapshot),
-    ]
-      .filter((part): part is string => part !== undefined && part.length > 0)
-      .join("; "),
-  };
 };
 
 export const runL1ProviderPreflight = async ({
   config,
-  fetchImpl = fetch,
   nowMs = Date.now(),
   signal,
 }: {
   readonly config: L1ProviderPreflightConfig;
-  readonly fetchImpl?: FetchLike;
   readonly nowMs?: number;
   readonly signal?: AbortSignal;
 }): Promise<L1ProviderPreflightReport> => {
-  const checks: Promise<L1ProviderHealth>[] = [
-    checkKupmios(config, fetchImpl, nowMs, signal),
-  ];
-
-  const sources = await Promise.all(checks);
+  const sources = [await checkLocalNode(config, signal)];
   const healthySources = sources
     .filter((source) => source.healthy)
     .map((source) => source.source);
   const unhealthySources = sources
     .filter((source) => !source.healthy)
     .map((source) => source.source);
-  const primaryHealthy = healthySources.includes("kupmios");
   return {
     ok: healthySources.length > 0,
-    degraded: !primaryHealthy && healthySources.length > 0,
-    route: providerRouteSummary({
-      provider: config.L1_PROVIDER,
-      network: config.NETWORK,
-    }),
+    degraded: false,
+    route: { primary: "l1_node", network: config.network },
     checkedAtMs: nowMs,
     healthySources,
     unhealthySources,

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -9,6 +10,7 @@ import {
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
 import {
@@ -19,6 +21,7 @@ import {
   resolveProverSigner,
 } from "@al-ft/midgard-fault-proofs";
 import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
+import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -34,10 +37,12 @@ import {
 } from "midgard-node/tests/helpers/published-workflow-deployment";
 import { expect, it, vi } from "vitest";
 
-import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
+import { readWatcherFaultDecisionEvidence } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
-import { makeWatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
-import { WatcherLocalKupmios } from "../../src/l1/native-reward-account.js";
+import {
+  closeWatcherJournalDatabase,
+  WATCHER_JOURNAL_DATABASE_FILE,
+} from "../../src/fault-proofs/watcher-journal-database.js";
 import {
   parseWatcherProcessConfig,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
@@ -53,9 +58,16 @@ import { operationsVerifiedHeader } from "../support/operations-verified-header.
 import { createPublishedWatcherDeploymentAuthority } from "../support/published-deployment-authority.js";
 import { stagePublishedDepositTrace } from "../support/published-deposit-trace.js";
 import { createTerminalRelease } from "../support/terminal-release.js";
-import { startPublishedWatcherJourneyAuthorityFixture } from "../support/trusted-head-process-fixture.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 import { assertPublishedFundingCustodyRoles } from "./watcher-installed-journey.funding-policy-fixture.js";
+
+/** The fields of an operations response these probes read. */
+type ProbeBody = {
+  ready?: boolean;
+  reasons?: string[];
+  error?: string;
+  supervisor?: { journalIntegrity: string | null };
+};
 
 const transport = vi.hoisted(() => ({
   provider: undefined as Provider | undefined,
@@ -264,7 +276,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         nativeTipBaseDepth: 40,
         blockSlotInterval: 20,
         nativeTipMode: "controlled",
-        nativeStreamInitialAcknowledgement: true,
+        // The defaults are the emulator's parameters below.
+        nodeProtocolParameters: {},
         published: {
           deployment: configuration.nativeDeployment,
           inclusionSlot: initializationStatus.confirmation.slot,
@@ -312,7 +325,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       }),
     );
     nativeBlocksPath = join(
-      dirname(native.nativeChainSyncBinaryPath),
+      dirname(native.l1NodeTransportBinaryPath),
       "blocks.json",
     );
     cleanup.push(chain.close);
@@ -342,38 +355,65 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     vi.spyOn(Kupmios.prototype, "getRewardAccount").mockImplementation(
       (address) => provider.getRewardAccount(address),
     );
-    vi.spyOn(
-      WatcherLocalKupmios.prototype,
-      "getRewardAccount",
-    ).mockImplementation((address) => provider.getRewardAccount(address));
     vi.spyOn(Kupmios.prototype, "submitTx").mockImplementation((cbor) =>
       provider.submitTx(cbor),
     );
     vi.spyOn(Kupmios.prototype, "awaitTx").mockImplementation((hash) =>
       provider.awaitTx(hash),
     );
+    // The follower provider's node queries and submissions reach the
+    // emulator; the synthetic native transport only serves chain-sync.
+    vi.spyOn(
+      L1FollowerProvider.prototype,
+      "getProtocolParameters",
+    ).mockImplementation(() => provider.getProtocolParameters());
+    vi.spyOn(L1FollowerProvider.prototype, "getUtxos").mockImplementation(
+      (address) => provider.getUtxos(address),
+    );
+    vi.spyOn(
+      L1FollowerProvider.prototype,
+      "getUtxosWithUnit",
+    ).mockImplementation((address, unit) =>
+      provider.getUtxosWithUnit(address, unit),
+    );
+    vi.spyOn(
+      L1FollowerProvider.prototype,
+      "getUtxosByOutRef",
+    ).mockImplementation((outRefs) => provider.getUtxosByOutRef(outRefs));
+    vi.spyOn(L1FollowerProvider.prototype, "getUtxoByUnit").mockImplementation(
+      (unit) => provider.getUtxoByUnit(unit),
+    );
+    vi.spyOn(L1FollowerProvider.prototype, "getDelegation").mockImplementation(
+      (address) => provider.getDelegation(address),
+    );
+    vi.spyOn(
+      L1FollowerProvider.prototype,
+      "getRewardAccount",
+    ).mockImplementation((address) => provider.getRewardAccount(address));
+    vi.spyOn(L1FollowerProvider.prototype, "submitTx").mockImplementation(
+      (cbor) => provider.submitTx(cbor),
+    );
+    vi.spyOn(L1FollowerProvider.prototype, "awaitTx").mockImplementation(
+      (hash) => provider.awaitTx(hash),
+    );
     vi.stubEnv("MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY", "17".repeat(32));
     vi.stubEnv("MIDGARD_WATCHER_PROVER_KEY", accounts.publisher.seedPhrase);
     vi.stubEnv("WATCHER_AVAILABILITY_KEY", availabilityAccount.seedPhrase);
-    vi.stubEnv("MIDGARD_WATCHER_TRUSTED_HEAD_BEARER", "39".repeat(32));
     const watcherConfig = {
       ...native.watcherConfig,
+      // The follower starts at the block before the protocol-init block.
+      l1: {
+        ...native.watcherConfig.l1,
+        origin: {
+          slot: Number(native.activationBlock.parentPoint.slot),
+          blockHash: native.activationBlock.parentPoint.blockHash,
+        },
+      },
       storage: {
         ...native.watcherConfig.storage,
         path: join(directory, "watcher.sqlite"),
       },
     };
-    const policy = makeWatcherFinalityPolicy(
-      watcherConfig,
-      configuration.deploymentAuthority.deploymentIdentity,
-    );
-    if (policy === null)
-      throw new Error("Fixture finality policy was not admitted");
-    const trusted = await startPublishedWatcherJourneyAuthorityFixture({
-      directory: join(directory, "trusted-head"),
-      policy,
-    });
-    cleanup.push(trusted.close);
     const config = parseWatcherProcessConfig({
       schemaVersion: WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
       watcherConfig,
@@ -381,13 +421,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       deploymentAuthorityPath: configuration.authorityPath,
       ruleBundlePath: configuration.ruleBundlePath,
       fundingProfileBundlePath: configuration.fundingProfileBundlePath,
-      nativeChainSyncBinaryPath: native.nativeChainSyncBinaryPath,
-      trustedHeadAuthorityEndpoint: trusted.server.endpoint,
+      l1NodeTransportBinaryPath: native.l1NodeTransportBinaryPath,
       operationsEndpoint: `http://127.0.0.1:${operations.port}`,
-      httpBearerSecretSource: {
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_TRUSTED_HEAD_BEARER",
-      },
       workflowJournalDirectory: join(directory, "workflows"),
       availability: {
         keySource: {
@@ -401,33 +436,32 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         manifestPath: configuration.manifestPath,
         blueprintPath: configuration.blueprintPath,
         deploymentInfoPath: configuration.deploymentInfoPath,
-        historicalNativeScriptHistory: {
-          sourceMode: "external_provider_quorum",
-          consistencyPolicy: "exact_bytes_all_providers_v1",
-          providers: [
-            {
-              sourceId: "history-a",
-              operatorIdentitySha256: "a1".repeat(32),
-              authorityEndpoint: "https://history-a.example.test",
-            },
-            {
-              sourceId: "history-b",
-              operatorIdentitySha256: "b2".repeat(32),
-              authorityEndpoint: "https://history-b.example.test",
-            },
-          ],
-        },
       },
     });
     await writeFile(
       config.watcherRuntimeConfigPath,
       JSON.stringify(watcherConfig),
     );
+    // W2-E6: a leftover file journal is ignored, never imported, and never
+    // holds startup; the watcher names it once.
+    const legacyJournal = join(
+      config.workflowJournalDirectory,
+      "fault-decisions",
+    );
+    await mkdir(legacyJournal, { recursive: true, mode: 0o700 });
+    await writeFile(join(legacyJournal, "000001.json"), "{}");
+    const stderr = vi.spyOn(process.stderr, "write");
     watcher = await stage(
       "watcher startup",
       () => createWatcherRuntime({ config }),
       300_000,
     );
+    expect(
+      stderr.mock.calls
+        .map(([chunk]) => String(chunk))
+        .filter((line) => line.includes('"legacy_journal_ignored"')),
+    ).toEqual([expect.stringContaining(`"path":"${legacyJournal}"`)]);
+    stderr.mockRestore();
     let runtimeFailure: unknown;
     void watcher.done.catch((cause: unknown) => {
       runtimeFailure = cause;
@@ -438,15 +472,18 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       if (watcher!.status().phase !== "live")
         throw new Error("Watcher stopped while processing the fixture");
     };
-    // Observe a fresh durable view, independently of the service's cache.
+    // Observe a fresh durable view, independently of the service's cache
+    // and its connection: the evidence reader opens the file read-only.
     const readDecisions = async () =>
-      (
-        await openWatcherFaultDecisionJournal({
-          directory: config.workflowJournalDirectory,
-          deploymentFingerprint: deployment.manifest.manifestId,
-          launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-        })
-      ).readAll();
+      existsSync(
+        join(config.workflowJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
+      )
+        ? readWatcherFaultDecisionEvidence({
+            directory: config.workflowJournalDirectory,
+            deploymentFingerprint: deployment.manifest.manifestId,
+            launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+          }).map((decision) => ({ decision }))
+        : [];
     const latestDiagnostics = (
       kind: "l1_source" | "verification" | "da_fetch",
     ) => {
@@ -466,7 +503,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       operationsVerifiedHeader(watcher!.operations.api, headerHash);
     runtimeDiagnostics = async () => ({
       runtime: watcher!.status(),
-      coordinator: watcher!.coordinator.status(),
+      decisionDriver: watcher!.decisionDriver.status(),
+      follower: watcher!.follower.status(),
       chainTip: chain.tip(),
       decisions: (await readDecisions()).map(({ decision }) => ({
         headerHash: decision.headerHash,
@@ -791,6 +829,70 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         join(evidenceDirectory, "watcher-installed-history-native-blocks.json"),
       );
     }
+    // W2-E2: a restart over journals that fail integrity binds the operations
+    // server and holds the watcher live and unready; it never fails startup.
+    await watcher.close();
+    watcher = undefined;
+    // The process's journal connection outlives the runtime; a restart is a
+    // new process, so close it as an exit would.
+    closeWatcherJournalDatabase(config.workflowJournalDirectory);
+    const shiftDecisionHead = (by: number) => {
+      const raw = new DatabaseSync(
+        join(config.workflowJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
+      );
+      try {
+        raw
+          .prepare(
+            "UPDATE watcher_journal_heads SET revision = revision + ? WHERE journal = 'fault_decisions'",
+          )
+          .run(by);
+      } finally {
+        raw.close();
+      }
+    };
+    shiftDecisionHead(1);
+    let restartFailure: unknown;
+    const restarting = createWatcherRuntime({ config });
+    void restarting.catch((cause: unknown) => {
+      restartFailure = cause;
+    });
+    const probe = async (path: string) => {
+      const response = await fetch(`${config.operationsEndpoint}${path}`);
+      return {
+        status: response.status,
+        body: (await response.json()) as ProbeBody,
+      };
+    };
+    await stage(
+      "restart held unready over a refused journal",
+      async () => {
+        for (;;) {
+          if (restartFailure !== undefined) throw restartFailure;
+          const readyz = await probe("/readyz").catch(() => undefined);
+          if (readyz?.body.reasons?.includes("journal_integrity") === true) {
+            expect(readyz.status).toBe(503);
+            break;
+          }
+          await pause(100);
+        }
+        const live = await probe("/v1/status");
+        expect(live.status).toBe(200);
+        expect(live.body.supervisor?.journalIntegrity).toContain(
+          "head MAC differs",
+        );
+        expect(await probe("/v1/metrics")).toEqual({
+          status: 503,
+          body: { error: "journal_integrity" },
+        });
+      },
+      300_000,
+    );
+    // Repair the head and forget the refusal, as the restart that clears it
+    // would; the held startup then completes on the repaired journals.
+    shiftDecisionHead(-1);
+    closeWatcherJournalDatabase(config.workflowJournalDirectory);
+    watcher = await stage("startup after journal repair", () => restarting);
+    expect(watcher.faultProofSupervisor.status().journalIntegrity).toBeNull();
     succeeded = true;
   } catch (cause) {
     console.error(`Watcher journey stopped at ${activeStage}`, cause);

@@ -50,8 +50,6 @@ export {
   encodeCekSinglePublicationDatumCbor,
   encodeTxOrderDatumCbor,
   encodeTxOrderMintRedeemerCbor,
-  fetchTxOrderUTxOs,
-  fetchTxOrderUTxOsProgram,
   type SubmitTxOrderConfig,
   type SubmitTxOrderReferenceScripts,
   TxOrderDatum,

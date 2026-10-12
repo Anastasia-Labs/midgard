@@ -105,7 +105,13 @@ it.each([
       )
       .complete({ canonical: mode === "canonical", localUPLCEval: true });
     if (emptyCollateral) {
-      await expect(build).rejects.toThrow("collateral");
+      // Lucid falls back to wallet UTxOs when getCollateral is empty, so the
+      // funding input doubles as collateral. The production signer refuses
+      // that before submission: its preflight rejects any collateral input
+      // outside the reserved collateral set.
+      const tx = (await build).toTransaction().body();
+      expect(tx.collateral_inputs()?.len()).toBe(1);
+      expect(tx.collateral_inputs()?.get(0).index()).toBe(0n);
       return;
     }
     const signed = await (await build).sign.withWallet().complete();

@@ -168,10 +168,6 @@ export const publishValueNotPreservedReferenceScripts = async ({
 // The honest thread, one call: init → bind → fold* → finish [→ 03 [→ 04]]
 // ---------------------------------------------------------------------------
 
-export type ValueNotPreservedThreadRun = Awaited<
-  ReturnType<typeof runValueNotPreservedThread>
->;
-
 /**
  * Runs the honest submitters over a committed scenario, capturing per-step
  * emulator measurements. `through` picks the stopping point so adversarial

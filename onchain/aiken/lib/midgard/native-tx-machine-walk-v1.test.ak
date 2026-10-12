@@ -488,12 +488,12 @@ fn count_item(state: Int, _index: Int, _item: ByteArray) -> Int {
 }
 
 // ---------------------------------------------------------------------------
-// §10.2 grammar certification — exact Q17 maximum and adversarial matrix
+// §10.2 grammar certification — exact field-6 maximum and adversarial matrix
 // ---------------------------------------------------------------------------
 
-/// Transaction 1 at the exact Q17 maximum: authenticate the 10,306-byte
-/// inline field, consume only the first 32 envelopes, and commit an 87-byte
-/// position. The runner row is the per-transaction fit evidence.
+/// Transaction 1 at the exact field-6 maximum (C20.6's 224 native script
+/// witnesses): authenticate the 10,306-byte inline field, consume only the
+/// first 32 envelopes, and commit an 87-byte position. The runner row is the per-transaction fit evidence.
 test grammar_maximum_inline_open_and_32_fit() {
   let preimage = maximum_script_preimage()
   let Pair(view, start) = open_grammar(
@@ -568,7 +568,7 @@ test grammar_maximum_raw_utxo_middle_32_fit() {
   )
 }
 
-/// The exact Q17 maximum is below the protocol's 15,148-byte tier-3 boundary,
+/// The exact field-6 maximum is below the protocol's 15,148-byte tier-3 boundary,
 /// so it has exactly the two admissible routes measured above. Re-publishing
 /// it as a certificate is rejected instead of creating a second spelling.
 test grammar_maximum_certified_carriage_is_inadmissible_below_k() fail {
@@ -584,7 +584,7 @@ test grammar_maximum_certified_carriage_is_inadmissible_below_k() fail {
   field_grammar_is_complete(certify_field_grammar(view, start, 32))
 }
 
-/// The shared primitive still covers genuine tier 3: 330 exact Q17-shaped
+/// The shared primitive still covers genuine tier 3: 330 maximum-shaped
 /// envelopes cross K, arrive as two certified chunks, and must enter the same
 /// provisional grammar phase before any semantic count exists.
 test grammar_tier_three_variable_field_open_and_32_fit() {

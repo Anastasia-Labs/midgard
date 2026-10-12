@@ -34,6 +34,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "../src/deployment-profile.js";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "../src/l1-slot-config.js";
 
 let generatedCatalogueFixture: DeploymentManifestFraudProofCatalogueIdentity;
 
@@ -87,6 +88,7 @@ export const identityInput = () => ({
   deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
   deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
   network: "Preprod",
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   cardanoProtocolParameters: {},
   genesis: {},
   createdAt: "2026-07-24T00:00:00.000Z",

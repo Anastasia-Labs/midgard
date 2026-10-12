@@ -20,7 +20,7 @@ if (network.length === 0 || output.length === 0) {
   );
 }
 const outputPath = resolve(output);
-const ogmiosUrl = option("ogmios-url", process.env.L1_OGMIOS_KEY).trim();
+const ogmiosUrl = option("ogmios-url").trim();
 let ogmiosGenesisPayload;
 if (network === "Custom") {
   if (ogmiosUrl.length === 0) {

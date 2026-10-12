@@ -175,31 +175,31 @@ describe("liveness halts", () => {
       }),
   );
 
-  it("holds commit, merge and settlement on a rewind conflict, only commit on an undecided signed intent, and every operator duty on removal", () => {
+  it("holds every operator duty on removal", () => {
     const held = (source: HaltSource) =>
       Object.entries(FIBER_HALT_SOURCES)
         .filter(([, sources]) => sources.includes(source))
         .map(([name]) => name)
         .sort();
-    expect(held(HaltSource.stateQueueCorrectionRewind)).toEqual([
-      "blockCommitment",
-      "merge",
-      "settlement",
-      "speculativeCommitBuilder",
-      "speculativeCommitSubmitter",
-    ]);
-    expect(held(HaltSource.blockConfirmationSignedIntent)).toEqual([
-      "blockCommitment",
-      "speculativeCommitBuilder",
-      "speculativeCommitSubmitter",
-    ]);
     expect(held(HaltSource.operatorMembership)).toEqual([
       "blockCommitment",
       "merge",
       "operatorWatchdog",
       "settlement",
-      "speculativeCommitBuilder",
-      "speculativeCommitSubmitter",
+    ]);
+  });
+
+  it("holds every operator duty while the instance lock is not held", () => {
+    const held = (source: HaltSource) =>
+      Object.entries(FIBER_HALT_SOURCES)
+        .filter(([, sources]) => sources.includes(source))
+        .map(([name]) => name)
+        .sort();
+    expect(held(HaltSource.instanceLock)).toEqual([
+      "blockCommitment",
+      "merge",
+      "operatorWatchdog",
+      "settlement",
     ]);
   });
 });

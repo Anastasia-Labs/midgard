@@ -17,7 +17,7 @@ import {
   serializeStateQueueUTxO,
 } from "../src/workers/utils/commit-block-header.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Real SQL/serialization and authority checks; source rows below are explicit
 // model inputs. The native IO spy is not evidence of durable native recovery.
@@ -33,8 +33,9 @@ const bytes = (n: number, width = 32) => Buffer.alloc(width, n);
 const sha = (value: Uint8Array) => createHash("sha256").update(value).digest();
 const address =
   "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58";
-const binding = bytes(71);
-const incarnation = bytes(72);
+const eventKey = bytes(84);
+/** The deposit's admission output: its L1 tx (`deposit_l1_tx_hash`), index 0. */
+const originOutRef = Buffer.concat([bytes(73), Buffer.alloc(2)]);
 const eventId = Buffer.from(
   Data.to(
     { transactionId: bytes(73).toString("hex"), outputIndex: 0n },
@@ -202,26 +203,17 @@ const fixture = async () => {
   await run(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // This authority-boundary fixture does not fabricate an applied-L1 receipt.
-      yield* sql`INSERT INTO event_history_cursor (
-      binding_digest, manifest_id, origin_receipt, origin_receipt_digest,
-      anchor_hash, anchor_slot, anchor_height, anchor_snapshot_digest,
-      head_hash, head_slot, head_height, snapshot_digest, revision, addresses
-    ) VALUES (${binding}, ${bytes(78)}, 'explicit SQL model', ${bytes(81)},
-      ${bytes(82)}, 1, 1, ${bytes(83)}, ${bytes(82)}, 1, 1, ${bytes(83)}, 0, '[]'::jsonb)`;
-      yield* sql`INSERT INTO event_history_incarnations (
-      binding_digest, incarnation_id, kind, event_id, event_key,
-      origin_canonical, incarnation_record, incarnation_digest
-    ) VALUES (${binding}, ${incarnation}, 'deposit', ${eventId}, ${bytes(84)}, true,
-      'explicit SQL model', ${bytes(85)})`;
+      // The explicit SQL model's follower admission of the deposit.
+      yield* sql`INSERT INTO l1_event_keys (kind, key, origin_outref, first_canonical_slot)
+      VALUES ('deposit', ${eventKey}, ${originOutRef}, 1)`;
       yield* sql`INSERT INTO deposits_utxos ${sql.insert({
         ...input.depositEntries[0]!,
-        history_binding_digest: binding,
-        history_incarnation_id: incarnation,
+        l1_event_key: eventKey,
+        l1_origin_outref: originOutRef,
       })}`;
       yield* Pending.preparePendingSubmission(input);
       yield* sql`UPDATE pending_block_finalization_deposits
-      SET history_binding_digest = ${binding}, history_incarnation_id = ${incarnation}
+      SET l1_event_key = ${eventKey}, l1_origin_outref = ${originOutRef}
       WHERE header_hash = ${headerHash}`;
     }),
   );
@@ -243,12 +235,8 @@ const snapshot = () =>
       const journal = Option.getOrThrow(yield* Pending.retrieveActive());
       const deposits =
         yield* sql`SELECT * FROM deposits_utxos ORDER BY event_id`;
-      const incarnations =
-        yield* sql`SELECT * FROM event_history_incarnations ORDER BY incarnation_id`;
-      const cursor =
-        yield* sql`SELECT * FROM event_history_cursor ORDER BY binding_digest`;
-      const authority = yield* sql`SELECT * FROM event_history_authority`;
-      return { journal, deposits, incarnations, cursor, authority };
+      const keys = yield* sql`SELECT * FROM l1_event_keys ORDER BY kind, key`;
+      return { journal, deposits, keys };
     }),
   );
 const nativeBoundary = () => {
@@ -259,18 +247,8 @@ const nativeBoundary = () => {
 };
 
 beforeEach(async () => {
-  await run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      // tests/utils.ts pins this file to its disposable worker database. Reset
-      // the related fixture tables together, including their FK dependents.
-      yield* sql`TRUNCATE pending_block_finalizations, deposits_utxos, withdrawal_utxos,
-      pending_block_finalization_deposits, pending_block_finalization_withdrawals,
-      event_history_cursor, event_history_block_applications,
-      event_history_live_outputs, event_history_incarnations,
-      event_history_authority, event_history_replay_receipts CASCADE`;
-    }),
-  );
+  // tests/utils.ts pins this file to its disposable worker database.
+  await run(resetApplicationTables);
 });
 
 describe(
@@ -338,7 +316,7 @@ describe(
       expect(await snapshot()).toEqual(before);
     });
 
-    it("refuses an orphaned retained incarnation after the identical canonical member was accepted", async () => {
+    it("refuses an orphaned retained admission after the identical canonical member was accepted", async () => {
       const state = await fixture();
       await run(Pending.markSubmitted(state.headerHash, state.txHash));
       const { recover, owner } = nativeBoundary();
@@ -348,8 +326,8 @@ describe(
       await run(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          yield* sql`UPDATE event_history_incarnations SET origin_canonical = false
-        WHERE binding_digest = ${binding} AND incarnation_id = ${incarnation}`;
+          // A follower rewind past the admission deletes its key.
+          yield* sql`DELETE FROM l1_event_keys WHERE kind = 'deposit' AND key = ${eventKey}`;
         }),
       );
       const before = await snapshot();

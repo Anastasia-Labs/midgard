@@ -30,21 +30,20 @@ describe("canonical Scheduler V1 ABI", () => {
       ],
       ["Init", SchedulerMintRedeemer, "d87980"],
       ["Deinit", SchedulerMintRedeemer, "d87a80"],
-      ["NoNeglectedUserEvent", NeglectedUserEventSchema, "d87980"],
       [
         { NeglectedDeposit: { deposit_ref_input_index: 1n } },
         NeglectedUserEventSchema,
-        "d87a9f01ff",
+        "d8799f01ff",
       ],
       [
         { NeglectedWithdrawal: { withdrawal_ref_input_index: 2n } },
         NeglectedUserEventSchema,
-        "d87b9f02ff",
+        "d87a9f02ff",
       ],
       [
         { NeglectedTxOrder: { tx_order_ref_input_index: 3n } },
         NeglectedUserEventSchema,
-        "d87c9f03ff",
+        "d87b9f03ff",
       ],
       ["OperatorRetirement", OperatorRemovalReasonSchema, "d87980"],
       ["OperatorSlashing", OperatorRemovalReasonSchema, "d87a80"],
@@ -82,7 +81,7 @@ describe("canonical Scheduler V1 ABI", () => {
           },
         },
         AdvancingApproach,
-        "d87b9f0102030405d87a9f06ffff",
+        "d87b9f0102030405d8799f06ffff",
       ],
       [
         {
@@ -100,7 +99,7 @@ describe("canonical Scheduler V1 ABI", () => {
           },
         },
         AdvancingApproach,
-        "d87c9f0102030405d8799f06ff07d87b9f08ffff",
+        "d87c9f0102030405d8799f06ff07d87a9f08ffff",
       ],
       [
         {

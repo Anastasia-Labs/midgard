@@ -1,7 +1,6 @@
 import "./utils.js";
 
-import { randomUUID } from "node:crypto";
-
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -13,11 +12,11 @@ import {
   PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
   type PipelineStatusOldestActiveRow,
 } from "../src/commands/listen-router.js";
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { BatchSql } from "../src/services/database.js";
 import { Globals } from "../src/services/index.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /**
  * Independent definition of "active": every journal status that is not one of
@@ -26,7 +25,7 @@ import { provideDatabaseLayers } from "./utils.js";
  * here until someone deliberately marks it terminal.
  */
 const TERMINAL_STATUSES: readonly PendingBlockFinalizationsDB.Status[] = [
-  PendingBlockFinalizationsDB.Status.Finalized,
+  PendingBlockFinalizationsDB.Status.LocallyApplied,
   PendingBlockFinalizationsDB.Status.Abandoned,
 ];
 const EXPECTED_ACTIVE_STATUSES = Object.values(
@@ -126,16 +125,30 @@ const getPipelineStatus = Effect.gen(function* () {
  * never touches the L1 wallet, contract, or validation services the wider
  * router declares.
  */
-const runAgainstShard = <A, E, R>(program: Effect.Effect<A, E, R>) =>
+const runAgainstShard = <A, E, R>(
+  program: Effect.Effect<A, E, R>,
+  manifestId?: string,
+) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
         const sql = yield* BatchSql;
-        yield* sql`DELETE FROM pending_block_finalizations`;
-        return yield* (
-          program as Effect.Effect<A, E, SqlClient.SqlClient>
+        return yield* Effect.zipRight(
+          resetApplicationTables,
+          program as Effect.Effect<A, E, SqlClient.SqlClient>,
         ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
-      }).pipe(Effect.provide(Globals.Default)),
+      }).pipe(
+        Effect.provide(Globals.Default),
+        // The settlement backlog is the deployment manifest's.
+        Effect.provideService(
+          ContractDeploymentIdentity,
+          ContractDeploymentIdentity.make({
+            kind: manifestId === undefined ? "derived" : "manifest",
+            ...(manifestId === undefined ? {} : { manifestId }),
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+          }),
+        ),
+      ),
     ) as Effect.Effect<A, E, never>,
   );
 
@@ -159,7 +172,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
         yield* sql`INSERT INTO pending_block_finalizations ${sql.insert([
           journalRow({
             headerHash: "aa".repeat(28),
-            status: PendingBlockFinalizationsDB.Status.Finalized,
+            status: PendingBlockFinalizationsDB.Status.LocallyApplied,
             createdAt: new Date(Date.now() - 3_600_000),
             submittedTxHash: "cc".repeat(32),
           }),
@@ -182,7 +195,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.pendingBlockFinalizations.countsByStatus).toEqual({
-      finalized: "1",
+      locally_applied: "1",
       abandoned: "1",
       submitted_unconfirmed: "1",
     });
@@ -205,7 +218,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
         yield* sql`INSERT INTO pending_block_finalizations ${sql.insert([
           journalRow({
             headerHash: "aa".repeat(28),
-            status: PendingBlockFinalizationsDB.Status.Finalized,
+            status: PendingBlockFinalizationsDB.Status.LocallyApplied,
             createdAt: new Date(Date.now() - 3_600_000),
             submittedTxHash: "cc".repeat(32),
           }),
@@ -223,7 +236,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
     expect(result.status).toBe(200);
     expect(result.body.pendingBlockFinalizations.oldestActive).toBeNull();
     expect(result.body.pendingBlockFinalizations.countsByStatus).toEqual({
-      finalized: "1",
+      locally_applied: "1",
       abandoned: "1",
     });
   });
@@ -298,16 +311,6 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
     const result = await runAgainstShard(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority CASCADE`;
-        const token = yield* Authority.acquire({
-          deploymentIdentity: deploymentId,
-          ownerToken: randomUUID(),
-          leaseDurationMs: 60_000,
-        });
-        yield* Authority.publishReady(token, {
-          point: { slot: 10, id: "b1".repeat(32) },
-          snapshotDigest: "c1".repeat(32),
-        });
         const job = (
           deployment: string,
           kind: "deposit" | "withdrawal",
@@ -325,6 +328,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
         yield* job("b2".repeat(32), "withdrawal", "04", "fund", "stale");
         return yield* getPipelineStatus;
       }),
+      deploymentId,
     );
 
     expect(result.status).toBe(200);

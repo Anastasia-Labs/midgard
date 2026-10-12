@@ -4,6 +4,11 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { artifactChannels, runArtifact } from "./contrib/artifacts.mjs";
+import {
+  campaignPlan,
+  campaignView,
+  runCampaign,
+} from "./contrib/campaign.mjs";
 import { reproduce } from "./contrib/reproduction.mjs";
 import { buildPackage, checkBuild } from "./contrib/build.mjs";
 import { captureHttp, diagnostics } from "./contrib/diagnostics.mjs";
@@ -18,12 +23,19 @@ import {
   generateDevnet,
   runAcceptance,
 } from "./contrib/operations.mjs";
+import { mutate, restoreMutant } from "./contrib/mutate.mjs";
 import { renderProgram, validateProgram } from "./contrib/program.mjs";
 import { verifyReceipt } from "./contrib/receipts.mjs";
 import { checkPnpm } from "./doctor.check-pnpm.mjs";
 import { pinnedPnpmVersion } from "./contrib/pnpm.mjs";
 import { listResources, reclaimResource } from "./contrib/resources.mjs";
 import { preparationPlan, prepare, runTests } from "./contrib/tests.mjs";
+import { summaryLines } from "./contrib/vitest-command.mjs";
+import {
+  createWorktree,
+  removeWorktree,
+  setupWorktree,
+} from "./contrib/worktree.mjs";
 import {
   applyPacket,
   createPacket,
@@ -33,10 +45,18 @@ import {
 } from "./contrib/workspace.mjs";
 
 export const HELP = `Midgard deterministic contributor tools (run from any cwd)
+  node scripts/contrib.mjs worktree create --branch NAME [--base REF] [--package NAME]
+  node scripts/contrib.mjs worktree setup [--package NAME]
+  node scripts/contrib.mjs worktree remove [--root WORKTREE] [--force]
   node scripts/contrib.mjs prepare --package NAME [--plan | --execute] [--source-only]
   node scripts/contrib.mjs build --package NAME [--force]
   node scripts/contrib.mjs native --package NAME
-  node scripts/contrib.mjs test --package NAME --file PATH [--file PATH] [--name REGEX] [--seed N] [--source-only]
+  node scripts/contrib.mjs test --package NAME [--file PATH... | --related PATH...] [--name REGEX]
+      [--seed N] [--source-only] [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
+      [--config FILE (with --file)] [--timeout-seconds N]
+  node scripts/contrib.mjs mutate --target PATH --from TEXT --to TEXT [--package NAME]
+      [--file TEST...] [--name REGEX] [--expect REGEX] [--seed N]
+  node scripts/contrib.mjs mutate restore
   node scripts/contrib.mjs gate NAME [--plan] [--seed N]
   node scripts/contrib.mjs artifacts list | check --channel ID | sync --channel ID
   node scripts/contrib.mjs artifacts builds
@@ -54,6 +74,7 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs diagnose --url LOCAL_URL [--output FILE]
   node scripts/contrib.mjs reproduce [--plan | --execute]
   node scripts/contrib.mjs devnet plan | generate --run-id ID
+  node scripts/contrib.mjs devnet campaign run --input CAMPAIGN_JSON [--plan]
   node scripts/contrib.mjs acceptance --input STACK_CONFIG [--plan]
 Global: --root CHECKOUT, --output JSON_FILE. Exit 0 passed/planned, 1 failed,
 2 invalid usage, 3 incomplete/skipped. Plans never execute prerequisites.
@@ -101,10 +122,38 @@ export const compact = (value) => {
   );
 };
 
+// A test receipt is long (digests of every input); the terminal gets what
+// a reader acts on, and --output keeps the whole receipt.
+const testView = (result) =>
+  result?.schema === "midgard-contrib-receipt/v1" && result.kind === "test"
+    ? {
+        status: result.status,
+        package: result.package,
+        counts: result.counts,
+        files: result.selectedFiles?.length,
+        seed: result.seed,
+        flags: result.flags,
+        reason: result.reason,
+        reportError: result.reportError,
+        failures: result.failures?.slice(0, 10),
+        blueprintAction: result.blueprintAction,
+        reach: result.reach && {
+          changed: result.reach.changed.length,
+          whole: result.reach.whole,
+          why: result.reach.why.slice(0, 10),
+        },
+        databaseCleanup: result.databaseCleanup,
+        logs: result.steps.map((step) => step.logPath),
+        receipt: result.path,
+        exitCode: result.exitCode,
+      }
+    : result;
+
 const valueOptions = new Set([
   "root",
   "package",
   "file",
+  "related",
   "name",
   "seed",
   "channel",
@@ -119,16 +168,38 @@ const valueOptions = new Set([
   "url",
   "proof-kind",
   "run-id",
+  "branch",
+  "maxWorkers",
+  "exclude",
+  "config",
+  "target",
+  "from",
+  "to",
+  "expect",
+  "timeout-seconds",
 ]);
+// Mutation text is taken verbatim: it may be empty or start with "--".
+const verbatimOptions = new Set(["from", "to"]);
+const mutateOptions = ["target", "from", "to", "expect"];
 const flagOptions = new Set([
   "plan",
   "execute",
   "source-only",
   "force",
   "help",
+  "disableConsoleIntercept",
 ]);
+// Vitest's own flags, passed through `contrib test` under Vitest's spelling.
+const vitestOptions = [
+  "maxWorkers",
+  "exclude",
+  "disableConsoleIntercept",
+  "config",
+];
+// Options that may repeat or list several values, and where each collects.
+const listOptions = { file: "files", related: "related", exclude: "excludes" };
 export const parse = (argv) => {
-  const options = { files: [], words: [] };
+  const options = { files: [], related: [], excludes: [], words: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (!argument.startsWith("--")) {
@@ -143,10 +214,20 @@ export const parse = (argv) => {
       continue;
     }
     const value = argv[++index];
-    if (!value || value.startsWith("--"))
+    if (
+      verbatimOptions.has(key)
+        ? value === undefined
+        : !value || value.startsWith("--")
+    )
       throw new Error(`${argument} requires a value`);
-    if (key === "file") options.files.push(value);
-    else if (options[key] !== undefined)
+    const list = listOptions[key];
+    if (list) {
+      // A list option also takes the words after its value, up to the next
+      // option: `--file a.test.ts b.test.ts` names both files.
+      options[list].push(value);
+      while (index + 1 < argv.length && !argv[index + 1].startsWith("--"))
+        options[list].push(argv[++index]);
+    } else if (options[key] !== undefined)
       throw new Error(`duplicate ${argument}`);
     else options[key] = value;
   }
@@ -167,10 +248,24 @@ export const main = async (argv) => {
     console.log(HELP);
     return 0;
   }
-  const root = realpathSync(
-    options.root ?? fileURLToPath(new URL("..", import.meta.url)),
-  );
+  let root;
+  try {
+    root = realpathSync(
+      options.root ?? fileURLToPath(new URL("..", import.meta.url)),
+    );
+  } catch {
+    // --root names the checkout to act on, never a path to create.
+    console.error(`--root ${options.root} is not an existing checkout`);
+    return 2;
+  }
   const [command, action, ...extra] = options.words;
+  // `devnet campaign run` is the one three-word command.
+  const campaign = command === "devnet" && action === "campaign";
+  if (campaign && extra.length === 1 && extra[0] === "run") extra.length = 0;
+  else if (campaign) {
+    console.error("usage: devnet campaign run --input CAMPAIGN_JSON [--plan]");
+    return 2;
+  }
   if (extra.length) {
     console.error("unexpected positional arguments");
     return 2;
@@ -202,7 +297,8 @@ export const main = async (argv) => {
       throw new Error("unknown or non-synthetic proof kind");
     if (
       options.plan &&
-      !["prepare", "gate", "reproduce", "acceptance"].includes(command)
+      !["prepare", "gate", "reproduce", "acceptance"].includes(command) &&
+      !campaign
     )
       throw new Error(
         `--plan is not supported for ${command}; no command was executed`,
@@ -214,10 +310,34 @@ export const main = async (argv) => {
       !["prepare", "test", "gate"].includes(command)
     )
       throw new Error(`--source-only is not supported for ${command}`);
-    if (options.force && command !== "build")
+    const vitestOption = vitestOptions.find((key) =>
+      key === "exclude" ? options.excludes.length : options[key] !== undefined,
+    );
+    if (vitestOption && command !== "test")
+      throw new Error(`--${vitestOption} is supported only for test`);
+    if (options.related.length && command !== "test")
+      throw new Error("--related is supported only for test");
+    if (options["timeout-seconds"] !== undefined && command !== "test")
+      throw new Error("--timeout-seconds is supported only for test");
+    if (
+      options["timeout-seconds"] !== undefined &&
+      !/^[1-9][0-9]*$/u.test(options["timeout-seconds"])
+    )
+      throw new Error("--timeout-seconds must be a positive whole number");
+    const mutateOption = mutateOptions.find(
+      (key) => options[key] !== undefined,
+    );
+    if (mutateOption && (command !== "mutate" || action))
+      throw new Error(`--${mutateOption} is supported only for mutate`);
+    if (
+      options.force &&
+      command !== "build" &&
+      !(command === "worktree" && action === "remove")
+    )
       throw new Error(`--force is not supported for ${command}`);
     if (
-      [
+      (campaign && !options.plan) ||
+      ([
         "build",
         "native",
         "prepare",
@@ -227,12 +347,15 @@ export const main = async (argv) => {
         "gate",
         "artifacts",
         "reproduce",
+        "worktree",
+        "mutate",
       ].includes(command) &&
-      !options.plan &&
-      !(command === "prepare" && !options.execute) &&
-      !(command === "artifacts" && ["list", "builds"].includes(action)) &&
-      !(command === "reproduce" && !options.execute) &&
-      action !== "list"
+        action !== "remove" &&
+        !options.plan &&
+        !(command === "prepare" && !options.execute) &&
+        !(command === "artifacts" && ["list", "builds"].includes(action)) &&
+        !(command === "reproduce" && !options.execute) &&
+        action !== "list")
     ) {
       const pnpm = checkPnpm({ root, run: pinnedPnpmVersion });
       if (pnpm.status !== "ok") throw new Error(`${pnpm.detail}; ${pnpm.fix}`);
@@ -252,6 +375,20 @@ export const main = async (argv) => {
         );
     } else if (command === "native" && !action)
       result = await buildNative(root, required("package"), execution);
+    else if (command === "worktree" && action === "create")
+      result = await createWorktree(root, {
+        ...execution,
+        branch: required("branch"),
+        base: options.base,
+        packageName: options.package,
+      });
+    else if (command === "worktree" && action === "setup")
+      result = await setupWorktree(root, {
+        ...execution,
+        packageName: options.package,
+      });
+    else if (command === "worktree" && action === "remove")
+      result = await removeWorktree(root, { force: options.force ?? false });
     else if (command === "prepare" && !action)
       result = options.execute
         ? await prepare(root, required("package"), execution)
@@ -259,9 +396,33 @@ export const main = async (argv) => {
     else if (command === "test" && !action)
       result = await runTests(root, required("package"), {
         ...execution,
+        ...(options["timeout-seconds"] === undefined
+          ? {}
+          : { timeoutMs: Number(options["timeout-seconds"]) * 1000 }),
+        files: options.files,
+        related: options.related,
+        testName: options.name,
+        flags: {
+          config: options.config,
+          maxWorkers: options.maxWorkers,
+          exclude: options.excludes,
+          disableConsoleIntercept: options.disableConsoleIntercept,
+        },
+      });
+    else if (command === "mutate" && !action)
+      result = await mutate(root, {
+        target: required("target"),
+        from: options.from,
+        to: options.to,
+        packageName: options.package,
         files: options.files,
         testName: options.name,
+        expect: options.expect,
+        seed: execution.seed,
+        signal: execution.signal,
       });
+    else if (command === "mutate" && action === "restore")
+      result = await restoreMutant(root);
     else if (command === "gate")
       result =
         action === "list"
@@ -346,6 +507,10 @@ export const main = async (argv) => {
         action === "plan"
           ? devnetPlan(root, required("run-id"))
           : await generateDevnet(root, required("run-id"), execution);
+    else if (campaign)
+      result = options.plan
+        ? campaignPlan(root, required("input"))
+        : await runCampaign(root, required("input"), execution);
     else if (command === "acceptance" && !action)
       result = options.plan
         ? acceptancePlan(root, required("input"))
@@ -354,10 +519,30 @@ export const main = async (argv) => {
       throw new Error(`unknown command ${options.words.join(" ")}; use --help`);
     if (options.output && !(command === "packet" && action === "create"))
       atomicJson(resolve(options.output), result);
+    if (result?.schema === "midgard-contrib-reach/v1")
+      console.error(
+        [
+          `contrib test ${result.package}: no test reached; nothing to run`,
+          ...result.reach.why.map((line) => `  ${line}`),
+        ].join("\n"),
+      );
+    else if (result?.schema === "midgard-contrib-mutant/v1")
+      console.error(
+        `contrib mutate ${result.mutation.file}:${result.mutation.line}: ${result.status}${result.reason ? `: ${result.reason}` : ""}`,
+      );
+    else if (
+      result?.schema === "midgard-contrib-receipt/v1" &&
+      result.kind === "test"
+    )
+      console.error(
+        summaryLines(result, {
+          limit: result.status === "passed" ? 0 : 10,
+        }).join("\n"),
+      );
     console.log(
       typeof result === "string"
         ? result
-        : JSON.stringify(compact(result), null, 2),
+        : JSON.stringify(compact(campaignView(testView(result))), null, 2),
     );
     return result?.exitCode ?? 0;
   } catch (error) {

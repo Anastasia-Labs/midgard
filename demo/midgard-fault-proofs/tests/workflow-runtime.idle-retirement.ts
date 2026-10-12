@@ -13,9 +13,11 @@ import {
   journalJsonDigest,
   MemoryFraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
-import { readAdmittedLocalKupmiosSignedTransactionRecovery } from "../src/workflow/local-kupmios-http-ogmios-source.js";
 import { reconcileSignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
-import { signedRecoveryFixture } from "./workflow-kupmios-source.signed-recovery-fixture.js";
+import {
+  signedRecoveryObservation,
+  signedWorkflowTransactionFixture,
+} from "./support/signed-workflow-transaction.js";
 import { DEPLOYMENT } from "./workflow-runtime.admitted-actuation.js";
 import { runtimeFunding } from "./workflow-runtime.runtime-funding.js";
 
@@ -74,25 +76,17 @@ export const registerIdleFundingRetirementTests = () => {
         artifact: {},
         artifactDigest: journalJsonDigest({}),
       });
-      const parent = await signedRecoveryFixture({ ttl: 100 });
-      const child = await signedRecoveryFixture({ included: true });
+      const parent = await signedWorkflowTransactionFixture({ ttl: 100 });
+      const child = await signedWorkflowTransactionFixture();
       const parentHash = parent.input.transactionHash,
         childHash = child.input.transactionHash;
       const parentProof = await reconcileSignedWorkflowTransaction({
         ...parent.input,
-        observe: (input) =>
-          readAdmittedLocalKupmiosSignedTransactionRecovery({
-            source: parent.source,
-            ...input,
-          }),
+        observe: async (input) => signedRecoveryObservation(input, "expired"),
       });
       const childProof = await reconcileSignedWorkflowTransaction({
         ...child.input,
-        observe: (input) =>
-          readAdmittedLocalKupmiosSignedTransactionRecovery({
-            source: child.source,
-            ...input,
-          }),
+        observe: async (input) => signedRecoveryObservation(input, "included"),
       });
       if (
         parentProof.kind !== "not_found" ||

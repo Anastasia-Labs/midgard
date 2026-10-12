@@ -189,12 +189,6 @@ describe("reference-script SDK boundary", () => {
       "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
       "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
       "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
-      "V1 fraud-proof missing-native-script-tx step-06":
-        "V1FpMissingNativeScriptTxS06",
-      "V1 fraud-proof missing-native-script-tx step-07":
-        "V1FpMissingNativeScriptTxS07",
-      "V1 fraud-proof missing-native-script-tx step-08":
-        "V1FpMissingNativeScriptTxS08",
       "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
       "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
       "value conservation accepted-source": "ValueConservationAcceptedSource",

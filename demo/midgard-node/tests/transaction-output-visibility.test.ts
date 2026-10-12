@@ -60,7 +60,6 @@ const fixture = (datumMode: "none" | "inline" | "hash" = "none") => {
           {
             txHash: confirmedHash,
             signedTxCbor: tx.to_cbor_hex(),
-            walletAddress: address,
           },
           {
             requiredOutputIndexes,
@@ -94,7 +93,9 @@ describe("required transaction output visibility", () => {
       { txHash: f.txHash, outputIndex: 0 },
       { txHash: f.txHash, outputIndex: 1 },
     ]);
-    expect(f.overrideUTxOs).toHaveBeenCalledTimes(1);
+    // Confirmation pins nothing on the wallet: the next build reads the
+    // wallet view afresh.
+    expect(f.overrideUTxOs).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 

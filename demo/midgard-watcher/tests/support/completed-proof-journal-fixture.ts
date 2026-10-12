@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -23,6 +24,7 @@ import {
 import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
 import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.js";
+import { recordObjectives } from "./watcher-journal-fixture.js";
 
 /** Signed double-spend journals, real enough for the supervisor's journal,
  * decision and reconciliation-permit admission. */
@@ -44,6 +46,7 @@ export const classifyDoubleSpend = async (seed = 91) => {
     confirmationDepth: 30,
   };
   const classifier = await createHeaderClassifier({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: deploymentIdentity.manifestId,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority:
@@ -80,9 +83,7 @@ export const classifyDoubleSpend = async (seed = 91) => {
   return decision;
 };
 
-export type DoubleSpendDecision = Awaited<
-  ReturnType<typeof classifyDoubleSpend>
->;
+type DoubleSpendDecision = Awaited<ReturnType<typeof classifyDoubleSpend>>;
 
 const submissionEvents = (
   actionId: string,
@@ -146,6 +147,10 @@ export const writeExecution = async (
         ]
       : []),
   ];
+  // The queue records the objective before its workflow journal exists.
+  recordObjectives(root, [
+    { category: "doubleSpend", headerHash: decision.headerHash },
+  ]);
   const journal = new DirectoryFraudProofWorkflowJournalStore(
     join(root, "fault-proofs", "doubleSpend", decision.headerHash),
   );

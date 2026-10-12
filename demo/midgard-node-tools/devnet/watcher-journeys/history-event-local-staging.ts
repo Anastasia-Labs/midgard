@@ -56,6 +56,8 @@ export type LocalHistoryEventStage = {
   ownerSeedPhrase: string;
   ownerKey: CML.PrivateKey;
   rawAuthority: ReturnType<typeof recordCrossBlockRawEmulator>["authority"];
+  /** Every transaction the raw authority recorded, in submission order. */
+  recorded: ReturnType<typeof recordCrossBlockRawEmulator>["rows"];
   publishDeposit(): Promise<StagedLocalHistoryEvent>;
   publishWithdrawal(
     body: SDK.WithdrawalBody,
@@ -128,7 +130,6 @@ export const openLocalHistoryEventStage =
         );
         if (funding.length === 0)
           throw new Error("No ordinary funding inputs for event publication");
-        lucid.overrideUTxOs(funding);
         // Respect actual predecessor protection before using the SDK's
         // 60-second validity backoff. Tests synchronize Date with this advance.
         const history = SDK.eventHistoryDeploymentFromContracts(
@@ -154,7 +155,10 @@ export const openLocalHistoryEventStage =
         await deployment.chain.awaitLedgerTime(buildTime);
         if (deployment.chain.now() < buildTime)
           throw new Error("Event staging clock did not reach the build window");
-        const built = await request.build();
+        lucid.overrideUTxOs(funding);
+        const built = await request
+          .build()
+          .finally(() => lucid.clearUTxOOverride());
         const signed = await built.tx.sign.withWallet().complete();
         const submitted = await signed.submitSafe();
         if (submitted._tag === "Left")
@@ -164,7 +168,6 @@ export const openLocalHistoryEventStage =
           );
         const txHash = submitted.right;
         await lucid.awaitTx(txHash, 200);
-        lucid.overrideUTxOs(await lucid.utxosAt(address));
         const outputs = (
           await lucid.utxosAtWithUnit(
             built.metadata.address,
@@ -246,7 +249,6 @@ export const openLocalHistoryEventStage =
         // The commit's short validity range fixes the header end time (Q60),
         // so the chain clock must first reach the block's closing minute.
         await awaitTime(Number(block.header.endTime) - 59_999);
-        lucid.overrideUTxOs(await lucid.utxosAt(address));
         const queue = await Effect.runPromise(
           SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
             stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
@@ -257,7 +259,6 @@ export const openLocalHistoryEventStage =
         if (tail === undefined)
           throw new Error("History commit has no queue root");
         await actor.commit(block, tail.utxo, queue[1]?.utxo);
-        lucid.overrideUTxOs(await lucid.utxosAt(address));
         return one(
           contracts.stateQueue.spendingScriptAddress,
           contracts.stateQueue.policyId +
@@ -336,10 +337,9 @@ export const openLocalHistoryEventStage =
               settlementMinting: reference("settlementMint"),
             },
           }),
-        );
+        ).finally(() => lucid.clearUTxOOverride());
         const signed = await merged.tx.sign.withWallet().complete();
         await lucid.awaitTx(await signed.submit(), 200);
-        lucid.overrideUTxOs(await lucid.utxosAt(address));
         const settlement = await one(
           contracts.settlement.spendingScriptAddress,
           contracts.settlement.policyId + block.headerHash,
@@ -426,25 +426,25 @@ export const openLocalHistoryEventStage =
             ...(deposit ? {} : { payoutMinting: reference("payoutMint") }),
           },
         };
-        const built =
+        const built = await (
           order.kind === "Deposit"
-            ? await Effect.runPromise(
+            ? Effect.runPromise(
                 SDK.buildAbsorbConfirmedDepositToReserveTxProgram(
                   lucid,
                   contracts,
                   { ...config, deposit: order },
                 ),
               )
-            : await Effect.runPromise(
+            : Effect.runPromise(
                 SDK.buildInitializePayoutTxProgram(lucid, contracts, {
                   ...config,
                   withdrawal: order,
                 }),
-              );
+              )
+        ).finally(() => lucid.clearUTxOOverride());
         const signed = await built.tx.sign.withWallet().complete();
         const txHash = await signed.submit();
         await lucid.awaitTx(txHash, 200);
-        lucid.overrideUTxOs(await lucid.utxosAt(address));
         // Re-read the complete authenticated list after the retirement lands.
         const witness = await SDK.fetchEventHistoryWitness(
           { utxosAt: (address) => lucid.utxosAt(address) },
@@ -463,6 +463,7 @@ export const openLocalHistoryEventStage =
         ownerSeedPhrase,
         ownerKey,
         rawAuthority: recorder.authority,
+        recorded: recorder.rows,
         confirmedState,
         commit,
         settle,

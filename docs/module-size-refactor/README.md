@@ -19,7 +19,6 @@ falls from 4,033 to 3,964 lines. The remaining large functions/classes are
 deliberate exceptions; this change does not claim that every module is below
 500 lines.
 
-[metrics.json](metrics.json) records the exact before/after counts and date.
 The baseline production denominator is 1,846 under the documented definition,
 rather than the supplied table's 1,801; its 159/45 oversized counts agree with
 that table. Production excludes test/spec/bench filenames, test/e2e/benchmark
@@ -37,8 +36,7 @@ node demo/scripts/module-sizes.mjs --base HEAD \
   --exclude-prefix demo/midgard-node-tools/src/full-stack/ --json
 ```
 
-The [extraction map](extractions.json) lists every changed TS/JS original and
-its replacement parts. In total, **713 TS/JS originals and four Go/Rust
+In total, **713 TS/JS originals and four Go/Rust
 originals** were divided. Existing entrypoints retain their public exports;
 implementation facets live alongside their original files. Writable bindings
 remain with their writers, test hook/registration order is preserved, and
@@ -51,11 +49,13 @@ existing untracked working-tree blueprint was preserved.
 
 ## Retained modules and reasons
 
-[retained-modules.json](retained-modules.json) is the complete file-by-file
-inventory, including the exceptions outside demo's ESLint scope. It includes
-366 exact TS/JS caps, four agent-tooling JS modules, one Rust ownership module
-and one SQL migration. Repeated reason patterns describe the actual retained
-boundary, rather than exempting an entire directory:
+[module-size-exceptions.json](../../demo/module-size-exceptions.json) is the
+complete file-by-file inventory, including the exceptions outside demo's ESLint
+scope: four agent-tooling JS modules (spelled `../<path>`), one Rust ownership
+module and one SQL migration. Its validator holds every entry to its exact line
+count; ESLint also caps the demo TS/JS entries. Repeated reason patterns
+describe the actual retained boundary, rather than exempting an entire
+directory:
 
 - A single state owner retains private lifecycle, fencing, database or cache
   invariants. Independent helpers have been moved; separating its methods
@@ -69,7 +69,7 @@ boundary, rather than exempting an entire directory:
 - Declarative catalogues and module augmentations retain one complete schema
   or role universe. Public barrels retain one export surface.
 - Entrypoint-sensitive code retains its process/loading identity. In
-  particular, the 602-line SQLite journal and 598-line auxiliary-witness fixture
+  particular, the 518-line SQLite journal and 610-line auxiliary-witness fixture
   are loaded directly as TypeScript by Node strip-types. Splitting them into
   source files referenced with `.js` breaks those existing loading contracts.
 
@@ -77,10 +77,10 @@ The four production modules above 2,000 lines deserve a separate design task:
 
 | Module                                                                 | Lines | Reason for retaining its implementation boundary                                                                                                                                                                                                                          |
 | ---------------------------------------------------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `validation-machine/trace-builder-prepare.prepare-validation-trace.ts` | 3,964 | The preparation function owns source commitments, resolution scheduling, ledger deltas and witness/CEK frontiers in one evolving local context. Helper declarations were extracted. A further split needs an explicit context/failure interface and witness-order checks. |
-| `validation-machine/trace-builder-complete.ts`                         | 2,850 | Completion appends ordered continuation witnesses and control checks over accumulated proof state. Its local state and rejection/terminal order must remain shared.                                                                                                       |
-| `cek-executor.structural-executor.ts`                                  | 2,567 | One executor owns the CEK heap, continuation/control state and execution budgets. Splitting its methods requires a separately verified machine-state interface.                                                                                                           |
-| `validation-dispute/submit/semantic-resolution.ts`                     | 2,398 | One submit workflow coordinates witness planning, UTxO carriage, funding and submission stages. Splitting the function changes cancellation/failure handoffs and needs lifecycle tests.                                                                                   |
+| `validation-machine/trace-builder-prepare.prepare-validation-trace.ts` | 4,015 | The preparation function owns source commitments, resolution scheduling, ledger deltas and witness/CEK frontiers in one evolving local context. Helper declarations were extracted. A further split needs an explicit context/failure interface and witness-order checks. |
+| `validation-machine/trace-builder-complete.ts`                         | 2,877 | Completion appends ordered continuation witnesses and control checks over accumulated proof state. Its local state and rejection/terminal order must remain shared.                                                                                                       |
+| `cek-executor.structural-executor.ts`                                  | 2,448 | One executor owns the CEK heap, continuation/control state and execution budgets. Splitting its methods requires a separately verified machine-state interface.                                                                                                           |
+| `validation-dispute/submit/semantic-resolution.ts`                     | 2,391 | One submit workflow coordinates witness planning, UTxO carriage, funding and submission stages. Splitting the function changes cancellation/failure handoffs and needs lifecycle tests.                                                                                   |
 
 The 611-line Rust `owner/compact_index.rs` retains the `FullIndex` compaction,
 authenticated closure, proof arena and child-index cache boundary. Other
@@ -141,13 +141,12 @@ predates this change.
 All runs below are dated 2026-09-30 UTC. Node 22.22.2 and demo pnpm 9.15.4 were
 used; docs-site corrective runs used its declared pnpm 10.11.0. Initial suites
 ran concurrently on the shared host; timeout failures were rerun with fewer
-workers without changing timeouts. Detailed compact observations and commands
-are in [verification.json](verification.json).
+workers without changing timeouts.
 
-[preflight-results.json](preflight-results.json) preserves the original full
-preflight result: **44 checks passed, eight failed**, exit 1. It is not a green
-preflight result. Corrective runs and remaining failures are distinguished in
-the verification ledger; the full preflight was not repeated wholesale.
+The original full preflight run passed **44 checks and failed eight**, with
+exit code 1. It is not a green preflight result. Corrective runs and remaining
+failures are distinguished below; the full preflight was not repeated
+wholesale.
 
 The workspace typecheck and build checks pass. Final ESLint checks pass over
 all 3,159 owned demo files, with no warnings. Core: 704 passed;
@@ -183,7 +182,8 @@ reproduced against untouched HEAD journey sources with the same dependencies.
   not established, so this report does not claim it was proven pre-existing.
 - The initial formatting/typecheck failures were in concurrently developed
   `full-stack` files. This refactor preserved that work. The final typecheck
-  passes; the final formatting result is recorded in the ledger.
+  passes. The final format check still failed on 11 of those `full-stack`
+  files; the one guard this refactor edited was then formatted and passes.
 - Live process-devnet acceptance, skipped opt-in deployment journeys and
   production release acceptance were not run. No live deployment/reset was
   needed to verify declaration moves. Skipped cases are not counted as passes.

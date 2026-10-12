@@ -25,14 +25,14 @@ observes the state queue through
 user-event history. The four evaluators were never wired into the runtime.
 Their only consumers were their own tests, the W25 `parser_replay` event
 authority path, and the W26 event-classification verifier, whose only authority
-input was a W15 evaluator result.
+input was a W15 evaluator result. <!-- doc-links:historical -->
 
 ## Decision
 
 Remove the four evaluators and everything that existed only to serve them:
 
 - the W14, W16 and W17 evaluator modules;
-- the W15 evaluator section of `user-event-indexer.ts`;
+- the W15 evaluator section of `user-event-indexer.ts`; <!-- doc-links:historical -->
 - the W26 event-classification verifier;
 - the W25 `parser_replay` event-origin branch, which had no production writer;
 - their tests and test-only scenario harnesses;
@@ -44,7 +44,8 @@ Keep only the parts that do not depend on the evaluators:
   `demo/midgard-watcher/src/indexers/state-queue-snapshot.ts`. They are used by
   W22 header-root reconstruction and attestation-timeout observation.
 - User-event decoding and the local user-event history in
-  `demo/midgard-watcher/src/indexers/user-event-indexer.ts`.
+  `demo/midgard-watcher/src/indexers/user-event-indexer.ts`, since deleted
+  when the watcher moved onto its L1 follower. <!-- doc-links:historical -->
 - Configuration and runtime support for `external_providers`: config
   parsing, the finality policy, multi-provider consistency and the
   external-provider transport.

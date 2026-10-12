@@ -76,5 +76,6 @@ export const buildDataRefusalDispute = async (
     claimedLedgerDeltaRoot: operatorTrace.states[0]!.ledgerDeltaRoot,
     disputedPhase: "scriptSources" as const,
     disputedLowIndex,
+    challengerReplayInput: fixture.replayInput,
   };
 };

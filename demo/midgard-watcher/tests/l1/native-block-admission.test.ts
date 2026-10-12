@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 
-import { requireOgmiosRawTransactionCbor } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -8,11 +7,11 @@ import {
   admitWatcherNativeRollForwardBlock,
   assertWatcherNativeBlockAdmission,
 } from "../../src/l1/native-block-admission.js";
+import { parseWatcherNativeChainSyncEvent } from "../../src/l1/native-chain-sync.derive-watcher-native-genesis-identity.js";
 import {
-  parseWatcherNativeChainSyncEvent,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncRollForward,
-} from "../../src/l1/native-chain-sync.js";
+} from "../../src/l1/native-chain-sync.exact-record.js";
 
 const FIXTURE_METADATA = Object.freeze({
   blockHash: "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
@@ -107,13 +106,6 @@ describe("native block admission", () => {
         try {
           expect(body.to_cbor_hex()).toBe(originalBody.to_cbor_hex());
           expect(txHash.to_hex()).toBe(admitted.transactionIds[index]);
-          expect(
-            requireOgmiosRawTransactionCbor({
-              value: { id: admitted.transactionIds[index]!, cbor },
-              expectedTxHash: admitted.transactionIds[index]!,
-              label: `unchanged Conway transaction ${index.toString()}`,
-            }),
-          ).toBe(cbor);
         } finally {
           txHash.free();
           originalBody.free();

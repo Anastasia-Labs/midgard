@@ -139,6 +139,38 @@ describe("e2e host process supervisor", () => {
         status: "failed",
       }),
     ).toThrow("terminal verdict or attempt history is inconsistent");
+
+    const [firstAttempt, secondAttempt] = summary.attempts;
+    // A wall clock that steps back between attempts (NTP step) starts the
+    // second attempt before the first one finished; attempt order is the
+    // attempt index, not the timestamps.
+    const steppedStartMs = Date.parse(firstAttempt!.finishedAt) - 60_000;
+    const clockStepped = {
+      ...summary,
+      attempts: [
+        firstAttempt!,
+        {
+          ...secondAttempt!,
+          startedAt: new Date(steppedStartMs).toISOString(),
+          finishedAt: new Date(
+            steppedStartMs + secondAttempt!.durationMs,
+          ).toISOString(),
+        },
+      ],
+    };
+    expect(parseServiceSupervisorSummary(clockStepped)).toEqual(clockStepped);
+    expect(() =>
+      parseServiceSupervisorSummary({
+        ...summary,
+        attempts: [firstAttempt!, { ...secondAttempt!, attempt: 3 }],
+      }),
+    ).toThrow("terminal verdict or attempt history is inconsistent");
+    expect(() =>
+      parseServiceSupervisorSummary({
+        ...summary,
+        attempts: [secondAttempt!, firstAttempt!],
+      }),
+    ).toThrow("terminal verdict or attempt history is inconsistent");
   });
 
   it("does not restart fatal configuration failures", async () => {
@@ -252,7 +284,7 @@ describe("e2e host process supervisor", () => {
   it("externally SIGKILLs a service when a checkpoint marker spans output chunks", async () => {
     const dir = await makeTempDir();
     const marker =
-      "pipeline_trace phase=e2e_crash_checkpoint checkpoint=speculative_mid_build";
+      "pipeline_trace phase=e2e_crash_checkpoint checkpoint=journal_prepared_before_submit";
     const script = await writeScript(
       dir,
       "checkpoint-service.mjs",

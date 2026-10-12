@@ -14,16 +14,15 @@ import {
   validatePhase4PhasRegistrationTransactionBody,
   validatePhase4ProcessIsolationValues,
   validatePhase4ResetAttestation,
-} from "../src/commands/e2e-pipelined-commit-process-acceptance.js";
+} from "../src/commands/e2e-journal-kill-recovery-acceptance.js";
 import { PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE } from "../src/commands/phase4-genesis-ledger.js";
 
 const values = (): Record<string, string> => ({
   POSTGRES_HOST: "127.0.0.1",
   POSTGRES_PORT: "5544",
   POSTGRES_DB: "midgard_phase4_process_test",
-  L1_PROVIDER: "Kupmios",
-  L1_OGMIOS_KEY: "http://127.0.0.1:2337",
-  L1_KUPO_KEY: "http://127.0.0.1:2442",
+  MIDGARD_PHASE4_OGMIOS_PORT: "2337",
+  MIDGARD_PHASE4_KUPO_PORT: "2442",
   MIN_FEE_A: "0",
   MIN_FEE_B: "0",
   RUN_GENESIS_ON_STARTUP: "false",
@@ -36,6 +35,12 @@ const values = (): Record<string, string> => ({
   MIDGARD_PHASE4_NETWORK_MAGIC: "420042",
   MPF_NATIVE_OWNER_BINARY_PATH: "/checkout/native/architecture-g-owner",
   MPF_NATIVE_OWNER_BINARY_SHA256: "ab".repeat(32),
+  L1_NODE_SOCKET_PATH: "/run/cardano/ipc/node.socket",
+  L1_NODE_CONFIG_PATH: "/run/config/host-config.json",
+  L1_NODE_TRANSPORT_BINARY_PATH: "/run/bin/midgard-l1-node-transport",
+  L1_ORIGIN: `1234.${"cd".repeat(32)}`,
+  HUB_ORACLE_ONE_SHOT_TX_HASH: "ef".repeat(32),
+  HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: "0",
 });
 
 const canonicalPhasIdentity = SDK.phasMembershipIdentity(
@@ -120,7 +125,7 @@ const isolation: Phase4ProcessIsolationIdentity = {
 
 const attestation = () => ({
   schemaVersion: "midgard-phase4-local-devnet-reset-attestation-v1",
-  scenarioLabel: "crash-speculative_mid_build-flag-on",
+  scenarioLabel: "journal-kill-contention",
   composeProject: isolation.composeProject,
   networkMagic: isolation.networkMagic,
   postgresDatabase: isolation.postgresDatabase,
@@ -213,10 +218,10 @@ describe("Phase 4 process isolation", () => {
 
   it.each([
     [{ POSTGRES_PORT: "5433" }, "protected live port"],
-    [{ L1_OGMIOS_KEY: "http://127.0.0.1:1337" }, "protected live port"],
-    [{ L1_KUPO_KEY: "http://127.0.0.1:1442" }, "protected live port"],
+    [{ MIDGARD_PHASE4_OGMIOS_PORT: "1337" }, "protected live port"],
+    [{ MIDGARD_PHASE4_KUPO_PORT: "1442" }, "protected live port"],
     [{ POSTGRES_DB: "midgard" }, "must start with"],
-    [{ L1_KUPO_KEY: "https://example.com:2442" }, "loopback"],
+    [{ MIDGARD_PHASE4_KUPO_PORT: "" }, "missing"],
     [{ MIN_FEE_A: "10" }, "MIN_FEE_A=0"],
     [{ MIN_FEE_B: "10" }, "MIN_FEE_A=0"],
     [{ MIDGARD_DOTENV_MODE: "enabled" }, "disable checkout dotenv"],
@@ -231,6 +236,17 @@ describe("Phase 4 process isolation", () => {
       { MPF_NATIVE_OWNER_SIDECAR_PATH: "/shared/owner.sidecar" },
       "must be unset",
     ],
+    [{ L1_ORIGIN: "" }, "L1_ORIGIN is not set"],
+    [{ L1_NODE_CONFIG_PATH: "" }, "must be set together"],
+    [
+      {
+        L1_NODE_SOCKET_PATH: "",
+        L1_NODE_CONFIG_PATH: "",
+        L1_NODE_TRANSPORT_BINARY_PATH: "",
+      },
+      "L1_NODE_TRANSPORT_BINARY_PATH are not set",
+    ],
+    [{ HUB_ORACLE_ONE_SHOT_TX_HASH: "" }, "HUB_ORACLE_ONE_SHOT_TX_HASH and"],
   ])("rejects protected identity %#", (override, message) => {
     expect(() =>
       validatePhase4ProcessIsolationValues({ ...values(), ...override }),

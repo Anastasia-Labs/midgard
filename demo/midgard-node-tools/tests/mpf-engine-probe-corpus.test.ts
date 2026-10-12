@@ -1,5 +1,10 @@
+import {
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { assetsToValue, CML, walletFromSeed } from "@lucid-evolution/lucid";
+import { ledgerOutputToInsertBatchOp } from "midgard-node/mpf/index";
 import { makeMidgardTxOutput } from "midgard-node/tests/midgard-output-helpers";
 import {
   canonicalOutrefCborFromLabel,
@@ -59,6 +64,23 @@ describe("Architecture G canonical probe workload", () => {
     });
     expect(first.sourceEvent.ledgerOps[2]?.key).toEqual(
       second.sourceEvent.ledgerOps[0]?.key,
+    );
+    // Output inserts carry the production ledger descriptor, not raw output
+    // CBOR, so root-probe roots are the roots production commits.
+    const firstOutputs = decodeMidgardNativeByteListPreimage(
+      decodeMidgardNativeTxFullFromCanonicalCbor(first.cbor).body
+        .outputsPreimageCbor,
+      "native.outputs",
+    );
+    expect(first.sourceEvent.ledgerOps.slice(1)).toEqual(
+      firstOutputs.map((output, outputIndex) =>
+        ledgerOutputToInsertBatchOp({
+          outRef: canonicalOutrefCborFromLabel(
+            `${chain.rows[0]!.txHash}#${outputIndex.toString()}`,
+          ),
+          outputCbor: output,
+        }),
+      ),
     );
     expect(first.transactionOp.key.toString("hex")).toBe(chain.rows[0]!.txHash);
     expect(() =>

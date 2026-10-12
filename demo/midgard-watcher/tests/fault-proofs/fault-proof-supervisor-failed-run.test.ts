@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -71,6 +72,7 @@ const classifyDoubleSpend = async () => {
     confirmationDepth: 30,
   };
   const classifier = await createHeaderClassifier({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: deploymentIdentity.manifestId,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority:
@@ -144,10 +146,13 @@ describe("fault-proof supervisor over a run that failed before its journal", () 
       modes.push(mode);
       return mode;
     });
-    await next.recoverExisting(null);
+    // The queue recorded the objective before the run failed, so the next
+    // process recovers it as a fresh run: it has no journal to resume.
+    await expect(next.recoverExisting(null)).resolves.toBe(1);
+    await vi.waitFor(() => expect(modes).toEqual(["run"]));
     await expect(next.unsafeRunOrResumeForTest(job)).resolves.toBe("run");
     await next.close();
-    expect(modes).toEqual(["run"]);
+    expect(modes).toEqual(["run", "run"]);
   }, 60_000);
 
   it("reopens a finished registration whose workflow directory has no execution", async () => {

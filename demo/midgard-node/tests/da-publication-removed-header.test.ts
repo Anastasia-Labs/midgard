@@ -13,6 +13,7 @@ import {
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
+import { insertQueueTerminal } from "./helpers/queue-terminal-rows.js";
 import {
   deterministicFixtureBytes,
   provideDatabaseLayers,
@@ -20,12 +21,8 @@ import {
 } from "./utils.js";
 
 const RETENTION_DAYS = 15;
-/** The running deployment's verified manifest ID, and another deployment's. */
+/** The running deployment's verified manifest ID. */
 const DEPLOYMENT = deterministicFixtureBytes("da-removed:deployment", 32);
-const FOREIGN_DEPLOYMENT = deterministicFixtureBytes(
-  "da-removed:foreign-deployment",
-  32,
-);
 const peer = {
   signerIndex: 0,
   daVkey: "01".repeat(32),
@@ -65,34 +62,12 @@ const payloadFixture = (label: string): DaPayloadsDB.InsertInput => {
   };
 };
 
-/** Records a terminal outcome row for `headerHash` exactly as the observer save shapes it. */
+/** Records that a landed tx took `headerHash` out of the queue, as the queue-terminal projection derives it. */
 const recordOutcome = (
   headerHash: Buffer,
   outcome: "removed" | "merged",
-  deployment: Buffer = DEPLOYMENT,
-) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const digest = (label: string, length: number) =>
-      deterministicFixtureBytes(
-        `da-removed:${headerHash.toString("hex")}:${label}`,
-        length,
-      );
-    yield* sql`
-      INSERT INTO da_payload_terminal_outcomes (
-        header_hash, terminal_outcome, transition_kind,
-        deployment_identity_digest, state_queue_policy_id,
-        transaction_hash, block_hash, slot, block_no,
-        transaction_index, chain_point_id, finality_depth,
-        transition_digest, transition_record
-      ) VALUES (
-        ${headerHash}, ${outcome},
-        ${outcome === "merged" ? "merge" : "timeout_correction"},
-        ${deployment}, ${digest("policy", 28)},
-        ${digest("tx", 32)}, ${digest("block", 32)}, 10, 10, 0,
-        ${digest("point", 32)}, 3, ${digest("transition", 32)}, ${"{}"}
-      )`;
-  });
+  height = 10,
+) => insertQueueTerminal({ headerHash, outcome, height });
 
 const claimPublications = (token: string) =>
   DaPayloadPublicationsDB.claimDue({
@@ -301,10 +276,11 @@ describe("DA reconciliation of removed headers", () => {
           UPDATE da_payload_publications SET status = 'pending'
           WHERE header_hash = ${removedHash}`;
 
-        // An authenticated rollback revokes the removal: the payload is owed
-        // again, without any outbox row having been rewritten.
+        // A rollback of the removal's block rewinds its terminal row: the
+        // payload is owed again, without any outbox row having been
+        // rewritten.
         yield* sql`
-          DELETE FROM da_payload_terminal_outcomes
+          DELETE FROM node_l1_queue_terminals
           WHERE header_hash = ${removedHash}`;
         expect(hex(yield* claimPublications("second"))).toEqual([
           removedHash.toString("hex"),
@@ -316,21 +292,19 @@ describe("DA reconciliation of removed headers", () => {
     );
   });
 
-  it("counts only this deployment's authenticated removal outcomes", async () => {
+  it("counts a header as removed only while its newest terminal row is a removal", async () => {
     await run(
       Effect.gen(function* () {
-        const [foreignRemoved, removed] = yield* seedPayloads([
-          "foreign-removed",
+        const [putBack, removed] = yield* seedPayloads([
+          "removed-then-merged",
           "own-removed",
         ]);
-        yield* recordOutcome(foreignRemoved!, "removed", FOREIGN_DEPLOYMENT);
+        // Taken out, put back and merged later: owed.
+        yield* recordOutcome(putBack!, "removed", 10);
+        yield* recordOutcome(putBack!, "merged", 11);
         yield* recordOutcome(removed!, "removed");
-        // Another deployment's removal of the same header hash says nothing
-        // about this chain: the payload stays owed.
-        expect(yield* owedNow("scoped")).toEqual([
-          foreignRemoved!.toString("hex"),
-        ]);
-        // A derived contract bundle has no authenticated outcomes to consult.
+        expect(yield* owedNow("scoped")).toEqual([putBack!.toString("hex")]);
+        // A derived contract bundle consults only the journal arm.
         expect(
           yield* DaPayloadPublicationsDB.backlogCount(RETENTION_DAYS),
         ).toBe(2);

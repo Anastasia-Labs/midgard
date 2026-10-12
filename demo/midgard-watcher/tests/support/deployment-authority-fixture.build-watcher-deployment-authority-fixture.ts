@@ -27,6 +27,10 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
+import {
+  type L1SlotConfig,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+} from "@al-ft/midgard-core/l1-slot-config";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 
 import {
@@ -53,6 +57,14 @@ import {
   WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
   type WatcherDeploymentAuthorityFixtureOptions,
 } from "./deployment-authority-fixture.build-watcher-authority-contracts.js";
+
+// A Custom deployment's manifest carries its genesis slot clock; this is the
+// one the explicit local-devnet watcher configuration uses.
+const LOCAL_DEVNET_FIXTURE_L1_SLOT_CONFIG: L1SlotConfig = {
+  zeroTime: 1_789_056_000_000,
+  zeroSlot: 0,
+  slotLength: 1000,
+};
 
 const buildWatcherDeploymentAuthorityFixture = (
   options: WatcherDeploymentAuthorityFixtureOptions = {},
@@ -108,6 +120,10 @@ const buildWatcherDeploymentAuthorityFixture = (
         ? DEPLOYMENT_PROFILE_DIGESTS["local-devnet-testing"]
         : SELECTED_DEPLOYMENT_PROFILE_DIGEST,
     network: options.network ?? "Preprod",
+    l1SlotConfig:
+      options.network === "Custom"
+        ? LOCAL_DEVNET_FIXTURE_L1_SLOT_CONFIG
+        : NAMED_NETWORK_L1_SLOT_CONFIGS[options.network ?? "Preprod"],
     cardanoProtocolParameters: {
       snapshot: parameters,
       digest: computeDeploymentManifestJsonDigest(parameters),
@@ -336,7 +352,3 @@ export const makeWatcherDeploymentAuthorityFixture = (
     cachedDefaultWatcherDeploymentAuthorityFixture,
   );
 };
-
-/** The default-parameter authority. */
-export const makeDeploymentAuthority = () =>
-  makeWatcherDeploymentAuthorityFixture();

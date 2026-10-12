@@ -35,11 +35,6 @@ export type DaAttestationTarget = {
   readonly headerHash: string;
 };
 
-export type DaAttestationCandidate = {
-  readonly utxo: UTxO;
-  readonly datum: SDK.DaAttestationDatum;
-};
-
 /**
  * The widest `attestation_count` an attestation can reach: the committee is at
  * most 256 signers, and 256 is the first count whose CBOR integer takes three

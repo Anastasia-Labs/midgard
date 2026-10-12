@@ -330,6 +330,7 @@ describe("V1 deployment manifest", () => {
     const { manifestId: _manifestId, ...identity } = canonicalManifest();
     for (const l1Finality of [
       { ...identity.l1Finality, confirmationDepth: 29 },
+      { ...identity.l1Finality, commitEventDepth: 2161 },
       { ...identity.l1Finality, automaticRecoveryMaxDepth: 2159 },
       { ...identity.l1Finality, deepRollbackPolicy: "manual-v1" },
     ]) {

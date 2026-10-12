@@ -6,7 +6,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { availabilityScriptNames } from "./availability-challenge-emulator.availability-redeemer-script.js";
 import {
   assertAvailabilityRefusal,
   confirmedRefusalCount,
@@ -17,10 +16,6 @@ import {
   mintIndex,
 } from "./availability-challenge-emulator.measure-availability-transaction.js";
 import { type AvailabilityFixture } from "./availability-challenge-emulator.open-availability.js";
-
-export type AttestedAvailability = Awaited<
-  ReturnType<typeof attestAvailability>
->;
 
 export const reportAvailabilityScenario = (
   name: string,
@@ -60,10 +55,6 @@ export const reportAvailabilityScenario = (
       ) + "\n",
     );
 };
-
-export type AvailabilityScriptName = keyof ReturnType<
-  typeof availabilityScriptNames
->;
 
 /** The SDK challenge builders' deployment view of the fixture. */
 export const availabilityDeployment = (

@@ -1,5 +1,6 @@
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-core/l1-slot-config";
 import "@al-ft/midgard-validation/cek-program";
 import "@lucid-evolution/lucid";
 import "effect";
@@ -19,6 +20,7 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -576,6 +578,11 @@ describe("TxBuilder finalization", () => {
       ok: false,
       error: { name: "BuilderInvariantError" },
     });
+    // Its Plutus contexts carry POSIX validity bounds, so it also needs the
+    // deployment's L1 slot mapping.
+    await expect(
+      completed.validate("phase-b", { localPreState: new Map() }),
+    ).rejects.toThrow("phase-b local preflight requires l1SlotConfig");
   });
 
   it("runs shared Phase B local validation against explicit pre-state", async () => {
@@ -604,6 +611,7 @@ describe("TxBuilder finalization", () => {
       localPreState: new Map([
         [inputOutRefCbor.toString("hex"), inputOutputCbor],
       ]),
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preview,
     });
 
     expect(report).toMatchObject({
@@ -617,6 +625,7 @@ describe("TxBuilder finalization", () => {
 
     const missingInputReport = await completed.validate("phase-b", {
       localPreState: new Map(),
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preview,
     });
     expect(missingInputReport).toMatchObject({
       acceptedTxIds: [],
@@ -652,6 +661,7 @@ describe("TxBuilder finalization", () => {
       localPreState: new Map([
         [inputOutRefCbor.toString("hex"), inputOutputCbor],
       ]),
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preview,
     });
 
     expect(report).toMatchObject({

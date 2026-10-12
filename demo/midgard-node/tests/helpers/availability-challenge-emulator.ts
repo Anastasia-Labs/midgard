@@ -24,9 +24,7 @@ import "./availability-challenge-emulator.commit-availability-block.js";
 import { credentialToRewardAddress } from "@lucid-evolution/lucid";
 export {
   attestAvailability,
-  type AttestedAvailability,
   availabilityDeployment,
-  type AvailabilityScriptName,
   reportAvailabilityScenario,
 } from "./availability-challenge-emulator.attest-availability.js";
 export {

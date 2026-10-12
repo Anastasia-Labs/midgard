@@ -1,14 +1,14 @@
 import { computeHash32 } from "@al-ft/midgard-core";
 
 import {
-  advanceMissingNativeScriptTxGrammarCheckpoint,
-  advanceMissingNativeScriptTxSemanticCheckpoint,
-  encodeMissingNativeScriptTxGrammarCheckpoint,
-  encodeMissingNativeScriptTxSemanticCheckpoint,
-  MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
-  type MissingNativeScriptTxGrammarCheckpoint,
-  type MissingNativeScriptTxSemanticCheckpoint,
-} from "../missing-native-script-tx/staged-walk.js";
+  advanceFieldGrammarCheckpoint,
+  advanceFieldSemanticCheckpoint,
+  encodeFieldGrammarCheckpoint,
+  encodeFieldSemanticCheckpoint,
+  type FieldGrammarCheckpoint,
+  type FieldSemanticCheckpoint,
+  STAGED_FIELD_WALK_BATCH_LIMIT,
+} from "../staged-field-walk/index.js";
 
 /** §2.5 positional index of the transaction body's outputs field. */
 export const NETWORK_ID_OUTPUTS_FIELD_INDEX = 2;
@@ -42,19 +42,21 @@ const WALK_DOMAIN = Buffer.from("MidgardFieldWalkCheckpointV1", "ascii");
 /** Byte offset of the checkpoint's one-byte field index in both encodings. */
 const FIELD_INDEX_BYTE = 36;
 
-export type NetworkIdForcedScanGrammarCheckpoint =
-  MissingNativeScriptTxGrammarCheckpoint & { readonly fieldIndex: 2 };
+export type NetworkIdForcedScanGrammarCheckpoint = FieldGrammarCheckpoint & {
+  readonly fieldIndex: 2;
+};
 
-export type NetworkIdForcedScanWalkCheckpoint =
-  MissingNativeScriptTxSemanticCheckpoint & { readonly fieldIndex: 2 };
+export type NetworkIdForcedScanWalkCheckpoint = FieldSemanticCheckpoint & {
+  readonly fieldIndex: 2;
+};
 
 export const asField2Grammar = (
-  value: MissingNativeScriptTxGrammarCheckpoint,
+  value: FieldGrammarCheckpoint,
 ): NetworkIdForcedScanGrammarCheckpoint =>
   ({ ...value, fieldIndex: 2 }) as NetworkIdForcedScanGrammarCheckpoint;
 
 export const asField2Walk = (
-  value: MissingNativeScriptTxSemanticCheckpoint,
+  value: FieldSemanticCheckpoint,
 ): NetworkIdForcedScanWalkCheckpoint =>
   ({ ...value, fieldIndex: 2 }) as NetworkIdForcedScanWalkCheckpoint;
 
@@ -73,9 +75,7 @@ const asField6Walk = (value: NetworkIdForcedScanWalkCheckpoint) => ({
 export const encodeNetworkIdForcedScanGrammarCheckpoint = (
   value: NetworkIdForcedScanGrammarCheckpoint,
 ): Buffer => {
-  const encoded = encodeMissingNativeScriptTxGrammarCheckpoint(
-    asField6Grammar(value),
-  );
+  const encoded = encodeFieldGrammarCheckpoint(asField6Grammar(value));
   encoded[FIELD_INDEX_BYTE] = NETWORK_ID_OUTPUTS_FIELD_INDEX;
   return encoded;
 };
@@ -83,9 +83,7 @@ export const encodeNetworkIdForcedScanGrammarCheckpoint = (
 export const encodeNetworkIdForcedScanWalkCheckpoint = (
   value: NetworkIdForcedScanWalkCheckpoint,
 ): Buffer => {
-  const encoded = encodeMissingNativeScriptTxSemanticCheckpoint(
-    asField6Walk(value),
-  );
+  const encoded = encodeFieldSemanticCheckpoint(asField6Walk(value));
   encoded[FIELD_INDEX_BYTE] = NETWORK_ID_OUTPUTS_FIELD_INDEX;
   return encoded;
 };
@@ -128,12 +126,9 @@ export const advanceGrammarBy = ({
   let cursor = checkpoint;
   let remaining = budget;
   while (remaining > 0) {
-    const step = Math.min(
-      remaining,
-      MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
-    );
+    const step = Math.min(remaining, STAGED_FIELD_WALK_BATCH_LIMIT);
     cursor = asField2Grammar(
-      advanceMissingNativeScriptTxGrammarCheckpoint({
+      advanceFieldGrammarCheckpoint({
         checkpoint: asField6Grammar(cursor),
         items,
         budget: step,
@@ -158,12 +153,9 @@ export const advanceWalkBy = ({
   let cursor = checkpoint;
   let remaining = budget;
   while (remaining > 0) {
-    const step = Math.min(
-      remaining,
-      MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
-    );
+    const step = Math.min(remaining, STAGED_FIELD_WALK_BATCH_LIMIT);
     cursor = asField2Walk(
-      advanceMissingNativeScriptTxSemanticCheckpoint({
+      advanceFieldSemanticCheckpoint({
         checkpoint: asField6Walk(cursor),
         txId,
         items,

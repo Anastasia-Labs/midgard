@@ -191,36 +191,6 @@ export const waitForOwnedProcessExit = async (
   return validation;
 };
 
-export const terminatingLeaderStillMatchesCoreIdentity = (
-  validation: OwnedProcessGroupValidation,
-): boolean => {
-  const record = validation.record;
-  if (
-    record === null ||
-    (validation.reason !== "process cmdline mismatch" &&
-      validation.reason !== "process cwd mismatch")
-  ) {
-    return false;
-  }
-  try {
-    const proc = readProcIdentity(record.pid);
-    return proc.pgid === record.pgid && proc.startTicks === record.startTicks;
-  } catch {
-    return false;
-  }
-};
-
-export const waitForProcessGroupWithoutLiveMembers = async (
-  pgid: number,
-  timeoutMs: number,
-): Promise<boolean> => {
-  const deadline = Date.now() + timeoutMs;
-  while (processGroupHasLiveMembers(pgid) && Date.now() < deadline) {
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
-  }
-  return !processGroupHasLiveMembers(pgid);
-};
-
 export const removeOwnedProcessGroupRecord = (recordPath: string): void => {
   rmSync(recordPath, { force: true });
 };

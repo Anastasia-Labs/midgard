@@ -1,10 +1,6 @@
-import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  commitUserEventSourceIdSetsAreExact,
-  refreshCommitUserEventSourcesThroughBlockEnd,
-} from "../src/workers/commit-block-header/submission.js";
+import { commitUserEventSourceIdSetsAreExact } from "../src/workers/commit-block-header/submission.js";
 
 const exactSources = {
   pendingDepositIds: ["deposit-a"],
@@ -16,32 +12,6 @@ const exactSources = {
 } as const;
 
 describe("commit source completeness", () => {
-  it("refreshes deposit, withdrawal, and tx-order sources in order through the exact finalized end", async () => {
-    const blockEndTimeMs = Date.parse("2026-01-01T00:07:00.999Z");
-    const calls: string[] = [];
-    const record =
-      (label: string) =>
-      (upperBound: Date): Effect.Effect<Date> =>
-        Effect.sync(() => {
-          calls.push(`${label}:${upperBound.getTime().toString()}`);
-          return upperBound;
-        });
-
-    await Effect.runPromise(
-      refreshCommitUserEventSourcesThroughBlockEnd(blockEndTimeMs, {
-        deposit: record("deposit"),
-        withdrawal: record("withdrawal"),
-        txOrder: record("tx-order"),
-      }),
-    );
-
-    expect(calls).toEqual([
-      `deposit:${blockEndTimeMs.toString()}`,
-      `withdrawal:${blockEndTimeMs.toString()}`,
-      `tx-order:${blockEndTimeMs.toString()}`,
-    ]);
-  });
-
   it("accepts the exact due source sets independent of ordering", () => {
     expect(
       commitUserEventSourceIdSetsAreExact({

@@ -15,6 +15,7 @@ import {
   verifyFinalizedDeploymentManifest,
   verifyReferenceScriptPublicationAuthority,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
@@ -27,6 +28,8 @@ import {
   buildContractDeploymentInfoFromContracts,
   buildDeploymentManifest,
 } from "../../src/commands/contract-deployment-info.js";
+import { canonicalSlotConfigForLucid } from "../../src/lucid-time.js";
+import { IntentJournalWithoutFollower } from "../../src/services/intent-journal.js";
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../../src/transactions/availability-challenge-registration.js";
 import {
   atomicProtocolInitReferenceScriptsFromPublications,
@@ -42,6 +45,7 @@ import {
   ensureRuntimeRewardAccountsRegisteredProgram,
 } from "../../src/transactions/script-reward-registration.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./availability-challenge.js";
+import { runWithoutFollower } from "./intent-journal.js";
 import {
   awaitReferenceScriptPublicationReadiness,
   hardLimitAcceptedContracts,
@@ -159,10 +163,18 @@ export const publishWorkflowDeploymentOnChain = async ({
     postTimelockAuditRequired: authPolicyMetadata.postTimelockAudit.required,
   });
   await onPrepared({ nonce, authPolicy });
+  // The scripts and the manifest take the deployment network's slot mapping:
+  // Preprod's constants, or for a Custom devnet the mapping of the chain it
+  // lands on, which anchors slot 0 at its genesis.
+  const l1SlotConfig =
+    network === "Custom"
+      ? canonicalSlotConfigForLucid(operatorLucid)
+      : NAMED_NETWORK_L1_SLOT_CONFIGS[network];
   const contracts = await loadRealMidgardContractsForTest(
     nonce,
     authPolicy,
     eventHistoryProtectionDurationMs,
+    l1SlotConfig,
   );
   const catalogue = await Effect.runPromise(
     buildFraudProofCatalogueDeploymentInfo(
@@ -275,7 +287,7 @@ export const publishWorkflowDeploymentOnChain = async ({
     DA_COSIGNER_SEED_PHRASE: cosigner.seedPhrase,
     NETWORK: "Preprod" as const,
   };
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensureEventHistoryRewardAccountsRegisteredProgram(
       publisherLucid,
       contracts,
@@ -291,7 +303,7 @@ export const publishWorkflowDeploymentOnChain = async ({
         catalogue.root,
         undefined,
         atomicProtocolInitReferenceScriptsFromPublications(publications),
-      ),
+      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
     );
     const init = await initBuilder.complete({ localUPLCEval: true });
     const initSigned = await init.sign.withWallet().complete();
@@ -308,7 +320,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   if ((await operatorLucid.utxosByOutRef([nonce])).length !== 0) {
     throw new Error("Initialization did not consume the deployment nonce");
   }
-  const availabilityRegistrations = await Effect.runPromise(
+  const availabilityRegistrations = await runWithoutFollower(
     ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
       operatorLucid,
       contracts,
@@ -321,10 +333,10 @@ export const publishWorkflowDeploymentOnChain = async ({
   }
   const rootUnit =
     contracts.stateQueue.policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME;
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensurePhasMembershipRewardAccountRegisteredProgram(operatorLucid),
   );
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensureRuntimeRewardAccountsRegisteredProgram(operatorLucid, contracts),
   );
   const roots = (
@@ -384,6 +396,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   );
   const daParams = await Effect.runPromise(deriveOperatorDaParams(nodeConfig));
   const manifest = buildDeploymentManifest(deploymentInfo, {
+    l1SlotConfig,
     network,
     referenceScriptDeployAddress: walletAddress,
     hubOracleOneShotTxHash: nonce.txHash,

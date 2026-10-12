@@ -1,9 +1,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Duration, Effect, Metric, Option, Queue, Ref } from "effect";
+import { Duration, Effect, Metric, Option, Ref } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { SignedIntentReplacementIntegrityError } from "../services/canonical-journal-recovery.js";
 import { logOnStateChange } from "../services/globals.liveness-reasons.js";
 import { Database, Globals, Lucid, NodeConfig } from "../services/index.js";
 import {
@@ -37,7 +36,6 @@ import {
   runConfirmationWorkerInThread,
 } from "./block-confirmation.run-confirmation-worker-in-thread.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
-import { invalidateSpeculativeCommitCandidate } from "./speculative-commit-builder.js";
 
 export const buildBlockConfirmationAction = (
   runWorker: ConfirmationWorkerRunner = runConfirmationWorkerInThread,
@@ -47,10 +45,7 @@ export const buildBlockConfirmationAction = (
   } = {},
 ): Effect.Effect<
   void,
-  | WorkerError
-  | DatabaseError
-  | ConfirmationInvariantError
-  | SignedIntentReplacementIntegrityError,
+  WorkerError | DatabaseError | ConfirmationInvariantError,
   Globals | Database | NodeConfig
 > =>
   Effect.gen(function* () {
@@ -58,12 +53,7 @@ export const buildBlockConfirmationAction = (
     const config = yield* NodeConfig;
     yield* Ref.set(globals.HEARTBEAT_BLOCK_CONFIRMATION, Date.now());
     const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
-    if (resetInProgress) {
-      if (config.SPECULATIVE_COMMIT_BUILD) {
-        yield* invalidateSpeculativeCommitCandidate(globals, config, "T5");
-      }
-      return;
-    }
+    if (resetInProgress) return;
 
     const availableConfirmedBlock = yield* Ref.get(
       globals.AVAILABLE_CONFIRMED_BLOCK,
@@ -113,11 +103,7 @@ export const buildBlockConfirmationAction = (
     }
     switch (workerOutput.type) {
       case "SuccessfulConfirmationOutput": {
-        const confirmationObservedAtMs = Date.now();
         let confirmationMetadata: TransactionConfirmationMetadata | undefined;
-        const submittedAtMs = yield* Ref.get(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
-        );
         const metadata = yield* stateQueueTipMetadata(
           workerOutput.latestBlocksUTxO,
         ).pipe(Effect.orDie);
@@ -325,17 +311,6 @@ export const buildBlockConfirmationAction = (
             ),
           );
         }
-        if (config.SPECULATIVE_COMMIT_BUILD && metadata.headerHash !== null) {
-          yield* Queue.offer(globals.COMMIT_SUBMIT_WAKE_QUEUE, {
-            confirmedHeaderHash: metadata.headerHash.toString("hex"),
-            confirmedTip: workerOutput.latestBlocksUTxO,
-            confirmationObservedAtMs,
-            confirmationWaitMs:
-              submittedAtMs === 0
-                ? 0
-                : Math.max(0, confirmationObservedAtMs - submittedAtMs),
-          });
-        }
         if (Option.isSome(pending)) {
           yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
         } else {
@@ -359,11 +334,11 @@ export const buildBlockConfirmationAction = (
           pending.value[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] !=
             null
         ) {
-          // A signed commit is replaced only by the history owner, from its
-          // authenticated view at an exact point (whichever block holds the
-          // tail node's slot wins).
+          // A signed commit is disposed of only by the landed-block rebase,
+          // once the follower's intent reconciliation derives it dead
+          // (whichever block holds the tail node's slot wins).
           yield* Effect.logInfo(
-            "Signed commit intent is unresolved; the history owner's signed-intent reconciliation decides whether it is confirmed, replaced or revived.",
+            "Signed commit intent is unresolved; the follower's intent reconciliation and the landed-block rebase decide whether it is followed or replaced.",
           );
           return;
         }
@@ -421,9 +396,6 @@ export const buildBlockConfirmationAction = (
           globals.AVAILABLE_CONFIRMED_BLOCK,
           workerOutput.latestBlocksUTxO,
         );
-        if (config.SPECULATIVE_COMMIT_BUILD) {
-          yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
-        }
         yield* Effect.logWarning(
           `🔍 ⚠️  Abandoning stale pending block submission ${workerOutput.stalePendingHeaderHash} (submitted_tx=${workerOutput.staleSubmittedTxHash || "unknown"}); recovered canonical chain tip and resumed commitment flow.`,
         );

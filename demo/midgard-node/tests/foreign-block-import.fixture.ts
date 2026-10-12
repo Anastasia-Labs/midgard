@@ -8,6 +8,7 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation";
 import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
@@ -85,6 +86,7 @@ export const fixture = async (
   const header = headerFor(roots, counts);
   const [member] = await Effect.runPromise(
     buildDeterministicValidationTraceMembers({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       blockEndTime: new Date(Number(header.endTime)),
       expectedNetworkId: 0n,
@@ -186,6 +188,7 @@ const imported = (
     minFeeA: 0n,
     minFeeB: 0n,
     blockSlot: 0n,
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     replayUserEvent: () => Effect.die("fixture has no user event"),
     verifyForcedSource: ({ source, canonicalTransactionCbor, rejection }) =>
       Effect.gen(function* () {

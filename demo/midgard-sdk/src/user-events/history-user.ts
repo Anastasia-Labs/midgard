@@ -13,6 +13,10 @@ import { Effect } from "effect";
 import { type CredentialD, type MidgardValidators } from "../common.js";
 import { fetchHubOracleUTxOProgram } from "../hub-oracle.js";
 import {
+  EMPTY_WALLET_INPUTS_CAUSE,
+  emptyWalletInputsRefusal,
+} from "../tx-completion.js";
+import {
   EVENT_HISTORY_MAX_PROTECTION_TIME,
   EventHistoryNode,
   type EventHistoryRecipe,
@@ -47,6 +51,12 @@ export type UserHistoryBuildOptions = {
   readonly reclaimAuth?: CredentialD;
   readonly structuralRefundKey?: string;
   readonly validity?: { readonly validFrom: number; readonly validTo: number };
+  /**
+   * The funding wallet's coins, as the caller's view holds them. When given,
+   * the nonce and the funding inputs come from exactly these and the wallet is
+   * never read from the provider; an empty set is refused by name.
+   */
+  readonly walletInputs?: readonly UTxO[];
 };
 
 export const historyUserBuildError = (cause: unknown): UserEventBuildError =>
@@ -63,6 +73,17 @@ export const prepareUserHistoryContextProgram = (
   scriptReference?: UTxO,
 ) =>
   Effect.gen(function* () {
+    const emptyInputs = emptyWalletInputsRefusal(
+      options.walletInputs,
+      `the ${kind.toLowerCase()} history transaction`,
+    );
+    if (emptyInputs !== null)
+      return yield* Effect.fail(
+        new UserEventBuildError({
+          message: emptyInputs,
+          cause: EMPTY_WALLET_INPUTS_CAUSE,
+        }),
+      );
     const prepared = yield* Effect.tryPromise({
       try: async () => {
         const pair = requireEventHistoryContracts(contracts);
@@ -100,7 +121,9 @@ export const prepareUserHistoryContextProgram = (
           (credential.type === "Key"
             ? { PublicKeyCredential: [credential.hash] }
             : { ScriptCredential: [credential.hash] });
-        const walletInputs = (await lucid.wallet().getUtxos())
+        const walletInputs = (
+          options.walletInputs ?? (await lucid.wallet().getUtxos())
+        )
           .filter(
             (input) =>
               input.datum == null &&

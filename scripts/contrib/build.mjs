@@ -30,7 +30,11 @@ import {
   withIdentityScope,
 } from "./files.mjs";
 import { runProcess } from "./process.mjs";
-import { pinnedPnpm, pinnedPnpmEnvironment } from "./pnpm.mjs";
+import {
+  pinnedPnpm,
+  pinnedPnpmEnvironment,
+  requireInstalled,
+} from "./pnpm.mjs";
 import { writeReceipt } from "./receipts.mjs";
 import { resourceDirectory, withResource } from "./resources.mjs";
 
@@ -191,6 +195,9 @@ export const buildPackage = async (
   const pkg = packageByName(root, name);
   if (!pkg.scripts?.["build:contrib-raw"])
     throw new Error(`${pkg.name} has no guarded build recipe`);
+  // A package with nothing to import builds without an install.
+  if (Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).length)
+    requireInstalled(root);
   const forced = force || env.MIDGARD_CONTRIB_FORCE_BUILD === "1";
   return withResource(
     `workspace:${realpathSync(root)}`,

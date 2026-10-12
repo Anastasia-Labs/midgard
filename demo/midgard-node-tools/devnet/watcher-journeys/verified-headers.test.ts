@@ -170,6 +170,40 @@ describe("journey verified-header evidence", () => {
     expect(restarted.paths[0]).toMatch(/&cursor=0$/u);
   });
 
+  it("resumes from the records an earlier attempt retained", async () => {
+    const earlier = watcher();
+    const first = createJourneyVerifiedHeaders(earlier, directory);
+    earlier.record(PREDECESSOR, "verified");
+    earlier.record(SUCCESSOR, "verified");
+    await first.collectHealthy(PREDECESSOR, SUCCESSOR);
+    await first.retain();
+    // The restarted watcher never re-verifies headers it decided before.
+    const resumed = createJourneyVerifiedHeaders(watcher(), directory);
+    expect(await resumed.collect([PREDECESSOR])).toHaveLength(1);
+    expect(await resumed.collectHealthy(PREDECESSOR, SUCCESSOR)).toHaveLength(
+      3,
+    );
+  });
+
+  it("still binds a retained record to its block's payload", async () => {
+    await writeJourneyArtifact(
+      join(directory, JOURNEY_VERIFIED_HEADERS_ARTIFACT),
+      [
+        {
+          kind: "verification",
+          sequence: "1",
+          headerHash: PREDECESSOR.headerHash,
+          payloadEnvelopeSha256: "ee".repeat(32),
+          outcome: "verified",
+        },
+      ],
+    );
+    const headers = createJourneyVerifiedHeaders(watcher(), directory);
+    await expect(headers.collect([PREDECESSOR])).rejects.toThrow(
+      /another payload envelope/u,
+    );
+  });
+
   it("pages through more records than one diagnostics page holds", async () => {
     const source = watcher();
     const headers = createJourneyVerifiedHeaders(source, directory);

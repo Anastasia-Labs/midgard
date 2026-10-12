@@ -13,6 +13,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
@@ -266,6 +267,7 @@ export const registerRetainedScriptMaterialTests = () => {
               effectiveEndTime: new Date("2026-07-23T12:01:00Z"),
               consensusProfile: MIDGARD_CONSENSUS_PROFILE,
               validation: {
+                l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
                 expectedNetworkId: 0n,
                 minFeeA: 0n,
                 minFeeB: 0n,

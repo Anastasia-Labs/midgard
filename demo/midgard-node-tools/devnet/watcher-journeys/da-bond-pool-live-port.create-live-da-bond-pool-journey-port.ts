@@ -10,7 +10,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
   Data,
-  Lucid,
   paymentCredentialOf,
   toUnit,
   type UTxO,
@@ -33,13 +32,13 @@ import {
   mintingValidatorOf,
   spendingValidatorOf,
 } from "midgard-node/commands/availability-challenge-deployment";
-import { availabilityCommandCanonicalSource } from "midgard-node/commands/availability-challenge-source";
 import {
   type DaBondContext,
   daBondStatusCommand,
 } from "midgard-node/commands/da-bond";
 import { daLocalSigners } from "midgard-node/da/local-signers";
-import { fetchKupoSpend } from "midgard-node/l1-tx-order-carriage";
+import { availabilityKupmiosSource } from "midgard-node/l1-external/kupmios-availability-source";
+import { fetchKupoSpend } from "midgard-node/l1-external/kupmios-history";
 import {
   authenticWatcherDaBondPool,
   deriveWatcherDaBondPoolObservation,
@@ -96,6 +95,7 @@ import {
   type AvailabilityRequest,
   commitWithinLedgerValidity,
   DA_BOND_POOL_COMMITTEE_SUBMITTER_SECRETS,
+  daBondPoolCommitteeL1,
   DaBondPoolCommitteeUnavailableError,
   DaBondPoolJourneyQueueNotEmptyError,
   DaBondPoolJourneyResumeMismatchError,
@@ -148,6 +148,7 @@ import {
   summarizeDaBondPoolTimeout,
 } from "./da-bond-pool-live-port.summarize-da-bond-pool-timeout.js";
 import { describeErrorChain } from "./error-chain.js";
+import { journeyLucid } from "./journey-lucid.js";
 import { readJourneyCadence } from "./journey-timing.js";
 import {
   awaitLedgerTipSlot,
@@ -238,10 +239,7 @@ export const createLiveDaBondPoolJourneyPort = async (
   const localSigners = daLocalSigners(daSignerConfig);
 
   const newLucid = () =>
-    Lucid(provider, "Custom", {
-      slotConfig: customNetwork.slotConfig,
-      evaluator: createScalusEvaluator(),
-    });
+    journeyLucid(provider, context, createScalusEvaluator());
   const readLucid = await newLucid();
   const network = readLucid.config().network;
   if (network === undefined || network !== manifest.network)
@@ -532,14 +530,12 @@ export const createLiveDaBondPoolJourneyPort = async (
   const availabilitySubmitter = await submitterKey(
     DA_BOND_POOL_COMMITTEE_SUBMITTER_SECRETS.availability,
   );
-  const nativeLedgerPaths = {
-    socket: join(runDirectory, "cardano/ipc/node.socket"),
-    config: join(runDirectory, "config/config.json"),
-    binary: join(runDirectory, "work/midgard-chain-sync"),
-  };
-  const nativeLedger = Object.values(nativeLedgerPaths).every((path) =>
-    existsSync(path),
-  );
+  const { nativeLedger: nativeLedgerPaths, l1Origin: committeeL1Origin } =
+    await daBondPoolCommitteeL1({
+      runDirectory,
+      networkMagic: customNetwork.networkMagic,
+      nonceTxHash: manifest.hubOracleOneShot.txHash,
+    });
   const postgres = {
     database: context.runEnv.MIDGARD_PHASE4_POSTGRES_DATABASE,
     user: context.runEnv.MIDGARD_PHASE4_POSTGRES_USER,
@@ -554,6 +550,13 @@ export const createLiveDaBondPoolJourneyPort = async (
     throw new DaBondPoolCommitteeUnavailableError(
       `run.env lacks the devnet Postgres ${postgresMissing.join(", ")}`,
     );
+  // The CLI is a tool (option E): the local node's ledger, no store.
+  const cliL1Env: Record<string, string> = {
+    L1_ACCESS: "node",
+    L1_NODE_SOCKET_PATH: nativeLedgerPaths.socket,
+    L1_NODE_CONFIG_PATH: nativeLedgerPaths.config,
+    L1_NODE_TRANSPORT_BINARY_PATH: nativeLedgerPaths.binary,
+  };
   // A resumed run restarts the node on the database its earlier run left,
   // as the normal run's restart before step 6 does.
   const recordedCommittee =
@@ -605,11 +608,9 @@ export const createLiveDaBondPoolJourneyPort = async (
       deploymentManifestPath: manifestPath,
       network: manifest.network,
       networkMagic: customNetwork.networkMagic,
-      kupoUrl: context.kupoUrl,
-      ogmiosUrl: context.ogmiosUrl,
-      chainSyncCursorPath: join(committeeDirectory, "chain-sync-cursor.json"),
+      l1Origin: committeeL1Origin,
       finalityDepth: manifest.l1Finality.confirmationDepth,
-      ...(nativeLedger ? { nativeLedger: nativeLedgerPaths } : {}),
+      nativeLedger: nativeLedgerPaths,
     }),
     l1Submitter,
     availabilitySubmitter,
@@ -753,19 +754,11 @@ export const createLiveDaBondPoolJourneyPort = async (
     }),
     command: [process.execPath, cliBin],
     manifestPath,
-    kupoUrl: context.kupoUrl,
-    ogmiosUrl: context.ogmiosUrl,
     env: {
       ...inheritedEnv,
       MIDGARD_CONFIG_MODE: "disabled",
       MIDGARD_DOTENV_MODE: "disabled",
-      ...(nativeLedger
-        ? {
-            L1_NODE_SOCKET_PATH: nativeLedgerPaths.socket,
-            L1_NODE_CONFIG_PATH: nativeLedgerPaths.config,
-            L1_NATIVE_CHAIN_SYNC_BINARY_PATH: nativeLedgerPaths.binary,
-          }
-        : {}),
+      ...cliL1Env,
     },
     workDirectory: (label) => {
       const directory = join(
@@ -806,23 +799,24 @@ export const createLiveDaBondPoolJourneyPort = async (
   });
   mkdirSync(join(evidenceDirectory, "cli"), { recursive: true });
 
-  // The availability command flow, composed from the CLI's steps.
+  // The availability command flow, composed from the CLI's steps, on its
+  // `--l1 kupmios` source (chain history: unit history, foreign spends).
   const availabilityDeployment = await availabilityDeploymentFromManifest(
     challengerLucid,
     manifest,
   );
+  const source = availabilityKupmiosSource({
+    lucid: challengerLucid,
+    kupoUrl: context.kupoUrl,
+    ogmiosUrl: context.ogmiosUrl,
+  });
   const buildContext = {
     daChallengeWindowMs: BigInt(
       manifest.deploymentProfile.timing.da_challenge_window_ms,
     ),
     daAttestationPolicyId: manifest.contracts.daAttestationMint?.scriptHash,
-    kupoUrl: context.kupoUrl,
+    unitHistory: source.unitHistory,
   };
-  const source = availabilityCommandCanonicalSource({
-    lucid: challengerLucid,
-    kupoUrl: context.kupoUrl,
-    ogmiosUrl: context.ogmiosUrl,
-  });
   const retryTransient = async <T>(
     label: string,
     action: () => Promise<T>,
@@ -836,7 +830,9 @@ export const createLiveDaBondPoolJourneyPort = async (
           attempt >= MAX_TRANSIENT_RETRIES
         )
           throw error;
-        log(`${label}: Kupo is catching up with Ogmios; retrying`);
+        log(
+          `${label}: the canonical source is not ready (${String(error)}); retrying`,
+        );
         await pause(POLL_MS);
       }
     }
@@ -1258,7 +1254,7 @@ export const createLiveDaBondPoolJourneyPort = async (
           if (signed === undefined || signed.txId !== error.txHash) throw error;
           const attempt = signed;
           // From its upper bound on the ledger refuses it, so once the tip is
-          // there and Kupo agrees, its absence is final.
+          // there and the node's follower agrees, its absence is final.
           await chain.awaitLedgerTime(error.expiryMs);
           for (let read = 1; ; read += 1) {
             const before = await retryTransient("expired commit", () =>
@@ -1272,10 +1268,7 @@ export const createLiveDaBondPoolJourneyPort = async (
             // spent the anchor even after a later Apply re-spent the header.
             const anchorSpend = await fetchKupoSpend({
               kupoUrl: context.kupoUrl,
-              outRef: {
-                txHash: attempt.anchor.txHash,
-                outputIndex: attempt.anchor.outputIndex,
-              },
+              outRef: attempt.anchor,
             });
             const after = await retryTransient("expired commit", () =>
               source.readBoundary(),

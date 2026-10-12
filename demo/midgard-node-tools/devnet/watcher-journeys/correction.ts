@@ -15,6 +15,8 @@ import "./correction.finalize-pending-journey-evidence.js";
 export {
   finalizePendingJourneyEvidence,
   journeyAnchoredEvidence,
+  type JourneyAnchoredTerminal,
+  type JourneyFinalizedEvidenceStamp,
   type JourneyPendingEvidenceStamp,
 } from "./correction.finalize-pending-journey-evidence.js";
 export {

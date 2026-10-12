@@ -9,7 +9,6 @@ import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import type { HistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import {
   canonicalHex,
@@ -189,11 +188,11 @@ const requireClassification = ({
 
 export const prepareMinAdaArtifact = async ({
   evidence,
-  historicalNativeScriptCorpus,
+  predecessor,
   classification,
 }: {
   readonly evidence: CanonicalBlockEvidence;
-  readonly historicalNativeScriptCorpus: HistoricalNativeScriptCorpus;
+  readonly predecessor: CanonicalBlockEvidence | undefined;
   readonly classification: Classification;
 }): Promise<MinAdaArtifact> => {
   if (
@@ -203,7 +202,7 @@ export const prepareMinAdaArtifact = async ({
   ) {
     const prepared = await prepareMinAdaUtxoFromCanonicalEvidence({
       evidence,
-      historicalNativeScriptCorpus,
+      predecessor,
     });
     const detectionId = minAdaUtxoDetectionId(prepared.outRef);
     return Object.freeze({

@@ -2,6 +2,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  type IntentJournal,
+  type IntentPlan,
+  journaledIntent,
+} from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   type AttestStateQueueHeaderResult,
@@ -21,6 +26,19 @@ import {
 } from "./da-attestation.fetch-unattested-headers.js";
 import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
 
+/** One step of a header's DA attestation, journaled against the header. */
+const attestIntent = (
+  plan: IntentPlan,
+  headerHash: string,
+  step: "init" | "add_signatures" | "apply",
+) =>
+  journaledIntent(
+    "attest",
+    `attest:${headerHash}:${step}`,
+    plan,
+    Buffer.from(headerHash, "hex"),
+  );
+
 export const attestHeader = ({
   lucid,
   contracts,
@@ -31,6 +49,7 @@ export const attestHeader = ({
   referenceScripts,
   availabilityCommitment,
   availabilityParameters,
+  plan,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: SDK.MidgardValidators;
@@ -41,6 +60,8 @@ export const attestHeader = ({
   readonly referenceScripts: SDK.DaAttestationReferenceScripts;
   readonly availabilityCommitment: SDK.DaAvailabilityCommitment;
   readonly availabilityParameters: SDK.DaAvailabilityParameters;
+  /** S5: the round's plan, opened before its first L1 read. */
+  readonly plan: IntentPlan;
 }): Effect.Effect<
   AttestStateQueueHeaderResult,
   | SDK.LucidError
@@ -48,7 +69,8 @@ export const attestHeader = ({
   | SDK.StateQueueError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     let initTxHash: string | null = null;
@@ -106,7 +128,8 @@ export const attestHeader = ({
       );
       initTxHash = yield* submitCompletedTx(
         lucid,
-        yield* completeWithLocalUplc(initTx, "DA attestation init"),
+        yield* completeWithLocalUplc(lucid, initTx, "DA attestation init"),
+        attestIntent(plan, target.headerHash, "init"),
       );
       candidates = yield* fetchVisibleDaAttestationCandidates(
         lucid,
@@ -175,9 +198,11 @@ export const attestHeader = ({
       addSignaturesTxHash = yield* submitCompletedTx(
         lucid,
         yield* completeWithLocalUplc(
+          lucid,
           addSignaturesTx,
           "DA attestation add-signatures",
         ),
+        attestIntent(plan, target.headerHash, "add_signatures"),
       );
       candidates = yield* fetchVisibleDaAttestationCandidates(
         lucid,
@@ -225,7 +250,8 @@ export const attestHeader = ({
           );
         return yield* submitCompletedTx(
           lucid,
-          yield* completeWithLocalUplc(applyTx, "DA attestation apply"),
+          yield* completeWithLocalUplc(lucid, applyTx, "DA attestation apply"),
+          attestIntent(plan, target.headerHash, "apply"),
         );
       }),
     });

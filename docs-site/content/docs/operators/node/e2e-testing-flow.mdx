@@ -26,9 +26,9 @@ L2 transfer, automatic merge and finality, withdrawal and automatic payout.
     `flock`. The command builds the contracts, runtimes and images itself.
   </Step>
   <Step>
-    **L1 backend**: local Kupmios (Cardano node + Ogmios + Kupo), see [Running
-    the L1 Backend](/docs/getting-started/l1-backend). The run refuses any other
-    provider or remote failover.
+    **L1 backend**: a local Cardano node, see [Running the L1
+    Backend](/docs/getting-started/l1-backend). Every role reads and submits
+    through its socket.
   </Step>
   <Step>
     **Configuration**: a stack configuration JSON copied from
@@ -69,7 +69,7 @@ linked worktree rather than deleting volumes.
 
 <Mermaid
   chart={`flowchart TD
-  A["prerequisites: builds"] --> B["providers: Cardano node, Ogmios, Kupo, Postgres"]
+  A["prerequisites: builds"] --> B["providers: Cardano node, Postgres"]
   B --> C["storage and wallet checks"]
   C --> D["hub-oracle one-shot nonce"]
   D --> E["node-runtime reference scripts"]

@@ -20,7 +20,7 @@ import {
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { bindManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -141,7 +141,7 @@ export const createManifestBoundProtectedOutputSignerMissingRuntime = ({
 export type ManifestBoundProtectedOutputSignerMissingWorkflowConfig =
   LoadManifestBoundProtectedOutputSignerMissingConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+      l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;

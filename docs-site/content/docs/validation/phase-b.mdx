@@ -38,6 +38,8 @@ after a validated batch.
 ```ts
 type PhaseBConfig = {
   readonly nowCardanoSlotNo: bigint;
+  // The deployment manifest's L1 slot mapping (`l1SlotConfig`).
+  readonly l1SlotConfig: L1SlotConfig;
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
   // Optional process-local evaluateProofScript callback.
@@ -84,7 +86,7 @@ state view (base state plus the accumulating patch):
 
 | Check                                        | Reject code                                           |
 | -------------------------------------------- | ----------------------------------------------------- |
-| Validity interval vs. `nowCardanoSlotNo`     | `E_VALIDITY_INTERVAL_MISMATCH`                        |
+| `start <= nowCardanoSlotNo < end`            | `E_VALIDITY_INTERVAL_MISMATCH`                        |
 | Double-spend against already-accepted spends | `E_DOUBLE_SPEND`                                      |
 | Input resolves in current state              | `E_INPUT_NOT_FOUND`                                   |
 | Missing witness / observer authorization     | `E_MISSING_REQUIRED_WITNESS`                          |
@@ -134,6 +136,12 @@ the script version:
 `ScriptContextView` is the intermediate structure the builders read from. It contains
 resolved inputs, reference inputs, outputs, fee, validity bounds, observers,
 signatories, the mint value, and the redeemers with their purposes.
+
+Both builders present the body's slot interval as Cardano does: a POSIX-millisecond
+`validRange` converted with `l1SlotConfig`, with an inclusive lower bound, a strict
+upper bound, and an absent bound as an inclusive `NegInf` or `PosInf`. The deployed
+transaction-info validator is applied with the same mapping, so a different one would
+build contexts the chain never sees.
 
 <Callout type="info">
   Because scripts evaluate against a context built from the *resolved* inputs,

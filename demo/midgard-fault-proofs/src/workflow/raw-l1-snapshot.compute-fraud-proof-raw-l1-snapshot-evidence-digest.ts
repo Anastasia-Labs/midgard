@@ -41,7 +41,6 @@ export type FraudProofRawL1ScopeRole =
   | "withdrawal_history_data"
   | "forced_transaction_event"
   | "hub_oracle"
-  | "settlement"
   | "state_queue"
   | FraudProofRawL1ComputationStepRole
   | "permanent_proof_token"
@@ -95,7 +94,7 @@ export type FraudProofRawL1Transaction = {
 
 export type FraudProofRawL1UnitHistory = {
   readonly unit: string;
-  /** Kupo's matcher was scanned from origin rather than an arbitrary cursor. */
+  /** The unit's history was scanned from origin rather than an arbitrary cursor. */
   readonly fromGenesis: true;
   readonly completeThroughPointId: string;
   readonly transactionHashes: readonly string[];
@@ -109,9 +108,9 @@ export type FraudProofRawL1Snapshot = {
   readonly headerHash: string;
   readonly provenance: EvidenceProvenance & {
     readonly trustClass: "authenticated_cardano_l1";
-    readonly sourceMode: "local_kupo_ogmios";
-    readonly kupoCheckpoint: FraudProofRawL1Point;
-    readonly ogmiosTip: FraudProofRawL1Point;
+    readonly sourceMode: "local_chain_follower";
+    readonly boundaryPoint: FraudProofRawL1Point;
+    readonly tipPoint: FraudProofRawL1Point;
   };
   readonly cursor: {
     readonly point: FraudProofRawL1Point;
@@ -219,7 +218,6 @@ export const RAW_L1_SCOPE_ROLES = new Set<FraudProofRawL1ScopeRole>([
   "withdrawal_history_data",
   "forced_transaction_event",
   "hub_oracle",
-  "settlement",
   "state_queue",
   "computation_thread_step_01",
   "computation_thread_step_02",

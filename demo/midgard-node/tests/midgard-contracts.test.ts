@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,6 +13,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import {
@@ -55,7 +56,10 @@ import {
   collectScriptInventory,
   scriptInventoryId,
 } from "./helpers/script-inventory.js";
-import { registerBlueprintProfileBindingTests } from "./midgard-contracts.blueprint-binding.js";
+import {
+  realBlueprintBytes,
+  registerBlueprintProfileBindingTests,
+} from "./midgard-contracts.blueprint-binding.js";
 
 describe("midgard contracts registry", () => {
   registerBlueprintProfileBindingTests();
@@ -66,6 +70,7 @@ describe("midgard contracts registry", () => {
   const cardanoSnapshot = TEST_CARDANO_PROTOCOL_PARAMETERS;
   const daVkey = "11".repeat(32);
   const manifestIdentityContext: DeploymentManifestIdentityContext = {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
     economics:
       DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
@@ -107,6 +112,7 @@ describe("midgard contracts registry", () => {
         placeholderContracts,
         { ...oneShotOutRef },
         {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           referenceScriptAuth: placeholderContracts.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
           eventHistoryProtectionDurationMs: 2_000n,
@@ -118,15 +124,21 @@ describe("midgard contracts registry", () => {
         },
       );
 
-      // Applied recipes include the completed-fraud queue marker and explicit
-      // history bounds/retention metadata, both authenticated timing yields, and
-      // the paired list/retention/retirement deployment recipes;
-      // normalize bigint parameters as decimal strings. Re-pinned by #689:
-      // the pooled DA bond validator was added, the per-block availability
-      // bond yield removed, and the availability-challenge and DA-attestation
-      // parameters changed (pool policy, commitment-bound challenges). MPF
-      // fixes (leaf fold, terminal neighbour, deletion Branch, emptied ledger
-      // root, disjoint leaf and branch node preimages) change proofs.
+      // Applied recipes include the completed-fraud queue marker, explicit
+      // history bounds/retention metadata, both authenticated timing yields and
+      // the paired list/retention/retirement recipes; bigint parameters are
+      // decimal strings. Re-pinned by #689 (pooled DA bond added, per-block
+      // availability bond yield removed, availability-challenge and
+      // DA-attestation parameters changed), by MPF fixes (leaf fold, terminal
+      // neighbour, deletion Branch, emptied ledger root, disjoint node
+      // preimages), by removing missingNativeScriptTx/Utxo (superseded by
+      // missingScriptSource), by deleting the cross-block family, by the
+      // neglected-event strike rule (scheduler, so active operators and the
+      // state queue built on it), by the forced due-window fix
+      // (transition trace), by raising the new-shift inactivity grace to
+      // the maximum validity range (scheduler spend only), by the txInfo
+      // stage's L1 slot mapping (POSIX-ms validity ranges), and by the
+      // exclusive upper bound, bounds below -1, admission and the lock top-up.
       expect
         .soft(
           createHash("sha256")
@@ -136,13 +148,15 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "03f98ad101599f6b458dcf5a328a4ffd7eb67059ea5600c17f9c372d94fef08b",
+          "c2eb25cf45a4208bff40157fe5107dadbdf16d4101f2edd283605d24b41f1ec5",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       // Re-pinned by #689: the state queue and correction lock are applied over
       // the availability-challenge policy, whose parameters now include the
-      // pooled DA bond policy, and again for disjoint MPF node preimages.
+      // pooled DA bond policy, and again for disjoint MPF node preimages and
+      // for the neglected-event strike rule (the state queue is applied over
+      // the scheduler and active-operator scripts), and the lock ADA top-up.
       expect
         .soft(
           createHash("sha256")
@@ -155,7 +169,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "45ba1c1bb4baf099d347af5b85c2c5fc105871cecf81ffb1d050e023fe61a852",
+          "db216a117ef1c0ef7585310ebd6ef93cf20f663a133b6a6db1cea0ffcdc865ca",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
@@ -262,6 +276,7 @@ describe("midgard contracts registry", () => {
             outputIndex: -1,
           },
           {
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             referenceScriptAuth: placeholderContracts.referenceScriptAuth,
             availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
             eventHistoryProtectionDurationMs: 2_000n,
@@ -308,12 +323,7 @@ describe("midgard contracts registry", () => {
     async ({ title, mutation, error }) => {
       const dir = await mkdtemp(join(tmpdir(), "midgard-queue-blueprint-"));
       const blueprintPath = join(dir, "plutus.json");
-      const raw = JSON.parse(
-        await readFile(
-          new URL("../../../onchain/aiken/plutus.json", import.meta.url),
-          "utf8",
-        ),
-      ) as {
+      const raw = JSON.parse((await realBlueprintBytes()).toString("utf8")) as {
         validators: {
           title: string;
           compiledCode: string;
@@ -360,6 +370,7 @@ describe("midgard contracts registry", () => {
               contracts,
               oneShotOutRef,
               {
+                l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
                 referenceScriptAuth: contracts.referenceScriptAuth,
                 availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
                 eventHistoryProtectionDurationMs: 2_000n,

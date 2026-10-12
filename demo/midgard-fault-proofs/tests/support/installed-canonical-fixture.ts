@@ -9,6 +9,7 @@ import {
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   EventKey,
   validationTraceDescriptorDataFromCore,
@@ -141,6 +142,7 @@ export const buildInstalledCanonicalFixture = async ({
   const txOrderId = { transactionId: "5a".repeat(32), outputIndex: 0n };
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
   const challengerReplayInput = {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     blockEndTimeMs: now + 1000,
     expectedNetworkId: 0n,

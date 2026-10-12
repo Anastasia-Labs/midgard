@@ -28,7 +28,9 @@ use midgard/validation_machine/machine_types as mt
 use midgard/validation_machine/native_scripts as vm_native_scripts
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/phase_a_native_scripts as pans
-use midgard/validation_machine_tests/constants.{h_a, h_b, zero}
+use midgard/validation_machine_tests/constants.{
+  h_a, h_b, test_l1_slot_config, zero,
+}
 use midgard/validation_machine_tests/fixtures_phase_a.{
   empty_v1_transaction, exact_rejection_post, inline_field_carriage,
   inline_field_door, native_scripts_step_fixture, next_phase_a_native_state,
@@ -311,6 +313,7 @@ fn late_token_head_admits(
       },
     },
     inline_field_door(),
+    test_l1_slot_config,
   )
   let split = pans.verify_phase_a_native_token_head_semantics_v1(
     walk.entry_pre,
@@ -354,6 +357,7 @@ fn late_walk_has_exactly_one_successor(mode: Int) -> Bool {
         auxiliary: walk.descriptor,
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
     vm_native_scripts.verify_native_scripts_native_semantics_v1(
       walk.pre,

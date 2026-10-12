@@ -1,5 +1,4 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
-import { type LocalKupmiosRawBlockAtPoint } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 
@@ -7,61 +6,8 @@ import {
   type DecodedQueueHeader,
   HEX_28,
   type LockOutput,
-  type QueueNode,
   type QueueOutput,
-  type WatcherCorrectionLockObservation,
 } from "./authenticated-state-queue-observation.parse-persisted-header.js";
-import {
-  mintPolicyIds,
-  outputHasPolicy,
-  outputHasUnit,
-  outputReferences,
-} from "./authenticated-state-queue-observation.parse-persisted-observation.js";
-
-export const candidateRawBlockTransactions = ({
-  rawBlock,
-  queue,
-  currentLock,
-  stateQueuePolicyId,
-  hubOraclePolicyId,
-}: {
-  rawBlock: LocalKupmiosRawBlockAtPoint;
-  queue: readonly QueueNode[];
-  currentLock: WatcherCorrectionLockObservation | null;
-  stateQueuePolicyId: string;
-  hubOraclePolicyId: string;
-}): readonly Readonly<{ txHash: string; transactionIndex: number }>[] => {
-  const cursorOutRefs = new Set(queue.map(({ outRef }) => outRef));
-  if (currentLock !== null) cursorOutRefs.add(currentLock.outRef);
-  const lockUnit = SDK.correctionLockUnit(hubOraclePolicyId);
-  return Object.freeze(
-    rawBlock.transactions.flatMap((transaction, transactionIndex) => {
-      const body = CML.Transaction.from_cbor_hex(
-        transaction.transactionCbor,
-      ).body();
-      const inputOutRefs = [
-        ...outputReferences(body.inputs()),
-        ...outputReferences(body.reference_inputs()),
-      ];
-      const outputs = body.outputs();
-      let outputCandidate = false;
-      for (let index = 0; index < outputs.len(); index += 1) {
-        outputCandidate ||=
-          outputHasPolicy(outputs.get(index), stateQueuePolicyId) ||
-          outputHasUnit(outputs.get(index), lockUnit);
-      }
-      return mintPolicyIds(body).includes(stateQueuePolicyId) ||
-        outputCandidate ||
-        inputOutRefs.some((outRef) => cursorOutRefs.has(outRef))
-        ? [Object.freeze({ txHash: transaction.txHash, transactionIndex })]
-        : [];
-    }),
-  );
-};
-
-/** Pure candidate-selection test seam; it resolves or admits no transaction. */
-export const unsafeSelectWatcherStateQueueRawCandidatesForTest =
-  candidateRawBlockTransactions;
 
 export const queueOutput = ({
   output,

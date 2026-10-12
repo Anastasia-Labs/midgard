@@ -1,7 +1,6 @@
 /**
  * The run-scoped directory where test files share deployed emulator fixtures:
- * the history-source prefix
- * (`history-source-owner-emulator.restore-history-source.ts`) and the
+ * the published-lifecycle prefix (`published-lifecycle.restore.ts`) and the
  * deposit-flow fixture (`deposit-flow-emulator-shared.make-fixture.ts`).
  *
  * The global setup creates it once per Vitest run and exports its path to

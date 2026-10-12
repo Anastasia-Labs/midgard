@@ -14,14 +14,14 @@ import { type Layout, readRunEnv } from "./layout.js";
 /** Existing-run recovery cannot reconstruct deployment evidence or identities. */
 export const readServiceRecoveryContext = (layout: Layout): DeployContext => {
   const nativeOwnerBinary = join(layout.bin, "architecture-g-owner");
-  const chainSyncBinary = join(layout.bin, "midgard-chain-sync");
+  const transportBinary = join(layout.bin, "midgard-l1-node-transport");
   for (const path of [
     layout.runEnv,
     layout.identities,
     layout.blueprint,
     `${layout.blueprint}.deployment.json`,
     nativeOwnerBinary,
-    chainSyncBinary,
+    transportBinary,
     layout.contractManifest,
   ]) {
     let file = false;
@@ -58,7 +58,7 @@ export const readServiceRecoveryContext = (layout: Layout): DeployContext => {
       nativeOwnerSha256: createHash("sha256")
         .update(readFileSync(nativeOwnerBinary))
         .digest("hex"),
-      chainSyncBinary,
+      transportBinary,
     },
   };
 };

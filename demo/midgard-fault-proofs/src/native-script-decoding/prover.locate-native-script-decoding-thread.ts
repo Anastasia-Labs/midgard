@@ -36,9 +36,9 @@ import {
 export type NativeScriptDecodingProverPolicy = {
   /**
    * Minimum L1 depth of the faulted header's state-queue UTxO before the
-   * core spends anything. Default mirrors the watcher's finality policy
-   * (`finality-engine.ts` `confirmationDepth`, 2,160 blocks). `0n` disables
-   * the gate.
+   * core spends anything. Default 2,160 blocks, the mainnet security
+   * parameter; a deployment's own finality policy is its manifest's L1
+   * `confirmationDepth`. `0n` disables the gate.
    */
   readonly minSettlementDepth: bigint;
   /**

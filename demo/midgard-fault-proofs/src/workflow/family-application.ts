@@ -38,7 +38,6 @@ export {
   type FamilyApplicationWorkflowIdentity,
   type FamilyCommonInfrastructure,
   familyDefinitionRoster,
-  type FamilyHistoricalNativeScriptAuthority,
   type FamilyResolvedReferenceScripts,
   type FamilyRosterDefinition,
   familyStepRole,

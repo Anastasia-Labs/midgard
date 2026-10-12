@@ -71,8 +71,7 @@ An attestation applies only while the pool is `Bonded` and holds at least
 - `da-bond assemble <unsigned-file> <witness-files...>`: refuses below the DA
   params `update_threshold` and submits nothing; at the threshold it submits.
 
-Every `da-bond` command except `witness` takes `--manifest <path>` and the
-optional `--kupo-url` and `--ogmios-url`. A withdrawal is BeginWithdraw, then the
+Every `da-bond` command except `witness` takes `--manifest <path>`. A withdrawal is BeginWithdraw, then the
 withdraw delay, then CompleteWithdraw, or CancelWithdraw while it is pending. The
 operator guide, `demo/midgard-node/docs/da-bond-commands.md` in the repository,
 covers funding, the multi-signer flow, every refusal and the pool alerts.
@@ -107,8 +106,8 @@ Run these through `midgard-node-tools`:
 - `e2e-start-service` · `e2e-finalize-summary`, which re-derives an
   `e2e-stack` run from its records
 - `e2e-stress-l2-throughput` · `e2e-clean-owned-process-group`
-- `phase4-genesis-ledger` · `phase4-t1-probe` · `phase4-t1-advance`
-- `e2e-pipelined-commit-process-acceptance`
+- `phase4-genesis-ledger`
+- `e2e-journal-kill-recovery-acceptance`
 
 See [Benchmarks & Stress Testing](/docs/operators/node/benchmarks) and
 [End-to-End Testing Flow](/docs/operators/node/e2e-testing-flow).

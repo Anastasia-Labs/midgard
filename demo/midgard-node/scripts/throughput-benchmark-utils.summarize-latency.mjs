@@ -26,12 +26,6 @@ const quantileFromSorted = (sorted, q) => {
   return sorted[index];
 };
 
-export const quantile = (values, q) =>
-  quantileFromSorted(
-    [...values].sort((a, b) => a - b),
-    q,
-  );
-
 export const summarizeLatency = (values) => {
   if (values.length === 0) {
     return {

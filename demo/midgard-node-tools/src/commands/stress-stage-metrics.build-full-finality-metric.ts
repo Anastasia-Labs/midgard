@@ -62,7 +62,7 @@ const buildFullFinalityMetric = ({
   const headerByTx = new Map(rows.map((row) => [row.txHash, row.headerHash]));
   const finalizedHeaders = new Set(
     rows
-      .filter((row) => row.status === "finalized")
+      .filter((row) => row.status === "locally_applied")
       .map((row) => row.headerHash),
   );
   const queuedHeaders = new Set(

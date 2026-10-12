@@ -19,7 +19,7 @@ import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -45,7 +45,7 @@ export const FIELD_PREIMAGE_LENGTH_AUTHENTICATED_WORKFLOW =
 export type ManifestBoundFieldPreimageLengthWorkflowConfig =
   LoadManifestBoundFieldPreimageLengthConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+      l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;

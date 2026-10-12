@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -16,9 +17,12 @@ import { test } from "node:test";
 import {
   CI_VALIDATORS,
   ciIdentity,
+  ciStepCommand,
   validateCiEvidence,
+  validatorCommands,
   validatorInputs,
 } from "./ci-evidence.mjs";
+import { loadYaml } from "../ci/lint-workflows.mjs";
 import { enrollBuilds } from "../contrib/enroll-builds.mjs";
 
 // A hook running these tests exports GIT_DIR and GIT_INDEX_FILE. Inherited
@@ -42,6 +46,9 @@ const fixture = () => {
     tree: "merged-tree",
     profile,
     inputs: "source-and-discovered-inputs",
+    commands: Object.fromEntries(
+      Object.keys(CI_VALIDATORS).map((id) => [id, `local command of ${id}`]),
+    ),
     run: {
       head_sha: "candidate",
       path: ".github/workflows/repo-tools-ci.yml",
@@ -55,7 +62,7 @@ const fixture = () => {
       status: "completed",
       conclusion: "success",
       html_url: "job",
-      steps: Object.values(CI_VALIDATORS).map(([name]) => ({
+      steps: Object.values(CI_VALIDATORS).map((name) => ({
         name,
         status: "completed",
         conclusion: "success",
@@ -71,9 +78,9 @@ const fixture = () => {
     workflow: {
       jobs: {
         "repo-tools": {
-          steps: Object.values(CI_VALIDATORS).map(([name, run]) => ({
+          steps: Object.entries(CI_VALIDATORS).map(([id, name]) => ({
             name,
-            run,
+            run: ciStepCommand(id),
           })),
         },
       },
@@ -88,6 +95,10 @@ test("exact tested tree, runtime, commands and successful steps cover only audit
   );
   assert.equal(evidence.has("demo-test-db"), false);
   assert.equal(evidence.get("required-checks-doc").tree, "merged-tree");
+  assert.equal(
+    evidence.get("required-checks-doc").command,
+    "local command of required-checks-doc",
+  );
 });
 test("stale or incomplete CI never satisfies a local validator", () => {
   const mutations = [
@@ -129,6 +140,15 @@ test("stale or incomplete CI never satisfies a local validator", () => {
     },
     (f) => {
       f.job.steps.pop();
+    },
+    // A step that spells the command instead of naming the check is not
+    // the registry's command by construction.
+    (f) => {
+      f.workflow.jobs["repo-tools"].steps[0].run =
+        "node scripts/preflight.mjs --check-docs";
+    },
+    (f) => {
+      delete f.commands["required-checks-doc"];
     },
   ];
   for (const mutate of mutations) {
@@ -261,3 +281,34 @@ test("unaudited validator directories, shells and environment overrides refuse r
     assert.throws(() => validateCiEvidence(input));
   }
 });
+
+const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
+const yaml = loadYaml(repositoryRoot);
+
+test(
+  "the Repo Tools workflow runs each audited validator by id, and its evidence stands for the registry command",
+  {
+    skip:
+      yaml === undefined && process.env.GITHUB_ACTIONS !== "true"
+        ? "could not check: yaml absent (run `pnpm --dir demo install`)"
+        : false,
+  },
+  () => {
+    const workflow = yaml.parse(
+      readFileSync(
+        resolve(repositoryRoot, ".github/workflows/repo-tools-ci.yml"),
+        "utf8",
+      ),
+    );
+    const steps = workflow.jobs["repo-tools"].steps;
+    for (const [id, name] of Object.entries(CI_VALIDATORS)) {
+      const step = steps.filter((candidate) => candidate.name === name);
+      assert.equal(step.length, 1, name);
+      assert.equal(step[0].run, ciStepCommand(id), name);
+    }
+    assert.deepEqual(validatorCommands(repositoryRoot), {
+      "required-checks-doc": "node scripts/preflight.mjs --check-docs",
+      "contributor-build-guards": "node scripts/contrib/enroll-builds.mjs",
+    });
+  },
+);

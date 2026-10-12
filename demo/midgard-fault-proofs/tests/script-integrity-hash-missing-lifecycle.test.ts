@@ -7,7 +7,7 @@ import "vitest";
 import "../src/evidence/forced-leaf-evidence.js";
 import "../src/field-opening.js";
 import "../src/index.js";
-import "../src/missing-native-script-tx/staged-walk.js";
+import "../src/staged-field-walk/index.js";
 import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/script-integrity-hash-missing/actuator.js";
 import "../src/script-integrity-hash-missing/artifact.js";
@@ -65,18 +65,6 @@ import {
 } from "../src/field-opening.js";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
-  advanceMissingNativeScriptTxGrammarCheckpoint,
-  advanceMissingNativeScriptTxSemanticCheckpoint,
-  decodeMissingNativeScriptTxGrammarCheckpoint,
-  decodeMissingNativeScriptTxSemanticCheckpoint,
-  encodeMissingNativeScriptTxGrammarCheckpoint,
-  encodeMissingNativeScriptTxSemanticCheckpoint,
-  hashMissingNativeScriptTxGrammarCheckpoint,
-  hashMissingNativeScriptTxSemanticCheckpoint,
-  initialMissingNativeScriptTxGrammarCheckpoint,
-  initialMissingNativeScriptTxSemanticCheckpoint,
-} from "../src/missing-native-script-tx/staged-walk.js";
-import {
   buildVanRossemFitLedger,
   type VanRossemFitMeasurement,
   writeVanRossemFitLedger,
@@ -107,6 +95,18 @@ import {
   submitScriptIntegrityHashMissingScriptScan,
   submitScriptIntegrityHashMissingStep04,
 } from "../src/script-integrity-hash-missing/submitters.js";
+import {
+  advanceFieldGrammarCheckpoint,
+  advanceFieldSemanticCheckpoint,
+  decodeFieldGrammarCheckpoint,
+  decodeFieldSemanticCheckpoint,
+  encodeFieldGrammarCheckpoint,
+  encodeFieldSemanticCheckpoint,
+  hashFieldGrammarCheckpoint,
+  hashFieldSemanticCheckpoint,
+  initialFieldGrammarCheckpoint,
+  initialFieldSemanticCheckpoint,
+} from "../src/staged-field-walk/index.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
@@ -1213,8 +1213,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     console.info(
       "[script-integrity-max] source bound; submitting first staged transition",
     );
-    let grammar = advanceMissingNativeScriptTxGrammarCheckpoint({
-      checkpoint: initialMissingNativeScriptTxGrammarCheckpoint({
+    let grammar = advanceFieldGrammarCheckpoint({
+      checkpoint: initialFieldGrammarCheckpoint({
         txId: block.nativeTxId,
         items: scriptItems,
       }),
@@ -1228,7 +1228,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       script_integrity_hash: ABSENT_HASH,
       phase: {
         ScriptGrammar: {
-          checkpoint_hash: hashMissingNativeScriptTxGrammarCheckpoint(grammar),
+          checkpoint_hash: hashFieldGrammarCheckpoint(grammar),
         },
       },
     };
@@ -1242,7 +1242,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       if (grammarResumeIndex === 0)
         console.info("[script-integrity-max] submitting first grammar resume");
       const prior = grammar;
-      grammar = advanceMissingNativeScriptTxGrammarCheckpoint({
+      grammar = advanceFieldGrammarCheckpoint({
         checkpoint: grammar,
         items: scriptItems,
         budget: itemBudget,
@@ -1251,8 +1251,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         ...state,
         phase: {
           ScriptGrammar: {
-            checkpoint_hash:
-              hashMissingNativeScriptTxGrammarCheckpoint(grammar),
+            checkpoint_hash: hashFieldGrammarCheckpoint(grammar),
           },
         },
       };
@@ -1278,9 +1277,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
                     output_index,
                     opening: opening(scriptPlan, scriptPublished, refs[3]!),
                     checkpoint_bytes:
-                      encodeMissingNativeScriptTxGrammarCheckpoint(
-                        prior,
-                      ).toString("hex"),
+                      encodeFieldGrammarCheckpoint(prior).toString("hex"),
                     item_budget: BigInt(itemBudget),
                   },
                 }),
@@ -1292,8 +1289,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         console.info("[script-integrity-max] first grammar resume confirmed");
         // A real interruption: the next resume starts from nothing but the
         // durable checkpoint bytes the previous transaction committed.
-        grammar = decodeMissingNativeScriptTxGrammarCheckpoint(
-          encodeMissingNativeScriptTxGrammarCheckpoint(grammar),
+        grammar = decodeFieldGrammarCheckpoint(
+          encodeFieldGrammarCheckpoint(grammar),
         );
         coverage.resumed();
         // Field 8's certificate and chunks cannot resume the field-6 grammar:
@@ -1315,9 +1312,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
                 output_index,
                 opening: opening(redeemerPlan, redeemerPublished, refs[3]!),
                 checkpoint_bytes:
-                  encodeMissingNativeScriptTxGrammarCheckpoint(
-                    grammar,
-                  ).toString("hex"),
+                  encodeFieldGrammarCheckpoint(grammar).toString("hex"),
                 item_budget: BigInt(itemBudget),
               },
             }),
@@ -1326,8 +1321,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         coverage.seamMutated("field_certificate");
       }
     }
-    let semantic = advanceMissingNativeScriptTxSemanticCheckpoint({
-      checkpoint: initialMissingNativeScriptTxSemanticCheckpoint({
+    let semantic = advanceFieldSemanticCheckpoint({
+      checkpoint: initialFieldSemanticCheckpoint({
         grammar,
         items: scriptItems,
       }),
@@ -1339,8 +1334,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       ...state,
       phase: {
         ScriptScan: {
-          checkpoint_hash:
-            hashMissingNativeScriptTxSemanticCheckpoint(semantic),
+          checkpoint_hash: hashFieldSemanticCheckpoint(semantic),
           contains_non_native_script: true,
         },
       },
@@ -1365,9 +1359,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
               output_index,
               opening: opening(scriptPlan, scriptPublished, refs[3]!),
               checkpoint_bytes:
-                encodeMissingNativeScriptTxGrammarCheckpoint(grammar).toString(
-                  "hex",
-                ),
+                encodeFieldGrammarCheckpoint(grammar).toString("hex"),
               item_budget: BigInt(itemBudget),
             },
           }),
@@ -1377,7 +1369,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     let scanResumeIndex = 0;
     while (semantic.nextItemIndex < scriptItems.length) {
       const prior = semantic;
-      semantic = advanceMissingNativeScriptTxSemanticCheckpoint({
+      semantic = advanceFieldSemanticCheckpoint({
         checkpoint: semantic,
         txId: block.nativeTxId,
         items: scriptItems,
@@ -1390,8 +1382,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           ? { ScriptComplete: { contains_non_native_script: true } }
           : {
               ScriptScan: {
-                checkpoint_hash:
-                  hashMissingNativeScriptTxSemanticCheckpoint(semantic),
+                checkpoint_hash: hashFieldSemanticCheckpoint(semantic),
                 contains_non_native_script: true,
               },
             },
@@ -1415,24 +1406,22 @@ describe("script-integrity-hash-missing real lifecycle", () => {
               output_index,
               opening: opening(scriptPlan, scriptPublished, refs[4]!),
               checkpoint_bytes:
-                encodeMissingNativeScriptTxSemanticCheckpoint(prior).toString(
-                  "hex",
-                ),
+                encodeFieldSemanticCheckpoint(prior).toString("hex"),
               item_budget: BigInt(itemBudget),
             }),
           }),
       );
       scanResumeIndex += 1;
       if (scanResumeIndex === 1) {
-        semantic = decodeMissingNativeScriptTxSemanticCheckpoint(
-          encodeMissingNativeScriptTxSemanticCheckpoint(semantic),
+        semantic = decodeFieldSemanticCheckpoint(
+          encodeFieldSemanticCheckpoint(semantic),
         );
       }
       outRef = transition.nextThreadOutRef;
     }
     let redeemerGrammar = advanceField8(
       field8Checkpoint(
-        initialMissingNativeScriptTxGrammarCheckpoint({
+        initialFieldGrammarCheckpoint({
           txId: block.nativeTxId,
           items: redeemerItems,
         }),
@@ -1517,9 +1506,9 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       if (redeemerResumeIndex === 1) {
         const durableCheckpoint = encodeField8(redeemerGrammar);
         const durableHash = hashField8(redeemerGrammar);
-        expect(() =>
-          decodeMissingNativeScriptTxGrammarCheckpoint(durableCheckpoint),
-        ).toThrow("must name field 6");
+        expect(() => decodeFieldGrammarCheckpoint(durableCheckpoint)).toThrow(
+          "must name field 6",
+        );
         redeemerGrammar = decodeField8(durableCheckpoint);
         expect(encodeField8(redeemerGrammar)).toEqual(durableCheckpoint);
         expect(hashField8(redeemerGrammar)).toBe(durableHash);

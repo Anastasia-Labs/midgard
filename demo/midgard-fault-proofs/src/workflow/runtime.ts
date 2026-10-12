@@ -43,7 +43,7 @@ export const WORKFLOW_RUNTIME_CONFIG =
  * What a compiled host loads for one invocation: the common infrastructure
  * every family draws from, the resolver that turns a roster entry into its
  * published reference UTxO, and the public retained-DA transports. It is the
- * same shape for all 55 families, so a host writes one loader. Proof evidence
+ * same shape for every family, so a host writes one loader. Proof evidence
  * is forbidden here; the family's record lays its own config out of these.
  */
 export type LoadedWorkflowRuntime = {

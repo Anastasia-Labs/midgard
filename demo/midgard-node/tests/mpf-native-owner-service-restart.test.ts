@@ -31,10 +31,10 @@ if (!binaryPresent) {
 }
 
 /**
- * Child restarts of the production native owner: a child that dies is always
- * restarted from the durable root marker; only failed restarts count toward
- * the window's limit, and an exhausted window heals once its oldest failure
- * leaves it.
+ * Child restarts of the production native owner (owner ruling 2026-10-09): a
+ * child that fails is restarted from the durable root marker with backoff;
+ * the same failure `restartLimit` times in a row holds the owner, which
+ * restarts no more; a binary that is not the pinned one holds it at once.
  */
 describe.skipIf(!binaryPresent)("native MPF owner child restarts", () => {
   const temporaryPaths: string[] = [];
@@ -94,19 +94,22 @@ describe.skipIf(!binaryPresent)("native MPF owner child restarts", () => {
     }
   };
 
-  it("restarts a child that keeps dying, after a backoff each time, and never exhausts on deaths alone", async () => {
-    // One allowed failed restart in a long window: deaths are not failures.
+  it("restarts a child that dies after each run of restartWindowMs or longer, without end", async () => {
+    // A second identical death in a row would hold the owner: only the long
+    // runs keep it restarting.
+    const restartWindowMs = 300;
     const { service, childPids } = await openEmptyRootService(
-      "midgard-native-owner-restart-deaths-",
+      "midgard-native-owner-restart-long-runs-",
       {
-        restartLimit: 1,
-        restartWindowMs: 600_000,
+        restartLimit: 2,
+        restartWindowMs,
         restartBackoffBaseMs: 20,
         restartBackoffMaxMs: 80,
       },
     );
     try {
       for (let death = 1; death <= 4; death += 1) {
+        await new Promise((resolve) => setTimeout(resolve, restartWindowMs));
         process.kill(childPids[death - 1]!, "SIGKILL");
         await waitUntil(() => childPids.length === death + 1);
         expect(childPids).toHaveLength(death + 1);
@@ -114,24 +117,62 @@ describe.skipIf(!binaryPresent)("native MPF owner child restarts", () => {
         expect(service.terminalFailure()).toBeUndefined();
       }
       expect(service.restartHealth()).toMatchObject({
-        restartsInWindow: 4,
-        failedRestartsInWindow: 0,
-        exhausted: false,
+        failuresInARow: 1,
+        held: false,
       });
     } finally {
       await service.close();
     }
   });
 
-  it("refuses while failed restarts exhaust the window, and restarts once from the durable root when the oldest leaves it, polled only through terminalFailure", async () => {
+  it("restarts a child that keeps dying the same way, after a backoff each time, until restartLimit in a row holds the owner", async () => {
+    const { service, childPids } = await openEmptyRootService(
+      "midgard-native-owner-restart-deaths-",
+      {
+        restartLimit: 3,
+        restartWindowMs: 600_000,
+        restartBackoffBaseMs: 20,
+        restartBackoffMaxMs: 80,
+      },
+    );
+    try {
+      for (let death = 1; death <= 2; death += 1) {
+        process.kill(childPids[death - 1]!, "SIGKILL");
+        await waitUntil(() => childPids.length === death + 1);
+        expect(childPids).toHaveLength(death + 1);
+        expect((await service.diagnostics()).childRestarts).toBe(death);
+        expect(service.terminalFailure()).toBeUndefined();
+      }
+      process.kill(childPids[2]!, "SIGKILL");
+      await waitUntil(() => service.terminalFailure() !== undefined);
+      expect(service.terminalFailure()?.message).toMatch(
+        /^Native MPF owner holds: the same failure 3 time\(s\) in a row, so it restarts no more until the node restarts\. .*Native MPF owner exited: code=null,signal=SIGKILL/u,
+      );
+      expect(service.restartHealth()).toMatchObject({
+        restartsInWindow: 2,
+        failuresInARow: 3,
+        held: true,
+      });
+      await expect(service.diagnostics()).rejects.toThrow(
+        /Native MPF owner holds/,
+      );
+      // Held is terminal: neither polling nor an operation restarts it.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(service.terminalFailure()).toBeDefined();
+      expect(childPids).toHaveLength(3);
+    } finally {
+      await service.close();
+    }
+  });
+
+  it("holds at once when a restart finds a binary that is not the pinned one, and stays held once the pinned one is back", async () => {
     const pinned = await mkdtemp(join(tmpdir(), "midgard-native-owner-pin-"));
     temporaryPaths.push(pinned);
     const pinnedBinaryPath = join(pinned, "architecture-g-owner");
     await copyFile(binaryPath, pinnedBinaryPath);
-    const restartWindowMs = 1_000;
     const { service, childPids } = await openEmptyRootService(
-      "midgard-native-owner-restart-exhaustion-",
-      { binaryPath: pinnedBinaryPath, restartLimit: 1, restartWindowMs },
+      "midgard-native-owner-restart-pin-hold-",
+      { binaryPath: pinnedBinaryPath, restartLimit: 1_000 },
     );
     try {
       // A binary that is not the pinned one makes the restart itself fail.
@@ -147,31 +188,21 @@ describe.skipIf(!binaryPresent)("native MPF owner child restarts", () => {
       process.kill(childPids[0]!, "SIGKILL");
       await waitUntil(() => service.terminalFailure() !== undefined);
       expect(service.terminalFailure()?.message).toMatch(
-        /restart limit exhausted: 1 failed restart\(s\) within 1000 ms; restarts resume once the oldest leaves the window: .*binary SHA-256 mismatch/,
-      );
-      await expect(service.diagnostics()).rejects.toThrow(
-        /restart limit exhausted/,
+        /^Native MPF owner holds: no restart repairs this failure.*Restore the pinned binary, then restart the node: .*binary SHA-256 mismatch/u,
       );
       expect(() => service.createWorkerPort()).toThrow(
-        /restart limit exhausted/,
+        /Native MPF owner holds/,
       );
       expect(childPids).toHaveLength(1);
 
-      // The pinned binary is back; once the failed restart leaves the window
-      // the owner restarts, exactly once, from its durable root. Nothing but
-      // the supervisor's terminalFailure poll asks for it: an idle node sends
-      // the owner no operation that would.
+      // The pinned binary is back, but only a node restart lifts the hold.
       await rename(original, pinnedBinaryPath);
-      await waitUntil(
-        () => service.terminalFailure() === undefined && childPids.length === 2,
-      );
-      expect(service.terminalFailure()).toBeUndefined();
-      expect(childPids).toHaveLength(2);
-      const diagnostics = await service.diagnostics();
-      expect(diagnostics.durableRoot).toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
-      expect(diagnostics.childRestarts).toBe(1);
       await new Promise((resolve) => setTimeout(resolve, 250));
-      expect(childPids).toHaveLength(2);
+      expect(service.terminalFailure()).toBeDefined();
+      await expect(service.diagnostics()).rejects.toThrow(
+        /Native MPF owner holds/,
+      );
+      expect(childPids).toHaveLength(1);
     } finally {
       await service.close();
     }
@@ -196,7 +227,8 @@ describe.skipIf(!binaryPresent)("native MPF owner child restarts", () => {
       await waitUntil(() => service.restartHealth().restartsInWindow === 2);
       expect(service.restartHealth()).toMatchObject({
         restartsInWindow: 2,
-        failedRestartsInWindow: 0,
+        failuresInARow: 2,
+        held: false,
       });
       const closedAt = Date.now();
       await service.close();

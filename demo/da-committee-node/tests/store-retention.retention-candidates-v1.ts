@@ -14,7 +14,6 @@ import {
   LIVE_A,
   LIVE_B,
   NOW,
-  openPostgresStore,
   openStore,
   PAST_HORIZON,
   payloadRecord,
@@ -116,6 +115,23 @@ describe("retentionCandidatesV1", () => {
     ]);
   });
 
+  it("releases nothing while no block is final, whatever the wall clock reads", async () => {
+    const store = await openStore();
+    await seed(store, [
+      { headerHash: hashOf(9), withoutHeader: true, fetchedAtMs: PAST_HORIZON },
+    ]);
+    const candidates = await retentionCandidates(store, {
+      ...retentionOptions(),
+      finalBlockTimeMs: null,
+    });
+    expect(candidates).toMatchObject([
+      {
+        headerStatus: "unobserved",
+        decision: { decision: "retain", reasonCode: "still_challengeable" },
+      },
+    ]);
+  });
+
   it("prunes an unexempt payload whose receipt time cannot be parsed", async () => {
     const store = await openStore();
     for (const headerHash of [hashOf(8), LIVE_A]) {
@@ -151,10 +167,7 @@ describe("retentionCandidatesV1", () => {
         deploymentFingerprint: "ee".repeat(32),
       },
     ]);
-    const [candidate] = await retentionCandidates(store, {
-      ...retentionOptions(),
-      minimumFinalityDepth: 31,
-    });
+    const [candidate] = await retentionCandidates(store, retentionOptions());
     expect(candidate).toMatchObject({
       fingerprintMismatch: true,
       terminalHistoryAuthorityMismatch: false,
@@ -169,50 +182,44 @@ describe("retentionCandidatesV1", () => {
 });
 
 describe("terminal recovery payload retirement", () => {
-  it.each([
-    ["the JSON file store", openStore],
-    ["the Postgres store", openPostgresStore],
-  ] as const)(
-    "rechecks strict after-inclusion depth and authority in %s",
-    async (_label, open) => {
-      const store = await open();
-      const headerHash = hashOf(14);
-      await seed(store, [
-        { headerHash, endTimeMs: PAST_HORIZON, status: "removed" },
-      ]);
-      const header = (await store.listStateQueueHeaders())[0]!;
-      const request = { ...retentionOptions(), headerHash };
-      for (const depth of [12, 2160]) {
-        await store.upsertStateQueueHeader({
-          ...header,
-          observedChainPoint: { ...header.observedChainPoint, depth },
-        });
-        expect(
-          (await retentionCandidates(store, retentionOptions()))[0]?.decision
-            .reasonCode,
-        ).toBe("terminal_recovery_pending");
-        expect(await store.deleteDaPayloadIfPrunable(request)).toBe(false);
-        expect(await store.getDaPayload(headerHash)).toBeDefined();
-      }
+  it("rechecks strict after-inclusion depth and authority", async () => {
+    const store = await openStore();
+    const headerHash = hashOf(14);
+    await seed(store, [
+      { headerHash, endTimeMs: PAST_HORIZON, status: "removed" },
+    ]);
+    const header = (await store.getStateQueueHeader(headerHash))!;
+    const request = { ...retentionOptions(), headerHash };
+    for (const depth of [12, 2160]) {
       await store.upsertStateQueueHeader({
         ...header,
-        observedChainPoint: { ...header.observedChainPoint, depth: 2161 },
+        observedChainPoint: { ...header.observedChainPoint, depth },
       });
       expect(
-        await store.deleteDaPayloadIfPrunable({
-          ...request,
-          automaticRecoveryMaxDepth: undefined,
-        }),
-      ).toBe(false);
-      expect(
-        await store.deleteDaPayloadIfPrunable({
-          ...request,
-          deploymentFingerprint: "ee".repeat(32),
-        }),
-      ).toBe(false);
-      expect(await store.deleteDaPayloadIfPrunable(request)).toBe(true);
-    },
-  );
+        (await retentionCandidates(store, retentionOptions()))[0]?.decision
+          .reasonCode,
+      ).toBe("terminal_recovery_pending");
+      expect(await store.deleteDaPayloadIfPrunable(request)).toBe(false);
+      expect(await store.getDaPayload(headerHash)).toBeDefined();
+    }
+    await store.upsertStateQueueHeader({
+      ...header,
+      observedChainPoint: { ...header.observedChainPoint, depth: 2161 },
+    });
+    expect(
+      await store.deleteDaPayloadIfPrunable({
+        ...request,
+        automaticRecoveryMaxDepth: undefined,
+      }),
+    ).toBe(false);
+    expect(
+      await store.deleteDaPayloadIfPrunable({
+        ...request,
+        deploymentFingerprint: "ee".repeat(32),
+      }),
+    ).toBe(false);
+    expect(await store.deleteDaPayloadIfPrunable(request)).toBe(true);
+  });
 });
 
 describe("pruneExpiredDaPayloadsV1", () => {
@@ -236,48 +243,42 @@ describe("pruneExpiredDaPayloadsV1", () => {
     ).toEqual([hashOf(12), HEAD, LIVE_A].sort());
   });
 
-  it.each([
-    ["the JSON file store", openStore],
-    ["the Postgres store", openPostgresStore],
-  ] as const)(
-    "re-decides inside %s write boundary against the caller's view",
-    async (_label, open) => {
-      const store = await open();
-      await seed(store, [
-        { headerHash: hashOf(13), endTimeMs: PAST_HORIZON, status: "merged" },
-      ]);
-      const request = {
-        headerHash: hashOf(13),
-        nowMs: NOW,
-        confirmedHeadHash: HEAD,
-        liveQueueHeaderHashes: new Set<string>(),
-        automaticRecoveryMaxDepth: 2160,
-        deploymentFingerprint: retentionOptions().deploymentFingerprint,
-      };
-      expect(
-        await store.deleteDaPayloadIfPrunable({
-          ...request,
-          confirmedHeadHash: hashOf(13),
-        }),
-      ).toBe(false);
-      expect(
-        await store.deleteDaPayloadIfPrunable({
-          ...request,
-          liveQueueHeaderHashes: new Set([hashOf(13)]),
-        }),
-      ).toBe(false);
-      expect(
-        await store.deleteDaPayloadIfPrunable({
-          ...request,
-          nowMs: NOW - 2 * RETENTION_MS_PER_DAY,
-        }),
-      ).toBe(false);
-      expect(await store.getDaPayload(hashOf(13))).toBeDefined();
-      expect(await store.deleteDaPayloadIfPrunable(request)).toBe(true);
-      expect(await store.getDaPayload(hashOf(13))).toBeUndefined();
-      expect(await store.deleteDaPayloadIfPrunable(request)).toBe(false);
-    },
-  );
+  it("re-decides inside the store's write boundary against the caller's view", async () => {
+    const store = await openStore();
+    await seed(store, [
+      { headerHash: hashOf(13), endTimeMs: PAST_HORIZON, status: "merged" },
+    ]);
+    const request = {
+      headerHash: hashOf(13),
+      finalBlockTimeMs: NOW,
+      confirmedHeadHash: HEAD,
+      liveQueueHeaderHashes: new Set<string>(),
+      automaticRecoveryMaxDepth: 2160,
+      deploymentFingerprint: retentionOptions().deploymentFingerprint,
+    };
+    expect(
+      await store.deleteDaPayloadIfPrunable({
+        ...request,
+        confirmedHeadHash: hashOf(13),
+      }),
+    ).toBe(false);
+    expect(
+      await store.deleteDaPayloadIfPrunable({
+        ...request,
+        liveQueueHeaderHashes: new Set([hashOf(13)]),
+      }),
+    ).toBe(false);
+    expect(
+      await store.deleteDaPayloadIfPrunable({
+        ...request,
+        finalBlockTimeMs: NOW - 2 * RETENTION_MS_PER_DAY,
+      }),
+    ).toBe(false);
+    expect(await store.getDaPayload(hashOf(13))).toBeDefined();
+    expect(await store.deleteDaPayloadIfPrunable(request)).toBe(true);
+    expect(await store.getDaPayload(hashOf(13))).toBeUndefined();
+    expect(await store.deleteDaPayloadIfPrunable(request)).toBe(false);
+  });
 
   it("bounds the retained set by the head, the live queue, and the horizon", async () => {
     const store = await openStore();

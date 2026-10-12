@@ -11,6 +11,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { IntentJournalWithoutFollower } from "../../src/services/intent-journal.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
@@ -21,6 +22,12 @@ import {
 } from "../../src/transactions/register-active-operator.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../../src/transactions/script-reward-registration.js";
 import { alignUnixTimeToSlotBoundary } from "../../src/workers/utils/commit-end-time.js";
+import {
+  type CaptureSnapshot,
+  restoreCapture,
+  snapshotCapture,
+} from "./emulator-chain-capture.js";
+import { runWithoutFollower } from "./intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
 export const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -64,7 +71,8 @@ type EmulatorState = Pick<
   | "datumTable"
   | "treasury"
   | "transactionHistory"
->;
+> &
+  CaptureSnapshot;
 
 type DeploymentSnapshot = {
   readonly emulatorState: EmulatorState;
@@ -84,6 +92,7 @@ const snapshotEmulator = (emulator: Emulator): EmulatorState => ({
   datumTable: structuredClone(emulator.datumTable),
   treasury: emulator.treasury,
   transactionHistory: structuredClone(emulator.transactionHistory),
+  ...snapshotCapture(emulator),
 });
 
 const cloneEmulator = (snapshot: EmulatorState): Emulator => {
@@ -100,6 +109,7 @@ const cloneEmulator = (snapshot: EmulatorState): Emulator => {
   emulator.time = snapshot.time;
   emulator.datumTable = structuredClone(snapshot.datumTable);
   emulator.transactionHistory = structuredClone(snapshot.transactionHistory);
+  restoreCapture(emulator, snapshot);
   return emulator;
 };
 
@@ -162,13 +172,13 @@ const buildDeploymentSnapshot = async (
     { txHash: nonceUtxo.txHash, outputIndex: nonceUtxo.outputIndex },
     referenceScriptAuth,
   );
-  const publishedReferenceScripts = await Effect.runPromise(
+  const publishedReferenceScripts = await runWithoutFollower(
     ensureAtomicProtocolInitReferenceScriptsProgram(
       referenceScriptsLucid,
       contracts,
     ),
   );
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensureEventHistoryRewardAccountsRegisteredProgram(
       referenceScriptsLucid,
       contracts,
@@ -187,7 +197,7 @@ const buildDeploymentSnapshot = async (
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
       publishedReferenceScripts,
-    ),
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
   await submitAndAwait(lucid, await initTx.complete({ localUPLCEval: true }));
 
@@ -211,7 +221,7 @@ const buildDeploymentSnapshot = async (
   for (const account of accounts) {
     const operatorLucid = await Lucid(emulator, "Custom");
     operatorLucid.selectWallet.fromSeed(account.seedPhrase);
-    await Effect.runPromise(
+    await runWithoutFollower(
       registerOperatorProgram(
         operatorLucid,
         contracts,
@@ -220,7 +230,7 @@ const buildDeploymentSnapshot = async (
       ),
     );
     emulator.awaitSlot(REGISTRATION_ACTIVATION_DELAY_SLOTS);
-    await Effect.runPromise(
+    await runWithoutFollower(
       activateOperatorProgram(
         operatorLucid,
         contracts,
@@ -251,6 +261,7 @@ export type OperatorInactivityFixture = {
   readonly lucid: LucidEvolution;
   readonly referenceScriptsLucid: LucidEvolution;
   readonly referenceScriptsAddress: string;
+  readonly referenceScriptsSeedPhrase: string;
   readonly contracts: SDK.MidgardValidators;
   /** Active operators, ordered by key hash (i.e. in list order). */
   readonly operators: readonly InactivityOperatorAccount[];
@@ -285,6 +296,7 @@ export const initOperatorInactivityFixture = async (
     lucid,
     referenceScriptsLucid,
     referenceScriptsAddress: await referenceScriptsLucid.wallet().address(),
+    referenceScriptsSeedPhrase: snapshot.referenceScriptsSeedPhrase,
     contracts: snapshot.contracts,
     operators: snapshot.operators,
     lucidFor: async (keyHash: string) => {

@@ -1,8 +1,10 @@
 import "./da-bond-pool-live-port.await-availability-inclusion.js";
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import * as SDK from "@al-ft/midgard-sdk";
 import { generateSeedPhrase } from "@lucid-evolution/lucid";
 import {
@@ -10,6 +12,7 @@ import {
   PublishedTransactionSubmissionError,
 } from "midgard-watcher/tests/support/published-block-actor";
 
+import { deriveL1Origin } from "../../src/l1-origin.js";
 import type {
   DaBondPoolJourneyPort,
   DaBondPoolJourneyResume,
@@ -200,6 +203,42 @@ export class DaBondPoolCommitteeUnavailableError extends Error {
     this.name = "DaBondPoolCommitteeUnavailableError";
   }
 }
+
+/**
+ * The run's own node, which the committee's L1 follower reads, and the
+ * deployment's origin on it: the point before its hub-oracle nonce's block.
+ * Refuses when the run has no node to follow.
+ */
+export const daBondPoolCommitteeL1 = async (input: {
+  readonly runDirectory: string;
+  readonly networkMagic: number;
+  readonly nonceTxHash: string;
+}): Promise<
+  Readonly<{
+    nativeLedger: Readonly<{ socket: string; config: string; binary: string }>;
+    l1Origin: L1Origin;
+  }>
+> => {
+  const nativeLedger = {
+    socket: join(input.runDirectory, "cardano/ipc/node.socket"),
+    config: join(input.runDirectory, "config/config.json"),
+    binary: join(input.runDirectory, "work/midgard-l1-node-transport"),
+  };
+  const missing = Object.values(nativeLedger).filter((p) => !existsSync(p));
+  if (missing.length > 0)
+    throw new DaBondPoolCommitteeUnavailableError(
+      `its L1 follower needs the run's node: ${missing.join(", ")}`,
+    );
+  const { origin } = await deriveL1Origin({
+    node: {
+      socketPath: nativeLedger.socket,
+      binaryPath: nativeLedger.binary,
+      networkMagic: input.networkMagic,
+    },
+    nonceTxHash: input.nonceTxHash,
+  });
+  return { nativeLedger, l1Origin: origin };
+};
 
 export type LiveDaBondPoolJourneyPort = DaBondPoolJourneyPort &
   Readonly<{

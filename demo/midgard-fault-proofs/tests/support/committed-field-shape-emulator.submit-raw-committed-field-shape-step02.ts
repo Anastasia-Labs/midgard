@@ -1,4 +1,3 @@
-import { type MidgardNativeTxCanonical } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type CommittedFieldClaim,
@@ -21,7 +20,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { CommittedFieldShapeContracts } from "../../src/committed-field-shape/contracts.js";
-import type { PreparedCommittedFieldShape } from "../../src/committed-field-shape/prepare-committed-field-shape.js";
 import { requireCommittedFieldShapeThreadUtxo } from "../../src/committed-field-shape/submit-common.js";
 import { type ResolvedProverSigner } from "../../src/runtime.js";
 import { selectFeeInput } from "../../src/step-support.js";
@@ -30,10 +28,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../../src/witness-reference-scripts.js";
-import {
-  type CommittedFieldShapeEmulatorHarness,
-  type CommittedFieldShapeScenario,
-} from "./committed-field-shape-emulator.committed-field-shape-scenario-material.js";
+import { type CommittedFieldShapeEmulatorHarness } from "./committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 
 /** Raw finalization without the production submitter's predicate guard. */
 export const submitRawCommittedFieldShapeStep02 = async ({
@@ -294,13 +289,3 @@ export const committedFieldShapeInlineClaim = ({
     },
   },
 });
-
-export const preparedFromScenario = (
-  scenario: CommittedFieldShapeScenario,
-  prepare: (tx: MidgardNativeTxCanonical) => PreparedCommittedFieldShape,
-): PreparedCommittedFieldShape => {
-  if (scenario.canonicalTx === null) {
-    throw new Error("scenario has no canonical transaction for prepare");
-  }
-  return prepare(scenario.canonicalTx);
-};

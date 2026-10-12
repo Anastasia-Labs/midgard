@@ -82,8 +82,6 @@ export interface JourneyCadence {
   fixtureStagingAllowanceMs?: number;
 }
 
-export type TransitionTraceJourneyCadence = JourneyCadence;
-
 export const HEALTHY_REPLAY_BLOCK_ALLOWANCE_MS = 10_000;
 
 export const MAX_TIMER_MS = 2_147_483_647;
@@ -220,10 +218,12 @@ export const journeyTimingForPlan = (
     successorRegistrationMs: Number(REGISTRATION_DURATION_MS),
     fixtureStagingMs: fixtureStagingAllowanceMs,
     /**
-     * The one release-finality wait in a journey: the completed terminal is
-     * re-observed at the release depth and stamped as the finalized anchor.
-     * The terminal is already on chain, so this is a single confirmation
-     * window at the release depth plus its RPC allowance.
+     * The one release-finality wait in a journey: the native recorder
+     * authenticates the included terminal's transactions at the release depth
+     * and stamps it as the anchor. `completed`, journaled only beyond the
+     * recovery horizon, is not awaited. The terminal is already on chain, so
+     * this is a single confirmation window at the release depth plus its RPC
+     * allowance.
      */
     finalizedEvidenceStampMs:
       Math.ceil(2 * idealDepthMs(confirmationDepth)) + 30_000,

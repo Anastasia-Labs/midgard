@@ -1,13 +1,14 @@
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  isUnknownOutputReferenceSubmitError,
   NoInlineSubmitDefer,
   resolveEarlyValidityRetryDelayMs,
   submitSignedTxWithRecovery,
 } from "../src/transactions/utils.js";
+import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import {
   expectNoInlineSubmitDefer,
   signedTxCbor,
@@ -97,14 +98,15 @@ describe("validity-window submit recovery", () => {
   it("fails stale early-validity provider slots when the bounded recovery budget is exhausted", async () => {
     const waits: number[] = [];
     const submitProgram = vi.fn(() => Effect.fail(outsideValidityError));
-    const signed = { submitProgram };
+    const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           fakeLucid as never,
           signed as never,
           "tx-validity",
+          TEST_INTENT,
           {
             maxPreSubmitWaitMs: 11_000,
             sleep: (milliseconds) =>
@@ -130,14 +132,15 @@ describe("validity-window submit recovery", () => {
       calls += 1;
       return calls === 1 ? Effect.fail(providerLagError) : Effect.void;
     });
-    const signed = { submitProgram };
+    const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           fakeLucid as never,
           signed as never,
           "tx-provider-lag",
+          TEST_INTENT,
           {
             maxPreSubmitWaitMs: 60_000,
             sleep: (milliseconds) =>
@@ -164,14 +167,15 @@ describe("validity-window submit recovery", () => {
       calls += 1;
       return calls <= 10 ? Effect.fail(staleProviderSlotError) : Effect.void;
     });
-    const signed = { submitProgram };
+    const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           fakeLucid as never,
           signed as never,
           "tx-repeated-provider-lag",
+          TEST_INTENT,
           {
             maxPreSubmitWaitMs: 60_000,
             sleep: (milliseconds) =>
@@ -198,14 +202,15 @@ describe("validity-window submit recovery", () => {
       calls += 1;
       return calls <= 5 ? Effect.fail(staleProviderSlotError) : Effect.void;
     });
-    const signed = { submitProgram };
+    const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           fakeLucid as never,
           signed as never,
           "tx-long-provider-lag",
+          TEST_INTENT,
           {
             maxPreSubmitWaitMs: 120_000,
             sleep: (milliseconds) =>
@@ -227,14 +232,15 @@ describe("validity-window submit recovery", () => {
       calls += 1;
       return calls === 1 ? Effect.fail(new Error("fetch failed")) : Effect.void;
     });
-    const signed = { submitProgram };
+    const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           fakeLucid as never,
           signed as never,
           "tx-provider",
+          TEST_INTENT,
           {
             sleep: (milliseconds) =>
               Effect.sync(() => waits.push(milliseconds)),
@@ -259,14 +265,15 @@ describe("validity-window submit recovery", () => {
       calls += 1;
       return calls === 1 ? Effect.fail(lowerBoundOnlyError) : Effect.void;
     });
-    const signed = { submitProgram };
+    const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           fakeLucid as never,
           signed as never,
           "tx-lower-bound-only",
+          TEST_INTENT,
           {
             sleep: (milliseconds) =>
               Effect.sync(() => waits.push(milliseconds)),
@@ -290,14 +297,15 @@ describe("validity-window submit recovery", () => {
         calls += 1;
         return calls <= 2 ? Effect.fail(outsideValidityError) : Effect.void;
       });
-      const signed = { submitProgram };
+      const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-      const result = await Effect.runPromise(
+      const result = await runWithoutFollower(
         Effect.either(
           submitSignedTxWithRecovery(
             fakeLucid as never,
             signed as never,
             "tx-stale-provider-slot",
+            TEST_INTENT,
             {
               sleep: (milliseconds) =>
                 Effect.sync(() => {
@@ -331,12 +339,13 @@ describe("validity-window submit recovery", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           { awaitTx: vi.fn() } as never,
           signed as never,
           "tx-local-slot-provider",
+          TEST_INTENT,
           {
             slotSnapshot: () =>
               Effect.succeed({
@@ -370,12 +379,13 @@ describe("validity-window submit recovery", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           { awaitTx: vi.fn() } as never,
           signed as never,
           "tx-pre-submit",
+          TEST_INTENT,
           {
             slotSnapshot: () =>
               Effect.succeed({
@@ -409,12 +419,13 @@ describe("validity-window submit recovery", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           { awaitTx: vi.fn() } as never,
           signed as never,
           "tx-pre-submit-margin",
+          TEST_INTENT,
           {
             slotSnapshot: () =>
               Effect.succeed({
@@ -447,12 +458,13 @@ describe("validity-window submit recovery", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           { awaitTx: vi.fn() } as never,
           signed as never,
           "tx-pre-submit-no-inline",
+          TEST_INTENT,
           {
             inlineWaitPolicy: "defer_positive_wait",
             noInlineSubmitDefer: {
@@ -501,14 +513,15 @@ describe("validity-window submit recovery", () => {
   it("defers early-validity recovery waits in no-inline mode without sleeping", async () => {
     const waits: number[] = [];
     const submitProgram = vi.fn(() => Effect.fail(outsideValidityError));
-    const signed = { submitProgram };
+    const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           fakeLucid as never,
           signed as never,
           "tx-early-validity-no-inline",
+          TEST_INTENT,
           {
             inlineWaitPolicy: "defer_positive_wait",
             noInlineSubmitDefer: {
@@ -554,12 +567,13 @@ describe("validity-window submit recovery", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           { awaitTx: vi.fn() } as never,
           signed as never,
           "tx-provider-no-inline",
+          TEST_INTENT,
           {
             inlineWaitPolicy: "defer_positive_wait",
             noInlineSubmitDefer: {
@@ -620,7 +634,7 @@ describe("validity-window submit recovery", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           {
@@ -633,6 +647,7 @@ describe("validity-window submit recovery", () => {
           } as never,
           signed as never,
           "tx-emulator-pre-submit",
+          TEST_INTENT,
         ),
       ),
     );
@@ -652,12 +667,13 @@ describe("validity-window submit recovery", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           { awaitTx: vi.fn() } as never,
           signed as never,
           "tx-expired",
+          TEST_INTENT,
           {
             slotSnapshot: () =>
               Effect.succeed({
@@ -686,12 +702,13 @@ describe("validity-window submit recovery", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           { awaitTx: vi.fn() } as never,
           signed as never,
           "tx-strict-no-slot",
+          TEST_INTENT,
           {
             requireSlotForBoundedTx: true,
             slotSnapshot: () => Effect.fail(new Error("ogmios unavailable")),
@@ -719,14 +736,15 @@ describe("validity-window submit recovery", () => {
       id: null,
     });
     const submitProgram = vi.fn(() => Effect.fail(unknownInputError));
-    const signed = { submitProgram };
+    const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           fakeLucid as never,
           signed as never,
           "tx-unknown-input",
+          TEST_INTENT,
           {
             sleep: (milliseconds) =>
               Effect.sync(() => waits.push(milliseconds)),
@@ -738,7 +756,7 @@ describe("validity-window submit recovery", () => {
     expect(result._tag).toBe("Left");
     expect(submitProgram).toHaveBeenCalledTimes(1);
     expect(waits).toEqual([]);
-    expect(isUnknownOutputReferenceSubmitError(unknownInputError)).toBe(true);
+    expect(isSpentInputSubmitRejection(unknownInputError)).toBe(true);
   });
 
   it("accepts an unknown-input submit race only after exact status confirmation", async () => {
@@ -753,15 +771,16 @@ describe("validity-window submit recovery", () => {
     const submitProgram = vi.fn(() => Effect.fail(unknownInputError));
     const awaitTxConfirmation = vi.fn(async () => ({ txHash }));
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           {
             config: () => ({ provider: undefined }),
             awaitTxConfirmation,
           } as never,
-          { submitProgram } as never,
+          { submitProgram, toCBOR: () => signedTxCbor({}) } as never,
           txHash,
+          TEST_INTENT,
         ),
       ),
     );
@@ -778,14 +797,15 @@ describe("validity-window submit recovery", () => {
     const waits: number[] = [];
     const providerError = new Error("fetch failed");
     const submitProgram = vi.fn(() => Effect.fail(providerError));
-    const signed = { submitProgram };
+    const signed = { submitProgram, toCBOR: () => signedTxCbor({}) };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           fakeLucid as never,
           signed as never,
           "tx-no-inline-provider-error",
+          TEST_INTENT,
           {
             inlineWaitPolicy: "defer_positive_wait",
             noInlineSubmitDefer: {

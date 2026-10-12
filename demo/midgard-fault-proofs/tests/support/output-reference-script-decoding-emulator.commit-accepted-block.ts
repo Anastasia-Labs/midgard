@@ -52,9 +52,6 @@ export const OUTPUT_REFERENCE_REASON_ARMS = [
   "OutputReferenceScriptDepthLimit",
 ] as const;
 
-export type OutputReferenceReasonArm =
-  (typeof OUTPUT_REFERENCE_REASON_ARMS)[number];
-
 export type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 
 export type Measurement = CompleteSignedTransactionMeasurement;

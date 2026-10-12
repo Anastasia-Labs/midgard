@@ -9,6 +9,7 @@ import {
   assertFraudProofCatalogueCategoryReady,
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
+  parseContractDeploymentL1SlotConfig,
   parseContractDeploymentReferenceScriptAuthPolicyId,
 } from "./inspect-contracts.js";
 import { buildOneCategoryFaultProofContracts } from "./runtime.build-one-category-fault-proof-contracts.js";
@@ -107,6 +108,9 @@ export const resolveFaultProofDeploymentContracts = async ({
     fraudProofCataloguePolicyId,
     referenceScriptAuthPolicyId,
     categoryName,
+    ...(categoryName === "validationTraceDispute"
+      ? { l1SlotConfig: parseContractDeploymentL1SlotConfig(deploymentInfo) }
+      : {}),
   });
   const categoryContracts = contracts[categoryName];
   if (categoryContracts === undefined) {

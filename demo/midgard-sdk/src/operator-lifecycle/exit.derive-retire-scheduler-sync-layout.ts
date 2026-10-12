@@ -93,6 +93,12 @@ export type RetireOperatorTxConfig = LayoutOptions<RetireRedeemerLayout> & {
    * pinned fee with `planExactFeeBalance` and pass the plan here.
    */
   readonly exactFeePlan?: ExactFeeBalancePlan;
+  /**
+   * The submitting wallet's coins, as the caller's view holds them. When
+   * given, coin selection, collateral and the forced retirement's pinned-fee
+   * balance use exactly these and the provider is never read.
+   */
+  readonly walletInputs?: readonly UTxO[];
   /** The on-chain check needs a closed, short validity range. */
   readonly validFrom: bigint;
   readonly validTo: bigint;

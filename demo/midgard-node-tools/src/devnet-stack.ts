@@ -27,6 +27,7 @@ import {
 import {
   ensureCommitteeDatabases,
   ensureDaManifests,
+  loadCommitteeConfigModule,
 } from "./devnet-stack/da.js";
 import {
   type DeployContext,
@@ -44,7 +45,6 @@ import {
 } from "./devnet-stack/fresh-controller.js";
 import type { FundingRecord } from "./devnet-stack/funding.js";
 import { ensureFunded } from "./devnet-stack/funding.js";
-import { runHistoryRoleCommand } from "./devnet-stack/history-role-command.js";
 import { loadIdentities, walletInfos } from "./devnet-stack/identities.js";
 import { Journal } from "./devnet-stack/journal.js";
 import { Journey, runScenario } from "./devnet-stack/journey.js";
@@ -54,6 +54,7 @@ import { provisionReserveFloat } from "./devnet-stack/reserve-float-chain.js";
 import { registerServiceRecovery } from "./devnet-stack/service-recovery-cli.js";
 import {
   enduranceReport,
+  preflightServiceConfigs,
   serviceSpecs,
   supervisorMaintainers,
   supervisorPaths,
@@ -73,7 +74,7 @@ import {
 } from "./devnet-stack/stack.js";
 import { superviseWithMaintainers } from "./devnet-stack/supervisor.js";
 import { ensureWatcherRelease } from "./devnet-stack/watcher.js";
-import { HISTORY_ROLES } from "./devnet-stack/watcher-history.js";
+import { loadWatcherModule } from "./devnet-stack/watcher-release.js";
 
 const layoutFor = (runDir: string) => {
   if (!isAbsolute(runDir))
@@ -96,13 +97,20 @@ const resumeUp = async (
   layout: Layout,
   readyTimeoutMs: number,
   code: LoadedCode,
-  initializeWatcherAuthority = false,
 ) => {
   const run = await ensureChainGenerated(layout);
   holdRunForResume(layout, code);
   const journal = new Journal(layout.journal);
   const identities = loadIdentities(layout);
   const wallets = walletInfos(identities);
+  const artifacts = ensureArtifacts(layout);
+  const context: DeployContext = { layout, run, identities, artifacts };
+  // Before anything touches L1: a configuration mistake fails in seconds,
+  // not after funding and deploy.
+  await preflightServiceConfigs(context, {
+    watcher: await loadWatcherModule(layout),
+    committee: await loadCommitteeConfigModule(layout),
+  });
   // A drill run killed mid-outage left an L1 container stopped or paused; a
   // live drill run restores its own.
   if (lockOwner(runLockPaths(layout).drill) === undefined) {
@@ -120,8 +128,6 @@ const resumeUp = async (
   console.log("l1: ready");
   const funding = await ensureFunded(layout, run, journal, wallets);
   console.log(`funding: confirmed ${funding.txId}`);
-  const artifacts = ensureArtifacts(layout);
-  const context: DeployContext = { layout, run, identities, artifacts };
   const oneShot = await ensureDeployed(context);
   console.log(
     `deploy: complete (hub oracle ${oneShot.txHash}#${oneShot.outputIndex})`,
@@ -129,7 +135,7 @@ const resumeUp = async (
   await provisionReserveFloat(layout, run, journal);
   await ensureCommitteeDatabases(layout, run);
   await ensureDaManifests(context, oneShot);
-  await ensureWatcherRelease(context, oneShot, initializeWatcherAuthority);
+  await ensureWatcherRelease(context, oneShot);
   console.log(`watcher: release ready under ${layout.watcher}`);
   const specs = serviceSpecs(context, oneShot);
   const supervisor = await ensureSupervisor({
@@ -319,13 +325,6 @@ const drill = async (options: DrillOptions) => {
   if (summary.failures.length > 0) process.exitCode = 1;
 };
 
-const historyArchive = (options: { runDir: string; provider: string }) =>
-  runHistoryRoleCommand({ ...options, role: "archive" });
-const historyTunnel = (options: { runDir: string }) =>
-  runHistoryRoleCommand({ ...options, role: "tunnel" });
-const historyRecorder = (options: { runDir: string }) =>
-  runHistoryRoleCommand({ ...options, role: "recorder" });
-
 const program = new Command()
   .name("midgard-devnet-stack")
   .description(
@@ -336,12 +335,7 @@ registerUp(program, (options) => {
   const layout = layoutFor(options.runDir);
   return {
     deps: upDeps(layout, (code) =>
-      resumeUp(
-        layout,
-        options.readyTimeoutMs,
-        code,
-        options.initializeWatcherAuthority === true,
-      ),
+      resumeUp(layout, options.readyTimeoutMs, code),
     ),
     launch: {
       execPath: process.execPath,
@@ -420,32 +414,6 @@ program
   .option("--pause <seconds>", "Length of a Postgres pause", "30")
   .option("--until-journey-done", "Stop once the run's journey has finished")
   .action(drill);
-
-program
-  .command("history-archive")
-  .description("Serve one watcher history provider (run by the supervisor)")
-  .requiredOption("--run-dir <path>", "Absolute run directory")
-  .requiredOption(
-    "--provider <role>",
-    `Provider role: ${HISTORY_ROLES.join(" or ")}`,
-  )
-  .action(historyArchive);
-
-program
-  .command("history-tunnel")
-  .description(
-    "Route the watcher's history-provider names to the providers (run by the supervisor)",
-  )
-  .requiredOption("--run-dir <path>", "Absolute run directory")
-  .action(historyTunnel);
-
-program
-  .command("history-recorder")
-  .description(
-    "Feed the watcher history providers from the chain and the committee (run by the supervisor)",
-  )
-  .requiredOption("--run-dir <path>", "Absolute run directory")
-  .action(historyRecorder);
 
 program
   .command("down")

@@ -156,24 +156,20 @@ try {
   await complete(f, 10_000_000n, {}, c);
   report.customRequests = custom.length;
   report.configuredRequests = configured.length;
-  assert.equal(custom.length, 3);
-  assert.equal(configured.length, 3);
+  assert.equal(custom.length, 2);
+  assert.equal(configured.length, 2);
   const selected = await complete(f, 10_000_000n, { coinSelection: true });
   report.coinSelection = verifyFinal(selected);
-  assert.equal(selected.requests.length, 3);
+  assert.equal(selected.requests.length, 2);
   await assert.rejects(complete(f, 20_000_000n), (error) => {
     report.insufficientFundsError = String(error);
     return /insufficient|enough|balance|negative/i.test(String(error));
   });
   report.insufficientFundsRefused = true;
-  await assert.rejects(
-    complete(f, 10_000_000n, { setCollateral: 0n }),
-    (error) => {
-      report.finalFeeCollateralError = String(error);
-      return /Final transaction requires .* collateral/.test(String(error));
-    },
+  // Collateral set below the final fee's percentage is topped up in place.
+  report.finalFeeCollateralTopUp = verifyFinal(
+    await complete(f, 10_000_000n, { setCollateral: 0n }),
   );
-  report.finalFeeCollateralRefused = true;
   await f.lucid.awaitTx(
     await f.lucid
       .fromTx(first.cbor)
@@ -238,12 +234,8 @@ try {
     result.requests.length >= 3,
     "final fee-sensitive cost must cause another full-context evaluation",
   );
-  await assert.rejects(
-    complete(sensitive, 10_000_000n, { setCollateral: 0n }),
-    (error) => {
-      report.feeSensitiveCollateralError = String(error);
-      return /Final transaction requires .* collateral/.test(String(error));
-    },
+  report.feeSensitiveCollateralTopUp = verifyFinal(
+    await complete(sensitive, 10_000_000n, { setCollateral: 0n }),
   );
   const sufficient = await complete(sensitive, 10_000_000n, {
     setCollateral: 1_000_000n,

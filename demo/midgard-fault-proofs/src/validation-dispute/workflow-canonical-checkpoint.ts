@@ -19,7 +19,6 @@ export const canonicalCheckpointRoles = [
   "proof",
   "settlement",
 ] as const;
-export type CanonicalCheckpointRole = (typeof canonicalCheckpointRoles)[number];
 
 /** Address chooses the exact authenticated schema; no permissive decoder fallbacks. */
 export const readCanonicalCheckpoint = (

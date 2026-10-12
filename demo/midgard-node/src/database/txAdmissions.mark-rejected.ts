@@ -5,7 +5,7 @@ import { SqlClient } from "@effect/sql";
 import { Duration, Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import {
   Columns,
   type Entry,
@@ -51,7 +51,7 @@ export const markRejected = ({
       (rejectedTx) =>
         sql`(${rejectedTx.txId}, ${rejectedTx.code}, ${rejectedTx.detail})`,
     );
-    yield* withHistoryWrite(
+    yield* withFollowerWrite(
       sql.withTransaction(
         Effect.gen(function* () {
           const persistedRejections = yield* sql<

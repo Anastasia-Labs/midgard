@@ -5,7 +5,7 @@ import {
 import type {
   WatcherNativeChainSyncEventReceipt,
   WatcherNativeChainSyncRuntime,
-} from "midgard-watcher/native-chain-sync";
+} from "midgard-watcher";
 
 import {
   type AcceptanceNativeReadConfig,
@@ -67,7 +67,7 @@ export const captureAcceptanceNativeRead = async <T>(
   use: (scope: AcceptanceNativePayoutScope) => Promise<T>,
   unsafeNativeForTest: Pick<
     Parameters<typeof config.native.startWatcherNativeChainSync>[0],
-    "unsafeSpawnForTest" | "unsafeReadIdentityFileForTest"
+    "unsafeReadIdentityFileForTest"
   > = {},
 ): Promise<{ value: T; boundary: AcceptanceNativePayoutBoundary }> => {
   if (scope.deadlineEpochMs === undefined)
@@ -128,10 +128,10 @@ export const captureAcceptanceNativeRead = async <T>(
       nativeRuntime === undefined
     )
       throw new Error("acceptance native current boundary changed");
-    const observed = config.native.readWatcherNativeChainSyncEventReceipt(
+    const observed = config.watcher.readWatcherNativeChainSyncEventReceipt(
       captured.receipt,
     );
-    const details = config.native.watcherNativeChainSyncAuthorityDetails(
+    const details = config.watcher.watcherNativeChainSyncAuthorityDetails(
       nativeRuntime.authority,
     );
     const source = config.watcherConfig.l1.source;
@@ -162,15 +162,8 @@ export const captureAcceptanceNativeRead = async <T>(
     const source = config.watcherConfig.l1.source;
     if (source.sourceMode !== "local_node")
       throw new Error("acceptance native read requires local node");
-    const services = source.queryServices.filter(
-      (service) => service.kind === "ogmios",
-    );
-    if (services.length !== 1)
-      throw new Error(
-        "acceptance native read requires exactly one recorded Ogmios endpoint",
-      );
     session = await openAcceptanceNativeSession({
-      endpoint: services[0]!.endpoint,
+      endpoint: config.ogmiosEndpoint,
       scope: operation,
       parseJson: config.watcher.parseWatcherStrictJsonValue,
     });
@@ -212,7 +205,8 @@ export const captureAcceptanceNativeRead = async <T>(
           !same(event, event.tip)
         )
           return;
-        const receipt = config.native.watcherNativeChainSyncEventReceipt(event);
+        const receipt =
+          config.watcher.watcherNativeChainSyncEventReceipt(event);
         if (receipt === null)
           throw new Error(
             "acceptance native forward lacks live acquisition provenance",
@@ -274,7 +268,7 @@ export const captureAcceptanceNativeRead = async <T>(
       throw new Error("acceptance Ogmios acquired a different native point");
     assertCurrent();
     lineage = acceptanceNativeLineageReads({
-      endpoint: services[0]!.endpoint,
+      endpoint: config.ogmiosEndpoint,
       scope: operation,
       point: captured!.point,
       assertCurrent,
@@ -317,10 +311,10 @@ export const captureAcceptanceNativeRead = async <T>(
     await verifySelected();
     await config.assertUnchanged(operation);
     assertCurrent();
-    const receipt = config.native.readWatcherNativeChainSyncEventReceipt(
+    const receipt = config.watcher.readWatcherNativeChainSyncEventReceipt(
       captured!.receipt,
     );
-    const details = config.native.watcherNativeChainSyncAuthorityDetails(
+    const details = config.watcher.watcherNativeChainSyncAuthorityDetails(
       nativeRuntime.authority,
     )!;
     outcome = {

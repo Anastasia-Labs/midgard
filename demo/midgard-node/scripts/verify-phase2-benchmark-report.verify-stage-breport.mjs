@@ -185,7 +185,7 @@ const verifyReplica = (
   );
   equal(
     replica.mempoolLedgerRows,
-    report.expectedLedgerRows + replica.depositProjectionDeltaBumps,
+    report.expectedLedgerRows + replica.depositIngestions,
     `${label}.mempoolLedgerRows including projected deposits`,
   );
   equal(replica.missingExpectedTxIds, 0, `${label}.missingExpectedTxIds`);

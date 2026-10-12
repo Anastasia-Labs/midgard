@@ -1,13 +1,6 @@
 import {
-  computeFraudProofRawL1PointId,
   type FraudProofRawL1Transaction,
-  type LocalKupmiosFraudProofRawSource,
-  localKupmiosHttpOgmiosRawSourceDetails,
-  pinAdmittedLocalKupmiosBoundaryAtPoint,
-  readAdmittedLocalKupmiosRawTransaction,
-  readAdmittedLocalKupmiosUnitHistoryAtPoint,
   type RetainedDaPayloadSource,
-  settleLocalKupmiosReads,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -26,7 +19,12 @@ import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
-import { withWatcherAvailabilityReadOperation } from "./read-operation.js";
+import {
+  observationPoint,
+  readAtPoint,
+  unitHistoryTransactions,
+  type WatcherAvailabilityL1,
+} from "./follower-reads.js";
 
 const admitted = new WeakMap<object, VerifiedWatcherDeploymentIdentity>();
 export const assertWatcherL1AvailabilityPayloadSource = (
@@ -57,6 +55,20 @@ const outputs = (transaction: FraudProofRawL1Transaction): UTxO[] => {
 };
 const ref = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
   `${utxo.txHash}#${utxo.outputIndex}`;
+
+/** The outrefs a transaction spends, read from its body. */
+const spentOutRefs = (transaction: FraudProofRawL1Transaction): string[] => {
+  const body = CML.TransactionBody.from_cbor_hex(transaction.bodyCbor);
+  try {
+    const inputs = body.inputs();
+    return Array.from({ length: inputs.len() }, (_, index) => {
+      const input = inputs.get(index);
+      return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+    });
+  } finally {
+    body.free();
+  }
+};
 
 /** Pure history decoding; only the concrete source below admits its provenance. */
 export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
@@ -129,8 +141,8 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
   }
   // The DACH identity derives from the challenger funding input OpenChallenge
   // consumed; exactly one spent input may derive it.
-  const fundingInputs = opened.transaction.resolvedInputs.filter((raw) => {
-    const [transactionId, outputIndex] = raw.outRef.split("#");
+  const fundingInputs = spentOutRefs(opened.transaction).filter((outRef) => {
+    const [transactionId, outputIndex] = outRef.split("#");
     return (
       SDK.daAvailabilityChallengeAssetName({
         transactionId: transactionId!,
@@ -142,7 +154,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
     throw new Error(
       "Challenge history has no unique challenger funding input for its DACH identity",
     );
-  const [transactionId, outputIndex] = fundingInputs[0]!.outRef.split("#");
+  const [transactionId, outputIndex] = fundingInputs[0]!.split("#");
   const challengeRecord: SDK.DaAvailabilityChallengeRecordEvidence = {
     datumCborHex: opened.output.datum!,
     challengerFundingOutRef: {
@@ -176,7 +188,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
       const state = SDK.parseDaAvailabilityTrancheDatumCbor(thread.datum);
       if ("Receipt" in state) break;
       const successors = transactions.filter((transaction) =>
-        transaction.resolvedInputs.some((raw) => raw.outRef === ref(thread)),
+        spentOutRefs(transaction).includes(ref(thread)),
       );
       if (successors.length !== 1)
         throw new Error(
@@ -237,24 +249,28 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
   );
 };
 
-/** Reconstruct public bytes from spent carrier history; no operator storage is consulted. */
+/**
+ * Reconstruct public bytes from spent carrier history, read from the
+ * watcher's chain follower; no operator storage is consulted.
+ * `minimumConfirmationDepth` is 1 when the observation is the tip view, and
+ * the deployment's release depth otherwise.
+ */
 export const createWatcherL1AvailabilityPayloadSource = (input: {
   identity: VerifiedWatcherDeploymentIdentity;
   deployment: SDK.DaAvailabilityDeployment;
-  rawSource: LocalKupmiosFraudProofRawSource;
+  l1: WatcherAvailabilityL1;
+  minimumConfirmationDepth: number;
   lucid: Pick<LucidEvolution, "slotToUnixTime">;
   currentObservation(): WatcherAuthenticatedStateQueueObservation | null;
   scope?: SDK.DaAvailabilityReadScope;
 }): RetainedDaPayloadSource => {
   assertVerifiedWatcherDeploymentIdentity(input.identity);
-  const details = localKupmiosHttpOgmiosRawSourceDetails(input.rawSource);
+  const { minimumConfirmationDepth } = input;
   if (
-    details?.deploymentIdentityDigest !== input.identity.manifestId ||
-    details.blueprintHash !== input.identity.blueprintHash
+    !Number.isSafeInteger(minimumConfirmationDepth) ||
+    minimumConfirmationDepth < 1
   )
-    throw new Error("L1 payload history differs from verified deployment");
-  const minimumConfirmationDepth =
-    details.observationDepth === "inclusion" ? 1 : details.confirmationDepth;
+    throw new Error("L1 payload history depth must be positive");
   const sourceId = `watcher-l1-availability/${input.identity.manifestId}`;
   const sourcePeerId = "cardano-l1";
   const cache = new Map<
@@ -302,65 +318,28 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
           ? cache.get(headerHash)!.payload
           : undefined;
       if (payload === undefined) {
-        payload = await withWatcherAvailabilityReadOperation(
-          input.rawSource,
-          input.scope,
-          async (assertCurrent) => {
-            assertCurrent();
-            if (input.scope !== undefined) await input.rawSource.readBoundary();
-            assertCurrent();
-            const { blockHash, slot, blockNo } = observation.nativePoint;
-            const point = {
-              blockHash,
-              slot,
-              blockNo,
-              pointId: computeFraudProofRawL1PointId({
-                blockHash,
-                slot,
-                blockNo,
-              }),
-            };
-            await pinAdmittedLocalKupmiosBoundaryAtPoint({
-              source: input.rawSource,
-              point,
-            });
-            assertCurrent();
-            const readHistory = async (unit: string) => {
-              const history = await readAdmittedLocalKupmiosUnitHistoryAtPoint({
-                source: input.rawSource,
+        const point = observationPoint(observation);
+        payload = await readAtPoint(input.l1, point, input.scope, async () =>
+          reconstructWatcherAvailabilityPublishedPayload({
+            headerHash,
+            terminalCommitment,
+            deploymentIdentity: input.deployment.hubOraclePolicyId,
+            availabilityAddress:
+              input.deployment.contracts.availabilityChallenge
+                .spendingScriptAddress,
+            availabilityPolicyId:
+              input.deployment.contracts.availabilityChallenge.policyId,
+            stateQueuePolicyId: input.deployment.contracts.stateQueue.policyId,
+            parameters: input.deployment.parameters,
+            readHistory: async (unit) =>
+              await unitHistoryTransactions(
+                input.l1.reads,
                 unit,
                 point,
-              });
-              return await settleLocalKupmiosReads(
-                history.transactions.map(({ txHash, inclusionPoint }) =>
-                  readAdmittedLocalKupmiosRawTransaction({
-                    source: input.rawSource,
-                    txHash,
-                    expectedInclusionPoint: inclusionPoint,
-                    minimumConfirmationDepth,
-                  }),
-                ),
-              );
-            };
-            const reconstructed =
-              await reconstructWatcherAvailabilityPublishedPayload({
-                headerHash,
-                terminalCommitment,
-                deploymentIdentity: input.deployment.hubOraclePolicyId,
-                availabilityAddress:
-                  input.deployment.contracts.availabilityChallenge
-                    .spendingScriptAddress,
-                availabilityPolicyId:
-                  input.deployment.contracts.availabilityChallenge.policyId,
-                stateQueuePolicyId:
-                  input.deployment.contracts.stateQueue.policyId,
-                parameters: input.deployment.parameters,
-                readHistory,
-                slotToUnixTime: input.lucid.slotToUnixTime,
-              });
-            assertCurrent();
-            return reconstructed;
-          },
+                minimumConfirmationDepth,
+              ),
+            slotToUnixTime: input.lucid.slotToUnixTime,
+          }),
         );
       }
       input.scope?.assertCurrent();

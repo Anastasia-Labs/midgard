@@ -16,8 +16,21 @@ import {
   verifyDeploymentProfileBinding,
 } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import {
+  formatL1SlotConfig,
+  type L1SlotConfig,
+  l1SlotConfigMismatch,
+  l1SlotConfigsEqual,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+  parseL1SlotConfig,
+} from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
-import { MintingPolicy, mintingPolicyToId } from "@lucid-evolution/lucid";
+import {
+  type LucidEvolution,
+  MintingPolicy,
+  mintingPolicyToId,
+  type SlotConfig,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { parseDeploymentManifestValue } from "../deployment-manifest.js";
@@ -30,6 +43,7 @@ import {
   daAvailabilityChallengeEnvironmentInput,
   realBlueprintPathOverride,
 } from "../environment.js";
+import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 
 /**
  * Contract-loading service for Midgard validators.
@@ -49,6 +63,11 @@ export type ContractDeploymentIdentityValue = {
   readonly l1Finality?: DeploymentManifestL1Finality;
   /** Exact parser-admitted manifest; absent for derived/dev contract bundles. */
   readonly manifest?: DeploymentManifest;
+  /**
+   * The slot mapping a derived bundle was built with, read through the
+   * process's L1 access; a manifest's is `manifest.l1SlotConfig`.
+   */
+  readonly l1SlotConfig?: L1SlotConfig;
 };
 
 export type MidgardContractRuntimeValue = {
@@ -113,6 +132,74 @@ export const eventHistoryProtectionDurationFromExplicitEnvironment =
       );
     return BigInt(value);
   };
+
+/**
+ * The slot mapping a fresh (manifest-less) deployment's validation-trace
+ * validators take: the one the process's L1 access reads off the ledger
+ * (`ledger`). A Custom network takes it as read, its genesis anchor; a
+ * named network's must equal Lucid's static one, or this refuses
+ * (`l1_slot_config_mismatch: ...`): scripts derived with another mapping
+ * would build contexts the network's other deployments do not.
+ */
+export const derivedDeploymentL1SlotConfig = (
+  network: string,
+  ledger: SlotConfig,
+): L1SlotConfig => {
+  const runtime = parseL1SlotConfig(
+    {
+      zeroTime: ledger.zeroTime,
+      zeroSlot: ledger.zeroSlot,
+      slotLength: ledger.slotLength,
+    },
+    "L1 access slot configuration",
+  );
+  if (network === "Mainnet" || network === "Preprod" || network === "Preview") {
+    const named = NAMED_NETWORK_L1_SLOT_CONFIGS[network];
+    if (!l1SlotConfigsEqual(named, runtime))
+      throw new Error(
+        `l1_slot_config_mismatch: the L1 access reports ${formatL1SlotConfig(runtime)}, not ${network}'s ${formatL1SlotConfig(named)}`,
+      );
+    return named;
+  }
+  return runtime;
+};
+
+/**
+ * The slot mapping the selected contracts were built with: the manifest's,
+ * or for a derived bundle the one its runtime read through the L1 access
+ * (`derivedDeploymentL1SlotConfig`).
+ */
+export const deploymentL1SlotConfig = (
+  identity: ContractDeploymentIdentityValue,
+): L1SlotConfig => {
+  if (identity.kind === "manifest" && identity.manifest !== undefined)
+    return identity.manifest.l1SlotConfig;
+  if (identity.l1SlotConfig === undefined)
+    throw new Error(
+      "The derived contract bundle records no L1 slot mapping to check against",
+    );
+  return identity.l1SlotConfig;
+};
+
+/**
+ * Refuses (`l1_slot_config_mismatch: ...`) a Lucid instance whose slot
+ * mapping, read from the L1 ledger, differs from the deployment's: the
+ * script contexts this process would build off chain would not be the ones
+ * the deployed validator builds.
+ */
+export const assertLucidL1SlotConfigMatchesDeployment = (
+  deployment: L1SlotConfig,
+  lucid: LucidEvolution,
+): void => {
+  const mismatch = l1SlotConfigMismatch(
+    deployment,
+    parseL1SlotConfig(
+      canonicalSlotConfigForLucid(lucid),
+      "Lucid slot configuration",
+    ),
+  );
+  if (mismatch !== null) throw new Error(mismatch);
+};
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 

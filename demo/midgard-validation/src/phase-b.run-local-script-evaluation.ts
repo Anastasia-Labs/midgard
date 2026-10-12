@@ -57,6 +57,7 @@ export const runLocalScriptEvaluation = (
       sources,
       resolvedReferenceInputs.inputs,
       witnessKeyHashes,
+      config.l1SlotConfig,
     );
     if (discovered.kind === "rejected") {
       return discovered;

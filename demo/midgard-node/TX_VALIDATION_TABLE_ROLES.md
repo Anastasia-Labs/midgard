@@ -18,6 +18,7 @@ Covered tables:
 - `processed_mempool`
 - `mempool_tx_deltas`
 - `tx_rejections`
+- `tx_rejection_causes`
 - `pending_block_finalizations`
 - `pending_block_finalization_deposits`
 - `pending_block_finalization_txs`
@@ -64,6 +65,7 @@ The migration runner creates `schema_migrations` and
 | `processed_mempool`                   | Durable holding area for tx payloads already incorporated into the mempool MPT while waiting for a later submit/finalization path.       |
 | `mempool_tx_deltas`                   | Per-tx spent/produced delta cache used to build MPT roots from accepted mempool txs.                                                     |
 | `tx_rejections`                       | Durable rejection evidence for validation, malformed preprocessing, and tx-status responses.                                             |
+| `tx_rejection_causes`                 | The rejected transactions a dependent or batch rejection follows from, so a revived journal can delete the rejections it caused.         |
 | `pending_block_finalizations`         | Single-active journal for submitted or potentially submitted block finalization and recovery.                                            |
 | `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal.                                                                            |
 | `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                                    |
@@ -445,6 +447,33 @@ The retention sweeper prunes old rejection rows
 - Usually paired with `tx_admissions.status='rejected'`.
 - Must not contradict terminal accepted state in `immutable` or live accepted
   state in `mempool`.
+- A dependent or batch rejection names the rejections it follows from in
+  `tx_rejection_causes`, below.
+
+### Traced causes: `tx_rejection_causes`
+
+[0019_tx_rejection_causes.sql](src/database/migrations/sql/0019_tx_rejection_causes.sql)
+adds one row per cause of a rejection:
+
+- `tx_id BYTEA NOT NULL`, referencing `tx_rejections (tx_id)` with
+  `ON DELETE CASCADE`;
+- `cause_tx_id BYTEA NOT NULL`: the producer of a rejected output the
+  transaction spends, or a rejected member of the batch it was accepted in;
+- primary key `(tx_id, cause_tx_id)` and index
+  `idx_tx_rejection_causes_cause` on `cause_tx_id`.
+
+The working-ledger recompute's reject closure writes the causes in the same
+transaction as the rejections (`TxRejectionsDB.insertCauses`,
+[working-ledger-recompute.reject-closure.ts](src/services/working-ledger-recompute.reject-closure.ts)).
+A rejection with no row here is not traced to another transaction.
+
+When a landed own block's abandoned journal is revived, its members'
+rejections are deleted, and so is every rejection whose recorded causes are
+all deleted ones, transitively (`TxRejectionsDB.deleteWithTracedRejections`,
+called from `reviveJournals` in
+[own-journals.ts](src/landed-blocks/own-journals.ts)). A rejection that also
+has a cause still rejected stays. A cause row lives as long as its rejection:
+it is deleted with it, by the revival or by retention pruning.
 
 ### Invariants And Gaps
 

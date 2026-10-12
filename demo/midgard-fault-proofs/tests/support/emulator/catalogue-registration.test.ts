@@ -26,7 +26,6 @@ const APPENDED_CATEGORY_NAMES = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(
 
 describe("fault-proof emulator catalogue registration", () => {
   it.each([
-    ["missingNativeScriptUtxo", "realMissingNativeScriptUtxo"],
     ["nativeScriptInvalid", "realNativeScriptInvalid"],
     ["minAda", "realMinAda"],
   ] as const)(

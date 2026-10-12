@@ -21,7 +21,7 @@ import {
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createCanonicalFamilyArtifactPort,
@@ -51,7 +51,7 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS = Object.freeze([
   "headerHash",
   "lucid",
   "signer",
-  "source",
+  "l1Source",
   "decisionDigest",
   "stateQueueMutationLeaseCoordinator",
   "referenceScripts",
@@ -99,7 +99,7 @@ export type ManifestBoundScriptIntegrityHashMismatchWorkflowConfig = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   referenceScripts: ScriptIntegrityHashMismatchReferenceScripts;

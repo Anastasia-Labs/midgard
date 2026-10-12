@@ -4,11 +4,10 @@ import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
 import "../prepare-double-spend.js";
 import "../transition-trace/phas.js";
-import "../workflow/historical-native-script-corpus.js";
 import "./resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 import "./resolved-output-non-canonical.detect-resolved-output-non-canonical-complete-replay.js";
 export {
-  deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus,
+  deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
 } from "./resolved-output-non-canonical.detect-resolved-output-non-canonical-complete-replay.js";
 export {

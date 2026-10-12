@@ -1,15 +1,13 @@
 import { isAbsolute, normalize } from "node:path";
 
 import {
-  nativeLedgerAuthoritySource,
-  NativeLedgerKupmios,
   type NativeLedgerNetwork,
+  readNativeLedgerGenesis,
 } from "@al-ft/midgard-core/native-reward-account";
 
 /**
- * The local node whose ledger answers reward-account reads. Ogmios cannot:
- * it omits registered accounts without a stake-pool delegation, which is
- * every Midgard script reward account.
+ * The local node the node's L1 reads and submissions go through: its socket,
+ * its config (for the network magic) and the transport sidecar binary.
  */
 export type NativeLedgerSettings = Readonly<{
   socketPath: string;
@@ -20,11 +18,8 @@ export type NativeLedgerSettings = Readonly<{
 export const NATIVE_LEDGER_SETTING_NAMES = [
   "L1_NODE_SOCKET_PATH",
   "L1_NODE_CONFIG_PATH",
-  "L1_NATIVE_CHAIN_SYNC_BINARY_PATH",
+  "L1_NODE_TRANSPORT_BINARY_PATH",
 ] as const;
-
-const NATIVE_LEDGER_AUTHORITY_ID = "local-cardano-node";
-const NATIVE_LEDGER_QUERY_TIMEOUT_MS = 30_000;
 
 /** All three settings, or none; each an absolute canonical path. */
 export const parseNativeLedgerSettings = (
@@ -49,7 +44,7 @@ export const parseNativeLedgerSettings = (
   return {
     socketPath: path("L1_NODE_SOCKET_PATH"),
     nodeConfigPath: path("L1_NODE_CONFIG_PATH"),
-    binaryPath: path("L1_NATIVE_CHAIN_SYNC_BINARY_PATH"),
+    binaryPath: path("L1_NODE_TRANSPORT_BINARY_PATH"),
   };
 };
 
@@ -59,27 +54,23 @@ export const nativeLedgerSettingsFromEnv = (
   parseNativeLedgerSettings({
     L1_NODE_SOCKET_PATH: env.L1_NODE_SOCKET_PATH,
     L1_NODE_CONFIG_PATH: env.L1_NODE_CONFIG_PATH,
-    L1_NATIVE_CHAIN_SYNC_BINARY_PATH: env.L1_NATIVE_CHAIN_SYNC_BINARY_PATH,
+    L1_NODE_TRANSPORT_BINARY_PATH: env.L1_NODE_TRANSPORT_BINARY_PATH,
   });
 
-/** Kupmios transport whose reward-account reads come from the local ledger. */
-export const makeNodeKupmios = (input: {
-  readonly kupoUrl: string;
-  readonly ogmiosUrl: string;
-  readonly network: NativeLedgerNetwork;
-  readonly nativeLedger: NativeLedgerSettings | undefined;
-}): NativeLedgerKupmios =>
-  new NativeLedgerKupmios(
-    input.kupoUrl,
-    input.ogmiosUrl,
-    nativeLedgerAuthoritySource(
-      input.nativeLedger === undefined
-        ? undefined
-        : {
-            ...input.nativeLedger,
-            authorityNodeId: NATIVE_LEDGER_AUTHORITY_ID,
-            network: input.network,
-            timeoutMs: NATIVE_LEDGER_QUERY_TIMEOUT_MS,
-          },
-    ),
-  );
+/**
+ * The local node's network magic, from its config's Shelley genesis, checked
+ * against the configured network exactly as the reward-account reads check
+ * it. The L1 follower's chain-sync session handshakes with it. Only the static
+ * config files are read: the node's socket need not exist yet (the transport
+ * waits for it as `node_unreachable`).
+ */
+export const nativeLedgerNetworkMagic = async (
+  settings: Pick<NativeLedgerSettings, "nodeConfigPath">,
+  network: NativeLedgerNetwork,
+): Promise<number> =>
+  (
+    await readNativeLedgerGenesis({
+      nodeConfigPath: settings.nodeConfigPath,
+      network,
+    })
+  ).networkMagic;

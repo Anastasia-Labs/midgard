@@ -51,6 +51,7 @@ export type ArchitectureGCommitCandidateSeedInput = {
   readonly fundingMapPath: string;
   readonly fundingMapSha256: string;
   readonly expectedTransactionCount: number;
+  readonly fixtureInitialUtxoCount: number;
   readonly firstTimestampIso: string;
 };
 
@@ -73,6 +74,7 @@ export type ArchitectureGCommitCandidateSeedResult = {
   readonly fundingCount: number;
   readonly terminalLedgerCount: number;
   readonly deltaCount: number;
+  readonly confirmedLedgerCount: number;
 };
 
 export type ArchitectureGCommitCandidateInput = {
@@ -90,6 +92,8 @@ export type ArchitectureGCommitCandidateInput = {
   readonly fixtureCreationPath: string;
   readonly fixtureCreationSha256: string;
   readonly fixtureInitialUtxoCount: number;
+  /** The Level fixture's root marker: the base every candidate builds on. */
+  readonly baseUtxosRoot: string;
   readonly baseUtxoPayloadAggregate: {
     readonly entryCount: number;
     readonly encodedTupleBytes: number;
@@ -133,24 +137,6 @@ export type ArchitectureGCommitCandidateInput = {
       readonly sizeOfProcessedTxsSoFar: 0;
       readonly baseSnapshotId: string;
       readonly stateQueueHasUnmergedTail: true;
-      readonly speculativeBuild: {
-        readonly base: {
-          readonly headerHash: string;
-          readonly utxosRoot: string;
-          readonly blockEndTimeMs: number;
-          readonly submittedTxHash: string;
-        };
-        readonly watermarks: {
-          readonly depositMs: number;
-          readonly withdrawalMs: number;
-          readonly txOrderMs: number;
-          readonly refreshedAtMs: number;
-        };
-        readonly excludedMempoolTxIds: readonly string[];
-        readonly excludedDepositEventIds: readonly string[];
-        readonly excludedForcedTransactionEventIds: readonly string[];
-        readonly excludedWithdrawalEventIds: readonly string[];
-      };
     };
   };
 };

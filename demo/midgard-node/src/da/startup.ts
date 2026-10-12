@@ -13,6 +13,10 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import {
+  DA_CAPABILITY_QUORUM_PENDING,
+  DA_PROVIDER_ASSERTIONS_UNAVAILABLE,
+} from "../services/startup-waiting.js";
 import { fetchDaParamsUtxo } from "../transactions/da-attestation.js";
 import {
   createDaLibp2pProducerProbeTransport,
@@ -144,6 +148,26 @@ export class DaCapabilityQuorumPendingError extends Error {
   readonly retryable = true;
   override readonly name = "DaCapabilityQuorumPendingError";
 }
+
+/**
+ * The reason the startup DA provider assertions wait under after `error`:
+ * `da_capability_quorum_pending` while the quorum is still forming,
+ * `da_provider_assertions_unavailable` for any other retryable failure.
+ */
+export const daProviderAssertionsWaitReason = (error: unknown): string => {
+  let link: unknown = error;
+  // A bounded walk down the cause chain.
+  for (
+    let depth = 0;
+    depth < 16 && typeof link === "object" && link !== null;
+    depth += 1
+  ) {
+    if (link instanceof DaCapabilityQuorumPendingError)
+      return DA_CAPABILITY_QUORUM_PENDING;
+    link = (link as { cause?: unknown }).cause;
+  }
+  return DA_PROVIDER_ASSERTIONS_UNAVAILABLE;
+};
 
 /**
  * Enough committee signers answered and rejected this node's DA envelope

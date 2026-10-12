@@ -1,27 +1,17 @@
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   credentialToAddress,
   Lucid,
   type LucidEvolution,
   type Network,
-  type Provider,
-  type SlotConfig,
   toUnit,
+  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
-import {
-  fetchLocalOgmiosShelleyGenesisSlotConfig,
-  fetchLocalOgmiosSubmitSlotSnapshot,
-  normalizeOgmiosHttpUrl,
-  parseOgmiosTipSlot,
-} from "../local-ledger-slot.js";
-import { customSlotConfigFromShelleyGenesis } from "../lucid-time.js";
-import {
-  makeNodeKupmios,
-  nativeLedgerSettingsFromEnv,
-} from "../services/native-ledger.js";
+import type { L1Access, L1ViewPoint } from "../l1-access.js";
 import {
   authenticatedManifestReference,
   availabilityParametersFromManifest,
@@ -40,10 +30,9 @@ import {
 import {
   daBondAssembleCommand,
   type DaBondChainOptions,
-  DaBondCustomSlotMappingError,
   daBondNetwork,
+  DaBondSlotMappingError,
   daBondWithdrawBuildCommand,
-  runOrThrow,
 } from "./da-bond.da-bond-withdraw-build-command.js";
 import {
   daBondTopUpCommand,
@@ -54,115 +43,100 @@ import {
   daBondSigningKeyFromSecret,
   readDaBondSecretEnv,
 } from "./da-bond-files.js";
-import { resolveKupmiosUrls } from "./l1-utxos.js";
+import { withCommandL1Access } from "./l1-command-access.js";
+import { assertCommandPayerIsDedicated } from "./operational-wallet-refusal.js";
 
 /**
- * The `Custom` slot mapping, derived exactly as the node derives it
- * (`services/lucid.ts`): a live submit-slot snapshot and the Shelley genesis
- * from the local Ogmios, checked against each other. Never a configured
- * `zeroTime`: a wrong one shifts every validity interval, and the pool's
- * `unlock_at` is anchored at one.
+ * The part of a tool L1 access (`l1-command-access.ts`) the da-bond commands
+ * read: any of the tool adapters, each with its ledger tip.
  */
-const daBondCustomSlotConfig = async (
-  ogmiosUrl: string,
-): Promise<SlotConfig> => {
-  const stage = async <A>(label: string, run: () => Promise<A>) => {
-    try {
-      return await run();
-    } catch (cause) {
-      throw new DaBondCustomSlotMappingError(
-        `Refusing the Custom deployment: ${label} from the local Ogmios at ${ogmiosUrl} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-        { cause },
-      );
-    }
-  };
-  const snapshot = await stage("the submit-slot snapshot", () =>
-    runOrThrow(fetchLocalOgmiosSubmitSlotSnapshot({ ogmiosUrl })),
-  );
-  const genesis = await stage("the Shelley genesis query", () =>
-    runOrThrow(fetchLocalOgmiosShelleyGenesisSlotConfig({ ogmiosUrl })),
-  );
-  return stage("the slot mapping check", async () =>
-    customSlotConfigFromShelleyGenesis(genesis, snapshot),
-  );
-};
+export type DaBondL1Access = Pick<
+  L1Access,
+  "provider" | "endpoint" | "slotConfig"
+> &
+  Readonly<{ ledgerTip: () => Promise<L1ViewPoint> }>;
 
 /**
- * Lucid on the deployment's network. Mainnet, Preprod and Preview keep
- * Lucid's built-in slot mapping and never query Ogmios for it; `Custom` has
- * none built in and takes `daBondCustomSlotConfig`'s, or the command stops
- * before Lucid is built.
+ * Lucid on the deployment's network, with the slot mapping the access gives
+ * (the local node's ledger: its system start and era history), exactly as
+ * the node takes it (`services/lucid.ts`). Never a configured `zeroTime`: a wrong one shifts
+ * every validity interval, and the pool's `unlock_at` is anchored at one. A
+ * failed read stops the command before Lucid is built.
  */
 export const daBondLucid = async (input: {
-  readonly provider: Provider;
+  readonly access: DaBondL1Access;
   readonly network: Network;
-  readonly ogmiosUrl: string;
 }): Promise<LucidEvolution> => {
-  const slotConfig =
-    input.network === "Custom"
-      ? await daBondCustomSlotConfig(input.ogmiosUrl)
-      : undefined;
-  return Lucid(input.provider, input.network, {
+  let slotConfig;
+  try {
+    slotConfig = await input.access.slotConfig();
+  } catch (cause) {
+    throw new DaBondSlotMappingError(
+      `Refusing the deployment: the slot mapping from the L1 access at ${input.access.endpoint} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+  return Lucid(input.access.provider, input.network, {
     evaluator: createScalusEvaluator(),
-    ...(slotConfig === undefined ? {} : { slotConfig }),
+    slotConfig,
   });
 };
 
 /**
- * The time of the local node's tip slot, read from its Ogmios: the clock the
- * node checks validity bounds against.
+ * The time of the access's ledger tip slot: the clock the node checks
+ * validity bounds against.
  */
 export const daBondLedgerTimeMs = async (
   lucid: LucidEvolution,
-  ogmiosUrl: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<number> => {
-  const response = await fetchImpl(normalizeOgmiosHttpUrl(ogmiosUrl), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "queryNetwork/tip",
-      id: "midgard-da-bond-ledger-time",
-    }),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `The local Ogmios tip query at ${ogmiosUrl} failed: HTTP ${response.status.toString()}`,
-    );
-  }
-  return lucid.slotToUnixTime(parseOgmiosTipSlot(await response.json()));
-};
+  access: Pick<DaBondL1Access, "ledgerTip">,
+): Promise<number> => lucid.slotToUnixTime((await access.ledgerTip()).slot);
 
 /**
- * The production context: a verified finalized manifest, local Kupmios, and
- * only the references these commands read, each authenticated: the pool's
- * reference scripts (manifest role outputs carrying their
- * reference-script-auth token) and the DA params governor's address and NFT.
+ * `da-bond top-up` never pays from the node's operational wallets
+ * (`operational-wallet-refusal.ts`): the funding secret's variable is not
+ * one of the node's seed settings, and the wallet it selects (the payment
+ * key's enterprise address, or the mnemonic's base address as
+ * `daBondTopUpCommand` selects it) shares no payment credential with them
+ * or with the deployment's reference-script deploy address.
  */
-export const loadDaBondContext = async (
-  options: DaBondChainOptions,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<DaBondContext> => {
-  const manifest = readDeploymentManifestFile(options.manifest);
+export const assertDaBondPayerIsDedicated = (input: {
+  readonly walletSeedEnv: string;
+  readonly walletSecret: string;
+  readonly referenceScriptDeployAddress: string;
+  readonly network: Network;
+  readonly env: NodeJS.ProcessEnv;
+}): void => {
+  const secret = input.walletSecret.trim();
+  const payerAddress =
+    secret.startsWith("ed25519_sk1") || secret.startsWith("ed25519e_sk1")
+      ? credentialToAddress(input.network, {
+          type: "Key",
+          hash: CML.PrivateKey.from_bech32(secret).to_public().hash().to_hex(),
+        })
+      : walletFromSeed(secret, { network: input.network }).address;
+  assertCommandPayerIsDedicated({
+    command: "da-bond top-up",
+    walletSeedEnv: input.walletSeedEnv,
+    payerAddress,
+    referenceScriptDeployAddress: input.referenceScriptDeployAddress,
+    network: input.network,
+    env: input.env,
+  });
+};
+
+const readVerifiedManifest = (path: string) => {
+  const manifest = readDeploymentManifestFile(path);
   verifyFinalizedDeploymentManifest(manifest);
-  const manifestNetwork = daBondNetwork(manifest.network);
-  const connection = resolveKupmiosUrls({
-    kupoUrl: options.kupoUrl,
-    ogmiosUrl: options.ogmiosUrl,
-    env,
-  });
-  const provider = makeNodeKupmios({
-    kupoUrl: connection.kupoUrl,
-    ogmiosUrl: connection.ogmiosUrl,
-    network: manifestNetwork,
-    nativeLedger: nativeLedgerSettingsFromEnv(env),
-  });
+  return manifest;
+};
+
+const daBondContextFrom = async (
+  manifest: ReturnType<typeof readVerifiedManifest>,
+  access: DaBondL1Access,
+): Promise<DaBondContext> => {
   const lucid = await daBondLucid({
-    provider,
-    network: manifestNetwork,
-    ogmiosUrl: connection.ogmiosUrl,
+    access,
+    network: daBondNetwork(manifest.network),
   });
   const network = lucid.config().network;
   if (network === undefined || network !== manifest.network) {
@@ -188,7 +162,7 @@ export const loadDaBondContext = async (
   if (governorSpend === undefined || governorMint === undefined) {
     throw new Error("Deployment omits the DA params governor");
   }
-  const ledgerTimeMs = await daBondLedgerTimeMs(lucid, connection.ogmiosUrl);
+  const ledgerTimeMs = await daBondLedgerTimeMs(lucid, access);
   return {
     lucid,
     network,
@@ -210,8 +184,43 @@ export const loadDaBondContext = async (
       manifest.deploymentProfile.timing.da_bond_withdraw_delay_ms,
     ),
     now: () => ledgerTimeMs,
-    submit: daBondChainSubmit(provider, lucid),
+    submit: daBondChainSubmit(access.provider, lucid),
   };
+};
+
+/**
+ * The production context: a verified finalized manifest, the node's L1
+ * access, and only the references these commands read, each authenticated:
+ * the pool's reference scripts (manifest role outputs carrying their
+ * reference-script-auth token) and the DA params governor's address and NFT.
+ */
+export const loadDaBondContext = (
+  options: DaBondChainOptions,
+  access: DaBondL1Access,
+): Promise<DaBondContext> =>
+  daBondContextFrom(readVerifiedManifest(options.manifest), access);
+
+/**
+ * Runs `use` with the production context over the tool L1 access `--l1`
+ * selects, on the manifest's network (`l1-command-access.ts`), closing it
+ * afterwards.
+ */
+const withDaBondContext = async <T>(
+  options: DaBondChainOptions,
+  env: NodeJS.ProcessEnv,
+  use: (ctx: DaBondContext) => Promise<T>,
+  /** A refusal checked on the verified manifest, before any L1 read. */
+  guard?: (
+    manifest: ReturnType<typeof readVerifiedManifest>,
+    network: Network,
+  ) => void,
+): Promise<T> => {
+  const manifest = readVerifiedManifest(options.manifest);
+  const network = daBondNetwork(manifest.network);
+  guard?.(manifest, network);
+  return withCommandL1Access({ network, env }, async (access) =>
+    use(await daBondContextFrom(manifest, access)),
+  );
 };
 
 /** `da-bond top-up` from the CLI: the funding secret comes from one env var. */
@@ -226,10 +235,19 @@ export const runDaBondTopUp = async (
   );
   daBondSigningKeyFromSecret(walletSecret);
   parseLovelace(options.amount, "--amount");
-  return daBondTopUpCommand(await loadDaBondContext(options, env), {
-    amount: options.amount,
-    walletSecret,
-  });
+  return withDaBondContext(
+    options,
+    env,
+    (ctx) => daBondTopUpCommand(ctx, { amount: options.amount, walletSecret }),
+    (manifest, network) =>
+      assertDaBondPayerIsDedicated({
+        walletSeedEnv: options.walletSeedEnv,
+        walletSecret,
+        referenceScriptDeployAddress: manifest.referenceScriptDeployAddress,
+        network,
+        env,
+      }),
+  );
 };
 
 /** `da-bond status` from the CLI. */
@@ -237,7 +255,7 @@ export const runDaBondStatus = async (
   options: DaBondChainOptions,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<DaBondStatus> =>
-  daBondStatusCommand(await loadDaBondContext(options, env));
+  withDaBondContext(options, env, daBondStatusCommand);
 
 /** `da-bond withdraw begin|cancel|complete --build-unsigned` from the CLI. */
 export const runDaBondWithdrawBuild = async (
@@ -245,10 +263,8 @@ export const runDaBondWithdrawBuild = async (
   options: DaBondChainOptions & DaBondWithdrawBuildOptions,
   env: NodeJS.ProcessEnv = process.env,
 ) =>
-  daBondWithdrawBuildCommand(
-    await loadDaBondContext(options, env),
-    step,
-    options,
+  withDaBondContext(options, env, (ctx) =>
+    daBondWithdrawBuildCommand(ctx, step, options),
   );
 
 /** `da-bond assemble` from the CLI. */
@@ -258,8 +274,6 @@ export const runDaBondAssemble = async (
   witnessPaths: readonly string[],
   env: NodeJS.ProcessEnv = process.env,
 ) =>
-  daBondAssembleCommand(
-    await loadDaBondContext(options, env),
-    unsignedPath,
-    witnessPaths,
+  withDaBondContext(options, env, (ctx) =>
+    daBondAssembleCommand(ctx, unsignedPath, witnessPaths),
   );

@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h32 } from "@al-ft/midgard-test-support/hex";
@@ -12,7 +13,7 @@ import {
   makeNativeTx,
   outRefFromTxId,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-snapshot.js";
@@ -53,6 +54,7 @@ export const CHAIN_POINT = { slot: 4242n, blockHash: h32(7) } as const;
 
 export const RULE_BUNDLE: WatcherRuleBundle = makeWatcherCanonicalRuleBundle({
   constructionIdentity: {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     manifestId: h32(0x21),
     network: "Preprod",
     blueprintHash: h32(0x22),
@@ -89,31 +91,6 @@ export const dataHex = <A>(
   value: A,
   schema: Parameters<typeof Data.to>[1],
 ): string => encodeData(value, schema as never).toString("hex");
-
-export const cardanoOutputAssets = (
-  outputCborHex: string,
-): Readonly<Record<string, bigint>> => {
-  const value = CML.TransactionOutput.from_cbor_hex(outputCborHex).amount();
-  const assets: Record<string, bigint> = { lovelace: value.coin() };
-  const multiasset = value.multi_asset();
-  if (multiasset !== undefined) {
-    const policies = multiasset.keys();
-    for (let policyIndex = 0; policyIndex < policies.len(); policyIndex += 1) {
-      const policy = policies.get(policyIndex);
-      const policyAssets = multiasset.get_assets(policy);
-      if (policyAssets === undefined) continue;
-      const names = policyAssets.keys();
-      for (let nameIndex = 0; nameIndex < names.len(); nameIndex += 1) {
-        const name = names.get(nameIndex);
-        const quantity = policyAssets.get(name);
-        if (quantity !== undefined) {
-          assets[`${policy.to_hex()}${name.to_hex()}`] = quantity;
-        }
-      }
-    }
-  }
-  return Object.freeze(assets);
-};
 
 export const nativeEffect = (input: {
   readonly spent: readonly Buffer[];

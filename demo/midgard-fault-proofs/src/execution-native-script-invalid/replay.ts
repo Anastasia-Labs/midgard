@@ -15,9 +15,9 @@ import {
   forcedTransactionSubject,
 } from "../workflow/detection-subject.js";
 import {
-  type HistoricalNativeScriptCorpus,
-  requireHistoricalNativeScriptCorpus,
-} from "../workflow/historical-native-script-corpus.js";
+  replayPredecessorOutputs,
+  requireReplayPredecessorLedger,
+} from "../workflow/replay-predecessor-ledger.js";
 import { reconstructExecutionNativeScriptPurposes } from "./canonical-reconstruction.js";
 
 export const EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID =
@@ -35,35 +35,18 @@ export type ExecutionNativeScriptInvalidReplayDetection =
 
 const priorOutputs = ({
   block,
-  corpus,
+  predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  corpus: HistoricalNativeScriptCorpus;
-}): ReadonlyMap<string, Uint8Array> => {
-  const history = requireHistoricalNativeScriptCorpus(corpus);
-  if (
-    history.currentEvidence !== block ||
-    corpus.throughHeaderHash !== block.headerHash
-  )
-    throw new Error(
-      "executionNativeScriptInvalid historical authority changed challenged header",
-    );
-  const predecessor = history.reconstructions.at(-2);
-  if (predecessor === undefined) return new Map();
-  if (
-    predecessor.headerHash !== block.header.prevHeaderHash ||
-    predecessor.header.utxosRoot !== block.header.prevUtxosRoot
-  )
-    throw new Error(
-      "executionNativeScriptInvalid predecessor differs from challenged header",
-    );
-  return new Map(
-    predecessor.utxos.map(({ key, value }) => [
-      Buffer.from(key).toString("hex"),
-      Buffer.from(value),
-    ]),
+  predecessor: CanonicalBlockEvidence | undefined;
+}): ReadonlyMap<string, Uint8Array> =>
+  replayPredecessorOutputs(
+    requireReplayPredecessorLedger({
+      block,
+      predecessor,
+      label: "executionNativeScriptInvalid",
+    }),
   );
-};
 
 const nativeResult = ({
   sourceKind,
@@ -115,12 +98,12 @@ const nativeResult = ({
  */
 export const detectExecutionNativeScriptInvalidCanonicalViolations = ({
   block,
-  corpus,
+  predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  corpus: HistoricalNativeScriptCorpus;
+  predecessor: CanonicalBlockEvidence | undefined;
 }): readonly ExecutionNativeScriptInvalidReplayDetection[] => {
-  const resolvedOutputs = priorOutputs({ block, corpus });
+  const resolvedOutputs = priorOutputs({ block, predecessor });
   const detections: ExecutionNativeScriptInvalidReplayDetection[] = [];
   block.transactions.forEach((transaction, position) => {
     const txCbor = Buffer.from(transaction.txCbor, "hex");

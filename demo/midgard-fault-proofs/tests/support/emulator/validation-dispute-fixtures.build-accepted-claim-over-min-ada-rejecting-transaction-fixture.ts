@@ -7,6 +7,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   EventKeySchema,
   validationTraceDescriptorDataFromCore,
@@ -152,6 +153,7 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
   // the identical trace from the exact W25 replay input
   // (`admitValidationTraceChallenge` refuses caller-authored trace objects).
   const challengerReplayInput = {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     eventKeyCbor: encodeData(eventKey, EventKeySchema),
     sourceKind: "forced",

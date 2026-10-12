@@ -257,6 +257,7 @@ const setupChallengedBlockOnEmulator = async (
   committedInfoCbor: string,
   mode: "inline" | "external" = "inline",
   absent = false,
+  admittedBefore = false,
 ) => {
   const {
     emulator,
@@ -327,6 +328,8 @@ const setupChallengedBlockOnEmulator = async (
     catalogue,
     header,
     beforeHeaderCommit: async (hub) => {
+      // A repeat admits the event for the block that ends where this one
+      // starts, so its inclusion time belongs to that earlier block.
       admitted = await harness.history.admit(
         hub,
         {
@@ -336,7 +339,7 @@ const setupChallengedBlockOnEmulator = async (
             refund_datum: legacy.refund_datum,
           },
         },
-        header,
+        admittedBefore ? { ...header, endTime: header.startTime } : header,
       );
       awaitHeaderCommitWindow(emulator, header);
     },
@@ -391,7 +394,9 @@ const setupChallengedBlockOnEmulator = async (
     })
   ).utxo;
   const eventInclusionTime = admitted.captured.commitment.inclusion_time;
-  expect(eventInclusionTime).toBe(header.endTime);
+  expect(eventInclusionTime).toBe(
+    admittedBefore ? header.startTime : header.endTime,
+  );
   return {
     counted,
     header,
@@ -511,14 +516,22 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
 
   it.each(
     (["inline", "external"] as const).flatMap((mode) =>
-      (["diverted-content", "absent-identity", "signature-only"] as const).map(
-        (scenario) => ({ mode, scenario }),
-      ),
+      (
+        [
+          "diverted-content",
+          "absent-identity",
+          "signature-only",
+          "repeated-event",
+        ] as const
+      ).map((scenario) => ({ mode, scenario })),
     ),
   )(
     "proves $scenario withdrawal with $mode history, mints permanent evidence, and removes the fraudulent commitment",
     async ({ mode, scenario }) => {
       const absent = scenario === "absent-identity";
+      // A repeat commits the authentic content of an event an earlier block
+      // already carried.
+      const repeated = scenario === "repeated-event";
       const harness = await makeEmulatorHarness();
       const {
         realBlueprint,
@@ -543,8 +556,9 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
         ...authenticInfo,
         signature: [authenticInfo.signature[0], "ee".repeat(64)],
       };
-      const committedInfoCbor =
-        scenario === "signature-only"
+      const committedInfoCbor = repeated
+        ? SDK.committedWithdrawalValueBytes(authenticInfo)
+        : scenario === "signature-only"
           ? SDK.committedWithdrawalValueBytes(signatureSubstitution)
           : fundedWithdrawalValue(VALUE_DIVERTED_WITHDRAWAL_INFO);
       const committedContentHash = await Effect.runPromise(
@@ -567,6 +581,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
         committedInfoCbor,
         mode,
         absent,
+        repeated,
       );
       if (!("WithdrawalPayload" in admitted.captured.payload))
         throw new Error("Wrong payload kind");
@@ -640,14 +655,21 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       expect(plan.classification.fault).toEqual(
         absent
           ? "NonexistentWithdrawalIdentity"
-          : {
-              MismatchedWithdrawalContent: {
-                committed_withdrawal_content_hash: committedContentHash,
-                authentic_withdrawal_content_hash: authenticContentHash,
-                event_inclusion_time: eventInclusionTime,
+          : repeated
+            ? {
+                IneligibleWithdrawalEvent: {
+                  event_inclusion_time: eventInclusionTime,
+                },
+              }
+            : {
+                MismatchedWithdrawalContent: {
+                  committed_withdrawal_content_hash: committedContentHash,
+                  authentic_withdrawal_content_hash: authenticContentHash,
+                  event_inclusion_time: eventInclusionTime,
+                },
               },
-            },
       );
+      if (repeated) expect(committedContentHash).toBe(authenticContentHash);
 
       // ## init
       const initResult = await submitFabricatedFamilyInit({

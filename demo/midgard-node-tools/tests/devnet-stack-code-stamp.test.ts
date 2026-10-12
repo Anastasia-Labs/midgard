@@ -63,7 +63,7 @@ const builtTree = () => {
     "a/dist/workers/w.js": "w();",
     "a/dist/index.js.map": "{}",
     "a/dist/index.d.ts": "export {};",
-    "a/dist/native/midgard-chain-sync": "ELF",
+    "a/dist/native/midgard-l1-node-transport": "ELF",
     "b/dist/cli.js": "b();",
   });
   const targets: DistTarget[] = [
@@ -100,7 +100,7 @@ describe("codeStamp", () => {
       "a/dist/index.js": ["a();", 90],
       "a/dist/index.js.map": '{"rebuilt":true}',
       "a/dist/index.d.ts": "export type X = 1;",
-      "a/dist/native/midgard-chain-sync": "ELF2",
+      "a/dist/native/midgard-l1-node-transport": "ELF2",
     });
     expect(codeStamp(targets)).toBe(before);
   });
@@ -175,7 +175,7 @@ describe("native build targets", () => {
         layout.nodeRoot,
         "native/mpf-event-flat-wasm/target/release/architecture-g-owner",
       ),
-      join(layout.watcherRoot, "dist/native/midgard-chain-sync"),
+      join(layout.transportRoot, "dist/native/midgard-l1-node-transport"),
     ]);
     const root = scratch();
     write(root, {

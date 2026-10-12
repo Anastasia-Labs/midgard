@@ -12,13 +12,6 @@ import type {
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import {
-  readWatcherLocalUserEventAuthority,
-  type WatcherIndexedUserEvent,
-  type WatcherLocalUserEventAuthority,
-  type WatcherLocalUserEventHeaderCutoff,
-  type WatcherTerminalUserEvent,
-} from "../indexers/user-event-indexer.js";
-import {
   canonicalEffectFromAuthority,
   decodeUserEventIdCborHex,
   eventIdForKey,
@@ -43,8 +36,14 @@ import {
   bindWatcherOriginEventClaim,
   type WatcherCommittedEventClaim,
 } from "./event-claims.js";
-import { watcherOriginalDepositAssets } from "./history-original-assets.js";
 import { type WatcherRuleBundle } from "./rule-bundle.js";
+import {
+  readWatcherUserEventAuthority,
+  watcherOriginalDepositAssets,
+  type WatcherUserEvent,
+  type WatcherUserEventAuthority,
+  type WatcherUserEventHeaderCutoff,
+} from "./user-event.js";
 
 export const eventEffectManifest = (
   phase: WatcherBlockReplayEventAuthority["phase"],
@@ -70,17 +69,17 @@ export type ReplayDeploymentBinding = Readonly<
 >;
 
 export type ReplayHeaderBinding = Pick<
-  WatcherLocalUserEventHeaderCutoff,
+  WatcherUserEventHeaderCutoff,
   "headerHash" | "headerCborHex" | "observedBlockHash" | "observedSlot"
 >;
 
-export const readLocalEventAuthority = async (
-  receipt: WatcherLocalUserEventAuthority,
+export const readUserEventAuthority = async (
+  receipt: WatcherUserEventAuthority,
 ) => {
   try {
-    return await readWatcherLocalUserEventAuthority(receipt);
+    return await readWatcherUserEventAuthority(receipt);
   } catch {
-    return fail("user_event_authority_invalid", "$.localUserEvent");
+    return fail("user_event_authority_invalid", "$.userEvent");
   }
 };
 
@@ -93,7 +92,7 @@ export const validateEventAuthority = async (
   const eventId = eventIdForKeyCborHex(authority.eventKey);
   const eventOutRef = eventIdForKey(authority.eventKey);
   const expectedKind = userEventKindForPhase(authority.phase);
-  const local = await readLocalEventAuthority(authority.localUserEvent);
+  const local = await readUserEventAuthority(authority.userEvent);
   if (
     local.deploymentManifestId !== deployment.deploymentManifestId ||
     local.blueprintHash !== deployment.blueprintHash ||
@@ -101,33 +100,26 @@ export const validateEventAuthority = async (
   ) {
     return fail(
       "user_event_authority_identity_mismatch",
-      "$.localUserEvent.deployment",
+      "$.userEvent.deployment",
     );
   }
   if (
-    local.throughHeader !== null &&
-    (local.throughHeader.headerHash !== header.headerHash ||
-      local.throughHeader.headerCborHex !== header.headerCborHex ||
-      local.throughHeader.observedBlockHash !== header.observedBlockHash ||
-      local.throughHeader.observedSlot !== header.observedSlot)
+    local.throughHeader.headerHash !== header.headerHash ||
+    local.throughHeader.headerCborHex !== header.headerCborHex ||
+    local.throughHeader.observedBlockHash !== header.observedBlockHash ||
+    local.throughHeader.observedSlot !== header.observedSlot
   ) {
     return fail(
       "user_event_authority_identity_mismatch",
-      "$.localUserEvent.throughHeader",
+      "$.userEvent.throughHeader",
     );
   }
-  const event: WatcherIndexedUserEvent | WatcherTerminalUserEvent = local.event;
+  const event: WatcherUserEvent = local.event;
   const network: WatcherRuleBundle["network"] = local.network;
-  const historyEntryDigests: readonly string[] = local.historyEntryDigests;
   const origin: WatcherBlockReplayEventOriginRecord = Object.freeze({
-    source: "local_publication",
-    historyEntryDigests: local.historyEntryDigests,
+    source: "follower_facts",
     deploymentManifestId: local.deploymentManifestId,
     blueprintHash: local.blueprintHash,
-    checkpointDigest: local.checkpointDigest,
-    checkpointPayloadDigest: local.checkpointPayloadDigest,
-    snapshotDigest: local.snapshotDigest,
-    headEntryDigest: local.headEntryDigest,
     throughHeader: local.throughHeader,
   });
   if (
@@ -142,21 +134,11 @@ export const validateEventAuthority = async (
   }
   if (
     event.nonceOutRef !==
-      `${eventOutRef.transactionId}#${eventOutRef.outputIndex.toString()}` ||
-    sha256Hex(Buffer.from(event.eventCborHex, "hex")) !==
-      event.eventContentDigest ||
-    sha256Hex(Buffer.from(event.datumCborHex, "hex")) !== event.datumDigest ||
-    sha256Hex(Buffer.from(event.outputCborHex, "hex")) !== event.outputDigest
+    `${eventOutRef.transactionId}#${eventOutRef.outputIndex.toString()}`
   ) {
     return fail(
       "user_event_authority_identity_mismatch",
-      "$.localUserEvent.event.digest",
-    );
-  }
-  if (historyEntryDigests.length === 0) {
-    return fail(
-      "user_event_authority_identity_mismatch",
-      "$.localUserEvent.history",
+      "$.userEvent.event.nonceOutRef",
     );
   }
   const matchesClaim = claims.filter(
@@ -326,7 +308,7 @@ export const validateEventAuthority = async (
 export type EvaluateWatcherBlockReplayCandidatesInput = {
   /** Canonical Phase A candidates, in canonical block order. */
   readonly candidates: readonly PhaseAValidatedTx[];
-  /** Prior-state ledger entries, from the W21 records. */
+  /** Prior-state ledger entries: the parent block's canonical reconstruction UTxOs. */
   readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
   /** The L1-committed `prevUtxosRoot` the prior state must reproduce. */
   readonly expectedPriorStateRoot: string;

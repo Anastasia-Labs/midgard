@@ -1,4 +1,5 @@
 import { outRefLabel } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildValidationTraceDisputeFaultProofContracts,
   parseFaultProofBlueprint,
@@ -130,6 +131,7 @@ export const prepareRouteFreedomJourney = async ({
     });
   const validationDisputeSdkContracts = await Effect.runPromise(
     buildValidationTraceDisputeFaultProofContracts({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
       network,
       hubOraclePolicyId: contracts.hubOracle.policyId,

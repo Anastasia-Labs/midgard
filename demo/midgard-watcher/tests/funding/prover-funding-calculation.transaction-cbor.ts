@@ -272,24 +272,3 @@ export const signedFlowTransaction = (input: {
     undefined,
   ).to_canonical_cbor_hex();
 };
-
-export const ogmiosParameters = () => ({
-  minFeeCoefficient: 44,
-  minFeeConstant: { ada: { lovelace: 155381 } },
-  scriptExecutionPrices: { memory: "577/10000", cpu: "721/10000000" },
-  minUtxoDepositCoefficient: 4310,
-  collateralPercentage: 150,
-  maxCollateralInputs: 3,
-  maxTransactionSize: { bytes: 16384 },
-  maxValueSize: { bytes: 5000 },
-  maxExecutionUnitsPerTransaction: {
-    memory: 16_500_000,
-    cpu: 10_000_000_000,
-  },
-  minFeeReferenceScripts: {
-    base: 15,
-    range: 25_600,
-    multiplier: 1.2,
-  },
-  maxReferenceScriptsSizePerTransaction: { bytes: 204_800 },
-});

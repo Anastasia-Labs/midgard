@@ -2,13 +2,13 @@
  * Building the full FaultProofContracts set from a blueprint and mapping chains to first steps.
  */
 
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { Effect } from "effect";
 
 import { type FraudProofs } from "../../common.js";
 import { type EventHistoryPayloadBounds } from "../../user-events/history-payload.js";
 import { buildCanonicalDecodabilityChain } from "./families/canonical-decodability.js";
 import { buildCommittedFieldShapeChain } from "./families/committed-field-shape.js";
-import { buildCrossBlockDuplicateEventChain } from "./families/cross-block-duplicate-event.js";
 import { buildDaHashPreimageChain } from "./families/da-hash-preimage.js";
 import { buildDistinctAssetAccumulationLimitChain } from "./families/distinct-asset-accumulation-limit.js";
 import { buildDoubleSpendChain } from "./families/double-spend.js";
@@ -32,8 +32,6 @@ import { buildMinFeeChain } from "./families/min-fee.js";
 import { buildMintAuthorizationChain } from "./families/mint-authorization.js";
 import { buildMintDeclaredAssetLimitChain } from "./families/mint-declared-asset-limit.js";
 import { buildMintItemNonCanonicalChain } from "./families/mint-item-non-canonical.js";
-import { buildMissingNativeScriptTxChain } from "./families/missing-native-script-tx.js";
-import { buildMissingNativeScriptUtxoChain } from "./families/missing-native-script-utxo.js";
 import { buildMissingRedeemerChain } from "./families/missing-redeemer.js";
 import { buildMissingScriptSourceChain } from "./families/missing-script-source.js";
 import { buildMissingSignatureChain } from "./families/missing-signature.js";
@@ -73,6 +71,8 @@ import {
 export const buildFaultProofContracts = (
   params: BuildMinAdaFaultProofContractsParams & {
     readonly eventHistoryBounds: EventHistoryPayloadBounds;
+    /** The deployment's L1 slot mapping (validation-trace txInfo stage). */
+    readonly l1SlotConfig: L1SlotConfig;
   },
 ): Effect.Effect<FaultProofContracts, Error> =>
   Effect.gen(function* () {
@@ -137,10 +137,6 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
-    const missingNativeScriptTx = yield* buildMissingNativeScriptTxChain({
-      ...params,
-      ...shared,
-    });
     const withdrawnReferenceInput = yield* buildWithdrawnReferenceInputChain({
       ...params,
       ...shared,
@@ -162,10 +158,6 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
-    const crossBlockDuplicateEvent = yield* buildCrossBlockDuplicateEventChain({
-      ...params,
-      ...shared,
-    });
     const l2TxMistag = yield* buildL2TxMistagChain({ ...params, ...shared });
     const withdrawnInput = yield* buildWithdrawnInputChain({
       ...params,
@@ -184,10 +176,6 @@ export const buildFaultProofContracts = (
       ...shared,
     });
     const networkId = yield* buildNetworkIdChain({
-      ...params,
-      ...shared,
-    });
-    const missingNativeScriptUtxo = yield* buildMissingNativeScriptUtxoChain({
       ...params,
       ...shared,
     });
@@ -292,21 +280,18 @@ export const buildFaultProofContracts = (
       fabricatedWithdrawal,
       nativeScriptDecoding,
       missingSignature,
-      missingNativeScriptTx,
       withdrawnReferenceInput,
       canonicalDecodability,
       committedFieldShape,
       minFee,
       withdrawalMistag,
       doubleWithdraw,
-      crossBlockDuplicateEvent,
       l2TxMistag,
       withdrawnInput,
       valueNotPreserved,
       inputSetUniqueness,
       mintAuthorization,
       networkId,
-      missingNativeScriptUtxo,
       nativeScriptInvalid,
       minAda,
       fieldPreimageLengthMismatch,
@@ -361,21 +346,18 @@ export const fraudProofContractsToFirstSteps = (
   fabricatedWithdrawal: contracts.fabricatedWithdrawal.firstStep,
   nativeScriptDecoding: contracts.nativeScriptDecoding.firstStep,
   missingSignature: contracts.missingSignature.firstStep,
-  missingNativeScriptTx: contracts.missingNativeScriptTx.firstStep,
   withdrawnReferenceInput: contracts.withdrawnReferenceInput.firstStep,
   canonicalDecodability: contracts.canonicalDecodability.firstStep,
   committedFieldShape: contracts.committedFieldShape.firstStep,
   minFee: contracts.minFee.firstStep,
   withdrawalMistag: contracts.withdrawalMistag.firstStep,
   doubleWithdraw: contracts.doubleWithdraw.firstStep,
-  crossBlockDuplicateEvent: contracts.crossBlockDuplicateEvent.firstStep,
   l2TxMistag: contracts.l2TxMistag.firstStep,
   withdrawnInput: contracts.withdrawnInput.firstStep,
   valueNotPreserved: contracts.valueNotPreserved.firstStep,
   inputSetUniqueness: contracts.inputSetUniqueness.firstStep,
   mintAuthorization: contracts.mintAuthorization.firstStep,
   networkId: contracts.networkId.firstStep,
-  missingNativeScriptUtxo: contracts.missingNativeScriptUtxo.firstStep,
   nativeScriptInvalid: contracts.nativeScriptInvalid.firstStep,
   minAda: contracts.minAda.firstStep,
   fieldPreimageLengthMismatch: contracts.fieldPreimageLengthMismatch.firstStep,

@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   nativeFaultContext,
@@ -49,6 +50,7 @@ it.each([
         effectiveEndTime: new Date(nativeFaultContext.blockEndTimeMs),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,
@@ -89,6 +91,7 @@ it.each([
     const root = fixture.trace.states[0]!.priorLedgerRoot.toString("hex");
     const [retained] = await Effect.runPromise(
       buildDeterministicValidationTraceMembers({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         ...nativeFaultContext,
         blockEndTime: new Date(nativeFaultContext.blockEndTimeMs),
         transactions: [

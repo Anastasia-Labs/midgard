@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
+  checkCoreBare,
   checkHooks,
   checkNode,
   defaultPnpmVersion,
@@ -100,6 +101,7 @@ export const defaultChecks = {
       "dist:midgard-validation",
     ),
   hooks: ({ root }) => checkHooks({ root }),
+  "core-bare": ({ root }) => checkCoreBare({ root }),
   node: ({ root }) => checkNode({ root }),
   pnpm: ({ root }) => checkPnpm({ root }),
 };

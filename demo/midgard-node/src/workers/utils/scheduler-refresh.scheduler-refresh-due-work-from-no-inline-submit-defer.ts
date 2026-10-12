@@ -1,3 +1,4 @@
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
@@ -6,9 +7,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
-import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
 import { slotToUnixTimeForLucid } from "../../lucid-time.js";
-import { type OperatorWalletView } from "../../operator-wallet-view.js";
 import {
   slotAwareDueWorkFromSubmitTiming,
   type SubmitTimingNotDuePlanWithDueWorkEvidence,
@@ -31,7 +30,8 @@ export type RealStateQueueWitnessContext = {
   readonly stateQueueSpendingScriptRef?: UTxO;
   readonly stateQueueMintingScriptRef?: UTxO;
   readonly stateQueueCommitYieldScriptRef: UTxO;
-  readonly operatorWalletView: OperatorWalletView;
+  /** The operator wallet view's UTxOs (§8.5), read after scheduler alignment. */
+  readonly operatorWalletInputs: readonly UTxO[];
 };
 
 export type CommitTimingDueWork = {
@@ -92,10 +92,7 @@ export type SchedulerRefreshWitnessSelection =
     };
 
 export type SchedulerAlignmentResult =
-  | {
-      readonly schedulerRefInput: UTxO;
-      readonly operatorWalletView: OperatorWalletView;
-    }
+  | { readonly schedulerRefInput: UTxO }
   | CommitTimingDueWork;
 
 export type ActiveSchedulerState = {

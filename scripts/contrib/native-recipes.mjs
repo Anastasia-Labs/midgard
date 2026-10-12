@@ -8,9 +8,10 @@ export const NATIVE_RECIPES = {
       ["rustc", "--version"],
     ],
   },
-  "midgard-watcher": {
+  "@al-ft/l1-node-transport": {
     recipe: "native:build",
-    output: "dist/native/midgard-chain-sync",
+    output: "dist/native/midgard-l1-node-transport",
+    toolsDirectory: "native",
     tools: [["go", "version"]],
   },
 };

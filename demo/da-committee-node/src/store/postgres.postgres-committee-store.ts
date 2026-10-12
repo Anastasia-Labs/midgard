@@ -1,4 +1,3 @@
-import { daRetentionPruneDecision } from "@al-ft/midgard-core";
 import {
   assertDeploymentMarkerMatches,
   type DeploymentMarker,
@@ -22,27 +21,24 @@ import {
   parseDaStoredPayloadRecord,
   type StateQueueHeaderRecord,
 } from "../domain.js";
-import type {
-  L1RecoveryCertificate,
-  L1RecoverySnapshot,
-} from "../l1/recovery-incident.js";
+import type { SignedHeader } from "../l1/follower/obligations.js";
 import {
   type CommitteeDeploymentRecord,
   type CommitteeStore,
+  type CommitteeStoreReadinessCounts,
   type DecisionOutboxRecord,
   type DecisionOutboxStatus,
   InFlightDecisionAttempts,
   type L1SourceState,
-  mergeQuarantinedL1SourceState,
   parseDecisionOutboxRecord,
   parseL1SourceState,
   resolveDaPayloadSave,
   type RetainedPayloadPruneRequest,
 } from "../store.js";
 import {
-  postgresApplyL1Recovery,
-  postgresL1RecoverySnapshot,
-} from "./l1-recovery-postgres.js";
+  prunePostgresSignedDecisionsUnlessRetiring as pruneSignedDecisions,
+  releasePostgresHeaderRows,
+} from "./decision-pruning-postgres.js";
 import {
   assertConflictEvidenceRowIdentity,
   assertDecisionOutboxRowIdentity,
@@ -56,7 +52,6 @@ import {
   decodeRecord,
   decodeRow,
   encodeRecord,
-  ensureL1SourceStateRow,
   type JsonRecordRow,
   lockL1SourceState,
   mergeLockedL1SourceState,
@@ -66,14 +61,15 @@ import {
   upsertSignatureWithClient,
 } from "./postgres.assert-postgres-decision-retry.js";
 import { PostgresStoreInstanceLock } from "./postgres.instance-lock.js";
-import { initializeCommitteeSchema } from "./postgres.schema.js";
+import {
+  COMMITTEE_READINESS_COUNTS_SQL,
+  initializeCommitteeSchema,
+  UNSETTLED_HEADER_PREDICATE,
+} from "./postgres.schema.js";
+import { readCommitteeL1PinTargets } from "./postgres.stored-l1-points.js";
 import * as capacity from "./promise-capacity-postgres.js";
 import { postgresPromiseResources } from "./promise-resource-usage.js";
-import {
-  retentionBlockEndTimeMs,
-  retentionQueueReference,
-  terminalRecoveryFinal,
-} from "./retention.js";
+import { retainedPayloadPruneDecision } from "./retention.js";
 import { type CommitteeRetirementCertificate } from "./retirement-certificate.js";
 import {
   type CommitteeRetirementBreachPoint,
@@ -86,7 +82,6 @@ import {
   assertPostgresRetirementResources,
   readPostgresRetirementData,
   readPostgresRetirementFloor,
-  RETIREMENT_SCHEMA_SQL,
 } from "./retirement-postgres.js";
 import { PostgresRetirementOperations } from "./retirement-postgres-operations.js";
 import {
@@ -99,22 +94,8 @@ export class PostgresCommitteeStore implements CommitteeStore {
   private readonly retirement = new CommitteeRetirementController();
   private readonly retirementOperations: PostgresRetirementOperations;
   private readonly pool: Pool;
-  private readonly instanceLock: PostgresStoreInstanceLock;
+  readonly instanceLock: PostgresStoreInstanceLock;
   private readonly inFlightDecisions = new InFlightDecisionAttempts();
-
-  readL1RecoverySnapshot(): Promise<L1RecoverySnapshot> {
-    return postgresL1RecoverySnapshot(this.pool, this.instanceLock);
-  }
-  applyL1RecoveryCertificate(
-    certificate: L1RecoveryCertificate,
-  ): Promise<void> {
-    return postgresApplyL1Recovery(
-      this.pool,
-      this.instanceLock,
-      this.retirement,
-      certificate,
-    );
-  }
 
   private constructor(pool: Pool, instanceLock: PostgresStoreInstanceLock) {
     this.pool = pool;
@@ -155,7 +136,8 @@ export class PostgresCommitteeStore implements CommitteeStore {
     });
     const store = new PostgresCommitteeStore(pool, instanceLock);
     try {
-      await store.initSchema();
+      await store.renameLegacyTables();
+      await initializeCommitteeSchema(pool, instanceLock, options.openChecks);
       store.retirement.load(await store.getRetirementFloor());
     } catch (error) {
       await store.close().catch(() => undefined);
@@ -203,6 +185,8 @@ export class PostgresCommitteeStore implements CommitteeStore {
       client.release();
     }
   }
+  /** The L1 history the stored records name: the follower's pins. */
+  readonly readL1PinTargets = () => readCommitteeL1PinTargets(this.pool);
   async withRetainedHeaderPin<T>(
     headerHash: string,
     run: () => Promise<T>,
@@ -461,9 +445,7 @@ export class PostgresCommitteeStore implements CommitteeStore {
       }
       if (
         existing.status !== "pending" ||
-        existing.attemptCount !== args.expectedAttemptCount ||
-        existing.quarantineReason !== undefined ||
-        existing.quarantinedAt !== undefined
+        existing.attemptCount !== args.expectedAttemptCount
       ) {
         throw new Error(
           "decision outbox completion does not match the pending attempt",
@@ -495,102 +477,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
     });
   }
 
-  async quarantineL1Decisions(state: L1SourceState): Promise<void> {
-    const canonical = parseL1SourceState(state);
-    if (canonical.status !== "quarantined") {
-      throw new Error(
-        "L1 decision quarantine requires quarantined source state",
-      );
-    }
-    await this.withClient(async (client) => {
-      await ensureL1SourceStateRow(client, canonical);
-      const current = await lockL1SourceState(client);
-      const quarantined = mergeQuarantinedL1SourceState(current, canonical);
-      const headerHashes = quarantined.observations
-        .filter(({ hasPersistedDecision }) => hasPersistedDecision)
-        .map(({ headerHash }) => headerHash);
-      const reason = `l1_source_quarantined:${quarantined.quarantineReason!}`;
-      await client.query(
-        `UPDATE committee_l1_source_state
-           SET record = $1::jsonb, updated_at = NOW()
-           WHERE id = 1`,
-        [encodeRecord(quarantined)],
-      );
-      if (headerHashes.length > 0) {
-        await client.query(
-          `UPDATE committee_state_queue_headers
-             SET record =
-                   record ||
-                   jsonb_build_object(
-                     'status', 'conflicted',
-                     'validationErrors',
-                       COALESCE(record->'validationErrors', '[]'::jsonb) ||
-                       to_jsonb($2::text),
-                     'updatedAt', $3::text
-                   ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [headerHashes, reason, quarantined.quarantinedAt],
-        );
-        // Preserve retained payloads: see CommitteeStore.quarantineL1Decisions.
-        await client.query(
-          `UPDATE committee_da_signatures
-             SET record = record || jsonb_build_object(
-                   'broadcastStatus', 'post_failed'
-                 ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [headerHashes],
-        );
-        await client.query(
-          `UPDATE committee_l1_submissions
-             SET record =
-                   record ||
-                   jsonb_build_object(
-                     'resultStatus', 'failed',
-                     'failureCause', $2::text
-                   ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [headerHashes, reason],
-        );
-        await client.query(
-          `UPDATE committee_peer_broadcasts
-             SET record =
-                   (record - 'nextAttemptAt') ||
-                   jsonb_build_object(
-                     'status', 'failed',
-                     'lastError', $2::text,
-                     'updatedAt', $3::text
-                   ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [headerHashes, reason, quarantined.quarantinedAt],
-        );
-        await client.query(
-          `UPDATE committee_decision_outbox
-             SET record =
-                   record ||
-                   jsonb_build_object(
-                     'status', 'failed',
-                     'lastError', $2::text,
-                     'quarantineReason', $3::text,
-                     'quarantinedAt', $4::text,
-                     'updatedAt', $4::text
-                   ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [
-            headerHashes,
-            reason,
-            quarantined.quarantineReason,
-            quarantined.quarantinedAt,
-          ],
-        );
-      }
-    });
-  }
-
   async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
     await this.upsertRecord(
       "committee_state_queue_headers",
@@ -599,10 +485,69 @@ export class PostgresCommitteeStore implements CommitteeStore {
     );
   }
 
-  async listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]> {
+  async listUnsettledStateQueueHeaders(): Promise<
+    readonly StateQueueHeaderRecord[]
+  > {
     return this.listRecords<StateQueueHeaderRecord>(
-      "SELECT record FROM committee_state_queue_headers ORDER BY header_hash",
+      `SELECT record FROM committee_state_queue_headers
+       WHERE ${UNSETTLED_HEADER_PREDICATE} ORDER BY header_hash`,
     );
+  }
+
+  async getStateQueueHeaders(
+    headerHashes: readonly string[],
+  ): Promise<readonly StateQueueHeaderRecord[]> {
+    if (headerHashes.length === 0) return [];
+    return this.listRecords<StateQueueHeaderRecord>(
+      `SELECT record FROM committee_state_queue_headers
+       WHERE header_hash = ANY($1::text[]) ORDER BY header_hash`,
+      [[...new Set(headerHashes)]],
+    );
+  }
+
+  async readinessCounts(): Promise<CommitteeStoreReadinessCounts> {
+    const result = await this.pool.query<{
+      readonly totals: Readonly<Record<string, string | number>> | null;
+      readonly missing_payloads: string;
+      readonly verified_missing_l1_attestation: string;
+    }>(COMMITTEE_READINESS_COUNTS_SQL);
+    const row = result.rows[0];
+    const total = (name: string): number => {
+      const value = Number(row?.totals?.[name]);
+      if (!Number.isSafeInteger(value) || value < 0)
+        throw new Error(`committee store counter ${name} is unavailable`);
+      return value;
+    };
+    return {
+      discoveredHeaders: total("headers"),
+      missingPayloads: Number(row?.missing_payloads ?? 0),
+      verifiedPayloads: total("verified_payloads"),
+      verifiedPayloadsMissingL1Attestation: Number(
+        row?.verified_missing_l1_attestation ?? 0,
+      ),
+      signatures: total("signatures"),
+      l1AttestationSubmissions: total("l1_submissions"),
+      submittedOrConfirmedL1Attestations: total(
+        "submitted_or_confirmed_headers",
+      ),
+    };
+  }
+
+  async listSignedDecisions(): Promise<readonly SignedHeader[]> {
+    const result = await this.pool.query<{
+      readonly header_hash: string;
+      readonly end_time_ms: string;
+    }>(
+      `SELECT DISTINCT ON (header_hash)
+              header_hash, end_time_ms::text AS end_time_ms
+       FROM committee_da_signatures
+       WHERE end_time_ms IS NOT NULL
+       ORDER BY header_hash`,
+    );
+    return result.rows.map((row) => ({
+      headerHash: row.header_hash,
+      endTimeMs: BigInt(row.end_time_ms),
+    }));
   }
 
   async getStateQueueHeader(
@@ -682,18 +627,8 @@ export class PostgresCommitteeStore implements CommitteeStore {
             );
       const prune =
         payload !== undefined &&
-        daRetentionPruneDecision({
-          nowMs: request.nowMs,
-          blockEndTimeMs: retentionBlockEndTimeMs(payload, header),
-          headerStatus: header?.status ?? "unobserved",
-          queueReference: retentionQueueReference(request.headerHash, request),
-          retentionDays: request.retentionDays,
-          terminalRecoveryFinal: terminalRecoveryFinal(
-            header,
-            request,
-            payload.deploymentFingerprint,
-          ),
-        }).decision === "prune";
+        retainedPayloadPruneDecision(payload, header, request).decision ===
+          "prune";
       const deleted =
         prune &&
         ((
@@ -702,9 +637,20 @@ export class PostgresCommitteeStore implements CommitteeStore {
             [request.headerHash],
           )
         ).rowCount ?? 0) > 0;
+      if (deleted && request.releaseHeader === true)
+        await releasePostgresHeaderRows(
+          client,
+          request.headerHash,
+          this.inFlightDecisions,
+        );
       return deleted;
     });
   }
+
+  pruneSignedDecisions = (headerHashes: readonly string[]) =>
+    this.withClient((client) =>
+      pruneSignedDecisions(client, headerHashes, this.inFlightDecisions),
+    );
 
   getPromiseCapacityEvidence = capacity.reader(() => this.pool);
   savePromiseCapacityEvidence = capacity.writer(
@@ -714,12 +660,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
     const canonicalRecord = parseDaSignatureRecord(record);
     await this.withClient(async (client) => {
-      const sourceState = await lockL1SourceState(client);
-      if (sourceState?.status === "quarantined") {
-        throw new Error(
-          "cannot persist a DA signature while the L1 source is quarantined",
-        );
-      }
       await upsertSignatureWithClient(client, canonicalRecord);
     });
   }
@@ -764,21 +704,19 @@ export class PostgresCommitteeStore implements CommitteeStore {
          evidence_hash,
          header_hash,
          commitment_digest,
-         conflicting_header_hash,
          conflicting_commitment_digest,
          signer_index,
          reporter_peer_id,
          record,
          created_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
        ON CONFLICT (deployment_fingerprint, evidence_hash) DO NOTHING`,
         [
           canonicalRecord.deploymentFingerprint,
           canonicalRecord.evidenceHash,
           canonicalRecord.headerHash,
           canonicalRecord.commitmentDigest,
-          canonicalRecord.conflictingHeaderHash,
           canonicalRecord.conflictingCommitmentDigest,
           canonicalRecord.signerIndex,
           canonicalRecord.reporterPeerId,
@@ -794,13 +732,13 @@ export class PostgresCommitteeStore implements CommitteeStore {
     return this.listParsedRecords(
       headerHash === undefined
         ? `SELECT deployment_fingerprint, evidence_hash, header_hash,
-                  commitment_digest, conflicting_header_hash,
+                  commitment_digest,
                   conflicting_commitment_digest, signer_index, reporter_peer_id,
                   record
            FROM committee_da_conflict_evidence
            ORDER BY header_hash, signer_index, evidence_hash`
         : `SELECT deployment_fingerprint, evidence_hash, header_hash,
-                  commitment_digest, conflicting_header_hash,
+                  commitment_digest,
                   conflicting_commitment_digest, signer_index, reporter_peer_id,
                   record
            FROM committee_da_conflict_evidence
@@ -964,11 +902,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
       );
       return result.rowCount === 1;
     });
-  }
-  private async initSchema(): Promise<void> {
-    await this.renameLegacyTables();
-    await this.pool.query(RETIREMENT_SCHEMA_SQL);
-    await initializeCommitteeSchema(this.pool);
   }
 
   /** Rename legacy watcher_* tables in place to preserve existing data.

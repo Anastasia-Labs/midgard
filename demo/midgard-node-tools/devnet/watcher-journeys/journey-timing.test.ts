@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { REGISTRATION_DURATION_MS } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -23,6 +24,8 @@ const preprod = {
   activeSlotsCoeff: 0.05,
   confirmationDepth: 30,
 };
+/** The selected deployment profile's registration window, in the budget. */
+const registrationMs = Number(REGISTRATION_DURATION_MS);
 
 describe("single-deposit transition-trace journey timing", () => {
   it("counts the finite proof path and confirms its actual output fold shape", () => {
@@ -68,9 +71,9 @@ describe("single-deposit transition-trace journey timing", () => {
     expect(timing.expectedConfirmationMs).toBe(150 * 60_000);
     expect(timing.confirmationAllowanceMs).toBe(300 * 60_000);
     expect(timing.correctionTimeoutMs).toBe(20_250_000);
-    expect(timing.journeyTimeoutMs).toBe(30_210_030);
+    expect(timing.journeyTimeoutMs).toBe(30_210_000 + registrationMs);
     expect(timing.plan.successorTransactions).toBe(4);
-    expect(timing.allowances.successorRegistrationMs).toBe(30);
+    expect(timing.allowances.successorRegistrationMs).toBe(registrationMs);
     expect(timing.cadence.confirmationDepth).toBe(30);
     // Absent an explicit action depth, every stage keeps waiting for release
     // finality, which is the behavior before inclusion-gated actions.
@@ -195,7 +198,7 @@ describe("generic journey timing for families without an audited plan", () => {
     expect(timing.transactionAllowanceMs).toBe(1_350_000);
     expect(timing.transactionAllowanceMs).toBe(audited.transactionAllowanceMs);
     expect(timing.correctionTimeoutMs).toBe(24 * 1_350_000);
-    expect(timing.journeyTimeoutMs).toBe(42_360_030);
+    expect(timing.journeyTimeoutMs).toBe(42_360_000 + registrationMs);
     expect(timing.journeyTimeoutMs).toBeGreaterThan(audited.journeyTimeoutMs);
     expect(timing.allowances).toEqual(audited.allowances);
   });

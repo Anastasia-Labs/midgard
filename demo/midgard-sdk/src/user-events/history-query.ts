@@ -228,6 +228,20 @@ const openHistoryOrder = (
   return { kind: "Present", anchor, payloadCbor, ...loaded };
 };
 
+/** Opens the one authenticated Order `orderUtxo` holds, for a caller that
+ * found it by its key. An external payload is read from `retainedUtxos`.
+ * Refuses exactly as a full read refuses that Order. */
+export const readEventHistoryOrder = (
+  orderUtxo: UTxO,
+  retainedUtxos: readonly UTxO[],
+  deployment: EventHistoryDeployment,
+): EventHistoryPresence => {
+  const nodes = authenticateHistoryNodes([orderUtxo], deployment);
+  if (nodes.length !== 1)
+    throw invalid("History presence requires an authenticated Order");
+  return openHistoryOrder(nodes[0]!, deployment, retainedUtxos);
+};
+
 /** A full event scan must not silently accept a partial provider snapshot. */
 const completeHistorySnapshot = (
   nodes: readonly AuthenticatedHistoryNode[],

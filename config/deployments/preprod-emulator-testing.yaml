@@ -3,6 +3,14 @@ name: preprod-emulator-testing
 network: Preprod
 l1_finality:
   confirmation_depth: 3
+  # Largest d a commit can be planned at, which the TTL floor sets here:
+  # (W - 30,000 - 1,000) / 60,000 ms - 1 = 569,000 / 60,000 - 1 = 8
+  # (config/deployments/README.md).
+  commit_event_depth: 8
+  # Cardano consensus the depth bounds assume: k, f and the slot length.
+  security_parameter: 2160
+  active_slot_coeff: "0.05"
+  slot_length_ms: 1000
 timing:
   block_maturity_ms: 14400000 # four hours of emulator time; never a wall-clock wait
   dispute_response_window_ms: 60000
@@ -10,8 +18,7 @@ timing:
   registration_ms: 30000
   event_wait_ms: 600000
   user_events_negligence_timeout_ms: 1200000
-  max_inactivity_between_block_commitments_ms: 1200000
-  new_shift_inactivity_grace_period_ms: 300000
+  new_shift_inactivity_grace_period_ms: 480000
   max_validity_range_ms: 480000
   da_attestation_timeout_ms: 600000
   da_small_response_window_ms: 720000

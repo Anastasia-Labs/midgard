@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
   copyFileSync,
@@ -19,6 +18,7 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
@@ -44,10 +44,12 @@ import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
 } from "midgard-node/transactions/initialization";
+import * as watcherPackage from "midgard-watcher";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { DeployContext } from "../src/devnet-stack/deploy.js";
 import { loadIdentities } from "../src/devnet-stack/identities.js";
+import { Journal } from "../src/devnet-stack/journal.js";
 import {
   type Layout,
   makeLayout,
@@ -57,14 +59,9 @@ import {
 import type { HubOracleOneShot } from "../src/devnet-stack/node-env.js";
 import {
   ensureWatcherRelease,
+  preflightWatcherConfigs,
   watcherServiceSpecs,
 } from "../src/devnet-stack/watcher.js";
-import {
-  historyHost,
-  historyTransportEnvironment,
-  startHistoryArchive,
-  startHistoryTunnel,
-} from "../src/devnet-stack/watcher-history.js";
 import {
   loadWatcherModule,
   releasePaths,
@@ -77,6 +74,7 @@ const scratchRoot =
   join(toolsRoot, "node_modules/.cache/devnet-stack-watcher-test");
 const runDir = join(scratchRoot, `run-${randomBytes(4).toString("hex")}`);
 const PEER_ID = "12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
+const RECORDED_ORIGIN = { slot: 4242, blockHash: "cd".repeat(32) };
 
 /**
  * A finalized deployment manifest over the real contracts, as
@@ -129,6 +127,7 @@ const makeDevnetManifest = async (
         catalogue,
       ),
       {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         network: SELECTED_DEPLOYMENT_PROFILE.network,
         availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
         economics: SELECTED_DEPLOYMENT_PROFILE.economics,
@@ -231,7 +230,7 @@ beforeAll(async () => {
     artifacts: {
       nativeOwnerBinary: join(layout.bin, "native-owner"),
       nativeOwnerSha256: "00".repeat(32),
-      chainSyncBinary: join(layout.bin, "midgard-chain-sync"),
+      transportBinary: join(layout.bin, "midgard-l1-node-transport"),
     },
   };
 
@@ -249,6 +248,13 @@ beforeAll(async () => {
   oneShot = { txHash: txHash!, outputIndex: Number(outputIndex) };
 
   writeJson(layout.contractManifest, manifest);
+  // The run's recorded L1 origin, as `ensureL1Origin` records it after deploy.
+  new Journal(layout.journal).set("l1Origin", {
+    origin: RECORDED_ORIGIN,
+    nonceTxHash: oneShot.txHash.toLowerCase(),
+    nonceBlock: { slot: RECORDED_ORIGIN.slot + 1, blockHash: "ef".repeat(32) },
+    recordedAt: "2026-09-30T00:00:00.000Z",
+  });
   writeJson(layout.shelleyGenesis, {
     networkMagic: run.networkMagic,
     systemStart: "2026-09-30T00:00:00Z",
@@ -275,7 +281,7 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
   "devnet watcher release (needs the local-devnet-testing profile compiled)",
   () => {
     it("generates a release and configurations the watcher's own loaders accept", async () => {
-      await ensureWatcherRelease(context, oneShot, true);
+      await ensureWatcherRelease(context, oneShot);
       const watcher = await loadWatcherModule(layout);
       const paths = releasePaths(layout);
 
@@ -289,9 +295,6 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       const processConfig = watcher.parseWatcherProcessConfig(
         JSON.parse(readFileSync(layout.watcherProcessConfig, "utf8")),
       );
-      watcher.parseWatcherTrustedHeadAuthorityProcessConfig(
-        JSON.parse(readFileSync(layout.watcherAuthorityConfig, "utf8")),
-      );
       const runtime = JSON.parse(
         readFileSync(layout.watcherRuntimeConfig, "utf8"),
       );
@@ -304,12 +307,17 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       );
 
       const l1 = runtime.l1 as {
-        finality: { depth: number; rollback: { maxDepth: number } };
+        finality: unknown;
+        source: object;
+        origin: unknown;
       };
-      expect(l1.finality.depth).toBe(manifest.l1Finality.confirmationDepth);
-      expect(l1.finality.rollback.maxDepth).toBe(
-        manifest.l1Finality.confirmationDepth,
-      );
+      expect(l1.finality).toEqual({
+        depth: manifest.l1Finality.confirmationDepth,
+      });
+      expect(l1.origin).toEqual(RECORDED_ORIGIN);
+      expect(l1.source).not.toHaveProperty("queryServices");
+      expect(processConfig).not.toHaveProperty("trustedHeadAuthorityEndpoint");
+      expect(processConfig).not.toHaveProperty("httpBearerSecretSource");
       expect(runtime.customNetwork).toEqual({
         networkMagic: 424242,
         slotConfig: {
@@ -322,18 +330,17 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       const secrets = readdirSync(dirname(layout.watcherSecret("x"))).map(
         (name) => layout.watcherSecret(name),
       );
-      expect(secrets).toHaveLength(5);
+      expect(secrets).toHaveLength(3);
       const values = secrets.map((path) => {
         expect(statSync(path).mode & 0o777).toBe(0o600);
         const text = readFileSync(path, "utf8");
         expect(text.endsWith("\n")).toBe(false);
         return text;
       });
-      expect(new Set(values).size).toBe(5);
-      for (const name of ["trusted-head-record.key", "rollback-authority.key"])
-        expect(readFileSync(layout.watcherSecret(name), "utf8")).toMatch(
-          /^[0-9a-f]{64}$/u,
-        );
+      expect(new Set(values).size).toBe(3);
+      expect(
+        readFileSync(layout.watcherSecret("rollback-authority.key"), "utf8"),
+      ).toMatch(/^[0-9a-f]{64}$/u);
       expect(readFileSync(layout.watcherSecret("prover.seed"), "utf8")).toBe(
         context.identities.seeds.watcherProver,
       );
@@ -344,19 +351,6 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
         expect(
           (await watcher.loadWatcherSecretText({ kind: "file", path })).length,
         ).toBeGreaterThan(0);
-
-      const providers = JSON.parse(
-        readFileSync(layout.watcherHistoryProviders, "utf8"),
-      );
-      expect(providers.sourceMode).toBe("external_provider_quorum");
-      expect(
-        providers.providers.map(
-          (p: { authorityEndpoint: string }) => p.authorityEndpoint,
-        ),
-      ).toEqual([
-        `https://${historyHost(context.run, "a")}`,
-        `https://${historyHost(context.run, "b")}`,
-      ]);
     }, 300_000);
 
     it("changes nothing on a second call", async () => {
@@ -379,26 +373,24 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       expect(snapshot(layout.watcher)).toEqual(before);
     }, 300_000);
 
-    it("orders and wires the watcher's services", () => {
-      const specs = watcherServiceSpecs(context, oneShot);
-      expect(specs.map((spec) => spec.name)).toEqual([
-        "watcher-authority",
-        "watcher-history-a",
-        "watcher-history-b",
-        "watcher-history-tunnel",
-        "watcher-history-recorder",
-        "watcher",
-      ]);
-      const [authority, , , tunnel, , watcher] = specs;
-      expect(authority!.args.slice(-3)).toEqual([
-        "authority",
-        "--config",
-        layout.watcherAuthorityConfig,
-      ]);
-      expect(authority!.healthUrl).toBeUndefined();
-      expect(tunnel!.healthUrl).toBe(
-        `http://127.0.0.1:${servicePorts(context.run).historyTunnel}/healthz`,
-      );
+    it("never regenerates an established watcher's missing secret", async () => {
+      const path = layout.watcherSecret("rollback-authority.key");
+      const original = readFileSync(path);
+      rmSync(path);
+      try {
+        await expect(ensureWatcherRelease(context, oneShot)).rejects.toThrow(
+          "established watcher secret is missing; it is never regenerated",
+        );
+        expect(existsSync(path)).toBe(false);
+      } finally {
+        writeFileSync(path, original, { mode: 0o600 });
+      }
+    }, 300_000);
+
+    it("wires the watcher's service", () => {
+      const specs = watcherServiceSpecs(context);
+      expect(specs.map((spec) => spec.name)).toEqual(["watcher"]);
+      const [watcher] = specs;
       expect(watcher!.args.slice(-3)).toEqual([
         "start",
         "--config",
@@ -411,84 +403,58 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
         `http://127.0.0.1:${servicePorts(context.run).watcherOperations}/readyz`,
       );
       expect(watcher!.readyProbe).toBeUndefined();
-      expect(watcher!.env).toMatchObject(
-        historyTransportEnvironment(layout, context.run),
-      );
-      expect(watcher!.prestart).toBeTypeOf("function");
+      expect(watcher!.env).not.toHaveProperty("HTTPS_PROXY");
+      expect(watcher!.env).not.toHaveProperty("NODE_EXTRA_CA_CERTS");
+      expect(watcher!.prestart).toBeUndefined();
     });
-
-    it("serves each provider over TLS through the tunnel under its roster name", async () => {
-      const headerHash = "cd".repeat(28);
-      const record = { headerHash, marker: randomBytes(8).toString("hex") };
-      for (const role of ["a", "b"] as const)
-        writeFileSync(
-          join(
-            layout.watcherHistoryArchive(role),
-            "records",
-            `${headerHash}.json`,
-          ),
-          JSON.stringify(record),
-        );
-      const servers = [
-        await startHistoryArchive(layout, context.run, "a"),
-        await startHistoryArchive(layout, context.run, "b"),
-        await startHistoryTunnel(context.run),
-      ];
-      try {
-        const script = `
-        const urls = JSON.parse(process.argv[1]);
-        const out = [];
-        for (const url of urls) {
-          try {
-            const response = await fetch(url);
-            out.push({ status: response.status, body: await response.text() });
-          } catch (error) {
-            out.push({ error: String(error.cause?.message ?? error.message) });
-          }
-        }
-        console.log(JSON.stringify(out));`;
-        const path = `/midgard/v1/historical-payload/${manifest.manifestId}/${headerHash}`;
-        const urls = [
-          `https://${historyHost(context.run, "a")}${path}`,
-          `https://${historyHost(context.run, "b")}${path}`,
-          `https://unrouted.midgard-devnet.internal${path}`,
-        ];
-        const output = await new Promise<string>((resolve, reject) => {
-          const child = spawn(
-            process.execPath,
-            ["--input-type=module", "-e", script, JSON.stringify(urls)],
-            {
-              env: {
-                PATH: process.env.PATH,
-                ...historyTransportEnvironment(layout, context.run),
-              },
-              stdio: ["ignore", "pipe", "pipe"],
-            },
-          );
-          let stdout = "";
-          let stderr = "";
-          child.stdout.on("data", (chunk) => (stdout += chunk));
-          child.stderr.on("data", (chunk) => (stderr += chunk));
-          child.once("error", reject);
-          child.once("exit", (code) =>
-            code === 0
-              ? resolve(stdout)
-              : reject(new Error(`child exited ${code}: ${stderr}`)),
-          );
-        });
-        const [a, b, unrouted] = JSON.parse(output.trim().split("\n").at(-1)!);
-        expect(a).toEqual({ status: 200, body: JSON.stringify(record) });
-        expect(b).toEqual({ status: 200, body: JSON.stringify(record) });
-        expect(unrouted.error).toBeDefined();
-        for (const role of ["a", "b"] as const)
-          expect(
-            existsSync(
-              join(layout.watcherHistoryArchive(role), "requests.ndjson"),
-            ),
-          ).toBe(true);
-      } finally {
-        for (const server of servers) await server.close();
-      }
-    }, 60_000);
   },
 );
+
+describe("devnet watcher configuration preflight", () => {
+  /** A generated run with nothing but its genesis: no chain, no deployment. */
+  const generatedRun = (genesis: Record<string, unknown>) => {
+    const preflightLayout = makeLayout(
+      join(scratchRoot, `preflight-${randomBytes(4).toString("hex")}`),
+    );
+    writeJson(preflightLayout.shelleyGenesis, {
+      networkMagic: 424242,
+      systemStart: "2026-09-30T00:00:00Z",
+      slotLength: 0.1,
+      ...genesis,
+    });
+    return {
+      layout: preflightLayout,
+      run: {
+        portOffset: 0,
+        ogmiosPort: 2337,
+        kupoPort: 1442,
+        postgresPort: 5432,
+      } as RunEnv,
+      artifacts: {
+        nativeOwnerBinary: join(preflightLayout.bin, "native-owner"),
+        nativeOwnerSha256: "00".repeat(32),
+        transportBinary: join(preflightLayout.bin, "midgard-l1-node-transport"),
+      },
+    };
+  };
+  afterAll(() => {
+    for (const name of existsSync(scratchRoot) ? readdirSync(scratchRoot) : [])
+      if (name.startsWith("preflight-"))
+        rmSync(join(scratchRoot, name), { recursive: true, force: true });
+  });
+
+  it("checks the run's watcher configurations before any chain or deployment exists", () => {
+    const context = generatedRun({});
+    preflightWatcherConfigs(context, watcherPackage);
+    // Nothing is written: the real configurations come after the deployment.
+    expect(existsSync(context.layout.watcher)).toBe(false);
+  });
+
+  it("refuses a run whose watcher configuration the watcher's parser rejects", () => {
+    const context = generatedRun({ networkMagic: -1 });
+    // The watcher's own custom-network parser refuses the magic.
+    expect(() => preflightWatcherConfigs(context, watcherPackage)).toThrow(
+      "Custom network magic or genesis slot clock is invalid",
+    );
+  });
+});

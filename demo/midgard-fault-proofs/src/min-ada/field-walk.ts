@@ -86,9 +86,6 @@ const offsetAt = (items: readonly Uint8Array[], itemIndex: number): number => {
   return offset;
 };
 
-const sameBytes = (left: Uint8Array, right: Uint8Array): boolean =>
-  Buffer.from(left).equals(Buffer.from(right));
-
 export const encodeMinAdaGrammarCheckpoint = (
   checkpoint: MinAdaGrammarCheckpoint,
 ): Buffer => {
@@ -129,40 +126,6 @@ export const hashMinAdaGrammarCheckpoint = (
   computeHash32(
     Buffer.concat([GRAMMAR_DOMAIN, encodeMinAdaGrammarCheckpoint(checkpoint)]),
   ).toString("hex");
-
-export const decodeMinAdaGrammarCheckpoint = (
-  bytes: Uint8Array,
-): MinAdaGrammarCheckpoint => {
-  const source = Buffer.from(bytes);
-  if (
-    source.length !== 87 ||
-    source[0] !== 0x87 ||
-    source[1] !== 0x58 ||
-    source[2] !== 0x20 ||
-    source[35] !== 0x41 ||
-    source[37] !== 0x58 ||
-    source[38] !== 0x20 ||
-    source[71] !== 0x43 ||
-    source[75] !== 0x43 ||
-    source[79] !== 0x43 ||
-    source[83] !== 0x43
-  ) {
-    throw new Error("min-ada grammar checkpoint is not canonical");
-  }
-  const decoded: MinAdaGrammarCheckpoint = {
-    txId: source.subarray(3, 35).toString("hex"),
-    fieldIndex: source[36]!,
-    fieldCommitment: source.subarray(39, 71).toString("hex"),
-    totalLength: source.readUIntBE(72, 3),
-    declaredCount: source.readUIntBE(76, 3),
-    nextItemIndex: source.readUIntBE(80, 3),
-    nextOffset: source.readUIntBE(84, 3),
-  };
-  if (!sameBytes(encodeMinAdaGrammarCheckpoint(decoded), source)) {
-    throw new Error("min-ada grammar checkpoint is not canonical");
-  }
-  return decoded;
-};
 
 export const initialMinAdaGrammarCheckpoint = ({
   txId,
@@ -272,37 +235,6 @@ export const hashMinAdaSemanticCheckpoint = (
       encodeMinAdaSemanticCheckpoint(checkpoint),
     ]),
   ).toString("hex");
-
-export const decodeMinAdaSemanticCheckpoint = (
-  bytes: Uint8Array,
-): MinAdaSemanticCheckpoint => {
-  const source = Buffer.from(bytes);
-  if (
-    source.length !== 53 ||
-    source[0] !== 0x86 ||
-    source[1] !== 0x58 ||
-    source[2] !== 0x20 ||
-    source[35] !== 0x41 ||
-    source[37] !== 0x43 ||
-    source[41] !== 0x43 ||
-    source[45] !== 0x43 ||
-    source[49] !== 0x43
-  ) {
-    throw new Error("min-ada semantic checkpoint is not canonical");
-  }
-  const decoded: MinAdaSemanticCheckpoint = {
-    txId: source.subarray(3, 35).toString("hex"),
-    fieldIndex: source[36]!,
-    totalLength: source.readUIntBE(38, 3),
-    itemCount: source.readUIntBE(42, 3),
-    nextItemIndex: source.readUIntBE(46, 3),
-    nextOffset: source.readUIntBE(50, 3),
-  };
-  if (!sameBytes(encodeMinAdaSemanticCheckpoint(decoded), source)) {
-    throw new Error("min-ada semantic checkpoint is not canonical");
-  }
-  return decoded;
-};
 
 export const initialMinAdaSemanticCheckpoint = ({
   grammar,

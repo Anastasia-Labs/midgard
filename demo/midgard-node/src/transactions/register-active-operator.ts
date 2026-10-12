@@ -27,7 +27,6 @@ export {
 } from "./reference-scripts.js";
 export {
   activateOperatorProgram,
-  activateProgram,
   activateRegisteredOperatorProgram,
   deregisterOperatorProgram,
   program,

@@ -29,7 +29,9 @@ use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
-use midgard/validation_machine_tests/constants.{h_28_a, h_28_b, h_a, h_b}
+use midgard/validation_machine_tests/constants.{
+  h_28_a, h_28_b, h_a, h_b, test_l1_slot_config,
+}
 use midgard/validation_machine_tests/fixtures_phase_a.{
   cek_context_native_control_fixture, cek_state_fixture,
   empty_cek_context_control_fixture, empty_v1_transaction, inline_field_door,
@@ -405,6 +407,7 @@ fn fold_step(
     pre,
     one_step_evidence(work_witness_cbor, post, auxiliary),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 

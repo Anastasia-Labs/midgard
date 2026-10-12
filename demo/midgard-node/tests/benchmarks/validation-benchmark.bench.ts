@@ -9,6 +9,7 @@ import {
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   PhaseAValidatedTx,
   QueuedTx,
@@ -237,6 +238,7 @@ const runPhaseB = async (
 ) => {
   const { accepted: phaseBAccepted, rejected } = await Effect.runPromise(
     runPhaseBValidationWithPatch(accepted, preState, {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       nowCardanoSlotNo: 0n,
       bucketConcurrency: Math.max(1, Math.floor(PHASE_A_CONCURRENCY / 2)),
     }),

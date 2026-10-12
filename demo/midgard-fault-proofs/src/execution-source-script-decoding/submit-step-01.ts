@@ -22,8 +22,10 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts.js";
-import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import {
+  type NativeTxBindingContracts,
+  submitNativeTxBinding,
+} from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -77,7 +79,7 @@ export const submitExecutionSourceScriptDecodingStep01Accepted = async ({
 }: {
   lucid: LucidEvolution;
   blueprint: unknown;
-  network: Parameters<typeof submitMissingNativeScriptTxBinding>[0]["network"];
+  network: Parameters<typeof submitNativeTxBinding>[0]["network"];
   contracts: ExecutionSourceScriptDecodingContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
@@ -117,11 +119,11 @@ export const submitExecutionSourceScriptDecodingStep01Accepted = async ({
     } as never,
     ExecutionSourceStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBinding({
+  return await submitNativeTxBinding({
     lucid,
     blueprint,
     network,
-    contracts: contracts as unknown as MissingNativeScriptTxContracts,
+    contracts: contracts as unknown as NativeTxBindingContracts,
     signer,
     stepIndex: 0,
     threadUtxo,

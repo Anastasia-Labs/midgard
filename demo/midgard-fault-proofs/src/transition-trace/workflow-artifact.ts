@@ -1,9 +1,5 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
-  type HistoricalNativeScriptCorpus,
-  requireHistoricalNativeScriptCorpus,
-} from "../workflow/historical-native-script-corpus.js";
-import {
   type JournalJsonObject,
   normalizeJournalJson,
 } from "../workflow/journal.js";
@@ -18,7 +14,7 @@ export const TRANSITION_TRACE_WORKFLOW_ARTIFACT =
   "midgard-transition-trace-workflow-artifact-v1";
 export const createTransitionTraceWorkflowArtifact = ({
   evidence,
-  corpus,
+  predecessor,
   proof,
   detectionId,
   l1Snapshot,
@@ -26,17 +22,19 @@ export const createTransitionTraceWorkflowArtifact = ({
   depositOpening,
 }: {
   evidence: CanonicalBlockEvidence;
-  corpus: HistoricalNativeScriptCorpus;
+  predecessor: CanonicalBlockEvidence | undefined;
   proof: TransitionProofInput;
   detectionId: string;
   l1Snapshot: FraudProofRawL1Snapshot;
   eventOutRef: string | null;
   depositOpening: TransitionDepositOpening | null;
 }): JournalJsonObject => {
-  const history = requireHistoricalNativeScriptCorpus(corpus);
-  if (history.currentEvidence !== evidence)
+  if (
+    predecessor !== undefined &&
+    predecessor.headerHash !== evidence.header.prevHeaderHash
+  )
     throw new Error(
-      "Transition artifact history is not the current admitted evidence",
+      "Transition artifact predecessor is not the challenged header's predecessor",
     );
   return normalizeJournalJson({
     schemaVersion: TRANSITION_TRACE_WORKFLOW_ARTIFACT,
@@ -45,8 +43,7 @@ export const createTransitionTraceWorkflowArtifact = ({
     payloadEnvelopeCbor:
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
     predecessorEnvelopeCbor:
-      history.reconstructions.at(-2)?.payloadEnvelopeCbor.toString("hex") ??
-      null,
+      predecessor?.reconstruction.payloadEnvelopeCbor.toString("hex") ?? null,
     proofCbor: transitionProofCbor(proof),
     eventOutRef,
     depositOpening,

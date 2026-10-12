@@ -2,6 +2,7 @@ import {
   inspectMidgardRedeemerSequenceHeads,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
@@ -59,7 +60,11 @@ it.each([
             output,
           ]),
         ),
-        { nowCardanoSlotNo: 0n, bucketConcurrency: 1 },
+        {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+          nowCardanoSlotNo: 0n,
+          bucketConcurrency: 1,
+        },
       ),
     );
     expect(phaseB.accepted).toEqual([]);

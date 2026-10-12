@@ -19,6 +19,7 @@ import {
   type FraudProofReleaseEconomicsAuthority,
   type FraudProofReleaseFinalityAuthority,
   type ReleaseFraudProofEconomicsPolicy,
+  releaseL1FinalityPolicyOf,
   validateVerifiedFraudProofReleaseEconomicsPolicy,
   validateVerifiedFraudProofReleaseFinalityPolicy,
   type VerifiedFraudProofReleaseEconomicsPolicy,
@@ -247,12 +248,7 @@ export const verifyWatcherDeploymentIdentity = (input: {
       availabilityChallengeAuthorityInput,
     ),
   });
-  const manifestL1Finality = manifest.l1Finality;
-  const releaseFinalityPolicy = Object.freeze({
-    confirmationDepth: manifestL1Finality.confirmationDepth,
-    automaticRecoveryMaxDepth: manifestL1Finality.automaticRecoveryMaxDepth,
-    deepRollbackPolicy: manifestL1Finality.deepRollbackPolicy,
-  });
+  const releaseFinalityPolicy = releaseL1FinalityPolicyOf(manifest.l1Finality);
   const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifestId,

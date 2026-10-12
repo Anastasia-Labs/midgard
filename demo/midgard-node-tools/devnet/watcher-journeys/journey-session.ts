@@ -9,7 +9,6 @@ import "midgard-watcher";
 import "midgard-watcher/tests/support/published-deployment-authority";
 import "./artifacts.js";
 import "./correction.js";
-import "./history-archives.js";
 import "./live-context.js";
 import "./native-node.js";
 import "./native-recorder.js";

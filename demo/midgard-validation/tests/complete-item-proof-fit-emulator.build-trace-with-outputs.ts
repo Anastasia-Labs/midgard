@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { parseJsonUnknown } from "@al-ft/midgard-core/narrowing";
 import { validationMachineStateDataFromCore } from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
@@ -152,6 +153,7 @@ export const buildTraceWithOutputs = async (
   });
   return Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...traceContext,
       transactionId: transaction.txId,
       canonicalTransactionCbor: transaction.txCbor,

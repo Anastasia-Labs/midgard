@@ -306,12 +306,6 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       "missingSignature",
     ),
-    missingNativeScriptTx: linearFaultProofChainFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "missingNativeScriptTx",
-    ),
     withdrawnReferenceInput: linearFaultProofChainFromManifest(
       network,
       manifest,
@@ -348,12 +342,6 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       "doubleWithdraw",
     ),
-    crossBlockDuplicateEvent: linearFaultProofChainFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "crossBlockDuplicateEvent",
-    ),
     l2TxMistag: linearFaultProofChainFromManifest(
       network,
       manifest,
@@ -389,12 +377,6 @@ export const midgardContractsFromDeploymentManifest = (
       manifest,
       sourcePath,
       "networkId",
-    ),
-    missingNativeScriptUtxo: linearFaultProofChainFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "missingNativeScriptUtxo",
     ),
     nativeScriptInvalid: linearFaultProofChainFromManifest(
       network,

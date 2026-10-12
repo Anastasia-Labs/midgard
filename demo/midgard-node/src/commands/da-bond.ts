@@ -20,15 +20,12 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "@lucid-evolution/scalus-uplc";
 import "effect";
-import "../local-ledger-slot.js";
-import "../lucid-time.js";
-import "../services/native-ledger.js";
 import "../transactions/utils.js";
 import "./address-from-seed.js";
 import "./availability-challenge-deployment.js";
 import "./contract-deployment-info.js";
 import "./da-bond-files.js";
-import "./l1-utxos.js";
+import "./l1-command-access.js";
 import "./da-bond.da-bond-context.js";
 import "./da-bond.refusal-message.js";
 import "./da-bond.da-bond-withdraw-build-command.js";
@@ -44,10 +41,11 @@ export {
 export {
   daBondAssembleCommand,
   type DaBondChainOptions,
-  DaBondCustomSlotMappingError,
+  DaBondSlotMappingError,
   daBondWithdrawBuildCommand,
 } from "./da-bond.da-bond-withdraw-build-command.js";
 export {
+  type DaBondL1Access,
   daBondLedgerTimeMs,
   daBondLucid,
   loadDaBondContext,

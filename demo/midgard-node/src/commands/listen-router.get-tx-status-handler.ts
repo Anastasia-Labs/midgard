@@ -261,9 +261,3 @@ export type TxStatusBatchAdmissionRow = {
 export type TxStatusBatchMembershipRow = {
   readonly tx_hash: string;
 };
-
-export type TxStatusBatchHeaderRow = {
-  readonly tx_hash: string;
-  readonly header_hash: string;
-  readonly status: string;
-};

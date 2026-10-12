@@ -22,6 +22,7 @@ import {
   computeDeploymentManifestJsonDigest,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import { describe, expect, it } from "vitest";
 
@@ -344,6 +345,7 @@ describe("watcher canonical V1 rule bundle", () => {
 
     const network = clone(bundle);
     network.network = "Preview";
+    network.l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preview;
     rejected(
       () =>
         loadWatcherRuleBundle({

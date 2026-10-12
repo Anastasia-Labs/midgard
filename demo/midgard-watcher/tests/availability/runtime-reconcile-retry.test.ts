@@ -1,4 +1,4 @@
-import { LocalKupmiosTransportUnavailableError } from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,9 +8,7 @@ import {
 } from "../../src/availability/runtime.reconcile-retry.js";
 
 const transient = () =>
-  new LocalKupmiosTransportUnavailableError(
-    "kupo is unavailable: connect ECONNREFUSED",
-  );
+  new FraudProofL1UnavailableError("kupo is unavailable: connect ECONNREFUSED");
 
 /** Records each armed timer so a test decides when, and whether, it fires. */
 const clock = () => {
@@ -74,7 +72,7 @@ describe("availability reconciliation retry", () => {
     const again = vi.fn(async () => undefined);
     // A name alone is not the typed transient.
     const forged = Object.assign(new Error("kupo is unavailable"), {
-      name: "LocalKupmiosTransportUnavailableError",
+      name: "FraudProofL1UnavailableError",
     });
     for (const cause of [new Error("snapshot boundary changed"), forged, "x"]) {
       const fresh = createWatcherAvailabilityReconcileRetry(timers);

@@ -1,9 +1,9 @@
 import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
-
 import {
-  type CrossBlockSettlementAuthority,
-  requireCrossBlockSettlementAuthority,
-} from "../cross-block-duplicate-event/settlement-authority.js";
+  type L1SlotConfig,
+  parseL1SlotConfig,
+} from "@al-ft/midgard-core/l1-slot-config";
+
 import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
@@ -31,49 +31,29 @@ import {
   type UnsealedHeaderDecision,
 } from "./header-classifier.authenticated-state-queue-observation-digest.js";
 import {
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptHistorySource,
-  requireHistoricalNativeScriptHistoryAuthority,
-} from "./historical-native-script-corpus.js";
-import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   type FraudProofReleaseFinalityAuthority,
   validateVerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy.js";
-import {
-  HISTORICAL_CORPUS_REPLAY_CATEGORIES,
-  launchScopeRequires,
-} from "./replay-requirements.js";
 
 export const createHeaderClassifier = async ({
   deploymentFingerprint,
   replayer,
   releaseFinalityAuthority,
-  historicalReplayAuthority,
-  settlementAuthority,
   transitionTraceEventAuthority,
+  l1SlotConfig,
 }: {
   readonly deploymentFingerprint: string;
   readonly replayer: CompleteCanonicalReplay;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  readonly settlementAuthority?: CrossBlockSettlementAuthority;
   readonly transitionTraceEventAuthority?: TransitionTraceEventAuthority;
-  readonly historicalReplayAuthority?: Readonly<{
-    checkpointStore: HistoricalNativeScriptCheckpointStore;
-    historySource: HistoricalNativeScriptHistorySource;
-  }>;
+  /** The deployment manifest's slot mapping; validation replay builds Plutus contexts with it. */
+  readonly l1SlotConfig: L1SlotConfig;
 }): Promise<HeaderClassifier> => {
   const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
   );
   requireCompleteCanonicalReplayBundle(replayer);
-  if (
-    replayer.launchScope.includes("crossBlockDuplicateEvent") &&
-    settlementAuthority === undefined
-  )
-    throw new Error(
-      "cross-block duplicate classifier requires live settlement authority",
-    );
   if (
     replayer.launchScope.includes("transitionTrace") ||
     (replayer.launchScope.includes("validationTraceDispute") &&
@@ -88,29 +68,6 @@ export const createHeaderClassifier = async ({
         "Transition classifier requires admitted raw L1 event authority",
       );
     requireTransitionTraceEventAuthority(transitionTraceEventAuthority);
-  }
-  if (settlementAuthority !== undefined) {
-    requireCrossBlockSettlementAuthority(settlementAuthority);
-    if (
-      settlementAuthority.deploymentFingerprint !==
-      normalizedDeploymentFingerprint
-    )
-      throw new Error("cross-block settlement authority changed deployment");
-  }
-  const requiresHistoricalReplay = launchScopeRequires(
-    replayer.launchScope,
-    HISTORICAL_CORPUS_REPLAY_CATEGORIES,
-  );
-  if (requiresHistoricalReplay && historicalReplayAuthority === undefined) {
-    throw new Error(
-      "complete replay requires an admitted historical replay authority",
-    );
-  }
-  if (historicalReplayAuthority !== undefined) {
-    requireHistoricalNativeScriptHistoryAuthority({
-      deploymentFingerprint: normalizedDeploymentFingerprint,
-      ...historicalReplayAuthority,
-    });
   }
   if (
     releaseFinalityAuthority.authorityVersion !==
@@ -146,10 +103,7 @@ export const createHeaderClassifier = async ({
         : { transitionTraceEventAuthority }),
       // Classification authorizes reversible fault-proof actions on inclusion.
       confirmationDepth: 1,
-      ...(settlementAuthority === undefined ? {} : { settlementAuthority }),
-      ...(historicalReplayAuthority === undefined
-        ? {}
-        : { historicalReplayAuthority }),
+      l1SlotConfig: parseL1SlotConfig(l1SlotConfig),
     }),
   );
   return classifier;

@@ -8,8 +8,8 @@ import { MIDGARD_NATIVE_NETWORK_ID_NONE } from "./native-constants.js";
 import { midgardFieldCommitment } from "./native-tx-field-access.js";
 import {
   asFixedArray,
-  asSigned,
   asUnsigned,
+  asValidityBound,
   bytesItem,
   hashItem,
 } from "./native-validation.js";
@@ -71,11 +71,11 @@ export const encodeNativeTxBodyCompactValue = (
   ),
   ensureHash32(body.outputsHash, "transaction_body_compact.outputs_hash"),
   asUnsigned(body.fee, "transaction_body_compact.fee"),
-  asSigned(
+  asValidityBound(
     body.validityIntervalStart,
     "transaction_body_compact.validity_interval_start",
   ),
-  asSigned(
+  asValidityBound(
     body.validityIntervalEnd,
     "transaction_body_compact.validity_interval_end",
   ),
@@ -109,8 +109,8 @@ export const decodeNativeTxBodyCompactValue = (
     referenceInputsHash: hashItem(v, 1, fieldName),
     outputsHash: hashItem(v, 2, fieldName),
     fee: asUnsigned(v[3], `${fieldName}[3]`),
-    validityIntervalStart: asSigned(v[4], `${fieldName}[4]`),
-    validityIntervalEnd: asSigned(v[5], `${fieldName}[5]`),
+    validityIntervalStart: asValidityBound(v[4], `${fieldName}[4]`),
+    validityIntervalEnd: asValidityBound(v[5], `${fieldName}[5]`),
     requiredObserversHash: hashItem(v, 6, fieldName),
     requiredSignersHash: hashItem(v, 7, fieldName),
     mintHash: hashItem(v, 8, fieldName),
@@ -127,11 +127,14 @@ export const encodeNativeTxBodyCanonicalValue = (
   Buffer.from(body.referenceInputsPreimageCbor),
   Buffer.from(body.outputsPreimageCbor),
   asUnsigned(body.fee, "transaction_body.fee"),
-  asSigned(
+  asValidityBound(
     body.validityIntervalStart,
     "transaction_body.validity_interval_start",
   ),
-  asSigned(body.validityIntervalEnd, "transaction_body.validity_interval_end"),
+  asValidityBound(
+    body.validityIntervalEnd,
+    "transaction_body.validity_interval_end",
+  ),
   Buffer.from(body.requiredObserversPreimageCbor),
   Buffer.from(body.requiredSignersPreimageCbor),
   Buffer.from(body.mintPreimageCbor),
@@ -153,8 +156,8 @@ export const decodeNativeTxBodyCanonicalValue = (
     referenceInputsPreimageCbor: bytesItem(v, 1, fieldName),
     outputsPreimageCbor: bytesItem(v, 2, fieldName),
     fee: asUnsigned(v[3], `${fieldName}[3]`),
-    validityIntervalStart: asSigned(v[4], `${fieldName}[4]`),
-    validityIntervalEnd: asSigned(v[5], `${fieldName}[5]`),
+    validityIntervalStart: asValidityBound(v[4], `${fieldName}[4]`),
+    validityIntervalEnd: asValidityBound(v[5], `${fieldName}[5]`),
     requiredObserversPreimageCbor: bytesItem(v, 6, fieldName),
     requiredSignersPreimageCbor: bytesItem(v, 7, fieldName),
     mintPreimageCbor: bytesItem(v, 8, fieldName),

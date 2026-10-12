@@ -155,10 +155,9 @@ const makeCommitParams = (
       }),
       activeOperatorInput,
       activeOperatorsSpendingScript: DUMMY_SCRIPT,
-      operatorWalletView: {
-        knownUtxos: [makeUtxo("77".repeat(32), 0, { lovelace: 10_000_000n })],
-        consumedOutRefs: [],
-      },
+      operatorWalletInputs: [
+        makeUtxo("77".repeat(32), 0, { lovelace: 10_000_000n }),
+      ],
     },
   };
 };

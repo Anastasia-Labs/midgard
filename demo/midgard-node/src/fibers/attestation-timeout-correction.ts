@@ -16,14 +16,12 @@ import "./attestation-timeout-correction.attestation-timeout-correction-fiber.js
 export {
   attestationTimeoutCorrectionAction,
   attestationTimeoutCorrectionStep,
-  findStateQueueCorrectionRewindIntegrityError,
 } from "./attestation-timeout-correction.attestation-timeout-correction-action.js";
 export { attestationTimeoutCorrectionFiber } from "./attestation-timeout-correction.attestation-timeout-correction-fiber.js";
 export {
   ATTESTATION_TIMEOUT_ALERT_LEAD_MS,
   attestationTimeoutCorrectionReadinessBounds,
   observeAndRecordAttestationTimeoutQueue,
-  reconcileStateQueueCorrections,
   recordTimeoutCorrectionJournalProgress,
   withTimeoutCorrectionProgress,
 } from "./attestation-timeout-correction.reconcile-state-queue-corrections.js";

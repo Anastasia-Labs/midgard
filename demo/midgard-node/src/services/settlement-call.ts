@@ -111,14 +111,3 @@ export const settlementCauseDetail = (cause: Cause.Cause<unknown>): string => {
       : Cause.pretty(cause);
   return errors.map(describeSettlementError).join("\n").slice(0, 2000);
 };
-
-/** Ogmios refuses to resubmit a body whose inputs its ledger and mempool
- * view has already consumed: the node's mempool check ("All inputs are
- * spent. Transaction has probably already been included", JSON-RPC 3997) or
- * the ledger's unknown-input failure (3117). For the exact journaled body
- * that is the normal answer while it waits in the mempool or for the
- * indexer; the next reconcile reads its status. */
-export const isSettlementInputsSpentRejection = (error: unknown): boolean =>
-  /All inputs are spent|JSON-RPC error 3117\b|unknownOutputReferences|BadInputsUTxO/u.test(
-    describeSettlementError(error),
-  );

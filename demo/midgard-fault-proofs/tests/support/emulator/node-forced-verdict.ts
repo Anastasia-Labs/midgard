@@ -1,5 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { OperatorVerdict } from "@al-ft/midgard-sdk";
 import {
   runPhaseAValidation,
@@ -60,7 +61,12 @@ export const nodeForcedVerdict = async ({
       new Map(
         ledger.map(([outRef, output]) => [outRef.toString("hex"), output]),
       ),
-      { nowCardanoSlotNo, bucketConcurrency: 1, enforceScriptBudget: true },
+      {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        nowCardanoSlotNo,
+        bucketConcurrency: 1,
+        enforceScriptBudget: true,
+      },
     ),
   );
   const phaseBRejection = phaseB.rejected[0];

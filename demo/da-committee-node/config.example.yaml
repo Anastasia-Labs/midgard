@@ -15,7 +15,7 @@
 # Must be below block maturity / 2 (the most a merged payload has left:
 # 450000 on the testing profiles), or it is refused at startup.
 # DA_RETENTION_ALERT_THRESHOLD_MS: "60000"
-# Existing deployment/provider/database settings can also be specified here.
-# The Ogmios behind the kupmios provider must run with --include-transaction-cbor:
-# the availability responder verifies a rival spend of its inputs from raw bytes.
+# Existing deployment/local-node/database settings can also be specified here.
+# No chain index (Kupo, Ogmios) is configured: the committee reads L1 through
+# its own follower on the local node.
 # Remove {} when uncommenting settings. Do not paste real seeds into this example.

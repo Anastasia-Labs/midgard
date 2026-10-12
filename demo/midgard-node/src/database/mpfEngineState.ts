@@ -134,7 +134,7 @@ export const releaseLedgerStoreLease = (
   );
 
 /** Owner prefixes of the ledger MPF leases only a node process takes: block
- * commitment and the speculative builder (`node-commit:`), and the node's own
+ * commitment (`node-commit:`), and the node's own
  * payload audit (`node-audit:`). The offline `reconcile` and `mpf-audit`
  * commands take theirs as `commit:` and `audit:`, so a live one may exist
  * beside the node and never carries these prefixes. */
@@ -452,7 +452,7 @@ export const ledgerAuditIsDue = ({
       readonly finalized_count: bigint | string;
     }>`SELECT COUNT(*) AS finalized_count
        FROM pending_block_finalizations
-       WHERE status = 'finalized' AND updated_at > ${lastAuditAt}`;
+       WHERE status = 'locally_applied' AND updated_at > ${lastAuditAt}`;
     return BigInt(row?.finalized_count ?? 0) >= BigInt(intervalBlocks);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to determine MPF audit cadence"),

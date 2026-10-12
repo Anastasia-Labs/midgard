@@ -64,10 +64,8 @@
   },
   "watcher": {
     "processTemplate": "/absolute/path/to/midgard/demo/midgard-watcher/watcher-process.example.json",
-    "authorityTemplate": "/absolute/path/to/midgard/demo/midgard-watcher/authority.example.json",
     "releaseDirectory": "/absolute/path/to/midgard/demo/midgard-node/logs/preprod-stack/release",
     "releaseInput": "/absolute/path/to/private/watcher-release-input.json",
-    "bearerFile": "/absolute/path/to/private/watcher-bearer",
     "configDirectory": "/absolute/path/to/midgard/demo/midgard-node/logs/preprod-stack/watcher-config",
     "composeEnvFile": "/absolute/path/to/private/watcher-compose.env"
   },

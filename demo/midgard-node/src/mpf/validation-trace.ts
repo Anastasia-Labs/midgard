@@ -3,6 +3,7 @@
  */
 
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -28,6 +29,7 @@ export type ValidationTraceBuildInput = {
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
   readonly blockSlot: bigint;
+  readonly l1SlotConfig: L1SlotConfig;
   readonly transactions: readonly ValidationTraceTransactionInput[];
 };
 
@@ -76,6 +78,7 @@ export const buildDeterministicValidationTraceMembers = (
           minFeeA: input.minFeeA,
           minFeeB: input.minFeeB,
           blockSlot: input.blockSlot,
+          l1SlotConfig: input.l1SlotConfig,
         }).pipe(
           Effect.tapError((cause) =>
             Effect.logError(

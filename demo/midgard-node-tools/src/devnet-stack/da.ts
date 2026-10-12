@@ -1,9 +1,13 @@
 import { existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import { psql } from "./chain.js";
 import { type DeployContext, nodeCli } from "./deploy.js";
+import { PREFLIGHT_L1_ORIGIN } from "./deployment-origin.js";
 import { requireSuccess } from "./exec.js";
 import { type Identities, walletInfo } from "./identities.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
@@ -164,36 +168,34 @@ export const ensureDaManifests = async (
     );
 };
 
-const kupmios = (run: RunEnv) =>
-  `kupmios:http://127.0.0.1:${run.kupoPort}|http://127.0.0.1:${run.ogmiosPort}`;
-
-/** A committee member's complete environment, from the run's records only. */
-export const committeeEnvironment = (input: {
+type CommitteeEnvironmentInput = {
   readonly layout: Layout;
   readonly run: RunEnv;
   readonly identities: Identities;
-  readonly chainSyncBinary: string;
+  readonly transportBinary: string;
   readonly index: number;
-}): Record<string, string> => {
-  const { layout, run, identities, chainSyncBinary, index } = input;
+  readonly l1Origin: L1Origin;
+};
+
+/** A committee member's environment; creates nothing. */
+const memberEnvironment = (
+  input: CommitteeEnvironmentInput,
+): Record<string, string> => {
+  const { layout, run, identities, transportBinary, index, l1Origin } = input;
   const member = committeeMembers(identities)[index];
   if (member === undefined) throw new Error(`no committee member ${index}`);
   const data = layout.committeeData(index);
-  mkdirSync(data, { recursive: true, mode: 0o700 });
   return {
     MIDGARD_CONFIG_MODE: "disabled",
     MIDGARD_DOTENV_MODE: "disabled",
     MIDGARD_NETWORK: "Custom",
     MIDGARD_DEPLOYMENT_MANIFEST_PATH: layout.committeeManifest(index),
     MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: layout.contractManifest,
-    CARDANO_PROVIDER_URLS: kupmios(run),
-    CARDANO_L1_SOURCE_MODE: "local_node",
     CARDANO_LOCAL_NODE_AUTHORITY_ID: LOCAL_AUTHORITY_ID,
-    CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: `chain-sync:${kupmios(run)}`,
-    CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH: `${data}/chain-sync-cursor.json`,
+    L1_ORIGIN: formatL1Origin(l1Origin),
     CARDANO_LOCAL_NODE_SOCKET_PATH: layout.cardanoSocket,
     CARDANO_LOCAL_NODE_CONFIG_PATH: layout.hostCardanoConfig,
-    CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: chainSyncBinary,
+    CARDANO_L1_NODE_TRANSPORT_BINARY_PATH: transportBinary,
     CARDANO_NETWORK_MAGIC: String(run.networkMagic),
     // The committee refuses any value but its manifest's confirmation depth,
     // which is the compiled deployment profile's.
@@ -213,6 +215,22 @@ export const committeeEnvironment = (input: {
     DA_COMMITTEE_POLL_INTERVAL_MS: "2000",
     DA_LIBP2P_PRIVATE_KEY_SOURCE: `seed:${member.libp2pSeed}`,
   };
+};
+
+/**
+ * A committee member's complete environment, from the run's records only,
+ * with its data directory created. Its L1 follower reads the local node from
+ * `l1Origin`, the run's recorded origin (`recordedL1Origin`); no chain index
+ * is configured.
+ */
+export const committeeEnvironment = (
+  input: CommitteeEnvironmentInput,
+): Record<string, string> => {
+  mkdirSync(input.layout.committeeData(input.index), {
+    recursive: true,
+    mode: 0o700,
+  });
+  return memberEnvironment(input);
 };
 
 /** The public retained-DA reader: no committee store, signer or provider. */
@@ -242,4 +260,64 @@ export const publicRetainedDaEnvironment = (input: {
     ),
     DA_PUBLIC_RETAINED_DA_DATABASE_ROLE: PUBLIC_READER_ROLE,
   };
+};
+
+export type CommitteeConfigModule = typeof import("da-committee-node/config");
+
+/**
+ * The DA package's configuration parsers as its own processes run them: the
+ * built distribution in the checkout, from the same build as the committee's
+ * and the public reader's entry points.
+ */
+export const loadCommitteeConfigModule = (
+  layout: Layout,
+): Promise<CommitteeConfigModule> =>
+  import(
+    pathToFileURL(join(layout.daRoot, "dist/config.js")).href
+  ) as Promise<CommitteeConfigModule>;
+
+const parsedBy = (service: string, parse: () => unknown) => {
+  try {
+    parse();
+  } catch (error) {
+    throw new Error(
+      `${service} refuses its configuration: ${(error as Error).message}`,
+      { cause: error },
+    );
+  }
+};
+
+/**
+ * Runs the DA package's own parsers over every committee member's and the
+ * public reader's environment before L1 starts, so a configuration mistake
+ * fails in seconds rather than after funding and deploy. Only the parts that
+ * need no deployment file are parsed (`parseCommitteeEnvironment`,
+ * `parsePublicRetainedDaEnvironment`): the runtime and contract manifests
+ * exist only after deploy, and each process parses them, with the run's
+ * recorded L1 origin in place of the stand-in, when it starts. Creates and
+ * reads nothing. `up` passes the built dist (`loadCommitteeConfigModule`).
+ */
+export const preflightCommitteeConfigs = (
+  context: Pick<DeployContext, "layout" | "run" | "identities" | "artifacts">,
+  committee: CommitteeConfigModule,
+): void => {
+  const { layout, run, identities, artifacts } = context;
+  for (let index = 0; index < COMMITTEE_SIZE; index += 1)
+    parsedBy(`da-committee-${index}`, () =>
+      committee.parseCommitteeEnvironment(
+        memberEnvironment({
+          layout,
+          run,
+          identities,
+          transportBinary: artifacts.transportBinary,
+          index,
+          l1Origin: PREFLIGHT_L1_ORIGIN,
+        }),
+      ),
+    );
+  parsedBy("public-retained-da", () =>
+    committee.parsePublicRetainedDaEnvironment(
+      publicRetainedDaEnvironment({ layout, run, identities }),
+    ),
+  );
 };

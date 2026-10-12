@@ -1,10 +1,10 @@
+import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Clock, Duration, Effect, Fiber, TestClock } from "effect";
 import { describe, expect } from "vitest";
 
 import { retryAfterRetirementProtection } from "../src/commands/reserve-payout.js";
-import { SUBMIT_SLOT_LENGTH_MS } from "../src/local-ledger-slot.js";
 
 const PROTECTION_DURATION_MS = 120_000n;
 

@@ -16,6 +16,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import { type IntentJournal, openPlan } from "../services/intent-journal.js";
 import {
   ReservePayoutTransport,
   submitAddReserveFundsToPayoutProgram,
@@ -41,12 +42,14 @@ export const initializePayoutProgram = (
 ): Effect.Effect<
   PayoutCommandResult,
   unknown,
-  Database | Lucid | MidgardContracts
+  Database | Lucid | MidgardContracts | IntentJournal
 > =>
   Effect.gen(function* () {
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
+    // S5: the plan opens before the command's first L1 read.
+    const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const resolution = requireResolution(
       yield* resolveEventSettlementProofProgram({
@@ -84,6 +87,7 @@ export const initializePayoutProgram = (
         membershipProof: resolution.proof,
         referenceScripts: refs,
       },
+      plan,
     );
     const payoutUnit = toUnit(contracts.payout.policyId, withdrawal.assetName);
     return {
@@ -162,12 +166,14 @@ export const addReserveFundsToPayoutProgram = (
 ): Effect.Effect<
   PayoutCommandResult,
   unknown,
-  Database | Lucid | MidgardContracts
+  Database | Lucid | MidgardContracts | IntentJournal
 > =>
   Effect.gen(function* () {
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
+    // S5: the plan opens before the command's first L1 read.
+    const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const { payout, payoutUnit } = yield* fetchPayoutByWithdrawalEvent(eventId);
     const payoutDatum = decodePayoutDatum(payout);
@@ -245,6 +251,8 @@ export const addReserveFundsToPayoutProgram = (
           ? { validTo: Date.now() + 180_000 }
           : {}),
       },
+      eventId,
+      plan,
     );
     return {
       txHash,
@@ -264,13 +272,15 @@ export const concludePayoutProgram = (
 ): Effect.Effect<
   PayoutCommandResult,
   unknown,
-  Database | Lucid | MidgardContracts | NodeConfig
+  Database | Lucid | MidgardContracts | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const nodeConfig = yield* NodeConfig;
+    // S5: the plan opens before the command's first L1 read.
+    const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const { payout, payoutUnit } = yield* fetchPayoutByWithdrawalEvent(eventId);
     const payoutDatum = decodePayoutDatum(payout);
@@ -297,6 +307,8 @@ export const concludePayoutProgram = (
           ? { validTo: Date.now() + 180_000 }
           : {}),
       },
+      eventId,
+      plan,
     );
     return {
       txHash,

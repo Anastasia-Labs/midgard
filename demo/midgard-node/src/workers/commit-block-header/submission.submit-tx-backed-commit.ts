@@ -3,6 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import type { CommitAnchor } from "../../database/commit-anchor.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
@@ -16,7 +17,7 @@ import {
 import { DatabaseError } from "../../database/utils/common.js";
 import type * as Ledger from "../../database/utils/ledger.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
-import { reachPipelinedCommitCrashCheckpoint } from "../../e2e/pipelined-commit-crash-checkpoint.js";
+import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
 import {
   emptyRootHexProgram,
   type LedgerDelta,
@@ -28,10 +29,7 @@ import {
   type UtxoPayloadEntry,
   type UtxoPayloadSizeAggregate,
 } from "../../mpf/index.js";
-import {
-  isPotentiallyStaleOperatorWalletViewError,
-  type OperatorWalletView,
-} from "../../operator-wallet-view.js";
+import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
 import {
   type ContractDeploymentIdentityValue,
   Database,
@@ -66,18 +64,15 @@ import {
   assertPreSubmitDaPayloadSize,
   daProgramMaterialFromSidecars,
   forcedProgramMaterialSidecars,
-  maybeAbandonPreviousStaleAttempt,
 } from "./submission.assert-pre-submit-da-payload-size.js";
 import {
   assertCommitUserEventSourceCompleteness,
   isStaleCommitBaseError,
   journalUtxoEntries,
-  refreshCommitUserEventSourcesThroughBlockEnd,
-  runWithStaleOperatorWalletRetry,
-  signalStaleOperatorWalletRetry,
   submitErrorReferencesOutRef,
-} from "./submission.run-with-stale-operator-wallet-retry.js";
+} from "./submission.commit-event-sources.js";
 import {
+  awaitNextCommitWindow,
   retainedIntentFailure,
   submitWithDurableIntent,
 } from "./submission.submit-with-durable-intent.js";
@@ -116,10 +111,9 @@ export const submitTxBackedCommit = ({
   mempoolTxHashes,
   mempoolTxSourceTable,
   workerInput,
+  commitAnchor,
   sizeOfProcessedTxs,
   blockEndTimeCapMs,
-  beforePendingJournalInsert,
-  afterPendingJournalPrepared,
   afterDaFrameAccepted,
   nativeMpfReplay,
 }: CommitSubmissionHooks & {
@@ -157,6 +151,8 @@ export const submitTxBackedCommit = ({
   readonly mempoolTxHashes: Buffer[];
   readonly mempoolTxSourceTable: string;
   readonly workerInput: WorkerInput;
+  /** The commit anchor the end time was planned under (`commitEventHorizon`). */
+  readonly commitAnchor?: CommitAnchor;
   readonly sizeOfProcessedTxs: number;
   readonly blockEndTimeCapMs?: number;
 }) =>
@@ -312,10 +308,7 @@ export const submitTxBackedCommit = ({
     );
     yield* Effect.logInfo(`🔹 Withdrawals root is: ${withdrawalsRoot}`);
 
-    const submitCommitAttempt = (
-      initialOperatorWalletView?: OperatorWalletView,
-      previousPendingHeaderHash?: Buffer,
-    ) =>
+    const submitCommitAttempt = () =>
       revalidateStateQueueLease(workerInput).pipe(
         Effect.zipRight(
           PendingBlockFinalizationsDB.assertNoUnreconciledSignedSubmission,
@@ -334,7 +327,6 @@ export const submitTxBackedCommit = ({
             transitionCommitments,
             consensusProfile,
             endTime,
-            initialOperatorWalletView,
             blockEndTimeCapMs,
           ).pipe(
             Effect.flatMap((buildResult) => {
@@ -355,9 +347,6 @@ export const submitTxBackedCommit = ({
                 txSize,
               } = buildResult;
               return Effect.gen(function* () {
-                yield* refreshCommitUserEventSourcesThroughBlockEnd(
-                  blockEndTimeMs,
-                );
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
                 const mempoolTxProgramMaterialSidecars =
                   yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
@@ -408,10 +397,6 @@ export const submitTxBackedCommit = ({
                   cekProgramMaterial,
                 });
                 yield* afterDaFrameAccepted ?? Effect.void;
-                yield* maybeAbandonPreviousStaleAttempt(
-                  previousPendingHeaderHash,
-                  headerHashBuffer,
-                );
                 yield* MpfEngineStateDB.stampLedgerPayloadAggregate({
                   rootHex: utxoRoot,
                   aggregate: utxoPayloadAggregate,
@@ -463,199 +448,187 @@ export const submitTxBackedCommit = ({
                     transitionDelta: ledgerDelta,
                   });
                 const beforeJournalInsert =
-                  beforePendingJournalInsert?.(blockEndTimeMs) ??
                   assertCommitUserEventSourceCompleteness({
                     blockEndTimeMs,
+                    commitAnchor,
+                    ...(yield* configuredCommitAnchorClock),
                     includedDepositEntries,
                     includedForcedTransactionEntries,
                     includedWithdrawalEntries,
                   });
-                return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-                  {
-                    headerHash: headerHashBuffer,
-                    preparedTxHash: Buffer.from(preparedTxHash, "hex"),
-                    headerCbor: newHeaderCbor,
-                    metadata,
-                    blockEndTime: new Date(blockEndTimeMs),
-                    depositEventIds: includedDepositEventIds,
-                    depositEntries: includedDepositEntries,
-                    forcedTransactionEventIds:
-                      includedForcedTransactionEventIds,
-                    forcedTransactionEntries: includedForcedTransactionEntries,
-                    withdrawalEventIds: includedWithdrawalEventIds,
-                    withdrawalEntries: includedWithdrawalEntries,
-                    mempoolTxIds: processedMempoolTxs.map(
-                      (entry) => entry[TxColumns.TX_ID],
-                    ),
-                    mempoolTxs: processedMempoolTxs,
-                    mempoolTxProgramMaterialSidecars,
-                    mempoolTxSourceTable,
-                    transitionTraceMembers,
-                    eventToStepMembers,
-                    validationTraceMembers,
-                    validationTraceWitnessMembers:
-                      validationTraceMembers.flatMap((entry) =>
-                        entry.witnesses.map(([key, value]) => ({
-                          keyCbor: Buffer.from(key, "hex"),
-                          valueCbor: Buffer.from(value, "hex"),
-                        })),
+                const prepared =
+                  yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+                    {
+                      headerHash: headerHashBuffer,
+                      preparedTxHash: Buffer.from(preparedTxHash, "hex"),
+                      headerCbor: newHeaderCbor,
+                      metadata,
+                      blockEndTime: new Date(blockEndTimeMs),
+                      depositEventIds: includedDepositEventIds,
+                      depositEntries: includedDepositEntries,
+                      forcedTransactionEventIds:
+                        includedForcedTransactionEventIds,
+                      forcedTransactionEntries:
+                        includedForcedTransactionEntries,
+                      withdrawalEventIds: includedWithdrawalEventIds,
+                      withdrawalEntries: includedWithdrawalEntries,
+                      mempoolTxIds: processedMempoolTxs.map(
+                        (entry) => entry[TxColumns.TX_ID],
                       ),
-                    ledgerDelta: {
-                      spent: journalLedgerState.ledgerDelta.spent,
-                      produced: journalUtxoEntries(
-                        journalLedgerState.ledgerDelta.produced,
-                      ),
+                      mempoolTxs: processedMempoolTxs,
+                      mempoolTxProgramMaterialSidecars,
+                      mempoolTxSourceTable,
+                      transitionTraceMembers,
+                      eventToStepMembers,
+                      validationTraceMembers,
+                      validationTraceWitnessMembers:
+                        validationTraceMembers.flatMap((entry) =>
+                          entry.witnesses.map(([key, value]) => ({
+                            keyCbor: Buffer.from(key, "hex"),
+                            valueCbor: Buffer.from(value, "hex"),
+                          })),
+                        ),
+                      ledgerDelta: {
+                        spent: journalLedgerState.ledgerDelta.spent,
+                        produced: journalUtxoEntries(
+                          journalLedgerState.ledgerDelta.produced,
+                        ),
+                      },
+                      utxoPayloadAggregate,
+                      nativeMpfReplay,
                     },
-                    utxoPayloadAggregate,
-                    nativeMpfReplay,
-                  },
-                  { beforeJournalInsert },
-                ).pipe(
-                  Effect.tap(() => afterPendingJournalPrepared ?? Effect.void),
-                  Effect.andThen(
-                    reachPipelinedCommitCrashCheckpoint(
-                      "journal_prepared_before_submit",
+                    { beforeJournalInsert },
+                  );
+                if (prepared.kind === "held")
+                  return yield* awaitNextCommitWindow(prepared.heldHeaderHash);
+                yield* reachCommitCrashCheckpoint(
+                  "journal_prepared_before_submit",
+                );
+                return yield* Effect.matchEffect(
+                  revalidateStateQueueLease(workerInput).pipe(
+                    Effect.andThen(
+                      assertLiveTailCommitBase(contracts, commitBaseTail),
+                    ),
+                    Effect.andThen(
+                      submitWithDurableIntent(
+                        headerHashBuffer,
+                        signAndSubmitProgram,
+                      ),
                     ),
                   ),
-                  Effect.andThen(
-                    Effect.matchEffect(
-                      revalidateStateQueueLease(workerInput).pipe(
-                        Effect.andThen(
-                          assertLiveTailCommitBase(contracts, commitBaseTail),
-                        ),
-                        Effect.andThen(
-                          submitWithDurableIntent(
-                            headerHashBuffer,
-                            signAndSubmitProgram,
-                          ),
-                        ),
-                      ),
-                      {
-                        onFailure: (error) =>
-                          Effect.gen(function* () {
-                            const retained = yield* retainedIntentFailure(
+                  {
+                    onFailure: (error) =>
+                      Effect.gen(function* () {
+                        const retained = yield* retainedIntentFailure(
+                          headerHashBuffer,
+                          error,
+                        );
+                        if (retained !== undefined) return retained;
+                        if (error instanceof TxSignError) {
+                          return yield* Effect.gen(function* () {
+                            yield* PendingBlockFinalizationsDB.markAbandoned(
                               headerHashBuffer,
+                            ).pipe(Effect.catchAll(() => Effect.void));
+                            const detail = formatUnknownError(error);
+                            yield* Effect.logError(
+                              `🔹 Commit signing failed: ${detail}`,
+                            );
+                            return {
+                              type: "FailureOutput",
+                              error: `Commit signing failed: ${detail}`,
+                            } satisfies WorkerOutput;
+                          });
+                        }
+
+                        return yield* Effect.gen(function* () {
+                          if (
+                            error instanceof TxSubmitError &&
+                            submitErrorReferencesOutRef(
+                              error,
+                              stateQueueOutRef(commitBaseTail),
+                            )
+                          ) {
+                            yield* PendingBlockFinalizationsDB.markAbandoned(
+                              headerHashBuffer,
+                            ).pipe(Effect.catchAll(() => Effect.void));
+                            yield* Effect.logWarning(
+                              `🔹 Tx-backed commit submission hit stale state-queue tail ${stateQueueOutRef(
+                                commitBaseTail,
+                              )}; preserving tx payload for rebuild against the refreshed live tail.`,
+                            );
+                            return yield* preserveTxPayloadForRetryAfterSubmitFailure(
                               error,
                             );
-                            if (retained !== undefined) return retained;
-                            if (error instanceof TxSignError) {
-                              return yield* Effect.gen(function* () {
-                                yield* PendingBlockFinalizationsDB.markAbandoned(
-                                  headerHashBuffer,
-                                ).pipe(Effect.catchAll(() => Effect.void));
-                                const detail = formatUnknownError(error);
-                                yield* Effect.logError(
-                                  `🔹 Commit signing failed: ${detail}`,
-                                );
-                                return {
-                                  type: "FailureOutput",
-                                  error: `Commit signing failed: ${detail}`,
-                                } satisfies WorkerOutput;
-                              });
-                            }
+                          }
 
-                            return yield* Effect.gen(function* () {
-                              if (
-                                error instanceof TxSubmitError &&
-                                isPotentiallyStaleOperatorWalletViewError(error)
-                              ) {
-                                return yield* signalStaleOperatorWalletRetry({
-                                  pendingHeaderHash: headerHashBuffer,
-                                  error,
-                                  label: "Tx-backed commit submission",
-                                });
-                              }
-
-                              if (
-                                error instanceof TxSubmitError &&
-                                submitErrorReferencesOutRef(
-                                  error,
-                                  stateQueueOutRef(commitBaseTail),
-                                )
-                              ) {
-                                yield* PendingBlockFinalizationsDB.markAbandoned(
-                                  headerHashBuffer,
-                                ).pipe(Effect.catchAll(() => Effect.void));
-                                yield* Effect.logWarning(
-                                  `🔹 Tx-backed commit submission hit stale state-queue tail ${stateQueueOutRef(
-                                    commitBaseTail,
-                                  )}; preserving tx payload for rebuild against the refreshed live tail.`,
-                                );
-                                return yield* preserveTxPayloadForRetryAfterSubmitFailure(
-                                  error,
-                                );
-                              }
-
-                              if (!(error instanceof TxSubmitError)) {
-                                yield* PendingBlockFinalizationsDB.markAbandoned(
-                                  headerHashBuffer,
-                                ).pipe(Effect.catchAll(() => Effect.void));
-                                if (isStaleCommitBaseError(error)) {
-                                  yield* Effect.logWarning(
-                                    `🔹 Tx-backed commit base ${stateQueueOutRef(
-                                      commitBaseTail,
-                                    )} became stale before submission; rolling back local roots for a rebuild on the next worker tick.`,
-                                  );
-                                  return {
-                                    type: "NothingToCommitOutput",
-                                  } satisfies WorkerOutput;
-                                }
-                                const detail = formatUnknownError(error);
-                                yield* Effect.logError(
-                                  `🔹 Commit aborted before submission: ${detail}`,
-                                );
-                                return {
-                                  type: "FailureOutput",
-                                  error: `Commit aborted before submission: ${detail}`,
-                                } satisfies WorkerOutput;
-                              }
-
-                              const recoveredTxHash =
-                                yield* recoverSubmittedTxHashByHeaderProgram(
-                                  contracts.stateQueue,
-                                  newHeaderHash,
-                                );
-                              if (Option.isSome(recoveredTxHash)) {
-                                return yield* PendingBlockFinalizationsDB.markSubmitted(
-                                  headerHashBuffer,
-                                  Buffer.from(fromHex(recoveredTxHash.value)),
-                                ).pipe(
-                                  Effect.andThen(
-                                    submittedAwaitingConfirmationOutput(
-                                      recoveredTxHash.value,
-                                      txSize,
-                                      blockEndTimeMs,
-                                      newHeaderHash,
-                                    ),
-                                  ),
-                                );
-                              }
-
-                              yield* PendingBlockFinalizationsDB.markAbandoned(
-                                headerHashBuffer,
-                              ).pipe(Effect.catchAll(() => Effect.void));
-                              return yield* preserveTxPayloadForRetryAfterSubmitFailure(
-                                error,
+                          if (!(error instanceof TxSubmitError)) {
+                            yield* PendingBlockFinalizationsDB.markAbandoned(
+                              headerHashBuffer,
+                            ).pipe(Effect.catchAll(() => Effect.void));
+                            if (isStaleCommitBaseError(error)) {
+                              yield* Effect.logWarning(
+                                `🔹 Tx-backed commit base ${stateQueueOutRef(
+                                  commitBaseTail,
+                                )} became stale before submission; rolling back local roots for a rebuild on the next worker tick.`,
                               );
-                            });
-                          }),
-                        onSuccess: (txHash) =>
-                          PendingBlockFinalizationsDB.markSubmitted(
-                            headerHashBuffer,
-                            Buffer.from(fromHex(txHash)),
-                          ).pipe(
-                            Effect.andThen(
-                              submittedAwaitingConfirmationOutput(
-                                txHash,
-                                txSize,
-                                blockEndTimeMs,
-                                newHeaderHash,
+                              return {
+                                type: "NothingToCommitOutput",
+                              } satisfies WorkerOutput;
+                            }
+                            const detail = formatUnknownError(error);
+                            yield* Effect.logError(
+                              `🔹 Commit aborted before submission: ${detail}`,
+                            );
+                            return {
+                              type: "FailureOutput",
+                              error: `Commit aborted before submission: ${detail}`,
+                            } satisfies WorkerOutput;
+                          }
+
+                          const recoveredTxHash =
+                            yield* recoverSubmittedTxHashByHeaderProgram(
+                              contracts.stateQueue,
+                              newHeaderHash,
+                            );
+                          if (Option.isSome(recoveredTxHash)) {
+                            return yield* PendingBlockFinalizationsDB.markSubmitted(
+                              headerHashBuffer,
+                              Buffer.from(fromHex(recoveredTxHash.value)),
+                            ).pipe(
+                              Effect.andThen(
+                                submittedAwaitingConfirmationOutput(
+                                  recoveredTxHash.value,
+                                  txSize,
+                                  blockEndTimeMs,
+                                  newHeaderHash,
+                                ),
                               ),
-                            ),
+                            );
+                          }
+
+                          yield* PendingBlockFinalizationsDB.markAbandoned(
+                            headerHashBuffer,
+                          ).pipe(Effect.catchAll(() => Effect.void));
+                          return yield* preserveTxPayloadForRetryAfterSubmitFailure(
+                            error,
+                          );
+                        });
+                      }),
+                    onSuccess: (txHash) =>
+                      PendingBlockFinalizationsDB.markSubmitted(
+                        headerHashBuffer,
+                        Buffer.from(fromHex(txHash)),
+                      ).pipe(
+                        Effect.andThen(
+                          submittedAwaitingConfirmationOutput(
+                            txHash,
+                            txSize,
+                            blockEndTimeMs,
+                            newHeaderHash,
                           ),
-                      },
-                    ),
-                  ),
+                        ),
+                      ),
+                  },
                 );
               });
             }),
@@ -663,8 +636,5 @@ export const submitTxBackedCommit = ({
         ),
       );
 
-    return yield* runWithStaleOperatorWalletRetry({
-      label: "Tx-backed commit submission",
-      attempt: submitCommitAttempt,
-    });
+    return yield* submitCommitAttempt();
   });

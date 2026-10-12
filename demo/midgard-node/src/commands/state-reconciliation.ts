@@ -33,8 +33,6 @@ import "level";
 import "../database/index.js";
 import "../database/utils/ledger.js";
 import "../database/utils/tx.js";
-import "../fibers/fetch-and-insert-deposit-utxos.js";
-import "../fibers/fetch-and-insert-withdrawal-utxos.js";
 import "../mpf/commit-rejection.js";
 import "../mpf/index.js";
 import "../mpf/store-primitives.js";
@@ -68,7 +66,6 @@ export {
   type CheckId,
   type CheckStatus,
   type DepositPayload,
-  type ForeignSummary,
   type HeaderRoots,
   type JournalSummary,
   type L1EventOrder,
@@ -80,9 +77,8 @@ export {
   type LedgerPoint,
   type LedgerPointResult,
   type NativeRootObservation,
-  type ObserverSnapshot,
-  type ObserverTransition,
   type PendingTxDelta,
+  type QueueRemoval,
   type ReconciliationCheck,
   type ReconciliationReport,
   type SqlDepositRow,

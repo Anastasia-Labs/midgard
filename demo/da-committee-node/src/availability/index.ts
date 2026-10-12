@@ -1,3 +1,4 @@
+export { AvailabilityResponderAwaitingScanError } from "./awaiting-scan-error.js";
 export {
   availabilityResponderFromConfig,
   type AvailabilityResponderSkippedRecord,
@@ -7,7 +8,6 @@ export {
 export {
   AvailabilityResponder,
   type AvailabilityResponderAction,
-  AvailabilityResponderAwaitingScanError,
   type AvailabilityResponderChallenge,
   type AvailabilityResponderDeps,
   type AvailabilityResponderReport,

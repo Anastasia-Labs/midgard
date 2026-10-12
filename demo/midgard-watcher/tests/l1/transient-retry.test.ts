@@ -1,4 +1,4 @@
-import { LocalKupmiosTransportUnavailableError } from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,7 +7,7 @@ import {
 } from "../../src/l1/transient-retry.js";
 
 const transient = () =>
-  new LocalKupmiosTransportUnavailableError("Ogmios socket closed");
+  new FraudProofL1UnavailableError("Ogmios socket closed");
 
 describe("L1 transient retry", () => {
   it("repeats the attempt through a transient and returns its value exactly once", async () => {
@@ -29,7 +29,7 @@ describe("L1 transient retry", () => {
     [
       "a forged transient name",
       Object.assign(new Error("Ogmios socket closed"), {
-        name: "LocalKupmiosTransportUnavailableError",
+        name: "FraudProofL1UnavailableError",
       }),
     ],
   ])("rethrows %s at once without retrying", async (_label, failure) => {

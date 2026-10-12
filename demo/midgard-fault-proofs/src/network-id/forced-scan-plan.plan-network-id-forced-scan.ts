@@ -7,10 +7,10 @@ import {
 
 import type { FaultProofFieldOpeningPlan } from "../field-opening.js";
 import {
-  initialMissingNativeScriptTxGrammarCheckpoint,
-  initialMissingNativeScriptTxSemanticCheckpoint,
-  missingNativeScriptTxGrammarCheckpointIsComplete,
-} from "../missing-native-script-tx/staged-walk.js";
+  fieldGrammarCheckpointIsComplete,
+  initialFieldGrammarCheckpoint,
+  initialFieldSemanticCheckpoint,
+} from "../staged-field-walk/index.js";
 import {
   advanceGrammarBy,
   advanceWalkBy,
@@ -95,7 +95,7 @@ export const planNetworkIdForcedScan = ({
   }
   const txId = outputsCarriagePlan.nativeTxId;
   const initialGrammar = asField2Grammar(
-    initialMissingNativeScriptTxGrammarCheckpoint({ txId, items }),
+    initialFieldGrammarCheckpoint({ txId, items }),
   );
   const grammar: NetworkIdForcedScanGrammarCheckpoint[] = [];
   let grammarCursor = initialGrammar;
@@ -109,9 +109,9 @@ export const planNetworkIdForcedScan = ({
       ),
     });
     grammar.push(grammarCursor);
-  } while (!missingNativeScriptTxGrammarCheckpointIsComplete(grammarCursor));
+  } while (!fieldGrammarCheckpointIsComplete(grammarCursor));
   const initialWalk = asField2Walk(
-    initialMissingNativeScriptTxSemanticCheckpoint({
+    initialFieldSemanticCheckpoint({
       grammar: asField6Grammar(grammarCursor),
       items,
     }),

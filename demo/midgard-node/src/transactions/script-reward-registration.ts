@@ -7,7 +7,20 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { journaledIntent, openPlan } from "../services/intent-journal.js";
+import type { WalletViewUnavailable } from "../services/intent-journal.wallet-view.js";
 import { handleSignSubmit } from "./utils.js";
+import {
+  readSelectedWalletView,
+  readSelectedWalletViewInputs,
+} from "./utils.wallet-view.js";
+
+const fundingFailure = (cause: WalletViewUnavailable) =>
+  new SDK.LucidError({
+    message:
+      "Failed to read the wallet view to fund reward-account registrations",
+    cause,
+  });
 
 /** Register runtime rewarding roles after availability and PHAS initialization. */
 export const ensureRuntimeRewardAccountsRegisteredProgram = (
@@ -33,6 +46,8 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
     for (const { withdrawalScript: script } of validators) {
       scripts.set(validatorToScriptHash(script), script);
     }
+    // S5: the plan opens before the registration reads the batches rest on.
+    const plan = yield* openPlan;
     const before = yield* Effect.forEach(
       [...scripts.values()],
       (script) => queryScriptRewardRegistrationProgram(lucid, script),
@@ -48,10 +63,14 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
     );
     const missing = before.filter(({ registered }) => !registered);
     // Registration certificates carry no Plutus witnesses. Bounded batches
-    // amortize confirmation and wallet reconciliation across independent roles;
+    // amortize confirmation across independent roles;
     // Lucid still enforces the live transaction-size and funding limits.
     for (let offset = 0; offset < missing.length; offset += 32) {
       const batch = missing.slice(offset, offset + 32);
+      const presetWalletInputs = yield* readSelectedWalletViewInputs(
+        lucid,
+        "runtime reward-account registrations",
+      ).pipe(Effect.mapError(fundingFailure));
       const tx = yield* Effect.tryPromise({
         try: () =>
           batch
@@ -60,14 +79,22 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
                 builder.register.Stake(rewardAddress),
               lucid.newTx(),
             )
-            .complete({ localUPLCEval: true }),
+            .complete({ localUPLCEval: true, presetWalletInputs }),
         catch: (cause) =>
           new SDK.LucidError({
             message: "Failed to build runtime reward-account registrations",
             cause,
           }),
       });
-      const txHash = yield* handleSignSubmit(lucid, tx);
+      const txHash = yield* handleSignSubmit(
+        lucid,
+        tx,
+        journaledIntent(
+          "script_reward_registration",
+          `script_reward_registration:runtime:${batch[0]!.scriptHash}+${batch.length.toString()}`,
+          plan,
+        ),
+      );
       for (const record of batch) {
         const after = yield* queryScriptRewardRegistrationProgram(
           lucid,
@@ -94,6 +121,8 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
 ) =>
   Effect.gen(function* () {
     const history = Object.values(SDK.requireEventHistoryContracts(contracts));
+    // S5: the plan opens before the registration and wallet reads.
+    const plan = yield* openPlan;
     const registrations = yield* Effect.forEach(
       history.flatMap(({ list, retirement }) => [list, retirement]),
       ({ withdrawalScript }) =>
@@ -101,9 +130,12 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
     );
     const missing = registrations.filter(({ registered }) => !registered);
     if (missing.length === 0) return registrations;
+    const view = yield* readSelectedWalletView(lucid).pipe(
+      Effect.mapError(fundingFailure),
+    );
     const tx = yield* Effect.tryPromise({
       try: async () => {
-        const inputs = (await lucid.wallet().getUtxos()).filter(
+        const inputs = view.utxos.filter(
           (utxo) =>
             utxo.scriptRef == null &&
             utxo.datum == null &&
@@ -130,7 +162,7 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
           {
             txHash: "00".repeat(32),
             outputIndex: 0,
-            address: await lucid.wallet().address(),
+            address: view.address,
             assets: { lovelace: 0xffffffffffffffffn },
           },
         );
@@ -191,7 +223,15 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
           cause,
         }),
     });
-    yield* handleSignSubmit(lucid, tx);
+    yield* handleSignSubmit(
+      lucid,
+      tx,
+      journaledIntent(
+        "script_reward_registration",
+        `script_reward_registration:event_history:${missing.length.toString()}`,
+        plan,
+      ),
+    );
     return yield* Effect.tryPromise({
       try: async () => {
         for (const { rewardAddress } of missing)
@@ -241,13 +281,29 @@ export const ensureScriptRewardAccountRegisteredProgram = (
   script: Script,
 ) =>
   Effect.gen(function* () {
+    // S5: the plan opens before the registration read it is built on.
+    const plan = yield* openPlan;
     const before = yield* queryScriptRewardRegistrationProgram(lucid, script);
     if (before.registered) return { ...before, txHash: null };
     const built = yield* SDK.buildScriptRewardRegistrationTxProgram(
       lucid,
       script,
+      {
+        walletInputs: yield* readSelectedWalletViewInputs(
+          lucid,
+          "the script reward-account registration",
+        ).pipe(Effect.mapError(fundingFailure)),
+      },
     );
-    const txHash = yield* handleSignSubmit(lucid, built.tx);
+    const txHash = yield* handleSignSubmit(
+      lucid,
+      built.tx,
+      journaledIntent(
+        "script_reward_registration",
+        `script_reward_registration:${before.scriptHash}`,
+        plan,
+      ),
+    );
     const after = yield* queryScriptRewardRegistrationProgram(lucid, script);
     if (!after.registered) {
       return yield* Effect.fail(

@@ -75,9 +75,9 @@ pub fn fabricated_withdrawal_fault_is_established_v1(state: State) -> Bool {
       event_inclusion_time,
     } -> and {
         committed_withdrawal_content_hash != authentic_withdrawal_content_hash,
-        // The `timed_l1_event_is_due` window, restated: it is private to
-        // `midgard/fraud_proofs/transition_trace/proof`, so this family cannot
-        // call it. See the step-04 validator's `rejects_stale_evidence`.
+        // The due window `start_time < inclusion_time <= end_time` of
+        // `midgard/event_history/horizon.eligible`, restated inline. See the
+        // step-04 validator's `rejects_stale_evidence`.
         state.header_start_time < event_inclusion_time,
         event_inclusion_time <= state.header_end_time,
       }

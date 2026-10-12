@@ -17,6 +17,9 @@ import {
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
 import { validateRetentionDays } from "../database/retention-policy.js";
+import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
+import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
+import { nodeBehindConfig } from "./config.node-behind.js";
 import {
   boundedValidationInteger,
   CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
@@ -39,9 +42,6 @@ import {
  * variables.
  */
 const makeConfig = Effect.gen(function* () {
-  const provider = yield* Config.literal("Kupmios")("L1_PROVIDER");
-  const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
-  const kupoKey = yield* Config.string("L1_KUPO_KEY");
   const nativeLedgerValues = yield* Config.all(
     Object.fromEntries(
       NATIVE_LEDGER_SETTING_NAMES.map((name) => [
@@ -56,9 +56,6 @@ const makeConfig = Effect.gen(function* () {
   const nativeLedger = yield* Effect.try(() =>
     parseNativeLedgerSettings(nativeLedgerValues),
   );
-  const historyGenesis = yield* Config.string(
-    "L1_HISTORY_GENESIS_LOSSLESS_SHA256",
-  ).pipe(Config.withDefault(""));
   const operatorSeedPhrase = yield* requiredSeedPhrase(
     "L1_OPERATOR_SEED_PHRASE",
   );
@@ -92,19 +89,6 @@ const makeConfig = Effect.gen(function* () {
       if (!Number.isSafeInteger(value) || value <= 0) {
         throw new Error(
           "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS must be a positive safe integer",
-        );
-      }
-      return value;
-    }),
-  );
-  const l1ProviderRateLimitCooldownMs = yield* Config.integer(
-    "L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS",
-  ).pipe(
-    Config.withDefault(60_000),
-    Config.mapAttempt((value) => {
-      if (!Number.isSafeInteger(value) || value <= 0) {
-        throw new Error(
-          "L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS must be a positive safe integer",
         );
       }
       return value;
@@ -194,9 +178,6 @@ const makeConfig = Effect.gen(function* () {
   const waitBetweenBlockConfirmation = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_CONFIRMATION",
   ).pipe(Config.withDefault(2000));
-  const speculativeCommitBuild = yield* Config.boolean(
-    "SPECULATIVE_COMMIT_BUILD",
-  ).pipe(Config.withDefault(false));
   const operatorWatchdogEnabled = yield* Config.boolean(
     "OPERATOR_WATCHDOG_ENABLED",
   ).pipe(Config.withDefault(true));
@@ -213,48 +194,7 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const speculativeRebuildMaxAttempts = yield* boundedValidationInteger(
-    "SPECULATIVE_REBUILD_MAX_ATTEMPTS",
-    3,
-  );
-  const userEventBarrierRefreshMs = yield* boundedValidationInteger(
-    "USER_EVENT_BARRIER_REFRESH_MS",
-    2_000,
-  );
-  const userEventBarrierMaxStalenessMs = yield* boundedValidationInteger(
-    "USER_EVENT_BARRIER_MAX_STALENESS_MS",
-    15_000,
-  );
-  const userEventInclusionDeadlineMs = yield* boundedValidationInteger(
-    "USER_EVENT_INCLUSION_DEADLINE_MS",
-    60_000,
-  );
-  if (
-    userEventBarrierRefreshMs + userEventBarrierMaxStalenessMs >=
-    userEventInclusionDeadlineMs
-  ) {
-    return yield* Effect.fail(
-      new ConfigError({
-        message:
-          "User-event barrier freshness window exceeds the configured inclusion deadline",
-        cause: `${userEventBarrierRefreshMs.toString()} + ${userEventBarrierMaxStalenessMs.toString()} >= ${userEventInclusionDeadlineMs.toString()}`,
-        fieldsAndValues: [
-          [
-            "USER_EVENT_BARRIER_REFRESH_MS",
-            userEventBarrierRefreshMs.toString(),
-          ],
-          [
-            "USER_EVENT_BARRIER_MAX_STALENESS_MS",
-            userEventBarrierMaxStalenessMs.toString(),
-          ],
-          [
-            "USER_EVENT_INCLUSION_DEADLINE_MS",
-            userEventInclusionDeadlineMs.toString(),
-          ],
-        ],
-      }),
-    );
-  }
+  const nodeBehind = yield* nodeBehindConfig;
   const blockConfirmationAwaitTimeoutMs = yield* Config.integer(
     "BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS",
   ).pipe(Config.withDefault(12_000));
@@ -513,19 +453,6 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const stateQueueCorrectionFinalityDepth = yield* Config.integer(
-    "STATE_QUEUE_CORRECTION_FINALITY_DEPTH",
-  ).pipe(
-    Config.withDefault(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth),
-    Config.mapAttempt((value) => {
-      if (value !== DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth) {
-        throw new Error(
-          `STATE_QUEUE_CORRECTION_FINALITY_DEPTH must equal the deployment profile value ${DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth.toString()}`,
-        );
-      }
-      return value;
-    }),
-  );
   // B5: no default; unset means the verified manifest's retention window. A
   // shorter explicit value refuses startup in
   // assertDeploymentManifestMatchesConfig. DA payload pruning ignores it.
@@ -555,12 +482,8 @@ const makeConfig = Effect.gen(function* () {
       }),
     ),
   );
-  const hubOracleOneShotTxHash = yield* Config.string(
-    "HUB_ORACLE_ONE_SHOT_TX_HASH",
-  ).pipe(Config.withDefault(""));
-  const hubOracleOneShotOutputIndex = yield* Config.integer(
-    "HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX",
-  ).pipe(Config.withDefault(-1));
+  const hubOracleOrigin = yield* hubOracleOriginConfig;
+  const l1ContentSources = yield* l1ContentSourcesConfig;
   const operatorRequiredBondLovelace = yield* Config.string(
     "OPERATOR_REQUIRED_BOND_LOVELACE",
   ).pipe(
@@ -655,9 +578,6 @@ const makeConfig = Effect.gen(function* () {
     }),
   );
   const daHardeningConfig = readDaHardeningConfig();
-  const waitBetweenDepositUTxOFetches = yield* Config.integer(
-    "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
-  ).pipe(Config.withDefault(10000));
   const promMetricsPort = yield* Config.integer("PROM_METRICS_PORT").pipe(
     Config.withDefault(9464),
   );
@@ -961,15 +881,10 @@ const makeConfig = Effect.gen(function* () {
   );
 
   return {
-    L1_PROVIDER: provider,
     L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: l1ProviderPreflightTimeoutMs,
-    L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: l1ProviderRateLimitCooldownMs,
     L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: l1RecentTxVisibilityTimeoutMs,
     L1_RECENT_TX_404_MAX_DELAY_MS: l1RecentTx404MaxDelayMs,
-    L1_OGMIOS_KEY: ogmiosKey,
-    L1_KUPO_KEY: kupoKey,
     L1_NATIVE_LEDGER: nativeLedger,
-    L1_HISTORY_GENESIS_LOSSLESS_SHA256: historyGenesis,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     L1_SETTLEMENT_SEED_PHRASE: settlementSeedPhrase,
@@ -983,13 +898,8 @@ const makeConfig = Effect.gen(function* () {
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
-    SPECULATIVE_COMMIT_BUILD: speculativeCommitBuild,
     OPERATOR_WATCHDOG_ENABLED: operatorWatchdogEnabled,
     OPERATOR_WATCHDOG_PATIENCE_MS: operatorWatchdogPatienceMs,
-    SPECULATIVE_REBUILD_MAX_ATTEMPTS: speculativeRebuildMaxAttempts,
-    USER_EVENT_BARRIER_REFRESH_MS: userEventBarrierRefreshMs,
-    USER_EVENT_BARRIER_MAX_STALENESS_MS: userEventBarrierMaxStalenessMs,
-    USER_EVENT_INCLUSION_DEADLINE_MS: userEventInclusionDeadlineMs,
     BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: blockConfirmationAwaitTimeoutMs,
     BLOCK_CONFIRMATION_AWAIT_RETRIES: blockConfirmationAwaitRetries,
     UNCONFIRMED_BLOCK_MAX_AGE_MS: unconfirmedBlockMaxAgeMs,
@@ -1040,12 +950,13 @@ const makeConfig = Effect.gen(function* () {
       stateQueueMutationLeaseRenewIntervalMs,
     STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS:
       stateQueueMutationLeaseStaleGraceMs,
-    STATE_QUEUE_CORRECTION_FINALITY_DEPTH: stateQueueCorrectionFinalityDepth,
+    COMMIT_EVENT_DEPTH: DEPLOYMENT_MANIFEST_L1_FINALITY.commitEventDepth,
+    ...nodeBehind,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     L1_VIEW_FATAL_MS: l1ViewFatalMs,
-    HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,
-    HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
+    ...hubOracleOrigin,
+    ...l1ContentSources,
     OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
     DA_COMMITTEE_HEX: daCommitteeHex,
@@ -1060,7 +971,6 @@ const makeConfig = Effect.gen(function* () {
     MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: daHardeningConfig.retryBackoffMs,
     MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS:
       daHardeningConfig.retryBackoffMaxMs,
-    WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,
     POSTGRES_HOST: postgresHost,

@@ -306,8 +306,8 @@ describe("L1 control-plane serialization", () => {
 
   it("judges evidence freshness at its max age and clears a stale failure on exact success", () => {
     const nowMs = 100_000;
-    const ogmiosSlot = {
-      source: "local_ogmios_tip" as const,
+    const ledgerSlot = {
+      source: "l1_node_tip" as const,
       currentSlot: 123,
       observedAtMs: nowMs - 5_000,
       slotLengthMs: 1_000,
@@ -341,11 +341,11 @@ describe("L1 control-plane serialization", () => {
           lastSuccessKind: "exact",
           lastFailureAtMs: 20,
           lastFailure: "old failure",
-          lastOgmiosSlot: null,
+          lastLedgerSlot: null,
         },
         healthy: true,
         observedAtMs: nowMs,
-        ogmiosSlot,
+        ledgerSlot,
         successKind: "exact",
       }),
     ).toEqual({
@@ -360,13 +360,13 @@ describe("L1 control-plane serialization", () => {
       lastSuccessKind: "exact",
       lastFailureAtMs: 20,
       lastFailure: null,
-      lastOgmiosSlot: ogmiosSlot,
+      lastLedgerSlot: ledgerSlot,
     });
   });
 
   it("runs HubOracle and Ogmios as one fail-closed exact readiness probe", async () => {
-    const ogmiosSlot = {
-      source: "local_ogmios_tip" as const,
+    const ledgerSlot = {
+      source: "l1_node_tip" as const,
       currentSlot: 456,
       observedAtMs: 100_000,
       slotLengthMs: 1_000,
@@ -377,11 +377,11 @@ describe("L1 control-plane serialization", () => {
         Effect.sync(() => calls.push("hub")),
         Effect.sync(() => {
           calls.push("ogmios");
-          return ogmiosSlot;
+          return ledgerSlot;
         }),
       ),
     );
-    expect(success).toEqual(ogmiosSlot);
+    expect(success).toEqual(ledgerSlot);
     expect(calls).toEqual(["hub", "ogmios"]);
 
     calls.length = 0;
@@ -397,7 +397,7 @@ describe("L1 control-plane serialization", () => {
           }),
           Effect.sync(() => {
             calls.push("ogmios");
-            return ogmiosSlot;
+            return ledgerSlot;
           }),
         ),
       ),
@@ -426,8 +426,8 @@ describe("L1 control-plane serialization", () => {
 
   it("returns a concurrent request immediately from the cache while one direct probe publishes success", async () => {
     const nowMs = 200_000;
-    const ogmiosSlot = {
-      source: "local_ogmios_tip" as const,
+    const ledgerSlot = {
+      source: "l1_node_tip" as const,
       currentSlot: 789,
       observedAtMs: nowMs,
       slotLengthMs: 1_000,
@@ -447,7 +447,7 @@ describe("L1 control-plane serialization", () => {
           lastSuccessKind: "exact",
           lastFailureAtMs: 0,
           lastFailure: null,
-          lastOgmiosSlot: null,
+          lastLedgerSlot: null,
         });
         const entered = yield* Deferred.make<void>();
         const release = yield* Deferred.make<void>();
@@ -455,7 +455,7 @@ describe("L1 control-plane serialization", () => {
         const directProbe = Ref.update(calls, (count) => count + 1).pipe(
           Effect.zipRight(Deferred.succeed(entered, undefined)),
           Effect.zipRight(Deferred.await(release)),
-          Effect.as(ogmiosSlot),
+          Effect.as(ledgerSlot),
         );
         const run = runExactGatedDirectL1ProviderProbe({
           globals,
@@ -486,7 +486,7 @@ describe("L1 control-plane serialization", () => {
     expect(result.first).toEqual({
       mode: "exact_gated_direct_preflight",
       healthy: true,
-      ogmiosSlot,
+      ledgerSlot,
       publishedRevision: 2,
     });
     expect(Option.getOrUndefined(result.secondBeforeRelease)).toEqual({
@@ -521,7 +521,7 @@ describe("L1 control-plane serialization", () => {
           lastSuccessKind: "exact",
           lastFailureAtMs: 0,
           lastFailure: null,
-          lastOgmiosSlot: null,
+          lastLedgerSlot: null,
         });
         const entered = yield* Deferred.make<void>();
         const release = yield* Deferred.make<void>();
@@ -576,8 +576,8 @@ describe("L1 control-plane serialization", () => {
 
   it("allows a later request to retry the direct probe after a direct failure using prior exact success", async () => {
     const nowMs = 200_000;
-    const ogmiosSlot = {
-      source: "local_ogmios_tip" as const,
+    const ledgerSlot = {
+      source: "l1_node_tip" as const,
       currentSlot: 789,
       observedAtMs: nowMs,
       slotLengthMs: 1_000,
@@ -597,7 +597,7 @@ describe("L1 control-plane serialization", () => {
           lastSuccessKind: "exact",
           lastFailureAtMs: 0,
           lastFailure: null,
-          lastOgmiosSlot: null,
+          lastLedgerSlot: null,
         });
         const calls = yield* Ref.make(0);
         const failDirect = yield* Ref.make(true);
@@ -606,7 +606,7 @@ describe("L1 control-plane serialization", () => {
           Effect.flatMap((fail) =>
             fail
               ? Effect.fail("direct provider unavailable")
-              : Effect.succeed(ogmiosSlot),
+              : Effect.succeed(ledgerSlot),
           ),
         );
         const run = runExactGatedDirectL1ProviderProbe({
@@ -637,7 +637,7 @@ describe("L1 control-plane serialization", () => {
     expect(result.second).toEqual({
       mode: "exact_gated_direct_preflight",
       healthy: true,
-      ogmiosSlot,
+      ledgerSlot,
       publishedRevision: 3,
     });
     expect(result.calls).toBe(2);
@@ -667,14 +667,14 @@ describe("L1 control-plane serialization", () => {
           lastSuccessKind: "exact",
           lastFailureAtMs: 0,
           lastFailure: null,
-          lastOgmiosSlot: null,
+          lastLedgerSlot: null,
         });
         const calls = yield* Ref.make(0);
         const probe = yield* runExactGatedDirectL1ProviderProbe({
           globals,
           directProbe: Ref.update(calls, (count) => count + 1).pipe(
             Effect.as({
-              source: "local_ogmios_tip" as const,
+              source: "l1_node_tip" as const,
               currentSlot: 1,
               observedAtMs: nowMs,
               slotLengthMs: 1_000,
@@ -714,7 +714,7 @@ describe("L1 control-plane serialization", () => {
           lastSuccessKind: "exact",
           lastFailureAtMs: 0,
           lastFailure: null,
-          lastOgmiosSlot: null,
+          lastLedgerSlot: null,
         });
         const entered = yield* Deferred.make<void>();
         const release = yield* Deferred.make<void>();
@@ -724,7 +724,7 @@ describe("L1 control-plane serialization", () => {
             directProbe: Deferred.succeed(entered, undefined).pipe(
               Effect.zipRight(Deferred.await(release)),
               Effect.as({
-                source: "local_ogmios_tip" as const,
+                source: "l1_node_tip" as const,
                 currentSlot: 2,
                 observedAtMs: nowMs,
                 slotLengthMs: 1_000,
@@ -750,7 +750,7 @@ describe("L1 control-plane serialization", () => {
           globals,
           directProbe: Ref.update(concurrentCalls, (count) => count + 1).pipe(
             Effect.as({
-              source: "local_ogmios_tip" as const,
+              source: "l1_node_tip" as const,
               currentSlot: 3,
               observedAtMs: nowMs,
               slotLengthMs: 1_000,
@@ -798,7 +798,7 @@ describe("L1 control-plane serialization", () => {
       mode: "cached_direct_preflight_in_flight",
       evidenceAgeMs: 100_000,
       error: "exact HubOracle query failed",
-      ogmiosSlot: null,
+      ledgerSlot: null,
     });
     expect(result.evidence.lastSuccessKind).toBe("exact");
     expect(result.evidence.lastExactFailure).toBe(
@@ -823,13 +823,13 @@ describe("L1 control-plane serialization", () => {
       const nowMs = 200_000;
       const exactObservedAtMs = nowMs - 10_000;
       const directSlot = {
-        source: "local_ogmios_tip" as const,
+        source: "l1_node_tip" as const,
         currentSlot: 2,
         observedAtMs: nowMs,
         slotLengthMs: 1_000,
       };
       const exactSlot = {
-        source: "local_ogmios_tip" as const,
+        source: "l1_node_tip" as const,
         currentSlot: 999,
         observedAtMs: exactObservedAtMs,
         slotLengthMs: 1_000,
@@ -849,7 +849,7 @@ describe("L1 control-plane serialization", () => {
             lastSuccessKind: "exact",
             lastFailureAtMs: 0,
             lastFailure: null,
-            lastOgmiosSlot: null,
+            lastLedgerSlot: null,
           });
           const entered = yield* Deferred.make<void>();
           const release = yield* Deferred.make<void>();
@@ -875,7 +875,7 @@ describe("L1 control-plane serialization", () => {
               current,
               healthy: true,
               observedAtMs: exactObservedAtMs,
-              ogmiosSlot: exactSlot,
+              ledgerSlot: exactSlot,
               successKind: "exact",
             }),
           );
@@ -898,7 +898,7 @@ describe("L1 control-plane serialization", () => {
         lastExactSuccessAtMs: exactObservedAtMs,
         lastSuccessKind: "exact",
         lastFailure: null,
-        lastOgmiosSlot: exactSlot,
+        lastLedgerSlot: exactSlot,
       });
     },
   );
@@ -906,7 +906,7 @@ describe("L1 control-plane serialization", () => {
   it("lets a causally newer exact failure with an older timestamp override a settled direct success", () => {
     const nowMs = 200_000;
     const directSlot = {
-      source: "local_ogmios_tip" as const,
+      source: "l1_node_tip" as const,
       currentSlot: 2,
       observedAtMs: nowMs,
       slotLengthMs: 1_000,
@@ -923,13 +923,13 @@ describe("L1 control-plane serialization", () => {
       lastSuccessKind: "exact" as const,
       lastFailureAtMs: 0,
       lastFailure: null,
-      lastOgmiosSlot: null,
+      lastLedgerSlot: null,
     };
     const afterDirect = nextL1ProviderHealthEvidence({
       current: before,
       healthy: true,
       observedAtMs: nowMs,
-      ogmiosSlot: directSlot,
+      ledgerSlot: directSlot,
       successKind: "direct",
     });
     const afterExactFailure = nextL1ProviderHealthEvidence({
@@ -943,7 +943,7 @@ describe("L1 control-plane serialization", () => {
       probe: {
         mode: "exact_gated_direct_preflight",
         healthy: true,
-        ogmiosSlot: directSlot,
+        ledgerSlot: directSlot,
         publishedRevision: afterDirect.evidenceRevision,
       },
       evidence: afterExactFailure,
@@ -963,7 +963,7 @@ describe("L1 control-plane serialization", () => {
       mode: "snapshot_exact",
       evidenceAgeMs: 0,
       error: "exact HubOracle query failed after direct settlement",
-      ogmiosSlot: null,
+      ledgerSlot: null,
     });
   });
 
@@ -971,7 +971,7 @@ describe("L1 control-plane serialization", () => {
     const nowMs = 200_000;
     const exactObservedAtMs = nowMs - 1;
     const directSlot = {
-      source: "local_ogmios_tip" as const,
+      source: "l1_node_tip" as const,
       currentSlot: 2,
       observedAtMs: nowMs,
       slotLengthMs: 1_000,
@@ -993,27 +993,27 @@ describe("L1 control-plane serialization", () => {
       lastSuccessKind: "exact" as const,
       lastFailureAtMs: 150_000,
       lastFailure: "older exact failure with a newer wall timestamp",
-      lastOgmiosSlot: null,
+      lastLedgerSlot: null,
     };
     const afterDirect = nextL1ProviderHealthEvidence({
       current: before,
       healthy: true,
       observedAtMs: nowMs,
-      ogmiosSlot: directSlot,
+      ledgerSlot: directSlot,
       successKind: "direct",
     });
     const afterExactSuccess = nextL1ProviderHealthEvidence({
       current: afterDirect,
       healthy: true,
       observedAtMs: exactObservedAtMs,
-      ogmiosSlot: exactSlot,
+      ledgerSlot: exactSlot,
       successKind: "exact",
     });
     const response = resolveL1ProviderReadinessSnapshot({
       probe: {
         mode: "exact_gated_direct_preflight",
         healthy: true,
-        ogmiosSlot: directSlot,
+        ledgerSlot: directSlot,
         publishedRevision: afterDirect.evidenceRevision,
       },
       evidence: afterExactSuccess,
@@ -1029,14 +1029,14 @@ describe("L1 control-plane serialization", () => {
       lastExactSuccessAtMs: exactObservedAtMs,
       lastExactFailureAtMs: 150_000,
       lastFailure: null,
-      lastOgmiosSlot: exactSlot,
+      lastLedgerSlot: exactSlot,
     });
     expect(response).toEqual({
       healthy: true,
       mode: "snapshot_exact",
       evidenceAgeMs: 1,
       error: null,
-      ogmiosSlot: exactSlot,
+      ledgerSlot: exactSlot,
     });
     expect(
       l1ProviderReadinessEvidenceIsFresh({
@@ -1051,7 +1051,7 @@ describe("L1 control-plane serialization", () => {
   it("makes a newer exact failure override a cached-success response", () => {
     const nowMs = 200_000;
     const exactSlot = {
-      source: "local_ogmios_tip" as const,
+      source: "l1_node_tip" as const,
       currentSlot: 10,
       observedAtMs: nowMs - 1_000,
       slotLengthMs: 1_000,
@@ -1068,7 +1068,7 @@ describe("L1 control-plane serialization", () => {
       lastSuccessKind: "exact" as const,
       lastFailureAtMs: 0,
       lastFailure: null,
-      lastOgmiosSlot: exactSlot,
+      lastLedgerSlot: exactSlot,
     };
     const afterFailure = nextL1ProviderHealthEvidence({
       current: cached,
@@ -1090,14 +1090,14 @@ describe("L1 control-plane serialization", () => {
       mode: "snapshot_exact",
       evidenceAgeMs: 1_000,
       error: "exact failure after cache decision",
-      ogmiosSlot: null,
+      ledgerSlot: null,
     });
   });
 
   it("uses the final direct snapshot after direct-exact-direct publications", () => {
     const nowMs = 200_000;
     const slot = (currentSlot: number, observedAtMs = nowMs) => ({
-      source: "local_ogmios_tip" as const,
+      source: "l1_node_tip" as const,
       currentSlot,
       observedAtMs,
       slotLengthMs: 1_000,
@@ -1114,34 +1114,34 @@ describe("L1 control-plane serialization", () => {
       lastSuccessKind: "exact" as const,
       lastFailureAtMs: 0,
       lastFailure: null,
-      lastOgmiosSlot: null,
+      lastLedgerSlot: null,
     };
     const firstDirect = nextL1ProviderHealthEvidence({
       current: initial,
       healthy: true,
       observedAtMs: nowMs,
-      ogmiosSlot: slot(2),
+      ledgerSlot: slot(2),
       successKind: "direct",
     });
     const exact = nextL1ProviderHealthEvidence({
       current: firstDirect,
       healthy: true,
       observedAtMs: nowMs - 10_000,
-      ogmiosSlot: slot(3, nowMs - 10_000),
+      ledgerSlot: slot(3, nowMs - 10_000),
       successKind: "exact",
     });
     const finalDirect = nextL1ProviderHealthEvidence({
       current: exact,
       healthy: true,
       observedAtMs: nowMs,
-      ogmiosSlot: slot(4),
+      ledgerSlot: slot(4),
       successKind: "direct",
     });
     const response = resolveL1ProviderReadinessSnapshot({
       probe: {
         mode: "exact_gated_direct_preflight",
         healthy: true,
-        ogmiosSlot: slot(2),
+        ledgerSlot: slot(2),
         publishedRevision: firstDirect.evidenceRevision,
       },
       evidence: finalDirect,
@@ -1155,14 +1155,14 @@ describe("L1 control-plane serialization", () => {
       lastObservationKind: "direct_success",
       lastExactEvidenceRevision: 3,
       lastExactObservationKind: "exact_success",
-      lastOgmiosSlot: slot(4),
+      lastLedgerSlot: slot(4),
     });
     expect(response).toEqual({
       healthy: true,
       mode: "snapshot_direct",
       evidenceAgeMs: 0,
       error: null,
-      ogmiosSlot: slot(4),
+      ledgerSlot: slot(4),
     });
   });
 
@@ -1174,22 +1174,21 @@ describe("L1 control-plane serialization", () => {
             ok: false,
             degraded: false,
             route: {
-              primary: "kupmios",
+              primary: "l1_node",
               network: "Custom",
             },
             checkedAtMs: 100_000,
             healthySources: [],
-            unhealthySources: ["kupmios"],
+            unhealthySources: ["l1_node"],
             sources: [
               {
-                source: "kupmios",
-                endpoint: "http://kupo.test,http://ogmios.test",
+                source: "l1_node",
+                endpoint: "/run/cardano/node.socket",
                 healthy: false,
                 degraded: false,
-                failureKind: "network_error",
+                failureKind: "transport:node_unreachable",
                 latencyMs: 1_999,
-                bodySummary:
-                  "TypeError: fetch failed; cause=connect EHOSTUNREACH kupo",
+                bodySummary: "Error: connect ENOENT /run/cardano/node.socket",
               },
             ],
           }),
@@ -1201,48 +1200,40 @@ describe("L1 control-plane serialization", () => {
     expect(result._tag).toBe("Left");
     if (result._tag === "Left") {
       expect(String(result.left)).toContain(
-        "Direct L1 provider preflight failed (kupmios:network_error:latency_ms=1999:TypeError: fetch failed; cause=connect EHOSTUNREACH kupo)",
+        "Direct L1 provider preflight failed (l1_node:transport:node_unreachable:latency_ms=1999:Error: connect ENOENT /run/cardano/node.socket)",
       );
     }
   });
 
-  it("aborts an in-flight local slot fetch at the aggregate timeout", async () => {
-    let calls = 0;
-    let slotFetchAborted = false;
-    const fetchImpl = async (
-      _input: string,
-      init?: RequestInit,
-    ): Promise<Response> => {
-      calls += 1;
-      if (calls <= 2) {
-        return new Response("{}", { status: 200 });
-      }
-      return await new Promise<Response>((_, reject) => {
-        const signal = init?.signal;
-        signal?.addEventListener(
-          "abort",
-          () => {
-            slotFetchAborted = true;
-            reject(signal.reason);
-          },
-          { once: true },
-        );
-      });
-    };
+  it("aborts an in-flight ledger read at the aggregate timeout", async () => {
+    let reads = 0;
+    let readAborted = false;
     const result = await Effect.runPromise(
       Effect.either(
         runBoundedDirectL1ProviderPreflight({
           runPreflight: (signal) =>
             runL1ProviderPreflight({
               config: {
-                L1_PROVIDER: "Kupmios",
-                L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 5_000,
-                L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: 1_000,
-                L1_OGMIOS_KEY: "http://ogmios.test",
-                L1_KUPO_KEY: "http://kupo.test",
-                NETWORK: "Custom",
+                network: "Custom",
+                endpoint: "/run/cardano/node.socket",
+                timeoutMs: 5_000,
+                transportReadiness: () => ({
+                  ready: true,
+                  nodeToClientVersion: 16,
+                }),
+                readSubmitSlotSnapshot: () => {
+                  reads += 1;
+                  return new Promise<never>(() => {
+                    signal?.addEventListener(
+                      "abort",
+                      () => {
+                        readAborted = true;
+                      },
+                      { once: true },
+                    );
+                  });
+                },
               },
-              fetchImpl,
               signal,
             }),
           timeoutMs: 10,
@@ -1251,7 +1242,7 @@ describe("L1 control-plane serialization", () => {
     );
 
     expect(result._tag).toBe("Left");
-    expect(calls).toBe(3);
-    expect(slotFetchAborted).toBe(true);
+    expect(reads).toBe(1);
+    expect(readAborted).toBe(true);
   });
 });

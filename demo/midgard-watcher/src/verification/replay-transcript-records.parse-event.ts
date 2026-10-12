@@ -1,141 +1,56 @@
-import {
-  aikenSerialisedPlutusDataCborPreservingMapOrder,
-  plutusConstrFieldCbor,
-} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type {
-  WatcherIndexedUserEvent,
-  WatcherTerminalUserEvent,
-} from "../indexers/user-event-indexer.js";
 import { type WatcherCommittedEventClaim } from "./event-claims.js";
-import { EVENT_KEYS } from "./replay-transcript-records.parse-w25.js";
+import {
+  ADMISSION_KEYS,
+  EVENT_KEYS,
+} from "./replay-transcript-records.parse-w25.js";
 import {
   equal,
   HEX,
   HEX28,
   HEX32,
   NATURAL,
-  OUT_REF,
+  nullableText,
   record,
   requireCondition,
-  sha256,
   stringFields,
   text,
 } from "./replay-transcript-records.w25-keys.js";
+import type { WatcherUserEvent } from "./user-event.js";
 
-export const TERMINAL_KEYS = [
-  "terminalStatus",
-  "terminalTransactionHash",
-  "terminalPointDigest",
-  "terminalBlockHash",
-  "terminalSlot",
-  "terminalBlockNo",
-  "terminalFinalityStatus",
-] as const;
-
-export const parseEvent = (
-  value: unknown,
-): WatcherIndexedUserEvent | WatcherTerminalUserEvent => {
-  requireCondition(typeof value === "object" && value !== null, "event");
-  const terminal = Object.prototype.hasOwnProperty.call(
-    value,
-    "terminalStatus",
-  );
-  const classified = Object.prototype.hasOwnProperty.call(
-    value,
-    "terminalClassification",
-  );
-  const history =
-    "kind" in value &&
-    (value.kind === "deposit" || value.kind === "withdrawal");
-  const keys = [
-    ...EVENT_KEYS,
-    ...(history ? ["historyPayloadCborHex"] : ["witnessScriptHash"]),
-    ...(terminal ? TERMINAL_KEYS : []),
-    ...(classified ? ["terminalClassification"] : []),
-  ];
-  const r = record(value, keys, "event");
+/** A transcript's descriptive user event, as the follower read it (W3). */
+export const parseEvent = (value: unknown): WatcherUserEvent => {
+  const r = record(value, EVENT_KEYS, "event");
   requireCondition(
     r.kind === "deposit" ||
       r.kind === "withdrawal" ||
       r.kind === "forced_order",
     "event.kind",
   );
-  stringFields(
-    r,
-    [
-      "eventId",
-      "addressHex",
-      "assetNameHex",
-      "eventCborHex",
-      "datumCborHex",
-      "outputCborHex",
-    ],
-    "event",
-    HEX,
+  stringFields(r, ["eventId", "assetNameHex", "eventCborHex"], "event", HEX);
+  text(r.policyId, "event.policyId", HEX28);
+  text(r.inclusionTime, "event.inclusionTime", NATURAL);
+  nullableText(r.originalAssetsCborHex, "event.originalAssetsCborHex", HEX);
+  equal(
+    r.originalAssetsCborHex !== null,
+    r.kind === "deposit",
+    "event original assets",
   );
+  const admission = record(r.admission, ADMISSION_KEYS, "event.admission");
   stringFields(
-    r,
-    [
-      "transactionHash",
-      "eventContentDigest",
-      "datumDigest",
-      "outputDigest",
-      "originPointDigest",
-      "originChainPointId",
-      "originBlockHash",
-    ],
-    "event",
+    admission,
+    ["blockHash", "transactionHash"],
+    "event.admission",
     HEX32,
   );
   stringFields(
-    r,
-    ["policyId", "spendScriptHash", ...(history ? [] : ["witnessScriptHash"])],
-    "event",
-    HEX28,
-  );
-  if (history) {
-    const payload = Data.from(
-      text(r.historyPayloadCborHex, "event.historyPayloadCborHex", HEX),
-      SDK.EventHistoryPayload,
-    );
-    const serializedEvent =
-      r.kind === "deposit" && "DepositPayload" in payload
-        ? aikenSerialisedPlutusDataCborPreservingMapOrder(
-            plutusConstrFieldCbor(String(r.historyPayloadCborHex), [0]),
-          )
-        : r.kind === "withdrawal" && "WithdrawalPayload" in payload
-          ? aikenSerialisedPlutusDataCborPreservingMapOrder(
-              plutusConstrFieldCbor(String(r.historyPayloadCborHex), [0]),
-            )
-          : null;
-    equal(serializedEvent, r.eventCborHex, "event history payload");
-  }
-  stringFields(
-    r,
-    ["outputIndex", "inclusionTime", "originSlot", "originBlockNo"],
-    "event",
+    admission,
+    ["slot", "blockNo", "transactionIndex", "outputIndex"],
+    "event.admission",
     NATURAL,
   );
-  stringFields(r, ["outRef", "nonceOutRef"], "event", OUT_REF);
-  equal(
-    r.outRef,
-    `${String(r.transactionHash)}#${String(r.outputIndex)}`,
-    "event outRef",
-  );
-  equal(r.finalityStatus, "final", "event finality");
-  for (const [bytes, digest] of [
-    ["eventCborHex", "eventContentDigest"],
-    ["datumCborHex", "datumDigest"],
-    ["outputCborHex", "outputDigest"],
-  ])
-    equal(
-      sha256(Buffer.from(text(r[bytes!], `event.${bytes}`, HEX), "hex")),
-      r[digest!],
-      `event.${digest}`,
-    );
   const id = Data.from(text(r.eventId, "event.eventId"), SDK.OutputReference);
   equal(Data.to(id, SDK.OutputReference), r.eventId, "event id CBOR");
   equal(
@@ -143,48 +58,12 @@ export const parseEvent = (
     r.nonceOutRef,
     "event nonce",
   );
-  if (terminal) {
-    text(r.terminalStatus, "event.terminalStatus");
-    stringFields(
-      r,
-      ["terminalTransactionHash", "terminalPointDigest", "terminalBlockHash"],
-      "event",
-      HEX32,
-    );
-    stringFields(r, ["terminalSlot", "terminalBlockNo"], "event", NATURAL);
-    equal(r.terminalFinalityStatus, "final", "event terminal finality");
-  }
-  if (classified) {
-    requireCondition(
-      terminal && r.kind === "forced_order",
-      "event terminal classification kind",
-    );
-    const item = record(
-      r.terminalClassification,
-      [
-        "schemaVersion",
-        "operatorValidity",
-        "terminalTransactionHash",
-        "terminalPointDigest",
-      ],
-      "event.terminalClassification",
-    );
-    stringFields(
-      item,
-      ["schemaVersion", "operatorValidity"],
-      "event.terminalClassification",
-    );
-    equal(
-      item.terminalTransactionHash,
-      r.terminalTransactionHash,
-      "terminal transaction",
-    );
-    equal(item.terminalPointDigest, r.terminalPointDigest, "terminal point");
-  }
-  return r as unknown as WatcherIndexedUserEvent | WatcherTerminalUserEvent;
+  return r as unknown as WatcherUserEvent;
 };
 
-export const eventKeyFor = (event: WatcherIndexedUserEvent): SDK.EventKey => {
+export const eventKeyFor = (
+  event: Pick<WatcherUserEvent, "kind" | "eventId">,
+): SDK.EventKey => {
   const id = Data.from(event.eventId, SDK.OutputReference);
   if (event.kind === "deposit") return { DepositEventKey: { deposit_id: id } };
   if (event.kind === "withdrawal")
@@ -193,7 +72,7 @@ export const eventKeyFor = (event: WatcherIndexedUserEvent): SDK.EventKey => {
 };
 
 export const phaseFor = (
-  event: WatcherIndexedUserEvent,
+  event: Pick<WatcherUserEvent, "kind">,
 ): WatcherCommittedEventClaim["phase"] =>
   event.kind === "deposit"
     ? "Deposit"

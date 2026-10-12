@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { keyValuePhasRootWithCount } from "@al-ft/midgard-fault-proofs";
 import type { EventKey } from "@al-ft/midgard-sdk";
 import {
@@ -20,12 +21,6 @@ import type { PhaseBConfig } from "@al-ft/midgard-validation/types";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import {
-  type WatcherForcedOperatorVerdict,
-  type WatcherIndexedUserEvent,
-  type WatcherLocalUserEventHeaderCutoff,
-  type WatcherTerminalUserEvent,
-} from "../indexers/user-event-indexer.js";
-import {
   HEX_BYTES,
   normalizeRootHex,
   type WatcherBlockReplayPriorUtxo,
@@ -39,6 +34,12 @@ import {
 } from "./block-replay.watcher-block-replay-result.js";
 import { type WatcherCommittedEventClaim } from "./event-claims.js";
 import { type WatcherRuleBundle } from "./rule-bundle.js";
+import type {
+  WatcherForcedOperatorVerdict,
+  WatcherUserEvent,
+  WatcherUserEventHeaderCutoff,
+  WatcherUserEventKind,
+} from "./user-event.js";
 
 /**
  * Turns the supplied prior-state entries into canonical ledger entries and
@@ -107,16 +108,20 @@ export const watcherBlockReplayPriorState = async (
 export const WATCHER_BLOCK_REPLAY_BUCKET_CONCURRENCY = 1 as const;
 
 /**
- * Builds the canonical `PhaseBConfig` from the L1-committed header. Nothing
- * here is a policy choice by the watcher: the slot is a header field and the
- * other two values are pinned constants that cannot change a verdict's
- * direction.
+ * Builds the canonical `PhaseBConfig` from the L1-committed header and the
+ * signed rule bundle. Nothing here is a policy choice by the watcher: the slot
+ * is a header field, the slot mapping is the deployment's, and the other two
+ * values are pinned constants that cannot change a verdict's direction.
  */
-export const makeWatcherPhaseBConfig = (header: Header): PhaseBConfig =>
+export const makeWatcherPhaseBConfig = (
+  header: Header,
+  l1SlotConfig: L1SlotConfig,
+): PhaseBConfig =>
   Object.freeze({
     nowCardanoSlotNo: header.blockSlot,
     bucketConcurrency: WATCHER_BLOCK_REPLAY_BUCKET_CONCURRENCY,
     enforceScriptBudget: true,
+    l1SlotConfig,
   });
 
 export const eventKeyTxId = (eventKey: EventKey): string | null =>
@@ -151,16 +156,12 @@ export const eventKeyFingerprint = (eventKey: EventKey): string => {
   return `ForcedTransaction:${id.transactionId}:${id.outputIndex.toString()}`;
 };
 
+/** Where the event was read: the L1 follower's facts at the header's cutoff. */
 export type WatcherBlockReplayEventOriginRecord = Readonly<{
-  source: "local_publication";
-  snapshotDigest: string;
-  historyEntryDigests: readonly string[];
+  source: "follower_facts";
   deploymentManifestId: string;
   blueprintHash: string;
-  checkpointDigest: string;
-  checkpointPayloadDigest: string;
-  headEntryDigest: string;
-  throughHeader: WatcherLocalUserEventHeaderCutoff | null;
+  throughHeader: WatcherUserEventHeaderCutoff;
 }>;
 
 export type WatcherBlockReplayEffectRecord = Readonly<{
@@ -176,7 +177,7 @@ export type WatcherBlockReplayEffectRecord = Readonly<{
 export type WatcherBlockReplayEventAuthorityRecord = Readonly<{
   phase: WatcherBlockReplayEventAuthority["phase"];
   eventKey: EventKey;
-  event: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
+  event: WatcherUserEvent;
   network: WatcherRuleBundle["network"];
   origin: WatcherBlockReplayEventOriginRecord;
   committedClaim: WatcherCommittedEventClaim;
@@ -214,24 +215,15 @@ export const watcherBlockReplayEventAuthorityManifest = (
     authoritySource: origin.source,
     deploymentManifestId: origin.deploymentManifestId,
     blueprintHash: origin.blueprintHash,
-    checkpointDigest: origin.checkpointDigest,
-    checkpointPayloadDigest: origin.checkpointPayloadDigest,
-    userEventSnapshotDigest: origin.snapshotDigest,
-    headEntryDigest: origin.headEntryDigest,
     throughHeader: origin.throughHeader,
-    historyEntryDigests: origin.historyEntryDigests,
     eventId: event.eventId,
-    eventOutRef: event.outRef,
-    transactionHash: event.transactionHash,
-    eventContentDigest: event.eventContentDigest,
-    datumDigest: event.datumDigest,
-    outputDigest: event.outputDigest,
-    originPointDigest: event.originPointDigest,
-    originChainPointId: event.originChainPointId,
-    originBlockHash: event.originBlockHash,
-    originSlot: event.originSlot,
-    originBlockNo: event.originBlockNo,
-    finalityStatus: event.finalityStatus,
+    nonceOutRef: event.nonceOutRef,
+    policyId: event.policyId,
+    assetNameHex: event.assetNameHex,
+    inclusionTime: event.inclusionTime,
+    eventContentDigest: sha256Hex(Buffer.from(event.eventCborHex, "hex")),
+    originalAssetsCborHex: event.originalAssetsCborHex,
+    admission: event.admission,
     committedSource: record.committedClaim,
   });
 };
@@ -243,7 +235,7 @@ export type ValidatedEventAuthority = Readonly<{
   canonicalNativeTxCbor: Buffer | null;
   programMaterialSidecarCbor: Buffer | null;
   committedForcedValidity: WatcherForcedOperatorVerdict | null;
-  userEvent: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
+  userEvent: WatcherUserEvent;
   authorityManifest: Readonly<Record<string, unknown>>;
   effectManifest: Readonly<Record<string, unknown>> | null;
   recordSource: Omit<
@@ -257,7 +249,7 @@ export const sha256Hex = (bytes: Uint8Array): string =>
 
 export const userEventKindForPhase = (
   phase: WatcherBlockReplayEventAuthority["phase"],
-): WatcherIndexedUserEvent["kind"] =>
+): WatcherUserEventKind =>
   phase === "Deposit"
     ? "deposit"
     : phase === "Withdrawal"
@@ -295,7 +287,7 @@ export const ledgerOutRefCborHex = (value: {
   }).toString("hex");
 
 export const decodeUserEventIdCborHex = (
-  event: WatcherIndexedUserEvent,
+  event: Pick<WatcherUserEvent, "kind" | "eventCborHex">,
 ): string | null => {
   try {
     const schema =

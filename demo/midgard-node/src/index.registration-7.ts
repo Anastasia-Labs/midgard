@@ -15,6 +15,7 @@ import { formatJson } from "./commands/command-utils.js";
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import * as DeploymentRunStateCommand from "./commands/deployment-run-state.js";
 import { program } from "./index.registration.js";
+import { canonicalSlotConfigForLucid } from "./lucid-time.js";
 import * as Services from "./services/index.js";
 import {
   planReferenceScriptCommandProgram,
@@ -104,6 +105,17 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               },
             );
           const baseContracts = yield* Services.AlwaysSucceedsContract;
+          // The scripts take the slot mapping Lucid reads through the L1
+          // access, a named network's only when it equals its static one.
+          const l1SlotConfig = yield* Effect.try({
+            try: () =>
+              Services.derivedDeploymentL1SlotConfig(
+                nodeConfig.NETWORK,
+                canonicalSlotConfigForLucid(lucidService.api),
+              ),
+            catch: (cause) =>
+              cause instanceof Error ? cause : new Error(String(cause)),
+          });
           const contracts =
             yield* Services.withRealStateQueueAndOperatorContracts(
               nodeConfig.NETWORK,
@@ -120,6 +132,7 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                   Services.eventHistoryProtectionDurationFromExplicitEnvironment(),
                 eventHistoryBounds:
                   Services.eventHistoryBoundsFromExplicitEnvironment(),
+                l1SlotConfig,
               },
             );
           yield* Effect.try({

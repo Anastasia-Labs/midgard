@@ -4,7 +4,10 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import {
+  type CompleteCanonicalReplayContext,
+  SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
+} from "../workflow/complete-replay.js";
 import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
 import {
   captureCursorRemoval,
@@ -20,11 +23,7 @@ import {
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import {
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptHistorySource,
-} from "../workflow/historical-native-script-corpus.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -144,11 +143,11 @@ export const createManifestBoundSpendInputSignerMissingRuntime = ({
 export type ManifestBoundSpendInputSignerMissingWorkflowConfig =
   LoadManifestBoundSpendInputSignerMissingConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+      l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-      historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
-      historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+      /** The classifier-admitted context carrying the authenticated predecessor. */
+      replayContext?: CompleteCanonicalReplayContext;
     }>;
 
 export type ManifestBoundSpendInputSignerMissingWorkflow = Readonly<{
@@ -164,8 +163,7 @@ export type ManifestBoundSpendInputSignerMissingWorkflow = Readonly<{
   l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+  replayContext?: CompleteCanonicalReplayContext;
 }>;
 
 export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<

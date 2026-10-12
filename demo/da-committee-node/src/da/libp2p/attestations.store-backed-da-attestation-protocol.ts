@@ -46,7 +46,6 @@ export type StoreBackedDaAttestationProtocolDeps = {
   readonly store: Pick<
     CommitteeStore,
     | "getDaPayload"
-    | "getL1SourceState"
     | "saveDaSignature"
     | "listDaSignatures"
     | "saveDaConflictEvidence"
@@ -71,9 +70,6 @@ export class StoreBackedDaAttestationProtocol {
     readonly record: DaSignatureRecord;
     readonly sourcePeerId: string;
   }): Promise<DaAttestationPublishResult> {
-    if ((await this.deps.store.getL1SourceState())?.status === "quarantined") {
-      return { status: "rejected", reason: "L1 source is quarantined" };
-    }
     const payload = await this.deps.store.getDaPayload(args.record.headerHash);
     if (!isVerifiedPayload(payload)) {
       return {
@@ -223,9 +219,6 @@ export class StoreBackedDaAttestationProtocol {
   private async serveableAttestations(
     headerHash: string,
   ): Promise<readonly DaSignatureRecord[]> {
-    if ((await this.deps.store.getL1SourceState())?.status === "quarantined") {
-      return [];
-    }
     const payload = await this.deps.store.getDaPayload(headerHash);
     if (!isVerifiedPayload(payload)) {
       return [];

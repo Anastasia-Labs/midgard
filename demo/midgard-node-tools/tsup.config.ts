@@ -24,7 +24,9 @@ export default defineConfig({
   // from this package's own node_modules at runtime.
   noExternal: [/^midgard-node(\/|$)/],
   // Recorder callbacks and public receipt readers must share watcher WeakMaps.
-  external: [/^midgard-watcher(\/|$)/],
+  // The fake node transport names its own module file in the sidecars it
+  // writes, so compiled test probes must load it from the package.
+  external: [/^midgard-watcher(\/|$)/, /^@al-ft\/l1-node-transport(\/|$)/],
   esbuildOptions(options) {
     options.conditions = [...(options.conditions ?? []), "midgard-source"];
     options.loader = {

@@ -5,6 +5,7 @@ import {
   MIDGARD_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import { type DeploymentManifestJsonValue } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   MidgardValidationPhase,
   type MidgardValidationPhaseName,
@@ -244,6 +245,11 @@ export type WatcherRuleBundle = Readonly<{
   deploymentManifestId: string;
   network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   blueprintHash: string;
+  /**
+   * The deployment manifest's L1 slot mapping: script contexts carry a body's
+   * validity range in POSIX milliseconds through it, so replay depends on it.
+   */
+  l1SlotConfig: L1SlotConfig;
   consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   consensusProfileDigest: string;
   protocolVersion: typeof MIDGARD_PROTOCOL_VERSION;
@@ -267,6 +273,7 @@ export type WatcherRuleBundleConstructionIdentity = Readonly<{
   manifestId: string;
   network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   blueprintHash: string;
+  l1SlotConfig: L1SlotConfig;
   programCommitments: Readonly<Record<string, string>>;
 }>;
 

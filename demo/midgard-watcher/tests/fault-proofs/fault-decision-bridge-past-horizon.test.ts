@@ -96,7 +96,7 @@ describe("fault decision bridge past the challengeability horizon", () => {
 
     // Time only moves the header further past: it is never read again.
     await h.bridge.reconcileAndDispatch(current);
-    await h.bridge.retryDeferredClassification(current);
+    await h.bridge.reconcileAndDispatch(current);
     const goneReads = h.application.classifyHeader.mock.calls.filter(
       ([request]) => request.header.headerHash === gone!.headerHash,
     );

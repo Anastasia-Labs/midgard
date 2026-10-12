@@ -9,6 +9,7 @@ import {
 } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
   decision,
@@ -95,6 +96,7 @@ describe("fault decision bridge durable evidence", () => {
       directory: root,
       deploymentFingerprint: DEPLOYMENT,
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+      authenticationKey: TEST_JOURNAL_KEY,
     });
     // Shaped like a live journal: the same header decided healthy at two
     // observation depths, then once more under an already used identity.
@@ -123,7 +125,7 @@ describe("fault decision bridge durable evidence", () => {
     expect(h.appended.map(({ headerHash }) => headerHash)).toEqual([
       second!.headerHash,
     ]);
-    expect(await journal.audit()).toEqual(records);
+    expect(await journal.readAll()).toEqual(records);
   });
 
   it("admits a fault found later for a header the journal once decided healthy", async () => {

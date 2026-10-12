@@ -4,10 +4,7 @@ import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../src/execution-native-script-invalid/workflow-spec.js";
-import {
-  CURSOR_FAMILY_SPECS,
-  MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
-} from "../src/workflow/cursor-family-spec.js";
+import { CURSOR_FAMILY_SPECS } from "../src/workflow/cursor-family-spec.js";
 import {
   cursorFamilyObservation,
   reconcileCursorFamilyAction,
@@ -22,16 +19,19 @@ const provenance: EvidenceProvenance = {
   grade: "security",
 };
 
-const spec = MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC;
+// Step 4 forks to a direct proof token or the staged 5/6 self-loop batches.
+const spec = EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC;
 
-const step = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ref: string) => ({
+type SpecStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+
+const step = (ordinal: SpecStep, ref: string) => ({
   kind: "step" as const,
   step: ordinal,
   threadOutRef: ref,
   stateQueueBlockOutRef: outRef("10"),
 });
 
-const actionFor = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ref: string) => {
+const actionFor = (ordinal: SpecStep, ref: string) => {
   const observed = cursorFamilyObservation({
     spec,
     headerHash,
@@ -45,7 +45,7 @@ const actionFor = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ref: string) => {
 describe("production cursor-family authenticated state V1", () => {
   it("recovers a changed header reference only while the exact computation step remains current", async () => {
     const initial = cursorFamilyObservation({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      spec,
       headerHash,
       provenance,
       stage: {
@@ -57,7 +57,7 @@ describe("production cursor-family authenticated state V1", () => {
     });
     if (initial.kind !== "action_required") throw new Error("missing step");
     const input = {
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      spec,
       headerHash,
       provenance,
       action: initial.action,
@@ -103,7 +103,6 @@ describe("production cursor-family authenticated state V1", () => {
   });
 
   it("reconciles signed init after the authenticated header output is recreated", async () => {
-    const spec = MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC;
     const initial = cursorFamilyObservation({
       spec,
       headerHash,
@@ -217,14 +216,14 @@ describe("production cursor-family authenticated state V1", () => {
     }
   });
 
-  it("accepts the exact direct and staged missing-native-script successors", async () => {
-    const step06Action = actionFor(6, outRef("60"));
+  it("accepts the exact direct and staged execution-native-script successors", async () => {
+    const step04Action = actionFor(4, outRef("40"));
     const directTx = hash("61");
     await expect(
       reconcileCursorFamilyAction({
         spec,
         headerHash,
-        action: step06Action,
+        action: step04Action,
         txHash: directTx,
         provenance,
         stage: {
@@ -242,19 +241,19 @@ describe("production cursor-family authenticated state V1", () => {
       reconcileCursorFamilyAction({
         spec,
         headerHash,
-        action: step06Action,
+        action: step04Action,
         txHash: stagedTx,
         provenance,
-        stage: step(7, `${stagedTx}#0`),
+        stage: step(5, `${stagedTx}#0`),
         transactionConfirmed: async () => true,
       }),
     ).resolves.toEqual({ kind: "confirmed", txHash: stagedTx });
   });
 
-  it("content-addresses and reconciles repeated step-07/08 cursor batches", async () => {
-    for (const ordinal of [7, 8] as const) {
-      const current = outRef(ordinal === 7 ? "70" : "80");
-      const txHash = hash(ordinal === 7 ? "71" : "81");
+  it("content-addresses and reconciles repeated step-05/06 cursor batches", async () => {
+    for (const ordinal of [5, 6] as const) {
+      const current = outRef(ordinal === 5 ? "50" : "60");
+      const txHash = hash(ordinal === 5 ? "51" : "61");
       const required = actionFor(ordinal, current);
       await expect(
         reconcileCursorFamilyAction({
@@ -292,15 +291,15 @@ describe("production cursor-family authenticated state V1", () => {
   });
 
   it("rejects skipped, substituted, and unauthenticated successors", async () => {
-    const action = actionFor(6, outRef("60"));
+    const action = actionFor(4, outRef("40"));
     await expect(
       reconcileCursorFamilyAction({
         spec,
         headerHash,
         action,
-        txHash: hash("61"),
+        txHash: hash("41"),
         provenance,
-        stage: step(8, `${hash("61")}#0`),
+        stage: step(6, `${hash("41")}#0`),
         transactionConfirmed: async () => true,
       }),
     ).resolves.toMatchObject({ kind: "conflict" });
@@ -317,7 +316,7 @@ describe("production cursor-family authenticated state V1", () => {
   it("rejects incomplete successor tables and out-of-range chain steps", () => {
     expect(() =>
       cursorFamilyObservation({
-        spec: { ...spec, successors: { ...spec.successors, 8: [] } },
+        spec: { ...spec, successors: { ...spec.successors, 13: [] } },
         headerHash,
         provenance,
         stage: step(1, outRef("11")),
@@ -325,10 +324,10 @@ describe("production cursor-family authenticated state V1", () => {
     ).toThrow("omits an exact legal successor");
     expect(() =>
       cursorFamilyObservation({
-        spec: { ...spec, stepCount: 7, successors: { ...spec.successors } },
+        spec: { ...spec, stepCount: 12, successors: { ...spec.successors } },
         headerHash,
         provenance,
-        stage: step(8, outRef("88")),
+        stage: step(13, outRef("88")),
       }),
     ).toThrow();
   });
@@ -336,9 +335,7 @@ describe("production cursor-family authenticated state V1", () => {
   it("admits every closed bespoke topology without implying readiness", () => {
     expect(Object.keys(CURSOR_FAMILY_SPECS)).toEqual([
       "nativeScriptDecoding",
-      "missingNativeScriptTx",
       "withdrawalMistag",
-      "crossBlockDuplicateEvent",
       "valueNotPreserved",
       "mintAuthorization",
     ]);

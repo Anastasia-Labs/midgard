@@ -70,24 +70,25 @@ For example, the \code{Element} of \code{registered\_operators} is:
 \subsection{Operator inactivity}
 \label{h:operator-inactivity}
 
-If a shift's assigned operator neglects their duty to commit blocks regularly to the state queue, they can be given an inactivity strike.
+If a shift's assigned operator neglects a user event that awaits inclusion in the state queue, they can be given an inactivity strike.
 Enough strikes renders the operator eligible for partial slashing, where they are transferred to the retired operators set, and have a portion of their bond sent to the Cardano treasury as penalty.\footnote{The reason for sending all the slashed portion to the Cardano treasury is to avoid potential incentivization of DDoS attacks against active operators.}
 
-Three protocol parameters govern how operators can be considered inactive.
+A strike always cites one undelivered user event: a deposit, a withdrawal or a tx order whose inclusion time is after the end time of the latest block commitment.
+An operator whose shift has no undelivered user event cannot be struck, however long it goes without committing a block.
+An idle network therefore needs no block commitments, and its shifts rotate by the end-of-shift advancement of the scheduler (\cref{h:scheduler-state-consistency}).
+
+Two protocol parameters govern how operators can be considered inactive.
 \begin{enumerate}
-  \item \code{max\_inactivity\_between\_block\_commitments} dictates a minimum frequency in block commitments.
-    Operators are required to submit block commitments at this rate, regardless of the block containing any transactions or user events.
   \item \code{user\_events\_negligence\_timeout} determines how long operators can ignore user events slated for inclusion within their shifts.
     By referring to a user event utxo that's been awaiting inclusion in a block commitment long enough, an operator can be proven inactive.
   \item \code{new\_shift\_inactivity\_grace\_period} protects newly appointed operators who take over from inactive operators.
 \end{enumerate}
 
-\code{max\_inactivity\_between\_block\_commitments} is the largest of the three.
-Therefore, the longest inactivity period without consequences for operators would be the sum of \code{max\_inactivity\_between\_block\_commitments} and \code{new\_shift\_inactivity\_grace\_period}.
+\code{user\_events\_negligence\_timeout} must be shorter than the shift duration, so that a user event included at a shift's start can make its operator strikable within the shift.
 
 The point of time after which an operator can be given an inactivity strike can be found as below:
 \begin{equation*}
-  t_a = max(t_0 + T_0, min(t_b + T_b, t_u + T_u))
+  t_a = max(t_0 + T_0, t_u + T_u)
 \end{equation*}
 
 Where:
@@ -95,12 +96,12 @@ Where:
   \item \(t_0\) is the shift start time
   \item \(T_0\) is the \code{new\_shift\_inactivity\_grace\_period} parameter
   \item \(t_b\) is the end time of latest block commitment
-  \item \(T_b\) is the \code{max\_inactivity\_between\_block\_commitments} parameter
-  \item \(t_u\) is the inclusion time of the earliest user event larger than \(t_b\)
+  \item \(t_u\) is the inclusion time of the cited user event, which must be larger than \(t_b\)
   \item \(T_u\) is the \code{user\_events\_negligence\_timeout} parameter
 \end{itemize}
 
 As long as it can be shown that \(t_a\) falls within the current operator's shift interval (\(t_a < t_0 + T\), where \(T\) is the shift duration), the operator can be considered inactive.
+The earliest such point cites the earliest undelivered user event.
 
 Inactivity strikes are accumulated in active operators set nodes, and are cleared for each operator on retirement.
 Partially slashed operators cannot be transferred back to the registered operators set.

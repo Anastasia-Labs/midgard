@@ -1,5 +1,5 @@
 import { SqlClient } from "@effect/sql";
-import { Effect, Exit, Option, Ref } from "effect";
+import { Effect, Exit, Option } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { recoverCanonicalJournalsOnStartup } from "../src/commands/listen-startup.seed-latest-local-block-boundary-on-startup.js";
@@ -8,8 +8,6 @@ import {
   type CanonicalCommittedHeader,
   withCanonicalHeaderJournals,
 } from "../src/services/canonical-journal-recovery.js";
-import { HaltSource } from "../src/services/liveness-halt.js";
-import { SIGNED_INTENT_UNDECIDED } from "../src/services/signed-intent-undecided.js";
 import {
   BASE_HEADER,
   BASE_OUT,
@@ -23,7 +21,7 @@ import {
   signedCommit,
   TTL,
   UTXOS_ROOT,
-} from "./helpers/history-expired-intent-release-before-ttl.js";
+} from "./helpers/journal-recovery-sql-model.js";
 
 /**
  * Startup's recovery over the journals of the canonical queue. It runs once,
@@ -36,15 +34,6 @@ const NEW_E_HEADER = bytes("new-e-header", 28);
 const CONTINUED_OUT = `${hex("attested-tx")}#0`;
 const OTHER_HEADER = bytes("other-active-header", 28);
 const TIP_END_MS = 1_500_000;
-
-const freshGlobals = () => ({
-  LIVENESS_REASONS: Ref.unsafeMake<ReadonlyMap<string, string>>(new Map()),
-});
-
-const raisedHalt = (globals: ReturnType<typeof freshGlobals>) =>
-  Effect.runSync(Ref.get(globals.LIVENESS_REASONS)).get(
-    HaltSource.blockConfirmationSignedIntent,
-  );
 
 /** One deposit member, which makes the journal payload-bearing. */
 const withDepositMember = (header: Buffer) =>
@@ -82,13 +71,11 @@ const queueOf = (...headers: readonly Buffer[]) =>
   );
 
 const recover = (
-  globals: ReturnType<typeof freshGlobals>,
   canonicalHeaders: readonly CanonicalCommittedHeader[],
   latestHeaderHash: Option.Option<Buffer>,
 ) =>
   Effect.exit(
     recoverCanonicalJournalsOnStartup({
-      globals,
       canonicalHeaders,
       latestHeaderHash,
       latestEndTimeMs: TIP_END_MS,
@@ -125,15 +112,10 @@ describe("startup over a payload-bearing abandoned tip while another journal is 
   });
 
   it("leaves the tip abandoned behind the active journal and seeds the boundary from it", async () => {
-    const globals = freshGlobals();
     const exit = await run(
       Effect.gen(function* () {
         yield* seedAbandonedTipBehindActive;
-        return yield* recover(
-          globals,
-          yield* queueOf(E_HEADER),
-          Option.some(E_HEADER),
-        );
+        return yield* recover(yield* queueOf(E_HEADER), Option.some(E_HEADER));
       }),
     );
     // The tip journal's window ends at 2_000_000 + 1 s.
@@ -142,29 +124,22 @@ describe("startup over a payload-bearing abandoned tip while another journal is 
     expect(await run(readStatus(OTHER_HEADER))).toBe(
       Pending.Status.SubmittedUnconfirmed,
     );
-    expect(raisedHalt(globals)).toBeUndefined();
   });
 
   it("revives the tip through the guarded revival once nothing is active", async () => {
-    const globals = freshGlobals();
     const exit = await run(
       Effect.gen(function* () {
         yield* seedAbandonedTipBehindActive;
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE pending_block_finalizations SET status = ${Pending.Status.Abandoned}
           WHERE header_hash = ${OTHER_HEADER}`;
-        return yield* recover(
-          globals,
-          yield* queueOf(E_HEADER),
-          Option.some(E_HEADER),
-        );
+        return yield* recover(yield* queueOf(E_HEADER), Option.some(E_HEADER));
       }),
     );
     expect(exit).toEqual(Exit.succeed(2_001_000));
     expect(await run(readStatus(E_HEADER))).toBe(
       Pending.Status.ObservedWaitingStability,
     );
-    expect(raisedHalt(globals)).toBeUndefined();
   });
 });
 
@@ -201,60 +176,38 @@ describe("startup over a replaced block reported on the queue", () => {
         ON CONFLICT (store_name) DO UPDATE SET root_hex = EXCLUDED.root_hex`;
     });
 
-  it("holds block commitment instead of failing startup once the replacement is finalized", async () => {
-    const globals = freshGlobals();
-    const exit = await run(
-      Effect.gen(function* () {
-        yield* seedReplacedPair(Pending.Status.Finalized);
-        return yield* recover(
-          globals,
-          yield* queueOf(E_HEADER),
-          Option.some(E_HEADER),
-        );
-      }),
-    );
-    expect(exit).toEqual(Exit.succeed(2_001_000));
-    expect(raisedHalt(globals)).toBe(SIGNED_INTENT_UNDECIDED);
-    expect(await run(readStatus(E_HEADER))).toBe(Pending.Status.Abandoned);
-    expect(await run(readStatus(NEW_E_HEADER))).toBe(Pending.Status.Finalized);
-  });
+  it.each([Pending.Status.LocallyApplied, Pending.Status.Abandoned])(
+    "leaves it abandoned for the landed-block rebase, raising nothing, when its replacement is %s",
+    async (sibling) => {
+      const exit = await run(
+        Effect.gen(function* () {
+          yield* seedReplacedPair(sibling);
+          return yield* recover(
+            yield* queueOf(E_HEADER),
+            Option.some(E_HEADER),
+          );
+        }),
+      );
+      expect(exit).toEqual(Exit.succeed(2_001_000));
+      expect(await run(readStatus(E_HEADER))).toBe(Pending.Status.Abandoned);
+      expect(await run(readStatus(NEW_E_HEADER))).toBe(sibling);
+    },
+  );
 
-  it("raises nothing once the replacement is abandoned", async () => {
-    const globals = freshGlobals();
-    const exit = await run(
-      Effect.gen(function* () {
-        yield* seedReplacedPair(Pending.Status.Abandoned);
-        return yield* recover(
-          globals,
-          yield* queueOf(E_HEADER),
-          Option.some(E_HEADER),
-        );
-      }),
-    );
-    expect(exit).toEqual(Exit.succeed(2_001_000));
-    expect(raisedHalt(globals)).toBeUndefined();
-    expect(await run(readStatus(E_HEADER))).toBe(Pending.Status.Abandoned);
-  });
-
-  it("still fails startup on any other failure, and raises nothing", async () => {
-    const globals = freshGlobals();
+  it("still fails startup on a failure", async () => {
     const exit = await run(
       Effect.gen(function* () {
         yield* seedReplacedPair(Pending.Status.Abandoned);
         const canonicalHeaders = yield* queueOf(E_HEADER);
-        // A transient: the siblings read is refused.
+        // A transient: the tip journal's read is refused (the replaced
+        // block itself is left to the landed-block rebase without a read).
         const sql = yield* SqlClient.SqlClient;
         yield* sql`ALTER TABLE pending_block_finalizations RENAME TO lf_job_hidden`;
-        const outcome = yield* recover(
-          globals,
-          canonicalHeaders,
-          Option.none(),
-        );
+        const outcome = yield* recover(canonicalHeaders, Option.some(E_HEADER));
         yield* sql`ALTER TABLE lf_job_hidden RENAME TO pending_block_finalizations`;
         return outcome;
       }),
     );
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(raisedHalt(globals)).toBeUndefined();
   });
 });

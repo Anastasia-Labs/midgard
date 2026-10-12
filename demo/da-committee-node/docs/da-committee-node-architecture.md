@@ -55,7 +55,9 @@ with an exact inner length and SHA-256.
 `demo/da-committee-node` currently:
 
 - fails closed on deployment-manifest and contract-deployment identity drift;
-- scans finalized state-queue headers through the configured Cardano provider;
+- reads the landed state queue from its own L1 chain follower over the
+  operator's cardano-node, and signs a header once its commit is at least
+  `confirmationDepth` deep;
 - fetches payload, metadata, chunks, proof artifacts, and attestations over
   allowlisted libp2p V1 protocols;
 - unwraps V1 with a dual compressed/decoded size cap, canonical-decodes
@@ -63,7 +65,7 @@ with an exact inner length and SHA-256.
   roots except `prev_utxos_root`) and the seven committed counts, and compares
   the embedded header and header hash with L1;
 - stores deployment, header, payload, signature, peer, and L1 submission state
-  in a JSON-file or PostgreSQL store;
+  in a PostgreSQL store, shared with the L1 follower's tables;
 - signs the canonical availability-commitment digest only after the payload is
   verified and the signer belongs to the configured committee;
 - exchanges signatures with committee peers and, when L1 submission is
@@ -164,12 +166,13 @@ and contract-deployment manifests, and its own database URL/role. Its derived
 peer ID must equal the deployment-manifest `public_retained_da.peer_id`; the
 manifest parser rejects using a producer or committee peer ID for this profile.
 
-The public executable refuses `DA_COMMITTEE_DB_PATH` and `DA_COMMITTEE_DATABASE_URL`:
-the file store cannot be safely shared with the committee process, and mutable
-committee database credentials are not public-reader credentials. It accepts
-only `DA_PUBLIC_RETAINED_DA_DATABASE_URL` with a separately configured role
-that is verified at startup to have `SELECT` and no DML privilege on
-`committee_da_payloads` and `committee_state_queue_headers`. Each lookup is in an
+The public executable refuses `DA_COMMITTEE_DATABASE_URL`: mutable committee
+database credentials are not public-reader credentials. It accepts only
+`DA_PUBLIC_RETAINED_DA_DATABASE_URL` with a separately configured role that is
+verified at startup to have `SELECT` and no DML privilege on
+`committee_da_payloads` and `committee_state_queue_headers`, and no privilege
+on any other table: the committee's private tables and the L1 follower's
+tables in the same database are out of its reach. Each lookup is in an
 explicit PostgreSQL `READ ONLY` transaction; the public process never creates
 or migrates schema.
 
@@ -211,7 +214,7 @@ Validation responsibilities:
 - Resolve the matching state-queue node from Cardano L1 before signing.
 - Verify the reconstructed header equals the state-queue header datum observed on L1.
 - Verify the reconstructed `header_hash` equals the state-queue linked-list key and block asset suffix.
-- Require configured transport retention of at least 15 days, equal to the verified contract deployment manifest. For an adopted bounded runtime, the signed retention days govern whole-cohort retirement together with authenticated native recovery evidence, as described in [Bounded retained committee history](#bounded-retained-committee-history); the legacy payload-only sweeper is disabled once the retirement singleton exists. Before adoption, configured retention days feed the `retainUntilMs` diagnostic, while legacy pruning uses the challengeability horizon and authenticated terminal recovery. The runtime runs a retention cycle and reports its deadlines; the deadline alert is opt-in and log-only: only with `DA_RETENTION_ALERT_THRESHOLD_MS` set is a still-challengeable payload with at most that many milliseconds left logged as `da_retention_deadline_alert`, and `/readyz` carries the count without ever going not ready on it, because every merged payload ages into the threshold on its normal way to pruning; a threshold at or above the merged-payload window (block maturity / 2, the horizon minus block maturity, the most a merged payload can have left) is refused at startup. Before adoption, legacy payload pruning retains the L1 confirmed head, live-queue payloads and payloads within the challengeability horizon (10.5 days). Removed and merged headers additionally remain retained until deployment-bound authenticated terminal history proves they are beyond the signed recovery horizon; status or age alone cannot release them. Once that proof exists, removed payloads may be pruned without waiting for the challengeability horizon, while merged payloads wait until that horizon has passed. The adopted bounded runtime instead applies the full signed-age, recovery and operational-pin requirements of whole-cohort retirement. A cycle runs only against an L1 view read in the same tick; the process exits with code 70 once no L1 view has been read for `L1_VIEW_FATAL_MS` (default: the profile's DA attestation timeout, one hour on the public profiles and ten minutes on the testing profiles). The L1 source is quarantined only on an integrity failure: the source contradicted itself or state the node already made durable in a way re-reading cannot repair (a rollback past a persisted decision, surfaces disagreeing at one proven chain point, replayed state-queue history that fails verification, a corrupt chain-sync journal). Any other observation failure (a timeout, surfaces at different tips, a chain that moved during a read) fails that tick without persisting a quarantine and is retried on the next tick; a sustained one ends in the same code-70 exit. State-queue history younger than the finality depth is neither: it is still verified end to end, the tick proceeds and records an L1 view, and only the merge or removal outcomes and output moves it carries wait for a later tick on which that history is final. Every finality judgment in a tick is made at one tip: the snapshot carries the tip height read with it, and the replayed history is judged against that same height, never against a tip read later. An output is final once `finalityDepth` blocks are on top of it, so the checkpoint that produced it is final once it is `finalityDepth + 1` blocks deep counting its own block. Should a final step nevertheless land on an output the snapshot reports not final, that header waits like one with young history rather than being judged on the disagreement. A header whose history is still young is not written to the store: its stored record keeps its last final output and status, and no decision binds to it, until the move is final. A header moved again within every finality window therefore stays deferred for as long as that continues, so whoever keeps moving it (the operator, by appending after it or updating its datum) can postpone the check of its history; there is no cap on that deferral. It also holds the durable replay anchor behind that header's first move, so the history replayed each tick grows; once it is longer than one walk, the catch-up below moves the anchor past that move without holding it back. A header the node has made a decision on (signed, submitted, or reconciled) may change output or status only as final authenticated replay explains it: the replayed checkpoints, whatever their kind (an append continuing the tail, a datum update attesting it, a merge, a correction), must lead from the recorded output to the observed one, and only then do the decision's observation, outbox entry, and republished signature follow the header to its new output. The committee tick and the store apply the same rule; any other change is `l1_source_decision_forked`. The node makes no decision at all (it signs, publishes, submits, and reconciles nothing) until it has a durable replay anchor, and until then readiness reports `L1 state queue has no durable replay anchor yet: no decision is made until its history is final`. A provider that reads no state-queue snapshot never has an anchor, so it never becomes ready and never decides. The durable anchor is a final point in authenticated history, not a snapshot that is final as a whole: it is the queue after the deepest final replayed checkpoint, stopping before the first final checkpoint that moves a header whose later history is still young, so a decision's recorded output is always explained from the anchor. With an append landing every block, the node therefore has a durable anchor `finalityDepth + 1` blocks after it first reads the queue. An anchor a tick establishes is kept in memory until that tick's healthy write persists it, and is written together with a decision whose effect is persisted before that. A rollback shallower than the finality depth therefore never leaves the anchor naming outputs Kupo no longer knows; an anchor output Kupo does not know is an integrity failure. Until a durable anchor exists the node replays from an in-memory candidate taken from the latest snapshot. Only a replay failing because authenticated history does not extend that candidate (Kupo does not know its outputs, no transaction advances it, or the SDK replay finds no path from it, which also covers checkpoint content that is not canonical), which is how a rollback of the candidate appears, discards it rather than quarantining, and logs one `l1_replay_anchor_candidate_discarded` event; any other integrity failure of that replay quarantines, as it would from a durable anchor. Discarding forged candidate-sourced history is harmless because nothing is decided before a durable anchor. Every state-queue provider must have an authenticated ordered history source, and the node refuses at startup one without it: Blockfrost is rejected as a state-queue provider, and `external_providers` mode accepts only `kupmios:` providers. A replay source that is nevertheless missing when the queue changed fails the tick as an observation failure, never as an integrity failure. A replay that fails verification is an integrity failure only if the chain held still across it; if the chain moved, the replay is retaken, up to 3 attempts within the tick, and only then does the tick fail as an observation failure. Each retake is watched for movement from the chain point it starts at, not from the snapshot's: in local-node mode from the new chain-sync cursor, and with external providers from their new points once every provider confirms it still holds the snapshot's chain point (otherwise from the snapshot's points), so a busy chain does not turn a genuine integrity failure into a retried observation failure. One tick walks at most `2 × (finalityDepth + 1) × 16` checkpoints from the anchor. When the history is longer (a node that was down over a busy queue, or whose anchor a deferred header held back), the tick catches up instead of deciding: it authenticates the walk as above, moves the durable anchor to the queue after the last final checkpoint it walked, moves each observation to the output those final checkpoints leave its header at and records the merge or removal outcomes they carry, logs one `l1_state_queue_replay_catching_up` event, records no L1 view, and fails as an observation failure. Replay names outputs but not their datums, so an observation's status is taken from the snapshot only when the snapshot shows its header at exactly that output (an output's datum never changes); otherwise the status is recorded as unknown, never guessed. Nothing is signed or decided on an unknown status: the next tick that observes the header at that same output and chain point, or follows it through further final checkpoints, fills the status in. An unknown status is the only thing filled in without replay: a change of output or chain point still needs final replay to explain it, and an unknown status records the status last known before it, which the status it is filled in with must follow under the same rule as any direct change (it may only advance to `attested`, or become terminal with the step that takes the header out of the queue). Anything else, including a status contradicted across an unknown one, is `l1_source_decision_forked`. Each such tick moves the anchor past all but the youngest `finalityDepth` blocks of its walk, so a long outage converges; a walk none of whose checkpoints is final yet fails the tick without progress. Catch-up progress counts toward the `L1_VIEW_FATAL_MS` deadline as a fresh view does, so a node that is catching up is not killed; the deadline runs from the latest view or progress, whichever is newer. A persisted L1 source quarantine never records an L1 view: a quarantined tick returns before reading the state queue, and the store refuses to leave the quarantined state. A quarantined committee therefore exits with code 70 every `L1_VIEW_FATAL_MS` and restarts under its supervisor, repeatedly, until an operator clears the quarantine; there is no in-process path back to a healthy source state.
+- Require configured transport retention of at least 15 days, equal to the verified contract deployment manifest. For an adopted bounded runtime, the signed retention days govern whole-cohort retirement together with the terminal records the committee's L1 follower derives (each header's queue exit, recorded once it is final, deeper than k blocks), as described in [Bounded retained committee history](#bounded-retained-committee-history); the legacy payload-only sweeper is disabled once the retirement singleton exists. Before adoption, configured retention days feed the `retainUntilMs` diagnostic, while legacy pruning uses the challengeability horizon and those terminal records. The runtime runs a retention cycle and reports its deadlines; the deadline alert is opt-in and log-only: only with `DA_RETENTION_ALERT_THRESHOLD_MS` set is a still-challengeable payload with at most that many milliseconds left logged as `da_retention_deadline_alert`, and `/readyz` carries the count without ever going not ready on it, because every merged payload ages into the threshold on its normal way to pruning; a threshold at or above the merged-payload window (block maturity / 2, the horizon minus block maturity, the most a merged payload can have left) is refused at startup. Before adoption, legacy payload pruning retains the L1 confirmed head, live-queue payloads, the queue at the latest final block (more than k blocks deep) and payloads within the challengeability horizon (10.5 days). That horizon is measured by the start time of the latest final block's slot, never by the wall clock: a commit is valid only up to its header's end time, so once a final block is past the horizon every commit of the header that can still land is final, and a rollback cannot bring back a header whose payload is gone. Waiting for finality is normal and never a readiness reason. Removed and merged headers additionally remain retained until their terminal record from the follower proves they are beyond the signed recovery horizon; status or age alone cannot release them. Once that proof exists, removed payloads may be pruned without waiting for the challengeability horizon, while merged payloads wait until that horizon has passed. The adopted bounded runtime instead applies the full signed-age, recovery and operational-pin requirements of whole-cohort retirement. A cycle runs only against an L1 view read in the same tick. Once no view has been read for `L1_VIEW_FATAL_MS` (default: the profile's DA attestation timeout, one hour on the public profiles and ten minutes on the testing profiles), readiness reports `l1_view_unavailable` and the loop keeps ticking; the process is not stopped for it. Only one tick running past that deadline with no L1 progress fails health, so the supervisor replaces a hung loop. The view comes from the committee's L1 chain follower; see [L1 HeaderV1 Resolver](#l1-headerv1-resolver) for how it handles rollbacks.
 
 The validator may store a payload before the L1 header exists, but it must not sign until the L1 header is observed and matched.
 
@@ -230,7 +233,7 @@ event_to_step:{deployment_fingerprint}:{header_hash}:{event_key}
 attestations:{deployment_fingerprint}:{header_hash}
 ```
 
-The current JSON/PostgreSQL store models these as deployment, header, payload,
+The PostgreSQL store models these as deployment, header, payload,
 signature, peer, attestation-candidate, and L1-submission records. The libp2p
 protocols expose header-, step-, and event-keyed retrieval without requiring a
 particular storage-engine key syntax. Payload conflict checks prevent replacing
@@ -248,6 +251,32 @@ Store requirements:
 ### L1 HeaderV1 Resolver
 
 Follows Cardano L1 enough to confirm that the target header exists in the Midgard state queue.
+
+The committee reads L1 only through its L1 chain follower
+(`@al-ft/midgard-l1-follower`): one follower in the process, following the
+operator's own cardano-node from the deployment origin in the manifest. It
+stores the outputs the committee tracks (the state queue, DA params, DA
+attestations, the correction lock, the DA bond pool, and the hub oracle output
+whose creating transaction shows the follower started before protocol init).
+Each tick derives the landed queue, the headers awaiting attestation and the
+obligation of every signed decision from those facts in one read. No decision
+reads Kupo or Ogmios.
+
+- A header is signable once its commit is at least `confirmationDepth` deep
+  and the landed queue is healthy.
+- A rollback no deeper than k rewinds the follower, and the next tick derives
+  the view again. No decision is lost, re-signed with other content or
+  deleted, and readiness returns within one tick of the node catching up. A
+  signature on a sibling header is kept; it is not equivocation
+  (`docs/midgard/decisions/da-sibling-signatures-not-slashable.md`).
+- A rollback deeper than k makes readiness report `rollback_beyond_k`. The
+  process stays up and is not restarted.
+- While the follower is catching up or waiting for its node, readiness reports
+  the follower's reason and no decision is made.
+- A stored header record whose status at a state-queue output contradicts the
+  status the facts give that same output holds every later tick under
+  `store_integrity` (an output's datum never changes, so one of the two is
+  corrupt).
 
 The resolver should use the same deployment manifest fields as watchers:
 
@@ -392,37 +421,48 @@ procedures must authenticate manifest distribution.
 
 The bounded runtime initializes and charges one fixed retirement metadata row
 before admitting a new promise. Its deployment, manifest, committee, actor and
-native source bindings are durable. Cleanup preserves the signed retention
-period (at least 15 days), the 2160-block recovery horizon and the existing
+L1 source bindings are durable. Cleanup preserves the signed retention period
+(at least 15 days), the 2160-block recovery horizon and the existing
 512-row/8-MiB limits.
 
-Cleanup first records one provisional checkpoint from the selected native chain
-whose verified slot-to-time conversion is past a cohort's full signed expiry.
-It retains every byte until a later capture proves that same exact checkpoint
-is canonical with more than 2160 blocks after it. Complete raw script reads,
-exact native receipt ancestry, reconciled financial-journal evidence and the
-service's live work establish which contiguous header-end-time cohorts can be
-retired. Equal end times retire together. Missing evidence retains the cohort;
-wall time, terminal row status and filtered challenge absence cannot release it.
+Every L1 read cleanup makes comes from the committee's L1 follower, at one read
+boundary on the follower's chain. Cleanup first records one provisional
+checkpoint at that boundary once the boundary's slot, converted to time by the
+node's era history (never the host clock), is past a cohort's full signed
+expiry. It retains every byte until a later pass proves that same checkpoint is
+still on the follower's chain and final: more than 2160 blocks deep, counting
+its own block. A checkpoint the follower no longer has on its chain or no
+longer retains is taken again at a later boundary, so the expiry waits longer.
+Complete script-address reads from the follower's facts, the follower's block
+for every stored point, submitted transaction and signed header's landing,
+reconciled financial-journal evidence and the service's live work establish
+which contiguous header-end-time cohorts can be retired. Equal end times retire
+together. Missing evidence retains the cohort; wall time, terminal row status
+and filtered challenge absence cannot release it. A header past its retention
+whose evidence the follower has already pruned stops retirement there: it is
+reported as `committee_retirement_held` detail under `retention.holds` on
+`/readyz`, never as a readiness failure, and every later cohort waits with it.
 
 The atomic store transition removes the eligible headers, payloads, signatures,
 conflicts, attestations, submitted-receipt rows, broadcasts, completed outbox
 history, capacity evidence and matching source observations. It simultaneously
-advances a permanent inclusive header-end-time floor and its paired native
-checkpoint, generation and digest. Latest confirmed/merged boundaries, replay
-anchors, deferred work, active challenges, unsettled financial claims and live
-callbacks stay pinned. An active service tick holds cleanup; independent
-housekeeping retries between ticks even when new admission is full.
+advances a permanent inclusive header-end-time floor and its paired checkpoint,
+generation and digest. Latest confirmed/merged boundaries, deferred work,
+active challenges, unsettled financial claims and live callbacks stay pinned.
+The committee also pins, in its follower store, the L1 history every stored
+record will read again, so the follower never prunes it first. An active
+service tick holds cleanup; independent housekeeping retries between ticks even
+when new admission is full.
 
 Every new store row and fresh signature checks the floor and generation. Old
 signed bytes can be replayed while retained; after signed-horizon retirement
-those bytes are unavailable and cannot be reconstructed as a new promise.
-Native rollback replay and fresh floor proofs still check the checkpoint with
-an empty retained suffix. A proved crossing records a sticky durable breach;
-missing proof holds progress. Neither restart nor an operator clock clears it.
+those bytes are unavailable and cannot be reconstructed as a new promise. Each
+tick checks the floor's point against the follower's chain. A rollback that
+takes that point off the chain records a sticky durable breach, and every later
+tick holds under it (see [Readiness reasons](#readiness-reasons)). Neither
+restart nor an operator clock clears it.
 
-JSON replacement fsyncs the file and containing directory; PostgreSQL removes
-cohorts and advances metadata in one guarded transaction. The singleton and all
+PostgreSQL removes cohorts and advances metadata in one guarded transaction. The singleton and all
 retained families count toward the same row and encoded-byte budget. This is an
 application recovery boundary, not detection of an arbitrary rollback of the
 entire local database. Production adoption requires the configured factory's
@@ -575,6 +615,88 @@ This is a conceptual profile lifecycle, not the literal persisted status enum.
 Every state transition should be durable and auditable.
 The node must recover after restart without signing a payload whose storage and libp2p retrieval status are unknown.
 
+## Readiness reasons
+
+`/readyz` returns 503 with every reason that holds the committee; `/healthz`
+stays live for each of them and the process keeps running. A reason is the
+text before the first colon; the rest is detail. The L1 follower's own reasons
+(`rollback_beyond_k`, `intersection_outside_history`, `origin_not_on_chain`,
+`origin_after_protocol_init`, `origin_mismatch`, `l1_follower_waiting`,
+`l1_follower_catching_up`, `l1_node_unavailable` and the others) and their
+remedies are in the follower's
+[readiness table](../../midgard-l1-follower/README.md). The DA bond pool
+reasons are under [Attestation Coordinator](#attestation-coordinator), the
+availability responder's in [its guide](availability-responder.md), and the
+instance-lock events in the [package README](../README.md).
+
+While the node starts, `/readyz` reports `starting:<reason>` for the last
+failed attempt, and the attempt is retried with a backoff that doubles from 1 s
+to 30 s. A dependency that comes up clears it. These three do not clear by
+waiting:
+
+- `starting:stale_deployment_state_requires_fresh_redeploy`: the store holds
+  another deployment's state. Point the node at a fresh store for this
+  deployment, or perform the fresh redeploy the detail names; the next attempt
+  then starts.
+- `starting:committee_store_point_before_l1_origin`: a stored record names an
+  L1 point before the configured `L1_ORIGIN`, so the configured origin is
+  wrong. Set `L1_ORIGIN` to the deployment's origin and restart.
+- `starting:committee_retirement_binding_changed`: the stored retirement floor
+  is bound to another member binding than the configured one. Restore the
+  configuration the store was adopted under, or start this member on a fresh
+  store.
+
+Once started:
+
+- `l1_node_handshake_failed`: the cardano-node refused the node-to-client
+  handshake. Check `CARDANO_NETWORK_MAGIC` against the node's network and that
+  the node speaks a node-to-client version the sidecar does. The transport
+  keeps redialing, so a node that accepts the handshake clears it. (The sidecar
+  reports any failure to set up the connection's protocol this way, so read the
+  detail.)
+- `l1_follower_unconfigured`: the follower's configuration is incomplete; the
+  detail names the missing setting. Set it and restart.
+- `l1_follower_not_initialized`: the follower store holds no cursor yet.
+  Transient; it clears once the follower writes its first cursor.
+- `l1_source_configuration_changed: stored network <a>, configured <b>`: the
+  store was written for another Cardano network than the configured one. Every
+  tick is held and nothing is signed. Restore the network the store was written
+  for, or start the node on a fresh store for the configured network. (A changed
+  L1 source authority on the same network is not a hold: it is logged as the
+  `l1_source_configuration_changed` event with the stored and configured
+  digests, and the new authority is recorded.)
+- `retirement_floor_breached: l1_source_retirement_floor_crossed:<slot>:<hash>`:
+  a rollback took the block the retirement floor was certified at off the
+  follower's chain. Bytes retired under that floor cannot be restored, so the
+  breach is sticky and every later tick is held. Neither a restart nor the
+  chain returning clears it; it needs an operator decision on the store.
+- `store_integrity`: a stored header record's status contradicts the status the
+  follower's facts give the same state-queue output. An output's datum never
+  changes, so the store is corrupt. Every later tick is held; restore the store
+  from a good copy or start on a fresh store.
+- `l1_state_queue_unhealthy`: the landed state queue is not one list from one
+  root. Decisions are held until a tick sees a healthy queue; investigate the
+  on-chain queue the detail names.
+- `l1_da_params_mismatch`: the on-chain DA params differ from the configured
+  ones (committee keys, signers hash or threshold). Decisions are held. Correct the committee
+  configuration to match the governed DA params.
+- `l1_da_params_unavailable`: the DA params could not be read from the
+  follower's facts this tick. Transient; the next tick reads them again.
+- `l1_view_unavailable:<age ms>`: no tick has read an L1 view for
+  `L1_VIEW_FATAL_MS`. `l1_view_stale:<age ms>`: the retention pass found no
+  view, or only one older than its staleness bound, so it pruned nothing. The
+  loop keeps ticking in both; the follower's own reasons say why no view is
+  read.
+- `committee_retention_pin_failed`: the committee's pins over its follower
+  store could not be written, so the follower does not prune meanwhile.
+  Transient; the next successful write clears it.
+- `committee_retention_pin_pruned`: a history a stored record needs was pruned
+  before its pin existed, so that record cannot be proven again. Its retirement
+  holds under `committee_retirement_held` as well.
+- `retention check failed: committee_retirement_compaction_failed: <error>`:
+  compacting the retained promises at startup failed. The retention pass
+  compacts again, and its first successful pass clears it.
+
 ## Failure Handling
 
 Malformed payload:
@@ -660,7 +782,7 @@ Required alerts:
 ## Implementation Status
 
 The implementation provides canonical `DaPayload`, manifest-bound libp2p V1 transport, header/root/count
-validation, JSON/PostgreSQL stores, signer membership checks, peer signature
+validation, the PostgreSQL store, signer membership checks, peer signature
 exchange, and optional on-chain `Init`/`AddSignatures`/`ApplyToStateQueue`
 reconciliation. The focused package checks are `pnpm build`, `pnpm typecheck`,
 `pnpm test`, and `pnpm guard:no-http-da-transport` in

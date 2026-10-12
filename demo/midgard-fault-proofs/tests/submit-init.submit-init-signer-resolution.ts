@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk";
 import {
@@ -68,6 +69,7 @@ export const deploymentManifest = (contracts: Record<string, unknown>) => ({
       rule: "test fixture",
     },
   },
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   contracts,
 });
 

@@ -1,13 +1,10 @@
-import { access, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import {
   computeDaSha256Hash,
   encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type {
   DaPayloadRecord,
@@ -15,116 +12,27 @@ import type {
   DaSignatureRecordV1,
   DaStoredConflictEvidenceRecord,
 } from "../src/domain.js";
-import {
-  decisionEffectId,
-  JsonFileCommitteeStore,
-  jsonReplacer,
-} from "../src/store.js";
+import { decisionEffectId } from "../src/store.js";
 import { openCommitteeStore } from "../src/store/factory.js";
-import { tempDir } from "./helpers.js";
-
-const openStores = new Set<JsonFileCommitteeStore>();
-
-const openJsonCommitteeStore = async (
-  path: string,
-): Promise<JsonFileCommitteeStore> => {
-  const store = await JsonFileCommitteeStore.open(path);
-  openStores.add(store);
-  return store;
-};
-
-afterEach(async () => {
-  await Promise.all([...openStores].map(async (store) => store.close()));
-  openStores.clear();
-});
+import { PostgresCommitteeStore } from "../src/store/postgres.js";
+import {
+  closeTestCommitteeStore,
+  openTestCommitteeStore,
+  testStoreDatabase,
+} from "./helpers/committee-store.js";
 
 describe("openCommitteeStore", () => {
-  it("opens the JSON file store for DA_COMMITTEE_DB_PATH config", async () => {
+  it("opens the Postgres store for a database config", async () => {
+    const database = await testStoreDatabase();
     const store = await openCommitteeStore({
-      kind: "file",
-      path: await tempDir(),
+      kind: "database",
+      url: database.url,
     });
-    expect(store).toBeInstanceOf(JsonFileCommitteeStore);
-    await store.close?.();
-  });
-
-  it("renames a legacy watcher.json directory store to committee.json on open", async () => {
-    const dir = await tempDir();
-    const legacyPath = join(dir, "watcher.json");
-    const currentPath = join(dir, "committee.json");
-    await writeFile(
-      legacyPath,
-      JSON.stringify({ stateQueueHeaders: { abc: { headerHash: "abc" } } }),
-    );
-
-    const store = await openJsonCommitteeStore(dir);
-    expect((await store.listStateQueueHeaders()).length).toBe(1);
-    await store.close();
-
-    await access(currentPath);
-    await expect(access(legacyPath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("prefers committee.json when both a legacy and a current store exist", async () => {
-    const dir = await tempDir();
-    await writeFile(
-      join(dir, "watcher.json"),
-      JSON.stringify({
-        stateQueueHeaders: { legacy: { headerHash: "legacy" } },
-      }),
-    );
-    await writeFile(join(dir, "committee.json"), JSON.stringify({}));
-
-    const store = await openJsonCommitteeStore(dir);
-    expect(await store.listStateQueueHeaders()).toEqual([]);
-    await store.close();
-    await access(join(dir, "watcher.json"));
-  });
-
-  it("holds one durable exclusive lease per JSON store", async () => {
-    const dir = await tempDir();
-    const first = await openJsonCommitteeStore(dir);
-    await expect(openJsonCommitteeStore(dir)).rejects.toThrow(
-      /already exclusively leased/u,
-    );
-    await first.close();
-    const restarted = await openJsonCommitteeStore(dir);
-    await restarted.close();
-  });
-
-  it("joins concurrent JSON-store close calls before releasing the lease", async () => {
-    const dir = await tempDir();
-    const store = await openJsonCommitteeStore(dir);
-    const internal = Reflect.get(store, "instanceLock") as {
-      release: () => Promise<void>;
-    };
-    const releaseLease = internal.release.bind(internal);
-    let releaseClose!: () => void;
-    let closeEntered!: () => void;
-    const released = new Promise<void>((resolve) => {
-      releaseClose = resolve;
-    });
-    const entered = new Promise<void>((resolve) => {
-      closeEntered = resolve;
-    });
-    internal.release = async () => {
-      closeEntered();
-      await released;
-      await releaseLease();
-    };
-    const first = store.close();
-    await entered;
-    let secondResolved = false;
-    const second = store.close().then(() => {
-      secondResolved = true;
-    });
-    await Promise.resolve();
-    expect(secondResolved).toBe(false);
-    releaseClose();
-    await Promise.all([first, second]);
-    expect(secondResolved).toBe(true);
-    const restarted = await openJsonCommitteeStore(dir);
-    await restarted.close();
+    try {
+      expect(store).toBeInstanceOf(PostgresCommitteeStore);
+    } finally {
+      await store.close?.();
+    }
   });
 
   it("rejects non-Postgres DA_COMMITTEE_DATABASE_URL values", async () => {
@@ -137,8 +45,7 @@ describe("openCommitteeStore", () => {
   });
 
   it("persists only the exact final DeploymentMarkerV1", async () => {
-    const dir = await tempDir();
-    const store = await JsonFileCommitteeStore.open(dir);
+    const store = await openTestCommitteeStore();
     const marker = makeDeploymentMarker("11".repeat(32));
     await store.initDeployment({
       marker,
@@ -155,26 +62,10 @@ describe("openCommitteeStore", () => {
         manifestRaw: "{}",
       }),
     ).rejects.toThrow(/stale_deployment_state_requires_fresh_redeploy/u);
-
-    const legacyDir = await tempDir();
-    await writeFile(
-      join(legacyDir, "committee.json"),
-      JSON.stringify({
-        deployment: {
-          fingerprint: "11".repeat(32),
-          manifestSha256: "22".repeat(32),
-          contractDeploymentInfoSha256: "33".repeat(32),
-          manifestRaw: "{}",
-        },
-      }),
-    );
-    await expect(JsonFileCommitteeStore.open(legacyDir)).rejects.toThrow(
-      /must contain exactly marker/u,
-    );
   });
 
-  it("accepts only exact explicit-V1 DA payload records on JSON writes", async () => {
-    const store = await openJsonCommitteeStore(await tempDir());
+  it("accepts only exact explicit-V1 DA payload records on writes", async () => {
+    const store = await openTestCommitteeStore();
     const payload = daPayloadRecord();
     await expect(store.saveDaPayload(payload)).resolves.toMatchObject({
       ...payload,
@@ -197,63 +88,35 @@ describe("openCommitteeStore", () => {
     }
   });
 
-  it("persists canonical L1 quarantine state across JSON-store restart", async () => {
-    const dir = await tempDir();
-    const store = await openJsonCommitteeStore(dir);
-    await store.saveL1SourceState({
-      schemaVersion: 1,
-      sourceMode: "external_providers",
+  it("persists the L1 source state across a store restart and refuses a malformed one", async () => {
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
+    const validState = {
+      schemaVersion: 1 as const,
+      sourceMode: "local_node" as const,
       network: "Preprod",
       authoritySha256: "91".repeat(32),
-      status: "quarantined",
-      observations: [],
+      status: "healthy" as const,
+      observations: [
+        {
+          headerHash: "84".repeat(28),
+          stateQueueOutRef: `${"85".repeat(32)}#1`,
+          stateQueueStatus: "unattested" as const,
+          slot: 90,
+          blockHash: "86".repeat(32),
+          finalized: true,
+          hasPersistedDecision: true,
+        },
+      ],
       observedAt: "2026-07-28T00:00:00.000Z",
-      stateQueueReplayAnchor: {
-        deploymentIdentityDigest: "81".repeat(32),
-        stateQueuePolicyId: "82".repeat(28),
-        queue: [
-          { headerHash: null, outRef: `${"83".repeat(32)}#0` },
-          { headerHash: "84".repeat(28), outRef: `${"85".repeat(32)}#1` },
-        ],
-        blockNo: "90",
-        transactionIndex: "2",
-      },
-      quarantineReason: "provider fork",
-      quarantinedAt: "2026-07-28T00:00:01.000Z",
-    });
-    await store.close();
-    const restarted = await openJsonCommitteeStore(dir);
-    await expect(restarted.getL1SourceState()).resolves.toMatchObject({
-      sourceMode: "external_providers",
-      status: "quarantined",
-      quarantineReason: "provider fork",
-      stateQueueReplayAnchor: {
-        deploymentIdentityDigest: "81".repeat(32),
-        stateQueuePolicyId: "82".repeat(28),
-        blockNo: "90",
-        transactionIndex: "2",
-      },
-    });
+    };
+    await store.saveL1SourceState(validState);
+    await closeTestCommitteeStore(store);
+    const restarted = await openTestCommitteeStore(database);
+    await expect(restarted.getL1SourceState()).resolves.toEqual(validState);
     await expect(
       restarted.saveL1SourceState({
-        schemaVersion: 1,
-        sourceMode: "local_node",
-        network: "Preprod",
-        authoritySha256: "91".repeat(32),
-        status: "quarantined",
-        observations: [],
-        observedAt: "2026-07-28T00:00:00.000Z",
-        quarantineReason: "",
-        quarantinedAt: "not-a-time",
-      }),
-    ).rejects.toThrow(/lacks evidence/u);
-    await expect(
-      restarted.saveL1SourceState({
-        schemaVersion: 1,
-        sourceMode: "local_node",
-        network: "Preprod",
-        authoritySha256: "91".repeat(32),
-        status: "healthy",
+        ...validState,
         observations: [
           {
             headerHash: "not-a-hash",
@@ -263,70 +126,35 @@ describe("openCommitteeStore", () => {
             hasPersistedDecision: true,
           },
         ],
-        observedAt: "2026-07-28T00:00:00.000Z",
       }),
     ).rejects.toThrow(/observation is malformed/u);
-    await expect(
-      store.saveL1SourceState({
-        schemaVersion: 1,
-        sourceMode: "local_node",
-        network: "Preprod",
-        authoritySha256: "not-a-digest",
-        status: "healthy",
-        observations: [],
-        observedAt: "2026-07-28T00:00:00.000Z",
-      }),
-    ).rejects.toThrow(/state is malformed/u);
-
-    const validState = {
-      schemaVersion: 1 as const,
-      sourceMode: "local_node" as const,
-      network: "Preprod",
-      authoritySha256: "91".repeat(32),
-      status: "healthy" as const,
-      observations: [],
-      observedAt: "2026-07-28T00:00:00.000Z",
-    };
-    const validAnchor = {
-      deploymentIdentityDigest: "81".repeat(32),
-      stateQueuePolicyId: "82".repeat(28),
-      queue: [
-        { headerHash: null, outRef: `${"83".repeat(32)}#0` },
-        { headerHash: "84".repeat(28), outRef: `${"85".repeat(32)}#1` },
-      ],
-      blockNo: "90",
-      transactionIndex: "2",
-    };
-    const hostileAnchors: readonly unknown[] = [
-      { ...validAnchor, trusted: true },
-      { ...validAnchor, queue: [] },
-      {
-        ...validAnchor,
-        queue: [
-          { headerHash: "84".repeat(28), outRef: `${"83".repeat(32)}#0` },
-        ],
-      },
-      {
-        ...validAnchor,
-        queue: [
-          ...validAnchor.queue,
-          { headerHash: "86".repeat(28), outRef: `${"85".repeat(32)}#1` },
-        ],
-      },
-      { ...validAnchor, transactionIndex: "02" },
+    const hostileStates: readonly unknown[] = [
+      { ...validState, authoritySha256: "not-a-digest" },
+      { ...validState, sourceMode: "external_providers" },
+      { ...validState, status: "quarantined" },
+      { ...validState, quarantineReason: "provider fork" },
+      { ...validState, stateQueueReplayAnchor: { blockNo: "90" } },
     ];
-    for (const stateQueueReplayAnchor of hostileAnchors) {
+    for (const hostile of hostileStates) {
       await expect(
-        restarted.saveL1SourceState({
-          ...validState,
-          stateQueueReplayAnchor,
-        } as never),
-      ).rejects.toThrow(/replay anchor is malformed/u);
+        restarted.saveL1SourceState(hostile as never),
+      ).rejects.toThrow(/state is malformed/u);
     }
+    await expect(restarted.getL1SourceState()).resolves.toEqual(validState);
   });
 
-  it("accepts only exact explicit-source DA signature records on JSON writes", async () => {
-    const store = await openJsonCommitteeStore(await tempDir());
+  it("accepts only exact explicit-source DA signature records on writes", async () => {
+    const store = await openTestCommitteeStore();
+    // A signature is a decision effect: it needs durable L1 source state.
+    await store.saveL1SourceState({
+      schemaVersion: 1,
+      sourceMode: "local_node",
+      network: "Preprod",
+      authoritySha256: "91".repeat(32),
+      status: "healthy",
+      observations: [],
+      observedAt: "2026-07-28T00:00:00.000Z",
+    });
     const signature = daSignatureRecord();
     await expect(store.saveDaSignature(signature)).resolves.toBeUndefined();
     await expect(
@@ -360,8 +188,8 @@ describe("openCommitteeStore", () => {
   });
 
   it("deduplicates and reloads only exact explicit-V1 conflict evidence records", async () => {
-    const directory = await tempDir();
-    const store = await JsonFileCommitteeStore.open(directory);
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
     const evidence = daConflictEvidenceRecord();
     await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(true);
     await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(false);
@@ -373,8 +201,8 @@ describe("openCommitteeStore", () => {
       }),
     ).resolves.toBe(false);
     await expect(store.listDaConflictEvidence()).resolves.toEqual([evidence]);
-    await store.close();
-    const reopenedEvidenceStore = await JsonFileCommitteeStore.open(directory);
+    await closeTestCommitteeStore(store);
+    const reopenedEvidenceStore = await openTestCommitteeStore(database);
     await expect(
       reopenedEvidenceStore.listDaConflictEvidence(),
     ).resolves.toEqual([evidence]);
@@ -396,12 +224,11 @@ describe("openCommitteeStore", () => {
         ),
       ).rejects.toThrow(/DA stored conflict evidence record V1/u);
     }
-    await reopenedEvidenceStore.close();
   });
 
   it("atomically persists and completes deterministic decision outbox effects", async () => {
-    const dir = await tempDir();
-    const store = await openJsonCommitteeStore(dir);
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
     const signature = daSignatureRecord();
     const stateQueueOutRef = signature.validation.stateQueueOutRef;
     const effectId = decisionEffectId({
@@ -452,8 +279,8 @@ describe("openCommitteeStore", () => {
       },
       signature,
     });
-    await store.close();
-    const restarted = await openJsonCommitteeStore(dir);
+    await closeTestCommitteeStore(store);
+    const restarted = await openTestCommitteeStore(database);
     await expect(restarted.getDecisionOutbox(effectId)).resolves.toEqual(
       effect,
     );
@@ -530,8 +357,8 @@ describe("openCommitteeStore", () => {
     ).rejects.toThrow(/retry does not match durable identity/u);
   });
 
-  it("serializes concurrent decisions and makes L1 quarantine terminal", async () => {
-    const store = await openJsonCommitteeStore(await tempDir());
+  it("serializes concurrent decisions into one source state holding both", async () => {
+    const store = await openTestCommitteeStore();
     const firstSignature = daSignatureRecord();
     const secondCommitment = availabilityCommitment("23".repeat(28));
     const secondSignature: DaSignatureRecordV1 = {
@@ -614,115 +441,6 @@ describe("openCommitteeStore", () => {
         { headerHash: secondSignature.headerHash, hasPersistedDecision: true },
       ],
     });
-
-    await store.quarantineL1Decisions({
-      schemaVersion: 1,
-      sourceMode: "local_node",
-      network: "Preprod",
-      authoritySha256: "91".repeat(32),
-      status: "quarantined",
-      observations: [],
-      observedAt: "2026-07-28T00:00:02.000Z",
-      quarantineReason: "canonical rollback",
-      quarantinedAt: "2026-07-28T00:00:03.000Z",
-    });
-    await expect(
-      store.completeDecisionEffect({
-        effectId: first.effect.effectId,
-        expectedAttemptCount: 1,
-        status: "published",
-        updatedAt: "2026-07-28T00:00:04.000Z",
-        signature: { ...firstSignature, broadcastStatus: "posted" },
-      }),
-    ).rejects.toThrow(/does not match the pending attempt/u);
-    await expect(
-      store.saveDaSignature({
-        ...firstSignature,
-        broadcastStatus: "posted",
-      }),
-    ).rejects.toThrow(/L1 source is quarantined/u);
-    await expect(store.listDecisionOutbox()).resolves.toMatchObject([
-      {
-        effectId: first.effect.effectId,
-        status: "failed",
-        quarantineReason: "canonical rollback",
-      },
-      {
-        effectId: second.effect.effectId,
-        status: "failed",
-        quarantineReason: "canonical rollback",
-      },
-    ]);
-    await expect(
-      store.getDaSignature({
-        headerHash: firstSignature.headerHash,
-        availabilityCommitmentDigest:
-          firstSignature.availabilityCommitmentDigest,
-        signerIndex: firstSignature.signerIndex,
-      }),
-    ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
-  });
-
-  it("rejects malformed DA records when opening an existing JSON store", async () => {
-    const malformedRootDir = await tempDir();
-    await writeFile(join(malformedRootDir, "committee.json"), "[]");
-    await expect(openJsonCommitteeStore(malformedRootDir)).rejects.toThrow(
-      /committee node store data must be an object/,
-    );
-
-    const payloadDir = await tempDir();
-    const payload = daPayloadRecord();
-    const { payloadSchemaVersion: _, ...missingVersion } = payload;
-    void _;
-    await writeFile(
-      join(payloadDir, "committee.json"),
-      JSON.stringify({
-        daPayloads: { [payload.headerHash]: missingVersion },
-      }),
-    );
-    await expect(openJsonCommitteeStore(payloadDir)).rejects.toThrow(
-      /missing required field payloadSchemaVersion/,
-    );
-
-    const signatureDir = await tempDir();
-    const signature = daSignatureRecord();
-    const { source: __, ...missingSource } = signature;
-    void __;
-    await writeFile(
-      join(signatureDir, "committee.json"),
-      JSON.stringify(
-        {
-          daSignatures: {
-            [`${signature.headerHash}:${signature.signerIndex.toString()}`]:
-              missingSource,
-          },
-        },
-        jsonReplacer,
-      ),
-    );
-    await expect(openJsonCommitteeStore(signatureDir)).rejects.toThrow(
-      /missing required field source/,
-    );
-
-    const bigintDir = await tempDir();
-    const signatureKey = `${signature.headerHash}:${signature.signerIndex.toString()}`;
-    const canonicalJson = JSON.stringify(
-      {
-        daSignatures: {
-          [signatureKey]: signature,
-        },
-      },
-      jsonReplacer,
-    );
-    const nonCanonicalBigintJson = canonicalJson.replace(
-      '"value":"0"',
-      '"value":"00"',
-    );
-    expect(nonCanonicalBigintJson).not.toBe(canonicalJson);
-    await writeFile(join(bigintDir, "committee.json"), nonCanonicalBigintJson);
-    await expect(openJsonCommitteeStore(bigintDir)).rejects.toThrow(
-      /invalid canonical committee node bigint encoding/,
-    );
   });
 });
 
@@ -737,9 +455,9 @@ const daPayloadRecord = (): DaPayloadRecord => ({
   validationStatus: "fetched",
 });
 
-const availabilityCommitment = (headerHash: string) => {
+const availabilityCommitment = (headerHash: string, identity = "99") => {
   const commitment = SDK.buildDaAvailabilityCommitment({
-    deploymentIdentity: "99".repeat(28),
+    deploymentIdentity: identity.repeat(28),
     headerHash,
     payload: Buffer.from("public retained DA"),
     responseGeometry: SDK.availabilityResponseGeometry({
@@ -814,7 +532,7 @@ const daSignatureRecord = (): DaSignatureRecordV1 => ({
 
 const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
   const lower = availabilityCommitment("11".repeat(28));
-  const upper = availabilityCommitment("22".repeat(28));
+  const upper = availabilityCommitment("11".repeat(28), "55");
   const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceCbor({
     signerIndex: 0,
     daVkey: Buffer.alloc(32, 0x44),
@@ -824,7 +542,7 @@ const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
       Buffer.from([0]),
       Buffer.alloc(64, 0xaa),
     ]),
-    upperHeaderHash: Buffer.alloc(28, 0x22),
+    upperHeaderHash: Buffer.alloc(28, 0x11),
     upperCommitmentCbor: Buffer.from(upper.cbor, "hex"),
     upperHeaderWitness: Buffer.concat([
       Buffer.from([0]),
@@ -836,7 +554,7 @@ const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
     deploymentFingerprint: "11".repeat(32),
     headerHash: "11".repeat(28),
     commitmentDigest: lower.digest,
-    conflictingHeaderHash: "22".repeat(28),
+    conflictingHeaderHash: "11".repeat(28),
     conflictingCommitmentDigest: upper.digest,
     signerIndex: 0,
     evidenceKind: "equivocation",

@@ -1,7 +1,9 @@
 // Every execution ledger is re-measured in CI, and derived from the files
 // rather than from a hand-kept list: each `onchain/aiken/scripts/*-exec-ledger-v1.json`
 // must be read by some `verify-*-exec-ledger-v1.mjs`, and each such verifier
-// must run as its own step of `.github/workflows/aiken-ci.yml`, guarded with
+// must run as its own step of `.github/workflows/aiken-ci.yml` (directly, or
+// as its preflight check `node scripts/preflight.mjs --run exec-ledger:<id>`
+// from the repository root), guarded with
 // `!cancelled()` so one red ledger cannot hide the verdict of the next. Three
 // ledgers once sat in the tree with a verifier and no step, which is how a
 // ledger stops being a measurement.
@@ -61,16 +63,31 @@ export const findUnwiredLedgers = (root) => {
     }
   }
   const document = yaml.parse(readFileSync(join(root, workflow), "utf8"));
-  const steps = Object.values(document?.jobs ?? {}).flatMap(
-    (job) => job?.steps ?? [],
+  // Each step with the directory it runs in: its own, else its job's default.
+  const steps = Object.values(document?.jobs ?? {}).flatMap((job) =>
+    (job?.steps ?? []).map((step) => ({
+      ...step,
+      directory:
+        step?.["working-directory"] ??
+        job?.defaults?.run?.["working-directory"] ??
+        ".",
+    })),
   );
   for (const verifier of verifiers) {
     const invocation = new RegExp(
       `(^|\\s)node\\s+scripts/${verifier.replaceAll(".", "\\.")}(\\s|$)`,
       "mu",
     );
+    const id = verifier.slice("verify-".length, -"-exec-ledger-v1.mjs".length);
+    const byId = new RegExp(
+      `^node\\s+scripts/preflight\\.mjs\\s+--run\\s+exec-ledger:${id.replaceAll(".", "\\.")}\\s*$`,
+      "u",
+    );
     const running = steps.filter(
-      (step) => typeof step?.run === "string" && invocation.test(step.run),
+      (step) =>
+        typeof step?.run === "string" &&
+        (invocation.test(step.run) ||
+          (byId.test(step.run.trim()) && [".", "./"].includes(step.directory))),
     );
     if (running.length === 0) {
       problems.push(`${verifier} is not run by ${workflow}`);
@@ -98,7 +115,15 @@ const fixtureRoot = ({ ledgers, verifiers, steps }) => {
   }
   writeFileSync(
     join(root, workflow),
-    yaml.stringify({ jobs: { aiken: { "runs-on": "ubuntu-latest", steps } } }),
+    yaml.stringify({
+      jobs: {
+        aiken: {
+          "runs-on": "ubuntu-latest",
+          defaults: { run: { "working-directory": "./onchain/aiken" } },
+          steps,
+        },
+      },
+    }),
   );
   return root;
 };
@@ -127,15 +152,28 @@ test(
         "verify-a-exec-ledger-v1.mjs": "read('a-exec-ledger-v1.json')",
         "verify-b-exec-ledger-v1.mjs": "read('b-exec-ledger-v1.json')",
         "verify-c-exec-ledger-v1.mjs": "read('b-exec-ledger-v1.json')",
+        "verify-d-exec-ledger-v1.mjs": "read('a-exec-ledger-v1.json')",
+        "verify-e-exec-ledger-v1.mjs": "read('a-exec-ledger-v1.json')",
       },
       steps: [
         { run: "node scripts/verify-a-exec-ledger-v1.mjs", if: guarded },
         { run: "node scripts/verify-b-exec-ledger-v1.mjs" },
+        {
+          run: "node scripts/preflight.mjs --run exec-ledger:d",
+          "working-directory": ".",
+          if: guarded,
+        },
+        // In the job's onchain/aiken default, the path names no entry point.
+        { run: "node scripts/preflight.mjs --run exec-ledger:e", if: guarded },
       ],
     });
     try {
       const problems = findUnwiredLedgers(root);
-      assert.equal(problems.length, 3, problems.join("\n"));
+      assert.equal(problems.length, 4, problems.join("\n"));
+      assert.match(
+        problems.join("\n"),
+        /verify-e-exec-ledger-v1\.mjs is not run/u,
+      );
       assert.match(
         problems.join("\n"),
         /orphan-exec-ledger-v1\.json is read by no/u,

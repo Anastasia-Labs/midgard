@@ -197,7 +197,7 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
           skipped.push({
             headerHash: headerHash.toString("hex"),
             reason:
-              status === PendingBlockFinalizationsDB.Status.Finalized
+              status === PendingBlockFinalizationsDB.Status.LocallyApplied
                 ? "finalized journal already has a DA payload or is not missing DA payload backfill"
                 : `journal excluded by status: ${status}; revive and complete local finalization before DA payload backfill`,
           });

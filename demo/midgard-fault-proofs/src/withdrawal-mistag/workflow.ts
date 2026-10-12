@@ -35,7 +35,7 @@ import { defineFamily } from "../workflow/family-definition.js";
 import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
@@ -269,7 +269,7 @@ export type ManifestBoundWithdrawalMistagWorkflowConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   referenceScripts: WithdrawalMistagWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;

@@ -1,13 +1,10 @@
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Cause, Effect, Either, Option, Ref, Schedule } from "effect";
 
 import {
   READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS,
   runCombinedL1ReadinessProbe,
 } from "../l1-provider-readiness-probe.js";
-import {
-  readLocalOgmiosSubmitSlot,
-  type SubmitSlotSnapshot,
-} from "../local-ogmios-slot.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   Globals,
@@ -21,7 +18,7 @@ import {
 import { fetchHubOracleWitness } from "../transactions/initialization.js";
 
 /**
- * How often the exact HubOracle + local-Ogmios readiness probe runs. Exact
+ * How often the exact HubOracle + local-ledger readiness probe runs. Exact
  * evidence expires after DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS; this cadence
  * leaves room for a full queue wait behind other control-plane holders.
  */
@@ -112,7 +109,7 @@ export const refreshExactL1ProviderEvidence = <E, R>({
               current,
               healthy: true,
               observedAtMs,
-              ogmiosSlot: Option.getOrThrow(attempt.right),
+              ledgerSlot: Option.getOrThrow(attempt.right),
               successKind: "exact",
             }),
     );
@@ -188,11 +185,7 @@ export const l1ProviderReadinessRefresherFiber = (
       globals,
       probe: runCombinedL1ReadinessProbe(
         fetchHubOracleWitness(lucid.api, contracts),
-        readLocalOgmiosSubmitSlot({
-          ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-          timeoutMs: probeTimeoutMs,
-          maxHealthAgeMs: lucid.ogmiosTipMaxAgeMs,
-        }),
+        (lucid.readSubmitSlotSnapshotOnce ?? lucid.submitSlotSnapshot)(),
       ),
       maxHoldMs: probeTimeoutMs,
       waitTimeoutMs: L1_PROVIDER_EXACT_REFRESH_WAIT_MS,

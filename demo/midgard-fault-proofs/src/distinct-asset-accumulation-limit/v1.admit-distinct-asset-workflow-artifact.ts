@@ -20,7 +20,7 @@ import {
   journalJsonDigest,
   normalizeJournalJson,
 } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   createDistinctAssetAccumulationActuator,
   type DistinctAssetAccumulationActuationArtifact,
@@ -71,7 +71,7 @@ export const DISTINCT_ASSET_ACCUMULATION_CONFIG_KEYS = Object.freeze([
   "headerHash",
   "lucid",
   "signer",
-  "source",
+  "l1Source",
   "decisionDigest",
   "referenceScripts",
   "stateQueueMutationLeaseCoordinator",
@@ -84,7 +84,7 @@ export type ManifestBoundDistinctAssetAccumulationWorkflowConfig = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   decisionDigest: string;
   referenceScripts: DistinctAssetAccumulationReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;

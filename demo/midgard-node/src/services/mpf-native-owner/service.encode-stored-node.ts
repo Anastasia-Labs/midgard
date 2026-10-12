@@ -4,7 +4,11 @@ import { resolve } from "node:path";
 
 import { Level } from "level";
 
-import { NATIVE_MPF_OWNER_DEFAULT_CAPS } from "./protocol.js";
+import {
+  fullIndexCapMessage,
+  NATIVE_MPF_OWNER_DEFAULT_CAPS,
+  type NativeMpfFullIndexCap,
+} from "./protocol.js";
 import {
   digest,
   EMPTY_ROOT_HEX,
@@ -267,6 +271,55 @@ export const writeSidecarAtomic = async (
   }
 };
 
+/** The node closure a walk started from is not all in the store: a record it
+ * reaches is absent, or is not a well-formed node (`LEVEL_CORRUPTION` and
+ * `LEVEL_DECODE_ERROR` reads count as not well-formed). A store that does
+ * not hold a root's closure in full raises this and nothing else; every
+ * other read failure keeps its own error. */
+export class NativeMpfClosureIncomplete extends Error {
+  readonly _tag = "NativeMpfClosureIncomplete";
+}
+
+/** The node closure of `root` is in the store, but its full index exceeds
+ * `cap`, whose configured value is `limit`. */
+export class NativeMpfFullIndexOverCap extends Error {
+  readonly _tag = "NativeMpfFullIndexOverCap";
+  constructor(
+    readonly root: string,
+    readonly cap: NativeMpfFullIndexCap,
+    readonly limit: number,
+    readonly observed: number,
+  ) {
+    super(fullIndexCapMessage(root, cap, limit, observed));
+  }
+}
+
+const unreadableRecordCodes = new Set([
+  "LEVEL_CORRUPTION",
+  "LEVEL_DECODE_ERROR",
+]);
+
+const readRecords = async (
+  db: Level<string, StoredValue>,
+  batch: string[],
+): Promise<(StoredValue | undefined)[]> => {
+  try {
+    return await db.getMany(batch);
+  } catch (cause) {
+    const code = (cause as { code?: unknown } | null)?.code;
+    if (typeof code === "string" && unreadableRecordCodes.has(code))
+      throw new NativeMpfClosureIncomplete(
+        `Native MPF durable closure has an unreadable record (${code})`,
+        { cause },
+      );
+    throw cause;
+  }
+};
+
+/** Visits every record `marker` reaches, once each, and returns how many.
+ * Throws `NativeMpfClosureIncomplete` when the closure is not all in the
+ * store; a store read that fails otherwise, or a `visit` that throws,
+ * propagates unchanged. */
 export const walkReachableRecords = async (
   db: Level<string, StoredValue>,
   marker: string,
@@ -282,14 +335,24 @@ export const walkReachableRecords = async (
       return true;
     });
     if (batch.length === 0) continue;
-    const values = await db.getMany(batch);
+    const values = await readRecords(db, batch);
     for (let index = 0; index < batch.length; index += 1) {
       const hash = batch[index]!;
       const value = values[index];
       if (value === undefined) {
-        throw new Error(`Native MPF durable closure is missing record ${hash}`);
+        throw new NativeMpfClosureIncomplete(
+          `Native MPF durable closure is missing record ${hash}`,
+        );
       }
-      const node = assertStoredNode(value, hash);
+      let node: StoredNode;
+      try {
+        node = assertStoredNode(value, hash);
+      } catch (cause) {
+        throw new NativeMpfClosureIncomplete(
+          `Native MPF durable closure has a malformed record ${hash}`,
+          { cause },
+        );
+      }
       await visit(hash, node);
       count += 1;
       if (node.__kind === "Branch") {

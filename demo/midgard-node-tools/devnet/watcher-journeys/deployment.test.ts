@@ -4,17 +4,14 @@ import { appendFile, copyFile, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
+import {
+  closeSharedL1NodeTransports,
+  sharedL1NodeTransport,
+} from "@al-ft/l1-node-transport";
 import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk";
-import {
-  generateSeedPhrase,
-  Lucid,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
+import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
-import {
-  cardanoProtocolParametersIdentityFromProvider,
-  queryLocalOgmiosProtocolParameters,
-} from "midgard-node/commands/contract-deployment-info";
+import { cardanoProtocolParametersIdentityFromLedger } from "midgard-node/commands/contract-deployment-info";
 import {
   awaitReferenceScriptPublicationReadiness,
   type PublishedWorkflowDeploymentResume,
@@ -24,8 +21,7 @@ import {
   type PublicationSchedule,
   synchronizePublicationIndexer,
 } from "midgard-node/tests/helpers/reference-publication-chain";
-import { WatcherLocalKupmios } from "midgard-watcher";
-import { expect, it } from "vitest";
+import { afterAll, expect, it } from "vitest";
 
 import {
   readJourneyArtifact,
@@ -33,12 +29,16 @@ import {
   writeJourneyFile,
 } from "./artifacts.js";
 import { verifyJourneyConfiguration } from "./configuration.js";
+import { journeyLucid } from "./journey-lucid.js";
 import { readOgmiosTipSlot } from "./ledger-tip.js";
 import { createLiveWorkflowChain } from "./live-chain.js";
 import { loadJourneyContext } from "./live-context.js";
+import { JourneyLocalKupmios } from "./local-kupmios.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
+
+afterAll(closeSharedL1NodeTransports);
 
 it.skipIf(runDirectory === undefined)(
   "publishes the actual installed deployment on the isolated Cardano devnet",
@@ -79,7 +79,7 @@ it.skipIf(runDirectory === undefined)(
     };
     const kupoUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_KUPO_PORT}`;
     const ogmiosUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_OGMIOS_PORT}`;
-    const provider = new WatcherLocalKupmios(
+    const provider = new JourneyLocalKupmios(
       kupoUrl,
       ogmiosUrl,
       await journeyNativeNodeQuery(runDirectory),
@@ -102,9 +102,15 @@ it.skipIf(runDirectory === undefined)(
       await pause(1000);
     }
     await verifyJourneyConfiguration({ runDirectory, ogmiosUrl });
-    const parameters = await cardanoProtocolParametersIdentityFromProvider(
-      provider,
-      await queryLocalOgmiosProtocolParameters(ogmiosUrl),
+    // The node's own snapshot source: the devnet node's ledger, over the
+    // transport sidecar.
+    const nodeTransport = sharedL1NodeTransport({
+      binaryPath: join(runDirectory, "work/midgard-l1-node-transport"),
+      socketPath: join(runDirectory, "cardano/ipc/node.socket"),
+      networkMagic: genesis.networkMagic,
+    });
+    const parameters = await cardanoProtocolParametersIdentityFromLedger(() =>
+      nodeTransport.query({ query: "protocol_params" }),
     );
     await writeFile(
       join(runDirectory, "work/verified-protocol-parameters.json"),
@@ -308,14 +314,17 @@ it.skipIf(runDirectory === undefined)(
         "cardano-cli returned an invalid funding transaction hash",
       );
     await provider.awaitTx(fundingTxHash, 500);
-    const operatorLucid = await Lucid(provider, "Custom", {
-      slotConfig,
-      evaluator: createScalusEvaluator(),
-    });
-    const publisherLucid = await Lucid(provider, "Custom", {
-      slotConfig,
-      evaluator: createScalusEvaluator(),
-    });
+    const network = { kupoUrl, ogmiosUrl, customNetwork: { slotConfig } };
+    const operatorLucid = await journeyLucid(
+      provider,
+      network,
+      createScalusEvaluator(),
+    );
+    const publisherLucid = await journeyLucid(
+      provider,
+      network,
+      createScalusEvaluator(),
+    );
     operatorLucid.selectWallet.fromSeed(accounts.operator!.seedPhrase);
     publisherLucid.selectWallet.fromSeed(accounts.publisher!.seedPhrase);
     const blueprint = process.env.MIDGARD_REAL_BLUEPRINT_PATH;

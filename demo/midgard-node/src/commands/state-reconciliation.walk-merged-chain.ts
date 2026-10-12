@@ -6,7 +6,6 @@ import {
   type CheckId,
   type CheckStatus,
   COMPARES,
-  type ForeignSummary,
   type HeaderRoots,
   type JournalSummary,
   type L1Observation,
@@ -175,7 +174,6 @@ export type Context = {
   readonly l1UnavailableReason: string;
   readonly sql: SqlStateSnapshot;
   readonly journals: ReadonlyMap<string, JournalSummary>;
-  readonly foreign: ReadonlyMap<string, ForeignSummary>;
   readonly onChainUnmerged: ReadonlyMap<string, L1QueueHeader>;
   readonly merged: MergedWalk | null;
   readonly settlementHeaders: ReadonlySet<string>;
@@ -188,12 +186,11 @@ export type Context = {
 const walkMergedChain = (
   confirmedHeaderHash: string,
   journals: ReadonlyMap<string, JournalSummary>,
-  foreign: ReadonlyMap<string, ForeignSummary>,
 ): MergedWalk => {
   const headers = new Set<string>();
   const abandonedOnChain: string[] = [];
   let current = confirmedHeaderHash;
-  const limit = journals.size + foreign.size + 2;
+  const limit = journals.size + 2;
   for (let step = 0; step <= limit; step += 1) {
     if (current === SDK.GENESIS_HEADER_HASH) {
       return {
@@ -220,11 +217,6 @@ const walkMergedChain = (
       current = journal.baseTailHeaderHash;
       continue;
     }
-    const foreignRow = foreign.get(current);
-    if (foreignRow?.prevHeaderHash != null) {
-      current = foreignRow.prevHeaderHash;
-      continue;
-    }
     return {
       headers,
       complete: false,
@@ -243,7 +235,6 @@ const walkMergedChain = (
 export const buildContext = (input: StateReconciliationInput): Context => {
   const sql = input.sql;
   const journals = new Map(sql.journals.map((j) => [j.headerHash, j]));
-  const foreign = new Map(sql.foreign.map((f) => [f.headerHash, f]));
   const l1 = input.l1.kind === "observed" ? input.l1.view : null;
   const onChainUnmerged = new Map(
     (l1?.unmerged ?? []).map((header) => [header.headerHash, header]),
@@ -260,12 +251,9 @@ export const buildContext = (input: StateReconciliationInput): Context => {
       input.l1.kind === "unavailable" ? input.l1.reason : "L1 observed",
     sql,
     journals,
-    foreign,
     onChainUnmerged,
     merged:
-      l1 === null
-        ? null
-        : walkMergedChain(l1.confirmed.headerHash, journals, foreign),
+      l1 === null ? null : walkMergedChain(l1.confirmed.headerHash, journals),
     settlementHeaders,
     activeHeaders: new Set(sql.activeHeaderHashes),
     sqlMergeLag: l1 !== null && l1.confirmed.utxoRoot !== sql.confirmedRoot,

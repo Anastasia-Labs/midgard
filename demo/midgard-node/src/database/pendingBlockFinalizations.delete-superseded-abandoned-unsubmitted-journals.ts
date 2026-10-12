@@ -2,7 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import * as MutationJobsDB from "./mutationJobs.js";
 import {
   ACTIVE_STATUSES,
@@ -44,7 +44,7 @@ export const reviveAbandonedCanonical = (
       );
     }
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`reviveAbandonedCanonical ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -60,7 +60,7 @@ export const markFinalized = (
     const rows = yield* sql.withTransaction(
       Effect.gen(function* () {
         const updated = yield* sql<Row>`UPDATE ${sql(tableName)}
-          SET ${sql(Columns.STATUS)} = ${Status.Finalized},
+          SET ${sql(Columns.STATUS)} = ${Status.LocallyApplied},
               ${sql(Columns.UPDATED_AT)} = NOW()
           WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
             AND ${sql(Columns.STATUS)} IN (
@@ -85,7 +85,7 @@ export const markFinalized = (
       );
     }
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markFinalized ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -171,7 +171,7 @@ export const deleteSupersededAbandonedUnsubmitted = (): Effect.Effect<
     const deleted = yield* sql.withTransaction(
       Effect.gen(function* () {
         const finalizedRows = yield* sql<RawRow>`SELECT * FROM ${sql(tableName)}
-          WHERE ${sql(Columns.STATUS)} = ${Status.Finalized}
+          WHERE ${sql(Columns.STATUS)} = ${Status.LocallyApplied}
           ORDER BY ${sql(Columns.CREATED_AT)} ASC`;
         const deletedRows = yield* Effect.forEach(
           finalizedRows,
@@ -191,7 +191,7 @@ export const deleteSupersededAbandonedUnsubmitted = (): Effect.Effect<
     );
     return deleted;
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`deleteSupersededAbandonedUnsubmitted ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -225,7 +225,7 @@ export const markAbandoned = (
       "pending block journal abandoned before its commit was signed",
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markAbandoned ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -253,7 +253,7 @@ export const markCorrectedAfterStateQueueRemoval = (
           ${Status.SubmittedLocalFinalizationPending},
           ${Status.SubmittedUnconfirmed},
           ${Status.ObservedWaitingStability},
-          ${Status.Finalized}
+          ${Status.LocallyApplied}
         )
       RETURNING *`;
     if (rows.length !== 1) {
@@ -270,7 +270,7 @@ export const markCorrectedAfterStateQueueRemoval = (
       `block removed on L1 by admitted state-queue correction ${transitionDigest}`,
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markCorrectedAfterStateQueueRemoval ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -298,7 +298,7 @@ export const markUnsubmittedAbandoned = (
     );
     return true;
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markUnsubmittedAbandoned ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,

@@ -223,7 +223,7 @@ describe("fault decision bridge behind a predecessor prune", () => {
       ]),
     );
     served = true;
-    await h.bridge.retryDeferredClassification(current);
+    await h.bridge.reconcileAndDispatch(current);
     expect(outcomes(observability).at(-1)).toEqual({
       headerHash: live!.headerHash,
       outcome: "verified",

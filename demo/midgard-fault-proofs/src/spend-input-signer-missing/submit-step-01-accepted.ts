@@ -5,7 +5,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import { submitNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -67,7 +67,7 @@ export const submitSpendInputSignerMissingStep01Accepted = async ({
     } as never,
     SpendInputSignerStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBinding({
+  return await submitNativeTxBinding({
     lucid,
     blueprint,
     network,

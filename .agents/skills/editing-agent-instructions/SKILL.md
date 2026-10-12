@@ -99,11 +99,15 @@ it is written down. Read it top to bottom and take the first match.
   `../.agents/skills`, so tools that look under either directory read the
   same files.
   `[ci: agent-skills-ci.yml/Check skills and the .claude/skills link]`
-- **Frontmatter, size and links are checked.** `name` equals the directory
-  name, `description` is present and at most 1,024 characters, `SKILL.md` is at
-  most 500 lines, and every relative Markdown link in the skill resolves.
-  `[script: scripts/ci/check-agent-skills.mjs]` Blind spot: it does not read
-  backticked paths or judge whether the skill is still true.
+- **Frontmatter, size, links and test commands are checked.** `name` equals
+  the directory name, `description` is present and at most 1,024 characters,
+  `SKILL.md` is at most 500 lines, every relative Markdown link in the skill
+  resolves, and no fenced code block runs Vitest directly: suites go through
+  `node scripts/contrib.mjs test`, and a line that must stay raw ends with
+  `# raw-vitest-ok: <reason>`.
+  [script: scripts/ci/check-agent-skills.mjs] Blind spot: it does not read
+  backticked paths or commands outside fences, or judge whether the skill is
+  still true.
 - **Codex metadata.** Each skill has `agents/openai.yaml` with `display_name`,
   `short_description` and `default_prompt`, in the shape of
   [aiken-contract-build's](../aiken-contract-build/agents/openai.yaml).

@@ -16,10 +16,6 @@ export const MATURITY_DURATION_MS = BigInt(
 export const USER_EVENTS_NEGLIGENCE_TIMEOUT_MS = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.timing.user_events_negligence_timeout_ms,
 );
-export const MAX_INACTIVITY_BETWEEN_BLOCK_COMMITMENTS_MS = BigInt(
-  SELECTED_DEPLOYMENT_PROFILE.timing
-    .max_inactivity_between_block_commitments_ms,
-);
 export const NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.timing.new_shift_inactivity_grace_period_ms,
 );

@@ -27,7 +27,7 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   admitNativeScriptDecodingWorkflowArtifact,
@@ -342,6 +342,6 @@ export type ManifestBoundNativeScriptDecodingWorkflowConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   referenceScripts: NativeScriptDecodingWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;

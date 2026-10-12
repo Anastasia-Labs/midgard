@@ -16,6 +16,7 @@ import {
 } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
@@ -288,6 +289,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
           : ({ ForcedTransactionEventKey: { tx_order_id: orderKey } } as const);
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           eventKeyCbor: Buffer.from(
             Data.to(eventKey as never, SDK.EventKeySchema as never),

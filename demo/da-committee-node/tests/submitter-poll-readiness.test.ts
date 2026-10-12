@@ -92,7 +92,7 @@ describe("submitAutoFundPayment", () => {
                 sign: {
                   withWallet: () => ({
                     complete: async () => ({
-                      toCBOR: () => "84a0a0f5f6",
+                      toCBOR: () => "84a3008001800200a0f5f6",
                       submit: async () => {
                         throw new Error("submit: socket hang up");
                       },

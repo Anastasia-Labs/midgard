@@ -1,12 +1,13 @@
 import { mkdir, realpath } from "node:fs/promises";
-import { join } from "node:path";
 
 import {
   assertWorkflowActuationPermitIdentity,
+  FraudProofL1CheckpointChangedError,
+  FraudProofL1RefusedError,
+  FraudProofL1UnavailableError,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   isWorkflowActuationRevokedError,
-  LocalKupmiosCheckpointChangedError,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
   type WorkflowAdapterRunner,
@@ -28,8 +29,14 @@ import type {
   WatcherFaultProofApplication,
   WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
+import {
+  type WatcherProofObjective,
+  watcherProofObjectiveDirectory,
+} from "./fault-proof-objective-journal.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
+import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
+import { isWatcherSqliteBusyError } from "./watcher-journal-busy.js";
 
 /** Chosen by the supervisor after reloading and validating the durable journal. */
 export type WatcherFaultProofExecutionAdmission = Readonly<{
@@ -59,6 +66,7 @@ export type WatcherFaultProofExecution = Readonly<{
     readonly terminal: FraudProofWorkflowTerminal;
   }): Promise<
     | WatcherCompletedFaultProofVerification
+    | Readonly<{ kind: "pending"; reason: string }>
     | Extract<WatcherFaultProofExecutionOutcome, { kind: "retryable" }>
   >;
   execute(input: {
@@ -66,11 +74,37 @@ export type WatcherFaultProofExecution = Readonly<{
     readonly actuationPermit: WorkflowActuationPermit;
     readonly admission: WatcherFaultProofExecutionAdmission;
   }): Promise<WatcherFaultProofExecutionOutcome>;
+  /**
+   * Objectives held on an L1 read the source refused
+   * (`fault_proof_l1_refused:<reason>`), until their next run or completion
+   * check meets something else, or until the objective is settled.
+   */
+  readiness(): readonly Readonly<{ reason: string; detail: string }>[];
+  /**
+   * The supervisor no longer drives the objective (held under another name,
+   * completed, or its header left the queue with nothing signed), so no run
+   * or completion check would clear its refusal hold: this does.
+   */
+  objectiveSettled(objective: WatcherProofObjective): void;
 }>;
 
 // Only failures from this adapter's read-only provider calls receive transport
 // retry semantics. Arbitrary runner exceptions and authentication errors do not.
-class FundingProviderTransportUnavailable extends Error {}
+// It is an L1 unavailability, so the workflow hands it back from any step
+// instead of stalling on it.
+class FundingProviderTransportUnavailable extends FraudProofL1UnavailableError {}
+
+/** How far down a `cause` chain a wrapped refusal is still recognised. */
+const MAXIMUM_CAUSE_DEPTH = 8;
+const l1RefusalOf = (error: unknown): FraudProofL1RefusedError | undefined => {
+  let current = error;
+  for (let depth = 0; depth <= MAXIMUM_CAUSE_DEPTH; depth++) {
+    if (current instanceof FraudProofL1RefusedError) return current;
+    if (!(current instanceof Error)) return undefined;
+    current = current.cause;
+  }
+  return undefined;
+};
 const readFundingProvider = async <T>(read: () => Promise<T>): Promise<T> => {
   try {
     return await read();
@@ -118,7 +152,7 @@ export type WatcherProverFundingUtxoProvider = Readonly<{
  * decision digest, actuation permit, and rollback generation to a fresh
  * atomically reserved slice of the live prover wallet; the fault-proof
  * application can neither mint nor substitute this authority. All wallet and
- * protocol-input resolution goes through the same local-node Kupo/Ogmios
+ * protocol-input resolution goes through the same follower-backed L1
  * authority the runners execute against.
  */
 export const mintWatcherProverFundingReservationPermit = async (input: {
@@ -196,8 +230,33 @@ export const createWatcherFaultProofExecution = (dependencies: {
     WatcherOperationsSink,
     "recordProofStep" | "setAlert"
   >;
-}): WatcherFaultProofExecution =>
-  Object.freeze({
+}): WatcherFaultProofExecution => {
+  // A refused L1 read says nothing about the fault and is not a process
+  // failure: the objective is held by name and runs again on the next
+  // observation, which clears or renews the hold.
+  const refusals = new Map<
+    string,
+    Readonly<{ reason: string; detail: string }>
+  >();
+  const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
+    `${category}/${headerHash}`;
+  const holdOnRefusal = (
+    job: WatcherFaultProofJob,
+    error: unknown,
+  ): Readonly<{ kind: "pending"; reason: string }> | undefined => {
+    const refusal = l1RefusalOf(error);
+    if (refusal === undefined) return undefined;
+    const reason = `fault_proof_l1_refused:${refusal.reason}`;
+    refusals.set(objectiveOf(job), {
+      reason,
+      detail: `${objectiveOf(job)}: ${refusal.detail}`,
+    });
+    return { kind: "pending", reason: `${reason}: ${refusal.detail}` };
+  };
+  return Object.freeze({
+    readiness: () => Object.freeze([...refusals.values()]),
+    objectiveSettled: (objective) =>
+      void refusals.delete(objectiveOf(objective)),
     verifyCompleted: async ({ job, actuationPermit, entries, terminal }) => {
       const identity = assertWorkflowActuationPermitIdentity({
         permit: actuationPermit,
@@ -225,7 +284,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           "completed proof verification changed its durable execution identity",
         );
       try {
-        return await dependencies.application.verifyCompleted({
+        const verification = await dependencies.application.verifyCompleted({
           runtimeConfigPath: dependencies.runtimeConfigPath,
           category: job.category,
           headerHash: job.headerHash,
@@ -233,7 +292,12 @@ export const createWatcherFaultProofExecution = (dependencies: {
           entries,
           terminal,
         });
+        refusals.delete(objectiveOf(job));
+        return verification;
       } catch (cause) {
+        const held = holdOnRefusal(job, cause);
+        if (held !== undefined) return held;
+        refusals.delete(objectiveOf(job));
         if (isWatcherL1TransientFailure(cause))
           return {
             kind: "retryable",
@@ -267,6 +331,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
           updatedAtMs: Date.now().toString(),
         });
       record("preflight", "prepare");
+      // Any outcome but a refusal ends the objective's hold.
+      let held: ReturnType<typeof holdOnRefusal>;
       try {
         const authority = assertWorkflowActuationPermitIdentity({
           permit: actuationPermit,
@@ -287,11 +353,9 @@ export const createWatcherFaultProofExecution = (dependencies: {
           throw new Error(
             "fault-proof execution admission changed its objective or authority",
           );
-        const journalDirectory = join(
+        const journalDirectory = watcherProofObjectiveDirectory(
           dependencies.journalRoot,
-          "fault-proofs",
-          category,
-          headerHash,
+          { category, headerHash },
         );
         await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
         if ((await realpath(journalDirectory)) !== journalDirectory)
@@ -334,10 +398,15 @@ export const createWatcherFaultProofExecution = (dependencies: {
             record(result.kind === "completed" ? "completed" : "confirmed");
             return { kind: result.kind, result };
           }
+          // A dispute that has made its move and now waits for the other
+          // party's response (`awaiting_counterparty`) is healthy: it is
+          // re-driven on each new observation until the response lands or the
+          // response deadline lets this side move again.
           if (
             "reason" in result &&
             typeof result.reason === "string" &&
             (result.kind === "pending" ||
+              result.kind === "awaiting_counterparty" ||
               isWatcherPreflightStalledResult(result))
           ) {
             record("reconciling");
@@ -348,13 +417,23 @@ export const createWatcherFaultProofExecution = (dependencies: {
             };
           }
         }
+        // Everything else stays fail-closed: a stall outside preflight is an
+        // integrity failure, and a family that re-classifies the watcher's
+        // admitted fault as `no_fault_detected` or `unprovable_gap` disagrees
+        // with the decision that dispatched it.
         const reason =
           typeof result === "object" &&
           result !== null &&
           "reason" in result &&
           typeof result.reason === "string"
             ? result.reason
-            : "invalid execution outcome";
+            : typeof result === "object" &&
+                result !== null &&
+                "kind" in result &&
+                (result.kind === "no_fault_detected" ||
+                  result.kind === "unprovable_gap")
+              ? `the family's own classification returned ${result.kind} for an admitted fault`
+              : "invalid execution outcome";
         throw new Error(
           `Watcher ${category} workflow did not progress: ${reason}`,
         );
@@ -363,8 +442,22 @@ export const createWatcherFaultProofExecution = (dependencies: {
           record("cancelled");
           return { kind: "authority_revoked", error };
         }
+        // The supervisor holds the objective (journal_decision_missing), or
+        // holds on a busy database and requeues it (journal_busy).
         if (
-          error instanceof LocalKupmiosCheckpointChangedError ||
+          isWatcherProofDecisionMissingError(error) ||
+          isWatcherSqliteBusyError(error)
+        ) {
+          record("reconciling");
+          throw error;
+        }
+        held = holdOnRefusal(job, error);
+        if (held !== undefined) {
+          record("reconciling");
+          return { ...held, resume: "await_observation" };
+        }
+        if (
+          error instanceof FraudProofL1CheckpointChangedError ||
           error instanceof WatcherProverFundingUnavailableError
         ) {
           record("reconciling");
@@ -374,7 +467,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
             reason: error.message,
           };
         }
-        // Any read that only failed to reach Kupo, Ogmios, the node or a
+        // Any read that only failed to reach the follower, the node or a
         // provider, or found this watcher's own DA node not up yet, waits and
         // runs again; it says nothing about the fault.
         if (
@@ -399,7 +492,9 @@ export const createWatcherFaultProofExecution = (dependencies: {
         });
         throw error;
       } finally {
+        if (held === undefined) refusals.delete(objectiveOf(job));
         await dependencies.fundingFactory.releaseUnused({ actuationPermit });
       }
     },
   });
+};

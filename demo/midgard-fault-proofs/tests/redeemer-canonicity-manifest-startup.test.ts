@@ -15,6 +15,7 @@ import {
   createManifestBoundRedeemerCanonicityWorkflow,
   type ManifestBoundRedeemerCanonicityWorkflowConfig,
 } from "../src/redeemer-canonicity/runtime.js";
+import { FRAUD_PROOF_L1_SOURCE } from "../src/workflow/l1-source.js";
 
 // This gate consumes a real finalized deployment. Manifest verification and
 // applied contracts are never mocked; startup cannot perform live I/O.
@@ -77,12 +78,10 @@ describe.skipIf(runDirectory === undefined)(
           }),
           selectWallet: forbiddenIo,
         },
-        source: {
-          sourceId: "startup-test-no-network",
-          kupoHttpUrl: "http://127.0.0.1:1",
-          ogmiosUrl: "ws://127.0.0.1:1",
-          fetchImpl: forbiddenIo,
-          webSocketFactory: forbiddenIo,
+        l1Source: {
+          sourceVersion: FRAUD_PROOF_L1_SOURCE,
+          snapshotAuthority: forbiddenIo,
+          signedTransactions: forbiddenIo,
         },
         stateQueueMutationLeaseCoordinator: { acquire: forbiddenIo },
         referenceScripts: {

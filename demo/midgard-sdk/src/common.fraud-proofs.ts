@@ -48,14 +48,12 @@ export type FraudProofs = {
   fabricatedWithdrawal: SpendingValidator;
   nativeScriptDecoding: SpendingValidator;
   missingSignature: SpendingValidator;
-  missingNativeScriptTx: SpendingValidator;
   withdrawnReferenceInput: SpendingValidator;
   canonicalDecodability: SpendingValidator;
   committedFieldShape: SpendingValidator;
   minFee: SpendingValidator;
   withdrawalMistag: SpendingValidator;
   doubleWithdraw: SpendingValidator;
-  crossBlockDuplicateEvent: SpendingValidator;
   l2TxMistag: SpendingValidator;
   withdrawnInput: SpendingValidator;
   /**
@@ -78,8 +76,6 @@ export type FraudProofs = {
    * protected output addresses targets a network other than the deployment.
    */
   networkId: SpendingValidator;
-  /** Q33: a consumed UTxO requires a native script absent from tx witnesses. */
-  missingNativeScriptUtxo: SpendingValidator;
   /** Q34: an authenticated native script evaluates false in tx context. */
   nativeScriptInvalid: SpendingValidator;
   /** Q27: an accepted output or newly introduced UTxO is below min-Ada. */
@@ -267,19 +263,19 @@ export type CredentialD = Data.Static<typeof CredentialSchema>;
 
 export const CredentialD = asDataType<CredentialD>(CredentialSchema);
 
+/** The ledger's `Address`. A pointer stake credential is `Constr 1` of its
+ * three integers, flat, as the ledger and the Aiken stdlib encode it. */
 export const AddressSchema = Data.Object({
   paymentCredential: CredentialSchema,
   stakeCredential: Data.Nullable(
     Data.Enum([
       Data.Object({ Inline: Data.Tuple([CredentialSchema]) }),
       Data.Object({
-        Pointer: Data.Tuple([
-          Data.Object({
-            slotNumber: Data.Integer(),
-            transactionIndex: Data.Integer(),
-            certificateIndex: Data.Integer(),
-          }),
-        ]),
+        Pointer: Data.Object({
+          slotNumber: Data.Integer(),
+          transactionIndex: Data.Integer(),
+          certificateIndex: Data.Integer(),
+        }),
       }),
     ]),
   ),

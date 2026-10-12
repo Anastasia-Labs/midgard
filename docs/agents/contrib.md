@@ -12,6 +12,10 @@ Successful commands print compact results and retain bounded logs. Set
 
 Read [focused tests and builds](contrib/tests-and-builds.md) for the commands, ownership and limits.
 
+## Lane worktrees
+
+Read [lane worktrees](contrib/worktrees.md) to create, set up and remove a lane's checkout.
+
 ## Evidence and ownership
 
 Read [evidence and ownership](contrib/evidence-and-resources.md) for the commands, ownership and limits.

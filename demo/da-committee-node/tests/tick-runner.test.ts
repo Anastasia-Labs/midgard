@@ -79,6 +79,7 @@ const harness = (
         observedAtMs: now,
         confirmedHeadHash: "aa".repeat(28),
         liveQueueHeaderHashes: new Set(["bb".repeat(28)]),
+        finalBlockTimeMs: null,
       };
       if (hangs && options.hangAfterView === true) await hold();
       for (const header of pendingHeaders) {
@@ -363,6 +364,7 @@ describe("slow committee tick log", () => {
         observedAtMs: now,
         confirmedHeadHash: "aa".repeat(28),
         liveQueueHeaderHashes: new Set(),
+        finalBlockTimeMs: null,
       }),
       latestL1ProgressAtMs: () => undefined,
       setRetentionReadiness: () => undefined,

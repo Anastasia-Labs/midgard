@@ -18,7 +18,7 @@ import type {
 } from "./family-definition.js";
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  createFraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
 import {
   createAuthenticatedFieldCarriagePrerequisitePort,
@@ -118,8 +118,8 @@ export const bindManifestBoundFamilyWorkflow = async <
       ),
     ),
   );
-  const observed = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
+  const observed = createFraudProofFamilyL1ObservationPort({
+    l1: config.l1Source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
@@ -142,7 +142,7 @@ export const bindManifestBoundFamilyWorkflow = async <
     references,
     auxiliaryReferences,
     l1,
-    source: config.source,
+    l1Source: config.l1Source,
     certificate: certificate as FamilyAssemblyContext<
       Category,
       Witness,

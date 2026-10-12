@@ -185,7 +185,7 @@ const stepEvidence = (id) => {
         runMode: "fresh",
         engine: "architecture_g",
         localUplc: true,
-        provider: "Kupmios",
+        provider: "l1_node",
         cleanDeployment: true,
         readiness: { httpStatus: 200, ready: true, reasons: [] },
       };
@@ -270,7 +270,7 @@ const stepEvidence = (id) => {
         ownerEpochAfter: "02".repeat(16),
         authoritativeMarkerAfter: tx("f"),
         replayedCandidateRoot: tx("f"),
-        journalStatus: "finalized",
+        journalStatus: "locally_applied",
         l2Status: "committed",
         auditDivergence: 0,
         recoveryLogMarker:

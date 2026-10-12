@@ -50,7 +50,7 @@ const nodeConfig = {
 } as unknown as NodeConfig["Type"];
 
 const slot = () => ({
-  source: "local_ogmios_tip" as const,
+  source: "l1_node_tip" as const,
   currentSlot: 42,
   observedAtMs: Date.now(),
   slotLengthMs: 1_000,
@@ -408,7 +408,7 @@ describe("L1 provider readiness refresher", () => {
           lastSuccessKind: "direct",
           lastFailureAtMs: 0,
           lastFailure: null,
-          lastOgmiosSlot: slot(),
+          lastLedgerSlot: slot(),
         };
         yield* Ref.set(globals.L1_PROVIDER_HEALTH, stale);
         const entered = yield* Deferred.make<void>();

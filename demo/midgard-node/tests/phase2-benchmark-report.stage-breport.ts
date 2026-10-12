@@ -67,18 +67,15 @@ export const stageBReport = (overrides: Record<string, unknown> = {}) => {
     writeBehindMaxBatch: report.writeBehindMaxBatch,
     writeBehindFinalFlushMs: 500,
     durationMs: report.durationMs / 2,
-    depositProjectionDeltaIntervalMs: 5_000,
-    depositProjectionActiveDurationMs: report.durationMs / 2,
-    depositProjectionDeltaBumps: Math.max(
+    depositIngestionIntervalMs: 5_000,
+    depositIngestionActiveDurationMs: report.durationMs / 2,
+    depositIngestions: Math.max(
       0,
       Math.floor(report.durationMs / 2 / 5_000) - 1,
     ),
-    ledgerCacheDeltaApplies: Math.max(
-      0,
-      Math.floor(report.durationMs / 2 / 5_000) - 1,
-    ),
+    ledgerCacheDeltaApplies: 0,
     ledgerCacheFullReloads: 0,
-    worstBumpThroughputRatio: 0.96,
+    worstDepositWindowThroughputRatio: 0.96,
     accepted: report.corpusRowCount,
     rejected: 0,
     acceptedAdmissionRows: report.corpusRowCount,

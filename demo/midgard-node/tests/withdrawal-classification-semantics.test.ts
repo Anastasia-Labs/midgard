@@ -3,13 +3,20 @@ import {
   encodeMidgardTxOutput,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
-import { classifyWithdrawal } from "../src/workers/utils/mpf/withdrawal-classification.js";
+import {
+  classifyWithdrawal,
+  classifyWithdrawalsInOrder,
+} from "../src/workers/utils/mpf/withdrawal-classification.js";
 
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",
@@ -18,6 +25,37 @@ const wallet = walletFromSeed(
 const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
 const owner = privateKey.to_public().hash().to_hex();
 const policy = "ab".repeat(28);
+const lowPolicy = "0a".repeat(28);
+const lovelace = 7_000_000n;
+
+type Assets = ReadonlyMap<string, ReadonlyMap<string, bigint>>;
+
+/** One policy holding "ff" and "0000": length-first (L2 codec) and bytewise
+ * (Plutus Data Value) orders differ. */
+const mixedWidthAssets: Assets = new Map([
+  [
+    policy,
+    new Map([
+      ["ff", 1n],
+      ["0000", 2n],
+    ]),
+  ],
+]);
+const twoPolicyAssets: Assets = new Map([
+  [lowPolicy, new Map([["01", 3n]])],
+  [policy, new Map([["02", 4n]])],
+]);
+/** `twoPolicyAssets` with 7 ADA, its policies in the order high, ADA, low: an
+ * order admission accepts (`from_asset_list` sorts policies) and the SDK's
+ * encoder never writes. */
+const twoPoliciesOutOfOrderCbor = [
+  "a3",
+  `581c${policy}a1410204`,
+  "40a1401a006acfc0",
+  `581c${lowPolicy}a1410103`,
+].join("");
+const ada = (quantity: bigint) =>
+  ["", new Map([["", quantity]])] as [string, Map<string, bigint>];
 
 const fixture = async (
   options: {
@@ -26,6 +64,12 @@ const fixture = async (
     readonly wrongValue?: boolean;
     readonly badSignature?: boolean;
     readonly tokenCount?: number;
+    /** The ledger output's non-ADA assets (default: `tokenCount` names). */
+    readonly assets?: Assets;
+    /** The withdrawal's requested l2_value (default: the output's value). */
+    readonly requested?: SDK.Value;
+    /** The requested l2_value as these exact bytes, in the signed body. */
+    readonly requestedCbor?: string;
     readonly malformedValue?: boolean;
     readonly malformedEvent?: boolean;
     readonly malformedLedger?: boolean;
@@ -37,12 +81,14 @@ const fixture = async (
       (_, index) => [index.toString(16).padStart(4, "0"), 1n] as const,
     ),
   );
-  const assets = new Map(tokens.size === 0 ? [] : [[policy, tokens]]);
-  const lovelace = 7_000_000n;
-  const value: SDK.Value = new Map([
-    ["", new Map([["", options.wrongValue ? lovelace + 1n : lovelace]])],
-    ...assets,
-  ]);
+  const assets =
+    options.assets ?? new Map(tokens.size === 0 ? [] : [[policy, tokens]]);
+  const value: SDK.Value =
+    options.requested ??
+    new Map([
+      ada(options.wrongValue ? lovelace + 1n : lovelace),
+      ...[...assets].map(([id, names]) => [id, new Map(names)] as const),
+    ]);
   const body: SDK.WithdrawalBody = {
     l2_outref: { transactionId: "aa".repeat(32), outputIndex: 0n },
     l2_owner: options.wrongOwner ? "bb".repeat(28) : owner,
@@ -52,6 +98,14 @@ const fixture = async (
     ),
     l1_datum: "NoDatum",
   };
+  const bodyCbor =
+    options.requestedCbor === undefined
+      ? undefined
+      : replacePlutusConstrFieldCbor(
+          Data.to(body, SDK.WithdrawalBody),
+          [2],
+          options.requestedCbor,
+        );
   const info: SDK.WithdrawalInfo = {
     body,
     signature: options.badSignature
@@ -59,10 +113,20 @@ const fixture = async (
           Buffer.from(privateKey.to_public().to_raw_bytes()).toString("hex"),
           "00".repeat(64),
         ]
-      : SDK.signWithdrawalBody(privateKey, body),
+      : bodyCbor === undefined
+        ? SDK.signWithdrawalBody(privateKey, body)
+        : SDK.signWithdrawalBodyCbor(privateKey, bodyCbor),
     validity: "WithdrawalIsValid",
   };
-  const eventInfo = Buffer.from(Data.to(info, SDK.WithdrawalInfo), "hex");
+  const infoCbor =
+    bodyCbor === undefined
+      ? Data.to(info, SDK.WithdrawalInfo)
+      : replacePlutusConstrFieldCbor(
+          Data.to(info, SDK.WithdrawalInfo),
+          [0],
+          bodyCbor,
+        );
+  const eventInfo = Buffer.from(infoCbor, "hex");
   const entry: WithdrawalsDB.Entry = {
     [WithdrawalsDB.Columns.ID]: Buffer.from("cc".repeat(32), "hex"),
     raw_event_info: options.malformedEvent
@@ -77,7 +141,7 @@ const fixture = async (
     l2_owner: Buffer.from(body.l2_owner, "hex"),
     l2_value: options.malformedValue
       ? Buffer.from("00", "hex")
-      : Buffer.from(Data.to(value, SDK.Value), "hex"),
+      : Buffer.from(options.requestedCbor ?? Data.to(value, SDK.Value), "hex"),
     l1_address: Buffer.from(Data.to(body.l1_address, SDK.AddressData), "hex"),
     l1_datum: Buffer.from(Data.to(body.l1_datum, SDK.CardanoDatum), "hex"),
     refund_address: Buffer.alloc(0),
@@ -108,6 +172,17 @@ const fixture = async (
         : Option.some(output),
     },
     info,
+    /** The committed settlement bytes for a verdict, from the exact event. */
+    settlement: (validity: SDK.WithdrawalValidity) =>
+      bodyCbor === undefined
+        ? SDK.committedWithdrawalValueBytes({ ...info, validity })
+        : aikenSerialisedPlutusDataCborPreservingMapOrder(
+            replacePlutusConstrFieldCbor(
+              infoCbor,
+              [2],
+              Data.to(validity, SDK.WithdrawalValidity),
+            ),
+          ),
   };
 };
 
@@ -135,14 +210,96 @@ describe("withdrawal classification semantics", () => {
       validity: "IncorrectWithdrawalSignature",
     },
     {
-      name: "100 asset entries including lovelace",
-      options: { tokenCount: 99 },
+      // The chain counts non-ADA assets only (descriptor asset_count).
+      name: "100 non-ADA assets besides lovelace",
+      options: { tokenCount: 100 },
       validity: "WithdrawalIsValid",
     },
     {
-      name: "101 asset entries including lovelace",
-      options: { tokenCount: 100 },
+      name: "101 non-ADA assets besides lovelace",
+      options: { tokenCount: 101 },
       validity: "TooManyTokensInWithdrawal",
+    },
+    {
+      // Admission accepts policies in any order (from_asset_list sorts).
+      name: "policies requested out of byte order",
+      options: {
+        assets: twoPolicyAssets,
+        requestedCbor: twoPoliciesOutOfOrderCbor,
+      },
+      validity: "WithdrawalIsValid",
+    },
+    {
+      name: "policies out of byte order with a changed quantity",
+      options: {
+        assets: new Map([
+          [lowPolicy, new Map([["01", 3n]])],
+          [policy, new Map([["02", 5n]])],
+        ]),
+        requestedCbor: twoPoliciesOutOfOrderCbor,
+      },
+      validity: "IncorrectWithdrawalValue",
+    },
+    {
+      name: "mixed-width asset names in byte order, as the SDK writes them",
+      options: {
+        assets: mixedWidthAssets,
+        requested: SDK.assetsToValue({
+          lovelace,
+          [`${policy}ff`]: 1n,
+          [`${policy}0000`]: 2n,
+        }),
+      },
+      validity: "WithdrawalIsValid",
+    },
+    {
+      name: "mixed-width asset names with a changed quantity",
+      options: {
+        assets: mixedWidthAssets,
+        requested: SDK.assetsToValue({
+          lovelace,
+          [`${policy}ff`]: 1n,
+          [`${policy}0000`]: 3n,
+        }),
+      },
+      validity: "IncorrectWithdrawalValue",
+    },
+    {
+      name: "a requested asset the output lacks",
+      options: {
+        assets: mixedWidthAssets,
+        requested: SDK.assetsToValue({
+          lovelace,
+          [`${policy}ff`]: 1n,
+          [`${policy}0000`]: 2n,
+          [`${policy}01`]: 1n,
+        }),
+      },
+      validity: "IncorrectWithdrawalValue",
+    },
+    {
+      name: "an output asset the request lacks",
+      options: {
+        assets: mixedWidthAssets,
+        requested: SDK.assetsToValue({ lovelace, [`${policy}ff`]: 1n }),
+      },
+      validity: "IncorrectWithdrawalValue",
+    },
+    {
+      // The chain requires the ADA policy to hold only the empty name.
+      name: "an extra asset name under the ADA policy",
+      options: {
+        requested: new Map([
+          [
+            "",
+            new Map([
+              ["", lovelace],
+              ["01", 1n],
+            ]),
+          ],
+        ]),
+      },
+      validity: "IncorrectWithdrawalValue",
     },
     {
       name: "missing output precedes owner, value and signature",
@@ -161,12 +318,12 @@ describe("withdrawal classification semantics", () => {
     },
     {
       name: "value precedes token count and signature",
-      options: { wrongValue: true, tokenCount: 100, badSignature: true },
+      options: { wrongValue: true, tokenCount: 101, badSignature: true },
       validity: "IncorrectWithdrawalValue",
     },
     {
       name: "token count precedes signature",
-      options: { tokenCount: 100, badSignature: true },
+      options: { tokenCount: 101, badSignature: true },
       validity: "TooManyTokensInWithdrawal",
     },
     {
@@ -182,7 +339,7 @@ describe("withdrawal classification semantics", () => {
   ] as const;
 
   it.each(scenarios)("$name", async ({ options, validity }) => {
-    const { input, info } = await fixture(options);
+    const { input, settlement } = await fixture(options);
     const result = await Effect.runPromise(classifyWithdrawal(input));
     expect(result.entry).toBe(input.entry);
     expect(result.ledgerOutRef).toBe(input.ledgerOutRef);
@@ -191,7 +348,7 @@ describe("withdrawal classification semantics", () => {
       validity === "WithdrawalIsValid",
     );
     expect(result.settlementEventInfo.toString("hex")).toBe(
-      SDK.committedWithdrawalValueBytes({ ...info, validity }),
+      settlement(validity),
     );
     if (validity === "IncorrectWithdrawalValue") {
       expect(result.validityDetail).toMatchObject({
@@ -237,5 +394,63 @@ describe("withdrawal classification semantics", () => {
       table: WithdrawalsDB.tableName,
       message,
     });
+  });
+});
+
+describe("withdrawal classification in trace order", () => {
+  type Options = Parameters<typeof fixture>[0];
+  // Each order gets its own event id; all name the same L2 outref.
+  const orders = async (...options: Options[]) => {
+    const built = await Promise.all(options.map((option) => fixture(option)));
+    const entries = built.map(({ input }, index) => ({
+      ...input.entry,
+      [WithdrawalsDB.Columns.ID]: Buffer.alloc(32, index + 1),
+    }));
+    const { ledgerOutRef, ledgerOutput } = built[0]!.input;
+    const baseOutputs = new Map(
+      Option.isSome(ledgerOutput)
+        ? [[ledgerOutRef.toString("hex"), ledgerOutput.value]]
+        : [],
+    );
+    return { entries, baseOutputs };
+  };
+  const verdicts = async (...options: Options[]) => {
+    const { entries, baseOutputs } = await orders(...options);
+    const classified = await Effect.runPromise(
+      classifyWithdrawalsInOrder({ entries, baseOutputs }),
+    );
+    expect(classified.map(({ entry }) => entry)).toEqual(entries);
+    for (const { validity, shouldDeleteLedgerUtxo } of classified)
+      expect(shouldDeleteLedgerUtxo).toBe(validity === "WithdrawalIsValid");
+    return classified.map(({ validity }) => validity);
+  };
+
+  it("finds the outref gone for a second valid order on it", async () => {
+    expect(await verdicts({}, {})).toEqual([
+      "WithdrawalIsValid",
+      "NonExistentWithdrawalUtxo",
+    ]);
+  });
+
+  it("lets a valid order follow a non-payable one on the same outref", async () => {
+    expect(await verdicts({ badSignature: true }, {})).toEqual([
+      "IncorrectWithdrawalSignature",
+      "WithdrawalIsValid",
+    ]);
+  });
+
+  it("finds a missing outref missing for every order", async () => {
+    expect(await verdicts({ missing: true }, { missing: true })).toEqual([
+      "NonExistentWithdrawalUtxo",
+      "NonExistentWithdrawalUtxo",
+    ]);
+  });
+
+  it("drains the outref once across three orders", async () => {
+    expect(await verdicts({ wrongValue: true }, {}, {})).toEqual([
+      "IncorrectWithdrawalValue",
+      "WithdrawalIsValid",
+      "NonExistentWithdrawalUtxo",
+    ]);
   });
 });

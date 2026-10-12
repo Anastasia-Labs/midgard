@@ -23,10 +23,9 @@ use midgard/scheduler.{
   ActiveOperator, AppointFirstOperator, Deinit, GoToNextDueToEndOfShift,
   GoToNextDueToOperatorRemoval, GoToNextDueToSkippedOperator, Init, MintRedeemer,
   NeglectedDeposit, NeglectedTxOrder, NeglectedUserEvent, NeglectedWithdrawal,
-  NoActiveOperators, NoNeglectedUserEvent, OperatorRemovalReason,
-  OperatorRetirement, OperatorSlashing, RewindDueToEndOfShift,
-  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SchedDatum,
-  SpendRedeemer, asset_name, shift_end_time,
+  NoActiveOperators, OperatorRemovalReason, OperatorRetirement, OperatorSlashing,
+  RewindDueToEndOfShift, RewindDueToOperatorRemoval, RewindDueToSkippedOperator,
+  SchedDatum, SpendRedeemer, asset_name, shift_end_time,
 }
 use midgard/state_queue
 use midgard/user_events
@@ -652,70 +651,64 @@ fn validate_operator_inactivity_and_get_its_link(
         }
       }
 
-      // 7. Let `inactivity_threshold` be a point in time that can be attained
-      //    from three values:
-      //    - The active operator's shift start time, plus the
-      //      `new_shift_inactivity_grace_period` protocol parameter.
-      //    - The upper bound of the latest element's event interval in state
-      //      queue, plus the `max_inactivity_between_block_commitments`
-      //      protocol parameter.
-      //    - A given user event's inclusion time, plus the
+      // 7. Let `event_inclusion_time` be the inclusion time of the cited user
+      //    event. Deposits and withdrawals are Order nodes of their
+      //    event-history lists, and each list's policy and address
+      //    authenticate its own nodes; a tx order is authenticated by the
+      //    tx-order policy.
+      let event_inclusion_time = when neglected_user_event is {
+        NeglectedDeposit { deposit_ref_input_index } -> {
+          let order_facts.Facts { inclusion_time, .. } = reference_inputs
+            |> order_facts.referenced(
+                deposit_ref_input_index,
+                hub_datum.deposit,
+                hub_datum.deposit_addr,
+              )
+          inclusion_time
+        }
+        NeglectedWithdrawal { withdrawal_ref_input_index } -> {
+          let order_facts.Facts { inclusion_time, .. } = reference_inputs
+            |> order_facts.referenced(
+                withdrawal_ref_input_index,
+                hub_datum.withdrawal,
+                hub_datum.withdrawal_addr,
+              )
+          inclusion_time
+        }
+        NeglectedTxOrder { tx_order_ref_input_index } -> {
+          let user_events.OptimisticDatum { inclusion_time, .. } = reference_inputs
+            |> tx_order.get_datum(hub_datum.tx_order, tx_order_ref_input_index)
+          inclusion_time
+        }
+      }
+
+      // 8. The event must be undelivered. A block covers the events with
+      //    `start_time < inclusion_time <= end_time`, and each block starts
+      //    where its predecessor (or the confirmed state) ends, so the events
+      //    the state queue and the confirmed state cover are exactly those
+      //    with `inclusion_time <= last_state_queue_elements_end_time`.
+      expect event_inclusion_time > last_state_queue_elements_end_time
+
+      // 9. Let `inactivity_threshold` be the later of:
+      //    - the shift's start time plus the
+      //      `new_shift_inactivity_grace_period` protocol parameter;
+      //    - the event's inclusion time plus the
       //      `user_events_negligence_timeout` protocol parameter.
       let inactivity_threshold = max(
         inactive_operators_shift_start_time + env.new_shift_inactivity_grace_period,
-        when neglected_user_event is {
-          NoNeglectedUserEvent ->
-            last_state_queue_elements_end_time + env.max_inactivity_between_block_commitments
-          // Deposits and withdrawals are Order nodes of their event-history
-          // lists; each list's policy and address authenticate its own nodes.
-          NeglectedDeposit { deposit_ref_input_index } -> {
-            let order_facts.Facts { inclusion_time, .. } = reference_inputs
-              |> order_facts.referenced(
-                  deposit_ref_input_index,
-                  hub_datum.deposit,
-                  hub_datum.deposit_addr,
-                )
-
-            inclusion_time
-              |> inactivity_threshold_from_user_event_inclusion_time(
-                  last_state_queue_elements_end_time,
-                )
-          }
-          NeglectedWithdrawal { withdrawal_ref_input_index } -> {
-            let order_facts.Facts { inclusion_time, .. } = reference_inputs
-              |> order_facts.referenced(
-                  withdrawal_ref_input_index,
-                  hub_datum.withdrawal,
-                  hub_datum.withdrawal_addr,
-                )
-
-            inclusion_time
-              |> inactivity_threshold_from_user_event_inclusion_time(
-                  last_state_queue_elements_end_time,
-                )
-          }
-          NeglectedTxOrder { tx_order_ref_input_index } -> {
-            let user_events.OptimisticDatum { inclusion_time, .. } = reference_inputs
-              |> tx_order.get_datum(
-                  hub_datum.tx_order,
-                  tx_order_ref_input_index,
-                )
-
-            inclusion_time
-              |> inactivity_threshold_from_user_event_inclusion_time(
-                  last_state_queue_elements_end_time,
-                )
-          }
-        },
+        event_inclusion_time + env.user_events_negligence_timeout,
       )
 
+      // 10. The threshold must fall inside the inactive operator's shift, so
+      //     the strike convicts the operator that held the shift when the
+      //     event became overdue.
       expect
         inactivity_threshold < shift_end_time(
           inactive_operators_shift_start_time,
         )
 
-      // 7. The validity range of the transaction must be entirely after
-      //    `inactivity_threshold`.
+      // 11. The validity range of the transaction must be entirely after
+      //     `inactivity_threshold`.
       expect
         validity_range
           |> interval.is_entirely_after(inactivity_threshold)
@@ -726,14 +719,6 @@ fn validate_operator_inactivity_and_get_its_link(
       |> state_queue.finalize_linked_list(hub_datum.state_queue)
 
   active_node_link
-}
-
-fn inactivity_threshold_from_user_event_inclusion_time(
-  inclusion_time: PosixTime,
-  last_state_queue_elements_end_time: PosixTime,
-) -> PosixTime {
-  expect inclusion_time >= last_state_queue_elements_end_time
-  inclusion_time + env.user_events_negligence_timeout
 }
 
 /// Given the index of the input in reference inputs, this function validates

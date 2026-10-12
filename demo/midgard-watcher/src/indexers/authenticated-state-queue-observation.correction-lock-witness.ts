@@ -2,7 +2,6 @@ import { type FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
 
-import { type QueueNode } from "./authenticated-state-queue-observation.parse-persisted-header.js";
 import { outputReferences } from "./authenticated-state-queue-observation.parse-persisted-observation.js";
 import { lockOutput } from "./authenticated-state-queue-observation.queue-output.js";
 import {
@@ -22,6 +21,7 @@ export const correctionLockWitness = ({
   fraudProofPolicyId,
   fraudProofAddress,
   availabilityChallengePolicyId,
+  inOrder = orderedResolved,
 }: {
   raw: FraudProofRawL1Transaction;
   body: CML.TransactionBody;
@@ -33,14 +33,13 @@ export const correctionLockWitness = ({
   fraudProofPolicyId: string;
   fraudProofAddress: string;
   availabilityChallengePolicyId: string;
+  /** How resolved inputs are ordered; the default refuses an unresolved one. */
+  inOrder?: typeof orderedResolved;
 }): SDK.StateQueueCorrectionLockWitness => {
   const spentRefs = outputReferences(body.inputs());
   const referenceRefs = outputReferences(body.reference_inputs());
-  const spentResolved = orderedResolved(spentRefs, raw.resolvedInputs);
-  const referenceResolved = orderedResolved(
-    referenceRefs,
-    raw.resolvedReferenceInputs,
-  );
+  const spentResolved = inOrder(spentRefs, raw.resolvedInputs);
+  const referenceResolved = inOrder(referenceRefs, raw.resolvedReferenceInputs);
   const locksIn = spentResolved.flatMap((input) => {
     const decoded = lockOutput({
       output: CML.TransactionOutput.from_cbor_hex(input.outputCbor),
@@ -155,15 +154,23 @@ export const correctionLockWitness = ({
     const identity: SDK.CorrectionIdentity = timeout
       ? "AttestationTimeout"
       : fraudProofIdentity({
-          proof:
-            referenceResolved[
-              Number(
-                decoded.RemoveFraudulentBlockHeader.fraud_proof_ref_input_index,
-              )
-            ] ??
-            (() => {
+          proof: (() => {
+            const label =
+              referenceRefs[
+                Number(
+                  decoded.RemoveFraudulentBlockHeader
+                    .fraud_proof_ref_input_index,
+                )
+              ];
+            if (label === undefined)
               throw new Error("fraud proof reference index is out of bounds");
-            })(),
+            const proof = referenceResolved.find(
+              ({ outRef }) => outRef === label,
+            );
+            if (proof === undefined)
+              throw new Error("fraud proof reference input is not resolved");
+            return proof;
+          })(),
           fraudProofPolicyId,
           fraudProofAddress,
           targetHeaderHash,
@@ -242,21 +249,3 @@ export const correctionLockWitness = ({
 };
 
 export const unsafeCorrectionLockWitnessForTest = correctionLockWitness;
-
-export const sameQueue = (
-  left: readonly QueueNode[],
-  right: readonly QueueNode[],
-): boolean =>
-  left.length === right.length &&
-  left.every(
-    (node, index) =>
-      node.headerHash === right[index]?.headerHash &&
-      node.outRef === right[index]?.outRef,
-  );
-
-export const sameLockDatum = (
-  left: SDK.CorrectionLockDatum,
-  right: SDK.CorrectionLockDatum,
-): boolean =>
-  Data.to(left, SDK.CorrectionLockDatum) ===
-  Data.to(right, SDK.CorrectionLockDatum);

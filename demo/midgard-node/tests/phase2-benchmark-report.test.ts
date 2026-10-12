@@ -306,40 +306,35 @@ describe("Phase 2 benchmark report gate", () => {
       rowCount: 3_800_000,
     };
     const fullReplicaTps = fullCorpus.rowCount / 300;
+    const fullReport = () =>
+      stageBReport({
+        chunkSize: 64,
+        shortAssert: false,
+        corpusSha256: fullCorpus.sha256,
+        corpusRowCount: fullCorpus.rowCount,
+        expectedAccepted: fullCorpus.rowCount * 2,
+        accepted: fullCorpus.rowCount * 2,
+        acceptedTps: fullReplicaTps,
+        durationMs: 600_000,
+      });
     expect(
-      verifyPhase2BenchmarkReports(
-        "full",
-        [
-          stageBReport({
-            chunkSize: 64,
-            shortAssert: false,
-            corpusSha256: fullCorpus.sha256,
-            corpusRowCount: fullCorpus.rowCount,
-            expectedAccepted: fullCorpus.rowCount * 2,
-            accepted: fullCorpus.rowCount * 2,
-            acceptedTps: fullReplicaTps,
-            durationMs: 600_000,
-          }),
-        ],
-        { expectedFullCorpus: fullCorpus },
-      ),
-    ).toBeDefined();
-    const reloading = stageBReport({
-      chunkSize: 64,
-      shortAssert: false,
-      corpusSha256: fullCorpus.sha256,
-      corpusRowCount: fullCorpus.rowCount,
-      expectedAccepted: fullCorpus.rowCount * 2,
-      accepted: fullCorpus.rowCount * 2,
-      acceptedTps: fullReplicaTps,
-      durationMs: 600_000,
-    });
-    reloading.replicas[0]!.ledgerCacheFullReloads = 1;
-    expect(() =>
-      verifyPhase2BenchmarkReports("full", [reloading], {
+      verifyPhase2BenchmarkReports("full", [fullReport()], {
         expectedFullCorpus: fullCorpus,
       }),
-    ).toThrow(/ledgerCacheFullReloads/u);
+    ).toBeDefined();
+    // Follower deposit ingestion neither reloads nor delta-applies the cache.
+    for (const field of [
+      "ledgerCacheFullReloads",
+      "ledgerCacheDeltaApplies",
+    ] as const) {
+      const cacheTouching = fullReport();
+      cacheTouching.replicas[0]![field] = 1;
+      expect(() =>
+        verifyPhase2BenchmarkReports("full", [cacheTouching], {
+          expectedFullCorpus: fullCorpus,
+        }),
+      ).toThrow(new RegExp(field, "u"));
+    }
     const splitDuration = stageBReport({
       chunkSize: 64,
       shortAssert: false,
@@ -391,7 +386,7 @@ describe("Phase 2 benchmark report gate", () => {
       }),
     ).toThrow(/acceptedTps must equal measured/u);
 
-    const truncatedBumpWindow = stageBReport({
+    const truncatedDepositWindow = stageBReport({
       chunkSize: 64,
       shortAssert: false,
       corpusSha256: fullCorpus.sha256,
@@ -401,16 +396,15 @@ describe("Phase 2 benchmark report gate", () => {
       acceptedTps: fullReplicaTps,
       durationMs: 600_000,
     });
-    truncatedBumpWindow.replicas[0]!.depositProjectionActiveDurationMs = 1;
-    truncatedBumpWindow.replicas[0]!.depositProjectionDeltaBumps = 1;
-    truncatedBumpWindow.replicas[0]!.ledgerCacheDeltaApplies = 1;
-    truncatedBumpWindow.replicas[0]!.mempoolLedgerRows =
-      truncatedBumpWindow.expectedLedgerRows + 1;
+    truncatedDepositWindow.replicas[0]!.depositIngestionActiveDurationMs = 1;
+    truncatedDepositWindow.replicas[0]!.depositIngestions = 1;
+    truncatedDepositWindow.replicas[0]!.mempoolLedgerRows =
+      truncatedDepositWindow.expectedLedgerRows + 1;
     expect(() =>
-      verifyPhase2BenchmarkReports("full", [truncatedBumpWindow], {
+      verifyPhase2BenchmarkReports("full", [truncatedDepositWindow], {
         expectedFullCorpus: fullCorpus,
       }),
-    ).toThrow(/depositProjectionActiveDurationMs/u);
+    ).toThrow(/depositIngestionActiveDurationMs/u);
   });
 
   it("authorizes chunk 128 only from bound chunk A/B and candidate script evidence", () => {

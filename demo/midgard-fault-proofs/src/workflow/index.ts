@@ -36,19 +36,17 @@ export * from "./funding-requirements.js";
 export * from "./funding-requirements-test-support.js";
 export * from "./funding-reservation-permit.js";
 export * from "./header-classifier.js";
-export * from "./historical-native-script-corpus.js";
 export * from "./input-no-idx.js";
 export * from "./input-set-uniqueness.js";
 export * from "./invalid-signature.js";
 export * from "./journal.js";
+export * from "./l1-source.js";
 export * from "./l2-tx-mistag.js";
 export * from "./ledger-absence-artifact.js";
 export * from "./linear-family-adapter.js";
 export * from "./linear-family-definitions.js";
 export * from "./linear-family-spec.js";
 export * from "./linear-family-state.js";
-export * from "./local-kupmios-http-ogmios-source.js";
-export * from "./local-kupmios-raw-l1-authority.js";
 export * from "./manifest-bound-family-assembly.js";
 export * from "./min-fee.js";
 export * from "./missing-signature.js";
@@ -70,6 +68,10 @@ export * from "./release-finality-policy.js";
 export * from "./replay-requirements.js";
 export * from "./runtime.js";
 export * from "./runtime-funding-policy.js";
+export type {
+  SignedTransactionRecoveryObservation,
+  SignedWorkflowTransaction,
+} from "./signed-transaction-reconciliation.js";
 export * from "./superseded-attempt-read-schedule.js";
 export * from "./transaction-boundary.js";
 export * from "./withdrawn-input.js";

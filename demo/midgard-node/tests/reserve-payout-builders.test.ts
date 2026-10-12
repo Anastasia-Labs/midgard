@@ -6,7 +6,7 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
 import "../src/commands/reserve-payout.js";
-import "../src/local-ledger-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "../src/transactions/reserve-payout.js";
 import "./helpers/real-midgard-contracts.js";
 import "./helpers/redeemer-inspection.js";
@@ -19,6 +19,7 @@ import "./reserve-payout-builders.expect-add-funds-redeemer-layout.js";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 
+import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -35,7 +36,7 @@ import {
   submitAbsorbAfterProtectionProgram,
   submitInitializePayoutAfterProtectionProgram,
 } from "../src/commands/reserve-payout.js";
-import { SUBMIT_SLOT_LENGTH_MS } from "../src/local-ledger-slot.js";
+import { openPlan } from "../src/services/intent-journal.js";
 import {
   __reservePayoutTest,
   buildAbsorbConfirmedDepositToReserveTxProgram,
@@ -44,6 +45,7 @@ import {
   buildInitializePayoutTxProgram,
   buildRefundInvalidWithdrawalTxProgram,
 } from "../src/transactions/reserve-payout.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   expectAbsorbRedeemerLayout,
   expectAddFundsRedeemerLayout,
@@ -951,18 +953,30 @@ describe("reserve/payout transaction builder primitives", () => {
       };
       // Without protection at the first build nothing here would wait.
       expect(Number(protectedUntil) - Date.now()).toBeGreaterThan(4_000);
-      const txHash = await Effect.runPromise(
-        retirement === "absorb"
-          ? submitAbsorbAfterProtectionProgram(f.lucid, f.contracts, {
-              ...common,
-              deposit: f.deposit,
-              membershipProof: f.depositMembershipProof,
-            })
-          : submitInitializePayoutAfterProtectionProgram(f.lucid, f.contracts, {
-              ...common,
-              withdrawal: f.withdrawal,
-              membershipProof: f.withdrawalMembershipProof,
-            }),
+      const txHash = await runWithoutFollower(
+        Effect.flatMap(openPlan, (plan) =>
+          retirement === "absorb"
+            ? submitAbsorbAfterProtectionProgram(
+                f.lucid,
+                f.contracts,
+                {
+                  ...common,
+                  deposit: f.deposit,
+                  membershipProof: f.depositMembershipProof,
+                },
+                plan,
+              )
+            : submitInitializePayoutAfterProtectionProgram(
+                f.lucid,
+                f.contracts,
+                {
+                  ...common,
+                  withdrawal: f.withdrawal,
+                  membershipProof: f.withdrawalMembershipProof,
+                },
+                plan,
+              ),
+        ),
       );
       expect(Date.now()).toBeGreaterThanOrEqual(
         Number(protectedUntil) + SUBMIT_SLOT_LENGTH_MS,

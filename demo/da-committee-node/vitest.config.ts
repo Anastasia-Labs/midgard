@@ -14,6 +14,9 @@ export default defineConfig({
     // before each test, so a module-scope mock cannot carry state forward.
     restoreMocks: true,
     mockReset: true,
+    // Suites drop their test databases in `afterAll`; each `DROP DATABASE …
+    // WITH (FORCE)` can outlast the 10 s hook default on a loaded CI runner.
+    hookTimeout: 120_000,
     // Workspace packages load from a per-run source bundle; files that need
     // them module-by-module run in `da-committee-node:source`. Each project
     // gets its own `tempRoot` from the global setup.
@@ -24,8 +27,10 @@ export default defineConfig({
           name: "da-committee-node",
           include: configDefaults.include,
           // `tsc` emits compiled copies of `tests/` under `dist/`; Vitest 4
-          // dropped `dist` from its default excludes.
-          exclude: [...configDefaults.exclude, "**/dist/**"],
+          // dropped `dist` from its default excludes. Benchmarks run only
+          // through `pnpm bench` (`vitest.bench.config.ts`): their timings
+          // mean nothing under the default timeout on a shared runner.
+          exclude: [...configDefaults.exclude, "**/dist/**", "bench/**"],
           globalSetup: ["./tests/global-setup.ts"],
         },
       },

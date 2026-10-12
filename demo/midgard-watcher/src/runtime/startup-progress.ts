@@ -1,6 +1,15 @@
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import { retryWatcherL1Transient } from "../l1/transient-retry.js";
 
+/**
+ * How long a startup stage's L1 read waits out transients before startup
+ * fails (`WatcherL1UnavailableError`): the node's L1 node budget, which
+ * covers a Cardano node that is restarting or still opening its database
+ * beside the watcher. Past it the process exits non-zero, and its
+ * supervisor's restart policy is the outer retry.
+ */
+export const WATCHER_STARTUP_L1_BUDGET_MS = 10 * 60_000;
+
 export type WatcherStartupProgress = Readonly<{
   stage: string;
   outcome: "started" | "pending" | "completed" | "failed";
@@ -10,23 +19,6 @@ export type WatcherStartupProgress = Readonly<{
   /** Set on `pending` while the stage waits out an L1 transient or a hold. */
   retryAfterMs?: number;
 }>;
-
-/**
- * Stages that read only the L1 provider and leave nothing allocated when they
- * fail, so an L1 transient (Kupo, Ogmios or the node did not answer) runs them
- * again in place instead of failing startup. Every other stage, and every
- * other error, still fails startup: the deployment identity and configuration
- * stages compare durable bytes, which no wait changes. A stage that allocates
- * resources it keeps (`workflow_readiness`) is not repeated whole; it repeats
- * only its L1 reads, through the `retryL1Read` it is handed. A stage that
- * consumes prepared work (`workflow_recovery`) is not repeated at all.
- * `user_event_catchup` and `header_classification` wait inside their own
- * components.
- */
-export const WATCHER_STARTUP_L1_RETRIED_STAGES: ReadonlySet<string> = new Set([
-  "state_queue_recovery",
-  "user_event_runtime",
-]);
 
 /**
  * A stage that cannot complete until the chain or a peer moves, with nothing
@@ -43,9 +35,6 @@ export class WatcherStartupStageHeld extends Error {
 const held = (error: unknown): error is WatcherStartupStageHeld =>
   error instanceof WatcherStartupStageHeld;
 
-const heldOrL1Transient = (error: unknown): error is Error =>
-  held(error) || isWatcherL1TransientFailure(error);
-
 /** What a stage's action is handed. */
 export type WatcherStartupStage = Readonly<{
   /**
@@ -56,11 +45,18 @@ export type WatcherStartupStage = Readonly<{
   retryL1Read: <U>(read: () => Promise<U>) => Promise<U>;
 }>;
 
-/** Startup diagnostics remain available before the operations server binds. */
+/**
+ * Startup diagnostics remain available before the operations server binds. A
+ * stage is run again whole only when it throws {@link WatcherStartupStageHeld}
+ * (waiting on the chain or a peer: no deadline); an L1 transient repeats just
+ * the read passed to `retryL1Read`, for at most `l1BudgetMs`
+ * (`WATCHER_STARTUP_L1_BUDGET_MS`); every other error fails startup.
+ */
 export const createWatcherStartupProgress =
   (
     report: ((progress: WatcherStartupProgress) => void) | undefined,
     retryDelayMs?: (retry: number) => number,
+    budget: Readonly<{ l1BudgetMs?: number; now?: () => number }> = {},
   ) =>
   async <T>(
     stage: string,
@@ -97,17 +93,14 @@ export const createWatcherStartupProgress =
       });
     const context: WatcherStartupStage = Object.freeze({
       retryL1Read: (read) =>
-        retryWatcherL1Transient(read, retrying(isWatcherL1TransientFailure)),
+        retryWatcherL1Transient(read, {
+          ...retrying(isWatcherL1TransientFailure),
+          budgetMs: budget.l1BudgetMs ?? WATCHER_STARTUP_L1_BUDGET_MS,
+          ...(budget.now === undefined ? {} : { now: budget.now }),
+        }),
     });
     const run = () =>
-      retryWatcherL1Transient(
-        () => action(context),
-        retrying(
-          WATCHER_STARTUP_L1_RETRIED_STAGES.has(stage)
-            ? heldOrL1Transient
-            : held,
-        ),
-      );
+      retryWatcherL1Transient(() => action(context), retrying(held));
     if (report === undefined) return await run();
     emit("started");
     const timer = setInterval(() => emit("pending"), 30_000);

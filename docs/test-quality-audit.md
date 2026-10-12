@@ -52,7 +52,9 @@ content. See [TQ-08](test-quality/tq-08-tautological-assertions.md) and
 - `demo/da-committee-node/tests/conflict-evidence.test.ts` deliberately uses the
   same header hash with different availability commitments. The commitments,
   which differ in deployment identity, are the signed identities. Equal header
-  hashes do not make this an unexercised equivocation case.
+  hashes are the only equivocation shape: by owner ruling (2026-10-07), a pair
+  over sibling headers is not evidence, and the same file shows the builder and
+  gossip ingest refusing one.
 - `demo/midgard-core/tests/plutus-data-wellformed.test.ts` combines fixed corpus
   entries with 6,000 generated entries. Its greater-than-6,000 guard can detect
   loss of the fixed corpus; it is not a check on a lone 6,000-element literal.

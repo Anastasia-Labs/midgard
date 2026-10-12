@@ -6,8 +6,11 @@ import { Effect, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { TxAdmissionsDB, TxUtils as TxTable } from "../src/database/index.js";
-import { processMpfs } from "../src/mpf/index.js";
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
+import {
+  computeLedgerMpfRootFromLedgerEntries,
+  processMpfs,
+} from "../src/mpf/index.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   ContractDeploymentIdentity,
   Lucid,
@@ -20,6 +23,7 @@ import {
   submitTxBackedCommit,
 } from "../src/workers/commit-block-header/submission.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 
 vi.mock("../src/database/index.js", async () => {
   const actual = await vi.importActual<
@@ -32,6 +36,11 @@ vi.mock("../src/database/index.js", async () => {
   };
   return {
     ...actual,
+    // The commit base is an empty confirmed ledger.
+    ConfirmedLedgerDB: {
+      ...actual.ConfirmedLedgerDB,
+      retrieve: Effect.succeed([]),
+    },
     DepositsDB: {
       ...actual.DepositsDB,
       retrievePendingHeaderEntriesUpTo: vi.fn(() => Effect.succeed([])),
@@ -117,27 +126,22 @@ vi.mock(
   },
 );
 
-vi.mock("../src/fibers/fetch-and-insert-deposit-utxos.js", () => ({
-  fetchAndInsertDepositUTxOsForCommitBarrier: vi.fn((end: Date) =>
-    Effect.succeed(end),
-  ),
+// The commit anchor caps no planned end time.
+vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/services/history-commit-window.js")
+  >()),
+  commitEventHorizon: () =>
+    Effect.succeed({
+      horizonMs: Number.MAX_SAFE_INTEGER,
+      anchor: { hash: Buffer.alloc(32), height: 0, slot: 0 },
+    }),
 }));
-vi.mock("../src/fibers/fetch-and-insert-withdrawal-utxos.js", () => ({
-  fetchAndInsertWithdrawalUTxOsForCommitBarrier: vi.fn((end: Date) =>
-    Effect.succeed(end),
-  ),
+vi.mock("../src/forced-orders/horizon.js", () => ({
+  forcedOrderHorizon: Effect.succeed(null),
 }));
-vi.mock("../src/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
-  fetchAndInsertTxOrderUTxOsForCommitBarrier: vi.fn((end: Date) =>
-    Effect.succeed(end),
-  ),
-}));
-vi.mock("../src/e2e/pipelined-commit-crash-checkpoint.js", () => ({
-  reachPipelinedCommitCrashCheckpoint: vi.fn(() => Effect.void),
-}));
-vi.mock("../src/operator-wallet-view.js", () => ({
-  fetchOperatorWalletView: vi.fn(),
-  isPotentiallyStaleOperatorWalletViewError: vi.fn(() => false),
+vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
+  reachCommitCrashCheckpoint: vi.fn(() => Effect.void),
 }));
 vi.mock("../src/workers/commit-block-header/build-unsigned-tx.js", () => ({
   buildUnsignedCommitTx: vi.fn(),
@@ -260,7 +264,7 @@ const fakeSql = Object.assign(
 const runEffect = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
   Effect.runPromise(
     effect.pipe(
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<A, unknown, never>,
   );
@@ -269,6 +273,9 @@ const forcedEntryMissingMaterial = {
   tx_order_id: Buffer.from("01", "hex"),
   cek_program_material_sidecar_cbor: Buffer.alloc(0),
 } as never;
+
+/** The final recheck reads the commit-event depth (a fixture has no permit). */
+const depthConfig = { COMMIT_EVENT_DEPTH: 0 } as never;
 
 const baseCommitArgs = {
   contracts,
@@ -299,7 +306,6 @@ const baseCommitArgs = {
   utxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
   selectedBaseUtxosRoot: "33".repeat(32),
   implicitGenesisEntries: [],
-  beforePendingJournalInsert: () => Effect.void,
   nativeMpfReplay: undefined,
 } as const;
 
@@ -325,7 +331,10 @@ describe("canonical V1 commit profile", () => {
           ...baseCommitArgs,
           includedForcedTransactionEntries: [forcedEntryMissingMaterial],
         } as unknown as Parameters<typeof submitDepositOnlyCommit>[0]),
-      ).pipe(Effect.provideService(Lucid, fakeLucid)),
+      ).pipe(
+        Effect.provideService(Lucid, fakeLucid),
+        Effect.provideService(NodeConfig, depthConfig),
+      ),
     );
 
     expect(outcome._tag).toBe("Left");
@@ -374,7 +383,10 @@ describe("canonical V1 commit profile", () => {
           mempoolTxSourceTable: "mempool",
           sizeOfProcessedTxs: 2,
         } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
-      ).pipe(Effect.provideService(Lucid, fakeLucid)),
+      ).pipe(
+        Effect.provideService(Lucid, fakeLucid),
+        Effect.provideService(NodeConfig, depthConfig),
+      ),
     );
 
     expect(outcome._tag).toBe("Left");
@@ -398,56 +410,38 @@ describe("canonical V1 commit profile", () => {
       MIN_FEE_A: 0n,
       MIN_FEE_B: 0n,
       VALIDATION_G4_BUCKET_CONCURRENCY: 1,
+      COMMIT_EVENT_DEPTH: 0,
     } as never;
     const deploymentIdentity = ContractDeploymentIdentity.make({
       kind: "derived",
       deploymentMarker,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
-    const speculativeBuild = {
-      base: {
-        headerHash: "aa".repeat(28),
-        utxosRoot: "33".repeat(32),
-        blockEndTimeMs: Date.parse("2026-01-01T00:06:00.000Z"),
-        submittedTxHash: "bb".repeat(32),
-      },
-      watermarks: {
-        depositMs: Date.parse("2026-01-01T00:07:00.999Z"),
-        withdrawalMs: Date.parse("2026-01-01T00:07:00.999Z"),
-        txOrderMs: Date.parse("2026-01-01T00:07:00.999Z"),
-        refreshedAtMs: Date.parse("2026-01-01T00:07:00.999Z"),
-      },
-      excludedMempoolTxIds: [],
-      excludedDepositEventIds: [],
-      excludedForcedTransactionEventIds: [],
-      excludedWithdrawalEventIds: [],
-    } as const;
     const runWorker = (input: typeof workerInput) =>
       runEffect(
         Effect.either(
-          runCommitBlockHeaderWorkerProgram(input, () =>
-            Effect.succeed({
-              type: "InvalidateSpeculativeCandidate",
-              reason: "T1",
-            }),
+          runCommitBlockHeaderWorkerProgram(input, undefined, () =>
+            Effect.succeed(fakeLucid),
           ),
         ).pipe(
           Effect.provideService(NodeConfig, nodeConfig),
           Effect.provideService(ContractDeploymentIdentity, deploymentIdentity),
+          withoutFollowerJournal,
         ),
       );
 
     vi.mocked(processMpfs).mockClear();
     const nativeMpf = {
       port: {} as MessagePort,
-      durableRoot: "33".repeat(32),
+      durableRoot: await Effect.runPromise(
+        computeLedgerMpfRootFromLedgerEntries([]),
+      ),
       ownerBinarySha256: "ab".repeat(32),
     };
     const missingConfigOutcome = await runWorker({
       nativeMpf,
       data: {
         ...workerInput.data,
-        speculativeBuild,
         forcedValidationSlotConfig: undefined,
       },
     } as never);
@@ -462,7 +456,7 @@ describe("canonical V1 commit profile", () => {
     vi.mocked(processMpfs).mockClear();
     const suppliedConfigOutcome = await runWorker({
       nativeMpf,
-      data: { ...workerInput.data, speculativeBuild },
+      data: workerInput.data,
     } as never);
     expect(suppliedConfigOutcome._tag).toBe("Left");
     expect(processMpfs).toHaveBeenCalledTimes(1);

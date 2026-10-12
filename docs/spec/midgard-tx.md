@@ -70,8 +70,8 @@ Twelve fields, in declaration and wire order:
 | 1   | `reference_inputs_hash`   | 32-byte hash                     |
 | 2   | `outputs_hash`            | 32-byte hash                     |
 | 3   | `fee`                     | uint                             |
-| 4   | `validity_interval_start` | int (`-1` = none)                |
-| 5   | `validity_interval_end`   | int (`-1` = none)                |
+| 4   | `validity_interval_start` | `-1` (none) or uint              |
+| 5   | `validity_interval_end`   | `-1` (none) or uint              |
 | 6   | `required_observers_hash` | 32-byte hash                     |
 | 7   | `required_signers_hash`   | 32-byte hash                     |
 | 8   | `mint_hash`               | 32-byte hash                     |
@@ -79,9 +79,79 @@ Twelve fields, in declaration and wire order:
 | 10  | `auxiliary_data_hash`     | 32-byte hash                     |
 | 11  | `network_id`              | uint (`0`, `1`, or `255` = none) |
 
+A validity bound is `-1` (absent) or a non-negative slot. Any other integer,
+that is anything below `-1`, is not a decodable body: every decoder and encoder
+of fields 4 and 5 refuses it, so no decoded body carries one. An operator can
+still commit such bytes as a leaf. Under `transactions_root` the DA
+hash-preimage family convicts the leaf as a malformed source; an undecodable
+leaf outside `transactions_root` is open gap NIFP-08
+(`docs/fault-proofs/remaining-gaps.md`).
+
+The validity interval is half-open, as Cardano's: `validity_interval_start` is
+inclusive (`invalid_before`) and `validity_interval_end` is exclusive
+(`invalid_hereafter`). A transaction is valid at block slot `s` iff
+`start <= s < end`, where an absent bound (`-1`) is unbounded. With both bounds
+present, `start >= end` contains no slot and is malformed
+(`E_INVALID_VALIDITY_INTERVAL_FORMAT`).
+
 Canonical encoding (`encode_native_tx_body_compact`): `8c` (array(12))
 followed by the twelve elements in order — every 32-byte hash as
 `58 20 ‖ h32`, the integers as canonical minimal CBOR.
+
+#### Validity interval time domain
+
+Fields 4 and 5 are L1 slot numbers, the domain of Cardano's
+`invalid_before` and `invalid_hereafter`; the validation machine tests
+them against the block's `block_slot`. A Plutus script sees them as
+Cardano's `transValidityInterval` presents them: as a POSIX-millisecond
+`validRange`, in the PlutusV3 `TxInfo` (field 7) and the MidgardV1
+context (field 4) alike.
+
+| body interval       | `validRange` bound                                 |
+| ------------------- | -------------------------------------------------- |
+| start `s` present   | lower `Finite(posix(s))`, inclusive                |
+| start absent (`-1`) | lower `NegInf`, inclusive                          |
+| end `e` present     | upper `Finite(posix(e))`, strict (closure `False`) |
+| end absent (`-1`)   | upper `PosInf`, inclusive                          |
+
+`posix(slot) = zeroTime + (slot - zeroSlot) * slotLength` over the
+deployment's L1 slot mapping (`script_context_v1.L1SlotConfigV1`, encoded
+`Constr 0 [zeroTime, zeroSlot, slotLength]`). The mapping is a deploy-time
+parameter of the `cek-context-tx-info` validator, the only stage that
+builds the range, and the deployment manifest records it as
+`l1SlotConfig`. A named network takes Lucid's `SLOT_CONFIG_NETWORK`
+constants; a Custom network (a devnet) anchors slot 0 at its Shelley
+genesis `systemStart` with the genesis `slotLength`:
+
+| network | `zeroTime`      | `zeroSlot` | `slotLength` |
+| ------- | --------------- | ---------- | ------------ |
+| Mainnet | `1596059091000` | `4492800`  | `1000`       |
+| Preprod | `1655769600000` | `86400`    | `1000`       |
+| Preview | `1666656000000` | `0`        | `1000`       |
+| Custom  | genesis start   | `0`        | genesis      |
+
+The node, watcher and prover build the same contexts off chain, so each
+refuses to start (`l1_slot_config_mismatch`, never a crash loop) when the
+mapping its L1 view reports differs from the deployment's. A manifest-less
+node derives its scripts with the mapping its L1 access reads off the
+ledger, refusing on a named network one that differs from its constants.
+
+**Pre-Shelley slots.** Cardano converts through the full era history, so
+a mainnet or Preprod slot before `zeroSlot` falls in the Byron era's
+20-second slots. The affine mapping has no Byron segment and extrapolates
+such a slot at the Shelley slot length, giving a different POSIX time than
+the ledger would. This is safe: every Midgard block's `block_slot` is past
+`zeroSlot`, so a pre-Shelley start is already satisfied and a pre-Shelley
+end has already passed. A transaction with such an end is invalid at every
+block and no script runs for it; one with such a start is valid or not
+exactly as the slot comparison decides, and its script sees a lower bound
+before Shelley's start under either conversion.
+
+**Past the forecast horizon.** Cardano refuses to translate a bound beyond
+the era history's safe horizon (`PastHorizon`), which makes such a
+transaction invalid on L1. The affine mapping has no horizon and converts
+every slot. The mapping holds for as long as the Shelley-based slot length
+does; a hard fork that changed it would need a new deployment mapping.
 
 ### 2.2 `NativeTxWitnessSetCompact`
 

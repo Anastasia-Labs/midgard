@@ -1,7 +1,4 @@
-import {
-  layOutMidgardFieldCarriage,
-  type MidgardFieldCarriagePlan,
-} from "@al-ft/midgard-core";
+import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core";
 import {
   buildUnsignedFieldPreimageCertificationProgram,
   deriveFieldPreimageCertification,
@@ -180,17 +177,3 @@ export const certifyFaultProofFieldCarriage = async ({
   });
   return { txHash, certificateUtxo };
 };
-
-/**
- * The reference inputs a step transaction must read for one planned opening, in
- * §8.4 order.
- *
- * Under tier 3 the certificate comes first and the chunks follow, which is the
- * order `layOutMidgardFieldCarriage` produces and the order a certificate's
- * digest vector is written in. Deriving the ordering from the layout rather than
- * from a hand-written list is what keeps the two from drifting.
- */
-export const faultProofFieldCarriageReferenceOrder = (
-  planned: FaultProofFieldOpeningPlan,
-): readonly number[] =>
-  layOutMidgardFieldCarriage({ plan: planned.plan }).referenceInputIndices;

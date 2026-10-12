@@ -563,7 +563,6 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       levelPath,
       binaryPath,
       binarySha256,
-      restartLimit: 1,
       onChildSpawnForTests(pid) {
         childPids.push(pid);
       },

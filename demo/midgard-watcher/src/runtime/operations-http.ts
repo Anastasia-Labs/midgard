@@ -73,7 +73,10 @@ export type WatcherOperationsHttpServer = Readonly<{
  */
 export const startWatcherOperationsHttpServer = async (input: {
   readonly endpoint: string;
-  readonly observability: WatcherOperationsObservability;
+  readonly observability: Pick<
+    WatcherOperationsObservability,
+    "handleHttpRequest"
+  >;
   readonly unsafeAllowEphemeralPortForTest?: boolean;
 }): Promise<WatcherOperationsHttpServer> => {
   const configured = endpoint(

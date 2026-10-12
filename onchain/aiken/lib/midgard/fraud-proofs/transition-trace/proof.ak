@@ -22,7 +22,6 @@ use midgard/fraud_proofs/field_opening_v1.{
   anchored_native_tx, anchored_native_tx_version, fold_opened_field,
   outputs_field_index, spend_inputs_field_index, unanchored_validity_code_of,
 }
-use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/timed_history
@@ -1093,10 +1092,7 @@ pub fn deposit_address_to_midgard(
   address: Address,
   network_id: Int,
 ) -> native_types.MidgardAddress {
-  expect or {
-      network_id == 0,
-      network_id == 1,
-    }
+  // Event-history admission bounds `network_id` to Midgard's L2 ids.
   native_types.MidgardAddress {
     protected: False,
     network_id,
@@ -1678,62 +1674,6 @@ pub fn validate_accepted_transaction_transition_mismatch(
     ),
     post_root != claim.transition_step_membership.value.post_utxos_root,
   }
-}
-
-fn timed_l1_event_is_due(
-  header: ledger_state.HeaderV1,
-  inclusion_time: Int,
-) -> Bool {
-  and {
-    header.start_time < inclusion_time,
-    inclusion_time <= header.end_time,
-  }
-}
-
-fn forced_tx_is_due(
-  header: ledger_state.HeaderV1,
-  validity_interval_start: Int,
-  validity_interval_end: Int,
-) -> Bool {
-  if validity_interval_start == -1 {
-    validity_interval_end == -1 || header.start_time <= validity_interval_end
-  } else if validity_interval_end == -1 {
-    validity_interval_start <= header.end_time
-  } else {
-    and {
-      validity_interval_start <= validity_interval_end,
-      validity_interval_start <= header.end_time,
-      header.start_time <= validity_interval_end,
-    }
-  }
-}
-
-fn forced_event_is_due(
-  header: ledger_state.HeaderV1,
-  inclusion_time: Int,
-  compact_body: native_types.NativeTxBodyCompact,
-) -> Bool {
-  and {
-    timed_l1_event_is_due(header, inclusion_time),
-    forced_tx_is_due(
-      header,
-      compact_body.validity_interval_start,
-      compact_body.validity_interval_end,
-    ),
-  }
-}
-
-fn tx_order_compact_body(
-  payload: ledger_state.TxOrderPayloadV1,
-) -> native_types.NativeTxBodyCompact {
-  // §4/§8.8: only the scalar body fields (the validity interval) are read here,
-  // so the transaction id re-derived from the compact bytes is the whole anchor;
-  // the retired proof-source triple and its commitment are not consulted.
-  let verified = native_compact.verify_forced_tx_compact_cbor_v1(
-    payload.tx_id,
-    payload.submitted_source.compact_cbor,
-  )
-  verified.tx_compact.body
 }
 
 fn get_tx_order_datum_with_nft(
@@ -2368,9 +2308,15 @@ pub fn validate_forced_l1_event_fault(
             current_event_reference_index,
           )
           let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
-          let compact_body = tx_order_compact_body(event.tx)
+          // A forced order is due in the block whose event window holds its
+          // inclusion time, and in no other. Its validity interval plays no
+          // part: the validation machine checks it against `block_slot` and
+          // records an exact rejection verdict when the slot falls outside, so
+          // every order is included exactly once and its settlement refund
+          // stays reachable. The out-of-window arm below tests the complement.
           and {
-            forced_event_is_due(header, inclusion_time, compact_body),
+            header.start_time < inclusion_time,
+            inclusion_time <= header.end_time,
             source_non_membership.key == event.id,
             transition_trace.verify_root_non_membership_with_key_bytes(
               source_non_membership,
@@ -2403,12 +2349,11 @@ pub fn validate_forced_l1_event_fault(
             submitted_source: event.tx.submitted_source,
             verdict: validity_override,
           }
-          let compact_body = native_compact.verify_forced_tx_compact_cbor_v1(
-            event.tx.tx_id,
-            event.tx.submitted_source.compact_cbor,
-          ).tx_compact.body
           and {
-            !forced_event_is_due(header, inclusion_time, compact_body),
+            or {
+              inclusion_time <= header.start_time,
+              header.end_time < inclusion_time,
+            },
             source_membership.key == event.id,
             source_membership.value == expected_source_value,
             transition_trace.verify_root_membership_with_bytes(

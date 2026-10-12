@@ -82,6 +82,13 @@ test("usage errors exit 2", async () => {
     ["--write-docs", "--check-docs"],
     ["--check-docs", "--json"],
     ["--strict", "--base", "refs/heads/no-such-branch-for-preflight"],
+    ["--run"],
+    ["--run", "no-such-check"],
+    ["--run", "merge-conflicts"],
+    ["--run", "registry-paths", "--run", "registry-paths"],
+    ["--run", "registry-paths", "--strict"],
+    ["--run", "registry-paths", "--json"],
+    ["--full", "--run", "registry-paths"],
   ]) {
     const io = capture();
     assert.equal(await main(argv, { root, ...io }), 2, argv.join(" "));
@@ -105,7 +112,11 @@ test("--json prints one document with the stable schema and nothing else", async
   assert.equal(report.exitCode, exitCode);
   assert.equal(exitCode, 0);
   const ids = report.checks.map((check) => check.id);
-  assert.deepEqual(ids, ["merge-conflicts", "required-checks-doc"]);
+  assert.deepEqual(ids, [
+    "merge-conflicts",
+    "required-checks-doc",
+    "registry-paths",
+  ]);
   for (const check of report.checks) {
     assert.deepEqual(Object.keys(check).sort(), [
       "command",
@@ -164,4 +175,107 @@ test("the kill switch forces a full run and a failed check exits 1 with its fix"
     /fix: node scripts\/preflight\.mjs --write-docs/u,
   );
   assert.match(io.out.stdout, /preflight FAILED/u);
+});
+
+test("--run executes exactly the named checks at full scope, in registry order", async () => {
+  const registry = buildRegistry(root);
+  const expected = ["required-checks-doc", "registry-paths"].map((id) =>
+    registry.checks
+      .find((check) => check.id === id)
+      .plan({ matched: [], full: true, advise: () => {} })
+      .map((step) => step.argv),
+  );
+  const io = capture();
+  const ran = [];
+  const exitCode = await main(
+    ["--run", "registry-paths", "--run", "required-checks-doc"],
+    {
+      root,
+      env: {},
+      ...io,
+      probes: allAvailable,
+      runStep: async (_root, step) => {
+        ran.push(step.argv);
+        return { status: 0, output: "" };
+      },
+    },
+  );
+  assert.equal(exitCode, 0);
+  assert.deepEqual(ran, expected.flat());
+  assert.match(io.out.stdout, /PASSED +required-checks-doc/u);
+  assert.match(io.out.stdout, /PASSED +registry-paths/u);
+  assert.doesNotMatch(io.out.stdout, /merge-conflicts/u);
+  assert.match(io.out.stdout, /preflight passed/u);
+});
+
+test("--run fails a check that is warn-only locally and fails closed on a missing capability", async () => {
+  const warnOnly = buildRegistry(root).checks.find(
+    (check) => check.warnOnly && check.internal === undefined,
+  );
+  assert.ok(warnOnly, "the registry has a warn-only check to name");
+  const failed = capture();
+  assert.equal(
+    await main(["--run", warnOnly.id], {
+      root,
+      env: {},
+      ...failed,
+      probes: allAvailable,
+      runStep: async () => ({ status: 1, output: "" }),
+    }),
+    1,
+  );
+  assert.match(failed.out.stdout, new RegExp(`FAILED +${warnOnly.id}`, "u"));
+  assert.match(failed.out.stdout, /preflight FAILED/u);
+
+  const needs = buildRegistry(root).checks.find(
+    (check) => check.id === "demo-lint",
+  );
+  assert.ok(needs.capabilities.includes("node-modules"));
+  const skipped = capture();
+  let ran = 0;
+  assert.equal(
+    await main(["--run", "demo-lint"], {
+      root,
+      env: {},
+      ...skipped,
+      probes: {
+        get: async (name) => ({
+          name,
+          status: "missing",
+          detail: `${name} absent`,
+        }),
+        invalidate: () => {},
+      },
+      runStep: async () => {
+        ran += 1;
+        return { status: 0, output: "" };
+      },
+    }),
+    3,
+  );
+  assert.equal(ran, 0);
+  assert.match(skipped.out.stdout, /SKIPPED +demo-lint/u);
+});
+
+test("--run --list prints the named check's command and runs nothing", async () => {
+  const io = capture();
+  let ran = 0;
+  assert.equal(
+    await main(["--run", "registry-paths", "--list"], {
+      root,
+      env: {},
+      ...io,
+      probes: allAvailable,
+      runStep: async () => {
+        ran += 1;
+        return { status: 0, output: "" };
+      },
+    }),
+    0,
+  );
+  assert.equal(ran, 0);
+  assert.match(
+    io.out.stdout,
+    /would run registry-paths\n {4}\$ node scripts\/ci\/check-registry-paths\.mjs\n/u,
+  );
 });

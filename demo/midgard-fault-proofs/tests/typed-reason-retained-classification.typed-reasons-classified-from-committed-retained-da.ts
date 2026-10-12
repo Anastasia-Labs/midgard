@@ -15,6 +15,7 @@ import {
   encodeMidgardForcedTxCanonical as forcedTraceBytes,
   materializeMidgardForcedTxFromCanonical as forcedTraceView,
 } from "@al-ft/midgard-core/codec/forced";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   EventKeySchema,
@@ -114,6 +115,7 @@ describe("typed reasons classified from committed retained DA", () => {
     const priorLedgerRoot = mutations[0]!.preRoot.toString("hex");
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         eventKeyCbor: Buffer.from(
           Data.to(eventKey, asLucidSchema(EventKeySchema)),

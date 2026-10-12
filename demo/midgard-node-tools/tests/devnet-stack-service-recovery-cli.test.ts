@@ -98,14 +98,14 @@ it.each([
     const artifacts = {
       nativeOwnerBinary: join(layout.bin, "architecture-g-owner"),
       nativeOwnerSha256: "fixture",
-      chainSyncBinary: join(layout.bin, "midgard-chain-sync"),
+      transportBinary: join(layout.bin, "midgard-l1-node-transport"),
     };
     const files = {
       identities: layout.identities,
       blueprint: layout.blueprint,
       "build-record": `${layout.blueprint}.deployment.json`,
       owner: artifacts.nativeOwnerBinary,
-      "chain-sync": artifacts.chainSyncBinary,
+      "chain-sync": artifacts.transportBinary,
       manifest: layout.contractManifest,
     };
     for (const [name, path] of Object.entries(files)) {

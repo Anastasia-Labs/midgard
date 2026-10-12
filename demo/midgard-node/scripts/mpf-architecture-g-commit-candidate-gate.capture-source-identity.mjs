@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Level } from "level";
 
 import {
@@ -268,15 +269,17 @@ export const fixtureIdentity = async (path) => {
 
 export const rootTuple = (result) => result.candidate.roots;
 
+// The candidate carries no user-event roots; its probe proves the fixture holds
+// no user events, so those roots are the empty tree.
 export const candidateRootsAsRootGateTuple = (roots) => ({
   utxoRoot: roots.utxos,
   rawTxRoot: roots.rawTransactions,
   txRoot: roots.transactions,
   transitionTraceRoot: roots.transitionTrace,
   eventToStepRoot: roots.eventToStep,
-  depositsRoot: roots.deposits,
-  withdrawalsRoot: roots.withdrawals,
-  forcedTransactionsRoot: roots.forcedTransactions,
+  depositsRoot: EMPTY_MERKLE_TREE_ROOT,
+  withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
+  forcedTransactionsRoot: EMPTY_MERKLE_TREE_ROOT,
 });
 
 export const execute = ({

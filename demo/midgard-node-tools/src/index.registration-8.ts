@@ -1,22 +1,18 @@
 import "./index.registration-7.js";
 
-import { Effect } from "effect";
 import {
   collectStringOption,
   failCli,
   parseE2EEnvInheritanceOption,
   parsePositiveIntegerOption,
   parseStringListOption,
-  provideTxServices,
-  runCliEffect,
   writeJson,
 } from "midgard-node/commands/cli-runtime";
 import { parseEnvOverrides } from "midgard-node/e2e/env";
 
-import { runPipelinedCommitProcessAcceptance } from "./commands/e2e-pipelined-commit-process-acceptance.js";
+import { runJournalKillRecoveryAcceptance } from "./commands/e2e-journal-kill-recovery-acceptance.js";
 import * as E2EProcessCleanupCommand from "./commands/e2e-process-cleanup.js";
 import * as E2EServiceCommand from "./commands/e2e-service.js";
-import * as Phase4T1RecoveryCommand from "./commands/phase4-t1-recovery.js";
 import { program } from "./index.registration.js";
 
 program
@@ -49,113 +45,17 @@ program
   );
 
 program
-  .command("phase4-t1-probe")
+  .command("e2e-journal-kill-recovery-acceptance")
   .description(
-    "Gated read-only canonical state_queue probe for the matched local-devnet T1 recovery gate",
-  )
-  .requiredOption(
-    "--snapshot-identity-sha256 <hex>",
-    "Matched-snapshot identity SHA-256",
-  )
-  .requiredOption("--attempt-id <id>", "Fresh T1 recovery attempt identity")
-  .requiredOption(
-    "--evidence-out <absolute-path>",
-    "Fresh output file for exact probe evidence",
-  )
-  .option("--expected-tip-header-hash <hex>", "Expected 28-byte L2 tip hash")
-  .option(
-    "--expected-present-header-hash <hex>",
-    "28-byte L2 header hash that must be canonical",
-  )
-  .option(
-    "--expected-absent-header-hash <hex>",
-    "28-byte L2 header hash that must not be canonical",
-  )
-  .action((opts) => {
-    const mainEffect = provideTxServices(
-      Phase4T1RecoveryCommand.phase4T1ProbeProgram({
-        snapshotIdentitySha256: opts.snapshotIdentitySha256,
-        attemptId: opts.attemptId,
-        expectedTipHeaderHash: opts.expectedTipHeaderHash,
-        expectedPresentHeaderHash: opts.expectedPresentHeaderHash,
-        expectedAbsentHeaderHash: opts.expectedAbsentHeaderHash,
-      }).pipe(
-        Effect.tap((evidence) =>
-          Effect.promise(() =>
-            Phase4T1RecoveryCommand.writePhase4T1Evidence(
-              opts.evidenceOut,
-              evidence,
-            ),
-          ),
-        ),
-      ),
-    );
-    runCliEffect(mainEffect);
-  });
-
-program
-  .command("phase4-t1-advance")
-  .description(
-    "Gated authenticated no-op canonical L2 advance for the matched local-devnet T1 recovery gate",
-  )
-  .requiredOption(
-    "--snapshot-identity-sha256 <hex>",
-    "Matched-snapshot identity SHA-256",
-  )
-  .requiredOption("--attempt-id <id>", "Fresh T1 recovery attempt identity")
-  .requiredOption(
-    "--expected-base-header-hash <hex>",
-    "Expected 28-byte canonical L2 base B",
-  )
-  .requiredOption(
-    "--abandoned-header-hash <hex>",
-    "Submitted 28-byte L2 header N that must be absent",
-  )
-  .requiredOption(
-    "--minimum-end-time-ms <ms>",
-    "Minimum end time F must reach to advance past N",
-  )
-  .requiredOption(
-    "--evidence-out <absolute-path>",
-    "Fresh output file for exact canonical-advance evidence",
-  )
-  .action((opts) => {
-    const mainEffect = provideTxServices(
-      Phase4T1RecoveryCommand.phase4T1AdvanceProgram({
-        snapshotIdentitySha256: opts.snapshotIdentitySha256,
-        attemptId: opts.attemptId,
-        expectedBaseHeaderHash: opts.expectedBaseHeaderHash,
-        abandonedHeaderHash: opts.abandonedHeaderHash,
-        minimumEndTimeMs: parsePositiveIntegerOption(
-          opts.minimumEndTimeMs,
-          "--minimum-end-time-ms",
-        ),
-      }).pipe(
-        Effect.tap((evidence) =>
-          Effect.promise(() =>
-            Phase4T1RecoveryCommand.writePhase4T1Evidence(
-              opts.evidenceOut,
-              evidence,
-            ),
-          ),
-        ),
-      ),
-    );
-    runCliEffect(mainEffect);
-  });
-
-program
-  .command("e2e-pipelined-commit-process-acceptance")
-  .description(
-    "Run the operator-enabled Phase 4 crash/restart and two-node process acceptance matrix against a matched local-devnet snapshot",
+    "Run the operator-enabled Phase 4 journal-before-submit SIGKILL recovery acceptance (two nodes, default commit path) against a matched local-devnet snapshot",
   )
   .action(async () => {
     try {
       console.log(
-        JSON.stringify(await runPipelinedCommitProcessAcceptance(), null, 2),
+        JSON.stringify(await runJournalKillRecoveryAcceptance(), null, 2),
       );
     } catch (error) {
-      failCli("e2e-pipelined-commit-process-acceptance", error);
+      failCli("e2e-journal-kill-recovery-acceptance", error);
     }
   });
 

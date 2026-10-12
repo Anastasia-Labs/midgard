@@ -1,5 +1,6 @@
 import "./typed-reason-retained-classification.typed-reasons-classified-from-committed-retained-da.js";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -65,6 +66,7 @@ export const admitRetainedPlutus = async (
       ? await captureRetainedPlutusIdentityOrigins(fixture, options)
       : undefined;
   const validationTraceReplay = await admitValidationTraceReplayContext({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     evidence,
     predecessor,
     transitionTraceEvents,
@@ -94,6 +96,7 @@ describe("ordinary retained Plutus replay admission", () => {
       minimumConfirmationDepth: policy.confirmationDepth,
     });
     const validationTraceReplay = await admitValidationTraceReplayContext({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       evidence,
     });
     const result =
@@ -138,7 +141,7 @@ describe("ordinary retained Plutus replay admission", () => {
     );
   });
 
-  it("does not turn the shared Plutus/receive-language rejection hash into typed authority", async () => {
+  it("routes a normal source committed under the shared Plutus/receive-language rejection hash to source verification, not to typed authority", async () => {
     const plutus = await admitRetainedPlutus({
       verdict: "rejected",
       reason: { PlutusExecutionFailed: { execution_index: 0n } },
@@ -153,7 +156,15 @@ describe("ordinary retained Plutus replay admission", () => {
         plutus.evidence,
         plutus.context,
       );
-    expect(result.detections).toEqual([]);
+    expect(result.detections).toEqual([
+      expect.objectContaining({
+        violationId: "validation-trace",
+        headerHash: plutus.fixture.block.headerHash,
+        position: 0n,
+        diagnostic:
+          "Normal source at step 0 commits a non-accepting validation descriptor",
+      }),
+    ]);
   });
 
   it("refuses missing, copied and cross-header replay authority", async () => {
@@ -184,7 +195,10 @@ describe("ordinary retained Plutus replay admission", () => {
       }),
     ).rejects.toThrow(/not admitted/u);
     await expect(
-      admitValidationTraceReplayContext({ evidence }),
+      admitValidationTraceReplayContext({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        evidence,
+      }),
     ).rejects.toThrow(/admitted predecessor/u);
   });
 
@@ -193,6 +207,7 @@ describe("ordinary retained Plutus replay admission", () => {
       verdict: "accepted",
     });
     const readmitted = await admitValidationTraceReplayContext({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       evidence: {
         ...evidence,
         transactions: [],

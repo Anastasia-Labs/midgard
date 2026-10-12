@@ -6,6 +6,7 @@ import {
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs";
 
+import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -13,6 +14,10 @@ import {
 } from "./fault-proof-application.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
 import { readWatcherProofExecution } from "./fault-proof-objective-journal.js";
+import {
+  isBeyondWatcherRollbackRecovery,
+  watcherJournalCapacityReached,
+} from "./fault-proof-objective-table.js";
 import { createWatcherFaultProofProgressAuthority } from "./fault-proof-progress-authority.js";
 import {
   openWatcherFaultProofQueueJournal,
@@ -23,8 +28,8 @@ import { admitWatcherProofRunnerCompletion } from "./fault-proof-supervisor.admi
 import {
   CANONICAL_NATURAL,
   DEPLOYMENT_FINGERPRINT,
-  exactWorkflowDirectories,
   MAX_RECOVERABLE_WORKFLOWS,
+  recordedWorkflowObjectives,
   type SupervisorDependencies,
   type UnsafeWatcherFaultProofJobForTest,
   type UnsafeWatcherFaultProofSupervisorForTest,
@@ -33,7 +38,26 @@ import {
   type WatcherFaultProofJob,
   type WatcherFaultProofSupervisor,
   type WatcherFaultProofSupervisorStatus,
+  type WatcherJournalBusyRequeue,
 } from "./fault-proof-supervisor.validate-job.js";
+import {
+  isWatcherProofDecisionMissingError,
+  type WatcherDecisionHold,
+  WatcherProofDecisionMissingError,
+} from "./watcher-decision-hold.js";
+import {
+  createWatcherJournalBusyHold,
+  isWatcherSqliteBusyError,
+} from "./watcher-journal-busy.js";
+import {
+  isWatcherJournalCapacityError,
+  isWatcherJournalIntegrityError,
+  isWatcherJournalUnavailableError,
+  openWatcherJournalDatabase,
+  watcherJournalIntegrityFailure,
+  watcherJournalUnavailable,
+} from "./watcher-journal-database.js";
+import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
 
 export const createSupervisor = (input: {
   readonly journalRoot: string;
@@ -43,6 +67,12 @@ export const createSupervisor = (input: {
   readonly nowMs: () => number;
   readonly dependencies: SupervisorDependencies;
   readonly exposeUnsafeRunnerForTest: boolean;
+  /** Holds each open objective's L1 history past k (E1 ruling). */
+  readonly proofRetention?: WatcherProofRetention;
+  /** Funding reservations held because their recorded decision is missing. */
+  readonly reservationDecisionHolds?: () => readonly WatcherDecisionHold[];
+  /** What a fresh process does around requeueing work after journal_busy. */
+  readonly journalBusyRequeue?: WatcherJournalBusyRequeue;
 }): WatcherFaultProofSupervisor | UnsafeWatcherFaultProofSupervisorForTest => {
   if (!DEPLOYMENT_FINGERPRINT.test(input.deploymentFingerprint)) {
     throw new Error(
@@ -64,22 +94,51 @@ export const createSupervisor = (input: {
       "watcher fault-proof supervisor queue authentication key is invalid",
     );
   }
+  // An open that could not complete (journal_unavailable) is retried by
+  // every use, a status read included, and in the background only while
+  // transient (`isTransientJournalFailure`); an integrity failure latches.
   let openedQueueJournal: WatcherFaultProofQueueJournal | null = null;
-  const queueJournal: Promise<WatcherFaultProofQueueJournal> =
-    openWatcherFaultProofQueueJournal({
+  const openQueue = () =>
+    watcherJournalOpener(
+      async () =>
+        (openedQueueJournal = await openWatcherFaultProofQueueJournal({
+          journalRoot: input.journalRoot,
+          deploymentFingerprint: input.deploymentFingerprint,
+          authenticationKey: input.queueAuthenticationKey,
+        })),
+      { retryInBackground: true },
+    );
+  let queueOpener = openQueue();
+  const queueJournal = () => queueOpener.open();
+  const categories = Object.freeze([...input.dependencies.categories]);
+  const journals = () =>
+    openWatcherJournalDatabase({
+      journalRoot: input.journalRoot,
+      authenticationKey: input.queueAuthenticationKey,
+    });
+  const createAuthority = () =>
+    createWatcherFaultProofProgressAuthority({
       journalRoot: input.journalRoot,
       deploymentFingerprint: input.deploymentFingerprint,
+      categories,
       authenticationKey: input.queueAuthenticationKey,
-    }).then((journal) => {
-      openedQueueJournal = journal;
-      return journal;
+      ...(input.proofRetention === undefined
+        ? {}
+        : { retention: input.proofRetention }),
+      ...(input.dependencies.objectiveSettled === undefined
+        ? {}
+        : { onObjectiveSettled: input.dependencies.objectiveSettled }),
+      jobInProcess: (objective) => {
+        const key = objectiveKey(objective);
+        return (
+          jobs.has(key) || registering.has(key) || transportRetries.has(key)
+        );
+      },
+      // A returning header starts a fresh execution.
+      onObjectiveRemoved: (objective) =>
+        void selectedExecutions.delete(objectiveKey(objective)),
     });
-  const categories = Object.freeze([...input.dependencies.categories]);
-  const progressAuthority = createWatcherFaultProofProgressAuthority({
-    journalRoot: input.journalRoot,
-    deploymentFingerprint: input.deploymentFingerprint,
-    categories,
-  });
+  let progressAuthority = createAuthority();
   let progressSerial = Promise.resolve();
   let authorityEpoch = 0;
   if (
@@ -94,6 +153,7 @@ export const createSupervisor = (input: {
     );
   }
   let phase: WatcherFaultProofSupervisorStatus["phase"] = "accepting";
+  void queueJournal().catch(() => undefined); // each use reports the refusal
   let recovered = false;
   let recovery: Promise<number> | undefined;
   let queuedJobCount = 0;
@@ -113,6 +173,8 @@ export const createSupervisor = (input: {
   let pump: Promise<void> = Promise.resolve();
   let pumping = false;
   const jobs = new Map<string, PendingJob>();
+  // Objectives whose job is being registered, a handover included.
+  const registering = new Set<string>();
   // Authority generations are context for one objective, never another owner.
   const pendingUpdates = new Map<
     string,
@@ -123,16 +185,42 @@ export const createSupervisor = (input: {
   >();
   const selectedExecutions = new Map<string, string>();
   const processedContexts = new Map<string, string>();
-  const completedValidations = new Map<string, string>();
-  const rememberCompletion = (key: string, validation: string): void => {
+  const completedValidations = new Map<
+    string,
+    Readonly<{ validation: string; confirmationDepth: number }>
+  >();
+  const rememberCompletion = (
+    key: string,
+    validation: string,
+    confirmationDepth: number,
+  ): void => {
     completedValidations.delete(key);
-    completedValidations.set(key, validation);
+    completedValidations.set(key, { validation, confirmationDepth });
     if (completedValidations.size > MAX_RECOVERABLE_WORKFLOWS) {
       const oldest = completedValidations.keys().next().value!;
       completedValidations.delete(oldest);
       selectedExecutions.delete(oldest);
       processedContexts.delete(oldest);
     }
+  };
+  // One finality threshold (plan section 9: depth > k is final): a completion
+  // is applicable only once it is beyond rollback recovery, the depth its
+  // completion marker needs, so one verified at exactly k waits for the next
+  // block instead of finishing unmarked with its L1 history pinned until a
+  // restart. Without a k nothing is marked and the check is unchanged.
+  const securityParameter = input.proofRetention?.securityParameter;
+  const verifyCompleted: SupervisorDependencies["verifyCompleted"] = async (
+    request,
+  ) => {
+    const verification = await input.dependencies.verifyCompleted(request);
+    return verification.kind === "applicable" &&
+      securityParameter !== undefined &&
+      !isBeyondWatcherRollbackRecovery(
+        verification.confirmationDepth,
+        securityParameter,
+      )
+      ? Object.freeze({ kind: "pending", reason: "completion_not_final" })
+      : verification;
   };
   type Update = Readonly<{
     job: WatcherFaultProofJob;
@@ -149,8 +237,11 @@ export const createSupervisor = (input: {
   const contextKey = (job: WatcherFaultProofJob) =>
     `${job.rollbackGeneration}:${job.observationRevision ?? job.decisionDigest}`;
 
-  const objectiveKey = (job: WatcherFaultProofJob) =>
-    `${job.category}\u0000${job.headerHash}`;
+  const objectiveKey = ({
+    category,
+    headerHash,
+  }: Pick<WatcherFaultProofJob, "category" | "headerHash">) =>
+    `${category}\u0000${headerHash}`;
   let resolveDone!: () => void;
   let rejectDone!: (reason: Error) => void;
   const done = new Promise<void>((resolve, reject) => {
@@ -161,9 +252,25 @@ export const createSupervisor = (input: {
   // validation failure from becoming an unhandled rejection before mounting.
   void done.catch(() => undefined);
 
+  // A refused journal (`journal_integrity`), one that could not be opened
+  // (`journal_unavailable`), work whose recorded decision is missing
+  // (`journal_decision_missing`) or a busy database (`journal_busy`) holds
+  // the watcher unready and never fails the process, as does an objective
+  // past its latest safe start (`fault_proof_start_deadline_passed`); every
+  // other failure blocks it.
   const block = (error: unknown, job: WatcherFaultProofJob | null): Error => {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
+    if (
+      isWatcherJournalIntegrityError(error) ||
+      isWatcherJournalUnavailableError(error) ||
+      isWatcherProofDecisionMissingError(error)
+    )
+      return normalized;
+    if (isWatcherSqliteBusyError(error)) {
+      if (phase === "accepting") busy.hold(normalized);
+      return normalized;
+    }
     if (phase !== "blocked" && phase !== "closed") {
       phase = "blocked";
       blockedJob = job;
@@ -171,6 +278,55 @@ export const createSupervisor = (input: {
     }
     return normalized;
   };
+  // The statement that met a busy database committed nothing. Rebuild the
+  // work from durable state as a fresh process does: drop every in-memory
+  // entry, open the queue and the progress authority again, run the startup
+  // funding sweep while no job runs, then let the decision driver dispatch.
+  const busy = createWatcherJournalBusyHold({
+    requeue: async () => {
+      const reset = progressSerial.then(async () => {
+        await pump;
+        await serializeSchedule(async () => {
+          authorityEpoch += 1;
+          for (const entry of queue.splice(0))
+            entry.reject(
+              new Error("fault-proof job requeued after journal_busy"),
+            );
+          for (const retry of transportRetries.values())
+            if (retry.timer !== undefined) clearTimeout(retry.timer);
+          transportRetries.clear();
+          jobs.clear();
+          pendingUpdates.clear();
+          selectedExecutions.clear();
+          processedContexts.clear();
+          completedValidations.clear();
+          queuedJobCount = 0;
+          activeJob = null;
+          activeInvocationPermit = null;
+          recovered = false;
+          queueOpener.close();
+          openedQueueJournal = null;
+          queueOpener = openQueue();
+          void queueJournal().catch(() => undefined);
+          progressAuthority = createAuthority();
+        });
+      });
+      progressSerial = reset.catch(() => undefined);
+      await reset;
+      await input.journalBusyRequeue
+        ?.releaseUnusedFunding()
+        .catch((error: unknown) => {
+          if (isWatcherSqliteBusyError(error)) throw error;
+          // As at startup, a refused or unopened journal keeps them reserved.
+          if (
+            !isWatcherJournalIntegrityError(error) &&
+            !isWatcherJournalUnavailableError(error)
+          )
+            block(error, null);
+        });
+    },
+    resumed: () => input.journalBusyRequeue?.wake(),
+  });
 
   const now = (): number => {
     const value = input.nowMs();
@@ -219,7 +375,7 @@ export const createSupervisor = (input: {
     }
     try {
       await (
-        await queueJournal
+        await queueJournal()
       ).markStarted(entry.jobIdentityDigest, now().toString());
       queuedJobCount -= 1;
     } catch (error) {
@@ -255,27 +411,43 @@ export const createSupervisor = (input: {
         objective: job,
         selectedWorkflowId: selectedExecutions.get(key),
       });
+      const completed = execution?.entries.find(
+        ({ event }) => event.kind === "completed",
+      );
+      // A completion marked beyond rollback recovery is final: a job queued
+      // before the mark, at a later generation, neither holds its released
+      // L1 history again nor verifies it again.
+      const marker =
+        completed !== undefined && execution !== undefined
+          ? progressAuthority.completionMarker(job, execution)
+          : null;
       if (execution !== undefined) {
         selectedExecutions.set(key, execution.workflowId);
-        if (!input.exposeUnsafeRunnerForTest)
+        if (!input.exposeUnsafeRunnerForTest && marker === null)
           await progressAuthority.updateExecution({
             objective: job,
             execution,
           });
       }
-      const completed = execution?.entries.find(
-        ({ event }) => event.kind === "completed",
-      );
       if (completed !== undefined && execution !== undefined) {
         const validationKey = `${job.rollbackGeneration}:${watcherSha256CanonicalJson(execution.entries)}`;
+        const cached = completedValidations.get(key);
         const verification =
-          completedValidations.get(key) === validationKey
-            ? ({ kind: "applicable", confirmationDepth: 0 } as const)
-            : await input.dependencies.verifyCompleted({
-                job,
-                execution,
-                actuationPermit,
-              });
+          marker !== null
+            ? ({
+                kind: "applicable",
+                confirmationDepth: marker.confirmationDepth,
+              } as const)
+            : cached?.validation === validationKey
+              ? ({
+                  kind: "applicable",
+                  confirmationDepth: cached.confirmationDepth,
+                } as const)
+              : await verifyCompleted({
+                  job,
+                  execution,
+                  actuationPermit,
+                });
         if (actuationPermit !== null)
           assertWorkflowActuationPermitIdentity({
             permit: actuationPermit,
@@ -283,7 +455,11 @@ export const createSupervisor = (input: {
             rollbackGeneration: job.rollbackGeneration,
           });
         if (verification.kind === "applicable") {
-          rememberCompletion(key, validationKey);
+          rememberCompletion(
+            key,
+            validationKey,
+            verification.confirmationDepth,
+          );
           await progressAuthority.markCompleted(job, {
             execution,
             confirmationDepth: verification.confirmationDepth,
@@ -302,16 +478,24 @@ export const createSupervisor = (input: {
         }
       } else {
         if (job.deadline !== null && remainingSafeStartMs(job) <= 0n) {
+          // Past its latest safe start only signed work is reconciled. The
+          // deadline is fixed by the header, so an objective with no signed
+          // attempt can never start: it is held by name, never run again,
+          // and clears once its header leaves the finalized queue.
           if (
-            input.exposeUnsafeRunnerForTest ||
             execution === undefined ||
             !execution.entries.some(
               ({ event }) => event.kind === "submission_intent",
             )
           )
-            throw new Error(
-              `watcher fault-proof deadline is unsafe for ${job.category}/${job.headerHash}`,
-            );
+            throw new WatcherProofDecisionMissingError({
+              kind: "objective",
+              category: job.category,
+              headerHash: job.headerHash,
+              decisionDigest: job.decisionDigest,
+              detail: `${job.category}/${job.headerHash}`,
+              readiness: "fault_proof_start_deadline_passed",
+            });
           invocationPermit = await progressAuthority.reconcileExecution({
             objective: job,
             execution,
@@ -368,12 +552,13 @@ export const createSupervisor = (input: {
               job,
               execution: updated,
               actuationPermit,
-              verifyCompleted: input.dependencies.verifyCompleted,
+              verifyCompleted,
               outcome,
               onApplicable: async (verified) => {
                 rememberCompletion(
                   key,
                   `${job.rollbackGeneration}:${watcherSha256CanonicalJson(verified.execution.entries)}`,
+                  verified.confirmationDepth,
                 );
                 await progressAuthority.markCompleted(job, verified);
               },
@@ -401,19 +586,29 @@ export const createSupervisor = (input: {
             checkpoint: error.checkpoint,
           });
         }
+      } else if (isWatcherProofDecisionMissingError(error)) {
+        // Held until its header leaves the finalized queue; never run again.
+        await progressAuthority.holdObjective(error.hold);
+        outcome = Object.freeze({
+          kind: "pending" as const,
+          resume: "await_observation" as const,
+          reason: error.message,
+        });
       } else {
         failure = block(error, job);
       }
     } finally {
       // A failed run blocks the supervisor and the process exits failed
-      // closed. Leave its queue registration active so the next process
-      // requeues the job instead of reading a durable finish that never
-      // reached the workflow journal.
+      // closed, or, on a busy database, holds it until the in-process
+      // requeue. Leave its queue registration active so the next process,
+      // or that requeue, requeues the job instead of reading a durable
+      // finish that never reached the workflow journal.
       if (failure === undefined) {
         try {
           await (
-            await queueJournal
+            await queueJournal()
           ).markFinished(entry.jobIdentityDigest, now().toString());
+          busy.committed();
         } catch (error) {
           failure = block(error, job);
         }
@@ -481,7 +676,7 @@ export const createSupervisor = (input: {
     pumping = true;
     pump = Promise.resolve().then(async () => {
       try {
-        while (queue.length > 0) {
+        while (queue.length > 0 && busy.reason() === null) {
           queue.sort(comparePending);
           const entry = queue.shift()!;
           await runPending(entry);
@@ -507,6 +702,9 @@ export const createSupervisor = (input: {
       !input.exposeUnsafeRunnerForTest,
       actuationPermit,
     );
+    // Held work is requeued from durable state once the hold clears.
+    if (busy.reason() !== null)
+      return { completion: Promise.resolve(undefined) };
     const key = objectiveKey(job);
     const existing = jobs.get(key);
     if (existing !== undefined) {
@@ -549,9 +747,22 @@ export const createSupervisor = (input: {
     });
     // Queue completion records scheduling only. The execution journal is
     // admitted inside the worker, after it acquires ownership of this objective.
-    const registration = await (
-      await queueJournal
-    ).register(identity, now().toString(), { reopenFinished: true });
+    // At its cap of open objectives the journal refuses a new one: status
+    // reports journal_capacity and a later observation retries.
+    registering.add(key);
+    const registration = await (async () => {
+      try {
+        return await (
+          await queueJournal()
+        ).register(identity, now().toString());
+      } catch (error) {
+        registering.delete(key);
+        if (isWatcherJournalCapacityError(error)) return null;
+        throw error;
+      }
+    })();
+    if (registration === null)
+      return { completion: Promise.resolve(undefined) };
     queuedJobCount += 1;
     let resolve!: (value: unknown) => void;
     let reject!: (error: Error) => void;
@@ -569,6 +780,7 @@ export const createSupervisor = (input: {
       reject,
     });
     jobs.set(key, entry);
+    registering.delete(key);
     queue.push(entry);
     ensurePump();
     return Object.freeze({ completion });
@@ -622,10 +834,7 @@ export const createSupervisor = (input: {
       if (recovery !== undefined) return await recovery;
       recovery = (async () => {
         try {
-          const existing = await exactWorkflowDirectories(
-            input.journalRoot,
-            categories,
-          );
+          const existing = recordedWorkflowObjectives(journals(), categories);
           if (!CANONICAL_NATURAL.test(rollbackGeneration)) {
             throw new Error(
               "fault-proof recovery rollback generation is malformed",
@@ -698,7 +907,7 @@ export const createSupervisor = (input: {
               )
             )
               throw new Error(
-                "reconciliation intake has no existing workflow directory",
+                "reconciliation intake has no recorded proof objective",
               );
             const scheduled = await schedule(
               {
@@ -738,7 +947,7 @@ export const createSupervisor = (input: {
       const operation = progressSerial.then(async () => {
         if (phase === "blocked" || phase === "closed")
           throw new Error(`watcher fault-proof supervisor is ${phase}`);
-        if (epoch !== authorityEpoch) return;
+        if (epoch !== authorityEpoch || busy.reason() !== null) return;
         try {
           const contexts = await progressAuthority.admit(request);
           if (epoch !== authorityEpoch) return;
@@ -765,7 +974,9 @@ export const createSupervisor = (input: {
           }
         } catch (error) {
           if (input.dependencies.isActuationRevokedError(error)) return;
-          throw block(error, null);
+          const failure = block(error, null);
+          if (busy.reason() !== null && isWatcherSqliteBusyError(error)) return;
+          throw failure;
         }
       });
       progressSerial = operation.catch(() => undefined);
@@ -815,6 +1026,20 @@ export const createSupervisor = (input: {
               remaining <= BigInt(input.deadlineAlertHeadroomMs)
             ? ("at_risk" as const)
             : ("safe" as const);
+      // Capacity is read first: a read that meets corruption latches it, and
+      // this same status reports journal_integrity.
+      let journalCapacity = false;
+      try {
+        journalCapacity =
+          openedQueueJournal !== null &&
+          watcherJournalIntegrityFailure(input.journalRoot) === null &&
+          watcherJournalCapacityReached(journals());
+      } catch (error) {
+        if (!isWatcherJournalIntegrityError(error)) throw error;
+      }
+      const journalIntegrity = watcherJournalIntegrityFailure(
+        input.journalRoot,
+      );
       return Object.freeze({
         phase,
         recovered,
@@ -825,10 +1050,27 @@ export const createSupervisor = (input: {
         deadlineHealth,
         earliestDeadlineJob,
         remainingSafeStartMs: remaining?.toString() ?? null,
+        journalIntegrity,
+        journalUnavailable:
+          journalIntegrity === null
+            ? watcherJournalUnavailable(input.journalRoot)
+            : null,
+        journalCapacity: journalIntegrity === null && journalCapacity,
+        journalDecisionMissing: Object.freeze([
+          ...progressAuthority.decisionHolds(),
+          ...(input.reservationDecisionHolds?.() ?? []),
+        ]),
+        objectiveCleanupFailures: progressAuthority.cleanupFailures(),
+        journalBusy: busy.reason(),
       });
     },
     durableQueueStatus: () => {
       if (openedQueueJournal === null) {
+        // A read is a use and opens the queue journal again. A journal
+        // failure answers as itself, never as a bad request: this throws
+        // the latched integrity failure or the failed open.
+        void queueJournal().catch(() => undefined);
+        journals();
         throw new Error("fault-proof durable queue recovery is incomplete");
       }
       return openedQueueJournal.status();
@@ -836,6 +1078,8 @@ export const createSupervisor = (input: {
     close: async () => {
       if (phase === "closed") return;
       if (phase === "accepting") phase = "closing";
+      queueOpener.close();
+      busy.close();
       for (const retry of transportRetries.values())
         if (retry.timer !== undefined) clearTimeout(retry.timer);
       await progressSerial;

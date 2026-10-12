@@ -6,7 +6,7 @@ import {
   maxDaPayloadInnerBytes,
 } from "@al-ft/midgard-core/da-payload-sizing";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Logger } from "effect";
+import { Effect, Either, Logger } from "effect";
 
 import {
   Columns as TxColumns,
@@ -24,6 +24,7 @@ import {
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "../../src/mpf/transition-cbor.js";
+import { NodeConfig } from "../../src/services/config.js";
 import { assertPreSubmitDaPayloadSize } from "../../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import {
   type CommitBatchBudgetLimits,
@@ -269,6 +270,22 @@ export const preSubmit = (
         envelopeMode,
       }).pipe(Effect.provide(Logger.remove(Logger.defaultLogger))),
     ),
+  );
+
+/**
+ * A commit submission run without logs, at commit-event depth d = 0 (a
+ * fixture without a write permit: the final recheck stores its anchor as given).
+ */
+export const runQuietSubmission = (
+  program: Effect.Effect<unknown, unknown, unknown>,
+) =>
+  Effect.runPromise(
+    Effect.either(program).pipe(
+      Effect.provide(Logger.remove(Logger.defaultLogger)),
+      Effect.provideService(NodeConfig, {
+        COMMIT_EVENT_DEPTH: 0,
+      } as never),
+    ) as Effect.Effect<Either.Either<unknown, unknown>>,
   );
 
 export const REFUSAL =

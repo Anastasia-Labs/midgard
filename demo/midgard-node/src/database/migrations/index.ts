@@ -5,6 +5,23 @@ import operatorMembershipSql from "./sql/0003_operator_membership.sql";
 import retainedScriptMaterialSql from "./sql/0004_retained_script_material.sql";
 import foreignEventCensusSql from "./sql/0005_foreign_event_census.sql";
 import foreignNativeAdoptionSql from "./sql/0006_foreign_native_adoption.sql";
+import dropForeignTipReconciliationsSql from "./sql/0007_drop_foreign_tip_reconciliations.sql";
+import followerAdmissionIdentitySql from "./sql/0008_follower_admission_identity.sql";
+import landedBlocksSql from "./sql/0009_landed_blocks.sql";
+import intentRefusalHoldsSql from "./sql/0010_intent_refusal_holds.sql";
+import locallyAppliedBlockStatusSql from "./sql/0011_locally_applied_block_status.sql";
+import receiptSettlementsSql from "./sql/0012_receipt_settlements.sql";
+import mempoolInclusionMarksSql from "./sql/0013_mempool_inclusion_marks.sql";
+import confirmedLedgerMergesSql from "./sql/0014_confirmed_ledger_merges.sql";
+import settlementStatusDerivedSql from "./sql/0015_settlement_status_derived.sql";
+import receiptRejectionsSql from "./sql/0016_receipt_rejections.sql";
+import dropSettlementHoldSlotSql from "./sql/0017_drop_settlement_hold_slot.sql";
+import landedBlocksOwnRemovedSql from "./sql/0018_landed_blocks_own_removed.sql";
+import txRejectionCausesSql from "./sql/0019_tx_rejection_causes.sql";
+import dropQueueTerminalObserverSql from "./sql/0020_drop_queue_terminal_observer.sql";
+import followerWriteGateSql from "./sql/0021_follower_write_gate.sql";
+import dropEventHistoryControlPlaneSql from "./sql/0022_drop_event_history_control_plane.sql";
+import commitAnchorSql from "./sql/0023_commit_anchor.sql";
 
 export type Migration = {
   readonly version: number;
@@ -57,6 +74,125 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: foreignNativeAdoptionSql,
     transactional: true,
   },
+  {
+    version: 7,
+    name: "drop_foreign_tip_reconciliations",
+    checksumSha256: sha256Hex(dropForeignTipReconciliationsSql),
+    sql: dropForeignTipReconciliationsSql,
+    transactional: true,
+  },
+  {
+    version: 8,
+    name: "follower_admission_identity",
+    checksumSha256: sha256Hex(followerAdmissionIdentitySql),
+    sql: followerAdmissionIdentitySql,
+    transactional: true,
+  },
+  {
+    version: 9,
+    name: "landed_blocks",
+    checksumSha256: sha256Hex(landedBlocksSql),
+    sql: landedBlocksSql,
+    transactional: true,
+  },
+  {
+    version: 10,
+    name: "intent_refusal_holds",
+    checksumSha256: sha256Hex(intentRefusalHoldsSql),
+    sql: intentRefusalHoldsSql,
+    transactional: true,
+  },
+  {
+    version: 11,
+    name: "locally_applied_block_status",
+    checksumSha256: sha256Hex(locallyAppliedBlockStatusSql),
+    sql: locallyAppliedBlockStatusSql,
+    transactional: true,
+  },
+  {
+    version: 12,
+    name: "receipt_settlements",
+    checksumSha256: sha256Hex(receiptSettlementsSql),
+    sql: receiptSettlementsSql,
+    transactional: true,
+  },
+  {
+    version: 13,
+    name: "mempool_inclusion_marks",
+    checksumSha256: sha256Hex(mempoolInclusionMarksSql),
+    sql: mempoolInclusionMarksSql,
+    transactional: true,
+  },
+  {
+    version: 14,
+    name: "confirmed_ledger_merges",
+    checksumSha256: sha256Hex(confirmedLedgerMergesSql),
+    sql: confirmedLedgerMergesSql,
+    transactional: true,
+  },
+  {
+    version: 15,
+    name: "settlement_status_derived",
+    checksumSha256: sha256Hex(settlementStatusDerivedSql),
+    sql: settlementStatusDerivedSql,
+    transactional: true,
+  },
+  {
+    version: 16,
+    name: "receipt_rejections",
+    checksumSha256: sha256Hex(receiptRejectionsSql),
+    sql: receiptRejectionsSql,
+    transactional: true,
+  },
+  {
+    version: 17,
+    name: "drop_settlement_hold_slot",
+    checksumSha256: sha256Hex(dropSettlementHoldSlotSql),
+    sql: dropSettlementHoldSlotSql,
+    transactional: true,
+  },
+  {
+    version: 18,
+    name: "landed_blocks_own_removed",
+    checksumSha256: sha256Hex(landedBlocksOwnRemovedSql),
+    sql: landedBlocksOwnRemovedSql,
+    transactional: true,
+  },
+  {
+    version: 19,
+    name: "tx_rejection_causes",
+    checksumSha256: sha256Hex(txRejectionCausesSql),
+    sql: txRejectionCausesSql,
+    transactional: true,
+  },
+  {
+    version: 20,
+    name: "drop_queue_terminal_observer",
+    checksumSha256: sha256Hex(dropQueueTerminalObserverSql),
+    sql: dropQueueTerminalObserverSql,
+    transactional: true,
+  },
+  {
+    version: 21,
+    name: "follower_write_gate",
+    checksumSha256: sha256Hex(followerWriteGateSql),
+    sql: followerWriteGateSql,
+    transactional: true,
+  },
+  {
+    version: 22,
+    name: "drop_event_history_control_plane",
+    checksumSha256: sha256Hex(dropEventHistoryControlPlaneSql),
+    sql: dropEventHistoryControlPlaneSql,
+    transactional: true,
+  },
+  {
+    version: 23,
+    name: "commit_anchor",
+    checksumSha256: sha256Hex(commitAnchorSql),
+    sql: commitAnchorSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -102,10 +238,6 @@ export const APPLICATION_TABLE_NAMES = [
   "commit_build_calibration",
   "deposits_utxos",
   "forced_transaction_utxos",
-  "foreign_tip_reconciliations",
-  "foreign_native_adoptions",
-  "foreign_verified_segments",
-  "foreign_confirmed_frontier",
   "withdrawal_utxos",
   "immutable",
   "mempool",
@@ -114,6 +246,7 @@ export const APPLICATION_TABLE_NAMES = [
   "mempool_tx_deltas",
   "mpf_engine_state",
   "tx_rejections",
+  "tx_rejection_causes",
   "pending_block_finalizations",
   "pending_block_finalization_deposits",
   "pending_block_finalization_forced_transactions",
@@ -128,34 +261,25 @@ export const APPLICATION_TABLE_NAMES = [
   "local_mutation_jobs",
   "state_queue_mutation_leases",
   "da_payloads",
-  "da_payload_terminal_outcomes",
-  "state_queue_terminal_observer_states",
   "da_payload_publications",
   "da_payload_announcements",
   "deposit_submission_attempts",
   "event_history_submissions",
   "event_history_submission_inputs",
-  "event_history_authority",
-  "event_history_replay_receipts",
-  "event_history_cursor",
-  "event_history_census_frontier",
-  "event_history_census_blocks",
-  "event_history_block_applications",
-  "event_history_live_outputs",
-  "event_history_incarnations",
-  "event_history_l2_ledger_receipts",
-  "event_history_recovery_plans",
+  "follower_event_ingestion",
+  "node_landed_blocks",
+  "node_confirmed_ledger_frontier",
+  "node_confirmed_merges",
+  "node_confirmed_ledger_spent",
+  "intent_refusal_holds",
+  "node_follower_write_gate",
+  "node_deployment",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
-  "uniq_foreign_native_adoption_pending",
-  "idx_foreign_native_adoption_source",
-  "idx_foreign_verified_segment_parent",
   "settlement_jobs_due",
-  "settlement_jobs_generation",
-  "settlement_one_pending",
   "settlement_attempts_event",
-  "settlement_confirmed_fee_inputs",
+  "settlement_attempts_open",
   "idx_address_history_created_at",
   "idx_blocks_header_hash",
   "idx_blocks_tx_id",
@@ -166,8 +290,6 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_forced_transaction_utxos_status_inclusion_time_tx_order_id",
   "idx_forced_transaction_utxos_projected_header_hash",
   "idx_forced_transaction_utxos_tx_id",
-  "idx_foreign_tip_reconciliations_status_updated",
-  "idx_foreign_tip_reconciliations_window",
   "idx_withdrawal_utxos_status_inclusion_time_event_id",
   "idx_withdrawal_utxos_projected_header_hash",
   "idx_withdrawal_utxos_withdrawal_l1_tx_hash",
@@ -185,26 +307,22 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_tx_admissions_active_lease",
   "idx_tx_admissions_queued_arrival",
   "uniq_tx_rejections_tx_id",
+  "idx_tx_rejection_causes_cause",
   "idx_local_mutation_jobs_status_updated",
   "uniq_state_queue_mutation_leases_active_scope",
   "idx_state_queue_mutation_leases_status_updated",
   "idx_da_payloads_created_at",
-  "idx_da_payload_terminal_outcomes_authority",
   "idx_da_payload_publications_retry",
   "idx_da_payload_announcements_retry",
   "idx_deposit_submission_attempts_deposit_event_id",
   "idx_deposit_submission_attempts_status_submitted_at",
-  "uniq_event_history_canonical_block",
-  "uniq_event_history_census_canonical_height",
-  "uniq_event_history_canonical_height",
-  "uniq_event_history_incarnation_event",
-  "uniq_event_history_canonical_event",
-  "uniq_event_history_canonical_key",
-  "idx_event_history_incarnations_orphans",
-  "idx_deposits_utxos_history_association",
-  "idx_withdrawal_utxos_history_association",
-  "event_history_l2_ledger_receipts_unreversed",
-  "event_history_recovery_plans_prepared",
+  "idx_deposits_utxos_l1_admission",
+  "idx_withdrawal_utxos_l1_admission",
+  "idx_withdrawal_utxos_l1_admission_tx",
+  "uniq_node_landed_blocks_processed_parent",
+  "idx_mempool_included_by",
+  "idx_processed_mempool_included_by",
+  "idx_node_confirmed_merges_merge_slot",
 ] as const;
 
 export const migrationByVersion = new Map(

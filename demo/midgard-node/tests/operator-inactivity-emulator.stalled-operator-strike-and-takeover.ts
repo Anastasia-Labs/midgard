@@ -7,10 +7,13 @@ import {
   appointFirstSchedulerOperator,
   expectInactivityStrikeRefusal,
   fetchInactivityDirectorySnapshot,
+  fetchNeglectedUserEvent,
   initOperatorInactivityFixture,
   prepareInactivityStrike,
+  STRIKE_VALIDITY_WINDOW_MS,
   strikeOperatorToMaxStrikes,
   submitInactivityStrike,
+  submitNeglectedDeposit,
 } from "./helpers/operator-inactivity.js";
 import {
   activeNodeDatum,
@@ -26,11 +29,13 @@ describe("stalled-operator strike and takeover", () => {
     const fixture = await initOperatorInactivityFixture(3);
     const appointed = await appointFirstSchedulerOperator(fixture);
     expect(appointed.operatorKeyHash).toBe(requireOperator(fixture, 2));
+    const neglectedEvent = await submitNeglectedDeposit(fixture);
 
     const snapshot = await fetchInactivityDirectorySnapshot(fixture);
     const threshold = SDK.computeInactivityThreshold({
       shiftStartMs: appointed.startTime,
       stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
+      neglectedEvent,
     });
     expect(threshold.kind).toBe("threshold");
 
@@ -39,6 +44,7 @@ describe("stalled-operator strike and takeover", () => {
     const earlyPlan = SDK.planInactivityTakeover({
       snapshot,
       nowMs: BigInt(fixture.emulator.now()),
+      neglectedEvent,
     });
     expect(earlyPlan.kind).toBe("not-yet");
 
@@ -63,6 +69,57 @@ describe("stalled-operator strike and takeover", () => {
     ).toBe(0n);
   }, 420_000);
 
+  it("never strikes an idle network, however long the shift has been quiet", async () => {
+    const fixture = await initOperatorInactivityFixture(3);
+    const appointed = await appointFirstSchedulerOperator(fixture);
+    const params = SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS;
+    // Late in the shift: past its grace period and far past the tail's end
+    // time, with no deposit, withdrawal or tx order anywhere on the ledger.
+    const lateMs =
+      appointed.startTime +
+      params.shiftDurationMs -
+      4n * STRIKE_VALIDITY_WINDOW_MS;
+    advanceEmulatorPastUnixTime(fixture.emulator, lateMs);
+    const snapshot = await fetchInactivityDirectorySnapshot(fixture);
+    expect(BigInt(fixture.emulator.now())).toBeGreaterThan(
+      snapshot.stateQueueTail.endTime + params.userEventsNegligenceTimeoutMs,
+    );
+    expect(await fetchNeglectedUserEvent(fixture, snapshot)).toBeNull();
+    expect(
+      SDK.planInactivityTakeover({
+        snapshot,
+        nowMs: BigInt(fixture.emulator.now()),
+        neglectedEvent: null,
+      }),
+    ).toStrictEqual({
+      kind: "no-neglected-event",
+      currentOperator: appointed.operatorKeyHash,
+    });
+
+    // A strike citing something that is not a user event, here the
+    // registered-operators root claimed as a deposit, is refused by the
+    // scheduler's authentication of the cited Order node.
+    const registeredRoot = SDK.findRootNode(snapshot.registered);
+    if (registeredRoot === undefined) {
+      throw new Error("The registered-operators list has no root");
+    }
+    const message = await expectInactivityStrikeRefusal(fixture, {
+      neglectedEvent: {
+        kind: "Deposit",
+        utxo: registeredRoot.utxo,
+        inclusionTimeMs: snapshot.stateQueueTail.endTime + 1n,
+      },
+    });
+    expect(message).toMatch(/failed script execution Spend\[\d+\]/);
+    expect((await requireActiveOperatorShift(fixture)).operator).toBe(
+      appointed.operatorKeyHash,
+    );
+    expect(
+      (await activeNodeDatum(fixture, appointed.operatorKeyHash))
+        .inactivity_strikes,
+    ).toBe(0n);
+  }, 420_000);
+
   it("hands the shift to the successor and strikes the skipped operator once", async () => {
     const fixture = await initOperatorInactivityFixture(3);
     const appointed = await appointFirstSchedulerOperator(fixture);
@@ -70,16 +127,21 @@ describe("stalled-operator strike and takeover", () => {
     const successor = requireOperator(fixture, 1);
     expect(appointed.operatorKeyHash).toBe(skipped);
 
+    const neglected = await submitNeglectedDeposit(fixture);
     const nodeBefore = await activeNodeUtxo(fixture, skipped);
     const datumBefore = await activeNodeDatum(fixture, skipped);
     expect(datumBefore.inactivity_strikes).toBe(0n);
 
+    // The strike cites the undelivered deposit read back from the ledger.
     const submission = await submitInactivityStrike(fixture);
     expect(submission.plan.tier).toBe("GoToNext");
     expect(submission.plan.newOperatorKey).toBe(successor);
-    // The shift starts within minutes of genesis, so the commitment gap past
-    // the genesis tail ends after the shift's grace period.
-    expect(submission.plan.thresholdSource).toBe("block-commitment-gap");
+    expect(submission.plan.neglectedEvent.utxo.txHash).toBe(
+      neglected.utxo.txHash,
+    );
+    // The deposit arrives just after the shift starts, so its negligence
+    // timeout ends after the shift's grace period.
+    expect(submission.plan.thresholdSource).toBe("neglected-user-event");
     expect(submission.result.struckInactivityStrikes).toBe(1n);
 
     const shift = await requireActiveOperatorShift(fixture);
@@ -115,6 +177,8 @@ describe("stalled-operator strike and takeover", () => {
     const middle = requireOperator(fixture, 1);
     const rewindPoint = requireOperator(fixture, 0);
     await appointFirstSchedulerOperator(fixture);
+    // One undelivered deposit licenses every hop: nothing delivers it.
+    await submitNeglectedDeposit(fixture);
 
     const first = await submitInactivityStrike(fixture);
     expect(first.plan.currentOperator).toBe(tail);
@@ -156,6 +220,7 @@ describe("stalled-operator strike and takeover", () => {
     const fixture = await initOperatorInactivityFixture(1);
     const only = requireOperator(fixture, 0);
     await appointFirstSchedulerOperator(fixture);
+    await submitNeglectedDeposit(fixture);
 
     const submission = await submitInactivityStrike(fixture);
     expect(submission.plan.tier).toBe("Rewind");
@@ -197,9 +262,14 @@ describe("stalled-operator strike and takeover", () => {
     // The honest planner refuses to plan a sixth strike.
     const snapshot = await fetchInactivityDirectorySnapshot(fixture);
     const shift = await requireActiveOperatorShift(fixture);
+    const neglectedEvent = await fetchNeglectedUserEvent(fixture, snapshot);
+    if (neglectedEvent === null) {
+      throw new Error("The strikes cite an undelivered deposit");
+    }
     const threshold = SDK.computeInactivityThreshold({
       shiftStartMs: shift.startTime,
       stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
+      neglectedEvent,
     });
     if (threshold.kind !== "threshold") {
       throw new Error("The threshold should be satisfiable");
@@ -208,6 +278,7 @@ describe("stalled-operator strike and takeover", () => {
     const exhausted = SDK.planInactivityTakeover({
       snapshot,
       nowMs: BigInt(fixture.emulator.now()),
+      neglectedEvent,
     });
     expect(exhausted.kind).toBe("strikes-exhausted");
     if (exhausted.kind === "strikes-exhausted") {
@@ -253,6 +324,7 @@ describe("stalled-operator strike and takeover", () => {
   it("refuses a strike that misstates the struck node's link", async () => {
     const fixture = await initOperatorInactivityFixture(3);
     await appointFirstSchedulerOperator(fixture);
+    await submitNeglectedDeposit(fixture);
     // The scheduled operator is the list tail, so its honest link is `Empty`.
     const message = await expectInactivityStrikeRefusal(fixture, {
       adversarialOverrides: { activeNodeLink: requireOperator(fixture, 0) },
@@ -267,6 +339,7 @@ describe("stalled-operator strike and takeover", () => {
   it("refuses a strike that hands the shift past the successor", async () => {
     const fixture = await initOperatorInactivityFixture(3);
     await appointFirstSchedulerOperator(fixture);
+    await submitNeglectedDeposit(fixture);
     // The successor is `operators[1]`; naming `operators[0]` skips a hop.
     const message = await expectInactivityStrikeRefusal(fixture, {
       newOperatorKeyHash: requireOperator(fixture, 0),
@@ -280,6 +353,7 @@ describe("stalled-operator strike and takeover", () => {
   it("refuses a strike whose new start_time is not the validity upper bound", async () => {
     const fixture = await initOperatorInactivityFixture(3);
     await appointFirstSchedulerOperator(fixture);
+    await submitNeglectedDeposit(fixture);
     const prepared = await prepareInactivityStrike(fixture);
     const message = await expectInactivityStrikeRefusal(fixture, {
       // Inside the range, but one millisecond short of its inclusive upper

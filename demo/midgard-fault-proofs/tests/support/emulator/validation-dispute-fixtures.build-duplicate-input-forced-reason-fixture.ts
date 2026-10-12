@@ -5,6 +5,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   EventKeySchema,
@@ -107,6 +108,7 @@ export const buildDuplicateInputForcedReasonFixture = async ({
     deriveMidgardForcedTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeData(eventKey, EventKeySchema),
       sourceKind: "forced",

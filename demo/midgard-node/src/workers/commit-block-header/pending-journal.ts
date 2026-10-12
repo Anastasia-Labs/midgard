@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -17,7 +18,6 @@ import {
 import {
   type ContractDeploymentIdentityValue,
   type Database,
-  Lucid,
 } from "../../services/index.js";
 import {
   serializeStateQueueUTxO,
@@ -254,11 +254,9 @@ const requireStateQueueLeaseToken = (
 export const assertLiveTailCommitBase = (
   contracts: SDK.MidgardValidators,
   expectedTail: SDK.StateQueueUTxO,
-): Effect.Effect<void, SDK.LucidError | SDK.StateQueueError, Lucid> =>
+): Effect.Effect<void, SDK.StateQueueError, SqlClient.SqlClient> =>
   Effect.gen(function* () {
-    const lucid = yield* Lucid;
     const liveTail = yield* fetchExpectedStateQueueTailLocal(
-      lucid.api,
       {
         stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
         stateQueuePolicyId: contracts.stateQueue.policyId,
@@ -288,12 +286,10 @@ export const resolveLiveTailCommitBase = (
   | SDK.StateQueueError
   | SDK.DataCoercionError
   | SDK.HashingError,
-  Lucid
+  SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
-    const lucid = yield* Lucid;
     const liveTail = yield* fetchExpectedStateQueueTailLocal(
-      lucid.api,
       {
         stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
         stateQueuePolicyId: contracts.stateQueue.policyId,

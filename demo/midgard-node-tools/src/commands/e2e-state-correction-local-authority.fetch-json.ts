@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type WebSocketFactory } from "midgard-node/l1-tx-order-carriage";
+import { type WebSocketFactory } from "midgard-node/l1-external/kupmios-history";
 
 import { type ReleaseL1FinalityPolicy } from "./e2e-release-finality-policy.js";
 
@@ -73,7 +73,6 @@ export interface LocalKupmiosStateCorrectionSource {
 }
 
 export type LocalKupmiosStateCorrectionAuthorityConfig = {
-  readonly provider: string | undefined;
   readonly providerFailover: string | undefined;
   readonly kupoUrl: string;
   readonly ogmiosUrl: string;

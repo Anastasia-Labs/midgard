@@ -26,7 +26,7 @@ Key fields:
 | `validity`                                                      | Submitted validity flag; Phase A admits only `TxIsValid`.                  |
 | `fee`                                                           | Fee in lovelace.                                                           |
 | `networkId?`                                                    | Optional; absent when the native sentinel means "no network".              |
-| `validityIntervalStart?` / `validityIntervalEnd?`               | Inclusive validity bounds, absent when unbounded.                          |
+| `validityIntervalStart?` / `validityIntervalEnd?`               | Validity bounds `[start, end)`, each absent when unbounded.                |
 | `auxiliaryDataHash`                                             | Auxiliary-data commitment from the body.                                   |
 | `scriptIntegrityHash`                                           | Script-data commitment from the body.                                      |
 | `spendInputs`                                                   | UTxOs consumed (`MidgardOutRef[]`).                                        |

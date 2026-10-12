@@ -30,7 +30,6 @@ export type FinalizeSummaryOptions = {
   readonly stateCorrectionIndependentSourcePaths?: StateCorrectionIndependentSourcePaths;
   readonly stateCorrectionIndependentAuthority?: StateCorrectionIndependentAuthority;
   readonly stateCorrectionLocalAuthorityConfig?: {
-    readonly provider: string | undefined;
     readonly providerFailover: string | undefined;
     readonly kupoUrl: string;
     readonly ogmiosUrl: string;

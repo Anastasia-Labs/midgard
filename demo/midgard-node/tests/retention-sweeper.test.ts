@@ -1,7 +1,10 @@
 import "./utils.js";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { heightAtDepth } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Exit, Ref, Schedule } from "effect";
@@ -14,6 +17,7 @@ import {
   retentionL1ViewTimeoutMs,
   retentionSweeperFiber,
 } from "../src/fibers/retention-sweeper.js";
+import { L1SlotUnknownError } from "../src/l1-heads.js";
 import {
   ContractDeploymentIdentity,
   Globals,
@@ -22,6 +26,7 @@ import {
   NodeConfig,
 } from "../src/services/index.js";
 import { makeRetentionL1Queue } from "./helpers/retention-l1-view.js";
+import { provideDatabaseLayers } from "./utils.js";
 
 const SWEEP_MS = 1_000;
 const FATAL_MS = 60_000;
@@ -50,6 +55,8 @@ const runSweeper = (options: {
   readonly fatalMs?: number;
   /** Holds the L1 control-plane permit for the whole run. */
   readonly holdControlPlane?: boolean;
+  /** The L1 now each sweep dates itself with; START by default. */
+  readonly l1NowMs?: Effect.Effect<number, L1SlotUnknownError>;
 }) => {
   let reads = 0;
   let tick = 0;
@@ -73,6 +80,7 @@ const runSweeper = (options: {
         retentionSweeperFiber(Schedule.recurs(options.sweeps - 1), {
           fetchL1View: Effect.suspend(() => options.read(reads++, reasons)),
           nowMs,
+          l1NowMs: options.l1NowMs ?? Effect.succeed(START),
         }).pipe(
           Effect.timeoutFail({
             duration: "2 seconds",
@@ -106,26 +114,6 @@ const staleReason = (reasons: ReadonlyMap<string, string>) =>
   [...reasons.values()].filter((reason) => reason === RETENTION_L1_VIEW_STALE);
 
 describe("retention sweeper L1-view deadline", () => {
-  it("reports unavailable DA recovery proof and clears it after the next successful proof read", async () => {
-    const seen: string[][] = [];
-    const result = await runSweeper({
-      clock: [START],
-      sweeps: 2,
-      read: (index, reasons) => {
-        seen.push([...reasons().values()]);
-        return Effect.succeed({
-          ...VIEW,
-          retirementProofUnavailable: index === 0,
-        });
-      },
-    });
-    expect(seen).toEqual([[], ["retention_da_recovery_proof_unavailable"]]);
-    expect([...result.reasons.values()]).not.toContain(
-      "retention_da_recovery_proof_unavailable",
-    );
-    expect(result.reads()).toBe(2);
-  });
-
   it("past L1_VIEW_FATAL_MS raises retention_l1_view_stale, sweeps nothing and keeps reading", async () => {
     // Ref init; sweep 1 reads at the deadline (a sweep without DA pruning);
     // sweeps 2-5 read 1 ms past it.
@@ -208,6 +196,23 @@ describe("retention sweeper L1-view deadline", () => {
   );
 });
 
+describe("retention sweeper L1 now", () => {
+  it("prunes nothing while the L1 slot is unknown, and keeps reading", async () => {
+    const { exit, reads, sweeps, reasons } = await runSweeper({
+      clock: [START],
+      read: () => Effect.succeed(VIEW),
+      sweeps: 3,
+      l1NowMs: Effect.fail(
+        new L1SlotUnknownError({ message: "L1 slot unknown: test" }),
+      ),
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(reads()).toBe(3);
+    expect(sweeps()).toBe(0);
+    expect(staleReason(reasons)).toEqual([]);
+  });
+});
+
 describe("retention sweeper tx-order watermark", () => {
   it("never takes the L1 control plane, so a held permit does not delay a sweep", async () => {
     const { exit, reads, sweeps } = await runSweeper({
@@ -272,7 +277,33 @@ describe("retention L1 view exemption sets", () => {
       confirmedHeadHash: "ab".repeat(28),
       liveUtxosRoots: ["71".repeat(32), "72".repeat(32)],
     });
-    const view = await Effect.runPromise(queue.provide(fetchRetentionL1View));
+    const { view, tipHeight } = await Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          const view = yield* queue.provide(fetchRetentionL1View);
+          const sql = yield* SqlClient.SqlClient;
+          const [cursor] = yield* sql<{ readonly height: number | string }>`
+            SELECT height FROM l1_follower_cursor`;
+          return { view, tipHeight: Number(cursor!.height) };
+        }).pipe(
+          Effect.provideService(
+            ContractDeploymentIdentity,
+            ContractDeploymentIdentity.make({
+              kind: "manifest",
+              manifestId: "cd".repeat(32),
+              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+            }),
+          ),
+        ),
+      ),
+    );
+    // Final at the queue's view: deeper than the deployment's k.
+    expect(view.finalThroughHeight).toBe(
+      heightAtDepth(
+        tipHeight,
+        DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth + 1,
+      ),
+    );
     expect(view.confirmedHeadHash.toString("hex")).toBe("ab".repeat(28));
     expect(
       view.liveQueueHeaderHashes.map((hash) => hash.toString("hex")),

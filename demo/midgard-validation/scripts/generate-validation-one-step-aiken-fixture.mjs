@@ -22,6 +22,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_DISPUTE_VERSION,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { planMidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-carriage";
 import { selectMidgardFieldCarriageTier } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import {
@@ -161,6 +162,7 @@ const trace = await Effect.runPromise(
     minFeeA: 0n,
     minFeeB: 0n,
     blockSlot: 100n,
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     transactionId,
     canonicalTransactionCbor,
     priorUtxosRoot: ledgerMutationSteps[0].preRoot.toString("hex"),
@@ -274,6 +276,7 @@ const buildTraceForOutputItem = async (itemBytes) => {
       minFeeA: 0n,
       minFeeB: 0n,
       blockSlot: 100n,
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       transactionId: vectorTransactionId,
       canonicalTransactionCbor:
         encodeMidgardForcedTxCanonical(vectorTransaction),

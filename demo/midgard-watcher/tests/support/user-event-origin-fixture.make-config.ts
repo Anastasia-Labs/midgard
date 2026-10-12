@@ -14,7 +14,7 @@ import {
   buildTxOrderValidators,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
+import { type Script, validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
@@ -35,7 +35,6 @@ const GENESIS = createHash("sha256").update(GENESIS_BYTES).digest("hex");
 export const makeConfig = (
   NODE_CONFIG_PATH: string,
   GENESIS_CONFIG_PATH: string,
-  queryEndpoints?: Readonly<{ ogmios: string; kupo: string }>,
 ) =>
   Object.freeze({
     schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -52,28 +51,11 @@ export const makeConfig = (
           genesisConfigPath: GENESIS_CONFIG_PATH,
           genesisIdentitySha256: GENESIS,
         }),
-        queryServices: Object.freeze([
-          Object.freeze({
-            kind: "ogmios",
-            identity: "local-ogmios",
-            endpoint: queryEndpoints?.ogmios ?? "ws://127.0.0.1:1337",
-          }),
-          Object.freeze({
-            kind: "kupo",
-            identity: "local-kupo",
-            endpoint: queryEndpoints?.kupo ?? "http://127.0.0.1:1442",
-          }),
-        ]),
       }),
       requestTimeoutMs: 10_000,
       maxConcurrency: 4,
       finality: Object.freeze({
         depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-        rollback: Object.freeze({
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-        }),
       }),
     }),
     da: Object.freeze({
@@ -158,7 +140,15 @@ export const buildWatcherOriginFixtureHistoryDeployments = (
     },
   });
 
-export const makeOriginDeployment = (ruleBundleCommitment?: string) => {
+/**
+ * The synthetic origin deployment. `scripts` replaces named applied
+ * contracts (for example the state queue of an emulator ledger the
+ * deployment follows); every other contract is the synthetic one.
+ */
+export const makeOriginDeployment = (
+  ruleBundleCommitment?: string,
+  scripts: Readonly<Record<string, Script>> = {},
+) => {
   const contractSet = makeWatcherAuthorityContracts();
   const hub = buildHubOracleMintingValidator({
     blueprint,
@@ -176,7 +166,7 @@ export const makeOriginDeployment = (ruleBundleCommitment?: string) => {
   const deposit = history.deposit.list;
   const withdrawal = history.withdrawal.list;
   const { txOrder, fieldPreimageCertificate } = buildTxOrderValidators(input);
-  const scripts = {
+  const applied = {
     hubOracleMint: hub.mintingScript,
     depositMint: deposit.mintingScript,
     depositSpend: deposit.spendingScript,
@@ -192,8 +182,9 @@ export const makeOriginDeployment = (ruleBundleCommitment?: string) => {
     txOrderMint: txOrder.mintingScript,
     txOrderSpend: txOrder.spendingScript,
     fieldPreimageCertificateMint: fieldPreimageCertificate.mintingScript,
+    ...scripts,
   };
-  for (const [name, script] of Object.entries(scripts)) {
+  for (const [name, script] of Object.entries(applied)) {
     contractSet.contracts[name] = {
       ...contractSet.contracts[name],
       contract: { type: script.type, cborHex: script.script },

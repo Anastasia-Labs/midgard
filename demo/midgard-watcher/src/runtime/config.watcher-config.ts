@@ -1,3 +1,5 @@
+import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
+
 import { type WatcherCustomNetwork } from "./custom-network.js";
 
 export const WATCHER_CONFIG_SCHEMA_VERSION =
@@ -7,68 +9,43 @@ export const WATCHER_CARDANO_SECURITY_PARAMETER_K = 2_160 as const;
 
 export const WATCHER_CONFIG_BOUNDS = {
   configJsonBytes: { min: 2, max: 262_144 },
-  externalProviders: { min: 2, max: 4 },
-  localNodeQueryServices: { min: 2, max: 3 },
   daPeers: { min: 1, max: 32 },
   requestTimeoutMs: { min: 100, max: 120_000 },
   concurrency: { min: 1, max: 64 },
   finalityDepth: { min: 1, max: 2_160 },
-  rollbackDepth: { min: 1, max: 2_160 },
-  postFinalityRecoveryDepth: {
-    min: 1,
-    max: WATCHER_CARDANO_SECURITY_PARAMETER_K,
-  },
   deadlineMs: { min: 1_000, max: 86_400_000 },
+  l1OriginSlot: { min: 0, max: Number.MAX_SAFE_INTEGER },
 } as const;
 
 export type WatcherConfigMode = "development" | "acceptance";
 
 export type WatcherTargetNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
 
-export type WatcherL1SourceMode = "local_node" | "external_providers";
-
-export type WatcherL1ProviderConfig = Readonly<{
-  identity: string;
-  operatorIdentitySha256: string;
-  endpoint: string;
+/** The watcher's L1 source: its own cardano-node, read through the follower. */
+export type WatcherL1SourceConfig = Readonly<{
+  sourceMode: "local_node";
+  authorityNodeId: string;
+  chainSync: Readonly<{
+    kind: "cardano_node_socket";
+    socketPath: string;
+    nodeConfigPath: string;
+    genesisConfigPath: string;
+    genesisIdentitySha256: string;
+  }>;
 }>;
-
-export type WatcherLocalNodeQueryServiceConfig = Readonly<{
-  kind: "ogmios" | "kupo" | "db_sync";
-  identity: string;
-  endpoint: string;
-}>;
-
-export type WatcherL1SourceConfig =
-  | Readonly<{
-      sourceMode: "local_node";
-      authorityNodeId: string;
-      chainSync: Readonly<{
-        kind: "cardano_node_socket";
-        socketPath: string;
-        nodeConfigPath: string;
-        genesisConfigPath: string;
-        genesisIdentitySha256: string;
-      }>;
-      queryServices: readonly WatcherLocalNodeQueryServiceConfig[];
-    }>
-  | Readonly<{
-      sourceMode: "external_providers";
-      providers: readonly WatcherL1ProviderConfig[];
-    }>;
 
 export type WatcherL1Config = Readonly<{
   source: WatcherL1SourceConfig;
+  /**
+   * The deployment's L1 origin: the point immediately before the block
+   * holding the prepareHubOracleNonce tx, where the L1 follower starts.
+   * Absent holds the follower unready (`l1_origin_not_configured`).
+   */
+  origin?: L1Origin;
   requestTimeoutMs: number;
   maxConcurrency: number;
   finality: Readonly<{
     depth: number;
-    rollback: Readonly<{
-      beforeFinality: "rewind";
-      afterFinality: "quarantine";
-      maxDepth: number;
-      postFinalityRecoveryMaxDepth: typeof WATCHER_CARDANO_SECURITY_PARAMETER_K;
-    }>;
   }>;
 }>;
 

@@ -1,5 +1,6 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import {
   assertWorkflowActuationPermitIdentity,
@@ -11,9 +12,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { isWatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
+import { WATCHER_JOURNAL_DATABASE_FILE } from "../../src/fault-proofs/watcher-journal-database.js";
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
-import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -21,6 +22,8 @@ import {
   setupFundingRecoveryFixture,
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { storelessProofRetention } from "../support/proof-retention.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -32,6 +35,7 @@ const setup = async (unsigned = false) => {
     journalRoot: fixture.journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
     categories: fixture.old.launchScope,
+    authenticationKey: TEST_JOURNAL_KEY,
   });
   const observation = progressObservation({
     deploymentFingerprint: deploymentIdentity.manifestId,
@@ -89,86 +93,39 @@ describe("supervisor historical progress authority", () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  it("wakes retained signed work once for quiet native progress while reusing queue evidence", async () => {
+  it("wakes retained signed work once when the queue observation advances to a quiet native block", async () => {
     const test = await setup();
     expect(await test.authority.admit(test.request)).toHaveLength(1);
     expect(await test.authority.admit(test.request)).toEqual([]);
-    const metadata = {
-      blockHash:
-        "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
-      blockNo: "12069665",
-      blockType: "7",
-      prevHash:
-        "ff51732269af51a2efaa2a7ad4a2ff5647af5629013a446511249e837be617a0",
-      slot: "159835207",
-    };
-    const nativeProgress = admitWatcherNativeRollForwardBlock({
-      ...metadata,
-      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
-      kind: "roll_forward",
-      rawBlockCbor: (
-        await readFile(
-          new URL("../support/conway-block.hex", import.meta.url),
-          "utf8",
-        )
-      ).trim(),
-      tip: {
-        kind: "point",
-        blockHash: metadata.blockHash,
-        blockNo: metadata.blockNo,
-        slot: metadata.slot,
+    const { observationDigest: _digest, ...prior } = test.request.observation;
+    const advanced = {
+      ...prior,
+      nativePoint: {
+        ...prior.nativePoint,
+        blockNo: (BigInt(prior.nativePoint.blockNo) + 1n).toString(),
+        slot: (BigInt(prior.nativePoint.slot) + 20n).toString(),
+        blockHash:
+          "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
       },
-    });
-    const request = { ...test.request, nativeProgress };
+    };
+    const quietObservation =
+      unsafeAdmitWatcherStateQueueObservationForReplayTest({
+        ...advanced,
+        observationDigest: watcherSha256CanonicalJson(advanced),
+      });
+    const request = { ...test.request, observation: quietObservation };
     const contexts = await test.authority.admit(request);
     expect(contexts).toHaveLength(1);
     expect(contexts[0]!.decision.decisionDigest).toBe(
       test.fixture.old.decisionDigest,
     );
     expect(contexts[0]!.observationRevision).toBe(
-      `${test.request.observation.observationDigest}:${nativeProgress.blockHash}`,
+      `${quietObservation.observationDigest}:${advanced.nativePoint.blockHash}`,
     );
-    expect(await test.authority.admit(request)).toEqual([]);
+    for (let i = 0; i < 5; i++)
+      expect(await test.authority.admit(request)).toEqual([]);
     expect(
       await test.authority.admit({ ...request, rollbackGeneration: "1" }),
-    ).toEqual([]);
-    await expect(
-      test.authority.admit({
-        ...request,
-        nativeProgress: { ...nativeProgress },
-      }),
-    ).rejects.toThrow("native block was not admitted");
-    await expect(
-      test.authority.admit({
-        ...request,
-        observation: progressObservation({
-          deploymentFingerprint: deploymentIdentity.manifestId,
-          revision: 20_000_000,
-        }),
-      }),
-    ).rejects.toThrow("behind or differs from its queue evidence");
-    const { observationDigest: _digest, ...prior } = test.request.observation;
-    const advanced = {
-      ...prior,
-      nativePoint: {
-        ...prior.nativePoint,
-        blockNo: nativeProgress.blockNo,
-        slot: nativeProgress.slot,
-        blockHash: nativeProgress.blockHash,
-      },
-    };
-    const samePointObservation =
-      unsafeAdmitWatcherStateQueueObservationForReplayTest({
-        ...advanced,
-        observationDigest: watcherSha256CanonicalJson(advanced),
-      });
-    const touchedRequest = {
-      ...test.request,
-      observation: samePointObservation,
-    };
-    expect(await test.authority.admit(touchedRequest)).toHaveLength(1);
-    expect(
-      await test.authority.admit({ ...touchedRequest, nativeProgress }),
     ).toEqual([]);
   });
 
@@ -182,6 +139,7 @@ describe("supervisor historical progress authority", () => {
         directory: journalRoot,
         deploymentFingerprint: deploymentIdentity.manifestId,
         launchScope: fixture.old.launchScope,
+        authenticationKey: TEST_JOURNAL_KEY,
       };
       const writer =
         await DecisionJournal.openWatcherFaultDecisionJournal(journalInput);
@@ -189,6 +147,7 @@ describe("supervisor historical progress authority", () => {
         journalRoot,
         deploymentFingerprint: deploymentIdentity.manifestId,
         categories: fixture.old.launchScope,
+        authenticationKey: TEST_JOURNAL_KEY,
       });
       const observation = progressObservation({
         deploymentFingerprint: deploymentIdentity.manifestId,
@@ -257,11 +216,13 @@ describe("supervisor historical progress authority", () => {
           directory: journalRoot,
           deploymentFingerprint: deploymentIdentity.manifestId,
           launchScope: fixture.old.launchScope,
+          authenticationKey: TEST_JOURNAL_KEY,
         });
         const authority = createWatcherFaultProofProgressAuthority({
           journalRoot,
           deploymentFingerprint: deploymentIdentity.manifestId,
           categories: fixture.old.launchScope,
+          authenticationKey: TEST_JOURNAL_KEY,
         });
         await authority.admit({
           observation: progressObservation({
@@ -272,11 +233,18 @@ describe("supervisor historical progress authority", () => {
         if (availability !== "missing")
           await writer.appendLiveDecision(fixture.old);
         await writer.appendLiveDecision(fixture.fresh);
-        if (availability === "corrupt")
-          await writeFile(
-            join(journalRoot, "fault-decisions", "00000000000000000000.json"),
-            "{}\n",
+        if (availability === "corrupt") {
+          // Another writer alters the committed row behind the journal.
+          const raw = new DatabaseSync(
+            join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE),
           );
+          raw
+            .prepare(
+              "UPDATE watcher_fault_decisions SET body = '{}' WHERE row_key = ?",
+            )
+            .run(fixture.old.decisionDigest);
+          raw.close();
+        }
         const refresh = vi.spyOn(
           DecisionJournal,
           "openWatcherFaultDecisionJournal",
@@ -296,14 +264,27 @@ describe("supervisor historical progress authority", () => {
             await authority.markCompleted(fixture.old);
             await authority.updateExecution(update);
           }
+        } else if (availability === "missing") {
+          // A missing decision holds the objective by name.
+          const missing = authority.updateExecution(update);
+          await expect(missing).rejects.toThrow("omitted its exact recorded");
+          await expect(missing).rejects.toSatisfy(
+            isWatcherProofDecisionMissingError,
+          );
+          const { category, headerHash, decisionDigest } = fixture.old;
+          expect(authority.decisionHolds()).toMatchObject([
+            { kind: "objective", category, headerHash, decisionDigest },
+          ]);
+          expect(authority.unfinishedCount()).toBe(1);
         } else {
           await expect(authority.updateExecution(update)).rejects.toThrow(
-            availability === "missing"
-              ? "omitted its exact recorded decision"
-              : "unknown or missing fields",
+            `row ${fixture.old.decisionDigest} MAC differs`,
           );
+          expect(authority.decisionHolds()).toEqual([]);
         }
-        expect(refresh).toHaveBeenCalledOnce();
+        // The miss reads the writer's commits through the open journal; it
+        // never reopens it.
+        expect(refresh).not.toHaveBeenCalled();
       } finally {
         await rm(journalRoot, { recursive: true, force: true });
       }
@@ -312,7 +293,16 @@ describe("supervisor historical progress authority", () => {
 
   it("refreshes an initially unsigned indexed execution after its real journal records an intent", async () => {
     const test = await setup(true);
-    expect(await test.authority.admit(test.request)).toEqual([]);
+    // Its header is still queued, so the unsigned objective is not released.
+    expect(
+      await test.authority.admit({
+        ...test.request,
+        observation: progressObservation({
+          deploymentFingerprint: deploymentIdentity.manifestId,
+          header: test.fixture.fixture,
+        }),
+      }),
+    ).toEqual([]);
     await test.fixture.append(test.fixture.handoff.preflight);
     await test.fixture.append(test.fixture.handoff.submissionIntent);
     const entries = await test.fixture.journal.load(
@@ -402,5 +392,68 @@ describe("supervisor historical progress authority", () => {
       authority: "reconciliation",
       decisionDigest: test.fixture.old.decisionDigest,
     });
+  });
+});
+
+describe("supervisor progress authority: proof retention", () => {
+  it("pins a newly admitted fault's header before indexing it, once", async () => {
+    const fixture = await setupFundingRecoveryFixture();
+    const journalRoot = await mkdtemp(
+      join(process.cwd(), ".watcher-progress-decision-"),
+    );
+    try {
+      const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
+        directory: journalRoot,
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        launchScope: fixture.old.launchScope,
+        authenticationKey: TEST_JOURNAL_KEY,
+      });
+      const pinned: string[] = [];
+      const authority = createWatcherFaultProofProgressAuthority({
+        journalRoot,
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        categories: fixture.old.launchScope,
+        authenticationKey: TEST_JOURNAL_KEY,
+        retention: {
+          ...storelessProofRetention,
+          pin: async ({ category, headerHash }) => {
+            pinned.push(`${category}/${headerHash}`);
+            return { kind: "pinned" };
+          },
+        },
+      });
+      const observation = progressObservation({
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        header: {
+          header: fixture.fixture.header,
+          headerHash: fixture.old.headerHash,
+        },
+      });
+      await authority.admit({ observation, rollbackGeneration: "1" });
+      expect(pinned).toEqual([]);
+      await writer.appendLiveDecision(fixture.old);
+      const admit = () =>
+        authority.admit({
+          observation,
+          rollbackGeneration: "1",
+          fault: {
+            decision: fixture.old,
+            deadline: watcherFaultProofDeadline(
+              observation.finalizedHeaders[0]!,
+            ),
+            actuationPermit: createWorkflowActuationPermitController({
+              decision: fixture.old,
+              rollbackGeneration: "1",
+            }).permit,
+          },
+        });
+      await admit();
+      await admit();
+      expect(pinned).toEqual([
+        `${fixture.old.category}/${fixture.old.headerHash}`,
+      ]);
+    } finally {
+      await rm(journalRoot, { recursive: true, force: true });
+    }
   });
 });

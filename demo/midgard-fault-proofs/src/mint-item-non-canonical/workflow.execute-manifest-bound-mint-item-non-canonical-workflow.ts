@@ -10,12 +10,12 @@ import {
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  createFraudProofFamilyL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   createMintItemNonCanonicalCentralJournalAdapter,
   MintItemWorkflowRecoveryPendingError,
@@ -97,7 +97,7 @@ export const createManifestBoundMintItemNonCanonicalRuntime = ({
 export type ManifestBoundMintItemNonCanonicalWorkflowConfig =
   LoadManifestBoundMintItemNonCanonicalConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+      l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
@@ -116,8 +116,8 @@ export const createManifestBoundMintItemNonCanonicalWorkflow = async (
   input: ManifestBoundMintItemNonCanonicalWorkflowConfig,
 ): Promise<ManifestBoundMintItemNonCanonicalWorkflow> => {
   const config = await loadManifestBoundMintItemNonCanonicalConfig(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: input.source,
+  const l1 = createFraudProofFamilyL1ObservationPort({
+    l1: input.l1Source,
     releaseFinality: config.binding.releaseFinality,
     releaseEconomics: config.binding.releaseEconomics,
     definition: config.binding.definition,

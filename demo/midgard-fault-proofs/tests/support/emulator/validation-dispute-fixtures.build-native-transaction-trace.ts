@@ -14,6 +14,7 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { aikenSerialisedPlutusDataBytes } from "@al-ft/midgard-core/plutus-data-cbor";
 import { EventKeySchema } from "@al-ft/midgard-sdk";
 import {
@@ -437,6 +438,7 @@ export const buildNativeTransactionTrace = async (
           ]),
         }),
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     eventKeyCbor: encodeData(eventKey, EventKeySchema),
     sourceKind: "forced",
     blockEndTimeMs: now + 1_000,

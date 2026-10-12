@@ -17,6 +17,7 @@ import { expect, it, vi } from "vitest";
 
 import {
   createPublishedWatcherBlockActor,
+  isLateSubmission,
   isUnansweredSubmission,
   PublishedTransactionExpiredError,
   PublishedTransactionSubmissionError,
@@ -94,8 +95,6 @@ const fixture = async () => {
       getUtxos: async () => [anchor],
     }),
     utxosAtWithUnit,
-    utxosAt: async () => [anchor],
-    overrideUTxOs: vi.fn(),
     newTx: () => {
       order.push("newTx");
       throw stop;
@@ -160,10 +159,22 @@ const fixture = async () => {
 
 /**
  * What Lucid's `submit()` rejects with, from the real provider: an Ogmios
- * that never answers (the provider times out) or one that refuses the
- * transaction with a script failure.
+ * that never answers (the provider times out), or one that refuses the
+ * transaction with a script failure or outside its validity interval.
  */
-const lucidSubmitFailure = async (reply: "hang" | "refuse") => {
+const OUTSIDE_VALIDITY = {
+  late: {
+    validityInterval: { invalidBefore: 3831, invalidAfter: 3891 },
+    currentSlot: 3892,
+  },
+  early: {
+    validityInterval: { invalidBefore: 3831, invalidAfter: 3891 },
+    currentSlot: 3830,
+  },
+};
+const lucidSubmitFailure = async (
+  reply: "hang" | "refuse" | keyof typeof OUTSIDE_VALIDITY,
+) => {
   const server = http.createServer((_request, response) => {
     if (reply === "hang") return;
     response.writeHead(200, { "content-type": "application/json" });
@@ -171,7 +182,14 @@ const lucidSubmitFailure = async (reply: "hang" | "refuse") => {
       JSON.stringify({
         jsonrpc: "2.0",
         method: "submitTransaction",
-        error: { code: 3005, message: "script failed", data: [] },
+        error:
+          reply === "refuse"
+            ? { code: 3005, message: "script failed", data: [] }
+            : {
+                code: 3118,
+                message: "outside validity",
+                data: OUTSIDE_VALIDITY[reply],
+              },
         id: null,
       }),
     );
@@ -317,6 +335,29 @@ it("keeps an Ogmios script refusal a submission error", async () => {
   await expect(f.actor.commit(f.block, f.anchor)).rejects.toMatchObject({
     name: "PublishedTransactionSubmissionError",
     txHash: f.txHash,
+    cause,
+  });
+});
+
+it("settles a commit refused past its validity bound as expired", async () => {
+  const f = await fixture();
+  const cause = await lucidSubmitFailure("late");
+  expect(providerErrors(cause)).toEqual(["OgmiosJsonRpcError json_rpc 3118"]);
+  expect(isLateSubmission(cause)).toBe(true);
+  f.submit.mockRejectedValue(cause);
+  await expect(f.actor.commit(f.block, f.anchor)).rejects.toMatchObject({
+    name: "PublishedTransactionExpiredError",
+    txHash: f.txHash,
+  });
+});
+
+it("keeps a commit refused before its validity bound a submission error", async () => {
+  const f = await fixture();
+  const cause = await lucidSubmitFailure("early");
+  expect(isLateSubmission(cause)).toBe(false);
+  f.submit.mockRejectedValue(cause);
+  await expect(f.actor.commit(f.block, f.anchor)).rejects.toMatchObject({
+    name: "PublishedTransactionSubmissionError",
     cause,
   });
 });

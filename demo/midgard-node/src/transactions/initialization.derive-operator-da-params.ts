@@ -15,6 +15,7 @@ import {
   VERIFICATION_KEY_HASH_HEX_LENGTH,
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   type AtomicProtocolInitReferenceScripts,
@@ -185,7 +186,8 @@ export const ensureAtomicProtocolInitReferenceScriptsProgram = (
   | SDK.LucidError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   ensureNodeRuntimeReferenceScriptsProgram(
     referenceScriptsLucid,

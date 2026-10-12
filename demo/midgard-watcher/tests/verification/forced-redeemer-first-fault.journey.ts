@@ -8,6 +8,7 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { EventKey, ForcedInclusionTxV1 } from "@al-ft/midgard-sdk";
 import {
@@ -35,9 +36,9 @@ import { classifyForcedTransactions } from "midgard-node/mpf/event-window.classi
 import { evaluateNormalBlockCandidates } from "midgard-node/mpf/process.evaluate-normal-block-candidates";
 import { buildDeterministicValidationTraceMembers } from "midgard-node/mpf/validation-trace";
 
-import { watcherForcedOperatorVerdict } from "../../src/indexers/user-event-indexer.js";
 import { replayForcedTransitionEffect } from "../../src/verification/block-replay.replay-forced-transition-effect.js";
 import { type ValidatedEventAuthority } from "../../src/verification/block-replay.watcher-block-replay-prior-state.js";
+import { watcherForcedOperatorVerdict } from "../../src/verification/user-event.js";
 
 export const context = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -48,6 +49,7 @@ export const context = {
   blockSlot: 100n,
 };
 const validation = {
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   expectedNetworkId: 0n,
   minFeeA: 0n,
   minFeeB: 0n,
@@ -165,6 +167,7 @@ export async function journey(
       strictnessProfile: "phase1_midgard",
     },
     phaseBConfig: {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       nowCardanoSlotNo: 100n,
       bucketConcurrency: 1,
       enforceScriptBudget: true,
@@ -182,6 +185,7 @@ export async function journey(
   });
   const replay = await Effect.runPromiseExit(
     replayValidationMachineEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...context,
       sourceKind: "forced",
       canonicalTransactionCbor: txCbor,
@@ -225,6 +229,7 @@ export async function journey(
         }
       : await Effect.runPromise(
           evaluateNormalBlockCandidates({
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             candidates: [phaseA],
             state: new Map(state),
             blockSlot: context.blockSlot,
@@ -241,6 +246,7 @@ export async function journey(
       ? null
       : await Effect.runPromiseExit(
           replayValidationMachineEvent({
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             ...context,
             sourceKind: "normal",
             canonicalTransactionCbor: native.txCbor,
@@ -266,6 +272,7 @@ export async function journey(
     retained.push(
       ...(await Effect.runPromise(
         buildDeterministicValidationTraceMembers({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           ...context,
           blockEndTime: new Date(context.blockEndTimeMs),
           transactions: [

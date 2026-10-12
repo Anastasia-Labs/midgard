@@ -7,7 +7,7 @@ import "@lucid-evolution/lucid";
 import "@lucid-evolution/scalus-uplc";
 import "effect";
 import "../indexers/authenticated-state-queue-observation.js";
-import "../l1/native-reward-account.js";
+import "./follower-reads.js";
 import "../runtime/process-config.js";
 import "../storage/retained-da-runtime.js";
 import "./action.js";

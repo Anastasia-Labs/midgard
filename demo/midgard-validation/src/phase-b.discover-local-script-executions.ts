@@ -3,6 +3,7 @@ import {
   decodeMidgardTxOutput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 
 import {
   findRedeemerByPointer,
@@ -39,6 +40,7 @@ export const discoverLocalScriptExecutions = (
   sources: readonly ScriptSource[],
   resolvedReferenceInputs: readonly ResolvedReferenceInput[],
   witnessKeyHashes: ReadonlySet<string>,
+  l1SlotConfig: L1SlotConfig,
 ):
   | Extract<LocalScriptValidationResult, { readonly kind: "rejected" }>
   | {
@@ -253,6 +255,7 @@ export const discoverLocalScriptExecutions = (
       fee: ledgerTx.fee,
       validityIntervalStart: ledgerTx.validityIntervalStart,
       validityIntervalEnd: ledgerTx.validityIntervalEnd,
+      l1SlotConfig,
       observers,
       signatories: candidate.derived.witnessKeyHashHexes,
       mint: mintValue,

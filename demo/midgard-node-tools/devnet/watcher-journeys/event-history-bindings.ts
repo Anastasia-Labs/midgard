@@ -3,7 +3,6 @@ import {
   TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  CrossBlockDuplicateEventStep02DatumSchema,
   FabricatedDepositStep02Datum,
   FabricatedDepositStep03Datum,
   FabricatedDepositStep04Datum,
@@ -24,19 +23,11 @@ export const bindJourneyEventAuthorities = async (
     | "proverCredential"
   >,
 ) => {
-  const [transition, settlement, deposit, withdrawal] = await Promise.all([
+  const [transition, deposit, withdrawal] = await Promise.all([
     bindFraudProofWorkflowDeployment({
       ...input,
       category: "transitionTrace",
       stepDatumSchemas: TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
-    }),
-    bindFraudProofWorkflowDeployment({
-      ...input,
-      category: "crossBlockDuplicateEvent",
-      stepDatumSchemas: [
-        FraudProofComputationThreadStepDatum,
-        CrossBlockDuplicateEventStep02DatumSchema,
-      ],
     }),
     bindFraudProofWorkflowDeployment({
       ...input,
@@ -64,7 +55,7 @@ export const bindJourneyEventAuthorities = async (
   const withdrawalHistory =
     withdrawal.resolvedContracts.contracts.fabricatedWithdrawal?.history;
   if (
-    [settlement, deposit, withdrawal].some(
+    [deposit, withdrawal].some(
       (binding) =>
         binding.deploymentFingerprint !== transition.deploymentFingerprint,
     ) ||
@@ -76,7 +67,6 @@ export const bindJourneyEventAuthorities = async (
     );
   return {
     transition,
-    settlement,
     history: { deposit: depositHistory, withdrawal: withdrawalHistory },
   };
 };

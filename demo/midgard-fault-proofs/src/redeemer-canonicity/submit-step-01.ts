@@ -16,7 +16,7 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import { submitNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   requireInitialStepDatum,
@@ -92,7 +92,7 @@ export const submitRedeemerCanonicityStep01Accepted = async ({
   readonly awaitConfirmation?: boolean;
 }) => {
   const finding = classifyRedeemerCanonicityFinding(rawFinding);
-  return await submitMissingNativeScriptTxBinding({
+  return await submitNativeTxBinding({
     lucid,
     blueprint,
     network,

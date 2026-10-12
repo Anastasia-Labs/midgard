@@ -27,10 +27,7 @@ import {
   createWatcherOperationsObservability,
   type WatcherOperationsSink,
 } from "../../src/runtime/operations-observability.js";
-import {
-  WatcherPublicDaClient,
-  type WatcherPublicDaRequest,
-} from "../../src/storage/public-da-client.js";
+import { type WatcherPublicDaRequest } from "../../src/storage/public-da-client.js";
 import {
   encodeWatcherPublicDaFrame,
   WatcherPublicDaLibp2pTransport,
@@ -79,7 +76,7 @@ const builtInfrastructure = (
       : {}),
     lucid: {} as never,
     signer: {} as never,
-    source: {} as never,
+    l1Source: {} as never,
     stateQueueMutationLeaseCoordinator: {} as never,
     ...overrides,
   },
@@ -184,7 +181,7 @@ describe("retained-DA fallback attempt history", () => {
         ...fallback,
         attempts: [...expectedPublic.attempts, ...attempts],
       });
-      expect(fetch).toHaveBeenCalledExactlyOnceWith(headerHash);
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(headerHash, undefined);
       expect(fallback.attempts).toEqual(attempts);
     },
   );
@@ -280,18 +277,6 @@ describe("explicit Custom DA transport", () => {
             genesisConfigPath: "/etc/cardano/shelley-genesis.json",
             genesisIdentitySha256: "33".repeat(32),
           },
-          queryServices: [
-            {
-              kind: "ogmios",
-              identity: "local-ogmios",
-              endpoint: "ws://127.0.0.1:1337",
-            },
-            {
-              kind: "kupo",
-              identity: "local-kupo",
-              endpoint: "http://127.0.0.1:1442",
-            },
-          ],
         },
       },
     });
@@ -395,7 +380,7 @@ describe("explicit Custom DA transport", () => {
     }
   });
 
-  it("carries the same Custom admission through retained runtime and public client requests", async () => {
+  it("carries the Custom admission through retained runtime requests", async () => {
     const identity = makeWatcherDeploymentAuthorityFixture({
       network: "Custom",
     }).result;
@@ -421,22 +406,11 @@ describe("explicit Custom DA transport", () => {
         "ab".repeat(28),
       );
       expect(result.ok).toBe(false);
-      // The real transport delivers the peer's not-found response. The public
-      // client also reaches transport, then refuses this non-capabilities reply.
+      // The real transport delivers the peer's not-found response.
       expect(
         result.attempts.every((attempt) => attempt.status === "not_found"),
       ).toBe(true);
-      const retainedDials = f.dialProtocol.mock.calls.length;
-      expect(retainedDials).toBeGreaterThan(0);
-      const client = new WatcherPublicDaClient({
-        config: watcherConfig,
-        deploymentIdentity: identity,
-        transport: f.transport,
-      });
-      await expect(
-        client.fetchPayloadByHeader({ headerHash: "ab".repeat(28) }),
-      ).rejects.toMatchObject({ attempts: [{ status: "invalid_content" }] });
-      expect(f.dialProtocol.mock.calls.length).toBeGreaterThan(retainedDials);
+      expect(f.dialProtocol.mock.calls.length).toBeGreaterThan(0);
     } finally {
       await runtime.close();
     }

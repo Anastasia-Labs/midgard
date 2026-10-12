@@ -9,11 +9,6 @@ import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   type HeaderDecision,
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptHistorySource,
-  type HistoricalNativeScriptProviderRoster,
-  type HistoricalNativeScriptSourceRoster,
-  makeLucidForSubmit,
   parseContractDeploymentInfo,
   requireDeploymentReferenceScript,
   resolveProverSigner,
@@ -23,22 +18,28 @@ import {
   type WorkflowAdapterRunnerInput,
   type WorkflowApplicationRegistry,
 } from "@al-ft/midgard-fault-proofs";
+import { type FraudProofL1Source } from "@al-ft/midgard-fault-proofs";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import {
+  Lucid,
+  type LucidEvolution,
+  type Provider,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import { type WatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
+import type { WatcherUserEvents } from "../l1-follower/user-events.js";
 import type { WatcherConfig } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentAuthority } from "../runtime/deployment-authority.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import { type WatcherUserEventRuntime } from "../runtime/user-event-runtime.js";
 import type { WatcherReplayTranscriptStore } from "../storage/replay-transcript-store.js";
 import {
   type WatcherRetainedDaRuntimeOptions,
@@ -58,16 +59,6 @@ export const WATCHER_FAULT_PROOF_STARTUP_READINESS =
  * still requires one, so it is this fixed placeholder.
  */
 export const WATCHER_STARTUP_READINESS_HEADER_HASH = "00".repeat(28);
-
-export type WatcherHistoricalNativeScriptHistoryOverlay = Readonly<{
-  sourceMode: "external_provider_quorum";
-  consistencyPolicy: "exact_bytes_all_providers_v1";
-  providers: readonly Readonly<{
-    sourceId: string;
-    operatorIdentitySha256: string;
-    authorityEndpoint: string;
-  }>[];
-}>;
 
 /**
  * The installed set is the family application registry's keys, read in the
@@ -127,32 +118,39 @@ export type WatcherFaultProofInfrastructureAuthority = Readonly<{
   manifestPath: string;
   blueprintPath: string;
   deploymentInfoPath: string;
-  historicalNativeScriptHistory: WatcherHistoricalNativeScriptHistoryOverlay;
+}>;
+
+/**
+ * The application's L1: the watcher's chain follower. `source` is the
+ * families' raw-read and signed-recovery source under one persisted source
+ * id; `provider` is the Lucid provider every binding builds through.
+ */
+export type WatcherFaultProofL1 = Readonly<{
+  source(sourceId: string): FraudProofL1Source;
+  provider: Provider;
 }>;
 
 export type WatcherFaultProofApplicationOptions = Readonly<{
+  l1: WatcherFaultProofL1;
   deploymentAuthority: VerifiedWatcherDeploymentAuthority;
   replayTranscriptStore: WatcherReplayTranscriptStore;
-  userEventRuntime: WatcherUserEventRuntime;
+  userEvents: WatcherUserEvents;
   infrastructure: WatcherFaultProofInfrastructureAuthority;
-  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
 }>;
 
 export type WatcherFaultProofApplicationConstructionOptions = Omit<
   WatcherFaultProofApplicationOptions,
   | "fundingProfileOverlay"
-  | "historicalNativeScriptCheckpointStore"
   | "deploymentAuthority"
   | "replayTranscriptStore"
-  | "userEventRuntime"
+  | "userEvents"
 > &
   Readonly<{
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     deploymentAuthority?: VerifiedWatcherDeploymentAuthority;
     replayTranscriptStore?: WatcherReplayTranscriptStore;
-    userEventRuntime?: WatcherUserEventRuntime;
-    historicalNativeScriptCheckpointStore?: HistoricalNativeScriptCheckpointStore;
+    userEvents?: WatcherUserEvents;
     fundingProfileOverlay?: WatcherWorkflowFundingProfileOverlay;
     unsafeTransportOptionsForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportOptionsForTest"];
     unsafeTransportFactoryForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportFactoryForTest"];
@@ -217,20 +215,12 @@ export type WatcherFaultProofApplication = Readonly<{
   close(): Promise<void>;
 }>;
 
-export type WatcherHistoricalNativeScriptAuthority = Readonly<{
-  checkpointStore: HistoricalNativeScriptCheckpointStore;
-  providerRoster: HistoricalNativeScriptProviderRoster;
-  historySource: HistoricalNativeScriptHistorySource;
-  l1SourceRoster: Promise<HistoricalNativeScriptSourceRoster>;
-}>;
-
 export type WatcherFaultProofApplicationDependencies = Readonly<{
   readText(path: string): Promise<string>;
   canonicalPath(path: string): Promise<string>;
   makeLucid(input: {
     readonly network: WatcherConfig["targetNetwork"];
-    readonly kupoHttpUrl: string;
-    readonly ogmiosUrl: string;
+    readonly provider: Provider;
     readonly slotConfig?: NonNullable<
       WatcherConfig["customNetwork"]
     >["slotConfig"];
@@ -256,16 +246,11 @@ export const productionDependencies: WatcherFaultProofApplicationDependencies =
   Object.freeze({
     readText: async (path) => await readFile(path, "utf8"),
     canonicalPath: realpath,
-    makeLucid: async ({ network, kupoHttpUrl, ogmiosUrl, slotConfig }) =>
-      await makeLucidForSubmit(
-        {
-          network,
-          provider: "Kupmios",
-          slotConfig,
-          kupoUrl: kupoHttpUrl,
-          ogmiosUrl,
-        },
-        Object.freeze({}),
+    makeLucid: async ({ network, provider, slotConfig }) =>
+      await Lucid(
+        provider,
+        network,
+        slotConfig === undefined ? {} : { slotConfig },
       ),
     resolveSigner: ({ network, secret }) =>
       resolveProverSigner(

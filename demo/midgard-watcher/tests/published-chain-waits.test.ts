@@ -61,8 +61,6 @@ const fixture = async (schedulerStart: number) => {
   ]);
   const lucid = {
     wallet: () => ({ address: async () => address }),
-    utxosAt: async () => [],
-    overrideUTxOs: vi.fn(),
     utxosAtWithUnit: async (_address: string, unit: string) =>
       outputs.get(unit) ?? [],
   } as unknown as LucidEvolution;

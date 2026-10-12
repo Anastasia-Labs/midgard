@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, copyFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
@@ -7,7 +7,7 @@ import { journalJsonDigest } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit } from "@lucid-evolution/lucid";
 import {
-  openWatcherFaultDecisionJournal,
+  readWatcherFaultDecisionEvidence,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
 } from "midgard-watcher";
 import { expect } from "vitest";
@@ -23,7 +23,6 @@ import type {
   JourneySuccessor,
   JourneySuccessorCheckpoint,
 } from "./fixture.js";
-import { prepareDuplicateEventHistory } from "./history-settlement.js";
 import {
   type JourneyExecution,
   WATCHER_LAUNCH_TIMEOUT_MS,
@@ -36,10 +35,9 @@ import { readJourneyTiming } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { verifyJourneyPublicDa } from "./public-da-preflight.js";
 import { measureJourneyStage } from "./stage-timing.js";
-import { prepareJourneyHistory } from "./staging.js";
 import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 
-/** One shared service lifecycle for acceptance and genuine history prerequisites. */
+/** One shared service lifecycle for a family's acceptance journey. */
 export const runJourney = async (
   runDirectory: string,
   execution: JourneyExecution,
@@ -50,10 +48,7 @@ export const runJourney = async (
     throw new Error("Journey session belongs to a different run directory");
   await session.assertHealthy();
   const { deployment, provider } = context;
-  const category =
-    execution.kind === "journey"
-      ? execution.fixture.category
-      : "crossBlockDuplicateEvent";
+  const category = execution.fixture.category;
   const directory = join(
     context.runDirectory,
     `work/journeys/${category === "transitionTrace" ? "transition-trace" : category}`,
@@ -88,13 +83,12 @@ export const runJourney = async (
         await pause(1000);
       }
     });
-  // A stage that waits on the watcher's authenticated replay is budgeted by
-  // progress, not by wall clock. The watcher resumes from its last persisted
-  // state-queue observation and walks every later L1 block through the
-  // trusted-head authority before it can classify a header, so a long L1 gap
-  // (a node outage, a frozen devnet) legitimately takes hours. The stage fails
-  // only when the authority head stops advancing for the whole allowance; the
-  // journey timeout still bounds the total.
+  // A stage that waits on the watcher's L1 catch-up is budgeted by progress,
+  // not by wall clock. The watcher's follower walks every L1 block it missed
+  // before it can classify a header, so a long L1 gap (a node outage, a frozen
+  // devnet) legitimately takes hours. The stage fails only when the watcher's
+  // progress stops for the whole allowance; the journey timeout still bounds
+  // the total.
   const pollWhileReplaying = async <T>(
     name: string,
     action: () => Promise<T | undefined>,
@@ -118,51 +112,34 @@ export const runJourney = async (
       }
     });
   try {
-    const {
-      authority,
-      releaseFinality,
-      watcherConfig,
-      archives,
-      native,
-      retain,
-    } = session;
+    const { authority, releaseFinality, watcherConfig, native, retain } =
+      session;
     const reusedWatcher = session.watcherStarted();
     const baselineStartedAt = new Date().toISOString();
-    const baseline =
-      execution.kind === "journey"
-        ? await captureJourneyWorkflowBaseline(
-            session.workflowJournalDirectory,
-            execution.fixture.category,
-          )
-        : undefined;
-    if (baseline !== undefined)
-      await writeJourneyArtifact(join(directory, "workflow-baseline.json"), {
-        startedAt: baselineStartedAt,
-        finishedAt: new Date().toISOString(),
-        category,
-        prefixes: [...baseline].map(([headerHash, entries]) => ({
-          headerHash,
-          workflowId: entries[0]?.workflowId ?? null,
-          entryCount: entries.length,
-          journalDigest: journalJsonDigest(entries),
-        })),
-      });
-    const timing =
-      execution.kind === "journey"
-        ? await readJourneyTiming(context.runDirectory, category, {
-            authenticatedConfirmationDepth:
-              releaseFinality.policy.confirmationDepth,
-            actionDepth: JOURNEY_ACTION_DEPTH,
-          })
-        : undefined;
-    if (timing !== undefined) {
-      await writeJourneyArtifact(join(directory, "timing-plan.json"), timing);
-      console.info("Live watcher confirmation budget", timing);
-    }
+    const baseline = await captureJourneyWorkflowBaseline(
+      session.workflowJournalDirectory,
+      category,
+    );
+    await writeJourneyArtifact(join(directory, "workflow-baseline.json"), {
+      startedAt: baselineStartedAt,
+      finishedAt: new Date().toISOString(),
+      category,
+      prefixes: [...baseline].map(([headerHash, entries]) => ({
+        headerHash,
+        workflowId: entries[0]?.workflowId ?? null,
+        entryCount: entries.length,
+        journalDigest: journalJsonDigest(entries),
+      })),
+    });
+    const timing = await readJourneyTiming(context.runDirectory, category, {
+      authenticatedConfirmationDepth: releaseFinality.policy.confirmationDepth,
+      actionDepth: JOURNEY_ACTION_DEPTH,
+    });
+    await writeJourneyArtifact(join(directory, "timing-plan.json"), timing);
+    console.info("Live watcher confirmation budget", timing);
     const fixtureStage: JourneyFixtureStage = {
       context,
       directory,
-      historicalNativeScriptProviders: archives.configuration.providers,
       retain,
       readConfirmedTransaction: native.transaction,
       onHealthyPredecessor: async () => {
@@ -176,24 +153,6 @@ export const runJourney = async (
         console.info(`Live fixture: ${name}`);
       },
     };
-    if (execution.kind === "prepare_duplicate_event_history") {
-      const head = await stage("honest duplicate-event source history", () =>
-        prepareJourneyHistory(fixtureStage, async (input) => {
-          const history = await prepareDuplicateEventHistory(input);
-          console.info(
-            `Duplicate-event source ${history.source.headerHash} matures at ${new Date(Number(history.readyAt)).toISOString()}; settlement remains required.`,
-          );
-        }),
-      );
-      native.assertHealthy();
-      await writeJourneyArtifact(join(directory, "history-preparation.json"), {
-        deploymentFingerprint: deployment.manifest.manifestId,
-        status: "prepared",
-        head: head.headerHash,
-      });
-      succeeded = true;
-      return;
-    }
     const headPath = join(context.runDirectory, "work/journeys/head.json");
     if (!session.watcherStarted() && existsSync(headPath)) {
       const head = await readJourneyArtifact<{
@@ -232,14 +191,13 @@ export const runJourney = async (
       }),
     );
     const running = await session.ensureWatcher();
-    const { config, requireLive, operations, trustedHeadRevision } = running;
+    const { config, requireLive, operations, watcherProgress } = running;
     diagnostics = running.diagnostics;
     const verifiedHeaders = createJourneyVerifiedHeaders(running, directory);
-    const workflowBaseline = baseline?.get(staged.current.headerHash) ?? [];
+    const workflowBaseline = baseline.get(staged.current.headerHash) ?? [];
     await writeJourneyArtifact(join(directory, "session.json"), {
       sessionDirectory: session.directory,
       watcherUse: reusedWatcher ? "reused" : "started",
-      authorityProcess: session.authorityObserve(),
       configPath: running.configPath,
       bindingPreflightPath: join(
         session.directory,
@@ -248,7 +206,9 @@ export const runJourney = async (
       nativeEvidencePath: native.nativeEvidencePath,
       process: running.observe(),
     });
-    await writeJourneyArtifact(join(directory, "watcher-process.json"), config);
+    // Keep the process config the watcher was launched with: the parsed config
+    // carries derived fields (each DA peer's peerId) that the parser refuses.
+    await copyFile(running.configPath, join(directory, "watcher-process.json"));
     let nextStartupReport = 0;
     await pollWhileReplaying(
       reusedWatcher ? "shared watcher availability" : "normal watcher launcher",
@@ -281,22 +241,35 @@ export const runJourney = async (
           });
           nextStartupReport = Date.now() + 15_000;
         }
-        return status;
+        // While startup runs, `/v1/status` answers with a `startup:<stage>`
+        // reason and every other operations route answers 503 `starting`.
+        const reasons =
+          (status as { readinessReasons?: readonly string[] } | undefined)
+            ?.readinessReasons ?? [];
+        if (reasons.includes("startup_failed"))
+          throw new Error(
+            `Watcher startup failed and holds: ${JSON.stringify(status)}`,
+          );
+        return reasons.some((reason) => reason.startsWith("startup:"))
+          ? undefined
+          : status;
       },
-      // A watcher resuming after a long L1 outage replays every block it
-      // missed during user-event catch-up before it serves its operations
-      // endpoint, so the launcher is budgeted by trusted-head progress.
-      trustedHeadRevision,
+      // A watcher resuming after a long L1 outage catches up on every block it
+      // missed, so the launcher is budgeted by its progress.
+      watcherProgress,
       WATCHER_LAUNCH_TIMEOUT_MS,
     );
+    // The watcher holds the journal key; its rows are read as evidence.
     const readDecisions = async () =>
-      (
-        await openWatcherFaultDecisionJournal({
-          directory: config.workflowJournalDirectory,
-          deploymentFingerprint: deployment.manifest.manifestId,
-          launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-        })
-      ).readAll();
+      existsSync(
+        join(config.workflowJournalDirectory, "watcher-journals.sqlite"),
+      )
+        ? readWatcherFaultDecisionEvidence({
+            directory: config.workflowJournalDirectory,
+            deploymentFingerprint: deployment.manifest.manifestId,
+            launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+          }).map((decision) => ({ decision }))
+        : [];
     await poll(
       `automatic ${fixture.category} decision`,
       async () => {
@@ -319,9 +292,9 @@ export const runJourney = async (
     const completion = await verifyJourneyCorrection({
       workflowBaseline,
       actionDepth: JOURNEY_ACTION_DEPTH,
-      correctionTimeoutMs: timing?.correctionTimeoutMs,
-      progressAllowanceMs: timing?.transactionAllowanceMs,
-      reconciliationAllowanceMs: timing?.allowances.finalizedEvidenceStampMs,
+      correctionTimeoutMs: timing.correctionTimeoutMs,
+      progressAllowanceMs: timing.transactionAllowanceMs,
+      reconciliationAllowanceMs: timing.allowances.finalizedEvidenceStampMs,
       context,
       native,
       workflowJournalDirectory: config.workflowJournalDirectory,
@@ -391,8 +364,8 @@ export const runJourney = async (
         });
         return decision;
       },
-      trustedHeadRevision,
-      timing?.allowances.healthySuccessorObservationMs ?? 1_800_000,
+      watcherProgress,
+      timing.allowances.healthySuccessorObservationMs,
     );
     await verifiedHeaders.retain();
     await writeJourneyArtifact(
@@ -482,7 +455,7 @@ export const runJourney = async (
             requireLive();
             return (await finalizeEvidence()) === 0 ? true : undefined;
           },
-          timing?.allowances.finalizedEvidenceStampMs,
+          timing.allowances.finalizedEvidenceStampMs,
         ),
       );
     } else {

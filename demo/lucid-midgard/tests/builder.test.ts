@@ -283,6 +283,23 @@ describe("LucidMidgard builder fluent API", () => {
     );
   });
 
+  it("rejects an empty validity interval, whose upper bound is exclusive", async () => {
+    const midgard = await LucidMidgard.new(fakeProvider);
+
+    expect(() => midgard.newTx().validFrom(10n).validTo(10n)).toThrow(
+      BuilderInvariantError,
+    );
+    expect(() =>
+      midgard.newTx().validTo(10n).compose(midgard.newTx().validFrom(10n)),
+    ).toThrow(BuilderInvariantError);
+    expect(
+      midgard.newTx().validFrom(10n).validTo(11n).debugSnapshot(),
+    ).toMatchObject({
+      validityIntervalStart: 10n,
+      validityIntervalEnd: 11n,
+    });
+  });
+
   it("retains spend redeemers in canonical V1 builder state", async () => {
     const midgard = await LucidMidgard.new(fakeProvider);
     const tx = midgard.newTx().collectFrom([makeUtxo(makeOutRef(0x11))], {

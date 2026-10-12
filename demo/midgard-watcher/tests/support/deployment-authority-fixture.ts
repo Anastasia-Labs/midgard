@@ -25,7 +25,6 @@ import "./deployment-authority-fixture.build-watcher-authority-contracts.js";
 import "./deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 export {
   addWatcherHistoryFixtureMetadata,
-  asWireValue,
   type AuthorityContractFixture,
   type AuthorityReferenceScriptFixture,
   DA_SIGNERS_HASH,
@@ -45,7 +44,4 @@ export {
   type WatcherDeploymentAuthorityFixtureOptions,
   type WatcherHistoryFixtureRecipe,
 } from "./deployment-authority-fixture.build-watcher-authority-contracts.js";
-export {
-  makeDeploymentAuthority,
-  makeWatcherDeploymentAuthorityFixture,
-} from "./deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
+export { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";

@@ -104,3 +104,15 @@ every stale site and adds none (`--check` only reports).
   Blind spot: `.toString()`, `.toJson()` and `.clone()` on a harmonic value,
   and a hand-written recursive walk, are not seen.
   [eslint: midgard/no-recursive-plutus-data]
+- **Count L1 depth only in the heads module**
+  (`demo/midgard-l1-follower/src/heads.ts`, plan §9): the tip is depth 1,
+  `safe` is depth ≥ cd (liveness only), `final` is depth > k. Use `depth`,
+  `heightAtDepth`, `isSafe`, `isFinal` or `levelAtDepth` from
+  `@al-ft/midgard-l1-follower/heads`. Flagged: a `<`, `<=`, `>` or `>=` that
+  reads `confirmationDepth`, `automaticRecoveryMaxDepth`, `securityParameter`
+  (or a variant) directly or through a local constant, arithmetic or a call
+  argument, together with anything not constant. Shape checks on parameters
+  and constants, equality, and values returned by follower-package functions
+  pass. Blind spot: a parameter under another name (`finalityDepth`) or from
+  another module is not seen; block-mining loop counters are flagged (the
+  baselined test drivers). [eslint: midgard/depth-through-heads]

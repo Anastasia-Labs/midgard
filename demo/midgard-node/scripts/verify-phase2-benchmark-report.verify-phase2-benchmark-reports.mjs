@@ -319,23 +319,23 @@ export const verifyPhase2BenchmarkReports = (
       report.replicas.forEach((replica, index) => {
         const label = `replicas[${index}]`;
         equal(
-          replica.depositProjectionDeltaIntervalMs,
+          replica.depositIngestionIntervalMs,
           5_000,
-          `${label}.depositProjectionDeltaIntervalMs`,
+          `${label}.depositIngestionIntervalMs`,
         );
         const activeDurationMs = finite(
-          replica.depositProjectionActiveDurationMs,
-          `${label}.depositProjectionActiveDurationMs`,
+          replica.depositIngestionActiveDurationMs,
+          `${label}.depositIngestionActiveDurationMs`,
         );
         atMost(
           activeDurationMs,
           replica.durationMs,
-          `${label}.depositProjectionActiveDurationMs`,
+          `${label}.depositIngestionActiveDurationMs`,
         );
         atLeast(
           activeDurationMs,
           replica.durationMs - FULL_GATE_FINAL_FLUSH_ALLOWANCE_MS,
-          `${label}.depositProjectionActiveDurationMs`,
+          `${label}.depositIngestionActiveDurationMs`,
         );
         atLeast(
           replica.writeBehindFinalFlushMs,
@@ -347,20 +347,20 @@ export const verifyPhase2BenchmarkReports = (
           FULL_GATE_FINAL_FLUSH_ALLOWANCE_MS,
           `${label}.writeBehindFinalFlushMs`,
         );
-        const minimumBumps = Math.max(
+        const minimumDepositIngestions = Math.max(
           1,
           Math.floor(
             (replica.durationMs - FULL_GATE_FINAL_FLUSH_ALLOWANCE_MS) / 5_000,
           ) - 1,
         );
         atLeast(
-          replica.depositProjectionDeltaBumps,
-          minimumBumps,
-          `${label}.depositProjectionDeltaBumps`,
+          replica.depositIngestions,
+          minimumDepositIngestions,
+          `${label}.depositIngestions`,
         );
         equal(
           replica.ledgerCacheDeltaApplies,
-          replica.depositProjectionDeltaBumps,
+          0,
           `${label}.ledgerCacheDeltaApplies`,
         );
         equal(
@@ -369,9 +369,9 @@ export const verifyPhase2BenchmarkReports = (
           `${label}.ledgerCacheFullReloads`,
         );
         atLeast(
-          replica.worstBumpThroughputRatio,
+          replica.worstDepositWindowThroughputRatio,
           0.95,
-          `${label}.worstBumpThroughputRatio`,
+          `${label}.worstDepositWindowThroughputRatio`,
         );
       });
       return report;

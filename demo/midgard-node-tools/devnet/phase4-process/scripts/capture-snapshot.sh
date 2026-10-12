@@ -17,7 +17,7 @@ mkdir -p "$snapshot_dir"
 cardano_image="$PHASE4_CARDANO_NODE_IMAGE"
 source_sha=$(tree_sha256 "$node_root/src")
 dist_sha=$(tree_sha256 "$node_root/dist")
-# The acceptance controller and the gated genesis/T1 commands are the tooling
+# The acceptance controller and the gated genesis command are the tooling
 # package's build, so the snapshot binds that source and distribution too.
 tools_source_sha=$(tree_sha256 "$tools_root/src")
 tools_dist_sha=$(tree_sha256 "$tools_root/dist")

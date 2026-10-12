@@ -480,7 +480,12 @@ for (const [text, needle, label] of [
   ],
   [
     stateCorrectionAuthoritySource,
-    "finalityPolicy: parseReleaseL1FinalityPolicy(manifest.l1Finality)",
+    "finalityPolicy: parseReleaseL1FinalityPolicy({",
+    "parsed release finality authority",
+  ],
+  [
+    stateCorrectionAuthoritySource,
+    "confirmationDepth: manifest.l1Finality.confirmationDepth",
     "manifest-bound release finality authority",
   ],
   [

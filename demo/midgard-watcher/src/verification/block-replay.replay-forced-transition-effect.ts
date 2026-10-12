@@ -24,16 +24,16 @@ import type {
   RejectCode,
 } from "@al-ft/midgard-validation/types";
 
-import {
-  WATCHER_FORCED_TX_VALID,
-  type WatcherForcedOperatorVerdict,
-} from "../indexers/user-event-indexer.js";
 import { type ValidatedEventAuthority } from "./block-replay.watcher-block-replay-prior-state.js";
 import {
   fail,
   type WatcherBlockReplayCommittedStep,
   type WatcherBlockReplayForcedValidationFact,
 } from "./block-replay.watcher-block-replay-result.js";
+import {
+  WATCHER_FORCED_TX_VALID,
+  type WatcherForcedOperatorVerdict,
+} from "./user-event.js";
 
 /**
  * The arm the node would record for a canonical rejection, when the

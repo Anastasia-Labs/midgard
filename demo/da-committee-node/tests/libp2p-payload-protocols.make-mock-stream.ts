@@ -11,8 +11,8 @@ import type {
 } from "../src/da/libp2p/DaLibp2pNode.js";
 import { DaLibp2pPayloadProtocolHandlers } from "../src/da/libp2p/payload-protocols.js";
 import type { DaStoredPayloadRootSet, Header } from "../src/domain.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
-import { tempDir } from "./helpers.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
 export const deploymentFingerprint = "01".repeat(32);
 
@@ -59,9 +59,9 @@ export const makeHandlers = async (
   }> = {},
 ): Promise<{
   readonly handlers: DaLibp2pPayloadProtocolHandlers;
-  readonly store: JsonFileCommitteeStore;
+  readonly store: PostgresCommitteeStore;
 }> => {
-  const store = await JsonFileCommitteeStore.open(await tempDir());
+  const store = await openTestCommitteeStore();
   return {
     store,
     handlers: new DaLibp2pPayloadProtocolHandlers({

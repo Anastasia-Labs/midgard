@@ -181,6 +181,7 @@ export const ensureWatcherReleaseBundle = async (
       network: manifest.network,
       blueprintHash,
       programCommitments: commitments,
+      l1SlotConfig: manifest.l1SlotConfig,
     },
     targetParameterSnapshot: manifest.cardanoProtocolParameters.snapshot,
   });

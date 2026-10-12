@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   admitAuthenticatedStateQueueHeaderObservation,
   type AuthenticatedStateQueueHeaderObservation,
@@ -9,7 +10,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { type CrossBlockSettlementAuthority } from "../cross-block-duplicate-event/settlement-authority.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type TransitionTraceEventAuthority } from "../transition-trace/l1-events.js";
 import {
@@ -21,10 +21,6 @@ import {
   type CompleteCanonicalReplay,
   type CompleteCanonicalReplayContext,
 } from "./complete-replay.js";
-import {
-  type HistoricalNativeScriptCheckpointStore,
-  type HistoricalNativeScriptHistorySource,
-} from "./historical-native-script-corpus.js";
 
 export const HEADER_CLASSIFIER =
   "midgard-production-header-classifier-v1" as const;
@@ -206,12 +202,8 @@ export const admittedClassifiers = new WeakMap<
   Readonly<{
     replayer: CompleteCanonicalReplay;
     confirmationDepth: number;
-    settlementAuthority?: CrossBlockSettlementAuthority;
     transitionTraceEventAuthority?: TransitionTraceEventAuthority;
-    historicalReplayAuthority?: Readonly<{
-      checkpointStore: HistoricalNativeScriptCheckpointStore;
-      historySource: HistoricalNativeScriptHistorySource;
-    }>;
+    l1SlotConfig: L1SlotConfig;
   }>
 >();
 

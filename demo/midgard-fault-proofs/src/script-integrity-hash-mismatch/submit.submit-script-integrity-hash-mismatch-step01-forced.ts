@@ -23,8 +23,10 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts.js";
-import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import {
+  type NativeTxBindingContracts,
+  submitNativeTxBinding,
+} from "../native-tx-binding.js";
 import type { PublishedProofChunk } from "../proof-chunk-carriage.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
@@ -65,9 +67,7 @@ const boundState = (
 export const submitScriptIntegrityHashMismatchStep01Accepted = async (
   args: Common & {
     blueprint: unknown;
-    network: Parameters<
-      typeof submitMissingNativeScriptTxBinding
-    >[0]["network"];
+    network: Parameters<typeof submitNativeTxBinding>[0]["network"];
     stateQueueBlockOutRef: string;
     txInclusion: SubmitStep01TxInclusion;
     publishedProofChunks?: readonly PublishedProofChunk[];
@@ -99,11 +99,11 @@ export const submitScriptIntegrityHashMismatchStep01Accepted = async (
     } as never,
     IntegrityStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBinding({
+  return await submitNativeTxBinding({
     lucid: args.lucid,
     blueprint: args.blueprint,
     network: args.network,
-    contracts: args.contracts as unknown as MissingNativeScriptTxContracts,
+    contracts: args.contracts as unknown as NativeTxBindingContracts,
     signer: args.signer,
     stepIndex: 0,
     threadUtxo,

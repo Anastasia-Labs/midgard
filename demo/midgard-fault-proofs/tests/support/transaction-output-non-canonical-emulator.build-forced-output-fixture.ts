@@ -41,10 +41,6 @@ import {
   transitionTraceOutRef,
 } from "./submit-init-emulator-shared.js";
 
-export type ForcedOutputFixture = Awaited<
-  ReturnType<typeof buildForcedOutputFixture>
->;
-
 /**
  * A block whose single forced transaction carries `outputCbor` at output 0 and
  * was rejected for `OutputNonCanonical { output_index }`; the retained DA is

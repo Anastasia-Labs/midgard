@@ -127,12 +127,17 @@ export const buildConcludePayoutTxProgram = (
       config.referenceScripts,
       resolvedReferenceScripts,
     );
-    const feeInput = yield* selectFeeInputProgram(lucid, config.feeInput, [
-      config.payoutInput,
-      hubOracleRefInput,
-      ...(refs.payoutSpending === undefined ? [] : [refs.payoutSpending]),
-      ...(refs.payoutMinting === undefined ? [] : [refs.payoutMinting]),
-    ]);
+    const feeInput = yield* selectFeeInputProgram(
+      lucid,
+      config.feeInput,
+      [
+        config.payoutInput,
+        hubOracleRefInput,
+        ...(refs.payoutSpending === undefined ? [] : [refs.payoutSpending]),
+        ...(refs.payoutMinting === undefined ? [] : [refs.payoutMinting]),
+      ],
+      config.walletInputs,
+    );
     const txInputs = [config.payoutInput, feeInput];
     const txReferenceInputs = referenceInputs(hubOracleRefInput, [
       refs.payoutSpending,
@@ -236,6 +241,7 @@ export const buildConcludePayoutTxProgram = (
     return yield* completeWithFinalLayoutProgram({
       label: "payout conclusion",
       lucid,
+      walletInputs: config.walletInputs,
       walletInputExclusions: [...txInputs, ...txReferenceInputs],
       makeTx,
       resolveLayout: () =>

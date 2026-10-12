@@ -22,8 +22,7 @@ Review hash and unit shape checks in `operator-lifecycle-emulator.test.ts`,
 `midgard-contracts.test.ts`, watcher adapter/storage/replay tests, and lucid's
 native fixture tests. Also review runtime export checks in
 `execution-native-script-invalid.test.ts`, `canonical-evidence-source.test.ts`
-and `da-hash-preimage.test.ts`, and the datum check in
-`tx-order-carriage-l1-observation.test.ts`.
+and `da-hash-preimage.test.ts`.
 
 These are candidates for stronger assertions, not confirmed redundant checks.
 `listen-admission-auth.test.ts` checks that a router exists under a name

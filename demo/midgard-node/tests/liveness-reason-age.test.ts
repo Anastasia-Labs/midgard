@@ -52,6 +52,7 @@ describe("liveness reason age and escalation", () => {
       {
         source,
         reason: "held",
+        detail: "detail",
         ageMs: expect.any(Number),
         escalateAfterMs: 60_000,
         escalated: false,
@@ -80,6 +81,24 @@ describe("liveness reason age and escalation", () => {
     });
     await Effect.runPromise(clearLivenessReason(globals, source));
     expect(gauge(source)).toBe(0);
+  });
+
+  it("reports the latest detail's first line, clipped", async () => {
+    const globals = node();
+    const source = "age-test:detail";
+    const [entry] = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* raiseLivenessIncident(globals, source, "held", "first cause");
+        yield* raiseLivenessIncident(
+          globals,
+          source,
+          "held",
+          `${"x".repeat(600)}\n    at stack frame`,
+        );
+        return yield* activeLivenessReasons(globals);
+      }),
+    );
+    expect(entry!.detail).toBe(`${"x".repeat(500)}…`);
   });
 
   it("never escalates a reason whose source gave no bound, however old", async () => {
@@ -119,6 +138,7 @@ describe("liveness reason age and escalation", () => {
       {
         source: L1_CONTROL_PLANE_LIVENESS_SOURCE,
         reason: "l1_control_plane_wedged:holder=settlement:overrun_ms=300000",
+        detail: null,
         ageMs: null,
         escalateAfterMs: null,
         escalated: false,
@@ -126,6 +146,7 @@ describe("liveness reason age and escalation", () => {
       {
         source: "age-test:raw",
         reason: "raw",
+        detail: null,
         ageMs: null,
         escalateAfterMs: null,
         escalated: false,

@@ -2,7 +2,6 @@ import { type UTxO } from "@lucid-evolution/lucid";
 
 import { type ActiveOperatorDatum } from "../active-operators.js";
 import {
-  MAX_INACTIVITY_BETWEEN_BLOCK_COMMITMENTS_MS,
   MAX_INACTIVITY_STRIKES,
   MAX_VALIDITY_RANGE_LENGTH_MS,
   NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS,
@@ -22,7 +21,6 @@ import type { NodeWithDatum } from "./layout.js";
 export type InactivityTimingParameters = {
   readonly shiftDurationMs: bigint;
   readonly newShiftInactivityGracePeriodMs: bigint;
-  readonly maxInactivityBetweenBlockCommitmentsMs: bigint;
   readonly userEventsNegligenceTimeoutMs: bigint;
   readonly maxValidityRangeLengthMs: bigint;
   readonly maxInactivityStrikes: bigint;
@@ -32,8 +30,6 @@ export const DEFAULT_INACTIVITY_TIMING_PARAMETERS: InactivityTimingParameters =
   {
     shiftDurationMs: SHIFT_DURATION_MS,
     newShiftInactivityGracePeriodMs: NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS,
-    maxInactivityBetweenBlockCommitmentsMs:
-      MAX_INACTIVITY_BETWEEN_BLOCK_COMMITMENTS_MS,
     userEventsNegligenceTimeoutMs: USER_EVENTS_NEGLIGENCE_TIMEOUT_MS,
     maxValidityRangeLengthMs: MAX_VALIDITY_RANGE_LENGTH_MS,
     maxInactivityStrikes: MAX_INACTIVITY_STRIKES,
@@ -53,9 +49,11 @@ export const DEFAULT_STRIKE_VALIDITY_WINDOW_MS = 120_000n;
 export type NeglectedUserEventKind = "Deposit" | "Withdrawal" | "TxOrder";
 
 /**
- * A user event the scheduled operator left unprocessed. The caller locates the
- * UTxO itself: this module never scans the deposit, withdrawal, or tx-order
- * sets. For a deposit or withdrawal it is the event's Order node in that
+ * A user event the scheduled operator left undelivered: its inclusion time is
+ * after the state-queue tail's `end_time`, so no committed block covers it. A
+ * strike must cite one; an operator with no due user event cannot be struck.
+ * The caller locates the UTxO itself: this module never scans the deposit,
+ * withdrawal, or tx-order sets. For a deposit or withdrawal it is the event's Order node in that
  * kind's event-history list, which the scheduler authenticates by the list's
  * policy and address; for a tx order it is the tx-order UTxO.
  */
@@ -70,16 +68,18 @@ export type NeglectedUserEventClaim = {
 };
 
 /**
- * Which of the three terms of the on-chain `max(..)` decided the threshold.
+ * Which of the two terms of the on-chain `max(..)` decided the threshold.
  */
 export type InactivityThresholdSource =
   | "new-shift-grace-period"
-  | "block-commitment-gap"
   | "neglected-user-event";
 
 export type InactivityThresholdUnsatisfiableReason =
-  /** On-chain `expect inclusion_time >= last_state_queue_elements_end_time`. */
-  | "neglected-event-precedes-state-queue-tail"
+  /**
+   * On-chain `expect event_inclusion_time > last_state_queue_elements_end_time`:
+   * a committed block already covers the event.
+   */
+  | "neglected-event-delivered"
   /** On-chain `expect inactivity_threshold < shift_end_time(start)`. */
   | "threshold-not-before-shift-end";
 
@@ -106,7 +106,7 @@ export type ComputeInactivityThresholdInput = {
    * when no block is committed).
    */
   readonly stateQueueTailEndTimeMs: bigint;
-  readonly neglectedEvent?: Pick<
+  readonly neglectedEvent: Pick<
     NeglectedUserEventClaim,
     "kind" | "inclusionTimeMs"
   >;
@@ -119,10 +119,9 @@ export type ComputeInactivityThresholdInput = {
  * transaction.
  *
  * On-chain (`validate_operator_inactivity_and_get_its_link`) the threshold is
- * `max(shift_start + new_shift_inactivity_grace_period, X)`, where `X` is the
- * state-queue tail's `end_time + max_inactivity_between_block_commitments`
- * for `NoNeglectedUserEvent`, or the referenced user event's `inclusion_time +
- * user_events_negligence_timeout` for the three neglected variants. The
+ * `max(shift_start + new_shift_inactivity_grace_period, inclusion_time +
+ * user_events_negligence_timeout)` for the cited user event, whose
+ * `inclusion_time` must be after the state-queue tail's `end_time`. The
  * threshold must fall strictly before the end of the shift it convicts.
  */
 export const computeInactivityThreshold = ({
@@ -135,27 +134,20 @@ export const computeInactivityThreshold = ({
   const graceThresholdMs =
     shiftStartMs + params.newShiftInactivityGracePeriodMs;
   const eventThresholdMs =
-    neglectedEvent === undefined
-      ? stateQueueTailEndTimeMs + params.maxInactivityBetweenBlockCommitmentsMs
-      : neglectedEvent.inclusionTimeMs + params.userEventsNegligenceTimeoutMs;
+    neglectedEvent.inclusionTimeMs + params.userEventsNegligenceTimeoutMs;
   const thresholdMs =
     graceThresholdMs >= eventThresholdMs ? graceThresholdMs : eventThresholdMs;
   const source: InactivityThresholdSource =
     graceThresholdMs >= eventThresholdMs
       ? "new-shift-grace-period"
-      : neglectedEvent === undefined
-        ? "block-commitment-gap"
-        : "neglected-user-event";
-  if (
-    neglectedEvent !== undefined &&
-    neglectedEvent.inclusionTimeMs < stateQueueTailEndTimeMs
-  ) {
+      : "neglected-user-event";
+  if (neglectedEvent.inclusionTimeMs <= stateQueueTailEndTimeMs) {
     return {
       kind: "unsatisfiable",
-      reason: "neglected-event-precedes-state-queue-tail",
+      reason: "neglected-event-delivered",
       thresholdMs,
       shiftEndMs,
-      detail: `neglected ${neglectedEvent.kind} inclusion_time=${neglectedEvent.inclusionTimeMs.toString()} precedes state-queue tail end_time=${stateQueueTailEndTimeMs.toString()}`,
+      detail: `neglected ${neglectedEvent.kind} inclusion_time=${neglectedEvent.inclusionTimeMs.toString()} is not after state-queue tail end_time=${stateQueueTailEndTimeMs.toString()}, so a committed block covers it`,
     };
   }
   if (thresholdMs >= shiftEndMs) {
@@ -223,6 +215,13 @@ export type InactivityTakeoverValidity = {
 export type InactivityTakeoverPlan =
   /** The scheduler holds `NoActiveOperators`; there is no shift to strike. */
   | { readonly kind: "no-shift" }
+  /**
+   * No user event is undelivered: every deposit, withdrawal and tx order is
+   * at or before the state-queue tail's `end_time`. An operator below the
+   * strike cap with no due L1 work cannot be struck, however long its shift
+   * has been idle.
+   */
+  | { readonly kind: "no-neglected-event"; readonly currentOperator: string }
   | {
       readonly kind: "not-yet";
       readonly currentOperator: string;
@@ -240,7 +239,9 @@ export type InactivityTakeoverPlan =
   /**
    * The node already carries `max_inactivity_strikes`, so another strike would
    * break `new_inactivity_strikes <= max_inactivity_strikes`. The operator has
-   * to be force-retired instead.
+   * to be force-retired instead, which the chain allows at any time and with
+   * or without an undelivered event: forced retirement checks the strike
+   * count alone.
    */
   | {
       readonly kind: "strikes-exhausted";
@@ -248,8 +249,8 @@ export type InactivityTakeoverPlan =
       readonly skippedNode: ActiveOperatorNode;
       readonly inactivityStrikes: bigint;
       readonly maxInactivityStrikes: bigint;
-      readonly thresholdMs: bigint;
-      readonly shiftEndMs: bigint;
+      /** Start of the shift the exhausted operator holds. */
+      readonly shiftStartMs: bigint;
     }
   | {
       readonly kind: "ready";
@@ -266,7 +267,7 @@ export type InactivityTakeoverPlan =
       readonly validity: InactivityTakeoverValidity;
       /** Equals `validTo - 1`, the inclusive upper bound the scheduler reads. */
       readonly newStartTime: bigint;
-      readonly neglectedEvent: NeglectedUserEventClaim | undefined;
+      readonly neglectedEvent: NeglectedUserEventClaim;
     };
 
 /**
@@ -281,7 +282,11 @@ export type PlanInactivityTakeoverInput = {
   readonly snapshot: InactivityDirectoryView;
   readonly nowMs: bigint;
   readonly params?: InactivityTimingParameters;
-  readonly neglectedEvent?: NeglectedUserEventClaim;
+  /**
+   * The undelivered user event the strike cites
+   * (`selectNeglectedUserEvent`), or null when there is none.
+   */
+  readonly neglectedEvent: NeglectedUserEventClaim | null;
   readonly validityWindowMs?: bigint;
   /**
    * Cardano validity bounds are slots, so the POSIX times the validator reads

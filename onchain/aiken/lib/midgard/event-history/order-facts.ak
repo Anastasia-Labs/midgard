@@ -7,9 +7,9 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash, blake2b_256}
 use aiken/primitive/bytearray
-use cardano/address.{Address}
+use cardano/address.{Address, Credential, Pointer, Script, VerificationKey}
 use cardano/assets.{PolicyId, Value}
-use cardano/transaction.{Datum, Input, OutputReference, Transaction}
+use cardano/transaction.{Datum, DatumHash, Input, OutputReference, Transaction}
 use env
 use midgard/common/utils
 use midgard/event_history/data_budget
@@ -79,6 +79,51 @@ pub fn payload_id(payload: Payload) -> OutputReference {
   }
 }
 
+/// An inline payload within the deployment's node and inline byte limits.
+fn inline_payload(
+  payload: Payload,
+  inline_limit: Int,
+  max_payload_nodes: Int,
+  external_reference_index: Option<Int>,
+) -> Payload {
+  expect external_reference_index == None
+  expect data_budget.within_nodes(payload, max_payload_nodes)
+  expect bytearray.length(cbor.serialise(payload)) <= inline_limit
+  payload
+}
+
+/// The authenticated retention datum an external payload is read from.
+fn external_data(
+  facts: Facts,
+  storage_datum_hash: ByteArray,
+  tx: Transaction,
+  retention_address: Address,
+  max_payload_nodes: Int,
+  external_reference_index: Option<Int>,
+) -> retained_data.EventData {
+  expect Some(index) = external_reference_index
+  retained_data.authenticate(
+    tx.reference_inputs,
+    tx.inputs,
+    index,
+    retention_address,
+    user_events.out_ref_to_nonce(facts.event_id),
+    storage_datum_hash,
+    max_payload_nodes,
+  )
+}
+
+/// The opened payload within the total byte limit and naming the order's event.
+fn bounded_payload(
+  payload: Payload,
+  facts: Facts,
+  max_payload_bytes: Int,
+) -> Payload {
+  expect bytearray.length(cbor.serialise(payload)) <= max_payload_bytes
+  expect payload_id(payload) == facts.event_id
+  payload
+}
+
 /// The inline limit is supplied by the measured deployment recipe. It bounds
 /// serialized Plutus Data, not JSON, and is not inferred from initial tx fit.
 pub fn open_payload(
@@ -91,30 +136,57 @@ pub fn open_payload(
   external_reference_index: Option<Int>,
 ) -> Payload {
   let payload = when facts.location is {
-    Inline { payload } -> {
-      expect external_reference_index == None
-      expect data_budget.within_nodes(payload, max_payload_nodes)
-      expect bytearray.length(cbor.serialise(payload)) <= inline_limit
-      payload
-    }
-    External { storage_datum_hash } -> {
-      expect Some(index) = external_reference_index
-      let data = retained_data.authenticate(
-        tx.reference_inputs,
-        tx.inputs,
-        index,
-        retention_address,
-        user_events.out_ref_to_nonce(facts.event_id),
-        storage_datum_hash,
+    Inline { payload } ->
+      inline_payload(
+        payload,
+        inline_limit,
         max_payload_nodes,
+        external_reference_index,
+      )
+    External { storage_datum_hash } -> {
+      let data = external_data(
+        facts,
+        storage_datum_hash,
+        tx,
+        retention_address,
+        max_payload_nodes,
+        external_reference_index,
       )
       expect payload: Payload = data.event_payload
       payload
     }
   }
-  expect bytearray.length(cbor.serialise(payload)) <= max_payload_bytes
-  expect payload_id(payload) == facts.event_id
-  payload
+  bounded_payload(payload, facts, max_payload_bytes)
+}
+
+/// Admission accepts only orders the node's decoder accepts: every credential
+/// hash is 28 bytes.
+fn decodable_credential(credential: Credential) -> Bool {
+  when credential is {
+    VerificationKey(hash) | Script(hash) -> bytearray.length(hash) == 28
+  }
+}
+
+/// Admission accepts only orders the node's decoder accepts: credential hashes
+/// of 28 bytes and a stake credential that is absent or inline.
+fn decodable_address(address: Address) -> Bool {
+  and {
+    decodable_credential(address.payment_credential),
+    when address.stake_credential is {
+      None -> True
+      Some(address.Inline(credential)) -> decodable_credential(credential)
+      Some(Pointer { .. }) -> False
+    },
+  }
+}
+
+/// Admission accepts only orders the node can pay out or refund: a datum hash
+/// is 32 bytes, the only length an L1 output's datum hash has.
+fn payable_datum(datum: Datum) -> Bool {
+  when datum is {
+    DatumHash(hash) -> bytearray.length(hash) == 32
+    _ -> True
+  }
 }
 
 /// Called after structural insertion/promotion has authenticated the output.
@@ -150,40 +222,70 @@ pub fn admit(
     user_events.out_ref_to_nonce(facts.event_id),
     facts.structural_lovelace,
   )
-  let payload = open_payload(
-    facts,
-    tx,
-    retention_address,
-    inline_limit,
-    max_payload_bytes,
-    max_payload_nodes,
-    external_reference_index,
-  )
+  // As `open_payload`, and the node also decodes an external payload's
+  // retention datum, so its reclamation credential must be decodable.
+  let opened = when facts.location is {
+    Inline { payload } ->
+      inline_payload(
+        payload,
+        inline_limit,
+        max_payload_nodes,
+        external_reference_index,
+      )
+    External { storage_datum_hash } -> {
+      let data = external_data(
+        facts,
+        storage_datum_hash,
+        tx,
+        retention_address,
+        max_payload_nodes,
+        external_reference_index,
+      )
+      expect decodable_credential(data.reclaim_auth)
+      expect payload: Payload = data.event_payload
+      payload
+    }
+  }
+  let payload = bounded_payload(opened, facts, max_payload_bytes)
   expect
     when kind is {
       Deposit -> {
-        expect DepositPayload { .. } = payload
+        expect DepositPayload { event } = payload
+        let l2_network_id = event.info.l2_network_id
         // Preserve the existing deposit limit, including ADA when present.
+        // Admission accepts only addresses the L2 projection maps: Midgard's
+        // L2 network ids, testnet 0 and mainnet 1, and an address the node's
+        // decoder accepts.
         and {
           list.length(assets.flatten(original_assets)) <= env.max_tokens_allowed_in_deposits,
           funding.deposit_is_funded(original_assets),
+          l2_network_id == 0 || l2_network_id == 1,
+          decodable_address(event.info.l2_address),
         }
       }
       Withdrawal -> {
-        expect WithdrawalPayload { event, refund_datum, .. } = payload
+        expect WithdrawalPayload { event, refund_address, refund_datum } = payload
+        let body = event.info.body
         let expected_value = assets.from_lovelace(
           assets.lovelace_of(output.value),
         )
           |> assets.add(policy, user_events.out_ref_to_nonce(facts.event_id), 1)
+        // Admission accepts only orders the node's decoder accepts: a 32-byte
+        // L2 transaction id, an output index the ledger key encodes (u16), a
+        // 28-byte owner, decodable addresses and payable datums.
         and {
           facts.structural_lovelace == 0,
           output.value == expected_value,
           event.info.validity == ledger_state.WithdrawalIsValid,
-          funding.withdrawal_is_funded(
-            original_assets,
-            event.info.body,
-            refund_datum,
-          ),
+          bytearray.length(body.l2_outref.transaction_id) == 32,
+          body.l2_outref.output_index >= 0,
+          body.l2_outref.output_index <= 65535,
+          bytearray.length(body.l2_owner) == 28,
+          decodable_address(body.l1_address),
+          decodable_address(refund_address),
+          payable_datum(body.l1_datum),
+          payable_datum(refund_datum),
+          funding.withdrawal_is_funded(original_assets, body, refund_datum),
         }
       }
     }

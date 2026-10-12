@@ -29,8 +29,16 @@ export const PASSED_CONCLUSIONS = new Set(["success", "neutral"]);
 
 export class QueryError extends Error {}
 
+// Each gh call is bounded, so a hung connection is a failed look (exit 3),
+// never a wait without end.
+export const GH_TIMEOUT_MS = 120_000;
+
 export const ghRunner = (args) =>
-  spawnSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  spawnSync("gh", args, {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: GH_TIMEOUT_MS,
+  });
 
 export const call = (run, args) => {
   let result;

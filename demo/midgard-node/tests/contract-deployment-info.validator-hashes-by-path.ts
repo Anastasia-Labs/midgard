@@ -4,6 +4,7 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type {
   MidgardValidators,
   ReferenceScriptAuthPolicyDeploymentInfo,
@@ -75,6 +76,7 @@ export const TEST_CARDANO_PARAMETERS = {
 } as const;
 
 const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestIdentityContext = {
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
   economics: DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
   cardanoProtocolParameters: {

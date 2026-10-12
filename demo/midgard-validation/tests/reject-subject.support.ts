@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -56,7 +57,12 @@ export const phaseBRejection = async (
       new Map(
         state.map(([outRef, output]) => [outRef.toString("hex"), output]),
       ),
-      { nowCardanoSlotNo: 100n, bucketConcurrency: 1, ...config },
+      {
+        nowCardanoSlotNo: 100n,
+        bucketConcurrency: 1,
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        ...config,
+      },
     ),
   );
   expect(result.accepted).toHaveLength(0);

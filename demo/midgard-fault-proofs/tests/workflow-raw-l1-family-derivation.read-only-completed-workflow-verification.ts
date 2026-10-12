@@ -152,7 +152,7 @@ describe("read-only completed workflow verification", () => {
     const point = value.snapshot.cursor.point;
     const shallow = {
       ...value.snapshot,
-      provenance: { ...value.snapshot.provenance, ogmiosTip: point },
+      provenance: { ...value.snapshot.provenance, tipPoint: point },
       cursor: { ...value.snapshot.cursor, tip: point, confirmationDepth: 1 },
       transactions: value.snapshot.transactions.map((tx) => ({
         ...tx,
@@ -275,7 +275,7 @@ describe("read-only completed workflow verification", () => {
       };
       const shallow = {
         ...value.snapshot,
-        provenance: { ...value.snapshot.provenance, ogmiosTip: tip },
+        provenance: { ...value.snapshot.provenance, tipPoint: tip },
         cursor: { ...value.snapshot.cursor, tip, confirmationDepth },
         transactions: value.snapshot.transactions.map((tx) => ({
           ...tx,

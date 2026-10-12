@@ -154,7 +154,6 @@ const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
       lucid.api,
       contracts,
       alignedEndTime,
-      undefined,
       lucid.referenceScriptsAddress,
       lucid.submitSlotSnapshot,
       true,

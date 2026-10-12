@@ -38,44 +38,29 @@ checked until it is committed.
 ## 3. Blueprint
 
 The fault-proofs emulator tests load `onchain/aiken/plutus.json`
-(`demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts:29`, or
-`MIDGARD_REAL_BLUEPRINT_PATH`). Rebuild it after any Aiken change, as CI does
-in "Build testnet Aiken blueprint":
+(`demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts:29`).
+`contrib test` rebuilds it after an Aiken change (`deployment:build`, as CI
+does in "Build testnet Aiken blueprint"), or copies a matching one from
+another checkout; the suites' global setup refuses a stale one. Never commit
+it.
+
+## 4. Package tests and typechecks
+
+While iterating, run the tests your change reaches, never a whole package
+by hand: the fault-proofs suite took 20.5 minutes at eight forks on
+2026-09-21 (its `vitest.config.ts`).
 
 ```bash
-pnpm --dir demo deployment:build preprod-testing
+node scripts/contrib.mjs test --package midgard-fault-proofs --related <changed path>...
 ```
 
-A stale `plutus.json` makes emulator tests fail against the old validators.
-Never commit it.
+Each run builds the stale dists its package needs (the SDK among them) first.
 
-## 4. Focused package tests
-
-Run the files your change touches, not whole suites. The fault-proofs suite
-took 20.5 minutes at eight forks on 2026-09-21 (its `vitest.config.ts`).
-
-```bash
-pnpm --dir demo/midgard-sdk run build
-pnpm --dir demo/midgard-sdk exec vitest run tests/fraud-proof-catalogue-registration.test.ts tests/reference-scripts.test.ts
-pnpm --dir demo/midgard-core exec vitest run tests/deployment-manifest-identity.test.ts
-pnpm --dir demo/midgard-fault-proofs exec vitest run tests/workflow.test.ts tests/family-application-registry.test.ts tests/typed-reason-disposition.test.ts
-pnpm --dir demo/midgard-fault-proofs exec vitest run tests/<kebab>-lifecycle.test.ts
-pnpm --dir demo/midgard-watcher exec vitest run tests/runtime/deployment-identity.test.ts
-```
-
-Then each package's typecheck, which is where most tables in
-[touch-points.md](touch-points.md) are enforced:
-
-```bash
-pnpm --dir demo/midgard-sdk run typecheck
-pnpm --dir demo/midgard-fault-proofs run typecheck
-pnpm --dir demo/midgard-node run typecheck
-pnpm --dir demo/midgard-watcher run typecheck
-pnpm --dir demo/da-committee-node run typecheck
-pnpm --dir demo/midgard-node-tools run typecheck
-```
-
-CI builds the SDK before the packages that import it; do the same.
+Then gate the change with `node scripts/preflight.mjs --full-local --base
+<target-ref>`. It builds and typechecks every package that depends on what
+changed (the typechecks enforce most tables in
+[touch-points.md](touch-points.md)), and runs lint, format, the goldens and
+the tests the change reaches in each package, each as CI runs it.
 
 ## 5. Node tests and the DA fixture
 
@@ -88,39 +73,42 @@ Regenerate the DA deployment fixture after the contract set changes, then
 rerun without the variable to confirm it matches:
 
 ```bash
-MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts
-pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts tests/deployment-manifest.test.ts
+node scripts/contrib.mjs artifacts sync --channel da-deployment-fixture
+node scripts/contrib.mjs test --package midgard-node --file tests/da-deployment-fixture-generation.test.ts --file tests/deployment-manifest.test.ts
 ```
 
 The fixture lands in
 `demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json`.
 
-## 6. Devnet journey counts (no CI job runs this)
+## 6. Devnet journey counts
 
 ```bash
-pnpm --dir demo/midgard-node-tools exec vitest run --config vitest.watcher-journeys.config.ts devnet/watcher-journeys/catalogue.test.ts
+node scripts/contrib.mjs test --package midgard-node-tools \
+  --config vitest.watcher-journeys.config.ts --file devnet/watcher-journeys/catalogue.test.ts
 ```
 
-Name the file. The same config includes every `devnet/watcher-journeys`
-test, including the `*-live.test.ts` files, with a one-hour timeout.
-As of 2026-09-25 the catalogue file ran 10 tests in about 17 seconds.
+The journeys config includes every `devnet/watcher-journeys` test, including
+the `*-live.test.ts` files, with a one-hour timeout, so contrib runs only the
+files `--file` names. As of 2026-09-25 the catalogue file ran 10 tests in about
+17 seconds.
 
 ## 7. What CI runs
 
-| CI step                                                               | Covers                                         |
-| --------------------------------------------------------------------- | ---------------------------------------------- |
-| Aiken CI / Compile and run the Aiken test suite with the pinned fork  | every Aiken test                               |
-| Aiken CI / Run normalized Aiken auto-formatter check                  | `aiken fmt`                                    |
-| Midgard Node CI / Build testnet Aiken blueprint                       | `plutus.json` for later steps                  |
-| Midgard Node CI / Build and test Midgard core DA transport            | core identity tables                           |
-| Midgard Node CI / Build, typecheck, and test Midgard SDK              | catalogue, token names, contract chain         |
-| Midgard Node CI / Typecheck fault-proof tooling                       | registry category coverage                     |
-| Midgard Node CI / Test fault-proof tooling                            | registry, classification, adapters, lifecycles |
-| Midgard Node CI / Verify DA committee transport and admission         | DA fixture helper                              |
-| Midgard Node CI / Test Midgard watcher                                | watcher deployment identity                    |
-| Midgard Node CI / Typecheck Midgard node                              | node category tables                           |
-| Midgard Node CI / Test Midgard node                                   | role mirror, DA fixture drift                  |
-| Midgard Node CI / Typecheck, lint, build, and test Midgard node tools | journey owner entry (not the count test)       |
+| CI step                                                              | Covers                                         |
+| -------------------------------------------------------------------- | ---------------------------------------------- |
+| Aiken CI / Compile and run the Aiken test suite with the pinned fork | every Aiken test                               |
+| Aiken CI / Run normalized Aiken auto-formatter check                 | `aiken fmt`                                    |
+| Midgard Node CI / Build testnet Aiken blueprint                      | `plutus.json` for later steps                  |
+| Midgard Node CI / Build and test Midgard core DA transport           | core identity tables                           |
+| Midgard Node CI / Build, typecheck, and test Midgard SDK             | catalogue, token names, contract chain         |
+| Midgard Node CI / Typecheck fault-proof tooling                      | registry category coverage                     |
+| Midgard Node CI / Test fault-proof tooling                           | registry, classification, adapters, lifecycles |
+| Midgard Node CI / Verify DA committee transport and admission        | DA fixture helper                              |
+| Midgard Node CI / Test Midgard watcher                               | watcher deployment identity                    |
+| Midgard Node CI / Typecheck Midgard node                             | node category tables                           |
+| Midgard Node CI / Test Midgard node                                  | role mirror, DA fixture drift                  |
+| Midgard Node CI / Typecheck, build, and test Midgard node tools      | journey owner entry (not the count test)       |
+| Midgard Node CI / Test the watcher journeys that need no devnet      | the journey count test                         |
 
 Report which of these you ran locally, with their pass counts, and which you
 left to CI.

@@ -7,6 +7,7 @@ import {
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core/codec/native-tx-carriage";
 import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   deriveFieldPreimageCertification,
   fieldPreimagePublicationDatumCbor,
@@ -83,6 +84,7 @@ export const buildTraceWithOutputs = async (
   });
   return Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...traceContext,
       transactionId: transaction.txId,
       canonicalTransactionCbor: transaction.txCbor,

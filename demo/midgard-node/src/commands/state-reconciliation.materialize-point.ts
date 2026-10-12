@@ -1,4 +1,3 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Either, Option } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
@@ -12,8 +11,6 @@ import {
 import {
   type JournalSummary,
   type LedgerPointResult,
-  type ObserverSnapshot,
-  type ObserverTransition,
 } from "./state-reconciliation.compares.js";
 import { describeError } from "./state-reconciliation.walk-merged-chain.js";
 
@@ -81,50 +78,3 @@ export const materializePoint = (
       },
     } satisfies LedgerPointResult;
   });
-
-export const decodeObserverState = (
-  raw: unknown,
-  policyIdHex: string,
-): ObserverSnapshot => {
-  const value = typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
-  if (typeof value !== "object" || value === null) {
-    return { kind: "invalid", reason: "state_record is not an object" };
-  }
-  const record = value as {
-    stateQueuePolicyId?: unknown;
-    admitted?: unknown;
-    pending?: unknown;
-  };
-  if (record.stateQueuePolicyId !== policyIdHex) {
-    return {
-      kind: "invalid",
-      reason: "state_record names a different state-queue policy",
-    };
-  }
-  if (!Array.isArray(record.admitted) || !Array.isArray(record.pending)) {
-    return {
-      kind: "invalid",
-      reason: "state_record lacks admitted/pending transition lists",
-    };
-  }
-  const admitted: ObserverTransition[] = [];
-  for (const candidate of record.admitted as unknown[]) {
-    const transition =
-      candidate as Partial<SDK.StateQueueAuthenticatedTransition>;
-    if (
-      typeof transition.transactionHash !== "string" ||
-      typeof transition.transitionKind !== "string" ||
-      typeof transition.transitionDigest !== "string" ||
-      !Array.isArray(transition.removedHeaderHashes)
-    ) {
-      return { kind: "invalid", reason: "admitted transition is malformed" };
-    }
-    admitted.push({
-      transactionHash: transition.transactionHash,
-      transitionKind: transition.transitionKind,
-      transitionDigest: transition.transitionDigest,
-      removedHeaderHashes: transition.removedHeaderHashes.map(String),
-    });
-  }
-  return { kind: "present", admitted, pendingCount: record.pending.length };
-};

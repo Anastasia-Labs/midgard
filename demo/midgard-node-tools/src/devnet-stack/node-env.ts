@@ -1,6 +1,16 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
+import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
+import { Cause, ConfigProvider, Effect, Exit } from "effect";
+import { NodeConfig } from "midgard-node/services/config";
+
+import {
+  assertNodeFollowerEnvironment,
+  L1OriginUndeterminedError,
+} from "../l1-origin.js";
+import type { DeployContext } from "./deploy.js";
+import { PREFLIGHT_L1_ORIGIN } from "./deployment-origin.js";
 import type { Identities } from "./identities.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 
@@ -30,7 +40,7 @@ export const DA_THRESHOLD = 2;
 export type Artifacts = {
   readonly nativeOwnerBinary: string;
   readonly nativeOwnerSha256: string;
-  readonly chainSyncBinary: string;
+  readonly transportBinary: string;
 };
 
 export type HubOracleOneShot = {
@@ -41,6 +51,8 @@ export type HubOracleOneShot = {
 /**
  * The node's complete environment. It is built from the run's own records
  * only; nothing is inherited from the calling shell or a checkout `.env`.
+ * `listen` runs the node's L1 follower, so it refuses an environment without
+ * the hub-oracle one-shot and the run's recorded L1 origin.
  */
 export const nodeEnvironment = (input: {
   readonly layout: Layout;
@@ -48,36 +60,23 @@ export const nodeEnvironment = (input: {
   readonly identities: Identities;
   readonly artifacts: Artifacts;
   readonly oneShot?: HubOracleOneShot;
-  /**
-   * The run's recorded L1 Shelley genesis pin (history-pin.ts). `null` only
-   * for the command that derives it; `listen` refuses to start without it.
-   */
-  readonly historyGenesisPin: string | null;
+  /** The run's recorded L1 origin (deployment-origin.ts); `listen` needs it. */
+  readonly l1Origin?: L1Origin;
   /** `listen` reads the producer DA manifest; commands read the contract one. */
   readonly role: "command" | "listen";
 }): Record<string, string> => {
-  const {
-    layout,
-    run,
-    identities,
-    artifacts,
-    oneShot,
-    historyGenesisPin,
-    role,
-  } = input;
-  if (historyGenesisPin === null && role === "listen")
-    throw new Error(
-      "listen needs the run's L1 history genesis pin; run up first",
+  const { layout, run, identities, artifacts, oneShot, l1Origin, role } = input;
+  if (role === "listen" && (oneShot === undefined || l1Origin === undefined))
+    throw new L1OriginUndeterminedError(
+      "listen needs the run's hub-oracle nonce and its recorded L1 origin; run up first",
     );
   const ports = servicePorts(run);
-  const kupo = `http://127.0.0.1:${run.kupoPort}`;
-  const ogmios = `http://127.0.0.1:${run.ogmiosPort}`;
   const contractManifest = existsSync(layout.contractManifest)
     ? layout.contractManifest
     : undefined;
   const deploymentManifest =
     role === "listen" ? layout.producerManifest : contractManifest;
-  return {
+  const env: Record<string, string> = {
     MIDGARD_DOTENV_MODE: "disabled",
     NETWORK: "Custom",
     MIDGARD_DEPLOYMENT_PROFILE: "local-devnet-testing",
@@ -85,15 +84,12 @@ export const nodeEnvironment = (input: {
     // Commands without a --run-state flag read it from here; the default is
     // relative to the node checkout, not this run.
     MIDGARD_RUN_STATE_PATH: layout.deploymentRunState,
-    L1_PROVIDER: "Kupmios",
-    L1_OGMIOS_KEY: ogmios,
-    L1_KUPO_KEY: kupo,
-    ...(historyGenesisPin === null
-      ? {}
-      : { L1_HISTORY_GENESIS_LOSSLESS_SHA256: historyGenesisPin }),
+    // The node reads and submits through the cardano-node socket: `listen`
+    // through its follower, a command through the node's ledger (option E).
+    ...(role === "command" ? { L1_ACCESS: "node" } : {}),
     L1_NODE_SOCKET_PATH: layout.cardanoSocket,
     L1_NODE_CONFIG_PATH: layout.hostCardanoConfig,
-    L1_NATIVE_CHAIN_SYNC_BINARY_PATH: artifacts.chainSyncBinary,
+    L1_NODE_TRANSPORT_BINARY_PATH: artifacts.transportBinary,
     L1_OPERATOR_SEED_PHRASE: identities.seeds.operator,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: identities.seeds.merge,
     L1_SETTLEMENT_SEED_PHRASE: identities.seeds.settlement,
@@ -128,6 +124,7 @@ export const nodeEnvironment = (input: {
           HUB_ORACLE_ONE_SHOT_TX_HASH: oneShot.txHash,
           HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: String(oneShot.outputIndex),
         }),
+    ...(l1Origin === undefined ? {} : { L1_ORIGIN: formatL1Origin(l1Origin) }),
     ...(contractManifest === undefined
       ? {}
       : { MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: contractManifest }),
@@ -135,4 +132,52 @@ export const nodeEnvironment = (input: {
       ? {}
       : { MIDGARD_DEPLOYMENT_MANIFEST_PATH: deploymentManifest }),
   };
+  if (role === "listen") assertNodeFollowerEnvironment(env);
+  return env;
+};
+
+/**
+ * A shape-only stand-in for the run's hub-oracle nonce, so the preflight can
+ * run the node's parser before the deployment exists. Never written; the node
+ * reads the real nonce from the run's records when the supervisor starts it.
+ */
+const PREFLIGHT_ONE_SHOT: HubOracleOneShot = {
+  txHash: "00".repeat(32),
+  outputIndex: 0,
+};
+
+/**
+ * Runs the node's own configuration parser (`NodeConfig.layer`) over this
+ * run's `listen` environment before L1 starts, so a configuration mistake
+ * fails in seconds rather than after funding and deploy. A command's
+ * environment adds `L1_ACCESS` and names the contract manifest, neither of
+ * which that parser reads. The hub-oracle nonce and the L1 origin are
+ * stand-ins; `listen` parses the real ones when it starts. Reads no file,
+ * chain or service. One gap: the parser reads the DA publish settings
+ * (`readDaHardeningConfig`) from the process environment, so those come from
+ * this controller's environment; the run sets none of them.
+ */
+export const preflightNodeConfig = async (
+  context: DeployContext,
+): Promise<void> => {
+  const env = nodeEnvironment({
+    ...context,
+    oneShot: PREFLIGHT_ONE_SHOT,
+    l1Origin: PREFLIGHT_L1_ORIGIN,
+    role: "listen",
+  });
+  const parsed = await Effect.runPromiseExit(
+    Effect.provide(NodeConfig, NodeConfig.layer).pipe(
+      Effect.withConfigProvider(
+        ConfigProvider.fromMap(new Map(Object.entries(env))),
+      ),
+    ),
+  );
+  if (Exit.isFailure(parsed)) {
+    const reason = Cause.squash(parsed.cause);
+    throw new Error(
+      `node refuses its configuration: ${reason instanceof Error ? reason.message : String(reason)}`,
+      { cause: reason },
+    );
+  }
 };

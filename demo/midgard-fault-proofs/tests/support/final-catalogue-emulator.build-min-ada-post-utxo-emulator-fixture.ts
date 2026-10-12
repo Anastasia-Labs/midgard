@@ -60,24 +60,6 @@ export const makeMinAdaEmulatorHarness = async () => {
   return { ...harness, family, category };
 };
 
-export const makeMissingNativeScriptUtxoEmulatorHarness = async () => {
-  const harness = await makeFaultProofEmulatorHarness({
-    contractOptions: {
-      realMissingNativeScriptUtxo: true,
-      alwaysFraudProofCatalogue: true,
-    },
-  });
-  const family = harness.contracts.missingNativeScriptUtxo;
-  if (family === undefined) {
-    throw new Error("Harness did not build missing-native-script-utxo");
-  }
-  return {
-    ...harness,
-    family,
-    category: harness.catalogue.categories.missingNativeScriptUtxo,
-  };
-};
-
 export const makeNativeScriptInvalidEmulatorHarness = async () => {
   const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {

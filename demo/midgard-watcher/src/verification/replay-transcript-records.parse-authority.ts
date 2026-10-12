@@ -27,7 +27,6 @@ import {
   record,
   requireCondition,
   stringFields,
-  stringList,
   text,
 } from "./replay-transcript-records.w25-keys.js";
 
@@ -67,76 +66,45 @@ export const parseAuthority = (
   );
   const origin = record(
     r.origin,
-    [
-      "source",
-      "deploymentManifestId",
-      "blueprintHash",
-      "checkpointDigest",
-      "checkpointPayloadDigest",
-      "snapshotDigest",
-      "headEntryDigest",
-      "historyEntryDigests",
-      "throughHeader",
-    ],
+    ["source", "deploymentManifestId", "blueprintHash", "throughHeader"],
     "event origin",
   );
-  equal(origin.source, "local_publication", "event authority source");
+  equal(origin.source, "follower_facts", "event authority source");
   stringFields(
     origin,
-    [
-      "deploymentManifestId",
-      "blueprintHash",
-      "checkpointDigest",
-      "checkpointPayloadDigest",
-      "snapshotDigest",
-      "headEntryDigest",
-    ],
+    ["deploymentManifestId", "blueprintHash"],
     "event origin",
     HEX32,
   );
-  stringList(origin.historyEntryDigests, "event history", HEX32);
-  requireCondition(
-    list(origin.historyEntryDigests, "event history").length > 0,
-    "event history",
+  const cutoff = record(
+    origin.throughHeader,
+    [
+      "headerHash",
+      "headerCborHex",
+      "queueOutRef",
+      "observedTransactionHash",
+      "observedBlockHash",
+      "observedSlot",
+      "observedBlockNo",
+      "transactionIndex",
+    ],
+    "event header cutoff",
   );
-  if (origin.throughHeader !== null) {
-    const cutoff = record(
-      origin.throughHeader,
-      [
-        "headerHash",
-        "headerCborHex",
-        "queueOutRef",
-        "observedTransactionHash",
-        "observedBlockHash",
-        "observedSlot",
-        "observedBlockNo",
-        "transactionIndex",
-        "historyEntryDigest",
-      ],
-      "event header cutoff",
-    );
-    text(cutoff.headerHash, "event cutoff header hash", HEX28);
-    text(cutoff.headerCborHex, "event cutoff header CBOR", HEX);
-    text(cutoff.queueOutRef, "event cutoff queue outRef", OUT_REF);
-    stringFields(
-      cutoff,
-      ["observedTransactionHash", "observedBlockHash", "historyEntryDigest"],
-      "event cutoff",
-      HEX32,
-    );
-    stringFields(
-      cutoff,
-      ["observedSlot", "observedBlockNo", "transactionIndex"],
-      "event cutoff",
-      NATURAL,
-    );
-    requireCondition(
-      list(origin.historyEntryDigests, "event history").includes(
-        cutoff.historyEntryDigest,
-      ),
-      "event cutoff history membership",
-    );
-  }
+  text(cutoff.headerHash, "event cutoff header hash", HEX28);
+  text(cutoff.headerCborHex, "event cutoff header CBOR", HEX);
+  text(cutoff.queueOutRef, "event cutoff queue outRef", OUT_REF);
+  stringFields(
+    cutoff,
+    ["observedTransactionHash", "observedBlockHash"],
+    "event cutoff",
+    HEX32,
+  );
+  stringFields(
+    cutoff,
+    ["observedSlot", "observedBlockNo", "transactionIndex"],
+    "event cutoff",
+    NATURAL,
+  );
   const c = record(
     r.committedClaim,
     ["phase", "eventIdCborHex", "valueCborHex", "canonicalNativeTxCborHex"],

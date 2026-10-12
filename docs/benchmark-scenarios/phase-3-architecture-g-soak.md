@@ -15,8 +15,7 @@ seconds at exactly 5,000 offered and accepted-target TPS. The wrapper pins the
 achieved-rate policy to offered rate `>= 4,900/s` (98%), accepted rate
 `>= 4,950/s` (99%), and offered/accepted saturation ratio `>= 1.0`; inherited
 environment values cannot weaken those floors. A shorter run, a
-different target rate, a Phase 2 leak report, or Phase 4 one-hour evidence
-cannot satisfy this gate.
+different target rate or a Phase 2 leak report cannot satisfy this gate.
 
 The runner is
 `demo/midgard-node/scripts/phase3-architecture-g-soak.mjs`; the independent

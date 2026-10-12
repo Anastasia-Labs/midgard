@@ -16,12 +16,12 @@ import {
   NodeConfig,
   withL1ControlPlane,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { WorkerError } from "../workers/utils/common.js";
 import { buildAndSubmitCommitmentBlockAction } from "./block-commitment.build-and-submit-commitment-block-action.js";
-import {
-  shouldSkipIdleCommitPipelineBeforeSchedulerAlignment,
-  shouldSkipScheduledLegacyCommitForSpeculation,
-} from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
+import { publishCommitAnchorReadiness } from "./block-commitment.commit-anchor-readiness.js";
+import { refuseCommitForOrphanedOwnBlockEvent } from "./block-commitment.own-block-event-orphaned.js";
+import { shouldSkipIdleCommitPipelineBeforeSchedulerAlignment } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import {
   alignCommitSchedulerBeforeMutationWorkerIfIdle,
   registerPreLeaseCommitSchedulerDueWorkIfProven,
@@ -29,7 +29,6 @@ import {
   shouldSkipForRegisteredCommitDueWork,
   tryAcquireCommitMutationWorkerPhase,
 } from "./block-commitment.should-skip-for-registered-commit-due-work.js";
-import { verifyForeignBaseOnIdleTick } from "./block-commitment.verify-idle-foreign-base.js";
 import {
   publishFinalizedDaPayloadBestEffort,
   runAfterL1ControlPlaneRelease,
@@ -42,12 +41,12 @@ let reportedHeaderHex: string | undefined;
 let reportedOverBound = false;
 
 /**
- * True while a signed commit intent awaits the history owner's signed-intent
- * reconciliation: the commit worker would only refuse at its signed-submission
- * preflight, so the tick takes neither the L1 control plane nor the
- * state-queue lease and spawns no worker. Logged once per journal, again once
- * it outlives the bound, and once when it resolves. A pending local
- * finalization recovery always runs.
+ * True while a signed commit intent is unresolved (S6 derives its status;
+ * the landed-block rebase disposes of it once it is dead): the commit worker
+ * would only refuse at its signed-submission preflight, so the tick takes
+ * neither the L1 control plane nor the state-queue lease and spawns no
+ * worker. Logged once per journal, again once it outlives the bound, and once
+ * when it resolves. A pending local finalization recovery always runs.
  */
 export const shouldSkipForActivePendingFinalization = Effect.gen(function* () {
   const globals = yield* Globals;
@@ -74,7 +73,7 @@ export const shouldSkipForActivePendingFinalization = Effect.gen(function* () {
     reportedHeaderHex = headerHex;
     reportedOverBound = false;
     yield* Effect.logInfo(
-      `🔹 Skipping block commitment ticks (${SKIPPED_ACTIVE_PENDING_FINALIZATION}): signed commit intent header=${headerHex} awaits the history owner's signed-intent reconciliation; pending_finalization_age:${signed.ageMs.toString()}.`,
+      `🔹 Skipping block commitment ticks (${SKIPPED_ACTIVE_PENDING_FINALIZATION}): signed commit intent header=${headerHex} awaits the follower's intent reconciliation; pending_finalization_age:${signed.ageMs.toString()}.`,
     );
   } else if (
     !reportedOverBound &&
@@ -109,37 +108,17 @@ export const blockCommitmentAction: Effect.Effect<
   | Database
   | NodeConfig
   | ContractDeploymentIdentity
+  | IntentJournal
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   const nodeConfig = yield* NodeConfig;
   yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
+  yield* publishCommitAnchorReadiness;
+  const eventOrphaned = yield* refuseCommitForOrphanedOwnBlockEvent;
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
-    if (nodeConfig.SPECULATIVE_COMMIT_BUILD) {
-      const speculativeState = yield* Ref.get(globals.SPECULATIVE_COMMIT_STATE);
-      const localFinalizationPending = yield* Ref.get(
-        globals.LOCAL_FINALIZATION_PENDING,
-      );
-      const localFinalizationBlock = yield* Ref.get(
-        globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-      );
-      const recoveryMustRun =
-        localFinalizationPending && localFinalizationBlock !== "";
-      if (
-        shouldSkipScheduledLegacyCommitForSpeculation({
-          enabled: true,
-          state: speculativeState,
-          recoveryMustRun,
-        })
-      ) {
-        return;
-      }
-    }
-    if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) {
-      // Readiness evidence must not wait for work to commit.
-      yield* verifyForeignBaseOnIdleTick;
-      return;
-    }
+    if (eventOrphaned) return;
+    if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) return;
     if (yield* shouldSkipForActivePendingFinalization) {
       return;
     }
@@ -212,6 +191,7 @@ export const blockCommitmentFiber = (
   | Database
   | NodeConfig
   | ContractDeploymentIdentity
+  | IntentJournal
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔵 Block commitment fiber started.");

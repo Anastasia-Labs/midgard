@@ -2,11 +2,11 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { WatcherNativeRewardAccountQuery } from "midgard-watcher";
+import type { JourneyNativeNodeQuery } from "./local-kupmios.js";
 
 export const journeyNativeNodeQuery = async (
   runDirectory: string,
-): Promise<WatcherNativeRewardAccountQuery> => {
+): Promise<JourneyNativeNodeQuery> => {
   const bytes = await readFile(
     join(runDirectory, "genesis/shelley-genesis.json"),
   );
@@ -16,7 +16,7 @@ export const journeyNativeNodeQuery = async (
       "Journey native query requires its isolated devnet genesis",
     );
   return {
-    binaryPath: join(runDirectory, "work/midgard-chain-sync"),
+    binaryPath: join(runDirectory, "work/midgard-l1-node-transport"),
     timeoutMs: 10_000,
     watcherConfig: {
       targetNetwork: "Custom",
@@ -44,7 +44,6 @@ export const journeyNativeNodeQuery = async (
               .update(bytes)
               .digest("hex"),
           },
-          queryServices: [],
         },
       },
     },

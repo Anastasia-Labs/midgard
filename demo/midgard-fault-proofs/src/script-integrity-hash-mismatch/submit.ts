@@ -4,7 +4,7 @@ import "../linear-fault-cancel.js";
 import "../linear-fault-family.js";
 import "../linear-fault-finalize.js";
 import "../linear-fault-submit.js";
-import "../missing-native-script-tx/submit-native-binding.js";
+import "../native-tx-binding.js";
 import "../tx-layout.js";
 import "./family.js";
 import "./schemas.js";

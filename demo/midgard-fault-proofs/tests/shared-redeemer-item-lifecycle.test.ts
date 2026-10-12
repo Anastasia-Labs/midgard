@@ -4,6 +4,7 @@ import {
   encodeCbor,
   MidgardRedeemerItemProofModes,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildCekRedeemerItemStages,
   buildValidationTraceDisputeFaultProofContracts,
@@ -202,6 +203,7 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   const catalogue = "81".repeat(28);
   const contracts = await Effect.runPromise(
     buildValidationTraceDisputeFaultProofContracts({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       blueprint,
       network,
       hubOraclePolicyId: "82".repeat(28),

@@ -172,7 +172,12 @@ fn correction_transition(
       terminal,
     ),
     lock_output.address == own_input.output.address,
-    lock_output.value == own_input.output.value,
+    // unique_input/unique_output already pin the non-ADA value to the lock
+    // token. A larger datum may need more ADA, so the corrector may add ADA
+    // but never remove it.
+    assets.lovelace_of(lock_output.value) >= assets.lovelace_of(
+      own_input.output.value,
+    ),
   }
 }
 
@@ -608,6 +613,54 @@ test correction_lock_handler_accepts_permissionless_timeout_acquire_resume_and_c
       ),
     ),
   }
+}
+
+/// The Idle acquire with the lock output's value replaced by `value`.
+fn test_acquire_with_lock_value(value: assets.Value) -> Bool {
+  let tx = test_correction_tx(
+    correction_lock.Idle,
+    test_timeout_locked(test_target),
+    test_timeout_redeemer(False),
+    test_hub_ref_input(test_hub_policy, test_state_queue_policy),
+    [],
+  )
+  expect [lock_output] = tx.outputs
+  run_test_correction(
+    correction_lock.Idle,
+    Transaction { ..tx, outputs: [Output { ..lock_output, value }] },
+  )
+}
+
+fn test_lock_token() -> assets.Value {
+  assets.from_asset(test_hub_policy, correction_lock.asset_name, 1)
+}
+
+test correction_lock_handler_accepts_ada_top_up() {
+  test_acquire_with_lock_value(
+    assets.from_lovelace(2_000_001) |> assets.merge(test_lock_token()),
+  )
+}
+
+test correction_lock_handler_rejects_ada_withdrawal() fail {
+  test_acquire_with_lock_value(
+    assets.from_lovelace(1_999_999) |> assets.merge(test_lock_token()),
+  )
+}
+
+test correction_lock_handler_rejects_added_token() fail {
+  test_acquire_with_lock_value(
+    assets.from_lovelace(2_000_000)
+      |> assets.merge(test_lock_token())
+      |> assets.merge(assets.from_asset(test_misc_policy, "junk", 1)),
+  )
+}
+
+test correction_lock_handler_rejects_ada_top_up_with_added_token() fail {
+  test_acquire_with_lock_value(
+    assets.from_lovelace(3_000_000)
+      |> assets.merge(test_lock_token())
+      |> assets.merge(assets.from_asset(test_misc_policy, "junk", 1)),
+  )
 }
 
 test correction_lock_handler_rejects_other_target_resume() fail {

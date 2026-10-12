@@ -1,3 +1,5 @@
+import { depth, isFinal } from "@al-ft/midgard-l1-follower";
+
 import type { CommitteeStore } from "../store.js";
 import {
   type PromiseCapacityEvidence,
@@ -13,7 +15,10 @@ export type PromiseCapacityLiability = Readonly<{
   hasActiveChallenge?: boolean;
   /** Supplied only after exact authenticated k-safe terminal history validation. */ terminalPoint?: PromiseCapacityPoint;
 }>;
-/** Null is exact absence with a same-response selected tip matching the boundary. */
+/**
+ * The point on the follower's chain, read under the boundary, with the
+ * boundary's tip; null when the point is not on that chain.
+ */
 export type PromiseCanonicalPointReader = (
   point: PromiseCapacityPoint,
 ) => Promise<Readonly<{
@@ -63,7 +68,7 @@ export const retiredPromiseCutoffs = async (
       proof.tip.blockNo < point.blockNo
     )
       throw new Error(
-        "Capacity ancestry proof changed its point, height or selected tip",
+        "Capacity ancestry proof changed its point, height or read boundary",
       );
     return proof;
   };
@@ -172,12 +177,17 @@ export const retiredPromiseCutoffs = async (
     )
       continue;
     // Capacity is released once the cutoff or terminal is observed on the
-    // selected chain. Certification past the recovery depth is bookkeeping
-    // for store retirement and never holds new signing. A rollback of an
-    // uncertified observation charges the promise again above until the
-    // cutoff is observed on the new chain.
+    // selected chain. Certification, once the observation is final (deeper
+    // than the recovery depth k), is bookkeeping for store retirement and
+    // never holds new signing. A rollback of an uncertified observation
+    // charges the promise again above until the cutoff is observed on the
+    // new chain.
     retired.add(liability.commitmentDigest);
-    if (selected.tip.blockNo - evidence.point.blockNo <= args.recoveryDepth)
+    if (
+      !isFinal(depth(selected.tip.blockNo, evidence.point.blockNo), {
+        securityParameter: args.recoveryDepth,
+      })
+    )
       continue;
     const certified: PromiseCapacityEvidence = {
       ...evidence,

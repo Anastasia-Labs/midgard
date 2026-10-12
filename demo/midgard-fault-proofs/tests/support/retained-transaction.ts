@@ -11,6 +11,7 @@ import {
 } from "@al-ft/midgard-core";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { replayValidationMachineEvent } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -63,6 +64,7 @@ export const retainedTransactionFixture = async (input: {
   const prior = input.predecessor.header;
   const replay = await Effect.runPromise(
     replayValidationMachineEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
       canonicalTransactionCbor:

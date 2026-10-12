@@ -62,7 +62,7 @@ export const COMPARES: Record<CheckId, string> = {
   "native-root":
     "persisted native ledger root (Architecture-G owner durableRoot from node /readyz, else, when no --node-url was given and the node gave no owner answer, the LEDGER_MPF_DB_PATH __root__ marker read from a private copy) vs the root recomputed from SQL confirmed_ledger plus the finalized-but-unmerged pending_block_finalizations deltas (the committed tip), or plus the active journal delta",
   "state-queue-journal":
-    "L1 state-queue headers (provider) vs pending_block_finalizations, foreign_tip_reconciliations, blocks and the admitted correction transitions in state_queue_terminal_observer_states (SQL)",
+    "L1 state-queue headers (provider) vs pending_block_finalizations, blocks and the removals landed txs made in node_l1_queue_terminals (SQL)",
   "state-queue-tail-root":
     "utxosRoot of the last L1 state-queue header (ConfirmedState.utxoRoot when the queue is empty) vs the persisted native ledger root",
   deposits:
@@ -72,7 +72,7 @@ export const COMPARES: Record<CheckId, string> = {
   payouts:
     "L1 payout UTxOs and their PayoutDatum (provider) vs the withdrawal_utxos row with the same asset name: finalized, WithdrawalIsValid, merged header, equal l2_value, l1_address and l1_datum",
   settlements:
-    "L1 settlement UTxOs and their SettlementDatum (provider) vs the merged chain and the expected event roots of the journal or foreign reconciliation for that header (SQL)",
+    "L1 settlement UTxOs and their SettlementDatum (provider) vs the merged chain and the expected event roots of the journal for that header (SQL)",
   "ledger-cache":
     "SQL mempool_ledger vs the ledger recomputed at the committed tip (or active journal) plus unincluded projected deposit rows plus the effects of every mempool and processed_mempool transaction",
   "da-attestation":
@@ -105,11 +105,15 @@ export type L1QueueHeader = {
   readonly decodeError: string | null;
 };
 
+/**
+ * A deposit's payload as both sides can state it. It carries no L1 tx hash:
+ * the node holds the immutable admission tx, an L1 list read only the
+ * order's current output, which a later list insertion moves.
+ */
 export type DepositPayload = {
   readonly eventId: string;
   readonly info: string;
   readonly inclusionTimeMs: number;
-  readonly l1TxHash: string;
   readonly ledgerTxId: string;
   readonly ledgerOutput: string;
   readonly ledgerAddress: string;
@@ -186,15 +190,6 @@ export type JournalSummary = {
   readonly endTimeMs: number | null;
 };
 
-export type ForeignSummary = {
-  readonly headerHash: string;
-  readonly status: string;
-  readonly prevHeaderHash: string | null;
-  readonly roots: Omit<HeaderRoots, "utxos" | "transactions">;
-  readonly transactionsRoot: string | null;
-  readonly utxosRoot: string | null;
-};
-
 export type LedgerPoint = {
   readonly label: string;
   /** Null for the confirmed ledger itself. */
@@ -245,21 +240,11 @@ export type PendingTxDelta = {
   readonly rejectDetail: string | null;
 };
 
-export type ObserverTransition = {
+/** A header a landed tx removed from the state queue (its newest terminal row). */
+export type QueueRemoval = {
+  readonly headerHash: string;
   readonly transactionHash: string;
-  readonly transitionKind: string;
-  readonly removedHeaderHashes: readonly string[];
-  readonly transitionDigest: string;
 };
-
-export type ObserverSnapshot =
-  | { readonly kind: "absent" }
-  | { readonly kind: "invalid"; readonly reason: string }
-  | {
-      readonly kind: "present";
-      readonly admitted: readonly ObserverTransition[];
-      readonly pendingCount: number;
-    };
 
 export type SqlStateSnapshot = {
   readonly confirmedRoot: string;
@@ -278,9 +263,9 @@ export type SqlStateSnapshot = {
     readonly sourceEventId: string | null;
   }[];
   readonly pendingTxs: readonly PendingTxDelta[];
+  /** The headers with `blocks` rows, except those a retained fold holds. */
   readonly blockHeaderHashes: readonly string[];
-  readonly foreign: readonly ForeignSummary[];
-  readonly observer: ObserverSnapshot;
+  readonly queueRemovals: readonly QueueRemoval[];
 };
 
 export type NativeRootObservation =

@@ -59,7 +59,7 @@ export async function* decodeDaStreamFrames(
   let frame: Buffer | undefined;
   let frameOffset = 0;
   let frameStartedAt: number | undefined;
-  for await (const chunk of chunks) {
+  for await (const chunk of untilRemoteWriteCloses(chunks)) {
     const bytes = chunkView(chunk);
     if (bytes.byteLength === 0) {
       continue;
@@ -127,6 +127,66 @@ export async function* decodeDaStreamFrames(
   }
   if (expectedLength !== undefined || prefixOffset > 0) {
     throw new Error("incomplete DA libp2p stream frame");
+  }
+}
+
+/** What a libp2p stream says about the remote's writable end. */
+type DaRemoteWriteStatus = {
+  readonly remoteWriteStatus: string;
+  readonly readBufferLength: number;
+};
+
+const reportsRemoteWriteStatus = (
+  chunks: AsyncIterable<DaStreamChunk> | Iterable<DaStreamChunk>,
+): chunks is AsyncIterable<DaStreamChunk> & DaRemoteWriteStatus =>
+  Symbol.asyncIterator in chunks &&
+  "remoteWriteStatus" in chunks &&
+  "readBufferLength" in chunks;
+
+/**
+ * A libp2p stream's iterator ends on the remote's end-of-stream event, which
+ * reaches only a listener attached when it fires. A reader that starts after
+ * the remote closed its writable end, such as a payload submit queued behind
+ * admission, gets the buffered bytes and then waits for an event already
+ * gone, until the request deadline.
+ *
+ * So the remote's write status is read once, as the reader starts:
+ * - Still open: the iterator attaches its listeners in the same tick, so the
+ *   end event reaches it, after every chunk it queued before the event. The
+ *   iterator is read to its own end.
+ * - Already closed: no listener existed while the bytes arrived, so none
+ *   reached an iterator queue. All of them are in the stream's read buffer,
+ *   and the reader stops once that buffer is empty.
+ * Status read again after each chunk would be wrong. The iterator moves
+ * arriving chunks into its own queue in the tick they arrive, which the read
+ * buffer's length does not count: when the last chunks and the end arrive in
+ * one tick, as yamux delivers them from one TCP read, the buffer is empty
+ * while queued chunks wait.
+ *
+ * Delete this wrapper once a stable `@libp2p/utils` release carries
+ * libp2p/js-libp2p#3648, which ends a late reader's iterator itself.
+ */
+async function* untilRemoteWriteCloses(
+  chunks: AsyncIterable<DaStreamChunk> | Iterable<DaStreamChunk>,
+): AsyncGenerator<DaStreamChunk> {
+  if (
+    !reportsRemoteWriteStatus(chunks) ||
+    chunks.remoteWriteStatus !== "closed"
+  ) {
+    yield* chunks;
+    return;
+  }
+  const iterator = chunks[Symbol.asyncIterator]();
+  try {
+    while (chunks.readBufferLength > 0) {
+      const next = await iterator.next();
+      if (next.done === true) {
+        return;
+      }
+      yield next.value;
+    }
+  } finally {
+    await iterator.return?.();
   }
 }
 

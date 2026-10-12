@@ -18,44 +18,44 @@ import {
  * running.
  */
 export const HaltSource = {
-  /** An admitted state-queue correction whose native rewind already ran was
-   * rolled back below its release depth (see
-   * `StateQueueCorrectionRewindIntegrityError`). */
-  stateQueueCorrectionRewind: "state_queue_correction_rewind",
-  /** The confirmation worker found a replaced block of this node holding a
-   * base slot that a sibling on the same base already finalized locally or
-   * landed (see `SignedIntentReplacementIntegrityError`). */
-  blockConfirmationSignedIntent: "block_confirmation_signed_intent",
-  /** Authenticated evidence that this operator left the active set: absence
-   * at the head after past activity, or removal at a finalized point (see
-   * `publishOperatorMembership`). Holds every operator duty. */
+  /** This operator is removed (`operator_removed`, plan §7.5 R7): retired,
+   * or in no list after having been active, in the follower's operator set
+   * (see `publishOperatorMembership`). Holds every operator duty; a rollback
+   * that undoes the removal clears it. */
   operatorMembership: "operator_membership",
+  /** The node's instance lock is suspended or held by another process
+   * (`node-instance-lock.ts`): another node may hold this database. Holds
+   * every operator duty as `FIBER_HALT_SOURCES` holds it (a scheduled tick
+   * already running finishes); the lock taken again clears it. A lock that
+   * stopped trying (`node_instance_lock_failed`) is never taken again in this
+   * process, so that reason stands until the node is restarted. */
+  instanceLock: "node_instance_lock",
 } as const;
 
 export type HaltSource = (typeof HaltSource)[keyof typeof HaltSource];
 
 /** The fibers that build or submit block commitments. */
 export const COMMIT_HALT_SOURCES: readonly HaltSource[] = [
-  HaltSource.stateQueueCorrectionRewind,
-  HaltSource.blockConfirmationSignedIntent,
   HaltSource.operatorMembership,
+  HaltSource.instanceLock,
 ];
 
 /** The settlement worker. */
 export const SETTLEMENT_HALT_SOURCES: readonly HaltSource[] = [
-  HaltSource.stateQueueCorrectionRewind,
   HaltSource.operatorMembership,
+  HaltSource.instanceLock,
 ];
 
 /** The merge fiber, which folds the state queue into the confirmed state. */
 export const MERGE_HALT_SOURCES: readonly HaltSource[] = [
-  HaltSource.stateQueueCorrectionRewind,
   HaltSource.operatorMembership,
+  HaltSource.instanceLock,
 ];
 
 /** The operator watchdog, which takes over other operators' slots. */
 export const WATCHDOG_HALT_SOURCES: readonly HaltSource[] = [
   HaltSource.operatorMembership,
+  HaltSource.instanceLock,
 ];
 
 /**
@@ -66,19 +66,11 @@ export const WATCHDOG_HALT_SOURCES: readonly HaltSource[] = [
 export const FIBER_HALT_SOURCES = {
   settlement: SETTLEMENT_HALT_SOURCES,
   blockCommitment: COMMIT_HALT_SOURCES,
-  speculativeCommitBuilder: COMMIT_HALT_SOURCES,
-  speculativeCommitSubmitter: COMMIT_HALT_SOURCES,
   merge: MERGE_HALT_SOURCES,
   operatorWatchdog: WATCHDOG_HALT_SOURCES,
 } as const satisfies Record<string, readonly HaltSource[]>;
 
 export type HeldFiber = keyof typeof FIBER_HALT_SOURCES;
-
-/** The source an undecided expired-intent release raises under. It holds no
- * fiber: the history gate, which that release keeps closed, holds block
- * production. Its history runtime clears it once no release is in question. */
-export const HISTORY_SIGNED_INTENT_RELEASE_SOURCE =
-  "history_signed_intent_release";
 
 /** The source of the reasons the L1 control plane derives (see
  * `l1ControlPlaneLivenessReasons`); it raises none into `LIVENESS_REASONS`. */
@@ -98,9 +90,23 @@ export const livenessIncidentCounter = Metric.counter(
 
 type Incident = {
   reason: string;
+  /** The latest raise's detail, as `readinessDetail` shortens it. */
+  detail: string;
   since: number;
   escalated: boolean;
   escalateAfterMs: number | undefined;
+};
+
+/** The most of a detail readiness reports. */
+const READINESS_DETAIL_MAX = 500;
+
+/** A detail's first line, clipped: a raised error's message without its
+ * stack, short enough to repeat on every readiness read. */
+const readinessDetail = (detail: string): string => {
+  const line = detail.split("\n", 1)[0]!;
+  return line.length > READINESS_DETAIL_MAX
+    ? `${line.slice(0, READINESS_DETAIL_MAX)}…`
+    : line;
 };
 
 type LivenessGlobals = Pick<Globals, "LIVENESS_REASONS">;
@@ -121,7 +127,8 @@ const incidentsOf = (globals: LivenessGlobals) => {
  * Raises `reason` under `source` in `LIVENESS_REASONS`. A new or changed reason counts
  * once in `midgard_liveness_incident_total` and logs one warning; while it
  * persists it logs at debug, except once at error when it is still raised
- * `escalateAfterMs` after it was first raised. Never fails.
+ * `escalateAfterMs` after it was first raised. Readiness reports the first
+ * line of the latest `detail`. Never fails.
  */
 export const raiseLivenessIncident = (
   globals: LivenessGlobals,
@@ -137,6 +144,7 @@ export const raiseLivenessIncident = (
     if (current === undefined || current.reason !== reason) {
       map.set(source, {
         reason,
+        detail: readinessDetail(detail),
         since: now,
         escalated: false,
         escalateAfterMs: options.escalateAfterMs,
@@ -155,8 +163,10 @@ export const raiseLivenessIncident = (
         `${reason} unresolved for ${(now - current.since).toString()} ms: ${detail}`,
       );
     } else yield* Effect.logDebug(`${reason}: ${detail}`);
-    if (current !== undefined && current.reason === reason)
+    if (current !== undefined && current.reason === reason) {
       current.escalateAfterMs = options.escalateAfterMs;
+      current.detail = readinessDetail(detail);
+    }
     yield* setLivenessReason(globals, source, reason);
   });
 
@@ -179,6 +189,9 @@ export const clearLivenessIncident = (
 export type ActiveLivenessReason = Readonly<{
   source: string;
   reason: string;
+  /** The first line of the detail its latest raise gave; null when no raise
+   * gave one (a derived reason, or one written straight into the Ref). */
+  detail: string | null;
   /** Since the source last went from no raised reason to one; null when it
    * is not known (a derived reason, or one written straight into the Ref). */
   ageMs: number | null;
@@ -208,11 +221,12 @@ export const activeLivenessReasons = (
       const ageMs = sinceMs === undefined ? null : Math.max(0, nowMs - sinceMs);
       if (ageMs !== null) yield* publishLivenessReasonAge(source, ageMs);
       const incident = map.get(source);
-      const escalateAfterMs =
-        incident?.reason === reason ? (incident.escalateAfterMs ?? null) : null;
+      const current = incident?.reason === reason ? incident : undefined;
+      const escalateAfterMs = current?.escalateAfterMs ?? null;
       active.push({
         source,
         reason,
+        detail: current?.detail ?? null,
         ageMs,
         escalateAfterMs,
         escalated:
@@ -225,6 +239,7 @@ export const activeLivenessReasons = (
       active.push({
         source: L1_CONTROL_PLANE_LIVENESS_SOURCE,
         reason,
+        detail: null,
         ageMs: null,
         escalateAfterMs: null,
         escalated: false,
@@ -310,22 +325,49 @@ export const restartedAcrossHalts = <A, E, R>(
     }
   });
 
-/** The source a replaced-block revival with no journal active raises under.
- * Like `HISTORY_SIGNED_INTENT_RELEASE_SOURCE` it holds no fiber: the history
- * gate, which the revival keeps closed, holds block production. Its
- * disposition clears it once no revival is in question. */
-export const HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE =
-  "history_replaced_block_revival";
+/** The landed-block rebase's native restore was refused because the native
+ * MPF store retains no root of the processed landed chain in full (every
+ * `restoreCanonicalRoot` it tried returned `NativeMpfRootNotRetained`).
+ * Raised under the rebase's source (`landed_block_rebase`). The refusal
+ * changes nothing: the rebase holds with native MPF, the SQL root and the
+ * journals as they are and the follower write gate closed, and the
+ * follower-change driver retries it on its backoff; the next rebase evaluation that runs, or
+ * finds no rebase due, clears it. The node cannot put the root's closure back
+ * itself: the operator stops it, installs a native MPF store that retains
+ * the root in full, and restarts it (plan §7.5, R6). */
+export const MPF_CLOSURE_MISSING = "mpf_closure_missing";
 
-/** A signed-intent release or replaced-block revival met a
- * `SignedIntentReplacementIntegrityError`: L1 evidence shows two of this
- * node's blocks on one base landed, or a landed sibling beside the winner
- * (or the release's retained plan binds another journal). The history owner
- * holds (the intent stays, nothing is written, no winner is
- * chosen) and re-derives it at every evaluation; it clears once the evidence
- * no longer shows it. */
-export const SIGNED_INTENT_REPLACEMENT_INTEGRITY =
-  "signed_intent_replacement_integrity";
+/** The landed-block rebase's native restore was refused because the target
+ * root's node closure is in the native MPF store but its full index is over
+ * a full-index cap
+ * (`NativeMpfFullIndexCapExceeded`, whose message names the cap,
+ * `FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`, and its value). Raised
+ * under the rebase's source. The refusal changes nothing: the rebase holds
+ * with native MPF, the SQL root and the journals as they are, and the
+ * follower write gate closed; every evaluation retries the restore, and the next
+ * rebase evaluation that runs, or finds no rebase due, clears it. The caps
+ * are fixed in the node build (the TypeScript owner and its native child
+ * each enforce them), so the node cannot load the root
+ * until it runs a build whose caps cover it. */
+export const NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED =
+  "native_mpf_restore_index_cap_exceeded";
+
+/** The landed-block rebase's native restore was refused because reading the
+ * target root's node closure from the native MPF store failed
+ * (`NativeMpfRestoreReadFailed`): a LevelDB read error other than a missing,
+ * corrupt or undecodable record. Raised under the rebase's source.
+ * The refusal changes nothing, and every evaluation retries the restore on
+ * the follower-change driver's backoff; the first that reads the closure clears it
+ * (or raises the refusal that read finds). Escalated, in the log and on
+ * readiness, after `NATIVE_MPF_RESTORE_READ_ESCALATION_MS`. */
+export const NATIVE_MPF_RESTORE_READ_TRANSIENT =
+  "native_mpf_restore_read_transient";
+
+/** How long `NATIVE_MPF_RESTORE_READ_TRANSIENT` stays raised before it is
+ * escalated: ten minutes (thirty nominal L1 blocks), well past the
+ * follower-change driver's maximum backoff,
+ * so a read that fails for that long is not a passing blip. */
+export const NATIVE_MPF_RESTORE_READ_ESCALATION_MS = 10 * 60_000;
 
 /** The source the commit worker's DA frame notices raise under. It holds no
  * fiber: the block is already refused on every tick (by the pre-submit frame

@@ -29,7 +29,9 @@ use midgard/validation_machine/script_sources_late_stages as vm_script_sources_l
 use midgard/validation_machine/script_sources_middle_semantics as vm_middle_semantics
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
-use midgard/validation_machine_tests/constants.{h_28_a, h_28_b, h_a}
+use midgard/validation_machine_tests/constants.{
+  h_28_a, h_28_b, h_a, test_l1_slot_config,
+}
 use midgard/validation_machine_tests/fixtures_parity.{
   stage_twelve_finish_fixture, verify_descriptor_ten_match_parity,
   verify_descriptor_ten_mismatch_parity,
@@ -287,6 +289,7 @@ test script_sources_commits_unique_supported_redeemers() {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
     vm_one_step.verify_one_step_evidence(
       begin_post,
@@ -299,6 +302,7 @@ test script_sources_commits_unique_supported_redeemers() {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
     vm_one_step.verify_one_step_evidence(
       item_post,
@@ -307,6 +311,7 @@ test script_sources_commits_unique_supported_redeemers() {
         auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -520,6 +525,7 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
         auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -573,6 +579,7 @@ test script_sources_binds_resolved_input_replay_schedule() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -681,6 +688,7 @@ test script_sources_replay_appends_reference_scripts() {
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -769,6 +777,7 @@ test script_sources_replay_appends_script_credential_spend_purposes() {
       },
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1352,6 +1361,7 @@ test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
         auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
     // Control: the `serialiseData` successor is still rejected.
     !vm_script_sources_late_stages.verify_script_sources_stage_seven_finish_semantics_v1(
@@ -1369,6 +1379,7 @@ test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
         vm_machine_types.NoAuxiliaryWitness,
       ),
       inline_field_door(),
+      test_l1_slot_config,
     ),
     // Control: a mutated successor stage is still rejected.
     !vm_script_sources_late_stages.verify_script_sources_stage_seven_finish_semantics_v1(
@@ -1798,6 +1809,7 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
       vm_machine_types.NoAuxiliaryWitness,
     ),
     inline_field_door(),
+    test_l1_slot_config,
   )
 }
 
@@ -1862,6 +1874,7 @@ test script_sources_discovers_more_than_sixteen_purposes() {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }
@@ -2106,6 +2119,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
         },
       },
       inline_field_door(),
+      test_l1_slot_config,
     ),
     vm_one_step.verify_one_step_evidence(
       stage_ten_item,
@@ -2119,6 +2133,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
         },
       ),
       inline_field_door(),
+      test_l1_slot_config,
     ),
     vm_one_step.verify_one_step_evidence(
       stage_ten_tail,
@@ -2132,6 +2147,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
         },
       ),
       inline_field_door(),
+      test_l1_slot_config,
     ),
   }
 }

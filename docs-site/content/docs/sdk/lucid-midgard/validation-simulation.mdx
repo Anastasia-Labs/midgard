@@ -40,8 +40,9 @@ can fail required-witness checks. For a signed transaction, use
 
 **Phase B** is stateful. It needs the current slot, the UTxO pre-state for every spend
 and reference input, script-source resolution data, and a budget-enforcement setting.
-Pass `localPreState` explicitly for Phase B; omitting it raises
-`BuilderInvariantError`. Missing ledger inputs within that pre-state produce shared
+Pass `localPreState` and `l1SlotConfig` (the deployment manifest's L1 slot mapping,
+which script contexts convert the validity interval with) explicitly for Phase B;
+omitting either raises `BuilderInvariantError`. Missing ledger inputs within that pre-state produce shared
 validation rejections. Budget enforcement is on by default.
 
 ## The rules are shared, not reimplemented

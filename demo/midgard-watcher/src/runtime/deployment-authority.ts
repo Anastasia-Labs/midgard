@@ -3,7 +3,7 @@ import { readFile, realpath } from "node:fs/promises";
 import {
   resolveWatcherCanonicalRetentionWindow,
   type WatcherCanonicalRetentionWindow,
-} from "../storage/canonical-block-store.js";
+} from "../storage/retention-window.js";
 import {
   type LoadedWatcherRuleBundle,
   loadWatcherRuleBundle,

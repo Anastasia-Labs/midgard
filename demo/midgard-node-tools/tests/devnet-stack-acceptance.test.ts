@@ -199,7 +199,8 @@ describe("finite acceptance phase gates", () => {
             {
               settlement: {
                 state: "waiting",
-                detail: "submitted exact journaled settlement transaction",
+                detail:
+                  "settlement transaction abababababababababababababababababababababababababababababababab journaled; S6 sends its exact bytes until it lands",
               },
             },
           ],
@@ -265,7 +266,8 @@ describe("finite acceptance phase gates", () => {
       {
         settlement: {
           state: "waiting",
-          detail: "submitted exact journaled settlement transaction",
+          detail:
+            "settlement transaction abababababababababababababababababababababababababababababababab journaled; S6 sends its exact bytes until it lands",
         },
       },
     ],
@@ -429,11 +431,13 @@ describe("acceptance command ownership", () => {
     const context = fakeContext();
     const abort = new AbortController();
     const readyPath = join(context.layout.nodeRoot, "child-ready");
+    // The child ignores SIGTERM before it announces its pid, so the abort
+    // can never land before the handler and end it with SIGTERM.
     const task = acceptanceExec(
       process.execPath,
       [
         "-e",
-        `require('fs').writeFileSync(process.argv[1],String(process.pid));process.on('SIGTERM',()=>{});setInterval(()=>{},1000)`,
+        `process.on('SIGTERM',()=>{});require('fs').writeFileSync(process.argv[1],String(process.pid));setInterval(()=>{},1000)`,
         readyPath,
       ],
       {

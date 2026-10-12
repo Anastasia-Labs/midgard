@@ -1,0 +1,24 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -689,7 +689,7 @@
+   }, program.body);
+   return applyDoubleCborEncoding(
+     (0, import_core_utils2.toHex)(
+-      (0, import_uplc.encodeUPLC)(new import_uplc.UPLCProgram(program.version, appliedProgram)).toBuffer().buffer
++      (0, import_uplc.encodeUPLC)(new import_uplc.UPLCProgram(program.version, appliedProgram))
+     )
+   );
+ }
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -598,7 +598,7 @@
+   }, program.body);
+   return applyDoubleCborEncoding(
+     toHex2(
+-      encodeUPLC(new UPLCProgram(program.version, appliedProgram)).toBuffer().buffer
++      encodeUPLC(new UPLCProgram(program.version, appliedProgram))
+     )
+   );
+ }

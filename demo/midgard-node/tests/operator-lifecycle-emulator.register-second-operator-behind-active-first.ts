@@ -15,6 +15,7 @@ import {
   activateOperatorProgram,
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   EMULATOR_REQUIRED_BOND_LOVELACE,
   fragmentOperatorWalletUtxos,
@@ -115,7 +116,7 @@ export const registerSecondOperatorBehindActiveFirst = async (
   fixture: Awaited<ReturnType<typeof initOperatorLifecycleFixture>>,
 ) => {
   const { emulator, lucid, referenceScriptsLucid, contracts } = fixture;
-  await Effect.runPromise(
+  await runWithoutFollower(
     registerOperatorProgram(
       lucid,
       contracts,
@@ -124,7 +125,7 @@ export const registerSecondOperatorBehindActiveFirst = async (
     ),
   );
   advanceEmulatorPastRegistrationDelay(emulator);
-  await Effect.runPromise(
+  await runWithoutFollower(
     activateOperatorProgram(
       lucid,
       contracts,
@@ -144,7 +145,7 @@ export const registerSecondOperatorBehindActiveFirst = async (
   const secondLucid = await Lucid(emulator, "Custom");
   secondLucid.selectWallet.fromSeed(second.seedPhrase);
   const secondKeyHash = paymentCredentialOf(second.address).hash;
-  await Effect.runPromise(
+  await runWithoutFollower(
     registerOperatorProgram(
       secondLucid,
       contracts,

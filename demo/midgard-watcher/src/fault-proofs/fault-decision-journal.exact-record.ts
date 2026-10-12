@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { isAbsolute, normalize } from "node:path";
 
 import { type HeaderDecision } from "@al-ft/midgard-fault-proofs";
 
@@ -23,24 +22,26 @@ export const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,511}$/u;
 // Production detection identities include canonical transaction output references.
 export const DETECTION_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9:._/#-]{0,511}$/u;
 
-export const RECORD_FILE = /^([0-9]{20})\.json$/u;
-
-export const MAX_RECORD_BYTES = 64 * 1024;
-
+/** The decision table's live-row cap. Decisions are pruned with their objective. */
 export const MAX_RECORDS = 65_536;
 
+/** One decision row; `revision` is the journal revision that wrote it. */
 export type WatcherPersistedFaultDecisionRecord = Readonly<{
   schemaVersion: typeof WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION;
   revision: string;
-  priorRecordSha256: string | null;
   decision: HeaderDecision;
 }>;
 
 export type WatcherFaultDecisionJournal = Readonly<{
   schemaVersion: typeof WATCHER_FAULT_DECISION_JOURNAL_SCHEMA_VERSION;
+  /** Every recorded decision, in the order the journal recorded them. */
   readAll(): Promise<readonly WatcherPersistedFaultDecisionRecord[]>;
-  /** Explicit bounded disk-chain audit; ordinary reads use the admitted cache. */
-  audit(): Promise<readonly WatcherPersistedFaultDecisionRecord[]>;
+  /** One decision by digest, read from its row. */
+  read(
+    decisionDigest: string,
+  ): Promise<WatcherPersistedFaultDecisionRecord | undefined>;
+  /** Records a live decision; an exact repeat returns the recorded row. At
+   * the cap it throws `WatcherJournalCapacityError` and records nothing. */
   appendLiveDecision(
     decision: HeaderDecision,
   ): Promise<WatcherPersistedFaultDecisionRecord>;
@@ -53,16 +54,6 @@ export type UnsafeWatcherFaultDecisionJournalForTest =
         decision: unknown,
       ): Promise<WatcherPersistedFaultDecisionRecord>;
     }>;
-
-export type UnsafeWatcherFaultDecisionJournalStorage = Readonly<{
-  prepare(parent: string, directory: string): Promise<void>;
-  list(
-    directory: string,
-  ): Promise<readonly Readonly<{ name: string; isFile: boolean }>[]>;
-  read(path: string): Promise<Uint8Array>;
-  writeExclusive(path: string, bytes: Uint8Array): Promise<void>;
-  syncDirectory(directory: string): Promise<void>;
-}>;
 
 export const exactRecord = (
   value: unknown,
@@ -116,23 +107,6 @@ export const sha256 = (value: Uint8Array | string): string =>
 
 export const canonicalDigest = (value: unknown): string =>
   sha256(watcherCanonicalJson(value));
-
-export const canonicalDirectory = (value: unknown): string => {
-  if (
-    typeof value !== "string" ||
-    value.trim() !== value ||
-    !isAbsolute(value) ||
-    normalize(value) !== value ||
-    value === "/" ||
-    value === "/tmp" ||
-    value.startsWith("/tmp/")
-  ) {
-    throw new Error(
-      "watcher fault decision journal requires a canonical durable directory",
-    );
-  }
-  return value;
-};
 
 export const exactLaunchScope = (
   value: unknown,

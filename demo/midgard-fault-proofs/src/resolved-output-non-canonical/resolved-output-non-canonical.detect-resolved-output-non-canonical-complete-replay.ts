@@ -8,15 +8,12 @@ import {
   acceptedVerdictSubject,
   EMPTY_MERKLE_TREE_ROOT,
   forcedVerdictSubject,
-  GENESIS_HEADER_HASH,
   type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
-import type { HistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
-import { requireHistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
 import {
   type AuthenticatedPriorLedgerOutput,
   fail,
@@ -29,94 +26,86 @@ import {
 } from "./resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 
 /**
- * Reconstructs the complete predecessor view from the already-admitted public
- * retained-DA history authority. No caller-provided output or proof can cross
- * this boundary: descriptor membership and every raw output are re-derived.
+ * Reconstructs the complete predecessor view from the classifier-admitted
+ * predecessor's public retained-DA payload. No caller-provided output or
+ * proof can cross this boundary: descriptor membership and every raw output
+ * are re-derived. A header committing the empty previous ledger has an empty
+ * prior view and needs no predecessor.
  */
-export const deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus =
-  async ({
-    block,
-    corpus,
-  }: {
-    readonly block: CanonicalBlockEvidence;
-    readonly corpus: HistoricalNativeScriptCorpus;
-  }): Promise<ResolvedOutputPriorLedgerReplay> => {
-    const admitted = requireHistoricalNativeScriptCorpus(corpus);
-    if (admitted.currentEvidence !== block)
-      return fail("historical corpus belongs to another challenged block");
-    const predecessor = admitted.reconstructions.at(-2);
-    if (
-      predecessor === undefined &&
-      block.header.prevHeaderHash === GENESIS_HEADER_HASH
-    ) {
-      if (block.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT)
-        return fail(
-          "genesis predecessor does not commit the canonical empty ledger",
-        );
-      return Object.freeze({
-        priorRoot: EMPTY_MERKLE_TREE_ROOT,
-        outputs: new Map(),
-      });
-    }
-    if (
-      predecessor === undefined ||
-      predecessor.headerHash !== block.header.prevHeaderHash ||
-      predecessor.header.utxosRoot !== block.header.prevUtxosRoot
-    )
-      return fail("authenticated predecessor history is absent or substituted");
-
-    // Retained UTxOs carry raw output bytes; the authenticated ledger root
-    // commits their descriptors. Use the already reconstructed descriptor view
-    // and pair it with the exact retained output by its canonical ledger key.
-    const descriptorEntries = predecessor.rootData.utxos.entries;
-    const outputPreimages = new Map(
-      predecessor.utxos.map((entry) => [
-        entry.key.toString("hex"),
-        entry.value.toString("hex"),
-      ]),
-    );
-    const trie = await buildTrieView(descriptorEntries);
-    if (trie.root !== block.header.prevUtxosRoot)
-      return fail("reconstructed predecessor trie root changed");
-    const outputs = new Map<
-      string,
-      Omit<AuthenticatedPriorLedgerOutput, "priorRoot">
-    >();
-    for (const entry of descriptorEntries) {
-      const decoded = decodeMidgardSpendInputItem(entry.key);
-      const transactionId = Buffer.from(decoded.txId).toString("hex");
-      const outputIndex = decoded.outputIndex;
-      const key = outRefKey(transactionId, outputIndex);
-      const outputCborHex = outputPreimages.get(entry.key.toString("hex"));
-      if (outputCborHex === undefined)
-        return fail("historical retained DA omitted a live output preimage");
-      const proof = await keyValuePhasProof(
-        {
-          root: trie.root,
-          count: BigInt(descriptorEntries.length),
-          entries: descriptorEntries,
-        },
-        entry.key,
-        entry.value,
-      );
-      outputs.set(key, {
-        transactionId,
-        outputIndex,
-        descriptorCborHex: entry.value.toString("hex"),
-        outputCborHex,
-        membershipProofCborHex: requireProof(
-          trie,
-          entry.key,
-          `resolved output ${key}`,
-        ),
-        membershipProof: proof,
-      });
-    }
+export const deriveResolvedOutputPriorLedgerReplay = async ({
+  block,
+  predecessor,
+}: {
+  readonly block: CanonicalBlockEvidence;
+  readonly predecessor: CanonicalBlockEvidence | undefined;
+}): Promise<ResolvedOutputPriorLedgerReplay> => {
+  if (predecessor === undefined) {
+    if (block.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT)
+      return fail("authenticated predecessor history is absent");
     return Object.freeze({
-      priorRoot: block.header.prevUtxosRoot,
-      outputs,
+      priorRoot: EMPTY_MERKLE_TREE_ROOT,
+      outputs: new Map(),
     });
-  };
+  }
+  if (
+    predecessor.headerHash !== block.header.prevHeaderHash ||
+    predecessor.header.utxosRoot !== block.header.prevUtxosRoot
+  )
+    return fail("authenticated predecessor history is substituted");
+  const ledger = predecessor.reconstruction;
+
+  // Retained UTxOs carry raw output bytes; the authenticated ledger root
+  // commits their descriptors. Use the already reconstructed descriptor view
+  // and pair it with the exact retained output by its canonical ledger key.
+  const descriptorEntries = ledger.rootData.utxos.entries;
+  const outputPreimages = new Map(
+    ledger.utxos.map((entry) => [
+      entry.key.toString("hex"),
+      entry.value.toString("hex"),
+    ]),
+  );
+  const trie = await buildTrieView(descriptorEntries);
+  if (trie.root !== block.header.prevUtxosRoot)
+    return fail("reconstructed predecessor trie root changed");
+  const outputs = new Map<
+    string,
+    Omit<AuthenticatedPriorLedgerOutput, "priorRoot">
+  >();
+  for (const entry of descriptorEntries) {
+    const decoded = decodeMidgardSpendInputItem(entry.key);
+    const transactionId = Buffer.from(decoded.txId).toString("hex");
+    const outputIndex = decoded.outputIndex;
+    const key = outRefKey(transactionId, outputIndex);
+    const outputCborHex = outputPreimages.get(entry.key.toString("hex"));
+    if (outputCborHex === undefined)
+      return fail("predecessor retained DA omitted a live output preimage");
+    const proof = await keyValuePhasProof(
+      {
+        root: trie.root,
+        count: BigInt(descriptorEntries.length),
+        entries: descriptorEntries,
+      },
+      entry.key,
+      entry.value,
+    );
+    outputs.set(key, {
+      transactionId,
+      outputIndex,
+      descriptorCborHex: entry.value.toString("hex"),
+      outputCborHex,
+      membershipProofCborHex: requireProof(
+        trie,
+        entry.key,
+        `resolved output ${key}`,
+      ),
+      membershipProof: proof,
+    });
+  }
+  return Object.freeze({
+    priorRoot: block.header.prevUtxosRoot,
+    outputs,
+  });
+};
 
 /**
  * Package-owned complete replay route. It visits every spend and reference

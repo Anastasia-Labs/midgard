@@ -231,9 +231,9 @@ export const recordCrossBlockRawEmulator = () => {
           trustClass: "authenticated_cardano_l1",
           sourceId,
           grade: "security",
-          sourceMode: "local_kupo_ogmios",
-          kupoCheckpoint: boundary,
-          ogmiosTip: tip,
+          sourceMode: "local_chain_follower",
+          boundaryPoint: boundary,
+          tipPoint: tip,
         },
         cursor: {
           point: boundary,

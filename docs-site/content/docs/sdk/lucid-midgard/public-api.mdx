@@ -84,7 +84,9 @@ The builder methods, all returning a new `TxBuilder`:
 - `addSigner(keyHashOrAddress)`, `addSignerKey(keyHash)`
 - `mintAssets(policyId, assets, redeemer?)`, `mint(mints, redeemer?)`
 - `observe(scriptHash, redeemer?)`, `receiveRedeemer(scriptHash, redeemer)`
-- `validFrom(slotOrPosix)`, `validTo(slotOrPosix)`
+- `validFrom(slotOrPosix)`, `validTo(slotOrPosix)`: the inclusive lower and
+  exclusive upper bound, as Cardano's `invalid_before` and `invalid_hereafter`.
+  A transaction with `validTo(s)` is not valid in a block at slot `s`.
 - `setMinFee(fee)`: a fee floor; provider fee policy stays authoritative unless
   a caller supplies an explicit `feePolicy`.
 - `attach.Script`, `attach.NativeScript`, `attach.SpendingValidator`,

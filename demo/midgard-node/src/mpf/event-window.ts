@@ -15,7 +15,7 @@ import "../database/forcedTransactions.js";
 import "../database/mempoolLedger.js";
 import "../database/utils/common.js";
 import "../database/withdrawals.js";
-import "../services/event-history-producer.js";
+import "../services/follower-write-gate.js";
 import "../sha256.js";
 import "./ledger-delta.js";
 import "./event-window.resolve-included-forced-transaction-entries-for-window.js";

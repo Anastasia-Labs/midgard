@@ -274,9 +274,10 @@ the 20% reserve off Cardano's 16,500,000 `maxTxExUnits` memory cap
 ledgers pin measured units for several lanes
 `[ci: aiken-ci.yml/Pin the Q1x family execution ledger]` and its sibling
 `Pin the ... execution ledger` steps, judged by
-`[script: onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs]`. Blind spot:
-`aiken check` reports units but compares them to nothing, so a validator
-without a ledger can grow past the budget with every suite green.
+`[script: onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs]`. The Aiken
+guards print each run's largest unit-test units as a share of this basis, but
+only a ledger gates them. Blind spot: a validator without a ledger can grow
+past the budget with every suite green.
 
 Ask:
 

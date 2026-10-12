@@ -6,6 +6,7 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -206,6 +207,7 @@ describe("forced submission validation boundary", () => {
       );
       const replay = await Effect.runPromise(
         replayValidationMachineEvent({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           sourceKind: "forced",
           canonicalTransactionCbor: submittedBytes(native),

@@ -19,7 +19,10 @@ import {
   type RunEnv,
   servicePorts,
 } from "../src/devnet-stack/layout.js";
-import { serviceSpecs } from "../src/devnet-stack/services.js";
+import {
+  roleProcessesFailClosed,
+  serviceSpecs,
+} from "../src/devnet-stack/services.js";
 import { waitForServices } from "../src/devnet-stack/stack.js";
 import type { ServiceSpec } from "../src/devnet-stack/supervisor.js";
 
@@ -86,15 +89,16 @@ const context = (): DeployContext => {
     publicReaderPassword: "r",
   } as Identities;
   const artifacts = {
-    nativeOwnerBinary: "o",
+    nativeOwnerBinary: "/bin/o",
     nativeOwnerSha256: "h",
-    chainSyncBinary: "c",
+    transportBinary: "/bin/c",
   };
   const layout = makeLayout(dir);
   mkdirSync(layout.state, { recursive: true });
-  new Journal(layout.journal).set("historyGenesisPin", {
-    algorithm: "ogmios-shelley-result-lossless-v1",
-    sha256: "ab".repeat(32),
+  new Journal(layout.journal).set("l1Origin", {
+    origin: { slot: 1, blockHash: "11".repeat(32) },
+    nonceTxHash: "00".repeat(32),
+    nonceBlock: { slot: 2, blockHash: "22".repeat(32) },
     recordedAt: "2026-09-30T00:00:00.000Z",
   });
   return { layout, run, identities, artifacts };
@@ -140,6 +144,36 @@ describe("the node's start grace", () => {
     // Four provider steps retried 120 x 5 s, plus the 15 min first-start ledger scan.
     const startupBudgetMs = 4 * 120 * 5_000 + 15 * 60_000;
     expect(node.startGraceMs).toBeGreaterThanOrEqual(startupBudgetMs);
+  });
+});
+
+describe("the role processes the stack starts", () => {
+  it("carry no Kupo, Ogmios, Blockfrost or tool L1 setting", () => {
+    const specs = serviceSpecs(context(), oneShot);
+    expect(specs.map((spec) => spec.name)).toContain("node");
+    for (const spec of specs)
+      expect(
+        Object.keys(spec.env).filter((name) =>
+          /KUPO|OGMIOS|BLOCKFROST|^L1_ACCESS$|^L1_PROVIDER$/u.test(name),
+        ),
+      ).toEqual([]);
+  });
+
+  it("refuse, by service and setting, an environment that would carry one", () => {
+    const node = serviceSpecs(context(), oneShot).find(
+      (spec) => spec.name === "node",
+    )!;
+    expect(() =>
+      roleProcessesFailClosed([
+        { ...node, env: { ...node.env, L1_OGMIOS_URL: "ws://127.0.0.1:1337" } },
+      ]),
+    ).toThrow(
+      expect.objectContaining({
+        reason: "role_non_follower_l1_config",
+        role: "node",
+        keys: ["L1_OGMIOS_URL"],
+      }),
+    );
   });
 });
 

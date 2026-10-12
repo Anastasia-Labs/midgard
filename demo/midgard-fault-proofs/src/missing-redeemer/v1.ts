@@ -31,7 +31,7 @@ import {
 } from "../workflow/family-definition.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
@@ -72,7 +72,7 @@ export const MISSING_REDEEMER_CONFIG_KEYS = Object.freeze([
   "headerHash",
   "lucid",
   "signer",
-  "source",
+  "l1Source",
   "decisionDigest",
   "stateQueueMutationLeaseCoordinator",
   "referenceScripts",
@@ -129,7 +129,7 @@ export type ManifestBoundMissingRedeemerWorkflowConfig = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   referenceScripts: MissingRedeemerWorkflowReferenceScripts;

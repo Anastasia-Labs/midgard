@@ -1,6 +1,9 @@
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
 import * as SDK from "@al-ft/midgard-sdk";
-import { paymentCredentialOf } from "@lucid-evolution/lucid";
+import {
+  type LucidEvolution,
+  paymentCredentialOf,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { AvailabilityResponseLoopEnforcement } from "../availability-response-loop.js";
@@ -9,15 +12,15 @@ import {
   correctionLockValidatorFromDeploymentInfo,
   daAttestationValidatorsFromDeployment,
 } from "../l1/deployment.js";
-import { lucidFromProviderUrl } from "../l1/lucid.js";
-import type { StateQueueProvider } from "../l1/state-queue-scanner.js";
-import { selectL1SubmitterWallet } from "../l1/submitter.js";
+import { committeeAvailabilityReads } from "../l1/follower/availability-reads.js";
+import { ownWalletAddress } from "../l1/follower/committee-follower-config.js";
+import type { CommitteeL1Follower } from "../l1/follower/l1-follower.js";
+import { selectL1KeySourceWallet } from "../l1/submitter.js";
 import type { CommitteeStore } from "../store.js";
 import { createCommitteePromiseAdmissionSource } from "./create-promise-admission-source.js";
 import {
   availabilityParametersFromConfig,
   availabilityResponderCollateral,
-  availabilityResponderL1ReadersFromConfig,
   availabilityResponderOperations,
 } from "./factory.availability-responder-operations.js";
 import { configuredCommitteePromiseRuntime } from "./factory.configured-promise-runtime.js";
@@ -31,13 +34,20 @@ import { availabilityResponderReferenceScripts } from "./reference-scripts.js";
 import { AvailabilityResponder } from "./responder.js";
 import { assertAvailabilityResponderSourceHealthy } from "./source-authority.js";
 
+/**
+ * The availability responder and promise admission source on the committee's
+ * L1 follower: every L1 read is the follower's facts or the node's ledger
+ * state, and every submit goes to the node's LocalTxSubmission through the
+ * follower's provider. Build it once the follower is ready: its first reads
+ * (reference scripts, the hub oracle, collateral) need the follower's facts.
+ */
 export const availabilityResponderFromConfig = async (
   config: CommitteeL1ClientConfig,
   store: CommitteeStore,
-  chainProvider: StateQueueProvider,
-  deps: { readonly lucidFromProviderUrl: typeof lucidFromProviderUrl } = {
-    lucidFromProviderUrl,
-  },
+  follower: Pick<
+    CommitteeL1Follower,
+    "source" | "store" | "provider" | "lucid" | "retention"
+  >,
 ): Promise<{
   readonly responder: AvailabilityResponder;
   readonly promiseAdmissionSource: CommitteePromiseAdmissionSource;
@@ -47,6 +57,7 @@ export const availabilityResponderFromConfig = async (
     read: () => readonly string[],
   ) => void;
   readonly compactRetainedPromises?: () => Promise<readonly string[]>;
+  readonly retirementHolds?: () => readonly string[];
 }> => {
   await assertCommitteePromiseEnrollment(config, store);
   if (
@@ -57,49 +68,21 @@ export const availabilityResponderFromConfig = async (
       "Live availability responder requires DA_AVAILABILITY_JOURNAL_PATH and a dedicated DA_AVAILABILITY_SUBMITTER_KEY_SOURCE",
     );
   }
-  if (
-    config.l1Source.sourceMode !== "local_node" ||
-    chainProvider.currentChainSyncCursor === undefined
-  ) {
+  const { provider } = follower;
+  if (follower.store === null || provider === null)
     throw new Error(
-      "Live availability responder requires the configured local_node canonical chain-sync authority",
+      "Live availability responder requires the committee's L1 follower",
     );
-  }
-  const providerUrl = config.cardanoProviderUrls[0];
-  if (
-    !providerUrl?.startsWith("kupmios:") ||
-    !config.l1Source.queryProviderUrls.includes(providerUrl)
-  ) {
-    throw new Error(
-      "Live availability responder requires a canonical kupmios query provider from L1_SOURCE_QUERY_PROVIDER_URLS",
-    );
-  }
-  const [kupoUrl, ogmiosUrl] = providerUrl.slice("kupmios:".length).split("|");
-  if (!kupoUrl || !ogmiosUrl)
-    throw new Error(
-      "Availability responder has an invalid kupmios provider URL",
-    );
-  const { lucid } = await deps.lucidFromProviderUrl(
-    providerUrl,
-    config.network,
-    config.nativeLedger,
-    config.cardanoL1Source.networkMagic,
-  );
-  await selectL1SubmitterWallet(lucid, config.availabilitySubmitterKeySource);
-  const actor = paymentCredentialOf(await lucid.wallet().address());
-  if (actor.type !== "Key")
-    throw new Error("Availability responder requires a payment-key wallet");
-  if (config.l1SubmitterKeySource === undefined)
-    throw new Error(
-      "Availability responder requires the attestation wallet identity for isolation checks",
-    );
-  await selectL1SubmitterWallet(lucid, config.l1SubmitterKeySource);
-  if (paymentCredentialOf(await lucid.wallet().address()).hash === actor.hash) {
-    throw new Error(
-      "Availability responder and attestation submitter must use different payment credentials",
-    );
-  }
-  await selectL1SubmitterWallet(lucid, config.availabilitySubmitterKeySource);
+  const reads = committeeAvailabilityReads({
+    store: follower.store,
+    readiness: () => follower.source.readiness(),
+    ...(follower.retention === null ? {} : { retention: follower.retention }),
+  });
+  const lucid = await follower.lucid();
+  const actor = await selectAvailabilityResponderWallet(lucid, {
+    ...config,
+    availabilitySubmitterKeySource: config.availabilitySubmitterKeySource,
+  });
   const contractManifestId = config.contractDeploymentInfo.manifestId;
   if (
     typeof contractManifestId !== "string" ||
@@ -141,9 +124,6 @@ export const availabilityResponderFromConfig = async (
   const reportedSkips = new Set<string>();
   const assertSourceHealthy = (): Promise<void> =>
     assertAvailabilityResponderSourceHealthy(store, config);
-  const provider = lucid.config().provider;
-  if (provider === undefined)
-    throw new Error("Availability responder has no transaction provider");
   // Only collateral comes from this wallet: publication and settlement fees are
   // protected shares of the challenger's on-chain bond.
   await availabilityResponderCollateral(
@@ -162,13 +142,15 @@ export const availabilityResponderFromConfig = async (
       return await configuredCommitteePromiseRuntime({
         config,
         store,
-        chainProvider,
         lucid,
+        reads,
+        ledger: {
+          protocolParameters: () => provider.getProtocolParameters(),
+          slotConfig: () => provider.slotConfig(),
+        },
         deployment,
-        actorId: actor.hash,
+        actorId: actor,
         journal,
-        kupoUrl,
-        ogmiosUrl,
       });
     } catch (error) {
       journal.close();
@@ -178,17 +160,11 @@ export const availabilityResponderFromConfig = async (
   const { readBoundary, assertActuationCurrent, context, reconcile } =
     availabilityResponderOperations({
       lucid,
-      readers: availabilityResponderL1ReadersFromConfig({
-        config,
-        lucid,
-        kupoUrl,
-        ogmiosUrl,
-        currentCursor: chainProvider.currentChainSyncCursor.bind(chainProvider),
-      }),
+      reads,
       assertSourceHealthy,
       context: {
         deploymentIdentity: contractManifestId,
-        actor: actor.hash,
+        actor,
         journal,
         stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
         minimumConfirmationDepth: config.finalityDepth,
@@ -196,6 +172,7 @@ export const availabilityResponderFromConfig = async (
           lucid,
           deployment.parameters,
         ),
+        // The node's LocalTxSubmission, through the follower's provider.
         submit: (signedCbor) => provider.submitTx(signedCbor),
       },
     });
@@ -206,12 +183,11 @@ export const availabilityResponderFromConfig = async (
     promiseAdmissionSource: createCommitteePromiseAdmissionSource({
       config,
       deployment,
-      actorId: actor.hash,
+      actorId: actor,
       store,
       journal,
       lucid,
-      ogmiosUrl,
-      currentCursor: chainProvider.currentChainSyncCursor.bind(chainProvider),
+      reads,
       readBoundary,
       assertActuationCurrent,
     }),
@@ -237,7 +213,10 @@ export const availabilityResponderFromConfig = async (
           },
         );
         const after = await readBoundary();
-        if (before.pointId !== after.pointId)
+        if (
+          before.pointId !== after.pointId ||
+          before.generation !== after.generation
+        )
           throw new Error(
             "Canonical source changed during availability challenge discovery",
           );
@@ -258,4 +237,40 @@ export const availabilityResponderFromConfig = async (
       },
     }),
   };
+};
+
+/**
+ * The availability responder's startup wallet step: selects its wallet on
+ * `lucid` and returns the payment key hash it acts as. Refuses a script
+ * credential, and a wallet that shares the attestation submitter's payment
+ * credential.
+ *
+ * The selection holds no UTxO pin. Collateral is read afresh for every build
+ * (`availabilityResponderCollateral`), and Lucid finds the keys to sign with
+ * in the wallet's UTxOs. Under a pin taken here, collateral that arrived
+ * later (a top-up, or a refill after a phase-2 collateral loss) would be
+ * signed without its key, and every step refused until a restart.
+ */
+export const selectAvailabilityResponderWallet = async (
+  lucid: Pick<LucidEvolution, "selectWallet" | "wallet">,
+  config: Pick<CommitteeL1ClientConfig, "l1SubmitterKeySource" | "network"> & {
+    readonly availabilitySubmitterKeySource: string;
+  },
+): Promise<string> => {
+  await selectL1KeySourceWallet(lucid, config.availabilitySubmitterKeySource);
+  const actor = paymentCredentialOf(await lucid.wallet().address());
+  if (actor.type !== "Key")
+    throw new Error("Availability responder requires a payment-key wallet");
+  if (config.l1SubmitterKeySource === undefined)
+    throw new Error(
+      "Availability responder requires the attestation wallet identity for isolation checks",
+    );
+  const attestation = paymentCredentialOf(
+    await ownWalletAddress(config.l1SubmitterKeySource, config.network),
+  );
+  if (attestation.hash === actor.hash)
+    throw new Error(
+      "Availability responder and attestation submitter must use different payment credentials",
+    );
+  return actor.hash;
 };

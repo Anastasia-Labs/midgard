@@ -14,7 +14,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { DaPayloadRecord, StateQueueHeaderRecord } from "../domain.js";
-import { hashBlockHeader } from "../l1/state-queue-scanner.js";
+import { headerHashOf } from "../l1/follower/queue-derivation.js";
 import { hexToBytes, normalizeHex } from "../utils/hex.js";
 import {
   computeDaPayloadRoots,
@@ -443,7 +443,7 @@ export class DaProofArtifactDeriver {
           fieldName: "computed header hash",
           byteLength: 28,
         }) !== headerHashHex ||
-        hashBlockHeader(record.header) !== headerHashHex
+        headerHashOf(record.header) !== headerHashHex
       ) {
         return "record_header_hash_mismatch";
       }

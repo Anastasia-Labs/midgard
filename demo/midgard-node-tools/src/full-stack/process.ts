@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
+
 import { runCommandStep } from "../e2e/runner.js";
+import { deriveL1Origin, readL1NodeTip } from "../l1-origin.js";
 import type { StackConfig } from "./config.js";
 import { writeDurableJson } from "./journal.js";
+import { hostL1Node } from "./native-ledger.js";
 
 /** Build tools see only the host toolchain; stack commands also see the stack environment. */
 export type CommandScope = "stack" | "host";
@@ -27,10 +31,14 @@ const HOST_KEYS = [
 ];
 
 export class StackProcesses {
+  /** The operator's own `L1_ORIGIN` from the stack env file, before any restore. */
+  readonly configuredL1Origin: string | undefined;
   constructor(
     readonly config: StackConfig,
     readonly env: Record<string, string>,
-  ) {}
+  ) {
+    this.configuredL1Origin = env.L1_ORIGIN || undefined;
+  }
   async command(
     id: string,
     command: string,
@@ -103,6 +111,18 @@ export class StackProcesses {
       ...overrides,
     });
   }
+  /** The local node's tip; undefined at genesis. */
+  l1NodeTip(): Promise<L1Origin | undefined> {
+    return readL1NodeTip(hostL1Node(this));
+  }
+  /** The deployment origin of the hub-oracle nonce tx, scanned from `from`. */
+  deriveL1Origin(nonceTxHash: string, from: L1Origin | undefined) {
+    return deriveL1Origin({
+      node: hostL1Node(this),
+      nonceTxHash,
+      ...(from === undefined ? {} : { from }),
+    });
+  }
   /** The cluster that host commands reach at 127.0.0.1 on the stack's Postgres host port. */
   async hostDatabaseIdentity(): Promise<string> {
     const [{ SqlClient }, { PgClient }, { Effect, Redacted }] =
@@ -164,24 +184,12 @@ export async function poll<T>(
   );
 }
 
-export async function getJson(
-  url: string,
-  headers?: Record<string, string>,
-): Promise<unknown | undefined> {
+export async function getJson(url: string): Promise<unknown | undefined> {
   try {
-    const response = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(10_000),
-    });
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) return undefined;
     return await response.json();
   } catch {
     return undefined;
   }
-}
-export async function bearerHeaders(path: string) {
-  const bearer = (await readFile(path, "utf8")).trim();
-  if (!bearer || /\s/.test(bearer))
-    throw new Error("Invalid watcher bearer file");
-  return { authorization: `Bearer ${bearer}` };
 }

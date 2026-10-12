@@ -211,6 +211,35 @@ export const waitL1Ready = async (run: RunEnv, timeoutMs: number) => {
   throw new Error(`L1 did not become ready: ${last}`);
 };
 
+/**
+ * The run's network magic and L1 slot mapping, from its Shelley genesis:
+ * slot 0 at `systemStart`. The node's derived deployment and the watcher's
+ * Custom network both take this mapping.
+ */
+export const readDevnetCustomNetwork = (layout: Layout) => {
+  const genesis = JSON.parse(readFileSync(layout.shelleyGenesis, "utf8")) as {
+    networkMagic: number;
+    systemStart: string;
+    slotLength: number;
+  };
+  const slotLength = Math.round(genesis.slotLength * 1000);
+  if (
+    Math.abs(slotLength - genesis.slotLength * 1000) > 1e-6 ||
+    slotLength <= 0
+  )
+    throw new Error(
+      "the shelley genesis slot length is not a whole number of milliseconds",
+    );
+  return {
+    networkMagic: genesis.networkMagic,
+    slotConfig: {
+      zeroTime: Date.parse(genesis.systemStart),
+      zeroSlot: 0,
+      slotLength,
+    },
+  };
+};
+
 /** The Shelley genesis fields that bound how long the pool can forge. */
 export type KesGenesis = {
   readonly systemStart: string;

@@ -23,7 +23,6 @@ import {
   recordWriteBehindTransactionTelemetry,
   summarizeWriteBehindTelemetry,
   takeWriteBehindProjectionBatch,
-  takeWriteBehindRowBatch,
   writeBehindFlushDurationTimer,
   writeBehindInlineFallbackCounter,
 } from "../src/services/write-behind.js";
@@ -54,24 +53,6 @@ const rowCount = (items: readonly WriteBehindItem[]): number =>
   );
 
 describe("write-behind row batching", () => {
-  it("caps a mixed-kind flush by rows and retains the exact remainder", () => {
-    const result = takeWriteBehindRowBatch(
-      [deltaItem(700), addressItem(700), deltaItem(50)],
-      1_000,
-    );
-
-    expect(rowCount(result.batch)).toBe(1_000);
-    expect(rowCount(result.remaining)).toBe(450);
-    expect(result.batch.map((item) => item.kind)).toStrictEqual([
-      "tx_deltas",
-      "address_history",
-    ]);
-    expect(result.remaining.map((item) => item.kind)).toStrictEqual([
-      "address_history",
-      "tx_deltas",
-    ]);
-  });
-
   it("takes the cap from each projection in one transaction", () => {
     const result = takeWriteBehindProjectionBatch(
       [deltaItem(3), addressItem(4), deltaItem(2), addressItem(1)],
@@ -86,13 +67,6 @@ describe("write-behind row batching", () => {
     expect(deltaRows).toBe(4);
     expect(addressRows).toBe(4);
     expect(rowCount(result.remaining)).toBe(2);
-  });
-
-  it("returns every row when the pending set is below the bound", () => {
-    const result = takeWriteBehindRowBatch([deltaItem(2), addressItem(3)], 10);
-
-    expect(rowCount(result.batch)).toBe(5);
-    expect(result.remaining).toStrictEqual([]);
   });
 
   effectIt.effect(

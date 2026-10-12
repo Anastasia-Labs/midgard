@@ -1,8 +1,8 @@
 import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
-import { readOgmiosBlockTransaction } from "midgard-node/l1-tx-order-carriage";
-import { canonicalOgmiosBlockDepth } from "midgard-node/services/state-queue-correction-observer.canonical-block-depth";
+import { readOgmiosBlockTransaction } from "midgard-node/l1-external/kupmios-history";
 
 import type { AcceptanceNativePoint } from "./acceptance-native-boundary.js";
+import { canonicalOgmiosBlockDepth } from "./acceptance-native-canonical-depth.js";
 import { createAcceptanceNativeTransport } from "./acceptance-native-transport.js";
 
 const observedFactory =

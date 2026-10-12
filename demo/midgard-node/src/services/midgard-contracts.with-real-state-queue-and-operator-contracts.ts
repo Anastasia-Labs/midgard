@@ -127,6 +127,7 @@ export const withRealStateQueueAndOperatorContracts = (
       realComputationThread,
       realFraudProof,
       deploymentParameters.eventHistoryBounds,
+      deploymentParameters.l1SlotConfig,
     );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,

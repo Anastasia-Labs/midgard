@@ -31,20 +31,20 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import {
-  advanceMissingNativeScriptTxGrammarCheckpoint,
-  advanceMissingNativeScriptTxSemanticCheckpoint,
-  encodeMissingNativeScriptTxGrammarCheckpoint,
-  encodeMissingNativeScriptTxSemanticCheckpoint,
-  hashMissingNativeScriptTxGrammarCheckpoint,
-  hashMissingNativeScriptTxSemanticCheckpoint,
-  initialMissingNativeScriptTxGrammarCheckpoint,
-  initialMissingNativeScriptTxSemanticCheckpoint,
-  missingNativeScriptTxGrammarCheckpointIsComplete,
-  resolveMissingNativeScriptTxGrammarCheckpoint,
-  resolveMissingNativeScriptTxSemanticCheckpoint,
-} from "../missing-native-script-tx/staged-walk.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  advanceFieldGrammarCheckpoint,
+  advanceFieldSemanticCheckpoint,
+  encodeFieldGrammarCheckpoint,
+  encodeFieldSemanticCheckpoint,
+  fieldGrammarCheckpointIsComplete,
+  hashFieldGrammarCheckpoint,
+  hashFieldSemanticCheckpoint,
+  initialFieldGrammarCheckpoint,
+  initialFieldSemanticCheckpoint,
+  resolveFieldGrammarCheckpoint,
+  resolveFieldSemanticCheckpoint,
+} from "../staged-field-walk/index.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
@@ -197,11 +197,11 @@ export const submitNativeScriptInvalidStep02 = async ({
     if (!state.grammar_complete) {
       const prior =
         state.grammar_checkpoint_hash === ""
-          ? initialMissingNativeScriptTxGrammarCheckpoint({
+          ? initialFieldGrammarCheckpoint({
               txId: state.bad_tx_id,
               items: scriptWitnessItems,
             })
-          : resolveMissingNativeScriptTxGrammarCheckpoint({
+          : resolveFieldGrammarCheckpoint({
               txId: state.bad_tx_id,
               items: scriptWitnessItems,
               committedHash: state.grammar_checkpoint_hash,
@@ -213,25 +213,23 @@ export const submitNativeScriptInvalidStep02 = async ({
           checkpoint_bytes:
             state.grammar_checkpoint_hash === ""
               ? ""
-              : encodeMissingNativeScriptTxGrammarCheckpoint(prior).toString(
-                  "hex",
-                ),
+              : encodeFieldGrammarCheckpoint(prior).toString("hex"),
           item_budget: 32n,
         },
       };
     }
-    const grammar = resolveMissingNativeScriptTxGrammarCheckpoint({
+    const grammar = resolveFieldGrammarCheckpoint({
       txId: state.bad_tx_id,
       items: scriptWitnessItems,
       committedHash: state.grammar_checkpoint_hash,
     });
     const prior =
       state.script_checkpoint_hash === ""
-        ? initialMissingNativeScriptTxSemanticCheckpoint({
+        ? initialFieldSemanticCheckpoint({
             grammar,
             items: scriptWitnessItems,
           })
-        : resolveMissingNativeScriptTxSemanticCheckpoint({
+        : resolveFieldSemanticCheckpoint({
             txId: state.bad_tx_id,
             items: scriptWitnessItems,
             committedHash: state.script_checkpoint_hash,
@@ -242,13 +240,11 @@ export const submitNativeScriptInvalidStep02 = async ({
         script_index: scriptIndex,
         script_tx_wits_opening: opening,
         grammar_checkpoint_bytes:
-          encodeMissingNativeScriptTxGrammarCheckpoint(grammar).toString("hex"),
+          encodeFieldGrammarCheckpoint(grammar).toString("hex"),
         walk_checkpoint_bytes:
           state.script_checkpoint_hash === ""
             ? ""
-            : encodeMissingNativeScriptTxSemanticCheckpoint(prior).toString(
-                "hex",
-              ),
+            : encodeFieldSemanticCheckpoint(prior).toString("hex"),
         item_budget: 32n,
       },
     };
@@ -257,16 +253,16 @@ export const submitNativeScriptInvalidStep02 = async ({
     if (!state.grammar_complete) {
       const prior =
         state.grammar_checkpoint_hash === ""
-          ? initialMissingNativeScriptTxGrammarCheckpoint({
+          ? initialFieldGrammarCheckpoint({
               txId: state.bad_tx_id,
               items: scriptWitnessItems,
             })
-          : resolveMissingNativeScriptTxGrammarCheckpoint({
+          : resolveFieldGrammarCheckpoint({
               txId: state.bad_tx_id,
               items: scriptWitnessItems,
               committedHash: state.grammar_checkpoint_hash,
             });
-      const next = advanceMissingNativeScriptTxGrammarCheckpoint({
+      const next = advanceFieldGrammarCheckpoint({
         checkpoint: prior,
         items: scriptWitnessItems,
         budget: 32,
@@ -274,30 +270,28 @@ export const submitNativeScriptInvalidStep02 = async ({
       nextStep = 1;
       nextState = {
         ...state,
-        grammar_checkpoint_hash:
-          hashMissingNativeScriptTxGrammarCheckpoint(next),
-        grammar_complete:
-          missingNativeScriptTxGrammarCheckpointIsComplete(next),
+        grammar_checkpoint_hash: hashFieldGrammarCheckpoint(next),
+        grammar_complete: fieldGrammarCheckpointIsComplete(next),
       };
     } else {
-      const grammar = resolveMissingNativeScriptTxGrammarCheckpoint({
+      const grammar = resolveFieldGrammarCheckpoint({
         txId: state.bad_tx_id,
         items: scriptWitnessItems,
         committedHash: state.grammar_checkpoint_hash,
       });
       const prior =
         state.script_checkpoint_hash === ""
-          ? initialMissingNativeScriptTxSemanticCheckpoint({
+          ? initialFieldSemanticCheckpoint({
               grammar,
               items: scriptWitnessItems,
             })
-          : resolveMissingNativeScriptTxSemanticCheckpoint({
+          : resolveFieldSemanticCheckpoint({
               txId: state.bad_tx_id,
               items: scriptWitnessItems,
               committedHash: state.script_checkpoint_hash,
             });
       if (Number(scriptIndex) - prior.nextItemIndex >= 32) {
-        const next = advanceMissingNativeScriptTxSemanticCheckpoint({
+        const next = advanceFieldSemanticCheckpoint({
           checkpoint: prior,
           txId: state.bad_tx_id,
           items: scriptWitnessItems,
@@ -306,8 +300,7 @@ export const submitNativeScriptInvalidStep02 = async ({
         nextStep = 1;
         nextState = {
           ...state,
-          script_checkpoint_hash:
-            hashMissingNativeScriptTxSemanticCheckpoint(next),
+          script_checkpoint_hash: hashFieldSemanticCheckpoint(next),
         };
       }
     }

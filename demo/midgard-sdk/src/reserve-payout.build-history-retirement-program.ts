@@ -344,11 +344,12 @@ export const buildHistoryRetirementProgram = (
       refs.historyRetirement,
       ...(initialize ? [refs.payoutMinting] : []),
     ]);
-    const feeInput = yield* selectFeeInputProgram(lucid, config.feeInput, [
-      event.utxo,
-      predecessor.utxo,
-      ...references,
-    ]);
+    const feeInput = yield* selectFeeInputProgram(
+      lucid,
+      config.feeInput,
+      [event.utxo, predecessor.utxo, ...references],
+      config.walletInputs,
+    );
     const retirementAddress = scriptRewardAddress(
       network,
       history.retirement.withdrawalScript,
@@ -460,6 +461,7 @@ export const buildHistoryRetirementProgram = (
     return yield* completeWithFinalLayoutProgram({
       label: "event history retirement",
       lucid,
+      walletInputs: config.walletInputs,
       walletInputExclusions: [
         event.utxo,
         predecessor.utxo,

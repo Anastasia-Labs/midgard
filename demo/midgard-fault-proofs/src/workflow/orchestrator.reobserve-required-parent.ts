@@ -6,8 +6,10 @@ import type {
   FraudProofWorkflowJournalEvent,
   FraudProofWorkflowJournalStore,
 } from "./journal.js";
-import { LocalKupmiosTransportUnavailableError } from "./local-kupmios-http-ogmios-source.js";
-import { LocalKupmiosCheckpointChangedError } from "./local-kupmios-raw-l1-authority.js";
+import {
+  FraudProofL1CheckpointChangedError,
+  isFraudProofL1WaitError,
+} from "./l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAdapterContext,
@@ -86,11 +88,11 @@ export const reobserveRequiredWorkflowParent = async ({
         checkpoint: "before_reconcile",
       });
     } catch (cause) {
-      if (cause instanceof LocalKupmiosCheckpointChangedError)
+      if (cause instanceof FraudProofL1CheckpointChangedError)
         return resumeOnObservation(
           `reconciliation awaits a stable boundary for ${intent.actionId}: ${cause.message}`,
         );
-      if (cause instanceof LocalKupmiosTransportUnavailableError) throw cause;
+      if (isFraudProofL1WaitError(cause)) throw cause;
       return await stalled(
         `reconciliation failed for ${intent.actionId}: ${formatUnknownError(cause)}`,
       );

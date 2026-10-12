@@ -17,8 +17,10 @@ import {
   prepareHubOracleOneShotNonceProgram,
   reconcileHubOracleOneShotNonceAttemptProgram,
 } from "../src/commands/prepare-hub-oracle-nonce.js";
+import { unjournaledSubmission } from "../src/services/intent-journal.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { TxConfirmError } from "../src/transactions/utils.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
 const awaitSubmittedTransactionConfirmationMock = vi.hoisted(() => vi.fn());
@@ -122,7 +124,7 @@ const runPrepare = (
   lucidService: unknown,
   options: PrepareHubOracleNonceOptions = {},
 ): Promise<PreparedHubOracleNonce> =>
-  Effect.runPromise(
+  runWithoutFollower(
     prepareHubOracleOneShotNonceProgram(amountLovelace, options).pipe(
       Effect.provideService(LucidService, lucidService as never),
     ),
@@ -208,6 +210,7 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
     expect(signSubmitTransactionMock).toHaveBeenCalledWith(
       (lucidService as { readonly api: LucidEvolution }).api,
       record.unsignedTx,
+      unjournaledSubmission("no_follower", "hub_oracle_nonce:prepare"),
     );
     expect(awaitSubmittedTransactionConfirmationMock).toHaveBeenCalledWith(
       (lucidService as { readonly api: LucidEvolution }).api,

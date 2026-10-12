@@ -1,5 +1,7 @@
 # Public-testnet decisions and implementation report
 
+> Note (deleted 2026-10-03, #752): speculative commit mode, the foreign-tip reconciliation table `foreign_tip_reconciliations`, the T2 foreign-event reconciliation workers, the foreign DA reconciliation fiber and the commit-time foreign-tip gate no longer exist. The file paths this record cites for them are kept as plain text for history.
+
 Prepared 1 October 2026 against `3027be19cb3bc740f83af0e155e34ab38c7cf894` and the accompanying working changes. This report answers the requested decisions. The linked item documents contain the detailed source references, research, alternatives, and acceptance criteria.
 
 ## Owner decisions (1 October 2026)
@@ -365,6 +367,8 @@ A registered operator awaiting activation is different from a removed operator. 
 
 I agree with the policy. Operating fees can be maintained automatically; reinstating an operator after punishment is an explicit human decision.
 
+Amended by the L1 follower plan's D-N7 (§7.5 R7): the removed operator holds its duties and reports unready with `operator_removed`, but it no longer shuts down. A still-canonical removal would make a supervisor restart exit again, in a loop. See [A10](A10.md).
+
 ## B1 — Raise testing confirmation depth
 
 **Implemented policy: 12 L1 confirmations for local-devnet-testing and preprod-testing.** Emulator-only tests remain at three; public-testnet and mainnet remain at 30. Twelve improves the very shallow testing threshold while fitting the testing profiles' existing timing budget.
@@ -495,15 +499,15 @@ A controlled probe of the installed provider returned a structured retryable err
 **Amended after review — the seam is wider than the probe showed, and the shim
 already exists.** The node's only reclassifier of an Ogmios JSON-RPC failure
 matches the string prefix `"Ogmios chain-sync error: "` and a small code set
-([l1-ledger-snapshot.ts:83](../../../demo/midgard-node/src/l1-ledger-snapshot.ts#L83)),
+(`demo/midgard-node/src/l1-ledger-snapshot.ts:83`, since deleted),
 against an error constructed as a plain `Error` carrying that message
-([l1-tx-order-carriage.open-ogmios-session.ts:88](../../../demo/midgard-node/src/l1-tx-order-carriage.open-ogmios-session.ts#L88)).
+(`l1-tx-order-carriage.open-ogmios-session.ts:88`, since renamed `l1-kupmios.open-ogmios-session.ts`).
 The two committee clients — `provider.ogmios-rpc-session.ts:74` and
 `state-queue-replay-provider.open-rpc.ts:256` — reject with a plain `Error` and
 reclassify nothing. The fix is therefore one shared typed classification across
 all three clients, not a single call site. The existing prefix match is itself the
 string-matching shim this item warns against, and should be deleted by the same
-change.
+change. <!-- doc-links:historical -->
 
 **ANSWERED — owner ruling, 1 October 2026:** "Accept as written — honor typed retryability, bounded retries at the owning operation, delete the string-prefix shim (OG-CLASS lane)."
 

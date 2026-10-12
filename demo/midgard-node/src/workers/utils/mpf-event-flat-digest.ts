@@ -106,4 +106,3 @@ const defaultAdapter = createEventFlatDigestAdapter(
 export const prepareEventFlatDigest = defaultAdapter.prepare;
 export const eventFlatDigest = defaultAdapter.digest;
 export const createEventFlatDigest = defaultAdapter.createDigest;
-export const eventFlatDigestIsReady = defaultAdapter.isReady;

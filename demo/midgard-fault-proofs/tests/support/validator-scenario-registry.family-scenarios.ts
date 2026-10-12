@@ -159,20 +159,6 @@ export const FAMILY_SCENARIOS: Readonly<
       },
     ],
   },
-  missingNativeScriptTx: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-native-script-tx-lifecycle.test.ts",
-        test: "proves the absent script through six reference-script steps, cancels explicitly, and removes the fraudulent commitment",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-native-script-tx-adversarial.test.ts",
-        test: "refuses an honest present script on-chain and pins every earlier negative/cancel gate",
-      },
-    ],
-  },
   withdrawnReferenceInput: {
     passing: [
       {

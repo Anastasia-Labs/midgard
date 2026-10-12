@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import {
   type DeploymentManifest,
   type DeploymentManifestContractEntry,
-  parseDeploymentManifestEconomics,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
@@ -24,21 +23,12 @@ import {
   type ResolvedValidationTraceDisputeDeploymentContracts,
   resolveValidationTraceDisputeDeploymentContracts,
 } from "../runtime.js";
+import { releasePolicies } from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
 import {
   FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING,
   type FraudProofWorkflowDeploymentBinding,
 } from "../workflow/deployment-manifest-binding.js";
 import type { FraudProofRawL1FamilyDefinition } from "../workflow/raw-l1-family-derivation.js";
-import {
-  computeFraudProofReleaseEconomicsPolicyDigest,
-  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-  type VerifiedFraudProofReleaseEconomicsPolicy,
-} from "../workflow/release-economics-policy.js";
-import {
-  computeFraudProofReleaseFinalityPolicyDigest,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  type VerifiedFraudProofReleaseFinalityPolicy,
-} from "../workflow/release-finality-policy.js";
 import {
   assertValidationTraceDisputeRosterIsManifestBound,
   VALIDATION_TRACE_DISPUTE_CATEGORY,
@@ -141,42 +131,6 @@ const assertDeploymentInfoMatchesManifest = ({
       "contract deployment info changed the finalized fraud-proof catalogue",
     );
   }
-};
-
-const releasePolicies = (
-  manifest: DeploymentManifest,
-): {
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
-} => {
-  const finalityPolicy = manifest.l1Finality;
-  const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: manifest.manifestId,
-    blueprintHash: manifest.artifacts.blueprintHash,
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
-    policy: finalityPolicy,
-  };
-  const compiled = parseDeploymentManifestEconomics(manifest.economics);
-  const economicsPolicy = {
-    profile: compiled.profile,
-    requiredBondLovelace: compiled.requiredBondLovelace.toString(),
-    slashingPenaltyLovelace: compiled.slashingPenaltyLovelace.toString(),
-    fraudProverRewardLovelace: compiled.fraudProverRewardLovelace.toString(),
-    inactivitySlashingPenaltyLovelace:
-      compiled.inactivitySlashingPenaltyLovelace.toString(),
-    proverCollateralFloorLovelace:
-      compiled.proverCollateralFloorLovelace.toString(),
-  };
-  const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
-    schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: manifest.manifestId,
-    blueprintHash: manifest.artifacts.blueprintHash,
-    policyDigest:
-      computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
-    policy: economicsPolicy,
-  };
-  return { releaseFinality, releaseEconomics };
 };
 
 /**

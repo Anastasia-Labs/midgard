@@ -1,14 +1,20 @@
-import { decodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
 import {
-  requireCandidateHistory,
-  withHistoryWrite,
-} from "../services/event-history-producer.js";
+  requireCandidateView,
+  withFollowerWrite,
+} from "../services/follower-write-gate.js";
+import type { CommitAnchor } from "./commit-anchor.js";
 import * as DepositsDB from "./deposits.js";
 import * as ForcedTransactionsDB from "./forcedTransactions.js";
+import {
+  ADMISSION_KIND_OF,
+  type AdmissionIdentity,
+  IdentityColumns,
+  NO_IDENTITY,
+} from "./l1-admission-identity.js";
 import {
   ACTIVE_STATUSES,
   Columns,
@@ -37,6 +43,7 @@ import {
 import {
   exactBytes,
   exactDate,
+  type PreparedPendingSubmission,
   type PrepareInput,
 } from "./pendingBlockFinalizations.parse-ledger-delta.js";
 import {
@@ -45,7 +52,12 @@ import {
   parsePendingBlockFinalization,
   txMemberEntry,
 } from "./pendingBlockFinalizations.parse-pending-block-finalization.js";
+import { programMaterialSidecarsByTxId } from "./pendingBlockFinalizations.program-material-sidecars.js";
 import { withdrawalMemberToAssignment } from "./pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import {
+  ACTIVE_PENDING_JOURNAL_REFUSAL,
+  refuseOnSingleActiveIndexLoss,
+} from "./pendingBlockFinalizations.single-active-refusal.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as TxTable from "./utils/tx.js";
 import * as WithdrawalsDB from "./withdrawals.js";
@@ -55,12 +67,19 @@ export const preparePendingSubmission = (
   options?: {
     /**
      * Runs after the active-journal guard and inside the same SQL transaction
-     * as the pending journal insert. Used by speculative submission to lock,
-     * revalidate, and project its exact source snapshot atomically.
+     * as the pending journal insert. Commit submission uses it to assert the
+     * user-event sources are complete and the end time within the commit
+     * anchor's cap in the same transaction; it returns the anchor the journal
+     * stores (`commit-anchor.ts`). A journal written under a runtime permit
+     * must have one.
      */
-    readonly beforeJournalInsert?: Effect.Effect<void, DatabaseError, Database>;
+    readonly beforeJournalInsert?: Effect.Effect<
+      CommitAnchor | undefined,
+      DatabaseError,
+      Database
+    >;
   },
-): Effect.Effect<void, DatabaseError, Database> =>
+): Effect.Effect<PreparedPendingSubmission, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const pendingV1 = yield* Effect.try({
@@ -154,49 +173,7 @@ export const preparePendingSubmission = (
       (entry, ordinal) =>
         withdrawalMemberEntry(input.headerHash, entry, ordinal),
     );
-    const programMaterialByTxId = new Map<string, Buffer>();
-    for (const material of input.mempoolTxProgramMaterialSidecars ?? []) {
-      const txIdHex = material.txId.toString("hex");
-      if (programMaterialByTxId.has(txIdHex)) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: txsTableName,
-            message:
-              "Refusing to prepare duplicate V1 transaction program material",
-            cause: `tx_id=${txIdHex}`,
-          }),
-        );
-      }
-      yield* Effect.try({
-        try: () => decodeMidgardCekProgramMaterialSidecar(material.sidecarCbor),
-        catch: (cause) =>
-          new DatabaseError({
-            table: txsTableName,
-            message:
-              "Refusing to journal malformed V1 transaction program material",
-            cause,
-          }),
-      });
-      programMaterialByTxId.set(txIdHex, Buffer.from(material.sidecarCbor));
-    }
-    if (
-      programMaterialByTxId.size !== input.mempoolTxs.length ||
-      input.mempoolTxs.some(
-        (entry) =>
-          !programMaterialByTxId.has(
-            entry[TxTable.Columns.TX_ID].toString("hex"),
-          ),
-      )
-    ) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: txsTableName,
-          message:
-            "V1 pending journal requires one canonical program-material sidecar per normal transaction",
-          cause: `transactions=${input.mempoolTxs.length.toString()},sidecars=${programMaterialByTxId.size.toString()}`,
-        }),
-      );
-    }
+    const programMaterialByTxId = yield* programMaterialSidecarsByTxId(input);
     const txMembers = input.mempoolTxs.map((entry, ordinal) =>
       txMemberEntry(
         input.headerHash,
@@ -245,9 +222,9 @@ export const preparePendingSubmission = (
           blockEndTime: input.blockEndTime,
         }),
       );
-    yield* withHistoryWrite(
+    return yield* withFollowerWrite(
       Effect.gen(function* () {
-        const candidateHistory = yield* requireCandidateHistory;
+        const candidateHistory = yield* requireCandidateView;
         if (
           (Option.isSome(candidateHistory) &&
             input.preparedTxHash === undefined) ||
@@ -273,20 +250,36 @@ export const preparePendingSubmission = (
           return yield* Effect.fail(
             new DatabaseError({
               table: tableName,
-              message:
-                "Refusing to prepare a new pending block while another active pending-finalization record exists",
+              message: ACTIVE_PENDING_JOURNAL_REFUSAL,
               cause: `active_header_hash=${active[Columns.HEADER_HASH].toString(
                 "hex",
               )},requested_header_hash=${input.headerHash.toString("hex")}`,
             }),
           );
         }
-        if (options?.beforeJournalInsert !== undefined) {
-          yield* options.beforeJournalInsert;
-        }
+        const anchor =
+          options?.beforeJournalInsert === undefined
+            ? undefined
+            : yield* options.beforeJournalInsert;
+        if (Option.isSome(candidateHistory) && anchor === undefined)
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: tableName,
+              message: "Production pending journal requires a commit anchor",
+              cause: input.headerHash.toString("hex"),
+            }),
+          );
         yield* WithdrawalsDB.assertClassificationSnapshots(
           withdrawalMembers.map(withdrawalMemberToAssignment),
         );
+        const held = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
+          SELECT ${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)}
+          WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
+            AND ${sql(Columns.STATUS)} = ${Status.Abandoned}
+            AND (${sql(Columns.SUBMITTED_TX_HASH)} IS NOT NULL
+              OR ${sql(Columns.INTENDED_TX_HASH)} IS NOT NULL)`;
+        const heldHeaderHash = input.headerHash;
+        if (held.length !== 0) return { kind: "held" as const, heldHeaderHash };
         if (active !== undefined) {
           yield* sql`DELETE FROM ${sql(tableName)}
             WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
@@ -309,6 +302,9 @@ export const preparePendingSubmission = (
           [Columns.CONSENSUS_PROFILE_ID]: metadata.consensusProfileId,
           [Columns.PREPARED_TX_HASH]: input.preparedTxHash ?? null,
           [Columns.SUBMITTED_TX_HASH]: null,
+          [Columns.COMMIT_ANCHOR_HASH]: anchor?.hash ?? null,
+          [Columns.COMMIT_ANCHOR_HEIGHT]: anchor?.height ?? null,
+          [Columns.COMMIT_ANCHOR_SLOT]: anchor?.slot ?? null,
           [Columns.STATE_QUEUE_LEASE_TOKEN]: metadata.stateQueueLeaseToken,
           [Columns.BASE_SNAPSHOT_ID]: metadata.baseSnapshotId,
           [Columns.BASE_TAIL_OUT_REF]: metadata.baseTailOutRef,
@@ -376,24 +372,20 @@ export const preparePendingSubmission = (
           [Columns.MPF_REPLAY_EVENT_COUNT]: nativeMpfReplay?.eventCount ?? null,
           [Columns.STATUS]: Status.PendingSubmission,
           [Columns.OBSERVED_CONFIRMED_AT_MS]: null,
-        })}`;
+        })}`.pipe(refuseOnSingleActiveIndexLoss(tableName, input.headerHash));
         const permit = candidateHistory;
         const memberHistory = (eventTable: string, eventId: Buffer) =>
           Effect.gen(function* () {
-            if (Option.isNone(permit))
-              return {
-                history_binding_digest: null,
-                history_incarnation_id: null,
-              };
-            const rows = yield* sql<{
-              history_binding_digest: Buffer;
-              history_incarnation_id: Buffer;
-            }>`
-            SELECT e.history_binding_digest, e.history_incarnation_id FROM ${sql(eventTable)} e
-            JOIN event_history_incarnations i ON i.binding_digest = e.history_binding_digest AND i.incarnation_id = e.history_incarnation_id
-            WHERE e.event_id = ${eventId} AND i.event_id = e.event_id AND i.origin_canonical = true
-              AND i.binding_digest = ${Buffer.from(permit.value.coverage.bindingDigest, "hex")}
-            FOR UPDATE OF e`;
+            if (Option.isNone(permit)) return NO_IDENTITY;
+            // The member's follower admission identity, canonical in the
+            // follower's key set now. The key row is share-locked so a
+            // follower rewind cannot orphan it before this journal commits.
+            const kind = ADMISSION_KIND_OF[eventTable]!;
+            const rows = yield* sql<AdmissionIdentity>`
+            SELECT e.l1_event_key, e.l1_origin_outref FROM ${sql(eventTable)} e
+            JOIN l1_event_keys k ON k.kind = ${kind} AND k.key = e.l1_event_key AND k.origin_outref = e.l1_origin_outref
+            WHERE e.event_id = ${eventId}
+            FOR UPDATE OF e FOR SHARE OF k`;
             if (rows.length !== 1)
               return yield* Effect.fail(
                 new DatabaseError({
@@ -448,8 +440,8 @@ export const preparePendingSubmission = (
             WithdrawalMemberColumns.VALIDITY,
             WithdrawalMemberColumns.VALIDITY_DETAIL,
             WithdrawalMemberColumns.CLASSIFICATION_SHA256,
-            "history_binding_digest",
-            "history_incarnation_id",
+            IdentityColumns.EVENT_KEY,
+            IdentityColumns.ORIGIN_OUTREF,
           ] as const;
           yield* sql`INSERT INTO ${sql(withdrawalsTableName)} (${sql.csv(columns.map((column) => sql`${sql(column)}`))}) VALUES (${sql.csv(columns.map((column) => sql`${values[column]}`))})`;
         }
@@ -476,6 +468,7 @@ export const preparePendingSubmission = (
             validationTraceWitnessesTableName,
           )} ${sql.insert(validationTraceWitnessMembers)}`;
         }
+        return { kind: "prepared" as const };
       }),
     );
   }).pipe(

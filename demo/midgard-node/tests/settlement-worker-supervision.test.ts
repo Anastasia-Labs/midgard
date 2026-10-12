@@ -25,6 +25,16 @@ const OWNERSHIP_ERROR =
 const LEASE_WAIT =
   "waiting for the previous settlement ownership lease: Settlement wallet identity changed or another node owns settlement";
 
+const UNWRITTEN_HOLD = {
+  family: "settlement",
+  hold: {
+    reason: "intent_input_untracked",
+    detail: "settlement settlement:probe: input not tracked",
+  },
+  txHash: "ab".repeat(32),
+  signedTxCbor: "84a0a0f5f6",
+};
+
 /** One worker run, chosen by `behaviour`. */
 const WORKER = `
 const { parentPort, workerData } = require("node:worker_threads");
@@ -85,7 +95,7 @@ switch (workerData.behaviour) {
     let ticks = 0;
     const cheap = setInterval(() => {
       ticks += 1;
-      report("waiting", "submitted exact journaled settlement transaction", true);
+      report("waiting", "settlement transaction abababababababababababababababababababababababababababababababab journaled; S6 sends its exact bytes until it lands", true);
       if (ticks < workerData.recoveryTicks - 1) return;
       clearInterval(cheap);
       setTimeout(() => {
@@ -108,6 +118,19 @@ switch (workerData.behaviour) {
       process.exitCode = 1;
       parentPort.close();
     }, workerData.leaseWaitMs);
+    break;
+  }
+  case "unwritten-holds": {
+    // A tick whose journal refused an intent and could not write the hold
+    // (settlement.build-job.ts hands it over in its report), then healthy
+    // ticks with nothing left to hand over.
+    parentPort.postMessage({
+      observedAt: Date.now(),
+      state: "error",
+      detail: "settlement payout: intent journal refused",
+      intentRefusalHolds: [${JSON.stringify(UNWRITTEN_HOLD)}],
+    });
+    setInterval(() => report("running", "settlement queue drained", true), 5);
     break;
   }
   case "healthy": {
@@ -391,5 +414,16 @@ describe("settlement worker supervision", () => {
     const { health, logs } = await supervise(() => "flapping", failed(3));
     expect(health.workerFailures!.count).toBe(3);
     expect(logs.some((line) => line.includes("recovered"))).toBe(false);
+  });
+
+  it("hands a run's unwritten refusal holds to the node's journal, and never publishes them as health", async () => {
+    const adopted: unknown[] = [];
+    const { seen } = await supervise(
+      () => "unwritten-holds",
+      (health) => health.state === "running" && adopted.length > 0,
+      { adoptRefusalHolds: (holds) => adopted.push(...holds) },
+    );
+    expect(adopted).toEqual([UNWRITTEN_HOLD]);
+    expect(seen.some((health) => "intentRefusalHolds" in health)).toBe(false);
   });
 });

@@ -3,6 +3,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -68,6 +69,7 @@ describe("raw-envelope execution-source validation trace", () => {
     });
     const root = mutations[0]!.preRoot.toString("hex");
     const input = {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeCbor([2n, malformed.txId]),
       sourceKind: "normal" as const,

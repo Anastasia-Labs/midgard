@@ -12,7 +12,6 @@ import type { StackConfig } from "./config.js";
 import { deriveStackWallets } from "./wallets.js";
 
 const WATCHER_IDENTITY_KEY_FILES = [
-  "WATCHER_RECORD_KEY_FILE",
   "WATCHER_ROLLBACK_KEY_FILE",
   "WATCHER_PROVER_KEY_FILE",
   "WATCHER_AVAILABILITY_KEY_FILE",
@@ -157,8 +156,8 @@ export async function checkStackEnvironment(
 
 /**
  * Binds what identifies the deployment, and nothing an operator may need to
- * change to resume it: timeouts, journey size, budgets, ports, templates and
- * the watcher bearer are free to change between runs.
+ * change to resume it: timeouts, journey size, budgets, ports and templates
+ * are free to change between runs.
  */
 export async function stackIntentDigest(
   config: StackConfig,

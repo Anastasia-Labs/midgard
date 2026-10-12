@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import { EventKeySchema, forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { buildDeterministicValidationMachineTrace } from "@al-ft/midgard-validation";
@@ -52,6 +53,7 @@ const retainedRejection = async (redeemerIndex: 0 | 1 = 1) => {
   );
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: Buffer.from(
         Data.to(source.eventKey, asLucidSchema(EventKeySchema)),

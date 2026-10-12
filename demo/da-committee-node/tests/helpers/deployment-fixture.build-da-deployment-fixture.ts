@@ -25,6 +25,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -156,8 +157,6 @@ export const buildDaDeploymentFixture = async (
         .scriptHash as string,
       missingSignature: contracts.fraudProofMissingSignature!
         .scriptHash as string,
-      missingNativeScriptTx: contracts.fraudProofMissingNativeScriptTx!
-        .scriptHash as string,
       withdrawnReferenceInput: contracts.fraudProofWithdrawnReferenceInput!
         .scriptHash as string,
       canonicalDecodability: contracts.fraudProofCanonicalDecodability!
@@ -168,8 +167,6 @@ export const buildDaDeploymentFixture = async (
       withdrawalMistag: contracts.fraudProofWithdrawalMistag!
         .scriptHash as string,
       doubleWithdraw: contracts.fraudProofDoubleWithdraw!.scriptHash as string,
-      crossBlockDuplicateEvent: contracts.fraudProofCrossBlockDuplicateEvent!
-        .scriptHash as string,
       l2TxMistag: contracts.fraudProofL2TxMistag!.scriptHash as string,
       withdrawnInput: contracts.fraudProofWithdrawnInput!.scriptHash as string,
       valueNotPreserved: contracts.fraudProofValueNotPreserved!
@@ -179,8 +176,6 @@ export const buildDaDeploymentFixture = async (
       mintAuthorization: contracts.fraudProofMintAuthorization!
         .scriptHash as string,
       networkId: contracts.fraudProofNetworkId!.scriptHash as string,
-      missingNativeScriptUtxo: contracts.fraudProofMissingNativeScriptUtxo!
-        .scriptHash as string,
       nativeScriptInvalid: contracts.fraudProofNativeScriptInvalid!
         .scriptHash as string,
       minAda: contracts.fraudProofMinAda!.scriptHash as string,
@@ -284,6 +279,7 @@ export const buildDaDeploymentFixture = async (
     deploymentProfile: SELECTED_DEPLOYMENT_PROFILE,
     deploymentProfileDigest: SELECTED_DEPLOYMENT_PROFILE_DIGEST,
     network: "Preprod",
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     cardanoProtocolParameters: {
       snapshot: cardanoProtocolParameterSnapshot,
       digest: computeDeploymentManifestJsonDigest(

@@ -153,7 +153,7 @@ describe("startup gate over unfinished local mutation jobs", () => {
       ).toBe(
         runtime.includes(status)
           ? "runtime"
-          : status === Status.Finalized
+          : status === Status.LocallyApplied
             ? "complete"
             : "refuse",
       );
@@ -172,7 +172,7 @@ describe("startup gate over unfinished local mutation jobs", () => {
       ).toBe(
         runtime.includes(status)
           ? "runtime"
-          : status === Status.Finalized
+          : status === Status.LocallyApplied
             ? "complete"
             : "refuse",
       );

@@ -2,9 +2,9 @@ import { Data, Effect, Either, Exit, Option, Ref, Schedule } from "effect";
 
 import { DatabaseError } from "../database/utils/common.js";
 import {
-  runHistoryProducer,
-  UnownedHistoryFixture,
-} from "../services/event-history-producer.js";
+  FollowerWriteFixture,
+  runAtFollowerView,
+} from "../services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -14,10 +14,11 @@ import {
   NodeConfig,
   withL1ControlPlane,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
-  fetchStateQueueSnapshotProgram,
+  awaitPostMergeSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
-} from "../services/state-queue-topology.js";
+} from "../services/landed-state-queue.js";
 import {
   recordMergeTickIdleness,
   skipIdleMergeTick,
@@ -32,9 +33,10 @@ import {
 } from "./merge.registered-merge-due-work-skip.js";
 
 /**
- * The merge could not take the history producer permit, so none of its work
+ * The merge could not take a follower write permit, so none of its work
  * ran: no L1 read, no transaction, no local write. A standalone process (no
- * history owner) and a node whose history owner is not Ready both land here.
+ * follower-change driver) and a node whose driver has not published a view,
+ * or is recomputing, both land here.
  */
 export class MergeProducerPermitUnavailable extends Data.TaggedError(
   "MergeProducerPermitUnavailable",
@@ -44,20 +46,20 @@ export class MergeProducerPermitUnavailable extends Data.TaggedError(
 }> {}
 
 /**
- * Runs `work` under the history producer permit. A merge finalizes locally by
- * writing history rows (confirmed ledger, block rows, deposit/withdrawal/forced
- * statuses) and every such write requires a registered producer.
+ * Runs `work` under a follower write permit (`runAtFollowerView`). A merge
+ * finalizes locally by writing view-derived rows (confirmed ledger,
+ * deposit/withdrawal/forced statuses) and every such write requires one.
  *
- * With a history owner in `Globals` the work always registers with it, even
- * when the caller already holds a permit, since producer registration nests.
- * Without an owner, only the explicit model-fixture capability runs the work
- * unregistered (its writes still pass `withHistoryWrite`'s fixture gate).
+ * Once this process's driver took an epoch the work always registers, even
+ * when the caller already holds a permit, since registration nests. Before
+ * that, only the explicit model-fixture capability runs the work
+ * unregistered (its writes still pass `withFollowerWrite`'s fixture gate).
  *
  * A registration that refuses before the work starts fails with
- * `MergeProducerPermitUnavailable`. Once the work ran, its own failure wins,
- * with its type, even over a supersession found by the owner's trailing
- * currency check; a successful work whose trailing check fails reports that
- * check's failure.
+ * `MergeProducerPermitUnavailable`. Once the work ran, its outcome is the
+ * result, its failure with its own type: the registration runs the work under
+ * `Effect.either` and its release cannot fail, so it has no failure of its own
+ * after the work ran.
  */
 const withMergeHistoryProducer = <A, E, R>(
   work: Effect.Effect<A, E, R>,
@@ -68,15 +70,15 @@ const withMergeHistoryProducer = <A, E, R>(
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;
-    const owner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
-    if (owner === undefined) {
-      const fixture = yield* Effect.serviceOption(UnownedHistoryFixture);
+    const gate = yield* Ref.get(globals.FOLLOWER_WRITE_GATE);
+    if (gate.epoch === undefined) {
+      const fixture = yield* Effect.serviceOption(FollowerWriteFixture);
       if (Option.isSome(fixture)) return yield* work;
     }
     const ran = yield* Ref.make<Option.Option<Either.Either<A, E>>>(
       Option.none(),
     );
-    const registration = yield* runHistoryProducer(
+    const registration = yield* runAtFollowerView(
       Effect.either(work).pipe(
         Effect.tap((outcome) => Ref.set(ran, Option.some(outcome))),
       ),
@@ -86,7 +88,7 @@ const withMergeHistoryProducer = <A, E, R>(
       return yield* Effect.fail(
         new MergeProducerPermitUnavailable({
           message:
-            "The merge needs the history producer permit, which this process could not take",
+            "The merge needs a follower write permit, which this process could not take",
           cause: Either.isLeft(registration)
             ? registration.left
             : "registration returned without running the merge",
@@ -95,8 +97,6 @@ const withMergeHistoryProducer = <A, E, R>(
     }
     if (Either.isLeft(outcome.value))
       return yield* Effect.fail(outcome.value.left);
-    if (Either.isLeft(registration))
-      return yield* Effect.fail(registration.left);
     return outcome.value.right;
   });
 
@@ -112,7 +112,7 @@ export type MergeActionOptions = {
  * The single entry point for every merge trigger: the scheduled fiber, the
  * admin `GET /merge` route and `reconcile merge-complete --repair`.
  *
- * It holds the history producer permit for the whole attempt, so no caller can
+ * It holds a follower write permit for the whole attempt, so no caller can
  * reach the local finalization writes without it, and it runs under the
  * process-wide L1 control plane, so scheduled and manual merges in one process
  * are serialized. The state-queue mutation lease taken inside additionally
@@ -176,13 +176,11 @@ const reportConfirmedMergeOverHoldTimeout = (
     yield* Effect.logWarning(
       `🔸 Merge completed its local finalization past the L1 control-plane hold timeout; reporting the merge (header=${headerHash},tx=${txHash},timeout=${timeout.message}).`,
     );
-    const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const globals = yield* Globals;
-    const snapshot = yield* fetchStateQueueSnapshotProgram(
-      lucid.api,
+    const snapshot = yield* awaitPostMergeSnapshot(
       contracts.stateQueue,
-      "post_merge",
+      headerHash,
     );
     yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
     return {
@@ -229,7 +227,7 @@ export const mergeFiber = (
 ): Effect.Effect<
   void,
   never,
-  Lucid | MidgardContracts | Database | Globals | NodeConfig
+  Lucid | MidgardContracts | Database | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟠 Merge fiber started.");

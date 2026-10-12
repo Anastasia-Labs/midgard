@@ -2,7 +2,7 @@ import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
-} from "../local-ledger-slot.js";
+} from "@al-ft/midgard-core/ogmios-slot";
 
 export type InlineWaitPolicy = "allow_inline_wait" | "defer_positive_wait";
 
@@ -109,6 +109,17 @@ export type SubmitTimingPlan =
   | SubmitTimingSlotSourceUnavailablePlan
   | SubmitTimingSlotSourceStalledPlan;
 
+/**
+ * The slot a validity lower bound is judged at: the ledger's latest block.
+ * The mempool checks `invalidBefore` against the slot after that tip, so a
+ * wall-clock slot (which runs ahead of the tip between blocks) would call a
+ * transaction due while the ledger still refuses it. A snapshot without a
+ * ledger tip (emulator, tests) has no block gaps: its current slot is the tip.
+ */
+export const submitLowerBoundSlot = (
+  snapshot: Pick<SubmitSlotSnapshot, "currentSlot" | "ledgerTipSlot">,
+): number => snapshot.ledgerTipSlot ?? snapshot.currentSlot;
+
 const safeNonNegativeInteger = (
   value: number | undefined,
   fallback: number,
@@ -205,13 +216,16 @@ export const planSubmitTiming = (
       slotSource,
     };
   }
-  if (currentSlot >= targetSlot) {
+  // From here on the plan is judged at the ledger tip, and reports it as its
+  // current slot, so due work registered from it wakes on the same slot.
+  const lowerBoundSlot = submitLowerBoundSlot(snapshot);
+  if (lowerBoundSlot >= targetSlot) {
     return {
       ...base,
       status: "ready",
       targetSlot,
-      currentSlot,
-      observedSlot,
+      currentSlot: lowerBoundSlot,
+      observedSlot: lowerBoundSlot,
       observedAtMs,
       waitMs: 0,
       slotSource,
@@ -222,14 +236,14 @@ export const planSubmitTiming = (
     1,
     Math.floor(snapshot.slotLengthMs || SUBMIT_SLOT_LENGTH_MS),
   );
-  const deltaSlots = targetSlot - currentSlot;
+  const deltaSlots = targetSlot - lowerBoundSlot;
   const waitMs = deltaSlots * slotLengthMs;
   const waitBase = {
     ...base,
     targetSlot,
     dueSlot: targetSlot,
-    currentSlot,
-    observedSlot,
+    currentSlot: lowerBoundSlot,
+    observedSlot: lowerBoundSlot,
     observedAtMs,
     deltaSlots,
     waitMs,

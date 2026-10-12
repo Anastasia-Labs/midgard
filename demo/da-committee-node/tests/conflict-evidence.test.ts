@@ -13,6 +13,7 @@ import "../src/store.js";
 import "./helpers.js";
 import "./conflict-evidence.conflict-fixture.js";
 
+import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
   computeDaSha256Hash,
   decodeDaConflictEvidenceCbor,
@@ -24,9 +25,15 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { StoreBackedDaAttestationProtocol } from "../src/da/libp2p/attestations.js";
-import { classifyDaLocalSigningCommitment } from "../src/peer/signatures.js";
-import { loadDaSigner, validateDaCommittee } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
+import {
+  buildDaSignatureConflictEvidence,
+  classifyDaLocalSigningCommitment,
+} from "../src/peer/signatures.js";
+import {
+  loadDaSigner,
+  signDaAttestation,
+  validateDaCommittee,
+} from "../src/signer.js";
 import {
   availabilityCommitment,
   conflictFixture,
@@ -35,17 +42,22 @@ import {
   DEPLOYMENT_FINGERPRINT,
   LOWER_HEADER_HASH,
   REPORTER_PEER_ID,
+  SIBLING_HEADER_HASH,
   signatureRecord,
   signedMessage,
   UNKNOWN_PEER_ID,
 } from "./conflict-evidence.conflict-fixture.js";
-import { tempDir } from "./helpers.js";
+import {
+  openTestCommitteeStore,
+  saveHealthyL1SourceState,
+  testStoreDatabase,
+} from "./helpers/committee-store.js";
 
 describe("DA conflict evidence V1 lifecycle", () => {
   it("persists authenticated conflicting signatures once and survives restart", async () => {
     const fixture = await conflictFixture();
-    const directory = await tempDir();
-    const store = await JsonFileCommitteeStore.open(directory);
+    const directory = await testStoreDatabase();
+    const store = await openTestCommitteeStore(directory);
     try {
       const gossip = conflictGossip(fixture.registry, store);
 
@@ -62,7 +74,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
       await store.close();
     }
 
-    const reopened = await JsonFileCommitteeStore.open(directory);
+    const reopened = await openTestCommitteeStore(directory);
     try {
       await expect(reopened.listDaConflictEvidence()).resolves.toEqual([
         fixture.record,
@@ -74,7 +86,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
 
   it("rejects forged, malformed, and wrong-deployment evidence before persistence", async () => {
     const fixture = await conflictFixture();
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await openTestCommitteeStore();
     const gossip = conflictGossip(fixture.registry, store);
     const conflict = decodeDaConflictEvidenceCbor(fixture.encoded);
 
@@ -158,7 +170,9 @@ describe("DA conflict evidence V1 lifecycle", () => {
     const headerHash = LOWER_HEADER_HASH;
     const expected = availabilityCommitment(headerHash, "99".repeat(28));
     const conflicting = availabilityCommitment(headerHash, "55".repeat(28));
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+    );
     await store.saveDaPayload({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       headerHash,
@@ -262,8 +276,8 @@ describe("DA conflict evidence V1 lifecycle", () => {
     });
   });
 
-  it("retains same-header signer variants across file-store restart without last-write-wins collapse", async () => {
-    const directory = await tempDir();
+  it("retains same-header signer variants across a store restart without last-write-wins collapse", async () => {
+    const directory = await testStoreDatabase();
     const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
     const variants = [
       availabilityCommitment(LOWER_HEADER_HASH, "99".repeat(28)),
@@ -276,13 +290,15 @@ describe("DA conflict evidence V1 lifecycle", () => {
         committeeSignersHash: "77".repeat(32),
       }),
     );
-    const first = await JsonFileCommitteeStore.open(directory);
+    const first = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(directory),
+    );
     for (const record of variants) {
       await first.saveDaSignature(record);
     }
     await first.close();
 
-    const reopened = await JsonFileCommitteeStore.open(directory);
+    const reopened = await openTestCommitteeStore(directory);
     try {
       await expect(
         reopened.listDaSignatures(LOWER_HEADER_HASH),
@@ -298,6 +314,96 @@ describe("DA conflict evidence V1 lifecycle", () => {
       }
     } finally {
       await reopened.close();
+    }
+  });
+
+  // Owner ruling 2026-10-07: equivocation is one signer, one header hash and
+  // two availability commitments. Signatures over sibling headers (same
+  // parent, different header hashes) are truthful and never conflict.
+  it("builds equivocation evidence for one header only, never for sibling headers", async () => {
+    const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
+    const record = (headerHash: string, deploymentIdentity: string) =>
+      signatureRecord({
+        signer,
+        commitment: availabilityCommitment(headerHash, deploymentIdentity),
+        payloadHash: "66".repeat(32),
+        committeeSignersHash: "77".repeat(32),
+      });
+    const build = (
+      first: ReturnType<typeof record>,
+      second: ReturnType<typeof record>,
+    ) =>
+      buildDaSignatureConflictEvidence({
+        first,
+        second,
+        daVkey: signer.publicKeyHex,
+        reporterPeerId: REPORTER_PEER_ID,
+        receivedAt: "2026-07-27T00:00:00.000Z",
+      });
+    const onA = record(LOWER_HEADER_HASH, "99".repeat(28));
+
+    expect(build(onA, record(SIBLING_HEADER_HASH, "99".repeat(28)))).toBe(
+      undefined,
+    );
+    expect(build(onA, onA)).toBe(undefined);
+    const sameHeader = build(onA, record(LOWER_HEADER_HASH, "55".repeat(28)));
+    expect(sameHeader?.record).toMatchObject({
+      evidenceKind: "equivocation",
+      headerHash: LOWER_HEADER_HASH,
+      conflictingHeaderHash: LOWER_HEADER_HASH,
+    });
+  });
+
+  it("refuses gossiped sibling-header evidence before storing it, and stores same-header evidence", async () => {
+    const fixture = await conflictFixture();
+    const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
+    const sibling = availabilityCommitment(
+      SIBLING_HEADER_HASH,
+      "99".repeat(28),
+    );
+    // The shared codec refuses to encode a cross-header pair, so the
+    // adversary's bytes are built by rewriting the upper half of a valid
+    // same-header tuple: [signer, vkey, lowerHeader, lowerCommitment,
+    // lowerWitness, upperHeader, upperCommitment, upperWitness].
+    const conflict = decodeDaConflictEvidenceCbor(fixture.encoded);
+    const tuple = decodeSingleCbor(conflict.compactEvidence!) as unknown[];
+    const siblingCompact = encodeCbor([
+      ...tuple.slice(0, 5),
+      Buffer.from(SIBLING_HEADER_HASH, "hex"),
+      Buffer.from(sibling.cbor, "hex"),
+      Buffer.from(
+        signDaAttestation({
+          signer,
+          signerIndex: 0,
+          availabilityCommitment: sibling.commitment,
+        }),
+        "hex",
+      ),
+    ]);
+    const store = await openTestCommitteeStore();
+    try {
+      const gossip = conflictGossip(fixture.registry, store);
+      await expect(
+        gossip.handleInboundMessage(
+          signedMessage(
+            encodeDaConflictEvidenceCbor({
+              ...conflict,
+              evidenceHash: computeDaSha256Hash(siblingCompact),
+              compactEvidence: siblingCompact,
+            }),
+          ),
+        ),
+      ).rejects.toThrow(/evidence must name one header hash/u);
+      await expect(store.listDaConflictEvidence()).resolves.toEqual([]);
+
+      await expect(
+        gossip.handleInboundMessage(signedMessage(fixture.encoded)),
+      ).resolves.toBe(true);
+      await expect(store.listDaConflictEvidence()).resolves.toEqual([
+        fixture.record,
+      ]);
+    } finally {
+      await store.close();
     }
   });
 });

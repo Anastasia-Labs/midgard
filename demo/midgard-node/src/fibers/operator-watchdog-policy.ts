@@ -11,6 +11,8 @@
  */
 export type WatchdogTakeoverPlan =
   | { readonly kind: "no-shift" }
+  /** The shift has no undelivered user event, so nobody can be struck. */
+  | { readonly kind: "no-neglected-event"; readonly currentOperator: string }
   | {
       readonly kind: "not-yet";
       readonly currentOperator: string;
@@ -22,10 +24,14 @@ export type WatchdogTakeoverPlan =
       readonly newOperatorKey: string;
       readonly thresholdMs: number;
     }
+  /**
+   * The operator is at the strike cap. Forced retirement checks nothing else,
+   * so the patience window runs from the shift's start, event or not.
+   */
   | {
       readonly kind: "strikes-exhausted";
       readonly currentOperator: string;
-      readonly thresholdMs: number;
+      readonly shiftStartMs: number;
     };
 
 export type WatchdogTier = "successor" | "any_active";
@@ -67,10 +73,9 @@ export type WatchdogPolicyInput = {
  */
 const resolveTier = (
   input: WatchdogPolicyInput,
+  thresholdMs: number,
   successorKey: string | null,
 ): { readonly tier: WatchdogTier; readonly actAtMs: number } => {
-  const thresholdMs =
-    input.plan.kind === "no-shift" ? input.nowMs : input.plan.thresholdMs;
   if (successorKey !== null && successorKey === input.ownOperatorKey) {
     return { tier: "successor", actAtMs: thresholdMs + 1 };
   }
@@ -90,6 +95,8 @@ export const decideOperatorWatchdogAction = (
   switch (plan.kind) {
     case "no-shift":
       return { action: "idle", reason: "scheduler_has_no_active_operator" };
+    case "no-neglected-event":
+      return { action: "idle", reason: "no_neglected_user_event" };
     case "not-yet":
       if (plan.currentOperator === input.ownOperatorKey) {
         return { action: "idle", reason: "own_shift" };
@@ -103,7 +110,11 @@ export const decideOperatorWatchdogAction = (
       if (plan.currentOperator === input.ownOperatorKey) {
         return { action: "idle", reason: "own_shift" };
       }
-      const { tier, actAtMs } = resolveTier(input, plan.newOperatorKey);
+      const { tier, actAtMs } = resolveTier(
+        input,
+        plan.thresholdMs,
+        plan.newOperatorKey,
+      );
       if (input.nowMs < actAtMs) {
         return {
           action: "wait",
@@ -128,7 +139,7 @@ export const decideOperatorWatchdogAction = (
       // Nobody is the designated successor of a forced retirement, so every
       // active node acts on the any-active tier. A retirement is idempotent
       // on-chain (the second submitter simply fails on a spent input).
-      const { tier, actAtMs } = resolveTier(input, null);
+      const { tier, actAtMs } = resolveTier(input, plan.shiftStartMs, null);
       if (input.nowMs < actAtMs) {
         return {
           action: "wait",
@@ -191,4 +202,110 @@ export const recordOperatorWatchdogSkip = (input: {
 
 export const resetOperatorWatchdogRecordForTests = (): void => {
   record = initialRecord;
+};
+
+/**
+ * How many failed strikes may cite one event before the watchdog passes over
+ * it, when the failure is not a script refusal (which passes over it at
+ * once). Bounds the retries a plausibly transient failure gets.
+ */
+export const MAX_STRIKE_ATTEMPTS_PER_CITATION = 3;
+
+/** How many passed-over citations one scheduler state remembers. */
+export const MAX_EXCLUDED_CITATIONS = 32;
+
+/**
+ * The citations strikes failed on, against one scheduler UTxO. A strike that
+ * lands, or any other change of shift, spends that UTxO, and the record starts
+ * over: a citation refused in one state may be good in the next.
+ */
+export type CitationFailures = Readonly<{
+  schedulerRef: string | null;
+  attempts: ReadonlyMap<string, number>;
+  /** Passed over, oldest first. */
+  excluded: ReadonlySet<string>;
+}>;
+
+export const emptyCitationFailures: CitationFailures = {
+  schedulerRef: null,
+  attempts: new Map(),
+  excluded: new Set(),
+};
+
+/** The record for `schedulerRef`, emptied when the scheduler moved on. */
+export const citationFailuresAt = (
+  failures: CitationFailures,
+  schedulerRef: string,
+): CitationFailures =>
+  failures.schedulerRef === schedulerRef
+    ? failures
+    : { ...emptyCitationFailures, schedulerRef };
+
+export type CitationFailureReason =
+  | "neglected_event_refused"
+  | "neglected_event_attempts_exhausted"
+  | "submission_failed";
+
+/**
+ * Records one failed strike citing `citationId`. A script refusal passes over
+ * the citation at once; any other failure does after
+ * `MAX_STRIKE_ATTEMPTS_PER_CITATION` attempts. The next plan then cites the
+ * next citable event, so one bad candidate never wedges the watchdog. At most
+ * `MAX_EXCLUDED_CITATIONS` are remembered; the oldest gives way.
+ */
+export const recordCitationFailure = (
+  failures: CitationFailures,
+  input: Readonly<{
+    schedulerRef: string;
+    citationId: string;
+    refused: boolean;
+  }>,
+): Readonly<{ failures: CitationFailures; reason: CitationFailureReason }> => {
+  const current = citationFailuresAt(failures, input.schedulerRef);
+  const attempts = (current.attempts.get(input.citationId) ?? 0) + 1;
+  const passOver =
+    input.refused || attempts >= MAX_STRIKE_ATTEMPTS_PER_CITATION;
+  const nextAttempts = new Map(current.attempts);
+  if (passOver) nextAttempts.delete(input.citationId);
+  else nextAttempts.set(input.citationId, attempts);
+  const excluded = new Set(current.excluded);
+  if (passOver) {
+    excluded.delete(input.citationId);
+    excluded.add(input.citationId);
+    while (excluded.size > MAX_EXCLUDED_CITATIONS)
+      excluded.delete(excluded.values().next().value!);
+  }
+  return {
+    failures: { ...current, attempts: nextAttempts, excluded },
+    reason: !passOver
+      ? "submission_failed"
+      : input.refused
+        ? "neglected_event_refused"
+        : "neglected_event_attempts_exhausted",
+  };
+};
+
+const SCRIPT_REFUSAL = /failed script execution/iu;
+
+/**
+ * Whether a failed build or submission is the validators refusing the
+ * transaction: Lucid's local evaluation reports a script that failed. It is
+ * deterministic for the same transaction, so retrying the same citation
+ * cannot clear it. Follows `cause` a few levels down.
+ */
+export const isScriptRefusal = (error: unknown): boolean => {
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current != null; depth += 1) {
+    if (typeof current === "string") return SCRIPT_REFUSAL.test(current);
+    if (typeof current !== "object") return false;
+    const { message, stack, cause } = current as {
+      readonly message?: unknown;
+      readonly stack?: unknown;
+      readonly cause?: unknown;
+    };
+    for (const text of [message, stack])
+      if (typeof text === "string" && SCRIPT_REFUSAL.test(text)) return true;
+    current = cause;
+  }
+  return false;
 };

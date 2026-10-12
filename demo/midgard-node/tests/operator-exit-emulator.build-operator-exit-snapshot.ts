@@ -13,6 +13,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
@@ -22,6 +23,7 @@ import {
   resolveReferenceScriptTargetsProgram,
 } from "../src/transactions/reference-scripts.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -200,15 +202,19 @@ const buildOperatorExitSnapshot = async (): Promise<OperatorExitSnapshot> => {
     referenceScriptAuth,
   );
   const referenceScriptPublications = await runProgram(
-    ensureAtomicProtocolInitReferenceScriptsProgram(
-      referenceScriptsLucid,
-      contracts,
+    withoutFollowerJournal(
+      ensureAtomicProtocolInitReferenceScriptsProgram(
+        referenceScriptsLucid,
+        contracts,
+      ),
     ),
   );
   await runProgram(
-    ensureEventHistoryRewardAccountsRegisteredProgram(
-      referenceScriptsLucid,
-      contracts,
+    withoutFollowerJournal(
+      ensureEventHistoryRewardAccountsRegisteredProgram(
+        referenceScriptsLucid,
+        contracts,
+      ),
     ),
   );
   const initTx = await runProgram(
@@ -224,7 +230,7 @@ const buildOperatorExitSnapshot = async (): Promise<OperatorExitSnapshot> => {
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
       referenceScriptPublications,
-    ),
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
   const initCompleted = await initTx.complete({ localUPLCEval: true });
   const initSigned = await initCompleted.sign.withWallet().complete();

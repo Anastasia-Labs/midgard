@@ -1,53 +1,80 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import {
+  appendFileSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { fileURLToPath } from "node:url";
 
+import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import * as watcher from "midgard-watcher";
-import * as native from "midgard-watcher/native-chain-sync";
+import { afterAll } from "vitest";
+
+import type { AcceptanceNativeReadConfig } from "../src/devnet-stack/acceptance-native-config.js";
+import * as native from "../src/devnet-stack/native-chain-sync.js";
 import {
   config,
   readIdentityFixture,
-} from "midgard-watcher/tests/l1/native-chain-sync.config";
-
-import type { AcceptanceNativeReadConfig } from "../src/devnet-stack/acceptance-native-config.js";
+} from "./helpers/native-chain-sync.config.js";
 
 export const POINT = { blockHash: "bb".repeat(32), blockNo: "11", slot: "102" };
-export const nativeFixture = (mode = "current") => {
-  let child!: ChildProcessWithoutNullStreams;
-  let closed = false;
+
+const handlerModule = fileURLToPath(
+  new URL("./acceptance-native.handler.mjs", import.meta.url),
+);
+// Every fake node transport of a test file lives in one directory. The watcher
+// native config closes the shared transports after each test.
+const fakeDirectory = realpathSync(
+  mkdtempSync(join(tmpdir(), "midgard-acceptance-native-")),
+);
+let fakeCount = 0;
+afterAll(() => {
+  rmSync(fakeDirectory, { recursive: true, force: true });
+});
+
+export type NativeCommand = "forward" | "rollback" | "exit" | "error";
+
+/**
+ * A node transport whose node serves the acceptance native boundary (see
+ * acceptance-native.handler.mjs). `mode` "no-current" opens streams without
+ * delivering the current block.
+ */
+export const nativeFixture = async (mode = "current") => {
+  fakeCount += 1;
+  const base = join(fakeDirectory, `transport-${String(fakeCount)}`);
+  const journalPath = `${base}.journal`;
+  const commandsPath = `${base}.commands`;
+  const binaryPath = await writeFakeSidecar({
+    path: base,
+    handlerModule,
+    options: { mode, journal: journalPath, commands: commandsPath },
+  });
+  const journal = (): string[] => {
+    try {
+      return readFileSync(journalPath, "utf8").split("\n").filter(Boolean);
+    } catch {
+      return [];
+    }
+  };
+  const count = (line: string): number =>
+    journal().filter((entry) => entry === line).length;
   return {
-    child: () => child,
-    closed: () => closed,
+    binaryPath,
+    /** Whether the node saw a chain-sync stream opened. */
+    opened: (): boolean => count("opened") > 0,
+    /** Whether every stream the node saw opened has ended. */
+    closed: (): boolean =>
+      count("opened") > 0 && count("closed") === count("opened"),
+    /** Has the node apply `command` to every open stream. */
+    send: (command: NativeCommand): void =>
+      appendFileSync(commandsPath, `${command}\n`),
     unsafeReadIdentityFileForTest: readIdentityFixture,
-    unsafeSpawnForTest: () => {
-      const spawned = spawn(
-        process.execPath,
-        [
-          fileURLToPath(
-            new URL("./acceptance-native.fixture.mjs", import.meta.url),
-          ),
-          mode,
-        ],
-        { stdio: ["pipe", "pipe", "pipe", "ipc"] },
-      );
-      const { stdin, stdout, stderr } = spawned;
-      if (stdin === null || stdout === null || stderr === null)
-        throw new Error("native fixture pipes missing");
-      const stdio: ChildProcessWithoutNullStreams["stdio"] = [
-        stdin,
-        stdout,
-        stderr,
-        spawned.stdio[3],
-        spawned.stdio[4],
-      ];
-      child = Object.assign(spawned, { stdin, stdout, stderr, stdio });
-      child.once("close", () => {
-        closed = true;
-      });
-      return child;
-    },
   };
 };
 
@@ -259,27 +286,15 @@ export const ogmiosFixture = async (
 
 export const readConfig = (
   endpoint: string,
+  transport: Readonly<{ binaryPath: string }>,
   assertUnchanged = async () => {},
 ): AcceptanceNativeReadConfig => {
-  const base = config();
-  const source = base.l1.source;
-  if (source.sourceMode !== "local_node") throw new Error("fixture source");
   return {
     native,
     watcher,
-    watcherConfig: {
-      ...base,
-      l1: {
-        ...base.l1,
-        source: {
-          ...source,
-          queryServices: [
-            { kind: "ogmios", identity: "test-ogmios", endpoint },
-          ],
-        },
-      },
-    },
-    binaryPath: "/test/native",
+    watcherConfig: config(),
+    ogmiosEndpoint: endpoint,
+    binaryPath: transport.binaryPath,
     assertUnchanged,
     binding: {
       runDir: "/owned/run",

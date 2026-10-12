@@ -5,6 +5,10 @@ import {
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import {
+  type L1SlotConfig,
+  l1SlotToPosixTimeMs,
+} from "@al-ft/midgard-core/l1-slot-config";
+import {
   type Data,
   DataB,
   DataConstr,
@@ -43,8 +47,11 @@ export type ScriptContextView = {
   readonly referenceInputs: readonly ResolvedInput[];
   readonly outputs: readonly MidgardTxOutput[];
   readonly fee: bigint;
+  /** The committed body interval, in L1 slots. */
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
+  /** The deployment's slot mapping, which turns the interval into POSIX time. */
+  readonly l1SlotConfig: L1SlotConfig;
   readonly observers: readonly string[];
   readonly signatories: readonly string[];
   readonly mint: ScriptMintValue;
@@ -179,19 +186,31 @@ export const scriptContextTxInInfoData = (
     scriptContextTxOutData(input.output, addressEncoding),
   ]);
 
+/**
+ * The `validRange` of a committed slot interval, as Cardano's
+ * `transValidityInterval` builds it: finite bounds in POSIX milliseconds on
+ * the deployment's slot mapping, an inclusive finite lower bound, a strict
+ * finite upper bound, and an absent bound as `NegInf`/`PosInf`, both
+ * inclusive (`PV1.from`, `PV1.always`).
+ */
 const validRangeData = (
+  slotConfig: L1SlotConfig,
   start: bigint | undefined,
   end: bigint | undefined,
 ): DataConstr =>
   constr(0, [
-    constr(0, [
-      start === undefined ? constr(0, []) : constr(1, [new DataI(start)]),
-      bool(true),
-    ]),
-    constr(0, [
-      end === undefined ? constr(0, []) : constr(1, [new DataI(end)]),
-      bool(false),
-    ]),
+    start === undefined
+      ? constr(0, [constr(0, []), bool(true)])
+      : constr(0, [
+          constr(1, [new DataI(l1SlotToPosixTimeMs(slotConfig, start))]),
+          bool(true),
+        ]),
+    end === undefined
+      ? constr(0, [constr(2, []), bool(true)])
+      : constr(0, [
+          constr(1, [new DataI(l1SlotToPosixTimeMs(slotConfig, end))]),
+          bool(false),
+        ]),
   ]);
 
 const redeemerData = (redeemer: MidgardLedgerRedeemer): Data =>
@@ -256,7 +275,11 @@ const baseTxInfoData = (
     mintData(view.mint),
     new DataList([]),
     withdrawalsData(view.observers),
-    validRangeData(view.validityIntervalStart, view.validityIntervalEnd),
+    validRangeData(
+      view.l1SlotConfig,
+      view.validityIntervalStart,
+      view.validityIntervalEnd,
+    ),
     bytesList(view.signatories),
     redeemersData(view.redeemers, purposeData),
     new DataMap([]),
@@ -336,7 +359,11 @@ export const buildMidgardScriptContext = (
         view.outputs.map((output) => scriptContextTxOutData(output, "midgard")),
       ),
       new DataI(view.fee),
-      validRangeData(view.validityIntervalStart, view.validityIntervalEnd),
+      validRangeData(
+        view.l1SlotConfig,
+        view.validityIntervalStart,
+        view.validityIntervalEnd,
+      ),
       bytesList(view.observers),
       bytesList(view.signatories),
       mintData(view.mint),

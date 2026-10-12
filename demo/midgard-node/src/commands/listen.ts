@@ -22,7 +22,6 @@ import "../fibers/index.js";
 import "../fibers/settlement.js";
 import "../genesis.js";
 import "../provider-retry.js";
-import "../services/event-history-runtime.js";
 import "../services/index.js";
 import "../services/native-mpf-startup.js";
 import "../services/settlement.js";

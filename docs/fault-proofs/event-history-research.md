@@ -77,7 +77,7 @@ includes event kind, identity, nonce out-ref, policy/address, event/datum/output
 CBOR, content digests, original chain point, and finality. A terminal event adds
 the consuming transaction and point, finality, and a status such as absorbed,
 payout-initialized, refunded, or processed. See
-[record definitions](../../demo/midgard-watcher/src/indexers/user-event-indexer.ts#L224-L328).
+record definitions (`demo/midgard-watcher/src/indexers/user-event-indexer.ts:224`, since deleted). <!-- doc-links:historical -->
 
 The persistence decision requires spent UTxOs and original immutable bytes to
 survive while rollback, outstanding events, or challenges depend on them. Pruning
@@ -88,10 +88,10 @@ requirement; unknown consumers or deadlines fail closed. See
 
 Publication writes and verifies archive objects before advancing the protected
 checkpoint, and rechecks concurrency before doing so. See
-[archive-before-checkpoint publication](../../demo/midgard-watcher/src/indexers/user-event-history.ts#L177-L218).
-The [archive index implementation](../../demo/midgard-watcher/src/indexers/user-event-history-archive.ts#L1-L4)
+archive-before-checkpoint publication (`demo/midgard-watcher/src/indexers/user-event-history.ts:177`, since deleted).
+The archive index implementation (`demo/midgard-watcher/src/indexers/user-event-history-archive.ts:1`, since deleted)
 expressly says these indexes grant no indexing, publication, or dispatch authority.
-They are navigation over evidence, with semantic admission owned elsewhere.
+They are navigation over evidence, with semantic admission owned elsewhere. <!-- doc-links:historical -->
 
 Consequently the archive provides recoverability, discovery, and preimages. It
 does not give an Aiken validator an authenticated historical root or a reference
@@ -99,10 +99,10 @@ input that can stand in for a consumed NFT-bearing event.
 
 Rollback restores the target event snapshot only after checking its retained
 ancestry, removed records, restored event UTxOs, and resulting topology; see
-[rollback derivation](../../demo/midgard-watcher/src/indexers/user-event-indexer.ts#L3914-L4048).
+rollback derivation (`demo/midgard-watcher/src/indexers/user-event-indexer.ts:3914`, since deleted).
 Suspension revokes issued capabilities before asynchronous recovery, and same-process
 resume requires fresh native evidence matching the protected publication; see
-[capability lifecycle](../../demo/midgard-watcher/src/indexers/user-event-indexer.ts#L5790-L5856).
+capability lifecycle (`demo/midgard-watcher/src/indexers/user-event-indexer.ts:5790`, since deleted). <!-- doc-links:historical -->
 
 ## Transition-trace scope
 
@@ -134,12 +134,6 @@ Three classes need historical authentication:
    dependency. See
    [deposit transition](../../onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak#L1116-L1174)
    and [authenticated deposit reference](../../onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak#L1501-L1529).
-
-The separate cross-block-duplicate-event family compares authenticated event
-leaves in a live challenged header and a confirmed settlement block. It already
-has a different evidence route from live-event authentication; replacing it is
-not implied merely by fixing the history gap. See
-[family semantics](family-reference.md#cross-block-duplicate-event-fault).
 
 ## Verification performed
 

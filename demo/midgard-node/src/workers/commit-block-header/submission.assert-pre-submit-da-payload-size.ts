@@ -12,7 +12,7 @@ import {
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, Effect } from "effect";
+import { Effect } from "effect";
 
 import { readDaHardeningConfig } from "../../da/hardening-config.js";
 import {
@@ -32,16 +32,13 @@ import {
   type RetainedValidationTraceMember,
   type UtxoPayloadSizeAggregate,
 } from "../../mpf/index.js";
-import { Database } from "../../services/index.js";
-import { TxSubmitError } from "../../transactions/utils.js";
+import type { Database } from "../../services/index.js";
 import {
   type CommitDaFrameMeasurement,
   DA_PAYLOAD_UPPER_BOUND_HEADER,
   DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
 } from "../utils/commit-block-planner.js";
 import { measureDaPayloadPrefixes } from "./submission.measure-da-prefixes.js";
-
-export const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
 
 const daEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
   key.toString("hex"),
@@ -387,30 +384,6 @@ export const measureCommitDaPayloadUpperBound = ({
       ),
     ),
   );
-
-export class StaleOperatorWalletRetrySignal extends Data.TaggedError(
-  "StaleOperatorWalletRetrySignal",
-)<{
-  readonly pendingHeaderHash: Buffer;
-  readonly txSubmitError: TxSubmitError;
-}> {}
-
-export const maybeAbandonPreviousStaleAttempt = (
-  previousPendingHeaderHash: Buffer | undefined,
-  nextHeaderHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  previousPendingHeaderHash === undefined ||
-  previousPendingHeaderHash.equals(nextHeaderHash)
-    ? Effect.void
-    : PendingBlockFinalizationsDB.markAbandoned(previousPendingHeaderHash).pipe(
-        Effect.catchAll((cause) =>
-          Effect.logWarning(
-            `🔹 Previous stale pending journal was already cleared before retry (header=${previousPendingHeaderHash.toString(
-              "hex",
-            )}): ${formatUnknownError(cause)}`,
-          ),
-        ),
-      );
 
 export const assertCommitInputsWithinBlockEndTime = ({
   blockEndTimeMs,

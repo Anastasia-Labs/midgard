@@ -11,7 +11,7 @@ import {
   reviveEarliestCanonicalPayloadJournal,
   withCanonicalHeaderJournals,
 } from "../services/canonical-journal-recovery.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { Database } from "../services/index.js";
 import { WorkerError } from "../workers/utils/common.js";
 import {
@@ -51,7 +51,7 @@ export const abandonUnsubmittedPendingBlockIfStillPresent = (
       headerHash,
     );
     return true;
-  }).pipe(withHistoryWrite);
+  }).pipe(withFollowerWrite);
 
 export const reviveCanonicalPayloadJournalFromWorkerSnapshot = (
   canonicalHeaders: readonly SerializedCanonicalCommittedHeader[],

@@ -166,10 +166,13 @@ Midgard's transaction types deviate from Cardano's in the following ways:
       The canonical profile defines the admitted observer and input-order semantics directly; these references do not assert current Cardano activation or that every feature of either proposal is implemented.
     \item[Different network ID.] Midgard transactions and utxo addresses use a different network ID to distinguish them from their Cardano mainnet counterparts.
       The current canonical mint format carries 28-byte policy IDs without a new L1/L2 origin prefix.
-    \item[Time domains require reconciliation.] The original design uses POSIX timestamps in L2 transaction intervals, while block event intervals are also expressed as POSIX times.
-      Current \code{validation-machine/shared.ak} compares native transaction interval scalars directly with \code{block\_slot}, and the node derives that slot with its L1 slot conversion.
-      Transaction-order due checks also compare the interval with block event times.
-      These boundaries require one explicit, consistent unit contract and conformance evidence; this draft does not silently convert the POSIX design requirement into a slot-based one.
+    \item[Time domains.] Native transaction interval scalars are L1 slots, as Cardano's \code{invalid\_before} and \code{invalid\_hereafter} are.
+      Current \code{validation-machine/shared.ak} compares them directly with \code{block\_slot}, and the node derives that slot with its L1 slot conversion.
+      That comparison follows Cardano's half-open interval: the transaction is valid iff $\T{validity\_interval\_start} \le \T{block\_slot} < \T{validity\_interval\_end}$, with an absent side unbounded.
+      A script sees them as Cardano's \code{transValidityInterval} presents them, in POSIX milliseconds, in the PlutusV3 and MidgardV1 contexts alike: a finite lower bound is inclusive, a finite upper bound is strict, and an absent bound is an inclusive \code{NegInf} or \code{PosInf}.
+      The conversion uses the deployment's L1 slot mapping, an affine anchor at the Shelley start that is a deploy-time parameter and is recorded in the deployment manifest; \code{docs/spec/midgard-tx.md}, Section~2.1, gives the mapping per network and why its missing Byron segment and absent forecast horizon are safe.
+      Transaction-order due checks use only the order's inclusion time and never compare the interval with block event times.
+      The original design's POSIX transaction intervals compared with POSIX block event intervals are not the current contract; the remaining point-versus-interval difference is recorded in \cref{rule:transaction-validity-range}.
     \item[Native validity and forced verdict.] User admission and normal block leaves require native validity code zero.
       The compact format admits codes zero and one; a forced leaf additionally carries a typed \code{OperatorVerdictV1}, and its compact code must agree with that verdict.
       This is distinct from Cardano's L1 phase-two \code{is\_valid} flag.
@@ -209,7 +212,10 @@ The body is embedded as a twelve-element array, not replaced by its hash:
 \T{network\_id}].
 \end{split}
 \end{equation*}
-An unbounded interval side uses the integer sentinel \code{-1}.
+An unbounded interval side uses the integer sentinel \code{-1}; a present side is a non-negative slot.
+Any bound below \code{-1} is not a decodable body, and every decoder and encoder of the two fields refuses it.
+The interval is half-open, as in Cardano: \T{validity\_interval\_start} is inclusive and \T{validity\_interval\_end} is exclusive.
+When both sides are present, $\T{validity\_interval\_start} \ge \T{validity\_interval\_end}$ contains no slot and the interval is malformed.
 The witness compact is the ordered triple of address-witness, script-witness, and redeemer-witness field hashes.
 Its canonical CBOR bytes are hashed with Blake2b-256 to obtain \code{witness\_set\_hash}.
 

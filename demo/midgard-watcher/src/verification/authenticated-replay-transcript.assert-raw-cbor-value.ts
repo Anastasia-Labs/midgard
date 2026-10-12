@@ -13,16 +13,16 @@ import {
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import {
-  readWatcherLocalUserEventAuthority,
-  type WatcherLocalUserEventAuthority,
-} from "../indexers/user-event-indexer.js";
-import {
   type WatcherBlockReplayPriorUtxo,
   type WatcherBlockReplayResult,
 } from "./block-replay.js";
+import {
+  readWatcherUserEventAuthority,
+  type WatcherUserEventAuthority,
+} from "./user-event.js";
 
 export const WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT =
-  "midgard-watcher-production-authenticated-replay-transcript-v1" as const;
+  "midgard-watcher-production-authenticated-replay-transcript-v2" as const;
 
 export const HEX_32 = /^[0-9a-f]{64}$/u;
 
@@ -84,23 +84,21 @@ export const assertWatcherAuthenticatedReplayTranscript = (
 export const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
-export const readLocalEventAuthorityForHeader = async (
-  authority: WatcherLocalUserEventAuthority,
+export const readUserEventAuthorityForHeader = async (
+  authority: WatcherUserEventAuthority,
   header: WatcherStateQueueHeaderObservation,
 ): Promise<void> => {
-  const { throughHeader } = await readWatcherLocalUserEventAuthority(authority);
+  const { throughHeader } = await readWatcherUserEventAuthority(authority);
   if (
-    throughHeader !== null &&
-    (throughHeader.headerHash !== header.headerHash ||
-      throughHeader.headerCborHex !== header.headerCborHex ||
-      throughHeader.queueOutRef !== header.queueOutRef ||
-      throughHeader.observedTransactionHash !==
-        header.observedTransactionHash ||
-      throughHeader.observedBlockHash !== header.observedBlockHash ||
-      throughHeader.observedSlot !== header.observedSlot ||
-      throughHeader.observedBlockNo !== header.observedBlockNo)
+    throughHeader.headerHash !== header.headerHash ||
+    throughHeader.headerCborHex !== header.headerCborHex ||
+    throughHeader.queueOutRef !== header.queueOutRef ||
+    throughHeader.observedTransactionHash !== header.observedTransactionHash ||
+    throughHeader.observedBlockHash !== header.observedBlockHash ||
+    throughHeader.observedSlot !== header.observedSlot ||
+    throughHeader.observedBlockNo !== header.observedBlockNo
   ) {
-    throw new Error("local event authority cutoff differs from replay header");
+    throw new Error("user-event authority cutoff differs from replay header");
   }
 };
 

@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { forcedRejectionReason } from "@al-ft/midgard-fault-proofs";
 import {
   nativeFaultContext,
@@ -5,9 +6,9 @@ import {
 } from "@al-ft/midgard-validation/tests/forced-native-first-fault-fixture";
 import { expect, it } from "vitest";
 
-import { watcherForcedOperatorVerdict } from "../../src/indexers/user-event-indexer.js";
 import { replayForcedTransitionEffect } from "../../src/verification/block-replay.replay-forced-transition-effect.js";
 import type { ValidatedEventAuthority } from "../../src/verification/block-replay.watcher-block-replay-prior-state.js";
+import { watcherForcedOperatorVerdict } from "../../src/verification/user-event.js";
 
 it.each([
   "present",
@@ -45,6 +46,7 @@ it.each([
         strictnessProfile: "phase1_midgard",
       },
       phaseBConfig: {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         nowCardanoSlotNo: 100n,
         bucketConcurrency: 1,
         enforceScriptBudget: true,

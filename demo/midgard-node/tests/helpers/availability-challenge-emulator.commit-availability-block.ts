@@ -183,7 +183,7 @@ export const commitAvailabilityBlock = async (
         stateQueueCommitYieldScriptRef: f.reference(
           "state-queue commit withdrawal",
         ),
-        operatorWalletView: { knownUtxos: [funding], consumedOutRefs: [] },
+        operatorWalletInputs: [funding],
       },
       activeOperatorMaturityDurationMs: BigInt(
         AVAILABILITY_PROFILE.timing.block_maturity_ms,

@@ -20,7 +20,6 @@ export const specsDigest = (
         code,
         specs.map((spec) => [
           spec.name,
-          spec.historyReadiness,
           spec.command,
           spec.args,
           spec.cwd,

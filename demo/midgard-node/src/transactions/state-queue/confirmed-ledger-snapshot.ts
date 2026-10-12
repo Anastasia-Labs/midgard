@@ -4,17 +4,13 @@ import {
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
 import {
   ConfirmedLedgerDB,
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "../../database/utils/common.js";
+import { DatabaseError } from "../../database/utils/common.js";
 import * as Ledger from "../../database/utils/ledger.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../mpf/index.js";
 import { Database } from "../../services/index.js";
@@ -350,113 +346,3 @@ export const materializeConfirmedLedgerSnapshot = (
       retrieveParent: PendingBlockFinalizationsDB.retrieveByHeaderHash,
     });
   });
-
-/**
- * The snapshot a confirmed merge's local finalization applies. A confirmed
- * ledger already at the journal's expected root (an earlier attempt folded it
- * and failed later, or startup repaired it) yields an empty delta chain on
- * that ledger, so re-running the finalization only redoes its idempotent
- * steps; any other ledger folds the journal chain exactly as
- * materializeConfirmedLedgerSnapshot does.
- */
-export const materializeConfirmedMergeLedgerSnapshot = (
-  record: PendingBlockFinalizationsDB.Record,
-): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
-    const confirmedRoot = yield* computeRecoveredRoot(confirmedEntries);
-    if (
-      confirmedRoot ===
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]
-    )
-      return {
-        entries: confirmedEntries,
-        baseRoot: confirmedRoot,
-        root: confirmedRoot,
-        deltaChain: [],
-        delta: { spent: [], produced: [] },
-      };
-    return yield* materializeFromBase({
-      record,
-      confirmedEntries,
-      confirmedRoot,
-      retrieveParent: PendingBlockFinalizationsDB.retrieveByHeaderHash,
-      seen: new Set(),
-    });
-  });
-
-export const applyConfirmedLedgerDelta = ({
-  spent,
-  produced,
-}: {
-  readonly spent: readonly Buffer[];
-  readonly produced: readonly Ledger.Entry[];
-}): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    if (spent.length > 0) {
-      yield* sql`DELETE FROM ${sql(ConfirmedLedgerDB.tableName)}
-        WHERE ${sql(Ledger.Columns.OUTREF)} IN ${sql.in(spent)}`;
-    }
-    if (produced.length > 0) {
-      yield* sql`INSERT INTO ${sql(ConfirmedLedgerDB.tableName)} ${sql.insert(
-        produced,
-      )}
-      ON CONFLICT (${sql(Ledger.Columns.OUTREF)}) DO UPDATE SET
-        ${sql(Ledger.Columns.TX_ID)} = EXCLUDED.${sql(Ledger.Columns.TX_ID)},
-        ${sql(Ledger.Columns.OUTPUT)} = EXCLUDED.${sql(Ledger.Columns.OUTPUT)},
-        ${sql(Ledger.Columns.ADDRESS)} = EXCLUDED.${sql(Ledger.Columns.ADDRESS)}`;
-    }
-  }).pipe(
-    sqlErrorToDatabaseError(
-      ConfirmedLedgerDB.tableName,
-      "Failed to apply finalized confirmed-ledger delta",
-    ),
-  );
-
-export const applyConfirmedLedgerDeltaChainTransaction = (
-  snapshot: ConfirmedLedgerSnapshot,
-): Effect.Effect<readonly Ledger.Entry[], DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`LOCK TABLE ${sql(
-          ConfirmedLedgerDB.tableName,
-        )} IN EXCLUSIVE MODE`;
-        const currentEntries = yield* ConfirmedLedgerDB.retrieve;
-        const currentRoot = yield* computeRecoveredRoot(currentEntries);
-        if (currentRoot !== snapshot.baseRoot) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: ConfirmedLedgerDB.tableName,
-              message:
-                "Confirmed-ledger delta-chain base no longer matches the persisted ledger",
-              cause: `persisted_root=${currentRoot},authenticated_base_root=${snapshot.baseRoot}`,
-            }),
-          );
-        }
-        for (const delta of snapshot.deltaChain) {
-          yield* applyConfirmedLedgerDelta(delta);
-        }
-        const recoveredEntries = yield* ConfirmedLedgerDB.retrieve;
-        const recoveredRoot = yield* computeRecoveredRoot(recoveredEntries);
-        if (recoveredRoot !== snapshot.root) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: ConfirmedLedgerDB.tableName,
-              message:
-                "Applied confirmed-ledger delta chain does not match its authenticated final root",
-              cause: `recovered_root=${recoveredRoot},authenticated_root=${snapshot.root}`,
-            }),
-          );
-        }
-        return recoveredEntries;
-      }),
-    );
-  }).pipe(
-    sqlErrorToDatabaseError(
-      ConfirmedLedgerDB.tableName,
-      "Failed to transactionally apply finalized confirmed-ledger delta chain",
-    ),
-  );

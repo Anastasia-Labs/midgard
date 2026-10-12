@@ -7,14 +7,16 @@ import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/da-libp2p-identity";
 import "@al-ft/midgard-core/da-payload-envelope";
 import "@al-ft/midgard-core/da-transport";
-import "da-committee-node/store";
+import "da-committee-node/store/postgres";
 import "tsup";
 import "vitest";
 import "../../da-committee-node/tests/helpers.js";
+import "../../da-committee-node/tests/helpers/postgres-database.js";
 import "../src/da/libp2p-producer.js";
 import "../src/database/index.js";
 import "../src/sha256.js";
 import "./da-multi-process-10k-integration.stop-child-bounded.js";
+import "./test-env.js";
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -30,11 +32,12 @@ import type {
   Libp2pDaPeerConfig,
   Libp2pDaTransportConfig,
 } from "da-committee-node/config";
-import { JsonFileCommitteeStore } from "da-committee-node/store";
+import { PostgresCommitteeStore } from "da-committee-node/store/postgres";
 import { build as bundleWithTsup } from "tsup";
 import { describe, expect, it } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
+import { postgresTestDatabases } from "../../da-committee-node/tests/helpers/postgres-database.js";
 import {
   createDaLibp2pProducerTransport,
   DaPayloadPublicationError,
@@ -57,6 +60,7 @@ import {
   waitForPeerMetrics,
   waitForReady,
 } from "./da-multi-process-10k-integration.stop-child-bounded.js";
+import { TEST_DATABASE_PREFIX } from "./test-env.js";
 
 describe("real separate-process canonical V1 DA publication", () => {
   it("publishes the maximum-valid 10k envelope and rejects one mutation", async () => {
@@ -97,6 +101,10 @@ describe("real separate-process canonical V1 DA publication", () => {
     // retained.
     const temp = await mkdtemp(join(packageRoot, ".rf078-10k-"));
     const children: ChildProcess[] = [];
+    // One committee store database per child, dropped once every child has
+    // stopped and released its store.
+    const databases = postgresTestDatabases(TEST_DATABASE_PREFIX);
+    const databaseUrls: string[] = [];
     let transport:
       | Awaited<ReturnType<typeof createDaLibp2pProducerTransport>>
       | undefined;
@@ -130,7 +138,10 @@ describe("real separate-process canonical V1 DA publication", () => {
         config: false,
         splitting: false,
         silent: true,
-        noExternal: [/^@al-ft\//, /^da-committee-node(\/|$)/],
+        // `pg` is a dependency of da-committee-node only, so the child, which
+        // runs from below this package, could not resolve it; bundle it too.
+        noExternal: [/^@al-ft\//, /^da-committee-node(\/|$)/, /^pg(\/|$)/],
+        external: ["pg-native"],
         // Bundled workspace source reaches some CJS-only dependencies through
         // `require`; give the ESM bundle a real one instead of esbuild's throwing
         // "Dynamic require" shim.
@@ -204,12 +215,14 @@ describe("real separate-process canonical V1 DA publication", () => {
           peers: [...committeePeers, producerPeer],
         };
         const configPath = join(temp, `peer-${index.toString()}.json`);
+        const databaseUrl = (await databases.create()).url;
+        databaseUrls.push(databaseUrl);
         await writeFile(
           configPath,
           `${JSON.stringify({
             peerIndex: index,
             privateKeySource: committeeSeeds[index],
-            storeDir: join(temp, `store-${index.toString()}`),
+            databaseUrl,
             metricsPath: join(temp, `metrics-${index.toString()}.ndjson`),
             transport: transportConfig,
           })}\n`,
@@ -394,10 +407,8 @@ describe("real separate-process canonical V1 DA publication", () => {
       await stopAll();
 
       await Promise.all(
-        committeeSeeds.map(async (_, index) => {
-          const store = await JsonFileCommitteeStore.open(
-            join(temp, `store-${index.toString()}`),
-          );
+        databaseUrls.map(async (databaseUrl) => {
+          const store = await PostgresCommitteeStore.open(databaseUrl);
           try {
             await expect(
               store.getDaPayload(fixture.headerHash),
@@ -408,7 +419,7 @@ describe("real separate-process canonical V1 DA publication", () => {
               validationStatus: "fetched",
             });
           } finally {
-            await store.close?.();
+            await store.close();
           }
         }),
       );
@@ -439,6 +450,7 @@ describe("real separate-process canonical V1 DA publication", () => {
     } finally {
       await stopAll();
       await rm(temp, { recursive: true, force: true });
+      await databases.dropAll();
     }
   }, 420_000);
 });

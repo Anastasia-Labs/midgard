@@ -1,5 +1,3 @@
-import "./journey-authority-session-test-mock.js";
-
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,21 +22,21 @@ const state = vi.hoisted(() => ({
   watcherState: { state: "running", exitCode: null as number | null },
   bindingCalls: 0,
   failBinding: false,
-  failArchivesClose: false,
+  failNativeClose: false,
   sessionSources: [] as string[],
 }));
 vi.mock("../../../../scripts/lib/source-facets.mjs", () => ({
   sourceFacetPaths: () => state.sessionSources,
 }));
 vi.mock("./journey-timing.js", () => ({
-  readJourneyTiming: async () => undefined,
+  readJourneyTiming: async () => ({ allowances: {} }),
 }));
 vi.mock("./live-context.js", async (original) => ({
   ...(await original<typeof import("./live-context.js")>()),
   loadJourneyContext: async () => ({
     runDirectory: state.runDirectory,
     deployment: {
-      manifest: { manifestId: "ab".repeat(32) },
+      manifest: { manifestId: "ab".repeat(32), hubOracleOneShot: {} },
       contracts: { computationThread: { policyId: "cd".repeat(28) } },
     },
     provider: {},
@@ -56,7 +54,6 @@ vi.mock("midgard-watcher", async (original) => ({
   ...(await original<typeof import("midgard-watcher")>()),
   parseWatcherConfig: (value: unknown) => value,
   parseWatcherProcessConfig: (value: unknown) => value,
-  makeWatcherFinalityPolicy: () => ({ confirmationDepth: "30" }),
   watcherDeploymentReleaseFinalityAuthority: () => ({
     verifyForWorkflow: async () => ({
       policy: { confirmationDepth: 30 },
@@ -90,32 +87,27 @@ vi.mock("./retained-da.js", () => ({
     },
   }),
 }));
-vi.mock("./history-archives.js", () => ({
-  startJourneyHistoryArchives: async () => ({
-    configuration: { providers: [] },
-    caPath: join(state.runDirectory, "binding.json"),
-    retain: vi.fn(),
-    retainNativeBlock: vi.fn(),
-    rollbackNativeBlocks: vi.fn(),
-    close: async () => {
-      state.closed.push("archives");
-      if (state.failArchivesClose) throw new Error("archives close failed");
-    },
-  }),
-}));
 vi.mock("./native-node.js", () => ({
   journeyNativeNodeQuery: async () => ({
-    watcherConfig: { l1: { source: { sourceMode: "local_node" } } },
+    watcherConfig: {
+      l1: { source: { sourceMode: "local_node", chainSync: {} } },
+    },
     binaryPath: join(state.runDirectory, "binding.json"),
   }),
+}));
+vi.mock("../../src/l1-origin.js", () => ({
+  deriveL1Origin: async () => ({ origin: { slot: 7, blockHash: "34" } }),
 }));
 vi.mock("./native-recorder.js", () => ({
   startJourneyNativeRecorder: async ({ directory }: { directory: string }) => ({
     nativeEvidencePath: join(directory, "native-chain.ndjson"),
     assertHealthy: vi.fn(),
     transaction: vi.fn(),
+    includedThrough: vi.fn(),
+    observedBlockNo: () => undefined,
     close: async () => {
       state.closed.push("native");
+      if (state.failNativeClose) throw new Error("native close failed");
     },
   }),
 }));
@@ -177,10 +169,16 @@ beforeEach(async () => {
   state.launches = [];
   state.bindingCalls = 0;
   state.failBinding = false;
-  state.failArchivesClose = false;
+  state.failNativeClose = false;
   state.sessionSources = [];
   state.watcherState = { state: "running", exitCode: null };
   await mkdir(join(state.runDirectory, "secrets"));
+  for (const name of [
+    "watcher-rollback.key",
+    "watcher-prover.seed",
+    "watcher-availability.seed",
+  ])
+    await writeFile(join(state.runDirectory, "secrets", name), "secret");
   await mkdir(join(state.runDirectory, "work/journeys/runtime"), {
     recursive: true,
   });
@@ -209,10 +207,7 @@ it("keeps one observer and authenticated-history service lifetime across targets
     const second = await session.ensureWatcher();
     expect(second).toBe(first);
     expect(second.observe().pid).toBe(first.observe().pid);
-    expect(state.launches.map(({ command }) => command)).toEqual([
-      "authority",
-      "start",
-    ]);
+    expect(state.launches.map(({ command }) => command)).toEqual(["start"]);
     expect(state.bindingCalls).toBe(1);
     expect(state.closed).toEqual([]);
     expect(session.native.nativeEvidencePath).toBe(
@@ -222,7 +217,6 @@ it("keeps one observer and authenticated-history service lifetime across targets
     expect(Object.keys(first.config.faultProofInfrastructure).sort()).toEqual([
       "blueprintPath",
       "deploymentInfoPath",
-      "historicalNativeScriptHistory",
       "manifestPath",
     ]);
     expect(first.config.workflowJournalDirectory).toBe(
@@ -232,13 +226,7 @@ it("keeps one observer and authenticated-history service lifetime across targets
     await session.close();
   }
   await session.close();
-  expect(state.closed).toEqual([
-    "start-2",
-    "authority-1",
-    "native",
-    "archives",
-    "da",
-  ]);
+  expect(state.closed).toEqual(["start-1", "native", "da"]);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });
 
@@ -248,10 +236,10 @@ it("restarts only the failed-closed watcher with the same bindings and live serv
     const running = await session.ensureWatcher();
     state.watcherState = { state: "exited", exitCode: 70 };
     await session.assertHealthy();
-    expect(running.observe().pid).toBe(3);
+    expect(running.observe().pid).toBe(2);
     expect(state.bindingCalls).toBe(1);
     expect(state.closed).toEqual([]);
-    expect(state.launches[2]).toEqual(state.launches[1]);
+    expect(state.launches[1]).toEqual(state.launches[0]);
   } finally {
     await session.close();
   }
@@ -276,7 +264,7 @@ it("gates operations on the restarted listener without retrying normal connectio
     await expect(running.operations("/v1/status")).resolves.toEqual({
       readiness: "ready",
     });
-    expect(running.observe().pid).toBe(3);
+    expect(running.observe().pid).toBe(2);
     // A later failure can race the pre-read health check. Its observed exit,
     // rather than the network error alone, must authorize the next restart.
     fetch
@@ -288,7 +276,7 @@ it("gates operations on the restarted listener without retrying normal connectio
     await expect(running.operations("/v1/status")).resolves.toEqual({
       readiness: "ready",
     });
-    expect(running.observe().pid).toBe(4);
+    expect(running.observe().pid).toBe(3);
   } finally {
     await session.close();
   }
@@ -302,9 +290,7 @@ it("launches from a newly retained healthy predecessor after baseline capture an
       {
         category: "doubleSpend",
         stage: async (input) => {
-          expect(state.launches.map(({ command }) => command)).toEqual([
-            "authority",
-          ]);
+          expect(state.launches).toEqual([]);
           expect(
             JSON.parse(
               await readFile(
@@ -323,7 +309,6 @@ it("launches from a newly retained healthy predecessor after baseline capture an
           vi.mocked(globalThis.fetch).mockRejectedValue(refusal);
           await input.onHealthyPredecessor!("12".repeat(28));
           expect(state.launches.map(({ command }) => command)).toEqual([
-            "authority",
             "start",
           ]);
           const running = await session.ensureWatcher();
@@ -335,7 +320,7 @@ it("launches from a newly retained healthy predecessor after baseline capture an
     ),
   ).rejects.toThrow("later staging failed");
   expect(state.bindingCalls).toBe(1);
-  expect(state.closed).toHaveLength(5);
+  expect(state.closed).toHaveLength(3);
 });
 
 it("closes and refuses reuse when a pinned deployment input changes", async () => {
@@ -348,7 +333,7 @@ it("closes and refuses reuse when a pinned deployment input changes", async () =
   await expect(session.assertHealthy()).rejects.toThrow(
     "session input changed",
   );
-  expect(state.closed).toHaveLength(5);
+  expect(state.closed).toHaveLength(3);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });
 
@@ -357,7 +342,7 @@ it("cleans up once after binding failure and never reuses partial initialization
   state.failBinding = true;
   await expect(session.ensureWatcher()).rejects.toThrow("binding rejected");
   await session.close();
-  expect(state.closed).toEqual(["authority-1", "native", "archives", "da"]);
+  expect(state.closed).toEqual(["native", "da"]);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });
 
@@ -372,10 +357,7 @@ it("starts against the retained head before staging and closes after fixture fai
   );
   const session = await openJourneySession(state.runDirectory);
   const stage = vi.fn(async () => {
-    expect(state.launches.map(({ command }) => command)).toEqual([
-      "authority",
-      "start",
-    ]);
+    expect(state.launches.map(({ command }) => command)).toEqual(["start"]);
     throw new Error("fixture rejected");
   });
   await expect(
@@ -386,7 +368,7 @@ it("starts against the retained head before staging and closes after fixture fai
     ),
   ).rejects.toThrow("fixture rejected");
   expect(stage).toHaveBeenCalledOnce();
-  expect(state.closed).toHaveLength(5);
+  expect(state.closed).toHaveLength(3);
   await expect(session.assertHealthy()).rejects.toThrow("closed");
 });
 
@@ -553,17 +535,11 @@ it("distinguishes an old completed proof from a target completed during staging"
 it("closes the remaining services even when one service fails to close", async () => {
   const session = await openJourneySession(state.runDirectory);
   await session.ensureWatcher();
-  state.failArchivesClose = true;
+  state.failNativeClose = true;
   await expect(session.close()).rejects.toThrow(
     "Could not close watcher journey session",
   );
-  expect(state.closed).toEqual([
-    "start-2",
-    "authority-1",
-    "native",
-    "archives",
-    "da",
-  ]);
+  expect(state.closed).toEqual(["start-1", "native", "da"]);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });
 
@@ -585,10 +561,7 @@ it("rejects a foreign run directory before restarting its failed watcher", async
     ),
   ).rejects.toThrow("different run directory");
   expect(stage).not.toHaveBeenCalled();
-  expect(state.launches.map(({ command }) => command)).toEqual([
-    "authority",
-    "start",
-  ]);
+  expect(state.launches.map(({ command }) => command)).toEqual(["start"]);
 });
 
 it.each([
@@ -609,6 +582,6 @@ it.each([
   await expect(session.assertHealthy()).rejects.toThrow(
     `session input changed: ${join(state.runDirectory, changed)}`,
   );
-  expect(state.closed).toHaveLength(5);
+  expect(state.closed).toHaveLength(3);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });

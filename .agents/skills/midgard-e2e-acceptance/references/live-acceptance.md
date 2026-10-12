@@ -33,19 +33,13 @@ environment variables; it never holds their values. Verify the node `.env` it
 points at, without printing seed phrases:
 
 - `NETWORK=Preprod` and `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing`;
-- `L1_PROVIDER=Kupmios`, loopback Kupo and Ogmios URLs, and no
-  `L1_PROVIDER_FAILOVER`;
 - `RUN_GENESIS_ON_STARTUP=false` and the exact L2 `MIN_FEE_A`/`MIN_FEE_B`;
 - an explicit `MIDGARD_POSTGRES_HOST_PORT` that is neither 5433 nor 55433
   (both belong to test databases);
 - every wallet, DA member, transport and DA password variable the
   configuration names, with the stack-only secrets under distinct `STACK_`
   names and each wallet role distinct;
-- `DA_THRESHOLD` between `ceil(2 * members / 3)` and the member count; and
-- the L1 history source pin `L1_HISTORY_GENESIS_LOSSLESS_SHA256`, set to the
-  `sha256` that `node dist/index.js history-genesis-pin` prints against the
-  intended chain. `listen` refuses to start without it, and a different value
-  means a different chain, not a setting to refresh.
+- `DA_THRESHOLD` between `ceil(2 * members / 3)` and the member count.
 
 Fund the wallets to the configured budgets before a fresh run, each with a
 plain output of at least 5 ADA. Attach and resume need only 5 ADA of working
@@ -70,7 +64,7 @@ pnpm --dir "$TOOLS_DIR" run e2e-stack --config "$STACK_CONFIG" --check
 
 It prints the network, node and run directories, and the configured number of
 journey cycles. Fix every refusal before a live run. The Compose version, the
-`compose config` rendering, the watcher key and bearer decoding and the
+`compose config` rendering, the watcher rollback key decoding and the
 prover/availability seed match are checked later, after the builds.
 
 ## Choose where to run
@@ -89,8 +83,7 @@ prover/availability seed match are checked later, after the builds.
 A run's identity is its network, deployment profile, node and run
 directories, wallet seeds, DA members, transports, threshold, owners and
 cosigner, watcher keys, and release signer and program commitments. Timeouts,
-journey size, budgets, ports, templates and the watcher bearer may change
-between runs; a change that reaches the generated services regenerates them
+journey size, budgets, ports and templates may change between runs; a change that reaches the generated services regenerates them
 and recreates the affected containers. Raising `journey.cycles` on a complete
 deployment runs only the new cycles.
 
@@ -130,21 +123,22 @@ then run in this order. `providers`, `storage` and `wallets` run their checks
 on every run; every other step already confirmed in `stack-journal.json` is
 reconciled against Cardano and its saved records, never repeated.
 
-| Step                    | What it does                                                                                                                                                                 | On rerun                                                                                                                                   |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `providers`             | Starts the local Cardano node with Ogmios, Kupo and Postgres through the operator Compose wrapper, then runs the node's `l1-provider-preflight`.                             | Starts and checks them again.                                                                                                              |
-| `storage`               | Checks that storage is fresh (fresh run) or holds this deployment's marker and event history (attach).                                                                       | Refuses mismatched storage.                                                                                                                |
-| `wallets`               | Checks each wallet's budget (fresh) or working capital (resume) and its plain 5 ADA output.                                                                                  | Checks again.                                                                                                                              |
-| `nonce`                 | Runs the node's `prepare-hub-oracle-one-shot-nonce`, which records the signed nonce in the deployment run state before first submitting it.                                  | Completes a nonce that landed or resubmits exactly the recorded bytes; never builds a second nonce. Attaches when `init` is already final. |
-| `references`            | Publishes the node-runtime reference scripts and confirms them with `reconcile reference-scripts-complete --scope node-runtime`.                                             | Confirms published scripts before publishing any missing one.                                                                              |
-| `initialize`            | Runs `db:migrate` and `init`, then verifies the finalized deployment manifest.                                                                                               | Reconstructs the manifest from Cardano when `init` confirmed unrecorded; waits when a finalized `init` left the tip.                       |
-| `operator`              | Registers and activates the operator with `register-active-operator` after `operator-status`.                                                                                | Resumes from registered; refuses a duplicate.                                                                                              |
-| `runtime-configuration` | Generates the node environment, DA committee, public retained DA, watcher and authority services, and `<runDirectory>/services/compose.json`.                                | Reuses them while their input digest matches; otherwise regenerates.                                                                       |
-| `storage-identity`      | Writes or verifies the Postgres deployment marker and the durable storage identity.                                                                                          | Refuses a changed identity.                                                                                                                |
-| `services`              | Builds images, pins the native owner, starts DA storage, checks the DA submitter wallet, starts the committee, runs the producer DA preflight, then starts node and watcher. | Confirms a ready stack from one snapshot; otherwise starts the services again.                                                             |
-| `cycle-N-deposit`       | Submits a deposit with a stable submission ID and waits for automatic absorption and the exact L2 credit.                                                                    | Reuses the saved intent and receipt.                                                                                                       |
-| `cycle-N-transfer`      | Saves the signed transfer before sending it, waits for commitment, retrieves the payload over public libp2p DA and waits for confirmed-ledger finality.                      | Resends the same bytes after a lost response.                                                                                              |
-| `cycle-N-withdrawal`    | Submits the recipient's withdrawal and waits for the node's automatic payout to the exact destination and value.                                                             | Verifies an already paid payout through its historical transaction.                                                                        |
+| Step                    | What it does                                                                                                                                                                                                                                            | On rerun                                                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `providers`             | Starts the local Cardano node with Ogmios, Kupo and Postgres through the operator Compose wrapper, then runs the node's `l1-provider-preflight`.                                                                                                        | Starts and checks them again.                                                                                                                                       |
+| `storage`               | Checks that storage is fresh (fresh run) or holds this deployment's marker and event history (attach).                                                                                                                                                  | Refuses mismatched storage.                                                                                                                                         |
+| `wallets`               | Checks each wallet's budget (fresh) or working capital (resume) and its plain 5 ADA output.                                                                                                                                                             | Checks again.                                                                                                                                                       |
+| `nonce`                 | Runs the node's `prepare-hub-oracle-one-shot-nonce`, which records the signed nonce in the deployment run state before first submitting it.                                                                                                             | Completes a nonce that landed or resubmits exactly the recorded bytes; never builds a second nonce. Attaches when `init` is already final.                          |
+| `origin`                | Derives `L1_ORIGIN`, the point just before the block holding the recorded hub-oracle nonce tx, by scanning the local node from the tip read before the nonce was signed (or from the operator's `L1_ORIGIN`), and records it in `<run>/l1-origin.json`. | Reuses the origin recorded for the same nonce; refuses by name when it has no scan start or the operator value disagrees. The node env is never written without it. |
+| `references`            | Publishes the node-runtime reference scripts and confirms them with `reconcile reference-scripts-complete --scope node-runtime`.                                                                                                                        | Confirms published scripts before publishing any missing one.                                                                                                       |
+| `initialize`            | Runs `db:migrate` and `init`, then verifies the finalized deployment manifest.                                                                                                                                                                          | Reconstructs the manifest from Cardano when `init` confirmed unrecorded; waits when a finalized `init` left the tip.                                                |
+| `operator`              | Registers and activates the operator with `register-active-operator` after `operator-status`.                                                                                                                                                           | Resumes from registered; refuses a duplicate.                                                                                                                       |
+| `runtime-configuration` | Generates the node environment, DA committee, public retained DA, watcher and authority services, and `<runDirectory>/services/compose.json`.                                                                                                           | Reuses them while their input digest matches; otherwise regenerates.                                                                                                |
+| `storage-identity`      | Writes or verifies the Postgres deployment marker and the durable storage identity.                                                                                                                                                                     | Refuses a changed identity.                                                                                                                                         |
+| `services`              | Builds images, pins the native owner, starts DA storage, checks the DA submitter wallet, starts the committee, runs the producer DA preflight, then starts node and watcher.                                                                            | Confirms a ready stack from one snapshot; otherwise starts the services again.                                                                                      |
+| `cycle-N-deposit`       | Submits a deposit with a stable submission ID and waits for automatic absorption and the exact L2 credit.                                                                                                                                               | Reuses the saved intent and receipt.                                                                                                                                |
+| `cycle-N-transfer`      | Saves the signed transfer before sending it, waits for commitment, retrieves the payload over public libp2p DA and waits for confirmed-ledger finality.                                                                                                 | Resends the same bytes after a lost response.                                                                                                                       |
+| `cycle-N-withdrawal`    | Submits the recipient's withdrawal and waits for the node's automatic payout to the exact destination and value.                                                                                                                                        | Verifies an already paid payout through its historical transaction.                                                                                                 |
 
 The generated node environment sets `MIN_QUEUE_LENGTH_FOR_MERGING=1` for these
 small journeys and uses the existing automatic merge worker. No merge, payout

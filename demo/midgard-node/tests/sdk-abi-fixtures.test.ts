@@ -62,9 +62,6 @@ describe("SDK canonical ABI fixtures", () => {
     expect(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS).toBe(
       testnetIntegerConst("user_events_negligence_timeout"),
     );
-    expect(SDK.MAX_INACTIVITY_BETWEEN_BLOCK_COMMITMENTS_MS).toBe(
-      testnetIntegerConst("max_inactivity_between_block_commitments"),
-    );
     expect(SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS).toBe(
       testnetIntegerConst("new_shift_inactivity_grace_period"),
     );

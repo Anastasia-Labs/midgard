@@ -5,7 +5,6 @@ import {
   type WatcherStateQueueRemovalKind,
 } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
-import type { WatcherChainCoordinator } from "./chain-coordinator.js";
 
 export const WATCHER_OPERATIONS_OBSERVABILITY =
   "midgard-watcher-production-operations-observability-v1" as const;
@@ -160,7 +159,7 @@ export type WatcherL1SourceDiagnostic = Sequenced &
   Readonly<{
     kind: "l1_source";
     sourceIdentityDigest: string;
-    sourceMode: "local_node" | "external_provider";
+    sourceMode: "local_node";
     status: "consistent" | "stale" | "disagreement";
     blockHash: string;
     blockNo: string;
@@ -185,26 +184,88 @@ export type WatcherOperationsDiagnostic =
   | WatcherL1SourceDiagnostic
   | WatcherAlertDiagnostic;
 
+export type WatcherOperationsReadinessReason =
+  | "supervisor_not_accepting"
+  | "recovery_incomplete"
+  | "launch_scope_incomplete"
+  | "deadline_at_risk"
+  | "deadline_unsafe"
+  | "l1_source_unavailable"
+  | "l1_source_stale"
+  | "retained_da_transport_failed"
+  | "active_alert"
+  | "journal_capacity"
+  /** A fault-proof journal failed integrity; `supervisor.journalIntegrity`
+   * names the failure. Held until an operator repairs the journals. */
+  | "journal_integrity"
+  /** The journals could not be opened; `supervisor.journalUnavailable` names
+   * the failure. Held while the open is retried; clears once it succeeds. */
+  | "journal_unavailable"
+  /** Proof work or a funding reservation names a decision the journal does
+   * not hold; `supervisor.journalDecisionMissing` lists each. Held, never
+   * run again; each clears once L1 facts resolve it. */
+  | "journal_decision_missing"
+  /** A validation-trace dispute started from a transcript recorded before
+   * user events were read from follower facts is open; it is listed in
+   * `supervisor.journalDecisionMissing` with this `readiness`. Held, never
+   * run again, the process up; clears once its header leaves the finalized
+   * queue. */
+  | "validation_transcript_pre_follower"
+  /** A fault-proof objective's latest safe start, fixed by its header, passed
+   * before it signed any attempt; it is listed in
+   * `supervisor.journalDecisionMissing` with this `readiness` and the detail
+   * `<category>/<headerHash>`. Held, never run again, the process up; clears
+   * once its header leaves the finalized queue. */
+  | "fault_proof_start_deadline_passed"
+  /** Startup could not read a fault-proof objective's workflow directory (a
+   * symlinked path, a sequence gap a partial delete left, a foreign
+   * execution, an I/O error); it is listed in
+   * `supervisor.journalDecisionMissing` with this `readiness` and the detail
+   * `<category>/<headerHash>: <failure>`. Held, never run again, the process
+   * up; clears once its header leaves the finalized queue, which forgets its
+   * rows. */
+  | "fault_proof_objective_unreadable"
+  /** A released or final objective's workflow directory could not be
+   * removed (its rows stay and keep their slot under the objective cap), or
+   * a removed directory's tombstone could not be deleted;
+   * `supervisor.objectiveCleanupFailures` lists each with its failure. Every
+   * admission retries; clears once the removal succeeds. */
+  | "fault_proof_objective_cleanup_failed"
+  /** A journal database was busy or locked past its timeout;
+   * `supervisor.journalBusy` names the failure. The work is requeued in
+   * process from durable state after a 1-30 s backoff; clears then. */
+  | "journal_busy";
+
+export type WatcherOperationsL1Degradation = Readonly<{
+  reason: string;
+  count: string;
+  detail: string;
+}>;
+
 export type WatcherOperationsStatus = Readonly<{
   schemaVersion: typeof WATCHER_OPERATIONS_OBSERVABILITY;
   deploymentFingerprint: string;
   observedAtMs: string;
   liveness: "live" | "stopping" | "stopped" | "blocked";
   readiness: "ready" | "not_ready";
-  readinessReasons: readonly (
-    | "supervisor_not_accepting"
-    | "recovery_incomplete"
-    | "launch_scope_incomplete"
-    | "deadline_at_risk"
-    | "deadline_unsafe"
-    | "l1_source_unavailable"
-    | "l1_source_stale"
-    | "retained_da_transport_failed"
-    | "active_alert"
-    | "coordinator_recovery_hold"
-  )[];
+  /**
+   * The watcher's own reasons, then each named L1 reason of `l1Readiness`
+   * (the follower's, the decision driver's and the proof execution's, for
+   * example `l1_follower_catching_up`, `wallet_seed_pending`, a rollback
+   * intervention or `fault_proof_l1_refused:<reason>`, an objective held on
+   * an L1 read the follower refused for `<reason>`).
+   */
+  readinessReasons: readonly (WatcherOperationsReadinessReason | string)[];
+  /** The named L1 reasons with their detail; empty when L1 holds nothing. */
+  l1Readiness: readonly Readonly<{ reason: string; detail: string }>[];
+  /**
+   * Named L1 degradations, for example `l1_tx_inputs_unresolvable` for
+   * recorded txs no open proof needs whose inputs can never resolve, or
+   * `l1_proof_history_pruned` for open proofs whose history pruning removed
+   * before a pin held it. Reported only: they never add a readiness reason.
+   */
+  l1Degradations: readonly WatcherOperationsL1Degradation[];
   retainedDaTransport: WatcherRetainedDaTransportStatus;
-  coordinator: ReturnType<WatcherChainCoordinator["status"]> | null;
   launchScope: Readonly<{
     installedCategoryCount: string;
     requiredCategoryCount: string;
@@ -284,6 +345,8 @@ export type WatcherOperationsMetrics = Readonly<{
    * local L1 source (`pending_l1`). Diagnostics, never a readiness reason.
    */
   deferredClassifications: string;
+  /** The count of each named L1 degradation. Never a readiness reason. */
+  l1Degradations: Readonly<Record<string, string>>;
 }>;
 
 export type WatcherOperationsPage = Readonly<{

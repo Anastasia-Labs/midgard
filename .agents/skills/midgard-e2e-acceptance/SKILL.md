@@ -82,10 +82,10 @@ by `docs/agents/state-reset.md`. [review]
 - Pass `--config` as an absolute path, and keep the same configuration file
   for attach and resume. A changed identity field stops the run.
   [runtime: runStackController]
-- The configuration must name Preprod, the `preprod-testing` profile, local
-  Kupmios with no failover, `RUN_GENESIS_ON_STARTUP=false`, the exact L2 fees,
-  and a Postgres host port other than 5433 and 55433; setup refuses anything
-  else. [runtime: loadStackConfig]
+- The configuration must name Preprod, the `preprod-testing` profile,
+  `RUN_GENESIS_ON_STARTUP=false`, the exact L2 fees, and a Postgres host port
+  other than 5433 and 55433; setup refuses anything else.
+  [runtime: loadStackConfig]
 - Never wipe local durable state, the run directory or service volumes under a
   deployment. [review]
 - Do not delete `demo/midgard-node/cardano/db` or `cardano/kupo`; they are the
@@ -121,12 +121,12 @@ pnpm run test:tx-prep:node
 pnpm run test:tx-prep:emulator
 ```
 
-For changes to the stack harness itself, run its focused tests:
+For changes to the stack harness itself, run its focused tests (they need the
+local test Postgres):
 
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-MIDGARD_SKIP_DB_TESTS=1 pnpm --dir "$REPO_ROOT/demo/midgard-node-tools" \
-  exec vitest run tests/full-stack
+cd "$(git rev-parse --show-toplevel)/demo/midgard-node-tools"
+node ../../scripts/contrib.mjs test --package midgard-node-tools --file tests/full-stack*.test.ts
 ```
 
 If a live run finds a deterministic defect, stop repeated live runs. Add a

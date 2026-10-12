@@ -133,8 +133,7 @@ validator main(
         // 2. The whole committed field 6 is walked through the §8.8 door:
         //    no script witness of any language may hash to the claimed
         //    policy id. Re-encoding pins §6.1 canonicality (the decoder
-        //    reads a prefix and tolerates non-minimal length prefixes; see
-        //    missing-native-script-tx step-06).
+        //    reads a prefix and tolerates non-minimal length prefixes).
         let script_tx_wits_walk = opened_field_walk(
           script_tx_wits_opening,
           WitnessAnchor {

@@ -1,4 +1,3 @@
-import { LocalKupmiosCheckpointChangedError } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 
@@ -7,6 +6,7 @@ import {
   type SignedCommitAttempt,
   type SignedCommitReconciliationPorts,
 } from "./signed-commit-reconciliation.js";
+import { SignedTransactionRecoveryUnavailableError } from "./signed-transaction-recovery.js";
 
 const inputs = CML.TransactionInputList.new();
 inputs.add(
@@ -33,19 +33,10 @@ const attempt: SignedCommitAttempt = {
 type Recovery = Awaited<
   ReturnType<SignedCommitReconciliationPorts["readRecovery"]>
 >;
-const point = {
-  blockHash: "33".repeat(32),
-  blockNo: "100",
-  slot: "200",
-  pointId: "44".repeat(32),
-};
 const observation = (status: Recovery["status"]): Recovery => ({
   transactionHash: attempt.txHash,
   signedTransactionCborHex: attempt.signedCbor,
   status,
-  canonicalPoint: point,
-  releaseFinalPoint: point,
-  inputs: [],
   reason: `authenticated ${status}`,
 });
 const ports = (
@@ -75,9 +66,9 @@ it.each(["expired", "invalidated"] as const)(
   },
 );
 
-it("authenticated signed recovery preserves unknown and pending past the local TTL", async () => {
-  // Both authenticated points are past TTL, but only the reader can prove expiry.
-  const chain = ports(["unknown", "pending", "included"]);
+it("authenticated signed recovery preserves pending past the local TTL", async () => {
+  // The local clock is past TTL, but only the reader can prove expiry.
+  const chain = ports(["pending", "pending", "included"]);
   expect(await reconcileSignedCommit(chain)).toEqual({
     kind: "included",
     txHash: attempt.txHash,
@@ -87,11 +78,11 @@ it("authenticated signed recovery preserves unknown and pending past the local T
 });
 
 it.each(["included", "expired"] as const)(
-  "retries a moving canonical checkpoint before authenticated %s without replacing signed bytes",
+  "retries an unanswered node read before authenticated %s without replacing signed bytes",
   async (status) => {
     const chain = ports([status]);
     vi.mocked(chain.readRecovery).mockRejectedValueOnce(
-      new LocalKupmiosCheckpointChangedError("Kupo advanced during capture"),
+      new SignedTransactionRecoveryUnavailableError("Ogmios socket closed"),
     );
     expect(await reconcileSignedCommit(chain)).toEqual(
       status === "included"
@@ -117,7 +108,7 @@ it("authenticated signed recovery rebroadcasts only eligible exact bytes once", 
 });
 
 it("authenticated signed recovery does not turn an ambiguous RPC failure into retirement", async () => {
-  const chain = ports(["rebroadcast", "unknown", "included"]);
+  const chain = ports(["rebroadcast", "pending", "included"]);
   chain.resubmit = vi.fn(async () => {
     throw new Error("RPC response lost");
   });
@@ -142,10 +133,7 @@ it.each(["source unavailable", "canonical transaction is phase-2 invalid"])(
   },
 );
 
-it("authenticated signed recovery keeps conflict hard and rejects mismatched recovery identity", async () => {
-  await expect(reconcileSignedCommit(ports(["conflict"]))).rejects.toThrow(
-    "recovery conflict",
-  );
+it("authenticated signed recovery rejects mismatched recovery identity", async () => {
   const chain = ports([]);
   chain.readRecovery = vi.fn(async () => ({
     ...observation("invalidated"),

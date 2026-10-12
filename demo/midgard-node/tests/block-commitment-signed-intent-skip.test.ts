@@ -14,7 +14,7 @@ import {
   header,
   journalFixture,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const prepared = vi.hoisted(() => ({ count: 0 }));
 const buildAndSubmitMock = vi.hoisted(() => vi.fn());
@@ -60,21 +60,19 @@ import {
 } from "../src/fibers/block-commitment.block-commitment-action.js";
 
 const nodeConfig = {
-  SPECULATIVE_COMMIT_BUILD: false,
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: 120_000,
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: 30_000,
+  COMMIT_EVENT_DEPTH: 0,
 } as unknown as NodeConfig["Type"];
 
 const runWithNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const clear = sql`TRUNCATE TABLE pending_block_finalizations,
-          state_queue_mutation_leases, event_history_authority
-          RESTART IDENTITY CASCADE`;
-        yield* clear;
-        return yield* program.pipe(Effect.ensuring(Effect.orDie(clear)));
+        yield* resetApplicationTables;
+        return yield* program.pipe(
+          Effect.ensuring(Effect.orDie(resetApplicationTables)),
+        );
       }).pipe(
         Effect.provideService(NodeConfig, nodeConfig),
         Effect.provideService(Lucid, {} as Lucid),
@@ -84,7 +82,7 @@ const runWithNode = <A, E, R>(program: Effect.Effect<A, E, R>) =>
     ) as Effect.Effect<A, unknown, never>,
   );
 
-/** A journal holding a signed commit intent no reconciliation resolved. */
+/** A journal holding a signed commit intent nothing has resolved yet. */
 const signedIntentJournal = (headerHash: Buffer) =>
   Effect.gen(function* () {
     const txHash = Buffer.alloc(32, 9);
@@ -158,7 +156,7 @@ describe("block commitment over an unreconciled signed intent", () => {
         const whileSigned = yield* counts;
         const workerCallsWhileSigned = buildAndSubmitMock.mock.calls.length;
 
-        // The history owner's reconciliation replaces the intent.
+        // The landed-block rebase disposes of the intent's journal.
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE pending_block_finalizations
           SET status = 'abandoned', updated_at = NOW()

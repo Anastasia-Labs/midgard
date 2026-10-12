@@ -5,6 +5,7 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import { type DeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import type { CommitteePromiseAdoptionConfig } from "./config.promise-admission.js";
 import type { DaCommitteeMember } from "./domain.js";
@@ -16,74 +17,38 @@ export type DaParamsConfig = {
   readonly threshold: number;
 };
 
-export type LocalStateConfig =
-  | { readonly kind: "file"; readonly path: string }
-  | { readonly kind: "database"; readonly url: string };
+export type LocalStateConfig = {
+  readonly kind: "database";
+  readonly url: string;
+};
 
-export type CardanoL1SourceConfig =
-  | {
-      readonly sourceMode: "local_node";
-      readonly authorityNodeId: string;
-      readonly authorityDigest: string;
-      readonly networkMagic: number;
-    }
-  | {
-      readonly sourceMode: "external_providers";
-      readonly providerAuthorityIds: readonly string[];
-      readonly authorityDigest: string;
-      readonly networkMagic: number;
-    };
+/** The Cardano network the committee's node runs, by its magic. */
+export type CardanoL1SourceConfig = {
+  readonly networkMagic: number;
+};
 
-export type L1SourceConfig =
-  | {
-      readonly sourceMode: "local_node";
-      readonly authorityNodeId: string;
-      readonly chainSyncProviderUrl: string;
-      readonly chainSyncCursorPath?: string;
-      readonly queryProviderUrls: readonly string[];
-    }
-  | {
-      readonly sourceMode: "external_providers";
-      readonly providers: readonly {
-        readonly identity: string;
-        readonly url: string;
-        readonly operationalIdentity: {
-          readonly operatorId: string;
-          readonly transport: "blockfrost_https" | "kupmios" | "fixture";
-          readonly normalizedEndpoints: readonly string[];
-          readonly backendKey: string;
-        };
-      }[];
-    };
-
+/**
+ * The identity of the committee's L1 source: its network and its node's
+ * authority id. The deployment's L1 origin is deliberately out, so correcting
+ * `L1_ORIGIN` (or moving it into the manifest later) never invalidates a
+ * stored retirement floor. The committee store is bound to it; a change is
+ * reported, never fatal.
+ */
 export const l1SourceAuthorityDigest = (
-  network: string,
-  source: L1SourceConfig,
+  config: Pick<CommitteeConfig, "network" | "nativeLedger">,
 ): string =>
   createHash("sha256")
     .update(
-      JSON.stringify(
-        source.sourceMode === "local_node"
-          ? {
-              network,
-              sourceMode: source.sourceMode,
-              authorityNodeId: source.authorityNodeId,
-              chainSyncProviderUrl: source.chainSyncProviderUrl,
-              queryProviderUrls: source.queryProviderUrls,
-            }
-          : {
-              network,
-              sourceMode: source.sourceMode,
-              providers: source.providers,
-            },
-      ),
+      JSON.stringify({
+        network: config.network,
+        authorityNodeId: config.nativeLedger?.authorityNodeId ?? null,
+      }),
     )
     .digest("hex");
 
 /**
- * Local node ledger used for reward-account reads. Ogmios omits registered
- * reward accounts that have no stake-pool delegation, so registration checks
- * query the node's ledger through the native chain-sync helper instead.
+ * The committee's local node: its socket, configuration and the native
+ * transport binary the L1 follower reads and submits through.
  */
 export type NativeLedgerConfig = {
   readonly authorityNodeId: string;
@@ -105,10 +70,10 @@ export type CommitteeConfig = {
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
   readonly consensusProfile: MidgardConsensusProfile;
   readonly midgardNodeDeployment: MidgardNodeDeployment;
-  readonly l1Source: L1SourceConfig;
-  readonly cardanoProviderUrls: readonly string[];
   /** Absent when no local node ledger is configured; reward-account reads then fail closed. */
   readonly nativeLedger?: NativeLedgerConfig;
+  /** The operator-configured L1 origin point (`L1_ORIGIN`); absent when unset. */
+  readonly l1Origin?: L1Origin;
   readonly finalityDepth: number;
   /** Signed recovery horizon, distinct from confirmation admission. */
   readonly automaticRecoveryMaxDepth: number;
@@ -152,7 +117,8 @@ export type CommitteeConfig = {
   readonly pollIntervalMs: number;
   /**
    * Longest time the committee may run without a fresh authenticated L1 view
-   * before it exits with code 70.
+   * before `/readyz` names `l1_view_unavailable`; a single tick in flight
+   * longer than it fails `/healthz` (`committee_tick_hung`).
    */
   readonly l1ViewFatalMs: number;
   /**
@@ -170,8 +136,7 @@ export type CommitteeConfig = {
 
 /**
  * The configuration a committee L1 client factory reads: the committee
- * configuration plus the configured network magic, which a `Custom` client's
- * Ogmios must match before its slot mapping is read.
+ * configuration plus the configured network magic.
  */
 export type CommitteeL1ClientConfig = CommitteeConfig & {
   readonly cardanoL1Source: Pick<CardanoL1SourceConfig, "networkMagic">;

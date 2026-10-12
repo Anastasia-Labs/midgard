@@ -21,10 +21,7 @@ import "./submit-init-emulator-shared.js";
 import "./transaction-output-non-canonical-emulator.continue-raw.js";
 import "./transaction-output-non-canonical-emulator.publish-output-field-carriage.js";
 import "./transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
-export {
-  buildForcedOutputFixture,
-  type ForcedOutputFixture,
-} from "./transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
+export { buildForcedOutputFixture } from "./transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 export {
   canonicalOutputOfLength,
   type Common,

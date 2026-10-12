@@ -11,16 +11,12 @@ import { parseContractDeploymentReferenceScriptAuthPolicyId } from "../inspect-c
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
-  createMinAdaCompleteCanonicalReplayFromHistoricalCorpus,
+  MIN_ADA_COMPLETE_CANONICAL_REPLAY,
   requireCompleteCanonicalReplayDecision,
 } from "../workflow/complete-replay.js";
 import { defineFamily } from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import {
-  requireHistoricalNativeScriptHistoryAuthority,
-  resolveHistoricalNativeScriptCorpus,
-} from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
@@ -39,11 +35,9 @@ import {
 import {
   type AssemblyContext,
   boundConfigs,
-  type HistoricalCorpusCell,
-  historicalCorpusCells,
-  type HistoricalRuntime,
   type ManifestBoundMinAdaWorkflow,
   type ManifestBoundMinAdaWorkflowConfig,
+  type MinAdaRuntime,
   transactionPort,
 } from "./workflow.transaction-port.js";
 import { admitMinAdaWorkflowArtifact as admitMinAdaArtifact } from "./workflow-artifact.js";
@@ -53,12 +47,7 @@ const boundFor = (context: AssemblyContext): BoundConfig => {
   const existing = boundConfigs.get(context);
   if (existing !== undefined) return existing;
   const { binding, certificate } = context;
-  const { corpusCell } = context.runtime;
-  requireHistoricalNativeScriptHistoryAuthority({
-    deploymentFingerprint: binding.deploymentFingerprint,
-    checkpointStore: context.runtime.historicalNativeScriptCheckpointStore,
-    historySource: context.runtime.historicalNativeScriptHistorySource,
-  });
+  const { replayContext } = context.runtime;
   const chain = binding.resolvedContracts.contracts.minAda;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   if (
@@ -101,15 +90,7 @@ const boundFor = (context: AssemblyContext): BoundConfig => {
     signer: context.signer,
     contracts,
     references,
-    historicalCorpus: () => {
-      const corpus = corpusCell.value;
-      if (corpus === undefined) {
-        throw new Error(
-          "min-ada history was not derived from this workflow's public authority",
-        );
-      }
-      return corpus;
-    },
+    ...(replayContext === undefined ? {} : { replayContext }),
     stateQueueMutationLeaseCoordinator:
       context.stateQueueMutationLeaseCoordinator,
   };
@@ -123,7 +104,7 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
   keyof FaultProofWitnessReferenceScripts,
   true,
   5,
-  HistoricalRuntime
+  MinAdaRuntime
 >({
   category: "minAda",
   stepDatumSchemas: [
@@ -141,10 +122,7 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
     "pexcludesWithdraw",
   ],
   fieldPreimageCertificate: true,
-  replayer: (context) =>
-    createMinAdaCompleteCanonicalReplayFromHistoricalCorpus(() =>
-      boundFor(context).historicalCorpus(),
-    ),
+  replayer: () => MIN_ADA_COMPLETE_CANONICAL_REPLAY,
   auxiliaryReferenceScripts: {
     tx: "fraudProofMinAdaStep02TxWithdraw",
     utxo: "fraudProofMinAdaStep02UtxoWithdraw",
@@ -195,25 +173,24 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
           ? admitted.prepared.predecessorNonMembershipProofCbor
           : null;
   },
-  extend: (context) => ({
-    historicalNativeScriptCheckpointStore:
-      context.runtime.historicalNativeScriptCheckpointStore,
-    historicalNativeScriptHistorySource:
-      context.runtime.historicalNativeScriptHistorySource,
-  }),
+  extend: (context) =>
+    context.runtime.replayContext === undefined
+      ? {}
+      : { replayContext: context.runtime.replayContext },
 });
 
 export const createManifestBoundMinAdaWorkflow = async (
   config: ManifestBoundMinAdaWorkflowConfig,
 ): Promise<ManifestBoundMinAdaWorkflow> => {
-  const corpusCell: HistoricalCorpusCell = {};
-  const runtime: HistoricalRuntime = { ...config, corpusCell };
+  const runtime: MinAdaRuntime =
+    config.replayContext === undefined
+      ? {}
+      : { replayContext: config.replayContext };
   const workflow = await assembleManifestBoundFamilyWorkflow(
     MIN_ADA_FAMILY_DEFINITION,
     { ...config, auxiliaryReferenceScripts: config.referenceScripts.yields },
     runtime,
   );
-  historicalCorpusCells.set(workflow, corpusCell);
   return workflow as unknown as ManifestBoundMinAdaWorkflow;
 };
 
@@ -234,33 +211,14 @@ export const runOrResumeManifestBoundMinAdaWorkflow = async ({
     sources,
     minimumConfirmationDepth: 1,
   });
-  const corpus = await resolveHistoricalNativeScriptCorpus({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    checkpointStore: workflow.historicalNativeScriptCheckpointStore,
-    historySource: workflow.historicalNativeScriptHistorySource,
-    currentEvidence: evidence,
-    sources,
-  });
-  const cell = historicalCorpusCells.get(workflow);
-  if (cell === undefined) {
-    throw new Error(
-      "min-ada workflow was not created by its manifest-bound constructor",
-    );
-  }
-  if (
-    cell.value !== undefined &&
-    cell.value.corpusDigest !== corpus.corpusDigest
-  ) {
-    throw new Error("min-ada authenticated history changed across resume");
-  }
-  cell.value = corpus;
-  const replayer =
-    createMinAdaCompleteCanonicalReplayFromHistoricalCorpus(corpus);
-  const decision = await replayer.replay(evidence);
+  const replayer = MIN_ADA_COMPLETE_CANONICAL_REPLAY;
+  const { replayContext } = workflow;
+  const decision = await replayer.replay(evidence, replayContext);
   const detections = requireCompleteCanonicalReplayDecision({
     evidence,
     replayer,
     decision,
+    ...(replayContext === undefined ? {} : { context: replayContext }),
   });
   return await runFraudProofWorkflow({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,

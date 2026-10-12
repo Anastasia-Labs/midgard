@@ -43,7 +43,8 @@ import {
 } from "./submit-init-emulator-event-history-list.setup.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
-export const journey = async (
+/** Runs one list journey and returns its harness for follow-on checks. */
+export const runJourney = async (
   kind: EventHistoryKind,
   external: boolean,
   retirement?: "settle" | "refund",
@@ -783,4 +784,9 @@ export const journey = async (
         remaining.reduce((sum, utxo) => sum + (utxo.assets[unit] ?? 0n), 0n),
       ).toBe(amount);
   }
+  return h;
+};
+
+export const journey = async (...args: Parameters<typeof runJourney>) => {
+  await runJourney(...args);
 };

@@ -1,13 +1,15 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { access, readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, normalize, resolve } from "node:path";
 
 import {
+  queryRewardAccount,
+  type RewardAccountSnapshot,
+  sharedL1NodeTransport,
+} from "@al-ft/l1-node-transport";
+import {
   CML,
-  Kupmios,
-  type KupmiosOptions,
   type RewardAccountState,
   stakeCredentialOf,
 } from "@lucid-evolution/lucid";
@@ -19,9 +21,8 @@ import {
  * node's delegation and reward maps and drops every account without a stake
  * pool delegation. Midgard's observer and role scripts are registered and
  * never delegated, so through Ogmios they are indistinguishable from
- * unregistered accounts. The native chain-sync helper queries the ledger's
- * deposit map over the node socket instead; registration is membership in
- * that map.
+ * unregistered accounts. The node transport queries the ledger's deposit map
+ * over the node socket instead; registration is membership in that map.
  */
 export const NATIVE_CHAIN_SYNC_SCHEMA_VERSION =
   "midgard-watcher-native-chain-sync-v1" as const;
@@ -34,7 +35,10 @@ export const NATIVE_LEDGER_PUBLIC_NETWORK_MAGIC = Object.freeze({
   Preview: 2,
 } as const);
 
-/** One local node, identified by its socket and its Shelley genesis. */
+/**
+ * One local node, identified by its socket and its Shelley genesis, read
+ * through the `midgard-l1-node-transport` sidecar at `binaryPath`.
+ */
 export type NativeLedgerAuthority = Readonly<{
   authorityNodeId: string;
   binaryPath: string;
@@ -52,7 +56,6 @@ export type NativeRewardCredential = Readonly<{
 
 const MAX_IDENTITY_FILE_BYTES = 4 * 1024 * 1024;
 const AUTHORITY_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;
-const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const hexOf = (value: unknown, size: number): value is string =>
   typeof value === "string" &&
   value.length === size * 2 &&
@@ -62,16 +65,6 @@ const record = (value: unknown, subject: string): Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error(`${subject} is not a JSON object`);
   return value as Record<string, unknown>;
-};
-
-const exact = (
-  value: unknown,
-  keys: readonly string[],
-): Record<string, unknown> => {
-  const result = record(value, "Native reward-account result");
-  if (Object.keys(result).sort().join(",") !== [...keys].sort().join(","))
-    throw new Error("Native reward-account result has an invalid shape");
-  return result;
 };
 
 const readIdentityFile = async (path: string, subject: string) => {
@@ -91,28 +84,18 @@ const assertCanonicalAbsolutePath = async (path: string, subject: string) => {
 };
 
 /**
- * Derives the authority's network magic and genesis identity from the node
- * configuration the local node runs with, so the query is bound to the
- * genesis the operator actually deployed rather than to a declared label.
+ * The network magic and genesis identity of the node configuration at
+ * `nodeConfigPath`, read from that file and the Shelley genesis it declares
+ * and checked against `network`. Static files only: the node's socket need
+ * not exist yet.
  */
-export const resolveNativeLedgerAuthority = async (input: {
-  readonly authorityNodeId: string;
-  readonly binaryPath: string;
+export const readNativeLedgerGenesis = async (input: {
   readonly network: NativeLedgerNetwork;
   readonly nodeConfigPath: string;
-  readonly socketPath: string;
-  readonly timeoutMs: number;
-}): Promise<NativeLedgerAuthority> => {
-  if (!AUTHORITY_ID.test(input.authorityNodeId))
-    throw new Error("Native ledger authority id is invalid");
-  if (
-    !Number.isSafeInteger(input.timeoutMs) ||
-    input.timeoutMs < 100 ||
-    input.timeoutMs > 120_000
-  )
-    throw new Error("Native reward-account query timeout is invalid");
+}): Promise<
+  Readonly<{ genesisIdentitySha256: string; networkMagic: number }>
+> => {
   await assertCanonicalAbsolutePath(input.nodeConfigPath, "Node config path");
-  await assertCanonicalAbsolutePath(input.socketPath, "Node socket path");
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const nodeConfig = record(
     JSON.parse(
@@ -150,13 +133,42 @@ export const resolveNativeLedgerAuthority = async (input: {
       `Shelley genesis network magic ${magic} differs from network ${input.network}`,
     );
   return {
-    authorityNodeId: input.authorityNodeId,
-    binaryPath: input.binaryPath,
     genesisIdentitySha256: createHash("sha256")
       .update(genesisBytes)
       .digest("hex"),
-    network: input.network,
     networkMagic: magic,
+  };
+};
+
+/**
+ * Derives the authority's network magic and genesis identity from the node
+ * configuration the local node runs with, so the query is bound to the
+ * genesis the operator actually deployed rather than to a declared label.
+ */
+export const resolveNativeLedgerAuthority = async (input: {
+  readonly authorityNodeId: string;
+  readonly binaryPath: string;
+  readonly network: NativeLedgerNetwork;
+  readonly nodeConfigPath: string;
+  readonly socketPath: string;
+  readonly timeoutMs: number;
+}): Promise<NativeLedgerAuthority> => {
+  if (!AUTHORITY_ID.test(input.authorityNodeId))
+    throw new Error("Native ledger authority id is invalid");
+  if (
+    !Number.isSafeInteger(input.timeoutMs) ||
+    input.timeoutMs < 100 ||
+    input.timeoutMs > 120_000
+  )
+    throw new Error("Native reward-account query timeout is invalid");
+  await assertCanonicalAbsolutePath(input.socketPath, "Node socket path");
+  const genesis = await readNativeLedgerGenesis(input);
+  return {
+    authorityNodeId: input.authorityNodeId,
+    binaryPath: input.binaryPath,
+    genesisIdentitySha256: genesis.genesisIdentitySha256,
+    network: input.network,
+    networkMagic: genesis.networkMagic,
     socketPath: input.socketPath,
     timeoutMs: input.timeoutMs,
   };
@@ -186,86 +198,38 @@ export const nativeLedgerAuthoritySource = (
 };
 
 /**
- * The helper admits only canonical startup JSON: keys in lexicographic order
- * at every level, which is the insertion order used here.
+ * Admits one ledger read: an unregistered account has no deposit, no rewards
+ * and no delegation, and a registered one has a deposit.
  */
-const startupLine = (
-  authority: NativeLedgerAuthority,
-  credential: NativeRewardCredential,
-): string =>
-  JSON.stringify({
-    authorityNodeId: authority.authorityNodeId,
-    genesisIdentitySha256: authority.genesisIdentitySha256,
-    intersection: { kind: "origin" },
-    network: authority.network,
-    networkMagic: authority.networkMagic,
-    operation: {
-      credential: { hash: credential.hash, type: credential.type },
-      kind: "reward_account",
-      timeoutMs: authority.timeoutMs,
-    },
-    schemaVersion: NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
-    socketPath: authority.socketPath,
-  });
-
-/** Admits one helper answer only for the credential and startup it was asked. */
-export const parseNativeRewardAccountResult = (
-  value: unknown,
-  expected: {
-    readonly credential: NativeRewardCredential;
-    readonly startupDigest: string;
-  },
+export const admitNativeRewardAccount = (
+  snapshot: RewardAccountSnapshot,
 ): RewardAccountState => {
-  const result = exact(value, [
-    "credential",
-    "depositLovelace",
-    "kind",
-    "point",
-    "poolIdHash",
-    "registered",
-    "rewardsLovelace",
-    "schemaVersion",
-    "startupDigest",
-  ]);
-  const credential = exact(result.credential, ["hash", "type"]);
-  const point = exact(result.point, ["blockHash", "blockNo", "slot"]);
-  const natural = (field: unknown): field is string =>
-    typeof field === "string" && NATURAL.test(field);
   if (
-    result.schemaVersion !== NATIVE_CHAIN_SYNC_SCHEMA_VERSION ||
-    result.kind !== "reward_account" ||
-    result.startupDigest !== expected.startupDigest ||
-    credential.hash !== expected.credential.hash ||
-    credential.type !== expected.credential.type ||
-    !hexOf(point.blockHash, 32) ||
-    !natural(point.blockNo) ||
-    !natural(point.slot) ||
-    typeof result.registered !== "boolean" ||
-    !natural(result.rewardsLovelace) ||
-    (result.poolIdHash !== null && !hexOf(result.poolIdHash, 28)) ||
-    (result.registered
-      ? !natural(result.depositLovelace)
-      : result.depositLovelace !== null) ||
-    (!result.registered &&
-      (result.rewardsLovelace !== "0" || result.poolIdHash !== null))
-  ) {
+    snapshot.registered
+      ? snapshot.depositLovelace === null
+      : snapshot.depositLovelace !== null ||
+        snapshot.rewardsLovelace !== 0n ||
+        snapshot.poolIdHash !== null
+  )
     throw new Error(
-      "Native reward-account result differs from the requested credential or ledger state",
+      "Native reward-account ledger state is inconsistent for the requested credential",
     );
-  }
+  if (snapshot.poolIdHash !== null && !hexOf(snapshot.poolIdHash, 28))
+    throw new Error("Native reward-account pool id is not a key hash");
   return {
-    registered: result.registered,
-    rewards: BigInt(result.rewardsLovelace),
+    registered: snapshot.registered,
+    rewards: snapshot.rewardsLovelace,
     poolId:
-      result.poolIdHash === null
+      snapshot.poolIdHash === null
         ? null
-        : CML.Ed25519KeyHash.from_hex(result.poolIdHash as string).to_bech32(
-            "pool",
-          ),
+        : CML.Ed25519KeyHash.from_hex(snapshot.poolIdHash).to_bech32("pool"),
   };
 };
 
-/** Query registration, rewards and pool delegation at one acquired node snapshot. */
+/**
+ * Query registration, rewards and pool delegation at one acquired node
+ * snapshot, over the process's shared node transport.
+ */
 export const queryNativeRewardAccount = async (
   authority: NativeLedgerAuthority,
   rewardAddress: string,
@@ -278,7 +242,7 @@ export const queryNativeRewardAccount = async (
     throw new Error("Native reward-account query timeout is invalid");
   await assertCanonicalAbsolutePath(
     authority.binaryPath,
-    "Native reward-account binary path",
+    "Native node transport binary path",
   );
   await access(authority.binaryPath, constants.X_OK);
   const address = CML.Address.from_bech32(rewardAddress);
@@ -288,67 +252,30 @@ export const queryNativeRewardAccount = async (
   )
     throw new Error("Reward address differs from the native node network");
   const credential = stakeCredentialOf(rewardAddress);
-  const startup = startupLine(authority, credential);
-  const output = await new Promise<string>((resolveOutput, reject) => {
-    const child = execFile(
-      authority.binaryPath,
-      [],
-      {
-        timeout: authority.timeoutMs + 1000,
-        killSignal: "SIGKILL",
-        maxBuffer: 64 * 1024,
-        encoding: "utf8",
-        env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
-      },
-      (error, stdout, stderr) =>
-        error === null
-          ? resolveOutput(stdout)
-          : reject(
-              new Error(
-                `native reward-account helper failed: ${error.message}${
-                  stderr.length === 0 ? "" : `: ${stderr.trim().slice(0, 512)}`
-                }`,
+  const transport = sharedL1NodeTransport({
+    binaryPath: authority.binaryPath,
+    socketPath: authority.socketPath,
+    networkMagic: authority.networkMagic,
+  });
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return admitNativeRewardAccount(
+      await Promise.race([
+        queryRewardAccount(transport, credential),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Native reward-account query had no answer within ${authority.timeoutMs} ms`,
+                ),
               ),
-            ),
+            authority.timeoutMs,
+          );
+        }),
+      ]),
     );
-    child.stdin!.on("error", reject);
-    child.stdin!.end(`${startup}\n`, "utf8");
-  });
-  const lines = output.split("\n").filter((line) => line.length > 0);
-  if (lines.length !== 1)
-    throw new Error("Native reward-account helper emitted an invalid answer");
-  return parseNativeRewardAccountResult(JSON.parse(lines[0]!), {
-    credential,
-    startupDigest: createHash("sha256").update(startup, "utf8").digest("hex"),
-  });
+  } finally {
+    clearTimeout(timer);
+  }
 };
-
-/**
- * Kupo/Ogmios transport whose reward-account state comes from the local
- * ledger. Without a configured authority it refuses reward-account reads:
- * Ogmios would report every undelegated registered account as absent.
- */
-export class NativeLedgerKupmios extends Kupmios {
-  readonly #authority: () => Promise<NativeLedgerAuthority | undefined>;
-
-  constructor(
-    kupoUrl: string,
-    ogmiosUrl: string,
-    authority: () => Promise<NativeLedgerAuthority | undefined>,
-    options?: KupmiosOptions,
-  ) {
-    super(kupoUrl, ogmiosUrl, options);
-    this.#authority = authority;
-  }
-
-  override async getRewardAccount(
-    rewardAddress: string,
-  ): Promise<RewardAccountState> {
-    const authority = await this.#authority();
-    if (authority === undefined)
-      throw new Error(
-        "Reward-account state requires a local node ledger: Ogmios omits registered accounts that have no stake-pool delegation. Configure the node socket, node config and native chain-sync helper.",
-      );
-    return await queryNativeRewardAccount(authority, rewardAddress);
-  }
-}

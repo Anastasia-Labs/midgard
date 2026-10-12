@@ -2,7 +2,7 @@ import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Either, Logger, Metric, Ref } from "effect";
+import { Effect, Either, Metric, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { DepositsDB } from "../src/database/index.js";
@@ -30,6 +30,7 @@ import {
   mkCandidate,
   MODES,
   REFUSAL,
+  runQuietSubmission,
 } from "./helpers/commit-da-frame-fixtures.js";
 
 const sizingMode = vi.hoisted(() => ({
@@ -107,25 +108,6 @@ vi.mock("../src/workers/commit-block-header/build-unsigned-tx.js", async () => {
       }),
   };
 });
-vi.mock(
-  "../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js",
-  async () => {
-    const actual = await vi.importActual<
-      typeof import("../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js")
-    >(
-      "../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js",
-    );
-    return {
-      ...actual,
-      refreshCommitUserEventSourcesThroughBlockEnd: () => Effect.void,
-      runWithStaleOperatorWalletRetry: ({
-        attempt,
-      }: {
-        attempt: () => Effect.Effect<unknown>;
-      }) => attempt(),
-    };
-  },
-);
 
 /**
  * The commit worker's DA frame notices reach /readyz through the liveness
@@ -353,11 +335,7 @@ describe("commit DA frame readiness", () => {
                   typeof submitTxBackedCommit
                 >[0],
               );
-        return Effect.runPromise(
-          Effect.either(program).pipe(
-            Effect.provide(Logger.remove(Logger.defaultLogger)),
-          ) as Effect.Effect<Either.Either<unknown, unknown>>,
-        );
+        return runQuietSubmission(program);
       };
       const measuredRefusal = commitDaFrameNoticeForOutcome({
         outcome: "no_transactions_to_drop",

@@ -184,7 +184,7 @@ export const checkWithdrawals = (
     // Local finalization of the block (and the merge) marks its withdrawals
     // finalized; before that they are projected.
     const journalFinalized =
-      ctx.journals.get(header)?.status === JOURNAL_STATUS.Finalized;
+      ctx.journals.get(header)?.status === JOURNAL_STATUS.LocallyApplied;
     if (row.status === WithdrawalsDB.Status.Awaiting) {
       acc.failures.push(
         `${label}: assigned to ${placement} header ${header} but status is ${row.status}`,

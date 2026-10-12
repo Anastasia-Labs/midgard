@@ -16,6 +16,8 @@ import "./config.parse-l1-source-config.js";
 import "./config.l1-submitter-preflight-config.js";
 import "./config.parse-libp2p-da-committee-peers.js";
 import "./config.libp2p-da-transport-config.js";
+import "./config.parse-committee-environment.js";
+import "./config.parse-public-retained-da-environment.js";
 import "./config.load-committee-config.js";
 export {
   type CardanoL1SourceConfig,
@@ -27,7 +29,6 @@ export {
   type DaParamsConfig,
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
   l1SourceAuthorityDigest,
-  type L1SourceConfig,
   type L1SubmitterPreflightConfig,
   LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
   LIBP2P_DA_MIN_RETENTION_DAYS,
@@ -49,8 +50,15 @@ export {
   rejectRetiredWatcherEnvNames,
 } from "./config.l1-submitter-preflight-config.js";
 export { loadCommitteeConfig } from "./config.load-committee-config.js";
-export { parseL1SourceConfig } from "./config.parse-l1-source-config.js";
+export {
+  type CommitteeEnvironmentConfig,
+  parseCommitteeEnvironment,
+} from "./config.parse-committee-environment.js";
 export {
   assertLibp2pDaRetentionDays,
   DaRetentionWindowConfigError,
 } from "./config.parse-libp2p-da-committee-peers.js";
+export {
+  parsePublicRetainedDaEnvironment,
+  type PublicRetainedDaEnvironmentConfig,
+} from "./config.parse-public-retained-da-environment.js";

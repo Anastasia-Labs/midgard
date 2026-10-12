@@ -75,20 +75,18 @@ It is responsible for:
   DA challengeability horizon. It prunes `tx_rejections`, `address_history`
   (except entries of a transaction still in the mempool or processed
   mempool), ended `state_queue_mutation_leases` that no retained journal
-  names, and finalized `pending_block_finalizations` journals whose confirmed
-  merge completed locally before the correction observer last saved its
-  state. A journal is kept while its header is the L1 confirmed head, live in
-  the L1 state queue, held for finality, still in the correction observer's
-  cursor queue, or named by a pending or admitted correction transition, and
-  while one of its deposit or withdrawal members belongs to an event-history
-  incarnation that L1 rolled back (signed-header recovery and ledger repair
-  read those). The newest finalized journal is always kept, and no journal is
-  pruned while the deployment has no correction-observer record. Unfinished
-  and abandoned journals retain their bases, same-base siblings and
-  descendants; retained recovery plans retain all their journal members. The
-  journal prune runs under the history-producer
-  permit. It takes no permit while the history owner is recovering, holds the
-  permit for a bounded time, and skips to the next sweep when refused.
+  names, and locally applied `pending_block_finalizations` journals whose confirmed
+  merge completed locally. A journal is kept while its header is the L1
+  confirmed head, live in the L1 state queue (in the caller's view or in the
+  follower's facts), or held for finality (a landed tx merged or removed it
+  and that tx is not final yet, or it is the newest merge that is final), and
+  while one of its deposit or withdrawal members is an admission the L1
+  follower no longer holds (an orphan, which ledger repair reads). The newest
+  finalized journal is always kept. Unfinished and abandoned journals retain
+  their bases, same-base siblings and descendants. The journal prune runs
+  under a follower write permit. It takes no permit while the follower-change
+  driver recomputes or has applied no view, holds the permit for a bounded
+  time, and skips to the next sweep when refused.
   `deposits_utxos` and `withdrawal_utxos` are retained because settlement proofs
   recompute the whole header's root, including completed siblings of unpaid
   events. Local consumed/finalized status and a completed settlement job do not
@@ -98,8 +96,9 @@ It is responsible for:
   material retirement after every event exit and recovery obligation completes.
 - Each sweep reads the state queue from L1 first. If that read fails, the
   sweeper logs `retention_pass_skipped` and deletes no DA payload. Once the last
-  successful read is older than `L1_VIEW_FATAL_MS`, the node exits non-zero.
-  The default is the DA attestation timeout, four default sweep intervals: one
+  successful read is older than `L1_VIEW_FATAL_MS`, the sweeper stops sweeping
+  and raises `retention_l1_view_stale` on `/readyz`; it keeps reading L1 and
+  clears the reason on the first good view. The process stays up. The default is the DA attestation timeout, four default sweep intervals: one
   hour on the public profiles and ten minutes on the testing profiles. The value
   must be at least three sweep intervals and at most the retention margin (4.5
   days).
@@ -127,8 +126,10 @@ emulator regression before rerunning the full live flow.
 The canonical stack is `docker-compose.yaml` plus the `docker-compose.kupmios.yaml`
 overlay: PostgreSQL, the node, a one-shot schema migration, and an in-stack
 Cardano L1 (cardano-node bootstrapped from a certified Mithril snapshot, Ogmios,
-Kupo). The base file alone starts no L1, and the node accepts only a `Kupmios`
-provider, so every command below uses both files.
+Kupo). The base file alone starts no L1, and the node reads L1 only through the
+overlay's cardano-node (its socket and config; note 5 below), so every command
+below uses both files. Ogmios and Kupo stay in the overlay for the node-tools
+devnet harness and the fault-proofs prover CLI; the node reads neither.
 
 The stack is compose project `midgard-node` with fixed host ports. To run a
 second one from a linked git worktree, replace `docker compose` with
@@ -174,10 +175,7 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    The "Required settings" block at the top of `.env.example` lists every key
    that has no default. Config load fails, for every command including
    `db:migrate`, until each of them has a value; the error names the variable.
-   Three distinct wallets are required (operator, merge, reference-script). The
-   overlay injects the in-stack `L1_OGMIOS_KEY`/`L1_KUPO_KEY` into both the node
-   and the migration container, so leave the `127.0.0.1` values alone unless you
-   run an external L1.
+   Three distinct wallets are required (operator, merge, reference-script).
 
    `.env` values override the image pins in the compose files. Keep the
    `*_IMAGE_TAG` / `CARDANO_NODE_IMAGE_DIGEST` lines in step with
@@ -187,7 +185,7 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
 
    ```sh
    docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
-     up -d postgres cardano-node-ogmios kupo
+     up -d postgres cardano-node cardano-config-export
    docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml ps
    ```
 
@@ -202,27 +200,19 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
       before the local Cardano stack is allowed to start.
    3. Changing networks requires explicit cleanup of `./cardano/db` and
       `./cardano/kupo` before restarting the stack.
-   4. The local stack restores an official Kupo SQLite snapshot into
-      `./cardano/kupo` when that directory is empty, then continues syncing
-      with `--match * --since origin` and **without** `--prune-utxo`. The
-      node's forced-order carriage reader needs spent carriage outputs to stay
-      readable, and a pruning index deletes them. The official snapshot was
-      built pruned, so outputs spent before its snapshot point are absent.
-      That is harmless for a deployment you initialise after this bring-up
-      (the snapshot predates `init` by construction). To join a deployment
-      whose L1 history starts before the snapshot was taken, set
-      `KUPO_BOOTSTRAP_MODE=origin` before the first start (or clear
-      `./cardano/kupo` and restart with it) so Kupo syncs from origin instead.
-   5. Kupo is considered healthy only once its `/health` endpoint returns
-      `200`, not while it is still returning `202 Accepted` during replay. That
-      keeps `midgard-node` from starting against a stale wildcard index.
-   6. The local stack intentionally runs standalone `cardano-node` and Ogmios
+   4. The local stack intentionally runs standalone `cardano-node` and Ogmios
       containers instead of the combined `cardano-node-ogmios` image, because
       the certified Mithril snapshot can move ahead of that combined image's
       bundled Cardano node version.
-   7. A host that runs only a watcher or a DA committee node uses the same two
-      files and the same `up -d cardano-node-ogmios kupo` command; nothing else
-      in the base file starts.
+   5. `midgard-node` reads the in-stack node directly for its L1 follower: the
+      overlay mounts `./cardano/ipc` and `./cardano/config` and sets
+      `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
+      `L1_NODE_TRANSPORT_BINARY_PATH` (the `midgard-l1-node-transport`
+      binary baked into the image). The one-shot `cardano-config-export`
+      service copies the cardano-node image's config and genesis files for
+      `NETWORK` into `./cardano/config` before the node starts. The follower
+      also needs `L1_ORIGIN` in `.env` (step 6); until it is set the node runs
+      but `/readyz` reports `l1_follower_unconfigured`.
 
    Confirm the route the node will use before spending anything:
 
@@ -230,8 +220,8 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    node dist/index.js l1-provider-preflight --json
    ```
 
-   If local Kupo or Ogmios is unhealthy, fix this stack. Remote L1 providers are
-   not supported for demo-node acceptance.
+   If the preflight fails, fix the local cardano-node (its socket, config and
+   sync). Remote L1 providers are not supported for demo-node acceptance.
 
 5. Install the schema:
 
@@ -253,6 +243,13 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    ```sh
    node dist/index.js prepare-hub-oracle-one-shot-nonce
    #   -> copy HUB_ORACLE_ONE_SHOT_TX_HASH / _OUTPUT_INDEX into .env
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+     run --rm --no-deps midgard-node \
+     node node_modules/@al-ft/midgard-l1-follower/dist/cli.js find-origin \
+     --tx <HUB_ORACLE_ONE_SHOT_TX_HASH> --network-magic 1 \
+     --socket /ipc/node.socket --sidecar /usr/local/bin/midgard-l1-node-transport
+   #   -> copy the printed l1Origin into .env as L1_ORIGIN (network magic:
+   #      1 preprod, 2 preview, 764824073 mainnet)
    node dist/index.js deploy-reference-script-node-runtime
    node dist/index.js init \
      --contract-deployment-info-output deploymentInfo/contract-deployment-info.json
@@ -261,22 +258,7 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    #   -> the --out path must equal MIDGARD_DEPLOYMENT_MANIFEST_PATH in .env
    node dist/index.js register-operator
    node dist/index.js activate-operator
-   node dist/index.js history-genesis-pin
-   #   -> after approving the chain, copy its sha256 into .env as
-   #      L1_HISTORY_GENESIS_LOSSLESS_SHA256
    ```
-
-   `L1_HISTORY_GENESIS_LOSSLESS_SHA256` pins the L1 chain the node's event
-   history is read from: the lowercase SHA-256 of the Shelley genesis that
-   Ogmios returns for `queryNetwork/genesisConfiguration`, decoded without
-   rounding its integers (algorithm `ogmios-shelley-result-lossless-v1`).
-   `listen` re-checks it on every Ogmios socket its history source opens and
-   fails at startup when it is unset or when the chain differs. The operator
-   approves this value: `history-genesis-pin` (`--ogmios-url` overrides
-   `L1_OGMIOS_KEY`) prints the pin of whatever chain the endpoint serves, so
-   run it against an L1 you trust to be the deployment's chain and keep the
-   same value across restarts. A changed pin means a different chain, not a
-   setting to refresh.
 
    `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
    and the DA producer manifest. `deploymentInfo/` is gitignored and mounted
@@ -389,9 +371,8 @@ before a periodic full state-queue scan, so the shorter detection interval does
 not turn every poll into an O(queue length) provider request. Operators can set
 the variable back to `10000` as an operational rollback.
 
-`SPECULATIVE_COMMIT_BUILD` is an explicit opt-in and stays disabled by
-default. The ledger MPF is always the Architecture G native owner, and the
-node refuses to start unless `MPF_NATIVE_OWNER_BINARY_PATH`,
+The ledger MPF is always the Architecture G native owner, and the node
+refuses to start unless `MPF_NATIVE_OWNER_BINARY_PATH`,
 `MPF_NATIVE_OWNER_BINARY_SHA256` (lowercase 64-hex) and
 `MPF_NATIVE_OWNER_SIDECAR_PATH` are all set; see
 [Architecture G is the only MPF engine](../../docs/midgard/decisions/architecture-g-sole-mpf-engine.md).
@@ -419,9 +400,9 @@ node dist/index.js reconcile merge-complete --header-hash <hash> --json [--repai
 node dist/index.js reconcile retention-check --json [--alert-threshold-ms <ms>]
 ```
 
-`deposit-projected` is read-only. The running node's history owner projects
-every due deposit; a standalone CLI process holds no history-ingestion permit,
-so there is no projection repair. Use `reconcile-deposit-submission` (below) to
+`deposit-projected` is read-only. The running node's follower-change driver
+projects every due deposit; a standalone CLI process runs no driver, so there
+is no projection repair. Use `reconcile-deposit-submission` (below) to
 settle an unconfirmed deposit submission.
 
 `retention-check` counts the retained DA payloads (`checked`) and those still
@@ -447,13 +428,13 @@ node dist/index.js reconcile-deposit-submission --tx-hash <cardano-tx-hash> --js
 
 `merge-complete` is `satisfied` only when the header has left the state queue
 and its confirmed-merge local finalization job completed. Its `--repair` merges
-only the oldest queued block, and only under the running node's history
-producer permit. When the permit cannot be taken (a standalone CLI process
-holds no history owner; a node's owner may not be Ready) nothing runs: it
+only the oldest queued block, and only under the running node's follower
+write permit. When the permit cannot be taken (a standalone CLI process runs
+no follower-change driver; a node's driver may be recomputing) nothing runs: it
 reports `blocked` with `merge_producer_permit` evidence and points at the
 node's admin `GET /merge`, which answers `503` in the same situation. A merge
 that landed without its local finalization (a restart, a hold timeout or a
-history recovery during the confirmation wait) needs no repair: every merge
+follower recompute during the confirmation wait) needs no repair: every merge
 attempt first finalizes each merge L1 confirmed that the database has not.
 
 If a reconciler reports `ambiguous`, do not blindly repeat the original
@@ -503,15 +484,19 @@ execution and L1 confirmation waits stay outside L2 admission, commitment and
 merge workers. This isolates the main event loop and wallet inputs; the worker
 still consumes CPU, database and provider capacity on the same host.
 
-Signed bytes and fee inputs are persisted before submission. Restarts reconcile
-that exact transaction, including already-spent outputs, before creating another
-body. Rebuilding requires expiry and synchronized chain/indexer evidence;
-ambiguous submissions stay journaled. Pending work holds the history evidence it
-needs, and completed receipts are checked again after history recovery.
+Signed bytes and fee inputs are persisted before submission. An attempt's L1
+outcome is the intent journal's derived status, never stored before it is final:
+landed at the confirmation depth lets its job take the next phase, a rollback
+below that depth reverts it, and the follower's prune step stores `final` once it
+landed more than k blocks deep. No other body is journaled while an attempt reads
+short of the confirmation depth. Rebuilding requires expiry and synchronized
+chain/indexer evidence; ambiguous submissions stay journaled. Attempts not yet
+final hold the history evidence they need.
 
 `/readyz` includes `settlement` health separately from L2 readiness. The
 `settlement_jobs` table retains retry deadlines and last errors, and
-`settlement_attempts` retains submission/confirmation state. Fund the fee wallet
+`settlement_attempts` retains each signed attempt and whether it is final or
+expired. Fund the fee wallet
 when depleted; resolve an unhealthy provider or an ambiguous journal against the
 canonical chain rather than deleting journal rows. Previously completed manual
 settlements without a node receipt require reconciliation; missing UTxOs alone
@@ -686,6 +671,27 @@ node dist/index.js prepare-hub-oracle-one-shot-nonce
 Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
 `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX` into the deployment environment before
 publishing reference scripts or running `init`.
+
+`HUB_ORACLE_ONE_SHOT_TX_HASH` is also the tx that fixes the deployment's L1
+origin: the point immediately before the block holding it, where the L1
+follower starts. To pin it in operator config, run
+`midgard-l1-follower find-origin --tx <HUB_ORACLE_ONE_SHOT_TX_HASH>
+--network-magic <n>` (see the
+[follower README](../midgard-l1-follower/README.md#origin)) and set the
+printed `l1Origin` as `L1_ORIGIN=<slot>.<block hash>`. `L1_ORIGIN` is
+strict (a decimal slot without leading zeros, a dot, then the 64-character
+lowercase hex block hash); it is not part of the profile or manifest.
+
+The node's L1 follower runs only with `L1_ORIGIN`, the hub-oracle one-shot and
+the local node (`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`,
+`L1_NODE_TRANSPORT_BINARY_PATH`). Without any of them the node reports
+`l1_follower_unconfigured` and ingests no deposits or withdrawals. The devnet
+and full-stack builders in `midgard-node-tools` derive `L1_ORIGIN` from the
+deployment's nonce tx on their own local node, record it with the run, and
+refuse to write a node environment that leaves the follower unconfigured. For
+the full stack on preprod, an `L1_ORIGIN` in the stack env file must equal the
+derived origin; a run whose nonce was signed before it recorded a scan start
+needs one there.
 
 ```sh
 node dist/index.js deploy-reference-script-node-runtime

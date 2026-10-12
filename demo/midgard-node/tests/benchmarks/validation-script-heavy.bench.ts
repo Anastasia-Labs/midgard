@@ -6,6 +6,7 @@ import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   deserializePhaseACandidate,
   MidgardRedeemerTag,
@@ -248,6 +249,7 @@ const runPoolPhaseB = (
 ): Promise<PhaseBResultWithPatch> =>
   Effect.runPromise(
     runPhaseBValidationWithPatch(accepted, preState, {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       nowCardanoSlotNo: 0n,
       bucketConcurrency: poolSize,
     }),
@@ -299,6 +301,7 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
       expect(inlinePhaseA.rejected).toHaveLength(0);
       const inlinePhaseB = await Effect.runPromise(
         runPhaseBValidationWithPatch(inlinePhaseA.accepted, preState, {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           nowCardanoSlotNo: 0n,
           bucketConcurrency: 1,
         }),

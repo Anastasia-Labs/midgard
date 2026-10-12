@@ -126,12 +126,12 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
   const observe = vi.fn(async () => ({ stage: stage(await capture()) }));
   vi.spyOn(
     observations,
-    "createFraudProofFamilyLocalKupmiosL1ObservationPort",
+    "createFraudProofFamilyL1ObservationPort",
   ).mockReturnValue({
     observe,
     rawL1: { capture },
   } as unknown as ReturnType<
-    typeof observations.createFraudProofFamilyLocalKupmiosL1ObservationPort
+    typeof observations.createFraudProofFamilyL1ObservationPort
   >);
   vi.spyOn(
     observations,
@@ -158,7 +158,7 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
     headerHash,
     lucid: {},
     signer: { paymentKeyHash: owner },
-    source: {},
+    l1Source: {},
     stateQueueMutationLeaseCoordinator: {},
     referenceScripts: {
       steps: Array.from({ length: 4 }, () => reference),

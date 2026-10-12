@@ -19,33 +19,33 @@
       ],
       "rows": {
         "canonical_decodability_verdict_at_the_field_byte_bound": {
-          "mem": 2420503,
-          "cpu": 1159253399,
+          "mem": 2443363,
+          "cpu": 1164364689,
           "basisFit": "within"
         },
         "canonical_decodability_verdict_fixture_only_at_the_field_byte_bound": {
-          "mem": 1722996,
-          "cpu": 847038904,
+          "mem": 1742124,
+          "cpu": 851262336,
           "basisFit": "within"
         },
         "canonical_decodability_verdict_at_two_hundred_fifty_items": {
-          "mem": 7179855,
-          "cpu": 2289292344,
+          "mem": 7202715,
+          "cpu": 2294403634,
           "basisFit": "within"
         },
         "canonical_decodability_verdict_fixture_only_at_two_hundred_fifty_items": {
-          "mem": 3921196,
-          "cpu": 1455516393,
+          "mem": 3940324,
+          "cpu": 1459739825,
           "basisFit": "within"
         },
         "canonical_decodability_verdict_at_five_hundred_items": {
-          "mem": 12524442,
-          "cpu": 3726375720,
+          "mem": 12547302,
+          "cpu": 3731487010,
           "basisFit": "within"
         },
         "canonical_decodability_verdict_fixture_only_at_five_hundred_items": {
-          "mem": 6257673,
-          "cpu": 2131382082,
+          "mem": 6276801,
+          "cpu": 2135605514,
           "basisFit": "within"
         }
       }

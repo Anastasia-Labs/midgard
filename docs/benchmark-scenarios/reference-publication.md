@@ -92,7 +92,8 @@ pnpm --dir demo/midgard-node exec vitest run tests/reference-publication-local-d
 ```
 
 Both runs publish eight copies of the real blueprint PlutusV3 script
-`fraud_proofs/cross_block_duplicate_event/step_01.main.spend` under distinct
+`fraud_proofs/missing_redeemer/step_02a.main.spend` (about 12.4 KB, the size of
+the script the recorded runs below published) under distinct
 authentication authorities and authenticated role names. The normal batching/splitting rule produces the
 transactions. The chained comparison requires a child submission while its parent inputs are
 still absent from Kupo and while the canonical tip remains unchanged from

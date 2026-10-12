@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
 import {
   CML,
@@ -31,6 +33,7 @@ import {
   SDK,
   submitDepositAndRefreshBarriers,
 } from "./deposit-flow-emulator-shared.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 /**
  * Ruling P3 (spec #685, owed here by #693): a state-queue node holds at least
@@ -229,7 +232,7 @@ describe(
         const headerHash = block.submittedHeaderHash;
 
         operatorLucid.selectWallet.fromSeed(fixture.operatorAccount.seedPhrase);
-        await Effect.runPromise(
+        await runWithoutFollower(
           ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
             operatorLucid,
             fixture.contracts,

@@ -11,11 +11,18 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
 } from "../src/transactions/initialization.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
+import {
+  type CaptureSnapshot,
+  restoreCapture,
+  snapshotCapture,
+} from "./helpers/emulator-chain-capture.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 export const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -57,13 +64,13 @@ const buildOperatorAwareInitializationTx = async (
   nonceUtxo: UTxO,
   operatorSeedPhrase: string,
 ) => {
-  const referenceScripts = await Effect.runPromise(
+  const referenceScripts = await runWithoutFollower(
     ensureAtomicProtocolInitReferenceScriptsProgram(
       referenceScriptsLucid,
       contracts,
     ),
   );
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensureEventHistoryRewardAccountsRegisteredProgram(
       referenceScriptsLucid,
       contracts,
@@ -82,7 +89,7 @@ const buildOperatorAwareInitializationTx = async (
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
       referenceScripts,
-    ),
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
 };
 
@@ -101,7 +108,8 @@ type OperatorLifecycleSnapshot = {
     | "datumTable"
     | "treasury"
     | "transactionHistory"
-  >;
+  > &
+    CaptureSnapshot;
   readonly contracts: SDK.MidgardValidators;
   readonly operatorKeyHash: string;
   readonly activeNodeUnit: string;
@@ -120,6 +128,7 @@ const snapshotEmulator = (
   datumTable: structuredClone(emulator.datumTable),
   treasury: emulator.treasury,
   transactionHistory: structuredClone(emulator.transactionHistory),
+  ...snapshotCapture(emulator),
 });
 
 const cloneEmulator = (
@@ -138,6 +147,7 @@ const cloneEmulator = (
   emulator.time = snapshot.time;
   emulator.datumTable = structuredClone(snapshot.datumTable);
   emulator.transactionHistory = structuredClone(snapshot.transactionHistory);
+  restoreCapture(emulator, snapshot);
   return emulator;
 };
 
@@ -239,6 +249,8 @@ export const initOperatorLifecycleFixture = async () => {
     emulator,
     lucid,
     referenceScriptsLucid,
+    operatorSeedPhrase: snapshot.operatorSeedPhrase,
+    referenceScriptsSeedPhrase: snapshot.referenceScriptsSeedPhrase,
     contracts: snapshot.contracts,
     operatorKeyHash: snapshot.operatorKeyHash,
     activeNodeUnit: snapshot.activeNodeUnit,

@@ -10,9 +10,10 @@ runs local checks and lists covered runtime work as pending in Node CI:
 node scripts/preflight.mjs            # working tree against the base
 node scripts/preflight.mjs --list     # what would run, without running it
 node scripts/preflight.mjs --strict   # committed changes only (what a push sends)
-node scripts/preflight.mjs --full-local # selected matrix locally, for offline/debug work
+node scripts/preflight.mjs --full-local # selected matrix locally: the gate before a merge
 node scripts/preflight.mjs --full     # every check locally at full scope
 node scripts/preflight.mjs --json     # machine-readable verdict on stdout
+node scripts/preflight.mjs --run <id> # one check by id at full scope (what CI runs)
 node scripts/doctor.mjs               # environment problems, each with its fix
 ```
 
@@ -62,6 +63,37 @@ lanes remain mandatory. Prepare fresh local prerequisites for the checks
 you run: hosted scheduling supplies no dist, native binary or blueprint.
 Read the [merge checklist](verification.md#merge-checklist) before merging:
 workflow census, exact head, successful conclusions and reviews remain required.
+
+## Gate before a merge
+
+Gate a lane before merging it with `node scripts/preflight.mjs --full-local
+--base <target-ref>`, not a hand-written list of commands: it runs every
+check the change selects, each from the command CI runs, the package suites
+included. Those run as `node scripts/contrib.mjs test --package <name>
+--related <changed paths>` for each package the change can reach: only the
+tests the change reaches, widening to the whole package wherever the reach
+is unsure (see [focused tests and builds](contrib/tests-and-builds.md)). A
+full run (`--full`, a full-run path) runs every whole suite instead. Tests a
+suite skips by its own conditions pass, as under CI. Node CI still runs the
+whole suites; the local gate never waives them.
+
+## CI runs checks by id
+
+A workflow step that runs a registry check names it:
+`node scripts/preflight.mjs --run <id>` (repeatable). It runs that check's
+full-scope command from the table below, from the repository root, with the
+same capability probes and fail-closed exits; a missing capability exits 3
+and fails the step. The command lives only in the registry, so a local run
+and CI cannot drift; `scripts/preflight/ci-wiring.test.mjs` refuses a step
+that spells out a registry command instead, or names a check that is
+unknown, internal or only warns. A check a workflow runs by id counts as
+gated by CI. `--run` combines only with `--list`.
+
+A workflow that runs a check by id lists every module of the runner in its
+path filters, so a runner change re-runs those steps:
+`scripts/ci/preflight-runner-closure.mjs` derives the list from the import
+closure and the probe modules, and
+`scripts/ci/preflight-runner-filters.test.mjs` fails on a missing one.
 
 ## Pre-push hook
 
@@ -115,7 +147,8 @@ preflight helpers retain full scope. `--full` still runs every check locally.
 `node scripts/preflight.mjs --strict --ci-run <Repo-Tools-run-id>` can reuse
 only `required-checks-doc` and `contributor-build-guards`. It verifies the
 actual checkout tree and merge parents, current remote target, Node profile,
-exact validator commands and successful completed steps against the retained
+steps that run each validator by id (`--run`, so the registry command) and
+their successful completion against the retained
 `repo-validator-identity` artifact. Dirty, stale, missing or different
 evidence fails closed. Other selected checks still execute. `--list` never
 verifies or claims reuse. Read the [merge checklist](verification.md#merge-checklist)
@@ -194,6 +227,14 @@ docs/agents/required-checks.md is generated from this registry.
 - Runs on: every change
 - Mode: runs in the pre-push hook
 
+### `registry-paths`
+
+Registries name only files that exist.
+
+- Command: `node scripts/ci/check-registry-paths.mjs`
+- Runs on: every change
+- Mode: runs in the pre-push hook
+
 ### `repo-tooling-tests`
 
 Repository tooling self-tests (the checks that prove the other checks can fail).
@@ -217,13 +258,10 @@ Workspace ESLint rules and their reasoned baseline.
 
 ### `demo-script-tests`
 
-Workspace helper and ESLint plugin self-tests.
+Workspace helper, ESLint plugin, deployment-profile and interactive-emulator cache self-tests.
 
-- Command: `node --test "demo/scripts/lib/*.test.mjs"`
-- Runs on:
-  - `demo/scripts/**`
-  - `demo/eslint.config.mjs`
-  - `.github/workflows/repo-tools-ci.yml`
+- Command: `node --test "demo/scripts/lib/*.test.mjs" demo/scripts/deployment-profiles.test.mjs demo/scripts/interactive-emulator.test.mjs`
+- Runs on: `demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `config/deployments/**`, `demo/midgard-test-support/interactive-emulator.js`, `demo/midgard-fault-proofs/scripts/traced-blueprint.mjs`, `demo/midgard-core/src/generated-deployment-profiles.ts`, `onchain/aiken/env/*.ak`, `onchain/aiken/scripts/pinned-compiler.mjs`, `.github/workflows/aiken-ci.yml`, `.github/workflows/midgard-node-ci.yml`, `demo/module-size-exceptions.json` and every file it caps
 - Needs: `node-modules`
 
 ### `aiken-script-tests`
@@ -246,12 +284,20 @@ Workflow lint.
 
 ### `workflow-triggers`
 
-Workflow trigger table.
+Workflow trigger table and the by-id runner's path filters.
 
-- Command: `node --test scripts/ci/workflow-triggers.test.mjs`
+- Command: `node --test scripts/ci/workflow-triggers.test.mjs scripts/ci/preflight-runner-filters.test.mjs`
 - Runs on:
   - `.github/workflows/**`
   - `scripts/ci/**`
+  - `scripts/preflight.mjs`
+  - `scripts/preflight/**`
+  - `scripts/contrib/**`
+  - `scripts/lib/**`
+  - `demo/scripts/lib/blueprint-stamp.mjs`
+  - `demo/scripts/assert-midgard-core-dist-current.mjs`
+  - `demo/midgard-core/scripts/write-dist-source-digest.mjs`
+  - `onchain/aiken/scripts/**`
 - Mode: runs in the pre-push hook
 
 ### `agent-doc-links`
@@ -375,6 +421,8 @@ Golden channel native-compact (@al-ft/lucid-midgard).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
 
@@ -389,6 +437,7 @@ Generated document consensus-profile-v1 matches its producer.
   - `docs/consensus-profile-v1.md`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`
 
 ### `golden:native-tx-field-access-v1`
@@ -409,6 +458,7 @@ Golden channel native-tx-field-access-v1 (@al-ft/midgard-core).
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
 ### `golden:native-tx-field-items-v1`
@@ -432,6 +482,7 @@ Golden channel native-tx-field-items-v1 (@al-ft/midgard-core).
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
 ### `golden:native-tx-vector-v1`
@@ -450,6 +501,7 @@ Golden channel native-tx-vector-v1 (@al-ft/midgard-core).
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
 ### `golden:mpf-node-encoding-v1`
@@ -466,6 +518,7 @@ Golden channel mpf-node-encoding-v1 (@al-ft/midgard-core).
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
 ### `golden:ordered-collection-boundary-aiken`
@@ -501,6 +554,8 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:validation-auxiliary-witness-v1`
@@ -524,6 +579,8 @@ Golden channel validation-auxiliary-witness-v1 (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:nested-boundary-aiken`
@@ -549,6 +606,8 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-core-step-v1`
@@ -599,6 +658,8 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-builtin-cardano-v1`
@@ -624,6 +685,8 @@ Golden channel cek-builtin-cardano-v1 (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:transition-trace-abi`
@@ -647,6 +710,8 @@ Golden channel transition-trace-abi (midgard-node).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:transaction-root-v1`
@@ -672,6 +737,8 @@ Golden channel transaction-root-v1 (midgard-node).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
 
@@ -692,6 +759,7 @@ Golden channel native-tx-carriage-wire-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:canonical-decodability-v1`
@@ -710,6 +778,7 @@ Golden channel canonical-decodability-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:committed-field-shape-v1`
@@ -728,6 +797,7 @@ Golden channel committed-field-shape-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:da-commitment-v1`
@@ -744,6 +814,7 @@ Golden channel da-commitment-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:da-bond-pool-v1`
@@ -770,6 +841,7 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:da-attestation-capacity-v1`
@@ -785,6 +857,7 @@ Golden channel da-attestation-capacity-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `aiken-focused`
@@ -815,7 +888,6 @@ Transaction preparation node acceptance lane.
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-node/src/fibers/**`
   - `demo/midgard-node/src/workers/**`
-  - `demo/midgard-node/src/utils/commit-submission*.ts`
   - `demo/midgard-node-tools/src/**`
 - Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
 
@@ -829,7 +901,6 @@ Transaction preparation emulator acceptance lane.
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-node/src/fibers/**`
   - `demo/midgard-node/src/workers/**`
-  - `demo/midgard-node/src/utils/commit-submission*.ts`
   - `demo/midgard-node-tools/src/**`
 - Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
 
@@ -891,7 +962,7 @@ Build the technical specification PDF with the repository's Nix environment.
 
 Phase 4 devnet generator and shell asset tests (no running devnet).
 
-- Command: `node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs`
+- Command: `node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs demo/midgard-node-tools/devnet/phase4-process/tests/l1-follower-inputs.test.mjs demo/midgard-node-tools/devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs`
 - Runs on:
   - `demo/midgard-node-tools/devnet/phase4-process/**`
 - Needs: `node-modules`, `blueprint`
@@ -988,19 +1059,19 @@ Execution ledger tx-order-mint-exec-ledger-v1.json.
 
 ### `demo-test`
 
-Test suites of the touched packages and their dependents that need no database.
+Test suites of the reached packages that need no database.
 
-- Command: `pnpm --dir demo --filter '<touched package and its dependents>' --workspace-concurrency=1 run --if-present test`
-- Runs on: any file of a workspace package; runs for it and every package that depends on it
+- Command: `node scripts/contrib.mjs test --package <each package the change can reach> --related <changed paths>`
+- Runs on: any file of a workspace package, or any path Node CI runs the package suites for; runs the tests those files reach in every package they can reach
 - Needs: `node-modules`, `blueprint`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
 
 ### `demo-test-db`
 
-Postgres-backed test suites (midgard-node, midgard-node-tools) of the touched packages and their dependents.
+Postgres-backed test suites (midgard-node, midgard-node-tools, midgard-watcher, da-committee-node, @al-ft/midgard-l1-follower) of the reached packages.
 
-- Command: `pnpm --dir demo --filter '<touched package and its dependents>' --workspace-concurrency=1 run --if-present test`
-- Runs on: any file of a workspace package; runs for it and every package that depends on it
+- Command: `node scripts/contrib.mjs test --package <each package the change can reach> --related <changed paths>`
+- Runs on: any file of a workspace package, or any path Node CI runs the package suites for; runs the tests those files reach in every package they can reach
 - Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
 
@@ -1014,7 +1085,6 @@ Transaction preparation sdk acceptance lane.
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-node/src/fibers/**`
   - `demo/midgard-node/src/workers/**`
-  - `demo/midgard-node/src/utils/commit-submission*.ts`
   - `demo/midgard-node-tools/src/**`
 - Needs: `node-modules`, `blueprint`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally

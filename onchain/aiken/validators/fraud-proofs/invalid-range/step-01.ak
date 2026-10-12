@@ -16,6 +16,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
+use midgard/fraud_proofs/invalid_range/rule
 use midgard/fraud_proofs/invalid_range/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
@@ -30,6 +31,11 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state.{HeaderV1}
+use midgard/rejection_reason_v1.{
+  RejectionReasonV1, ValidityIntervalExcludesBlockSlot,
+  ValidityIntervalMalformed,
+}
+use midgard/validation_machine/shared as vm_shared
 
 fn normalize_native_validity_range(
   body: NativeTxBodyCompact,
@@ -421,5 +427,132 @@ test invalid_range_step_01_rejects_forged_transactions_root() fail {
     },
     valid_block.header,
     vrn.ClosedRange { lower: 5, upper: 8 },
+  )
+}
+
+// ## Agreement with the validation machine
+//
+// The proof convicts exactly the verdicts the validation machine would not
+// reach. For every interval and block slot in a small grid around the bounds
+// (both bounds absent, present, adjacent, equal and reversed): an acceptance
+// is convicted iff the machine rejects, and an honest typed rejection is never
+// convicted. The upper bound is Cardano's exclusive `invalid_hereafter`.
+
+const agreement_bounds: List<Int> = [-1, 1, 2, 3]
+
+const agreement_slots: List<Int> = [1, 2, 3]
+
+fn agreement_subject(
+  direction: Int,
+  reason: Option<RejectionReasonV1>,
+) -> substrate.VerdictSubjectV1 {
+  substrate.VerdictSubjectV1 {
+    version: 1,
+    direction,
+    source_kind: if direction == substrate.direction_wrongful_acceptance {
+      0
+    } else {
+      1
+    },
+    transaction_id: #"1111111111111111111111111111111111111111111111111111111111111111",
+    source_key: if direction == substrate.direction_wrongful_acceptance {
+      #""
+    } else {
+      #"01"
+    },
+    rejection_reason: reason,
+  }
+}
+
+/// The validation machine's verdict on the interval: `None` accepts, otherwise
+/// the typed rejection it records.
+fn machine_interval_verdict(
+  body: NativeTxBodyCompact,
+  block_slot: Int,
+) -> Option<RejectionReasonV1> {
+  if vm_shared.validity_interval_is_malformed(
+    body.validity_interval_start,
+    body.validity_interval_end,
+  ) {
+    Some(ValidityIntervalMalformed)
+  } else if vm_shared.validity_interval_contains_slot(body, block_slot) {
+    None
+  } else {
+    Some(ValidityIntervalExcludesBlockSlot)
+  }
+}
+
+fn proof_agrees_with_machine(
+  lower: Int,
+  exclusive_upper: Int,
+  slot: Int,
+) -> Bool {
+  let body = test_native_body(lower, exclusive_upper)
+  let range = normalize_native_validity_range(body)
+  let acceptance_convicted = rule.terminal_contradiction_v1(
+    agreement_subject(substrate.direction_wrongful_acceptance, None),
+    range,
+    slot,
+  )
+  when machine_interval_verdict(body, slot) is {
+    None -> !acceptance_convicted
+    Some(reason) -> and {
+        acceptance_convicted,
+        !rule.terminal_contradiction_v1(
+          agreement_subject(
+            substrate.direction_wrongful_rejection,
+            Some(reason),
+          ),
+          range,
+          slot,
+        ),
+      }
+  }
+}
+
+test invalid_range_does_not_convict_an_acceptance_one_slot_below_the_upper_bound() {
+  and {
+    machine_interval_verdict(test_native_body(0, 3), 2) == None,
+    proof_agrees_with_machine(0, 3, 2),
+    proof_agrees_with_machine(-1, 3, 2),
+    proof_agrees_with_machine(2, 3, 2),
+  }
+}
+
+test invalid_range_convicts_an_acceptance_at_the_upper_bound() {
+  and {
+    machine_interval_verdict(test_native_body(0, 2), 2) == Some(
+      ValidityIntervalExcludesBlockSlot,
+    ),
+    proof_agrees_with_machine(0, 2, 2),
+    proof_agrees_with_machine(-1, 2, 2),
+  }
+}
+
+test invalid_range_and_machine_agree_on_an_empty_interval() {
+  and {
+    machine_interval_verdict(test_native_body(2, 2), 2) == Some(
+      ValidityIntervalMalformed,
+    ),
+    proof_agrees_with_machine(2, 2, 2),
+    proof_agrees_with_machine(2, 2, 1),
+    proof_agrees_with_machine(2, 2, 3),
+  }
+}
+
+test invalid_range_agrees_with_the_machine_on_every_small_interval() {
+  list.all(
+    agreement_bounds,
+    fn(lower) {
+      list.all(
+        agreement_bounds,
+        fn(exclusive_upper) {
+          list.all(
+            agreement_slots,
+            fn(slot) { proof_agrees_with_machine(lower, exclusive_upper, slot) },
+          )
+        },
+      )
+    },
   )
 }

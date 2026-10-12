@@ -18,6 +18,7 @@ import {
   SELF_TEST_DOMAIN,
   ZERO_EPOCH,
 } from "./service.normalize-owner-options.js";
+import { NativeOwnerBinaryPinMismatchError } from "./service.restart-policy.js";
 
 export class NativeChildRpc {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -50,6 +51,18 @@ export class NativeChildRpc {
       this.stderr = (this.stderr + chunk.toString("utf8")).slice(-16_384);
     });
     this.child.once("error", (error) => this.failAll(error));
+    // A write the child can no longer read (its stdin closed: EPIPE) fails
+    // the child as its exit does; the child is stopped, so the restart
+    // policy starts the next one.
+    this.child.stdin.on("error", (error) => {
+      this.child.kill("SIGKILL");
+      this.failAll(
+        new Error(
+          `Native MPF owner stdin failed: ${error.message},stderr=${this.stderr}`,
+          { cause: error },
+        ),
+      );
+    });
     this.child.once("exit", (code, signal) => {
       this.failAll(
         new Error(
@@ -289,7 +302,7 @@ export const assertPinnedOwnerBinary = async (
     .update(await readFile(binaryPath))
     .digest("hex");
   if (actualSha !== binarySha256) {
-    throw new Error(
+    throw new NativeOwnerBinaryPinMismatchError(
       `Native MPF owner binary SHA-256 mismatch: expected=${binarySha256},actual=${actualSha}`,
     );
   }

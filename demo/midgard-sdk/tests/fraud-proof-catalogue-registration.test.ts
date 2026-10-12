@@ -1,8 +1,7 @@
 /**
- * The fraud-proof catalogue is append-only. A category's four-byte id is
- * written into the computation-thread asset name of every proof of that
- * family, so renumbering or reusing an id silently redirects (or collides
- * with) threads of an already-deployed family.
+ * A category's four-byte id is written into the computation-thread asset
+ * name of every proof of that family, so every table that names a family's id
+ * must name the same one.
  *
  * The oracle is a second, independently maintained table: `midgard-core`'s
  * deployment-manifest identity registry carries its own category order and id
@@ -272,13 +271,10 @@ describe("production fraud-proof catalogue registration", () => {
     });
 
     it("is the id of the family its name or defining directory names", () => {
-      // Deliberately no "registered id no longer used" check: ids are frozen
-      // wire identities inside computation-thread asset names and are never
-      // reused, so a family whose code is deleted keeps its id reserved in
-      // the catalogue. Most families also reach their id only through
-      // FRAUD_PROOF_CATALOGUE_CATEGORY_IDS, which no literal scan sees, and
-      // the typed FAMILY_APPLICATION_REGISTRY already refuses an omitted
-      // category.
+      // Deliberately no "registered id no longer used" check: most families
+      // reach their id only through FRAUD_PROOF_CATALOGUE_CATEGORY_IDS, which
+      // no literal scan sees, and the typed FAMILY_APPLICATION_REGISTRY
+      // already refuses an omitted category.
       const misattributed = uses
         .filter(
           (use) =>

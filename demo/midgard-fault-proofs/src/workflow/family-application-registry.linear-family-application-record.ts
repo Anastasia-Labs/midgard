@@ -35,6 +35,7 @@ import {
   type FamilyDefinition,
   type FaultProofWitnessRole,
 } from "./family-definition.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 import {
   type AnyLinearFamilyDefinition,
   LINEAR_FAMILY_DEFINITIONS,
@@ -43,7 +44,6 @@ import {
   type LinearFamilyCategory,
   linearFamilySpec,
 } from "./linear-family-spec.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
@@ -254,7 +254,7 @@ export type DecisionDigestCursorFamilyConfig = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   referenceScripts: Readonly<{
@@ -279,7 +279,7 @@ export const commonBoundConfigFields = (
     headerHash: infrastructure.headerHash,
     lucid: infrastructure.lucid,
     signer: infrastructure.signer,
-    source: infrastructure.source,
+    l1Source: infrastructure.l1Source,
     stateQueueMutationLeaseCoordinator:
       infrastructure.stateQueueMutationLeaseCoordinator,
   }) as const;

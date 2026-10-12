@@ -129,26 +129,88 @@ const decodeNodeData = <TDatum>(
           }),
       });
 
-const fetchListNodes = <TDatum>(
-  lucid: LucidEvolution,
-  address: string,
-  policyId: string,
+const listNodeFromUTxO = <TDatum>(
+  utxo: UTxO,
+  assetName: string,
   schema: unknown,
   label: string,
 ): Effect.Effect<
-  readonly (NodeWithDatum & { readonly decoded: TDatum | null })[],
+  NodeWithDatum & { readonly decoded: TDatum | null },
+  DataCoercionError | MissingDatumError
+> =>
+  Effect.gen(function* () {
+    const datum = yield* getLinkedListNodeViewFromUTxO(utxo);
+    const decoded = yield* decodeNodeData<TDatum>(datum, schema, label);
+    return { utxo, datum, assetName, decoded };
+  });
+
+/**
+ * One registered-operators output as its list node, given the asset name it
+ * holds under the list policy (the root's or a node's).
+ */
+export const registeredOperatorNodeFromUTxO = (
+  utxo: UTxO,
+  assetName: string,
+): Effect.Effect<
+  RegisteredOperatorNode,
+  DataCoercionError | MissingDatumError
+> =>
+  Effect.map(
+    listNodeFromUTxO<RegisteredOperatorDatumType>(
+      utxo,
+      assetName,
+      RegisteredOperatorDatum,
+      "registered operator",
+    ),
+    ({ decoded, ...node }) => ({ ...node, registered: decoded }),
+  );
+
+/** One active-operators output as its list node (see the registered one). */
+export const activeOperatorNodeFromUTxO = (
+  utxo: UTxO,
+  assetName: string,
+): Effect.Effect<ActiveOperatorNode, DataCoercionError | MissingDatumError> =>
+  Effect.map(
+    listNodeFromUTxO<ActiveOperatorDatumType>(
+      utxo,
+      assetName,
+      ActiveOperatorDatum,
+      "active operator",
+    ),
+    ({ decoded, ...node }) => ({ ...node, active: decoded }),
+  );
+
+/** One retired-operators output as its list node (see the registered one). */
+export const retiredOperatorNodeFromUTxO = (
+  utxo: UTxO,
+  assetName: string,
+): Effect.Effect<RetiredOperatorNode, DataCoercionError | MissingDatumError> =>
+  Effect.map(
+    listNodeFromUTxO<RetiredOperatorDatumType>(
+      utxo,
+      assetName,
+      RetiredOperatorDatum,
+      "retired operator",
+    ),
+    ({ decoded, ...node }) => ({ ...node, retired: decoded }),
+  );
+
+const fetchListNodes = <TNode>(
+  lucid: LucidEvolution,
+  address: string,
+  policyId: string,
+  fromUTxO: (
+    utxo: UTxO,
+    assetName: string,
+  ) => Effect.Effect<TNode, DataCoercionError | MissingDatumError>,
+): Effect.Effect<
+  readonly TNode[],
   LucidError | DataCoercionError | MissingDatumError
 > =>
   Effect.gen(function* () {
     const beacons = yield* utxosAtByNFTPolicyId(lucid, address, policyId);
     return yield* Effect.all(
-      beacons.map(({ utxo, assetName }) =>
-        Effect.gen(function* () {
-          const datum = yield* getLinkedListNodeViewFromUTxO(utxo);
-          const decoded = yield* decodeNodeData<TDatum>(datum, schema, label);
-          return { utxo, datum, assetName, decoded };
-        }),
-      ),
+      beacons.map(({ utxo, assetName }) => fromUTxO(utxo, assetName)),
     );
   });
 
@@ -189,29 +251,26 @@ export const fetchOperatorDirectorySnapshotProgram = (
   validators: OperatorDirectoryValidators,
 ): Effect.Effect<OperatorDirectorySnapshot, OperatorDirectorySnapshotError> =>
   Effect.gen(function* () {
-    const [registeredRaw, activeRaw, retiredRaw, scheduler, hubOracle, tail] =
+    const [registered, active, retired, scheduler, hubOracle, tail] =
       yield* Effect.all(
         [
-          fetchListNodes<RegisteredOperatorDatumType>(
+          fetchListNodes(
             lucid,
             validators.registeredOperators.spendingScriptAddress,
             validators.registeredOperators.policyId,
-            RegisteredOperatorDatum,
-            "registered operator",
+            registeredOperatorNodeFromUTxO,
           ),
-          fetchListNodes<ActiveOperatorDatumType>(
+          fetchListNodes(
             lucid,
             validators.activeOperators.spendingScriptAddress,
             validators.activeOperators.policyId,
-            ActiveOperatorDatum,
-            "active operator",
+            activeOperatorNodeFromUTxO,
           ),
-          fetchListNodes<RetiredOperatorDatumType>(
+          fetchListNodes(
             lucid,
             validators.retiredOperators.spendingScriptAddress,
             validators.retiredOperators.policyId,
-            RetiredOperatorDatum,
-            "retired operator",
+            retiredOperatorNodeFromUTxO,
           ),
           fetchSchedulerUTxOProgram(lucid, {
             schedulerAddress: validators.scheduler.spendingScriptAddress,
@@ -230,18 +289,9 @@ export const fetchOperatorDirectorySnapshotProgram = (
       );
     const stateQueueTail = yield* decodeStateQueueTail(tail);
     return {
-      registered: registeredRaw.map(({ decoded, ...node }) => ({
-        ...node,
-        registered: decoded,
-      })),
-      active: activeRaw.map(({ decoded, ...node }) => ({
-        ...node,
-        active: decoded,
-      })),
-      retired: retiredRaw.map(({ decoded, ...node }) => ({
-        ...node,
-        retired: decoded,
-      })),
+      registered,
+      active,
+      retired,
       scheduler,
       hubOracle,
       stateQueueTail,

@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,7 +15,6 @@ import { MempoolLedgerDB } from "../src/database/index.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import type { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.js";
 import { initializeArchitectureGOwner } from "../src/services/native-mpf-startup.js";
-import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -23,6 +24,8 @@ import {
   attestQueuedStateQueueHeader,
   CML,
   commitConfirmRecoverAndMerge,
+  Database,
+  emulatorStateQueueSnapshot,
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
   mergeMaturityWindow,
@@ -35,12 +38,12 @@ import {
   utxosProgram,
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 /** Actual public admissions and native promotion establish the empty restart
  * state. Network transport labels remain synthetic, as in the shared fixture. */
 it("restarts the production native initializer after withdrawal empties an unmerged and merged ledger without replaying genesis, and refuses a missing initialized store or a stale store beside a fresh database", async () => {
-  const h = await openHistoryProductionOwnerLifecycle();
+  const h = await openProductionLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const context = { fixture, lucidService, globals, production };
   const wallet = fixture.depositorLucid;
@@ -86,17 +89,16 @@ it("restarts the production native initializer after withdrawal empties an unmer
     );
   const queue = () =>
     Effect.runPromise(
-      fetchStateQueueSnapshotProgram(
+      emulatorStateQueueSnapshot(
         fixture.operatorLucid,
         fixture.contracts.stateQueue,
         "startup",
-      ),
+      ).pipe(Effect.provide(Database.layer)),
     );
   const submit = async (built: { tx: TxSignBuilder }) => {
     const signed = await built.tx.sign.withWallet().complete();
     const hash = await signed.submit();
     expect(await wallet.awaitTx(hash)).toBe(true);
-    wallet.overrideUTxOs(await wallet.utxosAt(address));
     await h.synchronize();
     return hash;
   };
@@ -271,7 +273,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
     );
     expect((await ledger()).spendable).toHaveLength(0);
     const unmerged = await queue();
-    expect(unmerged.topology.parsedNodeCount).toBe(2);
+    expect(unmerged.blockCount).toBe(1);
     expect(unmerged.tailCommitBase.roots.utxosRoot).toBe(
       SDK.EMPTY_MERKLE_TREE_ROOT,
     );
@@ -321,7 +323,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
       globals,
       production,
     });
-    expect(merged.postMergeSnapshot.topology.parsedNodeCount).toBe(1);
+    expect(merged.postMergeSnapshot.blockCount).toBe(0);
     await restart("restart-merged-empty");
     diagnostic.stage = "missing-initialized-store";
     const beforeMissing = await ledger();
@@ -387,10 +389,8 @@ it("restarts the production native initializer after withdrawal empties an unmer
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               protocolParameters:
                 h.deployment.manifest.cardanoProtocolParameters,
-              binding: h.binding,
               diagnostic,
               receipts: h.receipts,
-              transitions: h.transitions,
               nativeBinarySha256:
                 production.nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
             },

@@ -1,7 +1,6 @@
 import { SqlClient } from "@effect/sql";
 import { Effect, Exit, Option, Ref } from "effect";
 
-import * as Authority from "../database/eventHistoryAuthority.js";
 import {
   MempoolLedgerDB,
   MpfEngineStateDB,
@@ -14,13 +13,13 @@ import {
 } from "../mpf/index.js";
 import type { NodeConfigDep } from "./config.js";
 import type { Database } from "./database.js";
-import { withHistoryWrite } from "./event-history-producer.js";
-import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
+import { withFollowerWrite } from "./follower-write-gate.js";
 import type { Globals } from "./globals.js";
+import { landedStateQueueSnapshot } from "./landed-state-queue.js";
 import { Lucid } from "./lucid.js";
 import { MidgardContracts } from "./midgard-contracts.js";
+import { NativeMpfPromotionIndexCapExceeded } from "./mpf-native-owner/protocol.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
-import { fetchStateQueueSnapshotProgram } from "./state-queue-topology.js";
 
 /**
  * The node refuses to start the native owner from an unpinned binary: the
@@ -65,7 +64,11 @@ export const requirePinnedNativeOwnerBinary = (
 export const initializeArchitectureGOwner = <R = never>(
   globals: Globals,
   nodeConfig: NodeConfigDep,
-  preparation?: HistoryRecoveryPreparation,
+  /**
+   * Re-checked around each SQL write when a driver recompute runs the
+   * initialization: it fails once the recompute was superseded.
+   */
+  assertCurrent?: Effect.Effect<void, unknown>,
   beforeJournalReplay?: (
     owner: ProductionNativeMpfOwnerService,
   ) => Effect.Effect<void, unknown, R>,
@@ -78,15 +81,14 @@ export const initializeArchitectureGOwner = <R = never>(
     yield* requirePinnedNativeOwnerBinary(nodeConfig);
 
     const writeSql = <A, E, R>(work: Effect.Effect<A, E, R>) =>
-      preparation === undefined
-        ? withHistoryWrite(work)
-        : Authority.withRecovery(
-            preparation.token,
-            preparation.assertCurrent.pipe(
+      withFollowerWrite(
+        assertCurrent === undefined
+          ? work
+          : assertCurrent.pipe(
               Effect.zipRight(work),
-              Effect.tap(() => preparation.assertCurrent),
+              Effect.tap(() => assertCurrent),
             ),
-          );
+      );
     const sql = yield* SqlClient.SqlClient;
     const initializedStores = yield* sql<{ root_hex: string | null }>`
       SELECT root_hex FROM mpf_engine_state
@@ -133,14 +135,12 @@ export const initializeArchitectureGOwner = <R = never>(
                 })),
               ),
           );
-          const lucid = yield* Lucid;
           const contracts = yield* MidgardContracts;
-          const snapshot = yield* fetchStateQueueSnapshotProgram(
-            lucid.api,
+          const snapshot = yield* landedStateQueueSnapshot(
             contracts.stateQueue,
             "startup",
           );
-          if (snapshot.topology.parsedNodeCount !== 1)
+          if (snapshot.blockCount !== 0)
             return yield* Effect.fail(
               new Error(
                 "Native genesis bootstrap requires the authenticated clean state queue",
@@ -167,10 +167,8 @@ export const initializeArchitectureGOwner = <R = never>(
           // An unstamped nonempty trie is trusted only at the committed tail
           // root. A store left from an earlier run must not be stamped onto a
           // fresh database, where it would first fail at the next commit.
-          const lucid = yield* Lucid;
           const contracts = yield* MidgardContracts;
-          const snapshot = yield* fetchStateQueueSnapshotProgram(
-            lucid.api,
+          const snapshot = yield* landedStateQueueSnapshot(
             contracts.stateQueue,
             "startup",
           );
@@ -252,7 +250,21 @@ export const initializeArchitectureGOwner = <R = never>(
                       eventCount: replay.eventCount,
                     }),
                   catch: (cause) => cause,
-                });
+                }).pipe(
+                  // A replay the owner refuses over a full-index cap left it
+                  // at its durable root: the owner starts there, holding the
+                  // refusal (which readiness names), instead of failing
+                  // startup into a crash loop. The journal stays active, and
+                  // its next replay (local finalization) retries it.
+                  Effect.catchIf(
+                    (cause): cause is NativeMpfPromotionIndexCapExceeded =>
+                      cause instanceof NativeMpfPromotionIndexCapExceeded,
+                    (cause) =>
+                      Effect.logWarning(
+                        `${cause.message}. The native owner starts at its durable root and holds the journal's replay.`,
+                      ),
+                  ),
+                );
               }
             }
           }),

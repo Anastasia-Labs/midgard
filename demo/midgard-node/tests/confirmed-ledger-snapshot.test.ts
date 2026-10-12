@@ -129,7 +129,7 @@ const record = ({
     }),
   ),
   [PendingBlockFinalizationsDB.Columns.STATUS]:
-    PendingBlockFinalizationsDB.Status.Finalized,
+    PendingBlockFinalizationsDB.Status.LocallyApplied,
   [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]: 1n,
   [PendingBlockFinalizationsDB.Columns.CREATED_AT]: BLOCK_START,
   [PendingBlockFinalizationsDB.Columns.UPDATED_AT]: BLOCK_END,

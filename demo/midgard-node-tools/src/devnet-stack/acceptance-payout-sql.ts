@@ -89,27 +89,40 @@ export const readAcceptanceSettlements = async (
   try {
     const result = await sql.begin("read only", async (read) => {
       scope.assertCurrent();
-      const authority = await read<
+      // The node's follower-change driver has published its view: the
+      // settlement rows are the ones its gated writers wrote at that view.
+      const gate = await read<
         { generation: string }[]
-      >`SELECT generation::text
-        FROM event_history_authority WHERE singleton
-        AND deployment_identity = decode(${deploymentId}, 'hex')
-        AND state = 'ready' AND lease_until > clock_timestamp()`;
+      >`SELECT applied_generation::text AS generation
+        FROM node_follower_write_gate WHERE singleton
+        AND pending_reason IS NULL AND applied_generation IS NOT NULL`;
       scope.assertCurrent();
       requireAcceptance(
-        authority.length === 1 && /^[0-9]+$/u.test(authority[0]!.generation),
-        "settlement authenticated history is not currently ready",
+        gate.length === 1 && /^[0-9]+$/u.test(gate[0]!.generation),
+        "settlement follower view is not currently published",
+      );
+      // The node's settlement rows are its manifest's deployment's; a row of
+      // any other deployment means this store is not that deployment's.
+      const foreign = await read<
+        { other: boolean }[]
+      >`SELECT EXISTS (SELECT 1 FROM settlement_jobs
+        WHERE deployment_id <> ${deploymentId}) AS other`;
+      scope.assertCurrent();
+      requireAcceptance(
+        foreign.length === 1 && foreign[0]!.other === false,
+        "settlement store holds another deployment's rows",
       );
       const attempts = await read<
         AcceptanceSettlementRow[]
-      >`SELECT event_id, tx_hash, phase,
-        CASE WHEN octet_length(signed_cbor) <= ${maxTransactionBytes * 2}
-          THEN signed_cbor ELSE NULL END AS signed_cbor,
-        CASE WHEN cardinality(required_outputs) <= ${maxTransactionBytes}
-          THEN array_to_json(required_outputs) ELSE NULL END AS required_outputs
-        FROM settlement_attempts WHERE deployment_id = ${deploymentId}
-        AND kind = 'withdrawal' AND status = 'confirmed' AND event_id IN ${read(eventIds)}
-        ORDER BY event_id, tx_hash LIMIT ${maxRows + 1}`;
+      >`SELECT a.event_id, a.tx_hash, a.phase,
+        CASE WHEN octet_length(a.signed_cbor) <= ${maxTransactionBytes * 2}
+          THEN a.signed_cbor ELSE NULL END AS signed_cbor,
+        CASE WHEN cardinality(a.required_outputs) <= ${maxTransactionBytes}
+          THEN array_to_json(a.required_outputs) ELSE NULL END AS required_outputs
+        FROM settlement_attempts a JOIN settlement_jobs j USING (deployment_id, kind, event_id)
+        WHERE a.deployment_id = ${deploymentId} AND a.kind = 'withdrawal'
+        AND a.status <> 'expired' AND j.phase = 'complete' AND a.event_id IN ${read(eventIds)}
+        ORDER BY a.event_id, a.tx_hash LIMIT ${maxRows + 1}`;
       scope.assertCurrent();
       requireAcceptance(
         attempts.length <= maxRows,
@@ -130,7 +143,7 @@ export const readAcceptanceSettlements = async (
             ),
           "invalid or oversized settlement receipt locator",
         );
-      return { generation: authority[0]!.generation, attempts };
+      return { generation: gate[0]!.generation, attempts };
     });
     scope.assertCurrent();
     return result;

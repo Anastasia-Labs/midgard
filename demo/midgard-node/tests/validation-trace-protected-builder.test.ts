@@ -2,6 +2,7 @@ import {
   encodeMidgardCekProgramMaterialSidecar,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildMidgardCanonicalCekProgram,
@@ -74,6 +75,7 @@ const fixture = async () => {
   };
   const replay = await Effect.runPromise(
     replayValidationMachineEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...context,
       sourceKind: "normal",
       eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
@@ -135,6 +137,7 @@ describe("protected validation trace builder", () => {
       const result = await Effect.runPromise(
         Effect.either(
           buildDeterministicValidationTraceMembers({
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             ...input,
             transactions: [{ ...transaction, scriptEvaluations: [changed] }],
           }),

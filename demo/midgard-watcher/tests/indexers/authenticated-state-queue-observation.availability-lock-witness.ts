@@ -10,7 +10,16 @@ import { describe, expect, it } from "vitest";
 
 import { unsafeCorrectionLockWitnessForTest } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { h28, h32 } from "../support/deployment-authority-fixture.js";
-import { value } from "./authenticated-state-queue-observation.fixture.js";
+
+const value = (policyId: string, assetName: string): CML.Value => {
+  const multiasset = CML.MultiAsset.new();
+  multiasset.set(
+    CML.ScriptHash.from_hex(policyId),
+    CML.AssetName.from_hex(assetName),
+    1n,
+  );
+  return CML.Value.new(2_000_000n, multiasset);
+};
 
 /**
  * The CorrectionLock witness of one RemoveUnavailableBlockAfterTimeout step,

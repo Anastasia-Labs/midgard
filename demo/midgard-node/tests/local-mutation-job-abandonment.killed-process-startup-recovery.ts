@@ -60,13 +60,13 @@ const submittedJournal = (
     }
     if (
       status === Status.ObservedWaitingStability ||
-      status === Status.Finalized
+      status === Status.LocallyApplied
     )
       yield* PendingBlockFinalizationsDB.markObservedWaitingStability(
         headerHash,
         1n,
       );
-    if (status === Status.Finalized)
+    if (status === Status.LocallyApplied)
       yield* PendingBlockFinalizationsDB.markFinalized(headerHash);
   });
 
@@ -104,16 +104,16 @@ describe("startup after a process killed mid local finalization", () => {
         Effect.gen(function* () {
           const done = header("killed-after-mark-finalized");
           yield* runningLocalJob(done);
-          yield* submittedJournal(done, Status.Finalized);
+          yield* submittedJournal(done, Status.LocallyApplied);
           const failedDone = header("failed-after-mark-finalized");
           yield* failedLocalJob(failedDone, "ack lost");
-          yield* submittedJournal(failedDone, Status.Finalized);
+          yield* submittedJournal(failedDone, Status.LocallyApplied);
           expect(yield* startupGate).toBeUndefined();
           for (const finalized of [done, failedDone]) {
             const job = yield* readJob(localJobId(finalized));
             expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Completed);
             expect(job[J.COMPLETED_AT]).not.toBeNull();
-            expect(yield* journalStatus(finalized)).toBe(Status.Finalized);
+            expect(yield* journalStatus(finalized)).toBe(Status.LocallyApplied);
           }
         }),
       ),
@@ -162,8 +162,6 @@ describe("startup after a process killed mid local finalization", () => {
       isolatedDb(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          yield* sql`TRUNCATE TABLE mempool, processed_mempool, immutable, blocks
-            RESTART IDENTITY CASCADE`;
           const killed = header("killed-after-finalization-sql");
           const headerHex = killed.toString("hex");
           yield* observedJournal(killed);
@@ -218,14 +216,21 @@ describe("startup after a process killed mid local finalization", () => {
           const job = yield* readJob(localJobId(killed));
           expect(job[J.STATUS]).toBe(MutationJobsDB.Status.Completed);
           expect(job[J.ATTEMPTS]).toBe(2);
-          expect(yield* journalStatus(killed)).toBe(Status.Finalized);
+          expect(yield* journalStatus(killed)).toBe(Status.LocallyApplied);
           const immutable = yield* sql<{ readonly count: string }>`SELECT
             COUNT(*)::text AS count FROM immutable WHERE tx_id = ${tx.txId}`;
           const blocks = yield* sql<{ readonly count: string }>`SELECT
             COUNT(*)::text AS count FROM blocks
             WHERE header_hash = ${killed} AND tx_id = ${tx.txId}`;
+          // The included row stays, marked by the block, until it folds.
           const mempool = yield* sql<{ readonly count: string }>`SELECT
-            COUNT(*)::text AS count FROM mempool WHERE tx_id = ${tx.txId}`;
+            COUNT(*)::text AS count FROM mempool
+            WHERE tx_id = ${tx.txId} AND included_by IS NULL`;
+          const marks = yield* sql<{ readonly included_by: Buffer }>`SELECT
+            included_by FROM mempool WHERE tx_id = ${tx.txId}`;
+          expect(marks.map((row) => Buffer.from(row.included_by))).toEqual([
+            killed,
+          ]);
           expect(
             [immutable, blocks, mempool].map((rows) => rows[0]!.count),
           ).toEqual(["1", "1", "0"]);

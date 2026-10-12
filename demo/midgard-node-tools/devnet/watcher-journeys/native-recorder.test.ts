@@ -1,13 +1,13 @@
 import { setTimeout as pause } from "node:timers/promises";
 
 import type {
-  startWatcherNativeChainSync,
   WatcherConfig,
   WatcherNativeChainSyncEvent,
 } from "midgard-watcher";
 import { NativeTransactionNotIncludedError } from "midgard-watcher/tests/support/published-da-target-consumption";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+import type { startWatcherNativeChainSync } from "../../src/devnet-stack/native-chain-sync.js";
 import { startJourneyNativeRecorder } from "./native-recorder.js";
 
 const io = vi.hoisted(() => ({
@@ -17,8 +17,10 @@ const io = vi.hoisted(() => ({
   append: vi.fn(async (_path: string, _bytes: string) => undefined),
 }));
 vi.mock("node:fs/promises", () => ({ appendFile: io.append }));
-vi.mock("midgard-watcher", () => ({
+vi.mock("../../src/devnet-stack/native-chain-sync.js", () => ({
   startWatcherNativeChainSync: io.start,
+}));
+vi.mock("midgard-watcher", () => ({
   admitWatcherNativeRollForwardBlock: io.admit,
   watcherNativeChainSyncAuthorityDetails: io.authority,
 }));

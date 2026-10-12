@@ -1,3 +1,4 @@
+import "./helpers/follower-emulator-installed.js";
 import "node:crypto";
 import "node:fs/promises";
 import "node:http";
@@ -11,7 +12,6 @@ import "../src/commands/submit-withdrawal.js";
 import "../src/database/index.js";
 import "../src/fibers/tx-queue-processor.js";
 import "../src/mpf/index.js";
-import "../src/services/event-history-producer.js";
 import "./deposit-flow-emulator-shared.js";
 import "./deposit-flow-emulator-merge-payout.admit-l2-tx.js";
 
@@ -55,6 +55,7 @@ import {
   fetchSchedulerDatum,
   findUtxoWithUnit,
   ImmutableDB,
+  ingestEmulatorEventsUnowned,
   initializeNodeRuntime,
   initializePayoutProgram,
   initializeProtocol,
@@ -67,7 +68,6 @@ import {
   mergeMaturityWindow,
   paymentCredentialOf,
   payoutStatusProgram,
-  reconcileVisibleWithdrawalUTxOs,
   reserveUtxosProgram,
   resetActiveRuntimePaths,
   resolveEventSettlementProofProgram,
@@ -89,6 +89,11 @@ import {
   WithdrawalsDB,
   withdrawalStatusProgram,
 } from "./deposit-flow-emulator-shared.js";
+import { drainJournaledWithoutFollower } from "./helpers/intent-journal.js";
+import {
+  expectFixtureFlowReplayed,
+  TO_MERGED_BLOCK,
+} from "./helpers/intent-journal-replay.deployment.js";
 
 describe("deposit flow emulator", { concurrent: false }, () => {
   it("merges a committed deposit-only block into confirmed state and spawns settlement with real contracts", async () => {
@@ -213,7 +218,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       lucidService,
       globals: globalsAfterCommit,
     });
-    expect(mergeResult.postMergeSnapshot.topology.parsedNodeCount).toBe(1);
+    expect(mergeResult.postMergeSnapshot.blockCount).toBe(0);
 
     const sortedStateQueueAfterMerge = await Effect.runPromise(
       SDK.fetchSortedStateQueueUTxOsProgram(
@@ -477,6 +482,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
     await configureEmulatorDaRuntimeManifest();
 
     const fixture = await makeFixture();
+    drainJournaledWithoutFollower();
     const acceptedTransactions: string[] = [];
     const submit = fixture.emulator.submitTx.bind(fixture.emulator);
     fixture.emulator.submitTx = async (cbor) => {
@@ -696,7 +702,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
           Buffer.from(l2TransactionBlock.queuedHeaderHash, "hex"),
         ),
       ),
-    ).toEqual([]);
+    ).toEqual([builtL2Transfer.txId]);
     expect(
       await runNodeDatabaseEffect(
         ImmutableDB.retrieveTxCborByHash(builtL2Transfer.txId),
@@ -889,15 +895,15 @@ describe("deposit flow emulator", { concurrent: false }, () => {
     );
 
     const withdrawalFetch = await runNodeCommandProgram(
-      reconcileVisibleWithdrawalUTxOs(),
+      ingestEmulatorEventsUnowned(fixture, { globals }),
       { fixture, lucidService, globals },
     );
-    expect(withdrawalFetch.reconciledCount).toEqual(1);
+    expect(withdrawalFetch.inserted).toEqual(1);
     const withdrawalFetchAgain = await runNodeCommandProgram(
-      reconcileVisibleWithdrawalUTxOs(),
+      ingestEmulatorEventsUnowned(fixture, { globals }),
       { fixture, lucidService, globals },
     );
-    expect(withdrawalFetchAgain.reconciledCount).toEqual(1);
+    expect(withdrawalFetchAgain.inserted).toEqual(0);
     // Once the withdrawal is pending, admission refuses a new spend of its
     // outref durably, before it touches mempool_ledger.
     expect([
@@ -1120,6 +1126,15 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         (utxo) => utxo.assets.lovelace === 10_000_000n,
       ),
     ).toBe(true);
+    // The node, following this chain, records each of its intents and
+    // judges it wanted at the block before it landed (I1-fix F5).
+    const replayed = await expectFixtureFlowReplayed(
+      fixture,
+      [...TO_MERGED_BLOCK, "reserve_payout"],
+      depositBlock.queuedHeaderHash,
+    );
+    // Absorb, initialize, add funds and conclude.
+    expect(replayed.reserve_payout).toHaveLength(4);
     const evidenceDirectory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
     if (evidenceDirectory !== undefined) {
       const parameters = fixture.operatorLucid.config().protocolParameters!;

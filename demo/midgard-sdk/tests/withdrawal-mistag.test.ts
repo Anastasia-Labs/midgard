@@ -107,13 +107,11 @@ describe("withdrawal-mistag V1", () => {
           l1_address: {
             ...base.l1_address,
             stakeCredential: {
-              Pointer: [
-                {
-                  slotNumber: 127n,
-                  transactionIndex: 128n,
-                  certificateIndex: 16_384n,
-                },
-              ],
+              Pointer: {
+                slotNumber: 127n,
+                transactionIndex: 128n,
+                certificateIndex: 16_384n,
+              },
             },
           },
         },

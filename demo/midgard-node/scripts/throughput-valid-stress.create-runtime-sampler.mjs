@@ -50,25 +50,6 @@ export const extractMetricValue = (text, names) => {
   return { value: 0, name: null };
 };
 
-export const extractMetricSum = (text, names) => {
-  for (const name of names) {
-    const pattern = new RegExp(
-      `^${escapeRegex(name)}(?:\\{[^}]*\\})?\\s+([0-9]+(?:\\.[0-9]+)?)$`,
-      "gm",
-    );
-    const values = [];
-    let match = pattern.exec(text);
-    while (match !== null) {
-      values.push(Number(match[1]));
-      match = pattern.exec(text);
-    }
-    if (values.length > 0) {
-      return { value: values.reduce((sum, value) => sum + value, 0), name };
-    }
-  }
-  return { value: 0, name: null };
-};
-
 /**
  * Extracts Prometheus histogram series for machine-readable report artifacts.
  */

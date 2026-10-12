@@ -14,9 +14,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
-import { LocalKupmiosCheckpointChangedError } from "../workflow/local-kupmios-raw-l1-authority.js";
+import {
+  FraudProofL1CheckpointChangedError,
+  type FraudProofL1Source,
+} from "../workflow/l1-source.js";
 import {
   admitFraudProofRawL1Snapshot,
   computeFraudProofRawL1SnapshotEvidenceDigest,
@@ -300,7 +301,7 @@ export const captureTransitionTraceL1Events = async ({
       // A new NFT requires its full history at a newly admitted common point.
       for (const unit of newUnits) units.add(unit);
     }
-    throw new LocalKupmiosCheckpointChangedError(
+    throw new FraudProofL1CheckpointChangedError(
       "Transition replay event NFT coverage kept growing during history acquisition",
     );
   };
@@ -365,24 +366,18 @@ const eventAuthorities = new WeakMap<
 >();
 export const createTransitionTraceEventAuthority = ({
   binding,
-  source,
+  l1,
 }: {
   binding: FraudProofWorkflowDeploymentBinding<"transitionTrace">;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-}): TransitionTraceEventAuthority => {
-  const port = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
+  l1: FraudProofL1Source;
+}): TransitionTraceEventAuthority =>
+  createEventAuthorityFromRaw({
+    binding,
+    authority: l1.snapshotAuthority({
+      releaseFinality: binding.releaseFinality,
+      observationDepth: "inclusion",
+    }),
   });
-  const authority = port.rawL1;
-  if (authority === undefined)
-    throw new Error(
-      "Transition event authority requires local raw L1 observations",
-    );
-  return createEventAuthorityFromRaw({ binding, authority });
-};
 
 const createEventAuthorityFromRaw = ({
   binding,

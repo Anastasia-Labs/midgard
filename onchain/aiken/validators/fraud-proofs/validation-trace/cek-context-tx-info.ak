@@ -5,10 +5,14 @@ use midgard/cek_context_chain as chain
 use midgard/cek_context_step as context
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/script_context_v1.{L1SlotConfigV1}
 
+/// `l1_slot_config` is the deployment's slot-to-time mapping, recorded in its
+/// manifest; it turns the committed slot interval into the POSIX `validRange`.
 validator main(
   settle_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
+  l1_slot_config: L1SlotConfigV1,
 ) {
   spend(
     datum: Option<chain.StagedDatum>,
@@ -32,6 +36,7 @@ validator main(
         expect staged.context.stage == 12
         expect chain.auxiliary_is_bound(staged.bound, action.auxiliary)
         let next_context = context.next_tx_info(
+          l1_slot_config,
           staged.bound.source_kind,
           staged.context,
           staged.native,

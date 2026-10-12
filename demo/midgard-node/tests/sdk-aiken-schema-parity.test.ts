@@ -243,6 +243,14 @@ const ABI_MAPPINGS = [
   // it checks the bytes this TypeScript half emits against the Aiken decoder and
   // the Aiken constructor's own field names, which is agreement between the two
   // languages rather than agreement of each with a blueprint.
+  // The event-history order shapes the follower decodes an admitted order
+  // with. Admission accepts only orders the node decodes, so these must match
+  // the types `order_facts.admit` reads, including the ledger's flat pointer
+  // stake credential.
+  ["AddressSchema", "cardano/address/Address"],
+  ["DepositInfoSchema", "midgard/ledger_state/DepositInfo"],
+  ["WithdrawalBodySchema", "midgard/ledger_state/WithdrawalBody"],
+  ["EventHistoryPayloadSchema", "midgard/event_history/order_facts/Payload"],
 ] as const;
 
 // The #640 format wave retired the five coarse rejection arms: the compact
@@ -263,7 +271,8 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
 
     const sources = [
       "demo/midgard-sdk/src/user-events/tx-order.ts",
-      "demo/midgard-node/src/fibers/fetch-and-insert-tx-order-utxos.ts",
+      "demo/midgard-node/src/forced-orders/carriage.ts",
+      "demo/midgard-node/src/forced-orders/entry.ts",
       "onchain/aiken/lib/midgard/user-events/tx-order-v1.ak",
       "onchain/aiken/validators/user-events/tx-order-v1.ak",
     ];

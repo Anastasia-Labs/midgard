@@ -21,8 +21,11 @@ pub type OperatorRemovalReason {
   OperatorSlashing
 }
 
+/// The undelivered user event a strike for inactivity cites. Each arm names the
+/// reference input holding the event: a deposit's or a withdrawal's Order node
+/// in its event-history list, or a tx order. No arm exists for a shift with no
+/// due user event: an operator with no L1 work to deliver cannot be struck.
 pub type NeglectedUserEvent {
-  NoNeglectedUserEvent
   NeglectedDeposit { deposit_ref_input_index: Int }
   NeglectedWithdrawal { withdrawal_ref_input_index: Int }
   NeglectedTxOrder { tx_order_ref_input_index: Int }

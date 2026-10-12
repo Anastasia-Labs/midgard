@@ -1,4 +1,3 @@
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { NodeSdk } from "@effect/opentelemetry";
 import { SqlClient } from "@effect/sql";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
@@ -9,21 +8,18 @@ import { Cause, Effect, Option, pipe, Ref } from "effect";
 import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.js";
 import {
   assertDaHardeningProviderStartup,
+  daProviderAssertionsWaitReason,
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
 } from "../da/startup.js";
-import { restoreRetainedStatePins } from "../database/cekProgramMaterial.restore-retained-state-pins.js";
-import { PredecessorLeaseWait } from "../database/eventHistoryAuthority.js";
 import { DaPayloadsDB, InitDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import {
-  fetchAndInsertTxOrderUTxOs,
   refreshAdmissionBacklogGauge,
+  refreshAdmissionBacklogGaugeOnStartup,
 } from "../fibers/index.js";
-import { untilOperatorRemoved } from "../fibers/operator-membership.js";
 import * as Genesis from "../genesis.js";
-import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
 import {
   admissionAsDefaultSqlLayer,
   AdmissionSql,
@@ -41,11 +37,16 @@ import {
   WriteBehind,
 } from "../services/index.js";
 import {
-  initializeArchitectureGOwner,
-  requirePinnedNativeOwnerBinary,
-} from "../services/native-mpf-startup.js";
+  IntentJournal,
+  IntentJournalWithoutFollower,
+  makeIntentJournal,
+} from "../services/intent-journal.js";
+import { startL1Follower } from "../services/l1-follower.js";
+import { nodeDatabaseConnectionString } from "../services/l1-provider.js";
+import { requirePinnedNativeOwnerBinary } from "../services/native-mpf-startup.js";
+import { acquireNodeInstanceLock } from "../services/node-instance-lock.js";
 import { settlementWalletAddress } from "../services/settlement.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
+import type { StartupStepFailedError } from "../services/startup-waiting.js";
 import { runNodeFiberSet } from "./listen.node-fibers.js";
 import {
   logStartupFailure,
@@ -54,14 +55,10 @@ import {
 } from "./listen.retained-payload-server-thread.js";
 import type { StartupHttp } from "./listen.startup-http.js";
 import { buildListenRouter } from "./listen-router.js";
-import {
-  assertStartupMutationJobsRecoverable,
-  ensureProtocolInitializedOnStartup,
-  hydratePendingBlockFinalizationOnStartup,
-  releaseStateQueueLeasesOfPreviousNodeProcess,
-  seedLatestLocalBlockBoundaryOnStartup,
-} from "./listen-startup.js";
-import { releaseLedgerStoreLeaseOfPreviousNodeProcess } from "./listen-startup.release-ledger-store-lease-of-previous-node-process.js";
+import { awaitFollowerViewOnStartup } from "./listen-startup.await-follower-view.js";
+import { awaitLandedStateQueueOnStartup } from "./listen-startup.await-landed-state-queue.js";
+import { ensureProtocolInitializedOnStartup } from "./listen-startup.js";
+import { prepareNodeOnStartup } from "./listen-startup.prepare-node.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 /**
@@ -79,6 +76,7 @@ export const runNode = (
   | ConfigError
   | DatabaseError
   | DatabaseInitializationError
+  | StartupStepFailedError
   | import("../services/validation-pool.js").ValidationWorkerError,
   | NodeConfig
   | Database
@@ -128,10 +126,19 @@ export const runNode = (
           }),
       ),
     );
-    const startupProviderRetry = {
-      maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
-      retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
-    } as const;
+    // The single-process exclusion: every startup step after this one, the
+    // follower's lease release, mutation-job classification and driver
+    // included, runs after this process took the lock. A second process
+    // waits here, unready under a named reason. A lock lost later holds the
+    // operator duties as `node-instance-lock.ts` describes.
+    yield* startup.setStage("instance_lock");
+    const instanceLock = yield* acquireNodeInstanceLock({
+      connectionString: nodeDatabaseConnectionString(nodeConfig),
+      globals,
+      waiting: (reasons) => startup.setStage("instance_lock", reasons),
+    });
+    // The DA identity preflight below is local, too.
+    yield* startup.setStage("local_preflight");
     yield* runDaIdentityGatedStartupSequence({
       localPreflight: prepareDaHardeningStartup.pipe(
         Effect.tapError(
@@ -143,28 +150,40 @@ export const runNode = (
         .pipe(
           Effect.zipRight(InitDB.program.pipe(Effect.provide(Database.layer))),
         ),
+      // Protocol initialization runs before the follower starts: nothing
+      // would reconcile its intents, so it submits unjournaled and awaits
+      // each confirmation itself.
       initializeProtocol: startup
         .setStage("protocol_initialization")
-        .pipe(Effect.zipRight(ensureProtocolInitializedOnStartup)),
+        .pipe(
+          Effect.zipRight(
+            ensureProtocolInitializedOnStartup.pipe(
+              Effect.provide(IntentJournalWithoutFollower),
+            ),
+          ),
+        ),
       providerAssertions: (preflight) =>
-        startup
-          .setStage("provider_assertions")
-          .pipe(
-            Effect.zipRight(
-              runStartupProviderStepWithRetry(
-                "Startup DA provider assertions",
-                assertDaHardeningProviderStartup(preflight),
-                startupProviderRetry,
-              ).pipe(
-                Effect.tapError(
-                  logStartupFailure("Startup DA provider assertions failed"),
-                ),
+        startup.setStage("provider_assertions").pipe(
+          Effect.zipRight(
+            runStartupProviderStepWithRetry(
+              "da_provider_assertions",
+              assertDaHardeningProviderStartup(preflight),
+              {
+                maxAttempts:
+                  nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
+                retryDelayMs:
+                  nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
+                reason: daProviderAssertionsWaitReason,
+              },
+            ).pipe(
+              Effect.tapError(
+                logStartupFailure("Startup DA provider assertions failed"),
               ),
             ),
           ),
+        ),
     });
 
-    let startupPrepared = false;
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         const owned = yield* Ref.get(globals.NATIVE_MPF_OWNER);
@@ -174,134 +193,31 @@ export const runNode = (
         }
       }),
     );
-    yield* startup.setStage("history_initialization");
-    const historyOwner = yield* makeProductionEventHistoryOwner({
-      expectedGenesisLosslessSha256:
-        nodeConfig.L1_HISTORY_GENESIS_LOSSLESS_SHA256,
-      transport: {
-        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-        kupoUrl: nodeConfig.L1_KUPO_KEY,
-        timeoutMs: 30_000,
-        blockScanLimit: 100_000,
-        maximumResponseBytes: 16 * 1024 * 1024,
-        maximumTransactionBytes: 65_536,
-      },
-      heartbeatIntervalMs: 10_000,
-      retainedPointLimit: 2_160,
-      maximumReceiptBytes: 16 * 1024 * 1024,
-      leaseDurationMs: 60_000,
-      prepareCompletion: (_checkpoint, preparation) =>
-        Effect.gen(function* () {
-          yield* preparation.assertCurrent;
-          if (startupPrepared) return;
-          yield* startup.setStage("recovery_preparation");
-          yield* runStartupProviderStepWithRetry(
-            "Startup state-queue boundary seed",
-            seedLatestLocalBlockBoundaryOnStartup,
-            startupProviderRetry,
-          ).pipe(
-            Effect.tapError(
-              logStartupFailure("Startup state-queue boundary seed failed"),
-            ),
-            Effect.mapError(
-              (e) =>
-                new DatabaseInitializationError({
-                  message: "Startup state-queue boundary seed failed",
-                  cause: e,
-                }),
-            ),
-          );
-          yield* restoreRetainedStatePins.pipe(
-            Effect.mapError(
-              (cause) =>
-                new DatabaseInitializationError({
-                  message: "Startup retained script material recovery failed",
-                  cause,
-                }),
-            ),
-          );
-          yield* hydratePendingBlockFinalizationOnStartup;
-          yield* releaseStateQueueLeasesOfPreviousNodeProcess;
-          yield* releaseLedgerStoreLeaseOfPreviousNodeProcess;
-          yield* assertStartupMutationJobsRecoverable;
-          yield* runStartupProviderStepWithRetry(
-            "Startup tx-order catch-up",
-            fetchAndInsertTxOrderUTxOs,
-            startupProviderRetry,
-          ).pipe(
-            Effect.tapError(
-              logStartupFailure("Startup tx-order catch-up failed"),
-            ),
-            Effect.mapError(
-              (e) =>
-                new DatabaseInitializationError({
-                  message: "Startup tx-order catch-up failed",
-                  cause: e,
-                }),
-            ),
-          );
-          yield* backfillMissingDaPayloadsFromFinalizedJournals({
-            limit: 100,
-          }).pipe(
-            Effect.tap((summary) =>
-              summary.scanned === 0
-                ? Effect.void
-                : Effect.logInfo(
-                    `Startup DA payload backfill scanned=${summary.scanned.toString()},backfilled=${summary.backfilled.length.toString()},skipped=${summary.skipped.length.toString()}`,
-                  ),
-            ),
-            Effect.catchAll((error) =>
-              Effect.logWarning(
-                `Startup DA payload backfill skipped after error: ${formatUnknownError(error)}`,
-              ),
-            ),
-          );
-          // Source advancement may supersede preparation after resource creation.
-          // Keep the existing owner for the next attempt instead of reopening Level.
-          if ((yield* Ref.get(globals.NATIVE_MPF_OWNER)) === undefined) {
-            yield* initializeArchitectureGOwner(
-              globals,
-              nodeConfig,
-              preparation,
-            ).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new DatabaseInitializationError({
-                    message: "Architecture G native owner startup failed",
-                    cause,
-                  }),
-              ),
-            );
-          }
-          yield* preparation.assertCurrent;
-          startupPrepared = true;
-        }),
-    }).pipe(
-      // A predecessor killed without releasing its history lease is waited
-      // out, not treated as a live owner; a lease still renewed past one
-      // duration plus the margin is one, and startup fails as before.
-      Effect.provideService(PredecessorLeaseWait, {
-        marginMs: 10_000,
-        pollIntervalMs: 2_000,
-      }),
-      Effect.mapError(
-        (cause) =>
-          new DatabaseInitializationError({
-            message: "Authenticated history owner startup failed",
-            cause,
-          }),
-      ),
+    // One journal for the node process, opened once its database is: its
+    // refusals are `/readyz` holds.
+    const intentJournal = yield* makeIntentJournal;
+    // The L1 follower (N1): its driver writes the event rows, and its first
+    // recompute runs the startup preparation, starts the native MPF owner
+    // and recomputes the node's derived state from the follower's view.
+    yield* startL1Follower({
+      startupPreparation: prepareNodeOnStartup,
+      writerLease: instanceLock.followerWriterLease,
+    }).pipe(Effect.provideService(IntentJournal, intentJournal));
+    // Startup recovery seeds the commit base from the landed state queue
+    // (P1, N2): wait, unready, until the follower is at the tip and P1 is
+    // healthy there. A transient database failure is ridden out within
+    // `STARTUP_DATABASE_BUDGET`; past it, or on any other read failure,
+    // startup fails by step and reason.
+    yield* startup.setStage("l1_follower_catch_up");
+    yield* awaitLandedStateQueueOnStartup((reasons) =>
+      startup.setStage("l1_follower_catch_up", reasons),
     );
-    yield* Ref.set(globals.EVENT_HISTORY_OWNER, historyOwner);
-    yield* startup.setStage("history_sync");
-    yield* historyOwner.awaitReady.pipe(
-      Effect.mapError(
-        (cause) =>
-          new DatabaseInitializationError({
-            message: "Authenticated history owner did not become ready",
-            cause,
-          }),
-      ),
+    // Then until the driver published its first view: what holds it is
+    // named. A driver failure that is not transient fails startup at once;
+    // a transient one held past `STARTUP_DATABASE_BUDGET` fails it too.
+    yield* startup.setStage("follower_view_apply");
+    yield* awaitFollowerViewOnStartup((reasons) =>
+      startup.setStage("follower_view_apply", reasons),
     );
 
     if (
@@ -315,6 +231,7 @@ export const runNode = (
       );
       yield* Effect.forkDaemon(
         Genesis.program.pipe(
+          Effect.provideService(IntentJournal, intentJournal),
           Effect.tapErrorCause((cause) =>
             Effect.logError(
               `Startup genesis program failed: ${Cause.pretty(cause)}`,
@@ -329,7 +246,7 @@ export const runNode = (
       );
     }
 
-    yield* refreshAdmissionBacklogGauge;
+    yield* refreshAdmissionBacklogGaugeOnStartup(refreshAdmissionBacklogGauge);
 
     const sql = yield* SqlClient.SqlClient;
     const retrieveRetainedDaPayload = (headerHash: Buffer) =>
@@ -346,29 +263,27 @@ export const runNode = (
       .publish(buildListenRouter(withMonitoring))
       .pipe(Effect.provide(admissionAsDefaultSqlLayer));
 
-    // Membership starts with the node's other fibers; no duty waits on its
-    // first check. Authenticated removal holds the operator duties through
-    // `HaltSource.operatorMembership`; confirmed removal ends the process.
+    // Membership comes from the follower's operator-set hook; no duty waits
+    // on its first run. A removed operator's duties are held through
+    // `HaltSource.operatorMembership` and the process stays up (§7.5 R7).
     const program = publishHttp.pipe(
       Effect.zipRight(
-        untilOperatorRemoved(
-          Effect.all(
-            runNodeFiberSet({
-              nodeConfig,
-              withMonitoring,
-              startupFibers: {
-                historyOwnerStopped: historyOwner.awaitStopped,
-                retainedPayloadServer: retainedPayloadServerThread(
-                  retrieveRetainedDaPayload,
-                ),
-              },
-            }),
-            {
-              concurrency: "unbounded",
+        Effect.all(
+          runNodeFiberSet({
+            nodeConfig,
+            withMonitoring,
+            startupFibers: {
+              retainedPayloadServer: retainedPayloadServerThread(
+                retrieveRetainedDaPayload,
+              ),
             },
-          ),
+          }),
+          {
+            concurrency: "unbounded",
+          },
         ),
       ),
+      Effect.provideService(IntentJournal, intentJournal),
     );
 
     if (withMonitoring) {

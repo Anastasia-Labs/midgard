@@ -96,7 +96,7 @@ const fixture = (
     headerHash,
     lucid: {} as never,
     signer: {} as never,
-    source: {} as never,
+    l1Source: {} as never,
     stateQueueMutationLeaseCoordinator: {} as never,
   } satisfies FamilyCommonInfrastructure;
   const invocation: FamilyApplicationInvocation = {
@@ -161,10 +161,6 @@ describe("shared family application loop", () => {
 
   it.each([
     ["replayContext", { replayContext: { sentinel: "replay" } }],
-    [
-      "historicalNativeScriptAuthority",
-      { historicalNativeScriptAuthority: { sentinel: "authority" } },
-    ],
   ] as const)(
     "refuses a record requiring %s when the host omits it and binds it when supplied",
     async (requirement, supplied) => {

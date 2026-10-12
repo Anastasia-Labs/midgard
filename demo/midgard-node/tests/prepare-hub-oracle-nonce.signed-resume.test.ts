@@ -2,6 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  L1SubmitRejectedError,
+  L1TxStatusUnknownError,
+} from "@al-ft/midgard-l1-follower/provider";
 import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -13,11 +17,13 @@ import {
 import {
   SignedNonceConflictError,
   SignedNonceRejectedError,
+  SignedNonceStatusUnknownError,
 } from "../src/commands/prepare-hub-oracle-nonce.resume-signed.js";
 import { hubOracleNonceRunStateHooks } from "../src/commands/prepare-hub-oracle-nonce.run-state-hooks.js";
 import { loadDeploymentRunState } from "../src/e2e/run-state.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/transactions/utils.js", async (importOriginal) => ({
@@ -67,11 +73,12 @@ const fakeLucid = ({
   const submitTx = vi.fn(async (cbor: string) => cbor);
   const lucid = {
     config: () => ({ provider: { submitTx } }),
-    transactionStatus: vi.fn(async (hash: string) => ({
-      status: statuses.length > 1 ? statuses.shift()! : statuses[0]!,
-      txHash: hash,
-      confirmation: { txHash: hash },
-    })),
+    transactionStatus: vi.fn(async (hash: string) => {
+      const status = statuses.length > 1 ? statuses.shift()! : statuses[0]!;
+      // The node ledger's answer for a tx it cannot place (every output spent).
+      if (status === "unknown") throw new L1TxStatusUnknownError(hash);
+      return { status, txHash: hash, confirmation: { txHash: hash } };
+    }),
     utxosByOutRef: vi.fn(async () => (inputsLive ? [INPUT as UTxO] : [])),
     awaitTxConfirmation: vi.fn(async (hash: string) => ({ txHash: hash })),
     utxosAt: vi.fn(async () => [
@@ -112,7 +119,12 @@ describe("hub-oracle nonce signed before submission", () => {
           BeforeSignedTransactionSubmission,
         );
         if (Option.isSome(intent))
-          yield* intent.value.persist({ txHash: "aa", signedTxCbor: "84a0" });
+          yield* intent.value.persist({
+            txHash: "aa",
+            signedTxCbor: "84a0",
+            // An unjournaled (no_follower) submission: nothing to insert.
+            journal: Effect.void,
+          });
         order.push("submit");
         return { txHash: "aa", signedTxCbor: "84a0", walletAddress: ADDRESS };
       }),
@@ -131,7 +143,7 @@ describe("hub-oracle nonce signed before submission", () => {
       switchToOperatorsMainWallet: Effect.void,
     };
     const run = (beforeSubmission: () => Effect.Effect<void, unknown>) =>
-      Effect.runPromise(
+      runWithoutFollower(
         prepareHubOracleOneShotNonceProgram(5_000_000n, {
           outputLookupTimeoutMs: 0,
           beforeSubmission: (attempt) => {
@@ -163,7 +175,8 @@ describe("hub-oracle nonce signed before submission", () => {
         const intent = yield* Effect.serviceOption(
           BeforeSignedTransactionSubmission,
         );
-        if (Option.isSome(intent)) yield* intent.value.persist(signed);
+        if (Option.isSome(intent))
+          yield* intent.value.persist({ ...signed, journal: Effect.void });
         const state = yield* Effect.promise(() =>
           loadDeploymentRunState(runStatePath),
         );
@@ -184,7 +197,7 @@ describe("hub-oracle nonce signed before submission", () => {
       switchToOperatorsMainWallet: Effect.void,
     };
     await expect(
-      Effect.runPromise(
+      runWithoutFollower(
         prepareHubOracleOneShotNonceProgram(5_000_000n, {
           ...hubOracleNonceRunStateHooks(
             { runStatePath, freshRedeploy: false },
@@ -255,6 +268,65 @@ describe("hub-oracle nonce signed before submission", () => {
     expect(chain.lucid.awaitTxConfirmation).not.toHaveBeenCalled();
   });
 
+  // Under `--l1 node` the local node refuses with the ledger's own bytes
+  // (cardano-node 11.1.0 refusals from devnet runs, except the fee one).
+  const nodeRejection = (hex: string) =>
+    new L1SubmitRejectedError("cd".repeat(32), Buffer.from(hex, "hex"));
+
+  it("stops at once when the local node's ledger rejects the recorded bytes", async () => {
+    const signed = signedNonceTx();
+    const chain = fakeLucid({ statuses: ["not_found"], inputsLive: true });
+    chain.submitTx.mockRejectedValueOnce(
+      nodeRejection("818206818201820083050201"),
+    );
+    const error = await Effect.runPromise(
+      Effect.flip(reconcileProgram(chain.service, signed)),
+    );
+    expect(error).toBeInstanceOf(SignedNonceRejectedError);
+    expect(String(error)).toContain("FeeTooSmallUTxO required 2, supplied 1");
+  });
+
+  it.each([
+    [
+      "the local node's mempool already holds them",
+      nodeRejection(
+        "8182068182077844416c6c20696e7075747320617265207370656e742e205472616e73616374696f6e206861732070726f6261626c7920616c7265616479206265656e20696e636c75646564",
+      ),
+    ],
+    [
+      "Ogmios's mempool already holds them (3997)",
+      ogmiosError(
+        3997,
+        "All inputs are spent. Transaction has probably already been included",
+        undefined,
+      ),
+    ],
+    [
+      "the local node's ledger finds an input spent",
+      nodeRejection(
+        "81820684820182008201d90102818258205aabeb87fda9424f6be6669f1d9b15f3f519b5143109356ce085398d3a2253cd008201820083061b000046e71af4b3cd821b000046e71b086e95a1581c50bcd6fdccb571a0c90e63a0dc9c81c19dc4d3794b5e2ba12c6ce436a1514d4944474152445f5343484544554c4552018201831282815820b78fcf7fc71b5e46a01235ec40d98c0dbc6b4e0871f03771cc8bc2aebece0b9c81582053649b6e51217dcf0f698622efe62fbd4c46f3b649c4101f017cf2a2acbc89de81581d81840000d8799f0000d87a9f020103ffff821a00053c8c1a06fe8bbba08201820f81820000",
+      ),
+    ],
+    [
+      "the local node's ledger has not reached their lower bound",
+      nodeRejection("81820681820182008302828119fb688019fb55"),
+    ],
+  ])(
+    "keeps waiting, never rejected, when resent bytes are refused because %s",
+    async (_name, refusal) => {
+      const signed = signedNonceTx();
+      const chain = fakeLucid({
+        statuses: ["not_found"],
+        inputsLive: true,
+        txHash: signed.txHash,
+      });
+      chain.submitTx.mockRejectedValueOnce(refusal);
+      await expect(reconcile(chain.service, signed)).resolves.toMatchObject({
+        outRef: `${signed.txHash}#0`,
+      });
+    },
+  );
+
   it("keeps waiting when the ledger reports the recorded inputs already consumed", async () => {
     const signed = signedNonceTx();
     const chain = fakeLucid({
@@ -287,6 +359,54 @@ describe("hub-oracle nonce signed before submission", () => {
     expect(String(error)).toContain(signed.txHash);
     expect(chain.submitTx).not.toHaveBeenCalled();
     expect(chain.lucid.awaitTxConfirmation).not.toHaveBeenCalled();
+  });
+
+  it("refuses as retryable, never as a conflict, when the access cannot tell whether it landed", async () => {
+    const signed = signedNonceTx();
+    const chain = fakeLucid({ statuses: ["unknown"], inputsLive: false });
+    const error = await Effect.runPromise(
+      Effect.flip(reconcileProgram(chain.service, signed)),
+    );
+    expect(error).toBeInstanceOf(SignedNonceStatusUnknownError);
+    expect(error).not.toBeInstanceOf(SignedNonceConflictError);
+    expect(error).toMatchObject({
+      reason: "signed_nonce_status_unknown",
+      retryable: true,
+    });
+    expect(String(error)).toContain(signed.txHash);
+    expect(String(error)).toContain("--l1 kupmios");
+    expect(String(error)).toContain("do not pass --fresh-redeploy");
+    expect(String(error)).not.toContain("can never land");
+    expect(chain.submitTx).not.toHaveBeenCalled();
+    expect(chain.lucid.awaitTxConfirmation).not.toHaveBeenCalled();
+  });
+
+  it("refuses as unknown, not rejected, when a definite rejection meets an unknown status", async () => {
+    const signed = signedNonceTx();
+    const chain = fakeLucid({ statuses: ["unknown"], inputsLive: true });
+    chain.submitTx.mockRejectedValueOnce(
+      ogmiosError(3122, "Insufficient fee", {
+        minimumRequiredFee: { ada: { lovelace: 250_000 } },
+      }),
+    );
+    const error = await Effect.runPromise(
+      Effect.flip(reconcileProgram(chain.service, signed)),
+    );
+    expect(error).toBeInstanceOf(SignedNonceStatusUnknownError);
+    expect(String(error)).not.toContain("--fresh-redeploy <reason>");
+  });
+
+  it("resubmits the recorded bytes on an unknown status while its inputs are unspent", async () => {
+    const signed = signedNonceTx();
+    const chain = fakeLucid({
+      statuses: ["unknown"],
+      inputsLive: true,
+      txHash: signed.txHash,
+    });
+    await expect(reconcile(chain.service, signed)).resolves.toMatchObject({
+      outRef: `${signed.txHash}#0`,
+    });
+    expect(chain.submitTx).toHaveBeenCalledExactlyOnceWith(signed.signedTxCbor);
   });
 
   it("treats inputs spent by the recorded transaction itself as landed", async () => {

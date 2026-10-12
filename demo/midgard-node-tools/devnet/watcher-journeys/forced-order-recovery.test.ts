@@ -49,19 +49,6 @@ const observation = (
   signedTransactionCborHex: attempt.signedCbor,
   status,
   reason: `authenticated ${status}`,
-  canonicalPoint: {
-    pointId: "aa".repeat(32),
-    blockHash: "aa".repeat(32),
-    blockNo: "100",
-    slot: "1000",
-  },
-  releaseFinalPoint: {
-    pointId: "bb".repeat(32),
-    blockHash: "bb".repeat(32),
-    blockNo: "70",
-    slot: "700",
-  },
-  inputs: [],
 });
 const fixture = async (confirmed = false) => {
   const directory = await mkdtemp(join(tmpdir(), "forced-order-recovery-"));
@@ -98,7 +85,6 @@ const fixture = async (confirmed = false) => {
     address,
     assets: { lovelace: 50_000_000n },
   };
-  const refresh = vi.fn(async () => [funding]);
   const override = vi.fn();
   const fresh = signed(1500);
   const build = vi
@@ -145,7 +131,6 @@ const fixture = async (confirmed = false) => {
             address: async () => address,
             getUtxos: async () => [funding],
           }),
-          utxosAt: refresh,
           overrideUTxOs: override,
         },
         contracts: {},
@@ -165,7 +150,7 @@ const fixture = async (confirmed = false) => {
     fresh,
     saved,
     build,
-    refresh,
+    override,
     readRecovery,
     submit,
     delaySlots,
@@ -184,7 +169,7 @@ it.each(["expired", "invalidated"] as const)(
       publishJourneyForcedOrder(f.input, Buffer.from("80", "hex")),
     ).resolves.toEqual({ transactionId: f.fresh.txHash, outputIndex: 0n });
     expect(f.build).toHaveBeenCalledOnce();
-    expect(f.refresh).toHaveBeenCalledTimes(2);
+    expect(f.override).not.toHaveBeenCalled();
     expect(f.submit).toHaveBeenCalledExactlyOnceWith(f.fresh.signedCbor);
     expect(await readJourneyArtifact(f.path)).toMatchObject({
       ...f.fresh,
@@ -194,7 +179,7 @@ it.each(["expired", "invalidated"] as const)(
   },
 );
 
-it.each(["pending", "unknown"] as const)(
+it.each(["pending"] as const)(
   "retains %s bytes without constructing another order",
   async (status) => {
     const f = await fixture();

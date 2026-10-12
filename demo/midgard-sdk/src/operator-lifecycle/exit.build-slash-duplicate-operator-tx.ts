@@ -3,6 +3,7 @@ import {
   type LucidEvolution,
   type TxBuilder,
   type TxSignBuilder,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -35,6 +36,7 @@ import {
   planExactFee,
   type RedeemerContext,
   redeemerEncoder,
+  requireExplicitWalletInputs,
   safeTimeNumber,
 } from "./exit.complete-in-two-passes.js";
 import {
@@ -68,6 +70,12 @@ export type SlashDuplicateOperatorTxConfig =
      * pinned fee with `planExactFeeBalance` and pass the plan here.
      */
     readonly exactFeePlan?: ExactFeeBalancePlan;
+    /**
+     * The submitter's coins, as the caller's view holds them. When given, the
+     * pinned-fee balance and its collateral use exactly these and the
+     * provider is never read.
+     */
+    readonly walletInputs?: readonly UTxO[];
     readonly validFrom?: bigint;
     readonly validTo?: bigint;
   };
@@ -245,11 +253,16 @@ export const buildUnsignedSlashDuplicateOperatorTxProgram = (
   config: SlashDuplicateOperatorTxConfig,
 ): Effect.Effect<SlashDuplicateOperatorTxResult, OperatorExitError> =>
   Effect.gen(function* () {
+    yield* requireExplicitWalletInputs(
+      config.walletInputs,
+      "a duplicate-operator slashing",
+    );
     const plan =
       config.exactFeePlan ??
       (yield* planExactFee({
         lucid: config.lucid,
         label: "Duplicate-operator slashing",
+        walletInputs: config.walletInputs,
         feeLovelace: config.slashingPenaltyLovelace,
         scriptInputs: [
           config.registeredAnchor.utxo,

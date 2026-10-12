@@ -44,13 +44,11 @@ export type CanonicalDepositAddressData = Readonly<{
         Inline: readonly [CanonicalDepositAddressCredential];
       }>
     | Readonly<{
-        Pointer: readonly [
-          Readonly<{
-            slotNumber: bigint;
-            transactionIndex: bigint;
-            certificateIndex: bigint;
-          }>,
-        ];
+        Pointer: Readonly<{
+          slotNumber: bigint;
+          transactionIndex: bigint;
+          certificateIndex: bigint;
+        }>;
       }>
     | null;
 }>;
@@ -73,6 +71,20 @@ const depositNetwork = (
     return configuredNetwork === "Mainnet" ? "Preprod" : configuredNetwork;
   }
   throw new Error("unsupported committed deposit L2 network id");
+};
+
+// Admission accepts only addresses the L2 projection maps: a stake credential
+// that is absent or inline.
+const depositStakeCredential = (
+  stakeCredential: CanonicalDepositAddressData["stakeCredential"],
+): Credential | undefined => {
+  if (stakeCredential === null) {
+    return undefined;
+  }
+  if ("Inline" in stakeCredential) {
+    return lucidCredential(stakeCredential.Inline[0]);
+  }
+  throw new Error("unsupported committed deposit L2 stake credential");
 };
 
 const projectedOriginalDepositValue = (
@@ -210,16 +222,10 @@ export const deriveCanonicalOriginalDepositTransitionEffect = (input: {
   readonly originalAssets: Readonly<Record<string, bigint>>;
 }): CanonicalTransitionEffect => {
   const network = depositNetwork(input.configuredNetwork, input.l2NetworkId);
-  const stakeCredential =
-    input.l2Address.stakeCredential === null
-      ? undefined
-      : "Inline" in input.l2Address.stakeCredential
-        ? lucidCredential(input.l2Address.stakeCredential.Inline[0])
-        : undefined;
   const addressText = credentialToAddress(
     network,
     lucidCredential(input.l2Address.paymentCredential),
-    stakeCredential,
+    depositStakeCredential(input.l2Address.stakeCredential),
   );
   const outputCbor = encodeMidgardTxOutput({
     address: midgardAddressFromText(addressText),

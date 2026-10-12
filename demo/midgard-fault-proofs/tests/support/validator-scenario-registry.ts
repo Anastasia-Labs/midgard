@@ -25,16 +25,7 @@ import "./validator-scenario-registry.family-scenarios.js";
 import "./validator-scenario-registry.unmapped-validators.js";
 import "./validator-scenario-registry.unmapped-families.js";
 
-import { FAMILY_SCENARIOS as existingFamilyScenarios } from "./validator-scenario-registry.family-scenarios.js";
-import { VALIDATOR_SCENARIOS } from "./validator-scenario-registry.validator-scenarios.js";
-
-export const FAMILY_SCENARIOS = {
-  ...existingFamilyScenarios,
-  missingNativeScriptUtxo:
-    VALIDATOR_SCENARIOS[
-      "fraud_proofs/missing_native_script_utxo/step_05.main"
-    ]!,
-};
+export { FAMILY_SCENARIOS } from "./validator-scenario-registry.family-scenarios.js";
 export {
   UNMAPPED_FAMILIES,
   UNMAPPED_FAMILY_COUNT,

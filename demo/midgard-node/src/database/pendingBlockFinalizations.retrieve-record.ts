@@ -231,7 +231,7 @@ const retrieveNewestFinalizedWhere = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<RawRow>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.STATUS)} = ${Status.Finalized} AND ${filter(sql)}
+      WHERE ${sql(Columns.STATUS)} = ${Status.LocallyApplied} AND ${filter(sql)}
       ORDER BY ${sql(Columns.BLOCK_END_TIME)} DESC, ${sql(Columns.CREATED_AT)} DESC
       LIMIT 1`;
     return rows.length === 0
@@ -247,8 +247,8 @@ const retrieveNewestFinalizedWhere = (
 
 /**
  * This node's newest finalized block, by block window. It is not necessarily
- * the native committed point: a correction rewind or signed-header recovery
- * applied after it resets the native root to that recovery's target root,
+ * the native committed point: a correction rewind or landed-block rebase
+ * applied after it resets the native root to that move's target root,
  * which can be a foreign block's post-state rather than any journal's expected
  * root (see `recomputeCommittedTip`).
  */

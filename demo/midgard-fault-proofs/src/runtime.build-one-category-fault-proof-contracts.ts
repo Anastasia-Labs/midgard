@@ -1,7 +1,7 @@
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildCanonicalDecodabilityFaultProofContracts,
   buildCommittedFieldShapeFaultProofContracts,
-  buildCrossBlockDuplicateEventFaultProofContracts,
   buildDaHashPreimageFaultProofContracts,
   buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
@@ -22,8 +22,6 @@ import {
   buildMintAuthorizationFaultProofContracts,
   buildMintDeclaredAssetLimitFaultProofContracts,
   buildMintItemNonCanonicalFaultProofContracts,
-  buildMissingNativeScriptTxFaultProofContracts,
-  buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingRedeemerFaultProofContracts,
   buildMissingScriptSourceFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
@@ -66,6 +64,16 @@ import {
 import { type OneCategoryFaultProofContracts } from "./runtime.category-label.js";
 import { type SupportedFaultProofCategoryName } from "./runtime.require-fault-proof-step-reference-script.js";
 
+const requireL1SlotConfig = (
+  l1SlotConfig: L1SlotConfig | undefined,
+): L1SlotConfig => {
+  if (l1SlotConfig === undefined)
+    throw new Error(
+      "The validation-trace dispute chain requires the deployment's l1SlotConfig.",
+    );
+  return l1SlotConfig;
+};
+
 export const buildOneCategoryFaultProofContracts = async ({
   blueprint,
   network,
@@ -74,6 +82,7 @@ export const buildOneCategoryFaultProofContracts = async ({
   referenceScriptAuthPolicyId,
   categoryName,
   deploymentInfo,
+  l1SlotConfig,
 }: {
   readonly blueprint: ReturnType<typeof parseFaultProofBlueprint>;
   readonly network: Network;
@@ -82,6 +91,8 @@ export const buildOneCategoryFaultProofContracts = async ({
   readonly referenceScriptAuthPolicyId: string;
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly categoryName: SupportedFaultProofCategoryName;
+  /** Required to derive the validation-trace dispute chain. */
+  readonly l1SlotConfig?: L1SlotConfig;
 }): Promise<OneCategoryFaultProofContracts> => {
   const params = {
     blueprint,
@@ -121,7 +132,10 @@ export const buildOneCategoryFaultProofContracts = async ({
       return await Effect.runPromise(buildZeroInputFaultProofContracts(params));
     case "validationTraceDispute":
       return await Effect.runPromise(
-        buildValidationTraceDisputeFaultProofContracts(params),
+        buildValidationTraceDisputeFaultProofContracts({
+          ...params,
+          l1SlotConfig: requireL1SlotConfig(l1SlotConfig),
+        }),
       );
     case "daHashPreimage":
       return await Effect.runPromise(
@@ -167,10 +181,6 @@ export const buildOneCategoryFaultProofContracts = async ({
       return await Effect.runPromise(
         buildMissingSignatureFaultProofContracts(params),
       );
-    case "missingNativeScriptTx":
-      return await Effect.runPromise(
-        buildMissingNativeScriptTxFaultProofContracts(params),
-      );
     case "withdrawnReferenceInput":
       return await Effect.runPromise(
         buildWithdrawnReferenceInputFaultProofContracts(params),
@@ -192,10 +202,6 @@ export const buildOneCategoryFaultProofContracts = async ({
     case "doubleWithdraw":
       return await Effect.runPromise(
         buildDoubleWithdrawFaultProofContracts(params),
-      );
-    case "crossBlockDuplicateEvent":
-      return await Effect.runPromise(
-        buildCrossBlockDuplicateEventFaultProofContracts(params),
       );
     case "l2TxMistag":
       return await Effect.runPromise(
@@ -219,10 +225,6 @@ export const buildOneCategoryFaultProofContracts = async ({
       );
     case "networkId":
       return await Effect.runPromise(buildNetworkIdFaultProofContracts(params));
-    case "missingNativeScriptUtxo":
-      return await Effect.runPromise(
-        buildMissingNativeScriptUtxoFaultProofContracts(params),
-      );
     case "nativeScriptInvalid":
       return await Effect.runPromise(
         buildNativeScriptInvalidFaultProofContracts(params),

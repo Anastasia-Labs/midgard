@@ -59,4 +59,4 @@ carriage-exec-ledger-v1:
 validation-one-step-cross-language:
 	cd demo/midgard-validation && pnpm run build
 	cd demo/midgard-validation && node scripts/generate-validation-one-step-aiken-fixture.mjs
-	cd onchain/aiken && aiken check -m 'midgard/validation_one_step_cross_language.{..}' -e
+	cd onchain/aiken && node scripts/guard-focused-selector.mjs midgard/validation_one_step_cross_language

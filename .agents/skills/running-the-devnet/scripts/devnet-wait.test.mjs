@@ -80,11 +80,11 @@ test("ready after a slow start: 503 twice, then 200", async () => {
 test("timed out: the service answers but never becomes ready", async () => {
   const url = await serve(() => [
     503,
-    { ready: false, reasons: ["history_owner_not_ready"] },
+    { ready: false, reasons: ["l1_follower_view_unapplied"] },
   ]);
   const { code, output } = await run(["--url", url, "--timeout", "0.5"]);
   assert.equal(code, 2, output);
-  assert.match(output, /history_owner_not_ready/);
+  assert.match(output, /l1_follower_view_unapplied/);
 });
 
 test("unreachable: a refused connection is exit 3, not a timeout", async () => {
@@ -144,7 +144,10 @@ test("crashed: a fatal line appended to --log is exit 1 with the tail", async ()
 test("a fatal line already in the log before the wait is not a new crash", async () => {
   const url = await serve(() => [200, { ready: true }]);
   const log = join(scratch, "old-crash.log");
-  writeFileSync(log, '{"event":"l1_view_unavailable_exit","exitCode":70}\n');
+  writeFileSync(
+    log,
+    "Startup protocol initialization failed: manifest mismatch\n",
+  );
   const { code, output } = await run(["--url", url, "--log", log]);
   assert.equal(code, 0, output);
 });
@@ -165,17 +168,52 @@ test("crashed: a --pid that has exited is exit 1", async () => {
   assert.match(output, /is not running/);
 });
 
-test("crashed: a quarantined DA committee L1 source is terminal", async () => {
+test("crashed: a DA committee held on an L1 follower intervention is terminal", async () => {
   const url = await serve(() => [
     503,
     {
       ready: false,
-      l1Source: { status: "quarantined", quarantineReason: "fork" },
+      l1Source: {
+        status: "intervention",
+        intervention: "rollback_beyond_k: fork",
+      },
     },
   ]);
   const { code, output } = await run(["--url", url, "--timeout", "5"]);
   assert.equal(code, 1, output);
-  assert.match(output, /quarantined: fork/);
+  assert.match(output, /intervention: rollback_beyond_k: fork/);
+});
+
+test("crashed: a process held on a failed startup is terminal", async () => {
+  const url = await serve(() => [
+    503,
+    {
+      ready: false,
+      reasons: ["startup_failed", "database_connection_failed"],
+      stage: "fatal",
+      failedStage: "runtime_services",
+      failedStep: "database",
+      failedReason: "database_connection_failed",
+    },
+  ]);
+  const { code, output } = await run(["--url", url, "--timeout", "5"]);
+  assert.equal(code, 1, output);
+  assert.match(
+    output,
+    /startup_failed: runtime_services database database_connection_failed/,
+  );
+  assert.equal(
+    classifyResponse(
+      503,
+      '{"ready":false,"reasons":["committee_startup_failed"],"detail":"bad origin"}',
+    ).state,
+    "terminal",
+  );
+  assert.equal(
+    classifyResponse(503, '{"ready":false,"reasons":["startup_incomplete"]}')
+      .state,
+    "not_ready",
+  );
 });
 
 // Negative self-tests: answers that look healthy at a glance must not pass.

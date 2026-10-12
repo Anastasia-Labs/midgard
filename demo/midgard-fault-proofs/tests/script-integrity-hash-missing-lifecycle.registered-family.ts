@@ -13,13 +13,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import {
-  advanceMissingNativeScriptTxGrammarCheckpoint,
-  decodeMissingNativeScriptTxGrammarCheckpoint,
-  encodeMissingNativeScriptTxGrammarCheckpoint,
-  initialMissingNativeScriptTxGrammarCheckpoint,
-} from "../src/missing-native-script-tx/staged-walk.js";
 import type { ScriptIntegrityHashMissingContracts } from "../src/script-integrity-hash-missing/contracts.js";
+import {
+  advanceFieldGrammarCheckpoint,
+  decodeFieldGrammarCheckpoint,
+  encodeFieldGrammarCheckpoint,
+  initialFieldGrammarCheckpoint,
+} from "../src/staged-field-walk/index.js";
 import { expectRegisteredChainParity } from "./support/emulator/registered-chain.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
@@ -28,7 +28,7 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 export const field8Checkpoint = (
-  checkpoint: ReturnType<typeof initialMissingNativeScriptTxGrammarCheckpoint>,
+  checkpoint: ReturnType<typeof initialFieldGrammarCheckpoint>,
 ) => ({ ...checkpoint, fieldIndex: 8 });
 
 export const advanceField8 = (
@@ -37,7 +37,7 @@ export const advanceField8 = (
   budget = 32,
 ) =>
   field8Checkpoint(
-    advanceMissingNativeScriptTxGrammarCheckpoint({
+    advanceFieldGrammarCheckpoint({
       checkpoint: { ...checkpoint, fieldIndex: 6 },
       items,
       budget,
@@ -47,7 +47,7 @@ export const advanceField8 = (
 export const encodeField8 = (
   checkpoint: ReturnType<typeof field8Checkpoint>,
 ): Buffer => {
-  const bytes = encodeMissingNativeScriptTxGrammarCheckpoint({
+  const bytes = encodeFieldGrammarCheckpoint({
     ...checkpoint,
     fieldIndex: 6,
   });
@@ -60,9 +60,7 @@ export const decodeField8 = (
 ): ReturnType<typeof field8Checkpoint> => {
   const canonicalField6Bytes = Buffer.from(bytes);
   canonicalField6Bytes[36] = 6;
-  return field8Checkpoint(
-    decodeMissingNativeScriptTxGrammarCheckpoint(canonicalField6Bytes),
-  );
+  return field8Checkpoint(decodeFieldGrammarCheckpoint(canonicalField6Bytes));
 };
 
 export const hashField8 = (

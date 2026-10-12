@@ -99,7 +99,7 @@ const fixture = () => {
     })),
   };
   const observe = vi
-    .spyOn(observations, "createFraudProofFamilyLocalKupmiosL1ObservationPort")
+    .spyOn(observations, "createFraudProofFamilyL1ObservationPort")
     .mockReturnValue(l1 as never);
   const decorate = vi.spyOn(carriage, "withFieldCarriagePrerequisite");
   const arm = {
@@ -166,7 +166,7 @@ const fixture = () => {
     headerHash,
     lucid: {} as never,
     signer: { address, paymentKeyHash: owner } as never,
-    source: {} as never,
+    l1Source: {} as never,
     referenceScripts: {
       steps: [references[0]!],
       witnesses: { computationThreadMint: references[1]! },

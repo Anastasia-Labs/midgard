@@ -1,4 +1,5 @@
 import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect, Either } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -98,6 +99,7 @@ describe("malformed field-6 native script the classifier does not name", () => {
     const trace = await Effect.runPromise(
       Effect.either(
         buildDeterministicValidationMachineTrace({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           eventKeyCbor: encodeCbor([2n, malformed.txId]),
           sourceKind: "normal",

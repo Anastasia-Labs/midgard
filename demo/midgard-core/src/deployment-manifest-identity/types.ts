@@ -12,6 +12,7 @@ import {
   type DeploymentProfile,
   SELECTED_DEPLOYMENT_PROFILE,
 } from ".././deployment-profile.js";
+import type { L1SlotConfig } from ".././l1-slot-config.js";
 import { type DeploymentManifestFraudProofCatalogueIdentity } from "./catalogue-roles.js";
 import {
   type DeploymentManifestEventHistoryRecipe,
@@ -29,9 +30,15 @@ export const DEPLOYMENT_MANIFEST_STEP_NAMES = Object.freeze([
   "operatorActivation",
 ] as const);
 
-/** The confirmation depth is per deployment profile, so it is typed as a number. */
+/**
+ * The confirmation depth and the commit-event depth are per deployment
+ * profile, so they are typed as numbers. An event is committed only below the
+ * commit anchor, `commitEventDepth` blocks under the view a commit is planned
+ * at.
+ */
 export type DeploymentManifestL1Finality = Readonly<{
   confirmationDepth: number;
+  commitEventDepth: number;
   automaticRecoveryMaxDepth: 2160;
   deepRollbackPolicy: "automated_rewind_replay_incident-v1";
 }>;
@@ -40,6 +47,8 @@ export const DEPLOYMENT_MANIFEST_L1_FINALITY: DeploymentManifestL1Finality =
   Object.freeze({
     confirmationDepth:
       SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth,
+    commitEventDepth:
+      SELECTED_DEPLOYMENT_PROFILE.l1_finality.commit_event_depth,
     automaticRecoveryMaxDepth: 2160,
     deepRollbackPolicy: "automated_rewind_replay_incident-v1",
   });
@@ -239,6 +248,13 @@ export type DeploymentManifest = {
   readonly deploymentProfile: DeploymentProfile;
   readonly deploymentProfileDigest: string;
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
+  /**
+   * The L1 slot-to-time mapping applied to the transaction-info validator
+   * and required of every role that builds script contexts. A named network
+   * carries Lucid's static mapping; a Custom network anchors slot 0 at its
+   * Shelley genesis start.
+   */
+  readonly l1SlotConfig: L1SlotConfig;
 };
 
 export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
@@ -265,6 +281,7 @@ export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
   "deploymentProfile",
   "deploymentProfileDigest",
   "availabilityChallenge",
+  "l1SlotConfig",
 ] as const);
 
 export type DeploymentManifestJsonValue =

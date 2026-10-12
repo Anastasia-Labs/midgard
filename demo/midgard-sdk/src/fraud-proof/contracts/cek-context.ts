@@ -1,4 +1,8 @@
-import { type Data, type Network } from "@lucid-evolution/lucid";
+import {
+  type L1SlotConfig,
+  parseL1SlotConfig,
+} from "@al-ft/midgard-core/l1-slot-config";
+import { Constr, type Data, type Network } from "@lucid-evolution/lucid";
 
 import {
   applyBlueprintParams,
@@ -69,6 +73,20 @@ export const CEK_CONTEXT_STAGE_TITLES = {
     "fraud_proofs/validation_trace/cek_context_item_data_finish_value.main.spend",
 } as const;
 
+/**
+ * The `script_context_v1.L1SlotConfigV1` deployment parameter of the txInfo
+ * stage: the deployment's L1 slot mapping, `Constr 0 [zeroTime, zeroSlot,
+ * slotLength]`. On-chain code trusts it, so its domain is checked here.
+ */
+export const l1SlotConfigParameterData = (config: L1SlotConfig): Data => {
+  const parsed = parseL1SlotConfig(config);
+  return new Constr(0, [
+    BigInt(parsed.zeroTime),
+    BigInt(parsed.zeroSlot),
+    BigInt(parsed.slotLength),
+  ]);
+};
+
 /** Build the fixed return before the shared item executors and their entry. */
 export const buildCekContextTail = (
   blueprint: FaultProofBlueprint,
@@ -76,6 +94,7 @@ export const buildCekContextTail = (
   awardHash: string,
   ctPolicy: string,
   fieldPreimagePolicy: string,
+  l1SlotConfig: L1SlotConfig,
 ) => {
   const build = (key: keyof typeof CEK_CONTEXT_STAGE_TITLES, params: Data[]) =>
     makeSpendingValidator(
@@ -98,7 +117,13 @@ export const buildCekContextTail = (
   const mintInit = terminal("mintInit");
   const mintItem = terminal("mintItem");
   const assemble = terminal("assemble");
-  const txInfo = terminal("txInfo");
+  // The txInfo stage maps the body's slot interval to the POSIX validity
+  // range a script sees, so it alone carries the deployment's slot mapping.
+  const txInfo = build("txInfo", [
+    settle.spendingScriptHash,
+    ctPolicy,
+    l1SlotConfigParameterData(l1SlotConfig),
+  ]);
   const seed = terminal("seed");
   const finalizeSpend = terminal("finalizeSpend");
   const finalizeMint = terminal("finalizeMint");

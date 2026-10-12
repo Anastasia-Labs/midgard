@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { depth, isFinal } from "@al-ft/midgard-l1-follower";
+
 import type { PromiseCapacityPoint } from "../availability/promise-capacity-evidence.js";
 import type { StateQueueHeaderRecord } from "../domain.js";
 import type { StoreData } from "../store.committee-store.js";
@@ -91,28 +93,6 @@ export const assertRetirementWrite = (
   if (!floor) return;
   if (floor.breach || after.retirementFloor?.digest !== floor.digest)
     throw new Error("Retirement floor is held or changed outside retirement");
-  if (after.chainCursor?.status === "quarantined") {
-    if (before.chainCursor?.status !== "healthy")
-      throw new Error("Retirement source remains quarantined");
-    for (const family of [
-      "stateQueueHeaders",
-      ...byHeaderFamilies,
-      "peerHealth",
-      "peerNonces",
-    ] as const)
-      if (
-        Object.keys(after[family]).some((k) => before[family][k] === undefined)
-      )
-        throw new Error("Quarantine cannot introduce a new retained liability");
-    if (
-      after.chainCursor.authoritySha256 !==
-        floor.binding.sourceAuthoritySha256 ||
-      retirementDigest(after.deployment) !== retirementDigest(before.deployment)
-    )
-      throw new Error("Quarantine changed retirement binding");
-    assertRetirementResources(after);
-    return;
-  }
   assertRetirementBinding(after, floor.binding);
   const check = (headerHash: string) => {
     const header = after.stateQueueHeaders[headerHash];
@@ -145,11 +125,6 @@ export const assertRetirementWrite = (
       check(row.headerHash);
       if (row.deploymentFingerprint !== floor.binding.deploymentFingerprint)
         throw new Error("Retirement write has a foreign deployment");
-      if (family === "daConflictEvidence")
-        check(
-          (row as StoreData["daConflictEvidence"][string])
-            .conflictingHeaderHash,
-        );
     }
   const prior = new Map(
     before.chainCursor?.observations.map((o) => [o.headerHash, o]),
@@ -186,53 +161,118 @@ export type RetirementVerifiedFacts = Readonly<{
   submittedTransactionPoints: ReadonlyMap<string, PromiseCapacityPoint>;
   /** Exact native selected-chain point and raw height for every old checkpoint. */
   canonicalPoints: ReadonlyMap<string, PromiseCapacityPoint>;
+  /** Stored points the follower no longer retains (keys as `retirementPointKey`). */
+  pointsBeyondRetention: ReadonlySet<string>;
+  /**
+   * Per header, the block on the selected chain carrying the transaction
+   * that put its node in the queue, re-derived from the follower. A
+   * signature is checked at it, never at its immutable stored point.
+   */
+  headerLandingPoints: ReadonlyMap<string, PromiseCapacityPoint>;
+  /** Headers whose landing read reached a block the follower no longer retains. */
+  landingsBeyondRetention: ReadonlySet<string>;
+  /** Submissions whose landing read reached a block the follower no longer retains. */
+  submissionsBeyondRetention: ReadonlySet<string>;
 }>;
+
+/**
+ * Why retirement stopped at a header otherwise past its retention: evidence
+ * the follower cannot give. The header keeps its record; every later one
+ * waits with it. A hold is degraded detail (`retention.holds` on `/readyz`),
+ * never a readiness failure, since no rule releases it.
+ */
+export type RetirementHoldCause =
+  | "submission_without_valid_landing" // its submission never validly landed
+  | "signature_point_not_canonical" // its signatures' landing left the chain
+  | "point_beyond_retention" // a point it needs is below the retained window
+  | "point_not_canonical"; // a stored point names a block the chain abandoned
+
+export type RetirementHold = Readonly<{
+  headerHash: string;
+  cause: RetirementHoldCause;
+  detail: string;
+}>;
+
+/** A hold as its named retention reason: the header and its cause. */
+export const COMMITTEE_RETIREMENT_HELD = "committee_retirement_held";
+
+export const retirementHoldReason = (hold: RetirementHold): string =>
+  `${COMMITTEE_RETIREMENT_HELD}: header ${hold.headerHash}: ${hold.cause}: ${hold.detail}`;
 export const retirementPointKey = (
   p: Pick<PromiseCapacityPoint, "slot" | "blockHash">,
 ): string => `${p.slot}:${p.blockHash}`;
-const requirePoint = (
-  point: { slot?: number; blockHash?: string; blockHeight?: number },
+type StoredPoint = { slot?: number; blockHash?: string; blockHeight?: number };
+/**
+ * The verified point for a stored point, or why the follower cannot give it
+ * (beyond its retention, or not on its chain). A point read at a different
+ * height, or above the boundary, is never a hold: it throws.
+ */
+const lookupPoint = (
+  point: StoredPoint,
   facts: RetirementVerifiedFacts,
-): PromiseCapacityPoint => {
+):
+  | Readonly<{ kind: "ok"; point: PromiseCapacityPoint }>
+  | Readonly<{
+      kind: "point_beyond_retention" | "point_not_canonical";
+      key: string;
+    }> => {
   if (point.slot === undefined || point.blockHash === undefined)
     throw new Error("Retirement checkpoint is unavailable");
-  const p = facts.canonicalPoints.get(
-    retirementPointKey({ slot: point.slot, blockHash: point.blockHash }),
-  );
+  const key = retirementPointKey({
+    slot: point.slot,
+    blockHash: point.blockHash,
+  });
+  const p = facts.canonicalPoints.get(key);
+  if (!p)
+    return facts.pointsBeyondRetention.has(key)
+      ? { kind: "point_beyond_retention", key }
+      : { kind: "point_not_canonical", key };
   if (
-    !p ||
     (point.blockHeight !== undefined && p.blockNo !== point.blockHeight) ||
     p.blockNo > facts.boundary.blockNo
   )
     throw new Error("Retirement checkpoint lacks exact same-boundary ancestry");
-  return p;
+  return { kind: "ok", point: p };
+};
+const requirePoint = (
+  point: StoredPoint,
+  facts: RetirementVerifiedFacts,
+): PromiseCapacityPoint => {
+  const found = lookupPoint(point, facts);
+  if (found.kind !== "ok")
+    throw new Error("Retirement checkpoint lacks exact same-boundary ancestry");
+  return found.point;
 };
 export type CommitteeRetirementPlan = Readonly<{
   floor: CommitteeRetirementFloor;
   headerHashes: readonly string[];
 }>;
+/**
+ * The retirement plan, or none; and the hold that stopped it at a header
+ * already past its retention, when the follower could not give that
+ * header's evidence. A header still pinned, unfinalized, inside its
+ * retention or shallower than recovery depth is waited on, not held.
+ */
 export const planRetirement = (
   data: StoreData,
   facts: RetirementVerifiedFacts,
   localPins: ReadonlySet<string>,
   inFlight: (effectId: string) => boolean,
-): CommitteeRetirementPlan | undefined => {
+): Readonly<{ plan?: CommitteeRetirementPlan; hold?: RetirementHold }> => {
   assertRetirementBinding(data, facts.binding);
   if (data.retirementFloor?.breach)
     throw new Error("Retirement floor was breached");
+  /** Whether `q` is final (deeper than k) at the boundary. */
+  const final = (q: PromiseCapacityPoint) =>
+    isFinal(depth(facts.boundary.blockNo, q.blockNo), {
+      securityParameter: facts.binding.recoveryDepth,
+    });
   const pins = new Set([
     ...facts.pinnedHeaderHashes,
     ...facts.financialHeaderHashes,
     ...localPins,
     ...finalityHeldHeaderHashes([], Object.values(data.stateQueueHeaders)),
   ]);
-  for (const q of data.chainCursor?.stateQueueReplayAnchor?.queue ?? [])
-    if (q.headerHash !== null) pins.add(q.headerHash);
-  for (const c of Object.values(data.daConflictEvidence))
-    if (pins.has(c.headerHash) || pins.has(c.conflictingHeaderHash)) {
-      pins.add(c.headerHash);
-      pins.add(c.conflictingHeaderHash);
-    }
   const groups = new Map<number, StateQueueHeaderRecord[]>();
   for (const header of Object.values(data.stateQueueHeaders)) {
     const end = authenticatedHeaderEnd(header);
@@ -242,6 +282,7 @@ export const planRetirement = (
   }
   const retired: string[] = [];
   const points: PromiseCapacityPoint[] = [];
+  let hold: RetirementHold | undefined;
   let end = data.retirementFloor?.headerEndTimeMs ?? -1;
   for (const [time, headers] of [...groups].sort(([a], [b]) => a - b)) {
     if (time <= end) throw new Error("Retired header was reintroduced");
@@ -249,6 +290,18 @@ export const planRetirement = (
     const cohortPoints: PromiseCapacityPoint[] = [];
     for (const header of headers) {
       const h = header.headerHash;
+      // A hold names this header only when nothing else keeps it: a
+      // header still waiting (unfinalized, in flight, shallow) is not held.
+      let headerHold: RetirementHold | undefined;
+      let waiting = false;
+      const holdOn = (cause: RetirementHoldCause, detail: string): void => {
+        headerHold ??= { headerHash: h, cause, detail };
+      };
+      const point = (stored: StoredPoint, what: string): void => {
+        const found = lookupPoint(stored, facts);
+        if (found.kind === "ok") cohortPoints.push(found.point);
+        else holdOn(found.kind, `${what} at ${found.key}`);
+      };
       if (
         pins.has(h) ||
         header.deploymentFingerprint !== facts.binding.deploymentFingerprint ||
@@ -261,7 +314,7 @@ export const planRetirement = (
         eligible = false;
         break;
       }
-      cohortPoints.push(requirePoint(header.observedChainPoint, facts));
+      point(header.observedChainPoint, "its observed chain point");
       for (const observation of data.chainCursor?.observations.filter(
         (o) => o.headerHash === h,
       ) ?? []) {
@@ -269,17 +322,27 @@ export const planRetirement = (
           !observation.finalized ||
           !["merged", "removed"].includes(observation.stateQueueStatus)
         ) {
-          eligible = false;
+          waiting = true;
           break;
         }
-        cohortPoints.push(requirePoint(observation, facts));
-        for (const step of observation.authenticatedSteps ?? [])
-          cohortPoints.push(requirePoint(step, facts));
+        point(observation, "its L1 source observation");
       }
-      for (const signature of Object.values(data.daSignatures).filter(
-        (s) => s.headerHash === h,
-      ))
-        cohortPoints.push(requirePoint(signature.l1ChainPoint, facts));
+      // A signature's stored point is immutable; the header's landing on
+      // the selected chain is read again from the follower instead.
+      if (Object.values(data.daSignatures).some((s) => s.headerHash === h)) {
+        const landing = facts.headerLandingPoints.get(h);
+        if (landing) cohortPoints.push(landing);
+        else if (facts.landingsBeyondRetention.has(h))
+          holdOn(
+            "point_beyond_retention",
+            "its signatures' landing block is no longer retained",
+          );
+        else
+          holdOn(
+            "signature_point_not_canonical",
+            "the follower's chain carries no landing of it",
+          );
+      }
       for (const capacity of Object.values(data.promiseCapacityEvidence).filter(
         (c) => c.headerHash === h,
       )) {
@@ -291,23 +354,19 @@ export const planRetirement = (
           capacity.contractManifestId !== facts.binding.contractManifestId ||
           facts.canonicalTimeMs < capacity.cutoffTimeMs
         ) {
-          eligible = false;
+          waiting = true;
           break;
         }
-        cohortPoints.push(
-          requirePoint(
-            { ...capacity.point, blockHeight: capacity.point.blockNo },
-            facts,
-          ),
+        point(
+          { ...capacity.point, blockHeight: capacity.point.blockNo },
+          "its capacity evidence point",
         );
-        cohortPoints.push(
-          requirePoint(
-            {
-              ...capacity.certifiedAt,
-              blockHeight: capacity.certifiedAt.blockNo,
-            },
-            facts,
-          ),
+        point(
+          {
+            ...capacity.certifiedAt,
+            blockHeight: capacity.certifiedAt.blockNo,
+          },
+          "its capacity certification point",
         );
       }
       for (const effect of Object.values(data.decisionOutbox).filter(
@@ -315,47 +374,44 @@ export const planRetirement = (
       )) {
         if (
           inFlight(effect.effectId) ||
-          effect.quarantineReason ||
           (effect.effectKind === "l1_reconcile" &&
             effect.status !== "reconciled")
         ) {
-          eligible = false;
+          waiting = true;
           break;
         }
-        cohortPoints.push(requirePoint(effect, facts));
+        point(effect, `its decision effect ${effect.effectId}`);
       }
       for (const submission of Object.values(data.l1Submissions).filter(
         (s) => s.headerHash === h,
       )) {
         const p = facts.submittedTransactionPoints.get(submission.txHash);
-        if (!p) {
-          eligible = false;
-          break;
-        }
-        cohortPoints.push(p);
+        if (p) cohortPoints.push(p);
+        else if (facts.submissionsBeyondRetention.has(submission.txHash))
+          holdOn(
+            "point_beyond_retention",
+            `its submission ${submission.txHash} landed in a block no longer retained`,
+          );
+        else
+          holdOn(
+            "submission_without_valid_landing",
+            `its submission ${submission.txHash} has no valid landing on the follower's chain`,
+          );
       }
-      if (
-        cohortPoints.some(
-          (p) =>
-            facts.boundary.blockNo - p.blockNo <= facts.binding.recoveryDepth,
-        )
-      )
+      if (cohortPoints.some((q) => !final(q))) waiting = true;
+      if (headerHold !== undefined && !waiting) hold ??= headerHold;
+      if (waiting || headerHold !== undefined) {
         eligible = false;
-      if (!eligible) break;
+        break;
+      }
     }
     if (!eligible) break;
     retired.push(...headers.map((h) => h.headerHash));
     points.push(...cohortPoints);
     end = time;
   }
-  if (!retired.length) return undefined;
-  const retiredSet = new Set(retired);
-  for (const conflict of Object.values(data.daConflictEvidence))
-    if (
-      retiredSet.has(conflict.headerHash) !==
-      retiredSet.has(conflict.conflictingHeaderHash)
-    )
-      return undefined;
+  const held = hold === undefined ? {} : { hold };
+  if (!retired.length) return held;
   if (data.retirementFloor?.point)
     points.push(
       requirePoint(
@@ -367,29 +423,29 @@ export const planRetirement = (
       ),
     );
   const p = facts.horizonPoint;
-  if (
-    facts.boundary.blockNo - p.blockNo <= facts.binding.recoveryDepth ||
-    points.some((q) => q.blockNo > p.blockNo || q.slot > p.slot)
-  )
+  if (!final(p) || points.some((q) => q.blockNo > p.blockNo || q.slot > p.slot))
     throw new Error(
       "Retirement horizon point does not cover every removed checkpoint",
     );
   if (points.some((q) => q.blockNo === p.blockNo && !sameRetirementPoint(q, p)))
     throw new Error("Retirement points disagree at the same native height");
   return {
-    headerHashes: Object.freeze(retired.sort()),
-    floor: makeRetirementFloor({
-      schemaVersion: 1,
-      binding: facts.binding,
-      generation: (data.retirementFloor?.generation ?? 0) + 1,
-      headerEndTimeMs: end,
-      point: p,
-      certifiedAt: facts.boundary,
-      nonceTimeFloorMs: Math.max(
-        data.retirementFloor?.nonceTimeFloorMs ?? 0,
-        facts.horizonTimeMs - 300000,
-      ),
-    }),
+    ...held,
+    plan: {
+      headerHashes: Object.freeze(retired.sort()),
+      floor: makeRetirementFloor({
+        schemaVersion: 1,
+        binding: facts.binding,
+        generation: (data.retirementFloor?.generation ?? 0) + 1,
+        headerEndTimeMs: end,
+        point: p,
+        certifiedAt: facts.boundary,
+        nonceTimeFloorMs: Math.max(
+          data.retirementFloor?.nonceTimeFloorMs ?? 0,
+          facts.horizonTimeMs - 300000,
+        ),
+      }),
+    },
   };
 };
 export const applyRetirementPlan = (

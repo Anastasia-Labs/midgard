@@ -11,7 +11,7 @@ import {
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import { type LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowTerminalVerifier,
@@ -39,7 +39,7 @@ export type ManifestBoundNetworkIdWorkflowConfig = Omit<
   readonly blueprintJson: string;
   readonly deploymentInfo: unknown;
   readonly headerHash: string;
-  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  readonly l1Source: FraudProofL1Source;
   readonly removal: Omit<
     NetworkIdRemovalConfig,
     | "deploymentInfo"

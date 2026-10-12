@@ -423,14 +423,12 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         forcedSigner: invalidSignature,
         forcedWitness: invalidSignature,
       },
-      missingNativeScriptTx: repeatedFaultProofChain(zeroInput, 8),
       withdrawnReferenceInput: repeatedFaultProofChain(referenceInputNoIdx, 3),
       canonicalDecodability: repeatedFaultProofChain(zeroInput, 2),
       committedFieldShape: repeatedFaultProofChain(zeroInput, 2),
       minFee: repeatedFaultProofChain(invalidRange, 2),
       withdrawalMistag: repeatedFaultProofChain(invalidRange, 5),
       doubleWithdraw: repeatedFaultProofChain(doubleSpend, 2),
-      crossBlockDuplicateEvent: repeatedFaultProofChain(doubleSpend, 2),
       l2TxMistag: repeatedFaultProofChain(invalidRange, 2),
       withdrawnInput: repeatedFaultProofChain(nonExistentInput, 3),
       valueNotPreserved: {
@@ -460,7 +458,6 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         forcedScan: invalidRange,
         steps: [invalidRange, invalidRange],
       },
-      missingNativeScriptUtxo: repeatedFaultProofChain(zeroInput, 7),
       nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 5),
       minAda: {
         ...repeatedFaultProofChain(invalidRange, 5),

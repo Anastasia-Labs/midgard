@@ -43,7 +43,6 @@ export {
   COMMIT_MAX_VALIDITY_RANGE_MS,
   commitHeaderMatchesValidityUpperBound,
   isCommitValidityInterval,
-  type OperatorWalletViewLike,
   requireOperatorWalletInputs,
   type StateQueueCommitWitnessContext,
 } from "./state-queue-transactions.commit-layout-fields.js";

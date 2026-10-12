@@ -1,23 +1,39 @@
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { markWatcherProofCompletionBeyondRecovery } from "../../src/fault-proofs/fault-proof-completion-marker.js";
 import type { WatcherProofExecution } from "../../src/fault-proofs/fault-proof-objective-journal.js";
+import {
+  canOpenWatcherProofObjective,
+  MAX_OPEN_OBJECTIVES,
+  watcherJournalCapacityReached,
+} from "../../src/fault-proofs/fault-proof-objective-table.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
-import { WATCHER_ROLLBACK_BOUNDS } from "../../src/l1/rollback-engine/types.js";
+import {
+  closeWatcherJournalDatabase,
+  openWatcherJournalDatabase,
+} from "../../src/fault-proofs/watcher-journal-database.js";
+import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { storelessProofRetention } from "../support/proof-retention.js";
+import {
+  journalDirectory,
+  removeJournalDirectories,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 
-// The recovery bound is a count over durable journal directories. Thousands of
-// genuine signed journals would make this test the slowest in the package, so
-// both journal readers return minimal records with a real journal's event
-// shape, and reconciliation admission returns an opaque permit; only the
-// counting is under test.
+// L2 (ticket W2): restart cost and the objective cap follow live rows only.
+// Thousands of genuine signed workflow journals would make this the slowest
+// file in the package, so the execution and decision readers return minimal
+// records with a real journal's event shape, and reconciliation admission
+// returns an opaque permit. The objective table is the real SQLite table.
 const journalState = vi.hoisted(() => ({
   headers: [] as string[],
   completed: true,
+  missing: new Set<string>(),
+  changed: new Set<string>(),
 }));
 const digestOf = (headerHash: string): string => headerHash.padEnd(64, "d");
 vi.mock("@al-ft/midgard-fault-proofs", async (importOriginal) => ({
@@ -26,27 +42,43 @@ vi.mock("@al-ft/midgard-fault-proofs", async (importOriginal) => ({
     permit: Object.freeze({ reconciliation: true }),
   }),
 }));
+const decisionOf = (headerHash: string) => ({
+  decision: "fault_detected",
+  category: "doubleSpend",
+  headerHash,
+  decisionDigest: digestOf(headerHash),
+});
 vi.mock("../../src/fault-proofs/fault-decision-journal.js", () => ({
   openWatcherFaultDecisionJournal: async () => ({
     readAll: async () =>
       journalState.headers.map((headerHash) => ({
-        decision: {
-          decision: "fault_detected",
-          category: "doubleSpend",
-          headerHash,
-          decisionDigest: digestOf(headerHash),
-        },
+        decision: decisionOf(headerHash),
       })),
+    read: async (digest: string) => {
+      const headerHash = journalState.headers.find(
+        (header) => digestOf(header) === digest,
+      );
+      return headerHash === undefined
+        ? undefined
+        : { decision: decisionOf(headerHash) };
+    },
   }),
 }));
-const executionOf = (headerHash: string): WatcherProofExecution => {
-  const identity = { decisionDigest: digestOf(headerHash) };
+const executionOf = (
+  headerHash: string,
+  completed = journalState.completed,
+): WatcherProofExecution => {
+  const identity = {
+    category: "doubleSpend",
+    target: { kind: "state_queue_header", headerHash },
+    decisionDigest: digestOf(headerHash),
+  };
   const events = [
     { kind: "started" },
     { kind: "prepared" },
     { kind: "preflight_passed", actionId: "proof" },
     { kind: "submission_intent", actionId: "proof", attempt: 1 },
-    ...(journalState.completed ? [{ kind: "completed" }] : []),
+    ...(completed ? [{ kind: "completed" }] : []),
   ];
   return {
     workflowId: `workflow-${headerHash}`,
@@ -61,61 +93,87 @@ vi.mock(
       objective,
     }: {
       objective: { headerHash: string };
-    }) => executionOf(objective.headerHash),
+    }) => {
+      if (journalState.missing.has(objective.headerHash)) return undefined;
+      const execution = executionOf(objective.headerHash);
+      return journalState.changed.has(objective.headerHash)
+        ? { ...execution, workflowId: `replaced-${objective.headerHash}` }
+        : execution;
+    },
   }),
 );
 
-const MAX_OBJECTIVES = 2_048;
 const deploymentFingerprint = "ab".repeat(32);
-const roots: string[] = [];
+/** The deployment's k comes from the follower behind the retention. */
+const K = storelessProofRetention.securityParameter;
+const BEYOND_RECOVERY = K + 1;
 afterEach(async () => {
-  await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
-  );
+  journalState.missing.clear();
+  journalState.changed.clear();
+  await removeJournalDirectories();
 });
 
-/** A watcher restarting over `count` durable proof directories. */
-const restartOver = async (
-  count: number,
-  completed: boolean,
-  marked = false,
-) => {
-  const journalRoot = await realpath(
-    await mkdtemp(join(tmpdir(), "watcher-progress-bound-")),
-  );
-  roots.push(journalRoot);
+type Seeded = "open" | "completed" | "marked";
+
+/** A watcher restarting over `count` recorded objectives in one state. */
+const restartOver = async (count: number, state: Seeded) => {
+  const journalRoot = await journalDirectory("watcher-progress-bound");
   journalState.headers = Array.from({ length: count }, (_, index) =>
     index.toString(16).padStart(56, "0"),
   );
-  journalState.completed = completed;
-  await Promise.all(
-    journalState.headers.map((headerHash) =>
-      mkdir(join(journalRoot, "fault-proofs", "doubleSpend", headerHash), {
-        recursive: true,
-      }),
-    ),
-  );
-  // Each marker write is fsynced; bounded batches keep this test quick.
-  for (let start = 0; marked && start < count; start += 128)
-    await Promise.all(
-      journalState.headers.slice(start, start + 128).map((headerHash) =>
-        markWatcherProofCompletionBeyondRecovery({
-          journalRoot,
-          deploymentFingerprint,
-          objective: { category: "doubleSpend", headerHash },
-          execution: executionOf(headerHash),
-          confirmationDepth:
-            Number(WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth) + 1,
-        }),
-      ),
-    );
+  journalState.completed = state !== "open";
+  const database = openWatcherJournalDatabase({
+    journalRoot,
+    authenticationKey: TEST_JOURNAL_KEY,
+  });
+  database.transaction((tx) => {
+    for (const headerHash of journalState.headers) {
+      const scope = watcherObjectiveScope("doubleSpend", headerHash);
+      const execution = executionOf(headerHash);
+      tx.put("fault_proof_objectives", {
+        key: scope,
+        scope,
+        state,
+        body: {
+          category: "doubleSpend",
+          headerHash,
+          ...(state === "marked"
+            ? {
+                marker: {
+                  workflowId: execution.workflowId,
+                  journalDigest: watcherSha256CanonicalJson(execution.entries),
+                  confirmationDepth: BEYOND_RECOVERY,
+                  recoveryDepth: K.toString(),
+                },
+              }
+            : {}),
+        },
+      });
+      tx.put("fault_decisions", {
+        key: digestOf(headerHash),
+        scope,
+        state: "fault_detected",
+        body: decisionOf(headerHash),
+      });
+    }
+  });
+  // A process restart: the next open verifies every journal in full.
+  closeWatcherJournalDatabase(journalRoot);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot,
     deploymentFingerprint,
     categories: ["doubleSpend"],
+    authenticationKey: TEST_JOURNAL_KEY,
+    retention: storelessProofRetention,
   });
   return {
+    journalRoot,
     authority,
+    database: () =>
+      openWatcherJournalDatabase({
+        journalRoot,
+        authenticationKey: TEST_JOURNAL_KEY,
+      }),
     admit: () =>
       authority.admit({
         observation: progressObservation({ deploymentFingerprint }),
@@ -124,26 +182,105 @@ const restartOver = async (
   };
 };
 
-describe("proof progress recovery bound", () => {
-  it("restarts over more completed proofs than the bound and schedules each for verification", async () => {
-    const restart = await restartOver(MAX_OBJECTIVES + 1, true);
+const exists = async (path: string): Promise<boolean> =>
+  await stat(path).then(
+    () => true,
+    () => false,
+  );
+
+describe("proof progress restart over the objective table (L2)", () => {
+  it("schedules every completed objective not yet beyond recovery, past the open cap", async () => {
+    const restart = await restartOver(MAX_OPEN_OBJECTIVES + 1, "completed");
     const contexts = await restart.admit();
-    expect(contexts).toHaveLength(MAX_OBJECTIVES + 1);
+    expect(contexts).toHaveLength(MAX_OPEN_OBJECTIVES + 1);
     expect(contexts.every(({ deadline }) => deadline === null)).toBe(true);
-    // Each stays indexed until canonical verification retires it.
-    expect(restart.authority.unfinishedCount()).toBe(MAX_OBJECTIVES + 1);
+    expect(restart.authority.unfinishedCount()).toBe(MAX_OPEN_OBJECTIVES + 1);
+    // Completed rows never count toward the cap.
+    expect(watcherJournalCapacityReached(restart.database())).toBe(false);
   }, 60_000);
 
-  it("restarts over more marked completions than the bound without indexing any", async () => {
-    const restart = await restartOver(MAX_OBJECTIVES + 1, true, true);
+  it("skips and prunes marked completions: rows, decisions and workflow journals", async () => {
+    const restart = await restartOver(MAX_OPEN_OBJECTIVES + 1, "marked");
+    const pruned = join(
+      restart.journalRoot,
+      "fault-proofs",
+      "doubleSpend",
+      journalState.headers[0]!,
+    );
+    await mkdir(pruned, { recursive: true });
+    // The execution of this one is already gone: a crash after the directory
+    // was removed and before its rows were deleted.
+    journalState.missing.add(journalState.headers[1]!);
     await expect(restart.admit()).resolves.toEqual([]);
     expect(restart.authority.unfinishedCount()).toBe(0);
+    expect(await exists(pruned)).toBe(false);
+    const database = restart.database();
+    expect(database.count("fault_proof_objectives")).toBe(0);
+    expect(database.count("fault_decisions")).toBe(0);
   }, 120_000);
 
-  it("still refuses to restart over more unfinished proofs than the bound", async () => {
-    const restart = await restartOver(MAX_OBJECTIVES + 1, false);
-    await expect(restart.admit()).rejects.toThrow(
-      "proof progress exceeds its recovery bound",
+  it("verifies again a marked completion whose execution changed", async () => {
+    const restart = await restartOver(2, "marked");
+    journalState.changed.add(journalState.headers[0]!);
+    const contexts = await restart.admit();
+    expect(contexts.map(({ decision }) => decision.headerHash)).toEqual([
+      journalState.headers[0],
+    ]);
+    expect(restart.authority.unfinishedCount()).toBe(1);
+    expect(restart.database().count("fault_proof_objectives")).toBe(1);
+  });
+
+  it("forgets an open objective whose job never started", async () => {
+    const restart = await restartOver(2, "open");
+    journalState.missing.add(journalState.headers[0]!);
+    const contexts = await restart.admit();
+    expect(contexts.map(({ decision }) => decision.headerHash)).toEqual([
+      journalState.headers[1],
+    ]);
+    const database = restart.database();
+    expect(database.count("fault_proof_objectives")).toBe(1);
+    // Its decision stays: a live fault queues the objective again.
+    expect(database.count("fault_decisions")).toBe(2);
+  });
+
+  it("forgets the rows of an objective a crash left active with no execution once its header has left the queue", async () => {
+    const restart = await restartOver(2, "open");
+    const headerHash = journalState.headers[0]!;
+    journalState.missing.add(headerHash);
+    const scope = watcherObjectiveScope("doubleSpend", headerHash);
+    restart.database().transaction((tx) =>
+      tx.put("fault_proof_queue", {
+        key: "77".repeat(32),
+        scope,
+        state: "active",
+        body: { identity: { category: "doubleSpend", headerHash } },
+      }),
     );
+    // No job of this process owns the row, and nothing was signed.
+    await restart.admit();
+    const database = restart.database();
+    expect(database.row("fault_proof_objectives", scope)).toBeUndefined();
+    expect(database.row("fault_proof_queue", "77".repeat(32))).toBeUndefined();
+    expect(restart.authority.cleanupFailures()).toEqual([]);
+  });
+
+  it("restarts over more open objectives than the cap without throwing and reports capacity", async () => {
+    const restart = await restartOver(MAX_OPEN_OBJECTIVES + 1, "open");
+    const contexts = await restart.admit();
+    expect(contexts).toHaveLength(MAX_OPEN_OBJECTIVES + 1);
+    const database = restart.database();
+    expect(watcherJournalCapacityReached(database)).toBe(true);
+    expect(
+      canOpenWatcherProofObjective(database, {
+        category: "doubleSpend",
+        headerHash: "ff".repeat(28),
+      }),
+    ).toBe(false);
+    expect(
+      canOpenWatcherProofObjective(database, {
+        category: "doubleSpend",
+        headerHash: journalState.headers[0]!,
+      }),
+    ).toBe(true);
   }, 60_000);
 });

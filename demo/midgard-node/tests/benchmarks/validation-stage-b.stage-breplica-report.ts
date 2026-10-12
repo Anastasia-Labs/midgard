@@ -45,14 +45,14 @@ export type AdmissionInsert = {
 export type StageBReplicaReport = {
   readonly database: string;
   readonly writeBehindMaxBatch: number;
-  readonly depositProjectionDeltaIntervalMs: number;
-  readonly depositProjectionActiveDurationMs: number;
-  readonly depositProjectionDeltaBumps: number;
+  readonly depositIngestionIntervalMs: number;
+  readonly depositIngestionActiveDurationMs: number;
+  readonly depositIngestions: number;
   readonly ledgerCacheDeltaApplies: number;
   readonly ledgerCacheFullReloads: number;
   readonly averageBatchMs: number;
-  readonly bumpWindowAverageBatchMs: readonly number[];
-  readonly worstBumpThroughputRatio: number | null;
+  readonly depositWindowAverageBatchMs: readonly number[];
+  readonly worstDepositWindowThroughputRatio: number | null;
   readonly accepted: number;
   readonly rejected: number;
   readonly batches: number;

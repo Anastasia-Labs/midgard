@@ -11,15 +11,9 @@ export const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 
 export const MAX_BLOCK_CBOR_HEX = 8 * 1024 * 1024;
 
-export const MAX_STDERR_BYTES = 1024 * 1024;
-
-export const MAX_STDERR_DIAGNOSTIC_BYTES = 8 * 1024;
-
 export const MAX_INTERSECTIONS = 128;
 
 export const MAX_IDENTITY_FILE_BYTES = 4 * 1024 * 1024;
-
-export const MAX_QUERY_STDOUT_BYTES = MAX_BLOCK_CBOR_HEX + 16_384;
 
 export const MAX_UINT64 = (1n << 64n) - 1n;
 
@@ -165,7 +159,7 @@ export const watcherNativeChainSyncEventReceipt = (
     : null;
 };
 
-/** Rollback, observed helper failure/exit, and close revoke prior provenance. */
+/** Rollback, an observed stream failure, and close revoke prior provenance. */
 export const readWatcherNativeChainSyncEventReceipt = (
   receipt: WatcherNativeChainSyncEventReceipt,
 ): NativeEventReceiptRead => {

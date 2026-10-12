@@ -8,7 +8,12 @@
 //     directory name and whose `description` is present and at most 1,024
 //     characters, the limit past which the harness truncates it;
 //   - SKILL.md stays within 500 lines; longer material belongs in references/;
-//   - every relative Markdown link in a skill's .md files resolves.
+//   - every relative Markdown link in a skill's .md files resolves;
+//   - no fenced code block in a skill's .md files runs Vitest directly
+//     (`vitest run`, `npx vitest`, `pnpm vitest`, `pnpm exec vitest`). Those
+//     skip what `node scripts/contrib.mjs test` does: pretest builds, a ready
+//     blueprint, an isolated test database and a receipt. A line that must
+//     stay raw carries `# raw-vitest-ok: <reason>`.
 //
 // It does not see backticked paths (`docs/agents/x.md`) or whether a skill's
 // instructions are still true. A skill can pass this check and be wrong.
@@ -62,6 +67,33 @@ const brokenLinks = (file, root) => {
       problems.push(`${relative(root, file)}: broken link ${target}`);
     }
   }
+  return problems;
+};
+
+const RAW_VITEST =
+  /\bvitest\s+run\b|\b(?:npx|pnpm(?:\s+--dir\s+\S+)?(?:\s+exec)?)\s+vitest\b/u;
+const RAW_VITEST_ALLOWED = /#\s*raw-vitest-ok:\s*\S/u;
+
+// Fences may be indented (a code block inside a list item).
+const rawVitestCommands = (file, root) => {
+  const problems = [];
+  let fence = null;
+  readFileSync(file, "utf8")
+    .split("\n")
+    .forEach((line, index) => {
+      const marker = /^\s*(`{3,}|~{3,})/u.exec(line)?.[1];
+      if (marker !== undefined) {
+        if (fence === null) fence = marker;
+        else if (marker[0] === fence[0] && marker.length >= fence.length)
+          fence = null;
+        return;
+      }
+      if (fence === null || !RAW_VITEST.test(line)) return;
+      if (RAW_VITEST_ALLOWED.test(line)) return;
+      problems.push(
+        `${relative(root, file)}:${index + 1}: raw Vitest command; use \`node scripts/contrib.mjs test --package NAME --file PATH\` (docs/agents/contrib/tests-and-builds.md), or end the line with \`# raw-vitest-ok: <reason>\` if contrib cannot run it`,
+      );
+    });
   return problems;
 };
 
@@ -131,6 +163,7 @@ export const checkAgentSkills = (root) => {
     }
     for (const file of markdownFiles(join(skillsRoot, entry.name))) {
       problems.push(...brokenLinks(file, root));
+      problems.push(...rawVitestCommands(file, root));
     }
   }
   return problems;

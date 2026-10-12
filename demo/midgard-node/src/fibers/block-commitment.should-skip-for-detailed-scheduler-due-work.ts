@@ -19,10 +19,11 @@ import {
   Lucid,
   MidgardContracts,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
-  fetchStateQueueSnapshotProgram,
+  landedStateQueueSnapshot,
   type StateQueueSnapshot,
-} from "../services/state-queue-topology.js";
+} from "../services/landed-state-queue.js";
 import {
   type SerializedStateQueueUTxO,
   WorkerOutput,
@@ -48,7 +49,6 @@ import {
   clearSlotAwareDueWork,
   type SlotAwareDueWork,
 } from "./slot-aware-due-work.js";
-import { type SpeculativeCommitState } from "./speculative-commit-state.js";
 
 export const publishCommitMempoolLedgerMutation = (
   globals: Globals,
@@ -108,8 +108,7 @@ export const planPreLeaseCommitSchedulerDueWork = Effect.gen(function* () {
   if (LOCAL_FINALIZATION_PENDING) {
     return localFinalizationPendingCommitSchedulerPlan();
   }
-  const snapshot = yield* fetchStateQueueSnapshotProgram(
-    lucid.api,
+  const snapshot = yield* landedStateQueueSnapshot(
     contracts.stateQueue,
     "commit_preflight",
   );
@@ -185,29 +184,15 @@ export const shouldAttemptCommitPipeline = ({
     processedUnsubmittedTxCount > 0 ||
     pendingUserEventCount > 0);
 
-export const shouldSkipScheduledLegacyCommitForSpeculation = ({
-  enabled,
-  state,
-  recoveryMustRun,
-}: {
-  readonly enabled: boolean;
-  readonly state: SpeculativeCommitState;
-  readonly recoveryMustRun: boolean;
-}): boolean =>
-  enabled &&
-  !recoveryMustRun &&
-  (state._tag === "Building" ||
-    state._tag === "ReadyToSubmit" ||
-    state._tag === "Submitting" ||
-    state._tag === "Invalidated");
-
 const COMMIT_PIPELINE_SKIP_LOG_KEY = "block_commitment_idle_skip";
 
 /**
  * True when the tick has no commitment work, so it skips before the L1
  * control plane. The skip is logged once per state change (then at debug);
  * `COMMIT_PIPELINE_IDLE` records whether the tick found no work and
- * `COMMIT_PIPELINE_BACKLOG` what it counted.
+ * `COMMIT_PIPELINE_BACKLOG` what it counted. Skipping never exposes the
+ * operator to a strike: a strike must cite an undelivered deposit,
+ * withdrawal or tx order, and each one due by the tick counts as work here.
  */
 export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
   function* () {
@@ -297,7 +282,6 @@ const resolveFreshDetailedSchedulerDueWork = Effect.gen(function* () {
     lucid.api,
     contracts,
     alignedEndTime,
-    undefined,
     lucid.referenceScriptsAddress,
     lucid.submitSlotSnapshot,
     false,
@@ -311,7 +295,7 @@ const resolveFreshDetailedSchedulerDueWork = Effect.gen(function* () {
 export const shouldSkipForDetailedSchedulerDueWork: Effect.Effect<
   boolean,
   never,
-  Globals | Lucid | MidgardContracts
+  Globals | Lucid | MidgardContracts | IntentJournal
 > = Effect.gen(function* () {
   const freshDueWork = yield* Effect.either(
     resolveFreshDetailedSchedulerDueWork,

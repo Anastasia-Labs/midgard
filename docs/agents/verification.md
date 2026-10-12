@@ -4,13 +4,13 @@ Commands run from the repository root unless stated otherwise. [review]
 
 ## Required checks
 
-Run `node scripts/preflight.mjs` before pushing. Ordinary PRs assign the
-covered package build/typecheck/full-suite matrix to Node CI, reporting pending
-hosted obligations separately from local results. Read generated
-[required-checks.md](required-checks.md) before choosing an execution mode;
-it lists selectors, ownership, capabilities and `--full-local` usage. Unknown
-workflow routing retains local execution; the normal fast pre-push slice stays
-mandatory. [script: scripts/preflight/run.mjs]
+Run `node scripts/preflight.mjs` before pushing; gate a merge with
+`--full-local --base <target-ref>` ([how](required-checks.md#gate-before-a-merge)).
+Ordinary PRs assign the package build/typecheck/suite matrix to Node CI,
+reported as pending apart from local results. Read generated
+[required-checks.md](required-checks.md) for selectors, ownership and
+capabilities. Unknown workflow routing retains local execution; the fast
+pre-push slice stays mandatory. [script: scripts/preflight/run.mjs]
 
 Focused local regressions and causal red/green checks remain mandatory. Prepare
 fresh compiled/native dependencies and blueprints in this checkout; read
@@ -37,9 +37,11 @@ Deployment checks remain manual; preparation lanes are selected by preflight. [r
    Node CI owns the ordinary PR runtime matrix, including core/test-support
    typechecks. The SDK preparation recipe is exactly its full Lucid/SDK suites
    and shares that owner; changed recipes retain local execution. Required jobs
-   follow actual workflow paths: verify census, exact head and conclusions.
-   Node CI gate requires every dependency to succeed. Conditional traced-refusal
-   selectors and distinct acceptance profiles remain intact. [review]
+   follow actual workflow paths: wait for them with `ci-status.mjs <pr> --wait`
+   (debugging-ci-failures skill), which verifies census, exact head and
+   conclusions, never a `gh run watch` or sleep loop. Node CI gate requires
+   every dependency to succeed. Conditional traced-refusal selectors and
+   distinct acceptance profiles remain intact. [review]
 3. `--strict --ci-run <Repo-Tools-run-id>` admits only required-checks generation
    and build-guard enrollment reuse, verifying merge tree/parents, inputs,
    current remote target, Node profile, commands and completed steps. Dirty,
@@ -74,7 +76,5 @@ Deployment checks remain manual; preparation lanes are selected by preflight. [r
   `demo/midgard-node/scripts/operator-compose.sh`; the main checkout keeps
   project `midgard-node` and today's ports, and bare `docker compose` in a
   linked worktree still takes them.
-- **Hooks.** `bash .githooks/install` makes every checkout run its own copy of
-  `.githooks`. With `core.fileMode=false`, git neither shows that a hook lost
-  its executable bit nor runs it; re-running the installer restores the bit.
-  `MIDGARD_SKIP_HOOKS=1` skips the hooks for one commit.
+- **Hooks.** Install them as `AGENTS.md` says; `MIDGARD_SKIP_HOOKS=1` skips
+  them for one commit.

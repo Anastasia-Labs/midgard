@@ -35,9 +35,9 @@ import {
 describe("DeploymentManifestV1 shared identity", () => {
   it("includes every registered fraud-proof validator in the canonical registry", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain("fraudProofZeroInput");
-    // #547 appended the Q18/Q31/Q15 first-step validators. The registry is
-    // append-only, so each must be present and the catalogue order must name
-    // exactly the same set of categories in the same positions.
+    // #547 added the Q18/Q31/Q15 first-step validators. Each must be present
+    // and the catalogue order must name exactly the same set of categories in
+    // the same positions.
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
       "fraudProofNoReferenceInput",
     );
@@ -47,8 +47,8 @@ describe("DeploymentManifestV1 shared identity", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
       "fraudProofInvalidSignature",
     );
-    // The registry is append-only, so its size is not a contract and pinning
-    // it only forces a re-pin on every legitimate append. What is a contract
+    // The registry's size is not a contract, and pinning it only forces a
+    // re-pin on every legitimate addition or removal. What is a contract
     // is that the roster stays internally consistent: a validator that is
     // registered but not published under a reference-script role is applied on
     // every deployment and reachable from none, and two roles that share an
@@ -123,20 +123,17 @@ describe("DeploymentManifestV1 shared identity", () => {
       ["FabricatedDeposit", "fabricated-deposit", 4],
       ["FabricatedWithdrawal", "fabricated-withdrawal", 4],
       ["MissingSignature", "missing-signature", 4],
-      ["MissingNativeScriptTx", "missing-native-script-tx", 8],
       ["WithdrawnReferenceInput", "withdrawn-reference-input", 3],
       ["CanonicalDecodability", "canonical-decodability", 2],
       ["CommittedFieldShape", "committed-field-shape", 2],
       ["MinFee", "min-fee", 2],
       ["WithdrawalMistag", "withdrawal-mistag", 5],
       ["DoubleWithdraw", "double-withdraw", 2],
-      ["CrossBlockDuplicateEvent", "cross-block-duplicate-event", 2],
       ["L2TxMistag", "l2-tx-mistag", 2],
       ["WithdrawnInput", "withdrawn-input", 3],
       ["ValueNotPreserved", "value-not-preserved", 4],
       ["InputSetUniqueness", "input-set-uniqueness", 4],
       ["MintAuthorization", "mint-authorization", 5],
-      ["MissingNativeScriptUtxo", "missing-native-script-utxo", 5],
       ["NativeScriptInvalid", "native-script-invalid", 3],
       ["MinAda", "min-ada", 2],
       ["TransactionOutputNonCanonical", "transaction-output-non-canonical", 4],
@@ -346,7 +343,7 @@ describe("DeploymentManifestV1 shared identity", () => {
     );
   });
 
-  it("authenticates the exact 54-entry fraud-proof catalogue root and proofs", () => {
+  it("authenticates the exact 52-entry fraud-proof catalogue root and proofs", () => {
     const catalogue = catalogueFixture();
     expect(
       verifyDeploymentManifestFraudProofCatalogueIdentity(catalogue),
@@ -517,21 +514,19 @@ describe("DeploymentManifestV1 shared identity", () => {
     expect(verifyDeploymentManifestIdentity(manifest)).toEqual(manifest);
   });
 
-  it("rejects a rehashed manifest that overrides the profile confirmation policy", () => {
+  it("rejects a rehashed manifest that overrides the profile confirmation or commit-event depth", () => {
     const { manifestId: _manifestId, ...identity } = finalizedManifest();
-    const changed = {
-      ...identity,
-      l1Finality: {
-        ...identity.l1Finality,
-        confirmationDepth: identity.l1Finality.confirmationDepth + 1,
-      },
-    };
-    expect(() =>
-      verifyFinalizedDeploymentManifest({
-        ...changed,
-        manifestId: computeDeploymentManifestId(changed),
-      }),
-    ).toThrow(/l1Finality/u);
+    for (const key of ["confirmationDepth", "commitEventDepth"] as const) {
+      const l1Finality = { ...identity.l1Finality };
+      l1Finality[key] += 1;
+      const changed = { ...identity, l1Finality };
+      expect(() =>
+        verifyFinalizedDeploymentManifest({
+          ...changed,
+          manifestId: computeDeploymentManifestId(changed),
+        }),
+      ).toThrow(`l1Finality.${key} must equal`);
+    }
   });
 
   it("accepts only exact release-bound economics profiles", () => {

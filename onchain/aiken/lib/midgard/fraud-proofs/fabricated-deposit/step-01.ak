@@ -77,16 +77,11 @@ use midgard/transition_trace
 
 /// Catalogue identifier of the `fabricatedDeposit` category.
 ///
-/// A category id is the `fraud_proof_catalogue.id_byte_count`-byte big-endian
-/// index of the category's position in the append-only
-/// `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`
-/// (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`), the same derivation
-/// `transition_trace`'s `#"00000004"` follows from `transitionTrace` sitting at
-/// index 4. `fabricatedDeposit` appends at index 11.
-///
-/// The category is **not registered yet**: catalogue registration is
-/// parent-owned integration work, and this constant is the single point that
-/// has to move if the append-only order gains another entry before Q39 lands.
+/// A category id is the explicit `fraud_proof_catalogue.id_byte_count`-byte
+/// big-endian value pinned for the category in
+/// `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS`
+/// (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`); this constant is the byte
+/// twin of `fabricatedDeposit` there.
 pub const fabricated_deposit_fraud_category_id: ByteArray = #"0000000b"
 
 /// A fabricated-deposit computation-thread token's asset name is this family's

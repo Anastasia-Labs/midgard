@@ -129,12 +129,12 @@ describe("fault decision bridge public-DA deferral", () => {
     );
 
     // Still not served: the retry defers again rather than failing closed.
-    await h.bridge.retryDeferredClassification(current);
+    await h.bridge.reconcileAndDispatch(current);
     expect(h.enqueued).toEqual([]);
     expect(h.application.classifyHeader).toHaveBeenCalledTimes(4);
 
     served = true;
-    await h.bridge.retryDeferredClassification(current);
+    await h.bridge.reconcileAndDispatch(current);
     expect(h.enqueued.map(({ headerHash }) => headerHash)).toEqual([
       waiting!.headerHash,
     ]);
@@ -146,9 +146,10 @@ describe("fault decision bridge public-DA deferral", () => {
       headerHash: waiting!.headerHash,
       outcome: "fault_detected",
     });
-    // Nothing remains deferred, so a later wake does not reclassify.
-    await h.bridge.retryDeferredClassification(current);
-    expect(h.application.classifyHeader).toHaveBeenCalledTimes(6);
+    // A later pass re-classifies the healthy header and reuses the target.
+    await h.bridge.reconcileAndDispatch(current);
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(7);
+    expect(h.bridge.status().target?.headerHash).toBe(waiting!.headerHash);
   });
 
   it("targets an Unattested header immediately when its faulty payload is served", async () => {
@@ -240,9 +241,7 @@ describe("fault decision bridge public-DA deferral", () => {
     // Once the waiting header is served, the suffix is classified and its
     // Attested unavailable payload still fails closed.
     served = true;
-    await expect(h.bridge.retryDeferredClassification(current)).rejects.toBe(
-      failure,
-    );
+    await expect(h.bridge.reconcileAndDispatch(current)).rejects.toBe(failure);
     expect(h.application.classifyHeader).toHaveBeenCalledWith(
       expect.objectContaining({
         header: expect.objectContaining({ headerHash: suffix!.headerHash }),
@@ -288,8 +287,9 @@ describe("fault decision bridge public-DA deferral", () => {
     expect(verifications(observability)).toEqual([
       { headerHash: header!.headerHash, outcome: "failed" },
     ]);
-    await h.bridge.retryDeferredClassification(current);
-    expect(h.application.classifyHeader).toHaveBeenCalledTimes(1);
+    // A failure is not a deferral: the next pass fails closed again.
+    await expect(h.bridge.reconcileAndDispatch(current)).rejects.toBe(failure);
+    expect(h.enqueued).toEqual([]);
   });
 
   it("records the authenticated observation as the deferred subject", async () => {

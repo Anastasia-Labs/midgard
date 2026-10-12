@@ -23,7 +23,6 @@ export {
   validationDisputeControlPublicationTargets,
 } from "./reference-scripts.publish-authenticated-validation-dispute-control.js";
 export {
-  publishCrossBlockDuplicateEventReferenceScripts,
   publishFaultProofWitnessReferenceScripts,
   publishRemovalReferenceScripts,
   type RemovalReferenceScriptMeasurements,

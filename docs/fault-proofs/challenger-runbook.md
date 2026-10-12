@@ -50,7 +50,7 @@ process configuration for these exact values.
 
 The challenger path requires:
 
-- local Kupo/Ogmios L1 authority with no provider failover;
+- the watcher's own L1 follower on a local Cardano node (`local_node`);
 - public libp2p retained-payload and proof-artifact protocols;
 - the exact deployment fingerprint on every request;
 - a durable watcher decision/workflow journal;

@@ -6,44 +6,38 @@
  *
  * Nothing here registers a command. Keep it free of test-tooling concerns so
  * the operator binary never carries e2e, stress, or benchmark behavior.
+ *
+ * Every provider here builds the Lucid service over a tool L1 access
+ * (`--l1`, `l1-tool-adapter.ts`). The node's own runtime (`listen`) provides
+ * its services in `listen.cli-runtime.ts`, over its follower.
  */
 import { constants as osConstants } from "node:os";
 
 import { NodeRuntime } from "@effect/platform-node";
 import { getAddressDetails, type Network } from "@lucid-evolution/lucid";
-import { Cause, Effect, Exit, pipe } from "effect";
+import { Cause, Effect, Exit, Logger, pipe } from "effect";
 
 import type { E2EEnvInheritance } from "../e2e/env.js";
 import * as Services from "../services/index.js";
+import {
+  type IntentJournal,
+  IntentJournalWithoutFollower,
+} from "../services/intent-journal.js";
+import { errorMessage } from "./cli-options.js";
 import { formatJson } from "./command-utils.js";
+import {
+  ToolLucidLive,
+  ToolMidgardContractServices,
+} from "./l1-tool-adapter.js";
+import { assertPayerIsNotOperationalWallet } from "./operational-wallet-refusal.js";
 
-export const parsePositiveIntegerOption = (
-  value: unknown,
-  label: string,
-): number => {
-  if (typeof value !== "string" || !/^\d+$/.test(value)) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`${label} must be a safe positive integer`);
-  }
-  return parsed;
-};
+export { ToolLucidLive, ToolMidgardContractServices };
 
-export const parseNonNegativeIntegerOption = (
-  value: unknown,
-  label: string,
-): number => {
-  if (typeof value !== "string" || !/^\d+$/.test(value)) {
-    throw new Error(`${label} must be a non-negative integer`);
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new Error(`${label} must be a safe non-negative integer`);
-  }
-  return parsed;
-};
+export {
+  errorMessage,
+  parseNonNegativeIntegerOption,
+  parsePositiveIntegerOption,
+} from "./cli-options.js";
 
 export const collectStringOption = (
   value: string,
@@ -112,9 +106,6 @@ export const parseL1AddressOption = (
   return details.address.bech32;
 };
 
-export const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
-
 export const failCli = (label: string, error: unknown): void => {
   console.error(`${label}: ${errorMessage(error)}`);
   process.exitCode = 1;
@@ -158,6 +149,13 @@ export const cliExitCode = (
   return 1;
 };
 
+// Effect's default lines, written to stderr: a command's stdout carries only
+// its result (`writeJson`), so it can be piped to a parser.
+const stderrLogger = Logger.replace(
+  Logger.defaultLogger,
+  Logger.withConsoleError(Logger.stringLogger),
+);
+
 export const runCliEffect = <A, E>(
   effect: Effect.Effect<A, E, never>,
 ): void => {
@@ -167,7 +165,16 @@ export const runCliEffect = <A, E>(
   };
   process.once("SIGINT", record);
   process.once("SIGTERM", record);
-  NodeRuntime.runMain(effect, {
+  // The failure report runMain would add sits outside this logger, on
+  // stdout; this one is runMain's, inside it.
+  const reported = Effect.tapErrorCause(effect, (cause) =>
+    Cause.isInterruptedOnly(cause) ? Effect.void : Effect.logError(cause),
+  );
+  NodeRuntime.runMain(Effect.provide(reported, stderrLogger), {
+    // Keep Effect's logfmt logger, which worker threads also use: its UTC
+    // timestamp carries the date, where the pretty one is local time only.
+    disablePrettyLogger: true,
+    disableErrorReporting: true,
     teardown: (exit, onExit) => onExit(cliExitCode(exit, signal)),
   });
 };
@@ -176,37 +183,50 @@ export const provideTxServices = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    Services.NodeConfig | Services.MidgardContracts | Services.Lucid
+    | Services.NodeConfig
+    | Services.MidgardContracts
+    | Services.Lucid
+    | IntentJournal
   >,
 ): Effect.Effect<A, E | Services.ConfigError, never> =>
   pipe(
     effect,
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.NodeConfig.layer),
-    Effect.provide(Services.MidgardContracts.Default),
-    Effect.provide(Services.Lucid.Default),
+    Effect.provide(ToolMidgardContractServices),
+    Effect.provide(ToolLucidLive),
   );
 
 export const provideReferenceScriptDeploymentServices = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    Services.NodeConfig | Services.Lucid | Services.AlwaysSucceedsContract
+    | Services.NodeConfig
+    | Services.Lucid
+    | Services.AlwaysSucceedsContract
+    | IntentJournal
   >,
 ): Effect.Effect<A, E | Services.ConfigError, never> =>
   pipe(
     effect,
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.AlwaysSucceedsContract.Default),
-    Effect.provide(Services.Lucid.Default),
+    Effect.provide(ToolLucidLive),
   );
 
 export const provideLucidOnlyServices = <A, E>(
-  effect: Effect.Effect<A, E, Services.NodeConfig | Services.Lucid>,
+  effect: Effect.Effect<
+    A,
+    E,
+    Services.NodeConfig | Services.Lucid | IntentJournal
+  >,
 ): Effect.Effect<A, E | Services.ConfigError, never> =>
   pipe(
     effect,
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.NodeConfig.layer),
-    Effect.provide(Services.Lucid.Default),
+    Effect.provide(ToolLucidLive),
   );
 
 export const provideDatabaseServices = <A, E>(
@@ -231,6 +251,7 @@ export const provideNodeRuntimeServices = <A, E>(
     | Services.MidgardContracts
     | Services.Lucid
     | Services.Globals
+    | IntentJournal
   >,
 ): Effect.Effect<
   A,
@@ -239,12 +260,14 @@ export const provideNodeRuntimeServices = <A, E>(
 > =>
   pipe(
     effect,
+    // A CLI process runs no follower; `runNode` provides its own journal.
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.AdmissionWriterLive),
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
-    Effect.provide(Services.MidgardContractServices),
-    Effect.provide(Services.Lucid.Default),
+    Effect.provide(ToolMidgardContractServices),
+    Effect.provide(ToolLucidLive),
     Effect.provide(Services.Globals.Default),
   );
 
@@ -258,6 +281,7 @@ export const provideDatabaseTxServices = <A, E>(
     | Services.ContractDeploymentIdentity
     | Services.MidgardContracts
     | Services.Lucid
+    | IntentJournal
   >,
 ): Effect.Effect<
   A,
@@ -266,13 +290,18 @@ export const provideDatabaseTxServices = <A, E>(
 > =>
   pipe(
     effect,
+    Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
-    Effect.provide(Services.MidgardContractServices),
-    Effect.provide(Services.Lucid.Default),
+    Effect.provide(ToolMidgardContractServices),
+    Effect.provide(ToolLucidLive),
   );
 
+/**
+ * Refuses a user command's wallet when it is one of the node's operational
+ * wallets (`OperationalWalletPayerRefusedError`, `operational-wallet-refusal.ts`).
+ */
 export const assertUserCliWalletIsOperationallyIsolated = ({
   commandName,
   walletAddress,
@@ -285,17 +314,13 @@ export const assertUserCliWalletIsOperationallyIsolated = ({
   readonly operatorMainAddress: string;
   readonly operatorMergeAddress: string;
   readonly referenceScriptsAddress: string;
-}): void => {
-  const conflictingRoles = [
-    ["operator-main", operatorMainAddress],
-    ["operator-merge", operatorMergeAddress],
-    ["reference-scripts", referenceScriptsAddress],
-  ]
-    .filter(([, address]) => address === walletAddress)
-    .map(([role]) => role);
-  if (conflictingRoles.length > 0) {
-    throw new Error(
-      `${commandName} requires a user wallet that is distinct from operational node wallets; conflicting roles=${conflictingRoles.join(",")}, address=${walletAddress}`,
-    );
-  }
-};
+}): void =>
+  assertPayerIsNotOperationalWallet({
+    command: commandName,
+    payerAddress: walletAddress,
+    operational: [
+      { role: "operator-main", address: operatorMainAddress },
+      { role: "operator-merge", address: operatorMergeAddress },
+      { role: "reference-scripts", address: referenceScriptsAddress },
+    ],
+  });

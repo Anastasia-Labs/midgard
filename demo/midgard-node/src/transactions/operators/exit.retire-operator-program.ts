@@ -2,8 +2,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  type IntentJournal,
+  journaledIntent,
+} from "../../services/intent-journal.js";
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
-import { currentTimeMsForLucidOrEmulatorFallback } from "../register-active-operator/clock.js";
+import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";
 import {
   deriveWitnesses,
@@ -11,6 +15,8 @@ import {
   type OperatorEconomics,
   type OperatorExitError,
   OperatorExitRefusal,
+  type PlannedSnapshot,
+  plannedSnapshotProgram,
   resolveOperatorScriptRefsProgram,
   type RetirementSubmission,
   schedulerRouteOf,
@@ -18,6 +24,7 @@ import {
 import {
   collateralForExactFee,
   formatAda,
+  operatorWalletInputsProgram,
   requireOperatorFundingProgram,
 } from "./funding-preflight.js";
 
@@ -38,23 +45,24 @@ export const retireOperatorProgram = (
     readonly operatorKeyHash: string;
     readonly mode: SDK.RetirementMode;
     readonly economics: OperatorEconomics;
-    readonly snapshot?: SDK.OperatorDirectorySnapshot;
-  },
+  } & PlannedSnapshot,
   options: { readonly label?: string } = {},
-): Effect.Effect<RetirementSubmission, OperatorExitError> =>
+): Effect.Effect<RetirementSubmission, OperatorExitError, IntentJournal> =>
   Effect.gen(function* () {
     const label =
       options.label ??
       (input.mode === "voluntary"
         ? "retire-operator"
         : "force-retire-operator");
-    const snapshot =
-      input.snapshot ??
-      (yield* SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
+    const { snapshot, intentPlan } = yield* plannedSnapshotProgram(
+      lucid,
+      contracts,
+      input,
+    );
     const status = SDK.deriveOperatorStatus(
       snapshot,
       input.operatorKeyHash,
-      currentTimeMsForLucidOrEmulatorFallback(lucid),
+      yield* resolveL1NowMs(lucid),
       { maxInactivityStrikes: SDK.MAX_INACTIVITY_STRIKES },
     );
     if (status.state !== "active") {
@@ -140,8 +148,18 @@ export const retireOperatorProgram = (
       schedulerSync: witnesses.schedulerSync,
       validFrom,
       validTo,
+      walletInputs: yield* operatorWalletInputsProgram(lucid, label),
     });
-    const txHash = yield* handleSignSubmit(lucid, tx, { label });
+    const txHash = yield* handleSignSubmit(
+      lucid,
+      tx,
+      journaledIntent(
+        "retire",
+        `retire:${input.mode}:${input.operatorKeyHash}`,
+        intentPlan,
+      ),
+      { label },
+    );
     return {
       txHash,
       operatorKeyHash: input.operatorKeyHash,
@@ -173,16 +191,17 @@ export const recoverOperatorBondProgram = (
   referenceScriptsAddress: string,
   input: {
     readonly operatorKeyHash: string;
-    readonly snapshot?: SDK.OperatorDirectorySnapshot;
-  },
+  } & PlannedSnapshot,
   options: { readonly label?: string } = {},
-): Effect.Effect<BondRecoverySubmission, OperatorExitError> =>
+): Effect.Effect<BondRecoverySubmission, OperatorExitError, IntentJournal> =>
   Effect.gen(function* () {
     const label = options.label ?? "recover-operator-bond";
-    const snapshot =
-      input.snapshot ??
-      (yield* SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
-    const nowMs = currentTimeMsForLucidOrEmulatorFallback(lucid);
+    const { snapshot, intentPlan } = yield* plannedSnapshotProgram(
+      lucid,
+      contracts,
+      input,
+    );
+    const nowMs = yield* resolveL1NowMs(lucid);
     const status = SDK.deriveOperatorStatus(
       snapshot,
       input.operatorKeyHash,
@@ -252,8 +271,18 @@ export const recoverOperatorBondProgram = (
       retiredNodeUnit: witnesses.retiredNodeUnit,
       validFrom: lowerBound,
       validTo,
+      walletInputs: yield* operatorWalletInputsProgram(lucid, label),
     });
-    const txHash = yield* handleSignSubmit(lucid, tx, { label });
+    const txHash = yield* handleSignSubmit(
+      lucid,
+      tx,
+      journaledIntent(
+        "recover_bond",
+        `recover_bond:${input.operatorKeyHash}`,
+        intentPlan,
+      ),
+      { label },
+    );
     return {
       txHash,
       operatorKeyHash: input.operatorKeyHash,

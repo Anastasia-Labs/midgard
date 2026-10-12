@@ -128,7 +128,7 @@ describe("Postgres store instance lock across a Postgres outage", () => {
     const proxy = await outageProxy(new URL(database.url));
     const events: string[] = [];
     const store = await PostgresCommitteeStore.open(proxy.url, {
-      onInstanceLockLost: () => events.push("lost"),
+      onInstanceLockHeldElsewhere: () => events.push("held_elsewhere"),
       onInstanceLockSuspended: () => events.push("suspended"),
       onInstanceLockRestored: () => events.push("restored"),
     });
@@ -171,7 +171,7 @@ describe("Postgres store instance lock across a Postgres outage", () => {
     await expect(
       store.getDecisionOutbox(effect.effectId),
     ).resolves.toMatchObject({ status: "reconciled", attemptCount: 1 });
-    expect(events).not.toContain("lost");
+    expect(events).not.toContain("held_elsewhere");
   }, 20_000);
 });
 
@@ -181,7 +181,7 @@ describe("Postgres store instance lock after a half-open connection drop", () =>
     const proxy = await outageProxy(new URL(database.url));
     const events: string[] = [];
     const store = await PostgresCommitteeStore.open(proxy.url, {
-      onInstanceLockLost: () => events.push("lost"),
+      onInstanceLockHeldElsewhere: () => events.push("held_elsewhere"),
       onInstanceLockSuspended: () => events.push("suspended"),
       onInstanceLockRestored: () => events.push("restored"),
     });
@@ -213,7 +213,7 @@ describe("Postgres store instance lock after a half-open connection drop", () =>
     expect(events).toEqual(["suspended", "restored"]);
     // Held again: a second process is still refused.
     await expect(PostgresCommitteeStore.open(database.url)).rejects.toThrow(
-      /already exclusively leased/u,
+      /held by another live process/u,
     );
   }, 20_000);
 });
@@ -282,7 +282,7 @@ describe("committee node startup against a Postgres store that is not ready yet"
     ]);
   });
 
-  it("still refuses a store holding another deployment's state", async () => {
+  it("fails at once, with no retry, on a store holding another deployment's state", async () => {
     const database = await databases.create();
     const store = await PostgresCommitteeStore.open(database.url);
     cleanups.push(() => store.close());
@@ -294,17 +294,26 @@ describe("committee node startup against a Postgres store that is not ready yet"
     });
     await store.initDeployment(marker("cc".repeat(32)));
     let attempts = 0;
+    const reasons: string[] = [];
     await expect(
       retryStartup({
         attempt: async () => {
           attempts += 1;
           await store.initDeployment(marker("dd".repeat(32)));
         },
-        onFailure: () => undefined,
+        onFailure: (reason) => reasons.push(reason),
         write: () => undefined,
-        sleep: async () => undefined,
+        sleep: async () => {
+          if (attempts > 1_000) throw new Error("retried without bound");
+        },
       }),
-    ).rejects.toThrow(/stale_deployment_state_requires_fresh_redeploy/u);
+    ).rejects.toMatchObject({
+      reason: "committee_startup_failed",
+      message: expect.stringMatching(
+        /stale_deployment_state_requires_fresh_redeploy: /u,
+      ) as unknown,
+    });
     expect(attempts).toBe(1);
+    expect(reasons).toEqual([]);
   });
 });

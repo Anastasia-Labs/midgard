@@ -10,11 +10,15 @@ import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  DEFAULT_TIMEOUT_MINUTES,
   EXIT,
   failedJobs,
   main,
   matchesPatterns,
+  MAX_QUERY_FAILURES,
+  MISSING_GRACE_MS,
   parseWorkflow,
+  POLL_INTERVAL_MS,
 } from "./ci-status.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -453,5 +457,193 @@ describe("trigger parsing and matching", () => {
     ).length;
     assert.equal(job.skippedAfterFailure, expected);
     assert.equal(expected, 28);
+  });
+});
+
+// --wait against a fake clock: each sleep advances it and may change the
+// world, the way GitHub changes between looks.
+const waiting = (world, { onSleep = () => {}, argv = [] } = {}) => {
+  const gh = fakeGh(world);
+  let clock = 0;
+  const sleeps = [];
+  const out = [];
+  const err = [];
+  const code = main(["7", "--repo", "o/r", "--json", "--wait", ...argv], {
+    run: gh.run,
+    out: (line) => out.push(line),
+    err: (line) => err.push(line),
+    wait: {
+      now: () => clock,
+      sleep: (ms) => {
+        // An unbounded wait fails here instead of hanging the suite.
+        if (sleeps.length >= 1000) throw new Error("--wait never stopped");
+        sleeps.push(ms);
+        clock += ms;
+        onSleep(sleeps.length, world);
+      },
+    },
+  });
+  return {
+    code,
+    report: out.length ? JSON.parse(out.join("\n")) : undefined,
+    err: err.join("\n"),
+    sleeps,
+  };
+};
+
+const pendingRuns = () => [
+  runOf(101, 1, "Aiken CI", "success"),
+  runOf(102, 2, "Midgard Node CI", "", "in_progress"),
+];
+
+describe("--wait", () => {
+  test("waits while a run is in progress and returns the settled verdict", () => {
+    const { code, report, err, sleeps } = waiting(
+      baseWorld({ runs: pendingRuns() }),
+      {
+        onSleep: (count, world) => {
+          if (count === 2)
+            world.runs = [
+              runOf(101, 1, "Aiken CI", "success"),
+              runOf(102, 2, "Midgard Node CI", "success"),
+            ];
+        },
+      },
+    );
+    assert.equal(code, EXIT.passed);
+    assert.deepEqual(sleeps, [POLL_INTERVAL_MS, POLL_INTERVAL_MS]);
+    assert.deepEqual(report.wait, {
+      looks: 3,
+      elapsedSeconds: 120,
+      timedOut: false,
+    });
+    assert.match(
+      err,
+      /waiting {2}0m00s: 1 passed, 1 pending, 1 not-triggered/u,
+    );
+  });
+
+  test("stops at the first failed run without waiting for the rest", () => {
+    const { code, sleeps } = waiting(
+      baseWorld({
+        runs: [
+          runOf(101, 1, "Aiken CI", "failure"),
+          runOf(102, 2, "Midgard Node CI", "", "in_progress"),
+        ],
+        jobs: { 101: { jobs: [] } },
+      }),
+    );
+    assert.equal(code, EXIT.failed);
+    assert.deepEqual(sleeps, []);
+  });
+
+  test("a run that never finishes ends at the timeout with exit 4, never later", () => {
+    const { code, report, sleeps } = waiting(
+      baseWorld({ runs: pendingRuns() }),
+      { argv: ["--timeout", "3"] },
+    );
+    assert.equal(code, EXIT.pending);
+    assert.ok(sleeps.reduce((sum, ms) => sum + ms, 0) <= 3 * 60_000);
+    assert.equal(report.wait.timedOut, true);
+    assert.match(report.notes.join("\n"), /stopped waiting after 3m00s/u);
+  });
+
+  test("an expected run that has not appeared is waited for only during the grace period", () => {
+    const appears = waiting(baseWorld({ runs: [] }), {
+      onSleep: (count, world) => {
+        if (count === 2)
+          world.runs = [
+            runOf(101, 1, "Aiken CI", "success"),
+            runOf(102, 2, "Midgard Node CI", "success"),
+          ];
+      },
+    });
+    assert.equal(appears.code, EXIT.passed);
+    const never = waiting(baseWorld({ runs: [] }));
+    assert.equal(never.code, EXIT.noRun);
+    assert.equal(
+      never.sleeps.reduce((sum, ms) => sum + ms, 0),
+      MISSING_GRACE_MS,
+    );
+    assert.equal(never.report.wait.timedOut, false);
+  });
+
+  test("a conflicting pull request's missing runs cannot appear, so it does not wait", () => {
+    const { code, sleeps } = waiting(
+      baseWorld({ prs: { 7: pr({ mergeable: "CONFLICTING" }) }, runs: [] }),
+    );
+    assert.equal(code, EXIT.noRun);
+    assert.deepEqual(sleeps, []);
+  });
+
+  test("a first look that fails is exit 3 at once; later blips are retried a bounded number of times", () => {
+    const first = waiting(baseWorld({ fail: () => true }));
+    assert.equal(first.code, EXIT.queryFailed);
+    assert.deepEqual(first.sleeps, []);
+    const world = baseWorld({ runs: pendingRuns() });
+    const blips = waiting(world, {
+      onSleep: (count, w) => {
+        if (count === 1) w.fail = () => true;
+        if (count === 1 + MAX_QUERY_FAILURES) {
+          w.fail = undefined;
+          w.runs = [
+            runOf(101, 1, "Aiken CI", "success"),
+            runOf(102, 2, "Midgard Node CI", "success"),
+          ];
+        }
+      },
+    });
+    assert.equal(blips.code, EXIT.passed);
+    assert.match(blips.err, /could not query GitHub \(3 of 3 retries\)/u);
+    const down = waiting(baseWorld({ runs: pendingRuns() }), {
+      onSleep: (count, w) => {
+        if (count === 1) w.fail = () => true;
+      },
+    });
+    assert.equal(down.code, EXIT.queryFailed);
+    assert.equal(down.sleeps.length, 1 + MAX_QUERY_FAILURES);
+  });
+
+  test("--timeout needs --wait and whole minutes within GitHub's six-hour job limit", () => {
+    const quiet = {
+      run: () => assert.fail("no gh call on a usage error"),
+      out: () => {},
+      err: () => {},
+    };
+    assert.equal(main(["7", "--timeout", "5"], quiet), EXIT.usage);
+    for (const value of ["0", "1.5", "abc", "361", "7h", "30s", "5mm"])
+      assert.equal(
+        main(["7", "--wait", "--timeout", value], quiet),
+        EXIT.usage,
+        value,
+      );
+    assert.equal(main(["7", "--wait", "--timeout"], quiet), EXIT.usage);
+    assert.equal(DEFAULT_TIMEOUT_MINUTES, 60);
+  });
+
+  test("--timeout reads bare digits and m as minutes and h as hours, and says when a number looks like seconds", () => {
+    const errors = [];
+    const usage = {
+      run: () => assert.fail("no gh call"),
+      out: () => {},
+      err: (t) => errors.push(t),
+    };
+    assert.equal(main(["7", "--wait", "--timeout", "7200"], usage), EXIT.usage);
+    assert.match(errors.join("\n"), /for 7200 seconds write 120/u);
+    for (const [value, minutes] of [
+      ["90", 90],
+      ["90m", 90],
+      ["2h", 120],
+      ["6h", 360],
+    ]) {
+      const { report } = waiting(baseWorld({ runs: pendingRuns() }), {
+        argv: ["--timeout", value],
+      });
+      assert.match(
+        report.notes.join("\n"),
+        new RegExp(`\\(--timeout ${String(minutes)}\\)`, "u"),
+        value,
+      );
+    }
   });
 });

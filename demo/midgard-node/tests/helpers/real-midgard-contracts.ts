@@ -1,3 +1,7 @@
+import {
+  type L1SlotConfig,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+} from "@al-ft/midgard-core/l1-slot-config";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -14,6 +18,7 @@ export const loadRealMidgardContractsForTest = (
   oneShotOutRef: TestOneShotOutRef,
   referenceScriptAuth?: SDK.MintingValidator,
   eventHistoryProtectionDurationMs = 2_000n,
+  l1SlotConfig: L1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
 ): Promise<SDK.MidgardValidators> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -23,6 +28,7 @@ export const loadRealMidgardContractsForTest = (
         placeholder,
         oneShotOutRef,
         {
+          l1SlotConfig,
           referenceScriptAuth:
             referenceScriptAuth ?? placeholder.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,

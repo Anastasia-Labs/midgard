@@ -2,8 +2,16 @@ import { Cause, Duration, Effect, Metric, Ref, Schedule } from "effect";
 
 import * as TxAdmissionsDB from "../database/txAdmissions.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { isConnectionClassError } from "../provider-retry.js";
 import { Database } from "../services/database.js";
 import { AdmissionBacklogGaugeState, Globals } from "../services/globals.js";
+import {
+  ADMISSION_BACKLOG_UNREAD,
+  retryStartupStep,
+  STARTUP_DATABASE_BUDGET,
+  type StartupStepBudget,
+  type StartupStepFailedError,
+} from "../services/startup-waiting.js";
 
 export const beginAdmissionBacklogRefresh = (
   current: AdmissionBacklogGaugeState,
@@ -189,6 +197,27 @@ export const refreshAdmissionBacklogGauge: Effect.Effect<
   );
   yield* reportGaugeMetrics(stateValue(state), refreshedAtMs);
 });
+
+/**
+ * The startup's first refresh of the gauge (`refresh`, by default
+ * `refreshAdmissionBacklogGauge`). It blocks the startup: the gauge is the
+ * base admission's backlog cap (`reserveAdmissionBacklogSlot`) counts
+ * from, so serving before it was read would admit past
+ * `MAX_DURABLE_ADMISSION_BACKLOG`. A connection-class failure
+ * (`isConnectionClassError`) is waited out under the database budget, the
+ * startup waiting under `admission_backlog_unread`; any other failure, or
+ * one past the budget, fails the step (`StartupStepFailedError`).
+ */
+export const refreshAdmissionBacklogGaugeOnStartup = <R>(
+  refresh: Effect.Effect<void, DatabaseError, R>,
+  budget: StartupStepBudget = { maxElapsed: STARTUP_DATABASE_BUDGET },
+): Effect.Effect<void, StartupStepFailedError, R> =>
+  retryStartupStep(refresh, {
+    key: "admission_backlog_refresh",
+    reason: ADMISSION_BACKLOG_UNREAD,
+    retryable: isConnectionClassError,
+    budget,
+  });
 
 export const admissionBacklogGaugeFiber = (
   schedule: Schedule.Schedule<number>,

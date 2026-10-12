@@ -10,11 +10,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, paymentCredentialOf } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import {
-  type HistoricalNativeScriptCorpus,
-  requireHistoricalNativeScriptCorpus,
-} from "../workflow/historical-native-script-corpus.js";
 import { computeFraudProofRawL1SnapshotEvidenceDigest } from "../workflow/raw-l1-snapshot.js";
+import { requireReplayPredecessorLedger } from "../workflow/replay-predecessor-ledger.js";
 import {
   CanonicalReplayPrerequisiteError,
   replayPrerequisiteFailure,
@@ -92,13 +89,7 @@ const parseEventFacts = (
       throw new Error(
         "Transition forced L1 source has a false compact transaction id",
       );
-    return {
-      kind: "forcedTransaction" as const,
-      entry,
-      datum,
-      start: compact.transactionBody.validityIntervalStart,
-      end: compact.transactionBody.validityIntervalEnd,
-    };
+    return { kind: "forcedTransaction" as const, entry, datum };
   }),
 });
 const parsedEventFacts = new WeakMap<
@@ -164,17 +155,12 @@ const readTransitionTraceEventCoverage = ({
       };
       outsideItem = omittedItem;
     } else {
-      const { datum, start, end } = fact;
+      // Due by inclusion time alone, as on chain; the validity interval only
+      // decides the machine verdict at the block slot.
+      const { datum } = fact;
       due =
         current.header.startTime < datum.inclusion_time &&
-        datum.inclusion_time <= current.header.endTime &&
-        (start === -1n
-          ? end === -1n || current.header.startTime <= end
-          : end === -1n
-            ? start <= current.header.endTime
-            : start <= end &&
-              start <= current.header.endTime &&
-              current.header.startTime <= end);
+        datum.inclusion_time <= current.header.endTime;
       eventKey = { ForcedTransactionEventKey: { tx_order_id: datum.event.id } };
       const source = current.sourceEventsByFingerprint.get(
         eventKeyFingerprint(eventKey),
@@ -334,7 +320,7 @@ export const computeTransitionTraceL1EventEvidenceDigest = ({
 };
 
 /** The findings the block and its raw L1 events prove on their own, with no
- * predecessor ledger or historical corpus: the list the replay below keeps
+ * predecessor ledger: the list the replay below keeps
  * when any of it is buildable. Empty when the block needs full replay. */
 export const detectStructuralTransitionTraceFaults = async ({
   evidence,
@@ -358,23 +344,19 @@ export const detectStructuralTransitionTraceFaults = async ({
   return { coverage, timed, detections: found };
 };
 
-/** This entry point requires the opaque, freshly admitted history and raw L1
- * handles. A journal copy, supplied proof, or supplied replay verdict cannot
- * recreate that authority. */
+/** This entry point requires the classifier-admitted predecessor and the
+ * freshly admitted raw L1 handle. A journal copy, supplied proof, or supplied
+ * replay verdict cannot recreate that authority. */
 export const replayTransitionTraceFromRetainedHistory = async ({
   evidence,
-  corpus,
+  predecessor,
   l1Events,
 }: {
   evidence: CanonicalBlockEvidence;
-  corpus: HistoricalNativeScriptCorpus;
+  predecessor: CanonicalBlockEvidence | undefined;
   l1Events: TransitionTraceL1Events;
 }) => {
-  const history = requireHistoricalNativeScriptCorpus(corpus);
-  if (
-    history.currentEvidence !== evidence ||
-    l1Events.headerHash !== evidence.headerHash
-  )
+  if (l1Events.headerHash !== evidence.headerHash)
     throw new Error(
       "Transition replay authority targets another canonical block",
     );
@@ -412,7 +394,11 @@ export const replayTransitionTraceFromRetainedHistory = async ({
   const completeEvidence: TransitionTraceDetectionEvidence = {
     ...(await deriveTransitionTraceReplayEvidence({
       current,
-      predecessor: history.reconstructions.at(-2),
+      predecessor: requireReplayPredecessorLedger({
+        block: evidence,
+        predecessor,
+        label: "Transition replay",
+      }),
       deposits: l1.events.flatMap((entry) =>
         entry.kind === "deposit"
           ? [

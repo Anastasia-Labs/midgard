@@ -6,8 +6,8 @@ import type {
   Header,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
-import { tempDir } from "./helpers.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
 export const deploymentFingerprint = "01".repeat(32);
 
@@ -18,9 +18,9 @@ export const deploymentFingerprintBytes = Buffer.from(
 
 export const makeHandlers = async (): Promise<{
   readonly handlers: DaLibp2pProofProtocolHandlers;
-  readonly store: JsonFileCommitteeStore;
+  readonly store: PostgresCommitteeStore;
 }> => {
-  const store = await JsonFileCommitteeStore.open(await tempDir());
+  const store = await openTestCommitteeStore();
   const handlers = new DaLibp2pProofProtocolHandlers({
     deploymentFingerprint,
     store,
@@ -37,7 +37,7 @@ export const saveVerifiedPayload = async ({
   headerHash,
   rootSummary = rootSummaryFromHeader(header),
 }: {
-  readonly store: JsonFileCommitteeStore;
+  readonly store: PostgresCommitteeStore;
   readonly payloadCbor: Buffer;
   readonly payloadHash: Buffer;
   readonly header: Header;

@@ -1,9 +1,10 @@
 import "./reference-scripts.node-runtime-reference-script-registry.js";
 
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import {
   buildReferenceScriptDeploymentPlan,
   buildReferenceScriptWalletStatus,
@@ -135,29 +136,19 @@ describe("reference-script deployment planner", () => {
       assets: { lovelace: 70_000_000n, [`${"a".repeat(56)}01`]: 1n },
     });
     const utxos = [reserved, available, tokenBearing];
-    const byOutRef = new Map(
-      utxos.map((utxo) => [`${utxo.txHash}#${utxo.outputIndex}`, utxo]),
-    );
+    // No follower here: the wallet view is the provider's UTxOs at the
+    // selected wallet's address.
     const lucid = {
-      wallet: () => ({
-        getUtxos: async () => utxos,
-      }),
-      utxosByOutRef: async (
-        refs: readonly {
-          readonly txHash: string;
-          readonly outputIndex: number;
-        }[],
-      ) =>
-        refs
-          .map((ref) => byOutRef.get(`${ref.txHash}#${ref.outputIndex}`))
-          .filter((utxo): utxo is UTxO => utxo !== undefined),
+      wallet: () => ({ address: async () => "addr_test1wallet" }),
+      utxosAt: async (address: string) =>
+        address === "addr_test1wallet" ? utxos : [],
     } as unknown as LucidEvolution;
 
     const spendable = await Effect.runPromise(
       resolveSpendableWalletUtxos(
         lucid,
         new Set([`${reserved.txHash}#${reserved.outputIndex.toString()}`]),
-      ),
+      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
     );
 
     expect(

@@ -4,10 +4,6 @@ import type { EventKey } from "@al-ft/midgard-sdk";
 import { type CanonicalTransitionEffect } from "@al-ft/midgard-validation";
 import type { RejectCode } from "@al-ft/midgard-validation/types";
 
-import {
-  type WatcherForcedOperatorVerdict,
-  type WatcherLocalUserEventAuthority,
-} from "../indexers/user-event-indexer.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
   WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
@@ -17,6 +13,10 @@ import {
   type WatcherBlockReplayStage,
 } from "./block-replay.watcher-block-replay-reason-codes.js";
 import { WATCHER_RULE_BUNDLE_REJECTION_SELECTION } from "./rule-bundle.js";
+import type {
+  WatcherForcedOperatorVerdict,
+  WatcherUserEventAuthority,
+} from "./user-event.js";
 
 export type WatcherBlockReplayReasonCode =
   (typeof WATCHER_BLOCK_REPLAY_REASON_CODES)[number];
@@ -280,15 +280,15 @@ export type WatcherBlockReplayCommittedStep = Readonly<{
 }>;
 
 /**
- * An event effect requires originating authority from private local
- * user-event publication, plus the exact operator claim authenticated by the
- * block DA roots. Settlement accounting is never a prerequisite for
+ * An event effect requires originating authority from the L1 follower's
+ * facts at the header's cutoff, plus the exact operator claim authenticated
+ * by the block DA roots. Settlement accounting is never a prerequisite for
  * challenge-period replay.
  */
 export type WatcherBlockReplayEventAuthority = Readonly<
   {
     eventKey: EventKey;
-    localUserEvent: WatcherLocalUserEventAuthority;
+    userEvent: WatcherUserEventAuthority;
   } & (
     | {
         phase: "Withdrawal" | "Deposit";

@@ -13,6 +13,7 @@ import {
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   classifyWithdrawalFromLedger,
@@ -43,7 +44,6 @@ import {
   type CompleteCanonicalReplayPredecessor,
   completeCanonicalReplayPredecessorEvidence,
 } from "../workflow/complete-replay.js";
-import { eventSubject } from "../workflow/detection-subject.js";
 import {
   type ReplayPrerequisiteFailure,
   replayPrerequisiteFailure,
@@ -52,11 +52,10 @@ import {
   authorities,
   committedDepositMatchesOrigin,
   committedWithdrawalMatchesOrigin,
-  isInteractiveDisagreement,
   matchingOrigin,
   readmitEvidence,
   readOriginEvents,
-  replayDetectionId,
+  replayDetections,
   type ReplayMaterial,
   sameEvidenceIdentity,
   VALIDATION_TRACE_REPLAY_CONTEXT,
@@ -79,10 +78,13 @@ export const admitValidationTraceReplayContext = async ({
   evidence,
   predecessor,
   transitionTraceEvents,
+  l1SlotConfig,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly predecessor?: CompleteCanonicalReplayPredecessor;
   readonly transitionTraceEvents?: TransitionTraceL1Events;
+  /** The deployment manifest's slot mapping, which Plutus contexts use. */
+  readonly l1SlotConfig: L1SlotConfig;
 }): Promise<ValidationTraceReplayContext> => {
   const predecessorEvidence = completeCanonicalReplayPredecessorEvidence({
     evidence,
@@ -387,6 +389,7 @@ export const admitValidationTraceReplayContext = async ({
           minFeeA: current.header.minFeeA,
           minFeeB: current.header.minFeeB,
           blockSlot: current.header.blockSlot,
+          l1SlotConfig,
         }),
       ),
     );
@@ -437,16 +440,7 @@ export const admitValidationTraceReplayContext = async ({
     priorRoot = replay.replayInput.postUtxosRoot;
   }
   const detections = Object.freeze(
-    material.filter(isInteractiveDisagreement).map((entry) =>
-      Object.freeze({
-        ...eventSubject(Data.from(entry.eventKeyCbor, EventKey)),
-        detectionId: replayDetectionId(entry),
-        headerHash: current.headerHash,
-        violationId: "validation-trace",
-        position: BigInt(entry.transactionIndex),
-        diagnostic: `Canonical Plutus execution disagrees with the retained validation descriptor at step ${entry.stepIndex.toString()}`,
-      }),
-    ),
+    material.flatMap((entry) => replayDetections(entry, current.headerHash)),
   );
   const eventEvidenceDigest =
     transitionTraceEvents === undefined

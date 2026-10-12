@@ -277,7 +277,7 @@ export const collectGroundTruthMetricsFromSql = (
             status
           FROM pending_block_finalizations
           WHERE created_at BETWEEN ${start} AND ${end}
-            AND status <> 'finalized'`,
+            AND status <> 'locally_applied'`,
       ],
       { concurrency: "unbounded" },
     );

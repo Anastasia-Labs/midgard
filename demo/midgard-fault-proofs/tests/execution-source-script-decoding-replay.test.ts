@@ -5,6 +5,7 @@ import {
   encodeMidgardNativeScript,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
@@ -91,6 +92,7 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
     } as const;
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         eventKeyCbor: Buffer.from(
           Data.to(eventKey as never, SDK.EventKeySchema),

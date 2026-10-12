@@ -288,6 +288,7 @@ export const validateArchitectureGCommitCandidateSeedInputV1 = (input) => {
       "fundingMapPath",
       "fundingMapSha256",
       "expectedTransactionCount",
+      "fixtureInitialUtxoCount",
       "firstTimestampIso",
     ],
     "Architecture G commit-candidate seed input",
@@ -305,6 +306,7 @@ export const validateArchitectureGCommitCandidateSeedInputV1 = (input) => {
     !isCanonicalAbsolutePath(input.fundingMapPath) ||
     !isHash(input.fundingMapSha256) ||
     !isPositiveSafeInteger(input.expectedTransactionCount) ||
+    !isPositiveSafeInteger(input.fixtureInitialUtxoCount) ||
     !isCanonicalTimestamp(input.firstTimestampIso)
   ) {
     throw new Error("Architecture G commit-candidate seed input is invalid");

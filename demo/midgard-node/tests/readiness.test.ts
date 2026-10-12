@@ -19,17 +19,6 @@ const readinessInput = (
     workerHeartbeats?: Partial<ReadinessInput["workerHeartbeats"]>;
   } = {},
 ): ReadinessInput => ({
-  foreignBaseVerification: {
-    status: "verified",
-    scope: {
-      deploymentIdentity: "fixture",
-      ownerToken: "fixture",
-      generation: "0",
-      baseHeaderHash: null,
-    },
-    foreignHeaderHash: null,
-    reason: null,
-  },
   unresolvedBlockSubmissionAgeMs: 0,
   maxUnresolvedBlockSubmissionAgeMs: 10_000,
   nowMillis: now,
@@ -38,7 +27,6 @@ const readinessInput = (
   queueDepth: 10,
   localFinalizationPending: false,
   dbHealthy: true,
-  awaitingForeignTipReconciliations: 0,
   ...overrides,
   workerHeartbeats: {
     ...readyHeartbeats,
@@ -82,17 +70,6 @@ describe("evaluateReadiness", () => {
 
     expect(readiness.ready).toBe(false);
     expect(readiness.reasons.some((r) => r.includes("queue_depth"))).toBe(true);
-  });
-
-  it("fails readiness while foreign-tip evidence is unresolved", () => {
-    const readiness = evaluateReadiness(
-      readinessInput({ awaitingForeignTipReconciliations: 2 }),
-    );
-
-    expect(readiness).toEqual({
-      ready: false,
-      reasons: ["foreign_tip_reconciliation_awaiting:2"],
-    });
   });
 
   it("fails readiness when local finalization is pending", () => {
@@ -324,31 +301,3 @@ describe("evaluateReadiness", () => {
     });
   });
 });
-
-it.each(["unobserved", "checking", "missing", "refused"] as const)(
-  "does not report ready with %s foreign-base verification",
-  (status) => {
-    const input = readinessInput();
-    const foreignBaseVerification: ReadinessInput["foreignBaseVerification"] =
-      status === "unobserved"
-        ? { status }
-        : {
-            status,
-            scope: {
-              deploymentIdentity: "fixture",
-              ownerToken: "fixture",
-              generation: "0",
-              baseHeaderHash: "foreign-header",
-            },
-            foreignHeaderHash: "foreign-header",
-            reason: "verification_pending",
-          };
-    const result = evaluateReadiness({ ...input, foreignBaseVerification });
-    expect(result.ready).toBe(false);
-    expect(
-      result.reasons.some((reason) =>
-        reason.startsWith(`foreign_base_verification_${status}`),
-      ),
-    ).toBe(true);
-  },
-);

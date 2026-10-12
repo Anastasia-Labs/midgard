@@ -30,6 +30,7 @@ export const makeLayout = (runDir: string) => {
     nodeRoot: join(demo, "midgard-node"),
     daRoot: join(demo, "da-committee-node"),
     watcherRoot: join(demo, "midgard-watcher"),
+    transportRoot: join(demo, "l1-node-transport"),
     toolsRoot: join(demo, "midgard-node-tools"),
     phase4Root,
     phase4Scripts: join(phase4Root, "scripts"),
@@ -65,8 +66,6 @@ export const makeLayout = (runDir: string) => {
     supervisorPid: join(state, "supervisor.pid"),
     /** Digest of the service set the running supervisor was started with. */
     supervisorSpecs: join(state, "supervisor.specs"),
-    /** Local live query discovery only; never durable readiness authority. */
-    historyDaemonDescriptor: join(state, "history-daemon.json"),
     supervisorEvents: join(state, "logs/supervisor.ndjson"),
     serviceLog: (name: string) => join(state, `logs/${name}.log`),
     journeyDir: join(state, "journey"),
@@ -81,19 +80,7 @@ export const makeLayout = (runDir: string) => {
     watcherRelease: join(state, "watcher/release"),
     watcherRuntimeConfig: join(state, "watcher/config/watcher.json"),
     watcherProcessConfig: join(state, "watcher/config/watcher-process.json"),
-    watcherAuthorityConfig: join(
-      state,
-      "watcher/config/authority-process.json",
-    ),
     watcherData: join(state, "watcher/data"),
-    /** Historical native-script history providers and their shared CA bundle. */
-    watcherHistory: join(state, "watcher/history"),
-    watcherHistoryArchive: (role: string) =>
-      join(state, `watcher/history/${role}`),
-    watcherHistoryCa: join(state, "watcher/history/archive-ca.pem"),
-    watcherHistoryProviders: join(state, "watcher/history/providers.json"),
-    /** The history recorder's index of state-queue commits by header hash. */
-    watcherHistoryCommits: join(state, "watcher/history/commits"),
   };
 };
 
@@ -149,10 +136,7 @@ export const servicePorts = (run: RunEnv) => {
     committeeLibp2p: (index: number) => 39001 + run.portOffset + 3 * index,
     producerLibp2p: 39002 + run.portOffset,
     retainedLibp2p: 39003 + run.portOffset,
-    watcherAuthority: 7401 + run.portOffset,
     watcherOperations: 7402 + run.portOffset,
-    historyArchive: (index: number) => 7403 + run.portOffset + index,
-    historyTunnel: 7405 + run.portOffset,
     publicRetainedDaHealth: 7406 + run.portOffset,
   };
   const allocated = [
@@ -164,11 +148,7 @@ export const servicePorts = (run: RunEnv) => {
     ports.committeeLibp2p(1),
     ports.producerLibp2p,
     ports.retainedLibp2p,
-    ports.watcherAuthority,
     ports.watcherOperations,
-    ports.historyArchive(0),
-    ports.historyArchive(1),
-    ports.historyTunnel,
     ports.publicRetainedDaHealth,
     run.ogmiosPort,
     run.kupoPort,

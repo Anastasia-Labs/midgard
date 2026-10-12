@@ -74,7 +74,6 @@ describe("retentionDeadlineReportV1", () => {
           ? {}
           : { retentionAlertThresholdMs: threshold }),
         deploymentFingerprint: FINGERPRINT,
-        finalityDepth: 30,
         automaticRecoveryMaxDepth: 2160,
         daTransport: { retentionDays: LIBP2P_DA_MIN_RETENTION_DAYS },
       };
@@ -85,6 +84,7 @@ describe("retentionDeadlineReportV1", () => {
           {
             confirmedHeadHash: HEAD,
             liveQueueHeaderHashes: new Set([LIVE_A, LIVE_B]),
+            finalBlockTimeMs: NOW,
           },
           NOW,
         ),
@@ -159,6 +159,28 @@ describe("retentionDeadlineReportV1", () => {
     });
     expect(report.entries[0]).toMatchObject({
       reasonCode: "removed_header",
+      alerting: false,
+    });
+    expect(report.alerting).toBe(0);
+  });
+
+  it("does not alert on a record past its horizon on the wall clock but not on the release clock", async () => {
+    const store = await openStore();
+    await seed(store, [
+      {
+        headerHash: hashOf(45),
+        endTimeMs: NOW - REQUIRED_RETENTION_MS,
+        status: "attested",
+      },
+    ]);
+    const report = await retentionDeadlineReport(store, {
+      ...retentionOptions(NOW + 1),
+      finalBlockTimeMs: NOW,
+      alertThresholdMs: THRESHOLD_MS,
+    });
+    expect(report.entries[0]).toMatchObject({
+      reasonCode: "still_challengeable",
+      remainingMs: -1,
       alerting: false,
     });
     expect(report.alerting).toBe(0);
@@ -264,8 +286,8 @@ describe("runRetentionCycleV1", () => {
     let injected = false;
     const wrapped = new Proxy(store, {
       get(target, property, receiver) {
-        if (property === "listStateQueueHeaders") {
-          return async () => {
+        if (property === "getStateQueueHeaders") {
+          return async (headerHashes: readonly string[]) => {
             if (!injected) {
               injected = true;
               await seed(store, [
@@ -276,7 +298,7 @@ describe("runRetentionCycleV1", () => {
                 },
               ]);
             }
-            return store.listStateQueueHeaders();
+            return store.getStateQueueHeaders(headerHashes);
           };
         }
         const value = Reflect.get(target, property, receiver) as unknown;

@@ -19,7 +19,6 @@ describe("onChainCoordinatorFromConfig", () => {
   it("fails closed without an L1 submitter key source", async () => {
     const config = {
       ...minimalConfig({
-        dir: "/tmp",
         manifestPath: "/tmp/manifest.json",
         deploymentInfoPath: "/tmp/deployment.json",
         signerSeed: "00".repeat(32),
@@ -41,12 +40,9 @@ describe("onChainCoordinatorFromConfig", () => {
         stateQueueYields: minimalStateQueueYields(),
       },
       cardanoL1Source: { networkMagic: 1 },
-      cardanoProviderUrls: [
-        "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-      ],
     };
 
-    await expect(onChainCoordinatorFromConfig(config)).rejects.toThrow(
+    await expect(onChainCoordinatorFromConfig(config, noLucid)).rejects.toThrow(
       /L1_SUBMITTER_KEY_SOURCE/,
     );
   });
@@ -56,24 +52,26 @@ describe("onChainCoordinatorFromConfig", () => {
     let referenceScriptsResolved = false;
 
     await expect(
-      onChainCoordinatorFromConfig(config, fakeChainReader, undefined, {
-        lucidFromProviderUrl: async () => ({
-          lucid: {} as LucidEvolution,
-          providerSource: "test",
-        }),
-        selectL1SubmitterWallet: async () => ({
-          kind: "private_key",
-          value: "ed25519_sk_test",
-        }),
-        assertL1SubmitterWalletPreflight: async () => {
-          throw new Error("wallet preflight failed");
+      onChainCoordinatorFromConfig(
+        config,
+        noLucid,
+        fakeChainReader,
+        undefined,
+        {
+          selectL1SubmitterWallet: async () => ({
+            kind: "private_key",
+            value: "ed25519_sk_test",
+          }),
+          assertL1SubmitterWalletPreflight: async () => {
+            throw new Error("wallet preflight failed");
+          },
+          preflightL1SubmitterWallet: async () => readyPreflightResult,
+          fetchDaAttestationReferenceScripts: async () => {
+            referenceScriptsResolved = true;
+            return fakeReferenceScripts;
+          },
         },
-        preflightL1SubmitterWallet: async () => readyPreflightResult,
-        fetchDaAttestationReferenceScripts: async () => {
-          referenceScriptsResolved = true;
-          return fakeReferenceScripts;
-        },
-      }),
+      ),
     ).rejects.toThrow(/wallet preflight failed/);
 
     expect(referenceScriptsResolved).toBe(false);
@@ -91,15 +89,11 @@ describe("onChainCoordinatorFromConfig", () => {
         authorityNodeId: "local-cardano-node",
         socketPath: "/run/cardano/node.socket",
         nodeConfigPath: "/etc/cardano/config.json",
-        binaryPath: "/opt/midgard/midgard-chain-sync",
+        binaryPath: "/opt/midgard/midgard-l1-node-transport",
       },
     };
     const lucid = {} as LucidEvolution;
     const seen: {
-      providerUrl?: string;
-      network?: string;
-      nativeLedger?: unknown;
-      networkMagic?: number;
       selectLucid?: unknown;
       keySource?: unknown;
       preflightLucid?: unknown;
@@ -110,22 +104,13 @@ describe("onChainCoordinatorFromConfig", () => {
 
     const coordinator = await onChainCoordinatorFromConfig(
       config,
+      async () => {
+        calls.push("lucid");
+        return lucid;
+      },
       fakeChainReader,
       undefined,
       {
-        lucidFromProviderUrl: async (
-          providerUrl,
-          network,
-          nativeLedger,
-          networkMagic,
-        ) => {
-          calls.push("lucid");
-          seen.providerUrl = providerUrl;
-          seen.network = network;
-          seen.nativeLedger = nativeLedger;
-          seen.networkMagic = networkMagic;
-          return { lucid, providerSource: "test" };
-        },
         selectL1SubmitterWallet: async (selectLucid, keySource) => {
           calls.push("select");
           seen.selectLucid = selectLucid;
@@ -157,7 +142,7 @@ describe("onChainCoordinatorFromConfig", () => {
     expect(coordinator).toBeInstanceOf(OnChainLifecycleCoordinator);
     // The ordering contract, stated as the two relations it exists to
     // protect rather than as a transcript of every internal step: no wallet
-    // work before a provider, and no on-chain reference-script reads before
+    // work before the follower's Lucid, and no on-chain reference-script reads before
     // the wallet has passed preflight.
     expect(calls.indexOf("lucid")).toBeLessThan(calls.indexOf("select"));
     expect(calls.indexOf("select")).toBeLessThan(calls.indexOf("preflight"));
@@ -174,17 +159,9 @@ describe("onChainCoordinatorFromConfig", () => {
       seen.referenceLucid,
     ]).toEqual([lucid, lucid, lucid]);
     expect({
-      providerUrl: seen.providerUrl,
-      network: seen.network,
-      nativeLedger: seen.nativeLedger,
-      networkMagic: seen.networkMagic,
       keySource: seen.keySource,
       referenceDeployment: seen.referenceDeployment,
     }).toEqual({
-      providerUrl: config.cardanoProviderUrls[0],
-      network: config.network,
-      nativeLedger: config.nativeLedger,
-      networkMagic: config.cardanoL1Source.networkMagic,
       keySource: config.l1SubmitterKeySource,
       referenceDeployment: config.midgardNodeDeployment,
     });
@@ -204,13 +181,19 @@ describe("onChainCoordinatorFromConfig", () => {
   it("omits the auto-funding key source when the operator configured none", async () => {
     const config = l1ReadyConfig();
     let options: L1SubmitterPreflightOptions | undefined;
-    await onChainCoordinatorFromConfig(config, fakeChainReader, undefined, {
-      ...passingDeps(),
-      assertL1SubmitterWalletPreflight: async (_lucid, received) => {
-        options = received;
-        return readyPreflightResult;
+    await onChainCoordinatorFromConfig(
+      config,
+      noLucid,
+      fakeChainReader,
+      undefined,
+      {
+        ...passingDeps(),
+        assertL1SubmitterWalletPreflight: async (_lucid, received) => {
+          options = received;
+          return readyPreflightResult;
+        },
       },
-    });
+    );
     expect(options).toBeDefined();
     expect(Object.hasOwn(options!, "autoFundKeySource")).toBe(false);
   });
@@ -227,6 +210,7 @@ describe("onChainCoordinatorFromConfig", () => {
     let referenceScriptsResolved = false;
     const coordinator = await onChainCoordinatorFromConfig(
       config,
+      noLucid,
       fakeChainReader,
       undefined,
       {
@@ -257,6 +241,7 @@ describe("onChainCoordinatorFromConfig", () => {
     await expect(
       onChainCoordinatorFromConfig(
         config,
+        noLucid,
         fakeChainReader,
         undefined,
         passingDeps(),
@@ -269,6 +254,7 @@ describe("onChainCoordinatorFromConfig", () => {
     await expect(
       onChainCoordinatorFromConfig(
         base,
+        noLucid,
         fakeChainReader,
         undefined,
         passingDeps(),
@@ -294,12 +280,10 @@ describe("onChainCoordinatorFromConfig", () => {
     const checks: unknown[] = [];
     const coordinator = await onChainCoordinatorFromConfig(
       config,
+      async () => lucid,
       fakeChainReader,
       undefined,
-      {
-        ...passingDeps(),
-        lucidFromProviderUrl: async () => ({ lucid, providerSource: "test" }),
-      },
+      passingDeps(),
       { recordSubmitterFunding: (check) => checks.push(check) },
     );
     const submitter = (
@@ -362,12 +346,10 @@ describe("onChainCoordinatorFromConfig", () => {
     const failures: unknown[] = [];
     const coordinator = await onChainCoordinatorFromConfig(
       config,
+      async () => lucid,
       fakeChainReader,
       undefined,
-      {
-        ...passingDeps(),
-        lucidFromProviderUrl: async () => ({ lucid, providerSource: "test" }),
-      },
+      passingDeps(),
       {
         recordDaBondPool: (check) => checks.push(check),
         recordDaBondPoolReadFailure: (error) => failures.push(error),
@@ -401,7 +383,7 @@ describe("onChainCoordinatorFromConfig", () => {
 
   it("does not construct an unproven fallback chain reader", async () => {
     const config = l1ReadyConfig();
-    await expect(onChainCoordinatorFromConfig(config)).rejects.toThrow(
+    await expect(onChainCoordinatorFromConfig(config, noLucid)).rejects.toThrow(
       /canonical configured DA chain reader/u,
     );
   });
@@ -409,7 +391,6 @@ describe("onChainCoordinatorFromConfig", () => {
 
 const l1ReadyConfig = () => ({
   ...minimalConfig({
-    dir: "/tmp",
     manifestPath: "/tmp/manifest.json",
     deploymentInfoPath: "/tmp/deployment.json",
     signerSeed: "00".repeat(32),
@@ -442,16 +423,12 @@ const l1ReadyConfig = () => ({
     stateQueueYields: minimalStateQueueYields(),
   },
   cardanoL1Source: { networkMagic: 1 },
-  cardanoProviderUrls: [
-    "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-  ],
 });
 
+/** A Lucid source whose client nothing in the test reads. */
+const noLucid = async () => ({}) as LucidEvolution;
+
 const passingDeps = () => ({
-  lucidFromProviderUrl: async () => ({
-    lucid: {} as LucidEvolution,
-    providerSource: "test",
-  }),
   selectL1SubmitterWallet: async () => ({
     kind: "private_key" as const,
     value: "ed25519_sk_test",

@@ -5,6 +5,7 @@ import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { exUnitsSummary } from "./guard-focused-selector.mjs";
 import { assertPinnedAiken, defaultAikenBinary } from "./pinned-compiler.mjs";
 
 const usage =
@@ -166,3 +167,6 @@ if (result.status !== null && result.status !== 0) {
   console.error(`Aiken exited with status ${result.status}`);
   process.exit(result.status);
 }
+// stdout is Aiken's report, which the execution-ledger measurer parses; the
+// summary goes to stderr.
+console.error(JSON.stringify({ exUnits: exUnitsSummary(report) }));

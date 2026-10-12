@@ -2,8 +2,8 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import type { DaProducerCommitteePeer } from "../da/libp2p-producer.js";
+import { owedPayload } from "../l1-queue-terminals/reads.js";
 import { Database } from "../services/database.js";
-import { owedPayload } from "./daPayloadTerminalOutcomes.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "da_payload_publications";
@@ -230,14 +230,13 @@ export const recordAttempt = ({
   );
 
 /**
- * A header an authenticated correction removed under this deployment, or
- * whose journal is abandoned under a named cause (a correction, or the
- * replacement of a signed commit that missed its window; see `owedPayload`),
- * is no longer part of the chain the committee must serve, so its payload is
- * neither republished nor counted as owed. The filter is evaluated per claim:
- * an authenticated rollback that revokes the removal, or the revival of a
- * replaced journal whose commit won its slot after all, makes the payload due
- * again without any row rewrite.
+ * A header a landed tx removed from the state queue, or whose journal is
+ * abandoned under a named cause (the replacement digest of an own block the
+ * landed-block rebase disposed of; see `owedPayload`), is no longer part of
+ * the chain the committee must serve, so its payload is neither republished
+ * nor counted as owed. The filter is evaluated per claim: a rollback of the
+ * removal, or the revival of a disposed journal whose block landed after
+ * all, makes the payload due again without any row rewrite.
  */
 export const claimDue = ({
   retentionDays,
@@ -252,8 +251,8 @@ export const claimDue = ({
   readonly leaseOwner: string;
   readonly leaseToken: string;
   readonly leaseMs: number;
-  /** Verified manifest ID scoping authenticated removal outcomes; absent for
-   * a derived contract bundle (see `owedPayload`). */
+  /** Verified manifest ID; absent for a derived contract bundle, which
+   * consults no removal (see `owedPayload`). */
   readonly deploymentIdentityDigest?: Buffer;
 }): Effect.Effect<readonly Row[], DatabaseError, Database> =>
   Effect.gen(function* () {

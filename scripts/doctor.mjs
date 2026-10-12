@@ -72,6 +72,7 @@ if (isMain) {
   process.exitCode = await main(process.argv.slice(2));
 }
 export {
+  checkCoreBare,
   checkHooks,
   checkNode,
   EXIT,

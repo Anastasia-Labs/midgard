@@ -7,6 +7,8 @@ import {
   collectStringOption,
   failCli,
   parseStringListOption,
+  ToolLucidLive,
+  ToolMidgardContractServices,
   writeJson,
 } from "midgard-node/commands/cli-runtime";
 import {
@@ -332,10 +334,10 @@ program
                           }>`SELECT status, COUNT(*)::bigint AS count FROM tx_admissions GROUP BY status ORDER BY status`,
                           sql<{
                             readonly count: bigint | number | string;
-                          }>`SELECT COUNT(*)::bigint AS count FROM mempool`,
+                          }>`SELECT COUNT(*)::bigint AS count FROM mempool WHERE included_by IS NULL`,
                           sql<{
                             readonly count: bigint | number | string;
-                          }>`SELECT COUNT(*)::bigint AS count FROM processed_mempool`,
+                          }>`SELECT COUNT(*)::bigint AS count FROM processed_mempool WHERE included_by IS NULL`,
                           sql<{
                             readonly status: string;
                             readonly count: bigint | number | string;
@@ -379,8 +381,8 @@ program
           Effect.provide(Services.WriteBehindLive),
           Effect.provide(Services.NodeConfig.layer),
           Effect.provide(Services.Database.layer),
-          Effect.provide(Services.Lucid.Default),
-          Effect.provide(Services.MidgardContractServices),
+          Effect.provide(ToolLucidLive),
+          Effect.provide(ToolMidgardContractServices),
           Effect.provide(stressCliLoggerLayer),
         ),
       );

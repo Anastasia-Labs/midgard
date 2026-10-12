@@ -8,11 +8,9 @@
  * header's own `withdrawals_root`.
  *
  * Violation: `withdrawn-reference-input`.
- * Catalogue category: **not registered yet**. `00000010` is reserved only for
- * emulator wiring; production registration will allocate the real id. Until
- * then this module is reached by direct import rather than through
- * `fraud-proof/catalogue.ts`, and the asset-name helper is parameterized on
- * the category id instead of pinning one.
+ * Catalogue category: `withdrawnReferenceInput` (`00000010`, registered in
+ * `fraud-proof/catalogue.ts`). The asset-name helper takes the category id as
+ * a parameter rather than pinning it.
  *
  * Every schema below mirrors an Aiken type in
  * `onchain/aiken/lib/midgard/fraud-proofs/withdrawn-reference-input/

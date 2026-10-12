@@ -6,6 +6,7 @@ import type {
   L1SubmissionRecord,
 } from "../domain.js";
 import type { DaAttestationChainReader } from "../l1/da-attestation-reader.js";
+import type { InFlightSubmissionStatus } from "../l1/submitter.js";
 import { planDaAttestationLifecycle } from "./planner.js";
 import type { DaBondPoolCheck } from "./pool-monitor.js";
 
@@ -62,6 +63,12 @@ export interface OnChainAttestationSubmitter {
   }): Promise<AttestationSubmissionResult>;
   /** Reads and classifies the pooled DA bond, when the submitter can. */
   checkDaBondPool?(): Promise<DaBondPoolCheck>;
+  /**
+   * Resolves a submission whose outcome is unknown by the follower's view of
+   * its transaction id (`inFlightSubmissionStatus`). Without it the
+   * coordinator cannot resolve one and never builds its replacement.
+   */
+  submissionStatus?(txHash: string): Promise<InFlightSubmissionStatus>;
 }
 
 export type OnChainLifecycleCoordinatorDeps = {

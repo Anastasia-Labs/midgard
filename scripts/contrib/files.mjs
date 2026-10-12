@@ -175,9 +175,21 @@ export const workspacePackages = (root) =>
       })),
   );
 
+// A package is named by its declared name or its directory under demo/. A
+// directory may also carry a scope the workspace uses (`@al-ft/midgard-node`
+// for the unscoped `midgard-node`), since half the packages are scoped and
+// the other half are not.
 export const packageByName = (root, name) => {
-  const pkg = workspacePackages(root).find(
-    (entry) => entry.name === name || entry.directory === `demo/${name}`,
+  const packages = workspacePackages(root);
+  const scopes = new Set(
+    packages.flatMap(({ name: declared }) =>
+      declared?.startsWith("@") ? [declared.split("/")[0]] : [],
+    ),
+  );
+  const [scope, rest] = name.split("/");
+  const directory = rest !== undefined && scopes.has(scope) ? rest : name;
+  const pkg = packages.find(
+    (entry) => entry.name === name || entry.directory === `demo/${directory}`,
   );
   if (!pkg)
     throw new Error(
@@ -204,6 +216,30 @@ export const packageClosure = (root, name) => {
   return [...found.values()];
 };
 
+// The workspace packages a build keeps out of its bundle: named in a tsup
+// config's `external` list or by a `--external` flag. Blind spot: a name
+// computed rather than spelled.
+const externalWorkspacePackages = (root, pkg, packages) => {
+  const lists = [
+    ...buildConfigText(root, pkg).matchAll(/\bexternal\s*:\s*\[([^\]]*)\]/gu),
+    ...(pkg.scripts?.["build:contrib-raw"] ?? "").matchAll(
+      /--external[ =](\S+)/gu,
+    ),
+  ]
+    .map(([, list]) => list.replaceAll("\\", ""))
+    .join("\n");
+  return packages
+    .map((entry) => entry.name)
+    .filter(
+      (name) =>
+        name !== pkg.name &&
+        new RegExp(
+          `(?<![\\w@/-])${name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?![\\w-])`,
+          "u",
+        ).test(lists),
+    );
+};
+
 // Runtime imports consume emitted workspace artifacts. Unlike the source
 // closure, their dependency graph must be acyclic and built in dependency order.
 export const runtimeBuildClosure = (root, name) => {
@@ -215,6 +251,11 @@ export const runtimeBuildClosure = (root, name) => {
     if (visited.has(pkg.name)) return;
     if (visiting.has(pkg.name))
       throw new Error(`runtime build dependency cycle at ${pkg.name}`);
+    for (const external of externalWorkspacePackages(root, pkg, packages))
+      if (!pkg.dependencies?.[external])
+        throw new Error(
+          `${pkg.name}: its build keeps ${external} external, so its dist imports ${external}'s dist at runtime, but ${external} is not in its dependencies; move it there so that dist is built first`,
+        );
     visiting.add(pkg.name);
     for (const dependency of Object.keys(pkg.dependencies ?? {}).sort()) {
       const next = packages.find((entry) => entry.name === dependency);
@@ -416,18 +457,27 @@ export const outputIdentity = (root, directory) =>
   scoped(`output\0${root}\0${directory}`, () =>
     uncachedOutputIdentity(root, directory),
   );
-const uncachedOutputIdentity = (root, directory) =>
-  hashFiles(
+const uncachedOutputIdentity = (root, directory) => {
+  // A native owner may share dist with its package's JavaScript build, but
+  // has its own binary receipt. Other packages' directories named native
+  // remain compiled outputs.
+  // A root without a workspace (an operation's run directory) has none.
+  const packages = existsSync(resolve(root, "demo"))
+    ? workspacePackages(root)
+    : [];
+  const nativeOutputs = Object.entries(NATIVE_RECIPES).flatMap(
+    ([name, recipe]) =>
+      packages
+        .filter((entry) => entry.name === name)
+        .map((entry) => resolve(root, entry.directory, recipe.output)),
+  );
+  return hashFiles(
     root,
     filesUnder(resolve(root, directory), { outputs: true }).filter(
       (path) =>
-        // The watcher Go owner shares dist, but has its own binary receipt.
-        // Other packages' directories named native remain compiled outputs.
-        !Object.entries(NATIVE_RECIPES).some(
-          ([name, recipe]) =>
-            path === resolve(root, "demo", name, recipe.output),
-        ) &&
+        !nativeOutputs.some((output) => path === output) &&
         !path.endsWith(".contrib-build-v1.json") &&
         !path.endsWith(".contrib-native-v1.json"),
     ),
   );
+};

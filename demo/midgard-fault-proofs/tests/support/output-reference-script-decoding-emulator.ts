@@ -34,7 +34,6 @@ import "./submit-init-emulator-shared.js";
 import "./output-reference-script-decoding-emulator.commit-accepted-block.js";
 import "./output-reference-script-decoding-emulator.commit-forced-block.js";
 import "./output-reference-script-decoding-emulator.make-output-reference-stages.js";
-import "./output-reference-script-decoding-emulator.types.js";
 export {
   type AcceptedSubject,
   commitAcceptedBlock,
@@ -52,7 +51,6 @@ export {
   OUTPUT_REFERENCE_MAX_OUTPUT_BYTES,
   OUTPUT_REFERENCE_REASON_ARMS,
   type OutputReferenceContext,
-  type OutputReferenceReasonArm,
   outputWithNativeScript,
   outputWithRawNativePayload,
   rawNativeOutputOfLength,
@@ -68,4 +66,3 @@ export {
   publishFamilyReferences,
 } from "./output-reference-script-decoding-emulator.commit-forced-block.js";
 export { makeOutputReferenceStages } from "./output-reference-script-decoding-emulator.make-output-reference-stages.js";
-export { type OutputReferenceStages } from "./output-reference-script-decoding-emulator.types.js";

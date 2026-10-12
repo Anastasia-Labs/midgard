@@ -122,11 +122,13 @@ export type NativeMpfOwnerServiceOptions = {
   readonly maxFrameBytes?: number;
   readonly maxChunkBytes?: number;
   readonly requestTimeoutMs?: number;
-  /** Failed child restarts inside `restartWindowMs` that exhaust the owner
-   * until the oldest leaves the window (see `NativeOwnerRestartPolicy`); 0
-   * counts as 1. A child that dies and restarts is never counted. */
+  /** How many times in a row the same child failure may come before the
+   * owner holds, restarting no more (see `NativeOwnerRestartPolicy`); 0
+   * counts as 1. A child that ran `restartWindowMs` or longer before it died
+   * starts the count over. */
   readonly restartLimit?: number;
-  /** Sliding window of the restart backoff and of `restartLimit`. */
+  /** Sliding window of the restart backoff, and the run after which a
+   * child's death no longer counts toward `restartLimit`. */
   readonly restartWindowMs?: number;
   readonly restartBackoffBaseMs?: number;
   readonly restartBackoffMaxMs?: number;

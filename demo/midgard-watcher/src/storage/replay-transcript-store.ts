@@ -52,6 +52,10 @@ export type WatcherReplayTranscriptStore = Readonly<{
   beginProofOperation(
     authority: WatcherReplayTranscriptClassification,
   ): Promise<void>;
+  /** A proof started from this identity's transcript and has not completed. */
+  proofOperationOpen(
+    identity: WatcherReplayTranscriptIdentity,
+  ): Promise<boolean>;
   retireExpired(input: WatcherReplayTranscriptRetirementInput): Promise<number>;
   resetRetirementWitnesses(): Promise<void>;
 }>;
@@ -326,6 +330,7 @@ export const createWatcherSqliteReplayTranscriptStore = (
     completeOperation: lifecycleStore.completeOperation,
     completeClassification: lifecycleStore.completeClassification,
     beginProofOperation: lifecycleStore.beginProofOperation,
+    proofOperationOpen: lifecycleStore.proofOperationOpen,
     retireExpired: lifecycleStore.retireExpired,
     resetRetirementWitnesses: lifecycleStore.resetRetirementWitnesses,
     read: async (identity) =>

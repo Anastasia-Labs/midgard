@@ -13,7 +13,8 @@ The current implementation is native v1, defined by these protocol constants
 (exported from `midgard-core`):
 
 - `MIDGARD_NATIVE_TX_VERSION = 1`
-- `MIDGARD_POSIX_TIME_NONE = -1`
+- `MIDGARD_POSIX_TIME_NONE = -1`: the absent validity bound. A present bound
+  is a non-negative slot; the codec refuses any bound below `-1`.
 - `MIDGARD_NATIVE_NETWORK_ID_NONE = 255`
 
 A full transaction is a four-element tuple:

@@ -6,6 +6,7 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { makeForcedOrderSettlementScenario } from "@al-ft/midgard-fault-proofs/test-support/forced-order-settlement";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -58,6 +59,7 @@ describe("forced submission under real order and settlement validators", () => {
       );
       const replay = await Effect.runPromise(
         replayValidationMachineEvent({
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           sourceKind: "forced",
           canonicalTransactionCbor: s.bytes,

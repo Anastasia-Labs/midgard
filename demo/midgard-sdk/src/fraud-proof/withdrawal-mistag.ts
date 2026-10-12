@@ -386,7 +386,7 @@ export const withdrawalMistagAddressPayloadBytes = (
   const stake = address.stakeCredential;
   if (stake === null) return 29n;
   if ("Inline" in stake) return 57n;
-  const pointer = stake.Pointer[0];
+  const pointer = stake.Pointer;
   return (
     29n +
     pointerWordLength(pointer.slotNumber) +

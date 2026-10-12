@@ -16,6 +16,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -222,6 +223,7 @@ export const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
     operatorActivation: { status: "pending" },
   };
   return {
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,

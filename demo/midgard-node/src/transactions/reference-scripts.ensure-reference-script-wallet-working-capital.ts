@@ -1,6 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { type ReferenceScriptAuthPolicyRef } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import {
+  getAddressDetails,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -9,6 +13,11 @@ import {
   REFERENCE_SCRIPT_COMMAND_NAMES,
   type ReferenceScriptCommandName,
 } from "../deployable-scripts.js";
+import {
+  type IntentJournal,
+  journaledIntent,
+  openPlan,
+} from "../services/intent-journal.js";
 import { compareOutRefs } from "../tx-context.js";
 import {
   buildReferenceScriptWalletStatus,
@@ -25,10 +34,10 @@ import {
   sumWalletLovelace,
 } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 import {
-  refreshWalletUtxosFromOwnAddress,
+  awaitWalletViewUtxos,
   resolveLiveWalletUtxo,
   resolveSpendableWalletUtxos,
-} from "./reference-scripts.refresh-wallet-utxos-from-own-address.js";
+} from "./reference-scripts.wallet-view-utxos.js";
 import {
   handleSignSubmit,
   TxConfirmError,
@@ -80,10 +89,13 @@ export const ensureReferenceScriptWalletWorkingCapital = (
   | SDK.LucidError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
-    const referenceScriptWalletUtxos = yield* refreshWalletUtxosFromOwnAddress(
+    // S5: the plan opens before the wallet read the top-up rests on.
+    const plan = yield* openPlan;
+    const referenceScriptWalletUtxos = yield* awaitWalletViewUtxos(
       referenceScriptsLucid,
       {
         scopeName: `${scopeName} reference scripts`,
@@ -183,9 +195,16 @@ export const ensureReferenceScriptWalletWorkingCapital = (
     const txHash = yield* handleSignSubmit(
       fundingLucid,
       unsigned,
+      // The target (§8.4 E2): the plain balance at the reference-script
+      // address this top-up reaches.
+      journaledIntent(
+        "reference_funding",
+        `reference_funding:${scopeName}:${getAddressDetails(referenceScriptAddress).address.hex}:${targetPlainBalance.toString()}`,
+        plan,
+      ),
       REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
     );
-    yield* refreshWalletUtxosFromOwnAddress(referenceScriptsLucid, {
+    yield* awaitWalletViewUtxos(referenceScriptsLucid, {
       scopeName: `${scopeName} reference scripts after replenishment`,
       failureMessage: `Failed to refresh reference-script wallet after replenishing ${scopeName} reference scripts`,
       minimumPlainBalance: targetPlainBalance,

@@ -2,6 +2,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardRedeemerWitnessItem,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -100,6 +101,7 @@ const classifyAcceptedForcedRedeemer = async (redeemerData: string) => {
     predecessor: admittedPredecessor,
     transitionTraceEvents,
     validationTraceReplay: await admitValidationTraceReplayContext({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       evidence,
       predecessor: admittedPredecessor,
       transitionTraceEvents,

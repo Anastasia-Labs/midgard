@@ -42,11 +42,11 @@ export type EvaluateWatcherBlockReplayInput = {
   readonly reconstruction: WatcherHeaderRootReconstructionResult;
   /** The accepted W24 record for this block. */
   readonly phaseA: WatcherPhaseAVerificationResult;
-  /** Exact public `DaPayloadEnvelopeV1` bytes, from the W21 store. */
+  /** Exact public `DaPayloadEnvelopeV1` bytes, from the header decision's canonical evidence. */
   readonly payloadEnvelopeCbor: Uint8Array;
   /** Provenance of those bytes; must be public/permissionless DA. */
   readonly daProvenance: EvidenceProvenance;
-  /** Prior-state ledger entries, from the W21 records for the parent block. */
+  /** Prior-state ledger entries: the parent block's canonical reconstruction UTxOs. */
   readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
   /** The W23 rule bundle, with its commitment. */
   readonly ruleBundle: WatcherRuleBundle;
@@ -203,7 +203,7 @@ export const snapshotWatcherBlockReplayEventAuthorities = (
 ): readonly WatcherBlockReplayEventAuthority[] =>
   Object.freeze(
     authorities.map((authority) => {
-      const origin = { localUserEvent: authority.localUserEvent };
+      const origin = { userEvent: authority.userEvent };
       const eventKey = structuredClone(authority.eventKey);
       if (authority.phase === "ForcedTransaction") {
         if (
