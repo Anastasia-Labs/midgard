@@ -232,7 +232,7 @@ export const depositBlock = async (entry: {
     version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       ...body,
-      header: { ...body.header, ...counts },
+      header: { ...body.header, ...counts, utxosRoot: root },
       counts,
       deposits: [[entry.idCbor, entry.infoCbor]],
       transition_trace: [
