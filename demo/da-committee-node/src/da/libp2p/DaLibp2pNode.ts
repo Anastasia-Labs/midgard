@@ -168,38 +168,51 @@ export class DaLibp2pNode {
       }),
     );
     this.node = node;
-    for (const [protocolId, handler] of this.requestHandlers) {
-      const protocolName = this.protocols.requireProtocolId(protocolId);
-      await node.handle(
-        protocolId,
-        async (stream, connection) => {
-          const typedConnection = connection as DaLibp2pConnection;
-          await handler({
-            protocolId,
-            protocolName,
-            stream: stream as DaLibp2pStream,
-            connection: typedConnection,
-            remotePeerId: typedConnection.remotePeer?.toString(),
-          });
-        },
-        {
-          maxInboundStreams: this.config.limits.maxStreamsPerPeer,
-          maxOutboundStreams: this.config.limits.maxStreamsPerPeer,
-          runOnLimitedConnection: false,
-        },
-      );
-    }
-    await node.start();
-    const pubsub = node.services?.pubsub;
-    if (pubsub !== undefined) {
-      this.gossip = new DaGossip({
-        pubsub,
-        topics: this.topics,
-        config: this.config,
-        messageHandlers: this.gossipHandlers,
-        onMessageError: this.onGossipMessageError,
-      });
-      await this.gossip.subscribeAllowedTopics();
+    // `stop()` acts only on a started node, so a start that fails from here
+    // on releases what it opened itself: once `node.start()` has bound the
+    // listen address, every retry would otherwise hit EADDRINUSE on this
+    // process's own socket.
+    try {
+      for (const [protocolId, handler] of this.requestHandlers) {
+        const protocolName = this.protocols.requireProtocolId(protocolId);
+        await node.handle(
+          protocolId,
+          async (stream, connection) => {
+            const typedConnection = connection as DaLibp2pConnection;
+            await handler({
+              protocolId,
+              protocolName,
+              stream: stream as DaLibp2pStream,
+              connection: typedConnection,
+              remotePeerId: typedConnection.remotePeer?.toString(),
+            });
+          },
+          {
+            maxInboundStreams: this.config.limits.maxStreamsPerPeer,
+            maxOutboundStreams: this.config.limits.maxStreamsPerPeer,
+            runOnLimitedConnection: false,
+          },
+        );
+      }
+      await node.start();
+      const pubsub = node.services?.pubsub;
+      if (pubsub !== undefined) {
+        this.gossip = new DaGossip({
+          pubsub,
+          topics: this.topics,
+          config: this.config,
+          messageHandlers: this.gossipHandlers,
+          onMessageError: this.onGossipMessageError,
+        });
+        await this.gossip.subscribeAllowedTopics();
+      }
+    } catch (error) {
+      this.gossip = undefined;
+      this.node = undefined;
+      await Promise.resolve()
+        .then(() => node.stop())
+        .catch(() => undefined);
+      throw error;
     }
     this.started = true;
   }
