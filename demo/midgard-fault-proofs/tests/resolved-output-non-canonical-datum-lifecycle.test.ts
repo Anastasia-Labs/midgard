@@ -213,8 +213,10 @@ describe("resolvedOutputNonCanonical inline-datum verdict", () => {
       const first = await stages.step04Datum(walked.threadOutRef, evidence);
       expect(first.result.finished).toBe(false);
       keep(first, 0);
-      // A container is open at the second checkpoint.
-      await refuseDatumSeams(stages, first.result.nextThreadOutRef, evidence);
+      // A container is open at the second checkpoint, which has a next chunk.
+      expect(
+        await refuseDatumSeams(stages, first.result.nextThreadOutRef, evidence),
+      ).toBe(true);
       const read = await stages.readDatum(
         first.result.nextThreadOutRef,
         evidence,

@@ -1,6 +1,7 @@
 import { buildMidgardBoundedItem } from "@al-ft/midgard-core";
 
 import {
+  RESOLVED_OUTPUT_DATUM_CHUNK_BYTES,
   resolvedOutputDatumState,
   resolvedOutputDatumStepArgs,
   type ResolvedOutputEvidence,
@@ -13,8 +14,10 @@ type Stages = Awaited<ReturnType<typeof makeResolvedOutputStages>>;
 
 /**
  * Every forged datum step against the live datum checkpoint, each refused on
- * chain: chunk proofs for another item, the honest read handed another
- * successor, and, once a container is open, another stack.
+ * chain: chunk proofs for another item (the cursor chunk's, or the next
+ * chunk's beside the honest cursor chunk), the honest read handed another
+ * successor, and, once a container is open, another stack. Answers whether
+ * the step had a next chunk to substitute.
  */
 export const refuseDatumSeams = async (
   stages: Stages,
@@ -67,6 +70,32 @@ export const refuseDatumSeams = async (
       }),
     }),
   );
+  if (args.next_chunk_proof !== null) {
+    // The cursor chunk's honest proof beside a proof of the next chunk with
+    // its first byte flipped.
+    const crossing = Buffer.from(evidence.resolved.outputCborHex, "hex");
+    const nextStart =
+      (Math.floor(step.cursor / RESOLVED_OUTPUT_DATUM_CHUNK_BYTES) + 1) *
+      RESOLVED_OUTPUT_DATUM_CHUNK_BYTES;
+    crossing[nextStart] = crossing[nextStart]! ^ 0xff;
+    const { next_chunk_proof } = resolvedOutputDatumStepArgs({
+      evidence,
+      plan,
+      step,
+      item: buildMidgardBoundedItem({
+        fieldIndex: 2,
+        itemIndex: evidence.resolved.outputIndex,
+        bytes: crossing,
+      }),
+    });
+    await expectOnchainRefusal(() =>
+      stages.step04DatumRaw({
+        threadOutRef,
+        ...honest,
+        args: { ...args, next_chunk_proof },
+      }),
+    );
+  }
   coverage.seamMutated("datum_chunk");
   // The honest read handed the other verdict, or a checkpoint a byte ahead.
   const forged =
@@ -99,4 +128,5 @@ export const refuseDatumSeams = async (
     );
     coverage.seamMutated("datum_stack");
   }
+  return args.next_chunk_proof !== null;
 };
