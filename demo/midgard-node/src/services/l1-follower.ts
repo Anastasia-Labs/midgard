@@ -67,6 +67,7 @@ import {
 import { Effect, Ref, Runtime } from "effect";
 
 import {
+  forcedAdmissionDivergences,
   forcedOrderIngestionHook,
   NO_CONTENT_SOURCE,
 } from "../forced-orders/index.js";
@@ -224,6 +225,7 @@ const followL1 = <R>(
       plan,
       recompute.rebaseIfDue,
     );
+    const admissionDivergences = forcedAdmissionDivergences();
     const driver = createFollowerDriver({
       failureHold,
       store,
@@ -279,6 +281,7 @@ const followL1 = <R>(
           run: (effect) => Runtime.runPromiseExit(dbRuntime)(effect),
           caughtUp: () => followerCaughtUp(status),
           log: (line) => log(`forced orders: ${line}`),
+          divergences: admissionDivergences,
         }),
       },
       log: (line) => log(`driver: ${line}`),
@@ -333,6 +336,7 @@ const followL1 = <R>(
       status: () => status,
       holds: () => [...driver.holds(), ...intents.holds(), ...journal.holds()],
       refused: () => driver.refused(),
+      forcedAdmissionDivergences: () => admissionDivergences.details(),
       planCurrent,
       confirmedLedger: () => confirmedLedger,
     };

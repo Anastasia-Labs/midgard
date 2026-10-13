@@ -4,6 +4,13 @@
  * that resolves the rest and ingests the orders.
  */
 export {
+  FORCED_ADMISSION_DIVERGENCE,
+  FORCED_ADMISSION_DIVERGENCE_EVENT,
+  FORCED_ADMISSION_DIVERGENCES_REPORTED,
+  type ForcedAdmissionDivergences,
+  forcedAdmissionDivergences,
+} from "./admission-divergence.js";
+export {
   carriageFieldPreimages,
   carriageOutRefs,
   carriageVector,

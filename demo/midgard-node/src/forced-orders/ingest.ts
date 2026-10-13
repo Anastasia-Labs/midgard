@@ -64,6 +64,12 @@ import {
 import type { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
 import {
+  FORCED_ADMISSION_DIVERGENCE_EVENT,
+  type ForcedAdmissionDivergences,
+  forcedAdmissionDivergences,
+  forcedAdmissionRefusal,
+} from "./admission-divergence.js";
+import {
   carriageFieldPreimages,
   carriageOutRefs,
   carriageVector,
@@ -117,6 +123,11 @@ export type ForcedOrderIngestionOptions = Readonly<{
    */
   caughtUp?: () => boolean;
   log?: (line: string) => void;
+  /**
+   * Where the hook names the chain-admitted orders the admission screen
+   * refuses (`admission-divergence.ts`); absent, they are only logged.
+   */
+  divergences?: ForcedAdmissionDivergences;
 }>;
 
 const DETAIL_LIMIT = 1_000;
@@ -324,6 +335,38 @@ export const forcedOrderIngestionHook = (
 ): DriverHook => {
   /** The landed own headers already warned about, while they stay. */
   const warned = new Set<string>();
+  const divergences = options.divergences ?? forcedAdmissionDivergences();
+  /**
+   * Screens each ingested order with the off-chain twin of the tx-order
+   * mint's admission check. A refusal is an alarm only: the row is already
+   * written and is classified as any other, and the node stays ready.
+   */
+  const screenIngested = async (
+    entries: readonly ForcedTransactionsDB.Entry[],
+  ) => {
+    const C = ForcedTransactionsDB.Columns;
+    for (const entry of entries) {
+      const refusal = forcedAdmissionRefusal(entry[C.NATIVE_TX_CBOR]);
+      if (refusal === null) continue;
+      const orderId = entry[C.TX_ORDER_ID].toString("hex");
+      if (!divergences.record(orderId, refusal.refusalCode)) continue;
+      await options.run(
+        Effect.logError(FORCED_ADMISSION_DIVERGENCE_EVENT).pipe(
+          Effect.annotateLogs({
+            event: FORCED_ADMISSION_DIVERGENCE_EVENT,
+            orderId,
+            orderOutRef: outRefLabel({
+              txHash: entry[C.TX_ORDER_L1_TX_HASH],
+              index: entry[C.TX_ORDER_L1_OUTPUT_INDEX],
+            }),
+            txId: entry[C.TX_ID].toString("hex"),
+            refusalCode: refusal.refusalCode,
+            refusalDetail: refusal.detail,
+          }),
+        ),
+      );
+    }
+  };
   /**
    * Warns once per landed own header with a forced order that left the
    * chain. The node follows it; this becomes a hold once a fault proof for
@@ -385,6 +428,7 @@ export const forcedOrderIngestionHook = (
       const { deleted } = written.value;
       orphaned.push(...written.value.orphaned);
       await warnOwnLanded(written.value.ownLanded);
+      await screenIngested(entries);
       if (entries.length > 0)
         options.log?.(
           `ingested ${entries.length.toString()} forced order(s) at ${view.point.slot.toString()}`,
