@@ -2,8 +2,8 @@ import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cb
 import {
   FabricatedWithdrawalStep01SpendRedeemer,
   FabricatedWithdrawalStep02Datum,
-  getStateQueueNodeFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
+  getStateQueueNodeFromStateQueueDatum,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -147,7 +147,10 @@ export const submitFabricatedWithdrawalStep01 = async ({
       inclusion: withdrawalInclusion,
     });
 
-  const validity = fabricatedProofValidity(header.endTime, now());
+  const validity = fabricatedProofValidity({
+    nodeBlockTime: stateQueueNode.block_time,
+    now: now(),
+  });
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];

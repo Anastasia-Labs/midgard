@@ -82,15 +82,16 @@ export const fixtureBlockSlot = (
 };
 
 /**
- * `header` as committed at block_time = endTime: its block_slot is the slot
- * whose last millisecond is endTime under the deployment's mapping.
+ * `header` as committed at `blockTime` (default endTime): its block_slot is the
+ * slot whose last millisecond is that block_time under the deployment's mapping.
  */
 export const withCommitSlot = (
   l1SlotConfig: L1SlotConfig,
   header: Header,
+  blockTime: bigint = header.endTime,
 ): Header => ({
   ...header,
-  blockSlot: commitSlotForBlockTime(l1SlotConfig, header.endTime),
+  blockSlot: commitSlotForBlockTime(l1SlotConfig, blockTime),
 });
 
 export const makeHeader = (

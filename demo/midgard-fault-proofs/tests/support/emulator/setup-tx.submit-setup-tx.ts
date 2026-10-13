@@ -42,6 +42,7 @@ export const submitSetupTx = async ({
   nonceUtxo,
   catalogue,
   header: requestedHeader,
+  blockTime,
   beforeHeaderCommit,
 }: {
   readonly lucid: SetupLucid;
@@ -49,10 +50,12 @@ export const submitSetupTx = async ({
   readonly nonceUtxo: UTxO;
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
   /**
-   * The header to commit. It commits at block_time = endTime, so its
+   * The header to commit. It commits at `blockTime` (default endTime), so its
    * block_slot is stamped here; use the returned `header`.
    */
   readonly header: Header;
+  /** Commit at this block_time instead of endTime (a catch-up commit). */
+  readonly blockTime?: bigint;
   /** Run actual event admission after hub creation, before committing this header. */
   readonly beforeHeaderCommit?: (hubOracle: UTxO) => Promise<void>;
 }): Promise<{
@@ -72,7 +75,11 @@ export const submitSetupTx = async ({
   readonly registeredOperatorsRoot: UTxO;
   readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScripts;
 }> => {
-  const header = withCommitSlot(contracts.l1SlotConfig, requestedHeader);
+  const header = withCommitSlot(
+    contracts.l1SlotConfig,
+    requestedHeader,
+    blockTime,
+  );
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const units = setupUnits(contracts, header, headerHash);
 
@@ -167,6 +174,7 @@ export const submitSetupTx = async ({
       stateQueueRootUtxo,
       appointedSchedulerUtxo,
       activeOperatorNode,
+      blockTime,
     });
 
   return {
