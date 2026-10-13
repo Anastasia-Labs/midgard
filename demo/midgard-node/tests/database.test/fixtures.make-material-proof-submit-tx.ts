@@ -69,6 +69,7 @@ export const isolatedDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 type SubmitHttpResult = {
   readonly status: number;
   readonly body: Record<string, unknown>;
+  readonly retryAfter?: string;
 };
 
 export type TxQueueWakeRequirements =
@@ -118,7 +119,10 @@ export const submitThroughRouter = <R>(
       try: () => webResponse.json() as Promise<Record<string, unknown>>,
       catch: (cause) => cause,
     });
-    return { status: webResponse.status, body };
+    const retryAfter = webResponse.headers.get("retry-after");
+    return retryAfter === null
+      ? { status: webResponse.status, body }
+      : { status: webResponse.status, body, retryAfter };
   });
 
 export const makeNativeSubmitTx = (): {
