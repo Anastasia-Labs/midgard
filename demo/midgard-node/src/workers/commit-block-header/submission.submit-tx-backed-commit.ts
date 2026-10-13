@@ -3,39 +3,19 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import type { CommitAnchor } from "../../database/commit-anchor.js";
 import {
-  DepositsDB,
-  ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxAdmissionsDB,
-  TxUtils as TxTable,
-  WithdrawalsDB,
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
-import type * as Ledger from "../../database/utils/ledger.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
 import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
-import {
-  emptyRootHexProgram,
-  type LedgerDelta,
-  type MidgardMpf,
-  type NativeMpfReplayBuild,
-  type RetainedEventToStepMember,
-  type RetainedTransitionTraceMember,
-  type RetainedValidationTraceMember,
-} from "../../mpf/index.js";
+import { emptyRootHexProgram } from "../../mpf/index.js";
 import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
-import {
-  type ContractDeploymentIdentityValue,
-  Database,
-} from "../../services/index.js";
+import { Database } from "../../services/index.js";
 import { TxSignError, TxSubmitError } from "../../transactions/utils.js";
-import type {
-  WorkerInput,
-  WorkerOutput,
-} from "../utils/commit-block-header.js";
+import type { WorkerOutput } from "../utils/commit-block-header.js";
 import {
   failedSubmissionProgram,
   recoverSubmittedTxHashByHeaderProgram,
@@ -73,7 +53,7 @@ import {
   retainedIntentFailure,
   submitWithDurableIntent,
 } from "./submission.submit-with-durable-intent.js";
-import { type CommitSubmissionHooks } from "./submission-hooks.js";
+import type { SubmitTxBackedCommitInput } from "./submission.tx-backed-input.js";
 import { makeEventCommitments } from "./transition-commitments.js";
 
 export const submitTxBackedCommit = ({
@@ -82,6 +62,7 @@ export const submitTxBackedCommit = ({
   deploymentMarker,
   latestBlock,
   endTime,
+  blockTimeMs,
   includedDepositEntries,
   includedDepositEventIds,
   includedForcedTransactionEntries,
@@ -111,44 +92,7 @@ export const submitTxBackedCommit = ({
   blockEndTimeCapMs,
   afterDaFrameAccepted,
   nativeMpfReplay,
-}: CommitSubmissionHooks & {
-  readonly contracts: SDK.MidgardValidators;
-  readonly consensusProfile: ContractDeploymentIdentityValue["consensusProfile"];
-  readonly deploymentMarker: NonNullable<
-    ContractDeploymentIdentityValue["deploymentMarker"]
-  >;
-  readonly latestBlock: SDK.StateQueueUTxO;
-  readonly endTime: Date;
-  readonly includedDepositEntries: readonly DepositsDB.Entry[];
-  readonly includedDepositEventIds: readonly Buffer[];
-  readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
-  readonly includedForcedTransactionEventIds: readonly Buffer[];
-  readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
-  readonly includedWithdrawalEventIds: readonly Buffer[];
-  readonly utxoRoot: string;
-  readonly txRoot: string;
-  readonly transitionTraceRoot: string;
-  readonly eventToStepRoot: string;
-  readonly validationTracesRoot: string;
-  readonly transitionTraceMembers: readonly RetainedTransitionTraceMember[];
-  readonly eventToStepMembers: readonly RetainedEventToStepMember[];
-  readonly validationTraceMembers: readonly RetainedValidationTraceMember[];
-  readonly transitionStepCount: number;
-  readonly validationTraceCount: number;
-  readonly ledgerDelta: LedgerDelta;
-  readonly selectedBaseUtxosRoot: string;
-  readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
-  readonly nativeMpfReplay: NativeMpfReplayBuild;
-  readonly transactionsMpf: MidgardMpf;
-  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
-  readonly mempoolTxHashes: Buffer[];
-  readonly mempoolTxSourceTable: string;
-  readonly workerInput: WorkerInput;
-  /** The commit anchor the end time was planned under (`commitEventHorizon`). */
-  readonly commitAnchor?: CommitAnchor;
-  readonly sizeOfProcessedTxs: number;
-  readonly blockEndTimeCapMs?: number;
-}) =>
+}: SubmitTxBackedCommitInput) =>
   Effect.gen(function* () {
     const emptyRoot = yield* emptyRootHexProgram;
     const [optDepositsRoot, optForcedTransactionsRoot, optWithdrawalsRoot] =
@@ -318,6 +262,7 @@ export const submitTxBackedCommit = ({
             consensusProfile,
             endTime,
             blockEndTimeCapMs,
+            blockTimeMs,
           ).pipe(
             Effect.flatMap((buildResult) => {
               if ("dueWork" in buildResult) {

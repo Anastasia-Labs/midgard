@@ -14,10 +14,14 @@ import { COMMITTEE_QUEUE_TABLE } from "./queue-table.js";
 /**
  * A header this member signed an availability decision for (class B: the
  * decision and its payload are the member's own material, never rewound).
- * `endTimeMs` comes from the signed header itself, so it stays known after
+ * `blockTimeMs` is retained from the authenticated commit node, so it stays known after
  * every output carrying the header has been rolled back.
  */
-export type SignedHeader = Readonly<{ headerHash: string; endTimeMs: bigint }>;
+export type SignedHeader = Readonly<{
+  headerHash: string;
+  /** Unknown old clocks retain the obligation until authenticated recovery. */
+  blockTimeMs: bigint | null;
+}>;
 
 /** Where a signed header stands on the current chain (from the facts). */
 export type HeaderPresence = Readonly<{
@@ -33,13 +37,12 @@ export type HeaderPresence = Readonly<{
  * `final`: committed more than k deep; no legal rollback can undo it.
  * `pending`: not on the current chain, and it could still land.
  * `cannot_land`: never committed on the current chain, and a final block is
- * later than the header's end time. A commit lands only in a block no later
- * than the header's end time (the state-queue validator pins the header end
- * time to the commit tx's inclusive validity upper bound,
+ * later than the header's commit time. A commit lands only in a block no later
+ * than the header's commit time (the state-queue validator pins the node block_time to the commit tx's inclusive validity upper bound,
  * onchain/aiken/lib/midgard/state-queue.ak), so it can never land. Read only
  * while the store has pruned nothing: the facts then hold every commit.
  * `beyond_retention`: not on the current chain, a final block is later than
- * the header's end time, and the store has pruned facts, so its commit
+ * the header's commit time, and the store has pruned facts, so its commit
  * history is past retention. Terminal; nothing reads it as `cannot_land`.
  */
 export type ObligationState =
@@ -116,7 +119,8 @@ export const obligations = (inputs: ObligationInputs): Obligation[] => {
       }
       const terminal =
         inputs.finalBlockTimeMs !== null &&
-        BigInt(inputs.finalBlockTimeMs) > signed.endTimeMs;
+        signed.blockTimeMs !== null &&
+        BigInt(inputs.finalBlockTimeMs) > signed.blockTimeMs;
       return {
         headerHash: signed.headerHash,
         state: !terminal

@@ -305,8 +305,8 @@ export const planCommitBatchBudgets = ({
   };
 };
 
-/** Enumerates all accepted prefixes once, then rebuilds at most one chosen
- * prefix from actual accepted order. Changed material is held before signing. */
+/** Bounds ordinary accepted-transaction prefix rebuilds. */
+/** Enumerates accepted prefixes and rebuilds one; changed material holds before signing. */
 export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
   candidateSelection,
   maxInnerBytes,
@@ -330,6 +330,7 @@ export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
     readonly processed: P;
     readonly candidateSelection: CommitTxCandidateSelection;
     readonly passes: number;
+    readonly measurement?: CommitDaFrameMeasurement;
     readonly outcome:
       | "fits"
       | "exact_check_required"
@@ -417,5 +418,11 @@ export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
       maxInnerBytes,
     });
     if (notice !== undefined && notify !== undefined) yield* notify(notice);
-    return { processed, candidateSelection: selection, passes, outcome };
+    return {
+      processed,
+      candidateSelection: selection,
+      passes,
+      outcome,
+      measurement,
+    };
   });

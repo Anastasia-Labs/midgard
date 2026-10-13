@@ -32,14 +32,16 @@ vi.mock("../../src/fault-proofs/fault-proof-application.js", async (load) => {
 const latestSafeStartOffsetMs =
   MIDGARD_RETENTION_WINDOW.maturityMs -
   MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs;
-const deadline = (headerHash: string, headerEndTimeMs: number) =>
+const deadline = (headerHash: string, headerBlockTimeMs: number) =>
   Object.freeze({
     headerHash,
-    headerEndTimeMs: headerEndTimeMs.toString(),
+    headerBlockTimeMs: headerBlockTimeMs.toString(),
     maturityAtMs: (
-      headerEndTimeMs + MIDGARD_RETENTION_WINDOW.maturityMs
+      headerBlockTimeMs + MIDGARD_RETENTION_WINDOW.maturityMs
     ).toString(),
-    latestSafeStartAtMs: (headerEndTimeMs + latestSafeStartOffsetMs).toString(),
+    latestSafeStartAtMs: (
+      headerBlockTimeMs + latestSafeStartOffsetMs
+    ).toString(),
   });
 
 const roots: string[] = [];

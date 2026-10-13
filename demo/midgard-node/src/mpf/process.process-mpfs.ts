@@ -69,6 +69,7 @@ import {
   computeUtxoPayloadRoot,
   materializeUtxoPayloadEntries,
 } from "./payload-size.js";
+import { resolveMpfBlockTime } from "./process.commit-clock.js";
 import { evaluateNormalBlockCandidates } from "./process.evaluate-normal-block-candidates.js";
 import {
   hexOf,
@@ -112,6 +113,7 @@ export const processMpfs = (
 ): Effect.Effect<
   {
     effectiveBlockEndTime: Date | undefined;
+    effectiveBlockTime: Date | undefined;
     utxoRoot: string;
     rawTxRoot: string;
     txRoot: string;
@@ -224,25 +226,12 @@ export const processMpfs = (
         config.depositOnlyEndTime,
       );
 
-    if (config.fixedBlockEndTime !== undefined) {
-      const fixedEnd = config.fixedBlockEndTime.getTime();
-      if (
-        !Number.isSafeInteger(fixedEnd) ||
-        (config.currentBlockStartTime !== undefined &&
-          fixedEnd <= config.currentBlockStartTime.getTime()) ||
-        decodedMempoolTxs.some(
-          ({ entry }) => entry[Tx.Columns.TIMESTAMPTZ].getTime() > fixedEnd,
-        )
-      )
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: MempoolDB.tableName,
-            message:
-              "Fixed authenticated block window does not cover the selected transaction timestamps",
-            cause: `fixed_end=${fixedEnd}`,
-          }),
-        );
-    }
+    const effectiveBlockTime = yield* resolveMpfBlockTime(
+      config,
+      effectiveEndTime,
+      decodedMempoolTxs,
+      mempoolTxs.length,
+    );
 
     if (
       effectiveEndTime !== undefined &&
@@ -445,7 +434,7 @@ export const processMpfs = (
         : yield* classifyForcedTransactions({
             entries: includedForcedTransactionEntries,
             initialState: forcedPreState,
-            blockTime: effectiveEndTime!,
+            blockTime: effectiveBlockTime!,
             consensusProfile,
             validation: config!.forcedValidation!,
           });
@@ -689,7 +678,9 @@ export const processMpfs = (
           evaluateNormalBlockCandidates({
             candidates,
             state: proofPreState,
-            blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
+            blockSlot: validation.slotForUnixTime(
+              effectiveBlockTime!.getTime(),
+            ),
             l1SlotConfig: validation.l1SlotConfig,
             bucketConcurrency: validation.bucketConcurrency,
             consensusProfile,
@@ -1285,6 +1276,7 @@ export const processMpfs = (
 
     return {
       effectiveBlockEndTime: effectiveEndTime,
+      effectiveBlockTime,
       utxoRoot,
       rawTxRoot,
       txRoot,

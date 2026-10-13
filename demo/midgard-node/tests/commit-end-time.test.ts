@@ -1,10 +1,9 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
   generateEmulatorAccount,
   Lucid,
 } from "@lucid-evolution/lucid";
-import { makeLucid, currentSlotStartMs } from "./commit-end-time.fixture.js";
-import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -20,8 +19,10 @@ import {
   resolveCommitEndTimeFit,
   resolveCommitValidityInterval,
   resolveExplicitCommitCandidateEndTimeMs,
-  resolveHistoryCommitEndTime,
+  resolveHistoryCommitBlockTime,
 } from "../src/workers/utils/commit-end-time.js";
+import { registerCatchUpCommitClockCase } from "./commit-end-time.catch-up-clock-case.js";
+import { currentSlotStartMs, makeLucid } from "./commit-end-time.fixture.js";
 
 describe("commit end-time resolver", () => {
   it("keeps submit-slot time monotonic across wall-clock jumps", () => {
@@ -391,7 +392,6 @@ describe("commit end-time resolver", () => {
   // Profile timings from config/deployments: mainnet event_wait_ms, and the
   // preprod-testing event_wait_ms and da_attestation_timeout_ms.
   const MAINNET_EVENT_WAIT_MS = 130_080_000;
-  const TESTING_EVENT_WAIT_MS = 300_000;
   const TESTING_DA_ATTESTATION_TIMEOUT_MS = 240_000;
   const HISTORY_BUFFER_MS = 30_000;
 
@@ -403,13 +403,13 @@ describe("commit end-time resolver", () => {
     const horizonMs = slotStartMs - 5_000 + MAINNET_EVENT_WAIT_MS - 1;
     const schedulerWindowEndTimeMs = slotStartMs + 20 * 60_000;
 
-    const fit = resolveHistoryCommitEndTime({
+    const fit = resolveHistoryCommitBlockTime({
       lucid,
       currentSlot,
       latestEndTime: slotStartMs - 60_000,
       nowMs,
       minimumFutureBufferMs: HISTORY_BUFFER_MS,
-      eventEndTimeMs: horizonMs,
+
       schedulerWindowEndTimeMs,
     });
     const endTimeMs = fit.resolvedEndTime - 1;
@@ -443,7 +443,6 @@ describe("commit end-time resolver", () => {
     const currentSlot = lucid.currentSlot();
     const slotStartMs = lucid.slotToUnixTime(currentSlot);
     const nowMs = slotStartMs + 250;
-    const horizonMs = slotStartMs - 2_000 + TESTING_EVENT_WAIT_MS - 1;
     const headEndTimeMs = slotStartMs - 20_000;
     // Q61: an unattested head admits appends whose inclusive upper bound is
     // strictly before its end plus the attestation timeout.
@@ -451,19 +450,18 @@ describe("commit end-time resolver", () => {
       headEndTimeMs + TESTING_DA_ATTESTATION_TIMEOUT_MS - 1;
     const schedulerWindowEndTimeMs = slotStartMs + 10 * 60_000;
     const resolve = (fenceMs?: number) =>
-      resolveHistoryCommitEndTime({
+      resolveHistoryCommitBlockTime({
         lucid,
         currentSlot,
         latestEndTime: headEndTimeMs,
         nowMs,
         minimumFutureBufferMs: HISTORY_BUFFER_MS,
-        eventEndTimeMs: horizonMs,
+
         schedulerWindowEndTimeMs,
         appendFenceEndTimeMs: fenceMs,
       });
     const caps = (fenceMs?: number) =>
       Math.min(
-        horizonMs,
         slotStartMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
         schedulerWindowEndTimeMs,
         fenceMs ?? Number.MAX_SAFE_INTEGER,
@@ -480,27 +478,30 @@ describe("commit end-time resolver", () => {
     const attested = resolve(undefined);
     expect(attested.status).toBe("fits");
     expect(attested.maximumEndTimeMs).toBe(caps(undefined));
-    expect(attested.resolvedEndTime - 1).toBe(horizonMs);
+    expect(attested.resolvedEndTime - 1).toBe(
+      slotStartMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS - 1,
+    );
   });
 
-  it("keeps a stale history end at its cap when the floors exceed it", async () => {
+  it("holds when the append fence expires before the submission floor", async () => {
     const lucid = await makeLucid();
     const currentSlot = lucid.currentSlot();
     const slotStartMs = lucid.slotToUnixTime(currentSlot);
     const nowMs = slotStartMs + 250;
     const horizonMs = slotStartMs + HISTORY_BUFFER_MS - 1_000 - 1;
 
-    const fit = resolveHistoryCommitEndTime({
+    const fit = resolveHistoryCommitBlockTime({
       lucid,
       currentSlot,
       latestEndTime: slotStartMs - 60_000,
       nowMs,
       minimumFutureBufferMs: HISTORY_BUFFER_MS,
-      eventEndTimeMs: horizonMs,
+      appendFenceEndTimeMs: horizonMs,
     });
 
     expect(fit.status).toBe("exceeds_cap");
     expect(fit.resolvedEndTime - 1).toBe(horizonMs);
     expect(fit.minimumCurrentTimeEndTime).toBeGreaterThan(fit.resolvedEndTime);
   });
+  registerCatchUpCommitClockCase(makeLucid, HISTORY_BUFFER_MS);
 });

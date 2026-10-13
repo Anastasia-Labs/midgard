@@ -54,6 +54,8 @@ export type WatcherStateQueueHeader = Readonly<{
   validationTraceCount: string;
   startTime: string;
   endTime: string;
+  /** Authenticated node commit clock, separate from coverage end. */
+  blockTime: string;
   blockSlot: string;
   expectedNetworkId: string;
   minFeeA: string;
@@ -218,6 +220,7 @@ export const headerData = (
     | "nextHeaderHash"
     | "datumSha256"
     | "daAttestationPolicyId"
+    | "blockTime"
   >,
 ): Header => ({
   prevUtxosRoot: value.prevUtxosRoot,
@@ -251,6 +254,7 @@ export const headerView = (
   header: Header,
   nextHeaderHash: string | null,
   datumSha256: string,
+  blockTime: string,
 ): WatcherStateQueueHeader => {
   const headerCborHex = Data.to(header, Header);
   return Object.freeze({
@@ -276,6 +280,7 @@ export const headerView = (
     validationTraceCount: header.validationTraceCount.toString(),
     startTime: header.startTime.toString(),
     endTime: header.endTime.toString(),
+    blockTime,
     blockSlot: header.blockSlot.toString(),
     expectedNetworkId: header.expectedNetworkId.toString(),
     minFeeA: header.minFeeA.toString(),
@@ -310,6 +315,7 @@ export const HEADER_KEYS = [
   "validationTraceCount",
   "startTime",
   "endTime",
+  "blockTime",
   "blockSlot",
   "expectedNetworkId",
   "minFeeA",

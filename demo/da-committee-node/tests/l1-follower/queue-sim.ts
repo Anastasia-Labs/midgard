@@ -168,7 +168,7 @@ export const committeeSimProjection = (
       for (const header of view.awaiting) {
         if (!header.signable) continue;
         const prior = signed.get(header.headerHash);
-        if (prior !== undefined && prior.endTimeMs !== header.endTimeMs)
+        if (prior !== undefined && prior.blockTimeMs !== header.blockTimeMs)
           return `header ${header.headerHash} re-signed with other content`;
         if (prior !== undefined) continue;
         const parent = oracle.prevOf.get(header.headerHash);
@@ -178,7 +178,7 @@ export const committeeSimProjection = (
         ).length;
         signed.set(header.headerHash, {
           headerHash: header.headerHash,
-          endTimeMs: header.endTimeMs,
+          blockTimeMs: header.blockTimeMs,
         });
         stats.signed += 1;
       }
@@ -268,12 +268,12 @@ const checkView = (
       // A commit lands only in a block before its `invalidAfter` slot; once
       // the latest final block is at or past the last such slot, every block
       // still to come is later, and the header can never land.
-      const invalidAfter = commitInvalidAfter(Number(header.endTimeMs));
+      const invalidAfter = commitInvalidAfter(Number(header.blockTimeMs));
       const unlandable =
         finalSlot !== undefined && finalSlot >= invalidAfter - 1;
       const late =
         finalSlot !== undefined &&
-        slotTimeMs(finalSlot, SIM_SLOT_TIME) > Number(header.endTimeMs);
+        slotTimeMs(finalSlot, SIM_SLOT_TIME) > Number(header.blockTimeMs);
       if (
         finalSlot !== undefined &&
         (finalSlot === invalidAfter - 1 || finalSlot === invalidAfter)

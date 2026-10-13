@@ -5,6 +5,7 @@ import type {
   DaSignatureRecord,
   DaSignatureRecordV1,
   DaStoredConflictEvidenceRecord,
+  StateQueueHeaderRecord,
 } from "../domain.js";
 import {
   type DecisionOutboxRecord,
@@ -16,6 +17,7 @@ import {
 } from "../store.js";
 import type { PostgresStoreInstanceLockEvents } from "./postgres.instance-lock.js";
 import type { CommitteeStoreOpenChecks } from "./postgres.open-checks.js";
+import { storedHeaderBlockTimeMs } from "./retention.block-time.js";
 
 export type JsonRecordRow = {
   readonly record: unknown;
@@ -115,13 +117,45 @@ export const upsertSignatureWithClient = async (
   // header's end time is kept in its row, for the obligations projection.
   const endTimeMs =
     record.source === "local" ? signedEndTimeMs(record).toString() : null;
+  const header =
+    record.source === "local"
+      ? await client.query<{ record: unknown }>(
+          "SELECT record FROM committee_state_queue_headers WHERE header_hash = $1",
+          [record.headerHash],
+        )
+      : undefined;
+  const stored =
+    header?.rows[0] === undefined
+      ? undefined
+      : decodeRecord<StateQueueHeaderRecord>(header.rows[0].record);
+  if (stored !== undefined && stored.headerHash !== record.headerHash)
+    throw new Error("Signed decision clock names another stored header");
+  if (stored !== undefined && stored.header.endTime.toString() !== endTimeMs)
+    throw new Error(
+      "Signed decision coverage disagrees with its authenticated stored header",
+    );
+  const blockTimeMs =
+    stored === undefined ? null : storedHeaderBlockTimeMs(stored).toString();
+  if (blockTimeMs !== null) {
+    const existing = await client.query<{ block_time_ms: string }>(
+      "SELECT block_time_ms FROM committee_da_signatures WHERE header_hash = $1 AND block_time_ms IS NOT NULL",
+      [record.headerHash],
+    );
+    if (
+      existing.rows.some((row) => row.block_time_ms.toString() !== blockTimeMs)
+    )
+      throw new Error(
+        "Signed header has conflicting authenticated commit clocks",
+      );
+  }
   await client.query(
     `INSERT INTO committee_da_signatures
-       (header_hash, commitment_digest, signer_index, record, end_time_ms, updated_at)
-     VALUES ($1, $2, $3, $4::jsonb, $5, NOW())
+       (header_hash, commitment_digest, signer_index, record, end_time_ms, block_time_ms, updated_at)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, NOW())
      ON CONFLICT (header_hash, commitment_digest, signer_index) DO UPDATE SET
        record = EXCLUDED.record,
        end_time_ms = EXCLUDED.end_time_ms,
+       block_time_ms = COALESCE(EXCLUDED.block_time_ms, committee_da_signatures.block_time_ms),
        updated_at = NOW()`,
     [
       record.headerHash,
@@ -129,6 +163,7 @@ export const upsertSignatureWithClient = async (
       record.signerIndex,
       encodeRecord(record),
       endTimeMs,
+      blockTimeMs,
     ],
   );
 };

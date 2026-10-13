@@ -176,7 +176,7 @@ export const harness = (input: {
       deadlineForHeader: (header) =>
         Object.freeze({
           headerHash: header.headerHash,
-          headerEndTimeMs: "0",
+          headerBlockTimeMs: "0",
           maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
           latestSafeStartAtMs: (
             MIDGARD_RETENTION_WINDOW.maturityMs -

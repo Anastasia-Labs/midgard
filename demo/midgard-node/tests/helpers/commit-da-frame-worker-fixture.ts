@@ -60,3 +60,34 @@ export const workerInput = {
     stateQueueHasUnmergedTail: false,
   },
 } as unknown as WorkerInput;
+
+/** Independent selected-window fixture; production clock and SQL selection are tested separately. */
+export const fakeSelectedEventPlan = (catchUp: boolean) => {
+  const blockTimeMs = Date.parse("2026-01-01T00:06:01.000Z");
+  const endTimeMs = catchUp ? blockTimeMs - 300_000 : blockTimeMs;
+  return Effect.succeed({
+    kind: "selected",
+    blockTimeMs,
+    clockFit: { status: "fits", maximumEndTimeMs: blockTimeMs },
+    groups: catchUp
+      ? [
+          {
+            inclusionTimeMs: endTimeMs,
+            deposits: 1,
+            forcedTransactions: 0,
+            withdrawals: 0,
+          },
+        ]
+      : [],
+    window: {
+      mode: catchUp ? "catch_up" : "normal",
+      endTimeMs,
+      counts: {
+        deposits: catchUp ? 1 : 0,
+        forcedTransactions: 0,
+        withdrawals: 0,
+      },
+      includedInstantCount: catchUp ? 1 : 0,
+    },
+  });
+};

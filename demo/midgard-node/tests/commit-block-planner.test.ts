@@ -19,6 +19,7 @@ import {
   selectCommitTxCandidates,
   updateCommitBuildEwma,
 } from "../src/workers/utils/commit-block-planner.js";
+import { registerCatchUpEventWindowCases } from "./commit-block-planner.catch-up-cases.js";
 import {
   fitExceedingSchedulerWindow,
   fitInsideSchedulerWindow,
@@ -732,3 +733,5 @@ describe("commit block planner", () => {
     );
   });
 });
+
+registerCatchUpEventWindowCases();

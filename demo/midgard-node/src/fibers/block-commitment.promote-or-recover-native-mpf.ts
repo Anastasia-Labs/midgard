@@ -10,6 +10,10 @@ import type {
   PersistedNativeMpfReplay,
 } from "../services/mpf-native-owner/index.js";
 import {
+  applyCommitPlanningNotice,
+  type CommitPlanningNotice,
+} from "../workers/commit-planning-notice.js";
+import {
   type IntentRefusalHoldsNotice,
   type MempoolLedgerRevertedNotice,
   type SerializedStateQueueUTxO,
@@ -273,6 +277,7 @@ export type CommitWorkerMessage =
   | WorkerOutput
   | MempoolLedgerRevertedNotice
   | CommitDaFrameNotice
+  | CommitPlanningNotice
   | IntentRefusalHoldsNotice;
 
 /**
@@ -293,6 +298,10 @@ export const takeCommitWorkerOutput = (
   deltaLogMax: number,
   adoptRefusalHolds?: (holds: readonly UnwrittenHold[]) => void,
 ): WorkerOutput | undefined => {
+  if (message.type === "CommitPlanningNotice") {
+    Effect.runSync(applyCommitPlanningNotice(globals, message));
+    return undefined;
+  }
   if (message.type === "IntentRefusalHoldsNotice") {
     adoptRefusalHolds?.(message.holds);
     return undefined;

@@ -117,7 +117,7 @@ const checkLedgerCache = (
 };
 
 /**
- * An unmerged header still Unattested past end_time + da_attestation_timeout
+ * An unmerged header still Unattested past block_time + da_attestation_timeout
  * is owed a timeout correction that has not landed. Before the deadline it is
  * a normal attestation in progress, noted and passed.
  */
@@ -136,14 +136,14 @@ const checkDaAttestation = (
   const acc = newAccumulator();
   for (const header of ctx.l1.unmerged) {
     const label = `header ${header.headerHash} (${header.outRef})`;
-    if (header.daStatus === null || header.endTimeMs === null) {
+    if (header.daStatus === null || header.blockTimeMs === null) {
       acc.notes.push(
         `${label}: DA status unknown, datum undecodable (state-queue-journal reports it)`,
       );
       continue;
     }
     if (header.daStatus !== "Unattested") continue;
-    const deadlineMs = header.endTimeMs + timeoutMs;
+    const deadlineMs = header.blockTimeMs + timeoutMs;
     const deadline = `${new Date(deadlineMs).toISOString()} (${deadlineMs.toString()} ms)`;
     if (nowMs > deadlineMs) {
       acc.failures.push(

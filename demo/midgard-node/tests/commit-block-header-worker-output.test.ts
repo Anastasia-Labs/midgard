@@ -34,7 +34,7 @@ import type {
 } from "../src/workers/utils/commit-block-header.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-  resolveHistoryCommitEndTime,
+  resolveHistoryCommitBlockTime,
   resolveLatestFeasibleCommitEndTime,
 } from "../src/workers/utils/commit-end-time.js";
 import {
@@ -435,29 +435,17 @@ describe("pre-lease scheduler target", () => {
     expect(Number(window.validTo) - nowMs).toBe(
       HISTORY_COMMIT_LANDING_MARGIN_MS,
     );
-    // The worker's history commit right after: the latest end every cap
-    // admits, with history covered up to the event wait less the margin
-    // behind the current slot, still falls inside the appointed shift.
-    const historyEndMs = (historyLagMs: number) =>
-      resolveHistoryCommitEndTime({
+    // Coverage lag can select an event-only slice without backdating the scheduler clock.
+    const blockTimeMs =
+      resolveHistoryCommitBlockTime({
         lucid,
         currentSlot: snapshot.currentSlot,
         latestEndTime: 0,
         nowMs,
         minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-        eventEndTimeMs:
-          snapshot.currentSlotStartMs -
-          historyLagMs +
-          SDK.EVENT_WAIT_DURATION_MS -
-          1,
         schedulerWindowEndTimeMs: Number(startTime + SDK.SHIFT_DURATION_MS),
       }).resolvedEndTime - 1;
-    const tolerableLagMs =
-      SDK.EVENT_WAIT_DURATION_MS - HISTORY_COMMIT_LANDING_MARGIN_MS;
-    expect(shiftCovers(startTime, historyEndMs(0))).toBe(true);
-    expect(shiftCovers(startTime, historyEndMs(tolerableLagMs))).toBe(true);
-    expect(shiftCovers(startTime, historyEndMs(tolerableLagMs + 1_000))).toBe(
-      false,
-    );
+    expect(shiftCovers(startTime, blockTimeMs)).toBe(true);
+    expect(blockTimeMs).toBeGreaterThan(nowMs);
   });
 });

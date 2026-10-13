@@ -173,12 +173,12 @@ export const buildWatcherAvailabilityOperation = async (
       };
       if (action.action === "open") {
         // The Open's inclusive upper bound must stay before the header's
-        // end_time + da_challenge_window_ms.
+        // block_time + da_challenge_window_ms.
         const node = Data.castFrom(
           required(snapshot.queue, "queue").datum.data,
           SDK.StateQueueNode,
         );
-        const deadline = node.header.endTime + DA_CHALLENGE_WINDOW_MS;
+        const deadline = node.block_time + DA_CHALLENGE_WINDOW_MS;
         return (
           await Effect.runPromise(
             SDK.buildOpenDaAvailabilityChallengeTxProgram(

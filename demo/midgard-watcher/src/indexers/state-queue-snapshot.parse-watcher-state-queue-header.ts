@@ -28,11 +28,16 @@ export const makeWatcherStateQueueHeader = (
   value: Omit<WatcherStateQueueHeader, "headerHash" | "headerCborHex">,
 ): WatcherStateQueueHeader | null => {
   try {
-    const { nextHeaderHash, datumSha256, daAttestationPolicyId, ...fields } =
-      value;
+    const {
+      nextHeaderHash,
+      datumSha256,
+      daAttestationPolicyId,
+      blockTime,
+      ...fields
+    } = value;
     const header = headerData(fields);
     const view = {
-      ...headerView(header, nextHeaderHash, datumSha256),
+      ...headerView(header, nextHeaderHash, datumSha256, blockTime),
       daAttestationPolicyId,
     };
     return parseWatcherStateQueueHeader(view);
@@ -70,6 +75,7 @@ export const parseWatcherStateQueueHeader = (
     !isNatural(record.validationTraceCount) ||
     !isNatural(record.startTime) ||
     !isNatural(record.endTime) ||
+    !isNatural(record.blockTime) ||
     !isNatural(record.blockSlot) ||
     !isNatural(record.expectedNetworkId) ||
     !isNatural(record.minFeeA) ||
@@ -89,6 +95,7 @@ export const parseWatcherStateQueueHeader = (
     decoded,
     record.nextHeaderHash,
     record.datumSha256,
+    record.blockTime,
   );
   const comparable = {
     ...expected,
@@ -98,6 +105,7 @@ export const parseWatcherStateQueueHeader = (
     !same(value, comparable) ||
     record.headerHash !== headerHashFromCbor(record.headerCborHex) ||
     BigInt(record.endTime) <= BigInt(record.startTime) ||
+    BigInt(record.blockTime) < BigInt(record.endTime) ||
     BigInt(record.withdrawalCount) >
       STATE_QUEUE_SNAPSHOT_BOUNDS.withdrawalCount ||
     BigInt(record.forcedTransactionCount) >

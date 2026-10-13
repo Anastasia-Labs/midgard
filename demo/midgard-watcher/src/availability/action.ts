@@ -9,7 +9,7 @@ export type WatcherAvailabilityAction = Readonly<{
 
 /**
  * The Open deadline: `OpenChallenge` admits only an inclusive upper validity
- * bound strictly before `header.end_time + da_challenge_window_ms`.
+ * bound strictly before `node.block_time + da_challenge_window_ms`.
  */
 export type WatcherAvailabilityOpenWindow = Readonly<{
   /** The inclusive upper bound of the transaction the watcher would build. */
@@ -38,7 +38,7 @@ export const watcherAvailabilityOpenDeadlinePassed = (
   const node = Data.castFrom(snapshot.queue.datum.data, SDK.StateQueueNode);
   return (
     window.inclusiveValidityUpper >=
-    node.header.endTime + window.daChallengeWindowMs
+    node.block_time + window.daChallengeWindowMs
   );
 };
 
@@ -189,7 +189,7 @@ export const watcherAvailabilityOpenDeadlineMissed = (
 
 /**
  * Actuation order for one reconciliation: Opens first, earliest Open deadline
- * (header end_time) first, then every other step in queue order.
+ * (node block_time) first, then every other step in queue order.
  */
 export const orderWatcherAvailabilityActions = <
   T extends Readonly<{
@@ -200,8 +200,7 @@ export const orderWatcherAvailabilityActions = <
   selected: readonly T[],
 ): readonly T[] => {
   const endTime = (snapshot: SDK.DaAvailabilityChallengeSnapshot): bigint =>
-    Data.castFrom(snapshot.queue!.datum.data, SDK.StateQueueNode).header
-      .endTime;
+    Data.castFrom(snapshot.queue!.datum.data, SDK.StateQueueNode).block_time;
   const opens = selected
     .map((entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry.action.action === "open")

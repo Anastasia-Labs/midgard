@@ -3,6 +3,7 @@ import { Deferred, Effect, Ref, SubscriptionRef } from "effect";
 
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
+import type { CommitPlanningSnapshot } from "../workers/commit-planning-notice.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import {
@@ -67,6 +68,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
 
     // Serializes pre-worker scheduler alignment with actual mutation workers.
     // COMMIT_WORKER_ACTIVE intentionally remains true only for the worker phase.
+    const COMMIT_PLANNING = yield* Ref.make<CommitPlanningSnapshot | null>(
+      null,
+    );
     const COMMIT_PIPELINE_PHASE = yield* Ref.make<CommitPipelinePhase>("idle");
 
     // Parent fibers hold this permit across provider-using child-worker
@@ -241,6 +245,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       OPERATOR_SET,
       COMMIT_WORKER_ACTIVE,
       COMMIT_DA_FRAME_PRESSURE,
+      COMMIT_PLANNING,
       COMMIT_PIPELINE_PHASE,
       L1_CONTROL_PLANE,
       SETTLEMENT_HEALTH,

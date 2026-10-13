@@ -12,6 +12,7 @@ import {
   selectCommitTxCandidates,
   stepDownCommitSelectionToDaFrame,
 } from "../src/workers/utils/commit-block-planner.js";
+import { registerEventPrefixCases } from "./commit-da-frame-step-down.event-prefix-cases.js";
 import {
   HEAVY_TRANSFER,
   quiet,
@@ -377,3 +378,5 @@ it.each(["digest", "bytes", "ids", "rejection", "unavailable"] as const)(
     expect(pass).toBe(2);
   },
 );
+
+registerEventPrefixCases();

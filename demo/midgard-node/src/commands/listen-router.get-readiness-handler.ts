@@ -8,6 +8,7 @@ import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js"
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness-probe.js";
 import { submitSlotEvidence } from "../l1-provider-view.js";
 import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
+import { readFollowerWriteGate } from "../services/follower-write-gate.js";
 import { followerWriteGateReasons } from "../services/follower-write-gate.local.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
@@ -34,6 +35,7 @@ import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   planMergePreflight,
 } from "../transactions/state-queue/merge-readiness.js";
+import { commitPlanningReadiness } from "../workers/commit-planning-notice.js";
 import { runL1ProviderPreflight } from "./l1-provider-preflight.js";
 import {
   L1_TRANSPORT_UNREADY,
@@ -456,6 +458,17 @@ export const getReadinessHandler = Effect.gen(function* () {
     l1Follower: l1Follower.report,
     livenessReasons,
     commitDaFramePressure,
+    commitPlanningProgress: commitPlanningReadiness({
+      snapshot: yield* Ref.get(globals.COMMIT_PLANNING),
+      gate: (yield* Effect.option(readFollowerWriteGate)).pipe(
+        Option.getOrUndefined,
+      ),
+      localEpoch: gateLocal.epoch,
+      recomputing: gateLocal.recomputing,
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      nowMs: nowMillis,
+      maxAgeMs: nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
+    }),
     mergeReadiness,
   };
 
