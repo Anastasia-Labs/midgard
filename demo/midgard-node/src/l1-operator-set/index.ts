@@ -53,3 +53,7 @@ export {
   retiredInsertionAnchorIn,
   stateQueueTailOf,
 } from "./snapshot.js";
+export {
+  type StateQueueStrikeFacts,
+  stateQueueStrikeFactsOf,
+} from "./strike-facts.js";

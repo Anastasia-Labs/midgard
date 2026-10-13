@@ -21,6 +21,7 @@ const C = "c".repeat(56);
 
 const THRESHOLD = 1_000_000;
 const PATIENCE = 120_000;
+const PROGRESS_WINDOW = 480_000;
 
 const base = (
   overrides: Partial<WatchdogPolicyInput> = {},
@@ -36,6 +37,8 @@ const base = (
     newOperatorKey: B,
     thresholdMs: THRESHOLD,
   },
+  stateQueue: { tailBlockTimeMs: null, appendFenceClosesAtMs: null },
+  progressWindowMs: PROGRESS_WINDOW,
   ...overrides,
 });
 
@@ -275,5 +278,69 @@ describe("operator watchdog citation failures", () => {
     ).toBe(true);
     expect(isScriptRefusal(new Error("fetch failed: ECONNRESET"))).toBe(false);
     expect(isScriptRefusal(undefined)).toBe(false);
+  });
+});
+
+describe("operator watchdog never strikes progress (B7)", () => {
+  const NOW = THRESHOLD + PATIENCE + 10 * PROGRESS_WINDOW;
+  const retirement = {
+    kind: "strikes-exhausted" as const,
+    currentOperator: A,
+    shiftStartMs: THRESHOLD,
+  };
+  const takeovers = [
+    { plan: base().plan, action: "strike" },
+    { plan: retirement, action: "force_retire" },
+  ] as const;
+  const at = (
+    stateQueue: WatchdogPolicyInput["stateQueue"],
+    plan: WatchdogPolicyInput["plan"],
+    ownOperatorKey = B,
+  ) =>
+    decideOperatorWatchdogAction(
+      base({ nowMs: NOW, stateQueue, plan, ownOperatorKey }),
+    );
+
+  it("waits out a shift holder whose tail is younger than the progress window", () => {
+    const tailBlockTimeMs = BigInt(NOW - PROGRESS_WINDOW);
+    for (const { plan } of takeovers)
+      for (const own of [B, C])
+        expect(
+          at({ tailBlockTimeMs, appendFenceClosesAtMs: null }, plan, own),
+        ).toEqual({
+          action: "wait",
+          reason: "shift_holder_making_progress",
+          untilMs: NOW + 1,
+        });
+  });
+
+  it("takes over from a stalled shift holder", () => {
+    const tailBlockTimeMs = BigInt(NOW - PROGRESS_WINDOW - 1);
+    for (const { plan, action } of takeovers) {
+      expect(
+        at({ tailBlockTimeMs, appendFenceClosesAtMs: null }, plan).action,
+      ).toBe(action);
+      // A queue of only the confirmed root has no commit to wait on.
+      expect(
+        at({ tailBlockTimeMs: null, appendFenceClosesAtMs: null }, plan).action,
+      ).toBe(action);
+    }
+  });
+
+  it("strikes nobody while the queue accepts no append", () => {
+    for (const appendFenceClosesAtMs of [0n, BigInt(NOW)])
+      for (const { plan } of takeovers)
+        for (const own of [B, C])
+          expect(
+            at({ tailBlockTimeMs: null, appendFenceClosesAtMs }, plan, own),
+          ).toEqual({ action: "idle", reason: "state_queue_unappendable" });
+    // An unattested deadline still ahead holds nothing.
+    for (const { plan, action } of takeovers)
+      expect(
+        at(
+          { tailBlockTimeMs: null, appendFenceClosesAtMs: BigInt(NOW + 1) },
+          plan,
+        ).action,
+      ).toBe(action);
   });
 });

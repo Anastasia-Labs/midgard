@@ -71,10 +71,7 @@ import {
   NO_CONTENT_SOURCE,
 } from "../forced-orders/index.js";
 import { createFollowerDriver } from "../l1-events/driver.js";
-import {
-  neglectedEventSourcesOf,
-  stateQueueTailOf,
-} from "../l1-operator-set/index.js";
+import { neglectedEventSourcesOf } from "../l1-operator-set/index.js";
 import { landedStateQueueHook } from "../l1-state-queue/index.js";
 import {
   type ConfirmedLedgerPosition,
@@ -236,8 +233,8 @@ const followL1 = <R>(
           publish: (change, read) =>
             Runtime.runPromise(runtime)(
               Effect.gen(function* () {
-                operatorSet.setStateQueueTail(
-                  read.kind === "ok" ? stateQueueTailOf(read.queue) : null,
+                operatorSet.setStateQueue(
+                  read.kind === "ok" ? read.queue : null,
                 );
                 if (read.kind === "ok")
                   yield* Ref.set(

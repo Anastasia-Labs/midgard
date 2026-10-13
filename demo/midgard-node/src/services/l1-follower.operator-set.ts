@@ -20,8 +20,10 @@ import {
   operatorSetHook,
   publishedOperatorSetOf,
   publishOperatorMembership,
-  type stateQueueTailOf,
+  stateQueueStrikeFactsOf,
+  stateQueueTailOf,
 } from "../l1-operator-set/index.js";
+import type { LandedStateQueue } from "../l1-state-queue/index.js";
 import { resolveOwnOperatorKeyHashProgram } from "../transactions/operators/takeover.js";
 import type { NodeConfig } from "./config.js";
 import type { Database } from "./database.js";
@@ -29,13 +31,14 @@ import { Globals } from "./globals.globals.js";
 import { Lucid } from "./lucid.js";
 import { ContractDeploymentIdentity } from "./midgard-contracts.js";
 
-export type StateQueueTail = ReturnType<typeof stateQueueTailOf>;
-
 export type FollowerOperatorSet = Readonly<{
   /** The driver hook; undefined when the operator key is unreadable. */
   hook: DriverHook | undefined;
-  /** Records the landed queue's tail of the current driver run. */
-  setStateQueueTail: (tail: StateQueueTail) => void;
+  /**
+   * Records the landed queue of the current driver run (null when it cannot
+   * be read): its tail and the watchdog's strike facts.
+   */
+  setStateQueue: (queue: LandedStateQueue | null) => void;
   /** This operator's key hash; undefined when it is unreadable. */
   ownKey: string | undefined;
   /**
@@ -59,9 +62,13 @@ export const followerOperatorSet = (options: {
     const lucid = yield* Lucid;
     const runtime = yield* Effect.runtime<never>();
     const dbRuntime = yield* Effect.runtime<Database | NodeConfig>();
-    let stateQueueTail: StateQueueTail = null;
-    const setStateQueueTail = (tail: StateQueueTail) => {
-      stateQueueTail = tail;
+    let stateQueueTail: ReturnType<typeof stateQueueTailOf> = null;
+    let stateQueueStrikeFacts: ReturnType<typeof stateQueueStrikeFactsOf> =
+      null;
+    const setStateQueue = (queue: LandedStateQueue | null) => {
+      stateQueueTail = queue === null ? null : stateQueueTailOf(queue);
+      stateQueueStrikeFacts =
+        queue === null ? null : stateQueueStrikeFactsOf(queue);
     };
     const ownKey = yield* Effect.either(
       resolveOwnOperatorKeyHashProgram(lucid.operatorMainAddress),
@@ -72,7 +79,7 @@ export const followerOperatorSet = (options: {
       );
       return {
         hook: undefined,
-        setStateQueueTail,
+        setStateQueue,
         ownKey: undefined,
         activity: undefined,
       } as FollowerOperatorSet;
@@ -99,6 +106,7 @@ export const followerOperatorSet = (options: {
                 set,
                 membership,
                 stateQueueTail,
+                stateQueueStrikeFacts,
                 store,
                 retired: config.retired,
                 neglectedEvents: options.neglectedEvents,
@@ -112,7 +120,7 @@ export const followerOperatorSet = (options: {
     });
     return {
       hook,
-      setStateQueueTail,
+      setStateQueue,
       ownKey: ownKey.right,
       activity,
     } as FollowerOperatorSet;
