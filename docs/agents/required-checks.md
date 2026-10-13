@@ -109,6 +109,7 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `onchain/aiken/env/**`
 - `config/deployments/**`
 - `demo/scripts/deployment-profiles.mjs`
+- `demo/scripts/deployment-profile-aiken.mjs`
 - `onchain/aiken/scripts/pinned-compiler.mjs`
 - `demo/package.json`
 - `demo/pnpm-lock.yaml`
@@ -504,6 +505,23 @@ Golden channel native-tx-vector-v1 (@al-ft/midgard-core).
   - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
+### `golden:cek-data-canonical-corpus-v1`
+
+Golden channel cek-data-canonical-corpus-v1 (@al-ft/midgard-core).
+
+- Command: `pnpm --dir demo/midgard-core run fixtures:cek-data-canonical-corpus-v1:check`
+- Fix: `pnpm --dir demo/midgard-core run fixtures:cek-data-canonical-corpus-v1:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs`
+  - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `demo/midgard-core/tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs`
+  - `onchain/aiken/lib/midgard/cek-data-canonical-corpus-v1-golden.test.ak`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+- Needs: `node-modules`, `aiken`
+
 ### `golden:mpf-node-encoding-v1`
 
 Golden channel mpf-node-encoding-v1 (@al-ft/midgard-core).
@@ -515,6 +533,24 @@ Golden channel mpf-node-encoding-v1 (@al-ft/midgard-core).
   - `demo/midgard-core/scripts/golden-channel.mjs`
   - `demo/midgard-core/tests/fixtures/mpf-node-encoding-v1.generated.json`
   - `onchain/aiken/lib/midgard/mpf-node-encoding-v1-golden.test.ak`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+- Needs: `node-modules`, `aiken`
+
+### `golden:forced-tx-admission-v1`
+
+Golden channel forced-tx-admission-v1 (@al-ft/midgard-core).
+
+- Command: `pnpm --dir demo/midgard-core run fixtures:forced-tx-admission-v1:check`
+- Fix: `pnpm --dir demo/midgard-core run fixtures:forced-tx-admission-v1:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.mjs`
+  - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.rows.mjs`
+  - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `demo/midgard-core/tests/fixtures/forced-tx-admission-v1.generated.json`
+  - `onchain/aiken/lib/midgard/user-events/forced-tx-admission-v1-golden.test.ak`
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
@@ -830,6 +866,7 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-sdk/scripts/da-vector-support.mjs`
   - `demo/midgard-sdk/scripts/generate-da-bond-pool-v1-goldens.render-vector.mjs`
   - `demo/midgard-sdk/tests/fixtures/da-bond-pool-v1.generated.json`
+  - `demo/scripts/deployment-profile-aiken.mjs`
   - `demo/scripts/deployment-profiles.mjs`
   - `demo/scripts/lib/blueprint-stamp.mjs`
   - `onchain/aiken/env/default.ak`

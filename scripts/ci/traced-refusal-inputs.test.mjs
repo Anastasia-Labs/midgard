@@ -72,6 +72,7 @@ test("a pull request touching any input runs the check", () => {
     "demo/midgard-node/src/index.ts",
     "demo/midgard-test-support/interactive-emulator.js",
     "demo/scripts/lib/blueprint-stamp.mjs",
+    "demo/scripts/deployment-profile-aiken.mjs",
     "demo/pnpm-lock.yaml",
     "demo/vendor/mpf-1.3.1-midgard.1.tgz",
   ]) {

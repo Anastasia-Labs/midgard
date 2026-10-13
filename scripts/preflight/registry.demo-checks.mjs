@@ -26,6 +26,7 @@ export const FULL_RUN = [
   `${AIKEN_PROJECT}/env/**`,
   "config/deployments/**",
   `${DEMO}/scripts/deployment-profiles.mjs`,
+  `${DEMO}/scripts/deployment-profile-aiken.mjs`,
   // The compiler pin's reader (the pin itself is compared by value, below).
   `${AIKEN_PROJECT}/scripts/pinned-compiler.mjs`,
   // Workspace manifests, lockfile, toolchain pin, patched and vendored
