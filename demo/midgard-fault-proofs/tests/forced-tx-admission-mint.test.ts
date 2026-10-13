@@ -200,6 +200,8 @@ describe("forced-tx admission at the real tx-order mint", () => {
   let h: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
   let lucid: LucidEvolution;
   let txOrderMinting: UTxO;
+  /** Emulator time when `lucid` was made: its slot config's zero time. */
+  let lucidZeroTime: number;
 
   beforeAll(async () => {
     h = await makeFaultProofEmulatorHarness({
@@ -207,6 +209,7 @@ describe("forced-tx admission at the real tx-order mint", () => {
     });
     // The order builder dates `inclusion_time` from the compiled profile's
     // event wait, which the SDK reads only on the profile's own network.
+    lucidZeroTime = h.emulator.now();
     lucid = await Lucid(h.emulator, SELECTED_DEPLOYMENT_PROFILE.network);
     h.proverSigner.selectWallet(lucid);
     const operator = getAddressDetails(
@@ -338,12 +341,24 @@ describe("forced-tx admission at the real tx-order mint", () => {
     300_000,
   );
 
+  /**
+   * A full event range ends about now, so it starts up to 601 slots in the
+   * past; `lucid`'s zero time must lie before that or the evaluator cannot
+   * place the lower bound.
+   */
+  const elapseOneEventRange = () => {
+    const behind =
+      MAX_EVENT_RANGE_MS + 2_000 - (h.emulator.now() - lucidZeroTime);
+    if (behind > 0) h.emulator.awaitSlot(Math.ceil(behind / 1_000));
+  };
+
   // The ledger bounds a range in whole slots and its upper bound is exclusive,
   // so a range of exactly 600 slots spans 599,999 ms inclusive and one slot
   // more spans 600,999 ms. The millisecond boundary itself (600,000 admitted,
   // 600,001 refused) is pinned by the utils Aiken tests.
   it("mints an order whose L1 range is the deployment's event range", async () => {
     screen.enabled = true;
+    elapseOneEventRange();
     const before = (
       await lucid.utxosAt(h.contracts.txOrder.spendingScriptAddress)
     ).length;
@@ -359,6 +374,7 @@ describe("forced-tx admission at the real tx-order mint", () => {
   it("refuses an order whose L1 range is one slot longer than the event range", async () => {
     screen.enabled = true;
     const slot = 1_000;
+    elapseOneEventRange();
     await expectOnchainRefusal(
       () =>
         mintOrder(

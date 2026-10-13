@@ -211,6 +211,10 @@ export const mintReferenceOnlyOrder = async (
       { kind: "inline", value: eventOutput.datum! },
       eventOutput.assets,
     )
+    // The mint requires a closed range: keep the SDK-built lower bound.
+    .validFrom(
+      lucid.slotToUnixTime(Number(original.body().validity_interval_start()!)),
+    )
     .validTo(Number(datum.inclusion_time) - SDK.EVENT_WAIT_DURATION_MS + 1)
     .register.Stake(
       SDK.scriptRewardAddress(
