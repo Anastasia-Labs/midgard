@@ -111,6 +111,7 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `demo/scripts/deployment-profiles.mjs`
 - `demo/scripts/deployment-profile-aiken.mjs`
 - `demo/scripts/deployment-profile-identity.mjs`
+- `demo/scripts/deployment-profile-budgets.mjs`
 - `onchain/aiken/scripts/pinned-compiler.mjs`
 - `demo/package.json`
 - `demo/pnpm-lock.yaml`
@@ -870,6 +871,7 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-sdk/scripts/generate-da-bond-pool-v1-goldens.render-vector.mjs`
   - `demo/midgard-sdk/tests/fixtures/da-bond-pool-v1.generated.json`
   - `demo/scripts/deployment-profile-aiken.mjs`
+  - `demo/scripts/deployment-profile-budgets.mjs`
   - `demo/scripts/deployment-profile-identity.mjs`
   - `demo/scripts/deployment-profiles.mjs`
   - `demo/scripts/lib/blueprint-stamp.mjs`
