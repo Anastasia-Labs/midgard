@@ -12,8 +12,10 @@
 //// over a minimal index of at least 128; exactly one item ending at `end`.
 ////
 //// A list's summary is a right fold over its items, so items are pushed on a
-//// stack as they complete and folded, last first, when their container closes.
-//// The stack lives in memory within one transaction. Between transactions only
+//// stack as they complete and folded, last first, after their container
+//// closes: the `Folding` frame pops one item (or map entry) per step until it
+//// reaches the suspended parent, so no step's cost grows with a container's
+//// width. The stack lives in memory within one transaction. Between transactions only
 //// its hash chain is kept (`Walk.stack_root`); the next transaction restores
 //// the entries it will pop below its own pushes and the chain proves them.
 ////
@@ -22,11 +24,9 @@
 //// restore fails, it never changes the outcome.
 
 use aiken/builtin
-use aiken/crypto.{blake2b_256}
+use aiken/collection/list
 use aiken/primitive/bytearray
-use midgard/cek_data_v1.{
-  DataSequenceSummaryV1, DataSummaryV1, IntegerData, hash_data_node_v1,
-}
+use midgard/cek_data_v1.{DataSequenceSummaryV1, DataSummaryV1}
 
 /// The container a walk is reading the items of.
 pub type Frame {
@@ -39,6 +39,8 @@ pub type Frame {
     index_memory: Int,
   }
   MapEntries { remaining: Int }
+  /// `open` has closed; its items are being popped into `folded`, last first.
+  Folding { open: Frame, folded: DataSequenceSummaryV1 }
 }
 
 /// A stack entry: a completed item, or the frame an open container suspended.
@@ -74,46 +76,21 @@ pub fn start(offset: Int) -> Walk {
   Walk { offset, frame: Root, stack_root: empty_stack_root }
 }
 
-fn u64(value: Int) -> ByteArray {
-  bytearray.from_int_big_endian(value, 8)
-}
-
-fn encode_entry(entry: Entry) -> ByteArray {
-  when entry is {
-    Item { summary } -> {
-      expect bytearray.length(summary.root) == 32
-      #"00"
-        |> bytearray.concat(summary.root)
-        |> bytearray.concat(u64(summary.cbor_length))
-        |> bytearray.concat(u64(summary.memory))
-    }
-    Parent { frame } ->
-      when frame is {
-        Root -> #"01"
-        ListItems -> #"02"
-        ConstrFields { constructor } ->
-          #"03"
-            |> bytearray.concat(bytearray.from_int_big_endian(constructor, 1))
-        LargeConstrFields { index_root, index_cbor_length, index_memory } -> {
-          expect bytearray.length(index_root) == 32
-          #"04"
-            |> bytearray.concat(index_root)
-            |> bytearray.concat(u64(index_cbor_length))
-            |> bytearray.concat(u64(index_memory))
-        }
-        MapEntries { remaining } -> #"05" |> bytearray.concat(u64(remaining))
-      }
-  }
-}
-
-/// The hash chain of `entries` (top first) above `base`. Every entry encoding
-/// has a length fixed by its tag, and `base` is empty or a 32-byte root, so the
-/// chain is injective.
+/// The hash chain of `entries` (top first) above `base`, which is empty or a
+/// 32-byte root. `serialiseData` encodings are self-delimiting, so the chain
+/// is injective.
 pub fn chain(entries: List<Entry>, base: ByteArray) -> ByteArray {
   when entries is {
     [] -> base
-    [entry, ..rest] ->
-      blake2b_256(bytearray.concat(encode_entry(entry), chain(rest, base)))
+    [entry, ..rest] -> {
+      let encoded: Data = entry
+      builtin.blake2b_256(
+        builtin.append_bytearray(
+          builtin.serialise_data(encoded),
+          chain(rest, base),
+        ),
+      )
+    }
   }
 }
 
@@ -144,31 +121,15 @@ fn head(bytes: ByteArray, at: Int, end: Int) -> Option<(Int, Int, Int)> {
     let info = first % 32
     if info < 24 {
       Some((major, info, at + 1))
-    } else if info == 24 {
-      let value = argument(bytes, at + 1, 1, end)
-      if value >= 24 {
-        Some((major, value, at + 2))
-      } else {
-        None
-      }
-    } else if info == 25 {
-      let value = argument(bytes, at + 1, 2, end)
-      if value >= 256 {
-        Some((major, value, at + 3))
-      } else {
-        None
-      }
-    } else if info == 26 {
-      let value = argument(bytes, at + 1, 4, end)
-      if value >= 65536 {
-        Some((major, value, at + 5))
-      } else {
-        None
-      }
-    } else if info == 27 {
-      let value = argument(bytes, at + 1, 8, end)
-      if value >= 4294967296 {
-        Some((major, value, at + 9))
+    } else if info <= 27 {
+      // A 1-, 2-, 4- or 8-byte argument is minimal when it is at least 24 and
+      // needs more than half of its width.
+      let size = builtin.index_bytearray(#"01020408", info - 24)
+      let value = argument(bytes, at + 1, size, end)
+      if value >= 24 && 2 * bytearray.length(
+        bytearray.from_int_big_endian(value, 0),
+      ) > size {
+        Some((major, value, at + 1 + size))
       } else {
         None
       }
@@ -186,6 +147,30 @@ fn chunks(
   end: Int,
   content: ByteArray,
 ) -> Option<(ByteArray, Int)> {
+  // A full chunk followed by more input: the head `58 40` and 64 bytes.
+  if at + 66 < end && builtin.slice_bytearray(at, 2, bytes) == #"5840" {
+    let joined = bytearray.concat(
+      content,
+      builtin.slice_bytearray(at + 2, 64, bytes),
+    )
+    let after = at + 66
+    if builtin.index_bytearray(bytes, after) == 255 {
+      Some((joined, after + 1))
+    } else {
+      chunks(bytes, after, end, joined)
+    }
+  } else {
+    last_chunk(bytes, at, end, content)
+  }
+}
+
+/// The last chunk of a byte string, of 1 to 64 bytes, and its break.
+fn last_chunk(
+  bytes: ByteArray,
+  at: Int,
+  end: Int,
+  content: ByteArray,
+) -> Option<(ByteArray, Int)> {
   when head(bytes, at, end) is {
     Some((2, length, next)) ->
       if length >= 1 && length <= 64 && next + length <= end {
@@ -194,10 +179,10 @@ fn chunks(
           builtin.slice_bytearray(next, length, bytes),
         )
         let after = next + length
+        // A full chunk reaches here only when it ends the input (`chunks`
+        // takes every other), so it needs no continuation.
         if byte_at(bytes, after, end) == 255 {
           Some((joined, after + 1))
-        } else if length == 64 {
-          chunks(bytes, after, end, joined)
         } else {
           None
         }
@@ -231,84 +216,298 @@ fn byte_string(bytes: ByteArray, at: Int, end: Int) -> Option<(ByteArray, Int)> 
   }
 }
 
-fn unsigned_byte_size(value: Int) -> Int {
-  if value < 256 {
+/// `4 + integer_memory_size` of an integer whose magnitude (`n` for `n >= 0`,
+/// `-n - 1` for `n < 0`) has the big-endian bytes `magnitude`, without a
+/// leading zero: twice the magnitude takes one more byte exactly when its top
+/// bit is set, and zero takes one byte.
+fn magnitude_memory(magnitude: ByteArray) -> Int {
+  let length = builtin.length_of_bytearray(magnitude)
+  4 + if length == 0 {
     1
+  } else if builtin.index_bytearray(magnitude, 0) >= 128 {
+    length + 1
   } else {
-    1 + unsigned_byte_size(value / 256)
+    length
   }
 }
 
-/// `4 + integer_memory_size` of an integer whose magnitude is `magnitude` for
-/// a non-negative value and `magnitude + 1` for a negative one.
-fn integer_memory(magnitude: Int) -> Int {
-  4 + unsigned_byte_size(magnitude * 2)
+fn integer_memory(argument: Int) -> Int {
+  magnitude_memory(bytearray.from_int_big_endian(argument, 0))
 }
 
-fn integer_summary(
-  bytes: ByteArray,
-  at: Int,
-  after: Int,
-  magnitude: Int,
-) -> DataSummaryV1 {
-  let span = builtin.slice_bytearray(at, after - at, bytes)
-  let memory = integer_memory(magnitude)
-  DataSummaryV1 {
-    root: hash_data_node_v1(
-      IntegerData {
-        cbor_root: cek_data_v1.bounded_blob_root_v1(span),
-        cbor_length: after - at,
-        memory,
-      },
+// ## Node summaries
+//
+// The `cek_data_v1` summary formulas, hashing each node preimage with one
+// `serialiseData`. A preimage is a definite array of unsigned integers and
+// 32-byte roots, and `serialiseData` of the same items as a list is the
+// indefinite array `9f <items> ff`, so the preimage is the definite header
+// followed by those item bytes. Every count, length and memory below is
+// derived from a span of at most one bounded ledger output and every root is
+// a blake2b_256 digest, so the encoders' uint32/uint64/hash-width checks hold
+// by construction.
+
+fn node_root(domain: ByteArray, fields: List<Data>, count: Int) -> ByteArray {
+  let items = builtin.serialise_data(builtin.list_data(fields))
+  builtin.blake2b_256(
+    builtin.append_bytearray(
+      domain,
+      builtin.cons_bytearray(
+        128 + count,
+        builtin.slice_bytearray(
+          1,
+          builtin.length_of_bytearray(items) - 2,
+          items,
+        ),
+      ),
     ),
-    cbor_length: after - at,
+  )
+}
+
+fn data_node(
+  fields: List<Data>,
+  count: Int,
+  cbor_length: Int,
+  memory: Int,
+) -> DataSummaryV1 {
+  DataSummaryV1 {
+    root: node_root(cek_data_v1.data_node_domain, fields, count),
+    cbor_length,
     memory,
   }
 }
 
-fn empty_fields_summary(frame: Frame) -> DataSummaryV1 {
-  let empty = cek_data_v1.empty_data_list_summary_v1()
-  when frame is {
+fn integer_leaf(cbor: ByteArray, memory: Int) -> DataSummaryV1 {
+  let cbor_length = builtin.length_of_bytearray(cbor)
+  data_node(
+    [
+      builtin.i_data(4),
+      builtin.b_data(cek_data_v1.bounded_blob_root_v1(cbor)),
+      builtin.i_data(cbor_length),
+      builtin.i_data(memory),
+    ],
+    4,
+    cbor_length,
+    memory,
+  )
+}
+
+fn bytes_leaf(content: ByteArray, cbor_length: Int) -> DataSummaryV1 {
+  let length = builtin.length_of_bytearray(content)
+  let memory = 4 + if length == 0 {
+    1
+  } else {
+    length
+  }
+  data_node(
+    [
+      builtin.i_data(5),
+      builtin.b_data(cek_data_v1.bounded_blob_root_v1(content)),
+      builtin.i_data(length),
+      builtin.i_data(cbor_length),
+      builtin.i_data(memory),
+    ],
+    5,
+    cbor_length,
+    memory,
+  )
+}
+
+fn list_cbor_length(items: DataSequenceSummaryV1) -> Int {
+  if items.length == 0 {
+    1
+  } else {
+    2 + items.payload_cbor_length
+  }
+}
+
+fn map_cbor_length(entries: DataSequenceSummaryV1) -> Int {
+  let count = entries.length
+  entries.payload_cbor_length + if count < 24 {
+    1
+  } else if count <= 255 {
+    2
+  } else if count <= 65535 {
+    3
+  } else {
+    5
+  }
+}
+
+/// A list, map or constructor node: `prefix` (its tag and, for a
+/// constructor, the alternative) followed by its items' sequence summary.
+fn composite(
+  prefix: List<Data>,
+  count: Int,
+  items: DataSequenceSummaryV1,
+  cbor_length: Int,
+) -> DataSummaryV1 {
+  let memory = 4 + items.memory
+  data_node(
+    list.concat(
+      prefix,
+      [
+        builtin.i_data(items.length),
+        builtin.b_data(items.root),
+        builtin.i_data(cbor_length),
+        builtin.i_data(memory),
+      ],
+    ),
+    count,
+    cbor_length,
+    memory,
+  )
+}
+
+/// A list or map node over `heads`, the summaries of one item or one
+/// key/value pair, whose CBOR lengths and memories sum to `cbor_length` and
+/// `memory`.
+fn prepend(
+  domain: ByteArray,
+  count: Int,
+  heads: List<Data>,
+  cbor_length: Int,
+  memory: Int,
+  tail: DataSequenceSummaryV1,
+) -> DataSequenceSummaryV1 {
+  let length = tail.length + 1
+  let payload_cbor_length = cbor_length + tail.payload_cbor_length
+  let memory = memory + tail.memory
+  DataSequenceSummaryV1 {
+    root: node_root(
+      domain,
+      list.concat(
+        heads,
+        [
+          builtin.b_data(tail.root),
+          builtin.i_data(length),
+          builtin.i_data(payload_cbor_length),
+          builtin.i_data(memory),
+        ],
+      ),
+      count,
+    ),
+    length,
+    payload_cbor_length,
+    memory,
+  }
+}
+
+fn summary_fields(summary: DataSummaryV1) -> List<Data> {
+  [
+    builtin.b_data(summary.root),
+    builtin.i_data(summary.cbor_length),
+    builtin.i_data(summary.memory),
+  ]
+}
+
+fn prepend_item(
+  head: DataSummaryV1,
+  tail: DataSequenceSummaryV1,
+) -> DataSequenceSummaryV1 {
+  prepend(
+    cek_data_v1.data_list_node_domain,
+    7,
+    summary_fields(head),
+    head.cbor_length,
+    head.memory,
+    tail,
+  )
+}
+
+fn prepend_pair(
+  key: DataSummaryV1,
+  value: DataSummaryV1,
+  tail: DataSequenceSummaryV1,
+) -> DataSequenceSummaryV1 {
+  prepend(
+    cek_data_v1.data_pair_node_domain,
+    10,
+    list.concat(summary_fields(key), summary_fields(value)),
+    key.cbor_length + value.cbor_length,
+    key.memory + value.memory,
+    tail,
+  )
+}
+
+const no_items: DataSequenceSummaryV1 = cek_data_v1.empty_data_list_summary_v1()
+
+const no_entries: DataSequenceSummaryV1 =
+  cek_data_v1.empty_data_pair_summary_v1()
+
+const empty_map: DataSummaryV1 = cek_data_v1.map_data_summary_v1(no_entries)
+
+/// The summary of the closed container `open` over its folded items.
+fn finish(open: Frame, folded: DataSequenceSummaryV1) -> DataSummaryV1 {
+  when open is {
+    ListItems ->
+      composite([builtin.i_data(3)], 5, folded, list_cbor_length(folded))
     ConstrFields { constructor } ->
-      cek_data_v1.small_constr_data_summary_v1(constructor, empty)
-    LargeConstrFields { index_root, index_cbor_length, index_memory } ->
-      cek_data_v1.large_constr_data_summary_from_cbor_v1(
-        index_root,
-        index_cbor_length,
-        index_memory,
-        empty,
+      composite(
+        [builtin.i_data(0), builtin.i_data(constructor)],
+        6,
+        folded,
+        list_cbor_length(folded) + if constructor <= 6 {
+          2
+        } else {
+          3
+        },
       )
+    LargeConstrFields { index_root, index_cbor_length, index_memory } ->
+      composite(
+        [
+          builtin.i_data(1),
+          builtin.b_data(index_root),
+          builtin.i_data(index_cbor_length),
+          builtin.i_data(index_memory),
+        ],
+        8,
+        folded,
+        3 + index_cbor_length + list_cbor_length(folded),
+      )
+    MapEntries { .. } ->
+      composite([builtin.i_data(2)], 5, folded, map_cbor_length(folded))
     _ -> fail
   }
 }
 
-fn pop_items(
-  stack: List<Entry>,
+/// One step of folding the closed container `open`: pop one item (or one
+/// key/value pair), or reach the suspended parent and complete the container.
+fn fold(
+  open: Frame,
   folded: DataSequenceSummaryV1,
-) -> (DataSequenceSummaryV1, Frame, List<Entry>) {
-  when stack is {
-    [Item { summary }, ..rest] ->
-      pop_items(rest, cek_data_v1.prepend_data_list_summary_v1(summary, folded))
-    [Parent { frame }, ..rest] -> (folded, frame, rest)
-    [] -> fail @"restore more of the stack"
-  }
-}
-
-fn pop_pairs(
+  at: Int,
   stack: List<Entry>,
-  folded: DataSequenceSummaryV1,
-) -> (DataSequenceSummaryV1, Frame, List<Entry>) {
+  end: Int,
+) -> Progress {
   when stack is {
-    [Item { summary: value }, ..rest] ->
-      when rest is {
-        [Item { summary: key }, ..below] ->
-          pop_pairs(
-            below,
-            cek_data_v1.prepend_data_pair_summary_v1(key, value, folded),
-          )
-        _ -> fail @"restore more of the stack"
+    [Parent { frame }, ..rest] ->
+      // `9fff`: an indefinite list or field list is never empty. A map is
+      // folded only after its last entry, so it never reaches here empty.
+      if folded.length == 0 {
+        Refused
+      } else {
+        complete(finish(open, folded), at, frame, rest, end)
       }
-    [Parent { frame }, ..rest] -> (folded, frame, rest)
+    [Item { summary }, ..rest] ->
+      when open is {
+        MapEntries { .. } ->
+          // A map pushes its keys and values in pairs.
+          when rest is {
+            [Item { summary: key }, ..below] ->
+              Advanced(
+                at,
+                Folding { open, folded: prepend_pair(key, summary, folded) },
+                below,
+              )
+            _ -> fail @"restore more of the stack"
+          }
+        _ ->
+          Advanced(
+            at,
+            Folding { open, folded: prepend_item(summary, folded) },
+            rest,
+          )
+      }
     [] -> fail @"restore more of the stack"
   }
 }
@@ -330,16 +529,10 @@ fn complete(
       }
     MapEntries { remaining } ->
       if remaining == 1 {
-        let (entries, parent, rest) = pop_pairs(
-          [Item(summary), ..stack],
-          cek_data_v1.empty_data_pair_summary_v1(),
-        )
-        complete(
-          cek_data_v1.map_data_summary_v1(entries),
+        Advanced(
           after,
-          parent,
-          rest,
-          end,
+          Folding { open: MapEntries { remaining: 0 }, folded: no_entries },
+          [Item(summary), ..stack],
         )
       } else {
         Advanced(
@@ -352,62 +545,15 @@ fn complete(
   }
 }
 
-fn close(frame: Frame, stack: List<Entry>, after: Int, end: Int) -> Progress {
-  when stack is {
-    // `9fff`: an indefinite list or field list is never empty.
-    [Parent { .. }, ..] -> Refused
-    _ ->
-      when frame is {
-        ListItems -> {
-          let (items, parent, rest) = pop_items(
-            stack,
-            cek_data_v1.empty_data_list_summary_v1(),
-          )
-          complete(
-            cek_data_v1.list_data_summary_v1(items),
-            after,
-            parent,
-            rest,
-            end,
-          )
-        }
-        ConstrFields { constructor } -> {
-          let (fields, parent, rest) = pop_items(
-            stack,
-            cek_data_v1.empty_data_list_summary_v1(),
-          )
-          complete(
-            cek_data_v1.small_constr_data_summary_v1(constructor, fields),
-            after,
-            parent,
-            rest,
-            end,
-          )
-        }
-        LargeConstrFields { index_root, index_cbor_length, index_memory } -> {
-          let (fields, parent, rest) = pop_items(
-            stack,
-            cek_data_v1.empty_data_list_summary_v1(),
-          )
-          complete(
-            cek_data_v1.large_constr_data_summary_from_cbor_v1(
-              index_root,
-              index_cbor_length,
-              index_memory,
-              fields,
-            ),
-            after,
-            parent,
-            rest,
-            end,
-          )
-        }
-        _ -> Refused
-      }
+fn close(frame: Frame, stack: List<Entry>, after: Int) -> Progress {
+  when frame is {
+    ListItems | ConstrFields { .. } | LargeConstrFields { .. } ->
+      Advanced(after, Folding { open: frame, folded: no_items }, stack)
+    _ -> Refused
   }
 }
 
-/// The field list of a constructor whose fields `opened` will read.
+/// A list, or the field list of a constructor, whose items `opened` will read.
 fn fields(
   bytes: ByteArray,
   at: Int,
@@ -418,7 +564,7 @@ fn fields(
 ) -> Progress {
   let first = byte_at(bytes, at, end)
   if first == 128 {
-    complete(empty_fields_summary(opened), at + 1, frame, stack, end)
+    complete(finish(opened, no_items), at + 1, frame, stack, end)
   } else if first == 159 {
     Advanced(at + 1, opened, [Parent(frame), ..stack])
   } else {
@@ -435,20 +581,17 @@ fn tagged(
   stack: List<Entry>,
   end: Int,
 ) -> Progress {
-  if tag >= 121 && tag <= 127 {
+  if tag >= 121 && tag <= 127 || tag >= 1280 && tag <= 1400 {
     fields(
       bytes,
       next,
-      ConstrFields { constructor: tag - 121 },
-      frame,
-      stack,
-      end,
-    )
-  } else if tag >= 1280 && tag <= 1400 {
-    fields(
-      bytes,
-      next,
-      ConstrFields { constructor: tag - 1273 },
+      ConstrFields {
+        constructor: if tag <= 127 {
+          tag - 121
+        } else {
+          tag - 1273
+        },
+      },
       frame,
       stack,
       end,
@@ -491,11 +634,9 @@ fn tagged(
           0,
         ) != 0 {
           complete(
-            integer_summary(
-              bytes,
-              at,
-              after,
-              bytearray.to_int_big_endian(magnitude),
+            integer_leaf(
+              builtin.slice_bytearray(at, after - at, bytes),
+              magnitude_memory(magnitude),
             ),
             after,
             frame,
@@ -519,8 +660,21 @@ fn step(
   stack: List<Entry>,
   end: Int,
 ) -> Progress {
+  when frame is {
+    Folding { open, folded } -> fold(open, folded, at, stack, end)
+    _ -> read(bytes, at, frame, stack, end)
+  }
+}
+
+fn read(
+  bytes: ByteArray,
+  at: Int,
+  frame: Frame,
+  stack: List<Entry>,
+  end: Int,
+) -> Progress {
   if byte_at(bytes, at, end) == 255 {
-    close(frame, stack, at + 1, end)
+    close(frame, stack, at + 1)
   } else {
     when head(bytes, at, end) is {
       None -> Refused
@@ -530,7 +684,10 @@ fn step(
             Refused
           } else {
             complete(
-              integer_summary(bytes, at, next, value),
+              integer_leaf(
+                builtin.slice_bytearray(at, next - at, bytes),
+                integer_memory(value),
+              ),
               next,
               frame,
               stack,
@@ -541,10 +698,7 @@ fn step(
           when byte_string(bytes, at, end) is {
             Some((content, after)) ->
               complete(
-                cek_data_v1.bytes_data_summary_v1(
-                  bytearray.length(content),
-                  cek_data_v1.bounded_blob_root_v1(content),
-                ),
+                bytes_leaf(content, after - at),
                 after,
                 frame,
                 stack,
@@ -553,32 +707,10 @@ fn step(
             None -> Refused
           }
         } else if major == 4 {
-          if value == -1 {
-            Advanced(next, ListItems, [Parent(frame), ..stack])
-          } else if value == 0 {
-            complete(
-              cek_data_v1.list_data_summary_v1(
-                cek_data_v1.empty_data_list_summary_v1(),
-              ),
-              next,
-              frame,
-              stack,
-              end,
-            )
-          } else {
-            Refused
-          }
+          fields(bytes, at, ListItems, frame, stack, end)
         } else if major == 5 {
           if value == 0 {
-            complete(
-              cek_data_v1.map_data_summary_v1(
-                cek_data_v1.empty_data_pair_summary_v1(),
-              ),
-              next,
-              frame,
-              stack,
-              end,
-            )
+            complete(empty_map, next, frame, stack, end)
           } else if value > 0 && 2 * value <= end - next {
             Advanced(
               next,
@@ -627,7 +759,6 @@ pub fn resume(
   base: ByteArray,
   steps: Int,
 ) -> Outcome {
-  expect steps > 0
   expect chain(restore, base) == walk.stack_root
   when run(bytes, walk.offset, walk.frame, restore, end, steps) is {
     Advanced(offset, frame, stack) ->

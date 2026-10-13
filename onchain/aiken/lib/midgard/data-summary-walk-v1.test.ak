@@ -264,6 +264,18 @@ test a_mixed_datum_agrees_under_any_sufficient_restore() {
   list.all([0, 1, 2, 5, -1], fn(extra) { stepwise(bytes, extra) == expected })
 }
 
+/// The largest admitted datums: 512 and 1,024 nodes, nested and flat.
+test the_largest_admitted_shapes_agree() {
+  list.all(
+    [nested(511), flat(511), nested(1023), flat(1023)],
+    fn(data) {
+      one_shot(cbor.serialise(data)) == Some(
+        cek_data_v1.semantic_data_summary_v1(data),
+      )
+    },
+  )
+}
+
 // ## Unreadable
 
 test non_canonical_forms_are_unreadable() {
@@ -394,4 +406,69 @@ test an_item_entry_carries_its_summary() {
     2,
   )
   summary == cek_data_v1.semantic_data_summary_v1(int(0))
+}
+
+// ## Fit rows
+//
+// One step must fit a transaction, so the largest single steps bound every
+// transaction of the walk. Each row walks one leaf as large as a 16,384-byte
+// output admits, or the largest constructor index, in a single step; the
+// `aiken check` reading is the row's upper bound.
+
+/// `length` copies of `byte`; `replicate_byte` alone stops at 8,192.
+fn filled(length: Int, byte: Int) -> ByteArray {
+  if length <= 8192 {
+    builtin.replicate_byte(length, byte)
+  } else {
+    bytearray.concat(
+      builtin.replicate_byte(8192, byte),
+      filled(length - 8192, byte),
+    )
+  }
+}
+
+fn single_step(bytes: ByteArray) -> Bool {
+  when
+    walk.resume(
+      walk.start(0),
+      bytes,
+      bytearray.length(bytes),
+      [],
+      walk.empty_stack_root,
+      1,
+    )
+  is {
+    Summarised(_) -> True
+    _ -> False
+  }
+}
+
+test fit_the_largest_byte_string_in_one_step() {
+  single_step(cbor.serialise(builtin.b_data(filled(15841, 171))))
+}
+
+/// A positive bignum is tag 2 over its magnitude's chunked byte string.
+test fit_the_largest_bignum_in_one_step() {
+  single_step(
+    bytearray.push(cbor.serialise(builtin.b_data(filled(15800, 255))), 194),
+  )
+}
+
+test fit_the_largest_constructor_index_opens_in_one_step() {
+  let bytes = cbor.serialise(
+    builtin.constr_data(18446744073709551615, [int(0)]),
+  )
+  when
+    walk.resume(
+      walk.start(0),
+      bytes,
+      bytearray.length(bytes),
+      [],
+      walk.empty_stack_root,
+      1,
+    )
+  is {
+    Walking(_) -> True
+    _ -> False
+  }
 }
