@@ -5,7 +5,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{WitnessAnchor, opened_field_view}
 use midgard/fraud_proofs/redeemer_canonicity/rule.{
-  authenticate_item_v1, redeemer_field_index,
+  ContinueData, FinishData, open_item_v1, redeemer_field_index,
 }
 use midgard/fraud_proofs/redeemer_canonicity/step_02.{
   Args, Datum, SpendRedeemer,
@@ -13,6 +13,7 @@ use midgard/fraud_proofs/redeemer_canonicity/step_02.{
 use midgard/native_tx_field_access_v1.{field_item_at}
 
 validator main(
+  step_02_data_hash: ScriptHash,
   step_03_hash: ScriptHash,
   computation_thread_policy: PolicyId,
   certificate_policy: PolicyId,
@@ -57,13 +58,21 @@ validator main(
           reference_inputs,
           certificate_policy,
         )
-        let expected: Data = authenticate_item_v1(
-          bound,
-          field_item_at(view, bound.redeemer_index),
-        )
-        and {
-          next_hash == step_03_hash,
-          next_state == expected,
+        when open_item_v1(bound, field_item_at(view, bound.redeemer_index)) is {
+          ContinueData { scan } -> {
+            let value: Data = scan
+            and {
+              next_hash == step_02_data_hash,
+              next_state == value,
+            }
+          }
+          FinishData { terminal } -> {
+            let value: Data = terminal
+            and {
+              next_hash == step_03_hash,
+              next_state == value,
+            }
+          }
         }
       }
     }

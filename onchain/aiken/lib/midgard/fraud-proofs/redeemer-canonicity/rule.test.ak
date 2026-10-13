@@ -82,24 +82,46 @@ test redeemer_canonicity_honest_rejection_refuses_malformed() fail {
   )
 }
 
-test redeemer_canonicity_total_decoder_accepts_canonical_item() {
-  rule.item_is_canonical_v1(#"8400004100820102")
+test redeemer_canonicity_envelope_yields_the_data_span() {
+  rule.data_span_v1(#"8400004100820102") == Some(Pair(4, 1))
 }
 
-test redeemer_canonicity_total_decoder_rejects_nonminimal_data() {
-  !rule.item_is_canonical_v1(#"840000421800820102")
+test redeemer_canonicity_envelope_leaves_the_data_to_the_data_step() {
+  rule.data_span_v1(#"840000421800820102") == Some(Pair(4, 2))
 }
 
-test redeemer_canonicity_total_decoder_rejects_malformed_envelope() {
-  !rule.item_is_canonical_v1(#"8300004100820102")
+test redeemer_canonicity_envelope_rejects_malformed_envelope() {
+  rule.data_span_v1(#"8300004100820102") == None
 }
 
-test redeemer_canonicity_total_decoder_rejects_trailing_bytes() {
-  !rule.item_is_canonical_v1(#"840000410082010200")
+test redeemer_canonicity_envelope_rejects_trailing_bytes() {
+  rule.data_span_v1(#"840000410082010200") == None
 }
 
-test redeemer_canonicity_total_decoder_rejects_unsupported_purpose() {
-  !rule.item_is_canonical_v1(#"8402004100820102")
+test redeemer_canonicity_envelope_rejects_unsupported_purpose() {
+  rule.data_span_v1(#"8402004100820102") == None
+}
+
+test redeemer_canonicity_envelope_rejects_data_past_the_item() {
+  rule.data_span_v1(#"8400004500820102") == None
+}
+
+test redeemer_canonicity_envelope_rejects_truncated_item() {
+  rule.data_span_v1(#"84000041") == None
+}
+
+test redeemer_canonicity_malformed_envelope_is_final() {
+  let bound = bind(accepted(), 0)
+  rule.open_item_v1(bound, #"8300004100820102") == rule.FinishData(
+    rule.TerminalStateV1 { bound, canonical: False },
+  )
+}
+
+test redeemer_canonicity_empty_data_is_final() {
+  let bound = bind(accepted(), 0)
+  rule.open_item_v1(bound, #"84000040820102") == rule.FinishData(
+    rule.TerminalStateV1 { bound, canonical: False },
+  )
 }
 
 test redeemer_canonicity_bound_abi_vector_is_stable() {
