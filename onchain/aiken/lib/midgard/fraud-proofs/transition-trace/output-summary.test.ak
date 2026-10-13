@@ -1,7 +1,13 @@
 use aiken/builtin
+use aiken/collection/list
+use aiken/primitive/bytearray
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/types.{MidgardTxOutput, MidgardValue}
+use midgard/fraud_proofs/transition_trace/final_yield.{State}
+use midgard/fraud_proofs/transition_trace/output_summaries.{WalkWitness}
+use midgard/fraud_proofs/transition_trace/proof_carriage
 use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_scan_v1 as scan
 use midgard/ledger_output_v1
 use midgard/ledger_output_value_v1
 use midgard/script_context_v1
@@ -91,4 +97,52 @@ test folded_value_composes_to_the_one_shot_output_summaries() {
       None,
     ),
   )
+}
+
+/// Phase 8 of an output with address `60 aa..aa` whose datum is `datum`, at
+/// the output-bytes offset 30, where `bytes` places it.
+fn datum_phase(datum: ByteArray) -> (State, ByteArray) {
+  let address = bytearray.push(builtin.replicate_byte(28, 170), 96)
+  let bytes = builtin.replicate_byte(30, 0)
+    |> bytearray.concat(datum)
+    |> bytearray.concat(#"00")
+  let control = scan.LedgerOutputScanControlV1 {
+    ..scan.initial_control_v1(),
+    address,
+    datum_offset: 30,
+    datum_length: bytearray.length(datum),
+  }
+  (
+    State {
+      ..final_yield.initial(0, proof_carriage.Commitment { hash: #"" }),
+      phase: 8,
+      scan_cbor: scan.encode_control_v1(control),
+      value_summary: Some(folded_value_summary()),
+    },
+    bytes,
+  )
+}
+
+fn steps(count: Int) -> WalkWitness {
+  WalkWitness { restore: [], base: #"", steps: count }
+}
+
+/// A canonical datum one step long is summarised in that step, which commits
+/// the output's summaries and leaves phase 8.
+test a_canonical_datum_is_summarised() {
+  let (state, bytes) = datum_phase(#"80")
+  let next = output_summaries.step(state, bytes, steps(1))
+  and {
+    next.phase == 3,
+    next.datum_walk == None,
+    list.length(next.summaries.summaries) == 1,
+  }
+}
+
+/// An empty indefinite-length list is outside the canonical grammar. Its
+/// steps open the list, read the break, and then find nothing to fold: that
+/// step has no successor State, so the thread can only be cancelled.
+test a_datum_outside_the_canonical_grammar_has_no_successor() fail {
+  let (state, bytes) = datum_phase(#"9fff")
+  output_summaries.step(state, bytes, steps(3)).phase == 8
 }
