@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -227,7 +227,7 @@ test("a file with a recorded module-size cap selects the cap's check", () => {
   assert.ok(outside, "a cap outside demo/");
   for (const path of [
     "demo/module-size-exceptions.json",
-    `demo/${caps[0].file}`,
+    posix.normalize(`demo/${caps[0].file}`),
     // `../<path>` names a repository file outside demo/.
     outside.file.slice("../".length),
   ])
