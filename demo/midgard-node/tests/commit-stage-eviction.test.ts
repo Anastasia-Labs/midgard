@@ -1,9 +1,6 @@
 import "./utils.js";
 
-import {
-  assertMidgardCekProgramMaterialBundle,
-  encodeMidgardCekProgramMaterialSidecar,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { SqlClient } from "@effect/sql";
 import { Effect, Logger } from "effect";
@@ -35,9 +32,8 @@ import {
   BASE,
   EXTRA_BASE,
   EXTRA_TXS,
-  programVariants,
+  lambdaChain,
   T1,
-  T3,
   T4,
   TXS,
 } from "./helpers/commit-stage-eviction.fixture.js";
@@ -78,8 +74,9 @@ const fixture = vi.hoisted(() => ({
     return failure;
   },
   forcedStoreFault: false,
-  // Transaction CBOR hex -> its programs, for the block-wide coverage check.
-  envelopesByTxCbor: new Map<string, readonly unknown[]>(),
+  // Transaction CBOR hex -> its programs, for the block-wide coverage
+  // check, or the error collecting them throws.
+  envelopesByTxCbor: new Map<string, readonly unknown[] | Error>(),
   sidecarsByTxId: new Map<string, Buffer | null>(),
   phaseBAccepted: [] as string[][],
 }));
@@ -199,14 +196,17 @@ vi.mock("@al-ft/midgard-core/script-proof", async () => {
     collectMidgardEventProgramEnvelopes: (
       tx: { fixtureCbor?: string },
       ...rest: unknown[]
-    ) =>
-      tx.fixtureCbor !== undefined
-        ? fixture.envelopesByTxCbor.get(tx.fixtureCbor)!
-        : (
-            actual.collectMidgardEventProgramEnvelopes as (
-              ...args: unknown[]
-            ) => unknown
-          )(tx, ...rest),
+    ) => {
+      if (tx.fixtureCbor === undefined)
+        return (
+          actual.collectMidgardEventProgramEnvelopes as (
+            ...args: unknown[]
+          ) => unknown
+        )(tx, ...rest);
+      const programs = fixture.envelopesByTxCbor.get(tx.fixtureCbor)!;
+      if (programs instanceof Error) throw programs;
+      return programs;
+    },
   };
 });
 vi.mock("../src/mpf/ledger-hydration.js", async () => {
@@ -480,7 +480,9 @@ describe("commit-stage eviction of normal transactions", () => {
     });
     inject("root", hex(T4.txCbor), new Error("injected root failure"), 1);
     const transient = await run(held(SELECTION));
-    expect(transient.failure.message).toMatch(/Transaction root derivation/u);
+    expect(heldBuildStage(transient.failure)).toBe(
+      "Transaction root derivation",
+    );
     expect(transient).toMatchObject(NOTHING_REJECTED);
   }, 60_000);
 
@@ -509,7 +511,6 @@ describe("commit-stage eviction of normal transactions", () => {
       const id = stage === "root" ? hex(T4.txCbor) : t4;
       inject(stage, id, error(), times, stage === "phaseB");
       const result = await run(held(SELECTION));
-      expect(result.failure.message).toMatch(/^Holding the block build/u);
       expect(heldBuildStage(result.failure)).toBe(STAGES[stage]);
       expect(result).toMatchObject(NOTHING_REJECTED);
     },
@@ -605,68 +606,119 @@ describe("commit-stage eviction of normal transactions", () => {
   it("holds the build when a transaction has no durable program material, rejecting nothing", async () => {
     fixture.sidecarsByTxId.set(t1, null);
     const result = await run(held(SELECTION));
-    expect(result.failure.message).toMatch(
-      /no durable canonical CEK material sidecar/u,
-    );
     expect(heldBuildStage(result.failure)).toBe("Program material sidecar");
     expect(result).toMatchObject(NOTHING_REJECTED);
   }, 60_000);
 
-  it("leaves a program variant that breaks the block-wide coverage check only with another pending", async () => {
-    const { variantA, variantB, sidecarA, sidecarB, material } =
-      programVariants();
-    expect(() =>
-      assertMidgardCekProgramMaterialBundle([variantA, variantB], material),
-    ).toThrow(/aggregate unique-envelope node visits/u);
-    fixture.envelopesByTxCbor.set(hex(T3.txCbor), [variantA]);
-    fixture.envelopesByTxCbor.set(hex(T4.txCbor), [variantB]);
-    fixture.sidecarsByTxId.set(t3, sidecarA);
-    fixture.sidecarsByTxId.set(t4, sidecarB);
+  it("rejects a transaction whose own programs fail the coverage check, leaving the rest pending", async () => {
+    fixture.envelopesByTxCbor.set(
+      hex(T4.txCbor),
+      lambdaChain(3).envelopes.slice(-1),
+    );
     const result = await run(
       Effect.gen(function* () {
         yield* seed();
-        const first = yield* build(SELECTION);
-        return { first, rejected: yield* rejections, pending: yield* pending };
+        yield* build(SELECTION);
+        return { rejected: yield* rejections, pending: yield* pending };
       }),
     );
-    expect(result.first).toEqual([t1, t2, t3]);
-    expect(result).toMatchObject(NOTHING_REJECTED);
-  }, 240_000);
-
-  it("leaves the in-block descendants of a deferred variant pending with it", async () => {
-    const { variantA, variantB, sidecarA, sidecarB } = programVariants();
-    fixture.envelopesByTxCbor.set(hex(T1.txCbor), [variantA]);
-    fixture.envelopesByTxCbor.set(hex(T3.txCbor), [variantB]);
-    fixture.sidecarsByTxId.set(t1, sidecarA);
-    fixture.sidecarsByTxId.set(t3, sidecarB);
-    const result = await run(
-      Effect.gen(function* () {
-        yield* seed();
-        const first = yield* build(TXS.length);
-        return { first, rejected: yield* rejections, pending: yield* pending };
-      }),
-    );
-    // T5 spends T3's output.
-    expect(result.first).toEqual([t1, t2, t4]);
-    expect(result).toMatchObject(NOTHING_REJECTED);
-  }, 240_000);
-
-  it("rejects a transaction whose own programs break the coverage check", async () => {
-    const { variantA, variantB, sidecarB } = programVariants();
-    fixture.envelopesByTxCbor.set(hex(T4.txCbor), [variantA, variantB]);
-    fixture.sidecarsByTxId.set(t4, sidecarB);
-    const result = await run(
-      Effect.gen(function* () {
-        yield* seed();
-        const first = yield* build(SELECTION);
-        return { first, rejected: yield* rejections };
-      }),
-    );
-    expect(result.first).toEqual([t1, t2, t3]);
-    expect(result.rejected).toEqual({
-      [t4]: COMMIT_REJECT_CODE_PROGRAM_COVERAGE,
+    expect(result).toEqual({
+      rejected: { [t4]: COMMIT_REJECT_CODE_PROGRAM_COVERAGE },
+      pending: [t1, t2, t3, t5],
     });
-  }, 240_000);
+  }, 60_000);
+
+  it("holds the build on a node fault of the coverage check, naming its stage, rejecting nothing", async () => {
+    fixture.envelopesByTxCbor.set(
+      hex(T4.txCbor),
+      new RangeError("Array buffer allocation failed"),
+    );
+    const alarms: string[] = [];
+    const result = await run(
+      Effect.gen(function* () {
+        yield* seed();
+        const failure = yield* attemptBuild(SELECTION, {
+          onCommitBuildAlarm: (alarm: string, stage: string) =>
+            Effect.sync(() => {
+              alarms.push(`${alarm}:${stage}`);
+            }),
+        });
+        return {
+          failure,
+          rejected: yield* rejections,
+          pending: yield* pending,
+        };
+      }),
+    );
+    expect(heldBuildStage(result.failure)).toBe("Program material coverage");
+    expect(alarms).toEqual(["held:Program material coverage"]);
+    expect(result).toMatchObject(NOTHING_REJECTED);
+  }, 60_000);
+
+  it("rejects up to four failures Phase B confirms, leaves the rest pending with their descendants, and raises the breaker alarm", async () => {
+    for (const id of [e1, e2, e3, e4, t3, t4])
+      inject("phaseB", id, new Error("injected Phase B failure"));
+    const alarms: string[] = [];
+    const result = await run(
+      Effect.gen(function* () {
+        yield* seed([], EXTRA_TXS);
+        yield* build(100, {
+          initialLedgerEntries: [...BASE, ...EXTRA_BASE],
+          onCommitBuildAlarm: (alarm: string, stage: string) =>
+            Effect.sync(() => {
+              alarms.push(`${alarm}:${stage}`);
+            }),
+        });
+        return { rejected: yield* rejections, pending: yield* pending };
+      }),
+    );
+    expect(result).toEqual({
+      rejected: Object.fromEntries(
+        [e1, e2, e3, e4].map((id) => [
+          id,
+          COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
+        ]),
+      ),
+      pending: [t1, t2, t3, t4, t5],
+    });
+    expect(alarms).toEqual(["breaker:Phase B"]);
+  }, 120_000);
+
+  it("counts each rejected transaction once towards the breaker across the passes that settle a build", async () => {
+    for (const id of [e1, e2, e3])
+      inject("phaseB", id, new Error("injected Phase B failure"));
+    const alarms: string[] = [];
+    const result = await run(
+      Effect.gen(function* () {
+        yield* seed([], EXTRA_TXS);
+        // T2 spends T1's output, which the evaluation sees: the rejection of
+        // T1 reaches T2 after Phase B accepts it, and the build settles in a
+        // second pass.
+        const accepted = yield* build(100, {
+          initialLedgerEntries: [...BASE, ...EXTRA_BASE, T1.produced[0]!],
+          commitEvictions: new Map([
+            [t1, { code: COMMIT_REJECT_CODE_DA_OVERSIZE, detail: "oversize" }],
+          ]),
+          onCommitBuildAlarm: (alarm: string, stage: string) =>
+            Effect.sync(() => {
+              alarms.push(`${alarm}:${stage}`);
+            }),
+        });
+        return { accepted, rejected: yield* rejections };
+      }),
+    );
+    expect(result.accepted).toEqual([e4, t3, t4, t5]);
+    expect(result.rejected).toMatchObject({
+      [t1]: COMMIT_REJECT_CODE_DA_OVERSIZE,
+      [e1]: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
+      [e2]: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
+      [e3]: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
+    });
+    expect(Object.keys(result.rejected).sort()).toEqual(
+      [e1, e2, e3, t1, t2].sort(),
+    );
+    expect(alarms).toEqual([]);
+  }, 120_000);
 
   it("still stops on a forced-transaction store fault, rejecting nothing", async () => {
     fixture.forcedStoreFault = true;

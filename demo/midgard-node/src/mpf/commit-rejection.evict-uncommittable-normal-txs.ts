@@ -5,8 +5,9 @@
  * run and is not a fault of the node (a store, the MPF, memory or the wasm
  * runtime). Any other failure holds the build and raises the alarm, as do
  * failures of forced transactions, deposits, withdrawals and the stores.
- * Past a few rejections at one stage of one build, the stage's further
- * failures are left pending for later builds and the breaker alarm is raised.
+ * Past a few distinct rejected transactions at one stage of one build, the
+ * stage's further failures are left pending for later builds and the
+ * breaker alarm is raised.
  */
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
@@ -173,31 +174,38 @@ export const confirmTransactionFailure = <E, E2, R>(
     return again.cause;
   });
 
-/** At most this many normal transactions are rejected at one commit stage
- * of one build. */
+/** At most this many distinct normal transactions are rejected at one
+ * commit stage of one build. */
 export const COMMIT_STAGE_REJECTION_LIMIT = 4;
 
 /**
- * Counts one build's rejections per commit stage. A stage's first
- * {@link COMMIT_STAGE_REJECTION_LIMIT} confirmed failures are rejected; every
- * later one is deferred: left pending with its in-block descendants for a
- * later build. `onTrip` runs once for each stage that defers.
+ * Decides one build's rejections per commit stage, by transaction. A stage's
+ * first {@link COMMIT_STAGE_REJECTION_LIMIT} distinct transactions with a
+ * confirmed failure are rejected; every later one is deferred: left pending
+ * with its in-block descendants for a later build. A transaction asked about
+ * again gets the same answer. `onTrip` runs once for each stage that defers.
  */
 export const makeCommitStageRejectionBreaker = (
   onTrip: (stage: string) => Effect.Effect<void> = () => Effect.void,
 ) => {
-  const counts = new Map<string, number>();
-  return (stage: string): Effect.Effect<"reject" | "defer"> =>
+  const decisions = new Map<string, Map<string, "reject" | "defer">>();
+  return (stage: string, txId: Uint8Array): Effect.Effect<"reject" | "defer"> =>
     Effect.suspend(() => {
-      const count = (counts.get(stage) ?? 0) + 1;
-      counts.set(stage, count);
-      if (count <= COMMIT_STAGE_REJECTION_LIMIT)
-        return Effect.succeed("reject" as const);
-      return count === COMMIT_STAGE_REJECTION_LIMIT + 1
+      const stageDecisions =
+        decisions.get(stage) ?? new Map<string, "reject" | "defer">();
+      decisions.set(stage, stageDecisions);
+      const id = Buffer.from(txId).toString("hex");
+      const known = stageDecisions.get(id);
+      if (known !== undefined) return Effect.succeed(known);
+      const decided = stageDecisions.size;
+      const decision =
+        decided < COMMIT_STAGE_REJECTION_LIMIT ? "reject" : "defer";
+      stageDecisions.set(id, decision);
+      return decided === COMMIT_STAGE_REJECTION_LIMIT
         ? Effect.logWarning(
             `${stage} would reject more than ${COMMIT_STAGE_REJECTION_LIMIT.toString()} normal transactions in one build; leaving the rest pending.`,
-          ).pipe(Effect.zipRight(onTrip(stage)), Effect.as("defer" as const))
-        : Effect.succeed("defer" as const);
+          ).pipe(Effect.zipRight(onTrip(stage)), Effect.as(decision))
+        : Effect.succeed(decision);
     });
 };
 
@@ -279,31 +287,44 @@ export const withInBlockDescendants = <C extends CommitCandidate>(
     ),
   ]);
 
-/** A transaction that breaks the block-wide check: rejected when it fails
- * the check on its own, otherwise left pending with its in-block
- * descendants. */
-export type BlockCheckBreak =
-  | {
-      readonly kind: "reject";
-      readonly index: number;
-      readonly code: string;
-      readonly detail: string;
-    }
-  | { readonly kind: "defer"; readonly index: number; readonly detail: string };
+/** What a block-wide check makes of one accepted transaction, given the
+ * transactions kept before it. */
+export type BlockCheckVerdict =
+  | { readonly kind: "keep" }
+  | { readonly kind: "reject"; readonly code: string; readonly detail: string }
+  | { readonly kind: "defer"; readonly detail: string };
 
 /**
- * Evaluates `candidates`, taking out every transaction the evaluation or the
- * block-wide check cannot process, one at a time, until the rest evaluates
- * and passes.
+ * A block-wide check, taken over the evaluation's accepted transactions in
+ * block order. `admit` is asked about each transaction whose in-block
+ * ancestors were kept, in order, and counts a kept one towards the block.
+ * A "reject" verdict is a failure of the transaction alone; a "defer" one is
+ * the combination's. Either may throw only on a node fault.
+ */
+export type BlockCheck<C> = {
+  readonly stage: string;
+  readonly start: (accepted: readonly C[]) => {
+    readonly admit: (index: number) => BlockCheckVerdict;
+  };
+};
+
+/**
+ * Evaluates `candidates`, taking out every transaction the evaluation cannot
+ * process, one at a time, until the rest evaluates; then takes the
+ * block-wide check over what it accepted in one pass.
  *
  * A failing evaluation is narrowed to the shortest failing prefix of the
  * candidates. Its last transaction is rejected only when that prefix fails
  * again, the prefix without it passes, and no run failed on a node fault;
- * otherwise the build holds. A transaction that breaks the block-wide check
- * is rejected or deferred as {@link BlockCheckBreak} says. A rejection the
- * breaker refuses is a deferral. A deferred transaction and its in-block
- * descendants are neither accepted nor rejected and stay pending. The
- * rejected transactions are returned with the evaluation's own rejections.
+ * otherwise the build holds. The evaluation runs again only after such a
+ * failure. The block-wide check keeps, rejects or defers each accepted
+ * transaction as {@link BlockCheckVerdict} says; a transaction it does not
+ * keep takes its in-block descendants out of the block with it, which leaves
+ * the evaluation of the rest unchanged. A rejection the breaker refuses is a
+ * deferral. A deferred transaction and its in-block descendants are neither
+ * accepted nor rejected and stay pending. A check that throws holds the
+ * build. The rejected transactions are returned with the evaluation's own
+ * rejections.
  */
 export const evaluateEvictingUncommittable = <C extends CommitCandidate, E, R>({
   candidates,
@@ -318,20 +339,11 @@ export const evaluateEvictingUncommittable = <C extends CommitCandidate, E, R>({
   ) => Effect.Effect<EvaluatedCandidates<C>, E, R>;
   readonly stage: string;
   readonly breaker: CommitStageRejectionBreaker;
-  readonly blockCheck?: (
-    accepted: readonly C[],
-  ) => (BlockCheckBreak & { readonly stage: string }) | undefined;
+  readonly blockCheck?: BlockCheck<C>;
 }): Effect.Effect<EvaluatedCandidates<C>, DatabaseError, R> =>
   Effect.gen(function* () {
     let remaining = candidates;
     const evicted: EvaluatedCandidates<C>["rejected"][number][] = [];
-    const defer = (own: C, detail: string) => {
-      const deferred = withInBlockDescendants(own, remaining);
-      remaining = remaining.filter((candidate) => !deferred.has(candidate));
-      return Effect.logWarning(
-        `Leaving ${deferred.size.toString()} transaction(s) from tx ${Buffer.from(own.ledgerTx.txId).toString("hex")} pending for a later block: ${detail}`,
-      );
-    };
     const passes = (prefix: readonly C[]) =>
       attempt(evaluate(prefix)).pipe(
         Effect.flatMap((result) =>
@@ -344,61 +356,101 @@ export const evaluateEvictingUncommittable = <C extends CommitCandidate, E, R>({
       );
     for (;;) {
       const evaluated = yield* attempt(evaluate(remaining));
-      if (!evaluated.ok) {
-        // With no candidate left, the failure is not any transaction's.
-        if (remaining.length === 0 || isNodeFault(evaluated.cause))
-          return yield* holdBuild(stage, evaluated.cause);
-        const failing = yield* firstFailingPrefix(remaining.length, (length) =>
-          passes(remaining.slice(0, length)),
+      if (evaluated.ok)
+        return blockCheck === undefined
+          ? {
+              accepted: evaluated.value.accepted,
+              rejected: [...evaluated.value.rejected, ...evicted],
+            }
+          : yield* checkBlock(blockCheck, breaker, evaluated.value, evicted);
+      // With no candidate left, the failure is not any transaction's.
+      if (remaining.length === 0 || isNodeFault(evaluated.cause))
+        return yield* holdBuild(stage, evaluated.cause);
+      const failing = yield* firstFailingPrefix(remaining.length, (length) =>
+        passes(remaining.slice(0, length)),
+      );
+      // The search saw every shorter prefix it relied on pass except the
+      // empty one.
+      if (failing === 1 && !(yield* passes([])))
+        return yield* holdBuild(stage, evaluated.cause);
+      const reproduced = yield* confirmTransactionFailure(
+        stage,
+        evaluated.cause,
+        evaluate(remaining.slice(0, failing)),
+      );
+      const culprit = remaining[failing - 1]!;
+      const detail = commitStageFailureDetail(stage, causeError(reproduced));
+      if ((yield* breaker(stage, culprit.ledgerTx.txId)) === "defer") {
+        const deferred = withInBlockDescendants(culprit, remaining);
+        remaining = remaining.filter((candidate) => !deferred.has(candidate));
+        yield* Effect.logWarning(
+          `Leaving ${deferred.size.toString()} transaction(s) from tx ${Buffer.from(culprit.ledgerTx.txId).toString("hex")} pending for a later block: ${detail}`,
         );
-        // The search saw every shorter prefix it relied on pass except the
-        // empty one.
-        if (failing === 1 && !(yield* passes([])))
-          return yield* holdBuild(stage, evaluated.cause);
-        const reproduced = yield* confirmTransactionFailure(
-          stage,
-          evaluated.cause,
-          evaluate(remaining.slice(0, failing)),
-        );
-        const culprit = remaining[failing - 1]!;
-        const detail = commitStageFailureDetail(stage, causeError(reproduced));
-        if ((yield* breaker(stage)) === "defer") {
-          yield* defer(culprit, detail);
-          continue;
-        }
-        evicted.push({
-          txId: culprit.ledgerTx.txId,
-          code: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
-          detail,
-        });
-        remaining = remaining.filter((candidate) => candidate !== culprit);
         continue;
       }
-      const broken = blockCheck?.(evaluated.value.accepted);
-      if (broken !== undefined) {
-        const culprit = evaluated.value.accepted[broken.index]!;
-        const culpritId = Buffer.from(culprit.ledgerTx.txId);
-        const own = remaining.find((candidate) =>
-          culpritId.equals(candidate.ledgerTx.txId),
-        )!;
-        if (
-          broken.kind === "reject" &&
-          (yield* breaker(broken.stage)) === "reject"
-        ) {
-          evicted.push({
-            txId: culprit.ledgerTx.txId,
-            code: broken.code,
-            detail: broken.detail,
-          });
-          remaining = remaining.filter((candidate) => candidate !== own);
-          continue;
-        }
-        yield* defer(own, broken.detail);
-        continue;
-      }
-      return {
-        accepted: evaluated.value.accepted,
-        rejected: [...evaluated.value.rejected, ...evicted],
-      };
+      evicted.push({
+        txId: culprit.ledgerTx.txId,
+        code: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
+        detail,
+      });
+      remaining = remaining.filter((candidate) => candidate !== culprit);
     }
+  });
+
+/** Takes `blockCheck` over `evaluated.accepted` in one pass, in block order. */
+const checkBlock = <C extends CommitCandidate>(
+  blockCheck: BlockCheck<C>,
+  breaker: CommitStageRejectionBreaker,
+  evaluated: EvaluatedCandidates<C>,
+  evicted: readonly EvaluatedCandidates<C>["rejected"][number][],
+): Effect.Effect<EvaluatedCandidates<C>, DatabaseError> =>
+  Effect.gen(function* () {
+    // The check throws only on a node fault.
+    const guarded = <A>(run: () => A) =>
+      Effect.try({ try: run, catch: (cause) => cause }).pipe(
+        Effect.catchAll((cause) =>
+          holdBuild(blockCheck.stage, Cause.die(cause)),
+        ),
+      );
+    const check = yield* guarded(() => blockCheck.start(evaluated.accepted));
+    const kept: C[] = [];
+    const rejected: EvaluatedCandidates<C>["rejected"][number][] = [];
+    // Outputs of the transactions taken out of the block.
+    const takenOut = new Set<string>();
+    const takeOut = (candidate: C) => {
+      for (const row of candidate.graph.produced)
+        takenOut.add(Buffer.from(row[Ledger.Columns.OUTREF]).toString("hex"));
+    };
+    for (const [index, candidate] of evaluated.accepted.entries()) {
+      if (
+        [
+          ...candidate.graph.spentOutRefHexes,
+          ...candidate.graph.referenceOutRefHexes,
+        ].some((outRef) => takenOut.has(outRef))
+      ) {
+        takeOut(candidate);
+        continue;
+      }
+      const verdict = yield* guarded(() => check.admit(index));
+      if (verdict.kind === "keep") {
+        kept.push(candidate);
+        continue;
+      }
+      takeOut(candidate);
+      const txId = candidate.ledgerTx.txId;
+      if (
+        verdict.kind === "reject" &&
+        (yield* breaker(blockCheck.stage, txId)) === "reject"
+      ) {
+        rejected.push({ txId, code: verdict.code, detail: verdict.detail });
+        continue;
+      }
+      yield* Effect.logWarning(
+        `Leaving tx ${Buffer.from(txId).toString("hex")} and its in-block descendants pending for a later block: ${verdict.detail}`,
+      );
+    }
+    return {
+      accepted: kept,
+      rejected: [...evaluated.rejected, ...evicted, ...rejected],
+    };
   });

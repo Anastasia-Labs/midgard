@@ -59,11 +59,15 @@ export const EXTRA_BASE = [0x14, 0x15, 0x16, 0x17].map((byte) =>
 export const EXTRA_TXS = EXTRA_BASE.map((spent, index) =>
   tx(0x01 + index, 0.2 * (index + 1), spent),
 );
-/** A chain of `nodeCount` lambda nodes; a longer chain shares its material. */
-export const lambdaChain = (nodeCount: number) => {
+/** A chain of `nodeCount` lambda nodes over `leaf`; a longer chain over the
+ * same leaf shares its material. */
+export const lambdaChain = (
+  nodeCount: number,
+  leaf: Parameters<typeof encodeMidgardCekTermNode>[0] = { kind: "error" },
+) => {
   const material: MidgardCekProgramMaterialEntry[] = [];
   const envelopes: MidgardCekProgramEnvelope[] = [];
-  let node: Parameters<typeof encodeMidgardCekTermNode>[0] = { kind: "error" };
+  let node = leaf;
   let bytes = 0n;
   for (let count = 1; count <= nodeCount; count += 1) {
     const preimage = encodeMidgardCekTermNode(node);

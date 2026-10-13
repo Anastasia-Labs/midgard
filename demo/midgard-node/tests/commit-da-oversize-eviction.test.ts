@@ -6,11 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import { readDaHardeningConfig } from "../src/da/hardening-config.js";
 import { DepositsDB } from "../src/database/index.js";
+import { DatabaseError } from "../src/database/utils/common.js";
 import type { EntryWithTimeStamp } from "../src/database/utils/tx.js";
 import { COMMIT_REJECT_CODE_DA_OVERSIZE } from "../src/mpf/commit-rejection.js";
 import { buildOnVerifiedCommitBaseProgram } from "../src/workers/commit-block-header.build-on-verified-base-program.js";
 import { databaseOperationsProgram } from "../src/workers/commit-block-header.database-operations-program.js";
 import {
+  attributeDaFrameRefusal,
   CommitDaFrameRefusedNormalTxError,
   type CommitEviction,
 } from "../src/workers/commit-block-header/commit-da-oversize-eviction.js";
@@ -158,7 +160,9 @@ describe("exact DA frame refusal of a lone normal transaction", () => {
     const result = await submit([mkCandidate(1), mkCandidate(2)], {
       descriptorBytes: LIMIT,
     });
-    expect(result).toMatchObject({ _tag: "Left", left: { message: REFUSAL } });
+    const error = (result as Either.Left<unknown, unknown>).left;
+    expect(error).toBeInstanceOf(DatabaseError);
+    expect(error).not.toBeInstanceOf(CommitDaFrameRefusedNormalTxError);
   });
 
   it("names no transaction when the refused block holds a due event", async () => {
@@ -166,7 +170,34 @@ describe("exact DA frame refusal of a lone normal transaction", () => {
       descriptorBytes: LIMIT,
       deposit: true,
     });
-    expect(result).toMatchObject({ _tag: "Left", left: { message: REFUSAL } });
+    const error = (result as Either.Left<unknown, unknown>).left;
+    expect(error).toBeInstanceOf(DatabaseError);
+    expect(error).not.toBeInstanceOf(CommitDaFrameRefusedNormalTxError);
+  });
+
+  it("passes the refusal of a block it names no transaction for through unchanged", () => {
+    const refusal = new DatabaseError({
+      table: "pending_block_finalizations",
+      message: REFUSAL,
+      cause: "inner_bytes=2",
+    });
+    const tx = (seed: number) => ({ tx_id: Buffer.from(idHex(seed), "hex") });
+    for (const block of [
+      { txs: [tx(1), tx(2)], deposits: [] },
+      { txs: [tx(1)], deposits: [{}] },
+    ])
+      expect(
+        Effect.runSync(
+          Effect.flip(
+            attributeDaFrameRefusal(refusal, {
+              processedMempoolTxs: block.txs,
+              includedDepositEntries: block.deposits,
+              includedForcedTransactionEntries: [],
+              includedWithdrawalEntries: [],
+            }),
+          ),
+        ),
+      ).toBe(refusal);
   });
 
   it("admits a lone transaction whose block fits", async () => {
@@ -179,8 +210,9 @@ describe("exact DA frame refusal of a lone normal transaction", () => {
 type BuildArgs = Parameters<typeof buildOnVerifiedCommitBaseProgram>;
 
 /**
- * The commit worker's build under the rebuild loop. Each build forks a native
- * context; `outcome` decides the build's result from the evictions it got.
+ * One tick of the commit worker's build under the rebuild loop. Each build
+ * forks a native context; `outcome` decides the build's result from the
+ * evictions it got. A tick that builds more than twice fails the test.
  */
 const runRebuilds = async (
   outcome: (
@@ -208,6 +240,7 @@ const runRebuilds = async (
       seen.push(
         Object.fromEntries([...evictions].map(([id, { code }]) => [id, code])),
       );
+      if (seen.length > 2) return Effect.die("more than one rebuild in a tick");
       // A build forks only once the previous fork was discarded.
       expect(nativeMpfState.context).toBeUndefined();
       nativeMpfState.context = { client, handle: { id: seen.length } };
@@ -255,27 +288,46 @@ describe("rebuild without a transaction the exact DA frame refuses alone", () =>
     expect(run.discarded).toEqual([1]);
   });
 
-  it("rejects each lone refused transaction in turn", async () => {
-    const run = await runRebuilds((_evictions, attempt) =>
-      attempt <= 2
-        ? Effect.fail(refusedFor(attempt))
-        : Effect.succeed({ type: "NothingToCommitOutput" } as WorkerOutput),
+  it("rejects one lone refused transaction per tick, and each in turn across ticks", async () => {
+    // The pending transactions the DA frame refuses alone; a build rejects
+    // its evictions before validation, durably.
+    const oversize = [1, 2, 3];
+    const rejected = new Set<number>();
+    const committed = {
+      type: "SubmittedAwaitingConfirmationOutput",
+    } as unknown as WorkerOutput;
+    const ticks = [];
+    for (let tick = 0; tick < oversize.length; tick += 1)
+      ticks.push(
+        await runRebuilds((evictions) => {
+          for (const seed of oversize)
+            if (evictions.has(idHex(seed))) rejected.add(seed);
+          const refused = oversize.find((seed) => !rejected.has(seed));
+          return refused === undefined
+            ? Effect.succeed(committed)
+            : Effect.fail(refusedFor(refused));
+        }),
+      );
+    expect(ticks.map(({ seen }) => seen)).toEqual(
+      oversize.map((seed) => [
+        {},
+        { [idHex(seed)]: COMMIT_REJECT_CODE_DA_OVERSIZE },
+      ]),
     );
-    expect(run.result).toEqual(Either.right({ type: "NothingToCommitOutput" }));
-    expect(run.seen.map((evictions) => Object.keys(evictions))).toEqual([
-      [],
-      [idHex(1)],
-      [idHex(1), idHex(2)],
+    // The second refusal of a tick holds it; the last tick commits.
+    expect(ticks.map(({ result }) => result)).toMatchObject([
+      { _tag: "Left", left: { txIdHex: idHex(2) } },
+      { _tag: "Left", left: { txIdHex: idHex(3) } },
+      { _tag: "Right", right: committed },
     ]);
-    expect(run.discarded).toEqual([1, 2]);
+    expect([...rejected]).toEqual(oversize);
   });
 
   it("holds the build on any other refusal", async () => {
-    const run = await runRebuilds(() => Effect.fail(new Error(REFUSAL)));
-    expect(run.result).toMatchObject({
-      _tag: "Left",
-      left: { message: REFUSAL },
-    });
+    const refusal = new Error(REFUSAL);
+    const run = await runRebuilds(() => Effect.fail(refusal));
+    expect(run.result).toEqual(Either.left(refusal));
+    expect((run.result as Either.Left<unknown, unknown>).left).toBe(refusal);
     expect(run.seen).toHaveLength(1);
     expect(run.discarded).toEqual([]);
   });

@@ -53,7 +53,7 @@ import {
   commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
 } from "./commit-rejection.js";
-import { normalProgramCoverageBreak } from "./commit-rejection.normal-program-coverage-break.js";
+import { normalProgramCoverageCheck } from "./commit-rejection.normal-program-coverage-check.js";
 import { settleCommitStageRejections } from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
 import { buildDepositSourceEvents } from "./deposit-source-events.js";
 import { MpfError } from "./errors.js";
@@ -545,7 +545,7 @@ export const processMpfs = (
           cause,
           rerun,
         );
-        if ((yield* commitStageBreaker(stage)) === "defer") {
+        if ((yield* commitStageBreaker(stage, txId)) === "defer") {
           breakerDeferredTxIds.add(Buffer.from(txId).toString("hex"));
           return;
         }
@@ -811,8 +811,7 @@ export const processMpfs = (
                 bucketConcurrency: validation.bucketConcurrency,
                 consensusProfile,
               }),
-            blockCheck: (accepted) =>
-              normalProgramCoverageBreak(accepted, proofPreState),
+            blockCheck: normalProgramCoverageCheck(proofPreState),
           }),
         rejectionEntries,
         resolveInputPostState: commitPostState,

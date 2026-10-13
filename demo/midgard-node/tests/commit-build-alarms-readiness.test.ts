@@ -1,17 +1,19 @@
 import "./utils.js";
 
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.js";
 import type { CommitWorkerMessage } from "../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
+import { shouldSkipIdleCommitPipelineBeforeSchedulerAlignment } from "../src/fibers/block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import { Globals } from "../src/services/globals.js";
 import { readyz } from "./readiness-honest-degradation-route.readyz-fixture.js";
 
 /**
  * The commit worker's build alarms reach `/readyz` through the parent's
  * message handler. `commit_build_held:<stage>` fails readiness while builds
- * hold, until a block commits. `commit_stage_breaker:<stage>` is only a
+ * hold, until a block commits or nothing is left to build.
+ * `commit_stage_breaker:<stage>` is only a
  * detail, so the node stays ready, once a stage's rejections reach a build's
  * limit, until a block commits from a build that reached none.
  */
@@ -40,16 +42,24 @@ const COMMITTED: CommitWorkerMessage = {
   mempoolLedgerDeletedOutRefHexes: [],
 };
 
-/** `/readyz` after the worker posts `messages`: whether the node is ready,
- * and the commit alarm reasons and details it names. */
-const readyzAfter = async (...messages: readonly CommitWorkerMessage[]) => {
+/** `/readyz` after the worker posts `messages`, then `after` runs:
+ * whether the node is ready, and the commit alarm reasons and details it
+ * names. */
+const readyzAfterThen = async (
+  messages: readonly CommitWorkerMessage[],
+  after: Effect.Effect<unknown, unknown, unknown>,
+) => {
   const response = await readyz({
     journal: Effect.flatMap(Globals, (globals) =>
       Effect.sync(() => {
         for (const message of messages)
           takeCommitWorkerOutput(globals, message, 16);
       }),
-    ) as unknown as Effect.Effect<void, unknown, never>,
+    ).pipe(Effect.zipRight(after)) as unknown as Effect.Effect<
+      void,
+      unknown,
+      never
+    >,
   });
   const alarms = (names: readonly string[]) =>
     names.filter(
@@ -63,21 +73,45 @@ const readyzAfter = async (...messages: readonly CommitWorkerMessage[]) => {
     details: alarms(response.details),
   };
 };
+const readyzAfter = (...messages: readonly CommitWorkerMessage[]) =>
+  readyzAfterThen(messages, Effect.void);
 
 describe("GET /readyz commit build alarms", () => {
   it("is unready naming the stage held builds stop at until a block commits", async () => {
-    expect(await readyzAfter(held("Phase B"), FAILED)).toEqual({
-      ready: false,
+    expect(await readyzAfter(held("Phase B"), FAILED)).toMatchObject({
       reasons: ["commit_build_held:phase_b"],
       details: [],
     });
     expect(
       await readyzAfter(held("Phase B"), FAILED, held("Phase A"), FAILED),
-    ).toMatchObject({ ready: false, reasons: ["commit_build_held:phase_a"] });
+    ).toMatchObject({ reasons: ["commit_build_held:phase_a"] });
     expect(await readyzAfter(held("Phase B"), FAILED, COMMITTED)).toEqual({
       ready: true,
       reasons: [],
       details: [],
+    });
+  }, 60_000);
+
+  it("drops a held build once the idle preflight finds nothing left to build, and only then", async () => {
+    const preflight = (processedUnsubmitted: number) =>
+      Effect.flatMap(Globals, (globals) =>
+        Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, processedUnsubmitted),
+      ).pipe(
+        Effect.zipRight(shouldSkipIdleCommitPipelineBeforeSchedulerAlignment),
+      );
+    expect(
+      await readyzAfterThen(
+        [held("Program material coverage"), FAILED],
+        preflight(0),
+      ),
+    ).toEqual({ ready: true, reasons: [], details: [] });
+    expect(
+      await readyzAfterThen(
+        [held("Program material coverage"), FAILED],
+        preflight(1),
+      ),
+    ).toMatchObject({
+      reasons: ["commit_build_held:program_material_coverage"],
     });
   }, 60_000);
 

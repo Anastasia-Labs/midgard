@@ -2,8 +2,8 @@
  * A normal transaction whose block cannot fit the DA frame on its own, when
  * an empty block does, can never be committed: the commit would rebuild it
  * alone on every tick. The exact pre-submit check of that block decides it;
- * the transaction is then rejected and the block is rebuilt without it in the
- * same tick.
+ * the transaction is then rejected and the block is rebuilt without it once
+ * in the same tick.
  */
 
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
@@ -72,11 +72,12 @@ export const attributeDaFrameRefusal = (
 };
 
 /**
- * Runs a commit build; while it fails on a lone normal transaction the DA
+ * Runs a commit build; when it fails on a lone normal transaction the DA
  * frame refuses, adds that transaction to the evictions the next build
  * rejects before validation, discards the failed build's state, and builds
- * again. Each pass evicts a different transaction, so this ends; a
- * transaction refused again after its eviction fails the build.
+ * once more. Whatever that build does is the tick's result: a second
+ * refusal holds the build until the next tick, which starts from the
+ * rejection the rebuild made.
  */
 export const buildEvictingDaFrameRefusedNormalTx = <A, E, R, E2, R2>({
   build,
@@ -88,23 +89,21 @@ export const buildEvictingDaFrameRefusedNormalTx = <A, E, R, E2, R2>({
   readonly discardFailedBuild: Effect.Effect<void, E2, R2>;
 }): Effect.Effect<A, E | E2, R | R2> =>
   Effect.gen(function* () {
-    const evictions = new Map<string, CommitEviction>();
-    for (;;) {
-      const result = yield* Effect.either(build(evictions));
-      if (result._tag === "Right") return result.right;
-      const error = result.left;
-      if (
-        !(error instanceof CommitDaFrameRefusedNormalTxError) ||
-        evictions.has(error.txIdHex)
-      )
-        return yield* Effect.fail(error);
-      evictions.set(error.txIdHex, {
-        code: COMMIT_REJECT_CODE_DA_OVERSIZE,
-        detail: error.detail,
-      });
-      yield* Effect.logWarning(
-        `🔹 Rejecting tx ${error.txIdHex} whose block cannot fit the DA frame; rebuilding without it. ${error.detail}`,
-      );
-      yield* discardFailedBuild;
-    }
+    const result = yield* Effect.either(build(new Map()));
+    if (result._tag === "Right") return result.right;
+    const error = result.left;
+    if (!(error instanceof CommitDaFrameRefusedNormalTxError))
+      return yield* Effect.fail(error);
+    yield* Effect.logWarning(
+      `🔹 Rejecting tx ${error.txIdHex} whose block cannot fit the DA frame; rebuilding without it. ${error.detail}`,
+    );
+    yield* discardFailedBuild;
+    return yield* build(
+      new Map([
+        [
+          error.txIdHex,
+          { code: COMMIT_REJECT_CODE_DA_OVERSIZE, detail: error.detail },
+        ],
+      ]),
+    );
   });

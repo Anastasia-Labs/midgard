@@ -7,6 +7,7 @@ import {
   WithdrawalsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { idleCommitBuildAlarms } from "../services/globals.commit-build-alarms.js";
 import { publishMempoolLedgerDelta } from "../services/globals.js";
 import {
   forgetLoggedState,
@@ -245,6 +246,7 @@ export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
     }
     yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, true);
     yield* clearCommitWorkerFailure(globals);
+    yield* Ref.update(globals.COMMIT_BUILD_ALARMS, idleCommitBuildAlarms);
     yield* logOnStateChange(
       globals,
       COMMIT_PIPELINE_SKIP_LOG_KEY,

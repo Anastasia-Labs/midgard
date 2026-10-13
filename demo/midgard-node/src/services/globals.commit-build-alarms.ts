@@ -5,7 +5,8 @@ import type {
 
 /**
  * The commit build alarms `/readyz` names. `held` is the commit stage the
- * last held build stopped at, until a block commits. `breaker` lists the
+ * last held build stopped at, until a block commits or nothing is left to
+ * build. `breaker` lists the
  * stages whose rejections reached the build's limit, until a block commits
  * from a build that reached none; `breakerThisBuild` collects the running
  * build's.
@@ -65,6 +66,11 @@ export const settleCommitBuildAlarms = (
       return { ...alarms, breakerThisBuild: [] };
   }
 };
+
+/** The alarms once the node has nothing left to build: no build holds. */
+export const idleCommitBuildAlarms = (
+  alarms: CommitBuildAlarms,
+): CommitBuildAlarms => ({ ...alarms, held: null });
 
 const stageName = (stage: string) =>
   stage
