@@ -189,7 +189,6 @@
     "tests/redeemer-canonicity-publication-fit.test.ts": 3.4,
     "tests/redeemer-canonicity-runtime.test.ts": 2.3,
     "tests/redeemer-canonicity.test.ts": 2,
-    "tests/redeemer-data-refusal-phase-b.test.ts": 1.7,
     "tests/redeemer-item-data.test.ts": 3.6,
     "tests/redeemer-item-source.test.ts": 1.5,
     "tests/reference-input-no-idx.test.ts": 2.3,
