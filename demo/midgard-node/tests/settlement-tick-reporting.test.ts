@@ -33,10 +33,14 @@ import {
   settlementCall,
   settlementCauseDetail,
 } from "../src/services/settlement-call.js";
-import { settlementStuckDetail } from "../src/services/settlement-readiness.js";
+import {
+  settlementReconcileStuckDetail,
+  settlementStuckDetail,
+} from "../src/services/settlement-readiness.js";
 import {
   SETTLEMENT_JOB_FAILURE_CAP,
   SETTLEMENT_STUCK_RETRY_MS,
+  type SettlementReconcileBackoff,
   settlementRetryDelayMs,
 } from "../src/services/settlement-retry.js";
 import { runSettlementWorker } from "../src/workers/settlement.run-settlement-worker.js";
@@ -87,6 +91,8 @@ type L1 = {
   readonly ttl?: bigint;
   /** The job's consecutive failures before this tick (default 0). */
   readonly failures?: number;
+  /** The worker run's reconcile backoff before this tick. */
+  readonly reconcileBackoff?: SettlementReconcileBackoff;
 };
 
 /** Runs the worker program over one pending body (or one queued job) until
@@ -106,15 +112,25 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
       VALUES (${deploymentId}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase})`;
-    const { transactionStatus, submitTx, utxosAt, unbuilt, failures } =
-      l1(attempt);
+    const {
+      transactionStatus,
+      submitTx,
+      utxosAt,
+      unbuilt,
+      failures,
+      reconcileBackoff,
+    } = l1(attempt);
     yield* sql`UPDATE settlement_jobs SET failures = ${failures ?? 0}`;
     yield* Journal.renew(owner);
     if (unbuilt !== true)
       yield* Journal.saveAttempt(owner, attempt, Effect.void);
     const reports: SettlementHealth[] = [];
     const fiber = yield* Effect.fork(
-      settlementProgram((health) => reports.push(health), token).pipe(
+      settlementProgram(
+        (health) => reports.push(health),
+        token,
+        reconcileBackoff,
+      ).pipe(
         Effect.provideService(NodeConfig, config),
         Effect.provideService(ContractDeploymentIdentity, {
           kind: "manifest",
@@ -302,6 +318,34 @@ describe("settlement tick reporting", () => {
       `settlement withdrawal ${EVENT_ID} initialize reconcile: transactionStatus ${attempt.tx_hash}: socket hang up`,
     );
     expect(report.detail).not.toContain(UNKNOWN);
+  }, 30_000);
+
+  it("names a blocking reconcile stuck at the cap, in a wait tick that does not complete", async () => {
+    const statusReads = vi.fn(() => Promise.reject(new Error("never reached")));
+    const { report } = await run(
+      withoutFollowerJournal(
+        firstTick((attempt) => ({
+          ttl: 5n,
+          transactionStatus: statusReads,
+          submitTx: () => Promise.reject(new Error("never reached")),
+          reconcileBackoff: {
+            txHash: attempt.tx_hash,
+            failures: SETTLEMENT_JOB_FAILURE_CAP,
+            dueAt: Date.now() + 60_000,
+            lastError: "socket hang up",
+          },
+        })),
+      ),
+    );
+    expect(statusReads).not.toHaveBeenCalled();
+    expect(report).toMatchObject({ state: "error", tickCompleted: false });
+    expect(report.reconcileStuck).toMatchObject({
+      failures: SETTLEMENT_JOB_FAILURE_CAP,
+      lastError: "socket hang up",
+    });
+    expect(settlementReconcileStuckDetail(report)).toBe(
+      `settlement_reconcile_stuck:${report.reconcileStuck!.txHash}:socket hang up`,
+    );
   }, 30_000);
 
   it("reports a journaled pending body as a completed waiting tick and never sends it (S6 does)", async () => {

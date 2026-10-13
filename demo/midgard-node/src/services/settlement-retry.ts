@@ -21,11 +21,27 @@ export const settlementRetryDelayMs = (failures: number): number =>
     ? SETTLEMENT_STUCK_RETRY_MS
     : SETTLEMENT_JOB_BASE_BACKOFF_MS * 2 ** failures;
 
+/** The longest wait between reads of a blocking attempt whose reconcile
+ * keeps failing. The read is cheap and changes nothing, and every other job
+ * waits behind it, so it keeps polling: settlement resumes within this of an
+ * outage's end. */
+export const SETTLEMENT_RECONCILE_MAX_BACKOFF_MS = 5 * 60_000;
+
+/** The wait before the next reconcile, after `failures` consecutive failed
+ * ones: 5 s doubling, then every `SETTLEMENT_RECONCILE_MAX_BACKOFF_MS`. */
+export const settlementReconcileDelayMs = (failures: number): number =>
+  Math.min(
+    SETTLEMENT_JOB_BASE_BACKOFF_MS * 2 ** failures,
+    SETTLEMENT_RECONCILE_MAX_BACKOFF_MS,
+  );
+
 /**
  * The worker's backoff for the reconcile of the attempt that blocks new work:
- * a failed status read waits on the same schedule as a failed job, but never
- * adds to any job's `failures`, because the read says nothing about the job.
- * It lives for the worker run and restarts when another attempt blocks.
+ * a failed reconcile waits `settlementReconcileDelayMs`, but never adds to
+ * any job's `failures`, because a status read says nothing about the job.
+ * After `SETTLEMENT_JOB_FAILURE_CAP` failures in a row the attempt is stuck
+ * and `/readyz` names it (`settlementReconcileStuck`). It lives for the
+ * worker run and restarts when another attempt blocks.
  */
 export type SettlementReconcileBackoff = {
   txHash?: string;
@@ -59,7 +75,7 @@ export const recordSettlementReconcileFailure = (
   now: number,
   error: string,
 ): void => {
-  backoff.dueAt = now + settlementRetryDelayMs(backoff.failures);
+  backoff.dueAt = now + settlementReconcileDelayMs(backoff.failures);
   backoff.failures += 1;
   backoff.lastError = error;
 };
@@ -71,3 +87,22 @@ export const clearSettlementReconcileFailures = (
   backoff.dueAt = 0;
   backoff.lastError = undefined;
 };
+
+/** The blocking attempt whose reconcile has failed
+ * `SETTLEMENT_JOB_FAILURE_CAP` times in a row, or undefined. */
+export const settlementReconcileStuck = (
+  backoff: SettlementReconcileBackoff,
+): SettlementReconcileStuck | undefined =>
+  backoff.txHash === undefined || backoff.failures < SETTLEMENT_JOB_FAILURE_CAP
+    ? undefined
+    : {
+        txHash: backoff.txHash,
+        failures: backoff.failures,
+        lastError: backoff.lastError ?? "",
+      };
+
+export type SettlementReconcileStuck = Readonly<{
+  txHash: string;
+  failures: number;
+  lastError: string;
+}>;

@@ -27,6 +27,7 @@ import {
 } from "../services/mpf-native-owner/service.full-index-accounting.js";
 import {
   settlementReadinessReason,
+  settlementReconcileStuckDetail,
   settlementStuckDetail,
 } from "../services/settlement-readiness.js";
 import {
@@ -356,6 +357,8 @@ export const getReadinessHandler = Effect.gen(function* () {
   if (forcedOrphanDetail !== undefined) details.push(forcedOrphanDetail);
   const stuckSettlementDetail = settlementStuckDetail(stuckSettlementJobs);
   if (stuckSettlementDetail !== undefined) details.push(stuckSettlementDetail);
+  const stuckReconcileDetail = settlementReconcileStuckDetail(settlement);
+  if (stuckReconcileDetail !== undefined) details.push(stuckReconcileDetail);
   if (
     durableAdmissionOldestAgeMs >
     nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS

@@ -14,6 +14,7 @@ import { providerViewPoint } from "../l1-provider-view.js";
 import { type NodeConfigDep } from "./config.js";
 import type { UnwrittenHold } from "./intent-journal.holds.js";
 import { settlementCall, settlementCheck } from "./settlement-call.js";
+import type { SettlementReconcileStuck } from "./settlement-retry.js";
 
 export type SettlementHealth = {
   observedAt: number;
@@ -27,6 +28,10 @@ export type SettlementHealth = {
    * it clears the node's failure streak; the node strips it before
    * publishing the health. */
   tickCompleted?: boolean;
+  /** Set by the worker while the reconcile of the attempt that blocks new
+   * work has failed `SETTLEMENT_JOB_FAILURE_CAP` times in a row; `/readyz`
+   * names it as a detail (settlement-readiness.ts). */
+  reconcileStuck?: SettlementReconcileStuck;
   /**
    * Set by the worker when its intent journal holds refusals whose write to
    * the node database has not landed (I1-H1): the worker hands them over,

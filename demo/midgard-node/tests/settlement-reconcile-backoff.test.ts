@@ -26,8 +26,9 @@ import {
   clearSettlementReconcileFailures,
   recordSettlementReconcileFailure,
   SETTLEMENT_JOB_FAILURE_CAP,
-  SETTLEMENT_STUCK_RETRY_MS,
+  SETTLEMENT_RECONCILE_MAX_BACKOFF_MS,
   settlementReconcileBackoff,
+  settlementReconcileStuck,
   settlementReconcileWait,
 } from "../src/services/settlement-retry.js";
 import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
@@ -141,6 +142,8 @@ describe("settlement reconcile backoff", () => {
     expect(result.waiting._tag).toBe("Success");
     expect(result.reports).toHaveLength(1);
     expect(result.reports[0]!.state).toBe("error");
+    // Waiting is not a completed tick: it must not clear a failure streak.
+    expect(result.reports[0]!.tickCompleted).toBe(false);
     expect(result.reports[0]!.detail).toMatch(
       /^settlement reconcile retry at .*: settlement withdrawal .* initialize reconcile: transactionStatus .*: socket hang up/u,
     );
@@ -153,14 +156,24 @@ describe("settlement reconcile backoff", () => {
     expect(result.jobFailures).toBe(0);
   }, 30_000);
 
-  it("retries a status read hourly at the cap and restarts for another attempt", () => {
+  it("polls a failing status read at most every five minutes, stuck from the cap, and restarts for another attempt", () => {
     const backoff = settlementReconcileBackoff();
     expect(settlementReconcileWait(backoff, "aa", 1_000)).toBeUndefined();
-    for (let failure = 0; failure < SETTLEMENT_JOB_FAILURE_CAP; failure++)
+    const waits: number[] = [];
+    for (let failure = 0; failure < SETTLEMENT_JOB_FAILURE_CAP; failure++) {
+      expect(settlementReconcileStuck(backoff)).toBeUndefined();
       recordSettlementReconcileFailure(backoff, 1_000, "down");
-    expect(settlementReconcileWait(backoff, "aa", 1_000)).toBe(
-      1_000 + SETTLEMENT_STUCK_RETRY_MS,
-    );
+      waits.push(backoff.dueAt - 1_000);
+    }
+    expect(waits).toEqual([
+      5_000, 10_000, 20_000, 40_000, 80_000, 160_000, 300_000, 300_000,
+    ]);
+    expect(SETTLEMENT_RECONCILE_MAX_BACKOFF_MS).toBe(300_000);
+    expect(settlementReconcileStuck(backoff)).toEqual({
+      txHash: "aa",
+      failures: SETTLEMENT_JOB_FAILURE_CAP,
+      lastError: "down",
+    });
     // A success clears the count.
     clearSettlementReconcileFailures(backoff);
     expect(settlementReconcileWait(backoff, "aa", 1_000)).toBeUndefined();
