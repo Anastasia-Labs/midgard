@@ -179,13 +179,13 @@ export const VALIDATOR_SCENARIOS: Readonly<
   "fraud_proofs/resolved_output_non_canonical/step_04_datum.main": {
     passing: [
       {
-        file: "demo/midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",
+        file: "demo/midgard-fault-proofs/tests/resolved-output-non-canonical-datum-lifecycle.test.ts",
         test: "convicts a forced rejection of maximum outputs whose inline datums are the densest canonical Data, reading each to its verdict, and measures the costliest datum step",
       },
     ],
     failing: [
       {
-        file: "demo/midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",
+        file: "demo/midgard-fault-proofs/tests/resolved-output-non-canonical-datum-lifecycle.test.ts",
         test: "convicts the acceptance of an output whose inline datum is not canonical under a canonical envelope, refusing forged datum steps, and cancels a thread parked on the datum step",
       },
     ],

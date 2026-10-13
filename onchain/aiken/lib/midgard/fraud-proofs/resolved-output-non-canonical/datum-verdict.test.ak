@@ -608,3 +608,85 @@ test next_chunk_that_is_not_the_successor_refuses() fail {
     1,
   ) != ContinueDatum(state)
 }
+
+/// The datum step advanced honestly, `budget` nodes per call with its whole
+/// stack revealed, until its cursor reaches chunk `target`. Returns the state
+/// and its stored stack.
+fn datum_state_in_chunk(
+  state: DatumVerdictStateV1,
+  output: ByteArray,
+  stack: List<StreamFrameV1>,
+  target: Int,
+  budget: Int,
+) -> (DatumVerdictStateV1, List<StreamFrameV1>) {
+  if chunk_index_of(state, output) >= target {
+    (state, stack)
+  } else {
+    let (current, next) = datum_proofs(state, output)
+    expect ContinueDatum { state: after } = rule.advance_datum_v1(
+      state,
+      current,
+      next,
+      stack,
+      stream.empty_stack_root,
+      budget,
+    )
+    let base = chunk_index_of(state, output) * bounded_item_v1.chunk_bytes
+    let window = when next is {
+      None -> current.chunk
+      Some(proof) -> bytearray.concat(current.chunk, proof.chunk)
+    }
+    let full = base + bytearray.length(window) >= state.datum_end
+    expect StreamPaused { frames, .. } = stream.run_v1(
+      if full {
+        bytearray.take(window, state.datum_end - base)
+      } else {
+        window
+      },
+      full,
+      state.datum_start - base,
+      state.cursor - base,
+      stack,
+      stream.empty_stack_root,
+      budget,
+    )
+    datum_state_in_chunk(after, output, frames, target, budget)
+  }
+}
+
+/// The cursor sits in the output's last chunk, where the datum ends; the
+/// prover supplies the authentic chunk before it.
+test authentic_chunk_other_than_the_cursor_chunk_refuses() fail {
+  let datum = long_byte_strings(100)
+  let (opened, output) = datum_state_of(datum)
+  let last = bounded_item_v1.chunk_count(bytearray.length(output)) - 1
+  let (state, stack) = datum_state_in_chunk(opened, output, [], last, 10)
+  rule.advance_datum_v1(
+    state,
+    proof_at(output, last - 1),
+    None,
+    stack,
+    stream.empty_stack_root,
+    1,
+  ) != ContinueDatum(state)
+}
+
+/// The datum straddles the first chunk boundary: the successor carries its
+/// own index and length but not the output's bytes.
+test next_chunk_with_substituted_bytes_refuses() fail {
+  let (state, output) = datum_state_of(long_byte_strings(100))
+  let next = proof_at(output, 1)
+  let first = bytearray.at(next.chunk, 0)
+  let substituted = ChunkProofV1 {
+    ..next,
+    chunk: bytearray.push(bytearray.drop(next.chunk, 1), ( first + 1 ) % 256),
+  }
+  rule.advance_datum_v1(
+    state,
+    proof_at(output, 0),
+    Some(substituted),
+    [],
+    stream.empty_stack_root,
+    1,
+  ) != ContinueDatum(state)
+}

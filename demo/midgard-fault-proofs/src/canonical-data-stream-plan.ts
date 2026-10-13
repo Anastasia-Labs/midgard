@@ -186,14 +186,11 @@ const chooseBudget = ({
   let lowest = stack.length;
   let nodes = 0;
   let spent = fixedMemory;
-  const revealCost = () =>
-    PER_REVEALED_FRAME *
-    (Math.min(stack.length, stack.length - lowest + 1) + 1);
+  const revealCost = (low: number) =>
+    PER_REVEALED_FRAME * (Math.min(stack.length, stack.length - low + 1) + 1);
   for (;;) {
     const weight = canonicalDataNodeWeight(window.bytes, offset, frames[0]);
-    if (nodes > 0 && spent + weight + revealCost() > target)
-      return { budget: nodes, estimate: spent + revealCost() };
-    const { outcome } = runMidgardDataStreamTracked({
+    const { outcome, consumed } = runMidgardDataStreamTracked({
       bytes: window.bytes,
       full: window.full,
       rootStart,
@@ -202,23 +199,27 @@ const chooseBudget = ({
       tailRoot: MIDGARD_DATA_STREAM_EMPTY_STACK_ROOT,
       budget: 1,
     });
+    // A node that pops a frame of the stored stack widens the reveal, so
+    // the node is charged the reveal it leaves behind.
+    const popsOriginal = consumed > 0 && pushed === 0;
+    const lowestAfter = popsOriginal ? Math.min(lowest, original - 1) : lowest;
+    const estimateAfter = spent + weight + revealCost(lowestAfter);
+    if (nodes > 0 && estimateAfter > target)
+      return { budget: nodes, estimate: spent + revealCost(lowest) };
     if (outcome.kind !== "paused")
-      return {
-        budget: nodes + 1,
-        estimate: spent + weight + revealCost(),
-      };
+      return { budget: nodes + 1, estimate: estimateAfter };
     if (outcome.nodes === 0)
-      return { budget: Math.max(nodes, 1), estimate: spent + revealCost() };
+      return {
+        budget: Math.max(nodes, 1),
+        estimate: spent + revealCost(lowest),
+      };
     spent += weight;
     nodes += 1;
     if (outcome.frames.length > frames.length) pushed += 1;
-    else if (outcome.frames.length < frames.length) {
-      if (pushed > 0) pushed -= 1;
-      else {
-        original -= 1;
-        lowest = Math.min(lowest, original);
-      }
-    }
+    else if (popsOriginal) {
+      original -= 1;
+      lowest = lowestAfter;
+    } else if (outcome.frames.length < frames.length) pushed -= 1;
     frames = outcome.frames;
     offset = outcome.offset;
   }
