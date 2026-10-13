@@ -456,18 +456,14 @@ describe("forced-tx admission at the real tx-order mint", () => {
           quantity: -0x10000000000000000n,
         })),
       });
-      const wideItem = Buffer.concat([
-        Buffer.from("9a00000002", "hex"),
-        item.subarray(1),
-      ]);
       return submittedBytes({
         ...row("base"),
         fields: row("base").fields.map((field, index) =>
-          index === 5 ? encodeCbor([wideItem]).toString("hex") : field,
+          index === 5 ? encodeCbor([item]).toString("hex") : field,
         ),
       });
     };
-    const limit = 235;
+    const limit = 236;
     expect(() =>
       SDK.deriveTxOrderMaterial({
         submittedTxCbor: withAssets(limit),
