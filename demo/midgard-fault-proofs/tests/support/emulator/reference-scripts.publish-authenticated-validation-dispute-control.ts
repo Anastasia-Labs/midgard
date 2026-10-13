@@ -27,52 +27,6 @@ import {
   withTracedPublicationEnvelope,
 } from "./traced-refusals.js";
 
-export const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE =
-  "V1 validation-trace dispute";
-
-export const validationDisputeControlPublicationTargets = (
-  contracts: MidgardValidators,
-) =>
-  [
-    {
-      control: "dispute",
-      name: VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE,
-      script: contracts.fraudProofs.validationTraceDispute.spendingScript,
-    },
-    {
-      control: "source",
-      name: "V1 validation-trace source",
-      script:
-        contracts.fraudProofs.validationTraceDispute.source.spendingScript,
-    },
-    {
-      control: "game",
-      name: "V1 validation-trace game",
-      script: contracts.fraudProofs.validationTraceDispute.game.spendingScript,
-    },
-    {
-      control: "boundary",
-      name: "V1 validation-trace boundary",
-      script:
-        contracts.fraudProofs.validationTraceDispute.boundary.spendingScript,
-    },
-    {
-      control: "timeout",
-      name: "V1 validation-trace timeout",
-      script:
-        contracts.fraudProofs.validationTraceDispute.timeout.spendingScript,
-    },
-    {
-      control: "award",
-      name: "V1 validation-trace award",
-      script: contracts.fraudProofs.validationTraceDispute.award.spendingScript,
-    },
-  ] as const;
-
-export type ValidationDisputeControlPublicationTarget = ReturnType<
-  typeof validationDisputeControlPublicationTargets
->[number];
-
 export const publishAuthenticatedValidationDisputeControl = async ({
   lucid,
   target,
@@ -157,23 +111,6 @@ export const publishAuthenticatedValidationDisputeControl = async ({
     publicationMeasurement,
     utxo: published[0]!,
   };
-};
-
-export const publishValidationDisputeReferenceScript = async ({
-  lucid,
-  contracts,
-  now,
-}: {
-  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: ReferenceScriptPublishingContracts;
-  readonly now: number;
-}) => {
-  const target = validationDisputeControlPublicationTargets(contracts)[0];
-  return publishAuthenticatedValidationDisputeControl({
-    lucid,
-    target,
-    authPolicy: await createReferenceScriptAuthPolicy(lucid, now),
-  });
 };
 
 export const publishStateQueueYieldReferenceScript = async ({

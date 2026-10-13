@@ -28,6 +28,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  checkLedgerAgainstRoot,
+  LedgerRootMismatchError,
+} from "../src/ledger-at.js";
+import {
   buildCountedRoot,
   detectTransitionTraceFaults,
   eventKeyFingerprint,
@@ -74,9 +78,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       });
       const transaction =
         decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
-      expect(fixture.payload.block_body.utxos).toEqual(
-        boundary.resolvedReferenceUtxos ?? [],
-      );
+      expect(fixture.ledger).toEqual(boundary.resolvedReferenceUtxos ?? []);
       const diagnosticSyntheticScripts =
         boundary.productionAdmission ===
         "diagnostic-synthetic-script-witnesses";
@@ -141,7 +143,6 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         validationTraceCount: 2n,
       });
       expect(reconstruction.roots).toEqual({
-        utxosRoot: fixture.header.utxosRoot,
         withdrawalsRoot: fixture.header.withdrawalsRoot,
         forcedTransactionsRoot: fixture.header.forcedTransactionsRoot,
         transactionsRoot: fixture.header.transactionsRoot,
@@ -440,7 +441,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     ).rejects.toMatchObject({ code: "malformedPayload" });
   });
 
-  it("keeps resolved reference UTxO coverage and descriptor roots fail closed", async () => {
+  it("refuses a resolved reference ledger that misses or substitutes an entry at the root check", async () => {
     const boundary = corpus.entries.find(
       ({ label }) => label === "maximum-reference-inputs",
     )!;
@@ -449,26 +450,22 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       canonicalTransactionCbor: canonicalCbor,
       resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
     });
-    expect(fixture.payload.block_body.utxos.length).toBeGreaterThan(0);
+    expect(fixture.ledger.length).toBeGreaterThan(0);
+    const check = (entries: readonly SDK.DaPayloadEntry[]) =>
+      checkLedgerAgainstRoot({
+        entries: entries.map(([outRef, output]) => ({
+          outRef: Buffer.from(outRef, "hex"),
+          output: Buffer.from(output, "hex"),
+        })),
+        utxosRoot: fixture.header.utxosRoot,
+        label: "reference ledger",
+      });
+    await expect(check(fixture.ledger)).resolves.toMatchObject({
+      utxosRoot: fixture.header.utxosRoot,
+    });
+    await expect(check([])).rejects.toBeInstanceOf(LedgerRootMismatchError);
 
-    const missing: SDK.DaPayload = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        utxos: [],
-      },
-    };
-    await expect(
-      reconstructDaPayload({
-        payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(missing), {
-          mode: "identity",
-        }),
-        expectedHeaderHash: fixture.headerHash,
-        committedHeader: fixture.header,
-      }),
-    ).rejects.toMatchObject({ code: "rootMismatch" });
-
-    const [first, ...remaining] = fixture.payload.block_body.utxos;
+    const [first, ...remaining] = fixture.ledger;
     const decodedOutput = decodeMidgardTxOutput(Buffer.from(first![1], "hex"));
     const substitutedOutput = encodeMidgardTxOutput({
       ...decodedOutput,
@@ -477,22 +474,8 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         lovelace: decodedOutput.value.lovelace + 1n,
       },
     });
-    const substituted: SDK.DaPayload = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        utxos: [[first![0], substitutedOutput.toString("hex")], ...remaining],
-      },
-    };
     await expect(
-      reconstructDaPayload({
-        payloadEnvelopeCbor: await wrapDaPayload(
-          SDK.encodeDaPayload(substituted),
-          { mode: "identity" },
-        ),
-        expectedHeaderHash: fixture.headerHash,
-        committedHeader: fixture.header,
-      }),
-    ).rejects.toMatchObject({ code: "rootMismatch" });
+      check([[first![0], substitutedOutput.toString("hex")], ...remaining]),
+    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
   }, 30_000);
 });

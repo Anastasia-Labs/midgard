@@ -10,13 +10,11 @@ import {
   Columns as TxColumns,
   type EntryWithTimeStamp,
 } from "../src/database/utils/tx.js";
-import type { UtxoPayloadSizeAggregate } from "../src/mpf/index.js";
 import { measureCommitDaPayloadUpperBound } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import {
   type CommitDaFrameMeasurement,
   commitDaFrameStepDownPassBound,
   type CommitTxCandidateSelection,
-  emptyBlockDaPayloadUpperBoundBytes,
   planCommitBatchBudgets,
   planCommitDaFrameStepDown,
   selectCommitTxCandidates,
@@ -25,14 +23,11 @@ import {
 import {
   blockContentFor,
   type BlockShape,
-  LC1_BASE_LEDGER,
-  LC1_MEAN_ENTRY_BYTES,
   mkCandidate,
   MODES,
   preSubmit,
   PROGRAM_LIMITS,
   REFUSAL,
-  SYNTHETIC_TX_DA_BYTES,
 } from "./helpers/commit-da-frame-fixtures.js";
 
 // Every normal transaction has its durable program-material sidecar.
@@ -81,7 +76,6 @@ const stepDown = async (
   const result = await quiet(
     stepDownCommitSelectionToDaFrame({
       candidateSelection,
-      baseUtxoPayloadAggregate: shape.base ?? LC1_BASE_LEDGER,
       maxInnerBytes: maxDaPayloadInnerBytes(mode),
       process: (selection) =>
         Effect.sync(() => {
@@ -127,7 +121,6 @@ describe("commit DA frame step-down", () => {
     const result = await quiet(
       stepDownCommitSelectionToDaFrame({
         candidateSelection: selection,
-        baseUtxoPayloadAggregate: { entryCount: 1, encodedTupleBytes: 2_000 },
         maxInnerBytes: 1_000,
         process: (candidate) =>
           Effect.sync(() => {
@@ -170,7 +163,6 @@ describe("commit DA frame step-down", () => {
           processedMempoolTxs: [],
         }),
         limits: PROGRAM_LIMITS(mode),
-        baseUtxoPayloadAggregate: LC1_BASE_LEDGER,
       });
       // The transient: the allowance admitted a block the frame cannot carry.
       const unstepped = await preSubmit(
@@ -232,65 +224,6 @@ describe("commit DA frame step-down", () => {
       expect(run.processed).toHaveLength(1);
       expect(run.rebases).toBe(0);
       expect(run.result.candidateSelection).toBe(selection);
-    },
-  );
-
-  it.each(MODES)(
-    "chooses the least expensive legal ordinary prefix for an over-frame ledger, and the commit is still refused (%s)",
-    async (mode) => {
-      const limit = maxDaPayloadInnerBytes(mode);
-      const base: UtxoPayloadSizeAggregate = {
-        entryCount: Math.ceil(limit / LC1_MEAN_ENTRY_BYTES),
-        encodedTupleBytes: limit,
-      };
-      const selection = threeTransfers();
-      const run = await stepDown(selection, mode, { base });
-      // An empty/no-op block cannot replace a legal ordinary candidate.
-      expect(run.processed).toHaveLength(2);
-      expect(run.rebases).toBe(1);
-      expect(run.result.candidateSelection.candidateTxs).toHaveLength(1);
-      expect(run.result.outcome).toBe("exact_check_required");
-      for (const txs of [selection.candidateTxs, []]) {
-        const result = await preSubmit(txs, mode, { base });
-        expect(Either.isLeft(result)).toBe(true);
-        if (Either.isRight(result)) return;
-        expect(result.left.message).toBe(REFUSAL);
-        expect(String(result.left.cause)).toContain(
-          "post_block_ledger_without_events_exceeds_frame=true",
-        );
-      }
-    },
-  );
-
-  it.each(MODES)(
-    "commits the withdrawals that shrink an over-frame ledger once its transactions are dropped (%s)",
-    async (mode) => {
-      const limit = maxDaPayloadInnerBytes(mode);
-      // Ten entries past the last ledger an empty block can carry, with
-      // withdrawals in the window that remove a hundred of them.
-      const brick = Math.floor(
-        (limit - emptyBlockDaPayloadUpperBoundBytes(LC1_BASE_LEDGER)) /
-          LC1_MEAN_ENTRY_BYTES,
-      );
-      const base: UtxoPayloadSizeAggregate = {
-        entryCount: brick + 10,
-        encodedTupleBytes: (brick + 10) * LC1_MEAN_ENTRY_BYTES,
-      };
-      expect(emptyBlockDaPayloadUpperBoundBytes(base)).toBeGreaterThan(limit);
-      const shape: BlockShape = {
-        base,
-        withdrawnEntryCount: 100,
-        descriptorBytes: SYNTHETIC_TX_DA_BYTES,
-      };
-      const selection = threeTransfers();
-      expect(
-        Either.isLeft(await preSubmit(selection.candidateTxs, mode, shape)),
-      ).toBe(true);
-      const run = await stepDown(selection, mode, shape);
-      expect(run.processed).toHaveLength(2);
-      expect(run.rebases).toBe(1);
-      expect(run.result.candidateSelection.candidateTxs).toEqual([]);
-      expect(Either.isRight(await preSubmit([], mode, shape))).toBe(true);
     },
   );
 
@@ -407,7 +340,6 @@ describe("commit DA frame step-down over rejected transactions", () => {
       stepDownCommitSelectionToDaFrame({
         candidateSelection,
         // An empty ledger: its empty block is 1,010 bytes.
-        baseUtxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
         maxInnerBytes: 100_000,
         process: (selection) => Effect.succeed(selection.candidateTxs),
         // Actual accepted order can differ from the submitted source rows.
@@ -458,7 +390,6 @@ it.each(["digest", "bytes", "ids", "rejection", "unavailable"] as const)(
     const result = await quiet(
       stepDownCommitSelectionToDaFrame({
         candidateSelection: selection,
-        baseUtxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
         maxInnerBytes: 100,
         process: (candidate) =>
           Effect.sync(() => {

@@ -22,4 +22,3 @@ export {
 } from "./cekProgramMaterial.persist-verified-admission-bundle.js";
 export { persistVerifiedBundles } from "./cekProgramMaterial.persist-verified-bundles.js";
 export { pinRetainedStateScriptRefs } from "./cekProgramMaterial.pin-retained-state.js";
-export { restoreRetainedStatePins } from "./cekProgramMaterial.restore-retained-state-pins.js";

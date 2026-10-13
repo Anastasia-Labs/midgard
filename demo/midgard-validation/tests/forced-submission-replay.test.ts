@@ -14,7 +14,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   RejectCodes,
-  replayValidationMachineEvent,
   runPhaseAValidation,
   validationMachineLedgerRoot,
 } from "../src/index.js";
@@ -34,6 +33,7 @@ import {
   makeQueued,
   outRefFromByte,
 } from "./validation-fixtures.js";
+import { replayValidationMachineEvent } from "./validation-machine-event-replay.trace.js";
 
 const config = {
   expectedNetworkId: 0n,

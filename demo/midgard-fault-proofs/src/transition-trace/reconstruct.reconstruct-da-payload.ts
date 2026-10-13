@@ -2,17 +2,11 @@ import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { createCanonicalMidgardLedgerDescriptorResolver } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { undecodableNativeOutputDescriptor } from "../evidence/retained-ledger-output.js";
 import { transitionTraceError } from "./errors.js";
-import {
-  buildCountedRoot,
-  commitCountedRoot,
-  keyValuePhasRootWithCount,
-} from "./phas.js";
+import { buildCountedRoot, commitCountedRoot } from "./phas.js";
 import {
   authenticateForcedTransactionPreimages,
   buildSourceEvents,
@@ -89,38 +83,7 @@ export const reconstructDaPayload = async ({
   }
 
   const rawTransactions = rawEntries("transactions", body.transactions);
-  const rawUtxos = rawEntries("utxos", body.utxos);
-  const resolveDescriptor = createCanonicalMidgardLedgerDescriptorResolver();
-  const descriptorUtxos = rawUtxos.map((entry) => {
-    try {
-      return {
-        key: Buffer.from(entry.key),
-        value: resolveDescriptor({
-          outRef: entry.key,
-          outputCbor: entry.value,
-        }),
-      };
-    } catch (cause) {
-      try {
-        return {
-          key: Buffer.from(entry.key),
-          value: undecodableNativeOutputDescriptor({
-            key: entry.key,
-            output: entry.value,
-          }),
-        };
-      } catch {
-        /* The exact root check below remains the only authority. */
-      }
-      throw transitionTraceError(
-        "invalidPayloadEntries",
-        `UTxO ${entry.key.toString("hex")} cannot produce an exact canonical V1 descriptor.`,
-        cause,
-      );
-    }
-  });
   const rootData = {
-    utxos: await keyValuePhasRootWithCount(descriptorUtxos),
     withdrawals: await buildCountedRoot(
       SDK.ROOT_DOMAINS.withdrawals,
       rawEntries("withdrawals", body.withdrawals),
@@ -162,7 +125,6 @@ export const reconstructDaPayload = async ({
     }),
   };
   const roots: PayloadRootSet = {
-    utxosRoot: rootData.utxos.root,
     withdrawalsRoot: rootData.withdrawals.root,
     forcedTransactionsRoot: rootData.forcedTransactions.root,
     transactionsRoot: rootData.transactions.root,
@@ -261,62 +223,6 @@ export const reconstructDaPayload = async ({
   });
   const sourceEventsByFingerprint =
     ensureUniqueSourceFingerprints(sourceEvents);
-  const retainedFieldsByEvent = new Map<
-    string,
-    ReturnType<typeof SDK.retainedValidationTransactionSource>
-  >();
-  for (const [keyHex, valueHex] of body.validation_trace_witnesses) {
-    try {
-      const key = SDK.decodeRetainedValidationWitnessKey(
-        Buffer.from(keyHex, "hex"),
-      );
-      const retained = SDK.decodeRetainedValidationWitness(
-        Buffer.from(valueHex, "hex"),
-      );
-      if (SDK.retainedValidationFieldSource(retained.auxiliary) === undefined)
-        continue;
-      const fingerprint = eventKeyFingerprint(key.event_key);
-      let fields = retainedFieldsByEvent.get(fingerprint);
-      if (fields === undefined) {
-        const source = sourceEventsByFingerprint.get(fingerprint);
-        if (
-          source === undefined ||
-          (source.phase !== "ForcedTransaction" &&
-            source.phase !== "L2Transaction")
-        )
-          throw new Error(
-            "Retained field source has no authenticated transaction",
-          );
-        fields = SDK.retainedValidationTransactionSource(
-          source.entry.fullTransactionCbor,
-          source.phase === "ForcedTransaction" ? "forced" : "normal",
-        );
-        retainedFieldsByEvent.set(fingerprint, fields);
-      }
-      SDK.validateRetainedValidationTransactionIdentity(
-        fields,
-        Buffer.from(retained.machine_state.transaction_id, "hex"),
-        Buffer.from(retained.machine_state.transaction_commitment, "hex"),
-      );
-      if (
-        retained.machine_state.source_kind !==
-        ("ForcedTransactionEventKey" in key.event_key ? "Forced" : "Normal")
-      )
-        throw new Error(
-          "Retained field source kind differs from its authenticated event",
-        );
-      SDK.validateRetainedValidationFieldSource(
-        retained.auxiliary,
-        fields.fields,
-      );
-    } catch (cause) {
-      throw transitionTraceError(
-        "invalidPayloadEntries",
-        "Retained field source does not match its authenticated transaction.",
-        cause,
-      );
-    }
-  }
   const traceByStepIndex = new Map(
     transitionTrace.map((entry) => [entry.key, entry] as const),
   );
@@ -334,7 +240,6 @@ export const reconstructDaPayload = async ({
     headerHash,
     roots,
     counts,
-    utxos: rawUtxos,
     withdrawals,
     forcedTransactions,
     transactions,

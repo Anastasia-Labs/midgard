@@ -8,17 +8,12 @@
  * each pinned negative against its own project's blueprint.
  */
 export const interactiveTests = [
-  "./tests/*validation-dispute*.test.ts",
-  "./tests/validation-trace-dispute-installed-lifecycle.test.ts",
-  "./tests/cek-*-lifecycle.test.ts",
-  "./tests/value-and-mint-asset-yield-lifecycle.test.ts",
-  "./tests/ledger-output-value-permutation-lifecycle.test.ts",
-  "./tests/forced-submission-lifecycle.test.ts",
-  "./tests/submit-init-emulator-cek-value-and-mint.test.ts",
-  "./tests/submit-init-emulator-value-and-mint.test.ts",
-  "./tests/submit-init-emulator-min-ada.test.ts",
-  "./tests/submit-init-emulator-option-b-*.test.ts",
-  "./tests/submit-init-emulator-route-freedom-*.test.ts",
-  "./tests/submit-init-emulator-soundness*.test.ts",
   "./tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
 ];
+
+/**
+ * The test files the curated-emulator Vitest project runs, against a blueprint
+ * compiled for `preprod-emulator-curated` (stage-0 allow-lists and the P1
+ * fraud-proof catalogue). No other project runs them.
+ */
+export const curatedTests = ["./tests/curated-emulator-*.test.ts"];

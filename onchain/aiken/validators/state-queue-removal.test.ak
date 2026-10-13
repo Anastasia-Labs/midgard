@@ -2192,3 +2192,50 @@ test completed_fraud_marker_rejects_changed_block_time() {
     ),
   }
 }
+
+fn committed_at(output: Output, block_time: Int) -> Output {
+  expect InlineDatum(data) = output.datum
+  expect element: state_queue.Datum = data
+  expect linked_list.Node(node) = element.data
+  let continued: state_queue.Datum = linked_list.Element {
+    ..element,
+    data: linked_list.Node(state_queue.StateQueueNode { ..node, block_time }),
+  }
+  Output { ..output, datum: InlineDatum(continued) }
+}
+
+fn late_committed_terminal(lower: Int, upper: Int) -> Bool {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  let block_time = 2_000 + ledger_state.block_maturity_duration_v1 / 2
+  state_queue.require_completed_fraud_witness(
+    transaction.Transaction {
+      ..tx,
+      inputs: [],
+      outputs: [],
+      validity_range: between(lower, upper),
+      reference_inputs: [
+        Input {
+          output_reference: out_ref(1),
+          output: committed_at(output, block_time),
+        },
+      ],
+    },
+    state_queue_policy,
+    completed_fraud_asset(),
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+// The block ends at 2_000 but commits half a maturity later. The terminal's
+// deadline runs from block_time, so a terminal past end_time + maturity is
+// accepted while one at block_time + maturity is refused.
+test completed_fraud_terminal_runs_its_deadline_from_block_time() {
+  let past_end_maturity = 2_000 + ledger_state.block_maturity_duration_v1
+  late_committed_terminal(past_end_maturity, past_end_maturity + 1_000)
+}
+
+test completed_fraud_terminal_rejects_a_terminal_at_block_time_maturity() {
+  let deadline = 2_000 + ledger_state.block_maturity_duration_v1 / 2 + ledger_state.block_maturity_duration_v1
+  !late_committed_terminal(deadline - 1_000, deadline)
+}

@@ -3,7 +3,6 @@ import "node:os";
 import "node:path";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-fault-proofs";
-import "@al-ft/midgard-sdk";
 import "vitest";
 import "../../src/fault-proofs/fault-proof-application.js";
 import "../../src/funding/workflow-funding-profile-overlay.js";
@@ -22,16 +21,18 @@ import {
   FAMILY_APPLICATION_REGISTRY,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
+  INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
   PREDECESSOR_LEDGER_PROOF_CATEGORIES,
   TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
+  UNINSTALLED_FRAUD_PROOF_CATEGORIES,
   type WorkflowAdapterReadinessInput,
   workflowFundingRequirementsForRunner,
   workflowReadinessReport,
 } from "@al-ft/midgard-fault-proofs";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  installedLaunchScope,
   unsafeCreateWatcherFaultProofApplicationForTest,
   WATCHER_FAULT_PROOF_APPLICATION,
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
@@ -64,6 +65,16 @@ import {
 } from "./fault-proof-application.raw-config.js";
 
 describe("watcher production fault-proof application V1", () => {
+  it("admits an installed recovery subset and refuses a trace-relative category", () => {
+    expect(installedLaunchScope(["minAda", "transitionTrace"])).toEqual([
+      "minAda",
+      "transitionTrace",
+    ]);
+    expect(() =>
+      installedLaunchScope(["minAda", "validationTraceDispute"]),
+    ).toThrow("launch scope names a category with no installed workflow");
+  });
+
   it("installs every runner with an empty signed funding bundle while funding requests stay gated", async () => {
     const directory = await mkdtemp(join(tmpdir(), "midgard-empty-funding-"));
     try {
@@ -94,9 +105,9 @@ describe("watcher production fault-proof application V1", () => {
         },
       );
       expect(application.installedCategories).toEqual([
-        ...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+        ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
       ]);
-      for (const category of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+      for (const category of INSTALLED_FRAUD_PROOF_CATEGORY_ORDER) {
         expect(() =>
           workflowFundingRequirementsForRunner({
             category,
@@ -130,15 +141,18 @@ describe("watcher production fault-proof application V1", () => {
       );
 
       expect(application.schemaVersion).toBe(WATCHER_FAULT_PROOF_APPLICATION);
-      // The catalogue in the SDK is the independent authority on which
-      // families a watcher must be able to prove, and in which order.
+      // The catalogue in the SDK, less the categories with no off-chain
+      // workflow, is the authority on which families a watcher must be able
+      // to prove, and in which order.
       expect(application.installedCategories).toEqual([
-        ...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+        ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
       ]);
       expect(WATCHER_INSTALLED_WORKFLOW_CATEGORIES).toEqual([
-        ...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+        ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
       ]);
-      expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).toEqual([]);
+      expect([...WATCHER_MISSING_WORKFLOW_CATEGORIES].sort()).toEqual(
+        [...UNINSTALLED_FRAUD_PROOF_CATEGORIES].sort(),
+      );
       expect(
         workflowReadinessReport(
           WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -146,13 +160,13 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).toMatchObject({
         deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
-        requestedCategoryCount: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
-        readyCategoryCount: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+        installedCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
+        requestedCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
+        readyCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
         missingCategoryCount: 0,
       });
 
-      for (const category of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+      for (const category of INSTALLED_FRAUD_PROOF_CATEGORY_ORDER) {
         const resolvedBefore = vi.mocked(deps.resolveReferenceScript).mock.calls
           .length;
         const readiness = await application.assertStartupReady(
@@ -223,35 +237,17 @@ describe("watcher production fault-proof application V1", () => {
             [...TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES].sort(),
           );
         }
-        if (category === "validationTraceDispute") {
-          // The interactive dispute game names its scripts by role in the
-          // game, not by a physical step ordinal.
-          expect(stepOrdinals).toEqual([]);
-          expect(rosterKeys).toEqual(
-            expect.arrayContaining([
-              "opener",
-              "source",
-              "game",
-              "boundary",
-              "timeout",
-              "award",
-            ]),
-          );
-        } else {
-          // The physical steps of a thread are contiguous from step01: a
-          // dropped or renamed intermediate step leaves a gap here.
-          expect(stepOrdinals.length).toBeGreaterThan(0);
-          expect(stepOrdinals).toEqual(
-            Array.from(
-              { length: stepOrdinals.length },
-              (_unused, index) => index + 1,
-            ),
-          );
-        }
+        // The physical steps of a thread are contiguous from step01: a
+        // dropped or renamed intermediate step leaves a gap here.
+        expect(stepOrdinals.length).toBeGreaterThan(0);
+        expect(stepOrdinals).toEqual(
+          Array.from(
+            { length: stepOrdinals.length },
+            (_unused, index) => index + 1,
+          ),
+        );
       }
-      // The roster is complete, so this element type is `never` and the body
-      // is unreachable. The guard stays so that re-opening a residue entry is
-      // still required to fail closed at startup.
+      // A category with no off-chain workflow fails closed at startup.
       for (const category of WATCHER_MISSING_WORKFLOW_CATEGORIES) {
         await expect(
           application.assertStartupReady(invocation(configPath, category)),
@@ -264,7 +260,7 @@ describe("watcher production fault-proof application V1", () => {
       // binds the deployment and resolves the roster only: it opens no
       // retained-DA transport, reads no secret and acquires no lease.
       expect(deps.makeLucid).toHaveBeenCalledTimes(
-        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+        INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
       );
       expect(transport.factory).not.toHaveBeenCalled();
       expect(application.retainedDaTransportStatus()).toEqual({
@@ -434,8 +430,7 @@ describe("watcher production fault-proof application V1", () => {
           MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
         },
       );
-      // Every catalogue category has an installed workflow, so the
-      // uninstalled-category guard is exercised with a forged non-catalogue
+      // The missing-workflow guard also refuses a forged non-catalogue
       // category string.
       await expect(
         admitted.assertStartupReady(
@@ -466,7 +461,6 @@ describe("watcher production fault-proof application V1", () => {
       [...PREDECESSOR_LEDGER_PROOF_CATEGORIES].sort(),
     );
     expect([...WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES].sort()).toEqual([
-      "executionNativeScriptInvalid",
       "minAda",
       "noReferenceInput",
       "nonExistentInput",
@@ -625,7 +619,7 @@ describe("watcher production fault-proof application V1", () => {
             "replayContext",
           ),
         );
-      expect(replayContextFamilies).toHaveLength(10);
+      expect(replayContextFamilies).toHaveLength(9);
       for (const category of replayContextFamilies) {
         await expect(applied(category)).rejects.toThrow(
           `${category} application requires replayContext, which the host did not supply`,

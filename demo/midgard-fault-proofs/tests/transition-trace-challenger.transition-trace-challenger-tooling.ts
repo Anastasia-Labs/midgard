@@ -181,7 +181,6 @@ describe("transition-trace challenger tooling", () => {
     const result = await reconstruct(fixture);
 
     expect(result.roots).toEqual({
-      utxosRoot: fixture.header.utxosRoot,
       withdrawalsRoot: fixture.header.withdrawalsRoot,
       forcedTransactionsRoot: fixture.header.forcedTransactionsRoot,
       transactionsRoot: fixture.header.transactionsRoot,
@@ -194,7 +193,7 @@ describe("transition-trace challenger tooling", () => {
 
     const badHeader = {
       ...fixture.header,
-      utxosRoot: h32(99),
+      withdrawalsRoot: h32(99),
     };
     const badHeaderHash = await Effect.runPromise(
       SDK.hashBlockHeader(badHeader),

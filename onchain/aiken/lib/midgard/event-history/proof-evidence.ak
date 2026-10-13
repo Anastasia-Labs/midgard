@@ -59,6 +59,10 @@ pub fn presence(
   event_reference_index: Int,
   external_reference_index: Option<Int>,
 ) -> Commitment {
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    tx.validity_range,
+  )
+  expect horizon.capture_permitted(header_end, block_time, lower, upper)
   order_facts.capture(
     tx,
     policy,
@@ -66,8 +70,6 @@ pub fn presence(
     params.retention_address,
     kind,
     target,
-    header_end,
-    block_time,
     params.inline_limit,
     params.max_payload_bytes,
     params.max_payload_nodes,

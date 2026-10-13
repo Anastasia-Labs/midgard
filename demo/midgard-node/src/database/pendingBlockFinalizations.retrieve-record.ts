@@ -124,15 +124,6 @@ export const retrieveRecord = (
       ...normalizedRow,
       ledgerDelta,
       nativeMpfReplay,
-      utxoPayloadAggregate:
-        normalizedRow[Columns.UTXO_PAYLOAD_ENTRY_COUNT] == null ||
-        normalizedRow[Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES] == null
-          ? undefined
-          : {
-              entryCount: normalizedRow[Columns.UTXO_PAYLOAD_ENTRY_COUNT],
-              encodedTupleBytes:
-                normalizedRow[Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES],
-            },
       depositEventIds: depositEventIds.map(
         (member) => member[MemberColumns.MEMBER_ID],
       ),

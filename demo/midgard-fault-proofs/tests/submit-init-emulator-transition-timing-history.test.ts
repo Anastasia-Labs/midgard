@@ -25,7 +25,11 @@ import {
   FAMILY_HISTORY_HEADER_LEAD_MS,
   prepareFamilyHistory,
 } from "./support/emulator/family-history.js";
-import { makeHeader } from "./support/emulator/header-fixtures.js";
+import {
+  makeHeader,
+  withPlaceholderDeposit,
+  withPlaceholderWithdrawal,
+} from "./support/emulator/header-fixtures.js";
 import { insertHistoryFillerAfter } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
@@ -230,16 +234,27 @@ describe("applied timed history final", () => {
           h.funderLucid,
           h.emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
         ) - 1;
-      const header: SDK.Header = {
-        ...makeHeader(await funderPaymentKeyHash(h.funderLucid), now),
-        ...(kind === "Deposit"
-          ? { depositsRoot: source.root, depositCount: source.count }
-          : { withdrawalsRoot: source.root, withdrawalCount: source.count }),
-        totalEventCount: source.count,
-        transitionStepCount: source.count,
-        transitionTraceRoot: source.root,
-        eventToStepRoot: source.root,
-      };
+      const base = makeHeader(await funderPaymentKeyHash(h.funderLucid), now);
+      const placeholder =
+        kind === "Deposit" ? withPlaceholderWithdrawal : withPlaceholderDeposit;
+      // An omitting block carries one placeholder event of the other kind (a
+      // committed block carries at least one event), leaving the source empty.
+      const header: SDK.Header =
+        scenario === "omitted"
+          ? placeholder(base)
+          : {
+              ...base,
+              ...(kind === "Deposit"
+                ? { depositsRoot: source.root, depositCount: source.count }
+                : {
+                    withdrawalsRoot: source.root,
+                    withdrawalCount: source.count,
+                  }),
+              totalEventCount: source.count,
+              transitionStepCount: source.count,
+              transitionTraceRoot: source.root,
+              eventToStepRoot: source.root,
+            };
       const sourceBase = {
         domain,
         root: source.root,

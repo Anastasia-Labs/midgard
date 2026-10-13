@@ -269,10 +269,8 @@ Commitment and liveness (raised by fibers, cleared by them):
   clears by itself when a landed correction or a rollback removes the
   header from the landed queue; wait.
 - `commit_da_frame_events_overflow`: a block's events alone overflow the DA
-  frame. `commit_da_frame_ledger_ceiling`: the base ledger alone exceeds the
-  DA frame. Both refuse the block on every tick. The ledger ceiling needs
-  the ledger to shrink (merges and withdrawals); raise either with the
-  deployment owner if it stays.
+  frame. It refuses the block on every tick; raise it with the deployment
+  owner if it stays.
 - `native_mpf_owner_stuck`: the native MPF child failed the same way
   `MPF_NATIVE_OWNER_RESTART_LIMIT` times in a row, or its binary is not the
   pinned one. The owner restarts it no more. Read the child's error, fix the

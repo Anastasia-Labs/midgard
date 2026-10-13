@@ -46,7 +46,7 @@ export const submitTransactionOutputNonCanonicalStep04 = async ({
       "transaction-output-non-canonical: terminal scan does not contradict verdict",
     );
   }
-  const stepIndex = 3;
+  const stepIndex = 4;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
@@ -85,7 +85,7 @@ export const submitTransactionOutputNonCanonicalStep04 = async ({
     lucid,
     family: "transaction-output-non-canonical",
     stepIndex,
-    step: contracts.steps[3],
+    step: contracts.steps[4],
     computationThread: contracts.computationThread,
     fraudProof: contracts.fraudProof,
     signer,

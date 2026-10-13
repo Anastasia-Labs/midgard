@@ -1,10 +1,9 @@
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   EMPTY_MERKLE_TREE_ROOT,
 } from "@al-ft/midgard-sdk";
 
-import { retainedPayloadReplaySource } from "../../src/retained-payload-ledger-at.js";
+import { retainedPayloadReplaySource } from "../../src/retained-payload-replay-source.js";
 import type { RetainedDaPayloadSource } from "../../src/transition-trace/fetch.js";
 import type {
   CompleteCanonicalReplay,
@@ -16,6 +15,7 @@ import {
   createHeaderClassifier,
 } from "../../src/workflow/header-classifier.js";
 import type { FraudProofReleaseFinalityAuthority } from "../../src/workflow/release-finality-policy.js";
+import { fixtureLedgerAt } from "./fixture-ledger.js";
 
 /** Runs the production classifier against retained bytes and an L1 observation. */
 export const classifyRetainedReasonFixture = async ({
@@ -76,7 +76,6 @@ export const classifyRetainedReasonFixture = async ({
     },
   ];
   const classifier = await createHeaderClassifier({
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint,
     replayer,
     releaseFinalityAuthority,
@@ -96,8 +95,8 @@ export const classifyRetainedReasonFixture = async ({
       }),
     sources: replaySource.sources,
     ...(replayContext === undefined ? {} : { replayContext }),
-    // The fixture's empty predecessor is supplied directly; retained bytes
-    // supply the challenged block's post ledger.
+    // The fixture's empty predecessor is supplied directly; the fixture
+    // ledger recorded for each retained header supplies the others.
     ...(replayContext === undefined &&
     (predecessor !== undefined ||
       observation.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT)
@@ -107,7 +106,9 @@ export const classifyRetainedReasonFixture = async ({
             headerHash === observation.header.prevHeaderHash &&
             observation.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT
               ? []
-              : await replaySource.ledgerAt(headerHash),
+              : await fixtureLedgerAt({ sources: replaySource.sources })(
+                  headerHash,
+                ),
         }
       : {}),
   });

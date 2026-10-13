@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -40,7 +41,8 @@ const hashHeader = (header: SDK.Header): Promise<string> =>
 /**
  * Commits one block with the real `CommitBlockHeader` (the SDK builder the
  * node uses) after the queue's tail, signed by the responder as the
- * scheduler's active operator. The header is empty (no events), valid for
+ * scheduler's active operator. The header carries one placeholder deposit
+ * and nothing else (a committed block carries at least one event), is valid for
  * `validForMs` from now (or over an explicit `validity` interval), with
  * `end_time = validTo - 1`, and carries over from its anchor (the confirmed
  * state for an empty queue, else the tail).
@@ -99,8 +101,14 @@ export const commitAvailabilityBlock = async (
     utxosRoot: anchor.utxosRoot,
     withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
+    // One placeholder deposit: a committed block carries at least one event.
+    depositsRoot: h32(0xd5),
+    transitionTraceRoot: h32(0xd5),
+    eventToStepRoot: h32(0xd5),
+    depositCount: 1n,
+    totalEventCount: 1n,
+    transitionStepCount: 1n,
     startTime: anchor.endTime,
     endTime: BigInt(validTo - 1),
     // block_time is validTo - 1, the last millisecond of the slot before

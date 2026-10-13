@@ -46,10 +46,9 @@ import type {
  * recomputes their PHAS root with the canonical helper.
  *
  * Every value is canonicalised by `buildCanonicalMidgardLedgerEntryOutputMaterial`,
- * the exact descriptor builder the canonical reconstruction uses for
- * `block_body.utxos` (reconstruct.ts:816-826), so the root computed here is
- * comparable to the header's committed roots by construction rather than by
- * agreement.
+ * the exact descriptor builder the header's `utxos_root` trie uses, so the
+ * root computed here is comparable to the header's committed roots by
+ * construction rather than by agreement.
  */
 export const watcherBlockReplayPriorState = async (
   entries: readonly WatcherBlockReplayPriorUtxo[],

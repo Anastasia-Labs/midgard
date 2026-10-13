@@ -3,14 +3,12 @@ import {
   buildDoubleSpendFaultProofContracts,
   buildFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
-  buildValidationTraceDisputeFaultProofContracts,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   FAULT_PROOF_SHARED_TITLES,
   type FraudProofCatalogueDeploymentInfo,
   INVALID_RANGE_FAULT_PROOF_TITLES,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   TRANSITION_TRACE_YIELD_TITLES,
-  VALIDATION_TRACE_DISPUTE_STEP_COUNT,
 } from "@al-ft/midgard-sdk";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -20,7 +18,6 @@ import {
   resolveDoubleSpendDeploymentContracts,
   resolveInvalidRangeDeploymentContracts,
   resolveTransitionTraceDeploymentContracts,
-  resolveValidationTraceDisputeDeploymentContracts,
 } from "../src/index.js";
 import { resolveNonExistentInputNoIndexInit } from "../src/submit-init.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "../src/transition-trace/yield-references.js";
@@ -177,9 +174,9 @@ describe("fault-proof deployment contract resolution", () => {
                 categories: {
                   ...fraudProofCatalogue.categories,
                   nonExistentInputNoIndex: {
-                    ...fraudProofCatalogue.categories.nonExistentInputNoIndex,
+                    ...fraudProofCatalogue.categories.nonExistentInputNoIndex!,
                     membershipProofCbor:
-                      fraudProofCatalogue.categories.doubleSpend
+                      fraudProofCatalogue.categories.doubleSpend!
                         .membershipProofCbor,
                   },
                 },
@@ -297,9 +294,9 @@ describe("fault-proof deployment contract resolution", () => {
       categories: {
         ...fraudProofCatalogue.categories,
         invalidRange: {
-          ...fraudProofCatalogue.categories.invalidRange,
+          ...fraudProofCatalogue.categories.invalidRange!,
           membershipProofCbor:
-            fraudProofCatalogue.categories.doubleSpend.membershipProofCbor,
+            fraudProofCatalogue.categories.doubleSpend!.membershipProofCbor,
         },
       },
     };
@@ -398,107 +395,6 @@ describe("fault-proof deployment contract resolution", () => {
       resolved.contracts.transitionTrace.route,
     );
   });
-
-  it("resolves the required V1 validation-dispute category and rejects an incomplete catalogue", async () => {
-    const blueprint = readBlueprint();
-    const contracts = await Effect.runPromise(
-      buildValidationTraceDisputeFaultProofContracts({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-        referenceScriptAuthPolicyId: validatorToScriptHash({
-          type: "Native",
-          script: referenceScriptAuthNativeScript,
-        }),
-      }),
-    );
-    const proofCatalogue = await catalogueFor({
-      validationTraceDispute:
-        contracts.validationTraceDispute.firstStep.spendingScriptHash,
-    });
-    const deploymentInfo = deploymentManifest({
-      hubOracleMint: { scriptHash: h28 },
-      fraudProofCatalogueMint: {
-        scriptHash: h28b,
-        fraudProofCatalogue: proofCatalogue,
-      },
-      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-      validationTraceDispute: {
-        scriptHash:
-          contracts.validationTraceDispute.firstStep.spendingScriptHash,
-      },
-      cekProgramMaterialSpend: {
-        scriptHash:
-          contracts.validationTraceDispute.cekProgramMaterial
-            .spendingScriptHash,
-      },
-    });
-
-    const resolved = await resolveValidationTraceDisputeDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network: "Preprod",
-    });
-    expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000006");
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(
-      VALIDATION_TRACE_DISPUTE_STEP_COUNT,
-    );
-    expect(
-      resolved.contracts.validationTraceDispute.semanticResolvers,
-    ).toHaveLength(91);
-    expect(
-      resolved.contracts.validationTraceDispute.prepareResolvers,
-    ).toHaveLength(14);
-    expect(resolved.contracts.validationTraceDispute.resolvers).toHaveLength(
-      14,
-    );
-    expect(resolved.cekProgramMaterialScriptHash).toBe(
-      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptHash,
-    );
-    expect(resolved.cekProgramMaterialAddress).toBe(
-      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress,
-    );
-
-    await expect(
-      resolveValidationTraceDisputeDeploymentContracts({
-        blueprint,
-        deploymentInfo: deploymentManifest({
-          ...deploymentInfo.contracts,
-          cekProgramMaterialSpend: { scriptHash: "ff".repeat(28) },
-        }),
-        network: "Preprod",
-      }),
-    ).rejects.toThrow(/cekProgramMaterialSpend script mismatch/u);
-
-    const { validationTraceDispute: _omitted, ...incompleteCategories } =
-      proofCatalogue.categories;
-    await expect(
-      resolveValidationTraceDisputeDeploymentContracts({
-        blueprint,
-        deploymentInfo: deploymentManifest({
-          ...deploymentInfo.contracts,
-          fraudProofCatalogueMint: {
-            scriptHash: h28b,
-            fraudProofCatalogue: {
-              ...proofCatalogue,
-              categories: incompleteCategories,
-            },
-          },
-        }),
-        network: "Preprod",
-      }),
-    ).rejects.toThrow(/categories\.validationTraceDispute/u);
-    // This row resolves the full V1 validation-dispute catalogue twice, which
-    // measures ~22 s uncontended but timed out at its previous 60,000 ms
-    // budget in 2 of 4 Midgard Node CI runs (#616) on a step that itself runs
-    // ~46 minutes on shared runners. That is runner contention, not a
-    // slowdown, so the budget follows midgard-node's 420 s precedent for
-    // contention-exposed steps rather than being absorbed into an accepted-red
-    // map. If it still times out here, #616 asks for a diagnosis instead of
-    // another raise.
-  }, 420_000);
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
     const blueprint = readBlueprint();

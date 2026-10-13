@@ -3,10 +3,7 @@ import {
   encodeMidgardNativeTxWitnessSetCompact,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import {
-  acceptedVerdictSubject,
-  EMPTY_MERKLE_TREE_ROOT,
-} from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -30,7 +27,10 @@ import {
 } from "./support/committed-field-shape-emulator.js";
 import { network } from "./support/emulator/blueprints.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
-import { makeHeader } from "./support/emulator/header-fixtures.js";
+import {
+  makeHeader,
+  withPlaceholderDeposit,
+} from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
@@ -64,10 +64,8 @@ describe("redeemer-canonicity accepted lifecycle", () => {
       predecessorEndTime: scenario.setup.header.endTime,
       emulator: harness.emulator,
     });
-    const successorBase = makeHeader(
-      credential.hash,
-      successorStart,
-      EMPTY_MERKLE_TREE_ROOT,
+    const successorBase = withPlaceholderDeposit(
+      makeHeader(credential.hash, successorStart),
     );
     const successor = await submitSuccessorBlockTx({
       lucid: harness.funderLucid,

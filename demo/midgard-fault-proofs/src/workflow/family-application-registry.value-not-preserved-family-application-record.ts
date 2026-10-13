@@ -11,17 +11,6 @@ import {
 import { REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES } from "../remove-fraudulent-block.js";
 import { NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY } from "../runtime.js";
 import {
-  VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
-  VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
-  VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
-} from "../validation-dispute/workflow-family.js";
-import {
-  createManifestBoundValidationTraceDisputeWorkflow,
-  type ManifestBoundValidationTraceDisputeWorkflow,
-  type ManifestBoundValidationTraceDisputeWorkflowConfig,
-  runOrResumeManifestBoundValidationTraceDisputeWorkflow,
-} from "../validation-dispute/workflow-v1.js";
-import {
   CONSERVATION_POSITIONS,
   conservationManifestName,
 } from "../value-not-preserved/contracts.js";
@@ -31,27 +20,20 @@ import {
   type ManifestBoundValueConservationWorkflowConfig,
   runOrResumeManifestBoundValueConservationWorkflow,
 } from "../value-not-preserved/workflow.js";
-import type { ValidationTraceChallenge } from "./challenge-authority.js";
 import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "./cursor-family-runtime.js";
 import {
   defineFamilyApplication,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
-  type FamilyCommonInfrastructure,
 } from "./family-application.js";
-import {
-  commonBoundConfigFields,
-  requiredDecisionDigest,
-} from "./family-application-registry.linear-family-application-record.js";
+import { commonBoundConfigFields } from "./family-application-registry.linear-family-application-record.js";
 import {
   requiredReference,
   resolvedRoles,
   resolvedSteps,
-  rolesOf,
   stepRoster,
   suppliedReplayContext,
 } from "./family-application-registry.resolve-roster-parts.js";
-import { type FamilyCategory } from "./family-definition.js";
 import {
   createManifestBoundMissingSignatureWorkflow,
   type ManifestBoundMissingSignatureWorkflow,
@@ -253,85 +235,10 @@ export const VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD =
   });
 
 /**
- * The freshly admitted validation-trace challenge for this decision, obtained
- * from the host's port, or nothing when the invocation carries no port. The
- * shared loop refuses a missing port before `bindConfig` runs unless the
- * invocation is reconciliation-only, which never reaches a dispute move; the
- * family's own execution fail-closes challenge-free.
- */
-const optionalValidationChallenge = async (
-  category: FamilyCategory,
-  infrastructure: FamilyCommonInfrastructure,
-): Promise<Readonly<{ challenge?: ValidationTraceChallenge }>> => {
-  if (infrastructure.validationChallenge === undefined) return {};
-  return {
-    challenge: await infrastructure.validationChallenge.currentChallenge({
-      headerHash: infrastructure.headerHash,
-      decisionDigest: requiredDecisionDigest(category, infrastructure),
-    }),
-  };
-};
-
-/**
- * The sole interactive family, and the one record that requires the host's
- * validation-challenge port. Its roster is the family's own three contract
- * tables: the six dispute control scripts, the three witnesses the dispute
- * submitters attach by reference, and the state-queue removal set.
- */
-export const VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD =
-  defineFamilyApplication<
-    "validationTraceDispute",
-    ManifestBoundValidationTraceDisputeWorkflowConfig,
-    ManifestBoundValidationTraceDisputeWorkflow
-  >({
-    category: "validationTraceDispute",
-    roster: Object.freeze({
-      ...VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
-      ...VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
-      ...VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
-    }),
-    requires: ["validationChallenge"],
-    bindConfig: async ({ infrastructure, references }) =>
-      Object.freeze({
-        ...commonBoundConfigFields(infrastructure),
-        decisionDigest: requiredDecisionDigest(
-          "validationTraceDispute",
-          infrastructure,
-        ),
-        ...(await optionalValidationChallenge(
-          "validationTraceDispute",
-          infrastructure,
-        )),
-        referenceScripts: Object.freeze({
-          control: resolvedRoles(
-            references,
-            rolesOf(VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES),
-          ),
-          witnesses: resolvedRoles(
-            references,
-            rolesOf(VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES),
-          ),
-          removal: resolvedRoles(
-            references,
-            rolesOf(VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES),
-          ),
-        }),
-      }),
-    constructWorkflow: createManifestBoundValidationTraceDisputeWorkflow,
-    execute: async ({ workflow, sources, journal }) =>
-      await runOrResumeManifestBoundValidationTraceDisputeWorkflow({
-        workflow,
-        sources,
-        journal,
-      }),
-    bindsDecisionDigest: true,
-  });
-
-/**
  * A record as the registry states it for every family at once. A family's own
  * config and workflow types are tied together at its definition site, where
  * `bindConfig`'s result is what `constructWorkflow` consumes; the registry
- * erases them so that one mapped type describes all fifty-five rows. A
+ * erases them so that one mapped type describes every installed row. A
  * consumer that runs a record imports it by name and keeps its full type.
  */
 export type FamilyApplicationRegistryEntry<

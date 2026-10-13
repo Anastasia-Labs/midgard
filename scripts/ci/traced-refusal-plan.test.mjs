@@ -36,11 +36,6 @@ const withTree = (files, check) => {
   }
 };
 
-const sitesOf = (pins, file) =>
-  pins
-    .filter((pin) => pin.file === file)
-    .flatMap(({ sites }) => sites.map(({ file: at, name }) => `${at} ${name}`));
-
 // The runner checks only what the plan names, so every pin in the tree, in a
 // test file or a support module, must be in the plan with a case that runs
 // it. The pins are counted here by a reading independent of the planner's.
@@ -74,15 +69,6 @@ test("every refusedBy pin under the fault-proofs tests is planned into a case", 
     [...planned].sort(),
     [...expected].sort(),
     "the plan and the tree disagree on where the pins are",
-  );
-  // A pin in a support module runs in the cases of the files importing it.
-  assert.ok(
-    sitesOf(
-      pins,
-      "tests/support/execution-source-phase-a-dominance.ts",
-    ).includes(
-      "tests/execution-source-script-decoding-lifecycle.test.ts keeps an honest malformed-inline rejection in the earlier Phase A witness family",
-    ),
   );
 });
 

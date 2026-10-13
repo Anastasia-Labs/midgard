@@ -1,3 +1,4 @@
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData, UTxO } from "@lucid-evolution/lucid";
@@ -42,11 +43,16 @@ type IndexedFraudProof<
   categoryName: CategoryName,
 ];
 
-/** Uses the frozen wire ID map; category presentation order is not identity. */
+/**
+ * The deployment's catalogue entries: every category the deployment profile
+ * does not exclude, in presentation order. Uses the frozen wire ID map;
+ * category presentation order is not identity.
+ */
 export const fraudProofsToIndexedValidators = (
   fraudProofs: SDK.FraudProofs,
+  catalogueCategories: readonly SDK.FraudProofCatalogueCategoryName[] = deploymentFraudProofCatalogueCategories(),
 ): IndexedFraudProof<SDK.FraudProofCatalogueCategoryName>[] => {
-  return SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((fraudProofTitle) => {
+  return catalogueCategories.map((fraudProofTitle) => {
     const categoryIdHex =
       SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[fraudProofTitle];
     const categoryId = Buffer.from(categoryIdHex, "hex");

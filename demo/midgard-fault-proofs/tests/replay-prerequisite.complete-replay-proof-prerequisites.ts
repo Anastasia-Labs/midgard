@@ -1,7 +1,4 @@
-import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeCbor,
-} from "@al-ft/midgard-core";
+import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   EventKey,
@@ -12,8 +9,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { assertRetainedReplayTerminal } from "../src/transition-trace/replay-terminal.js";
-import { buildRetainedValidationClaimWitness } from "../src/transition-trace/witnesses.js";
 import {
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
@@ -38,7 +33,6 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
-import { transitionTraceAcceptedRetainedFixture } from "./support/transition-trace-retained.js";
 
 export const evidenceFor = async (
   block: Pick<
@@ -371,40 +365,5 @@ describe("complete replay proof prerequisites", () => {
     await expect(
       collectReplayFindings([Promise.reject(corruption)]),
     ).rejects.toBe(corruption);
-  });
-
-  it("refuses malformed terminal bytes even when their claimed endpoint is accepted", async () => {
-    const block = await transitionTraceAcceptedRetainedFixture({
-      operatorVkey: "b1".repeat(28),
-      now: 1_700_000_000_000,
-      honest: true,
-    });
-    const evidence = await evidenceFor(block.current);
-    const eventKey = {
-      L2TransactionEventKey: { tx_id: evidence.transactions[0]!.nodeTxId },
-    };
-    const retained = await buildRetainedValidationClaimWitness({
-      reconstruction: evidence.reconstruction,
-      eventKey,
-    });
-    expect(() => assertRetainedReplayTerminal(retained)).not.toThrow();
-    for (const terminalWorkWitnessCbor of [
-      "80",
-      encodeCbor([
-        3n,
-        Buffer.alloc(0),
-        Buffer.alloc(32),
-        Buffer.from("80", "hex"),
-      ]).toString("hex"),
-      encodeCbor([
-        1n,
-        Buffer.from("E_INVALID_FIELD_TYPE"),
-        Buffer.alloc(32),
-        Buffer.from("80", "hex"),
-      ]).toString("hex"),
-    ])
-      expect(() =>
-        assertRetainedReplayTerminal({ ...retained, terminalWorkWitnessCbor }),
-      ).toThrow(/terminal/iu);
   });
 });

@@ -4,6 +4,9 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/canonical_plutus_data_stream_v1.{
+  StreamCanonical, StreamFrameV1, StreamNonCanonical, StreamPaused,
+} as stream
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_output_scan_v1
 use midgard/rejection_reason_v1.{OutputNonCanonical}
@@ -35,6 +38,22 @@ pub type OutputScanStateV1 {
   chunk_hashes: List<ByteArray>,
   control: ledger_output_scan_v1.LedgerOutputScanControlV1,
   outcome: Int,
+}
+
+/// The inline datum of an output whose envelope is canonical, read as
+/// canonical Data a bounded number of nodes per transaction. `cursor` is the
+/// item offset of the next node; `stack_root` is the hash chain of the open
+/// containers (`canonical_plutus_data_stream_v1.stack_root_v1`).
+pub type DatumScanStateV1 {
+  scan: OutputScanStateV1,
+  cursor: Int,
+  stack_root: ByteArray,
+}
+
+/// One datum step's result: read on, or hand the verdict to the terminal.
+pub type DatumStepV1 {
+  ContinueDatum { datum: DatumScanStateV1 }
+  FinishDatum { scan: OutputScanStateV1 }
 }
 
 pub fn bind_output_v1(
@@ -193,6 +212,89 @@ pub fn advance_scan_v1(
           outcome_scanning
         },
       }
+  }
+}
+
+/// The datum step's first state once the envelope scan reaches a canonical
+/// terminal with an inline datum; `None` when the terminal is final.
+pub fn open_datum_v1(scan: OutputScanStateV1) -> Option<DatumScanStateV1> {
+  if and {
+    scan.outcome == outcome_canonical,
+    scan.control.datum_offset >= 0,
+  } {
+    Some(
+      DatumScanStateV1 {
+        scan,
+        cursor: scan.control.datum_offset,
+        stack_root: stream.empty_stack_root,
+      },
+    )
+  } else {
+    None
+  }
+}
+
+/// Reads up to `node_budget` nodes of the datum over `window`: the item chunk
+/// holding the cursor, followed by the next chunk while the datum continues
+/// past it. `revealed` and `tail_root` open the stored container stack.
+pub fn advance_datum_v1(
+  datum: DatumScanStateV1,
+  window: ByteArray,
+  revealed: List<StreamFrameV1>,
+  tail_root: ByteArray,
+  node_budget: Int,
+) -> DatumStepV1 {
+  let DatumScanStateV1 { scan, cursor, stack_root } = datum
+  expect stream.stack_root_v1(revealed, tail_root) == stack_root
+  let datum_start = scan.control.datum_offset
+  let datum_end = datum_start + scan.control.datum_length
+  let chunk_index = minimum(cursor, scan.item_length - 1) / scan_chunk_bytes
+  let base = chunk_index * scan_chunk_bytes
+  let current_length = minimum(scan_chunk_bytes, scan.item_length - base)
+  let next_length = if datum_end > base + current_length {
+    minimum(scan_chunk_bytes, scan.item_length - base - current_length)
+  } else {
+    0
+  }
+  let window_length = current_length + next_length
+  expect bytearray.length(window) == window_length
+  expect Some(current_hash) = list.at(scan.chunk_hashes, chunk_index)
+  expect
+    builtin.blake2b_256(bytearray.slice(window, 0, current_length - 1)) == current_hash
+  expect
+    next_length == 0 || list.at(scan.chunk_hashes, chunk_index + 1) == Some(
+      builtin.blake2b_256(
+        bytearray.slice(window, current_length, window_length - 1),
+      ),
+    )
+  let full = base + window_length >= datum_end
+  let bytes = if full {
+    bytearray.take(window, datum_end - base)
+  } else {
+    window
+  }
+  when
+    stream.run_v1(
+      bytes,
+      full,
+      datum_start - base,
+      cursor - base,
+      revealed,
+      tail_root,
+      node_budget,
+    )
+  is {
+    StreamCanonical -> FinishDatum(scan)
+    StreamNonCanonical ->
+      FinishDatum(OutputScanStateV1 { ..scan, outcome: outcome_non_canonical })
+    StreamPaused { offset, frames, .. } ->
+      ContinueDatum(
+        DatumScanStateV1 {
+          scan,
+          cursor: base + offset,
+          stack_root: stream.stack_root_v1(frames, tail_root),
+        },
+      )
   }
 }
 

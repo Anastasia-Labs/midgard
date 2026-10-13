@@ -46,23 +46,25 @@ type BackfillDeps<R> = {
     DatabaseError,
     R
   >;
+  /**
+   * Stores the payload and pins the scripts the block's post-state ledger
+   * references. The payload carries no UTxO set, so the outputs come from
+   * the node's own ledger.
+   */
   readonly upsertAvailable: (
     input: DaPayloadsDB.InsertInput,
+    ledgerOutputs: readonly Buffer[],
   ) => Effect.Effect<void, DatabaseError, R>;
-  readonly materializeUtxos: (
+  readonly materializeLedgerOutputs: (
     record: PendingBlockFinalizationsDB.Record,
-  ) => Effect.Effect<
-    readonly { readonly outref: Buffer; readonly output: Buffer }[],
-    DatabaseError,
-    R
-  >;
+  ) => Effect.Effect<readonly Buffer[], DatabaseError, R>;
 };
 
 const defaultDeps: BackfillDeps<Database> = {
   retrieveMissingRecords:
     PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads,
   retrieveJournalByHeaderHash: PendingBlockFinalizationsDB.retrieveByHeaderHash,
-  upsertAvailable: (input) =>
+  upsertAvailable: (input, ledgerOutputs) =>
     Effect.gen(function* () {
       const body = yield* Effect.tryPromise({
         try: async () =>
@@ -101,7 +103,7 @@ const defaultDeps: BackfillDeps<Database> = {
           yield* DaPayloadsDB.upsertAvailable(input);
           yield* pinRetainedStateScriptRefs({
             headerHash: input.header_hash,
-            outputs: body.utxos.map((entry) => Buffer.from(entry[1], "hex")),
+            outputs: ledgerOutputs,
             material,
           });
         }),
@@ -112,14 +114,9 @@ const defaultDeps: BackfillDeps<Database> = {
         "Failed to persist retained backfill state",
       ),
     ),
-  materializeUtxos: (record) =>
+  materializeLedgerOutputs: (record) =>
     materializeConfirmedLedgerSnapshot(record).pipe(
-      Effect.map((snapshot) =>
-        snapshot.entries.map((entry) => ({
-          outref: entry.outref,
-          output: entry.output,
-        })),
-      ),
+      Effect.map((snapshot) => snapshot.entries.map((entry) => entry.output)),
     ),
 };
 
@@ -217,12 +214,9 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
 
       const result = yield* Effect.either(
         Effect.gen(function* () {
-          const utxos = yield* deps.materializeUtxos(record);
-          const insert = yield* buildDaPayloadInsert({
-            record,
-            utxos,
-          });
-          yield* deps.upsertAvailable(insert);
+          const ledgerOutputs = yield* deps.materializeLedgerOutputs(record);
+          const insert = yield* buildDaPayloadInsert({ record });
+          yield* deps.upsertAvailable(insert, ledgerOutputs);
         }),
       );
       if (result._tag === "Left") {

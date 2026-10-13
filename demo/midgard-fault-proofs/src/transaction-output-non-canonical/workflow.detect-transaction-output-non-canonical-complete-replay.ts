@@ -155,6 +155,7 @@ export type TransactionOutputNonCanonicalRuntimeLoader = Readonly<{
       | "submitStep01"
       | "submitStep02"
       | "submitStep03"
+      | "submitStep03Datum"
       | "submitStep04"
       | "removeDescendants"
       | "cancel";
@@ -200,7 +201,9 @@ export const createTransactionOutputNonCanonicalRawL1StageResolver =
           ? 2
           : action === "submitStep03"
             ? 3
-            : 4;
+            : action === "submitStep03Datum"
+              ? 4
+              : 5;
     if (stage.kind !== "step" || stage.step !== expectedStep) {
       throw new Error(
         `transactionOutputNonCanonical ${action} differs from authenticated raw-L1 stage`,

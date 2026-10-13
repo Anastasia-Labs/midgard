@@ -13,7 +13,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { EventKey, ForcedInclusionTxV1 } from "@al-ft/midgard-sdk";
 import {
   buildMidgardCanonicalCekProgram,
-  replayValidationMachineEvent,
   validatePhaseASingle,
   validationMachineLedgerRoot,
 } from "@al-ft/midgard-validation";
@@ -27,6 +26,7 @@ import {
   outRefFromByte,
   plutusV3ScriptWitness,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect, Exit } from "effect";
 import { encodeForcedInclusionValueV1 } from "midgard-node/database/forcedTransactions.encode-forced-inclusion-value-v1";
@@ -235,7 +235,6 @@ export async function journey(
             blockSlot: context.blockSlot,
             bucketConcurrency: 1,
             consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-            scriptEvaluationsByTxId: new Map(),
           }),
         );
   const normalEventKey: SDK.EventKey = {

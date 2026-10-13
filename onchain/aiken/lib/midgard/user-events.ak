@@ -136,8 +136,12 @@ fn authenticate_new_event(
   // serialized nonce output reference to get the 32 bytes long nonce.
   let nonce = out_ref_to_nonce(nonce_input_out_ref)
 
-  // 1. This event NFT must be minted with a quantity of 1.
-  expect assets.quantity_of(mint, own_policy, nonce) == 1
+  // 1. Authenticate exactly one event NFT under this policy. Other policy
+  // mints do not authorize additional events under this event policy.
+  expect [Pair(minted_asset_name, 1)] = mint
+    |> assets.tokens(own_policy)
+    |> dict.to_pairs
+  expect minted_asset_name == nonce
 
   // Script hash of the witness script, required to be registered in this
   // transaction.

@@ -22,6 +22,7 @@ import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-bounda
 import type { TransactionOutputNonCanonicalContracts } from "./contracts.js";
 import {
   TransactionOutputScanControlSchema,
+  TransactionOutputStep03DatumDatumSchema,
   TransactionOutputStep03DatumSchema,
   TransactionOutputStep03RedeemerSchema,
 } from "./schemas.js";
@@ -113,11 +114,11 @@ export const submitTransactionOutputNonCanonicalStep03 = async ({
   const nextControl = evidence.scanControls[controlIndex + 1];
   const outcome =
     nextControl === undefined
-      ? evidence.canonical
+      ? evidence.envelopeCanonical
         ? -1n
         : 2n
       : controlIndex + 1 === evidence.scanControls.length - 1 &&
-          evidence.canonical
+          evidence.envelopeCanonical
         ? 1n
         : 0n;
   if (outcome < 0n)
@@ -131,22 +132,34 @@ export const submitTransactionOutputNonCanonicalStep03 = async ({
     family: "transaction-output-non-canonical",
     stepIndex,
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        subject: evidence.subject,
-        output_index: BigInt(evidence.itemIndex),
-        item_length: BigInt(evidence.itemLength),
-        item_hash: evidence.itemHash,
-        chunk_hashes: evidence.chunkHashes,
-        control: transactionOutputScanControlData(selectedControl),
-        outcome,
-      },
-    } as never,
-    TransactionOutputStep03DatumSchema as never,
-  );
-  const nextStepIndex = outcome === 0n ? 2 : 3;
+  const nextScan = {
+    subject: evidence.subject,
+    output_index: BigInt(evidence.itemIndex),
+    item_length: BigInt(evidence.itemLength),
+    item_hash: evidence.itemHash,
+    chunk_hashes: evidence.chunkHashes,
+    control: transactionOutputScanControlData(selectedControl),
+    outcome,
+  };
+  // A canonical envelope with an inline datum opens the datum step.
+  const opensDatum = outcome === 1n && selectedControl.datumOffset >= 0;
+  const nextDatum = opensDatum
+    ? Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            scan: nextScan,
+            cursor: BigInt(selectedControl.datumOffset),
+            stack_root: "",
+          },
+        } as never,
+        TransactionOutputStep03DatumDatumSchema as never,
+      )
+    : Data.to(
+        { fraud_prover: signer.paymentKeyHash, data: nextScan } as never,
+        TransactionOutputStep03DatumSchema as never,
+      );
+  const nextStepIndex = outcome === 0n ? 2 : opensDatum ? 3 : 4;
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
@@ -208,6 +221,13 @@ export const submitTransactionOutputNonCanonicalStep03 = async ({
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    /** The envelope scan finished. */
     terminal: outcome !== 0n,
+    nextStage:
+      outcome === 0n
+        ? ("step03" as const)
+        : opensDatum
+          ? ("step03Datum" as const)
+          : ("step04" as const),
   };
 };

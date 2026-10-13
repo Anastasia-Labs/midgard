@@ -3,7 +3,6 @@ import {
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
-  EMPTY_MERKLE_TREE_ROOT,
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
 } from "@al-ft/midgard-sdk";
@@ -52,6 +51,7 @@ import {
   publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
   submitSetupTx,
+  withPlaceholderDeposit,
 } from "./submit-init-emulator-shared.js";
 
 export const buildProvedDoubleSpendFixture = async ({
@@ -209,10 +209,8 @@ export const buildProvedDoubleSpendFixture = async ({
             predecessorEndTime: previousHeader.endTime,
             emulator,
           });
-      const baseSuccessorHeader = makeHeader(
-        funderPaymentCredential.hash,
-        successorStart,
-        EMPTY_MERKLE_TREE_ROOT,
+      const baseSuccessorHeader = withPlaceholderDeposit(
+        makeHeader(funderPaymentCredential.hash, successorStart),
       );
       const successorHeader = {
         ...baseSuccessorHeader,

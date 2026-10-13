@@ -71,7 +71,6 @@ export {
   type PreparedPendingSubmission,
   type PrepareInput,
   type Record,
-  type UtxoPayloadSizeAggregate,
 } from "./pendingBlockFinalizations.parse-ledger-delta.js";
 export { parsePendingBlockFinalization } from "./pendingBlockFinalizations.parse-pending-block-finalization.js";
 export { preparePendingSubmission } from "./pendingBlockFinalizations.prepare-pending-submission.js";

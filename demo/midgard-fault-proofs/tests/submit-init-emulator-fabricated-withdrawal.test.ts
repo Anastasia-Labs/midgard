@@ -1286,10 +1286,10 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       proverSigner.selectWallet(proverLucid);
       const fee = selectFeeInput(await proverLucid.wallet().getUtxos());
       expect(fee.scriptRef == null && fee.datum == null).toBe(true);
-      const validity = fabricatedProofValidity(
-        state.header_end_time,
-        harness.emulator.now(),
-      );
+      const validity = fabricatedProofValidity({
+        nodeBlockTime: state.header_block_time,
+        now: harness.emulator.now(),
+      });
       // Test-only construction deliberately bypasses only the honest-content
       // preflight. Funding, indices, reference script, signer, time bounds and
       // local UPLC evaluation follow the production stage03 builder.

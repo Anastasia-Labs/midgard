@@ -82,15 +82,16 @@ export const fixtureBlockSlot = (
 };
 
 /**
- * `header` as committed at block_time = endTime: its block_slot is the slot
- * whose last millisecond is endTime under the deployment's mapping.
+ * `header` as committed at `blockTime` (default endTime): its block_slot is the
+ * slot whose last millisecond is that block_time under the deployment's mapping.
  */
 export const withCommitSlot = (
   l1SlotConfig: L1SlotConfig,
   header: Header,
+  blockTime: bigint = header.endTime,
 ): Header => ({
   ...header,
-  blockSlot: commitSlotForBlockTime(l1SlotConfig, header.endTime),
+  blockSlot: commitSlotForBlockTime(l1SlotConfig, blockTime),
 });
 
 export const makeHeader = (
@@ -132,6 +133,42 @@ export const makeHeader = (
     protocolVersion: BigInt(MIDGARD_PROTOCOL_VERSION),
   };
 };
+
+/**
+ * The event root a placeholder event stands under in fixture headers that are
+ * committed but whose own events no test reads.
+ */
+export const PLACEHOLDER_EVENT_ROOT = h32("d5");
+
+const withPlaceholderEvent = (
+  header: Header,
+  kind: "deposit" | "withdrawal",
+): Header => {
+  if (header.totalEventCount !== 0n)
+    throw new Error("a placeholder event goes on a header with no events");
+  return {
+    ...header,
+    ...(kind === "deposit"
+      ? { depositsRoot: PLACEHOLDER_EVENT_ROOT, depositCount: 1n }
+      : { withdrawalsRoot: PLACEHOLDER_EVENT_ROOT, withdrawalCount: 1n }),
+    transitionTraceRoot: PLACEHOLDER_EVENT_ROOT,
+    eventToStepRoot: PLACEHOLDER_EVENT_ROOT,
+    totalEventCount: 1n,
+    transitionStepCount: 1n,
+  };
+};
+
+/**
+ * `header` carrying one placeholder deposit, so a fixture block that has no
+ * events of its own can be committed (a committed block carries at least one
+ * event). Refuses a header that already carries events.
+ */
+export const withPlaceholderDeposit = (header: Header): Header =>
+  withPlaceholderEvent(header, "deposit");
+
+/** As `withPlaceholderDeposit`, with the placeholder event a withdrawal. */
+export const withPlaceholderWithdrawal = (header: Header): Header =>
+  withPlaceholderEvent(header, "withdrawal");
 
 export const transitionTraceOutRef = (byte: string): OutputReference => ({
   transactionId: h32(byte),

@@ -146,7 +146,7 @@ export const submitSchedulerAppointmentTx = async ({
 
 /**
  * Lower bound of a header commit's validity range: 60 s before the header
- * start. The upper bound is `header.endTime + 1`.
+ * start. The upper bound is the block_time (default `header.endTime`) + 1.
  */
 export const headerCommitValidFrom = (header: Header): bigint =>
   header.startTime - 60_000n;
@@ -167,6 +167,7 @@ export const submitHeaderCommitTx = async ({
   appointedSchedulerUtxo,
   activeOperatorNode,
   confirmedStateRefInput,
+  blockTime = header.endTime,
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: SetupContracts;
@@ -179,6 +180,8 @@ export const submitHeaderCommitTx = async ({
   readonly appointedSchedulerUtxo: UTxO;
   readonly activeOperatorNode: UTxO;
   readonly confirmedStateRefInput?: UTxO;
+  /** The commit's inclusive upper bound; `header.blockSlot` must name it. */
+  readonly blockTime?: bigint;
 }): Promise<{
   readonly fraudulentBlockUtxo: UTxO;
   readonly continuedActiveOperatorNode: UTxO;
@@ -194,7 +197,7 @@ export const submitHeaderCommitTx = async ({
   );
   const commitFeeInput = await firstWalletUtxo(lucid, "commit fee input");
   const commitValidFrom = headerCommitValidFrom(header);
-  const commitValidTo = header.endTime + 1n;
+  const commitValidTo = blockTime + 1n;
   const continuedActiveOperatorDatum = encodeLinkedListNodeView({
     key: { Key: { key: header.operatorVkey } },
     next: "Empty",

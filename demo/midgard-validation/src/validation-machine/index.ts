@@ -5,10 +5,7 @@ export {
   type ScriptDiscoveryTraceControl,
 } from "./control-encoding.js";
 export {
-  replayValidationMachineEvent,
   replayValidationVerdictEvent,
-  type ValidationMachineEventReplay,
-  type ValidationMachineEventReplayInput,
   type ValidationVerdictEvent,
   type ValidationVerdictEventInput,
 } from "./event-replay.js";

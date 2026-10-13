@@ -228,12 +228,16 @@ export type FraudProofCatalogueCategoryDeploymentInfo = {
   readonly membershipProofCbor: string;
 };
 
+/**
+ * A deployment's catalogue. `categories` holds the categories its profile
+ * carries; an excluded category is absent and has no membership proof.
+ */
 export type FraudProofCatalogueDeploymentInfo<
   CategoryName extends string = FraudProofCatalogueCategoryName,
 > = {
   readonly root: MerkleRoot;
   readonly categories: Readonly<
-    Record<CategoryName, FraudProofCatalogueCategoryDeploymentInfo>
+    Partial<Record<CategoryName, FraudProofCatalogueCategoryDeploymentInfo>>
   >;
 };
 

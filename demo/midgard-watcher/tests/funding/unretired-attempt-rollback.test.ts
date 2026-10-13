@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -30,7 +31,7 @@ it("re-lands the exact bytes of a confirmed, unretired attempt rolled back after
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
-    launchScope: fixture.old.launchScope,
+    launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
     protocolParameters: await runtimeAuthority(deploymentIdentity, 45, 3, 600),
     protocolParameterHistory: fixture.protocolParameterHistory,

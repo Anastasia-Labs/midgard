@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import {
   closeWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
@@ -45,7 +46,7 @@ const startOver = async (damage: (databasePath: string) => void) => {
     path: join(test.journalRoot, "watcher.sqlite"),
     authenticationKey: Buffer.alloc(32, 0x91),
     createProtocolParameters: async () => test.protocolParameters,
-    launchScope: test.old.launchScope,
+    launchScope: installedLaunchScope(test.old.launchScope),
     journalRoot: test.journalRoot,
   });
   runtime.store.close();

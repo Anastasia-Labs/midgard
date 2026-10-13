@@ -7,7 +7,9 @@
 use aiken/primitive/bytearray
 use fraud_proofs/transaction_output_non_canonical/step_02 as step_02_validator
 use fraud_proofs/transaction_output_non_canonical/step_03 as step_03_validator
+use fraud_proofs/transaction_output_non_canonical/step_03_datum as step_03_datum_validator
 use fraud_proofs/transaction_output_non_canonical/step_04 as step_04_validator
+use midgard/canonical_plutus_data_stream_v1 as stream
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
@@ -19,6 +21,9 @@ use midgard/fraud_proofs/transaction_output_non_canonical/step_02.{
 }
 use midgard/fraud_proofs/transaction_output_non_canonical/step_03.{
   Args as Step03Args,
+}
+use midgard/fraud_proofs/transaction_output_non_canonical/step_03_datum.{
+  Args as Step03DatumArgs,
 }
 use midgard/fraud_proofs/transaction_output_non_canonical/step_04.{
   Args as Step04Args,
@@ -172,6 +177,10 @@ fn last_scanning(state: rule.OutputScanStateV1) -> rule.OutputScanStateV1 {
   }
 }
 
+/// A script hash no successor in these tests pays to.
+const unused_script_hash =
+  #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
 fn run_step_03(
   state: rule.OutputScanStateV1,
   window: ByteArray,
@@ -179,8 +188,27 @@ fn run_step_03(
   same_step: Bool,
 ) -> Bool {
   let next_state_data: Data = next_state
-  step_03_validator.main.spend(
+  run_step_03_to(
+    unused_script_hash,
     fixture.next_step_script_hash,
+    state,
+    window,
+    next_state_data,
+    same_step,
+  )
+}
+
+fn run_step_03_to(
+  datum_step: ByteArray,
+  terminal_step: ByteArray,
+  state: rule.OutputScanStateV1,
+  window: ByteArray,
+  next_state_data: Data,
+  same_step: Bool,
+) -> Bool {
+  step_03_validator.main.spend(
+    datum_step,
+    terminal_step,
     fixture.computation_thread_policy_id,
     Some(
       ct.StepDatum {
@@ -253,6 +281,227 @@ test step_03_forged_checkpoint_refuses() fail {
 test step_03_replayed_checkpoint_refuses() fail {
   let state = initial_forced_scan()
   run_step_03(state, committed_output(), state, True)
+}
+
+// ## Step 03: routing to the datum step
+
+/// An output carrying `datum` inline.
+fn datum_output(datum: ByteArray) -> ByteArray {
+  encode_midgard_tx_output(
+    MidgardTxOutput {
+      ..fixture.sample_native_output(),
+      datum_cbor: Some(datum),
+    },
+  )
+}
+
+fn scan_of(output: ByteArray) -> rule.OutputScanStateV1 {
+  rule.initial_scan_v1(rule.bind_output_v1(rejected(), 0), output)
+}
+
+/// The last envelope checkpoint before its terminal transition.
+fn last_scanning_of(output: ByteArray) -> rule.OutputScanStateV1 {
+  last_before(scan_of(output), output)
+}
+
+fn last_before(
+  state: rule.OutputScanStateV1,
+  output: ByteArray,
+) -> rule.OutputScanStateV1 {
+  let next = rule.advance_scan_v1(state, output)
+  if next.outcome == rule.outcome_scanning {
+    last_before(next, output)
+  } else {
+    state
+  }
+}
+
+fn envelope_terminal(output: ByteArray) -> rule.OutputScanStateV1 {
+  rule.advance_scan_v1(last_scanning_of(output), output)
+}
+
+fn opened_datum(output: ByteArray) -> rule.DatumScanStateV1 {
+  expect Some(datum) = rule.open_datum_v1(envelope_terminal(output))
+  datum
+}
+
+test step_03_canonical_envelope_with_datum_opens_the_datum_step() {
+  let output = datum_output(#"d8799f0102ff")
+  let next: Data = opened_datum(output)
+  run_step_03_to(
+    fixture.next_step_script_hash,
+    unused_script_hash,
+    last_scanning_of(output),
+    output,
+    next,
+    False,
+  )
+}
+
+test step_03_canonical_envelope_with_datum_skipping_its_datum_refuses() fail {
+  let output = datum_output(#"9fff")
+  let next: Data = envelope_terminal(output)
+  run_step_03_to(
+    unused_script_hash,
+    fixture.next_step_script_hash,
+    last_scanning_of(output),
+    output,
+    next,
+    False,
+  )
+}
+
+test step_03_datum_step_opened_mid_datum_refuses() fail {
+  let output = datum_output(#"9f0102ff")
+  let opened = opened_datum(output)
+  let next: Data = rule.DatumScanStateV1 { ..opened, cursor: opened.cursor + 1 }
+  run_step_03_to(
+    fixture.next_step_script_hash,
+    unused_script_hash,
+    last_scanning_of(output),
+    output,
+    next,
+    False,
+  )
+}
+
+// ## Step 03 datum: the bounded datum read
+
+fn run_datum_step(
+  state: rule.DatumScanStateV1,
+  window: ByteArray,
+  revealed: List<stream.StreamFrameV1>,
+  budget: Int,
+  next_state: Data,
+  same_step: Bool,
+) -> Bool {
+  step_03_datum_validator.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(
+      Step03DatumArgs {
+        input_index: 0,
+        output_index: 0,
+        window,
+        revealed,
+        tail_root: stream.empty_stack_root,
+        node_budget: budget,
+      },
+    ),
+    fixture.own_out_ref(),
+    if same_step {
+      fixture.continue_same_step_l1_tx_v1(asset_name(), next_state)
+    } else {
+      fixture.continue_mid_step_l1_tx_v1(asset_name(), next_state)
+    },
+  )
+}
+
+fn one_node_in(datum: rule.DatumScanStateV1) -> rule.DatumScanStateV1 {
+  rule.DatumScanStateV1 {
+    ..datum,
+    cursor: datum.cursor + 1,
+    stack_root: stream.stack_root_v1(
+      [stream.ListFrame { started: False }],
+      stream.empty_stack_root,
+    ),
+  }
+}
+
+test step_03_datum_paused_read_returns_to_its_own_script() {
+  let output = datum_output(#"9f0102ff")
+  let opened = opened_datum(output)
+  let next: Data = one_node_in(opened)
+  run_datum_step(opened, output, [], 1, next, True)
+}
+
+test step_03_datum_paused_read_handed_to_step_04_refuses() fail {
+  let output = datum_output(#"9f0102ff")
+  let opened = opened_datum(output)
+  let next: Data = opened.scan
+  run_datum_step(opened, output, [], 1, next, False)
+}
+
+test step_03_datum_resumes_from_its_stored_stack() {
+  let output = datum_output(#"9f0102ff")
+  let paused = one_node_in(opened_datum(output))
+  let next: Data = paused.scan
+  run_datum_step(
+    paused,
+    output,
+    [stream.ListFrame { started: False }],
+    10,
+    next,
+    False,
+  )
+}
+
+test step_03_datum_canonical_read_hands_the_canonical_terminal_to_step_04() {
+  let output = datum_output(#"9f0102ff")
+  let opened = opened_datum(output)
+  let next: Data = opened.scan
+  run_datum_step(opened, output, [], 10, next, False)
+}
+
+test step_03_datum_finished_read_on_its_own_script_refuses() fail {
+  let output = datum_output(#"9f0102ff")
+  let opened = opened_datum(output)
+  let next: Data = opened.scan
+  run_datum_step(opened, output, [], 10, next, True)
+}
+
+test step_03_datum_non_canonical_read_hands_the_non_canonical_terminal_to_step_04() {
+  let output = datum_output(#"9f01ff00")
+  let opened = opened_datum(output)
+  let next: Data = rule.OutputScanStateV1 {
+    ..opened.scan,
+    outcome: rule.outcome_non_canonical,
+  }
+  run_datum_step(opened, output, [], 10, next, False)
+}
+
+test step_03_datum_non_canonical_read_claimed_canonical_refuses() fail {
+  let output = datum_output(#"9f01ff00")
+  let opened = opened_datum(output)
+  let next: Data = opened.scan
+  run_datum_step(opened, output, [], 10, next, False)
+}
+
+test step_03_datum_canonical_read_claimed_non_canonical_refuses() fail {
+  let output = datum_output(#"9f0102ff")
+  let opened = opened_datum(output)
+  let next: Data = rule.OutputScanStateV1 {
+    ..opened.scan,
+    outcome: rule.outcome_non_canonical,
+  }
+  run_datum_step(opened, output, [], 10, next, False)
+}
+
+test step_03_datum_substituted_window_refuses() fail {
+  let output = datum_output(#"9f0102ff")
+  let opened = opened_datum(output)
+  let next: Data = opened.scan
+  run_datum_step(opened, datum_output(#"9f0103ff"), [], 10, next, False)
+}
+
+test step_03_datum_forged_stack_refuses() fail {
+  let output = datum_output(#"9f0102ff")
+  let paused = one_node_in(opened_datum(output))
+  let next: Data = paused.scan
+  run_datum_step(
+    paused,
+    output,
+    [stream.ListFrame { started: True }],
+    10,
+    next,
+    False,
+  )
 }
 
 // ## Step 04: terminal polarity

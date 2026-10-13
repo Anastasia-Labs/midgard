@@ -28,9 +28,15 @@ export const WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS = 180_000;
 /** Distinct `da_fetch_failure` subjects kept; the oldest go first. */
 const MAXIMUM_DA_FETCH_ALERTS = MAXIMUM_PAGE_SIZE * 10;
 
-/** Codes whose inactive record is read back to suppress repeated diagnostics. */
-const DEDUPLICATED_CODES: ReadonlySet<WatcherAlertCode> =
-  WATCHER_INFORMATIONAL_ALERT_CODES;
+/**
+ * Codes whose inactive record is read back to suppress repeated diagnostics.
+ * Prepared proofs come and go per header and their reporters deduplicate.
+ */
+const DEDUPLICATED_CODES: ReadonlySet<WatcherAlertCode> = new Set(
+  [...WATCHER_INFORMATIONAL_ALERT_CODES].filter(
+    (code) => code !== "prepared_proof_awaiting_submission",
+  ),
+);
 
 /** Outcomes after which a header's DA fetch is no longer outstanding. */
 const SETTLED_OUTCOMES: ReadonlySet<WatcherVerificationDiagnostic["outcome"]> =

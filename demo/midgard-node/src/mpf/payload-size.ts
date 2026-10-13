@@ -1,8 +1,7 @@
 /**
- * UTxO payload size accounting and the payload root over materialized entries.
+ * MPF value size estimates and the UTxO root over materialized entries.
  */
 
-import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import * as Ledger from "../database/utils/ledger.js";
@@ -14,37 +13,6 @@ import {
   type MpfStoredValue,
   type UtxoPayloadEntry,
 } from "./types.js";
-
-export type UtxoPayloadSizeAggregate = SDK.DaPayloadEntrySizeAggregate;
-
-export const utxoPayloadEntryEncodedSize = ({
-  outref,
-  output,
-}: UtxoPayloadEntry): number =>
-  SDK.daPayloadEntryEncodedSize([
-    outref.toString("hex"),
-    output.toString("hex"),
-  ]);
-
-export const utxoPayloadAggregateFromEntries = (
-  entries: readonly UtxoPayloadEntry[],
-): UtxoPayloadSizeAggregate => ({
-  entryCount: entries.length,
-  encodedTupleBytes: entries.reduce(
-    (total, entry) => total + utxoPayloadEntryEncodedSize(entry),
-    0,
-  ),
-});
-
-export const ledgerPayloadAggregateFromEntries = (
-  entries: readonly Ledger.MinimalEntry[],
-): UtxoPayloadSizeAggregate =>
-  utxoPayloadAggregateFromEntries(
-    entries.map((entry) => ({
-      outref: entry[Ledger.Columns.OUTREF],
-      output: entry[Ledger.Columns.OUTPUT],
-    })),
-  );
 
 export const estimateMpfStoredValueBytes = (value: MpfStoredValue): number => {
   if (typeof value === "string") {
@@ -90,67 +58,6 @@ export const estimateMpfStoredValueBytes = (value: MpfStoredValue): number => {
   }
   throw new Error("Invalid serialized MPF node kind in block path cache");
 };
-
-/** Maintains exact tuple bytes while visiting each affected ledger key once per operation. */
-export const createUtxoPayloadSizeAccumulator = (
-  base: UtxoPayloadSizeAggregate,
-  initialValues: ReadonlyMap<string, Buffer>,
-) => {
-  let entryCount = base.entryCount;
-  let encodedTupleBytes = base.encodedTupleBytes;
-  const currentValues = new Map<string, Buffer | null>();
-  return {
-    apply: (
-      op: MpfBatchOp,
-      insertedValues: ReadonlyMap<string, Buffer>,
-    ): void => {
-      const keyHex = op.key.toString("hex");
-      const current = currentValues.has(keyHex)
-        ? currentValues.get(keyHex)
-        : (initialValues.get(keyHex) ?? null);
-      if (current !== null && current !== undefined) {
-        entryCount -= 1;
-        encodedTupleBytes -= utxoPayloadEntryEncodedSize({
-          outref: op.key,
-          output: current,
-        });
-      } else if (op.type === "delete") {
-        throw new Error(`Cannot size deletion of missing UTxO ${keyHex}`);
-      }
-      if (op.type === "insert") {
-        const inserted = insertedValues.get(keyHex);
-        if (inserted === undefined)
-          throw new Error(`Missing full output bytes for insertion ${keyHex}`);
-        entryCount += 1;
-        encodedTupleBytes += utxoPayloadEntryEncodedSize({
-          outref: op.key,
-          output: inserted,
-        });
-        currentValues.set(keyHex, Buffer.from(inserted));
-      } else currentValues.set(keyHex, null);
-    },
-    snapshot: (): UtxoPayloadSizeAggregate => {
-      const aggregate = { entryCount, encodedTupleBytes };
-      SDK.daPayloadEntriesEncodedSizeFromAggregate(aggregate);
-      return aggregate;
-    },
-  };
-};
-
-export const applyLedgerOpsToUtxoPayloadAggregateFromFullValues = (
-  base: UtxoPayloadSizeAggregate,
-  ops: readonly MpfBatchOp[],
-  initialValues: ReadonlyMap<string, Buffer>,
-  insertedValues: ReadonlyMap<string, Buffer>,
-): Effect.Effect<UtxoPayloadSizeAggregate, MpfError> =>
-  Effect.try({
-    try: () => {
-      const accumulator = createUtxoPayloadSizeAccumulator(base, initialValues);
-      for (const op of ops) accumulator.apply(op, insertedValues);
-      return accumulator.snapshot();
-    },
-    catch: (cause) => MpfError.rootBuild("DA UTxO size aggregate", cause),
-  });
 
 const compareBufferHex = (left: Buffer, right: Buffer): number => {
   const leftHex = left.toString("hex");

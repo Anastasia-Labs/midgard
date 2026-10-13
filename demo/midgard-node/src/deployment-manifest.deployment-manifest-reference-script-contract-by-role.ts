@@ -748,6 +748,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofMintItemNonCanonicalStep02",
     "V1 fraud-proof transaction-output-non-canonical step-03":
       "fraudProofTransactionOutputNonCanonicalStep03",
+    "V1 fraud-proof transaction-output-non-canonical step-03 datum":
+      "fraudProofTransactionOutputNonCanonicalStep03Datum",
     "V1 fraud-proof mint-item-non-canonical step-03":
       "fraudProofMintItemNonCanonicalStep03",
     "V1 fraud-proof transaction-output-non-canonical step-04":

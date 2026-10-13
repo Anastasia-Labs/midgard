@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -20,7 +19,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
   authenticatedStateQueueObservationDigest,
@@ -104,13 +102,13 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
+import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
 import {
   readBlueprintIdentity,
   writeOrVerifyPinnedFitLedger,
 } from "./support/pinned-fit-ledger.js";
 import {
-  transitionTraceAcceptedRetainedFixture,
   transitionTraceDepositRetainedFixture,
   transitionTraceTimingRetainedFixture,
 } from "./support/transition-trace-retained.js";
@@ -152,20 +150,6 @@ const installedCases = [
     name: "maximum-deposit-datum",
     datumBytes: 12000,
     honest: false,
-    kind: "Deposit",
-    timing: null,
-  },
-  {
-    name: "accepted",
-    datumBytes: 0,
-    honest: false,
-    kind: "Deposit",
-    timing: null,
-  },
-  {
-    name: "honest-accepted",
-    datumBytes: 0,
-    honest: true,
     kind: "Deposit",
     timing: null,
   },
@@ -347,11 +331,14 @@ describe("transition trace installed retained-history workflow", () => {
             h.funderLucid,
             h.emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
           ) - 1;
-        const nonce = history.nonce(kind);
-        const id = {
-          transactionId: nonce.txHash,
-          outputIndex: BigInt(nonce.outputIndex),
+        const eventId = (eventKind: SDK.EventHistoryKind) => {
+          const nonce = history.nonce(eventKind);
+          return {
+            transactionId: nonce.txHash,
+            outputIndex: BigInt(nonce.outputIndex),
+          };
         };
+        const id = eventId(kind);
         const info: SDK.DepositInfo = {
           l2_address: {
             paymentCredential: { PublicKeyCredential: ["aa".repeat(28)] },
@@ -361,13 +348,15 @@ describe("transition trace installed retained-history workflow", () => {
           l2_datum: datumBytes === 0 ? null : "ab".repeat(datumBytes),
         };
         const event = { id, info };
-        const payload: SDK.EventHistoryPayload =
-          kind === "Deposit"
-            ? { DepositPayload: { event } }
+        const eventPayload = (
+          eventKind: SDK.EventHistoryKind,
+        ): SDK.EventHistoryPayload =>
+          eventKind === "Deposit"
+            ? { DepositPayload: { event: { id: eventId(eventKind), info } } }
             : {
                 WithdrawalPayload: {
                   event: {
-                    id,
+                    id: eventId(eventKind),
                     info: {
                       body: {
                         l2_outref: {
@@ -394,6 +383,10 @@ describe("transition trace installed retained-history workflow", () => {
                   refund_datum: "NoDatum",
                 },
               };
+        const payload = eventPayload(kind);
+        // An omitting block carries an event of the other kind, due in it.
+        const companionKind = kind === "Deposit" ? "Withdrawal" : "Deposit";
+        const companion = eventPayload(companionKind);
         const originalAssets = { lovelace: 90_000_000n };
         const operator = getAddressDetails(
           await h.funderLucid.wallet().address(),
@@ -404,22 +397,17 @@ describe("transition trace installed retained-history workflow", () => {
                 operatorVkey: operator.hash,
                 now,
                 payload,
+                companion,
                 originalAssets,
                 omitted: timing === "omitted",
               })
-            : name.includes("accepted")
-              ? await transitionTraceAcceptedRetainedFixture({
-                  operatorVkey: operator.hash,
-                  now,
-                  honest,
-                })
-              : await transitionTraceDepositRetainedFixture({
-                  operatorVkey: operator.hash,
-                  now,
-                  event,
-                  originalAssets,
-                  honest,
-                });
+            : await transitionTraceDepositRetainedFixture({
+                operatorVkey: operator.hash,
+                now,
+                event,
+                originalAssets,
+                honest,
+              });
         let admitAfterPredecessor: (() => Promise<void>) | undefined;
         await submitSetupTx({
           lucid: h.funderLucid,
@@ -442,12 +430,10 @@ describe("transition trace installed retained-history workflow", () => {
                             ? fixture.current.header.endTime + 1000n
                             : fixture.current.header.startTime + 1000n,
                     }
-                  : name.includes("accepted")
-                    ? fixture.predecessor.header
-                    : {
-                        ...fixture.current.header,
-                        endTime: fixture.current.header.startTime + 1000n,
-                      },
+                  : {
+                      ...fixture.current.header,
+                      endTime: fixture.current.header.startTime + 1000n,
+                    },
                 { lovelace: kind === "Deposit" ? 95_000_000n : 100_000_000n },
               );
               if (kind === "Deposit")
@@ -460,6 +446,32 @@ describe("transition trace installed retained-history workflow", () => {
             };
             if (timing !== null && honest) admitAfterPredecessor = admitEvent;
             else await admitEvent();
+            // Due in the current block, 30 s after an omitted due event.
+            if (timing === "omitted") {
+              await history.admit(
+                hub,
+                companion,
+                {
+                  ...fixture.current.header,
+                  endTime: fixture.current.header.startTime + 31_000n,
+                },
+                {
+                  lovelace:
+                    companionKind === "Deposit" ? 95_000_000n : 100_000_000n,
+                },
+              );
+              // The companion spends the wallet's spare UTxO; the proof
+              // workflow needs a second one.
+              await history.submit(
+                "split-prover-funds",
+                await lucid
+                  .newTx()
+                  .pay.ToAddress(h.proverSigner.address, {
+                    lovelace: 20_000_000n,
+                  })
+                  .complete({ localUPLCEval: true }),
+              );
+            }
             awaitHeaderCommitWindow(h.emulator, fixture.predecessor.header);
           },
         });
@@ -667,13 +679,12 @@ describe("transition trace installed retained-history workflow", () => {
           authority: recorder.authority,
         });
         expect(requireTransitionTraceL1Events(rawHandle).events).toHaveLength(
-          1,
+          timing === "omitted" ? 2 : 1,
         );
         expect(() => requireTransitionTraceL1Events({ ...rawHandle })).toThrow(
           "freshly admitted",
         );
         const classifier = await createHeaderClassifier({
-          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           deploymentFingerprint: DEPLOYMENT,
           replayer: TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
           releaseFinalityAuthority: workflow.releaseFinalityAuthority,
@@ -699,7 +710,7 @@ describe("transition trace installed retained-history workflow", () => {
               minimumConfirmationDepth: finalityPolicy.confirmationDepth,
             }),
           sources,
-          predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
+          predecessorLedgerAt: fixtureLedgerAt({ sources }),
         });
         expect(decision.decision).toBe(honest ? "healthy" : "fault_detected");
         if (!honest)
@@ -735,7 +746,7 @@ describe("transition trace installed retained-history workflow", () => {
           // Recreate the installed constructor and reopen the durable journal at
           // every boundary; no in-memory proof or replay handle survives restart.
           restarts++;
-          if (!honest && !name.includes("accepted") && !pointerChurned) {
+          if (!honest && !pointerChurned) {
             const observed = await workflow.l1.observe({
               headerHash: fixture.current.headerHash,
             });
@@ -906,7 +917,7 @@ describe("transition trace installed retained-history workflow", () => {
             event.kind === "confirmed" ? [event] : [],
           ),
         });
-        if (!honest && !name.includes("accepted")) {
+        if (!honest) {
           expect(pointerChurned).toBe(true);
           expect(leases.size).toBeGreaterThan(0);
           for (const lease of leases.values()) {

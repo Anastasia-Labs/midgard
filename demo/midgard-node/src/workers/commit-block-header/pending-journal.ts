@@ -66,14 +66,12 @@ export const resolvePendingJournalLedgerState = ({
   recordedBaseUtxosRoot,
   selectedBaseUtxosRoot,
   expectedFinalUtxosRoot,
-  expectedFinalEntryCount,
   implicitGenesisEntries,
   transitionDelta,
 }: {
   readonly recordedBaseUtxosRoot: string;
   readonly selectedBaseUtxosRoot: string;
   readonly expectedFinalUtxosRoot: string;
-  readonly expectedFinalEntryCount: number;
   readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
   readonly transitionDelta: LedgerDelta;
 }): Effect.Effect<
@@ -142,15 +140,6 @@ export const resolvePendingJournalLedgerState = ({
       });
     }
     const produced = [...finalEntries.values()];
-    if (produced.length !== expectedFinalEntryCount) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message: "First-block V1 ledger delta has the wrong final UTxO count",
-          cause: `actual=${produced.length.toString()},expected=${expectedFinalEntryCount.toString()}`,
-        }),
-      );
-    }
     const recoveredRoot = yield* computeUtxoPayloadRoot(produced).pipe(
       Effect.mapError(
         (cause) =>
@@ -321,9 +310,6 @@ export const resolveLiveTailCommitBase = (
   });
 
 export const assertPendingJournalCompleteness = ({
-  utxoRoot,
-  utxoMemberCount,
-  hasLedgerDelta = false,
   txRoot,
   emptyTxRoot,
   txMemberCount,
@@ -341,9 +327,6 @@ export const assertPendingJournalCompleteness = ({
   validationTraceMemberCount = 0,
   expectedValidationTraceCount = 0,
 }: {
-  readonly utxoRoot: string;
-  readonly utxoMemberCount: number;
-  readonly hasLedgerDelta?: boolean;
   readonly txRoot: string;
   readonly emptyTxRoot: string;
   readonly txMemberCount: number;
@@ -362,16 +345,6 @@ export const assertPendingJournalCompleteness = ({
   readonly expectedValidationTraceCount?: number;
 }): Effect.Effect<void, DatabaseError> =>
   Effect.gen(function* () {
-    if (utxoRoot !== emptyTxRoot && utxoMemberCount <= 0 && !hasLedgerDelta) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Refusing to submit commit because a non-empty UTxO root would have no pending journal UTxO members",
-          cause: `utxo_root=${utxoRoot}`,
-        }),
-      );
-    }
     if (txRoot !== emptyTxRoot && txMemberCount <= 0) {
       return yield* Effect.fail(
         new DatabaseError({

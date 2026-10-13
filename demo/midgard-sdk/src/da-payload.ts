@@ -15,7 +15,6 @@ export {
 export {
   daPayloadEncodedSize,
   daPayloadEncodedSizeFromEntryAggregates,
-  daPayloadEncodedSizeFromUtxoAggregate,
   daPayloadEntriesEncodedSizeFromAggregate,
   daPayloadEntryEncodedSize,
   type DaPayloadEntryField,
@@ -33,12 +32,4 @@ export {
   DaPayloadEntrySchema,
   DaPayloadNonCanonicalError,
   DaPayloadSchema,
-  decodeRetainedValidationWitness,
-  decodeRetainedValidationWitnessKey,
-  encodeRetainedValidationWitness,
-  encodeRetainedValidationWitnessKey,
-  type RetainedValidationWitness,
-  type RetainedValidationWitnessKey,
-  RetainedValidationWitnessKeySchema,
-  RetainedValidationWitnessSchema,
 } from "./da-payload.write-cbor-argument.js";

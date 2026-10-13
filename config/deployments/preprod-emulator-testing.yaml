@@ -48,3 +48,10 @@ economics:
   inactivitySlashingPenaltyLovelace: 100000000
   fraudProverRewardLovelace: 400000000
   proverCollateralFloorLovelace: 5000000
+allow_lists:
+  # Testing admits every key.
+  operators: null
+  fraud_provers: null
+  da_challengers: null
+# Testing deployments carry the whole fraud-proof catalogue.
+excluded_fraud_proof_categories: []

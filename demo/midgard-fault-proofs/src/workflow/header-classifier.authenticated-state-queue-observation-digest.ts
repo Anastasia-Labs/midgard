@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   admitAuthenticatedStateQueueHeaderObservation,
   type AuthenticatedStateQueueHeaderObservation,
@@ -21,6 +20,7 @@ import {
   type CompleteCanonicalReplay,
   type CompleteCanonicalReplayContext,
 } from "./complete-replay.js";
+import { type InstalledFraudProofCategory } from "./installed-categories.js";
 
 export const HEADER_CLASSIFIER =
   "midgard-production-header-classifier-v1" as const;
@@ -160,7 +160,7 @@ type CommonDecision = Readonly<{
 export type HeaderFaultDecision = CommonDecision &
   Readonly<{
     decision: "fault_detected";
-    category: FraudProofCatalogueCategoryName;
+    category: InstalledFraudProofCategory;
     violationId: string;
     detectionId: string;
     position: string;
@@ -203,7 +203,6 @@ export const admittedClassifiers = new WeakMap<
     replayer: CompleteCanonicalReplay;
     confirmationDepth: number;
     transitionTraceEventAuthority?: TransitionTraceEventAuthority;
-    l1SlotConfig: L1SlotConfig;
   }>
 >();
 

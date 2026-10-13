@@ -247,13 +247,6 @@ export const fixture = async (
     block_body: {
       ...base.payload.block_body,
       counts,
-      utxos:
-        observerCount > 0
-          ? [[spent.toString("hex"), output.toString("hex")]]
-          : outputs.map((item, index) => [
-              outRefFromTxId(transaction.txId, BigInt(index)).toString("hex"),
-              item.toString("hex"),
-            ]),
       transactions: [],
       transaction_preimages: [],
       forced_transactions: [[orderKey, Data.to(leaf, SDK.ForcedInclusionTxV1)]],

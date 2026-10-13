@@ -31,6 +31,7 @@ import {
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.js";
 import { buildForcedTransactionLeafMembershipProof } from "../../src/transition-trace/witnesses.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
+import { recordFixtureLedger } from "./fixture-ledger.js";
 import {
   type ForcedLeafSpec,
   type MeasurementRecorder,
@@ -182,6 +183,7 @@ export const commitForcedBlock = async (
     transitionStepCount: count,
     validationTraceCount: count,
   };
+  recordFixtureLedger(finalRoot.root, [finalUtxo]);
   const header = withCommitSlot(harness.contracts.l1SlotConfig, {
     ...makeHeader(funderCredential.hash, now),
     utxosRoot: finalRoot.root,
@@ -198,7 +200,6 @@ export const commitForcedBlock = async (
       block_body: {
         header_hash: headerHash,
         header,
-        utxos: sortedDaEntries([finalUtxo]),
         withdrawals: [],
         forced_transactions: sortedDaEntries(forcedEntries),
         transactions: [],

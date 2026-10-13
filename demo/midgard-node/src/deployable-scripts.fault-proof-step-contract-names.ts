@@ -193,6 +193,13 @@ const FAULT_PROOF_STEP_CONTRACT_NAMES: Partial<
     "fraudProofUnusedRedeemerStep05",
     "fraudProofUnusedRedeemerStep06",
   ],
+  transactionOutputNonCanonical: [
+    "fraudProofTransactionOutputNonCanonical",
+    "fraudProofTransactionOutputNonCanonicalStep02",
+    "fraudProofTransactionOutputNonCanonicalStep03",
+    "fraudProofTransactionOutputNonCanonicalStep03Datum",
+    "fraudProofTransactionOutputNonCanonicalStep04",
+  ],
   executionNativeScriptInvalid: [
     "fraudProofExecutionNativeScriptInvalid",
     "fraudProofExecutionNativeScriptInvalidStep02",

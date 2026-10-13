@@ -4,7 +4,6 @@ import { join } from "node:path";
 
 import { outRefLabel } from "@al-ft/midgard-core";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { type Header } from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -99,7 +98,6 @@ export const preparePermissionlessSlashSqlite = async ({
   });
   const observation = authenticatedHeaderObservation(evidence);
   const classifier = await createHeaderClassifier({
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: manifest.manifestId,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: {

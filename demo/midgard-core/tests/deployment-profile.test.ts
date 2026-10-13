@@ -3,9 +3,14 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { canonicalJson } from "../src/canonical-json.js";
+import { DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "../src/deployment-manifest-identity.js";
 import {
+  AllowListRefusal,
   daBondManifestAmounts,
   DEPLOYMENT_PROFILES,
+  deploymentAllowList,
+  deploymentFraudProofCatalogueCategories,
+  requireAllowListed,
   requireSelectedDeploymentProfile,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
@@ -73,5 +78,87 @@ describe("deployment profile binding", () => {
       daBondPoolFloorLovelace: 5_000_000,
       challengeRecordLovelace: 27_000_000,
     });
+  });
+
+  it("derives each deployment's fraud-proof catalogue from its exclusions", () => {
+    expect(deploymentFraudProofCatalogueCategories()).toEqual(
+      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    );
+    const curated = deploymentFraudProofCatalogueCategories(
+      DEPLOYMENT_PROFILES["preprod-public"],
+    );
+    const excluded = DEPLOYMENT_PROFILES["preprod-public"]
+      .excluded_fraud_proof_categories as readonly string[];
+    expect(excluded).toEqual(
+      expect.arrayContaining([
+        "validationTraceDispute",
+        "unusedRedeemer",
+        "missingRedeemer",
+        "missingScriptSource",
+        "unusedScriptWitness",
+        "scriptIntegrityHashMismatch",
+        "receivePurposeLanguage",
+        "executionNativeScriptInvalid",
+        "executionSourceScriptDecoding",
+        "distinctAssetAccumulationLimit",
+      ]),
+    );
+    expect(excluded).toHaveLength(10);
+    expect(curated).toEqual(
+      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
+        (category) => !excluded.includes(category),
+      ),
+    );
+    for (const name of [
+      "preprod-testing",
+      "local-devnet-testing",
+      "preprod-emulator-testing",
+    ] as const)
+      expect(DEPLOYMENT_PROFILES[name].excluded_fraud_proof_categories).toEqual(
+        [],
+      );
+    expect(
+      DEPLOYMENT_PROFILES["preprod-emulator-curated"]
+        .excluded_fraud_proof_categories,
+    ).toEqual(excluded);
+  });
+});
+
+describe("deployment allow-lists", () => {
+  const curated = DEPLOYMENT_PROFILES["preprod-emulator-curated"];
+  const listed = curated.allow_lists.fraud_provers[0];
+  const unlisted = "ab".repeat(28);
+
+  it("admits a listed key and refuses an unlisted one before any build", () => {
+    const list = deploymentAllowList("fraud_provers", curated);
+    expect(() =>
+      requireAllowListed("fraud_provers", listed, list),
+    ).not.toThrow();
+    expect(() =>
+      requireAllowListed("fraud_provers", listed.toUpperCase(), list),
+    ).not.toThrow();
+    const refusal = (() => {
+      try {
+        requireAllowListed("fraud_provers", unlisted, list);
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    })();
+    expect(refusal).toBeInstanceOf(AllowListRefusal);
+    expect(refusal).toMatchObject({ role: "fraud_provers", keyHash: unlisted });
+  });
+
+  it("admits every key when the list is None, the selected testing profile's", () => {
+    expect(deploymentAllowList("operators")).toBeNull();
+    for (const role of [
+      "operators",
+      "fraud_provers",
+      "da_challengers",
+    ] as const)
+      expect(() => requireAllowListed(role, unlisted)).not.toThrow();
+    expect(() => requireAllowListed("operators", unlisted, [])).toThrow(
+      /not on the deployment's operators allow-list/u,
+    );
   });
 });

@@ -109,6 +109,24 @@ export const assertAvailabilityRefusal = async (
   return refusal;
 };
 
+/** An enterprise-address account for `privateKey`, or for a fresh key. */
+const accountFromPrivateKey = (
+  assets: Assets,
+  privateKey: string | undefined,
+): EmulatorAccount => {
+  if (privateKey === undefined)
+    return generateEmulatorAccountFromPrivateKey(assets);
+  const keyHash = CML.PrivateKey.from_bech32(privateKey).to_public().hash();
+  return {
+    seedPhrase: "",
+    address: CML.EnterpriseAddress.new(0, CML.Credential.new_pub_key(keyHash))
+      .to_address()
+      .to_bech32(undefined),
+    assets,
+    privateKey,
+  };
+};
+
 /**
  * The fixture body. With `emptyQueue`, no block is seeded (the root's `next`
  * is `Empty`, so `target` is undefined and `payload`, `commitment` and
@@ -133,9 +151,10 @@ export const createFixture = async (
   const responder = generateEmulatorAccountFromPrivateKey({
     lovelace: 100_000_000_000n,
   });
-  const challenger = generateEmulatorAccountFromPrivateKey({
-    lovelace: 50_000_000_000n,
-  });
+  const challenger = accountFromPrivateKey(
+    { lovelace: 50_000_000_000n },
+    options.challengerPrivateKey,
+  );
   const publisher = generateEmulatorAccountFromPrivateKey({
     lovelace: 100_000_000_000n,
   });

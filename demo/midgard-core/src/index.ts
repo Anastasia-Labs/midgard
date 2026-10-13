@@ -5,6 +5,7 @@ export * from "./blake2b-256-trace.js";
 export * from "./bounded-blob.js";
 export * from "./bounded-collection.js";
 export * from "./bounded-item.js";
+export * from "./canonical-plutus-data-stream.js";
 export * from "./capability-parity.js";
 export * from "./cek-blob-frontier.js";
 export * from "./cek-data-bytes.js";

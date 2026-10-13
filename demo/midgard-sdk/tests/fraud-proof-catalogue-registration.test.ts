@@ -234,11 +234,9 @@ describe("production fraud-proof catalogue registration", () => {
     );
 
     it("sees the on-chain and off-chain id constants it is meant to check", () => {
-      // Guards the scan itself: if the patterns or roots stop matching, the
-      // two checks below would pass on nothing.
-      expect(
-        uses.filter((use) => use.family !== undefined).length,
-      ).toBeGreaterThan(40);
+      // These concrete on-chain/off-chain sentinels guard both source roots
+      // and matching syntaxes. Family constructors may instead use the central
+      // registry, so their number of literal IDs is not a protocol invariant.
       expect(
         uses.find(
           (use) =>

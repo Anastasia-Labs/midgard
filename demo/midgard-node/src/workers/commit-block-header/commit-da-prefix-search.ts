@@ -41,14 +41,11 @@ export const assertCompleteDaPrefixSearch = (outcome: string) =>
       )
     : Effect.void;
 
-export const logDaPrefixPreselection = (
-  plan: PlannedCommitBatchSelection,
-  baseEntryCount: number,
-) =>
+export const logDaPrefixPreselection = (plan: PlannedCommitBatchSelection) =>
   plan.prunedTxCount === 0
     ? Effect.void
     : Effect.logInfo(
-        `🔹 Commit batch planner trimmed the selection to the base ledger's DA frame tx_count=${plan.plan.selectedTxCount.toString()}, estimated_da_payload_bytes=${plan.plan.estimatedDaPayloadBytes.toString()}, base_utxo_entry_count=${baseEntryCount.toString()}, pruned_tx_count=${plan.prunedTxCount.toString()}.`,
+        `🔹 Commit batch planner trimmed the selection to the DA frame tx_count=${plan.plan.selectedTxCount.toString()}, estimated_da_payload_bytes=${plan.plan.estimatedDaPayloadBytes.toString()}, pruned_tx_count=${plan.prunedTxCount.toString()}.`,
       );
 
 export const logMpfProcessingFinished = (startedAtMs: number) =>

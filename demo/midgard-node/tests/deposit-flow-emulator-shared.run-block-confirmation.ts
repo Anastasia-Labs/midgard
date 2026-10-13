@@ -5,10 +5,7 @@ import {
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import {
-  resolvePreBlockUtxos,
-  verifyDaPayloadAgainstHeader,
-} from "da-committee-node/da/payload";
+import { verifyDaPayloadAgainstHeader } from "da-committee-node/da/payload";
 import { Effect, Option } from "effect";
 import { expect } from "vitest";
 
@@ -29,7 +26,6 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
-import { materializeConfirmedLedgerSnapshot } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
 import { runConfirmBlockCommitmentsWorkerProgram } from "../src/workers/confirm-block-commitments.js";
@@ -151,26 +147,6 @@ export const expectDaCommitteeAcceptsPersistedPayload = async ({
   );
   if (Option.isNone(row))
     throw new Error(`Missing persisted DA payload for ${headerHash}`);
-  // The committee's own parent-state rule: the parent payload the node
-  // retained, bound by the header's prev_utxos_root; no peers here.
-  const preBlockUtxos = await resolvePreBlockUtxos({
-    header: l1Header,
-    getDaPayload: async (parentHeaderHash) => {
-      const parent = await runNodeDatabaseEffect(
-        DaPayloadsDB.retrieveByHeaderHash(Buffer.from(parentHeaderHash, "hex")),
-      );
-      return Option.isNone(parent)
-        ? undefined
-        : {
-            payloadCborHex: Buffer.from(
-              parent.value[DaPayloadsDB.Columns.PAYLOAD_CBOR],
-            ).toString("hex"),
-          };
-    },
-    payloadSource: {
-      fetchPayloadCandidates: async () => ({ ok: false, attempts: [] }),
-    },
-  });
   return verifyDaPayloadAgainstHeader(
     row.value[DaPayloadsDB.Columns.PAYLOAD_CBOR],
     headerHash,
@@ -178,7 +154,6 @@ export const expectDaCommitteeAcceptsPersistedPayload = async ({
     {
       payloadSchemaVersion: 1,
       stateQueueOutRef: `emulator:${headerHash}`,
-      preBlockUtxos,
     },
   );
 };
@@ -212,13 +187,8 @@ export const retainSubmittedHeaderPayload = async ({
           PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
         ]?.toString("hex"),
       ).toBe(submittedTxHash);
-      const snapshot = yield* materializeConfirmedLedgerSnapshot(pending.value);
       const payload = yield* buildDaPayloadInsert({
         record: pending.value,
-        utxos: snapshot.entries.map((entry) => ({
-          outref: entry.outref,
-          output: entry.output,
-        })),
       });
       yield* DaPayloadsDB.upsertAvailable(payload);
     }),

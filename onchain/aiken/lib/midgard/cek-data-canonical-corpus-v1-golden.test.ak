@@ -5,6 +5,7 @@
 use aiken/primitive/bytearray
 use midgard/canonical_plutus_data_v1
 use midgard/cek_data_v1
+use midgard/validation_machine_tests/data_stream_driver
 use midgard/validation_machine_tests/data_traverse_driver
 
 test corpus_int_zero() {
@@ -24,6 +25,20 @@ test corpus_int_zero() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -44,6 +59,20 @@ test corpus_int_23() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -64,6 +93,20 @@ test corpus_int_24() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -84,6 +127,20 @@ test corpus_int_256() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -104,6 +161,20 @@ test corpus_int_2_pow_32() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -124,6 +195,20 @@ test corpus_int_2_pow_64_minus_1() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -144,6 +229,20 @@ test corpus_int_minus_1() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -164,6 +263,20 @@ test corpus_int_minus_2_pow_64() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -184,6 +297,20 @@ test corpus_bignum_2_pow_64() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -204,6 +331,20 @@ test corpus_bignum_minus_2_pow_64_minus_1() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -224,6 +365,20 @@ test corpus_bignum_64_byte_magnitude() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -244,6 +399,20 @@ test corpus_bignum_65_byte_magnitude_chunked() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -264,6 +433,20 @@ test corpus_bignum_negative_129_byte_magnitude_chunked() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -278,6 +461,20 @@ test corpus_int_non_minimal_one_byte() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -292,6 +489,20 @@ test corpus_int_non_minimal_two_byte() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -306,6 +517,20 @@ test corpus_int_non_minimal_eight_byte() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -320,6 +545,20 @@ test corpus_int_reserved_additional_28() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -334,6 +573,20 @@ test corpus_int_reserved_additional_30() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -348,6 +601,20 @@ test corpus_int_indefinite_additional() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -362,6 +629,20 @@ test corpus_int_truncated_argument() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -376,6 +657,20 @@ test corpus_bignum_one_byte_magnitude() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -390,6 +685,20 @@ test corpus_bignum_empty_magnitude() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -404,6 +713,20 @@ test corpus_bignum_eight_byte_magnitude() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -418,6 +741,20 @@ test corpus_bignum_leading_zero() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -432,6 +769,20 @@ test corpus_negative_bignum_one_byte() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -446,6 +797,20 @@ test corpus_bignum_indefinite_nine_bytes() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -460,6 +825,20 @@ test corpus_bignum_indefinite_one_full_chunk() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -474,6 +853,20 @@ test corpus_bignum_over_integer() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -488,6 +881,20 @@ test corpus_bignum_magnitude_past_end() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -508,6 +915,20 @@ test corpus_bytes_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -528,6 +949,20 @@ test corpus_bytes_one() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -548,6 +983,20 @@ test corpus_bytes_32() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -568,6 +1017,20 @@ test corpus_bytes_64() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -588,6 +1051,20 @@ test corpus_bytes_65_chunked() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -608,6 +1085,20 @@ test corpus_bytes_128_chunked() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -628,6 +1119,20 @@ test corpus_bytes_129_chunked() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -642,6 +1147,20 @@ test corpus_bytes_definite_65() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -656,6 +1175,20 @@ test corpus_bytes_indefinite_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -670,6 +1203,20 @@ test corpus_bytes_indefinite_short() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -684,6 +1231,20 @@ test corpus_bytes_indefinite_one_full_chunk() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -698,6 +1259,20 @@ test corpus_bytes_short_chunk_first() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -712,6 +1287,20 @@ test corpus_bytes_empty_final_chunk() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -726,6 +1315,20 @@ test corpus_bytes_empty_first_chunk() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -740,6 +1343,20 @@ test corpus_bytes_oversized_chunk() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -754,6 +1371,20 @@ test corpus_bytes_integer_chunk() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -768,6 +1399,20 @@ test corpus_bytes_nested_indefinite_chunk() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -782,6 +1427,20 @@ test corpus_bytes_missing_break() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -796,6 +1455,20 @@ test corpus_bytes_past_end() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -810,6 +1483,20 @@ test corpus_text_string() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -824,6 +1511,20 @@ test corpus_text_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -838,6 +1539,20 @@ test corpus_simple_false() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -852,6 +1567,20 @@ test corpus_simple_null() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -866,6 +1595,20 @@ test corpus_float_half() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -886,6 +1629,20 @@ test corpus_list_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -906,6 +1663,20 @@ test corpus_list_one() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -926,6 +1697,20 @@ test corpus_list_two() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -946,6 +1731,20 @@ test corpus_list_nested() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -966,6 +1765,20 @@ test corpus_list_of_bytes() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -980,6 +1793,20 @@ test corpus_list_definite_one() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -994,6 +1821,20 @@ test corpus_list_definite_two() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1008,6 +1849,20 @@ test corpus_list_indefinite_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1022,6 +1877,20 @@ test corpus_list_open_only() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1036,6 +1905,20 @@ test corpus_list_missing_break() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1050,6 +1933,20 @@ test corpus_list_nested_missing_break() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1064,6 +1961,20 @@ test corpus_list_inner_empty_indefinite() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1084,6 +1995,20 @@ test corpus_map_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1104,6 +2029,20 @@ test corpus_map_one() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1124,6 +2063,20 @@ test corpus_map_duplicate_keys_kept() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1144,6 +2097,20 @@ test corpus_map_out_of_order_kept() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1164,6 +2131,20 @@ test corpus_map_nested() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1178,6 +2159,20 @@ test corpus_map_indefinite() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1192,6 +2187,20 @@ test corpus_map_indefinite_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1206,6 +2215,20 @@ test corpus_map_missing_value() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1220,6 +2243,20 @@ test corpus_map_missing_pair() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1240,6 +2277,20 @@ test corpus_constr_0_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1260,6 +2311,20 @@ test corpus_constr_0_one() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1280,6 +2345,20 @@ test corpus_constr_6_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1300,6 +2379,20 @@ test corpus_constr_7_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1320,6 +2413,20 @@ test corpus_constr_127_one() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1340,6 +2447,20 @@ test corpus_constr_nested() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1354,6 +2475,20 @@ test corpus_constr_empty_indefinite_fields() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1368,6 +2503,20 @@ test corpus_constr_definite_fields() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1382,6 +2531,20 @@ test corpus_constr_fields_missing() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1396,6 +2559,20 @@ test corpus_constr_fields_open_only() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1410,6 +2587,20 @@ test corpus_constr_fields_missing_break() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1424,6 +2615,20 @@ test corpus_tag_120() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1438,6 +2643,20 @@ test corpus_tag_128() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1452,6 +2671,20 @@ test corpus_tag_1279() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1466,6 +2699,20 @@ test corpus_tag_1401() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1480,6 +2727,20 @@ test corpus_tag_constr_7_non_minimal() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1494,6 +2755,20 @@ test corpus_tag_1() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1508,6 +2783,20 @@ test corpus_tag_4() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1528,6 +2817,20 @@ test corpus_large_constr_128_empty() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1548,6 +2851,20 @@ test corpus_large_constr_128_one() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1568,6 +2885,20 @@ test corpus_large_constr_256() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1588,6 +2919,20 @@ test corpus_large_constr_max_index() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1608,6 +2953,20 @@ test corpus_large_constr_nested() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == True,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == True,
   }
 }
 
@@ -1622,6 +2981,20 @@ test corpus_large_constr_index_5() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1636,6 +3009,20 @@ test corpus_large_constr_index_127() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1650,6 +3037,20 @@ test corpus_large_constr_index_non_minimal() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1664,6 +3065,20 @@ test corpus_large_constr_index_negative() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1678,6 +3093,20 @@ test corpus_large_constr_index_bignum() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1692,6 +3121,20 @@ test corpus_large_constr_indefinite_outer() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1706,6 +3149,20 @@ test corpus_large_constr_outer_length_3() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1720,6 +3177,20 @@ test corpus_large_constr_outer_length_1() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1734,6 +3205,20 @@ test corpus_large_constr_fields_missing() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1748,6 +3233,20 @@ test corpus_large_constr_empty_indefinite_fields() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1762,6 +3261,20 @@ test corpus_large_constr_definite_fields() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1776,6 +3289,20 @@ test corpus_large_constr_map_fields() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1790,6 +3317,20 @@ test corpus_trailing_after_integer() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1804,6 +3345,20 @@ test corpus_trailing_after_bytes() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1818,6 +3373,20 @@ test corpus_trailing_after_list() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1832,6 +3401,20 @@ test corpus_trailing_after_indefinite_list() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1846,6 +3429,20 @@ test corpus_trailing_after_map() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }
 
@@ -1860,5 +3457,19 @@ test corpus_trailing_break() {
       bytearray.length(source),
     ) == expected,
     canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
+    data_stream_driver.stream_verdict_v1(
+      source,
+      0,
+      bytearray.length(source),
+      4095,
+      1_000_000,
+    ) == False,
+    data_stream_driver.stream_verdict_v1(
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1,
+      bytearray.length(source),
+      68,
+      1,
+    ) == False,
   }
 }

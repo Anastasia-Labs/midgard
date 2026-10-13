@@ -36,6 +36,13 @@ export declare const interactiveEmulatorPlugin: () => {
   transform(code: string, id: string): { code: string; map: null } | null;
 };
 
+export declare const curatedEmulatorBlueprint: string;
+export declare const curatedEmulatorSetup: string;
+export declare const curatedEmulatorPlugin: () => {
+  name: string;
+  transform(code: string, id: string): { code: string; map: null } | null;
+};
+
 export declare const workspaceBundleProjects: <
   Project extends {
     readonly extends?: true | string;

@@ -1,4 +1,3 @@
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -8,7 +7,6 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
   requireTransitionTraceL1Events,
@@ -29,6 +27,7 @@ import {
   headerDecisionReplayContext,
 } from "../src/workflow/header-classifier.js";
 import { TRANSITION_TRACE_STRUCTURAL_ROUTE } from "../src/workflow/header-classifier.transition-trace-structural-route.js";
+import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "../src/workflow/installed-categories.js";
 import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
@@ -44,6 +43,7 @@ import {
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
+import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import {
   buildRetainedPlutusIdentityFixture,
   captureRetainedPlutusIdentityOrigins,
@@ -183,7 +183,6 @@ const classify = async ({
   const classifier = await createHeaderClassifier(
     installed
       ? {
-          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           deploymentFingerprint: DEPLOYMENT,
           replayer: createCatalogueCompleteCanonicalReplay({
             history: { deposit: history, withdrawal: history },
@@ -206,7 +205,6 @@ const classify = async ({
             }),
         }
       : {
-          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           deploymentFingerprint: DEPLOYMENT,
           replayer: NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
           releaseFinalityAuthority,
@@ -247,7 +245,7 @@ const classify = async ({
     sources,
     ...(installed
       ? {
-          predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
+          predecessorLedgerAt: fixtureLedgerAt({ sources }),
         }
       : {}),
     authenticatedObservationDigest:
@@ -384,24 +382,76 @@ describe("pre-union transition trace structural route", replayBudget, () => {
     });
   });
 
-  it("leaves a consistent block to the replay union", async () => {
+  it("accepts a normal Plutus transaction with empty witnesses through all 42 installed categories", async () => {
     const fixture = await buildRetainedPlutusIdentityFixture({
       verdict: "accepted",
     });
+    // The fixture executes the actual UPLC identity program before deriving
+    // its post ledger; no catalogue detector or CEK executor is mocked.
+    expect(fixture.replay.trace.verdict).toBe("accepted");
+    const { payload } = await reconstructDaPayload({
+      payloadEnvelopeCbor: fixture.block.payloadEnvelopeCbor,
+    });
+    expect(payload.block_body.validation_trace_witnesses).toEqual([]);
+    expect(payload.block_body.transactions).toHaveLength(1);
+    expect(payload.block_body.forced_transactions).toEqual([]);
+    expect(payload.block_body.cek_program_material.length).toBeGreaterThan(0);
     const installed = await classify({
       fixture,
       block: fixture.block,
       installed: true,
     });
-    expect(installed.decision.decision).toBe("healthy");
-    expect(
-      headerDecisionReplayContext(installed.decision)?.predecessor,
-    ).toBeDefined();
+    expect(installed.classifier.launchScope).toHaveLength(42);
+    expect(installed.classifier.launchScope).toEqual(
+      INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
+    );
+    expect(installed.decision).toMatchObject({
+      decision: "healthy",
+      launchScope: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
+    });
+    const context = headerDecisionReplayContext(installed.decision);
+    expect(context?.predecessor).toMatchObject({
+      challengedHeaderHash: fixture.block.headerHash,
+      headerHash: fixture.predecessor.headerHash,
+      utxosRoot: fixture.predecessor.header.utxosRoot,
+    });
+    expect(context?.transitionTraceEvents?.headerHash).toBe(
+      fixture.block.headerHash,
+    );
     const uninstalled = await classify({
       fixture,
       block: fixture.block,
       installed: false,
     });
     expect(uninstalled.decision.decision).toBe("healthy");
+  });
+
+  it("finds an under-fee normal Plutus transaction with empty witnesses through the same full catalogue", async () => {
+    const fixture = await buildRetainedPlutusIdentityFixture({
+      verdict: "accepted",
+    });
+    // Same valid Plutus transaction and ledger effect; only the authenticated
+    // header now requires a one-lovelace minimum fee that the zero-fee tx lacks.
+    const block = await recommit(fixture.block, () => ({}), { minFeeB: 1n });
+    const { payload } = await reconstructDaPayload({
+      payloadEnvelopeCbor: block.payloadEnvelopeCbor,
+    });
+    expect(payload.block_body.validation_trace_witnesses).toEqual([]);
+    const { decision, classifier } = await classify({
+      fixture,
+      block,
+      installed: true,
+    });
+    expect(classifier.launchScope).toHaveLength(42);
+    expect(classifier.launchScope).toEqual(
+      INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
+    );
+    expect(decision).toMatchObject({
+      decision: "fault_detected",
+      category: "minFee",
+      violationId: "min-fee",
+      headerHash: block.headerHash,
+      launchScope: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
+    });
   });
 });

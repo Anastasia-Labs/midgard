@@ -64,5 +64,4 @@ prerequisite failure, or a reason to disqualify the block from classification.
 - [Fabricated-withdrawal step 04](../../../onchain/aiken/validators/fraud-proofs/fabricated-withdrawal/step-04.ak)
 - [SDK fabricated-withdrawal rule](../../../demo/midgard-sdk/src/fraud-proof/fabricated-withdrawal.ts)
 - [SDK withdrawal order construction](../../../demo/midgard-sdk/src/user-events/withdrawal.ts)
-- [Validation-dispute replay admission](../../../demo/midgard-fault-proofs/src/validation-dispute/replay.ts)
 - [Classification rule order](../../../demo/midgard-fault-proofs/src/workflow/classification.ts)

@@ -19,6 +19,7 @@ import {
   type RecordedDetection,
 } from "./header-classifier.authenticated-state-queue-observation-digest.js";
 import { sealDecision } from "./header-classifier.create-header-classifier.js";
+import { isInstalledFraudProofCategory } from "./installed-categories.js";
 
 export const TRANSITION_TRACE_STRUCTURAL_ROUTE =
   "transition_trace_structural_v1";
@@ -47,7 +48,9 @@ export const sealPreUnionDecision = ({
   readonly category: FraudProofCatalogueCategoryName;
   readonly selected: RecordedDetection;
 }): HeaderDecision => {
-  const installed = classifier.launchScope.includes(category);
+  const installed =
+    classifier.launchScope.includes(category) &&
+    isInstalledFraudProofCategory(category);
   const classification = {
     decision: installed ? "fault_detected" : "unprovable",
     selected: detectionJson(selected),

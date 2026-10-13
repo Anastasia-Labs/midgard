@@ -169,15 +169,6 @@ again and never exits over it: it holds each item, `/readyz` reports
     unspent at the tip, and it holds no signed transaction, its inputs return to
     the wallet. Otherwise it stays held.
 
-A validation-trace transcript archived before user events were read from the
-follower's facts is captured again from the facts and re-keyed on top of the
-old one, unless a proof started from it is still open: its workflow journaled a
-challenge digest the new transcript cannot reproduce. That objective is held
-the same way, listed in `supervisor.journalDecisionMissing` with `readiness`
-`validation_transcript_pre_follower`, which `/readyz` reports instead of
-`journal_decision_missing`. It clears once its header leaves the finalized
-state queue.
-
 Retention handles the rest. Workflow directories, follower pins of objectives
 that are never admitted again, and the leases of reservations that hold a
 signed transaction stay in place. The moved-aside file is never read again.
@@ -362,6 +353,51 @@ holds back a challenge action. `daBondPool` keeps the last good readout, whose
 good read sets it back to `null`. Funding, top-up and the owner-quorum withdrawal are operator commands; see
 [DA bond pool commands](../midgard-node/docs/da-bond-commands.md).
 
+A deployment whose profile lists fraud provers or DA challengers
+(`allow_lists`) refuses a Computation-Thread Init or an availability Open
+signed by any other key. The watcher checks its two payment keys against the
+compiled profile at startup, and `/v1/metrics` reports the result as
+`submissionModes: {faultProofs, availability}`, each `submit` or
+`observe_and_prepare` (`null` when not reported). A key in
+`observe_and_prepare` still observes, classifies and proves, but submits
+nothing the list would refuse: each admitted fault-proof objective, and each
+due Open, is written as a prepared-proof bundle under
+`<storage.path>.prepared-proofs/` (owner-only JSON,
+`midgard-watcher-prepared-proof-v1`, naming the objective and the observing
+key, never evidence) and raises the `prepared_proof_awaiting_submission`
+alert, one per objective or header. The objective stays pending on each
+observation. Its bundle and alert go once it is settled (a listed prover's
+proof removed the header, or the header left the queue) or, for an Open, once
+it is no longer due. The alert is informational: the watcher stays ready.
+Other availability steps (Settle, Close, Timeout, prune) are not
+allow-listed and run as usual. An observer reads neither wallet to prepare,
+so an unfunded key keeps it ready.
+
+Acting on a prepared proof is an allow-listed key's job. The bundle and the
+alert trigger it; they are not an input, and no command submits a bundle:
+
+- Fault proofs: a listed prover runs its own watcher configured with its
+  listed prover key (its `submissionModes.faultProofs` reads `submit`). That
+  watcher detects and proves the same fault from authenticated L1 and public
+  DA. Once its proof removes the header, the observer's bundle and alert
+  clear.
+- Availability Opens: a listed challenger opens the header the bundle names
+  before `openDeadlineEpochMs`, with the node's command (flags and funding in
+  [availability challenge commands](../midgard-node/docs/availability-challenge-commands.md)):
+
+  ```sh
+  node dist/index.js availability-challenge open \
+    --manifest /var/lib/midgard/contract-deployment-info.json \
+    --journal /var/lib/midgard/availability/actor.sqlite \
+    --header-hash "$BUNDLE_HEADER_HASH" \
+    --wallet-seed-env LISTED_CHALLENGER_SEED \
+    --collateral-out-ref <hash#index> \
+    --funding-out-ref <hash#index>
+  ```
+
+  It refuses a key the profile's DA challenger list omits before it builds
+  anything.
+
 `$.l1.source` names one source, `local_node`: the Cardano node the L1
 follower reads over its socket. `$.l1.finality` holds only `depth`. The
 installed CLI process parser requires `mode: "acceptance"`, `targetNetwork` of
@@ -481,7 +517,7 @@ after the cause and retained residue have been verified.
 
 The reliability program's final acceptance requires a fresh deployment,
 automatic deposit/transfer/merge/withdrawal and exact payout, then separate
-Cardano restart, Kupo stop, Ogmios stop, and public retained-DA loss drills.
+Cardano restart, public retained-DA loss, and all-operator outage drills.
 The running services must recover without manual commit, merge, or database
 repair. Focused tests and provider-only calibration do not close these gates.
 The response-budget decision must include actual source/cursor cost, signed
@@ -516,8 +552,8 @@ measurement does not establish a public-network deadline guarantee. See the
   subsequent inclusion-policy passes require their own recorded provenance.
   The other non-interactive families are verified
   locally, in progress on that harness, or still blocked, not live-accepted.
-  The interactive `validationTraceDispute` family is installed but outside
-  that harness.
+  The interactive `validationTraceDispute` family and the trace-relative
+  families have no off-chain workflow in this release.
 - `pnpm run typecheck`, `pnpm run lint`, and `pnpm test` check this package.
   The tests drive a scripted fake node transport; the sidecar itself is tested
   in `demo/l1-node-transport`.

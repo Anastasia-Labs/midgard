@@ -8,6 +8,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import * as authorityCreation from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
 import {
@@ -43,7 +44,7 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
-    launchScope: fixture.old.launchScope,
+    launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
     protocolParameters: current,
     protocolParameterHistory: fixture.protocolParameterHistory,
@@ -139,7 +140,7 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
     const factory = createWatcherProverFundingAuthorityFactory({
       journalRoot: fixture.journalRoot,
       journalAuthenticationKey: TEST_JOURNAL_KEY,
-      launchScope: fixture.old.launchScope,
+      launchScope: installedLaunchScope(fixture.old.launchScope),
       deploymentIdentity,
       protocolParameters: decreased,
       protocolParameterHistory: fixture.protocolParameterHistory,

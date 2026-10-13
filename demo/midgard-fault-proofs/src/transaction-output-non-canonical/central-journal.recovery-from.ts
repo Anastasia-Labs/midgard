@@ -55,6 +55,7 @@ const stages: readonly TransactionOutputStage[] = [
   "step01",
   "step02",
   "step03",
+  "step03Datum",
   "step04",
   "proven",
   "removed",

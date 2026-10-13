@@ -508,7 +508,7 @@ describe("watcher deployment identity", () => {
         categories: {
           ...categories,
           zeroInput: {
-            ...categories.zeroInput,
+            ...categories.zeroInput!,
             scriptHash: NATIVE_SCRIPT_HASH,
           },
         },

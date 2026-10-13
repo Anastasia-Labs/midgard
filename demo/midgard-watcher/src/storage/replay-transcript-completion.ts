@@ -1,9 +1,5 @@
 import { verifyCompletedFraudProofWorkflow } from "@al-ft/midgard-fault-proofs";
 
-import {
-  assertWatcherValidationReplayCaptureCurrent,
-  type captureWatcherValidationReplayTranscript,
-} from "../fault-proofs/replay-transcript-capture.js";
 import type { WatcherReplayTranscriptStore } from "./replay-transcript-store.js";
 
 export type WatcherReplayTranscriptClassification = Readonly<{
@@ -23,18 +19,6 @@ const admitClassification = (value: WatcherReplayTranscriptClassification) => {
   const admitted = Object.freeze({ ...value });
   classifications.add(admitted);
   return admitted;
-};
-/** Completion is the privately admitted current capture, never a finished flag. */
-export const watcherReplayTranscriptClassification = (
-  capture: Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>,
-) => {
-  assertWatcherValidationReplayCaptureCurrent(capture);
-  return admitClassification({
-    deploymentFingerprint: capture.transcript.deploymentFingerprint,
-    headerHash: capture.transcript.headerHash,
-    operationDigest: capture.decisionDigest,
-    headTranscriptDigest: capture.transcript.transcriptDigest,
-  });
 };
 export const unsafeAdmitWatcherReplayTranscriptClassificationForTest =
   admitClassification;

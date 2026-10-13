@@ -1,39 +1,23 @@
-import {
-  buildMidgardValidationTraceTree,
-  hashMidgardValidationMachineState,
-  hashMidgardValidationRejectionCode,
-  MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  MidgardValidationPhase,
-} from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { asDataType, asLucidSchema } from "@al-ft/midgard-core/lucid-data";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type DaPayload,
   type DaPayloadEntry,
   encodeDaPayload,
-  encodeRetainedValidationWitness,
-  encodeRetainedValidationWitnessKey,
   type EventKey,
   EventKeySchema,
   hashBlockHeader,
   rejectionCodeOf,
   type RejectionReason,
-  type RetainedValidationAuxiliaryWitness,
-  RetainedValidationAuxiliaryWitnessSchema,
-  retainedValidationEndpointCoordinate,
-  retainedValidationStateCoordinate,
   ROOT_DOMAINS,
   TransitionStep,
-  validationMachineStateDataFromCore,
-  type ValidationTraceDescriptor,
   ValidationTraceDescriptorSchema,
-  validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
-  type DeterministicValidationMachineTrace,
-  retainedValidationAuxiliaryWitnessData,
+  placeholderValidationTraceDescriptorV1,
+  validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -43,133 +27,66 @@ import {
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
 import { buildCanonicalBlockFixture } from "../helpers/canonical-block-evidence-fixture.js";
+import { recordFixtureLedger } from "./fixture-ledger.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
 
-/** Retains existing machine states under the operator's exact claimed verdict. */
-export const retainValidationTrace = ({
-  trace,
+/**
+ * The validation-trace descriptor entry an operator commits for one event under
+ * its exact claimed verdict: the P1 placeholder descriptor, derived from the
+ * event key, the transaction's proof-source commitment and the verdict.
+ */
+export const placeholderValidationTraceEntries = ({
   eventKey,
+  canonicalTransactionCbor,
+  sourceKind,
   claim,
 }: {
-  readonly trace: DeterministicValidationMachineTrace;
   readonly eventKey: EventKey;
+  /** The canonical normal or forced bytes the event commits. */
+  readonly canonicalTransactionCbor: Uint8Array;
+  readonly sourceKind: "normal" | "forced";
   readonly claim:
     | { readonly verdict: "accepted" }
     | { readonly verdict: "rejected"; readonly reason: RejectionReason };
 }) => {
-  const tree = buildMidgardValidationTraceTree(
-    trace.states.map(hashMidgardValidationMachineState),
+  const eventKeyCbor = Buffer.from(
+    Data.to(eventKey, asLucidSchema(EventKeySchema)),
+    "hex",
+  );
+  const descriptor = placeholderValidationTraceDescriptorV1(
+    {
+      eventKeyCbor,
+      transactionCommitment: validationTransactionCommitmentV1({
+        canonicalTransactionCbor,
+        sourceKind,
+      }),
+    },
     claim.verdict,
     claim.verdict === "accepted"
-      ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-      : hashMidgardValidationRejectionCode(
-          Buffer.from(rejectionCodeOf(claim.reason), "hex").toString("ascii"),
+      ? null
+      : Buffer.from(rejectionCodeOf(claim.reason), "hex").toString("ascii"),
+  );
+  return {
+    descriptorEntries: [
+      {
+        key: eventKeyCbor,
+        value: Buffer.from(
+          Data.to(
+            SDK.validationTraceDescriptorDataFromCore(descriptor),
+            asLucidSchema(ValidationTraceDescriptorSchema),
+          ),
+          "hex",
         ),
-  );
-  const stepCount = BigInt(tree.descriptor.stepCount);
-  const descriptor: ValidationTraceDescriptor = {
-    schema_version: BigInt(tree.descriptor.schemaVersion),
-    machine_version: BigInt(tree.descriptor.machineVersion),
-    trace_root: tree.descriptor.traceRoot.toString("hex"),
-    step_count: stepCount,
-    initial_state_hash: tree.descriptor.initialStateHash.toString("hex"),
-    terminal_state_hash: tree.descriptor.terminalStateHash.toString("hex"),
-    verdict: claim.verdict === "accepted" ? "Accepted" : "Rejected",
-    rejection_code_hash: tree.descriptor.rejectionCodeHash.toString("hex"),
+      },
+    ],
   };
-  const descriptorEntries = [
-    {
-      key: Buffer.from(Data.to(eventKey, asLucidSchema(EventKeySchema)), "hex"),
-      value: Buffer.from(
-        Data.to(descriptor, asLucidSchema(ValidationTraceDescriptorSchema)),
-        "hex",
-      ),
-    },
-  ];
-  const entry = (
-    index: number,
-    coordinate: bigint,
-    endpoint?: "initial" | "terminal",
-  ) => {
-    const witness = trace.witnesses[index]!;
-    return {
-      key: encodeRetainedValidationWitnessKey({
-        event_key: eventKey,
-        execution_index: coordinate,
-      }),
-      value: encodeRetainedValidationWitness({
-        machine_state: validationMachineStateDataFromCore(trace.states[index]!),
-        trace_proof: validationTraceProofDataFromCore(tree.proofs[index]!),
-        phase:
-          endpoint === "initial"
-            ? -1n
-            : BigInt(MidgardValidationPhase[witness.phase]),
-        program_counter: BigInt(witness.programCounter),
-        witness_cbor:
-          endpoint === "initial"
-            ? trace.validationContextCbor.toString("hex")
-            : witness.cbor.toString("hex"),
-        auxiliary:
-          endpoint === undefined
-            ? Data.from(
-                Data.to<unknown>(
-                  retainedValidationAuxiliaryWitnessData(witness.auxiliary),
-                ),
-                asDataType<RetainedValidationAuxiliaryWitness>(
-                  RetainedValidationAuxiliaryWitnessSchema,
-                ),
-              )
-            : "NoAuxiliaryWitness",
-      }),
-    };
-  };
-  const retainedEntries = trace.witnesses.map((witness, index) =>
-    entry(
-      index,
-      witness.auxiliary?.kind === "nativeExecutionDescriptor"
-        ? BigInt(witness.auxiliary.executionIndex)
-        : retainedValidationStateCoordinate(stepCount, BigInt(index)),
-    ),
-  );
-  retainedEntries.push(
-    entry(
-      0,
-      retainedValidationEndpointCoordinate(stepCount, "initial"),
-      "initial",
-    ),
-  );
-  retainedEntries.push(
-    entry(
-      trace.states.length - 1,
-      retainedValidationEndpointCoordinate(stepCount, "terminal"),
-      "terminal",
-    ),
-  );
-  return { descriptorEntries, retainedEntries };
 };
-
-/** Retains ordinary machine states under the operator's exact claimed rejection. */
-export const retainRejectedValidationTrace = ({
-  trace,
-  eventKey,
-  reason,
-}: {
-  readonly trace: DeterministicValidationMachineTrace;
-  readonly eventKey: EventKey;
-  readonly reason: RejectionReason;
-}) =>
-  retainValidationTrace({
-    trace,
-    eventKey,
-    claim: { verdict: "rejected", reason },
-  });
 
 /** Commits existing small validation fixtures into the same DA/header boundary as classification. */
 export const buildRetainedValidationBlockFixture = async ({
   subject,
   priorLedgerRoot,
   descriptorEntries,
-  retainedEntries,
   blockEndTimeMs,
   blockStartTimeMs = blockEndTimeMs - 60_000,
   blockSlot = 100n,
@@ -183,7 +100,6 @@ export const buildRetainedValidationBlockFixture = async ({
   readonly subject: Parameters<typeof buildDecodingBlockFixture>[0]["subject"];
   readonly priorLedgerRoot: string;
   readonly descriptorEntries?: readonly { key: Buffer; value: Buffer }[];
-  readonly retainedEntries?: readonly { key: Buffer; value: Buffer }[];
   readonly blockEndTimeMs: number;
   readonly blockStartTimeMs?: number;
   readonly blockSlot?: bigint;
@@ -258,6 +174,14 @@ export const buildRetainedValidationBlockFixture = async ({
     transitionTraceRoot: transitionRoot.root,
     ...(postLedger === undefined ? {} : { utxosRoot: postLedger.root }),
   };
+  if (postLedger !== undefined && postLedgerEntries !== undefined)
+    recordFixtureLedger(
+      postLedger.root,
+      postLedgerEntries.map(({ outRef, output }) => ({
+        key: outRef,
+        value: output,
+      })),
+    );
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const entries = (
     values: readonly { key: Buffer; value: Buffer }[],
@@ -272,23 +196,13 @@ export const buildRetainedValidationBlockFixture = async ({
       header,
       header_hash: headerHash,
       validation_traces: entries(descriptors),
-      validation_trace_witnesses: entries(retainedEntries ?? []),
+      validation_trace_witnesses: [],
       transition_trace: entries(transitionEntries),
       ...(programMaterialEntries === undefined
         ? {}
         : {
             cek_program_material: [...programMaterialEntries].sort(
               ([left], [right]) => left.localeCompare(right),
-            ),
-          }),
-      ...(postLedgerEntries === undefined
-        ? {}
-        : {
-            utxos: entries(
-              postLedgerEntries.map(({ outRef, output }) => ({
-                key: outRef,
-                value: output,
-              })),
             ),
           }),
       counts: {
@@ -330,8 +244,4 @@ export type RetainedPlutusFixtureOptions = Readonly<{
     startTime: bigint;
     endTime: bigint;
   }>;
-  /** The trace the operator commits, in place of the replayed one. */
-  committedTrace?: (
-    replayed: DeterministicValidationMachineTrace,
-  ) => DeterministicValidationMachineTrace;
 }>;

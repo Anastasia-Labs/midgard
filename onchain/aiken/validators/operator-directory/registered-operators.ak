@@ -7,6 +7,7 @@ use cardano/transaction.{
   Input, Mint, Output, OutputReference, Redeemer, Transaction,
 }
 use env
+use midgard/common/allow_list
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
@@ -73,8 +74,10 @@ validator mint(
             }
           = self
 
-        // 1. Transaction must be signed by the registering operator.
+        // 1. Transaction must be signed by the registering operator, and the
+        //    deployment's operator allow-list must admit it.
         expect registering_operator |> utils.has_signed(extra_signatories)
+        expect allow_list.admits(env.operator_allow_list, registering_operator)
 
         // 2. Transaction must refer to hub oracle's authentic UTxO.
         let
