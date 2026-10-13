@@ -1,6 +1,7 @@
 import { parentPort, threadId, workerData } from "node:worker_threads";
 
 import {
+  evaluateMidgardCekVerdict,
   phaseAAddressCacheStats,
   phaseAPublicKeyCacheStats,
   serializePhaseACandidate,
@@ -91,7 +92,15 @@ const runPhaseA = (request: PhaseAJobRequest): ValidationWorkerResponse => {
 
 port.on("message", (request: ValidationJobRequest) => {
   try {
-    port.postMessage(runPhaseA(request));
+    port.postMessage(
+      request.kind === "cek_verdict"
+        ? ({
+            kind: "cek_verdict",
+            jobId: request.jobId,
+            result: evaluateMidgardCekVerdict(request.request),
+          } satisfies ValidationWorkerResponse)
+        : runPhaseA(request),
+    );
   } catch (error) {
     port.postMessage({
       kind: "job_failed",

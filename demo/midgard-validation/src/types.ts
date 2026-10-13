@@ -14,6 +14,7 @@ import type {
   MidgardLedgerTx,
   MidgardLedgerVKeyWitness,
 } from "./ledger-tx/types.js";
+import type { MidgardCekVerdictRequest } from "./phase-b.evaluate-cek-script.js";
 import type { RejectSubject } from "./reject-subject.js";
 
 /**
@@ -272,6 +273,14 @@ export type PhaseBConfig = {
       readonly memory: bigint;
     },
     executionIndex?: bigint,
+  ) => Effect.Effect<LocalScriptEvalResult, Error>;
+  /**
+   * Computes a verdict-mode script run elsewhere, such as on a worker thread.
+   * It must return exactly what `evaluateMidgardCekVerdict` returns for the
+   * request. Used only in verdict mode without `evaluateProofScript`.
+   */
+  readonly evaluateCekVerdict?: (
+    request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, Error>;
 };
 

@@ -1,6 +1,8 @@
 import { Worker } from "node:worker_threads";
 
 import {
+  type LocalScriptEvalResult,
+  type MidgardCekVerdictRequest,
   type PhaseAConfig,
   type PhaseAResult,
   type QueuedTx,
@@ -25,6 +27,10 @@ export type ValidationPoolService = {
   readonly runPhaseAChunk: (
     txs: readonly QueuedTx[],
   ) => Effect.Effect<PhaseAResult, ValidationWorkerError>;
+  /** Runs one Phase B script in verdict mode on a pool worker. */
+  readonly evaluateCekVerdict: (
+    request: MidgardCekVerdictRequest,
+  ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
   readonly ready: Effect.Effect<void, ValidationWorkerError>;
   readonly stats: Effect.Effect<{
     readonly busyWorkers: number;

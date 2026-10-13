@@ -1,5 +1,4 @@
 import {
-  decodeMidgardCekProgramEnvelope,
   decodeMidgardCekProgramMaterialSidecar,
   type MidgardCekProgramMaterialSidecar,
 } from "@al-ft/midgard-core/cek-proof";
@@ -11,13 +10,12 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
 import { Effect } from "effect";
 
 import {
-  buildMidgardCekExecutionGraph,
-  executeMidgardCekStructuralProgram,
   type MidgardCekExecutionGraph,
   type MidgardCekStructuralExecution,
 } from "./cek-executor.js";
 import { findRedeemerByPointer } from "./midgard-redeemers.js";
 import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
+import { evaluateMidgardCekScript } from "./phase-b.evaluate-cek-script.js";
 import {
   type CandidateNode,
   collectInlineScriptSources,
@@ -202,6 +200,16 @@ export const runLocalScriptEvaluation = (
       let graph: MidgardCekExecutionGraph | null = null;
       let cek: MidgardCekStructuralExecution | null = null;
       const executionIndex = executionIndexOf.get(execution)!;
+      const run = {
+        scriptBytes: execution.resolved.source.scriptBytes,
+        contextCbor,
+        executionBudget,
+        executionIndex,
+        maxSteps:
+          config.maxScriptExecutionSteps ??
+          MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+      };
+      const mode = config.cekExecutionMode ?? "verdict";
       let result: LocalScriptEvalResult;
       if (config.evaluateProofScript !== undefined) {
         result = yield* config.evaluateProofScript(
@@ -210,50 +218,22 @@ export const runLocalScriptEvaluation = (
           executionBudget,
           executionIndex,
         );
+      } else if (
+        mode === "verdict" &&
+        config.evaluateCekVerdict !== undefined
+      ) {
+        result = yield* config.evaluateCekVerdict({
+          ...run,
+          programMaterialSidecarCbor:
+            candidate.submission.programMaterialSidecarCbor,
+        });
       } else {
-        try {
-          const envelope = decodeMidgardCekProgramEnvelope(
-            execution.resolved.source.scriptBytes,
-          );
-          graph = buildMidgardCekExecutionGraph(
-            envelope,
-            proofProgramMaterial,
-            contextCbor,
-          );
-          const outcome = executeMidgardCekStructuralProgram({
-            root: graph.root,
-            material: graph.material.values(),
-            constantWitnesses: graph.constantWitnesses,
-            executionIndex,
-            maxSteps:
-              config.maxScriptExecutionSteps ??
-              MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
-            executionBudget,
-            mode: config.cekExecutionMode ?? "verdict",
-          });
-          // Only a proof-mode run carries the per-step evidence a trace
-          // consumer needs; a verdict-mode run is reported without it.
-          cek = "steps" in outcome ? outcome : null;
-          result =
-            outcome.stopReason === "budgetExceeded" ||
-            outcome.terminalState.mode === "haltSuccess"
-              ? {
-                  kind: "accepted",
-                  budget: {
-                    cpu: outcome.terminalState.cpu,
-                    memory: outcome.terminalState.memory,
-                  },
-                }
-              : {
-                  kind: "script_invalid",
-                  detail: `V1 CEK halted with error ${outcome.terminalState.auxiliary.toString(10)}`,
-                };
-        } catch (cause) {
-          result = {
-            kind: "script_invalid",
-            detail: `V1 CEK execution failed closed: ${String(cause)}`,
-          };
-        }
+        const evaluated = evaluateMidgardCekScript(
+          run,
+          proofProgramMaterial,
+          mode,
+        );
+        ({ graph, execution: cek, result } = evaluated);
       }
       config.onScriptEvaluated?.(candidate.ledgerTx.txId, {
         scriptBytes: Buffer.from(execution.resolved.source.scriptBytes),
