@@ -1,4 +1,6 @@
 /** Total, bounded §5.6 byte scanner; mirrors the on-chain scan module. */
+import { compareMidgardAssetKeyBytes } from "@al-ft/midgard-core";
+
 export type MintItemScanControl = Readonly<{
   stage: number;
   cursor: number;
@@ -35,7 +37,10 @@ export const mintItemPolicyId = (item: Buffer): string | null =>
     ? item.subarray(3, 31).toString("hex")
     : null;
 const precedes = (left: string, right: string) =>
-  left.length < right.length || (left.length === right.length && left < right);
+  compareMidgardAssetKeyBytes(
+    Buffer.from(left, "hex"),
+    Buffer.from(right, "hex"),
+  ) < 0;
 export const advanceMintItemScan = (
   control: MintItemScanControl,
   total: number,

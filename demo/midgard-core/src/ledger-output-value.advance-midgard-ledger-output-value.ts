@@ -35,10 +35,9 @@ import {
 
 /**
  * Strict descending execution order over independently authenticated source
- * indices, mirroring the on-chain `order_is_valid`. The native frontier
- * commits assets in canonical (length-then-bytes) key order while the
- * evaluated script context orders asset names lexicographically; the fold
- * proves that permutation instead of changing either ordering contract.
+ * indices, mirroring the on-chain `order_is_valid`. The native frontier and the
+ * evaluated script context both order asset names as plain bytes, so an honest
+ * traversal visits the source indices in reverse.
  */
 const orderIsValid = ({
   control,
@@ -211,24 +210,11 @@ export const buildMidgardLedgerOutputValueTrace = ({
   const initial = initialMidgardLedgerOutputValueControl(material.count);
   const steps: MidgardLedgerOutputValueTraceStep[] = [];
   let control = initial;
-  // The frontier commits assets in canonical (length-then-bytes) key order;
-  // the evaluated script context map is lexicographic. Sort the traversal
-  // lexicographically while retaining each asset's original frontier index,
-  // then fold in descending order so the prepending accumulator emits the
-  // ascending lexicographic map the evaluated context commits to.
+  // The frontier commits assets in plain byte order, the order of the
+  // evaluated script context map. Fold them in descending order so the
+  // prepending accumulator emits that ascending map.
   const traversal = assets
     .map((asset, assetIndex) => ({ asset, assetIndex }))
-    .sort(
-      (left, right) =>
-        Buffer.compare(
-          Buffer.from(left.asset.policyId),
-          Buffer.from(right.asset.policyId),
-        ) ||
-        Buffer.compare(
-          Buffer.from(left.asset.assetName),
-          Buffer.from(right.asset.assetName),
-        ),
-    )
     .reverse();
   let lastHead: MidgardLedgerOutputValueHead | null = null;
   for (const { asset, assetIndex } of traversal) {

@@ -41,7 +41,6 @@ import "./versioned-script.js";
 import "./native-tx-field-items.encode-midgard-mint-policy-item.js";
 import "./native-tx-field-items.midgard-field-items.js";
 export {
-  compareMidgardCanonicalKeyBytes,
   encodeMidgardFixedOutputIndex,
   encodeMidgardHash28Item,
   encodeMidgardMintPolicyItem,

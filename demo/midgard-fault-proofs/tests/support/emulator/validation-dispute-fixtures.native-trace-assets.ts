@@ -1,4 +1,5 @@
 import {
+  compareMidgardAssetKeyBytes,
   encodeMidgardFieldPreimageForField,
   encodeMidgardVersionedScriptListPreimage,
   type MidgardVersionedScript,
@@ -28,7 +29,12 @@ export const nativeTraceAssets = ({
             : (i - 257).toString(16).padStart(4, "0")
         : i.toString(16).padStart(4, "0");
     return [name, assetCount === 1304 ? (i === 1303 ? 256n : 1n) : 7n] as const;
-  });
+  }).sort(([left], [right]) =>
+    compareMidgardAssetKeyBytes(
+      Buffer.from(left, "hex"),
+      Buffer.from(right, "hex"),
+    ),
+  );
   const txAssets = new Map([[policyId, new Map(assetEntries)]]);
   const mintFields =
     mintScript !== undefined

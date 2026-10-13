@@ -106,6 +106,13 @@ export declare const DATUM_CANONICITY_BOUNDARIES: readonly (readonly [
   cborHex: string,
 ])[];
 
+export declare const ASSET_KEY_ORDER_PAIRS: readonly (readonly [
+  label: string,
+  leftHex: string,
+  rightHex: string,
+  leftPrecedesRight: boolean,
+])[];
+
 export declare const CARRIAGE_BOUNDARY_LENGTHS: readonly number[];
 
 export declare const FIELD_PREIMAGE_LENGTHS: readonly number[];

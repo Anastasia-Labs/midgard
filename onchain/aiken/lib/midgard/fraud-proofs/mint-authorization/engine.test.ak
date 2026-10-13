@@ -21,7 +21,7 @@ fn item_of(policy_id: ByteArray, assets_map: ByteArray) -> ByteArray {
 
 /// The reader returns the 28-byte policy id of a canonical item.
 test mint_authorization_engine_reads_a_canonical_item() {
-  // {"A": 1, "AB": 2} — canonical: length-first key order.
+  // {"A": 1, "AB": 2} — canonical: plain byte order, a proper prefix first.
   engine.policy_id_of_mint_item_v1(item_of(policy_a, #"a241410142414202")) == policy_a
 }
 

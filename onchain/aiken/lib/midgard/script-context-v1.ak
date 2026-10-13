@@ -57,35 +57,14 @@ fn output_value_data(output_data: Data) -> Option<Data> {
   }
 }
 
-fn compare_asset_names(
-  left: Pair<Data, Data>,
-  right: Pair<Data, Data>,
-) -> Ordering {
-  bytearray.compare(builtin.un_b_data(left.1st), builtin.un_b_data(right.1st))
-}
-
 /// The `Value` a script sees, from a canonically decoded output's value. The
-/// output's CBOR orders each policy's asset names length-first; the evaluated
-/// script context orders them by their bytes, and so do the TypeScript context
-/// commitment and the `ledger_output_value_v1` fold, so the names are
-/// re-sorted here. Policy ids are not: the canonical decode admits only
-/// 28-byte policies in ascending byte order, where the two orders agree.
+/// output's CBOR orders policies and asset names as plain bytes, the order of
+/// the evaluated script context, so the asset maps carry over unchanged.
 fn script_value_data(value_data: Data) -> Data {
   expect [lovelace_data, assets_data] = builtin.un_list_data(value_data)
   let lovelace = builtin.un_i_data(lovelace_data)
-  let assets = list.map(
-    builtin.un_map_data(assets_data),
-    fn(policy) {
-      Pair(
-        policy.1st,
-        builtin.map_data(
-          list.sort(builtin.un_map_data(policy.2nd), compare_asset_names),
-        ),
-      )
-    },
-  )
   if lovelace == 0 {
-    builtin.map_data(assets)
+    assets_data
   } else {
     builtin.map_data(
       [
@@ -95,7 +74,7 @@ fn script_value_data(value_data: Data) -> Data {
             [Pair(builtin.b_data(#""), builtin.i_data(lovelace))],
           ),
         ),
-        ..assets
+        ..builtin.un_map_data(assets_data)
       ],
     )
   }

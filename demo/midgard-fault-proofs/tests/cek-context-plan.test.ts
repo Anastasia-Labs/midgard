@@ -75,9 +75,8 @@ const inputAt = (
 
 /**
  * The exact mixed-width mint maximum: 1,304 assets under one policy whose
- * names are 0, 1 and 2 bytes wide, so the native encoded-key order and the
- * lexical execution order `script-context.ts::mintData` commits to are
- * genuinely different permutations of each other.
+ * names are 0, 1 and 2 bytes wide, interleaved by the plain byte order that
+ * both the native mint field and `script-context.ts::mintData` use.
  */
 let mixedWidthMintFixturePromise:
   | Promise<
@@ -294,7 +293,7 @@ describe("CEK context retained successor planning", () => {
       ]),
     );
   }, 120_000);
-  it("preserves lexical execution mint order at the mixed-width 1,304-asset source maximum", async () => {
+  it("preserves byte-ordered execution mint order at the mixed-width 1,304-asset source maximum", async () => {
     const fixture = await mixedWidthMintMaximum();
     const input = inputAt(fixture, fixture.disputedLowIndex);
     const plan = deriveCekContextPlan(input);
@@ -307,7 +306,7 @@ describe("CEK context retained successor planning", () => {
     expect(auxiliary.assetName.length).toBe(0);
     expect(auxiliary.previous).not.toBeNull();
   }, 180_000);
-  it("carries the exact permutation proof material for every mixed-width mint item", async () => {
+  it("carries the exact membership proof material for every mixed-width mint item", async () => {
     const fixture = await mixedWidthMintMaximum();
     const items = fixture.challengerTrace.witnesses.flatMap((witness) =>
       witness.auxiliary?.kind === "cekMintContextItem"
@@ -329,10 +328,12 @@ describe("CEK context retained successor planning", () => {
         (a, b) => a - b,
       ),
     ).toEqual([0, 1, 2]);
-    expect(items.find((item) => item.mintIndex === 1303)!.quantity).toBe(256n);
+    expect(
+      items.find((item) => item.assetName.toString("hex") === "0416")!.quantity,
+    ).toBe(256n);
 
     // Strictly descending execution order over the whole traversal: the
-    // reverse of it is exactly the lexical order `mintData` commits to.
+    // reverse of it is exactly the byte order `mintData` commits to.
     const executionOrder = [...items]
       .reverse()
       .map((item) => Buffer.from(item.assetName));
@@ -346,12 +347,12 @@ describe("CEK context retained successor planning", () => {
         .map((name) => name.toString("hex")),
     );
 
-    // The traversal is a genuine permutation of the native encoded-key
-    // order, not a relabelling of it.
+    // The native mint field uses the same plain byte order, so the
+    // ascending execution order is the frontier order itself.
     const nativeOrder = [...items]
       .sort((left, right) => left.mintIndex - right.mintIndex)
       .map((item) => item.assetName.toString("hex"));
-    expect(executionOrder.map((name) => name.toString("hex"))).not.toEqual(
+    expect(executionOrder.map((name) => name.toString("hex"))).toEqual(
       nativeOrder,
     );
 

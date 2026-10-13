@@ -1,9 +1,9 @@
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{decode_canonical_int_at, expect_byte}
 use midgard/fraud_proofs/native_tx/preimages.{
-  canonical_bytes_key_precedes, decode_canonical_bytes_at,
-  decode_canonical_map_header_at,
+  decode_canonical_bytes_at, decode_canonical_map_header_at,
 }
+use midgard/ledger_output_v1.{asset_key_precedes}
 
 /// The exact canonical policy-item prefix, without materializing its map.
 pub fn policy_header(
@@ -16,7 +16,7 @@ pub fn policy_header(
   expect
     when previous is {
       None -> True
-      Some(before) -> canonical_bytes_key_precedes(before, policy_id)
+      Some(before) -> asset_key_precedes(before, policy_id)
     }
   let Pair(cursor, count) = decode_canonical_map_header_at(window, offset)
   expect count > 0
@@ -34,7 +34,7 @@ pub fn asset(
   expect
     when previous is {
       None -> True
-      Some(before) -> canonical_bytes_key_precedes(before, name)
+      Some(before) -> asset_key_precedes(before, name)
     }
   let Pair(consumed, quantity) = decode_canonical_int_at(window, offset)
   expect quantity != 0

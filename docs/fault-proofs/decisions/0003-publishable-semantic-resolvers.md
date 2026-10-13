@@ -43,10 +43,10 @@ Transition accepted-transaction and deposit finalizers share authenticated outpu
 summary verification, while their dispatchers retain source-specific binding and
 terminal checks. ValueAndMint resolvers share asset-fold semantics while retaining
 the exact replay/output/mint arm boundary. Canonical descriptor asset frontiers
-use native length-then-bytes key order; evaluated script contexts use
-lexicographic asset-name order. Mixed-width names require an authenticated
-permutation that preserves quantities and the complete asset set, not equality
-of those two orderings.
+and evaluated script contexts both use plain byte order for policy ids and
+asset names, as on Cardano (owner ruling Q3, 2026-10-12, which replaced the
+earlier length-then-bytes native key order). The asset fold still
+authenticates each step's frontier index.
 
 ## Alternatives and consequences
 

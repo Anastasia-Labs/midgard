@@ -1353,13 +1353,11 @@ export const completeValidationTrace = (
                 stage: 8,
               };
 
-              const orderedMint = authenticatedMintAssets
-                .map((asset, index) => ({ ...asset, index }))
-                .sort(
-                  (left, right) =>
-                    Buffer.compare(left.policyId, right.policyId) ||
-                    Buffer.compare(left.assetName, right.assetName),
-                );
+              // The mint frontier is in plain byte order, the order of the
+              // context's mint map; the fold below walks it descending.
+              const orderedMint = authenticatedMintAssets.map(
+                (asset, index) => ({ ...asset, index }),
+              );
               let previousHead: {
                 assetName: Buffer;
                 quantity: bigint;

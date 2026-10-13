@@ -555,11 +555,11 @@
           "itemCount": 1,
           "headerLength": 1,
           "itemsHex": [
-            "82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410241420342414104582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906"
+            "82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410242414104414203582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906"
           ],
-          "preimageHex": "81584f82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410241420342414104582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906",
+          "preimageHex": "81584f82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410242414104414203582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906",
           "preimageLength": 82,
-          "commitmentHex": "f45bf4838470d9a83678cf8a99b3cf6563b67a739e39c31e968510153bbc5d25",
+          "commitmentHex": "9861d1486e35ea9e0db671e45aa7dc773809257f56a877ad90d22c5669e9e5b2",
           "carriageTier": "Inline",
           "itemExtents": [
             {
@@ -991,6 +991,104 @@
       "txIdHex": "f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc",
       "outputIndex": 65535,
       "keyHex": "825820f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc19ffff"
+    }
+  ],
+  "assetKeyOrder": [
+    {
+      "label": "empty_before_one_byte",
+      "leftHex": "",
+      "rightHex": "00",
+      "precedes": true
+    },
+    {
+      "label": "one_byte_after_empty",
+      "leftHex": "00",
+      "rightHex": "",
+      "precedes": false
+    },
+    {
+      "label": "empty_equal_is_strict",
+      "leftHex": "",
+      "rightHex": "",
+      "precedes": false
+    },
+    {
+      "label": "equal_is_strict",
+      "leftHex": "4141",
+      "rightHex": "4141",
+      "precedes": false
+    },
+    {
+      "label": "equal_prefix_shorter_first",
+      "leftHex": "41",
+      "rightHex": "4141",
+      "precedes": true
+    },
+    {
+      "label": "equal_prefix_longer_after",
+      "leftHex": "4141",
+      "rightHex": "41",
+      "precedes": false
+    },
+    {
+      "label": "lexicographic_beats_length",
+      "leftHex": "4141",
+      "rightHex": "42",
+      "precedes": true
+    },
+    {
+      "label": "length_does_not_win",
+      "leftHex": "42",
+      "rightHex": "4141",
+      "precedes": false
+    },
+    {
+      "label": "low_wide_before_high_narrow",
+      "leftHex": "0102",
+      "rightHex": "aa",
+      "precedes": true
+    },
+    {
+      "label": "high_narrow_after_low_wide",
+      "leftHex": "aa",
+      "rightHex": "0102",
+      "precedes": false
+    },
+    {
+      "label": "zero_pair_before_ff",
+      "leftHex": "0000",
+      "rightHex": "ff",
+      "precedes": true
+    },
+    {
+      "label": "ff_after_zero_pair",
+      "leftHex": "ff",
+      "rightHex": "0000",
+      "precedes": false
+    },
+    {
+      "label": "head_width_24_before_23",
+      "leftHex": "000000000000000000000000000000000000000000000000",
+      "rightHex": "0101010101010101010101010101010101010101010101",
+      "precedes": true
+    },
+    {
+      "label": "head_width_23_after_24",
+      "leftHex": "0101010101010101010101010101010101010101010101",
+      "rightHex": "000000000000000000000000000000000000000000000000",
+      "precedes": false
+    },
+    {
+      "label": "width_32_last_byte",
+      "leftHex": "ababababababababababababababababababababababababababababababab00",
+      "rightHex": "ababababababababababababababababababababababababababababababab01",
+      "precedes": true
+    },
+    {
+      "label": "policy_width_28",
+      "leftHex": "05050505050505050505050505050505050505050505050505050505",
+      "rightHex": "06060606060606060606060606060606060606060606060606060606",
+      "precedes": true
     }
   ],
   "datumCanonicityBoundaries": [

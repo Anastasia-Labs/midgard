@@ -27,10 +27,8 @@ export {
  * construction. The source output remains the independently bounded,
  * canonically decoded ledger preimage; this commitment is the semantic bridge
  * that later context-building steps can append without re-revealing the whole
- * transaction. The context orders a Value's policies and asset names by their
- * bytes, while ledger output maps are authenticated in canonical
- * (length-then-bytes) key order; the ledger output Value fold proves that
- * permutation per asset instead of changing either ordering contract.
+ * transaction. The context and the ledger output maps both order a Value's
+ * policies and asset names as plain bytes.
  */
 export const commitMidgardScriptContextTxOut = (
   output: MidgardTxOutput,

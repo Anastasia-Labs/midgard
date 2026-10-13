@@ -203,10 +203,9 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly worstCaseWitness?: boolean;
   /**
    * Narrow the disputed step to a ledger-output-proof value step that carries
-   * a previous map-head opening — the permutation half of the mixed-width
+   * a previous map-head opening — the same-policy half of the mixed-width
    * output value fold (`ledger_output_value_v1.asset_step`). Combine with
-   * `assetCount: 1304` so the native canonical key order and the lexical
-   * execution order are genuinely different permutations.
+   * `assetCount: 1304` for names 0, 1 and 2 bytes wide under one policy.
    */
   readonly ledgerOutputValueOpening?: boolean;
   /**

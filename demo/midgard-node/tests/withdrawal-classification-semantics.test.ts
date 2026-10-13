@@ -30,8 +30,8 @@ const lovelace = 7_000_000n;
 
 type Assets = ReadonlyMap<string, ReadonlyMap<string, bigint>>;
 
-/** One policy holding "ff" and "0000": length-first (L2 codec) and bytewise
- * (Plutus Data Value) orders differ. */
+/** One policy holding "ff" and "0000", given in descending order: both the L2
+ * codec and the Plutus Data Value write "0000" first. */
 const mixedWidthAssets: Assets = new Map([
   [
     policy,

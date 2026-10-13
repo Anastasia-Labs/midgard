@@ -11,7 +11,6 @@ use env
 use midgard/common/types.{H32, Proof}
 use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/types as native_tx_types
 use midgard/fraud_proofs/structured_data_carriage as carriage
@@ -129,64 +128,6 @@ fn payment_owner(address_bytes: ByteArray) -> Option<ByteArray> {
   }
 }
 
-// Native CBOR orders keys by encoded length; Cardano Value Data uses byte order.
-// Merge runs keep mixed-width names bounded instead of quadratic insertion.
-fn merge_asset_pairs(
-  left: List<Pair<ByteArray, a>>,
-  right: List<Pair<ByteArray, a>>,
-) -> List<Pair<ByteArray, a>> {
-  when left is {
-    [] -> right
-    [a, ..rest_left] ->
-      when right is {
-        [] -> left
-        [b, ..rest_right] ->
-          if bytearray.compare(a.1st, b.1st) == Less {
-            [a, ..merge_asset_pairs(rest_left, right)]
-          } else {
-            [b, ..merge_asset_pairs(left, rest_right)]
-          }
-      }
-  }
-}
-
-fn merge_asset_runs(
-  runs: List<List<Pair<ByteArray, a>>>,
-) -> List<List<Pair<ByteArray, a>>> {
-  when runs is {
-    [a, b, ..rest] -> [merge_asset_pairs(a, b), ..merge_asset_runs(rest)]
-    _ -> runs
-  }
-}
-
-fn sorted_asset_runs(
-  runs: List<List<Pair<ByteArray, a>>>,
-) -> List<Pair<ByteArray, a>> {
-  when runs is {
-    [] -> []
-    [one] -> one
-    _ -> sorted_asset_runs(merge_asset_runs(runs))
-  }
-}
-
-fn asset_pairs_are_sorted(pairs: List<Pair<ByteArray, a>>) -> Bool {
-  when pairs is {
-    [a, b, ..rest] ->
-      bytearray.compare(a.1st, b.1st) == Less && asset_pairs_are_sorted(
-        [b, ..rest],
-      )
-    _ -> True
-  }
-}
-
-fn sort_asset_pairs(pairs: List<Pair<ByteArray, a>>) -> List<Pair<ByteArray, a>> {
-  if asset_pairs_are_sorted(pairs) {
-    pairs
-  } else {
-    sorted_asset_runs(list.map(pairs, fn(pair) { [pair] }))
-  }
-}
-
 pub fn withdrawal_signature_is_valid_v1(
   info: ledger_state.WithdrawalInfo,
 ) -> Bool {
@@ -238,32 +179,23 @@ pub fn output_value_matches_v1(
   if !valid_domains {
     False
   } else {
-    let named = assets.flatten_with(
+    // A `Value` flattens in plain byte order, which is the frontier's order.
+    let leaves = assets.flatten_with(
       value,
       fn(policy, name, quantity, keep, skip) {
         if policy == #"" {
           skip()
         } else {
           keep(
-            Pair(
-              bytearray.concat(policy, encode_definite_bytes(name)),
-              ledger_output_commitment_v1.asset_leaf_hash(
-                policy,
-                name,
-                quantity,
-              ),
-            ),
+            ledger_output_commitment_v1.asset_leaf_hash(policy, name, quantity),
           )
         }
       },
     )
-      |> sort_asset_pairs
-    if list.length(named) != output_asset_count {
+    if list.length(leaves) != output_asset_count {
       False
     } else {
-      let frontier = validation_merkle_v1.build_frontier(
-        list.map(named, fn(pair) { pair.2nd }),
-      )
+      let frontier = validation_merkle_v1.build_frontier(leaves)
       and {
         assets.lovelace_of(value) == output_lovelace,
         validation_merkle_v1.frontier_commitment(
@@ -732,8 +664,8 @@ test descriptor_frontier_matches_mixed_width_value_and_refuses_quantity_change()
     value: native_tx_types.MidgardValue {
       lovelace: 1_000_000,
       assets: [
-        Pair(bytearray.concat(policy, #"ff"), 1),
         Pair(bytearray.concat(policy, #"0000"), 2),
+        Pair(bytearray.concat(policy, #"ff"), 1),
       ],
     },
   }

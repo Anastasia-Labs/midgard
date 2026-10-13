@@ -3,7 +3,7 @@
 
 use aiken/primitive/bytearray
 use midgard/canonical_cbor_scan_v1 as cbor
-use midgard/fraud_proofs/native_tx/preimages.{canonical_bytes_key_precedes}
+use midgard/ledger_output_v1.{asset_key_precedes}
 
 pub const terminal: Int = 2
 
@@ -49,7 +49,7 @@ fn header(control: Control, total: Int, window: ByteArray) -> Option<Control> {
             head.next_offset < total,
             or {
               control.previous_policy == #"",
-              canonical_bytes_key_precedes(control.previous_policy, policy),
+              asset_key_precedes(control.previous_policy, policy),
             },
           } {
             Some(
@@ -101,8 +101,7 @@ fn asset(
                 if and {
                   when control.previous_asset is {
                     None -> True
-                    Some(previous) ->
-                      canonical_bytes_key_precedes(previous, name.value)
+                    Some(previous) -> asset_key_precedes(previous, name.value)
                   },
                   if remaining == 0 {
                     cursor == total

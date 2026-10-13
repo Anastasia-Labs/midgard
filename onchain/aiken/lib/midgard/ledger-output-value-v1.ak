@@ -272,11 +272,10 @@ fn advanced(
 }
 
 /// Strict descending execution order over independently authenticated source
-/// indices, mirroring `cek_mint_order.order_is_valid`. The native frontier
-/// commits assets in canonical (length-then-bytes) key order while the
-/// evaluated script context orders asset names lexicographically; the fold
-/// proves that permutation instead of changing either ordering contract. The
-/// head opening is checked against the accumulated within-policy commitment.
+/// indices, mirroring `cek_mint_order.order_is_valid`. The native frontier and
+/// the evaluated script context both order asset names as plain bytes, so an
+/// honest traversal visits the source indices in reverse. The head opening is
+/// checked against the accumulated within-policy commitment.
 fn order_is_valid(
   control: LedgerOutputValueControlV1,
   asset_count: Int,

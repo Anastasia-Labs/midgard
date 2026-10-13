@@ -81,16 +81,12 @@ fn key_is(data: Data, expected: Int) -> Bool {
   }
 }
 
-fn canonical_bytes_key_precedes(left: ByteArray, right: ByteArray) -> Bool {
-  let left_length = bytearray.length(left)
-  let right_length = bytearray.length(right)
-  if left_length < right_length {
-    True
-  } else if left_length > right_length {
-    False
-  } else {
-    bytearray.compare(left, right) == Less
-  }
+/// The one key order for policy ids and asset names in a Value or a mint
+/// field (§5.5, §5.6): plain byte order, Cardano's. Strict, so a repeated key
+/// is refused rather than shadowed; on an equal prefix the shorter key comes
+/// first, and the empty asset name precedes every other name.
+pub fn asset_key_precedes(left: ByteArray, right: ByteArray) -> Bool {
+  builtin.less_than_bytearray(left, right)
 }
 
 fn append_assets(
@@ -123,7 +119,7 @@ fn parse_asset_quantities(
               Some(quantity) -> {
                 let ordered = when previous_name is {
                   None -> True
-                  Some(previous) -> canonical_bytes_key_precedes(previous, name)
+                  Some(previous) -> asset_key_precedes(previous, name)
                 }
                 if and {
                   bytearray.length(name) <= 32,
@@ -176,7 +172,7 @@ fn parse_policy_assets(
             Some(quantity_entries) -> {
               let ordered = when previous_policy is {
                 None -> True
-                Some(previous) -> bytearray.compare(previous, policy_id) == Less
+                Some(previous) -> asset_key_precedes(previous, policy_id)
               }
               if and {
                 bytearray.length(policy_id) == 28,
