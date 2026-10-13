@@ -5,7 +5,7 @@
  * only states which inputs Cardano refuses and how a verdict is reached.
  */
 import { ed25519, ED25519_TORSION_SUBGROUP } from "@noble/curves/ed25519.js";
-import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { schnorr, secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha512 } from "@noble/hashes/sha2.js";
 
 export type CardanoExactValue =
@@ -15,7 +15,7 @@ export type CardanoExactValue =
 
 /** Tags whose value and failure rule this module owns. */
 export const MIDGARD_CEK_CARDANO_EXACT_BUILTIN_TAGS: ReadonlySet<number> =
-  new Set([12, 16, 17, 21, 52, 77, 82, 83, 85]);
+  new Set([12, 16, 17, 21, 52, 53, 77, 82, 83, 85]);
 
 const INT64_MIN = -(1n << 63n);
 const INT64_MAX = (1n << 63n) - 1n;
@@ -163,6 +163,45 @@ const verifyEcdsaSecp256k1Signature = (
   );
 };
 
+const SECP256K1_P = secp256k1.Point.Fp.ORDER;
+
+/**
+ * Cardano verifies with libsecp256k1's BIP-340 `schnorrsig_verify` over a
+ * message of any length. The key must be 32 bytes and parse as an x-only
+ * point (x below p, on the curve) and the signature must be 64 bytes;
+ * otherwise the builtin fails. The result is False when r is not below p or
+ * s is not below the group order, and otherwise unless R = [s]G - [e]P is
+ * finite, has even y and x(R) = r, where
+ * e = int(tagged_hash("BIP0340/challenge", r || x(P) || m)) mod n.
+ */
+const verifySchnorrSecp256k1Signature = (
+  key: Uint8Array,
+  message: Uint8Array,
+  signature: Uint8Array,
+): CardanoExactValue | "failure" => {
+  if (key.length !== 32 || signature.length !== 64) return "failure";
+  let point;
+  try {
+    point = schnorr.utils.lift_x(bigEndian(key));
+  } catch {
+    return "failure";
+  }
+  const encodedR = signature.subarray(0, 32);
+  const r = bigEndian(encodedR);
+  const s = bigEndian(signature.subarray(32));
+  if (r >= SECP256K1_P || s >= SECP256K1_N) return bool(false);
+  const e =
+    bigEndian(
+      schnorr.utils.taggedHash("BIP0340/challenge", encodedR, key, message),
+    ) % SECP256K1_N;
+  const candidate = secp256k1.Point.BASE.multiplyUnsafe(s).subtract(
+    point.multiplyUnsafe(e),
+  );
+  if (candidate.is0()) return bool(false);
+  const { x, y } = candidate.toAffine();
+  return bool((y & 1n) === 0n && x === r);
+};
+
 /**
  * With padding the result is as long as the longer argument and its tail is
  * the longer argument's tail; without it the result is as long as the
@@ -286,6 +325,10 @@ export const evaluateCardanoExactBuiltin = (
       );
     case 52:
       return verifyEcdsaSecp256k1Signature(
+        ...expectKinds(arguments_, ["bytes", "bytes", "bytes"] as const),
+      );
+    case 53:
+      return verifySchnorrSecp256k1Signature(
         ...expectKinds(arguments_, ["bytes", "bytes", "bytes"] as const),
       );
     case 77:
