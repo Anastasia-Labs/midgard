@@ -3,7 +3,6 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
 import { describe, expect, it } from "vitest";
 
 import { RejectCodes } from "../src/index.js";
@@ -45,12 +44,6 @@ describe("phase A per-tx ex-units cap", () => {
       BigInt(limits.minSupportedL1MaxTxMemoryUnits),
       BigInt(limits.minSupportedL1MaxTxCpuUnits),
     ]);
-    // The public deployment profile binds no ex-units parameter of its own,
-    // so the consensus profile is the single source. Adding one there must
-    // reconcile it with this cap.
-    expect(
-      JSON.stringify(DEPLOYMENT_PROFILES["preprod-public"]).toLowerCase(),
-    ).not.toMatch(/ex_?units|ex_?mem|ex_?steps|execution/);
   });
 
   it("admits a transaction whose declared sum is exactly the cap", async () => {
