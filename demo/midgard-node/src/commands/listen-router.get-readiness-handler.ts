@@ -34,6 +34,7 @@ import {
   planMergePreflight,
 } from "../transactions/state-queue/merge-readiness.js";
 import { runL1ProviderPreflight } from "./l1-provider-preflight.js";
+import { publicReadinessPresentation } from "./listen-readiness-public-presentation.js";
 import {
   L1_TRANSPORT_UNREADY,
   l1ProviderReadiness,
@@ -79,13 +80,13 @@ export const getReadinessHandler = Effect.gen(function* () {
   );
   if (databaseState._tag === "Left") {
     return yield* HttpServerResponse.json(
-      {
+      publicReadinessPresentation({
         settlement: yield* Ref.get(globals.SETTLEMENT_HEALTH),
         ready: false,
         reasons: ["db_unhealthy"],
         details: [],
         dbError: readinessDatabaseError(databaseState.left),
-      },
+      }),
       { status: 503 },
     );
   }
@@ -456,7 +457,10 @@ export const getReadinessHandler = Effect.gen(function* () {
     mergeReadiness,
   };
 
-  return yield* HttpServerResponse.json(readiness, {
-    status: readiness.ready ? 200 : 503,
-  });
+  return yield* HttpServerResponse.json(
+    publicReadinessPresentation(readiness),
+    {
+      status: readiness.ready ? 200 : 503,
+    },
+  );
 });

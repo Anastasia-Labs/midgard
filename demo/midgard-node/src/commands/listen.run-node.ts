@@ -83,6 +83,7 @@ export const runNode = (
   | AdmissionSql
   | AdmissionWriter
   | BatchSql
+  | import("../services/database.js").HttpReadSql
   | import("../services/midgard-contracts.js").ContractDeploymentIdentity
   | MidgardContracts
   | Lucid

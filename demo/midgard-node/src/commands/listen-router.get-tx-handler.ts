@@ -8,15 +8,13 @@ import {
   HttpServerRequest,
   HttpServerResponse,
 } from "@effect/platform";
-import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { Effect, Metric, Option } from "effect";
 
-import { ImmutableDB, MempoolDB } from "../database/index.js";
-import { NodeConfig } from "../services/index.js";
+import { publicTxCborByHash } from "../database/http-read-lookups.js";
+import { publicReadDataLimitResponse } from "./listen-http-read.js";
 import { failWith500 } from "./listen-response.js";
 import { TX_ENDPOINT } from "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
-import { authorizeAdminRoute, isAdminRoutePath } from "./listen-utils.js";
 
 export const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -136,7 +134,12 @@ export const readSubmitBodyWithProtocolLimit = (
 ) =>
   HttpIncomingMessage.withMaxBodySize(
     request.arrayBuffer,
-    Option.some(SUBMIT_HTTP_BODY_MAX_BYTES),
+    Option.some(
+      Math.min(
+        SUBMIT_HTTP_BODY_MAX_BYTES,
+        Number(request.headers["content-length"] ?? SUBMIT_HTTP_BODY_MAX_BYTES),
+      ),
+    ),
   );
 
 /**
@@ -196,36 +199,7 @@ export const parseFixedHexParam = (
  * Wraps a route handler with admin-key authorization when the path belongs to
  * the admin-only route set.
  */
-export const withAdminAccess = <E, R>(
-  endpoint: string,
-  handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
-): Effect.Effect<
-  HttpServerResponse.HttpServerResponse,
-  E | HttpBodyError,
-  R | NodeConfig | HttpServerRequest.HttpServerRequest
-> =>
-  Effect.gen(function* () {
-    const routePath = `/${endpoint}`;
-    if (!isAdminRoutePath(routePath)) {
-      return yield* handler;
-    }
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    const nodeConfig = yield* NodeConfig;
-    const auth = authorizeAdminRoute(
-      nodeConfig.ADMIN_API_KEY,
-      request.headers["x-midgard-admin-key"],
-    );
-    if (!auth.authorized) {
-      yield* Effect.logWarning(
-        `Denied admin route ${routePath}: ${auth.error} (${auth.status})`,
-      );
-      return yield* HttpServerResponse.json(
-        { error: auth.error },
-        { status: auth.status },
-      );
-    }
-    return yield* handler;
-  });
+export { withAdminAccess } from "./listen-admin-access.js";
 
 /**
  * `GET /tx`: returns the CBOR for a known tx hash from mempool or immutable
@@ -237,36 +211,22 @@ export const getTxHandler = Effect.gen(function* () {
   const txHashBytes = parseFixedHexParam(txHashParam, 32);
   if (txHashBytes === null) {
     yield* Effect.logInfo(
-      `GET /${TX_ENDPOINT} - Invalid transaction hash: ${String(txHashParam)}`,
+      `GET /${TX_ENDPOINT} - Invalid transaction hash: [redacted]`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: ${String(txHashParam)}` },
+      { error: `Invalid transaction hash: [redacted]` },
       { status: 404 },
     );
   }
-  yield* Effect.logInfo("txHashBytes", txHashBytes);
-  const foundCbor: Buffer = yield* MempoolDB.retrieveTxCborByHash(
-    txHashBytes,
-  ).pipe(
-    Effect.catchAll((_e) =>
-      Effect.gen(function* () {
-        const fromImmutable =
-          yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
-        yield* Effect.logInfo(
-          `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${String(txHashParam)}`,
-        );
-        return fromImmutable;
-      }),
-    ),
-  );
+  const foundCbor = yield* publicTxCborByHash(txHashBytes);
   yield* Effect.logInfo(
-    `GET /${TX_ENDPOINT} - Transaction found in mempool: ${String(txHashParam)}`,
+    `GET /${TX_ENDPOINT} - Transaction found in mempool: [redacted]`,
   );
-  yield* Effect.logInfo("foundCbor", SDK.bufferToHex(foundCbor));
   return yield* HttpServerResponse.json({
     tx: SDK.bufferToHex(foundCbor),
   });
 }).pipe(
+  Effect.catchTag("PublicHttpReadLimitError", publicReadDataLimitResponse),
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
   Effect.catchTag("DatabaseError", (e) =>
     failWith500(

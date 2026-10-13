@@ -47,6 +47,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/node-instance-lock.test.ts
  *   tests/follower-driver-recompute.test.ts
  *   tests/database.test.ts
+ *   tests/listen-http-read-database.test.ts
  *   tests/da-bond-pool-bootstrap-emulator.test.ts
  *   tests/deposit-flow-emulator-commit-selection.test.ts
  *   tests/deposit-flow-emulator-confirmation-journal.test.ts
@@ -154,7 +155,11 @@ export default defineConfig({
             "./tests/**/*.test.ts",
             "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
           ],
-          exclude: [...configDefaults.exclude],
+          // The explicit public framing config requires retained genuine release inputs.
+          exclude: [
+            ...configDefaults.exclude,
+            "./tests/public-http-release-framing.acceptance.test.ts",
+          ],
         },
       },
       { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },

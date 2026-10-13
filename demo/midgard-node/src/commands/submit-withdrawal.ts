@@ -39,6 +39,7 @@ import {
 export type SubmitWithdrawalCliConfig = {
   readonly submissionId: string;
   readonly walletSeedPhrase?: string;
+  readonly walletSeedPhraseFile?: string;
   readonly walletSeedPhraseEnv: string;
   readonly l2OutRef: string;
   readonly l1Address: string;
@@ -134,6 +135,7 @@ export const submitWithdrawalCommandProgram = ({
     );
     const resolvedSeed = resolveWalletSeedPhrase({
       walletSeedPhrase: config.walletSeedPhrase,
+      walletSeedPhraseFile: config.walletSeedPhraseFile,
       walletSeedPhraseEnv: config.walletSeedPhraseEnv,
     });
     const wallet = deriveWalletInfo(resolvedSeed, nodeConfig.NETWORK);

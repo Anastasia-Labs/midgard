@@ -205,7 +205,7 @@ export const insertWithdrawals = (
       WithdrawalsDB.Columns.VALIDITY_DETAIL,
       WithdrawalsDB.Columns.PROJECTED_HEADER_HASH,
       WithdrawalsDB.Columns.STATUS,
-    ];
+    ] as const;
     // Bind serialized JSON as text before casting; a JSONB-typed parameter
     // makes postgres.js encode the string a second time. Render rows explicitly
     // because sql.insert only preserves parameter/custom fragments, not casts.
