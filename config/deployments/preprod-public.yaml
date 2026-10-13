@@ -48,14 +48,13 @@ economics:
   fraudProverRewardLovelace: 75000000000
   proverCollateralFloorLovelace: 5000000
 allow_lists:
-  # P1 curated keys (owner input I1, due 2026-10-23). The "placeholder:"
-  # keys below are stand-ins and must be replaced before release.
   operators:
-    - "706c616365686f6c6465723a6f706572000000000000000000000001"
+    - "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424"
+    - "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6"
   fraud_provers:
-    - "706c616365686f6c6465723a70726f76000000000000000000000001"
+    - "3fce32946bbc65915c9abecaac07b0b00b0ee85fce73d06a209e3e5f"
   da_challengers:
-    - "706c616365686f6c6465723a64616368000000000000000000000001"
+    - "c3276ebd1e6886c2bdc4ef2ca4d084ed8da3901b6054d3c881eb1e81"
 # P1 carries no validation-trace states, so the families that read them are
 # left out of the fraud-proof catalogue (Computation-Thread Init refuses them).
 excluded_fraud_proof_categories:
