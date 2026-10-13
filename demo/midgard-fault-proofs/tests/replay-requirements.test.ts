@@ -15,8 +15,6 @@ import {
 describe("replay requirement sets", () => {
   it("pins the families whose proof replays against prev_utxos_root", () => {
     expect([...PREDECESSOR_LEDGER_PROOF_CATEGORIES].sort()).toEqual([
-      "executionNativeScriptInvalid",
-      "minAda",
       "noReferenceInput",
       "nonExistentInput",
       "resolvedOutputNonCanonical",
@@ -51,12 +49,15 @@ describe("replay requirement sets", () => {
   it("answers a launch scope by membership", () => {
     expect(
       launchScopeRequires(
-        ["zeroInput", "minAda"],
+        ["zeroInput", "transitionTrace"],
         PREDECESSOR_LEDGER_PROOF_CATEGORIES,
       ),
     ).toBe(true);
     expect(
-      launchScopeRequires(["zeroInput"], PREDECESSOR_LEDGER_PROOF_CATEGORIES),
+      launchScopeRequires(
+        ["zeroInput", "minAda"],
+        PREDECESSOR_LEDGER_PROOF_CATEGORIES,
+      ),
     ).toBe(false);
     expect(launchScopeRequires([], PREDECESSOR_LEDGER_PROOF_CATEGORIES)).toBe(
       false,
