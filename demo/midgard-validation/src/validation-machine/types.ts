@@ -50,8 +50,13 @@ export type ValidationMachineReplayInput = {
   readonly scriptEvaluations?: readonly LocalScriptEvaluation[];
   readonly expectedVerdict: "accepted" | "rejected";
   readonly expectedRejectionCode: RejectCode | null;
-  /** The block's clock: its state-queue node's authenticated `block_time`.
-   * A header's `end_time` bounds event coverage only and is never this. */
+  /**
+   * The block's clock for validity: its state-queue node's authenticated
+   * `block_time`. The trace context's third element also carries this value,
+   * but the on-chain validation claim (`validation_context_is_exact`) requires
+   * that element to equal `header.end_time`. The validation-trace family
+   * (00000006) is excluded in P1; P2 reconciles the context element.
+   */
   readonly blockTimeMs: number;
   readonly expectedNetworkId: bigint;
   readonly minFeeA: bigint;

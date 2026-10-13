@@ -151,17 +151,18 @@ validator mint(
         let hub.Datum { tx_order_addr, .. } = hub_datum
         tx_order_addr
       },
+      // A tx-order's validity range is closed and at most the event range long.
+      fn(validity_range) {
+        let (_, valid_to) = utils.get_inclusive_bounds_of_a_bounded_validity_range(
+          validity_range,
+          env.max_event_validity_range_length,
+        )
+        valid_to
+      },
       event,
       own_policy,
       tx,
     )
-
-    // A tx-order's validity range is closed and at most the event range long.
-    let (valid_from, valid_to) = utils.get_inclusive_bounds_of_a_bounded_validity_range(
-      tx.validity_range,
-      env.max_event_validity_range_length,
-    )
-    expect valid_from <= valid_to
 
     let output_tx_order_nft_triplet = utils.get_single_asset_from_value_apart_from_ada(
       output_tx_order_value,

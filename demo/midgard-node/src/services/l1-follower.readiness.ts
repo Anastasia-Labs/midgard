@@ -152,6 +152,11 @@ export type L1FollowerHandle = Readonly<{
   confirmedLedger?: () => ConfirmedLedgerPosition | null;
   /** The undecodable events the driver's last applied view left out. */
   refused?: () => readonly EventRefusal[];
+  /**
+   * The `forced_admission_divergence:<orderIdHex>:<refusalCode>` details of
+   * the latest chain-admitted forced orders the admission screen refuses.
+   */
+  forcedAdmissionDivergences?: () => readonly string[];
 }>;
 
 export type L1FollowerState =
@@ -237,6 +242,7 @@ export const l1FollowerReadiness = (
       ...status.prune.floorLags.map(
         ({ floor, lagSlots }) => `${floor}_prune_floor:${lagSlots.toString()}`,
       ),
+      ...(state.forcedAdmissionDivergences?.() ?? []),
     ],
     report: {
       state: status.state,

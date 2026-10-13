@@ -1007,6 +1007,7 @@ validator mint(hub_oracle: ScriptHash) {
         let hub.Datum { withdrawal_addr, .. } = hub_datum
         withdrawal_addr
       },
+      utils.get_inclusive_upper_bound_of_interval,
       redeemer,
       own_policy,
       tx,

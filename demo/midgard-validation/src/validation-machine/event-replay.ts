@@ -32,8 +32,13 @@ export type ValidationVerdictEventInput = Readonly<{
   programMaterialSidecarCbor?: Buffer;
   /** Every ledger entry the transaction may resolve, keyed by out-ref. */
   ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
-  /** The block's clock: its state-queue node's authenticated `block_time`.
-   * A header's `end_time` bounds event coverage only and is never this. */
+  /**
+   * The block's clock for validity: its state-queue node's authenticated
+   * `block_time`. The trace context's third element also carries this value,
+   * but the on-chain validation claim (`validation_context_is_exact`) requires
+   * that element to equal `header.end_time`. The validation-trace family
+   * (00000006) is excluded in P1; P2 reconciles the context element.
+   */
   blockTimeMs: number;
   expectedNetworkId: bigint;
   minFeeA: bigint;

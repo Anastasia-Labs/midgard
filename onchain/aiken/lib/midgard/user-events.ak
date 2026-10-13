@@ -48,9 +48,12 @@ pub fn out_ref_to_nonce(out_ref: OutputReference) -> AssetName {
 
 // ## Validation Abstractions
 
+/// `valid_to_of` binds the inclusive upper bound of the transaction's validity
+/// range; it fails on a range its event type does not admit.
 pub fn validate_mint(
   hub_oracle: ScriptHash,
   event_address_getter: fn(hub.Datum) -> Address,
+  valid_to_of: fn(ValidityRange) -> PosixTime,
   redeemer: MintRedeemer,
   own_policy: PolicyId,
   tx: Transaction,
@@ -92,7 +95,7 @@ pub fn validate_mint(
         own_policy,
         inputs,
         outputs,
-        validity_range,
+        valid_to_of(validity_range),
         mint,
         redeemers,
         event_validator,
@@ -119,15 +122,11 @@ fn authenticate_new_event(
   own_policy: PolicyId,
   inputs: List<Input>,
   outputs: List<Output>,
-  validity_range: ValidityRange,
+  valid_to: PosixTime,
   mint: Value,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   event_validator: fn(AssetName, Value, Data) -> Bool,
 ) -> Bool {
-  // Grab validity range's inclusive upper bound.
-  // TODO: Is it needed to ensure inclusivity?
-  let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
-
   // Grab output reference of the specified nonce input.
   expect Some(Input { output_reference: nonce_input_out_ref, .. }) = inputs
     |> list.at(nonce_input_index)
