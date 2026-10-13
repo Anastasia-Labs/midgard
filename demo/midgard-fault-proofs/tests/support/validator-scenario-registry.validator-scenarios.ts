@@ -94,7 +94,22 @@ export const VALIDATOR_SCENARIOS: Readonly<
       failing: [
         {
           file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
-          test: "refuses canonical Data at the deployed invalid executor",
+          test: "refuses canonical Data at the deployed invalid executors",
+        },
+      ],
+    },
+  "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_scalar_data_executor.main":
+    {
+      passing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+      failing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "refuses canonical Data at the deployed invalid executors",
         },
       ],
     },

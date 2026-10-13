@@ -12,7 +12,6 @@ import {
   advanceValidatedMidgardCekDataInteger,
   finalizeValidatedMidgardCekDataInteger,
   initialMidgardCekDataIntegerControl,
-  initialMidgardCekDataIntegerMeasureControl,
   MidgardCekDataIntegerStages,
   parseMidgardCekDataLargeConstructorSyntax,
 } from "./cek-data-integer.js";
@@ -25,12 +24,12 @@ import {
   advanced,
   attachSummary,
   exactSourceBytes,
-  integerItemLength,
   sequenceHeaderStage,
   stepHeadMap,
   stepHeadScalar,
   stepHeadSequence,
 } from "./cek-data-traverse.parse-midgard-cek-data-nodes.js";
+import { readCanonicalCborArgument } from "./cek-data-traverse.read-canonical-cbor-argument-wide.js";
 import { finalizeValidatedMidgardCekSourceBlob } from "./cek-source-blob.js";
 
 // Every step receives the control `advanceMidgardCekDataTraverse` has just
@@ -38,11 +37,13 @@ import { finalizeValidatedMidgardCekSourceBlob } from "./cek-source-blob.js";
 
 /**
  * A large constructor head (tag 102 over a two-element array): the
- * constructor integer's encoded length is read from the window after the
- * three-byte prefix; its field sequence header is read once the integer is
- * streamed (`stepLargeFields`).
+ * constructor index is a minimal major-0 head of at least 128 (Cardano reads
+ * it with `decodeWord64`; smaller alternatives use tags 121-127 and
+ * 1280-1400). Its encoded length is read from the window after the three-byte
+ * prefix; the field sequence header is read once the integer is streamed
+ * (`stepLargeFields`).
  */
-const stepHeadLargeConstructor = ({
+export const stepHeadLargeConstructor = ({
   control,
   bytes,
 }: {
@@ -55,24 +56,11 @@ const stepHeadLargeConstructor = ({
   ) {
     return null;
   }
-  if (bytes[3] === 0xc2 && bytes[4] === 0x5f) {
-    return advanced({
-      ...control,
-      stage: MidgardCekDataTraverseStages.LargeConstructor,
-      offset: control.offset + 3,
-      integer: initialMidgardCekDataIntegerMeasureControl({
-        sourceStart: control.sourceStart + control.offset + 3,
-      }),
-    });
-  }
-  const constructorCborLength = integerItemLength(bytes, 3);
+  const index = readCanonicalCborArgument(bytes, 3);
+  if (index === null || index.major !== 0 || index.value < 128) return null;
+  const constructorCborLength = index.nextOffset - 3;
   const offset = control.offset + 3;
-  if (
-    constructorCborLength === null ||
-    offset + constructorCborLength >= control.sourceLength
-  ) {
-    return null;
-  }
+  if (offset + constructorCborLength >= control.sourceLength) return null;
   return advanced({
     ...control,
     stage: MidgardCekDataTraverseStages.LargeConstructor,

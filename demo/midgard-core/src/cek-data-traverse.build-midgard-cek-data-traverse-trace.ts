@@ -25,10 +25,7 @@ import {
   type MidgardCekDataTraverseTrace,
   type MidgardCekDataTraverseTraceStep,
 } from "./cek-data-traverse.is-well-formed-midgard-cek-data-traverse-control.js";
-import {
-  parseMidgardCekDataNodes,
-  parseMidgardCekDataNodesPrefix,
-} from "./cek-data-traverse.parse-midgard-cek-data-nodes.js";
+import { parseMidgardCekDataNodes } from "./cek-data-traverse.parse-midgard-cek-data-nodes.js";
 import {
   type DataTraceFrame,
   type DataTraceOperation,
@@ -47,17 +44,12 @@ import { buildMidgardValidationMerkleMembershipIndex } from "./validation-merkle
 const buildDataTrace = ({
   sourceStart,
   source,
-  stopAtSequenceRefusal,
 }: {
   readonly sourceStart: number;
   readonly source: Uint8Array;
-  readonly stopAtSequenceRefusal: boolean;
 }) => {
   const bytes = Buffer.from(source);
-  const parsed = stopAtSequenceRefusal
-    ? parseMidgardCekDataNodesPrefix(bytes)
-    : { nodes: parseMidgardCekDataNodes(bytes), refusalOffset: null };
-  const nodes = parsed.nodes;
+  const nodes = parseMidgardCekDataNodes(bytes);
   const initial = initialMidgardCekDataTraverseControl({
     sourceStart,
     sourceLength: bytes.length,
@@ -159,23 +151,6 @@ const buildDataTrace = ({
   while (operations.length > 0) {
     const operation = operations.pop()!;
     if (operation.kind === "visit") {
-      if (
-        parsed.refusalOffset !== null &&
-        operation.nodeIndex === nodes.length
-      ) {
-        if (
-          (control.stage !== MidgardCekDataTraverseStages.Head &&
-            control.stage !== MidgardCekDataTraverseStages.Close) ||
-          control.offset !== parsed.refusalOffset
-        )
-          throw new Error("sequence refusal prefix lost its source position");
-        return {
-          initial,
-          steps: Object.freeze(steps),
-          control,
-          refusalOffset: parsed.refusalOffset,
-        };
-      }
       const node = nodes[operation.nodeIndex]!;
       // A first child is read at `Head`; every later child of an open-ended
       // frame is read from the `Close` window that would otherwise hold the
@@ -231,17 +206,6 @@ const buildDataTrace = ({
           control.integer.blob === null
         ) {
           throw new Error("V1 CEK Data traversal rejected a large constructor");
-        }
-        if (
-          parsed.refusalOffset !== null &&
-          control.offset === parsed.refusalOffset
-        ) {
-          return {
-            initial,
-            steps: Object.freeze(steps),
-            control,
-            refusalOffset: parsed.refusalOffset,
-          };
         }
         const root = finalizeValidatedMidgardCekSourceBlob(
           control.integer.blob,
@@ -376,19 +340,14 @@ const buildDataTrace = ({
     initial,
     steps: Object.freeze(steps),
     control,
-    refusalOffset: null,
   });
 };
 
-export const buildMidgardCekDataTraversePrefix = (input: {
-  readonly sourceStart: number;
-  readonly source: Uint8Array;
-}) => buildDataTrace({ ...input, stopAtSequenceRefusal: true });
 export const buildMidgardCekDataTraverseTrace = (input: {
   readonly sourceStart: number;
   readonly source: Uint8Array;
 }): MidgardCekDataTraverseTrace => {
-  const trace = buildDataTrace({ ...input, stopAtSequenceRefusal: false });
+  const trace = buildDataTrace(input);
   return Object.freeze({
     initial: trace.initial,
     steps: trace.steps,

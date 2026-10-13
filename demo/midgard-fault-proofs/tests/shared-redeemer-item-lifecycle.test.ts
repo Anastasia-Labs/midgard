@@ -220,10 +220,10 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
     deploymentId: deriveValidationTraceDeploymentId(catalogue),
     returnScriptHash: contracts.validationTraceDispute.award.spendingScriptHash,
   });
-  expect(registered.executors).toHaveLength(20);
+  expect(registered.executors).toHaveLength(21);
   expect(
     new Set(registered.executors.map((role) => role.spendingScriptHash)).size,
-  ).toBe(20);
+  ).toBe(21);
   expect(registered.executors.slice(0, 17)).toEqual(cek.executors);
   expect(registered.outerNormalizer).toEqual(cek.outerNormalizer);
   expect(registered.traversalNormalizer).toEqual(cek.traversalNormalizer);

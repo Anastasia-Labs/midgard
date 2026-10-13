@@ -403,6 +403,13 @@ jobs:
       - name: Check forced-tx admission golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:forced-tx-admission-v1
+      # The canonical Data corpus: every accepted span bound to the summary the
+      # TypeScript traverse twin computes, every other span to the traverse
+      # stage that refuses it; the generated Aiken module runs the honest
+      # driver over the on-chain traverse.
+      - name: Check canonical Data corpus golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-data-canonical-corpus-v1
       # The §12.7 canonical-decodability channel (#596). It emits both artifacts
       # from one generator run on exactly the footing of the four above, and it
       # was left unwired when it landed — so an edited producer plus a `:sync`

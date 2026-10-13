@@ -40,6 +40,8 @@ const uint32_max = 4_294_967_295
 
 const uint64_max = 18_446_744_073_709_551_615
 
+const cardano_data_bytes_chunk = 64
+
 pub type DataTraverseControlV1 {
   version: Int,
   stage: Int,
@@ -451,93 +453,6 @@ pub fn next_source_span_v1(
   }
 }
 
-/// This authenticated maximal head proves a definite nonempty sequence spelling.
-/// No caller-selected length or child count participates in the refusal.
-pub fn noncanonical_definite_sequence_head_v1(
-  control: DataTraverseControlV1,
-  source_bytes: Option<ByteArray>,
-) -> Bool {
-  if !control_is_well_formed(control) || and {
-    control.stage != stage_head,
-    control.stage != stage_close,
-  } {
-    False
-  } else {
-    when exact_source_bytes(control, source_bytes) is {
-      None -> False
-      Some(bytes) -> {
-        let prefix = when parse_small_constructor_head(bytes) is {
-          Some(head) -> head.prefix_length
-          None -> 0
-        }
-        if prefix >= bytearray.length(bytes) {
-          False
-        } else {
-          let first = bytearray.at(bytes, prefix)
-          and {
-            first / 32 == 4,
-            first != 128,
-            first != 159,
-          }
-        }
-      }
-    }
-  }
-}
-
-/// Invalidity is a semantic result only for these complete authenticated heads.
-/// A large constructor reaches its fields opener after authenticating its index.
-pub fn noncanonical_data_head_v1(
-  control: DataTraverseControlV1,
-  source_bytes: Option<ByteArray>,
-) -> Bool {
-  if !control_is_well_formed(control) || and {
-    control.stage != stage_head,
-    control.stage != stage_close,
-    control.stage != stage_large_fields,
-  } {
-    False
-  } else {
-    when exact_source_bytes(control, source_bytes) is {
-      None -> False
-      Some(bytes) -> {
-        let first = bytearray.at(bytes, 0)
-        if control.stage == stage_large_fields {
-          and {
-            first / 32 == 4,
-            first != 128,
-            first != 159,
-          }
-        } else if noncanonical_definite_sequence_head_v1(control, source_bytes) {
-          True
-        } else if first == 191 {
-          True
-        } else if first / 32 <= 2 || first / 32 == 5 || first / 32 == 6 {
-          let additional = first % 32
-          let width = if additional == 24 {
-            1
-          } else if additional == 25 {
-            2
-          } else if additional == 26 {
-            4
-          } else if additional == 27 {
-            8
-          } else {
-            0
-          }
-          and {
-            width > 0,
-            bytearray.length(bytes) >= 1 + width,
-            read_canonical_argument(bytes, 0) == None,
-          }
-        } else {
-          False
-        }
-      }
-    }
-  }
-}
-
 /// Same span selection after an earlier gate authenticated the complete
 /// canonical control, including every nested scalar/blob/hash state.
 pub fn prevalidated_next_source_span(
@@ -888,7 +803,10 @@ pub fn prevalidated_head_scalar(
       None -> None
       Some(argument) -> {
         let item_length = argument.next_offset + argument.value
-        if control.offset + item_length <= control.source_length {
+        if and {
+          argument.value <= cardano_data_bytes_chunk,
+          control.offset + item_length <= control.source_length,
+        } {
           checked_control(
             DataTraverseControlV1 {
               ..control,
@@ -1037,9 +955,11 @@ pub fn prevalidated_head_map(
 }
 
 /// A large constructor head (tag 102 over a two-element array): the
-/// constructor integer's encoded length is read from the window after the
-/// three-byte prefix; its field sequence header is read once the integer is
-/// streamed (`prevalidated_advance_large_fields`).
+/// constructor index is a minimal major-0 head of at least 128 (Cardano reads
+/// it with `decodeWord64`; smaller alternatives use tags 121-127 and
+/// 1280-1400). Its encoded length is read from the window after the three-byte
+/// prefix; the field sequence header is read once the integer is streamed
+/// (`prevalidated_advance_large_fields`).
 pub fn prevalidated_head_large_constructor(
   control: DataTraverseControlV1,
   bytes: ByteArray,
@@ -1048,45 +968,31 @@ pub fn prevalidated_head_large_constructor(
     bytearray.length(bytes) >= 3,
     slice_len(bytes, 0, 3) == #"d86682",
   } {
-    if and {
-      bytearray.length(bytes) >= 5,
-      bytearray.at(bytes, 3) == 194,
-      bytearray.at(bytes, 4) == 95,
-    } {
-      checked_control(
-        DataTraverseControlV1 {
-          ..control,
-          stage: stage_large_constructor,
-          offset: control.offset + 3,
-          integer: Some(
-            cek_data_integer_v1.initial_measure_control_v1(
-              control.source_start + control.offset + 3,
-            ),
-          ),
-        },
-      )
-    } else {
-      when integer_item_length(bytes, 3) is {
-        None -> None
-        Some(constructor_cbor_length) -> {
-          let offset = control.offset + 3
-          if offset + constructor_cbor_length < control.source_length {
-            checked_control(
-              DataTraverseControlV1 {
-                ..control,
-                stage: stage_large_constructor,
-                offset,
-                integer: Some(
-                  cek_data_integer_v1.initial_control_v1(
-                    control.source_start + offset,
-                    constructor_cbor_length,
-                  ),
+    when read_canonical_argument(bytes, 3) is {
+      None -> None
+      Some(index) -> {
+        let offset = control.offset + 3
+        let constructor_cbor_length = index.next_offset - 3
+        if and {
+          index.major == 0,
+          index.value >= 128,
+          offset + constructor_cbor_length < control.source_length,
+        } {
+          checked_control(
+            DataTraverseControlV1 {
+              ..control,
+              stage: stage_large_constructor,
+              offset,
+              integer: Some(
+                cek_data_integer_v1.initial_control_v1(
+                  control.source_start + offset,
+                  constructor_cbor_length,
                 ),
-              },
-            )
-          } else {
-            None
-          }
+              ),
+            },
+          )
+        } else {
+          None
         }
       }
     }
@@ -1566,6 +1472,329 @@ pub fn step_v1(
     step_fold(control, source_bytes, action)
   } else {
     None
+  }
+}
+
+/// The window is exactly the control-derived span: absent when the control
+/// reads no source bytes, otherwise of the span's length.
+fn window_is_exact(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  when prevalidated_next_source_span(control) is {
+    None -> source_bytes == None
+    Some(span) ->
+      when source_bytes is {
+        None -> False
+        Some(bytes) -> bytearray.length(bytes) == span.length
+      }
+  }
+}
+
+/// No head action opens an item from this window. The head actions are
+/// disjoint by first byte, so this is the refusal of the one derived action.
+fn no_head_action_advances(
+  control: DataTraverseControlV1,
+  bytes: ByteArray,
+) -> Bool {
+  and {
+    prevalidated_head_scalar(control, bytes) == None,
+    prevalidated_head_sequence(control, bytes) == None,
+    prevalidated_head_map(control, bytes) == None,
+    prevalidated_head_large_constructor(control, bytes) == None,
+  }
+}
+
+/// A completed item whose authenticated parent cannot take it only because of
+/// the source extent: the root item ends before `source_end` (trailing bytes),
+/// or a parent that still needs a child or its break reaches `source_end`.
+fn attach_extent_unreadable(
+  current_frame_root: ByteArray,
+  summary: cek_data_v1.DataSummaryV1,
+  parent: Option<cek_data_frame_v1.DataFrameV1>,
+  offset: Int,
+  source_length: Int,
+) -> Bool {
+  if !summary_is_well_formed(summary) {
+    False
+  } else if current_frame_root == #"" {
+    parent == None && offset < source_length
+  } else {
+    when parent is {
+      None -> False
+      Some(parent_frame) ->
+        if and {
+          cek_data_frame_v1.frame_is_well_formed(parent_frame),
+          cek_data_frame_v1.hash_frame_v1(parent_frame) == current_frame_root,
+        } {
+          when cek_data_frame_v1.append_child_v1(parent_frame, summary) is {
+            None -> False
+            Some(next_parent) -> {
+              let next_stage = next_parent_stage(next_parent)
+              and {
+                or {
+                  next_stage == stage_head,
+                  next_stage == stage_close,
+                },
+                offset >= source_length,
+              }
+            }
+          }
+        } else {
+          False
+        }
+    }
+  }
+}
+
+/// The integer sub-control's grammar step (syntax or measure) refuses the
+/// window: it yields no successor, or one that leaves the traverse control
+/// ill-formed. Content streaming and the terminal stage never refuse a byte.
+fn integer_grammar_refuses(
+  control: DataTraverseControlV1,
+  integer: cek_data_integer_v1.CekDataIntegerControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  when
+    cek_data_integer_v1.prevalidated_grammar_step_v1(
+      integer,
+      control.source_start + control.source_length,
+      source_bytes,
+    )
+  is {
+    None -> True
+    Some(next_integer) ->
+      !control_is_well_formed(
+        DataTraverseControlV1 { ..control, integer: Some(next_integer) },
+      )
+  }
+}
+
+/// A scalar or large-constructor sub-control in its syntax or measure stage
+/// refuses the exact window. The caller has checked the control and window.
+fn scalar_read_refuses(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  if control.stage == stage_integer {
+    expect Some(integer) = control.integer
+    and {
+      or {
+        integer.stage == cek_data_integer_v1.stage_syntax,
+        integer.stage == cek_data_integer_v1.stage_measure,
+      },
+      integer_grammar_refuses(control, integer, source_bytes),
+    }
+  } else if control.stage == stage_bytes {
+    expect Some(bytes_control) = control.bytes
+    and {
+      or {
+        bytes_control.stage == cek_data_bytes_v1.stage_syntax,
+        bytes_control.stage == cek_data_bytes_v1.stage_measure,
+      },
+      when
+        cek_data_bytes_v1.prevalidated_grammar_step_v1(
+          bytes_control,
+          control.source_start + control.source_length,
+          source_bytes,
+        )
+      is {
+        None -> True
+        Some(next_bytes) ->
+          !control_is_well_formed(
+            DataTraverseControlV1 { ..control, bytes: Some(next_bytes) },
+          )
+      },
+    }
+  } else if control.stage == stage_large_constructor {
+    expect Some(integer) = control.integer
+    if integer.stage != cek_data_integer_v1.stage_syntax {
+      False
+    } else {
+      when source_bytes is {
+        None -> False
+        Some(bytes) -> or {
+            cek_data_integer_v1.parse_large_constructor_syntax_v1(
+              bytes,
+              integer.source_length,
+            ) == None,
+            integer_grammar_refuses(control, integer, source_bytes),
+          }
+      }
+    }
+  } else {
+    False
+  }
+}
+
+/// Head and close refuse the window under every head action (and close
+/// under the break); the large-constructor field opener refuses its byte.
+/// The caller has checked the control and window.
+fn frame_read_refuses(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  if control.stage == stage_large_fields {
+    prevalidated_advance_large_fields(control, source_bytes, NoAction) == None
+  } else {
+    when source_bytes is {
+      None -> False
+      Some(bytes) ->
+        if control.stage == stage_head {
+          no_head_action_advances(control, bytes)
+        } else if control.stage == stage_close {
+          and {
+            prevalidated_close(control, source_bytes, NoAction) == None,
+            no_head_action_advances(control, bytes),
+          }
+        } else {
+          False
+        }
+    }
+  }
+}
+
+fn read_is_checked(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  control_is_well_formed(control) && window_is_exact(control, source_bytes)
+}
+
+fn is_scalar_read_stage(stage: Int) -> Bool {
+  or {
+    stage == stage_integer,
+    stage == stage_bytes,
+    stage == stage_large_constructor,
+  }
+}
+
+/// `Unreadable` at a byte-reading step: the control takes `NoAction` and the
+/// exact derived window, and the stage's derived action refuses that window
+/// (head and close: every head action, and the break at close; a scalar or
+/// large-constructor sub-control in its syntax or measure stage; the
+/// large-constructor field opener). Content streaming never is: once the
+/// extent is fixed, every byte is grammatical. This is `unreadable_v1` at
+/// `NoAction`, without the attach and finalize code.
+pub fn unreadable_read_v1(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  if !read_is_checked(control, source_bytes) {
+    False
+  } else if is_scalar_read_stage(control.stage) {
+    scalar_read_refuses(control, source_bytes)
+  } else {
+    frame_read_refuses(control, source_bytes)
+  }
+}
+
+/// `unreadable_read_v1` at the scalar and large-constructor stages only (one
+/// split executor's share; `False` at every other stage).
+pub fn unreadable_scalar_read_v1(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  and {
+    is_scalar_read_stage(control.stage),
+    read_is_checked(control, source_bytes),
+    scalar_read_refuses(control, source_bytes),
+  }
+}
+
+/// `unreadable_read_v1` at the head, close and large-fields stages only (the
+/// other split executor's share; `False` at every other stage).
+pub fn unreadable_frame_read_v1(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  and {
+    !is_scalar_read_stage(control.stage),
+    read_is_checked(control, source_bytes),
+    frame_read_refuses(control, source_bytes),
+  }
+}
+
+/// `Unreadable`: the source span is not canonical Data, decided at the step
+/// that reads the offending byte. Exclusive with `step_v1`: it holds only
+/// where no admissible action of the stage advances.
+/// - A byte-reading stage takes `NoAction`: `unreadable_read_v1`.
+/// - An attach (`AttachScalar`) or frame finalization (`FinalizeFrame`) takes
+///   the same authenticated frame witness as its advancing action and is
+///   `Unreadable` iff the source extent alone refuses it.
+pub fn unreadable_v1(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+  action: DataTraverseActionV1,
+) -> Bool {
+  when action is {
+    NoAction -> unreadable_read_v1(control, source_bytes)
+    FinalizeFrame { frame, parent } ->
+      if and {
+        source_bytes == None,
+        control_is_well_formed(control),
+        control.stage == stage_fold,
+        cek_data_frame_v1.frame_is_well_formed(frame),
+        cek_data_frame_v1.hash_frame_v1(frame) == control.frame_root,
+      } {
+        when cek_data_frame_v1.finalized_summary_v1(frame) is {
+          None -> False
+          Some(summary) ->
+            attach_extent_unreadable(
+              frame.tail,
+              summary,
+              parent,
+              control.offset,
+              control.source_length,
+            )
+        }
+      } else {
+        False
+      }
+    AttachScalar { parent } ->
+      if source_bytes != None || !control_is_well_formed(control) {
+        False
+      } else {
+        let done = if control.stage == stage_integer {
+          expect Some(integer) = control.integer
+          if integer.stage == cek_data_integer_v1.stage_terminal {
+            Some(
+              (
+                cek_data_integer_v1.finalize_v1(integer),
+                control.offset + integer.source_length,
+              ),
+            )
+          } else {
+            None
+          }
+        } else if control.stage == stage_bytes {
+          expect Some(bytes_control) = control.bytes
+          if bytes_control.stage == cek_data_bytes_v1.stage_terminal {
+            Some(
+              (
+                cek_data_bytes_v1.finalize_v1(bytes_control),
+                control.offset + bytes_control.source_length,
+              ),
+            )
+          } else {
+            None
+          }
+        } else {
+          None
+        }
+        when done is {
+          Some((Some(summary), offset)) ->
+            attach_extent_unreadable(
+              control.frame_root,
+              summary,
+              parent,
+              offset,
+              control.source_length,
+            )
+          _ -> False
+        }
+      }
+    _ -> False
   }
 }
 

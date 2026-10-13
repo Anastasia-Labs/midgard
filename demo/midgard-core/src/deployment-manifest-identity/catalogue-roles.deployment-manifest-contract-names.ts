@@ -253,6 +253,7 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
   "validationTraceDisputeRedeemerItemInvalidTailExecutor",
   "validationTraceDisputeRedeemerItemInvalidDataExecutor",
+  "validationTraceDisputeRedeemerItemInvalidScalarDataExecutor",
   "validationTraceDisputeRedeemerItemSettlement",
   "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
   "validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw",

@@ -93,6 +93,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeRedeemerItemInvalidTailExecutor",
     "V1 validation-trace redeemer item invalid data executor":
       "validationTraceDisputeRedeemerItemInvalidDataExecutor",
+    "V1 validation-trace redeemer item invalid scalar data executor":
+      "validationTraceDisputeRedeemerItemInvalidScalarDataExecutor",
     "V1 validation-trace redeemer item settlement":
       "validationTraceDisputeRedeemerItemSettlement",
     "V1 validation-trace CEK context settle":

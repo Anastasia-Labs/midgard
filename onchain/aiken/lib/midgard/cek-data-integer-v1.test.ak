@@ -102,10 +102,12 @@ test accepts_only_canonical_constructor_alternatives_above_127() {
       #"1bffffffffffffffff",
       9,
     ) != None,
+    // A bignum is never a constructor index: Cardano reads the index with
+    // `decodeWord64`.
     cek_data_integer_v1.parse_large_constructor_syntax_v1(
       #"c249010000000000000000",
       11,
-    ) != None,
+    ) == None,
     cek_data_integer_v1.parse_large_constructor_syntax_v1(#"1817", 2) == None,
     cek_data_integer_v1.parse_large_constructor_syntax_v1(#"187f", 2) == None,
     cek_data_integer_v1.parse_large_constructor_syntax_v1(#"3880", 2) == None,

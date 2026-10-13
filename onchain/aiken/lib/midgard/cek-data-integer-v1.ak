@@ -210,9 +210,9 @@ pub fn parse_syntax_v1(bytes: ByteArray, source_length: Int) -> Option<Int> {
   }
 }
 
-/// Restricts the streamed integer grammar to a canonical nonnegative
-/// constructor alternative above 127. Positive bignums are accepted without
-/// materializing their value.
+/// Restricts the streamed integer grammar to a canonical constructor
+/// alternative above 127: a minimal major-0 head (Cardano reads the index with
+/// `decodeWord64`, so a bignum or negative spelling is never canonical).
 pub fn parse_large_constructor_syntax_v1(
   bytes: ByteArray,
   source_length: Int,
@@ -222,10 +222,8 @@ pub fn parse_large_constructor_syntax_v1(
     Some(memory) -> {
       let first = bytearray.at(bytes, 0)
       // parse_syntax_v1 already proved the complete canonical integer grammar.
-      // Canonical positive bignums and uint16/32/64 exceed 127; uint8 must
-      // inspect its one argument byte. All negative encodings are excluded.
+      // uint16/32/64 exceed 127; uint8 must inspect its one argument byte.
       if or {
-        first == 194,
         first >= 25 && first <= 27,
         first == 24 && bytearray.at(bytes, 1) >= 128,
       } {
@@ -660,6 +658,23 @@ pub fn prevalidated_step_v1(
     step_measure(control, source_end, source_bytes)
   } else if control.stage == stage_blob {
     step_blob(control, source_bytes)
+  } else {
+    None
+  }
+}
+
+/// `prevalidated_step_v1` at the syntax and measure stages, the steps that
+/// read grammar; every other stage yields `None`. A refusal check reaches only
+/// these stages, so it carries no content-streaming code.
+pub fn prevalidated_grammar_step_v1(
+  control: CekDataIntegerControlV1,
+  source_end: Int,
+  source_bytes: Option<ByteArray>,
+) -> Option<CekDataIntegerControlV1> {
+  if control.stage == stage_syntax {
+    step_syntax(control, source_bytes)
+  } else if control.stage == stage_measure {
+    step_measure(control, source_end, source_bytes)
   } else {
     None
   }

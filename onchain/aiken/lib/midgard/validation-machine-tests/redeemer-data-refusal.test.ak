@@ -211,13 +211,15 @@ test nested_sequence_refusal_has_exact_successor_and_refuses_truncated_view() {
   expect Some(traversal) = control.traversal
   and {
     traversal.offset == 3,
-    cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"8101ff"),
+      cek_data_traverse_v1.NoAction,
     ),
-    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    !cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"8101"),
+      cek_data_traverse_v1.NoAction,
     ),
     one_step.verify_one_step_evidence(
       pre,
@@ -257,13 +259,15 @@ test later_nested_sequence_refusal_has_exact_successor_and_refuses_truncated_vie
   and {
     traversal.offset == 4,
     traversal.stage == cek_data_traverse_v1.stage_close,
-    cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"810102ff"),
+      cek_data_traverse_v1.NoAction,
     ),
-    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    !cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"8101"),
+      cek_data_traverse_v1.NoAction,
     ),
     one_step.verify_one_step_evidence(
       pre,
@@ -293,13 +297,15 @@ test honest_later_nested_sequence_cannot_take_refusal_successor() {
   and {
     traversal.offset == 4,
     traversal.stage == cek_data_traverse_v1.stage_close,
-    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    !cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"9f01ff02ff"),
+      cek_data_traverse_v1.NoAction,
     ),
-    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    !cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"8101"),
+      cek_data_traverse_v1.NoAction,
     ),
     !one_step.verify_one_step_evidence(
       pre,

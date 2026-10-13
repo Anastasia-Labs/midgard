@@ -238,13 +238,33 @@ pub fn invalid_tail(state: normalized.OuterExecution) -> Bool {
   item.prevalidated_open_tail(state.current, bytes) == item.RedeemerItemProofInvalid
 }
 
-// The source authenticator has pinned this exact window to the current item.
-// Decoder failure is never invalidity: only the shared bounded predicate is.
-pub fn invalid_data(state: normalized.OuterExecution) -> Bool {
+fn invalid_data_control(
+  state: normalized.OuterExecution,
+) -> traversal.DataTraverseControlV1 {
   expect state.current.mode == item.mode_data
   expect state.current.stage == item.stage_data
   expect item.RedeemerItemTraverseData { action: traversal.NoAction } = state.action
   expect state.next == state.current
   expect Some(current) = state.current.traversal
-  traversal.noncanonical_data_head_v1(current, state.source_bytes)
+  current
+}
+
+// The source authenticator has pinned this exact window to the current item.
+// Decoder failure is never invalidity: only the traverse's Unreadable is.
+// Head, close and large-fields stages; the scalar stages are
+// `invalid_scalar_data` (one executor cannot carry both under the reference
+// script size limit).
+pub fn invalid_data(state: normalized.OuterExecution) -> Bool {
+  traversal.unreadable_frame_read_v1(
+    invalid_data_control(state),
+    state.source_bytes,
+  )
+}
+
+// `invalid_data` at the integer, bytes and large-constructor stages.
+pub fn invalid_scalar_data(state: normalized.OuterExecution) -> Bool {
+  traversal.unreadable_scalar_read_v1(
+    invalid_data_control(state),
+    state.source_bytes,
+  )
 }

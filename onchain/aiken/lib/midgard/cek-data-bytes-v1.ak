@@ -573,7 +573,9 @@ fn step_syntax(
 /// One measuring step: the authenticated window at the measured end is either
 /// the 0xff break, which fixes the encoding length and starts the content
 /// pass, or one definite chunk header, which extends the measured length by
-/// that whole chunk. The chunk layout itself is checked by the content pass.
+/// that whole chunk. Every chunk but the last is exactly 64 bytes and the
+/// total exceeds 64, so a non-canonical layout is refused at the header that
+/// breaks it and the content pass always finds the canonical headers.
 fn step_measure(
   control: CekDataBytesControlV1,
   source_end: Int,
@@ -602,6 +604,11 @@ fn step_measure(
                 },
               )
           }
+        } else if ( control.source_length - 1 ) % (
+          cardano_data_bytes_chunk + 2
+        ) != 0 {
+          // Only a full 64-byte chunk may precede another chunk header.
+          None
         } else {
           let chunk_length = if and {
             first >= 65,
@@ -731,6 +738,23 @@ pub fn prevalidated_step_v1(
     step_syntax(control, source_bytes)
   } else if control.stage == stage_blob {
     step_blob(control, source_bytes)
+  } else if control.stage == stage_measure {
+    step_measure(control, source_end, source_bytes)
+  } else {
+    None
+  }
+}
+
+/// `prevalidated_step_v1` at the syntax and measure stages, the steps that
+/// read grammar; every other stage yields `None`. A refusal check reaches only
+/// these stages, so it carries no content-streaming code.
+pub fn prevalidated_grammar_step_v1(
+  control: CekDataBytesControlV1,
+  source_end: Int,
+  source_bytes: Option<ByteArray>,
+) -> Option<CekDataBytesControlV1> {
+  if control.stage == stage_syntax {
+    step_syntax(control, source_bytes)
   } else if control.stage == stage_measure {
     step_measure(control, source_end, source_bytes)
   } else {

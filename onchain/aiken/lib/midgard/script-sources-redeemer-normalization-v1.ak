@@ -869,7 +869,7 @@ pub fn execution_attestation_is_bound_to_envelope_v1(
     6 -> Pair(10, 10)
     7 -> Pair(11, 15)
     8 -> Pair(16, 16)
-    9 -> Pair(17, 19)
+    9 -> Pair(17, 20)
     _ -> fail
   }
   let selected_executor_is_exact = and {

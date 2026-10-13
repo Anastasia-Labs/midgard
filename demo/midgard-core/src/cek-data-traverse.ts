@@ -13,10 +13,14 @@ import "./cek-data-traverse.parse-midgard-cek-data-nodes.js";
 import "./cek-data-traverse.step-large-constructor.js";
 import "./cek-data-traverse.step-fold.js";
 import "./cek-data-traverse.build-midgard-cek-data-traverse-trace.js";
+import "./cek-data-traverse.unreadable.js";
+import "./cek-data-traverse.drive.js";
+export { buildMidgardCekDataTraverseTrace } from "./cek-data-traverse.build-midgard-cek-data-traverse-trace.js";
 export {
-  buildMidgardCekDataTraversePrefix,
-  buildMidgardCekDataTraverseTrace,
-} from "./cek-data-traverse.build-midgard-cek-data-traverse-trace.js";
+  driveMidgardCekDataTraverse,
+  isCanonicalMidgardCekData,
+  type MidgardCekDataTraverseOutcome,
+} from "./cek-data-traverse.drive.js";
 export {
   initialMidgardCekDataTraverseControl,
   isWellFormedMidgardCekDataTraverseControl,
@@ -39,3 +43,4 @@ export {
   advanceMidgardCekDataTraverse,
   finalizeMidgardCekDataTraverse,
 } from "./cek-data-traverse.step-fold.js";
+export { isUnreadableMidgardCekDataTraverse } from "./cek-data-traverse.unreadable.js";

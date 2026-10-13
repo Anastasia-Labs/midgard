@@ -9,6 +9,7 @@ import {
   advanceMidgardCekDataTraverse,
   buildMidgardCekDataTraverseTrace,
   buildMidgardValidationMerkleMembership,
+  driveMidgardCekDataTraverse,
   encodeCborInteger,
   encodeCborMapRaw,
   encodeMidgardCekDataTraverseControl,
@@ -62,20 +63,19 @@ describe("authenticated CEK Data traversal V1", () => {
     ]);
     const trace = buildMidgardCekDataTraverseTrace({ sourceStart: 17, source });
     expect(finalizeMidgardCekDataTraverse(trace.terminal)).not.toBeNull();
-    // A bignum constructor alternative exercises the same measuring machine.
+    // `serialiseData` never spells a constructor alternative as a bignum
+    // (`decodeWord64`), so that span is Unreadable at its head.
     const largeSource = Buffer.concat([
       Buffer.from("d86682", "hex"),
       Buffer.from(Data.to(constructor), "hex"),
       Buffer.from("80", "hex"),
     ]);
     expect(
-      finalizeMidgardCekDataTraverse(
-        buildMidgardCekDataTraverseTrace({
-          sourceStart: 17,
-          source: largeSource,
-        }).terminal,
-      ),
-    ).not.toBeNull();
+      driveMidgardCekDataTraverse({ sourceStart: 17, source: largeSource }),
+    ).toMatchObject({
+      verdict: "unreadable",
+      stage: MidgardCekDataTraverseStages.Head,
+    });
   });
 
   it("streams a maximum-transaction-sized scalar root", () => {
@@ -171,7 +171,7 @@ describe("authenticated CEK Data traversal V1", () => {
   });
 
   it("streams a large constructor alternative before its fields", () => {
-    const constructorCbor = Buffer.from("c249010000000000000000", "hex");
+    const constructorCbor = Buffer.from("1b0100000000000000", "hex");
     const source = Buffer.concat([
       Buffer.from("d86682", "hex"),
       constructorCbor,
@@ -211,11 +211,11 @@ describe("authenticated CEK Data traversal V1", () => {
     expect(
       encodeMidgardCekDataTraverseControl(trace.control).toString("hex"),
     ).toBe(
-      "89010711111140d87a80d87a80d8799f835820844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c441109ff",
+      "890107110f0f40d87a80d87a80d8799f835820b5822d21df1af70ea902b57f6bebc7693e64cf2be6cb34804b6cb346e8baacfb0f09ff",
     );
     expect(
       hashMidgardCekDataTraverseControl(trace.control).toString("hex"),
-    ).toBe("573373b0ded63b7f9faa8b77b0fff3c3983a11638ba43b65699bbe73aa464622");
+    ).toBe("1aa3d17b686f73b0d9f7d57f9c3b3966095ae68334b56431069a7bfebda13ef1");
   });
 
   it("pins active nested integer and byte controls for Aiken decoding", () => {
@@ -263,15 +263,24 @@ describe("authenticated CEK Data traversal V1", () => {
       }),
     ).toBeNull();
 
-    const smallLarge = harness(Buffer.from("d86682187f80", "hex"));
-    transition(smallLarge, { kind: "headLargeConstructor" });
+    const smallLargeSource = Buffer.from("d86682187f80", "hex");
+    const smallLarge = harness(smallLargeSource);
     expect(
       advanceMidgardCekDataTraverse({
         control: smallLarge.control,
-        sourceBytes: Buffer.from("187f", "hex"),
-        action: null,
+        sourceBytes: smallLargeSource.subarray(
+          0,
+          nextMidgardCekDataTraverseSpan(smallLarge.control)!.length,
+        ),
+        action: { kind: "headLargeConstructor" },
       }),
     ).toBeNull();
+    expect(
+      driveMidgardCekDataTraverse({ source: smallLargeSource }),
+    ).toMatchObject({
+      verdict: "unreadable",
+      stage: MidgardCekDataTraverseStages.Head,
+    });
   });
 
   it("automatically constructs every reveal and witness for nested canonical Data", () => {
