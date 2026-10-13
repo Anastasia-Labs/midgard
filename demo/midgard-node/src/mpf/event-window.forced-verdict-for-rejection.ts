@@ -11,7 +11,6 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import {
   applyValidationMachineLedgerMutationStep,
   type CanonicalTransitionEffect,
-  type LocalScriptEvaluation,
   type RejectCode,
   type RejectedTx,
   type ValidationMachineLedgerEntry,
@@ -35,7 +34,6 @@ export type ClassifiedForcedTransaction = {
   readonly rawLedgerOps: readonly MpfBatchOp[];
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
-  readonly scriptEvaluations: readonly LocalScriptEvaluation[];
   readonly rejectionCode: RejectCode | null;
   readonly programMaterialSidecarCbor: Buffer;
 };

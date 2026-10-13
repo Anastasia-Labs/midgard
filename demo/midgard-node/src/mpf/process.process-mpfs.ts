@@ -7,7 +7,6 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   canonicalCommittedWithdrawalTransitionEffect,
-  type LocalScriptEvaluation,
   type PhaseAValidatedTx,
   runPhaseAValidation,
 } from "@al-ft/midgard-validation";
@@ -509,10 +508,6 @@ export const processMpfs = (
       ),
     );
     const proofNormalLedgerOpsByTxId = new Map<string, readonly MpfBatchOp[]>();
-    const proofScriptEvaluationsByTxId = new Map<
-      string,
-      LocalScriptEvaluation[]
-    >();
     const proofNormalProgramMaterialByTxId = new Map<string, Buffer>();
 
     yield* Effect.forEach(decodedMempoolTxs, (decoded) =>
@@ -704,18 +699,15 @@ export const processMpfs = (
       }
       const proofPhaseB = yield* settleCommitStageRejections({
         candidates: proofPhaseA.accepted,
-        evaluate: (candidates) => {
-          proofScriptEvaluationsByTxId.clear();
-          return evaluateNormalBlockCandidates({
+        evaluate: (candidates) =>
+          evaluateNormalBlockCandidates({
             candidates,
             state: proofPreState,
             blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
             l1SlotConfig: validation.l1SlotConfig,
             bucketConcurrency: validation.bucketConcurrency,
             consensusProfile,
-            scriptEvaluationsByTxId: proofScriptEvaluationsByTxId,
-          });
-        },
+          }),
         rejectionEntries,
         resolveInputPostState: commitPostState,
         onLedgerReverted: config.onMempoolLedgerReverted,

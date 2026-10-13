@@ -17,7 +17,6 @@ import {
   applyUTxOStatePatch,
   buildCanonicalTransitionEffect,
   canonicalTransitionEffectFromStatePatch,
-  type LocalScriptEvaluation,
   midgardOutRefToCborHex,
   type RejectCode,
   runPhaseAValidation,
@@ -190,7 +189,6 @@ export const classifyForcedTransactions = <R>({
       );
       arrivalSeq += 1n;
 
-      const scriptEvaluations: LocalScriptEvaluation[] = [];
       let verdict: SDK.OperatorVerdict;
       let ledgerOps: readonly MpfBatchOp[] = [];
       let rawLedgerOps: readonly MpfBatchOp[] = [];
@@ -234,12 +232,8 @@ export const classifyForcedTransactions = <R>({
             bucketConcurrency: validation.bucketConcurrency,
             l1SlotConfig: validation.l1SlotConfig,
             enforceScriptBudget: true,
-            // The validation trace replays every retained CEK step.
-            cekExecutionMode: "proof",
             maxScriptExecutionSteps:
               consensusProfile.limits.maxValidationMachineStepCount,
-            onScriptEvaluated: (_txId, evaluation) =>
-              scriptEvaluations.push(evaluation),
           },
         ).pipe(
           Effect.mapError(
@@ -341,7 +335,6 @@ export const classifyForcedTransactions = <R>({
         ledgerWitnessEntries,
         ledgerMutationSteps,
         rejectionCode,
-        scriptEvaluations,
         programMaterialSidecarCbor,
       });
     }
