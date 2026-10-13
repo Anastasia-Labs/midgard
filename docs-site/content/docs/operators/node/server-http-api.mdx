@@ -49,13 +49,14 @@ rate limiting, and ingress hardening are
 
 ### Transaction submission and status
 
-| Method | Route        | Purpose                                                                                                                                                                                                                |
-| ------ | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST` | `/submit`    | Validate, normalize, and enqueue a submitted L2 transaction. Body must be a canonical V1 proof submission envelope (transaction bytes plus CEK program material) with `Content-Type: application/vnd.midgard.v1+cbor`. |
-| `GET`  | `/tx-status` | Resolve the node's canonical status for a transaction (`?tx_hash=...`).                                                                                                                                                |
-| `POST` | `/tx-status` | Batch status lookup with JSON `{ "txHashes": ["..."] }`, containing 1–1000 transaction hashes.                                                                                                                         |
-| `GET`  | `/tx`        | Return the CBOR for a known tx hash from mempool or immutable storage (`?tx_hash=...`).                                                                                                                                |
-| `GET`  | `/txs`       | Return the address-history tx payloads for an address (`?address=...`).                                                                                                                                                |
+| Method | Route          | Purpose                                                                                                                                                                                                                                   |
+| ------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/submit`      | Validate, normalize, and enqueue a submitted L2 transaction. Body must be a canonical V1 proof submission envelope (transaction bytes plus CEK program material) with `Content-Type: application/vnd.midgard.v1+cbor`.                    |
+| `POST` | `/tx/evaluate` | Return the ex-units each Plutus redeemer of a draft transaction spends under Phase B cost accounting, against the node's current ledger state. Same body as `/submit`; the draft's declared ex-units, fee and signatures are not checked. |
+| `GET`  | `/tx-status`   | Resolve the node's canonical status for a transaction (`?tx_hash=...`).                                                                                                                                                                   |
+| `POST` | `/tx-status`   | Batch status lookup with JSON `{ "txHashes": ["..."] }`, containing 1–1000 transaction hashes.                                                                                                                                            |
+| `GET`  | `/tx`          | Return the CBOR for a known tx hash from mempool or immutable storage (`?tx_hash=...`).                                                                                                                                                   |
+| `GET`  | `/txs`         | Return the address-history tx payloads for an address (`?address=...`).                                                                                                                                                                   |
 
 `POST /submit` responses are explicit: `202` for a newly admitted transaction,
 `200` for a duplicate, `415` for the wrong media type, `413` for a body that
@@ -63,6 +64,16 @@ exceeds or fails its bounded read, `400` for malformed content, and `409` for a
 transaction-identity conflict. Capacity or admission-writer unavailability
 returns `503`; other operational failures can return `500`. HTTP admission
 is distinct from successful ledger validation or settlement.
+
+A `503` from `/submit` carries `Retry-After: 5`.
+
+`POST /tx/evaluate` answers `200` with
+`{ "redeemers": [{ "tag", "index", "memory", "steps" }] }` (integers as decimal
+strings except `tag`), or `422` with `E_TX_EVALUATION_FAILED` and a detail
+when a script fails, an input is missing, or a script exceeds the
+per-transaction cap. Scripts run on the validation worker pool; at most half
+the pool's workers serve evaluations at once, and a request beyond that, or
+one the pool fails, gets `503` with `Retry-After: 5`.
 
 ### UTxO and ledger queries
 

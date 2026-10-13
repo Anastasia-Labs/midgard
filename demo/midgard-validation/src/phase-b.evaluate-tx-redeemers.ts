@@ -46,7 +46,13 @@ export type MidgardTxRedeemerEvaluation =
 export const evaluateMidgardTxRedeemers = (input: {
   readonly txCbor: Uint8Array;
   readonly programMaterialSidecarCbor: Uint8Array;
-  readonly stateValue: (outRefHex: string) => Buffer | undefined;
+  /**
+   * Reads the outputs at the given out-refs from one consistent ledger
+   * state; a missing out-ref is left out of the map.
+   */
+  readonly readState: (
+    outRefHexes: readonly string[],
+  ) => Effect.Effect<ReadonlyMap<string, Buffer>, Error>;
   readonly expectedNetworkId: bigint;
   readonly limits: MidgardConsensusProfile["limits"];
   readonly config: Pick<
@@ -84,13 +90,19 @@ export const evaluateMidgardTxRedeemers = (input: {
       return failed(`undecodable transaction: ${String(cause)}`);
     }
     const node = buildNodes([candidate])[0]!;
-    const references = resolveReferenceInputs(node, input.stateValue);
+    const state = yield* input.readState([
+      ...node.spentOutRefs,
+      ...node.referenceOutRefs,
+    ]);
+    const stateValue = (outRefHex: string): Buffer | undefined =>
+      state.get(outRefHex);
+    const references = resolveReferenceInputs(node, stateValue);
     if ("code" in references) {
       return failed(`${references.code}: ${references.detail ?? ""}`);
     }
     const discovered = discoverLocalScriptExecutions(
       node,
-      input.stateValue,
+      stateValue,
       [
         ...collectInlineScriptSources(candidate.ledgerTx),
         ...references.scriptSources,

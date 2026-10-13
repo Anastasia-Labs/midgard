@@ -73,6 +73,10 @@ import {
 } from "./listen-router.post-deposit-build-handler.js";
 import { postSubmitHandler } from "./listen-router.post-submit-handler.js";
 import {
+  postTxEvaluateHandler,
+  TX_EVALUATE_ENDPOINT,
+} from "./listen-router.post-tx-evaluate-handler.js";
+import {
   getDepositStatusHandler,
   getHealthHandler,
   postTxStatusBatchHandler,
@@ -186,6 +190,7 @@ export const buildListenRouter = (
         `/${SUBMIT_ENDPOINT}`,
         postSubmitHandler(withMonitoring, requestTxQueueProcessorWakeup),
       ),
+      HttpRouter.post(`/${TX_EVALUATE_ENDPOINT}`, postTxEvaluateHandler),
     )
     .pipe(
       Effect.catchAllCause((cause) =>
