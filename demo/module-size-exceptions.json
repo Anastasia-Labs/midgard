@@ -1,7 +1,7 @@
 [
   {
     "file": "da-committee-node/src/committee-service.committee-service.ts",
-    "max": 1432,
+    "max": 1423,
     "reason": "CommitteeService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. T161 (+9): payload verification first resolves the block's pre-state from the parent payload, before the verdict, so an unavailable parent withholds attestation without marking the payload rejected; a split of this module is a separate proven pure move. C3 (+1): the accepted L1 view carries the latest final block's time, the release clock retention prunes by. C3-fix (+6): without promise adoption the tick prunes the signed decisions obligations() reads as deletable once the header has exited (plan §11, class B), and the l1_reconcile outbox status is projected from the tick's facts. C3-fix2 (+1): a failed prune is a named tick error (committee_decision_prune_failed) that keeps the tick's counters, not a failed tick."
   },
   {
@@ -161,8 +161,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/execution-native-script-invalid/v1.capture-execution-native-script-invalid-action.ts",
-    "max": 570,
-    "reason": "captureExecutionNativeScriptInvalidAction is the dominant indivisible declaration (497 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 567,
+    "reason": "captureExecutionNativeScriptInvalidAction is the dominant indivisible declaration (497 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
     "file": "midgard-fault-proofs/src/input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.ts",
@@ -291,13 +291,13 @@
   },
   {
     "file": "midgard-fault-proofs/tests/bin.test.ts",
-    "max": 805,
+    "max": 804,
     "reason": "Retained test registration “fault-proof CLI argument parsing” (726 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/catalogue-retained-classification.test.ts",
-    "max": 763,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. DUPDEL (-10): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+2): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping."
+    "max": 761,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. DUPDEL (-10): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+2): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
     "file": "midgard-fault-proofs/tests/custom-transaction-runner-recovery.test.ts",
@@ -336,8 +336,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/header-classifier.test.ts",
-    "max": 530,
-    "reason": "Retained test registration “production authenticated-header classifier V1” (468 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DUPDEL (-23): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+10): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping."
+    "max": 528,
+    "reason": "Retained test registration “production authenticated-header classifier V1” (468 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DUPDEL (-23): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+10): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
     "file": "midgard-fault-proofs/tests/ledger-delta-dense-trace-totality.test.ts",
@@ -646,12 +646,12 @@
   },
   {
     "file": "midgard-fault-proofs/tests/transition-trace-challenger.transition-trace-challenger-tooling.ts",
-    "max": 1961,
+    "max": 1960,
     "reason": "Retained test registration “transition-trace challenger tooling” (1878 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts",
-    "max": 981,
+    "max": 979,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. VR (+2): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. C3 (+36): an omitting block carries a real L1 event of the other kind, admitted due in it, since a committed block carries at least one event; the prover wallet is then split so the proof workflow keeps a spare UTxO."
   },
   {
@@ -891,8 +891,8 @@
   },
   {
     "file": "midgard-node/src/mpf/process.process-mpfs.ts",
-    "max": 1537,
-    "reason": "processMpfs is the dominant indivisible declaration (1445 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T161 (+15): the block commits its normal transactions in exactly the order Phase B applied them, and an accepted transaction's ledger witnesses fail closed on a missing input; a split of this module is a separate proven pure move. VR (+2): normal-block phase-B and the validation trace take the deployment's L1 slot mapping. Duplicate withdrawals (-33): the block-wide duplicate-outref refusal is replaced by in-order classification in withdrawal-classification.ts."
+    "max": 1324,
+    "reason": "processMpfs is the dominant indivisible declaration (1445 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T161 (+15): the block commits its normal transactions in exactly the order Phase B applied them, and an accepted transaction's ledger witnesses fail closed on a missing input; a split of this module is a separate proven pure move. VR (+2): normal-block phase-B and the validation trace take the deployment's L1 slot mapping. Duplicate withdrawals (-33): the block-wide duplicate-outref refusal is replaced by in-order classification in withdrawal-classification.ts. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
     "file": "midgard-node/src/mpf/root-view-store.ts",
@@ -946,18 +946,13 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-    "max": 910,
+    "max": 897,
     "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage. DEPTH (+2): the commit anchor d below the permit's view replaces the horizon lag and is passed to both submissions. L1 access E (+1): the commit Lucid factory has no default, so every caller names the follower or tool Lucid. VR (+1): forced validation takes the deployment's L1 slot mapping. P (+1): the commit planner takes the configured per-block ex-units budget."
   },
   {
-    "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
-    "max": 518,
-    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-30): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1). NBF2 (-1): a header held by a signed abandoned journal returns the next-window wait before the crash checkpoint, which unnests the journal submit. C2 (+2): the journal records the block time beside the block end."
-  },
-  {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",
-    "max": 642,
-    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-29): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1). C2 (+2): the journal records the block time beside the block end."
+    "max": 618,
+    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-29): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1). C2 (+2): the journal records the block time beside the block end. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
     "file": "midgard-node/src/workers/mpf-engine-probe.ts",
@@ -1021,7 +1016,7 @@
   },
   {
     "file": "midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
-    "max": 513,
+    "max": 507,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. U3 (+5): the commit submissions run under a d = 0 NodeConfig, which their final recheck now reads. I2 (-4): no stale-wallet retry to classify. DEPTH (+4): the commit-anchor horizon mock returns the anchor with the uncapped end time."
   },
   {
@@ -1051,8 +1046,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/finalization.register-finalization-tests.ts",
-    "max": 704,
-    "reason": "registerFinalizationTests is the dominant indivisible declaration (874 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 703,
+    "reason": "registerFinalizationTests is the dominant indivisible declaration (874 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
     "file": "midgard-node/tests/database.test/history.ts",
@@ -1066,8 +1061,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/mpf.ts",
-    "max": 670,
-    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts. N5b (-2): the merge finalization no longer clears the block rows, so the refusal case needs no rows of its own. N1H (-5): the merge finalization takes its header from the journal, so the calls pass no header hash. C2 (+2): each journal fixture carries its block time."
+    "max": 643,
+    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts. N5b (-2): the merge finalization no longer clears the block rows, so the refusal case needs no rows of its own. N1H (-5): the merge finalization takes its header from the journal, so the calls pass no header hash. C2 (+2): each journal fixture carries its block time. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-commit-selection.test.ts",
@@ -1086,8 +1081,8 @@
   },
   {
     "file": "midgard-node/tests/forced-transactions.test.ts",
-    "max": 1175,
-    "reason": "Retained test registration “V1 forced transaction material” (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+236): adds the separate registration “forced transaction program material at its position” (an absent reference judged InputNotFound, a live reference's program committed for a Phase A rejection, node and committee agreement). Combined recovered source removes obsolete lines; cap reduced to the measured final source count. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping."
+    "max": 715,
+    "reason": "Retained test registration “V1 forced transaction material” (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+236): adds the separate registration “forced transaction program material at its position” (an absent reference judged InputNotFound, a live reference's program committed for a Phase A rejection, node and committee agreement). Combined recovered source removes obsolete lines; cap reduced to the measured final source count. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
     "file": "midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
@@ -1136,8 +1131,8 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 551,
-    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter."
+    "max": 554,
+    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter. P1 composition (+3): the pinned registry digests name the composed tree in their re-pin reasons."
   },
   {
     "file": "midgard-node/tests/midgard-local-script-eval.test.ts",
@@ -1161,7 +1156,7 @@
   },
   {
     "file": "midgard-node/tests/mpf.test.ts",
-    "max": 2561,
+    "max": 2379,
     "reason": "Retained test registration “Midgard MPF wrapper” (2432 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1266,8 +1261,8 @@
   },
   {
     "file": "midgard-sdk/tests/tx-order.test.ts",
-    "max": 659,
-    "reason": "Retained test registration “V1 transaction-order datum, §8 field carriage, and CEK program material” (624 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 665,
+    "reason": "Retained test registration “V1 transaction-order datum, §8 field carriage, and CEK program material” (624 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
     "file": "midgard-test-support/scripts/capture-l1-recordings.mjs",
@@ -1376,8 +1371,8 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
-    "max": 750,
-    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W3V (+32): a validationTraceDispute decision whose pre-follower transcript already started a proof is held by name (validation_transcript_pre_follower) instead of re-keyed; the held decisions share the capture map's lifetime, generation checks and pruning in this closure. DUPDEL (-23): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+5): the header classifier takes the manifest's L1 slot mapping, checked against the watcher's Lucid."
+    "max": 749,
+    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W3V (+32): a validationTraceDispute decision whose pre-follower transcript already started a proof is held by name (validation_transcript_pre_follower) instead of re-keyed; the held decisions share the capture map's lifetime, generation checks and pruning in this closure. DUPDEL (-23): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+5): the header classifier takes the manifest's L1 slot mapping, checked against the watcher's Lucid. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed. P1 composition (+2): the merged curated catalogue and observe-and-prepare wiring."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-progress-authority.ts",
@@ -1481,7 +1476,7 @@
   },
   {
     "file": "midgard-watcher/tests/support/published-deposit-trace.stage-published-deposit-trace.ts",
-    "max": 830,
+    "max": 828,
     "reason": "stagePublishedDepositTrace is the dominant indivisible declaration (774 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+1): its operator activation runs without a follower, so it is given the journal that records nothing. Fresh-deployment hold (+9): its deposit holds on the ledger clock while the new deposit-history root is still protected. Ended blocks (+8): a block whose end has passed is rebuilt before its commit is built."
   },
   {
@@ -1501,8 +1496,8 @@
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",
-    "max": 984,
-    "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C1 (+118): allow-list and excluded-category validation and rendering tests. C1 adds the curated emulator profile checks."
+    "max": 990,
+    "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C1 (+118): allow-list and excluded-category validation and rendering tests. C1 adds the curated emulator profile checks. R2 (+6): the public profile rejects placeholder keys while mainnet retains its undeployed stand-ins."
   },
   {
     "file": "scripts/verify-canonical-v1-cg1-control-publication-fit.mjs",
@@ -1546,12 +1541,7 @@
   },
   {
     "file": "midgard-node/tests/commit-da-frame-step-down-persistence.test.ts",
-    "max": 502,
+    "max": 501,
     "reason": "One persistence journey sharing one commit-worker fixture. VR (+2): forced validation names the deployment's L1 slot mapping, as script contexts carry POSIX-ms validity bounds."
-  },
-  {
-    "file": "midgard-node/tests/forced-admission-screens.test.ts",
-    "max": 505,
-    "reason": "One forced-admission screen family sharing one validation fixture. VR (+5): the validation fixture and trace builders name the deployment's L1 slot mapping, as script contexts carry POSIX-ms validity bounds."
   }
 ]
