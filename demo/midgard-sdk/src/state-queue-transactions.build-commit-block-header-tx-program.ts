@@ -47,7 +47,8 @@ import {
   ACTIVE_OPERATOR_MATURITY_DURATION_MS,
   assertCommitHeadDaDeadline,
   COMMIT_MAX_VALIDITY_RANGE_MS,
-  commitHeaderMatchesValidityUpperBound,
+  commitBlockTimeOfValidTo,
+  commitHeaderFitsBlockTime,
   decodeActiveOperatorDatum,
   isCommitValidityInterval,
 } from "./state-queue-transactions.commit-layout-fields.js";
@@ -93,6 +94,7 @@ export const buildCommitBlockHeaderTxProgram = ({
       );
     }
     const inclusiveValidityUpperBound = validTo - 1;
+    const blockTime = commitBlockTimeOfValidTo(validTo);
     if (!isCommitValidityInterval({ validFrom, validTo })) {
       return yield* Effect.fail(
         new StateQueueError({
@@ -102,17 +104,12 @@ export const buildCommitBlockHeaderTxProgram = ({
         }),
       );
     }
-    if (
-      !commitHeaderMatchesValidityUpperBound({
-        headerEndTime: newHeader.endTime,
-        validTo,
-      })
-    ) {
+    if (!commitHeaderFitsBlockTime({ header: newHeader, blockTime })) {
       return yield* Effect.fail(
         new StateQueueError({
           message:
-            "Refusing to build a commit transaction whose header end-time is not the inclusive validity upper bound",
-          cause: `header_end_time_ms=${newHeader.endTime.toString()},valid_to_ms=${validTo.toString()},inclusive_upper_bound_ms=${inclusiveValidityUpperBound.toString()}`,
+            "Refusing to build a commit transaction whose header window does not end by its block time (the inclusive validity upper bound), or that carries L2 transactions without ending at it",
+          cause: `header_start_time_ms=${newHeader.startTime.toString()},header_end_time_ms=${newHeader.endTime.toString()},block_time_ms=${blockTime.toString()},l2_transaction_count=${newHeader.l2TransactionCount.toString()},valid_to_ms=${validTo.toString()}`,
         }),
       );
     }
@@ -158,17 +155,12 @@ export const buildCommitBlockHeaderTxProgram = ({
     const appendedNodeDatum: LinkedListNodeView = {
       key: updatedNodeDatum.next,
       next: "Empty",
-      data: ("validationTracesRoot" in newHeader
-        ? castStateQueueNodeToData({
-            proven_fraud: null,
-            header: newHeader,
-            da_attestation: NO_DA_ATTESTATION,
-          })
-        : castStateQueueNodeToData({
-            proven_fraud: null,
-            header: newHeader,
-            da_attestation: NO_DA_ATTESTATION,
-          })) as LinkedListNodeView["data"],
+      data: castStateQueueNodeToData({
+        header: newHeader,
+        block_time: blockTime,
+        da_attestation: NO_DA_ATTESTATION,
+        proven_fraud: null,
+      }) as LinkedListNodeView["data"],
     };
     const appendedNodeDatumCbor = encodeLinkedListNodeView(appendedNodeDatum);
     const updatedNodeDatumCbor = encodeLinkedListNodeView(updatedNodeDatum);
@@ -189,8 +181,7 @@ export const buildCommitBlockHeaderTxProgram = ({
           ...activeOperatorNodeView,
           data: castActiveOperatorDatumToData({
             ...activeOperatorDatum,
-            bond_unlock_time:
-              BigInt(validTo) - 1n + activeOperatorMaturityDurationMs,
+            bond_unlock_time: blockTime + activeOperatorMaturityDurationMs,
           }) as LinkedListNodeView["data"],
         });
       },

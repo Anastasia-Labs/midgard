@@ -132,7 +132,12 @@ export const nodeDatum = (
     data: {
       Node: {
         data: Data.castTo(
-          { header, da_attestation: status, proven_fraud: null },
+          {
+            header,
+            block_time: header.endTime,
+            da_attestation: status,
+            proven_fraud: null,
+          },
           SDK.StateQueueNode,
         ),
       },

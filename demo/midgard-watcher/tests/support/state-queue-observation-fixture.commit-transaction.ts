@@ -188,6 +188,7 @@ export const commitTransaction = (
   const stateQueueNode: SDK.StateQueueNode = {
     proven_fraud: null,
     header: nodeHeader,
+    block_time: nodeHeader.endTime,
     da_attestation: "Unattested",
   };
   const rootDatumCborHex = Data.to(

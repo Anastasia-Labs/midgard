@@ -216,8 +216,17 @@ export const makeHeaderTransitionCommitmentsProgram = (
     });
   });
 
+/**
+ * A committed block's state-queue datum. `header.startTime`/`header.endTime`
+ * are the event window the block covers; `block_time` is when it was
+ * committed: the commit transaction's inclusive validity upper bound (POSIX
+ * ms), which `header.blockSlot` names as a slot. A catch-up block covers a
+ * window that ends before its commit time; every clock (maturity, DA
+ * deadlines, fraud-record maturity) reads `block_time`.
+ */
 export const StateQueueNodeSchema = Data.Object({
   header: HeaderSchema,
+  block_time: Data.Integer(),
   da_attestation: DaAvailabilityStateQueueStatusSchema,
   proven_fraud: Data.Nullable(Data.Bytes({ minLength: 32, maxLength: 32 })),
 });

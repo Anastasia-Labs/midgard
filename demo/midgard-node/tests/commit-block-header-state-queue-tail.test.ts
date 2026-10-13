@@ -63,6 +63,7 @@ const makeTail = async ({
     data: SDK.castStateQueueNodeToData({
       proven_fraud: null,
       header,
+      block_time: header.endTime,
       da_attestation: SDK.NO_DA_ATTESTATION,
     }) as SDK.LinkedListNodeView["data"],
   };
@@ -291,6 +292,17 @@ const submitSlotSnapshot = {
   slotLengthMs: SLOT_LENGTH_MS,
 } as const;
 
+/** The production commit guard against the block time `COMMIT_VALID_TO_MS - 1`. */
+const fitsBlockTime = (headerEndTimeMs: number, l2TransactionCount: bigint) =>
+  SDK.commitHeaderFitsBlockTime({
+    header: {
+      startTime: 0n,
+      endTime: BigInt(headerEndTimeMs),
+      l2TransactionCount,
+    },
+    blockTime: SDK.commitBlockTimeOfValidTo(COMMIT_VALID_TO_MS),
+  });
+
 describe("commit-block header end_time is anchored to the commit validity bound", () => {
   it("derives the header end_time as the inclusive upper bound of the interval it builds", () => {
     const interval = resolveCommitValidityInterval({
@@ -303,14 +315,13 @@ describe("commit-block header end_time is anchored to the commit validity bound"
     expect(interval.validFromMs).toBe(1_700_000_240_000);
     expect(interval.inclusiveUpperBoundMs).toBe(ACCEPTED_HEADER_END_TIME_MS);
 
-    // This inclusive upper bound is the value the builder hands to the header,
-    // so it satisfies the guard gating every production commit.
-    expect(
-      SDK.commitHeaderMatchesValidityUpperBound({
-        headerEndTime: BigInt(interval.inclusiveUpperBoundMs),
-        validTo: interval.validToMs,
-      }),
-    ).toBe(true);
+    // This inclusive upper bound is the block time the builder hands to the
+    // node, and a header ending at it satisfies the guard gating every
+    // production commit.
+    expect(SDK.commitBlockTimeOfValidTo(interval.validToMs)).toBe(
+      BigInt(interval.inclusiveUpperBoundMs),
+    );
+    expect(fitsBlockTime(interval.inclusiveUpperBoundMs, 1n)).toBe(true);
   });
 
   it("accepts the maximum end_time the production validity guard allows", () => {
@@ -322,12 +333,7 @@ describe("commit-block header end_time is anchored to the commit validity bound"
         validTo: COMMIT_VALID_TO_MS,
       }),
     ).toBe(true);
-    expect(
-      SDK.commitHeaderMatchesValidityUpperBound({
-        headerEndTime: BigInt(ACCEPTED_HEADER_END_TIME_MS),
-        validTo: COMMIT_VALID_TO_MS,
-      }),
-    ).toBe(true);
+    expect(fitsBlockTime(ACCEPTED_HEADER_END_TIME_MS, 1n)).toBe(true);
 
     // The node's guard is stated over the exclusive span and the validator's
     // over the inclusive one, so the widest interval the node will ever build
@@ -351,37 +357,23 @@ describe("commit-block header end_time is anchored to the commit validity bound"
           validTo: COMMIT_VALID_TO_MS,
         }),
       ).toBe(true);
-      expect(
-        SDK.commitHeaderMatchesValidityUpperBound({
-          headerEndTime: BigInt(ACCEPTED_HEADER_END_TIME_MS),
-          validTo: COMMIT_VALID_TO_MS,
-        }),
-      ).toBe(true);
+      expect(fitsBlockTime(ACCEPTED_HEADER_END_TIME_MS, 1n)).toBe(true);
     }
   });
 
   it("rejects a header end_time one millisecond above the bound", () => {
-    expect(
-      SDK.commitHeaderMatchesValidityUpperBound({
-        headerEndTime: BigInt(ACCEPTED_HEADER_END_TIME_MS + 1),
-        validTo: COMMIT_VALID_TO_MS,
-      }),
-    ).toBe(false);
+    expect(fitsBlockTime(ACCEPTED_HEADER_END_TIME_MS + 1, 1n)).toBe(false);
+    expect(fitsBlockTime(ACCEPTED_HEADER_END_TIME_MS + 1, 0n)).toBe(false);
   });
 
   it("rejects a far-future header end_time", () => {
-    expect(
-      SDK.commitHeaderMatchesValidityUpperBound({
-        headerEndTime: BigInt(FAR_FUTURE_HEADER_END_TIME_MS),
-        validTo: COMMIT_VALID_TO_MS,
-      }),
-    ).toBe(false);
+    expect(fitsBlockTime(FAR_FUTURE_HEADER_END_TIME_MS, 1n)).toBe(false);
   });
 
-  it("rejects a header end_time strictly below the bound", () => {
-    // The case that separates `=== validTo - 1` from `<= validTo - 1`. It is
-    // inside the interval the commit is actually built with, so a membership
-    // guard would accept it.
+  it("rejects a header end_time strictly below the bound when the block carries L2 transactions", () => {
+    // The case that separates `=== validTo - 1` from `<= validTo - 1` for a
+    // block with L2 transactions; a block of user events alone (a catch-up
+    // slice) may end there.
     const validFrom = COMMIT_VALID_TO_MS - SDK.COMMIT_MAX_VALIDITY_RANGE_MS;
     expect(validFrom).toBe(WIDEST_COMMIT_VALID_FROM_MS);
 
@@ -398,15 +390,11 @@ describe("commit-block header end_time is anchored to the commit validity bound"
       ACCEPTED_HEADER_END_TIME_MS,
     );
 
-    expect(
-      SDK.commitHeaderMatchesValidityUpperBound({
-        headerEndTime: BigInt(STRICTLY_INSIDE_HEADER_END_TIME_MS),
-        validTo: COMMIT_VALID_TO_MS,
-      }),
-    ).toBe(false);
+    expect(fitsBlockTime(STRICTLY_INSIDE_HEADER_END_TIME_MS, 1n)).toBe(false);
+    expect(fitsBlockTime(STRICTLY_INSIDE_HEADER_END_TIME_MS, 0n)).toBe(true);
   });
 
-  it("rejects every header end_time strictly inside the commit validity interval", () => {
+  it("rejects every header end_time strictly inside the commit validity interval for a block with L2 transactions", () => {
     // Depth sweep from both ends of the interior: the interval's own lower
     // bound, one millisecond in, the midpoint, and one millisecond below the
     // anchor. None is the anchor, so none may be accepted.
@@ -420,12 +408,8 @@ describe("commit-block header end_time is anchored to the commit validity bound"
         WIDEST_COMMIT_VALID_FROM_MS,
       );
       expect(headerEndTimeMs).toBeLessThan(ACCEPTED_HEADER_END_TIME_MS);
-      expect(
-        SDK.commitHeaderMatchesValidityUpperBound({
-          headerEndTime: BigInt(headerEndTimeMs),
-          validTo: COMMIT_VALID_TO_MS,
-        }),
-      ).toBe(false);
+      expect(fitsBlockTime(headerEndTimeMs, 1n)).toBe(false);
+      expect(fitsBlockTime(headerEndTimeMs, 0n)).toBe(true);
     }
   });
 

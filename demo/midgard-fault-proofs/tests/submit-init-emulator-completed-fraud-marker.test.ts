@@ -78,6 +78,7 @@ const setup = async (previouslyMarked = false) => {
   const unit = toUnit(queuePolicy, fromText("MBLC") + headerHash);
   const node: SDK.StateQueueNode = {
     header,
+    block_time: header.endTime,
     da_attestation: SDK.NO_DA_ATTESTATION,
     proven_fraud: previouslyMarked ? proofAsset : null,
   };

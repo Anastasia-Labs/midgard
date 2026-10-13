@@ -101,6 +101,7 @@ export const makeRetentionL1Queue = async ({
         data: SDK.castStateQueueNodeToData({
           proven_fraud: null,
           header: value,
+          block_time: value.endTime,
           da_attestation:
             index === headers.length - 1
               ? { Attested: { commitment_hash: "33".repeat(32) } }

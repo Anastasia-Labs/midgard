@@ -68,14 +68,33 @@ export const isCommitValidityInterval = ({
   validFrom < validTo &&
   validTo - validFrom <= COMMIT_MAX_VALIDITY_RANGE_MS;
 
-export const commitHeaderMatchesValidityUpperBound = ({
-  headerEndTime,
-  validTo,
+/** A commit's block time: its transaction's inclusive validity upper bound. */
+export const commitBlockTimeOfValidTo = (validTo: number): bigint => {
+  if (!Number.isSafeInteger(validTo)) {
+    throw new Error(`Commit validTo is invalid: ${String(validTo)}`);
+  }
+  return BigInt(validTo) - 1n;
+};
+
+/**
+ * The commit rules on the header window against the block time: the window
+ * is non-empty and ends no later than the block time, and a block carrying
+ * L2 transactions ends exactly at it. Only a block of user events alone (a
+ * catch-up slice) ends earlier.
+ */
+export const commitHeaderFitsBlockTime = ({
+  header,
+  blockTime,
 }: {
-  readonly headerEndTime: bigint;
-  readonly validTo: number;
+  readonly header: Pick<
+    StateQueueNode["header"],
+    "startTime" | "endTime" | "l2TransactionCount"
+  >;
+  readonly blockTime: bigint;
 }): boolean =>
-  Number.isSafeInteger(validTo) && headerEndTime === BigInt(validTo - 1);
+  header.startTime < header.endTime &&
+  header.endTime <= blockTime &&
+  (header.l2TransactionCount === 0n || header.endTime === blockTime);
 
 export type StateQueueCommitWitnessContext = {
   readonly operatorKeyHash: string;

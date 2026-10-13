@@ -90,7 +90,12 @@ export const nodeDatum = (
     data: {
       Node: {
         data: Data.castTo(
-          { header, da_attestation: status, proven_fraud: provenFraud },
+          {
+            header,
+            block_time: header.endTime,
+            da_attestation: status,
+            proven_fraud: provenFraud,
+          },
           SDK.StateQueueNode,
         ),
       },

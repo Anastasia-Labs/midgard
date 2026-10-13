@@ -71,6 +71,7 @@ const fixture = async () => {
       data: SDK.castStateQueueNodeToData({
         proven_fraud: null,
         header,
+        block_time: header.endTime,
         da_attestation: attested
           ? { Attested: { commitment_hash: "ee".repeat(32) } }
           : SDK.NO_DA_ATTESTATION,

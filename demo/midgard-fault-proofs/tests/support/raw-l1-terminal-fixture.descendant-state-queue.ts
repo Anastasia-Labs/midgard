@@ -68,6 +68,7 @@ export const stateQueueNodeFixtureDatum = (
     data: castStateQueueNodeToData({
       proven_fraud: null,
       header,
+      block_time: header.endTime,
       da_attestation: NO_DA_ATTESTATION,
     }) as never,
   });

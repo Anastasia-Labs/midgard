@@ -97,6 +97,7 @@ export const nodeOutput = (
     data: SDK.castStateQueueNodeToData({
       proven_fraud: null,
       header,
+      block_time: header.endTime,
       da_attestation: attestation,
     }) as SDK.LinkedListNodeView["data"],
   }),

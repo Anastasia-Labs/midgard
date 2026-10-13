@@ -198,6 +198,7 @@ export const createFixture = async (
       operatorVkey: responderKey,
       protocolVersion: 1n,
     },
+    block_time: BigInt(now + headerEndTimeLeadMs),
     da_attestation: SDK.NO_DA_ATTESTATION,
   };
   await Effect.runPromise(
@@ -596,8 +597,7 @@ export const createFixture = async (
   };
   const quorum = {
     signerKeyHashes: daParamsDatum.owners,
-    // The owners are the challenger and the responder: the responder's
-    // wallet signs, the challenger's key signs beside it.
+    // Owners: the responder's wallet signs, the challenger's key beside it.
     extraSigners: [challenger.privateKey],
   };
   /**

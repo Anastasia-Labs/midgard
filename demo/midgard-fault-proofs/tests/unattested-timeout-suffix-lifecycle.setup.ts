@@ -109,6 +109,7 @@ export const setup = async (
               {
                 proven_fraud: null,
                 header: entry,
+                block_time: entry.endTime,
                 da_attestation:
                   index === 0 || (index === 1 && attestedTarget)
                     ? { Attested: { commitment_hash: "da".repeat(32) } }

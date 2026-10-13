@@ -52,7 +52,10 @@ export type DecodedStateQueueOutput = Readonly<{
   headerHash: string | null;
   /** A node's DA status identity (`daAvailabilityStateQueueStatusIdentity`). */
   daStatus: string | null;
+  /** The covered window's end: a node's header end, the root's end. */
   endTimeMs: bigint | null;
+  /** A node's commit time (`block_time`), every clock's origin; null at the root. */
+  blockTimeMs: bigint | null;
   problems: readonly StateQueueOutputProblem[];
   /** The decoded datum; null for an invalid output. */
   datum: LinkedListDatum | null;
@@ -69,6 +72,7 @@ const invalid = (
   headerHash: null,
   daStatus: null,
   endTimeMs: null,
+  blockTimeMs: null,
   problems: [problem],
   datum: null,
 });
@@ -154,6 +158,7 @@ export const decodeStateQueueOutput = (
       headerHash: root.headerHash.toLowerCase(),
       daStatus: null,
       endTimeMs: root.endTime,
+      blockTimeMs: null,
       problems: [],
       datum,
     };
@@ -178,6 +183,7 @@ export const decodeStateQueueOutput = (
     headerHash,
     daStatus: daAvailabilityStateQueueStatusIdentity(node.da_attestation),
     endTimeMs: node.header.endTime,
+    blockTimeMs: node.block_time,
     problems,
     datum,
   };
