@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../src/execution-native-script-invalid/workflow-spec.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
 import {
@@ -22,6 +21,7 @@ import {
   transaction,
   txHash,
 } from "./cursor-family-adapter.terminal.js";
+import { THIRTEEN_STEP_CURSOR_SPEC } from "./support/thirteen-step-cursor-spec.js";
 
 describe("production cursor family adapter V1", () => {
   it("distinguishes a changed authenticated action from a deterministic build failure", async () => {
@@ -33,7 +33,7 @@ describe("production cursor family adapter V1", () => {
       throw failure;
     });
     const adapter = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -66,7 +66,7 @@ describe("production cursor family adapter V1", () => {
     };
     const capture = vi.fn(async () => ({ transaction: transaction() }));
     const adapter = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -103,7 +103,7 @@ describe("production cursor family adapter V1", () => {
     };
     const capture = vi.fn(async () => ({ transaction: transaction() }));
     const adapter = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -145,7 +145,7 @@ describe("production cursor family adapter V1", () => {
       return { transaction: transaction() };
     });
     const adapter = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -176,7 +176,7 @@ describe("production cursor family adapter V1", () => {
       }),
     ]) {
       const hostileAdapter = createCursorFamilyWorkflowAdapter({
-        spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+        spec: THIRTEEN_STEP_CURSOR_SPEC,
         l1: l1(stage),
         transactions: port(async () => ({ transaction: hostile })),
         stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -198,7 +198,7 @@ describe("production cursor family adapter V1", () => {
     };
     const action = required(stage.value);
     const first = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({
         transaction: transaction({
@@ -223,7 +223,7 @@ describe("production cursor family adapter V1", () => {
     ).rejects.toThrow("connection closed after submission");
 
     const fresh = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage, async (candidate) => candidate === txHash),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -255,7 +255,7 @@ describe("production cursor family adapter V1", () => {
     const acquired = lease();
     const capturedRemoval = transaction();
     const first = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({
         transaction: capturedRemoval,
@@ -276,7 +276,7 @@ describe("production cursor family adapter V1", () => {
 
     const pendingLease = lease();
     const pending = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage, async () => true),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: {
@@ -297,7 +297,7 @@ describe("production cursor family adapter V1", () => {
     const releasedLease = lease();
     stage.value = { kind: "removed", terminal: terminal() };
     const confirmed = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage, async () => true),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: {
@@ -319,7 +319,7 @@ describe("production cursor family adapter V1", () => {
       throw new Error("old mutation lease expired after confirmed removal");
     });
     const expired = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage, async () => true),
       transactions: port(async () => {
         throw new Error("must not rebuild");
@@ -350,7 +350,7 @@ describe("production cursor family adapter V1", () => {
       terminal: terminal({ removedOutRef: outRef("34") }),
     };
     const conflicted = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage, async () => true),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: {
@@ -387,7 +387,7 @@ describe("production cursor family adapter V1", () => {
       fail: vi.fn(async () => undefined),
     };
     const adapter = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({
         transaction: transaction({ signed: signed({ inlineScript: true }) }),

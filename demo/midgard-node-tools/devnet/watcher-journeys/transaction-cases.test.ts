@@ -11,7 +11,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { readJourneyArtifact } from "./artifacts.js";
 import { verifyJourneyFixture } from "./fixture-verification.js";
 import { classifyFullCatalogueTransactionFixture } from "./full-catalogue-verification.js";
-import { buildJourneyScriptForcedSuccessor } from "./script-cases.js";
 import {
   buildJourneyTransactionControl,
   buildJourneyTransactionFault,
@@ -70,8 +69,6 @@ const replayers = {
     FaultProofs.MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
   mintItemNonCanonical:
     FaultProofs.MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-  distinctAssetAccumulationLimit:
-    FaultProofs.DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
 } satisfies Record<
   | JourneyTransactionCategory
   | JourneyForcedTransactionCategory
@@ -323,24 +320,5 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
         });
       },
     );
-    it("continues with wallet change after a protected-script successor", async () => {
-      const scriptSuccessor = await buildJourneyScriptForcedSuccessor({
-        ...input,
-        category: "receivePurposeLanguage",
-        orderKey: { transactionId: "52".repeat(32), outputIndex: 0n },
-      });
-      expect(scriptSuccessor.replay.trace.verdict).toBe("accepted");
-      expect(scriptSuccessor.payload.block_body.utxos.length).toBeGreaterThan(
-        1,
-      );
-      const control = await buildJourneyTransactionControl({
-        ...input,
-        predecessor: scriptSuccessor,
-        endTime: scriptSuccessor.header.endTime + 40_000n,
-        blockSlot: scriptSuccessor.header.blockSlot + 40n,
-        category: "invalidSignature",
-      });
-      expect(control.replay.trace.verdict).toBe("accepted");
-    });
   },
 );

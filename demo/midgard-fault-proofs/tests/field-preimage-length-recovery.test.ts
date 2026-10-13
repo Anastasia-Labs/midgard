@@ -36,7 +36,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { afterEach, expect, it, vi } from "vitest";
 
 import {
@@ -308,7 +307,6 @@ it.each([
       },
     });
     const classifier = await createHeaderClassifier({
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint,
       replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: {

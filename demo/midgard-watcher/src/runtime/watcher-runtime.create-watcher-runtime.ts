@@ -265,7 +265,6 @@ export const startWatcherRuntime = async (
         sqlite,
         fundingProfileOverlay,
         startup,
-        userEvents: activeUserEvents,
         follower: activeFollower,
         l1: activeFollower.faultProofL1,
         onAllocated: (application) => {

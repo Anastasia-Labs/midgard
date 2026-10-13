@@ -62,7 +62,6 @@ const locallyVerifiedCategories = new Set([
   "fieldItemWidthIllegal",
   "mintDeclaredAssetLimit",
   "mintItemNonCanonical",
-  "distinctAssetAccumulationLimit",
   "observersForbiddenOnUntaggedNetwork",
   "daHashPreimage",
   "canonicalDecodability",

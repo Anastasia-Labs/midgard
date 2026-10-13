@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -110,7 +109,6 @@ import {
   writeOrVerifyPinnedFitLedger,
 } from "./support/pinned-fit-ledger.js";
 import {
-  transitionTraceAcceptedRetainedFixture,
   transitionTraceDepositRetainedFixture,
   transitionTraceTimingRetainedFixture,
 } from "./support/transition-trace-retained.js";
@@ -152,20 +150,6 @@ const installedCases = [
     name: "maximum-deposit-datum",
     datumBytes: 12000,
     honest: false,
-    kind: "Deposit",
-    timing: null,
-  },
-  {
-    name: "accepted",
-    datumBytes: 0,
-    honest: false,
-    kind: "Deposit",
-    timing: null,
-  },
-  {
-    name: "honest-accepted",
-    datumBytes: 0,
-    honest: true,
     kind: "Deposit",
     timing: null,
   },
@@ -417,19 +401,13 @@ describe("transition trace installed retained-history workflow", () => {
                 originalAssets,
                 omitted: timing === "omitted",
               })
-            : name.includes("accepted")
-              ? await transitionTraceAcceptedRetainedFixture({
-                  operatorVkey: operator.hash,
-                  now,
-                  honest,
-                })
-              : await transitionTraceDepositRetainedFixture({
-                  operatorVkey: operator.hash,
-                  now,
-                  event,
-                  originalAssets,
-                  honest,
-                });
+            : await transitionTraceDepositRetainedFixture({
+                operatorVkey: operator.hash,
+                now,
+                event,
+                originalAssets,
+                honest,
+              });
         let admitAfterPredecessor: (() => Promise<void>) | undefined;
         await submitSetupTx({
           lucid: h.funderLucid,
@@ -452,12 +430,10 @@ describe("transition trace installed retained-history workflow", () => {
                             ? fixture.current.header.endTime + 1000n
                             : fixture.current.header.startTime + 1000n,
                     }
-                  : name.includes("accepted")
-                    ? fixture.predecessor.header
-                    : {
-                        ...fixture.current.header,
-                        endTime: fixture.current.header.startTime + 1000n,
-                      },
+                  : {
+                      ...fixture.current.header,
+                      endTime: fixture.current.header.startTime + 1000n,
+                    },
                 { lovelace: kind === "Deposit" ? 95_000_000n : 100_000_000n },
               );
               if (kind === "Deposit")
@@ -709,7 +685,6 @@ describe("transition trace installed retained-history workflow", () => {
           "freshly admitted",
         );
         const classifier = await createHeaderClassifier({
-          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           deploymentFingerprint: DEPLOYMENT,
           replayer: TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
           releaseFinalityAuthority: workflow.releaseFinalityAuthority,
@@ -771,7 +746,7 @@ describe("transition trace installed retained-history workflow", () => {
           // Recreate the installed constructor and reopen the durable journal at
           // every boundary; no in-memory proof or replay handle survives restart.
           restarts++;
-          if (!honest && !name.includes("accepted") && !pointerChurned) {
+          if (!honest && !pointerChurned) {
             const observed = await workflow.l1.observe({
               headerHash: fixture.current.headerHash,
             });
@@ -942,7 +917,7 @@ describe("transition trace installed retained-history workflow", () => {
             event.kind === "confirmed" ? [event] : [],
           ),
         });
-        if (!honest && !name.includes("accepted")) {
+        if (!honest) {
           expect(pointerChurned).toBe(true);
           expect(leases.size).toBeGreaterThan(0);
           for (const lease of leases.values()) {

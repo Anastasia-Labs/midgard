@@ -4,7 +4,6 @@ import {
   encodeMidgardValidationMachineState,
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
-  MidgardValidationPhase,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec";
 import { MIDGARD_ADDRESS_WITNESS_ITEM_BYTES } from "@al-ft/midgard-core/codec/native-tx-field-access";
@@ -13,18 +12,8 @@ import {
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  daPayloadEntryEncodedSize,
-  deriveTxOrderMaterial,
-  encodeRetainedValidationWitness,
-  encodeRetainedValidationWitnessKey,
-  type RetainedValidationAuxiliaryWitness,
-  RetainedValidationAuxiliaryWitnessSchema,
-  retainedValidationStateCoordinate,
-  validationMachineStateDataFromCore,
-  validationTraceProofDataFromCore,
-} from "@al-ft/midgard-sdk";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { deriveTxOrderMaterial } from "@al-ft/midgard-sdk";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -33,7 +22,6 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
 } from "../src/index.js";
-import { retainedValidationAuxiliaryWitnessData } from "../src/validation-machine-data.js";
 import {
   encodeByteList,
   encodeRecomputedNativeTx,
@@ -170,69 +158,16 @@ describe("deterministic signature consume order", { timeout: 60_000 }, () => {
         });
       }
       expect(trace.verdict).toBe("accepted");
-      let retainedEncodedBytes = 0;
-      let retainedDaTupleBytes = 0;
-      let retainedFailure: string | null = null;
       let rawFieldCarriageBytes = 0;
-      for (const [index, witness] of trace.witnesses.entries()) {
+      for (const witness of trace.witnesses) {
         if (witness.auxiliary && "fieldPreimage" in witness.auxiliary)
           rawFieldCarriageBytes += witness.auxiliary.fieldPreimage.length;
-        if (retainedFailure !== null) continue;
-        try {
-          const auxiliary = Data.from(
-            Data.to(
-              retainedValidationAuxiliaryWitnessData(
-                witness.auxiliary,
-              ) as never,
-            ),
-            RetainedValidationAuxiliaryWitnessSchema,
-          ) as unknown as RetainedValidationAuxiliaryWitness;
-          const retainedKey = encodeRetainedValidationWitnessKey({
-            event_key: {
-              L2TransactionEventKey: {
-                tx_id: transaction.txId.toString("hex"),
-              },
-            },
-            execution_index: retainedValidationStateCoordinate(
-              BigInt(trace.tree.descriptor.stepCount),
-              BigInt(index),
-            ),
-          });
-          const retainedWitness = encodeRetainedValidationWitness({
-            machine_state: validationMachineStateDataFromCore(
-              trace.states[index]!,
-            ),
-            trace_proof: validationTraceProofDataFromCore(
-              trace.tree.proofs[index]!,
-            ),
-            phase: BigInt(MidgardValidationPhase[witness.phase]),
-            program_counter: BigInt(witness.programCounter),
-            witness_cbor: witness.cbor.toString("hex"),
-            auxiliary,
-          });
-          retainedEncodedBytes += retainedKey.length + retainedWitness.length;
-          retainedDaTupleBytes += daPayloadEntryEncodedSize([
-            retainedKey.toString("hex"),
-            retainedWitness.toString("hex"),
-          ]);
-        } catch (error) {
-          retainedFailure =
-            error instanceof Error
-              ? `${error.name}: ${error.message}`
-              : String(error);
-        }
       }
-      expect(retainedFailure).toBeNull();
-      expect(retainedEncodedBytes).toBeLessThan(64 * 1024 * 1024);
-      expect(retainedDaTupleBytes).toBeLessThan(64 * 1024 * 1024);
       if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
         console.info(
           JSON.stringify({
             signatureScan: {
               count,
-              retainedEncodedBytes,
-              retainedDaTupleBytes,
-              retainedFailure,
               rawFieldCarriageBytes,
               durationMs,
               maxRssKiB: process.resourceUsage().maxRSS,

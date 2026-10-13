@@ -15,9 +15,7 @@ import {
   requiredProofTransactionCountV1,
 } from "../src/proof-transaction-count-cap.js";
 
-// Independent re-derivation of the §3.3 20% execution reserve, mirroring
-// RESERVED_MEMORY_UNITS/RESERVED_CPU_UNITS at
-// complete-item-proof-fit-emulator.test.ts:84-89. This test file computes
+// Independent re-derivation of the §3.3 20% execution reserve. This test file computes
 // its own expectation from MIDGARD_CONSENSUS_LIMITS rather than trusting
 // the module under test to report its own arithmetic correctly.
 const independentUsableUnits = (limit: number): bigint =>

@@ -7,7 +7,6 @@ export {
 export * from "./authenticated-replay-artifact.js";
 export * from "./canonical-decodability.js";
 export * from "./catalogue-replay.js";
-export { W25_CHALLENGE_COORDINATE } from "./challenge-authority.js";
 export * from "./classification.js";
 export * from "./cli.js";
 export * from "./committed-field-shape.js";
@@ -38,6 +37,7 @@ export * from "./funding-reservation-permit.js";
 export * from "./header-classifier.js";
 export * from "./input-no-idx.js";
 export * from "./input-set-uniqueness.js";
+export * from "./installed-categories.js";
 export * from "./invalid-signature.js";
 export * from "./journal.js";
 export * from "./l1-source.js";

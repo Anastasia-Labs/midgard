@@ -5,7 +5,6 @@ import { usage } from "./bin.parsed-args.js";
 import {
   buildRemoveFraudulentBlockCliConfig,
   buildRemoveUnattestedBlockCliConfig,
-  requireValidationOneStepCliArguments,
   writeJson,
 } from "./bin.require-validation-one-step-cli-arguments.js";
 import {
@@ -56,18 +55,6 @@ import { submitReferenceInputNoIdxStep04FromFiles } from "./submit-reference-inp
 import { submitTransitionTraceProofFromCborFile } from "./submit-transition-trace-proof.js";
 import { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.js";
 import { submitZeroInputStep02FromFiles } from "./submit-zero-input-step-02.js";
-import {
-  submitValidationDisputeAwardFromFiles,
-  submitValidationDisputeEnterResolutionFromFiles,
-  submitValidationDisputeEnterTimeoutFromFiles,
-  submitValidationDisputeOpenFromFiles,
-  submitValidationDisputePrepareResolutionFromFiles,
-  submitValidationDisputePrepareSelectedFromFiles,
-  submitValidationDisputeRevealFromFiles,
-  submitValidationDisputeSemanticResolutionFromFiles,
-  submitValidationDisputeTimeoutFromFiles,
-  submitValidationDisputeVerifySourceFromFiles,
-} from "./validation-dispute/from-files.js";
 import {
   runFraudProofWorkflowCli,
   workflowReadinessReport,
@@ -189,22 +176,12 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-reference-input-no-idx-step-04" &&
     args.command !== "submit-invalid-signature-step-01" &&
     args.command !== "submit-invalid-signature-step-02" &&
-    args.command !== "submit-validation-dispute-open" &&
-    args.command !== "submit-validation-dispute-verify-source" &&
-    args.command !== "submit-validation-dispute-reveal" &&
-    args.command !== "submit-validation-dispute-enter-resolution" &&
-    args.command !== "submit-validation-dispute-prepare-resolution" &&
-    args.command !== "submit-validation-dispute-prepare-selected" &&
-    args.command !== "submit-validation-dispute-semantic-resolution" &&
-    args.command !== "submit-validation-dispute-award" &&
-    args.command !== "submit-validation-dispute-enter-timeout" &&
-    args.command !== "submit-validation-dispute-timeout" &&
     args.command !== "submit-transition-trace-proof" &&
     args.command !== "remove-fraudulent-block" &&
     args.command !== "remove-unattested-block"
   ) {
     throw new Error(
-      `Expected a supported prepare, inspect, submit, validation-dispute, or removal command.\n${usage}`,
+      `Expected a supported prepare, inspect, submit, or removal command.\n${usage}`,
     );
   }
 
@@ -319,288 +296,6 @@ export const main = async (): Promise<void> => {
       awaitConfirmation: args.awaitConfirmation,
     });
 
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-validation-dispute-open") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.stateQueueBlockOutRef === undefined) {
-      throw new Error(
-        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.validationClaimCborPath === undefined) {
-      throw new Error(
-        `Missing required --validation-claim-cbor <path>.\n${usage}`,
-      );
-    }
-    if (args.challengerDescriptorCborPath === undefined) {
-      throw new Error(
-        `Missing required --challenger-descriptor-cbor <path>.\n${usage}`,
-      );
-    }
-    const output = await submitValidationDisputeOpenFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
-      claimCborPath: args.validationClaimCborPath,
-      challengerDescriptorCborPath: args.challengerDescriptorCborPath,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-validation-dispute-verify-source") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    const output = await submitValidationDisputeVerifySourceFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-validation-dispute-reveal") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.validationDisputeRole === undefined) {
-      throw new Error(
-        `Missing required --validation-dispute-role <operator|challenger>.\n${usage}`,
-      );
-    }
-    if (args.validationTraceProofCborPath === undefined) {
-      throw new Error(
-        `Missing required --validation-trace-proof-cbor <path>.\n${usage}`,
-      );
-    }
-    const output = await submitValidationDisputeRevealFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      role: args.validationDisputeRole,
-      proofCborPath: args.validationTraceProofCborPath,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-validation-dispute-enter-resolution") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    const output = await submitValidationDisputeEnterResolutionFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-validation-dispute-prepare-resolution") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.validationBoundaryEvidenceCborPath === undefined) {
-      throw new Error(
-        `Missing required --validation-boundary-evidence-cbor <path>.\n${usage}`,
-      );
-    }
-    const output = await submitValidationDisputePrepareResolutionFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      boundaryEvidenceCborPath: args.validationBoundaryEvidenceCborPath,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-    writeJson(output);
-    return;
-  }
-
-  if (
-    args.command === "submit-validation-dispute-prepare-selected" ||
-    args.command === "submit-validation-dispute-semantic-resolution"
-  ) {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    const oneStep = requireValidationOneStepCliArguments(
-      args,
-      args.command === "submit-validation-dispute-semantic-resolution",
-    );
-    const config = {
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      awaitConfirmation: args.awaitConfirmation,
-      ...oneStep,
-    };
-    const output =
-      args.command === "submit-validation-dispute-prepare-selected"
-        ? await submitValidationDisputePrepareSelectedFromFiles(config)
-        : await submitValidationDisputeSemanticResolutionFromFiles(config);
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-validation-dispute-award") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    const output = await submitValidationDisputeAwardFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-validation-dispute-enter-timeout") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    const output = await submitValidationDisputeEnterTimeoutFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-validation-dispute-timeout") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    const output = await submitValidationDisputeTimeoutFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      awaitConfirmation: args.awaitConfirmation,
-    });
     writeJson(output);
     return;
   }

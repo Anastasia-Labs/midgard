@@ -1,49 +1,79 @@
 import {
-  decodeSingleCbor,
-  hashMidgardValidationRejectionCode,
+  decodeMidgardTxOutput,
+  encodeMidgardForcedTxCanonical,
+  encodeMidgardTxOutput,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { RejectCodes, validatePhaseASingle } from "@al-ft/midgard-validation";
+import {
+  makeMinAdaFundedExactSizeOutputItem,
+  makeNativeTx,
+  outRefFromByte,
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { CML } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
 import { forcedVerdictForRejection } from "../src/workflow/forced-rejection-reason.js";
-import { buildInstalledCanonicalFixture } from "./support/installed-canonical-fixture.js";
 
-it("keeps the late oversized output ordinal ahead of an invalid signature", async () => {
-  const fixture = await buildInstalledCanonicalFixture({
-    operatorVkey: "11".repeat(28),
-    now: 1750000000000,
-    outputSizes: [100, 16385],
-    invalidSignature: true,
+it("keeps the late oversized output ordinal ahead of an invalid signature", () => {
+  const key = CML.PrivateKey.from_normal_bytes(
+    Buffer.concat([Buffer.alloc(31), Buffer.from([1])]),
+  );
+  const address = Buffer.from(
+    CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_pub_key(key.to_public().hash()),
+    )
+      .to_address()
+      .to_raw_bytes(),
+  );
+  const outputs = [100, 16_385].map((size) =>
+    encodeMidgardTxOutput({
+      ...decodeMidgardTxOutput(makeMinAdaFundedExactSizeOutputItem(size)),
+      address,
+    }),
+  );
+  expect(outputs.map((output) => output.length)).toEqual([100, 16_385]);
+  const transaction = makeNativeTx({
+    privateKey: key,
+    version: 1n,
+    invalidVkeyWitness: true,
+    spendInputs: [outRefFromByte(0x11)],
+    outputs,
   });
-  const trace = fixture.challengerTrace;
-  const rejectionStep = trace.witnesses.at(-2)!;
-  expect(rejectionStep.phase).toBe("canonicalDecode");
-  const control = decodeSingleCbor(rejectionStep.cbor) as unknown[];
-  expect(control.slice(4, 6)).toEqual([2, 1]);
-  expect(
-    trace.witnesses.some((witness) => witness.phase === "signatures"),
-  ).toBe(false);
-  if (!("code" in fixture.phaseA))
+  const phaseA = validatePhaseASingle(
+    {
+      txId: transaction.txId,
+      txCbor: encodeMidgardForcedTxCanonical(transaction.tx),
+      sourceKind: "forced",
+      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
+      arrivalSeq: 0n,
+      createdAt: new Date(0),
+    },
+    {
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      expectedNetworkId: 0n,
+      concurrency: 1,
+      strictnessProfile: "phase1_midgard",
+    },
+  );
+  expect(phaseA).toMatchObject({
+    code: RejectCodes.InvalidFieldType,
+    consensusPhase: "canonicalDecode",
+  });
+  if (!("code" in phaseA))
     throw new Error("Oversized output did not reach the forced verdict writer");
   // The actual Phase A rejection must be writable under the frozen machine
   // code. OutputNonCanonical maps to E_INVALID_OUTPUT, so using that arm for
   // this E_INVALID_FIELD_TYPE rejection stopped forced classification.
-  const verdict = forcedVerdictForRejection(fixture.phaseA);
-  expect(verdict).toStrictEqual({
+  expect(forcedVerdictForRejection(phaseA)).toStrictEqual({
     ForcedTxInvalid: {
       reason: {
         FieldItemWidthIllegal: { field_index: 2n, item_index: 1n },
       },
     },
   });
-  if (verdict === "ForcedTxValid")
-    throw new Error("Oversized output acquired an accepted verdict");
-  expect(
-    hashMidgardValidationRejectionCode(
-      Buffer.from(
-        SDK.rejectionCodeOf(verdict.ForcedTxInvalid.reason),
-        "hex",
-      ).toString("ascii"),
-    ),
-  ).toEqual(trace.tree.descriptor.rejectionCodeHash);
-}, 120_000);
+});

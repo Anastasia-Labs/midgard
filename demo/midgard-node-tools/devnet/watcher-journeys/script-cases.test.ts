@@ -21,7 +21,6 @@ import {
   buildJourneyScriptForcedSuccessor,
   JOURNEY_SCRIPT_FORCED_CATEGORIES,
 } from "./script-cases.js";
-import { prepareJourneyNativeExecutionEvidence } from "./script-execution-evidence.js";
 const replayers = {
   nativeScriptDecoding: FP.NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   nativeScriptInvalid: FP.NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
@@ -30,17 +29,6 @@ const replayers = {
     FP.SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
   outputReferenceScriptDecoding:
     FP.OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  executionSourceScriptDecoding:
-    FP.EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  receivePurposeLanguage: FP.RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
-  unusedScriptWitness: FP.UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
-  missingScriptSource: FP.MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
-  missingRedeemer: FP.MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  unusedRedeemer: FP.UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  executionNativeScriptInvalid:
-    FP.EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-  scriptIntegrityHashMismatch:
-    FP.SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   redeemerCanonicity: FP.REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
 };
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
@@ -229,123 +217,6 @@ it
             });
       expect(artifact.headerHash).toBe(block.headerHash);
     }
-    const recoveryMaterial = async <T>(material: Promise<T>): Promise<T> => {
-      const fresh = await material;
-      const encoded = FP.encodeWorkflowArtifact(fresh);
-      expect(FP.requireWorkflowArtifactMatches(encoded, fresh)).toBe(fresh);
-      return fresh;
-    };
-    if (category === "executionNativeScriptInvalid") {
-      expect(
-        (await prepareJourneyNativeExecutionEvidence(evidence, predecessor))
-          .evidence.contradiction,
-      ).toBe(true);
-      if (full.evidence === undefined || full.predecessor === undefined)
-        throw new Error(
-          "Native recovery fixture omitted the admitted predecessor",
-        );
-      const detections =
-        FP.executionNativeScriptInvalid.detectExecutionNativeScriptInvalidCanonicalViolations(
-          { block: full.evidence, predecessor: full.predecessor },
-        );
-      expect(detections).toHaveLength(1);
-      await recoveryMaterial(
-        Promise.resolve({
-          header: full.evidence.header,
-          headerHash: full.evidence.headerHash,
-          detection: detections[0]!,
-          // Mirror the family artifact: the admitted predecessor's identity only.
-          predecessor: {
-            headerHash: full.evidence.header.prevHeaderHash,
-            utxosRoot: full.predecessor.utxosRoot,
-          },
-        }),
-      );
-    }
-    if (category === "missingRedeemer") {
-      const candidates = await FP.replayMissingRedeemer(evidence);
-      expect(candidates).toHaveLength(1);
-      const artifact = await recoveryMaterial(
-        Promise.resolve(candidates[0]!.artifact),
-      );
-      expect(artifact.headerHash).toHaveLength(56);
-      expect(FP.admitMissingRedeemerArtifact(artifact)).toBe(artifact);
-      expect(() =>
-        FP.admitMissingRedeemerArtifact({
-          ...artifact,
-          headerHash: "11".repeat(32),
-        }),
-      ).toThrow("not admitted");
-      expect(
-        FP.missingRedeemerEvidenceCloses(candidates[0]!.artifact.evidence),
-      ).toBe(true);
-    }
-    if (category === "unusedRedeemer")
-      expect(
-        FP.unusedRedeemerEvidenceCloses(
-          (await recoveryMaterial(FP.prepareUnusedRedeemerArtifact(evidence)))
-            .evidence,
-        ),
-      ).toBe(true);
-    if (category === "unusedScriptWitness")
-      expect(
-        FP.unusedScriptWitnessEvidenceCloses(
-          (
-            await recoveryMaterial(
-              FP.prepareUnusedScriptWitnessArtifact(evidence),
-            )
-          ).evidence,
-        ),
-      ).toBe(true);
-    if (category === "receivePurposeLanguage")
-      expect(
-        FP.receivePurposeLanguageEvidenceCloses(
-          (
-            await recoveryMaterial(
-              FP.prepareReceivePurposeLanguageArtifact(evidence),
-            )
-          ).evidence,
-        ),
-      ).toBe(true);
-    if (category === "executionSourceScriptDecoding")
-      expect(
-        FP.executionSourceScriptDecodingEvidenceCloses(
-          (
-            await recoveryMaterial(
-              FP.prepareExecutionSourceScriptDecodingArtifact(evidence),
-            )
-          ).evidence,
-        ),
-      ).toBe(true);
-    if (category === "missingScriptSource") {
-      const artifact =
-        await FP.missingScriptSourceV1.prepareMissingScriptSourceArtifact(
-          evidence,
-        );
-      expect(
-        FP.missingScriptSourceV1.missingScriptSourceEvidenceCloses(
-          artifact.evidence,
-        ),
-      ).toBe(true);
-      await recoveryMaterial(
-        Promise.resolve(
-          FP.missingScriptSourceV1.missingScriptSourceRecoveryMaterial(
-            artifact,
-          ),
-        ),
-      );
-    }
-    if (category === "scriptIntegrityHashMismatch")
-      expect(
-        FP.scriptIntegrityHashMismatchEvidenceCloses(
-          (
-            await recoveryMaterial(
-              FP.prepareScriptIntegrityHashMismatchArtifact(evidence),
-            )
-          ).evidence,
-        ),
-      ).toBe(true);
-
     await verifyJourneyFixture({
       category,
       replayer: replayers[category],
@@ -356,37 +227,4 @@ it
     });
   },
   60000,
-);
-
-it.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
-  "keeps owner funding usable after a native receive successor",
-  async () => {
-    const { predecessor, accounts } = await loadRetainedDeposit();
-    let current: Parameters<
-      typeof buildJourneyScriptForcedSuccessor
-    >[0]["predecessor"] = predecessor;
-    for (const [index, category] of (
-      [
-        "receivePurposeLanguage",
-        "nativeScriptInvalid",
-        "scriptIntegrityHashMismatch",
-      ] as const
-    ).entries()) {
-      const successor = await buildJourneyScriptForcedSuccessor({
-        category,
-        predecessor: current,
-        ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
-        operatorVkey: current.header.operatorVkey,
-        endTime: current.header.endTime + 40_000n,
-        blockSlot: current.header.blockSlot + 40n,
-        orderKey: {
-          transactionId: (index + 1).toString(16).padStart(64, "0"),
-          outputIndex: 0n,
-        },
-      });
-      expect(successor.replay.trace.verdict).toBe("accepted");
-      current = successor;
-    }
-  },
-  60_000,
 );

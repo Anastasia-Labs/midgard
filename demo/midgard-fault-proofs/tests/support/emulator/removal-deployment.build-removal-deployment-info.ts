@@ -9,13 +9,7 @@ import { type Script } from "@lucid-evolution/lucid";
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/index.js";
 import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/index.js";
 import type { DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
-import {
-  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
-  VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
-  VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
-  VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
-  validationValueAndMintSemanticReferenceScriptDeploymentEntry,
-} from "../../../src/index.js";
+import { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "../../../src/index.js";
 import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/index.js";
 import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/index.js";
 import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
@@ -29,7 +23,6 @@ import { type WithdrawnInputContracts } from "../../../src/withdrawn-input/index
 import { type WithdrawnReferenceInputContracts } from "../../../src/withdrawn-reference-input/index.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
-  publishValidationDisputeReferenceScript,
   type RemovalReferenceScriptName,
   type RemovalReferenceScriptPublications,
 } from "./reference-scripts.js";
@@ -69,20 +62,9 @@ export const buildRemovalDeploymentInfo = (
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
-    validationDisputePublication,
-    validationItemSemanticReference,
-    validationItemObserveReference,
-    validationCanonicalDecodePrepareReference,
     removalReferenceScripts,
     fraudProofReferenceScripts,
-    validationValueAndMintSemanticReferences,
   }: {
-    readonly validationDisputePublication?: Awaited<
-      ReturnType<typeof publishValidationDisputeReferenceScript>
-    >;
-    readonly validationItemSemanticReference?: RemovalDeploymentReference;
-    readonly validationItemObserveReference?: RemovalDeploymentReference;
-    readonly validationCanonicalDecodePrepareReference?: RemovalDeploymentReference;
     readonly removalReferenceScripts?: RemovalReferenceScriptPublications;
     /**
      * Live canonical fraud-proof step publications keyed by their production
@@ -93,15 +75,6 @@ export const buildRemovalDeploymentInfo = (
     readonly fraudProofReferenceScripts?: Readonly<
       Record<string, RemovalDeploymentReference>
     >;
-    /**
-     * #634. Published ValueAndMint semantic-resolver reference scripts, keyed
-     * by the ValueAndMint-local semantic index (0..10). Splices in the same
-     * shape as the item-semantic / canonical-decode-prepare entries, so a
-     * journey that publishes one resolver adds exactly one entry.
-     */
-    readonly validationValueAndMintSemanticReferences?: readonly (RemovalDeploymentReference & {
-      readonly semanticResolverIndex: number;
-    })[];
   } = {},
 ) => {
   const fraudProofChainEntries = Object.fromEntries(
@@ -190,31 +163,6 @@ export const buildRemovalDeploymentInfo = (
       },
     ),
   );
-  const valueAndMintSemanticEntries = Object.fromEntries(
-    (validationValueAndMintSemanticReferences ?? []).map(
-      ({ semanticResolverIndex, scriptHash, utxo }) => {
-        const entryName =
-          validationValueAndMintSemanticReferenceScriptDeploymentEntry(
-            semanticResolverIndex,
-          );
-        if (entryName === undefined) {
-          throw new Error(
-            `ValueAndMint semantic resolver ${semanticResolverIndex.toString()} has no reference-script deployment entry`,
-          );
-        }
-        return [
-          entryName,
-          {
-            scriptHash,
-            refScriptUTxO: {
-              txHash: utxo.txHash,
-              outputIndex: utxo.outputIndex,
-            },
-          },
-        ] as const;
-      },
-    ),
-  );
   const deploymentEntry = (
     scriptHash: string,
     script: Script,
@@ -247,7 +195,6 @@ export const buildRemovalDeploymentInfo = (
       // reverse order silently discarded those fields for registered
       // categories.
       ...fraudProofChainEntries,
-      ...valueAndMintSemanticEntries,
       ...Object.fromEntries(
         Object.values(TRANSITION_TRACE_YIELD_REFERENCES).flatMap(
           ({ entry }) => {
@@ -269,42 +216,6 @@ export const buildRemovalDeploymentInfo = (
           },
         ),
       ),
-      ...(validationItemSemanticReference === undefined
-        ? {}
-        : {
-            [VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
-              scriptHash: validationItemSemanticReference.scriptHash,
-              refScriptUTxO: {
-                txHash: validationItemSemanticReference.utxo.txHash,
-                outputIndex: validationItemSemanticReference.utxo.outputIndex,
-              },
-            },
-          }),
-      ...(validationItemObserveReference === undefined
-        ? {}
-        : {
-            [VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
-              scriptHash: validationItemObserveReference.scriptHash,
-              refScriptUTxO: {
-                txHash: validationItemObserveReference.utxo.txHash,
-                outputIndex: validationItemObserveReference.utxo.outputIndex,
-              },
-            },
-          }),
-      ...(validationCanonicalDecodePrepareReference === undefined
-        ? {}
-        : {
-            [VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]:
-              {
-                scriptHash:
-                  validationCanonicalDecodePrepareReference.scriptHash,
-                refScriptUTxO: {
-                  txHash: validationCanonicalDecodePrepareReference.utxo.txHash,
-                  outputIndex:
-                    validationCanonicalDecodePrepareReference.utxo.outputIndex,
-                },
-              },
-          }),
       hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
       fraudProofCatalogueMint: {
         scriptHash: contracts.fraudProofCatalogue.policyId,
@@ -456,13 +367,7 @@ export const buildRemovalDeploymentInfo = (
       validationTraceDispute: {
         scriptHash:
           contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
-        refScriptUTxO:
-          validationDisputePublication === undefined
-            ? null
-            : {
-                txHash: validationDisputePublication.utxo.txHash,
-                outputIndex: validationDisputePublication.utxo.outputIndex,
-              },
+        refScriptUTxO: null,
         contract: {
           type: contracts.fraudProofs.validationTraceDispute.spendingScript
             .type,
@@ -536,9 +441,8 @@ export const buildRemovalDeploymentInfo = (
       ),
       settlementMint: { scriptHash: contracts.settlement.policyId },
     },
-    validationDisputePublication?.authPolicyDeploymentInfo ??
-      referenceScriptAuthPolicyDeploymentInfo(
-        requireReferenceScriptAuthPolicy(contracts.referenceScriptAuth),
-      ),
+    referenceScriptAuthPolicyDeploymentInfo(
+      requireReferenceScriptAuthPolicy(contracts.referenceScriptAuth),
+    ),
   );
 };

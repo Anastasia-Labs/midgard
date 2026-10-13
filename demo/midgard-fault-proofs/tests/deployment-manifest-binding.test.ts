@@ -18,7 +18,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dependencies = vi.hoisted(() => ({
   verify: vi.fn<(value: unknown) => Record<string, unknown>>(),
   resolve: vi.fn(),
-  resolveDispute: vi.fn(),
 }));
 vi.mock("@al-ft/midgard-core/deployment-manifest-identity", async (load) => ({
   ...(await load<
@@ -29,7 +28,6 @@ vi.mock("@al-ft/midgard-core/deployment-manifest-identity", async (load) => ({
 vi.mock("../src/runtime.js", async (load) => ({
   ...(await load<typeof import("../src/runtime.js")>()),
   resolveFaultProofDeploymentContracts: dependencies.resolve,
-  resolveValidationTraceDisputeDeploymentContracts: dependencies.resolveDispute,
 }));
 
 import {
@@ -37,7 +35,6 @@ import {
   parseContractDeploymentReferenceScriptAuthPolicyId,
 } from "../src/inspect-contracts.js";
 import { fraudSlashEconomicsFromDeploymentManifest } from "../src/remove-fraudulent-block.js";
-import { bindValidationTraceDisputeWorkflowDeployment } from "../src/validation-dispute/workflow-binding.js";
 import {
   bindFraudProofTerminalDeployment,
   bindFraudProofWorkflowDeployment,
@@ -273,99 +270,21 @@ describe("manifest-bound builder document", () => {
     );
   });
 
-  it.each(["linear", "dispute"] as const)(
-    "%s binding rejects a supplied blueprint that differs from the verified manifest",
-    async (family) => {
-      const current = fixture();
-      const input = {
+  it("binding rejects a supplied blueprint that differs from the verified manifest", async () => {
+    const current = fixture();
+    await expect(
+      bindFraudProofWorkflowDeployment({
         manifest: current.manifest,
         blueprintJson: '{ "different": true }',
         deploymentInfo: current.deploymentInfo,
         headerHash: "99".repeat(28),
         proverCredential: "aa".repeat(28),
-      };
-      const running =
-        family === "dispute"
-          ? bindValidationTraceDisputeWorkflowDeployment(input)
-          : bindFraudProofWorkflowDeployment({
-              ...input,
-              category: "doubleSpend",
-              stepDatumSchemas: [],
-            });
-      await expect(running).rejects.toThrow("blueprint SHA-256 does not match");
-      expect(dependencies.resolve).not.toHaveBeenCalled();
-      expect(dependencies.resolveDispute).not.toHaveBeenCalled();
-    },
-  );
-
-  it("preserves dispute manifest script validation after asynchronous compilation", async () => {
-    const current = fixture();
-    let finish!: (value: unknown) => void;
-    dependencies.resolveDispute.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const running = bindValidationTraceDisputeWorkflowDeployment({
-      manifest: current.manifest,
-      blueprintJson,
-      deploymentInfo: current.deploymentInfo,
-      headerHash: "99".repeat(28),
-      proverCredential: "aa".repeat(28),
-    });
-    current.manifest.contracts.stateQueueSpend!.scriptHash = "ff".repeat(28);
-    finish({
-      validationTraceDisputeCategory:
-        current.manifest.contracts.fraudProofCatalogueMint!.fraudProofCatalogue!
-          .categories.validationTraceDispute,
-      contracts: {
-        fieldPreimageCertificate: {
-          policyId: scriptHash,
-          mintingScript: script,
-        },
-        validationTraceDispute: {
-          firstStep: { spendingScriptHash: scriptHash },
-        },
-      },
-    });
-    await expect(running).rejects.toThrow(
-      "deployment manifest stateQueueSpend script bytes/hash disagree",
-    );
-    expect(Object.isFrozen(current.manifest)).toBe(false);
+        category: "doubleSpend",
+        stepDatumSchemas: [],
+      }),
+    ).rejects.toThrow("blueprint SHA-256 does not match");
+    expect(dependencies.resolve).not.toHaveBeenCalled();
   });
-
-  it.each(["policy", "script"])(
-    "refuses a %s mismatch in the applied dispute field certificate",
-    async (changed) => {
-      const current = fixture();
-      dependencies.resolveDispute.mockResolvedValue({
-        contracts: {
-          validationTraceDispute: {
-            firstStep: { spendingScriptHash: scriptHash },
-          },
-          fieldPreimageCertificate: {
-            policyId: changed === "policy" ? "ff".repeat(28) : scriptHash,
-            mintingScript:
-              changed === "script"
-                ? { ...script, script: `8200581c${"56".repeat(28)}` }
-                : script,
-          },
-        },
-      });
-      await expect(
-        bindValidationTraceDisputeWorkflowDeployment({
-          manifest: current.manifest,
-          blueprintJson,
-          deploymentInfo: current.deploymentInfo,
-          headerHash: "99".repeat(28),
-          proverCredential: "aa".repeat(28),
-        }),
-      ).rejects.toThrow(
-        "field-preimage certificate differs from the finalized manifest",
-      );
-    },
-  );
 
   it("stops before parsing builder metadata when manifest verification fails", async () => {
     const current = fixture();
@@ -411,8 +330,7 @@ it("binds completed observation metadata without admitting an executable thread 
 
 // Workflow journals record the release identity and recovery compares it
 // whole against the watcher's verified deployment authority, so a manifest
-// field outside the release policy must never reach it. The dispute binding
-// derives its release identity through the same `releasePolicies`.
+// field outside the release policy must never reach it.
 describe("release finality identity", () => {
   it("binds every workflow to the rollback fields alone, never the manifest's commit-event depth", async () => {
     const current = fixture();

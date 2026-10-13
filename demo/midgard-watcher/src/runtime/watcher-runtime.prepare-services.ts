@@ -9,7 +9,6 @@ import {
   type WatcherFaultProofStartupReadiness,
 } from "../fault-proofs/fault-proof-application.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
-import { type WatcherUserEvents } from "../l1-follower/user-events.js";
 import { type WatcherProcessConfig } from "./process-config.js";
 import {
   createWatcherStartupProgress,
@@ -54,7 +53,6 @@ export const prepareWatcherRuntimeWorkflows = async (
   > &
     Readonly<{
       startup: ReturnType<typeof createWatcherStartupProgress>;
-      userEvents: WatcherUserEvents;
       follower: Pick<WatcherFollowerRuntime, "status" | "readiness">;
       l1: WatcherFaultProofL1;
       onAllocated: (application: WatcherFaultProofApplication) => void;
@@ -66,7 +64,6 @@ export const prepareWatcherRuntimeWorkflows = async (
     sqlite,
     fundingProfileOverlay,
     startup,
-    userEvents,
     follower,
     l1,
     onAllocated,
@@ -77,7 +74,6 @@ export const prepareWatcherRuntimeWorkflows = async (
       l1,
       deploymentAuthority,
       replayTranscriptStore: sqlite.replayTranscripts,
-      userEvents,
       infrastructure: input.config.faultProofInfrastructure,
       fundingProfileOverlay,
     });

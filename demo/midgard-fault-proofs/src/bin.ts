@@ -43,7 +43,6 @@ import "./submit-reference-input-no-idx-step-04.js";
 import "./submit-transition-trace-proof.js";
 import "./submit-zero-input-step-01.js";
 import "./submit-zero-input-step-02.js";
-import "./validation-dispute/from-files.js";
 import "./workflow/cli.js";
 import "./bin.parsed-args.js";
 import "./bin.parse-args.js";

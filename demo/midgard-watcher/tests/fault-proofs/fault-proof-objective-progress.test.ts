@@ -28,6 +28,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
 import { listWatcherProofObjectives } from "../../src/fault-proofs/fault-proof-objective-table.js";
 import {
@@ -1045,7 +1046,7 @@ describe("proof objective progress with durable funding and journals", () => {
     const writer = await openWatcherFaultDecisionJournal({
       directory: test.fixture.journalRoot,
       deploymentFingerprint: deploymentIdentity.manifestId,
-      launchScope: test.fixture.old.launchScope,
+      launchScope: installedLaunchScope(test.fixture.old.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
     });
     await writer.appendLiveDecision(test.fixture.old);

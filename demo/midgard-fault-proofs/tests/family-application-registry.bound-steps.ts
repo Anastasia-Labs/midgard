@@ -26,7 +26,6 @@ type BoundReferenceScripts = Readonly<{
 
 type BoundConfig = Readonly<{
   decisionDigest?: string;
-  challenge?: unknown;
   referenceScripts?: BoundReferenceScripts;
 }> &
   Readonly<Record<string, unknown>>;
@@ -188,14 +187,6 @@ export const DECISION_DIGEST = "44".repeat(32);
  */
 const REPLAY_CONTEXT = Object.freeze({ sentinel: "replayContext" });
 
-/** A challenge port whose challenge records the coordinates it was asked for. */
-const VALIDATION_CHALLENGE_PORT = Object.freeze({
-  currentChallenge: async (input: {
-    headerHash: string;
-    decisionDigest: string;
-  }) => Object.freeze({ sentinel: "validationChallenge", ...input }),
-});
-
 export const infrastructure = {
   manifest: {},
   blueprintJson: "{}",
@@ -207,21 +198,17 @@ export const infrastructure = {
   stateQueueMutationLeaseCoordinator: {} as never,
   decisionDigest: DECISION_DIGEST,
   replayContext: REPLAY_CONTEXT as never,
-  validationChallenge: VALIDATION_CHALLENGE_PORT as never,
 } satisfies FamilyCommonInfrastructure;
 
 export const { decisionDigest: _undecided, ...undecidedInfrastructure } =
   infrastructure;
 
-export const {
-  replayContext: _replay,
-  validationChallenge: _challenge,
-  ...plainInfrastructure
-} = infrastructure;
+export const { replayContext: _replay, ...plainInfrastructure } =
+  infrastructure;
 
 /**
- * The sentinel parts a bound config carries at any depth: the replay context
- * and the challenge, named by their sentinel.
+ * The sentinel parts a bound config carries at any depth: the replay context,
+ * named by its sentinel.
  */
 export const boundSentinels = (value: unknown, found = new Set<string>()) => {
   if (typeof value !== "object" || value === null) return found;
@@ -242,7 +229,6 @@ export const NO_DIGEST_FAMILIES = [
   "withdrawalMistag",
   "minAda",
   "transitionTrace",
-  "executionNativeScriptInvalid",
   "missingSignature",
   "networkId",
   "valueNotPreserved",
@@ -258,7 +244,6 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "transitionTrace",
   "resolvedOutputNonCanonical",
   "spendInputSignerMissing",
-  "executionNativeScriptInvalid",
 ];
 
 /**
@@ -267,14 +252,8 @@ export const REPLAY_CONTEXT_FAMILIES = [
  */
 export const OPTIONAL_REPLAY_CONTEXT_FAMILIES = ["valueNotPreserved"];
 
-/** The sole interactive family, and the only record reading the challenge port. */
-export const VALIDATION_CHALLENGE_FAMILIES = ["validationTraceDispute"];
-
 /**
  * Hand-written records (no definition to declare it) that follow their proof
  * token with the state-queue removal set.
  */
-export const HAND_WRITTEN_REMOVAL_FAMILIES = [
-  "valueNotPreserved",
-  "validationTraceDispute",
-];
+export const HAND_WRITTEN_REMOVAL_FAMILIES = ["valueNotPreserved"];

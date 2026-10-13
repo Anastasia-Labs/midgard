@@ -13,6 +13,9 @@
     "./tests/validation-fixtures": {
       "midgard-source": "./tests/validation-fixtures.ts"
     },
+    "./tests/validation-machine-event-replay.trace": {
+      "midgard-source": "./tests/validation-machine-event-replay.trace.ts"
+    },
     "./tests/placeholder-validation-trace-descriptor-v1.vectors": {
       "midgard-source": "./tests/placeholder-validation-trace-descriptor-v1.vectors.ts"
     },

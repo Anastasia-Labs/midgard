@@ -1,10 +1,10 @@
 import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES } from "../src/remove-fraudulent-block.js";
 import { familyStepRole } from "../src/workflow/family-application.js";
 import { familyStepContractNames } from "../src/workflow/family-definition.js";
+import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "../src/workflow/installed-categories.js";
 import { LINEAR_FAMILY_CATEGORIES } from "../src/workflow/linear-family-spec.js";
 import {
   bind,
@@ -25,7 +25,6 @@ import {
   registry,
   REPLAY_CONTEXT_FAMILIES,
   undecidedInfrastructure,
-  VALIDATION_CHALLENGE_FAMILIES,
   WITNESS_ROLES,
   witnessesOf,
 } from "./family-application-registry.bound-steps.js";
@@ -38,9 +37,9 @@ describe("family application registry table", () => {
     },
   );
 
-  it("covers the whole catalogue exactly once", () => {
+  it("covers every installed category exactly once", () => {
     expect(Object.keys(registry).sort()).toEqual(
-      [...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER].sort(),
+      [...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER].sort(),
     );
   });
 });
@@ -238,21 +237,10 @@ describe("family application records declare the infrastructure they read", () =
       const config = await bind(record, { infrastructure, references });
       const sentinels = boundSentinels(config);
       const requiresReplay = record.requires.includes("replayContext");
-      const requiresChallenge = record.requires.includes("validationChallenge");
       expect(sentinels.has("replayContext")).toBe(
         requiresReplay ||
           OPTIONAL_REPLAY_CONTEXT_FAMILIES.includes(record.category),
       );
-      expect(sentinels.has("validationChallenge")).toBe(requiresChallenge);
-      if (requiresChallenge) {
-        // The challenge is the port's answer for this header and the admitted
-        // decision, laid under the family's own `challenge` key.
-        expect(config.challenge).toEqual({
-          sentinel: "validationChallenge",
-          headerHash: infrastructure.headerHash,
-          decisionDigest: DECISION_DIGEST,
-        });
-      }
       // The same record binds without the optional parts: the shared loop
       // refuses a missing required part before binding, and the family's own
       // execution fail-closes on a workflow bound without it.
@@ -261,17 +249,8 @@ describe("family application records declare the infrastructure they read", () =
         references,
       });
       expect(boundSentinels(plain).size).toBe(0);
-      expect(plain.challenge).toBeUndefined();
     },
   );
-
-  it("requires the validation challenge on exactly the interactive family", () => {
-    expect(
-      Object.values(registry)
-        .filter((record) => record.requires.includes("validationChallenge"))
-        .map((record) => record.category),
-    ).toEqual(VALIDATION_CHALLENGE_FAMILIES);
-  });
 
   it("requires the replay context on exactly the families that replay the predecessor", () => {
     expect(

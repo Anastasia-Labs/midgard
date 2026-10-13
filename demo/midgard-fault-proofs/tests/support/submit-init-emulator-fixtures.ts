@@ -32,7 +32,6 @@ import "./submit-init-emulator-fixtures.build-transaction-inclusion-fixture.js";
 import "./submit-init-emulator-fixtures.build-invalid-range-transaction-inclusion-fixture.js";
 import "./submit-init-emulator-fixtures.build-non-existent-input-fixture.js";
 import "./submit-init-emulator-fixtures.build-invalid-forced-transition-trace-fixture.js";
-import "./submit-init-emulator-fixtures.build-invalid-forced-validation-dispute-fixture.js";
 import "./submit-init-emulator-fixtures.submit-successor-block-tx.js";
 import "./submit-init-emulator-fixtures.instrument-lucid-for-removal.js";
 import "./submit-init-emulator-fixtures.build-proved-double-spend-fixture.js";
@@ -40,7 +39,6 @@ import "./submit-init-emulator-fixtures.minimum-lovelace-for-inline-value.js";
 import "./submit-init-emulator-fixtures.retire-fixture-operator-after-inactivity.js";
 import "./submit-init-emulator-fixtures.setup-fraudulent-block.js";
 export { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.build-invalid-forced-transition-trace-fixture.js";
-export { buildInvalidForcedValidationDisputeFixture } from "./submit-init-emulator-fixtures.build-invalid-forced-validation-dispute-fixture.js";
 export {
   buildInvalidRangeTransactionInclusionFixture,
   buildZeroInputTransactionInclusionFixture,

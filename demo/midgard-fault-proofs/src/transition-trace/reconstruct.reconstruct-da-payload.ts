@@ -223,62 +223,6 @@ export const reconstructDaPayload = async ({
   });
   const sourceEventsByFingerprint =
     ensureUniqueSourceFingerprints(sourceEvents);
-  const retainedFieldsByEvent = new Map<
-    string,
-    ReturnType<typeof SDK.retainedValidationTransactionSource>
-  >();
-  for (const [keyHex, valueHex] of body.validation_trace_witnesses) {
-    try {
-      const key = SDK.decodeRetainedValidationWitnessKey(
-        Buffer.from(keyHex, "hex"),
-      );
-      const retained = SDK.decodeRetainedValidationWitness(
-        Buffer.from(valueHex, "hex"),
-      );
-      if (SDK.retainedValidationFieldSource(retained.auxiliary) === undefined)
-        continue;
-      const fingerprint = eventKeyFingerprint(key.event_key);
-      let fields = retainedFieldsByEvent.get(fingerprint);
-      if (fields === undefined) {
-        const source = sourceEventsByFingerprint.get(fingerprint);
-        if (
-          source === undefined ||
-          (source.phase !== "ForcedTransaction" &&
-            source.phase !== "L2Transaction")
-        )
-          throw new Error(
-            "Retained field source has no authenticated transaction",
-          );
-        fields = SDK.retainedValidationTransactionSource(
-          source.entry.fullTransactionCbor,
-          source.phase === "ForcedTransaction" ? "forced" : "normal",
-        );
-        retainedFieldsByEvent.set(fingerprint, fields);
-      }
-      SDK.validateRetainedValidationTransactionIdentity(
-        fields,
-        Buffer.from(retained.machine_state.transaction_id, "hex"),
-        Buffer.from(retained.machine_state.transaction_commitment, "hex"),
-      );
-      if (
-        retained.machine_state.source_kind !==
-        ("ForcedTransactionEventKey" in key.event_key ? "Forced" : "Normal")
-      )
-        throw new Error(
-          "Retained field source kind differs from its authenticated event",
-        );
-      SDK.validateRetainedValidationFieldSource(
-        retained.auxiliary,
-        fields.fields,
-      );
-    } catch (cause) {
-      throw transitionTraceError(
-        "invalidPayloadEntries",
-        "Retained field source does not match its authenticated transaction.",
-        cause,
-      );
-    }
-  }
   const traceByStepIndex = new Map(
     transitionTrace.map((entry) => [entry.key, entry] as const),
   );

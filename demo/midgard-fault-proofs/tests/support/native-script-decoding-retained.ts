@@ -9,6 +9,7 @@ import {
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
+import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
@@ -100,8 +101,11 @@ export const nativeDecodingFixture = async ({
     itemCommitment: _commitment,
     ...baseFacts
   } = baseDescriptor;
+  // The script hash covers the language tag and the script bytes the item's
+  // byte string carries, whatever the width of its length header.
+  const [, scriptBytes] = decodeSingleCbor(item) as [bigint, Uint8Array];
   const referenceScriptHash = computeHash28(
-    Buffer.concat([Buffer.from([item[1]!]), item.subarray(3)]),
+    Buffer.concat([Buffer.from([item[1]!]), Buffer.from(scriptBytes)]),
   );
   // The TxOut summaries carry the reference script hash, as the on-chain
   // terminal descriptor derives them.

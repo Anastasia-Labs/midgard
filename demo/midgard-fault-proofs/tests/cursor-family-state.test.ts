@@ -3,12 +3,12 @@ import "./cursor-family-state.descendant-removal.js";
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../src/execution-native-script-invalid/workflow-spec.js";
 import { CURSOR_FAMILY_SPECS } from "../src/workflow/cursor-family-spec.js";
 import {
   cursorFamilyObservation,
   reconcileCursorFamilyAction,
 } from "../src/workflow/cursor-family-state.js";
+import { THIRTEEN_STEP_CURSOR_SPEC } from "./support/thirteen-step-cursor-spec.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
@@ -20,7 +20,7 @@ const provenance: EvidenceProvenance = {
 };
 
 // Step 4 forks to a direct proof token or the staged 5/6 self-loop batches.
-const spec = EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC;
+const spec = THIRTEEN_STEP_CURSOR_SPEC;
 
 type SpecStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 
@@ -216,7 +216,7 @@ describe("production cursor-family authenticated state V1", () => {
     }
   });
 
-  it("accepts the exact direct and staged execution-native-script successors", async () => {
+  it("accepts the exact direct and staged successors of a branching topology", async () => {
     const step04Action = actionFor(4, outRef("40"));
     const directTx = hash("61");
     await expect(
@@ -271,7 +271,7 @@ describe("production cursor-family authenticated state V1", () => {
 
   it("preserves two-digit stage ordinals for the 13-script execution family", () => {
     const observed = cursorFamilyObservation({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       headerHash,
       provenance,
       stage: {

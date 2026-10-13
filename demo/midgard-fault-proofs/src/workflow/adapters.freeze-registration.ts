@@ -41,7 +41,8 @@ export type MissingWorkflowAdapterReason =
   | "prover_is_not_chain_state_resumable"
   | "partial_resume_surface_has_no_complete_driver"
   | "detector_or_scanner_only"
-  | "constrained_adapter_is_not_launch_scope_complete";
+  | "constrained_adapter_is_not_launch_scope_complete"
+  | "evidence_not_carried_by_da_payload";
 
 export type MissingWorkflowAdapterRegistration = {
   readonly category: FraudProofCatalogueCategoryName;

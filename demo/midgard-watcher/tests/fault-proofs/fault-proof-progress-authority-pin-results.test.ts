@@ -5,6 +5,7 @@ import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-pr
 import { afterEach, describe, expect, it } from "vitest";
 
 import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import type {
@@ -60,7 +61,7 @@ const restartWith = async (retention: WatcherProofRetention) => {
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot: fixture.journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
-    categories: fixture.old.launchScope,
+    categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
     retention,
   });
@@ -86,14 +87,14 @@ const newFaultWith = async (retention: WatcherProofRetention) => {
   const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
     directory: journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
-    launchScope: fixture.old.launchScope,
+    launchScope: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
   });
   await writer.appendLiveDecision(fixture.old);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
-    categories: fixture.old.launchScope,
+    categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
     retention,
   });
