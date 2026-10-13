@@ -31,10 +31,7 @@ import {
 import { WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX } from "../l1-follower/fault-proof-l1-source.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { createWatcherQueueHeaderSource } from "../l1-follower/observation.js";
-import {
-  createWatcherFollowerUserEvents,
-  type WatcherUserEvents,
-} from "../l1-follower/user-events.js";
+import { type WatcherUserEvents } from "../l1-follower/user-events.js";
 import {
   bindWatcherRetainedDaOperations,
   type WatcherRetainedDaOperationsBinding,
@@ -78,6 +75,7 @@ import {
   resolveWatcherRuntimeWalletAddresses,
 } from "./watcher-runtime.prepare-authority.js";
 import { prepareWatcherRuntimeWorkflows } from "./watcher-runtime.prepare-services.js";
+import { createWatcherRuntimeReplayHost } from "./watcher-runtime.replayed-ledger.js";
 import { watcherRetirementReady } from "./watcher-runtime.retirement-ready.js";
 
 /**
@@ -218,6 +216,11 @@ export const startWatcherRuntime = async (
     const { networkMagic } = await startup("l1_node_identity", () =>
       deriveWatcherNativeGenesisIdentity({ watcherConfig }),
     );
+    const replayHost = createWatcherRuntimeReplayHost(
+      deploymentAuthority,
+      userEventScripts,
+      input.config.workflowJournalDirectory,
+    );
     const activeFollower = openWatcherDeploymentFollower({
       authority,
       storePath: `${watcherConfig.storage.path}.l1-follower.sqlite`,
@@ -236,27 +239,14 @@ export const startWatcherRuntime = async (
       },
       walletAddresses: [proverWalletAddress, availabilityWalletAddress],
       eventProjection: userEventScripts.eventProjection,
+      replayPruneFloor: replayHost.retention.floor,
       log: (line) => process.stderr.write(`${line}\n`),
     });
     follower = activeFollower;
     const { store, rawReads, transport, provider } = activeFollower;
-    const activeUserEvents = createWatcherFollowerUserEvents({
-      store,
-      rawReads,
-      proofRetention: activeFollower.proofRetention,
-      identity: {
-        deploymentManifestId: deploymentIdentity.manifestId,
-        blueprintHash: deploymentIdentity.blueprintHash,
-        network: deploymentIdentity.network,
-      },
-      scripts: {
-        depositPolicyId: userEventScripts.deposit.policyId,
-        withdrawalPolicyId: userEventScripts.withdrawal.policyId,
-        forcedOrderPolicyId: userEventScripts.forcedOrder.policyId,
-        forcedOrderAddressHex: userEventScripts.forcedOrder.addressHex,
-      },
-    });
-    userEvents = activeUserEvents;
+    const replay = replayHost.bind(activeFollower);
+    userEvents = replay.userEvents;
+    unsubscribeL1.push(replay.close);
 
     const { faultProofApplication, faultProofReadiness } =
       await prepareWatcherRuntimeWorkflows(input, {
@@ -265,6 +255,7 @@ export const startWatcherRuntime = async (
         sqlite,
         fundingProfileOverlay,
         startup,
+        replayedLedger: replay.keeper,
         follower: activeFollower,
         l1: activeFollower.faultProofL1,
         onAllocated: (application) => {
@@ -407,6 +398,14 @@ export const startWatcherRuntime = async (
         releaseDepth,
         bridge: activeBridge,
         availability: activeAvailability,
+        replayedLedger: {
+          depth: releaseFinality.automaticRecoveryMaxDepth + 2,
+          advance: (observation) =>
+            faultProofApplication.advanceReplayedLedger({
+              runtimeConfigPath: input.config.watcherRuntimeConfigPath,
+              observation,
+            }),
+        },
         retirement: {
           ready: () => watcherRetirementReady(activeSupervisor.status()),
           retire: (observation) =>

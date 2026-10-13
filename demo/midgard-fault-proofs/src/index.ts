@@ -62,6 +62,8 @@ export * from "./redeemer-item-data.js";
 export * from "./redeemer-item-plan.js";
 export * from "./remove-fraudulent-block.js";
 export * from "./remove-unattested-block.js";
+export * from "./replayed-ledger.checkpoint-file.js";
+export * from "./replayed-ledger.js";
 export * from "./resolved-output-non-canonical/index.js";
 export * from "./retained-payload-replay-source.js";
 export * from "./runtime.js";

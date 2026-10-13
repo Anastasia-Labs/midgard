@@ -461,7 +461,6 @@ describe("watcher production fault-proof application V1", () => {
       [...PREDECESSOR_LEDGER_PROOF_CATEGORIES].sort(),
     );
     expect([...WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES].sort()).toEqual([
-      "minAda",
       "noReferenceInput",
       "nonExistentInput",
       "resolvedOutputNonCanonical",
@@ -619,7 +618,7 @@ describe("watcher production fault-proof application V1", () => {
             "replayContext",
           ),
         );
-      expect(replayContextFamilies).toHaveLength(9);
+      expect(replayContextFamilies).toHaveLength(8);
       for (const category of replayContextFamilies) {
         await expect(applied(category)).rejects.toThrow(
           `${category} application requires replayContext, which the host did not supply`,

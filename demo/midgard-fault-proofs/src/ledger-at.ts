@@ -107,6 +107,34 @@ const withDescriptor = ({
   }
 };
 
+const ledgerTrie = async (
+  entries: readonly LedgerEntry[],
+  label: string,
+): Promise<{ copied: LedgerEntry[]; trie: KeyValuePhasRoot }> => {
+  try {
+    const leaves = entries.map(withDescriptor);
+    return {
+      copied: leaves.map(({ entry }) => entry),
+      trie: await keyValuePhasRootWithCount(
+        leaves.map(({ entry, leaf }) => ({ key: entry.outRef, value: leaf })),
+      ),
+    };
+  } catch (cause) {
+    throw new Error(
+      `${label}: the ledger has an entry that is not a canonical ledger entry`,
+      { cause },
+    );
+  }
+};
+
+/**
+ * The root the entries' descriptor trie commits: the root a replay compares
+ * with a header's `utxos_root`. Admits nothing; see `checkLedgerAgainstRoot`.
+ */
+export const ledgerEntriesRoot = async (
+  entries: readonly LedgerEntry[],
+): Promise<string> => (await ledgerTrie(entries, "ledger root")).trie.root;
+
 /** Refuses `entries` unless their descriptor trie opens `utxosRoot`. */
 export const checkLedgerAgainstRoot = async ({
   entries,
@@ -117,20 +145,7 @@ export const checkLedgerAgainstRoot = async ({
   readonly utxosRoot: string;
   readonly label: string;
 }): Promise<CheckedLedger> => {
-  let copied: LedgerEntry[];
-  let trie: KeyValuePhasRoot;
-  try {
-    const leaves = entries.map(withDescriptor);
-    copied = leaves.map(({ entry }) => entry);
-    trie = await keyValuePhasRootWithCount(
-      leaves.map(({ entry, leaf }) => ({ key: entry.outRef, value: leaf })),
-    );
-  } catch (cause) {
-    throw new Error(
-      `${label}: the ledger has an entry that is not a canonical ledger entry`,
-      { cause },
-    );
-  }
+  const { copied, trie } = await ledgerTrie(entries, label);
   if (trie.root !== utxosRoot)
     throw new LedgerRootMismatchError(label, utxosRoot, trie.root);
   const sorted = copied.sort((left, right) =>

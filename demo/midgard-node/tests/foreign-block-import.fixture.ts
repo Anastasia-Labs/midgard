@@ -158,7 +158,11 @@ export const fixture = async (
 
 export const rebind = async (payload: SDK.DaPayload) => {
   const roots = await Effect.runPromise(computeDaPayloadRoots(payload));
-  const header = { ...payload.block_body.header, ...roots };
+  const header = {
+    ...payload.block_body.header,
+    ...roots,
+    utxosRoot: payload.block_body.header.utxosRoot,
+  };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   return {
     ...payload,

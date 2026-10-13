@@ -1,3 +1,4 @@
+import { transitionPhaseRank } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
@@ -146,19 +147,6 @@ export const assertUniqueTransitionSourceEvents = (
       seen.add(fingerprint);
     }
   });
-
-const transitionPhaseRank = (phase: SDK.TransitionPhase): number => {
-  switch (phase) {
-    case "Withdrawal":
-      return 0;
-    case "ForcedTransaction":
-      return 1;
-    case "L2Transaction":
-      return 2;
-    case "Deposit":
-      return 3;
-  }
-};
 
 export const assertCanonicalTransitionPhaseOrder = (
   sourceEvents: readonly TransitionTraceSourceEvent[],

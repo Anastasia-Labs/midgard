@@ -1,3 +1,15 @@
+/**
+ * The block replay: a block's DA payload replayed over its parent's ledger.
+ * Every event is re-run (L2 and forced transactions through the validation
+ * machine, user events through the caller's L1 material), and every committed
+ * transition, event-to-step mapping and validation descriptor must equal the
+ * replay's canonical bytes. The node's foreign-block import and the watcher's
+ * ledger both run this one function; each supplies its own ledger-root
+ * computation and L1 event material.
+ *
+ * Faults of the payload are thrown (defects); the callbacks' and the root
+ * computation's failures pass through.
+ */
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
@@ -12,32 +24,47 @@ import {
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import * as Ledger from "../database/utils/ledger.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  encodeTransactionRootValue,
-} from "./ledger-hydration.js";
-import { eventKeyCbor } from "./trace-events.js";
 import {
   encodeEventToStepValueCbor,
+  encodeTransactionRootValue,
+  encodeTransitionEventKeyCbor,
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
-} from "./transition-cbor.js";
-import { assertCanonicalTransitionPhaseOrder } from "./transition-trace.apply-trace-ledger-ops-to-mpf.js";
+  transitionPhaseRank,
+} from "./block-replay.encoding.js";
 import {
   importedEventProgramSidecar,
   importedProgramMaterial,
-} from "./verified-block-import.program-material.js";
+} from "./block-replay.program-material.js";
 
-export type ImportedBlockReplayContext = {
+export {
+  encodeEventToStepValueCbor,
+  encodeTransactionRootValue,
+  encodeTransitionEventKeyCbor,
+  encodeTransitionIntegerCbor,
+  encodeTransitionPhaseCbor,
+  encodeTransitionStepCbor,
+  transitionPhaseRank,
+} from "./block-replay.encoding.js";
+
+/** One ledger entry: the out-ref key bytes and the full output CBOR. */
+export type BlockReplayLedgerEntry = {
+  readonly outRef: Buffer;
+  readonly output: Buffer;
+};
+
+export type BlockReplayContext = {
   readonly header: SDK.Header;
-  readonly parentEntries: readonly Ledger.MinimalEntry[];
+  readonly parentEntries: readonly BlockReplayLedgerEntry[];
+  /** The ledger's MPF root (the trie of canonical ledger descriptors). */
+  readonly ledgerRoot: (
+    entries: readonly BlockReplayLedgerEntry[],
+  ) => Effect.Effect<string, unknown>;
   readonly expectedNetworkId: bigint;
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
   readonly blockSlot: bigint;
-  /** The block's clock: its state-queue node's authenticated `block_time`,
-   * never the header's `end_time`. */
+  /** Authenticated commit clock, separate from coverage end. */
   readonly blockTimeMs: number;
   /** The slot mapping script contexts carry their validity range in. */
   readonly l1SlotConfig: L1SlotConfig;
@@ -66,8 +93,8 @@ export type ImportedBlockReplayContext = {
   }) => Effect.Effect<void, unknown>;
 };
 
-export const replayImportedBlockEvents = (
-  input: ImportedBlockReplayContext & {
+export const replayBlockEvents = (
+  input: BlockReplayContext & {
     readonly payload: SDK.DaPayload;
   },
 ) =>
@@ -75,10 +102,15 @@ export const replayImportedBlockEvents = (
     const body = input.payload.block_body;
     const ledger = new Map(
       input.parentEntries.map((entry) => [
-        entry[Ledger.Columns.OUTREF].toString("hex"),
-        Buffer.from(entry[Ledger.Columns.OUTPUT]),
+        entry.outRef.toString("hex"),
+        Buffer.from(entry.output),
       ]),
     );
+    const entriesOf = (): BlockReplayLedgerEntry[] =>
+      [...ledger].map(([key, output]) => ({
+        outRef: Buffer.from(key, "hex"),
+        output,
+      }));
     const steps = body.transition_trace
       .map(([key, value]) => {
         const step = LucidData.from(
@@ -93,13 +125,15 @@ export const replayImportedBlockEvents = (
       })
       .sort((a, b) => Number(a.step.step_index - b.step.step_index));
     // The payload's own faults are defects: the importer calls them invalid.
-    yield* assertCanonicalTransitionPhaseOrder(
-      steps.map(({ step }) => ({
-        eventKey: step.event_key,
-        phase: step.phase,
-        ledgerOps: [],
-      })),
-    ).pipe(Effect.orDie);
+    let lastRank = -1;
+    for (const [index, { step }] of steps.entries()) {
+      const rank = transitionPhaseRank(step.phase);
+      if (rank < lastRank)
+        throw new Error(
+          `Transition source events are not in canonical phase order at source index ${index.toString()}: phase=${step.phase}`,
+        );
+      lastRank = rank;
+    }
     const expectedSources = new Map<
       string,
       { phase: SDK.TransitionPhase; source: SDK.DaPayloadEntry }
@@ -141,15 +175,11 @@ export const replayImportedBlockEvents = (
       throw new Error("foreign transaction preimage coverage mismatch");
     const material = importedProgramMaterial(body.cek_program_material);
     const reached = new Set<string>();
-    let root = yield* computeLedgerMpfRootFromLedgerEntries(
-      input.parentEntries,
-    );
+    let root = yield* input.ledgerRoot(input.parentEntries);
     for (const [index, { step, value }] of steps.entries()) {
       if (step.step_index !== BigInt(index) || step.schema_version !== 1n)
         throw new Error("foreign transition indices/schema mismatch");
-      const key = (yield* eventKeyCbor(step.event_key).pipe(
-        Effect.orDie,
-      )).toString("hex");
+      const key = encodeTransitionEventKeyCbor(step.event_key).toString("hex");
       const source = expectedSources.get(key);
       if (source === undefined || source.phase !== step.phase)
         throw new Error("foreign transition source coverage/phase mismatch");
@@ -176,8 +206,8 @@ export const replayImportedBlockEvents = (
           encodeTransactionRootValue(cbor).toString("hex") !== source.source[1]
         )
           throw new Error("foreign transaction preimage source mismatch");
-        // A forced preimage is the §5.1 envelope its order authenticated; its
-        // items may not decode, which the replay rejects at the item.
+        // The order authenticates the forced envelope; undecodable items replay
+        // to their committed rejection rather than failing program selection.
         if (step.phase === "ForcedTransaction")
           deriveMidgardForcedTxFaultEvidenceMaterial(cbor);
         const witnessEntries: ValidationMachineLedgerEntry[] = [...ledger].map(
@@ -264,12 +294,7 @@ export const replayImportedBlockEvents = (
           }
         }
       }
-      root = yield* computeLedgerMpfRootFromLedgerEntries(
-        [...ledger].map(([key, output]) => ({
-          [Ledger.Columns.OUTREF]: Buffer.from(key, "hex"),
-          [Ledger.Columns.OUTPUT]: output,
-        })),
-      );
+      root = yield* input.ledgerRoot(entriesOf());
       const expectedStep = {
         ...step,
         pre_utxos_root: priorRoot,
@@ -311,8 +336,5 @@ export const replayImportedBlockEvents = (
       throw new Error(
         "foreign replay omitted committed events, mappings or validation descriptors",
       );
-    return [...ledger].map(([key, output]) => ({
-      [Ledger.Columns.OUTREF]: Buffer.from(key, "hex"),
-      [Ledger.Columns.OUTPUT]: output,
-    }));
+    return entriesOf();
   });

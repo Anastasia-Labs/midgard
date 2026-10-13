@@ -121,4 +121,48 @@ describe("the decision driver's retirement gate", () => {
       BigInt(driver.current().nativePoint.blockNo) - BigInt(RELEASE_DEPTH - 1),
     );
   });
+
+  it("advances an empty queue at a separately stable checkpoint depth", async () => {
+    const store = openStore(":memory:");
+    closers.push(() => store.close());
+    expect((await store.start()).kind).toBe("ready");
+    expect((await store.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+    await applyAll(store, chainEvents(8, false));
+    const c = collaborators();
+    const advanced: WatcherAuthenticatedStateQueueObservation[] = [];
+    const checkpointDepth = 6;
+    const input = {
+      store,
+      onFollowerChange: () => () => undefined,
+      authority: AUTHORITY,
+      sourceId: SOURCE_ID,
+      releaseDepth: RELEASE_DEPTH,
+      bridge: c.bridge as never,
+      availability: c.availability as never,
+      replayedLedger: {
+        depth: checkpointDepth,
+        advance: async (
+          observation: WatcherAuthenticatedStateQueueObservation,
+        ) => {
+          advanced.push(observation);
+          return [];
+        },
+      },
+      retryDelayMs: 10,
+    };
+    const driver = createWatcherDecisionDriver(input, {
+      atTip: () => true,
+      started: () => true,
+    });
+    closers.push(() => driver.close());
+    driver.wake();
+    await driver.recovered;
+    await driver.idle();
+    expect(advanced).toHaveLength(1);
+    expect(advanced[0]!.finalizedHeaders).toEqual([]);
+    expect(BigInt(advanced[0]!.nativePoint.blockNo)).toBe(
+      BigInt(driver.current().nativePoint.blockNo) -
+        BigInt(checkpointDepth - 1),
+    );
+  });
 });

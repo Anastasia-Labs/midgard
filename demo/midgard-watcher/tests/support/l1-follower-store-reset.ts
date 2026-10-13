@@ -101,11 +101,11 @@ export const dropRecord = (store: FactStore) =>
   );
 
 /** The protocol init, then `blocks` blocks, a header commit in the first. */
-export const chainEvents = (blocks: number) => {
+export const chainEvents = (blocks: number, includeCommit = true) => {
   const chain = new SimChain(simUniverse(), SIM_ORIGIN);
   const events: ChainSyncEvent[] = [chain.forward([initTx(D)]).event];
   for (let i = 0; i < blocks; i += 1) {
-    const state = i === 0 ? queueState(chain, D) : null;
+    const state = i === 0 && includeCommit ? queueState(chain, D) : null;
     events.push(
       chain.forward(state === null ? [] : [commitTx(state, D)]).event,
     );

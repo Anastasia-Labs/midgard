@@ -61,6 +61,7 @@ type WatcherUserEventScriptBindingDescription = Readonly<{
   certificatePolicyId: string;
   /** The deposit and withdrawal event lists the follower's event projection reads. */
   eventProjection: EventProjectionConfig;
+  maximumProtectionDurationMs: string;
 }>;
 
 const userEventScriptBindings = new WeakMap<
@@ -262,6 +263,15 @@ export const verifyWatcherUserEventScriptBinding = (input: {
     deploymentFingerprint: deploymentIdentity.manifestId,
     blueprintHash: deploymentIdentity.blueprintHash,
     blueprintSha256: signed.blueprintSha256,
+    maximumProtectionDurationMs: [
+      signed.historyRecipes.deposit,
+      signed.historyRecipes.withdrawal,
+    ]
+      .reduce((maximum, recipe) => {
+        const duration = BigInt(recipe.protectionDurationMs);
+        return duration > maximum ? duration : maximum;
+      }, 0n)
+      .toString(),
     network: deploymentIdentity.network,
     canonicalOneShotOutRef: protocol.hubOracleOneShotOutRef,
     hub: Object.freeze({

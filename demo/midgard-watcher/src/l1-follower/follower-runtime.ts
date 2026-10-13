@@ -8,6 +8,7 @@ import {
   openSqliteFactStore,
   type OriginConfig,
   projectionStoreOptions,
+  type PruneFloor,
   WALLET_SEED_PENDING,
   type WalletSeedStatus,
 } from "@al-ft/midgard-l1-follower";
@@ -126,6 +127,8 @@ export type WatcherFollowerRuntimeInput = Readonly<{
    * use. Absent: the store records no event lists.
    */
   eventProjection?: EventProjectionConfig;
+  /** Replay holds historical admissions until its root-checked checkpoint is durable. */
+  replayPruneFloor?: PruneFloor;
   log?: (line: string) => void;
   /** Test seam: a transport other than the node sidecar. */
   unsafeTransportForTest?: L1NodeTransport;
@@ -226,6 +229,9 @@ export const openWatcherFollowerRuntime = (
       },
       "sqlite",
     ),
+    ...(input.replayPruneFloor === undefined
+      ? {}
+      : { pruneFloors: [input.replayPruneFloor] }),
     // Seeded (§5.3 step 4), never in the tracked-set record.
     wallets,
     path: input.storePath,

@@ -5,6 +5,10 @@
  * retries still apply.
  */
 
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import * as SDK from "@al-ft/midgard-sdk";
+
 import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadFetchResult,
@@ -19,6 +23,7 @@ export const retainedPayloadReplaySource = ({
   readonly retries?: number | undefined;
 }): {
   readonly sources: readonly RetainedDaPayloadSource[];
+  readonly payloadAt: (headerHash: string) => Promise<SDK.DaPayload>;
 } => {
   const captured = new Map<string, RetainedDaPayloadFetchResult>();
   const source: RetainedDaPayloadSource = {
@@ -44,5 +49,16 @@ export const retainedPayloadReplaySource = ({
       };
     },
   };
-  return { sources: [source] };
+  return {
+    sources: [source],
+    payloadAt: async (headerHash) => {
+      const fetched = await source.fetchPayloadByHeaderHash(headerHash);
+      if (!fetched.ok)
+        throw new Error("verified retained snapshot refused its own payload");
+      const payload = await unwrapDaPayload(fetched.payloadEnvelopeCbor, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      });
+      return SDK.decodeDaPayload(Buffer.from(payload.innerBytes));
+    },
+  };
 };
