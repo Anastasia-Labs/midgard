@@ -20,11 +20,11 @@ import {
   encodeMidgardSpendInputItem,
   MIDGARD_REDEEMER_PURPOSE_TAGS,
 } from "../src/codec/native-tx-field-items.js";
+import { compareMidgardAssetKeyBytes } from "../src/codec/value.js";
 import {
   encodeMidgardVersionedScript,
   type MidgardVersionedScript,
 } from "../src/codec/versioned-script.js";
-import { compareMidgardAssetKeyBytes } from "../src/codec/value.js";
 import * as vectors from "./fixtures/native-tx-field-items-v1.vectors.mjs";
 import {
   golden,

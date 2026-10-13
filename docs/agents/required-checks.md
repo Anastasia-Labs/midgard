@@ -548,6 +548,8 @@ Golden channel forced-tx-admission-v1 (@al-ft/midgard-core).
 - Fix: `pnpm --dir demo/midgard-core run fixtures:forced-tx-admission-v1:sync`
 - Runs on:
   - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.mjs`
+  - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.encoding.mjs`
+  - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.mint-rows.mjs`
   - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.rows.mjs`
   - `demo/midgard-core/scripts/golden-channel.mjs`
   - `demo/midgard-core/tests/fixtures/forced-tx-admission-v1.generated.json`

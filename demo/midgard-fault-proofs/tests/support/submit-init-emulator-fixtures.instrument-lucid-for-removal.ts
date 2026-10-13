@@ -1,5 +1,5 @@
-import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type FraudProofCatalogueDeploymentInfo,
   Header,

@@ -2,8 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type Assets, Data } from "@lucid-evolution/lucid";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
-import { fixtureLedgerAfter } from "./fixture-ledger.js";
 import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
+import { fixtureLedgerAfter } from "./fixture-ledger.js";
 import {
   depositEventsRetainedBlock,
   sealDepositPayload,

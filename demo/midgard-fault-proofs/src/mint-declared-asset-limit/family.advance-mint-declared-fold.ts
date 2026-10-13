@@ -11,8 +11,8 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  beginMintDeclaredPolicy,
   assetKeyPrecedes,
+  beginMintDeclaredPolicy,
   classifyMintDeclaredAssetLimitFinding,
   decodeMintDeclaredPolicyHeader,
   exactIndex,

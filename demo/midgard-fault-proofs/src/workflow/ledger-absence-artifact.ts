@@ -350,7 +350,7 @@ export const prepareLedgerAbsenceArtifact = async ({
     throw new Error(`${category} classification differs from evidence`);
   }
   const selected = selectedIdentity({ category, classification });
-  const prevLedger = await completeCanonicalReplayPredecessorLedger({
+  const prevLedger = completeCanonicalReplayPredecessorLedger({
     evidence,
     context: replayContext,
   });
