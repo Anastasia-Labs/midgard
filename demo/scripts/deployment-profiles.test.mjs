@@ -855,9 +855,14 @@ test("production profiles list their allow-listed keys; testing profiles admit e
     for (const list of lists) {
       const keys = profiles[name].allow_lists[list];
       assert.ok(keys.length > 0);
-      // Owner input I1 supplied preprod-public's real keys; mainnet still
-      // carries the stand-ins.
-      assert.equal(keys.some(isAllowListPlaceholderKey), name === "mainnet");
+      // Mainnet remains undeployed; P1 public keys must be real release inputs.
+      assert.ok(
+        keys.every((key) =>
+          name === "preprod-public"
+            ? !isAllowListPlaceholderKey(key)
+            : isAllowListPlaceholderKey(key),
+        ),
+      );
     }
     const profile = structuredClone(profiles[name]);
     profile.allow_lists.operators = null;
