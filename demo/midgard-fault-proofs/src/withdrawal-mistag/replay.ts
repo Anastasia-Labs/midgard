@@ -104,6 +104,7 @@ export const prepareWithdrawalMistagReplay = async ({
         entry,
         "WithdrawalsRootDomain",
       ),
+      committedWithdrawalInfoCbor: entry.valueBytes.toString("hex"),
       eventToStep: await membership(
         current.rootData.eventToStep,
         mapping,

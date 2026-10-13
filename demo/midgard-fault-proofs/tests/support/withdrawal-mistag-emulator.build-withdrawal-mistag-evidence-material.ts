@@ -256,6 +256,7 @@ export const buildWithdrawalMistagEvidenceMaterial = async (
         value: info,
         proof: sourceProof,
       },
+      committedWithdrawalInfoCbor: sourceValue.toString("hex"),
       eventToStep: {
         domain: SDK.ROOT_DOMAINS.eventToStep,
         root: event.root,

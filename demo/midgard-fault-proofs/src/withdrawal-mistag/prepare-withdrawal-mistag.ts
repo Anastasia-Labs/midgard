@@ -6,6 +6,10 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
@@ -111,7 +115,14 @@ const verifyCountedMembership = async <K, V>({
   });
 };
 
-const signatureIsValid = (info: SDK.WithdrawalInfo): boolean => {
+/**
+ * Checks the owner signature over the committed body bytes. Decoding a body
+ * drops repeated datum map keys, so the bytes are never re-encoded.
+ */
+const signatureIsValid = (
+  info: SDK.WithdrawalInfo,
+  bodyCbor: string,
+): boolean => {
   try {
     const [publicKeyHex, signatureHex] = info.signature;
     if (publicKeyHex.length !== 64 || signatureHex.length !== 128) return false;
@@ -120,10 +131,7 @@ const signatureIsValid = (info: SDK.WithdrawalInfo): boolean => {
     );
     if (publicKey.hash().to_hex() !== info.body.l2_owner) return false;
     const message = computeHash32(
-      Buffer.concat([
-        domain,
-        Buffer.from(SDK.withdrawalBodyBytes(info.body), "hex"),
-      ]),
+      Buffer.concat([domain, Buffer.from(bodyCbor, "hex")]),
     );
     return publicKey.verify(
       message,
@@ -134,18 +142,39 @@ const signatureIsValid = (info: SDK.WithdrawalInfo): boolean => {
   }
 };
 
-const infoHash = (info: SDK.WithdrawalInfo): string =>
-  computeHash32(Buffer.from(SDK.withdrawalInfoBytes(info), "hex")).toString(
-    "hex",
-  );
-const bodyHash = (body: SDK.WithdrawalBody): string =>
-  computeHash32(Buffer.from(SDK.withdrawalBodyBytes(body), "hex")).toString(
-    "hex",
-  );
+const hash32Hex = (cbor: string): string =>
+  computeHash32(Buffer.from(cbor, "hex")).toString("hex");
+
+/**
+ * Admits the committed leaf value bytes: they must be serialiseData-form and
+ * decode to the typed value the caller carries.
+ */
+const committedInfoCbor = (
+  committedWithdrawal: SDK.WithdrawalSourceMembershipProof,
+  infoCbor: string,
+): string => {
+  if (
+    !/^(?:[0-9a-f]{2})+$/u.test(infoCbor) ||
+    aikenSerialisedPlutusDataCborPreservingMapOrder(infoCbor) !== infoCbor ||
+    SDK.committedWithdrawalValueBytes(
+      Data.from(infoCbor, SDK.WithdrawalInfo),
+    ) !== SDK.committedWithdrawalValueBytes(committedWithdrawal.value)
+  ) {
+    throw new Error(
+      "withdrawal source bytes do not encode the committed withdrawal",
+    );
+  }
+  return infoCbor;
+};
 
 export type PrepareWithdrawalMistagArgs = {
   readonly challengedHeaderHash: string;
   readonly committedWithdrawal: SDK.WithdrawalSourceMembershipProof;
+  /**
+   * The committed leaf value bytes. Decoding loses repeated datum map keys, so
+   * hashes, the signature message and the payout size all read these bytes.
+   */
+  readonly committedWithdrawalInfoCbor: string;
   readonly eventToStep: SDK.EventToStepMembershipProof;
   readonly transitionStep: SDK.IndexedTraceProof;
   readonly ledgerEvidence:
@@ -169,6 +198,7 @@ export type PrepareWithdrawalMistagArgs = {
 export const prepareWithdrawalMistag = async ({
   challengedHeaderHash,
   committedWithdrawal,
+  committedWithdrawalInfoCbor,
   eventToStep,
   transitionStep,
   ledgerEvidence,
@@ -178,11 +208,16 @@ export const prepareWithdrawalMistag = async ({
       "withdrawal-mistag challenged header hash must be 28-byte hex",
     );
   }
+  const infoCbor = committedInfoCbor(
+    committedWithdrawal,
+    committedWithdrawalInfoCbor,
+  );
+  const bodyCbor = plutusConstrFieldCbor(infoCbor, [0]);
   await verifyCountedMembership({
     witness: committedWithdrawal,
     expectedDomain: "WithdrawalsRootDomain",
     keyCbor: SDK.committedWithdrawalKeyBytes(committedWithdrawal.key),
-    valueCbor: SDK.committedWithdrawalValueBytes(committedWithdrawal.value),
+    valueCbor: infoCbor,
     label: "withdrawal source",
   });
   await verifyCountedMembership({
@@ -264,7 +299,7 @@ export const prepareWithdrawalMistag = async ({
       address.paymentCredential.kind === "PubKey" &&
       address.paymentCredential.hash.toString("hex") === info.body.l2_owner &&
       assetCount <= SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT &&
-      signatureIsValid(info);
+      signatureIsValid(info, bodyCbor);
     outputPresent = true;
     cardanoValueSize = BigInt(material.descriptor.cardanoValueSize);
     coreValid =
@@ -275,7 +310,7 @@ export const prepareWithdrawalMistag = async ({
         output.value,
       ) &&
       assetCount <= SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT &&
-      signatureIsValid(info);
+      signatureIsValid(info, bodyCbor);
     authenticatedLedgerEvidence = {
       PresentLedgerOutput: {
         descriptor_cbor: material.descriptorCbor.toString("hex"),
@@ -293,7 +328,6 @@ export const prepareWithdrawalMistag = async ({
     authenticatedLedgerEvidence = ledgerEvidence;
   }
 
-  const bodyCbor = SDK.withdrawalBodyBytes(info.body);
   const payable = SDK.withdrawalMistagPayable({
     bodyCbor,
     lovelace: SDK.withdrawalMistagLovelace(info.body),
@@ -312,8 +346,8 @@ export const prepareWithdrawalMistag = async ({
     eventToStep,
     transitionStep,
     ledgerEvidence: authenticatedLedgerEvidence,
-    withdrawalInfoHash: infoHash(info),
-    withdrawalBodyHash: bodyHash(info.body),
+    withdrawalInfoHash: hash32Hex(infoCbor),
+    withdrawalBodyHash: hash32Hex(bodyCbor),
     cardanoValueSize,
     outputPresent,
     coreValid,

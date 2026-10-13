@@ -3,9 +3,14 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import {
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -21,6 +26,7 @@ const makeEvidence = async ({
   validity,
   outputAssets = new Map(),
   l2Value,
+  l1DatumCbor,
 }: {
   readonly lovelace: bigint;
   readonly validity: SDK.WithdrawalValidity;
@@ -28,6 +34,8 @@ const makeEvidence = async ({
   readonly outputAssets?: Map<string, Map<string, bigint>>;
   /** The requested value; by default exactly the ledger output's value. */
   readonly l2Value?: SDK.Value;
+  /** Raw `l1_datum` CBOR spliced into the committed bytes as written. */
+  readonly l1DatumCbor?: string;
 }) => {
   const privateKey = CML.PrivateKey.generate_ed25519();
   const publicKey = privateKey.to_public();
@@ -47,13 +55,21 @@ const makeEvidence = async ({
     },
     l1_datum: "NoDatum",
   };
+  const bodyCbor =
+    l1DatumCbor === undefined
+      ? SDK.withdrawalBodyBytes(body)
+      : replacePlutusConstrFieldCbor(
+          SDK.withdrawalBodyBytes(body),
+          [4],
+          l1DatumCbor,
+        );
   const message = computeHash32(
     Buffer.concat([
       Buffer.from("MidgardWithdrawalV1", "utf8"),
-      Buffer.from(SDK.withdrawalBodyBytes(body), "hex"),
+      Buffer.from(bodyCbor, "hex"),
     ]),
   );
-  const info: SDK.WithdrawalInfo = {
+  const typedInfo: SDK.WithdrawalInfo = {
     body,
     signature: [
       Buffer.from(publicKey.to_raw_bytes()).toString("hex"),
@@ -61,6 +77,15 @@ const makeEvidence = async ({
     ],
     validity,
   };
+  const infoCbor =
+    l1DatumCbor === undefined
+      ? SDK.committedWithdrawalValueBytes(typedInfo)
+      : replacePlutusConstrFieldCbor(
+          SDK.committedWithdrawalValueBytes(typedInfo),
+          [0, 4],
+          l1DatumCbor,
+        );
+  const info = Data.from(infoCbor, SDK.WithdrawalInfo);
   const outputCbor = encodeMidgardTxOutput({
     address: Buffer.concat([Buffer.from([0x60]), Buffer.from(owner, "hex")]),
     value: { lovelace, assets: outputAssets },
@@ -86,10 +111,7 @@ const makeEvidence = async ({
     SDK.committedWithdrawalKeyBytes(withdrawalId),
     "hex",
   );
-  const sourceValue = Buffer.from(
-    SDK.committedWithdrawalValueBytes(info),
-    "hex",
-  );
+  const sourceValue = Buffer.from(infoCbor, "hex");
   const source = await buildCountedRoot("WithdrawalsRootDomain", [
     { key: sourceKey, value: sourceValue },
   ]);
@@ -153,6 +175,7 @@ const makeEvidence = async ({
       value: info,
       proof: sourceProof,
     },
+    committedWithdrawalInfoCbor: infoCbor,
     eventToStep: {
       domain: "EventToStepRootDomain" as const,
       root: event.root,
@@ -305,5 +328,117 @@ describe("withdrawal-mistag preparation and lifecycle handoffs", () => {
     );
     expect(prepared.direction).toBe("invalid-marked-valid");
     expect(prepared.coreValid).toBe(false);
+  });
+});
+
+/** An inline datum whose map repeats key 1; decoding keeps one entry. */
+const REPEATED_KEY_DATUM = "d87b9fa201020103ff";
+
+/** The node's verdict over the same committed bytes and ledger output. */
+const nodeValidity = async (
+  evidence: Awaited<ReturnType<typeof makeEvidence>>,
+): Promise<string> => {
+  const bodyCbor = plutusConstrFieldCbor(evidence.committedWithdrawalInfoCbor, [
+    0,
+  ]);
+  const result = await Effect.runPromise(
+    SDK.classifyWithdrawalFromLedger({
+      l2Owner: evidence.committedWithdrawal.value.body.l2_owner,
+      l2ValueCbor: plutusConstrFieldCbor(bodyCbor, [2]),
+      eventInfoCbor: evidence.committedWithdrawalInfoCbor,
+      ledgerOutRef: encodeMidgardSpendInputItem({
+        txId: Buffer.from("01".repeat(32), "hex"),
+        outputIndex: 0,
+      }),
+      ledgerOutput: Buffer.from(
+        evidence.ledgerEvidence.PresentLedgerOutput.output_cbor,
+        "hex",
+      ),
+    }),
+  );
+  return result.validity;
+};
+
+describe("withdrawal-mistag payout sizing over committed bytes", () => {
+  const prepareRepeatedKey = async (
+    lovelace: bigint,
+    validity: SDK.WithdrawalValidity,
+  ) => {
+    const evidence = await makeEvidence({
+      lovelace,
+      validity,
+      l1DatumCbor: REPEATED_KEY_DATUM,
+    });
+    return {
+      evidence,
+      prepared: await prepareWithdrawalMistag(evidence),
+      node: await nodeValidity(evidence),
+    };
+  };
+
+  it("sizes a repeated-key datum payout as the node does", async () => {
+    const { evidence, prepared, node } = await prepareRepeatedKey(
+      2_000_000n,
+      "UnpayableWithdrawalValue",
+    );
+    const bodyCbor = plutusConstrFieldCbor(
+      evidence.committedWithdrawalInfoCbor,
+      [0],
+    );
+    const sizing = {
+      bodyCbor,
+      cardanoValueSize: prepared.cardanoValueSize,
+    };
+    expect(prepared.exactOutputBytes).toBe(
+      SDK.withdrawalMistagExactPayoutOutputBytes(sizing),
+    );
+    expect(prepared.requiredLovelace).toBe(
+      SDK.withdrawalMistagMinimumLovelace(sizing),
+    );
+    // The decoded body keeps one map entry and sizes a shorter payout.
+    expect(prepared.exactOutputBytes).toBeGreaterThan(
+      SDK.withdrawalMistagExactPayoutOutputBytes({
+        ...sizing,
+        bodyCbor: SDK.withdrawalBodyBytes(
+          evidence.committedWithdrawal.value.body,
+        ),
+      }),
+    );
+    expect(node).toBe("WithdrawalIsValid");
+    expect(prepared.direction).toBe("valid-marked-invalid");
+  });
+
+  it("agrees with the node one lovelace either side of the minimum", async () => {
+    const { prepared: probe } = await prepareRepeatedKey(
+      2_000_000n,
+      "UnpayableWithdrawalValue",
+    );
+    const minimum = probe.requiredLovelace;
+    const below = await prepareRepeatedKey(minimum - 1n, "WithdrawalIsValid");
+    expect(below.node).toBe("UnpayableWithdrawalValue");
+    expect(below.prepared.payable).toBe(false);
+    expect(below.prepared.direction).toBe("invalid-marked-valid");
+    const exact = await prepareRepeatedKey(minimum, "UnpayableWithdrawalValue");
+    expect(exact.node).toBe("WithdrawalIsValid");
+    expect(exact.prepared.payable).toBe(true);
+    expect(exact.prepared.direction).toBe("valid-marked-invalid");
+  });
+
+  it("refuses committed bytes that do not encode the carried withdrawal", async () => {
+    const evidence = await makeEvidence({
+      lovelace: 2_000_000n,
+      validity: "UnpayableWithdrawalValue",
+      l1DatumCbor: REPEATED_KEY_DATUM,
+    });
+    await expect(
+      prepareWithdrawalMistag({
+        ...evidence,
+        committedWithdrawalInfoCbor: replacePlutusConstrFieldCbor(
+          evidence.committedWithdrawalInfoCbor,
+          [0, 4],
+          "d87b9fa10104ff",
+        ),
+      }),
+    ).rejects.toThrow(/do not encode the committed withdrawal/u);
   });
 });
