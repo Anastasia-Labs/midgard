@@ -250,6 +250,7 @@ test("workflow, agent-doc and tooling edits select their owners' checks", () => 
 test("a FULL_RUN path selects every check; the tracked blueprint selects nothing", () => {
   for (const path of [
     "demo/scripts/deployment-profile-aiken.mjs",
+    "demo/scripts/deployment-profile-budgets.mjs",
     "onchain/aiken/aiken.toml",
     "demo/pnpm-lock.yaml",
     "scripts/preflight/derive.mjs",

@@ -198,12 +198,8 @@
         "demo/midgard-core:fixtures:forced-tx-admission-v1:sync",
         "demo/midgard-core:fixtures:forced-tx-admission-v1:check"
       ],
-      "producers": [
-        "demo/midgard-core"
-      ],
-      "inputs": [
-        "@golden-channel"
-      ],
+      "producers": ["demo/midgard-core"],
+      "inputs": ["@golden-channel"],
       "outputs": [
         "demo/midgard-core/tests/fixtures/forced-tx-admission-v1.generated.json",
         "onchain/aiken/lib/midgard/user-events/forced-tx-admission-v1-golden.test.ak"
@@ -803,7 +799,8 @@
       "generators": [
         "demo/scripts/deployment-profiles.mjs",
         "demo/scripts/deployment-profile-aiken.mjs",
-        "demo/scripts/deployment-profile-identity.mjs"
+        "demo/scripts/deployment-profile-identity.mjs",
+        "demo/scripts/deployment-profile-budgets.mjs"
       ],
       "packageScripts": [
         "demo:deployment:generate",
