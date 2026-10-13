@@ -377,7 +377,33 @@ observation. Its bundle and alert go once it is settled (a listed prover's
 proof removed the header, or the header left the queue) or, for an Open, once
 it is no longer due. The alert is informational: the watcher stays ready.
 Other availability steps (Settle, Close, Timeout, prune) are not
-allow-listed and run as usual.
+allow-listed and run as usual. An observer reads neither wallet to prepare,
+so an unfunded key keeps it ready.
+
+Acting on a prepared proof is an allow-listed key's job. The bundle and the
+alert trigger it; they are not an input, and no command submits a bundle:
+
+- Fault proofs: a listed prover runs its own watcher configured with its
+  listed prover key (its `submissionModes.faultProofs` reads `submit`). That
+  watcher detects and proves the same fault from authenticated L1 and public
+  DA. Once its proof removes the header, the observer's bundle and alert
+  clear.
+- Availability Opens: a listed challenger opens the header the bundle names
+  before `openDeadlineEpochMs`, with the node's command (flags and funding in
+  [availability challenge commands](../midgard-node/docs/availability-challenge-commands.md)):
+
+  ```sh
+  node dist/index.js availability-challenge open \
+    --manifest /var/lib/midgard/contract-deployment-info.json \
+    --journal /var/lib/midgard/availability/actor.sqlite \
+    --header-hash "$BUNDLE_HEADER_HASH" \
+    --wallet-seed-env LISTED_CHALLENGER_SEED \
+    --collateral-out-ref <hash#index> \
+    --funding-out-ref <hash#index>
+  ```
+
+  It refuses a key the profile's DA challenger list omits before it builds
+  anything.
 
 `$.l1.source` names one source, `local_node`: the Cardano node the L1
 follower reads over its socket. `$.l1.finality` holds only `depth`. The
