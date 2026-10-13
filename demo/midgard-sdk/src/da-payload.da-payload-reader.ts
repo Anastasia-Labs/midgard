@@ -77,8 +77,10 @@ class DaPayloadReader {
     const validation_traces = this.#entryList(
       "payload.block_body.validation_traces",
     );
-    const validation_trace_witnesses = this.#entryList(
-      "payload.block_body.validation_trace_witnesses",
+    // The section stays in the format and is always empty.
+    this.#expect(
+      0x80,
+      "payload.block_body.validation_trace_witnesses (must be empty)",
     );
     this.#constructorStart("payload.block_body.counts");
     const counts = {
@@ -112,7 +114,7 @@ class DaPayloadReader {
         transition_trace,
         event_to_step,
         validation_traces,
-        validation_trace_witnesses,
+        validation_trace_witnesses: [],
         counts,
       },
     };

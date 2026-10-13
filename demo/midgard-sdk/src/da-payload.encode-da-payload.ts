@@ -97,8 +97,7 @@ export type DaPayloadEntryField =
   | "deposits"
   | "transition_trace"
   | "event_to_step"
-  | "validation_traces"
-  | "validation_trace_witnesses";
+  | "validation_traces";
 
 const encodedPayloadSize = (
   payload: DaPayload,
@@ -158,7 +157,8 @@ const encodedPayloadSize = (
     entryListSize("transition_trace"),
     entryListSize("event_to_step"),
     entryListSize("validation_traces"),
-    entryListSize("validation_trace_witnesses"),
+    // validation_trace_witnesses: always the empty list.
+    1,
     countsSize,
   ]);
   return constructorSize([integerSize(payload.version), bodySize]);
@@ -209,6 +209,9 @@ export const encodeDaPayload = (payload: DaPayload): Buffer => {
     throw new Error(
       `DaPayloadV1 version must equal ${DA_PAYLOAD_VERSION.toString()}`,
     );
+  }
+  if (payload.block_body.validation_trace_witnesses.length !== 0) {
+    throw new Error("DaPayloadV1 validation_trace_witnesses must be empty");
   }
   if (!payloadIntegers(payload).every(isNativeCborInteger)) {
     throw new Error(
@@ -263,7 +266,7 @@ export const encodeDaPayload = (payload: DaPayload): Buffer => {
   writeList(writer, body.transition_trace);
   writeList(writer, body.event_to_step);
   writeList(writer, body.validation_traces);
-  writeList(writer, body.validation_trace_witnesses);
+  writeList(writer, []);
 
   const counts = body.counts;
   writeConstructorStart(writer);
