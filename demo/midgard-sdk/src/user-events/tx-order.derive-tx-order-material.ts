@@ -15,7 +15,10 @@ import {
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
   deriveMidgardTxFieldPreimages,
+  estimateMidgardForcedTxOrderMintMemory,
+  MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_BASIS,
   MidgardForcedTxAdmissionRefused,
+  MidgardForcedTxOrderMintCapacityExceeded,
   screenMidgardForcedTxAdmission,
 } from "@al-ft/midgard-core/consensus-validation";
 import { getAddressDetails, LucidEvolution } from "@lucid-evolution/lucid";
@@ -57,6 +60,12 @@ export const deriveTxOrderMaterial = ({
   const refusal = screenMidgardForcedTxAdmission(tx);
   if (refusal !== null) {
     throw new MidgardForcedTxAdmissionRefused(refusal);
+  }
+  // The P1 capacity limits: an admitted transaction the mint's execution
+  // budget is not expected to fit is refused here too, by the measured rates.
+  const estimate = estimateMidgardForcedTxOrderMintMemory(tx);
+  if (estimate.memory > MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_BASIS) {
+    throw new MidgardForcedTxOrderMintCapacityExceeded(estimate);
   }
   const transactionId = computeMidgardNativeTxId(tx.compact);
   const proofSource = deriveMidgardForcedTxProofSource(tx);

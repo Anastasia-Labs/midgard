@@ -605,7 +605,10 @@ fn skip_value(bytes: ByteArray, offset: Int) -> Int {
 ///
 /// Only the outputs the output scan accepts need a truthful verdict here; it
 /// refuses every other shape as non-canonical, so the keys are read by
-/// position rather than checked.
+/// position rather than checked. The positional read must agree with
+/// `midgard/ledger_output_scan_v1` (TypeScript `buildMidgardLedgerOutputScanTrace`)
+/// on every output the scan accepts; midgard-core's
+/// `forced-tx-admission-v1.output-scan-fuzz.test.ts` checks it.
 fn output_is_admissible(bytes: ByteArray, start: Int, end: Int) -> Bool {
   let map_head = builtin.index_bytearray(bytes, start)
   let value = skip_bytes(bytes, start + 2) + 1

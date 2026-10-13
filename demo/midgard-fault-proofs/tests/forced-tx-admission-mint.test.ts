@@ -2,10 +2,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
+  encodeCbor,
   encodeMidgardForcedTxCanonical,
+  encodeMidgardMintPolicyItem,
+  materializeMidgardForcedTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -180,8 +182,7 @@ describe("forced-tx admission at the real tx-order mint", () => {
   }, 300_000);
 
   /** Publish the row's carriage and build its order; the build evaluates the mint. */
-  const mintOrder = async (golden: Row) => {
-    const bytes = submittedBytes(golden);
+  const mintOrder = async (bytes: Buffer) => {
     const carriage = await publishForcedOrderCarriage(h, lucid, bytes);
     const [nonce] = (await lucid.wallet().getUtxos())
       .filter(
@@ -222,7 +223,7 @@ describe("forced-tx admission at the real tx-order mint", () => {
       const before = (
         await lucid.utxosAt(h.contracts.txOrder.spendingScriptAddress)
       ).length;
-      await mintOrder(admitted);
+      await mintOrder(submittedBytes(admitted));
       expect(
         (await lucid.utxosAt(h.contracts.txOrder.spendingScriptAddress)).length,
       ).toBe(before + 1);
@@ -245,7 +246,7 @@ describe("forced-tx admission at the real tx-order mint", () => {
       ).toThrow(`Forced admission refused at ${refused.expected!}:`);
       screen.enabled = false;
       try {
-        await expectOnchainRefusal(() => mintOrder(refused), {
+        await expectOnchainRefusal(() => mintOrder(submittedBytes(refused)), {
           refusedBy: "user_events/tx_order_v1",
           check: new RegExp(escape(refused.expected!), "u"),
         });
@@ -255,4 +256,95 @@ describe("forced-tx admission at the real tx-order mint", () => {
     },
     300_000,
   );
+
+  it("mints an order at the SDK's mint-policy capacity limit", async () => {
+    // The base row with field 5 widened to the most single-asset policies the
+    // SDK's capacity check admits: the real mint must fit it.
+    const withPolicies = (count: number): Buffer =>
+      submittedBytes({
+        ...row("base"),
+        fields: row("base").fields.map((field, index) =>
+          index === 5
+            ? encodeCbor(
+                Array.from({ length: count }, (_, policy) =>
+                  encodeMidgardMintPolicyItem({
+                    policyId: Buffer.concat([
+                      Buffer.alloc(26, 0x44),
+                      Buffer.from([policy >> 8, policy & 0xff]),
+                    ]),
+                    assets: [{ assetName: Buffer.alloc(0), quantity: 1n }],
+                  }),
+                ),
+              ).toString("hex")
+            : field,
+        ),
+      });
+    const limit = 121;
+    expect(() =>
+      SDK.deriveTxOrderMaterial({
+        submittedTxCbor: withPolicies(limit),
+        owner: Buffer.alloc(28),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      SDK.deriveTxOrderMaterial({
+        submittedTxCbor: withPolicies(limit + 1),
+        owner: Buffer.alloc(28),
+      }),
+    ).toThrow("Forced transaction exceeds the tx-order mint's capacity:");
+    screen.enabled = true;
+    const before = (
+      await lucid.utxosAt(h.contracts.txOrder.spendingScriptAddress)
+    ).length;
+    await mintOrder(withPolicies(limit));
+    expect(
+      (await lucid.utxosAt(h.contracts.txOrder.spendingScriptAddress)).length,
+    ).toBe(before + 1);
+  }, 300_000);
+
+  it("mints the measured frontier with maximal signed quantity, name and pair widths", async () => {
+    const withAssets = (count: number): Buffer => {
+      const item = encodeMidgardMintPolicyItem({
+        policyId: Buffer.alloc(28, 0x44),
+        assets: Array.from({ length: count }, (_, index) => ({
+          assetName: Buffer.concat([
+            Buffer.alloc(30, 0x44),
+            Buffer.from([index >> 8, index & 0xff]),
+          ]),
+          quantity: -0x10000000000000000n,
+        })),
+      });
+      const wideItem = Buffer.concat([
+        Buffer.from("9a00000002", "hex"),
+        item.subarray(1),
+      ]);
+      return submittedBytes({
+        ...row("base"),
+        fields: row("base").fields.map((field, index) =>
+          index === 5 ? encodeCbor([wideItem]).toString("hex") : field,
+        ),
+      });
+    };
+    const limit = 235;
+    expect(() =>
+      SDK.deriveTxOrderMaterial({
+        submittedTxCbor: withAssets(limit),
+        owner: Buffer.alloc(28),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      SDK.deriveTxOrderMaterial({
+        submittedTxCbor: withAssets(limit + 1),
+        owner: Buffer.alloc(28),
+      }),
+    ).toThrow("Forced transaction exceeds the tx-order mint's capacity:");
+    screen.enabled = true;
+    const before = (
+      await lucid.utxosAt(h.contracts.txOrder.spendingScriptAddress)
+    ).length;
+    await mintOrder(withAssets(limit));
+    expect(
+      (await lucid.utxosAt(h.contracts.txOrder.spendingScriptAddress)).length,
+    ).toBe(before + 1);
+  }, 300_000);
 });

@@ -130,6 +130,12 @@ const skipValue = (bytes: Uint8Array, offset: number): number => {
  * `2`, and a four-entry output always carries one. Rule 5: the value's bytes
  * are at most the maximum value size; in a two-entry output the value runs to
  * the end of the item. Returns the reason an output is refused, or null.
+ *
+ * The keys are read by position, not through `decodeMidgardTxOutput`: the
+ * output scan (`buildMidgardLedgerOutputScanTrace`, twin of
+ * `ledger_output_scan_v1`) refuses every other shape as non-canonical, so this
+ * read must agree with that scan on every output it accepts.
+ * `tests/forced-tx-admission-v1.output-scan-fuzz.test.ts` checks it.
  */
 const outputRefusal = (
   bytes: Uint8Array,
