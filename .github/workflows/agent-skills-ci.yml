@@ -4,6 +4,7 @@ name: Agent Skills CI
 # moves, and that change lands outside .agents/**; a filter scoped to the
 # skills would skip exactly the change that broke them. The job takes seconds.
 on:
+  workflow_dispatch:
   push:
     branches: ["main"]
   pull_request:
