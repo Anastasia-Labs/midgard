@@ -15,6 +15,7 @@ import { expect, it, vi } from "vitest";
 import { workflowTransactionInputOutRefs } from "../src/index.js";
 import * as topology from "../src/remove-fraudulent-block.load-state-queue-topology.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { commitSlotForBlockTime } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import type { OperatorLifecycleReferenceScripts } from "./support/emulator/reference-scripts.js";
 import {
@@ -203,6 +204,10 @@ it("refuses unrelated active retired and absent operators and prunes active and 
             ? endTime
             : predecessor.endTime + 60_000n,
       };
+      header.blockSlot = commitSlotForBlockTime(
+        fixture.l1SlotConfig,
+        header.endTime,
+      );
       const [activeOperatorNode] = await funderLucid.utxosAtWithUnit(
         contracts.activeOperators.spendingScriptAddress,
         rotated.activeNodeUnit,
